@@ -37,6 +37,7 @@ export default function SettingsClient({
       <h1 className="mb-6 text-2xl font-bold">الإعدادات</h1>
       <div className="space-y-6">
         <BinanceCard binance={binance} />
+        <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
         <TradingCard settings={initialSettings} limits={limits} />
       </div>
     </main>
@@ -165,6 +166,88 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
           {busy ? "جارٍ التحقق…" : binance ? "تحديث المفاتيح" : "ربط وتحقق"}
         </button>
       </form>
+    </section>
+  );
+}
+
+function TelegramCard({ linked }: { linked: boolean }) {
+  const router = useRouter();
+  const [link, setLink] = useState<{ code: string; deepLink: string | null } | null>(
+    null,
+  );
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function generate() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/telegram/link", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(data.error ?? "تعذّر إنشاء الرمز.");
+        return;
+      }
+      setLink({ code: data.code, deepLink: data.deepLink });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlink() {
+    if (!confirm("فصل حساب تليجرام؟")) return;
+    await fetch("/api/telegram/link", { method: "DELETE" });
+    setLink(null);
+    router.refresh();
+  }
+
+  return (
+    <section className="card p-6">
+      <h2 className="mb-1 text-lg font-bold">إشعارات تليجرام</h2>
+      <p className="mb-4 text-sm text-[var(--muted)]">
+        اربط تليجرام لتصلك إشعارات الصفقات والتوصيات، ولتوافق على الصفقات بأزرار
+        مباشرة من البوت.
+      </p>
+
+      {linked ? (
+        <div className="flex items-center justify-between rounded-lg bg-[var(--surface-2)] px-4 py-3">
+          <span className="text-sm">
+            <span className="text-[var(--accent)]">● مرتبط</span> بتليجرام
+          </span>
+          <button onClick={unlink} className="btn btn-danger py-1.5 text-sm">
+            فصل
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <button onClick={generate} className="btn btn-primary" disabled={busy}>
+            {busy ? "…" : "إنشاء رمز ربط"}
+          </button>
+          {msg && <p className="text-sm text-[var(--danger)]">{msg}</p>}
+          {link && (
+            <div className="rounded-lg bg-[var(--surface-2)] p-4 text-sm">
+              {link.deepLink ? (
+                <a
+                  href={link.deepLink}
+                  target="_blank"
+                  className="text-[var(--accent-2)] underline"
+                  rel="noreferrer"
+                >
+                  افتح البوت لإتمام الربط ←
+                </a>
+              ) : (
+                <p>
+                  أرسل هذا الأمر للبوت:{" "}
+                  <code dir="ltr">/start {link.code}</code>
+                </p>
+              )}
+              <p className="mt-2 text-xs text-[var(--muted)]">
+                الرمز صالح لمدة ساعة. بعد الربط، حدّث الصفحة.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

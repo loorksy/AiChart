@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireActiveUser, handleError, ApiError } from "@/lib/api";
 import { getIntent, updateIntentStatus } from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
+import { notifyUser } from "@/lib/telegram";
 
 const schema = z.object({ action: z.enum(["approve", "reject"]) });
 
@@ -34,6 +35,12 @@ export async function POST(
     // approve → execute through the Risk Guard.
     updateIntentStatus(intentId, "approved", "وافق المستخدم.");
     const result = await executeIntent(user.id, intentId);
+    await notifyUser(
+      user.id,
+      result.ok
+        ? `✅ نُفّذت صفقة ${intent.symbol}.`
+        : `⚠️ تعذّر تنفيذ ${intent.symbol}: ${result.reason}`,
+    );
     return NextResponse.json({
       ok: result.ok,
       status: result.status,
