@@ -15,6 +15,7 @@ export default function Nav({
 
   const links = [
     { href: "/dashboard", label: "اللوحة" },
+    { href: "/chat", label: "الدردشة" },
     { href: "/settings", label: "الإعدادات" },
     ...(role === "admin" ? [{ href: "/admin", label: "الإدارة" }] : []),
   ];

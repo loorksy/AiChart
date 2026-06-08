@@ -4,6 +4,7 @@ import type {
   AdminLimits,
   BinanceAccountMeta,
   PublicUser,
+  Recommendation,
   TradingSettings,
 } from "./types";
 import type { BinanceEnv } from "./binance";
@@ -173,4 +174,74 @@ export function updateAdminLimits(
       `UPDATE admin_limits SET ${assignments}, updated_at = datetime('now') WHERE user_id = @user_id`,
     )
     .run(params);
+}
+
+// ─── Recommendations ────────────────────────────────────────────────
+
+export function saveRecommendation(
+  userId: number,
+  rec: {
+    symbol: string;
+    action: string;
+    confidence: number;
+    entry?: number | null;
+    stop_loss?: number | null;
+    take_profit?: number | null;
+    timeframe?: string | null;
+    rationale?: string | null;
+  },
+): Recommendation {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO recommendations
+         (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale)
+       VALUES (@user_id, @symbol, @action, @confidence, @entry, @stop_loss, @take_profit, @timeframe, @rationale)`,
+    )
+    .run({
+      user_id: userId,
+      symbol: rec.symbol.toUpperCase(),
+      action: rec.action,
+      confidence: Math.round(rec.confidence) || 0,
+      entry: rec.entry ?? null,
+      stop_loss: rec.stop_loss ?? null,
+      take_profit: rec.take_profit ?? null,
+      timeframe: rec.timeframe ?? null,
+      rationale: rec.rationale ?? null,
+    });
+  return getDb()
+    .prepare("SELECT * FROM recommendations WHERE id = ?")
+    .get(Number(info.lastInsertRowid)) as Recommendation;
+}
+
+export function listRecommendations(
+  userId: number,
+  limit = 20,
+): Recommendation[] {
+  return getDb()
+    .prepare(
+      "SELECT * FROM recommendations WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+    )
+    .all(userId, limit) as Recommendation[];
+}
+
+// ─── Claude usage / quota ───────────────────────────────────────────
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function getTodayUsage(userId: number): number {
+  const row = getDb()
+    .prepare("SELECT count FROM claude_usage WHERE user_id = ? AND day = ?")
+    .get(userId, today()) as { count: number } | undefined;
+  return row?.count ?? 0;
+}
+
+export function incrementUsage(userId: number, by = 1): void {
+  getDb()
+    .prepare(
+      `INSERT INTO claude_usage (user_id, day, count) VALUES (?, ?, ?)
+       ON CONFLICT(user_id, day) DO UPDATE SET count = count + excluded.count`,
+    )
+    .run(userId, today(), by);
 }

@@ -61,6 +61,31 @@ function init(db: Database.Database) {
       updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    -- Recommendations produced by the expert agent (advisory; no execution yet).
+    CREATE TABLE IF NOT EXISTS recommendations (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL,
+      symbol       TEXT NOT NULL,
+      action       TEXT NOT NULL,
+      confidence   INTEGER NOT NULL DEFAULT 0,
+      entry        REAL,
+      stop_loss    REAL,
+      take_profit  REAL,
+      timeframe    TEXT,
+      rationale    TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- Per-day Claude request counter, used to enforce the admin quota.
+    CREATE TABLE IF NOT EXISTS claude_usage (
+      user_id    INTEGER NOT NULL,
+      day        TEXT NOT NULL,
+      count      INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, day),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   seedAdmin(db);
