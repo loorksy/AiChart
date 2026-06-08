@@ -8,6 +8,21 @@ import type {
   TradingSettings,
 } from "@/lib/types";
 
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label>{label}</label>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
 export default function SettingsClient({
   settings: initialSettings,
   limits,
@@ -219,19 +234,6 @@ function TradingCard({
       setBusy(false);
     }
   }
-
-  const Field = ({
-    label,
-    children,
-  }: {
-    label: string;
-    children: React.ReactNode;
-  }) => (
-    <div>
-      <label>{label}</label>
-      <div className="mt-1">{children}</div>
-    </div>
-  );
 
   return (
     <section className="card p-6">

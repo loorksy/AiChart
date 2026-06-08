@@ -58,3 +58,19 @@ export interface SessionPayload {
   email: string;
   role: Role;
 }
+
+export type RecommendationAction = "buy" | "sell" | "wait";
+
+export interface Recommendation {
+  id: number;
+  user_id: number;
+  symbol: string;
+  action: RecommendationAction;
+  confidence: number;
+  entry: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  timeframe: string | null;
+  rationale: string | null;
+  created_at: string;
+}

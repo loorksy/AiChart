@@ -181,12 +181,12 @@ export default function DashboardClient({
         <div className="card p-5">
           <h2 className="mb-3 font-bold">الدردشة مع الوكيل</h2>
           <p className="text-sm text-[var(--muted)]">
-            ميزة الدردشة مع الوكيل الخبير قيد التطوير (المرحلة 2). ستتمكّن قريباً
-            من التحدّث مع الوكيل وطلب تحليل أي عملة وتلقّي توصياته.
+            تحدّث مع الخبير، اطلب تحليل أي عملة مسموح بها، وتلقَّ توصياته
+            (شراء/بيع/انتظار) مع وقف الخسارة والهدف.
           </p>
-          <button className="btn btn-secondary mt-4" disabled>
-            قريباً
-          </button>
+          <Link href="/chat" className="btn btn-primary mt-4">
+            ابدأ الدردشة
+          </Link>
         </div>
       </div>
     </main>
