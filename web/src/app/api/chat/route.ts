@@ -11,7 +11,12 @@ import {
 import { runAgent } from "@/lib/agent";
 import { executeIntent } from "@/lib/execution";
 import { isAnthropicConfigured, type Message } from "@/lib/anthropic";
-import { notifyUser, approvalCard } from "@/lib/telegram";
+import {
+  notifyUser,
+  approvalCard,
+  APPROVE_BUTTON_TEXT,
+  REJECT_BUTTON_TEXT,
+} from "@/lib/telegram";
 
 export const maxDuration = 60;
 
@@ -106,8 +111,8 @@ export async function POST(req: NextRequest) {
           await notifyUser(
             user.id,
             exec.ok
-              ? `✅ نُفّذت صفقة ${intent.symbol} (${intent.side === "buy" ? "شراء" : "بيع"}).`
-              : `⚠️ تعذّر تنفيذ ${intent.symbol}: ${exec.reason}`,
+              ? `✅ نُفّذت صفقة ${intent.symbol} (${intent.side === "buy" ? "شراء · Buy" : "بيع · Sell"}). · Executed.`
+              : `⚠️ تعذّر تنفيذ ${intent.symbol} · Not executed: ${exec.reason}`,
           );
         } else {
           intents.push({
@@ -117,11 +122,11 @@ export async function POST(req: NextRequest) {
             notional: intent.notional,
             status: "pending",
           });
-          // Send an approval card with inline buttons to Telegram.
+          // Send an approval card with bilingual inline buttons to Telegram.
           await notifyUser(user.id, approvalCard(intent), [
             [
-              { text: "✅ موافقة", callback_data: `approve:${intent.id}` },
-              { text: "❌ رفض", callback_data: `reject:${intent.id}` },
+              { text: APPROVE_BUTTON_TEXT, callback_data: `approve:${intent.id}` },
+              { text: REJECT_BUTTON_TEXT, callback_data: `reject:${intent.id}` },
             ],
           ]);
         }

@@ -116,9 +116,29 @@ export async function setWebhook(url: string): Promise<void> {
   });
 }
 
-const sideAr = (s: string) => (s === "buy" ? "🟢 شراء" : "🔴 بيع");
+/** Registers the bilingual (Arabic + English) command menu. */
+export async function setBotCommands(): Promise<void> {
+  await call("setMyCommands", {
+    commands: [
+      { command: "status", description: "الحالة · Account status" },
+      { command: "positions", description: "الصفقات المفتوحة · Open positions" },
+      { command: "pnl", description: "أرباح/خسائر اليوم · Today's PnL" },
+      { command: "pause", description: "إيقاف التداول · Pause trading" },
+      { command: "resume", description: "استئناف التداول · Resume trading" },
+      { command: "stop", description: "إيقاف طارئ · Emergency stop" },
+      { command: "help", description: "المساعدة · Help" },
+    ],
+  });
+}
 
-/** Builds a professional trade-approval card. */
+// Bilingual inline buttons reused across the bot.
+export const APPROVE_BUTTON_TEXT = "✅ موافقة · Approve";
+export const REJECT_BUTTON_TEXT = "❌ رفض · Reject";
+
+const sideBilingual = (s: string) =>
+  s === "buy" ? "🟢 شراء · Buy" : "🔴 بيع · Sell";
+
+/** Builds a professional bilingual trade-approval card. */
 export function approvalCard(intent: {
   symbol: string;
   side: string;
@@ -131,17 +151,20 @@ export function approvalCard(intent: {
 }): string {
   const lines = [
     `<b>🤖 توصية جديدة من الخبير</b>`,
+    `<b>New recommendation from the Expert</b>`,
     ``,
-    `الزوج: <b>${intent.symbol}</b>`,
-    `الاتجاه: <b>${sideAr(intent.side)}</b>`,
-    `الحجم: <b>${intent.notional.toFixed(2)} USDT</b>`,
-    `الثقة: <b>${intent.confidence}%</b>`,
+    `الزوج · Pair: <b>${intent.symbol}</b>`,
+    `الاتجاه · Side: <b>${sideBilingual(intent.side)}</b>`,
+    `الحجم · Size: <b>${intent.notional.toFixed(2)} USDT</b>`,
+    `الثقة · Confidence: <b>${intent.confidence}%</b>`,
   ];
-  if (intent.entry) lines.push(`الدخول: <code>${intent.entry}</code>`);
-  if (intent.stop_loss) lines.push(`وقف الخسارة: <code>${intent.stop_loss}</code>`);
-  if (intent.take_profit) lines.push(`الهدف: <code>${intent.take_profit}</code>`);
+  if (intent.entry) lines.push(`الدخول · Entry: <code>${intent.entry}</code>`);
+  if (intent.stop_loss)
+    lines.push(`وقف الخسارة · Stop: <code>${intent.stop_loss}</code>`);
+  if (intent.take_profit)
+    lines.push(`الهدف · Target: <code>${intent.take_profit}</code>`);
   if (intent.rationale) lines.push(``, `📝 ${intent.rationale}`);
-  lines.push(``, `هل توافق على تنفيذ الصفقة؟`);
+  lines.push(``, `هل توافق على التنفيذ؟ · Approve this trade?`);
   return lines.join("\n");
 }
 
@@ -153,12 +176,12 @@ export function executedCard(t: {
   env: string;
 }): string {
   return [
-    `<b>✅ تم تنفيذ صفقة</b>`,
+    `<b>✅ تم تنفيذ صفقة · Trade executed</b>`,
     ``,
-    `الزوج: <b>${t.symbol}</b>`,
-    `الاتجاه: <b>${sideAr(t.side)}</b>`,
-    `الكمية: <code>${t.qty}</code>`,
-    `السعر: <code>${t.avg_price}</code>`,
-    `البيئة: ${t.env === "testnet" ? "تجريبية" : "حقيقية"}`,
+    `الزوج · Pair: <b>${t.symbol}</b>`,
+    `الاتجاه · Side: <b>${sideBilingual(t.side)}</b>`,
+    `الكمية · Qty: <code>${t.qty}</code>`,
+    `السعر · Price: <code>${t.avg_price}</code>`,
+    `البيئة · Env: ${t.env === "testnet" ? "تجريبية · Testnet" : "حقيقية · Live"}`,
   ].join("\n");
 }

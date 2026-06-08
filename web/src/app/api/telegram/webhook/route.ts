@@ -31,13 +31,13 @@ interface TgUpdate {
 }
 
 const HELP = [
-  "<b>أوامر AiChart</b>",
-  "/status — حالة حسابك",
-  "/positions — الصفقات المفتوحة",
-  "/pnl — أرباح/خسائر اليوم",
-  "/pause — إيقاف التداول مؤقتاً",
-  "/resume — استئناف التداول",
-  "/stop — إيقاف طارئ",
+  "<b>أوامر AiChart · AiChart commands</b>",
+  "/status — حالة حسابك · Account status",
+  "/positions — الصفقات المفتوحة · Open positions",
+  "/pnl — أرباح/خسائر اليوم · Today's PnL",
+  "/pause — إيقاف التداول · Pause trading",
+  "/resume — استئناف التداول · Resume trading",
+  "/stop — إيقاف طارئ · Emergency stop",
 ].join("\n");
 
 export async function POST(req: NextRequest) {
@@ -79,23 +79,34 @@ async function handleMessage(chatId: number, text: string) {
         setTelegramChatId(userId, cid);
         await sendMessage(
           chatId,
-          "✅ تم ربط حسابك بنجاح! ستصلك إشعارات الصفقات والتوصيات هنا.\n\n" + HELP,
+          "✅ تم ربط حسابك بنجاح! ستصلك إشعارات الصفقات والتوصيات هنا.\n" +
+            "✅ Your account is linked! You'll receive trade alerts here.\n\n" +
+            HELP,
         );
         return;
       }
-      await sendMessage(chatId, "⚠️ رمز الربط غير صالح أو منتهٍ. أنشئ رمزاً جديداً من الموقع.");
+      await sendMessage(
+        chatId,
+        "⚠️ رمز الربط غير صالح أو منتهٍ. أنشئ رمزاً جديداً من الموقع.\n" +
+          "⚠️ Invalid or expired link code. Generate a new one from the website.",
+      );
       return;
     }
     await sendMessage(
       chatId,
-      "أهلاً بك في <b>AiChart</b> 🤖\nاربط حسابك من إعدادات الموقع للحصول على رمز، ثم أرسله هنا.",
+      "أهلاً بك في <b>AiChart</b> 🤖\nاربط حسابك من إعدادات الموقع للحصول على رمز، ثم أرسله هنا.\n\n" +
+        "Welcome to <b>AiChart</b> 🤖\nLink your account from the website settings to get a code, then send it here.",
     );
     return;
   }
 
   const userId = getUserByTelegramChatId(cid);
   if (!userId) {
-    await sendMessage(chatId, "حسابك غير مربوط. اربطه من إعدادات الموقع أولاً.");
+    await sendMessage(
+      chatId,
+      "حسابك غير مربوط. اربطه من إعدادات الموقع أولاً.\n" +
+        "Your account isn't linked. Link it from the website settings first.",
+    );
     return;
   }
 
@@ -106,10 +117,10 @@ async function handleMessage(chatId: number, text: string) {
       await sendMessage(
         chatId,
         [
-          "<b>📊 حالة حسابك</b>",
-          `الوضع: ${s.mode === "auto" ? "تنفيذ تلقائي" : "توصيات فقط"}`,
-          `الإيقاف الطارئ: ${s.kill_switch ? "🔴 مفعّل" : "🟢 متوقف"}`,
-          `الصفقات المفتوحة: ${countOpenTrades(userId)}`,
+          "<b>📊 حالة حسابك · Account status</b>",
+          `الوضع · Mode: ${s.mode === "auto" ? "تنفيذ تلقائي · Auto" : "توصيات فقط · Advisory"}`,
+          `الإيقاف الطارئ · Kill switch: ${s.kill_switch ? "🔴 مفعّل · ON" : "🟢 متوقف · OFF"}`,
+          `الصفقات المفتوحة · Open trades: ${countOpenTrades(userId)}`,
         ].join("\n"),
       );
       break;
@@ -117,12 +128,12 @@ async function handleMessage(chatId: number, text: string) {
     case "/positions": {
       const open = listTrades(userId, 50).filter((t) => t.status === "open");
       if (!open.length) {
-        await sendMessage(chatId, "لا توجد صفقات مفتوحة.");
+        await sendMessage(chatId, "لا توجد صفقات مفتوحة. · No open positions.");
         break;
       }
       await sendMessage(
         chatId,
-        "<b>الصفقات المفتوحة</b>\n" +
+        "<b>الصفقات المفتوحة · Open positions</b>\n" +
           open
             .map(
               (t) =>
@@ -139,19 +150,26 @@ async function handleMessage(chatId: number, text: string) {
       const pnl = trades.reduce((a, t) => a + t.pnl, 0);
       await sendMessage(
         chatId,
-        `<b>💰 أرباح/خسائر اليوم</b>\n${pnl >= 0 ? "🟢 +" : "🔴 "}${pnl.toFixed(2)} USDT (${trades.length} صفقة مغلقة)`,
+        `<b>💰 أرباح/خسائر اليوم · Today's PnL</b>\n${pnl >= 0 ? "🟢 +" : "🔴 "}${pnl.toFixed(2)} USDT (${trades.length} صفقة مغلقة · closed)`,
       );
       break;
     }
     case "/pause":
     case "/stop": {
       updateSettings(userId, { kill_switch: 1 });
-      await sendMessage(chatId, "🔴 تم إيقاف التداول. لن يفتح الوكيل أي صفقة جديدة.");
+      await sendMessage(
+        chatId,
+        "🔴 تم إيقاف التداول. لن يفتح الوكيل أي صفقة جديدة.\n" +
+          "🔴 Trading paused. The agent won't open new trades.",
+      );
       break;
     }
     case "/resume": {
       updateSettings(userId, { kill_switch: 0 });
-      await sendMessage(chatId, "🟢 تم استئناف التداول.");
+      await sendMessage(
+        chatId,
+        "🟢 تم استئناف التداول. · Trading resumed.",
+      );
       break;
     }
     default:
@@ -168,7 +186,7 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
   }
   const userId = getUserByTelegramChatId(String(chatId));
   if (!userId) {
-    await answerCallback(cq.id, "حسابك غير مربوط.");
+    await answerCallback(cq.id, "حسابك غير مربوط · Not linked");
     return;
   }
 
@@ -176,32 +194,36 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
   const intentId = Number(idStr);
   const intent = getIntent(intentId);
   if (!intent || intent.user_id !== userId) {
-    await answerCallback(cq.id, "الطلب غير موجود.");
+    await answerCallback(cq.id, "الطلب غير موجود · Not found");
     return;
   }
   if (intent.status !== "pending") {
-    await answerCallback(cq.id, "تمت معالجة الطلب مسبقاً.");
+    await answerCallback(cq.id, "تمت المعالجة مسبقاً · Already handled");
     return;
   }
 
   if (action === "reject") {
     updateIntentStatus(intentId, "rejected", "رفضه المستخدم عبر تليجرام.");
-    await answerCallback(cq.id, "تم الرفض.");
-    if (messageId) await editMessageText(chatId, messageId, "❌ رُفضت التوصية.");
+    await answerCallback(cq.id, "تم الرفض · Rejected");
+    if (messageId)
+      await editMessageText(chatId, messageId, "❌ رُفضت التوصية. · Recommendation rejected.");
     return;
   }
 
   if (action === "approve") {
     updateIntentStatus(intentId, "approved", "وافق المستخدم عبر تليجرام.");
     const result = await executeIntent(userId, intentId);
-    await answerCallback(cq.id, result.ok ? "تم التنفيذ ✅" : "تعذّر التنفيذ");
+    await answerCallback(
+      cq.id,
+      result.ok ? "تم التنفيذ ✅ · Executed" : "تعذّر التنفيذ · Failed",
+    );
     if (messageId) {
       await editMessageText(
         chatId,
         messageId,
         result.ok
-          ? `✅ نُفّذت التوصية: ${intent.symbol}.`
-          : `⚠️ لم تُنفّذ: ${result.reason}`,
+          ? `✅ نُفّذت التوصية: ${intent.symbol}. · Executed.`
+          : `⚠️ لم تُنفّذ · Not executed: ${result.reason}`,
       );
     }
     return;

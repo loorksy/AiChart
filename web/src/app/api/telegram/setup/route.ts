@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError } from "@/lib/api";
-import { isTelegramConfigured, setWebhook } from "@/lib/telegram";
+import { isTelegramConfigured, setWebhook, setBotCommands } from "@/lib/telegram";
 
 const schema = z.object({ baseUrl: z.string().url() });
 
@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
     const { baseUrl } = schema.parse(await req.json());
     const webhookUrl = `${baseUrl.replace(/\/$/, "")}/api/telegram/webhook`;
     await setWebhook(webhookUrl);
+    await setBotCommands();
     return NextResponse.json({ ok: true, webhookUrl });
   } catch (err) {
     if (err instanceof z.ZodError) {

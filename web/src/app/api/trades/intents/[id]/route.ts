@@ -38,8 +38,8 @@ export async function POST(
     await notifyUser(
       user.id,
       result.ok
-        ? `✅ نُفّذت صفقة ${intent.symbol}.`
-        : `⚠️ تعذّر تنفيذ ${intent.symbol}: ${result.reason}`,
+        ? `✅ نُفّذت صفقة ${intent.symbol}. · Executed.`
+        : `⚠️ تعذّر تنفيذ ${intent.symbol} · Not executed: ${result.reason}`,
     );
     return NextResponse.json({
       ok: result.ok,
