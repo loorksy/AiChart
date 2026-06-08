@@ -5,17 +5,18 @@
 
 > راجع خطة المشروع الكاملة في [`docs/PLAN.md`](docs/PLAN.md).
 
-## الحالة الحالية: المرحلة 1 (الأساس)
+## الحالة الحالية: المراحل 1–6 مكتملة
 
-تم بناء أساس المنصة كتطبيق **Next.js** كامل (واجهة + API) في مجلد [`web/`](web):
+تطبيق **Next.js** كامل (واجهة + API) في مجلد [`web/`](web):
 
-- تسجيل دخول/إنشاء حساب متعدد المستخدمين (JWT في كوكي httpOnly).
-- تخزين مفاتيح Binance **مشفّرة** (AES-256-GCM) مع التحقق من الاتصال بـ Testnet/Mainnet.
-- إعدادات تداول ومخاطر لكل مستخدم، مع **فرض الحدود برمجياً** (السقوف لا تُتجاوز).
-- 3 مستويات (تأكيد يدوي / تفويض خبير / تفويض مبتدئ) ووضعَي توصية/تنفيذ.
-- **صفحة أدمن** للتحكّم الكامل: تفعيل المستخدمين، منح صلاحية التنفيذ، وضبط سقوف رأس المال
-  وعدد الصفقات وحصة Claude لكل مستخدم يدوياً.
-- واجهة حديثة Dark Mode بالعربية (RTL).
+| المرحلة | المحتوى |
+|---------|---------|
+| **1** | تسجيل دخول، مفاتيح Binance مشفّرة، إعدادات، صفحة أدمن |
+| **2** | دردشة الوكيل + توصيات (Claude + Binance Skills Hub) |
+| **3** | شارت حي (شموع + إشارات) |
+| **4** | تنفيذ صفقات، Risk Guard، Kill Switch |
+| **5** | بوت تليجرام (ربط، أزرار موافقة، أوامر، ثنائي اللغة) |
+| **6** | مراقبة 24/7، سكرين شوت، ملخّص يومي، onboarding، أمن، نشر |
 
 ## التشغيل المحلي
 
@@ -34,18 +35,46 @@ npm run dev            # http://localhost:3000
 | `APP_SECRET` | سرّ توقيع الجلسات. `openssl rand -base64 48` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | حساب الأدمن المُنشأ تلقائياً عند أول تشغيل |
 | `DB_PATH` | مسار قاعدة SQLite (افتراضي `data/aichart.db`) |
+| `ANTHROPIC_API_KEY` | مفتاح Claude للوكيل |
+| `TELEGRAM_BOT_TOKEN` | (اختياري) بوت تليجرام للإشعارات |
+| `CRON_SECRET` | (إنتاج) سرّ لحماية مهام المراقبة والملخّص اليومي |
+
+## المراقبة 24/7 (المرحلة 6)
+
+طبقة المراقبة الرخيصة (`monitor.ts`) تفحص الأصول كل 15 دقيقة. Claude يُستدعى **فقط** عند ظهور إشارات فنية.
+
+```bash
+# مثال — استدعاء دورة المراقبة
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  https://your-domain/api/cron/monitor
+
+# ملخّص يومي لتليجرام
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  https://your-domain/api/cron/daily-summary
+```
+
+انظر [`infra/crontab.example`](infra/crontab.example) لجدولة cron على لينكس.
+
+## النشر على خادم لينكس
+
+```bash
+# PM2
+cd web && npm run build
+pm2 start ../infra/pm2.ecosystem.config.cjs
+
+# Docker
+docker compose -f infra/docker-compose.yml up -d
+
+# systemd
+sudo cp infra/aichart.service /etc/systemd/system/
+sudo systemctl enable --now aichart
+```
 
 ## التقنيات
 
-Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · SQLite (better-sqlite3) · jose (JWT) · bcryptjs · zod
+Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · SQLite · Claude (Anthropic) · Binance Skills Hub · Telegram Bot API · Lightweight Charts
 
-> ملاحظة: استُخدمت **SQLite** في هذه المرحلة لتشغيل محلي بسيط دون خدمات خارجية.
-> الخطة تنصّ على **PostgreSQL** للإنتاج، ويمكن الترحيل لاحقاً.
-
-## الخطوات التالية
-
-المرحلة 2: دمج وكيل **OpenClaw** + **binance-skills-hub** + شخصية الخبير (Claude)، وبدء التوصيات.
-انظر خارطة الطريق في [`docs/PLAN.md`](docs/PLAN.md).
+> ملاحظة: استُخدمت **SQLite** للتشغيل المحلي البسيط. الخطة تنصّ على **PostgreSQL** للإنتاج الكبير — يمكن الترحيل لاحقاً.
 
 ---
 

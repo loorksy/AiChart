@@ -51,6 +51,7 @@ const SETTABLE_FIELDS = [
   "send_screenshot",
   "telegram_chat_id",
   "kill_switch",
+  "onboarding_done",
 ] as const;
 
 export function updateSettings(
@@ -476,4 +477,116 @@ export function getTelegramChatId(userId: number): string | null {
     .prepare("SELECT telegram_chat_id FROM trading_settings WHERE user_id = ?")
     .get(userId) as { telegram_chat_id: string | null } | undefined;
   return row?.telegram_chat_id ?? null;
+}
+
+// ─── Audit log ──────────────────────────────────────────────────────
+
+export function logAudit(
+  userId: number | null,
+  action: string,
+  detail?: string | null,
+): void {
+  getDb()
+    .prepare(
+      "INSERT INTO audit_logs (user_id, action, detail) VALUES (?, ?, ?)",
+    )
+    .run(userId, action, detail ?? null);
+}
+
+export function listAuditLogs(limit = 100): {
+  id: number;
+  user_id: number | null;
+  action: string;
+  detail: string | null;
+  created_at: string;
+}[] {
+  return getDb()
+    .prepare(
+      "SELECT id, user_id, action, detail, created_at FROM audit_logs ORDER BY id DESC LIMIT ?",
+    )
+    .all(limit) as {
+    id: number;
+    user_id: number | null;
+    action: string;
+    detail: string | null;
+    created_at: string;
+  }[];
+}
+
+// ─── Monitor / cron helpers ─────────────────────────────────────────
+
+export interface MonitorUser {
+  id: number;
+  settings: TradingSettings;
+  limits: AdminLimits;
+}
+
+/** Active users eligible for 24/7 market monitoring. */
+export function listUsersForMonitor(): MonitorUser[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT u.id
+       FROM users u
+       JOIN trading_settings s ON s.user_id = u.id
+       WHERE u.status = 'active' AND u.role = 'user'
+         AND s.kill_switch = 0 AND s.onboarding_done = 1`,
+    )
+    .all() as { id: number }[];
+
+  return rows.map((r) => ({
+    id: r.id,
+    settings: getSettings(r.id),
+    limits: getLimits(r.id),
+  }));
+}
+
+const COOLDOWN_HOURS = 4;
+
+export function isOnCooldown(userId: number, symbol: string): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT scanned_at FROM scan_cooldowns
+       WHERE user_id = ? AND symbol = ?
+         AND scanned_at > datetime('now', ?)`,
+    )
+    .get(userId, symbol.toUpperCase(), `-${COOLDOWN_HOURS} hours`) as
+    | { scanned_at: string }
+    | undefined;
+  return Boolean(row);
+}
+
+export function touchScanCooldown(userId: number, symbol: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO scan_cooldowns (user_id, symbol, scanned_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(user_id, symbol) DO UPDATE SET scanned_at = datetime('now')`,
+    )
+    .run(userId, symbol.toUpperCase());
+}
+
+export function isOnboardingDone(userId: number): boolean {
+  ensureUserDefaults(userId);
+  const row = getDb()
+    .prepare("SELECT onboarding_done FROM trading_settings WHERE user_id = ?")
+    .get(userId) as { onboarding_done: number } | undefined;
+  return (row?.onboarding_done ?? 0) === 1;
+}
+
+export function completeOnboarding(userId: number): void {
+  updateSettings(userId, { onboarding_done: 1 });
+}
+
+/** Users with Telegram linked for daily summaries. */
+export function listUsersForDailySummary(): { id: number; chatId: string }[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT s.user_id AS id, s.telegram_chat_id AS chatId
+       FROM trading_settings s
+       JOIN users u ON u.id = s.user_id
+       WHERE u.status = 'active' AND s.telegram_chat_id IS NOT NULL
+         AND s.onboarding_done = 1`,
+    )
+    .all() as { id: number; chatId: string }[];
+  return rows;
 }

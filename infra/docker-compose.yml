@@ -1,0 +1,15 @@
+services:
+  aichart:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../web/.env
+    volumes:
+      - aichart-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  aichart-data:

@@ -22,6 +22,13 @@ export interface ExecutionResult {
   status: "executed" | "failed";
   reason: string;
   tradeId?: number;
+  trade?: {
+    symbol: string;
+    side: string;
+    qty: number;
+    avg_price: number;
+    env: string;
+  };
 }
 
 /**
@@ -119,7 +126,19 @@ export async function executeIntent(
     });
 
     updateIntentStatus(intentId, "executed", `نُفّذت (طلب #${order.orderId}).`);
-    return { ok: true, status: "executed", reason: "تم التنفيذ.", tradeId: trade.id };
+    return {
+      ok: true,
+      status: "executed",
+      reason: "تم التنفيذ.",
+      tradeId: trade.id,
+      trade: {
+        symbol: trade.symbol,
+        side: trade.side,
+        qty: trade.qty,
+        avg_price: trade.avg_price,
+        env: trade.env,
+      },
+    };
   } catch (e) {
     const reason = e instanceof Error ? e.message : "فشل تنفيذ الأمر.";
     updateIntentStatus(intentId, "failed", reason);

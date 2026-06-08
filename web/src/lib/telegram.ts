@@ -71,6 +71,35 @@ export async function sendMessage(
   });
 }
 
+export async function sendPhoto(
+  chatId: string | number,
+  photoUrl: string,
+  caption?: string,
+): Promise<void> {
+  await call("sendPhoto", {
+    chat_id: chatId,
+    photo: photoUrl,
+    ...(caption ? { caption, parse_mode: "HTML" } : {}),
+  });
+}
+
+/** Sends a chart screenshot with optional caption to a linked user. */
+export async function notifyUserPhoto(
+  userId: number,
+  photoUrl: string,
+  caption?: string,
+): Promise<void> {
+  if (!isTelegramConfigured()) return;
+  const chatId = getTelegramChatId(userId);
+  if (!chatId) return;
+  try {
+    await sendPhoto(chatId, photoUrl, caption);
+  } catch (e) {
+    console.error("[telegram] photo notify failed", e);
+    if (caption) await notifyUser(userId, caption);
+  }
+}
+
 export async function answerCallback(
   callbackId: string,
   text?: string,

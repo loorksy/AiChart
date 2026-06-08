@@ -1,22 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, handleError } from "@/lib/api";
-import {
-  getSettings,
-  getLimits,
-  getTodayUsage,
-  incrementUsage,
-  createIntent,
-} from "@/lib/store";
+import { getSettings, getLimits, getTodayUsage, incrementUsage, logAudit } from "@/lib/store";
 import { runAgent } from "@/lib/agent";
-import { executeIntent } from "@/lib/execution";
 import { isAnthropicConfigured, type Message } from "@/lib/anthropic";
-import {
-  notifyUser,
-  approvalCard,
-  APPROVE_BUTTON_TEXT,
-  REJECT_BUTTON_TEXT,
-} from "@/lib/telegram";
+import { sanitizeUserInput, wrapUserMessage } from "@/lib/security";
+import { processRecommendations } from "@/lib/tradeFlow";
 
 export const maxDuration = 60;
 
@@ -57,95 +46,27 @@ export async function POST(req: NextRequest) {
     }
 
     const settings = getSettings(user.id);
-    const history: Message[] = messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const history: Message[] = messages.map((m, i) => {
+      const isLastUser =
+        m.role === "user" && i === messages.length - 1;
+      if (!isLastUser) {
+        return { role: m.role, content: m.content };
+      }
+      const sanitized = sanitizeUserInput(m.content);
+      if (sanitized.flagged) {
+        logAudit(user.id, "injection_blocked", sanitized.reason);
+        throw new Error(
+          "تم رفض الرسالة لأسباب أمنية. أعد صياغة سؤالك عن التداول فقط.",
+        );
+      }
+      return { role: "user", content: wrapUserMessage(sanitized.text) };
+    });
 
     const result = await runAgent({ userId: user.id, settings }, history);
     incrementUsage(user.id, 1);
+    logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
 
-    // In auto mode, turn actionable recommendations into trade intents.
-    // delegate → execute now (through Risk Guard); manual → await approval.
-    const intents: {
-      id: number;
-      symbol: string;
-      side: string;
-      notional: number;
-      status: string;
-      reason?: string;
-    }[] = [];
-
-    if (settings.mode === "auto" && limits.can_execute === 1) {
-      const effectiveCapital =
-        limits.max_capital_cap > 0
-          ? Math.min(settings.max_capital, limits.max_capital_cap)
-          : settings.max_capital;
-      const perTrade = (effectiveCapital * settings.per_trade_pct) / 100;
-
-      for (const rec of result.recommendations) {
-        if (rec.action !== "buy" && rec.action !== "sell") continue;
-        const delegate = settings.approval === "delegate";
-        // Combine the rationale with the technical factors so the reasons
-        // appear in the Telegram approval card too.
-        let factorsList: string[] = [];
-        try {
-          factorsList = rec.factors ? (JSON.parse(rec.factors) as string[]) : [];
-        } catch {
-          factorsList = [];
-        }
-        const richRationale = [
-          rec.rationale ?? "",
-          ...factorsList.map((f) => `• ${f}`),
-        ]
-          .filter(Boolean)
-          .join("\n");
-        const intent = createIntent(user.id, {
-          recommendation_id: rec.id,
-          symbol: rec.symbol,
-          side: rec.action,
-          notional: perTrade,
-          entry: rec.entry,
-          stop_loss: rec.stop_loss,
-          take_profit: rec.take_profit,
-          confidence: rec.confidence,
-          rationale: richRationale || rec.rationale,
-          status: delegate ? "approved" : "pending",
-        });
-        if (delegate) {
-          const exec = await executeIntent(user.id, intent.id);
-          intents.push({
-            id: intent.id,
-            symbol: intent.symbol,
-            side: intent.side,
-            notional: intent.notional,
-            status: exec.status,
-            reason: exec.reason,
-          });
-          await notifyUser(
-            user.id,
-            exec.ok
-              ? `✅ نُفّذت صفقة ${intent.symbol} (${intent.side === "buy" ? "شراء · Buy" : "بيع · Sell"}). · Executed.`
-              : `⚠️ تعذّر تنفيذ ${intent.symbol} · Not executed: ${exec.reason}`,
-          );
-        } else {
-          intents.push({
-            id: intent.id,
-            symbol: intent.symbol,
-            side: intent.side,
-            notional: intent.notional,
-            status: "pending",
-          });
-          // Send an approval card with bilingual inline buttons to Telegram.
-          await notifyUser(user.id, approvalCard(intent), [
-            [
-              { text: APPROVE_BUTTON_TEXT, callback_data: `approve:${intent.id}` },
-              { text: REJECT_BUTTON_TEXT, callback_data: `reject:${intent.id}` },
-            ],
-          ]);
-        }
-      }
-    }
+    const intents = await processRecommendations(user.id, result.recommendations);
 
     return NextResponse.json({
       reply: result.reply,
@@ -159,6 +80,9 @@ export async function POST(req: NextRequest) {
         { error: err.issues[0]?.message ?? "بيانات غير صالحة." },
         { status: 400 },
       );
+    }
+    if (err instanceof Error && err.message.includes("أمنية")) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
     }
     return handleError(err);
   }

@@ -144,6 +144,25 @@ function init(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_settings_tg
       ON trading_settings (telegram_chat_id);
+
+    -- Audit trail for trades, agent calls, and security events.
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER,
+      action     TEXT NOT NULL,
+      detail     TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    -- Per-user/symbol cooldown so the monitor does not spam Claude.
+    CREATE TABLE IF NOT EXISTS scan_cooldowns (
+      user_id    INTEGER NOT NULL,
+      symbol     TEXT NOT NULL,
+      scanned_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, symbol),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   migrate(db);
@@ -152,11 +171,20 @@ function init(db: Database.Database) {
 
 /** Adds columns introduced after initial release (safe to run repeatedly). */
 function migrate(db: Database.Database) {
-  const cols = db
+  const recCols = db
     .prepare("PRAGMA table_info(recommendations)")
     .all() as { name: string }[];
-  if (!cols.some((c) => c.name === "factors")) {
+  if (!recCols.some((c) => c.name === "factors")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN factors TEXT");
+  }
+
+  const settingsCols = db
+    .prepare("PRAGMA table_info(trading_settings)")
+    .all() as { name: string }[];
+  if (!settingsCols.some((c) => c.name === "onboarding_done")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0",
+    );
   }
 }
 

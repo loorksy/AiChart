@@ -34,6 +34,7 @@ export interface TradingSettings {
   send_screenshot: number;
   telegram_chat_id: string | null;
   kill_switch: number;
+  onboarding_done: number;
   updated_at: string;
 }
 

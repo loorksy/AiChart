@@ -1,0 +1,17 @@
+[Unit]
+Description=AiChart Next.js trading platform
+After=network.target
+
+[Service]
+Type=simple
+User=aichart
+WorkingDirectory=/opt/aichart/web
+Environment=NODE_ENV=production
+Environment=PORT=3000
+EnvironmentFile=/opt/aichart/web/.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+# AiChart cron jobs — replace YOUR_DOMAIN and CRON_SECRET
+# Monitor markets every 15 minutes (cheap code scan + Claude only on signals)
+*/15 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor
+
+# Daily Telegram summary at 20:00 UTC
+0 20 * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary

@@ -1,0 +1,70 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { requireUser, handleError } from "@/lib/api";
+import {
+  completeOnboarding,
+  getBinanceAccountMeta,
+  getSettings,
+  isOnboardingDone,
+  updateSettings,
+} from "@/lib/store";
+
+const schema = z.object({
+  experience: z.enum(["beginner", "expert"]).optional(),
+  mode: z.enum(["advisory", "auto"]).optional(),
+  approval: z.enum(["manual", "delegate"]).optional(),
+  style: z.enum(["conservative", "balanced", "aggressive"]).optional(),
+  max_capital: z.number().min(0).optional(),
+  per_trade_pct: z.number().min(1).max(100).optional(),
+  daily_loss_limit_pct: z.number().min(1).max(50).optional(),
+  finish: z.boolean().optional(),
+});
+
+export async function GET() {
+  try {
+    const user = await requireUser();
+    const settings = getSettings(user.id);
+    const binance = getBinanceAccountMeta(user.id);
+    return NextResponse.json({
+      done: isOnboardingDone(user.id),
+      hasBinance: Boolean(binance),
+      settings,
+    });
+  } catch (err) {
+    return handleError(err);
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const user = await requireUser();
+    const body = schema.parse(await req.json());
+
+    const patch: Record<string, unknown> = {};
+    if (body.experience) patch.experience = body.experience;
+    if (body.mode) patch.mode = body.mode;
+    if (body.approval) patch.approval = body.approval;
+    if (body.style) patch.style = body.style;
+    if (body.max_capital !== undefined) patch.max_capital = body.max_capital;
+    if (body.per_trade_pct !== undefined) patch.per_trade_pct = body.per_trade_pct;
+    if (body.daily_loss_limit_pct !== undefined) {
+      patch.daily_loss_limit_pct = body.daily_loss_limit_pct;
+    }
+
+    if (Object.keys(patch).length) updateSettings(user.id, patch);
+
+    if (body.finish) {
+      completeOnboarding(user.id);
+    }
+
+    return NextResponse.json({ ok: true, done: isOnboardingDone(user.id) });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: err.issues[0]?.message ?? "بيانات غير صالحة." },
+        { status: 400 },
+      );
+    }
+    return handleError(err);
+  }
+}

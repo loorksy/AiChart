@@ -11,6 +11,7 @@ import {
   updateIntentStatus,
 } from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
+import { notifyTradeResult } from "@/lib/notifyTrade";
 import {
   sendMessage,
   answerCallback,
@@ -213,6 +214,7 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
   if (action === "approve") {
     updateIntentStatus(intentId, "approved", "وافق المستخدم عبر تليجرام.");
     const result = await executeIntent(userId, intentId);
+    await notifyTradeResult(userId, result, intent.symbol);
     await answerCallback(
       cq.id,
       result.ok ? "تم التنفيذ ✅ · Executed" : "تعذّر التنفيذ · Failed",
