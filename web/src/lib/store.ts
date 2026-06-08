@@ -192,13 +192,14 @@ export function saveRecommendation(
     take_profit?: number | null;
     timeframe?: string | null;
     rationale?: string | null;
+    factors?: string[] | null;
   },
 ): Recommendation {
   const info = getDb()
     .prepare(
       `INSERT INTO recommendations
-         (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale)
-       VALUES (@user_id, @symbol, @action, @confidence, @entry, @stop_loss, @take_profit, @timeframe, @rationale)`,
+         (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors)
+       VALUES (@user_id, @symbol, @action, @confidence, @entry, @stop_loss, @take_profit, @timeframe, @rationale, @factors)`,
     )
     .run({
       user_id: userId,
@@ -210,6 +211,8 @@ export function saveRecommendation(
       take_profit: rec.take_profit ?? null,
       timeframe: rec.timeframe ?? null,
       rationale: rec.rationale ?? null,
+      factors:
+        rec.factors && rec.factors.length ? JSON.stringify(rec.factors) : null,
     });
   return getDb()
     .prepare("SELECT * FROM recommendations WHERE id = ?")

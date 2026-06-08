@@ -45,7 +45,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "record_recommendation",
     description:
-      "يسجّل توصية منظّمة للمستخدم. استخدمها عند وجود رأي واضح (شراء/بيع/انتظار). ضع وقف خسارة وهدفاً منطقيين لتوصيات الشراء/البيع.",
+      "يسجّل توصية منظّمة للمستخدم. استخدمها عند وجود رأي واضح (شراء/بيع/انتظار). ضع وقف خسارة وهدفاً منطقيين لتوصيات الشراء/البيع. يجب دائماً شرح الأسباب بوضوح.",
     input_schema: {
       type: "object",
       properties: {
@@ -56,9 +56,19 @@ const TOOLS: ToolDef[] = [
         stop_loss: { type: "number" },
         take_profit: { type: "number" },
         timeframe: { type: "string" },
-        rationale: { type: "string", description: "السبب بإيجاز" },
+        rationale: {
+          type: "string",
+          description:
+            "شرح واضح ومترابط للقرار: لماذا هذه التوصية الآن؟ يربط بين المؤشرات والسياق.",
+        },
+        factors: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "قائمة عوامل فنية محدّدة بنيت عليها التوصية، كل عامل جملة قصيرة مع الرقم. مثال: 'RSI 28 تشبّع بيعي'، 'ارتداد من دعم 60000'، 'تقاطع MACD صعودي'، 'الاتجاه العام صاعد'. 3 عوامل على الأقل.",
+        },
       },
-      required: ["symbol", "action", "confidence", "rationale"],
+      required: ["symbol", "action", "confidence", "rationale", "factors"],
     },
   },
 ];
@@ -125,6 +135,9 @@ async function executeTool(
             input.take_profit != null ? Number(input.take_profit) : null,
           timeframe: input.timeframe != null ? String(input.timeframe) : null,
           rationale: input.rationale != null ? String(input.rationale) : null,
+          factors: Array.isArray(input.factors)
+            ? input.factors.map((f) => String(f)).slice(0, 8)
+            : null,
         });
         recorded.push(rec);
         return { content: JSON.stringify({ ok: true, id: rec.id }) };

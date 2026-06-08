@@ -86,6 +86,20 @@ export async function POST(req: NextRequest) {
       for (const rec of result.recommendations) {
         if (rec.action !== "buy" && rec.action !== "sell") continue;
         const delegate = settings.approval === "delegate";
+        // Combine the rationale with the technical factors so the reasons
+        // appear in the Telegram approval card too.
+        let factorsList: string[] = [];
+        try {
+          factorsList = rec.factors ? (JSON.parse(rec.factors) as string[]) : [];
+        } catch {
+          factorsList = [];
+        }
+        const richRationale = [
+          rec.rationale ?? "",
+          ...factorsList.map((f) => `• ${f}`),
+        ]
+          .filter(Boolean)
+          .join("\n");
         const intent = createIntent(user.id, {
           recommendation_id: rec.id,
           symbol: rec.symbol,
@@ -95,7 +109,7 @@ export async function POST(req: NextRequest) {
           stop_loss: rec.stop_loss,
           take_profit: rec.take_profit,
           confidence: rec.confidence,
-          rationale: rec.rationale,
+          rationale: richRationale || rec.rationale,
           status: delegate ? "approved" : "pending",
         });
         if (delegate) {

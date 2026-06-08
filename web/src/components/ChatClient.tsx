@@ -186,6 +186,31 @@ function RecCard({ rec }: { rec: Recommendation }) {
       {rec.rationale && (
         <p className="mt-2 text-xs text-[var(--muted)]">{rec.rationale}</p>
       )}
+      <Factors factors={rec.factors} />
+    </div>
+  );
+}
+
+function Factors({ factors }: { factors: string | null }) {
+  let list: string[] = [];
+  try {
+    list = factors ? (JSON.parse(factors) as string[]) : [];
+  } catch {
+    list = [];
+  }
+  if (!list.length) return null;
+  return (
+    <div className="mt-2 rounded-lg bg-[var(--surface-2)] p-2">
+      <p className="mb-1 text-xs font-bold text-[var(--foreground)]">
+        أسباب التوصية:
+      </p>
+      <ul className="space-y-0.5">
+        {list.map((f, i) => (
+          <li key={i} className="text-xs text-[var(--muted)]">
+            • {f}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

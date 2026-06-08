@@ -72,6 +72,7 @@ export interface Recommendation {
   take_profit: number | null;
   timeframe: string | null;
   rationale: string | null;
+  factors: string | null; // JSON array of short reason strings
   created_at: string;
 }
 
