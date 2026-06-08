@@ -11,6 +11,7 @@ import {
 import { runAgent } from "@/lib/agent";
 import { executeIntent } from "@/lib/execution";
 import { isAnthropicConfigured, type Message } from "@/lib/anthropic";
+import { notifyUser, approvalCard } from "@/lib/telegram";
 
 export const maxDuration = 60;
 
@@ -102,6 +103,12 @@ export async function POST(req: NextRequest) {
             status: exec.status,
             reason: exec.reason,
           });
+          await notifyUser(
+            user.id,
+            exec.ok
+              ? `✅ نُفّذت صفقة ${intent.symbol} (${intent.side === "buy" ? "شراء" : "بيع"}).`
+              : `⚠️ تعذّر تنفيذ ${intent.symbol}: ${exec.reason}`,
+          );
         } else {
           intents.push({
             id: intent.id,
@@ -110,6 +117,13 @@ export async function POST(req: NextRequest) {
             notional: intent.notional,
             status: "pending",
           });
+          // Send an approval card with inline buttons to Telegram.
+          await notifyUser(user.id, approvalCard(intent), [
+            [
+              { text: "✅ موافقة", callback_data: `approve:${intent.id}` },
+              { text: "❌ رفض", callback_data: `reject:${intent.id}` },
+            ],
+          ]);
         }
       }
     }
