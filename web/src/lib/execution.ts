@@ -79,7 +79,7 @@ export async function executeIntent(
       getPrice(intent.symbol, "prod"),
       getSymbolFilters(intent.symbol, "prod"),
     ]);
-    let qty = roundToStep(intent.notional / price, filters.stepSize);
+    const qty = roundToStep(intent.notional / price, filters.stepSize);
 
     if (qty < filters.minQty || qty <= 0) {
       const reason = `الكمية أقل من الحد الأدنى للرمز (${filters.minQty}).`;

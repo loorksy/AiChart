@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { listUsersForAdmin } from "@/lib/store";
+import { listUsersForAdmin, isMasterKillOn } from "@/lib/store";
 import Nav from "@/components/Nav";
 import AdminClient from "@/components/AdminClient";
 
@@ -12,7 +12,11 @@ export default async function AdminPage() {
   return (
     <>
       <Nav email={user.email} role={user.role} />
-      <AdminClient initialUsers={listUsersForAdmin()} adminId={user.id} />
+      <AdminClient
+        initialUsers={listUsersForAdmin()}
+        adminId={user.id}
+        initialMasterKill={isMasterKillOn()}
+      />
     </>
   );
 }
