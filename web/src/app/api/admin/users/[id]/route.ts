@@ -27,7 +27,7 @@ export async function PATCH(
       if (userId === admin.id && input.status !== "active") {
         throw new ApiError(400, "لا يمكنك تعطيل حسابك الإداري.");
       }
-      setUserStatus(userId, input.status);
+      await setUserStatus(userId, input.status);
     }
 
     const limitPatch: Record<string, unknown> = {};
@@ -40,7 +40,7 @@ export async function PATCH(
     if (typeof input.claude_quota === "number")
       limitPatch.claude_quota = input.claude_quota;
     if (Object.keys(limitPatch).length > 0) {
-      updateAdminLimits(userId, limitPatch);
+      await updateAdminLimits(userId, limitPatch);
     }
 
     return NextResponse.json({ ok: true });
@@ -68,13 +68,13 @@ export async function DELETE(
       throw new ApiError(400, "لا يمكنك حذف حسابك الإداري.");
     }
 
-    const target = getPublicUser(userId);
+    const target = await getPublicUser(userId);
     if (!target) throw new ApiError(404, "المستخدم غير موجود.");
     if (target.role === "admin") {
       throw new ApiError(400, "لا يمكن حذف حساب إداري.");
     }
 
-    deleteUser(userId);
+    await deleteUser(userId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return handleError(err);

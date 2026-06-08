@@ -1,5 +1,11 @@
 import crypto from "crypto";
-import { getDb } from "./db";
+import {
+  execute,
+  insertReturningId,
+  query,
+  queryOne,
+  transaction,
+} from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
 import type { TelegramLoginPayload } from "./telegramAuth";
@@ -15,28 +21,31 @@ import type {
 } from "./types";
 import type { BinanceEnv } from "./binance";
 
-export function ensureUserDefaults(userId: number) {
-  const db = getDb();
-  db.prepare(
-    "INSERT OR IGNORE INTO trading_settings (user_id) VALUES (?)",
-  ).run(userId);
-  db.prepare(
-    "INSERT OR IGNORE INTO admin_limits (user_id) VALUES (?)",
-  ).run(userId);
+export async function ensureUserDefaults(userId: number) {
+  await execute(
+    "INSERT INTO trading_settings (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING",
+    [userId],
+  );
+  await execute(
+    "INSERT INTO admin_limits (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING",
+    [userId],
+  );
 }
 
-export function getSettings(userId: number): TradingSettings {
-  ensureUserDefaults(userId);
-  return getDb()
-    .prepare("SELECT * FROM trading_settings WHERE user_id = ?")
-    .get(userId) as TradingSettings;
+export async function getSettings(userId: number): Promise<TradingSettings> {
+  await ensureUserDefaults(userId);
+  return (await queryOne(
+    "SELECT * FROM trading_settings WHERE user_id = ?",
+    [userId],
+  )) as TradingSettings;
 }
 
-export function getLimits(userId: number): AdminLimits {
-  ensureUserDefaults(userId);
-  return getDb()
-    .prepare("SELECT * FROM admin_limits WHERE user_id = ?")
-    .get(userId) as AdminLimits;
+export async function getLimits(userId: number): Promise<AdminLimits> {
+  await ensureUserDefaults(userId);
+  return (await queryOne(
+    "SELECT * FROM admin_limits WHERE user_id = ?",
+    [userId],
+  )) as AdminLimits;
 }
 
 const SETTABLE_FIELDS = [
@@ -57,65 +66,62 @@ const SETTABLE_FIELDS = [
   "onboarding_done",
 ] as const;
 
-export function updateSettings(
+export async function updateSettings(
   userId: number,
   patch: Partial<Record<(typeof SETTABLE_FIELDS)[number], unknown>>,
 ) {
-  ensureUserDefaults(userId);
+  await ensureUserDefaults(userId);
   const fields = SETTABLE_FIELDS.filter((f) => f in patch);
   if (fields.length === 0) return;
-  const assignments = fields.map((f) => `${f} = @${f}`).join(", ");
-  const params: Record<string, unknown> = { user_id: userId };
-  for (const f of fields) params[f] = patch[f];
-  getDb()
-    .prepare(
-      `UPDATE trading_settings SET ${assignments}, updated_at = datetime('now') WHERE user_id = @user_id`,
-    )
-    .run(params);
+  const assignments = fields.map((f) => `${f} = ?`).join(", ");
+  const params: unknown[] = fields.map((f) => patch[f]);
+  params.push(userId);
+  await execute(
+    `UPDATE trading_settings SET ${assignments}, updated_at = datetime('now') WHERE user_id = ?`,
+    params,
+  );
 }
 
-export function saveBinanceAccount(
+export async function saveBinanceAccount(
   userId: number,
   apiKey: string,
   apiSecret: string,
   env: BinanceEnv,
   label?: string,
 ) {
-  getDb()
-    .prepare(
-      `INSERT INTO binance_accounts (user_id, api_key_enc, api_secret_enc, env, label, updated_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(user_id) DO UPDATE SET
-         api_key_enc = excluded.api_key_enc,
-         api_secret_enc = excluded.api_secret_enc,
-         env = excluded.env,
-         label = excluded.label,
-         updated_at = datetime('now')`,
-    )
-    .run(userId, encryptSecret(apiKey), encryptSecret(apiSecret), env, label ?? null);
+  await execute(
+    `INSERT INTO binance_accounts (user_id, api_key_enc, api_secret_enc, env, label, updated_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET
+       api_key_enc = excluded.api_key_enc,
+       api_secret_enc = excluded.api_secret_enc,
+       env = excluded.env,
+       label = excluded.label,
+       updated_at = datetime('now')`,
+    [userId, encryptSecret(apiKey), encryptSecret(apiSecret), env, label ?? null],
+  );
 }
 
-export function getBinanceAccountMeta(
+export async function getBinanceAccountMeta(
   userId: number,
-): BinanceAccountMeta | null {
-  const row = getDb()
-    .prepare(
-      "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ?",
-    )
-    .get(userId) as BinanceAccountMeta | undefined;
-  return row ?? null;
+): Promise<BinanceAccountMeta | null> {
+  return queryOne(
+    "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ?",
+    [userId],
+  ) as Promise<BinanceAccountMeta | null>;
 }
 
-export function getBinanceCredentials(
+export async function getBinanceCredentials(
   userId: number,
-): { apiKey: string; apiSecret: string; env: BinanceEnv } | null {
-  const row = getDb()
-    .prepare(
-      "SELECT api_key_enc, api_secret_enc, env FROM binance_accounts WHERE user_id = ?",
-    )
-    .get(userId) as
-    | { api_key_enc: string; api_secret_enc: string; env: BinanceEnv }
-    | undefined;
+): Promise<{ apiKey: string; apiSecret: string; env: BinanceEnv } | null> {
+  const row = await queryOne<{
+    api_key_enc: string;
+    api_secret_enc: string;
+    env: BinanceEnv;
+  }>(
+    "SELECT api_key_enc, api_secret_enc, env FROM binance_accounts WHERE user_id = ?",
+    [userId],
+  );
   if (!row) return null;
   return {
     apiKey: decryptSecret(row.api_key_enc),
@@ -124,36 +130,38 @@ export function getBinanceCredentials(
   };
 }
 
-export function deleteBinanceAccount(userId: number) {
-  getDb().prepare("DELETE FROM binance_accounts WHERE user_id = ?").run(userId);
+export async function deleteBinanceAccount(userId: number) {
+  await execute("DELETE FROM binance_accounts WHERE user_id = ?", [userId]);
 }
 
-export function getUserByTelegramId(telegramId: number): PublicUser | null {
-  return (
-    (getDb()
-      .prepare(
-        "SELECT id, email, role, status, created_at FROM users WHERE telegram_id = ?",
-      )
-      .get(telegramId) as PublicUser | undefined) ?? null
-  );
+export async function getUserByTelegramId(
+  telegramId: number,
+): Promise<PublicUser | null> {
+  return queryOne(
+    "SELECT id, email, role, status, created_at FROM users WHERE telegram_id = ?",
+    [telegramId],
+  ) as Promise<PublicUser | null>;
 }
 
-export function setUserTelegramId(userId: number, telegramId: number): void {
-  getDb()
-    .prepare("UPDATE users SET telegram_id = ? WHERE id = ?")
-    .run(telegramId, userId);
+export async function setUserTelegramId(
+  userId: number,
+  telegramId: number,
+): Promise<void> {
+  await execute("UPDATE users SET telegram_id = ? WHERE id = ?", [
+    telegramId,
+    userId,
+  ]);
 }
 
-function uniqueTelegramEmail(base: string): string {
-  const db = getDb();
+async function uniqueTelegramEmail(base: string): Promise<string> {
   let email = base.toLowerCase();
-  if (!db.prepare("SELECT id FROM users WHERE email = ?").get(email)) {
+  if (!(await queryOne("SELECT id FROM users WHERE email = ?", [email]))) {
     return email;
   }
   let n = 1;
   while (n < 1000) {
     const candidate = base.replace("@", `+${n}@`).toLowerCase();
-    if (!db.prepare("SELECT id FROM users WHERE email = ?").get(candidate)) {
+    if (!(await queryOne("SELECT id FROM users WHERE email = ?", [candidate]))) {
       return candidate;
     }
     n++;
@@ -162,40 +170,35 @@ function uniqueTelegramEmail(base: string): string {
 }
 
 /** Login or register via Telegram Login Widget; auto-links bot chat id. */
-export function upsertTelegramUser(
+export async function upsertTelegramUser(
   payload: TelegramLoginPayload,
-): { user: PublicUser; isNew: boolean } {
+): Promise<{ user: PublicUser; isNew: boolean }> {
   const telegramId = payload.id;
-  const existing = getUserByTelegramId(telegramId);
+  const existing = await getUserByTelegramId(telegramId);
   if (existing) {
-    setTelegramChatId(existing.id, String(telegramId));
+    await setTelegramChatId(existing.id, String(telegramId));
     return { user: existing, isNew: false };
   }
 
-  const email = uniqueTelegramEmail(telegramDisplayEmail(payload));
+  const email = await uniqueTelegramEmail(telegramDisplayEmail(payload));
   const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
-  const info = getDb()
-    .prepare(
-      `INSERT INTO users (email, password_hash, role, status, telegram_id)
-       VALUES (?, ?, 'user', 'pending', ?)`,
-    )
-    .run(email, passwordHash, telegramId);
-  const userId = Number(info.lastInsertRowid);
-  ensureUserDefaults(userId);
-  setTelegramChatId(userId, String(telegramId));
+  const userId = await insertReturningId(
+    `INSERT INTO users (email, password_hash, role, status, telegram_id)
+     VALUES (?, ?, 'user', 'pending', ?)`,
+    [email, passwordHash, telegramId],
+  );
+  await ensureUserDefaults(userId);
+  await setTelegramChatId(userId, String(telegramId));
 
-  const user = getPublicUser(userId)!;
+  const user = (await getPublicUser(userId))!;
   return { user, isNew: true };
 }
 
-export function getPublicUser(userId: number): PublicUser | null {
-  return (
-    (getDb()
-      .prepare(
-        "SELECT id, email, role, status, created_at FROM users WHERE id = ?",
-      )
-      .get(userId) as PublicUser | undefined) ?? null
-  );
+export async function getPublicUser(userId: number): Promise<PublicUser | null> {
+  return queryOne(
+    "SELECT id, email, role, status, created_at FROM users WHERE id = ?",
+    [userId],
+  ) as Promise<PublicUser | null>;
 }
 
 export interface AdminUserView extends PublicUser {
@@ -207,26 +210,24 @@ export interface AdminUserView extends PublicUser {
   claude_quota: number;
 }
 
-export function listUsersForAdmin(): AdminUserView[] {
-  return getDb()
-    .prepare(
-      `SELECT u.id, u.email, u.role, u.status, u.created_at,
-              (b.user_id IS NOT NULL) AS has_binance,
-              b.env AS binance_env,
-              COALESCE(a.can_execute, 0) AS can_execute,
-              COALESCE(a.max_capital_cap, 0) AS max_capital_cap,
-              COALESCE(a.max_open_trades_cap, 1) AS max_open_trades_cap,
-              COALESCE(a.claude_quota, 1000) AS claude_quota
-       FROM users u
-       LEFT JOIN binance_accounts b ON b.user_id = u.id
-       LEFT JOIN admin_limits a ON a.user_id = u.id
-       ORDER BY u.created_at DESC`,
-    )
-    .all() as AdminUserView[];
+export async function listUsersForAdmin(): Promise<AdminUserView[]> {
+  return query(
+    `SELECT u.id, u.email, u.role, u.status, u.created_at,
+            (b.user_id IS NOT NULL) AS has_binance,
+            b.env AS binance_env,
+            COALESCE(a.can_execute, 0) AS can_execute,
+            COALESCE(a.max_capital_cap, 0) AS max_capital_cap,
+            COALESCE(a.max_open_trades_cap, 1) AS max_open_trades_cap,
+            COALESCE(a.claude_quota, 1000) AS claude_quota
+     FROM users u
+     LEFT JOIN binance_accounts b ON b.user_id = u.id
+     LEFT JOIN admin_limits a ON a.user_id = u.id
+     ORDER BY u.created_at DESC`,
+  ) as Promise<AdminUserView[]>;
 }
 
-export function setUserStatus(userId: number, status: string) {
-  getDb().prepare("UPDATE users SET status = ? WHERE id = ?").run(status, userId);
+export async function setUserStatus(userId: number, status: string) {
+  await execute("UPDATE users SET status = ? WHERE id = ?", [status, userId]);
 }
 
 const ADMIN_LIMIT_FIELDS = [
@@ -236,26 +237,23 @@ const ADMIN_LIMIT_FIELDS = [
   "claude_quota",
 ] as const;
 
-export function updateAdminLimits(
+export async function updateAdminLimits(
   userId: number,
   patch: Partial<Record<(typeof ADMIN_LIMIT_FIELDS)[number], unknown>>,
 ) {
-  ensureUserDefaults(userId);
+  await ensureUserDefaults(userId);
   const fields = ADMIN_LIMIT_FIELDS.filter((f) => f in patch);
   if (fields.length === 0) return;
-  const assignments = fields.map((f) => `${f} = @${f}`).join(", ");
-  const params: Record<string, unknown> = { user_id: userId };
-  for (const f of fields) params[f] = patch[f];
-  getDb()
-    .prepare(
-      `UPDATE admin_limits SET ${assignments}, updated_at = datetime('now') WHERE user_id = @user_id`,
-    )
-    .run(params);
+  const assignments = fields.map((f) => `${f} = ?`).join(", ");
+  const params: unknown[] = fields.map((f) => patch[f]);
+  params.push(userId);
+  await execute(
+    `UPDATE admin_limits SET ${assignments}, updated_at = datetime('now') WHERE user_id = ?`,
+    params,
+  );
 }
 
-// ─── Recommendations ────────────────────────────────────────────────
-
-export function saveRecommendation(
+export async function saveRecommendation(
   userId: number,
   rec: {
     symbol: string;
@@ -268,85 +266,80 @@ export function saveRecommendation(
     rationale?: string | null;
     factors?: string[] | null;
   },
-): Recommendation {
-  const info = getDb()
-    .prepare(
-      `INSERT INTO recommendations
-         (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors)
-       VALUES (@user_id, @symbol, @action, @confidence, @entry, @stop_loss, @take_profit, @timeframe, @rationale, @factors)`,
-    )
-    .run({
-      user_id: userId,
-      symbol: rec.symbol.toUpperCase(),
-      action: rec.action,
-      confidence: Math.round(rec.confidence) || 0,
-      entry: rec.entry ?? null,
-      stop_loss: rec.stop_loss ?? null,
-      take_profit: rec.take_profit ?? null,
-      timeframe: rec.timeframe ?? null,
-      rationale: rec.rationale ?? null,
-      factors:
-        rec.factors && rec.factors.length ? JSON.stringify(rec.factors) : null,
-    });
-  return getDb()
-    .prepare("SELECT * FROM recommendations WHERE id = ?")
-    .get(Number(info.lastInsertRowid)) as Recommendation;
+): Promise<Recommendation> {
+  const id = await insertReturningId(
+    `INSERT INTO recommendations
+       (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      rec.symbol.toUpperCase(),
+      rec.action,
+      Math.round(rec.confidence) || 0,
+      rec.entry ?? null,
+      rec.stop_loss ?? null,
+      rec.take_profit ?? null,
+      rec.timeframe ?? null,
+      rec.rationale ?? null,
+      rec.factors && rec.factors.length ? JSON.stringify(rec.factors) : null,
+    ],
+  );
+  return (await queryOne(
+    "SELECT * FROM recommendations WHERE id = ?",
+    [id],
+  )) as Recommendation;
 }
 
-export function listRecommendations(
+export async function listRecommendations(
   userId: number,
   limit = 20,
-): Recommendation[] {
-  return getDb()
-    .prepare(
-      "SELECT * FROM recommendations WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
-    )
-    .all(userId, limit) as Recommendation[];
+): Promise<Recommendation[]> {
+  return query(
+    "SELECT * FROM recommendations WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+    [userId, limit],
+  ) as Promise<Recommendation[]>;
 }
 
-export function updateRecommendationChartUrl(
+export async function updateRecommendationChartUrl(
   id: number,
   chartImageUrl: string,
-): void {
-  getDb()
-    .prepare(
-      "UPDATE recommendations SET chart_image_url = ? WHERE id = ?",
-    )
-    .run(chartImageUrl, id);
+): Promise<void> {
+  await execute("UPDATE recommendations SET chart_image_url = ? WHERE id = ?", [
+    chartImageUrl,
+    id,
+  ]);
 }
-
-// ─── Claude usage / quota ───────────────────────────────────────────
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function getTodayUsage(userId: number): number {
-  const row = getDb()
-    .prepare("SELECT count FROM claude_usage WHERE user_id = ? AND day = ?")
-    .get(userId, today()) as { count: number } | undefined;
+export async function getTodayUsage(userId: number): Promise<number> {
+  const row = await queryOne<{ count: number }>(
+    "SELECT count FROM claude_usage WHERE user_id = ? AND day = ?",
+    [userId, today()],
+  );
   return row?.count ?? 0;
 }
 
-export function incrementUsage(userId: number, by = 1): void {
-  getDb()
-    .prepare(
-      `INSERT INTO claude_usage (user_id, day, count) VALUES (?, ?, ?)
-       ON CONFLICT(user_id, day) DO UPDATE SET count = count + excluded.count`,
-    )
-    .run(userId, today(), by);
+export async function incrementUsage(userId: number, by = 1): Promise<void> {
+  await execute(
+    `INSERT INTO claude_usage (user_id, day, count) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, day) DO UPDATE SET count = count + excluded.count`,
+    [userId, today(), by],
+  );
 }
 
-/** Returns true when adding `cost` would exceed the user's daily Claude quota. */
-export function wouldExceedQuota(userId: number, cost: number): boolean {
-  const limits = getLimits(userId);
+export async function wouldExceedQuota(
+  userId: number,
+  cost: number,
+): Promise<boolean> {
+  const limits = await getLimits(userId);
   if (limits.claude_quota <= 0) return false;
-  return getTodayUsage(userId) + cost > limits.claude_quota;
+  return (await getTodayUsage(userId)) + cost > limits.claude_quota;
 }
 
-// ─── Trade intents ──────────────────────────────────────────────────
-
-export function createIntent(
+export async function createIntent(
   userId: number,
   intent: {
     recommendation_id?: number | null;
@@ -361,72 +354,65 @@ export function createIntent(
     status?: string;
     reason?: string | null;
   },
-): TradeIntent {
-  const info = getDb()
-    .prepare(
-      `INSERT INTO trade_intents
-        (user_id, recommendation_id, symbol, side, notional, entry, stop_loss, take_profit, confidence, rationale, status, reason)
-       VALUES (@user_id, @recommendation_id, @symbol, @side, @notional, @entry, @stop_loss, @take_profit, @confidence, @rationale, @status, @reason)`,
-    )
-    .run({
-      user_id: userId,
-      recommendation_id: intent.recommendation_id ?? null,
-      symbol: intent.symbol.toUpperCase(),
-      side: intent.side,
-      notional: intent.notional,
-      entry: intent.entry ?? null,
-      stop_loss: intent.stop_loss ?? null,
-      take_profit: intent.take_profit ?? null,
-      confidence: Math.round(intent.confidence ?? 0),
-      rationale: intent.rationale ?? null,
-      status: intent.status ?? "pending",
-      reason: intent.reason ?? null,
-    });
-  return getIntent(Number(info.lastInsertRowid))!;
-}
-
-export function getIntent(id: number): TradeIntent | null {
-  return (
-    (getDb()
-      .prepare("SELECT * FROM trade_intents WHERE id = ?")
-      .get(id) as TradeIntent | undefined) ?? null
+): Promise<TradeIntent> {
+  const id = await insertReturningId(
+    `INSERT INTO trade_intents
+      (user_id, recommendation_id, symbol, side, notional, entry, stop_loss, take_profit, confidence, rationale, status, reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      intent.recommendation_id ?? null,
+      intent.symbol.toUpperCase(),
+      intent.side,
+      intent.notional,
+      intent.entry ?? null,
+      intent.stop_loss ?? null,
+      intent.take_profit ?? null,
+      Math.round(intent.confidence ?? 0),
+      intent.rationale ?? null,
+      intent.status ?? "pending",
+      intent.reason ?? null,
+    ],
   );
+  return (await getIntent(id))!;
 }
 
-export function listIntents(
+export async function getIntent(id: number): Promise<TradeIntent | null> {
+  return queryOne(
+    "SELECT * FROM trade_intents WHERE id = ?",
+    [id],
+  ) as Promise<TradeIntent | null>;
+}
+
+export async function listIntents(
   userId: number,
   status?: string,
   limit = 30,
-): TradeIntent[] {
+): Promise<TradeIntent[]> {
   if (status) {
-    return getDb()
-      .prepare(
-        "SELECT * FROM trade_intents WHERE user_id = ? AND status = ? ORDER BY id DESC LIMIT ?",
-      )
-      .all(userId, status, limit) as TradeIntent[];
+    return query(
+      "SELECT * FROM trade_intents WHERE user_id = ? AND status = ? ORDER BY id DESC LIMIT ?",
+      [userId, status, limit],
+    ) as Promise<TradeIntent[]>;
   }
-  return getDb()
-    .prepare(
-      "SELECT * FROM trade_intents WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-    )
-    .all(userId, limit) as TradeIntent[];
+  return query(
+    "SELECT * FROM trade_intents WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+    [userId, limit],
+  ) as Promise<TradeIntent[]>;
 }
 
-export function updateIntentStatus(
+export async function updateIntentStatus(
   id: number,
   status: string,
   reason?: string | null,
-): void {
-  getDb()
-    .prepare(
-      "UPDATE trade_intents SET status = ?, reason = ?, updated_at = datetime('now') WHERE id = ?",
-    )
-    .run(status, reason ?? null, id);
+): Promise<void> {
+  await execute(
+    "UPDATE trade_intents SET status = ?, reason = ?, updated_at = datetime('now') WHERE id = ?",
+    [status, reason ?? null, id],
+  );
 }
 
-// ─── Trades ─────────────────────────────────────────────────────────
-
-export function recordTrade(
+export async function recordTrade(
   userId: number,
   trade: {
     intent_id?: number | null;
@@ -439,172 +425,164 @@ export function recordTrade(
     env: string;
     status?: string;
   },
-): Trade {
-  const info = getDb()
-    .prepare(
-      `INSERT INTO trades
-        (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, status)
-       VALUES (@user_id, @intent_id, @symbol, @side, @qty, @quote_qty, @avg_price, @order_id, @env, @status)`,
-    )
-    .run({
-      user_id: userId,
-      intent_id: trade.intent_id ?? null,
-      symbol: trade.symbol.toUpperCase(),
-      side: trade.side,
-      qty: trade.qty,
-      quote_qty: trade.quote_qty,
-      avg_price: trade.avg_price,
-      order_id: trade.order_id ?? null,
-      env: trade.env,
-      status: trade.status ?? "open",
-    });
-  return getDb()
-    .prepare("SELECT * FROM trades WHERE id = ?")
-    .get(Number(info.lastInsertRowid)) as Trade;
+): Promise<Trade> {
+  const id = await insertReturningId(
+    `INSERT INTO trades
+      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      trade.intent_id ?? null,
+      trade.symbol.toUpperCase(),
+      trade.side,
+      trade.qty,
+      trade.quote_qty,
+      trade.avg_price,
+      trade.order_id ?? null,
+      trade.env,
+      trade.status ?? "open",
+    ],
+  );
+  return (await queryOne("SELECT * FROM trades WHERE id = ?", [id])) as Trade;
 }
 
-export function listTrades(userId: number, limit = 50): Trade[] {
-  return getDb()
-    .prepare(
-      "SELECT * FROM trades WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-    )
-    .all(userId, limit) as Trade[];
+export async function listTrades(userId: number, limit = 50): Promise<Trade[]> {
+  return query(
+    "SELECT * FROM trades WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+    [userId, limit],
+  ) as Promise<Trade[]>;
 }
 
-export function countOpenTrades(userId: number): number {
-  const row = getDb()
-    .prepare(
-      "SELECT COUNT(*) AS n FROM trades WHERE user_id = ? AND status = 'open'",
-    )
-    .get(userId) as { n: number };
-  return row.n;
+export async function countOpenTrades(userId: number): Promise<number> {
+  const row = await queryOne<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM trades WHERE user_id = ? AND status = 'open'",
+    [userId],
+  );
+  return row?.n ?? 0;
 }
 
-/** Today's realized PnL as a % of the user's capital cap (negative = loss). */
-export function todayRealizedPnlPct(userId: number, capital: number): number {
+export async function todayRealizedPnlPct(
+  userId: number,
+  capital: number,
+): Promise<number> {
   if (capital <= 0) return 0;
-  const row = getDb()
-    .prepare(
-      `SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trades
-       WHERE user_id = ? AND status = 'closed' AND date(closed_at) = date('now')`,
-    )
-    .get(userId) as { pnl: number };
-  return (row.pnl / capital) * 100;
+  const row = await queryOne<{ pnl: number }>(
+    `SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trades
+     WHERE user_id = ? AND status = 'closed' AND date(closed_at) = date('now')`,
+    [userId],
+  );
+  return ((row?.pnl ?? 0) / capital) * 100;
 }
 
-// ─── System flags (master kill switch, etc.) ────────────────────────
-
-export function getFlag(key: string): string | null {
-  const row = getDb()
-    .prepare("SELECT value FROM system_flags WHERE key = ?")
-    .get(key) as { value: string } | undefined;
+export async function getFlag(key: string): Promise<string | null> {
+  const row = await queryOne<{ value: string }>(
+    "SELECT value FROM system_flags WHERE key = ?",
+    [key],
+  );
   return row?.value ?? null;
 }
 
-export function setFlag(key: string, value: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO system_flags (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .run(key, value);
+export async function setFlag(key: string, value: string): Promise<void> {
+  await execute(
+    `INSERT INTO system_flags (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, value],
+  );
 }
 
-export function isMasterKillOn(): boolean {
-  return getFlag("master_kill") === "1";
+export async function isMasterKillOn(): Promise<boolean> {
+  return (await getFlag("master_kill")) === "1";
 }
 
-// ─── Telegram linking ───────────────────────────────────────────────
-
-export function createLinkCode(userId: number): string {
-  const db = getDb();
-  db.prepare("DELETE FROM telegram_link_codes WHERE user_id = ?").run(userId);
+export async function createLinkCode(userId: number): Promise<string> {
+  await execute("DELETE FROM telegram_link_codes WHERE user_id = ?", [userId]);
   const code = crypto.randomBytes(6).toString("hex");
-  db.prepare(
+  await execute(
     "INSERT INTO telegram_link_codes (code, user_id) VALUES (?, ?)",
-  ).run(code, userId);
+    [code, userId],
+  );
   return code;
 }
 
-/** Consumes a link code (valid 1 hour) and returns the owning user id. */
-export function consumeLinkCode(code: string): number | null {
-  const db = getDb();
-  const row = db
-    .prepare(
-      "SELECT user_id FROM telegram_link_codes WHERE code = ? AND created_at > datetime('now','-1 hour')",
-    )
-    .get(code) as { user_id: number } | undefined;
+export async function consumeLinkCode(code: string): Promise<number | null> {
+  const row = await queryOne<{ user_id: number }>(
+    "SELECT user_id FROM telegram_link_codes WHERE code = ? AND created_at > datetime('now','-1 hour')",
+    [code],
+  );
   if (!row) return null;
-  db.prepare("DELETE FROM telegram_link_codes WHERE code = ?").run(code);
+  await execute("DELETE FROM telegram_link_codes WHERE code = ?", [code]);
   return row.user_id;
 }
 
-export function setTelegramChatId(userId: number, chatId: string): void {
-  ensureUserDefaults(userId);
-  getDb()
-    .prepare(
-      "UPDATE trading_settings SET telegram_chat_id = ?, updated_at = datetime('now') WHERE user_id = ?",
-    )
-    .run(chatId, userId);
+export async function setTelegramChatId(
+  userId: number,
+  chatId: string,
+): Promise<void> {
+  await ensureUserDefaults(userId);
+  await execute(
+    "UPDATE trading_settings SET telegram_chat_id = ?, updated_at = datetime('now') WHERE user_id = ?",
+    [chatId, userId],
+  );
 }
 
-export function clearTelegramChatId(userId: number): void {
-  getDb()
-    .prepare(
-      "UPDATE trading_settings SET telegram_chat_id = NULL WHERE user_id = ?",
-    )
-    .run(userId);
+export async function clearTelegramChatId(userId: number): Promise<void> {
+  await execute(
+    "UPDATE trading_settings SET telegram_chat_id = NULL WHERE user_id = ?",
+    [userId],
+  );
 }
 
-export function getUserByTelegramChatId(chatId: string): number | null {
-  const row = getDb()
-    .prepare("SELECT user_id FROM trading_settings WHERE telegram_chat_id = ?")
-    .get(chatId) as { user_id: number } | undefined;
+export async function getUserByTelegramChatId(
+  chatId: string,
+): Promise<number | null> {
+  const row = await queryOne<{ user_id: number }>(
+    "SELECT user_id FROM trading_settings WHERE telegram_chat_id = ?",
+    [chatId],
+  );
   return row?.user_id ?? null;
 }
 
-export function getTelegramChatId(userId: number): string | null {
-  const row = getDb()
-    .prepare("SELECT telegram_chat_id FROM trading_settings WHERE user_id = ?")
-    .get(userId) as { telegram_chat_id: string | null } | undefined;
+export async function getTelegramChatId(userId: number): Promise<string | null> {
+  const row = await queryOne<{ telegram_chat_id: string | null }>(
+    "SELECT telegram_chat_id FROM trading_settings WHERE user_id = ?",
+    [userId],
+  );
   return row?.telegram_chat_id ?? null;
 }
 
-// ─── Audit log ──────────────────────────────────────────────────────
-
-export function logAudit(
+export async function logAudit(
   userId: number | null,
   action: string,
   detail?: string | null,
-): void {
-  getDb()
-    .prepare(
-      "INSERT INTO audit_logs (user_id, action, detail) VALUES (?, ?, ?)",
-    )
-    .run(userId, action, detail ?? null);
+): Promise<void> {
+  await execute(
+    "INSERT INTO audit_logs (user_id, action, detail) VALUES (?, ?, ?)",
+    [userId, action, detail ?? null],
+  );
 }
 
-export function listAuditLogs(limit = 100): {
-  id: number;
-  user_id: number | null;
-  action: string;
-  detail: string | null;
-  created_at: string;
-}[] {
-  return getDb()
-    .prepare(
-      "SELECT id, user_id, action, detail, created_at FROM audit_logs ORDER BY id DESC LIMIT ?",
-    )
-    .all(limit) as {
+export async function listAuditLogs(limit = 100): Promise<
+  {
     id: number;
     user_id: number | null;
     action: string;
     detail: string | null;
     created_at: string;
-  }[];
+  }[]
+> {
+  return query(
+    "SELECT id, user_id, action, detail, created_at FROM audit_logs ORDER BY id DESC LIMIT ?",
+    [limit],
+  ) as Promise<
+    {
+      id: number;
+      user_id: number | null;
+      action: string;
+      detail: string | null;
+      created_at: string;
+    }[]
+  >;
 }
-
-// ─── Monitor / cron helpers ─────────────────────────────────────────
 
 export interface MonitorUser {
   id: number;
@@ -612,77 +590,77 @@ export interface MonitorUser {
   limits: AdminLimits;
 }
 
-/** Active users eligible for 24/7 market monitoring. */
-export function listUsersForMonitor(): MonitorUser[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT u.id
-       FROM users u
-       JOIN trading_settings s ON s.user_id = u.id
-       WHERE u.status = 'active' AND u.role = 'user'
-         AND s.kill_switch = 0 AND s.onboarding_done = 1`,
-    )
-    .all() as { id: number }[];
+export async function listUsersForMonitor(): Promise<MonitorUser[]> {
+  const rows = await query<{ id: number }>(
+    `SELECT u.id
+     FROM users u
+     JOIN trading_settings s ON s.user_id = u.id
+     WHERE u.status = 'active' AND u.role = 'user'
+       AND s.kill_switch = 0 AND s.onboarding_done = 1`,
+  );
 
-  return rows.map((r) => ({
-    id: r.id,
-    settings: getSettings(r.id),
-    limits: getLimits(r.id),
-  }));
+  const out: MonitorUser[] = [];
+  for (const r of rows) {
+    out.push({
+      id: r.id,
+      settings: await getSettings(r.id),
+      limits: await getLimits(r.id),
+    });
+  }
+  return out;
 }
 
 const COOLDOWN_HOURS = 4;
 
-export function isOnCooldown(userId: number, symbol: string): boolean {
-  const row = getDb()
-    .prepare(
-      `SELECT scanned_at FROM scan_cooldowns
-       WHERE user_id = ? AND symbol = ?
-         AND scanned_at > datetime('now', ?)`,
-    )
-    .get(userId, symbol.toUpperCase(), `-${COOLDOWN_HOURS} hours`) as
-    | { scanned_at: string }
-    | undefined;
+export async function isOnCooldown(
+  userId: number,
+  symbol: string,
+): Promise<boolean> {
+  const row = await queryOne<{ scanned_at: string }>(
+    `SELECT scanned_at FROM scan_cooldowns
+     WHERE user_id = ? AND symbol = ?
+       AND scanned_at > datetime('now', ?)`,
+    [userId, symbol.toUpperCase(), `-${COOLDOWN_HOURS} hours`],
+  );
   return Boolean(row);
 }
 
-export function touchScanCooldown(userId: number, symbol: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO scan_cooldowns (user_id, symbol, scanned_at)
-       VALUES (?, ?, datetime('now'))
-       ON CONFLICT(user_id, symbol) DO UPDATE SET scanned_at = datetime('now')`,
-    )
-    .run(userId, symbol.toUpperCase());
+export async function touchScanCooldown(
+  userId: number,
+  symbol: string,
+): Promise<void> {
+  await execute(
+    `INSERT INTO scan_cooldowns (user_id, symbol, scanned_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(user_id, symbol) DO UPDATE SET scanned_at = datetime('now')`,
+    [userId, symbol.toUpperCase()],
+  );
 }
 
-export function isOnboardingDone(userId: number): boolean {
-  ensureUserDefaults(userId);
-  const row = getDb()
-    .prepare("SELECT onboarding_done FROM trading_settings WHERE user_id = ?")
-    .get(userId) as { onboarding_done: number } | undefined;
+export async function isOnboardingDone(userId: number): Promise<boolean> {
+  await ensureUserDefaults(userId);
+  const row = await queryOne<{ onboarding_done: number }>(
+    "SELECT onboarding_done FROM trading_settings WHERE user_id = ?",
+    [userId],
+  );
   return (row?.onboarding_done ?? 0) === 1;
 }
 
-export function completeOnboarding(userId: number): void {
-  updateSettings(userId, { onboarding_done: 1 });
+export async function completeOnboarding(userId: number): Promise<void> {
+  await updateSettings(userId, { onboarding_done: 1 });
 }
 
-/** Users with Telegram linked for daily summaries. */
-export function listUsersForDailySummary(): { id: number; chatId: string }[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT s.user_id AS id, s.telegram_chat_id AS chatId
-       FROM trading_settings s
-       JOIN users u ON u.id = s.user_id
-       WHERE u.status = 'active' AND s.telegram_chat_id IS NOT NULL
-         AND s.onboarding_done = 1`,
-    )
-    .all() as { id: number; chatId: string }[];
-  return rows;
+export async function listUsersForDailySummary(): Promise<
+  { id: number; chatId: string }[]
+> {
+  return query(
+    `SELECT s.user_id AS id, s.telegram_chat_id AS chatId
+     FROM trading_settings s
+     JOIN users u ON u.id = s.user_id
+     WHERE u.status = 'active' AND s.telegram_chat_id IS NOT NULL
+       AND s.onboarding_done = 1`,
+  ) as Promise<{ id: number; chatId: string }[]>;
 }
-
-// ─── Admin analytics ────────────────────────────────────────────────
 
 export interface AdminPlatformStats {
   users_total: number;
@@ -698,53 +676,47 @@ export interface AdminPlatformStats {
   claude_calls_today: number;
 }
 
-export function getAdminPlatformStats(): AdminPlatformStats {
-  const db = getDb();
-  const users = db
-    .prepare(
-      `SELECT
-         COUNT(*) AS total,
-         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
-         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-         SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended
-       FROM users`,
-    )
-    .get() as {
+export async function getAdminPlatformStats(): Promise<AdminPlatformStats> {
+  const users = (await queryOne(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+       SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended
+     FROM users`,
+  )) as {
     total: number;
     active: number;
     pending: number;
     suspended: number;
   };
 
-  const withBinance = db
-    .prepare("SELECT COUNT(*) AS n FROM binance_accounts")
-    .get() as { n: number };
+  const withBinance = (await queryOne(
+    "SELECT COUNT(*) AS n FROM binance_accounts",
+  )) as { n: number };
 
-  const trades = db
-    .prepare(
-      `SELECT
-         COUNT(*) AS total,
-         SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open
-       FROM trades`,
-    )
-    .get() as { total: number; open: number };
+  const trades = (await queryOne(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open
+     FROM trades`,
+  )) as { total: number; open: number };
 
-  const intents = db
-    .prepare(
-      `SELECT
-         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-         SUM(CASE WHEN status = 'executed' THEN 1 ELSE 0 END) AS executed
-       FROM trade_intents`,
-    )
-    .get() as { pending: number | null; executed: number | null };
+  const intents = (await queryOne(
+    `SELECT
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+       SUM(CASE WHEN status = 'executed' THEN 1 ELSE 0 END) AS executed
+     FROM trade_intents`,
+  )) as { pending: number | null; executed: number | null };
 
-  const recs = db
-    .prepare("SELECT COUNT(*) AS n FROM recommendations")
-    .get() as { n: number };
+  const recs = (await queryOne(
+    "SELECT COUNT(*) AS n FROM recommendations",
+  )) as { n: number };
 
-  const claudeToday = db
-    .prepare("SELECT COALESCE(SUM(count), 0) AS n FROM claude_usage WHERE day = ?")
-    .get(today()) as { n: number };
+  const claudeToday = (await queryOne(
+    "SELECT COALESCE(SUM(count), 0) AS n FROM claude_usage WHERE day = ?",
+    [today()],
+  )) as { n: number };
 
   return {
     users_total: users.total,
@@ -769,22 +741,21 @@ export interface ClaudeUsageRow {
   quota: number;
 }
 
-export function listClaudeUsageForAdmin(): ClaudeUsageRow[] {
-  return getDb()
-    .prepare(
-      `SELECT u.id AS user_id, u.email, u.status,
-              COALESCE(c.count, 0) AS used_today,
-              COALESCE(a.claude_quota, 1000) AS quota
-       FROM users u
-       LEFT JOIN claude_usage c ON c.user_id = u.id AND c.day = ?
-       LEFT JOIN admin_limits a ON a.user_id = u.id
-       WHERE u.role != 'admin'
-       ORDER BY used_today DESC, u.email`,
-    )
-    .all(today()) as ClaudeUsageRow[];
+export async function listClaudeUsageForAdmin(): Promise<ClaudeUsageRow[]> {
+  return query(
+    `SELECT u.id AS user_id, u.email, u.status,
+            COALESCE(c.count, 0) AS used_today,
+            COALESCE(a.claude_quota, 1000) AS quota
+     FROM users u
+     LEFT JOIN claude_usage c ON c.user_id = u.id AND c.day = ?
+     LEFT JOIN admin_limits a ON a.user_id = u.id
+     WHERE u.role != 'admin'
+     ORDER BY used_today DESC, u.email`,
+    [today()],
+  ) as Promise<ClaudeUsageRow[]>;
 }
 
-export function deleteUser(userId: number): boolean {
-  const info = getDb().prepare("DELETE FROM users WHERE id = ?").run(userId);
-  return info.changes > 0;
+export async function deleteUser(userId: number): Promise<boolean> {
+  const result = await execute("DELETE FROM users WHERE id = ?", [userId]);
+  return result.changes > 0;
 }

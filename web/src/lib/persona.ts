@@ -4,11 +4,11 @@ import { buildUserContext } from "./userContext";
 /**
  * Builds the system prompt for the expert trading agent.
  */
-export function buildSystemPrompt(
+export async function buildSystemPrompt(
   settings: TradingSettings,
   userId?: number,
   conversationSummary?: string | null,
-): string {
+): Promise<string> {
   const allowed = safeAssets(settings.allowed_assets);
   const styleAr =
     settings.style === "conservative"
@@ -17,7 +17,7 @@ export function buildSystemPrompt(
         ? "متوازن"
         : "نشِط";
 
-  const userBlock = userId ? buildUserContext(userId) : "";
+  const userBlock = userId ? await buildUserContext(userId) : "";
   const memoryBlock = conversationSummary
     ? `\n# ملخص محادثات سابقة\n${conversationSummary}`
     : "";

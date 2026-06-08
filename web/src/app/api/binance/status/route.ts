@@ -6,11 +6,11 @@ import { getAccountSummary } from "@/lib/binance";
 export async function GET() {
   try {
     const user = await requireUser();
-    const meta = getBinanceAccountMeta(user.id);
+    const meta = await getBinanceAccountMeta(user.id);
     if (!meta) {
       return NextResponse.json({ connected: false });
     }
-    const creds = getBinanceCredentials(user.id);
+    const creds = await getBinanceCredentials(user.id);
     if (!creds) return NextResponse.json({ connected: false });
 
     try {

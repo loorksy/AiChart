@@ -1,5 +1,5 @@
-import { getDb } from "./db";
-import { encryptSecret, decryptSecret, maskKey } from "./crypto";
+import { decryptSecret, encryptSecret, maskKey } from "./crypto";
+import { initDb, loadPlatformConfigRows, queryOne, transaction } from "./db";
 
 export interface ConfigFieldMeta {
   key: string;
@@ -104,25 +104,62 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
 ];
 
 const cache = new Map<string, string>();
+const rawCache = new Map<string, { value: string; plain: number }>();
 
 export function clearPlatformConfigCache(): void {
   cache.clear();
+  rawCache.clear();
 }
 
-function readDbRaw(key: string): string | null {
-  const row = getDb()
-    .prepare("SELECT value, plain FROM platform_config WHERE key = ?")
-    .get(key) as { value: string; plain: number } | undefined;
-  if (!row?.value) return null;
-  if (row.plain) return row.value;
+function populateFromRows(
+  rows: { key: string; value: string; plain: number }[],
+): void {
+  for (const row of rows) {
+    rawCache.set(row.key, { value: row.value, plain: row.plain });
+    const decoded = decodeRaw(row.key, row.value, row.plain);
+    if (decoded) cache.set(row.key, decoded);
+  }
+}
+
+/** Called from initDb to avoid circular initDb calls. */
+export async function refreshPlatformConfigCacheInternal(
+  loader: () => Promise<{ key: string; value: string; plain: number }[]>,
+): Promise<void> {
+  clearPlatformConfigCache();
+  populateFromRows(await loader());
+}
+
+export async function refreshPlatformConfigCache(): Promise<void> {
+  await initDb();
+  clearPlatformConfigCache();
+  populateFromRows(await loadPlatformConfigRows());
+}
+
+function decodeRaw(key: string, value: string, plain: number): string | null {
+  if (!value) return null;
+  if (plain) return value;
   try {
-    return decryptSecret(row.value);
+    return decryptSecret(value);
   } catch {
-    // Legacy rows: non-secret values were stored plaintext with plain=0.
     const meta = PLATFORM_CONFIG_FIELDS.find((f) => f.key === key);
-    if (meta && !meta.secret) return row.value;
+    if (meta && !meta.secret) return value;
     return null;
   }
+}
+
+async function readDbRaw(key: string): Promise<string | null> {
+  if (rawCache.size === 0) await refreshPlatformConfigCache();
+  const row = rawCache.get(key);
+  if (!row?.value) {
+    const fromDb = await queryOne<{ value: string; plain: number }>(
+      "SELECT value, plain FROM platform_config WHERE key = ?",
+      [key],
+    );
+    if (!fromDb?.value) return null;
+    rawCache.set(key, fromDb);
+    return decodeRaw(key, fromDb.value, fromDb.plain);
+  }
+  return decodeRaw(key, row.value, row.plain);
 }
 
 function readEnv(key: string): string | undefined {
@@ -134,12 +171,6 @@ function readEnv(key: string): string | undefined {
 export function getPlatformValue(key: string): string | undefined {
   if (cache.has(key)) return cache.get(key);
 
-  const fromDb = readDbRaw(key);
-  if (fromDb) {
-    cache.set(key, fromDb);
-    return fromDb;
-  }
-
   const fromEnv = readEnv(key);
   if (fromEnv) {
     cache.set(key, fromEnv);
@@ -147,6 +178,19 @@ export function getPlatformValue(key: string): string | undefined {
   }
 
   return undefined;
+}
+
+/** Async variant that loads from DB when cache miss. */
+export async function getPlatformValueAsync(
+  key: string,
+): Promise<string | undefined> {
+  if (cache.has(key)) return cache.get(key);
+  const fromDb = await readDbRaw(key);
+  if (fromDb) {
+    cache.set(key, fromDb);
+    return fromDb;
+  }
+  return getPlatformValue(key);
 }
 
 export interface ConfigStatusItem {
@@ -160,11 +204,15 @@ export interface ConfigStatusItem {
   source: "db" | "env" | null;
   masked?: string;
   value?: string;
+  secret?: boolean;
 }
 
-export function listPlatformConfigStatus(): ConfigStatusItem[] {
+export async function listPlatformConfigStatus(): Promise<ConfigStatusItem[]> {
+  await refreshPlatformConfigCache();
   return PLATFORM_CONFIG_FIELDS.map((f) => {
-    const fromDb = readDbRaw(f.key);
+    const fromDb = rawCache.has(f.key)
+      ? decodeRaw(f.key, rawCache.get(f.key)!.value, rawCache.get(f.key)!.plain)
+      : null;
     const fromEnv = readEnv(f.key);
     const value = fromDb ?? fromEnv;
     const configured = Boolean(value);
@@ -186,26 +234,19 @@ export function listPlatformConfigStatus(): ConfigStatusItem[] {
   });
 }
 
-export function savePlatformConfig(
+export async function savePlatformConfig(
   patch: Record<string, string | boolean | undefined>,
-): void {
-  const db = getDb();
-  const upsert = db.prepare(
-    `INSERT INTO platform_config (key, value, plain, updated_at)
-     VALUES (@key, @value, @plain, datetime('now'))
-     ON CONFLICT(key) DO UPDATE SET
-       value = excluded.value,
-       plain = excluded.plain,
-       updated_at = datetime('now')`,
-  );
-
-  const run = db.transaction(() => {
+): Promise<void> {
+  await transaction(async ({ execute: txExecute }) => {
     for (const field of PLATFORM_CONFIG_FIELDS) {
       if (!(field.key in patch)) continue;
       const raw = patch[field.key];
       if (raw === undefined || raw === "") {
-        db.prepare("DELETE FROM platform_config WHERE key = ?").run(field.key);
+        await txExecute("DELETE FROM platform_config WHERE key = ?", [
+          field.key,
+        ]);
         cache.delete(field.key);
+        rawCache.delete(field.key);
         continue;
       }
 
@@ -220,11 +261,20 @@ export function savePlatformConfig(
       const plain = encrypt ? 0 : 1;
       const value = encrypt ? encryptSecret(stored) : stored;
 
-      upsert.run({ key: field.key, value, plain });
+      await txExecute(
+        `INSERT INTO platform_config (key, value, plain, updated_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET
+           value = excluded.value,
+           plain = excluded.plain,
+           updated_at = datetime('now')`,
+        [field.key, value, plain],
+      );
       cache.set(field.key, stored);
+      rawCache.set(field.key, { value, plain });
     }
   });
 
-  run();
   clearPlatformConfigCache();
+  await refreshPlatformConfigCache();
 }

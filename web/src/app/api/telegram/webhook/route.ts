@@ -105,7 +105,7 @@ async function handlePhotoMessage(
   fromId?: number,
 ) {
   const cid = String(chatId);
-  const userId = getUserByTelegramChatId(cid);
+  const userId = await getUserByTelegramChatId(cid);
   if (!userId) {
     await sendMessage(
       chatId,
@@ -120,8 +120,8 @@ async function handlePhotoMessage(
     return;
   }
 
-  const limits = getLimits(userId);
-  const used = getTodayUsage(userId);
+  const limits = await getLimits(userId);
+  const used = await getTodayUsage(userId);
   if (limits.claude_quota > 0 && used >= limits.claude_quota) {
     await sendMessage(
       chatId,
@@ -172,10 +172,10 @@ async function handleMessage(
     const code = text.split(/\s+/)[1];
 
     if (code && code !== "welcome") {
-      const userId = consumeLinkCode(code);
+      const userId = await consumeLinkCode(code);
       if (userId) {
-        setTelegramChatId(userId, cid);
-        if (fromId) setUserTelegramId(userId, fromId);
+        await setTelegramChatId(userId, cid);
+        if (fromId) await setUserTelegramId(userId, fromId);
         await sendMessage(
           chatId,
           "✅ تم ربط حسابك بنجاح! ستصلك إشعارات الصفقات والتوصيات هنا.\n" +
@@ -193,9 +193,9 @@ async function handleMessage(
     }
 
     if (fromId) {
-      const user = getUserByTelegramId(fromId);
+      const user = await getUserByTelegramId(fromId);
       if (user) {
-        setTelegramChatId(user.id, cid);
+        await setTelegramChatId(user.id, cid);
         await sendMessage(
           chatId,
           "✅ أهلاً بك في <b>AiChart</b> — حسابك مربوط.\n" +
@@ -214,7 +214,7 @@ async function handleMessage(
     return;
   }
 
-  const userId = getUserByTelegramChatId(cid);
+  const userId = await getUserByTelegramChatId(cid);
   if (!userId) {
     await sendMessage(
       chatId,
@@ -227,20 +227,20 @@ async function handleMessage(
   const cmd = text.split(/\s+/)[0].toLowerCase();
   switch (cmd) {
     case "/status": {
-      const s = getSettings(userId);
+      const s = await getSettings(userId);
       await sendMessage(
         chatId,
         [
           "<b>📊 حالة حسابك · Account status</b>",
           `الوضع · Mode: ${s.mode === "auto" ? "تنفيذ تلقائي · Auto" : "توصيات فقط · Advisory"}`,
           `الإيقاف الطارئ · Kill switch: ${s.kill_switch ? "🔴 مفعّل · ON" : "🟢 متوقف · OFF"}`,
-          `الصفقات المفتوحة · Open trades: ${countOpenTrades(userId)}`,
+          `الصفقات المفتوحة · Open trades: ${await countOpenTrades(userId)}`,
         ].join("\n"),
       );
       break;
     }
     case "/positions": {
-      const open = listTrades(userId, 50).filter((t) => t.status === "open");
+      const open = (await listTrades(userId, 50)).filter((t) => t.status === "open");
       if (!open.length) {
         await sendMessage(chatId, "لا توجد صفقات مفتوحة. · No open positions.");
         break;
@@ -258,7 +258,7 @@ async function handleMessage(
       break;
     }
     case "/pnl": {
-      const trades = listTrades(userId, 200).filter(
+      const trades = (await listTrades(userId, 200)).filter(
         (t) => t.status === "closed" && t.closed_at?.slice(0, 10) === new Date().toISOString().slice(0, 10),
       );
       const pnl = trades.reduce((a, t) => a + t.pnl, 0);
@@ -270,7 +270,7 @@ async function handleMessage(
     }
     case "/pause":
     case "/stop": {
-      updateSettings(userId, { kill_switch: 1 });
+      await updateSettings(userId, { kill_switch: 1 });
       await sendMessage(
         chatId,
         "🔴 تم إيقاف التداول. لن يفتح الوكيل أي صفقة جديدة.\n" +
@@ -279,7 +279,7 @@ async function handleMessage(
       break;
     }
     case "/resume": {
-      updateSettings(userId, { kill_switch: 0 });
+      await updateSettings(userId, { kill_switch: 0 });
       await sendMessage(
         chatId,
         "🟢 تم استئناف التداول. · Trading resumed.",
@@ -288,8 +288,8 @@ async function handleMessage(
     }
     default: {
       if (!text.startsWith("/") && isAnthropicConfigured()) {
-        const limits = getLimits(userId);
-        const used = getTodayUsage(userId);
+        const limits = await getLimits(userId);
+        const used = await getTodayUsage(userId);
         if (limits.claude_quota > 0 && used >= limits.claude_quota) {
           await sendMessage(
             chatId,
@@ -327,7 +327,7 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
     await answerCallback(cq.id);
     return;
   }
-  const userId = getUserByTelegramChatId(String(chatId));
+  const userId = await getUserByTelegramChatId(String(chatId));
   if (!userId) {
     await answerCallback(cq.id, "حسابك غير مربوط · Not linked");
     return;
@@ -335,7 +335,7 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
 
   const [action, idStr] = cq.data.split(":");
   const intentId = Number(idStr);
-  const intent = getIntent(intentId);
+  const intent = await getIntent(intentId);
   if (!intent || intent.user_id !== userId) {
     await answerCallback(cq.id, "الطلب غير موجود · Not found");
     return;
@@ -346,7 +346,7 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
   }
 
   if (action === "reject") {
-    updateIntentStatus(intentId, "rejected", "رفضه المستخدم عبر تليجرام.");
+    await updateIntentStatus(intentId, "rejected", "رفضه المستخدم عبر تليجرام.");
     await answerCallback(cq.id, "تم الرفض · Rejected");
     if (messageId)
       await editMessageText(chatId, messageId, "❌ رُفضت التوصية. · Recommendation rejected.");
@@ -354,7 +354,7 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
   }
 
   if (action === "approve") {
-    updateIntentStatus(intentId, "approved", "وافق المستخدم عبر تليجرام.");
+    await updateIntentStatus(intentId, "approved", "وافق المستخدم عبر تليجرام.");
     const result = await executeIntent(userId, intentId);
     await notifyTradeResult(userId, result, intent.symbol);
     await answerCallback(

@@ -67,45 +67,40 @@ export interface CliResult {
 }
 
 /** Validates and runs a read-only binance-cli command for a user. */
-export function runBinanceCli(
+export async function runBinanceCli(
   userId: number,
   args: string[],
 ): Promise<CliResult> {
+  if (!isBinanceCliEnabled()) {
+    return { ok: false, output: "أداة binance-cli غير مُفعّلة على الخادم." };
+  }
+  if (!Array.isArray(args) || args.length === 0) {
+    return { ok: false, output: "أمر فارغ." };
+  }
+  const group = args[0];
+  if (!READ_GROUPS.has(group)) {
+    return { ok: false, output: `مجموعة غير مسموحة: ${group}` };
+  }
+  // Reject any mutating/dangerous token anywhere in the args.
+  if (args.some((a) => DENY.test(a))) {
+    return {
+      ok: false,
+      output: "رُفض: الأمر يحتوي عملية غير مسموحة (قراءة فقط).",
+    };
+  }
+
+  const creds = await getBinanceCredentials(userId);
+  if (!creds) {
+    return { ok: false, output: "لا يوجد حساب Binance مرتبط." };
+  }
+
+  const bin = path.join(
+    process.cwd(),
+    "node_modules",
+    ".bin",
+    "binance-cli",
+  );
   return new Promise((resolve) => {
-    if (!isBinanceCliEnabled()) {
-      resolve({ ok: false, output: "أداة binance-cli غير مُفعّلة على الخادم." });
-      return;
-    }
-    if (!Array.isArray(args) || args.length === 0) {
-      resolve({ ok: false, output: "أمر فارغ." });
-      return;
-    }
-    const group = args[0];
-    if (!READ_GROUPS.has(group)) {
-      resolve({ ok: false, output: `مجموعة غير مسموحة: ${group}` });
-      return;
-    }
-    // Reject any mutating/dangerous token anywhere in the args.
-    if (args.some((a) => DENY.test(a))) {
-      resolve({
-        ok: false,
-        output: "رُفض: الأمر يحتوي عملية غير مسموحة (قراءة فقط).",
-      });
-      return;
-    }
-
-    const creds = getBinanceCredentials(userId);
-    if (!creds) {
-      resolve({ ok: false, output: "لا يوجد حساب Binance مرتبط." });
-      return;
-    }
-
-    const bin = path.join(
-      process.cwd(),
-      "node_modules",
-      ".bin",
-      "binance-cli",
-    );
     execFile(
       bin,
       args,

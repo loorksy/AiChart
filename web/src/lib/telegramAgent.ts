@@ -34,7 +34,7 @@ export async function runTelegramAgentChat(
     };
   }
 
-  if (wouldExceedQuota(userId, 1)) {
+  if (await wouldExceedQuota(userId, 1)) {
     return {
       ok: false,
       error:
@@ -64,27 +64,27 @@ export async function runTelegramAgentChat(
     sanitized.text ||
     (image ? "حلّل الشارت المرفق وأعطني توصية." : "");
 
-  const conv = getOrCreateTelegramConversation(userId);
-  appendChatMessage(conv.id, "user", storedText, {
+  const conv = await getOrCreateTelegramConversation(userId);
+  await appendChatMessage(conv.id, "user", storedText, {
     ...(image ? { image } : {}),
   });
 
-  const persisted = loadChatMessages(conv.id);
+  const persisted = await loadChatMessages(conv.id);
   const history = messagesToAgentHistory(persisted);
 
-  const settings = getSettings(userId);
+  const settings = await getSettings(userId);
   const result = await runAgent(
     { userId, settings },
     history,
-    { conversationSummary: getConversationSummary(conv.id) },
+    { conversationSummary: await getConversationSummary(conv.id) },
   );
 
-  appendChatMessage(conv.id, "assistant", result.reply, {
+  await appendChatMessage(conv.id, "assistant", result.reply, {
     recommendations: result.recommendations,
   });
 
-  incrementUsage(userId, 1);
-  logAudit(userId, "telegram_agent", `recs=${result.recommendations.length}`);
+  await incrementUsage(userId, 1);
+  await logAudit(userId, "telegram_agent", `recs=${result.recommendations.length}`);
   await processRecommendations(userId, result.recommendations);
 
   const reply = result.reply.trim();

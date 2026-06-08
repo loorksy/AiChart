@@ -12,13 +12,13 @@ import { getPlatformValue } from "@/lib/platformConfig";
 export async function GET() {
   try {
     await requireAdmin();
-    const users = listUsersForAdmin();
-    const audit = listAuditLogs(20);
+    const users = await listUsersForAdmin();
+    const audit = await listAuditLogs(20);
 
     return NextResponse.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      master_kill: isMasterKillOn(),
+      master_kill: await isMasterKillOn(),
       anthropic: isAnthropicConfigured(),
       telegram: isTelegramConfigured(),
       cron_secret_set: Boolean(getPlatformValue("CRON_SECRET")),

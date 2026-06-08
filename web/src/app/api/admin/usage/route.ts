@@ -5,7 +5,7 @@ import { listClaudeUsageForAdmin } from "@/lib/store";
 export async function GET() {
   try {
     await requireAdmin();
-    return NextResponse.json({ usage: listClaudeUsageForAdmin() });
+    return NextResponse.json({ usage: await listClaudeUsageForAdmin() });
   } catch (err) {
     return handleError(err);
   }

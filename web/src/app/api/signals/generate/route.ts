@@ -64,8 +64,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = schema.parse(await request.json());
-    const limits = getLimits(user.id);
-    const used = getTodayUsage(user.id);
+    const limits = await getLimits(user.id);
+    const used = await getTodayUsage(user.id);
 
     if (limits.claude_quota > 0 && used + SIGNAL_COST > limits.claude_quota) {
       return NextResponse.json(
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const settings = getSettings(user.id);
+    const settings = await getSettings(user.id);
     const timeframe = body.style === "scalp" ? "15m" : "4h";
 
     const prompt = [
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       [{ role: "user", content: prompt }],
     );
 
-    incrementUsage(user.id, SIGNAL_COST);
+    await incrementUsage(user.id, SIGNAL_COST);
 
     const intents = await processRecommendations(
       user.id,

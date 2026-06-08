@@ -32,9 +32,9 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
     errors: [],
   };
 
-  if (!isAnthropicConfigured() || isMasterKillOn()) return result;
+  if (!isAnthropicConfigured() || (await isMasterKillOn())) return result;
 
-  const users = listUsersForMonitor();
+  const users = await listUsersForMonitor();
   result.usersScanned = users.length;
 
   for (const { id: userId, settings, limits } of users) {
@@ -42,16 +42,16 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
     if (!assets.length) continue;
 
     for (const symbol of assets) {
-      if (isOnCooldown(userId, symbol)) continue;
+      if (await isOnCooldown(userId, symbol)) continue;
 
       try {
         const candidate = await scanSymbol(symbol, settings.style);
         if (!candidate) continue;
 
         result.candidatesFound++;
-        touchScanCooldown(userId, symbol);
+        await touchScanCooldown(userId, symbol);
 
-        const used = getTodayUsage(userId);
+        const used = await getTodayUsage(userId);
         if (limits.claude_quota > 0 && used >= limits.claude_quota) continue;
 
         const prompt =
@@ -64,10 +64,10 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
           { userId, settings },
           [{ role: "user", content: prompt }],
         );
-        incrementUsage(userId, 1);
+        await incrementUsage(userId, 1);
         result.agentCalls++;
 
-        logAudit(
+        await logAudit(
           userId,
           "monitor_agent",
           `${symbol}: ${candidate.signals.join(", ")}`,

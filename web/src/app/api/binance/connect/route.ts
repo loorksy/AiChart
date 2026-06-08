@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    saveBinanceAccount(user.id, apiKey, apiSecret, env, label);
+    await saveBinanceAccount(user.id, apiKey, apiSecret, env, label);
 
     return NextResponse.json({
       ok: true,

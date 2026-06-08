@@ -15,7 +15,7 @@ const patchSchema = z.record(z.string(), z.union([z.string(), z.boolean()]).opti
 export async function GET() {
   try {
     await requireAdmin();
-    return NextResponse.json({ fields: listPlatformConfigStatus() });
+    return NextResponse.json({ fields: await listPlatformConfigStatus() });
   } catch (err) {
     return handleError(err);
   }
@@ -33,9 +33,9 @@ export async function PUT(req: NextRequest) {
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "لا توجد حقول صالحة للحفظ." }, { status: 400 });
     }
-    savePlatformConfig(patch);
-    logAudit(admin.id, "platform_config", Object.keys(patch).join(", "));
-    return NextResponse.json({ ok: true, fields: listPlatformConfigStatus() });
+    await savePlatformConfig(patch);
+    await logAudit(admin.id, "platform_config", Object.keys(patch).join(", "));
+    return NextResponse.json({ ok: true, fields: await listPlatformConfigStatus() });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: "بيانات غير صالحة." }, { status: 400 });

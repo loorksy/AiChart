@@ -8,7 +8,7 @@ const schema = z.object({ on: z.boolean() });
 export async function GET() {
   try {
     await requireAdmin();
-    return NextResponse.json({ master_kill: isMasterKillOn() });
+    return NextResponse.json({ master_kill: await isMasterKillOn() });
   } catch (err) {
     return handleError(err);
   }
@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
   try {
     await requireAdmin();
     const { on } = schema.parse(await req.json());
-    setFlag("master_kill", on ? "1" : "0");
-    return NextResponse.json({ master_kill: isMasterKillOn() });
+    await setFlag("master_kill", on ? "1" : "0");
+    return NextResponse.json({ master_kill: await isMasterKillOn() });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: "قيمة غير صالحة." }, { status: 400 });

@@ -7,7 +7,7 @@ import ChatPageClient from "@/components/ChatPageClient";
 export default async function ChatPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (user.role !== "admin" && !isOnboardingDone(user.id)) {
+  if (user.role !== "admin" && !(await isOnboardingDone(user.id))) {
     redirect("/onboarding");
   }
 

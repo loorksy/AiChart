@@ -76,9 +76,9 @@ export async function POST(req: NextRequest) {
 
 
 
-    const limits = getLimits(user.id);
+    const limits = await getLimits(user.id);
 
-    const used = getTodayUsage(user.id);
+    const used = await getTodayUsage(user.id);
 
     if (limits.claude_quota > 0 && used >= limits.claude_quota) {
 
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 
 
 
-    const settings = getSettings(user.id);
+    const settings = await getSettings(user.id);
 
 
 
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
 
     if (conversationId) {
 
-      const conv = getConversation(conversationId, user.id);
+      const conv = await getConversation(conversationId, user.id);
 
       if (!conv) {
 
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
 
     } else {
 
-      const conv = createConversation(user.id, autoTitleFromMessage(userText));
+      const conv = await createConversation(user.id, autoTitleFromMessage(userText));
 
       conversationId = conv.id;
 
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     const sanitized = userText ? sanitizeUserInput(userText) : { text: "", flagged: false };
 
     if (sanitized.flagged) {
-      logAudit(user.id, "injection_blocked", sanitized.reason);
+      await logAudit(user.id, "injection_blocked", sanitized.reason);
       return NextResponse.json({ error: "تم رفض الرسالة لأسباب أمنية." }, { status: 400 });
     }
 
@@ -154,16 +154,16 @@ export async function POST(req: NextRequest) {
       sanitized.text ||
       (chatImage ? "حلّل الشارت المرفق وأعطني توصية." : "");
 
-    appendChatMessage(conversationId, "user", storedText, {
+    await appendChatMessage(conversationId, "user", storedText, {
       ...(chatImage ? { image: chatImage } : {}),
     });
 
-    const persisted = loadChatMessages(conversationId);
+    const persisted = await loadChatMessages(conversationId);
     const history = messagesToAgentHistory(persisted);
 
 
 
-    const conversationSummary = getConversationSummary(conversationId);
+    const conversationSummary = await getConversationSummary(conversationId);
 
     const stream = body.stream !== false;
 
@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
 
 
 
-            appendChatMessage(conversationId!, "assistant", result.reply, {
+            await appendChatMessage(conversationId!, "assistant", result.reply, {
 
               recommendations: result.recommendations,
 
@@ -223,9 +223,9 @@ export async function POST(req: NextRequest) {
 
 
 
-            if (countChatMessages(conversationId!) <= 2) {
+            if ((await countChatMessages(conversationId!)) <= 2) {
 
-              updateConversationTitle(
+              await updateConversationTitle(
 
                 conversationId!,
 
@@ -239,9 +239,9 @@ export async function POST(req: NextRequest) {
 
 
 
-            incrementUsage(user.id, 1);
+            await incrementUsage(user.id, 1);
 
-            logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
+            await logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
 
             const intents = await processRecommendations(
 
@@ -313,7 +313,7 @@ export async function POST(req: NextRequest) {
 
 
 
-    appendChatMessage(conversationId, "assistant", result.reply, {
+    await appendChatMessage(conversationId, "assistant", result.reply, {
 
       recommendations: result.recommendations,
 
@@ -321,9 +321,9 @@ export async function POST(req: NextRequest) {
 
 
 
-    incrementUsage(user.id, 1);
+    await incrementUsage(user.id, 1);
 
-    logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
+    await logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
 
     const intents = await processRecommendations(user.id, result.recommendations);
 

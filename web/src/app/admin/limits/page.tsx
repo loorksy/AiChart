@@ -15,7 +15,7 @@ export default async function AdminLimitsPage() {
         </p>
       </div>
       <AdminUsersTable
-        initialUsers={listUsersForAdmin()}
+        initialUsers={await listUsersForAdmin()}
         adminId={user.id}
         mode="limits"
       />

@@ -11,17 +11,17 @@ import { displayNameFromEmail } from "./displayName";
 
 export { displayNameFromEmail };
 
-export function buildUserContext(userId: number): string {
-  const user = getPublicUser(userId);
+export async function buildUserContext(userId: number): Promise<string> {
+  const user = await getPublicUser(userId);
   if (!user) return "";
 
-  const settings = getSettings(userId);
-  const binance = getBinanceAccountMeta(userId);
-  const trades = listTrades(userId, 5);
-  const intents = listIntents(userId, "pending", 5);
-  const recs = listRecommendations(userId, 3);
-  const openTrades = countOpenTrades(userId);
-  const totalTrades = listTrades(userId, 200).length;
+  const settings = await getSettings(userId);
+  const binance = await getBinanceAccountMeta(userId);
+  const trades = await listTrades(userId, 5);
+  const intents = await listIntents(userId, "pending", 5);
+  const recs = await listRecommendations(userId, 3);
+  const openTrades = await countOpenTrades(userId);
+  const totalTrades = (await listTrades(userId, 200)).length;
 
   const name = displayNameFromEmail(user.email);
   const tgLinked = Boolean(settings.telegram_chat_id);

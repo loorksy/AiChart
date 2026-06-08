@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getDb } from "@/lib/db";
+import { initDb, insertReturningId, queryOne } from "@/lib/db";
 import { hashPassword, setSession } from "@/lib/auth";
 import { ensureUserDefaults } from "@/lib/store";
 import { handleError } from "@/lib/api";
@@ -14,11 +14,11 @@ export async function POST(req: NextRequest) {
   try {
     const json = await req.json();
     const { email, password } = schema.parse(json);
-    const db = getDb();
+    await initDb();
 
-    const existing = db
-      .prepare("SELECT id FROM users WHERE email = ?")
-      .get(email.toLowerCase());
+    const existing = await queryOne("SELECT id FROM users WHERE email = ?", [
+      email.toLowerCase(),
+    ]);
     if (existing) {
       return NextResponse.json(
         { error: "هذا البريد مسجّل بالفعل." },
@@ -26,13 +26,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const info = db
-      .prepare(
-        "INSERT INTO users (email, password_hash, role, status) VALUES (?, ?, 'user', 'pending')",
-      )
-      .run(email.toLowerCase(), hashPassword(password));
-    const userId = Number(info.lastInsertRowid);
-    ensureUserDefaults(userId);
+    const userId = await insertReturningId(
+      "INSERT INTO users (email, password_hash, role, status) VALUES (?, ?, 'user', 'pending')",
+      [email.toLowerCase(), hashPassword(password)],
+    );
+    await ensureUserDefaults(userId);
 
     await setSession({ sub: userId, email: email.toLowerCase(), role: "user" });
     return NextResponse.json({

@@ -26,8 +26,8 @@ export async function GET() {
   try {
     const user = await requireUser();
     return NextResponse.json({
-      settings: getSettings(user.id),
-      limits: getLimits(user.id),
+      settings: await getSettings(user.id),
+      limits: await getLimits(user.id),
     });
   } catch (err) {
     return handleError(err);
@@ -38,7 +38,7 @@ export async function PUT(req: NextRequest) {
   try {
     const user = await requireUser();
     const input = schema.parse(await req.json());
-    const limits = getLimits(user.id);
+    const limits = await getLimits(user.id);
 
     const patch: Record<string, unknown> = { ...input };
 
@@ -67,9 +67,9 @@ export async function PUT(req: NextRequest) {
       patch.kill_switch = input.kill_switch ? 1 : 0;
     }
 
-    updateSettings(user.id, patch);
+    await updateSettings(user.id, patch);
     return NextResponse.json({
-      settings: getSettings(user.id),
+      settings: await getSettings(user.id),
       capped:
         input.mode === "auto" && limits.can_execute !== 1
           ? "وضع التنفيذ التلقائي يتطلب موافقة الإدارة. تم الإبقاء على وضع التوصيات."

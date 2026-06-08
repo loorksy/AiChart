@@ -4,11 +4,11 @@ import {
 } from "@/lib/store";
 import { AdminOverview } from "@/components/admin/AdminOverview";
 
-export default function AdminOverviewPage() {
+export default async function AdminOverviewPage() {
   return (
     <AdminOverview
-      stats={getAdminPlatformStats()}
-      masterKill={isMasterKillOn()}
+      stats={await getAdminPlatformStats()}
+      masterKill={await isMasterKillOn()}
     />
   );
 }

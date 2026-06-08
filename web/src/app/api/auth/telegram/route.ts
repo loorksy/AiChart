@@ -48,10 +48,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { user, isNew } = upsertTelegramUser(body);
+    const { user, isNew } = await upsertTelegramUser(body);
     await setSession({ sub: user.id, email: user.email, role: user.role });
 
-    logAudit(
+    await logAudit(
       user.id,
       isNew ? "telegram_register" : "telegram_login",
       body.username ? `@${body.username}` : String(body.id),
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
         : undefined;
 
     let redirect = redirectTo ?? "/chat";
-    if (isNew || !isOnboardingDone(user.id)) {
+    if (isNew || !(await isOnboardingDone(user.id))) {
       redirect = "/onboarding";
     }
 

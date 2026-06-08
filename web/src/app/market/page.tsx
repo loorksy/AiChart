@@ -8,7 +8,7 @@ export default async function MarketPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const settings = getSettings(user.id);
+  const settings = await getSettings(user.id);
   let allowed: string[] = [];
   try {
     allowed = JSON.parse(settings.allowed_assets);
@@ -20,7 +20,7 @@ export default async function MarketPage() {
     <AppShell email={user.email} role={user.role}>
       <MarketClient
         allowedAssets={allowed}
-        recommendations={listRecommendations(user.id, 50)}
+        recommendations={await listRecommendations(user.id, 50)}
       />
     </AppShell>
   );

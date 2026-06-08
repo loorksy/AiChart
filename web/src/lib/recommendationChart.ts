@@ -23,11 +23,11 @@ export async function attachChartToRecommendation(
   const chartUrl = await buildChartImageUrl(rec.symbol, timeframe);
   if (!chartUrl) return rec;
 
-  updateRecommendationChartUrl(rec.id, chartUrl);
+  await updateRecommendationChartUrl(rec.id, chartUrl);
   const enriched: Recommendation = { ...rec, chart_image_url: chartUrl };
 
   if (options.notifyTelegram) {
-    const settings = getSettings(userId);
+    const settings = await getSettings(userId);
     if (settings.telegram_chat_id) {
       const caption = recommendationCard(enriched);
       if (settings.send_screenshot === 1) {

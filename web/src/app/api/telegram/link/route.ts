@@ -8,7 +8,7 @@ export async function GET() {
     const user = await requireUser();
     return NextResponse.json({
       configured: isTelegramConfigured(),
-      linked: Boolean(getTelegramChatId(user.id)),
+      linked: Boolean(await getTelegramChatId(user.id)),
       botUsername: await getBotUsername(),
     });
   } catch (err) {
@@ -25,7 +25,7 @@ export async function POST() {
         { status: 503 },
       );
     }
-    const code = createLinkCode(user.id);
+    const code = await createLinkCode(user.id);
     const username = await getBotUsername();
     return NextResponse.json({
       code,
@@ -40,7 +40,7 @@ export async function POST() {
 export async function DELETE() {
   try {
     const user = await requireUser();
-    clearTelegramChatId(user.id);
+    await clearTelegramChatId(user.id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return handleError(err);

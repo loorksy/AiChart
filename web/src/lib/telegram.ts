@@ -50,7 +50,7 @@ export async function notifyUser(
   buttons?: InlineButton[][],
 ): Promise<void> {
   if (!isTelegramConfigured()) return;
-  const chatId = getTelegramChatId(userId);
+  const chatId = await getTelegramChatId(userId);
   if (!chatId) return;
   try {
     await sendMessage(chatId, text, buttons);
@@ -114,7 +114,7 @@ export async function notifyUserPhoto(
   buttons?: InlineButton[][],
 ): Promise<void> {
   if (!isTelegramConfigured()) return;
-  const chatId = getTelegramChatId(userId);
+  const chatId = await getTelegramChatId(userId);
   if (!chatId) return;
   try {
     await sendPhoto(chatId, photoUrl, caption, buttons);

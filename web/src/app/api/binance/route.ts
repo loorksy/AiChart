@@ -5,7 +5,7 @@ import { deleteBinanceAccount } from "@/lib/store";
 export async function DELETE() {
   try {
     const user = await requireUser();
-    deleteBinanceAccount(user.id);
+    await deleteBinanceAccount(user.id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return handleError(err);

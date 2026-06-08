@@ -15,14 +15,14 @@ export async function GET() {
       { status: 401 },
     );
   }
-  const limits = getLimits(user.id);
-  const used = getTodayUsage(user.id);
+  const limits = await getLimits(user.id);
+  const used = await getTodayUsage(user.id);
   const limit = limits.claude_quota;
   return NextResponse.json({
     user,
-    settings: getSettings(user.id),
+    settings: await getSettings(user.id),
     limits,
-    binance: getBinanceAccountMeta(user.id),
+    binance: await getBinanceAccountMeta(user.id),
     quota: {
       used,
       limit,

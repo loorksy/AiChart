@@ -7,7 +7,7 @@ import SignalsWizardClient from "@/components/SignalsWizardClient";
 export default async function SignalsNewPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (user.role !== "admin" && !isOnboardingDone(user.id)) {
+  if (user.role !== "admin" && !(await isOnboardingDone(user.id))) {
     redirect("/onboarding");
   }
 

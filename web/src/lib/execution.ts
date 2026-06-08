@@ -59,7 +59,7 @@ export async function executeIntent(
     emitActivity(onActivity, activity);
   };
 
-  const intent = getIntent(intentId);
+  const intent = await getIntent(intentId);
   if (!intent || intent.user_id !== userId) {
     return { ok: false, status: "failed", reason: "الطلب غير موجود.", activities };
   }
@@ -73,8 +73,8 @@ export async function executeIntent(
     status: "running",
   });
 
-  const settings = getSettings(userId);
-  const limits = getLimits(userId);
+  const settings = await getSettings(userId);
+  const limits = await getLimits(userId);
 
   const effectiveCapital =
     limits.max_capital_cap > 0
@@ -87,9 +87,9 @@ export async function executeIntent(
     side: intent.side,
     notional: intent.notional,
   }, {
-    masterKill: isMasterKillOn(),
-    openTradesCount: countOpenTrades(userId),
-    todayRealizedPnlPct: todayRealizedPnlPct(userId, effectiveCapital),
+    masterKill: await isMasterKillOn(),
+    openTradesCount: await countOpenTrades(userId),
+    todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
   });
 
   if (!decision.ok) {
@@ -99,7 +99,7 @@ export async function executeIntent(
       status: "error",
       detail: decision.reason,
     });
-    updateIntentStatus(intentId, "failed", decision.reason);
+    await updateIntentStatus(intentId, "failed", decision.reason);
     return { ok: false, status: "failed", reason: decision.reason, activities };
   }
   push({
@@ -114,11 +114,11 @@ export async function executeIntent(
     status: "running",
   });
 
-  const creds = getBinanceCredentials(userId);
+  const creds = await getBinanceCredentials(userId);
   if (!creds) {
     const reason = "لا يوجد حساب Binance مرتبط.";
     push({ id: "creds", label: "التحقق من حساب Binance", status: "error", detail: reason });
-    updateIntentStatus(intentId, "failed", reason);
+    await updateIntentStatus(intentId, "failed", reason);
     return { ok: false, status: "failed", reason, activities };
   }
   push({
@@ -147,12 +147,12 @@ export async function executeIntent(
 
     if (qty < filters.minQty || qty <= 0) {
       const reason = `الكمية أقل من الحد الأدنى للرمز (${filters.minQty}).`;
-      updateIntentStatus(intentId, "failed", reason);
+      await updateIntentStatus(intentId, "failed", reason);
       return { ok: false, status: "failed", reason, activities };
     }
     if (filters.minNotional > 0 && qty * price < filters.minNotional) {
       const reason = `قيمة الصفقة أقل من الحد الأدنى (${filters.minNotional}).`;
-      updateIntentStatus(intentId, "failed", reason);
+      await updateIntentStatus(intentId, "failed", reason);
       return { ok: false, status: "failed", reason, activities };
     }
 
@@ -175,7 +175,7 @@ export async function executeIntent(
     const quoteQty = Number(order.cummulativeQuoteQty) || qty * price;
     const avgPrice = executedQty > 0 ? quoteQty / executedQty : price;
 
-    const trade = recordTrade(userId, {
+    const trade = await recordTrade(userId, {
       intent_id: intentId,
       symbol: intent.symbol,
       side: intent.side,
@@ -199,7 +199,7 @@ export async function executeIntent(
       status: "done",
     });
 
-    updateIntentStatus(intentId, "executed", `نُفّذت (طلب #${order.orderId}).`);
+    await updateIntentStatus(intentId, "executed", `نُفّذت (طلب #${order.orderId}).`);
     return {
       ok: true,
       status: "executed",
@@ -222,7 +222,7 @@ export async function executeIntent(
       status: "error",
       detail: reason,
     });
-    updateIntentStatus(intentId, "failed", reason);
+    await updateIntentStatus(intentId, "failed", reason);
     return { ok: false, status: "failed", reason, activities };
   }
 }

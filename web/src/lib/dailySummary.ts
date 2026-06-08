@@ -1,12 +1,12 @@
 import { listTrades } from "./store";
 import { sendMessage } from "./telegram";
 
-export function buildDailySummary(
+export async function buildDailySummary(
   userId: number,
   capital: number,
-): { text: string; pnl: number; closed: number; open: number } {
+): Promise<{ text: string; pnl: number; closed: number; open: number }> {
   const today = new Date().toISOString().slice(0, 10);
-  const trades = listTrades(userId, 200);
+  const trades = await listTrades(userId, 200);
   const closedToday = trades.filter(
     (t) => t.status === "closed" && t.closed_at?.slice(0, 10) === today,
   );
@@ -43,6 +43,6 @@ export async function sendDailySummary(
   userId: number,
   capital: number,
 ): Promise<void> {
-  const summary = buildDailySummary(userId, capital);
+  const summary = await buildDailySummary(userId, capital);
   await sendMessage(chatId, summary.text);
 }

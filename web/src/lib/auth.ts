@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies, headers } from "next/headers";
 import { getAppSecret } from "./env";
-import { getDb } from "./db";
+import { initDb, queryOne } from "./db";
 import type { PublicUser, SessionPayload, UserRow } from "./types";
 
 const SESSION_COOKIE = "aichart_session";
@@ -81,9 +81,11 @@ export async function getCurrentUser(): Promise<PublicUser | null> {
   const session = await verifySessionToken(token);
   if (!session) return null;
 
-  const row = getDb()
-    .prepare("SELECT * FROM users WHERE id = ?")
-    .get(session.sub) as UserRow | undefined;
+  await initDb();
+  const row = await queryOne<UserRow>(
+    "SELECT * FROM users WHERE id = ?",
+    [session.sub],
+  );
   if (!row) return null;
   return {
     id: row.id,

@@ -12,9 +12,9 @@ export default async function SettingsPage() {
     <AppShell email={user.email} role={user.role}>
       <SettingsClient
         user={user}
-        settings={getSettings(user.id)}
-        limits={getLimits(user.id)}
-        binance={getBinanceAccountMeta(user.id)}
+        settings={await getSettings(user.id)}
+        limits={await getLimits(user.id)}
+        binance={await getBinanceAccountMeta(user.id)}
       />
     </AppShell>
   );

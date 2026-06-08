@@ -15,14 +15,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const users = listUsersForDailySummary();
+  const users = await listUsersForDailySummary();
   let sent = 0;
   const errors: string[] = [];
 
   for (const { id, chatId } of users) {
     try {
-      const settings = getSettings(id);
-      const limits = getLimits(id);
+      const settings = await getSettings(id);
+      const limits = await getLimits(id);
       const capital =
         limits.max_capital_cap > 0
           ? Math.min(settings.max_capital, limits.max_capital_cap)
@@ -36,6 +36,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  logAudit(null, "cron_daily_summary", `sent=${sent}`);
+  await logAudit(null, "cron_daily_summary", `sent=${sent}`);
   return NextResponse.json({ ok: true, sent, total: users.length, errors });
 }

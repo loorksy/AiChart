@@ -12,13 +12,13 @@ import DashboardClient from "@/components/DashboardClient";
 export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (user.role !== "admin" && !isOnboardingDone(user.id)) {
+  if (user.role !== "admin" && !(await isOnboardingDone(user.id))) {
     redirect("/onboarding");
   }
 
-  const settings = getSettings(user.id);
-  const limits = getLimits(user.id);
-  const binance = getBinanceAccountMeta(user.id);
+  const settings = await getSettings(user.id);
+  const limits = await getLimits(user.id);
+  const binance = await getBinanceAccountMeta(user.id);
 
   return (
     <AppShell email={user.email} role={user.role}>

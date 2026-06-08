@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await runMonitorCycle();
-  logAudit(null, "cron_monitor", JSON.stringify(result));
+  await logAudit(null, "cron_monitor", JSON.stringify(result));
 
   return NextResponse.json({ ok: true, ...result });
 }

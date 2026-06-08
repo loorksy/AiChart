@@ -10,12 +10,12 @@ import OnboardingClient from "@/components/OnboardingClient";
 export default async function OnboardingPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (user.role === "admin" || isOnboardingDone(user.id)) {
+  if (user.role === "admin" || (await isOnboardingDone(user.id))) {
     redirect("/dashboard");
   }
 
-  const settings = getSettings(user.id);
-  const binance = getBinanceAccountMeta(user.id);
+  const settings = await getSettings(user.id);
+  const binance = await getBinanceAccountMeta(user.id);
 
   return (
     <OnboardingClient

@@ -23,10 +23,10 @@ const schema = z.object({
 export async function GET() {
   try {
     const user = await requireUser();
-    const settings = getSettings(user.id);
-    const binance = getBinanceAccountMeta(user.id);
+    const settings = await getSettings(user.id);
+    const binance = await getBinanceAccountMeta(user.id);
     return NextResponse.json({
-      done: isOnboardingDone(user.id),
+      done: await isOnboardingDone(user.id),
       hasBinance: Boolean(binance),
       settings,
     });
@@ -51,13 +51,13 @@ export async function POST(req: NextRequest) {
       patch.daily_loss_limit_pct = body.daily_loss_limit_pct;
     }
 
-    if (Object.keys(patch).length) updateSettings(user.id, patch);
+    if (Object.keys(patch).length) await updateSettings(user.id, patch);
 
     if (body.finish) {
-      completeOnboarding(user.id);
+      await completeOnboarding(user.id);
     }
 
-    return NextResponse.json({ ok: true, done: isOnboardingDone(user.id) });
+    return NextResponse.json({ ok: true, done: await isOnboardingDone(user.id) });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(

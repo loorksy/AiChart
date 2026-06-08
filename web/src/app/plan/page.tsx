@@ -16,7 +16,7 @@ export default async function PlanPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const limits = getLimits(user.id);
+  const limits = await getLimits(user.id);
 
   return (
     <AppShell email={user.email} role={user.role}>

@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const user = await requireUser();
     return NextResponse.json({
-      recommendations: listRecommendations(user.id, 30),
+      recommendations: await listRecommendations(user.id, 30),
     });
   } catch (err) {
     return handleError(err);

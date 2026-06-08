@@ -19,7 +19,7 @@ export async function notifyTradeResult(
     return;
   }
 
-  const settings = getSettings(userId);
+  const settings = await getSettings(userId);
   const text = executedCard(result.trade);
   if (settings.send_screenshot === 1) {
     const image =

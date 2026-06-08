@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getDb } from "@/lib/db";
+import { initDb, queryOne } from "@/lib/db";
 import { verifyPassword, setSession } from "@/lib/auth";
 import { handleError } from "@/lib/api";
 import type { UserRow } from "@/lib/types";
@@ -13,9 +13,11 @@ const schema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const { email, password } = schema.parse(await req.json());
-    const row = getDb()
-      .prepare("SELECT * FROM users WHERE email = ?")
-      .get(email.toLowerCase()) as UserRow | undefined;
+    await initDb();
+    const row = await queryOne<UserRow>(
+      "SELECT * FROM users WHERE email = ?",
+      [email.toLowerCase()],
+    );
 
     if (!row || !verifyPassword(password, row.password_hash)) {
       return NextResponse.json(

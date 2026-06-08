@@ -12,8 +12,8 @@ export async function GET(req: NextRequest) {
     const user = await requireUser();
     const archived = req.nextUrl.searchParams.get("archived") === "1";
     const conversations = archived
-      ? listArchivedConversations(user.id)
-      : listConversations(user.id);
+      ? await listArchivedConversations(user.id)
+      : await listConversations(user.id);
     return NextResponse.json(conversations);
   } catch (err) {
     return handleError(err);
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
     const body = createSchema.parse(await req.json().catch(() => ({})));
-    const conv = createConversation(user.id, body.title);
+    const conv = await createConversation(user.id, body.title);
     return NextResponse.json(conv);
   } catch (err) {
     if (err instanceof z.ZodError) {

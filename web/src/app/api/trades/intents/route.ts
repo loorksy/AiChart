@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   try {
     const user = await requireUser();
     const status = req.nextUrl.searchParams.get("status") || undefined;
-    return NextResponse.json({ intents: listIntents(user.id, status, 40) });
+    return NextResponse.json({ intents: await listIntents(user.id, status, 40) });
   } catch (err) {
     return handleError(err);
   }

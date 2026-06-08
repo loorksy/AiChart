@@ -223,9 +223,9 @@ async function executeTool(
         };
       }
       case "get_user_profile": {
-        const user = getPublicUser(ctx.userId);
-        const settings = getSettings(ctx.userId);
-        const binance = getBinanceAccountMeta(ctx.userId);
+        const user = await getPublicUser(ctx.userId);
+        const settings = await getSettings(ctx.userId);
+        const binance = await getBinanceAccountMeta(ctx.userId);
         if (!user) return { content: "المستخدم غير موجود.", isError: true };
         return {
           content: JSON.stringify({
@@ -237,17 +237,17 @@ async function executeTool(
             telegramLinked: Boolean(settings.telegram_chat_id),
             mode: settings.mode,
             style: settings.style,
-            context: buildUserContext(ctx.userId),
+            context: await buildUserContext(ctx.userId),
           }),
         };
       }
       case "get_trades_summary": {
-        const trades = listTrades(ctx.userId, 10);
-        const intents = listIntents(ctx.userId, "pending", 10);
+        const trades = await listTrades(ctx.userId, 10);
+        const intents = await listIntents(ctx.userId, "pending", 10);
         return {
           content: JSON.stringify({
-            totalTrades: listTrades(ctx.userId, 500).length,
-            openTrades: countOpenTrades(ctx.userId),
+            totalTrades: (await listTrades(ctx.userId, 500)).length,
+            openTrades: await countOpenTrades(ctx.userId),
             pendingIntents: intents.length,
             recentTrades: trades,
             pendingIntentsList: intents,
@@ -256,11 +256,11 @@ async function executeTool(
       }
       case "get_recommendations_history": {
         const limit = input.limit ? Number(input.limit) : 10;
-        const recs = listRecommendations(ctx.userId, limit);
+        const recs = await listRecommendations(ctx.userId, limit);
         return { content: JSON.stringify(recs) };
       }
       case "get_account_balances": {
-        const creds = getBinanceCredentials(ctx.userId);
+        const creds = await getBinanceCredentials(ctx.userId);
         if (!creds) {
           return {
             content: "لا يوجد حساب Binance مرتبط بهذا المستخدم بعد.",
@@ -301,7 +301,7 @@ async function executeTool(
         return { content: res.output, isError: !res.ok };
       }
       case "record_recommendation": {
-        const rec = saveRecommendation(ctx.userId, {
+        const rec = await saveRecommendation(ctx.userId, {
           symbol: String(input.symbol ?? ""),
           action: String(input.action ?? "wait"),
           confidence: Number(input.confidence ?? 0),
@@ -362,7 +362,7 @@ export async function runAgent(
     emitActivity(onActivity, activity);
   };
 
-  const system = buildSystemPrompt(
+  const system = await buildSystemPrompt(
     ctx.settings,
     ctx.userId,
     options?.conversationSummary,

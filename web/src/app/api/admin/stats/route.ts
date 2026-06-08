@@ -5,7 +5,7 @@ import { getAdminPlatformStats } from "@/lib/store";
 export async function GET() {
   try {
     await requireAdmin();
-    return NextResponse.json({ stats: getAdminPlatformStats() });
+    return NextResponse.json({ stats: await getAdminPlatformStats() });
   } catch (err) {
     return handleError(err);
   }

@@ -11,8 +11,8 @@ export default async function TradesPage() {
   return (
     <AppShell email={user.email} role={user.role}>
       <TradesClient
-        initialIntents={listIntents(user.id, undefined, 40)}
-        initialTrades={listTrades(user.id, 50)}
+        initialIntents={await listIntents(user.id, undefined, 40)}
+        initialTrades={await listTrades(user.id, 50)}
       />
     </AppShell>
   );

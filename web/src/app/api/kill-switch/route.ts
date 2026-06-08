@@ -9,8 +9,9 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
     const { on } = schema.parse(await req.json());
-    updateSettings(user.id, { kill_switch: on ? 1 : 0 });
-    return NextResponse.json({ kill_switch: getSettings(user.id).kill_switch });
+    await updateSettings(user.id, { kill_switch: on ? 1 : 0 });
+    const settings = await getSettings(user.id);
+    return NextResponse.json({ kill_switch: settings.kill_switch });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: "قيمة غير صالحة." }, { status: 400 });

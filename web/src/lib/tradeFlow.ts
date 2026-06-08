@@ -44,8 +44,8 @@ export async function processRecommendations(
   userId: number,
   recommendations: Recommendation[],
 ): Promise<ProcessedIntent[]> {
-  const settings = getSettings(userId);
-  const limits = getLimits(userId);
+  const settings = await getSettings(userId);
+  const limits = await getLimits(userId);
   const intents: ProcessedIntent[] = [];
 
   if (settings.mode !== "auto" || limits.can_execute !== 1) return intents;
@@ -60,7 +60,7 @@ export async function processRecommendations(
     if (rec.action !== "buy" && rec.action !== "sell") continue;
 
     const delegate = settings.approval === "delegate";
-    const intent = createIntent(userId, {
+    const intent = await createIntent(userId, {
       recommendation_id: rec.id,
       symbol: rec.symbol,
       side: rec.action,

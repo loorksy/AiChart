@@ -1,12 +1,10 @@
 import { runAgent } from "../src/lib/agent";
-import { getSettings, getLimits } from "../src/lib/store";
-import { getDb } from "../src/lib/db";
+import { getSettings } from "../src/lib/store";
 
-getDb();
 const userId = 1;
-const settings = getSettings(userId);
 
 async function main() {
+  const settings = await getSettings(userId);
   console.log("running agent...");
   const start = Date.now();
   try {

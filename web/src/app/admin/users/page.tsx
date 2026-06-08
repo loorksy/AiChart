@@ -6,7 +6,7 @@ export default async function AdminUsersPage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
-  const pending = listUsersForAdmin().filter(
+  const pending = (await listUsersForAdmin()).filter(
     (u) => u.status === "pending" && u.role !== "admin",
   ).length;
 
@@ -19,7 +19,7 @@ export default async function AdminUsersPage() {
         </p>
       </div>
       <AdminUsersTable
-        initialUsers={listUsersForAdmin()}
+        initialUsers={await listUsersForAdmin()}
         adminId={user.id}
         mode="full"
       />
