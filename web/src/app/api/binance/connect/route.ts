@@ -1,0 +1,50 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { requireUser, handleError } from "@/lib/api";
+import { getAccountSummary } from "@/lib/binance";
+import { saveBinanceAccount } from "@/lib/store";
+
+const schema = z.object({
+  apiKey: z.string().min(10, "مفتاح API غير صالح."),
+  apiSecret: z.string().min(10, "السر غير صالح."),
+  env: z.enum(["testnet", "prod"]).default("testnet"),
+  label: z.string().max(60).optional(),
+});
+
+export async function POST(req: NextRequest) {
+  try {
+    const user = await requireUser();
+    const { apiKey, apiSecret, env, label } = schema.parse(await req.json());
+
+    // Verify the credentials work before persisting them.
+    const summary = await getAccountSummary(apiKey, apiSecret, env);
+    if (!summary.canTrade) {
+      return NextResponse.json(
+        { error: "هذا المفتاح لا يملك صلاحية التداول. فعّل التداول في إعدادات Binance." },
+        { status: 400 },
+      );
+    }
+
+    saveBinanceAccount(user.id, apiKey, apiSecret, env, label);
+
+    return NextResponse.json({
+      ok: true,
+      env,
+      canTrade: summary.canTrade,
+      canWithdraw: summary.canWithdraw,
+      // Surfacing a strong security warning if withdrawals are enabled.
+      withdrawWarning: summary.canWithdraw
+        ? "تحذير أمني: مفتاحك يملك صلاحية السحب. يُنصح بشدّة بتعطيلها من Binance."
+        : null,
+      balances: summary.balances.slice(0, 20),
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: err.issues[0]?.message ?? "بيانات غير صالحة." },
+        { status: 400 },
+      );
+    }
+    return handleError(err);
+  }
+}

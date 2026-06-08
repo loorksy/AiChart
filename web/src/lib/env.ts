@@ -1,0 +1,41 @@
+import crypto from "crypto";
+
+function readSecret(name: string, devGenerator: () => string): string {
+  const value = process.env[name];
+  if (value && value.length > 0) return value;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      `Missing required environment variable ${name} in production. See .env.example.`,
+    );
+  }
+  console.warn(
+    `[env] ${name} is not set. Using an insecure development default. ` +
+      `Set it in your .env file before deploying.`,
+  );
+  return devGenerator();
+}
+
+// Lazy getters: validation happens at request time (not at build/import time),
+// so `next build` does not fail when secrets are injected only at runtime.
+
+/** 32-byte key (hex) used for AES-256-GCM encryption of Binance credentials. */
+export function getEncryptionKey(): string {
+  return readSecret("ENCRYPTION_KEY", () =>
+    crypto
+      .createHash("sha256")
+      .update("aichart-dev-encryption-key")
+      .digest("hex"),
+  );
+}
+
+/** Secret used to sign session JWTs. */
+export function getAppSecret(): string {
+  return readSecret("APP_SECRET", () => "aichart-dev-app-secret-change-me");
+}
+
+// Bootstrap admin account created on first run (no validation needed).
+export const ADMIN_EMAIL: string =
+  process.env.ADMIN_EMAIL || "admin@aichart.local";
+export const ADMIN_PASSWORD: string = process.env.ADMIN_PASSWORD || "admin12345";
+
+export const DB_PATH: string = process.env.DB_PATH || "data/aichart.db";
