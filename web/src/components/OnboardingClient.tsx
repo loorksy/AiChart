@@ -84,9 +84,9 @@ export default function OnboardingClient({
   }
 
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
-      <h1 className="mb-2 text-3xl font-bold">إعداد حسابك</h1>
-      <p className="mb-8 text-[var(--muted)]">
+    <main className="page-shell max-w-2xl">
+      <h1 className="page-title mb-2 text-3xl">إعداد حسابك</h1>
+      <p className="page-subtitle mb-8">
         خطوات سريعة قبل البدء — يمكنك تعديل كل شيء لاحقاً من الإعدادات.
       </p>
 
@@ -94,12 +94,12 @@ export default function OnboardingClient({
         {STEPS.map((label, i) => (
           <div
             key={label}
-            className={`flex-1 rounded-lg py-2 text-center text-xs font-medium ${
+            className={`flex-1 rounded-[var(--radius)] py-2 text-center text-xs font-medium ${
               i === step
-                ? "bg-[var(--accent)] text-white"
+                ? "bg-primary text-primary-foreground"
                 : i < step
-                  ? "bg-[var(--surface-2)] text-[var(--foreground)]"
-                  : "bg-[var(--surface)] text-[var(--muted)]"
+                  ? "bg-secondary text-foreground"
+                  : "bg-card text-muted-foreground"
             }`}
           >
             {label}
@@ -108,7 +108,7 @@ export default function OnboardingClient({
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-[var(--danger)] bg-[var(--danger)]/10 px-4 py-3 text-sm">
+        <div className="mb-4 rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -116,7 +116,7 @@ export default function OnboardingClient({
       {step === 0 && (
         <section className="card space-y-4 p-6">
           <h2 className="text-lg font-bold">ما مستوى خبرتك؟</h2>
-          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--border)] p-4">
+          <label className="flex cursor-pointer items-center gap-3 rounded-[var(--radius)] border border-border p-4">
             <input
               type="radio"
               checked={experience === "beginner"}
@@ -124,12 +124,12 @@ export default function OnboardingClient({
             />
             <div>
               <div className="font-medium">مبتدئ</div>
-              <div className="text-sm text-[var(--muted)]">
+              <div className="text-sm text-muted-foreground">
                 الوكيل يقترح إعدادات آمنة ويشرح ببساطة.
               </div>
             </div>
           </label>
-          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--border)] p-4">
+          <label className="flex cursor-pointer items-center gap-3 rounded-[var(--radius)] border border-border p-4">
             <input
               type="radio"
               checked={experience === "expert"}
@@ -137,7 +137,7 @@ export default function OnboardingClient({
             />
             <div>
               <div className="font-medium">خبير</div>
-              <div className="text-sm text-[var(--muted)]">
+              <div className="text-sm text-muted-foreground">
                 أضبط كل الحدود بنفسي.
               </div>
             </div>
@@ -155,11 +155,11 @@ export default function OnboardingClient({
       {step === 1 && (
         <section className="card space-y-4 p-6">
           <h2 className="text-lg font-bold">ربط Binance (Testnet)</h2>
-          <p className="text-sm text-[var(--muted)]">
+          <p className="text-sm text-muted-foreground">
             فعّل <b>التداول</b> فقط وعطّل <b>السحب</b>. ابدأ دائماً ببيئة تجريبية.
           </p>
           {hasBinance ? (
-            <div className="rounded-lg bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--accent)]">
+            <div className="rounded-[var(--radius)] bg-secondary px-4 py-3 text-sm text-primary">
               ● تم ربط الحساب بنجاح
             </div>
           ) : (
@@ -286,7 +286,7 @@ export default function OnboardingClient({
       {step === 3 && (
         <section className="card space-y-4 p-6">
           <h2 className="text-lg font-bold">ربط تليجرام (اختياري)</h2>
-          <p className="text-sm text-[var(--muted)]">
+          <p className="text-sm text-muted-foreground">
             لاستلام إشعارات الصفقات والملخّص اليومي. يمكنك الربط لاحقاً من
             الإعدادات.
           </p>

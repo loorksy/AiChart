@@ -1,13 +1,19 @@
 import {
   callAnthropic,
+  callAnthropicStream,
   type ContentBlock,
   type Message,
   type ToolDef,
 } from "./anthropic";
 import { buildSystemPrompt } from "./persona";
-import { buildSnapshot } from "./market";
-import { getPrice } from "./binance";
-import { getBinanceCredentials, saveRecommendation } from "./store";
+import { buildUserContext, displayNameFromEmail } from "./userContext";
+import {
+  getUnifiedSnapshot,
+  getUnifiedPrice,
+  resolveSymbol,
+} from "./markets";
+import { getBinanceCredentials, saveRecommendation, getPublicUser, listTrades, listIntents, listRecommendations, countOpenTrades, getBinanceAccountMeta, getSettings } from "./store";
+import { attachChartToRecommendation } from "./recommendationChart";
 import { getAccountSummary } from "./binance";
 import {
   smartMoneySignals,
@@ -16,19 +22,37 @@ import {
 } from "./binanceWeb3";
 import { runBinanceCli, isBinanceCliEnabled } from "./binanceCli";
 import type { Recommendation, TradingSettings } from "./types";
+import {
+  describeToolUse,
+  emitActivity,
+  type ActivityListener,
+  type AgentActivity,
+} from "./agentActivity";
 
 const TOOLS: ToolDef[] = [
   {
-    name: "get_market_snapshot",
+    name: "resolve_symbol",
     description:
-      "يجلب لقطة فنية حيّة لرمز على Binance (السعر، تغيّر 24س، RSI، المتوسطات، MACD، الاتجاه). استخدمها قبل أي رأي فني.",
+      "يحدّد زوج USDT الصحيح على Binance Spot (مثل BTC → BTCUSDT). استخدمها عندما يذكر المستخدم رمزاً غير واضح.",
     input_schema: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "مثل BTCUSDT" },
+        query: { type: "string", description: "مثل BTC، ETH، SOL" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_market_snapshot",
+    description:
+      "يجلب لقطة فنية حية من Binance: السعر، RSI، MACD، SMA، والاتجاه. استخدمها قبل أي رأي فني.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "مثل BTCUSDT، ETHUSDT" },
         interval: {
           type: "string",
-          description: "الإطار الزمني: 1m,5m,15m,1h,4h,1d,1w",
+          description: "1m,5m,15m,1h,4h,1d,1w",
         },
       },
       required: ["symbol"],
@@ -36,11 +60,32 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "get_price",
-    description: "يجلب السعر اللحظي لرمز على Binance.",
+    description: "يجلب السعر اللحظي لزوج USDT على Binance Spot.",
     input_schema: {
       type: "object",
-      properties: { symbol: { type: "string" } },
+      properties: {
+        symbol: { type: "string" },
+      },
       required: ["symbol"],
+    },
+  },
+  {
+    name: "get_user_profile",
+    description:
+      "يجلب ملف المستخدم: الاسم، البريد، هل Binance/Telegram مربوطان، وضع التداول.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_trades_summary",
+    description: "ملخص صفقات المستخدم: العدد، المفتوحة، آخر الصفقات والنوايا المعلّقة.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_recommendations_history",
+    description: "آخر توصيات الوكيل المسجّلة لهذا المستخدم.",
+    input_schema: {
+      type: "object",
+      properties: { limit: { type: "number" } },
     },
   },
   {
@@ -134,6 +179,13 @@ export interface AgentResult {
   reply: string;
   recommendations: Recommendation[];
   usageTokens: number;
+  activities: AgentActivity[];
+}
+
+export interface RunAgentOptions {
+  onActivity?: ActivityListener;
+  onDelta?: (text: string) => void;
+  conversationSummary?: string | null;
 }
 
 interface AgentContext {
@@ -149,17 +201,63 @@ async function executeTool(
 ): Promise<{ content: string; isError?: boolean }> {
   try {
     switch (name) {
+      case "resolve_symbol": {
+        const resolved = resolveSymbol(String(input.query ?? ""));
+        return { content: JSON.stringify(resolved) };
+      }
       case "get_market_snapshot": {
         const symbol = String(input.symbol ?? "");
         const interval = input.interval ? String(input.interval) : "1h";
-        // Market analysis always uses real (prod) public data for accuracy.
-        const snap = await buildSnapshot(symbol, interval, "prod");
+        const snap = await getUnifiedSnapshot(symbol, interval);
         return { content: JSON.stringify(snap) };
       }
       case "get_price": {
         const symbol = String(input.symbol ?? "");
-        const price = await getPrice(symbol, "prod");
-        return { content: JSON.stringify({ symbol, price }) };
+        const { resolved, price } = await getUnifiedPrice(symbol);
+        return {
+          content: JSON.stringify({
+            symbol: resolved.symbol,
+            market: resolved.market,
+            price,
+          }),
+        };
+      }
+      case "get_user_profile": {
+        const user = getPublicUser(ctx.userId);
+        const settings = getSettings(ctx.userId);
+        const binance = getBinanceAccountMeta(ctx.userId);
+        if (!user) return { content: "المستخدم غير موجود.", isError: true };
+        return {
+          content: JSON.stringify({
+            displayName: displayNameFromEmail(user.email),
+            email: user.email,
+            status: user.status,
+            binanceLinked: Boolean(binance),
+            binanceEnv: binance?.env ?? null,
+            telegramLinked: Boolean(settings.telegram_chat_id),
+            mode: settings.mode,
+            style: settings.style,
+            context: buildUserContext(ctx.userId),
+          }),
+        };
+      }
+      case "get_trades_summary": {
+        const trades = listTrades(ctx.userId, 10);
+        const intents = listIntents(ctx.userId, "pending", 10);
+        return {
+          content: JSON.stringify({
+            totalTrades: listTrades(ctx.userId, 500).length,
+            openTrades: countOpenTrades(ctx.userId),
+            pendingIntents: intents.length,
+            recentTrades: trades,
+            pendingIntentsList: intents,
+          }),
+        };
+      }
+      case "get_recommendations_history": {
+        const limit = input.limit ? Number(input.limit) : 10;
+        const recs = listRecommendations(ctx.userId, limit);
+        return { content: JSON.stringify(recs) };
       }
       case "get_account_balances": {
         const creds = getBinanceCredentials(ctx.userId);
@@ -217,8 +315,22 @@ async function executeTool(
             ? input.factors.map((f) => String(f)).slice(0, 8)
             : null,
         });
-        recorded.push(rec);
-        return { content: JSON.stringify({ ok: true, id: rec.id }) };
+        const notifyTelegram =
+          (rec.action === "buy" || rec.action === "sell") &&
+          ctx.settings.mode === "advisory";
+        const enriched = await attachChartToRecommendation(
+          ctx.userId,
+          rec,
+          { notifyTelegram },
+        );
+        recorded.push(enriched);
+        return {
+          content: JSON.stringify({
+            ok: true,
+            id: enriched.id,
+            chart_image_url: enriched.chart_image_url ?? null,
+          }),
+        };
       }
       default:
         return { content: `أداة غير معروفة: ${name}`, isError: true };
@@ -238,17 +350,53 @@ async function executeTool(
 export async function runAgent(
   ctx: AgentContext,
   history: Message[],
+  options?: RunAgentOptions,
 ): Promise<AgentResult> {
-  const system = buildSystemPrompt(ctx.settings);
+  const onActivity = options?.onActivity;
+  const onDelta = options?.onDelta;
+  const activities: AgentActivity[] = [];
+  const push = (activity: AgentActivity) => {
+    const idx = activities.findIndex((a) => a.id === activity.id);
+    if (idx >= 0) activities[idx] = activity;
+    else activities.push(activity);
+    emitActivity(onActivity, activity);
+  };
+
+  const system = buildSystemPrompt(
+    ctx.settings,
+    ctx.userId,
+    options?.conversationSummary,
+  );
   const messages: Message[] = [...history];
   const recorded: Recommendation[] = [];
   let usageTokens = 0;
   let finalText = "";
 
+  push({
+    id: "plan",
+    label: "قراءة السياق والتخطيط للخطوة التالية",
+    status: "running",
+  });
+
   const MAX_STEPS = 6;
   for (let step = 0; step < MAX_STEPS; step++) {
-    const res = await callAnthropic({ system, messages, tools: TOOLS });
+    push({
+      id: `think-${step}`,
+      label: step === 0 ? "تحليل سؤالك" : "متابعة التحليل مع Claude",
+      status: "running",
+    });
+
+    const useStream = Boolean(onDelta);
+    const res = useStream
+      ? await callAnthropicStream(
+          { system, messages, tools: TOOLS },
+          { onTextDelta: onDelta },
+        )
+      : await callAnthropic({ system, messages, tools: TOOLS });
     usageTokens += res.usage.input_tokens + res.usage.output_tokens;
+
+    push({ id: `think-${step}`, label: step === 0 ? "تحليل سؤالك" : "متابعة التحليل مع Claude", status: "done" });
+    push({ id: "plan", label: "قراءة السياق والتخطيط للخطوة التالية", status: "done" });
 
     const textParts = res.content
       .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
@@ -264,11 +412,24 @@ export async function runAgent(
       break;
     }
 
-    // Echo the assistant's tool_use turn, then answer with tool_result blocks.
     messages.push({ role: "assistant", content: res.content });
     const results: ContentBlock[] = [];
     for (const tu of toolUses) {
+      const label = describeToolUse(tu.name, tu.input);
+      push({
+        id: tu.id,
+        label,
+        status: "running",
+        tool: tu.name,
+      });
       const out = await executeTool(tu.name, tu.input, ctx, recorded);
+      push({
+        id: tu.id,
+        label,
+        status: out.isError ? "error" : "done",
+        tool: tu.name,
+        detail: out.isError ? out.content.slice(0, 120) : undefined,
+      });
       results.push({
         type: "tool_result",
         tool_use_id: tu.id,
@@ -279,11 +440,23 @@ export async function runAgent(
     messages.push({ role: "user", content: results });
   }
 
+  push({
+    id: "reply",
+    label: "صياغة الرد النهائي",
+    status: "running",
+  });
+
   if (!finalText) {
     finalText = recorded.length
       ? "سجّلت توصيتي بالأعلى."
       : "لم أتمكّن من صياغة رد. حاول مجدداً.";
   }
 
-  return { reply: finalText, recommendations: recorded, usageTokens };
+  push({
+    id: "reply",
+    label: "صياغة الرد النهائي",
+    status: "done",
+  });
+
+  return { reply: finalText, recommendations: recorded, usageTokens, activities };
 }

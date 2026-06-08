@@ -1,22 +1,14 @@
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
-import { listUsersForAdmin, isMasterKillOn } from "@/lib/store";
-import Nav from "@/components/Nav";
-import AdminClient from "@/components/AdminClient";
+import {
+  getAdminPlatformStats,
+  isMasterKillOn,
+} from "@/lib/store";
+import { AdminOverview } from "@/components/admin/AdminOverview";
 
-export default async function AdminPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  if (user.role !== "admin") redirect("/dashboard");
-
+export default function AdminOverviewPage() {
   return (
-    <>
-      <Nav email={user.email} role={user.role} />
-      <AdminClient
-        initialUsers={listUsersForAdmin()}
-        adminId={user.id}
-        initialMasterKill={isMasterKillOn()}
-      />
-    </>
+    <AdminOverview
+      stats={getAdminPlatformStats()}
+      masterKill={isMasterKillOn()}
+    />
   );
 }

@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import type { Trade, TradeIntent } from "@/lib/types";
+import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
+import { useAgentActivities } from "@/hooks/useAgentActivities";
+import { MessageLoading } from "@/components/ui/message-loading";
+import { consumeSse } from "@/lib/sse";
 
 const STATUS_AR: Record<string, string> = {
   pending: "بانتظار موافقتك",
@@ -12,12 +17,12 @@ const STATUS_AR: Record<string, string> = {
   failed: "فشل",
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: "var(--warning)",
-  approved: "var(--accent-2)",
-  rejected: "var(--muted)",
-  executed: "var(--accent)",
-  failed: "var(--danger)",
+const STATUS_CLASS: Record<string, string> = {
+  pending: "text-chart-1",
+  approved: "text-chart-2",
+  rejected: "text-muted-foreground",
+  executed: "text-primary",
+  failed: "text-destructive",
 };
 
 export default function TradesClient({
@@ -30,65 +35,100 @@ export default function TradesClient({
   const router = useRouter();
   const [intents, setIntents] = useState(initialIntents);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [executingId, setExecutingId] = useState<number | null>(null);
+  const { activities, reset: resetActivities, upsert: upsertActivity } =
+    useAgentActivities();
 
   const pending = intents.filter((i) => i.status === "pending");
   const history = intents.filter((i) => i.status !== "pending");
 
   async function act(id: number, action: "approve" | "reject") {
     setBusyId(id);
+    const isApprove = action === "approve";
+    if (isApprove) {
+      setExecutingId(id);
+      resetActivities();
+    }
     try {
       const res = await fetch(`/api/trades/intents/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, stream: isApprove }),
       });
-      const data = await res.json();
+
+      if (isApprove) {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          alert(
+            `لم تُنفّذ: ${(data as { reason?: string; error?: string }).reason ?? (data as { error?: string }).error ?? "سبب غير معروف"}`,
+          );
+        } else {
+          const data = await consumeSse<{ ok: boolean; reason?: string }>(res, {
+            onActivity: upsertActivity,
+            onError: (msg) => alert(msg),
+          });
+          if (data && !data.ok) {
+            alert(`لم تُنفّذ: ${data.reason ?? "سبب غير معروف"}`);
+          }
+        }
+      } else {
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error ?? "تعذّر رفض الطلب.");
+        }
+      }
+
       const r = await fetch("/api/trades/intents");
       const refreshed = await r.json();
       setIntents(refreshed.intents);
-      if (action === "approve" && !data.ok) {
-        alert(`لم تُنفّذ: ${data.reason ?? "سبب غير معروف"}`);
-      }
       router.refresh();
     } finally {
       setBusyId(null);
+      setExecutingId(null);
+      resetActivities();
     }
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
-      <h1 className="mb-6 text-2xl font-bold">الصفقات</h1>
+    <main className="page-shell max-w-5xl">
+      <h1 className="page-title mb-6">الصفقات</h1>
 
       <section className="mb-8">
-        <h2 className="mb-3 font-bold">بانتظار موافقتك ({pending.length})</h2>
+        <h2 className="mb-3 font-bold text-foreground">بانتظار موافقتك ({pending.length})</h2>
         {pending.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">لا توجد صفقات بانتظار موافقتك.</p>
+          <p className="text-sm text-muted-foreground">لا توجد صفقات بانتظار موافقتك.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {pending.map((i) => (
-              <div key={i.id} className="card p-4">
+              <div key={i.id} className="surface-card p-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="font-bold" dir="ltr">
+                  <span className="font-bold text-foreground" dir="ltr">
                     {i.symbol}
                   </span>
                   <span
-                    className="rounded-full px-2.5 py-0.5 text-xs font-bold"
-                    style={{
-                      background:
-                        i.side === "buy"
-                          ? "var(--accent)22"
-                          : "var(--danger)22",
-                      color: i.side === "buy" ? "var(--accent)" : "var(--danger)",
-                    }}
+                    className={cn(
+                      "rounded-full px-2.5 py-0.5 text-xs font-bold",
+                      i.side === "buy"
+                        ? "bg-sidebar-accent text-primary"
+                        : "bg-destructive/15 text-destructive",
+                    )}
                   >
                     {i.side === "buy" ? "شراء" : "بيع"} · ثقة {i.confidence}%
                   </span>
                 </div>
-                <p className="text-sm text-[var(--muted)]">
+                <p className="text-sm text-muted-foreground">
                   الحجم: <span dir="ltr">{i.notional.toFixed(2)} USDT</span>
                 </p>
                 {i.rationale && (
-                  <p className="mt-1 text-xs text-[var(--muted)]">{i.rationale}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{i.rationale}</p>
+                )}
+                {executingId === i.id && activities.length > 0 && (
+                  <div className="mt-3">
+                    <AgentActivityFeed
+                      activities={activities}
+                      title="تنفيذ الصفقة"
+                    />
+                  </div>
                 )}
                 <div className="mt-3 flex gap-2">
                   <button
@@ -96,7 +136,13 @@ export default function TradesClient({
                     disabled={busyId === i.id}
                     onClick={() => act(i.id, "approve")}
                   >
-                    {busyId === i.id ? "…" : "موافقة وتنفيذ"}
+                    {busyId === i.id ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <MessageLoading />
+                      </span>
+                    ) : (
+                      "موافقة وتنفيذ"
+                    )}
                   </button>
                   <button
                     className="btn btn-danger flex-1 py-1.5 text-sm"
@@ -113,13 +159,13 @@ export default function TradesClient({
       </section>
 
       <section className="mb-8">
-        <h2 className="mb-3 font-bold">الصفقات المنفّذة</h2>
+        <h2 className="mb-3 font-bold text-foreground">الصفقات المنفّذة</h2>
         {initialTrades.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">لا توجد صفقات منفّذة بعد.</p>
+          <p className="text-sm text-muted-foreground">لا توجد صفقات منفّذة بعد.</p>
         ) : (
-          <div className="card overflow-x-auto">
+          <div className="surface-card overflow-x-auto">
             <table className="w-full text-right text-sm">
-              <thead className="border-b border-[var(--border)] text-[var(--muted)]">
+              <thead className="border-b border-border text-muted-foreground">
                 <tr>
                   <th className="p-3">الرمز</th>
                   <th className="p-3">الاتجاه</th>
@@ -132,14 +178,14 @@ export default function TradesClient({
               </thead>
               <tbody>
                 {initialTrades.map((t) => (
-                  <tr key={t.id} className="border-b border-[var(--border)]/50">
+                  <tr key={t.id} className="border-b border-border/50">
                     <td className="p-3" dir="ltr">{t.symbol}</td>
                     <td className="p-3">{t.side === "buy" ? "شراء" : "بيع"}</td>
                     <td className="p-3 font-mono" dir="ltr">{t.qty}</td>
                     <td className="p-3 font-mono" dir="ltr">{t.avg_price}</td>
                     <td className="p-3">{t.env === "testnet" ? "تجريبي" : "حقيقي"}</td>
                     <td className="p-3">{t.status === "open" ? "مفتوحة" : "مغلقة"}</td>
-                    <td className="p-3 text-xs text-[var(--muted)]" dir="ltr">
+                    <td className="p-3 text-xs text-muted-foreground" dir="ltr">
                       {t.created_at.slice(0, 16)}
                     </td>
                   </tr>
@@ -152,17 +198,17 @@ export default function TradesClient({
 
       {history.length > 0 && (
         <section>
-          <h2 className="mb-3 font-bold">سجلّ الطلبات</h2>
+          <h2 className="mb-3 font-bold text-foreground">سجلّ الطلبات</h2>
           <div className="space-y-2">
             {history.map((i) => (
               <div
                 key={i.id}
-                className="card flex items-center justify-between p-3 text-sm"
+                className="surface-card flex items-center justify-between p-3 text-sm"
               >
                 <span dir="ltr">
                   {i.symbol} · {i.side === "buy" ? "شراء" : "بيع"}
                 </span>
-                <span style={{ color: STATUS_COLOR[i.status] }}>
+                <span className={STATUS_CLASS[i.status] ?? "text-foreground"}>
                   {STATUS_AR[i.status]}
                   {i.reason ? ` — ${i.reason}` : ""}
                 </span>

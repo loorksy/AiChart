@@ -43,3 +43,5 @@ next-env.d.ts
 
 # local data (sqlite)
 /data
+
+testsprite_tests\tmp\config.json

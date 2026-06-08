@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getSettings, getLimits, getBinanceAccountMeta } from "@/lib/store";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import SettingsClient from "@/components/SettingsClient";
 
 export default async function SettingsPage() {
@@ -9,13 +9,13 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   return (
-    <>
-      <Nav email={user.email} role={user.role} />
+    <AppShell email={user.email} role={user.role}>
       <SettingsClient
+        user={user}
         settings={getSettings(user.id)}
         limits={getLimits(user.id)}
         binance={getBinanceAccountMeta(user.id)}
       />
-    </>
+    </AppShell>
   );
 }

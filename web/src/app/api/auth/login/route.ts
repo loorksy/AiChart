@@ -24,9 +24,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await setSession({ sub: row.id, email: row.email, role: row.role });
+    const token = await setSession({
+      sub: row.id,
+      email: row.email,
+      role: row.role,
+    });
     return NextResponse.json({
       user: { id: row.id, email: row.email, role: row.role, status: row.status },
+      token,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

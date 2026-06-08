@@ -12,9 +12,10 @@
 import { execFile } from "child_process";
 import path from "path";
 import { getBinanceCredentials } from "./store";
+import { getPlatformValue } from "./platformConfig";
 
 export function isBinanceCliEnabled(): boolean {
-  return process.env.ENABLE_BINANCE_CLI === "1";
+  return getPlatformValue("ENABLE_BINANCE_CLI") === "1";
 }
 
 // Command groups the agent may read from.

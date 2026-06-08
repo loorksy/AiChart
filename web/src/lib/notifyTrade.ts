@@ -9,6 +9,7 @@ export async function notifyTradeResult(
   result: ExecutionResult,
   symbol: string,
   timeframe = "1h",
+  chartUrl?: string | null,
 ): Promise<void> {
   if (!result.ok || !result.trade) {
     await notifyUser(
@@ -21,9 +22,10 @@ export async function notifyTradeResult(
   const settings = getSettings(userId);
   const text = executedCard(result.trade);
   if (settings.send_screenshot === 1) {
-    const chartUrl = await buildChartImageUrl(symbol, timeframe);
-    if (chartUrl) {
-      await notifyUserPhoto(userId, chartUrl, text);
+    const image =
+      chartUrl ?? (await buildChartImageUrl(symbol, timeframe));
+    if (image) {
+      await notifyUserPhoto(userId, image, text);
       return;
     }
   }

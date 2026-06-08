@@ -134,6 +134,14 @@ function init(db: Database.Database) {
       value TEXT NOT NULL
     );
 
+    -- Platform-wide secrets/config (admin UI); sensitive values encrypted at rest.
+    CREATE TABLE IF NOT EXISTS platform_config (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      plain      INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- One-time codes for linking a user's Telegram account.
     CREATE TABLE IF NOT EXISTS telegram_link_codes (
       code       TEXT PRIMARY KEY,
@@ -141,6 +149,33 @@ function init(db: Database.Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS conversations (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL,
+      title      TEXT NOT NULL DEFAULT 'محادثة جديدة',
+      summary    TEXT,
+      archived   INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      role            TEXT NOT NULL,
+      content         TEXT NOT NULL,
+      metadata_json   TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversations_user
+      ON conversations (user_id, updated_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_conv
+      ON chat_messages (conversation_id, id);
 
     CREATE INDEX IF NOT EXISTS idx_settings_tg
       ON trading_settings (telegram_chat_id);
@@ -177,6 +212,9 @@ function migrate(db: Database.Database) {
   if (!recCols.some((c) => c.name === "factors")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN factors TEXT");
   }
+  if (!recCols.some((c) => c.name === "chart_image_url")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN chart_image_url TEXT");
+  }
 
   const settingsCols = db
     .prepare("PRAGMA table_info(trading_settings)")
@@ -186,6 +224,28 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0",
     );
   }
+
+  const userCols = db
+    .prepare("PRAGMA table_info(users)")
+    .all() as { name: string }[];
+  if (!userCols.some((c) => c.name === "telegram_id")) {
+    db.exec("ALTER TABLE users ADD COLUMN telegram_id INTEGER");
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users (telegram_id) WHERE telegram_id IS NOT NULL",
+    );
+  }
+
+  // Non-secret platform_config values must be plain=1 (older saves used plain=0).
+  db.exec(`
+    UPDATE platform_config SET plain = 1
+    WHERE plain = 0
+      AND key IN (
+        'ANTHROPIC_MODEL',
+        'TELEGRAM_BOT_USERNAME',
+        'APP_URL',
+        'ENABLE_BINANCE_CLI'
+      )
+  `);
 }
 
 function seedAdmin(db: Database.Database) {

@@ -1,0 +1,1162 @@
+[
+  {
+    "id": "TC001",
+    "title": "Register, log in, and reach the authenticated dashboard",
+    "description": "This verifies that a new user can create an account, sign in, and land on the protected Arabic RTL dashboard with profile and account status data visible.",
+    "category": "Authentication",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Switch to the account registration flow"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a new email address"
+      },
+      {
+        "type": "action",
+        "description": "Fill in a new password"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the authenticated dashboard is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user profile bundle and account status information are displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC002",
+    "title": "Complete the signal wizard and create a trade plan",
+    "description": "This verifies that a user can complete the full multi-step signal flow and receive a generated recommendation on success.",
+    "category": "Signals",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open signal generation"
+      },
+      {
+        "type": "action",
+        "description": "Search for a Binance USDT trading pair"
+      },
+      {
+        "type": "action",
+        "description": "Select a matching instrument"
+      },
+      {
+        "type": "action",
+        "description": "Complete the remaining wizard steps with valid inputs"
+      },
+      {
+        "type": "action",
+        "description": "Submit the signal generation request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a generated trade recommendation is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the created signal summary is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC003",
+    "title": "Login and open the chat workspace",
+    "description": "This verifies an authenticated trader can sign in and access the protected chat page with the conversation interface available.",
+    "category": "Frontend Pages",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open chat"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the chat workspace is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the conversation interface is available"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC004",
+    "title": "Generate a trade signal from the wizard",
+    "description": "An authenticated trader can complete the signal wizard and receive a generated recommendation for a valid Binance symbol.",
+    "category": "Signals Wizard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /signals/new"
+      },
+      {
+        "type": "action",
+        "description": "Search for a valid Binance USDT trading pair"
+      },
+      {
+        "type": "action",
+        "description": "Complete the signal wizard with valid style, risk, capital, stop loss, and notes inputs"
+      },
+      {
+        "type": "action",
+        "description": "Submit the signal request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a generated signal recommendation is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the wizard shows the submitted signal as created"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC005",
+    "title": "Start a new signal from the wizard",
+    "description": "This verifies an authenticated user can open the 4-step signal builder, complete it, and receive a generated recommendation result.",
+    "category": "Frontend Pages",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open the signal wizard"
+      },
+      {
+        "type": "action",
+        "description": "Complete the signal wizard with valid inputs"
+      },
+      {
+        "type": "action",
+        "description": "Submit the signal generation form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a generated trade recommendation is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC006",
+    "title": "End a session and protect authenticated pages",
+    "description": "This verifies that a signed-in user can log out and that protected pages remain inaccessible after the session is cleared.",
+    "category": "Authentication",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the account menu"
+      },
+      {
+        "type": "action",
+        "description": "Log out of the session"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to open an authenticated page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user is returned to an unauthenticated state"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify protected content is not accessible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC007",
+    "title": "Block unauthenticated access to the dashboard",
+    "description": "This verifies a visitor without a session cannot view the protected dashboard and is redirected to authentication.",
+    "category": "Frontend Pages",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the login page or an access restriction is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard content is not shown"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC008",
+    "title": "Load the account profile bundle on the dashboard",
+    "description": "An authenticated user can open the dashboard and see their profile, settings, limits, credits, and linked service status.",
+    "category": "User Profile and Settings",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the account profile information is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify credits and linked service status are displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC009",
+    "title": "Prevent protected pages after logout",
+    "description": "This verifies a user who logs out can no longer access protected areas and is returned to authentication when revisiting them.",
+    "category": "Frontend Pages",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Log out from the application"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the login page or an access restriction is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify protected dashboard content is not shown"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC010",
+    "title": "Send a chat message and continue the conversation",
+    "description": "This verifies that an authenticated user can start a chat, receive a streamed response, and keep the discussion available for later continuation.",
+    "category": "AI Chat Agent",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open chat"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the message field with a trading question"
+      },
+      {
+        "type": "action",
+        "description": "Submit the chat message"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a streamed assistant response is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the conversation remains in the thread view"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC011",
+    "title": "Open the Arabic RTL dashboard after login",
+    "description": "This verifies an authenticated user can open the dashboard and see the Arabic right-to-left layout together with their account bundle.",
+    "category": "Frontend Pages",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed in an Arabic RTL layout"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify profile, credits, and Binance or Telegram status information are displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC012",
+    "title": "View trade history and market chart data",
+    "description": "An authenticated trader can open the dashboard, review trade history, and load market candlesticks for symbol analysis.",
+    "category": "Trades and Market",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Open the trade history section"
+      },
+      {
+        "type": "action",
+        "description": "Open a market chart for a trading symbol"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify trade history entries are displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify candlestick chart data is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC013",
+    "title": "Start a signal wizard and find a tradable instrument",
+    "description": "This verifies that an authenticated user can open the signal generator and search for a Binance USDT pair before continuing the wizard.",
+    "category": "Signals",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open signal generation"
+      },
+      {
+        "type": "action",
+        "description": "Search for a Binance USDT trading pair"
+      },
+      {
+        "type": "action",
+        "description": "Select a matching instrument"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the signal wizard is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the selected instrument is shown"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC014",
+    "title": "Search instruments while building a signal",
+    "description": "An authenticated trader can search for Binance USDT pairs and see matching instruments before continuing the wizard.",
+    "category": "Signals Wizard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /signals/new"
+      },
+      {
+        "type": "action",
+        "description": "Search for a common Binance USDT symbol"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify matching instruments are displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the wizard remains ready for symbol selection"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC015",
+    "title": "Open the chat workspace as an authenticated user",
+    "description": "This verifies that a logged-in user can access the chat page and see agent readiness information before starting a conversation.",
+    "category": "AI Chat Agent",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open chat"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the chat workspace is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify agent readiness information is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC016",
+    "title": "Review trade history and market candles before planning a trade",
+    "description": "This verifies that an authenticated trader can open the dashboard, inspect trade history, and view market candlestick data for analysis.",
+    "category": "Dashboard and Market Data",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Open a tradable symbol details view"
+      },
+      {
+        "type": "action",
+        "description": "Load market candlestick data for the symbol"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify trade history is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify market candlestick data is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC017",
+    "title": "Show the dashboard in Arabic RTL after login",
+    "description": "A logged-in user can land on the Arabic RTL dashboard and read the main account information in a right-to-left layout.",
+    "category": "User Profile and Settings",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed in a right-to-left layout"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the main account summary is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC018",
+    "title": "Prevent generating a signal without enough credits",
+    "description": "An authenticated trader with insufficient quota cannot create a signal and is shown that generation is blocked.",
+    "category": "Signals Wizard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /signals/new"
+      },
+      {
+        "type": "action",
+        "description": "Complete the signal wizard with valid inputs"
+      },
+      {
+        "type": "action",
+        "description": "Submit the signal request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a quota exceeded message is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify no recommendation is created"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC019",
+    "title": "Save a chat conversation and reopen it from history",
+    "description": "This verifies that a chat thread can be persisted, listed, and reopened with its prior messages intact.",
+    "category": "Conversations",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open chat"
+      },
+      {
+        "type": "action",
+        "description": "Start a new conversation with a chat message"
+      },
+      {
+        "type": "action",
+        "description": "Open the conversation list"
+      },
+      {
+        "type": "action",
+        "description": "Select the saved conversation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the saved conversation appears in the history list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the previous messages are restored"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC020",
+    "title": "Update trading preferences from settings",
+    "description": "A power user can change trading preferences in settings and see the updated values saved after submission.",
+    "category": "User Profile and Settings",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /settings"
+      },
+      {
+        "type": "action",
+        "description": "Change the trading preference fields to new valid values"
+      },
+      {
+        "type": "action",
+        "description": "Submit the settings form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the updated settings are displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a success confirmation is visible"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC021",
+    "title": "Block instrument search without authentication",
+    "description": "A visitor who is not signed in cannot access the instrument list used by the signal wizard.",
+    "category": "Signals Wizard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /signals/new"
+      },
+      {
+        "type": "action",
+        "description": "Search for a Binance USDT trading pair"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user is redirected to sign in or shown an access restriction"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify no instrument list is displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC022",
+    "title": "View the dashboard in Arabic RTL layout",
+    "description": "This verifies that a logged-in user sees the protected dashboard rendered in Arabic RTL mode with the expected localized layout behavior.",
+    "category": "Dashboard and Market Data",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the dashboard is displayed in Arabic RTL layout"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify localized dashboard content is displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC023",
+    "title": "Persist updated settings and quota-related preferences",
+    "description": "This verifies that a power user can change trading settings and save them so the updated values remain visible.",
+    "category": "Settings",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Open the settings page"
+      },
+      {
+        "type": "action",
+        "description": "Update a trading preference"
+      },
+      {
+        "type": "action",
+        "description": "Update a quota-related setting"
+      },
+      {
+        "type": "action",
+        "description": "Save the settings"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the updated settings are displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the saved quota-related value is displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC024",
+    "title": "Reject invalid settings values",
+    "description": "A power user cannot save invalid trading settings and the previous settings remain in place.",
+    "category": "User Profile and Settings",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /settings"
+      },
+      {
+        "type": "action",
+        "description": "Enter invalid values into the trading settings form"
+      },
+      {
+        "type": "action",
+        "description": "Submit the settings form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a validation error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the previously saved settings are still displayed"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC025",
+    "title": "Handle signal generation when quota is unavailable",
+    "description": "This verifies that the signal wizard surfaces a clear quota warning when the user cannot generate another signal.",
+    "category": "Signals",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Click the link to open signal generation"
+      },
+      {
+        "type": "action",
+        "description": "Search for a Binance USDT trading pair"
+      },
+      {
+        "type": "action",
+        "description": "Select a matching instrument"
+      },
+      {
+        "type": "action",
+        "description": "Complete the remaining wizard steps with valid inputs"
+      },
+      {
+        "type": "action",
+        "description": "Submit the signal generation request"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a quota warning is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify no signal recommendation is created"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC026",
+    "title": "Block access with invalid credentials",
+    "description": "This verifies that logging in with invalid credentials keeps the user unauthenticated and shows a login error state.",
+    "category": "Authentication",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with an invalid email address"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with an invalid password"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a login error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user remains on the login page"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC027",
+    "title": "Handle missing market query inputs",
+    "description": "An authenticated trader cannot load market candlesticks unless the required market parameters are provided.",
+    "category": "Trades and Market",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with {{LOGIN_USER}}"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with {{LOGIN_PASSWORD}}"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Open the market chart with incomplete parameters"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a market parameter validation error is visible"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify no candlestick chart is displayed"
+      }
+    ],
+    "priority": "Low"
+  },
+  {
+    "id": "TC028",
+    "title": "Reject invalid login credentials",
+    "description": "This verifies a visitor entering invalid credentials sees an authentication error and remains unable to access protected content.",
+    "category": "Frontend Pages",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /login"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the email field with an invalid email value"
+      },
+      {
+        "type": "action",
+        "description": "Fill in the password field with an invalid password value"
+      },
+      {
+        "type": "action",
+        "description": "Submit the login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an authentication error is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the protected dashboard is not shown"
+      }
+    ],
+    "priority": "Low"
+  }
+]

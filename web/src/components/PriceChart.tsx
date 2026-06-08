@@ -14,21 +14,32 @@ import {
   type Time,
 } from "lightweight-charts";
 import type { Recommendation } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 interface Props {
   symbol: string;
   interval: string;
   recommendations: Recommendation[];
+  className?: string;
+  fill?: boolean;
+  /** Muted decorative mode for page backgrounds */
+  ambient?: boolean;
 }
 
-export default function PriceChart({ symbol, interval, recommendations }: Props) {
+export default function PriceChart({
+  symbol,
+  interval,
+  recommendations,
+  className,
+  fill = false,
+  ambient = false,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!ambient);
   const [error, setError] = useState<string | null>(null);
 
-  // Create the chart once.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -36,25 +47,40 @@ export default function PriceChart({ symbol, interval, recommendations }: Props)
     const chart = createChart(el, {
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#8b9bb4",
+        textColor: ambient ? "transparent" : "#9ca3af",
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "rgba(36,48,73,0.4)" },
-        horzLines: { color: "rgba(36,48,73,0.4)" },
+        vertLines: { visible: !ambient, color: "rgba(255,255,255,0.04)" },
+        horzLines: { visible: !ambient, color: "rgba(255,255,255,0.04)" },
       },
-      rightPriceScale: { borderColor: "#243049" },
-      timeScale: { borderColor: "#243049", timeVisible: true },
-      crosshair: { mode: 0 },
+      rightPriceScale: {
+        visible: !ambient,
+        borderVisible: false,
+        borderColor: "rgba(255,255,255,0.08)",
+      },
+      timeScale: {
+        visible: !ambient,
+        borderVisible: false,
+        borderColor: "rgba(255,255,255,0.08)",
+        timeVisible: !ambient,
+      },
+      crosshair: {
+        mode: 0,
+        vertLine: { visible: !ambient },
+        horzLine: { visible: !ambient },
+      },
       autoSize: true,
     });
+
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#16c784",
-      downColor: "#f6465d",
+      upColor: ambient ? "rgba(34, 197, 94, 0.45)" : "#22c55e",
+      downColor: ambient ? "rgba(239, 68, 68, 0.45)" : "#ef4444",
       borderVisible: false,
-      wickUpColor: "#16c784",
-      wickDownColor: "#f6465d",
+      wickUpColor: ambient ? "rgba(34, 197, 94, 0.3)" : "#22c55e",
+      wickDownColor: ambient ? "rgba(239, 68, 68, 0.3)" : "#ef4444",
     });
+
     chartRef.current = chart;
     seriesRef.current = series;
 
@@ -63,22 +89,23 @@ export default function PriceChart({ symbol, interval, recommendations }: Props)
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, []);
+  }, [ambient]);
 
-  // Load candles when symbol/interval change.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      setLoading(true);
-      setError(null);
+      if (!ambient) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         const res = await fetch(
-          `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=300`,
+          `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=${ambient ? 120 : 300}`,
         );
         const data = await res.json();
         if (cancelled) return;
         if (data.error) {
-          setError(data.error);
+          if (!ambient) setError(data.error);
           return;
         }
         const series = seriesRef.current;
@@ -86,19 +113,19 @@ export default function PriceChart({ symbol, interval, recommendations }: Props)
         series.setData(data.candles as CandlestickData<UTCTimestamp>[]);
         chartRef.current?.timeScale().fitContent();
       } catch {
-        if (!cancelled) setError("تعذّر تحميل بيانات الشارت.");
+        if (!cancelled && !ambient) setError("تعذّر تحميل بيانات الشارت.");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !ambient) setLoading(false);
       }
     };
     void load();
     return () => {
       cancelled = true;
     };
-  }, [symbol, interval]);
+  }, [symbol, interval, ambient]);
 
-  // Overlay recommendation markers for this symbol.
   useEffect(() => {
+    if (ambient) return;
     const series = seriesRef.current;
     if (!series) return;
     const relevant = recommendations
@@ -107,25 +134,28 @@ export default function PriceChart({ symbol, interval, recommendations }: Props)
         time: (Math.floor(new Date(r.created_at + "Z").getTime() / 1000) ||
           0) as UTCTimestamp,
         position: r.action === "buy" ? "belowBar" : "aboveBar",
-        color: r.action === "buy" ? "#16c784" : "#f6465d",
+        color: r.action === "buy" ? "#22c55e" : "#ef4444",
         shape: r.action === "buy" ? "arrowUp" : "arrowDown",
         text: `${r.action === "buy" ? "شراء" : "بيع"} ${r.confidence}%`,
       }))
       .sort((a, b) => Number(a.time) - Number(b.time));
     const markers = createSeriesMarkers(series, relevant);
     return () => markers.detach();
-  }, [recommendations, symbol]);
+  }, [recommendations, symbol, ambient]);
 
   return (
-    <div className="relative w-full">
-      <div ref={containerRef} className="h-[420px] w-full" />
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--muted)]">
+    <div className={cn("relative w-full", fill && "h-full", className)}>
+      <div
+        ref={containerRef}
+        className={cn("w-full", fill ? "h-full min-h-[200px]" : "h-[420px]")}
+      />
+      {!ambient && loading && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
           جارٍ تحميل الشارت…
         </div>
       )}
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--danger)]">
+      {!ambient && error && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-destructive">
           {error}
         </div>
       )}

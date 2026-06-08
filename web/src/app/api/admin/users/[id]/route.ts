@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError, ApiError } from "@/lib/api";
-import { setUserStatus, updateAdminLimits } from "@/lib/store";
+import { setUserStatus, updateAdminLimits, deleteUser, getPublicUser } from "@/lib/store";
 
 const schema = z.object({
   status: z.enum(["pending", "active", "suspended"]).optional(),
@@ -51,6 +51,32 @@ export async function PATCH(
         { status: 400 },
       );
     }
+    return handleError(err);
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  try {
+    const admin = await requireAdmin();
+    const { id } = await ctx.params;
+    const userId = Number(id);
+    if (!Number.isInteger(userId)) throw new ApiError(400, "معرّف غير صالح.");
+    if (userId === admin.id) {
+      throw new ApiError(400, "لا يمكنك حذف حسابك الإداري.");
+    }
+
+    const target = getPublicUser(userId);
+    if (!target) throw new ApiError(404, "المستخدم غير موجود.");
+    if (target.role === "admin") {
+      throw new ApiError(400, "لا يمكن حذف حساب إداري.");
+    }
+
+    deleteUser(userId);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
     return handleError(err);
   }
 }

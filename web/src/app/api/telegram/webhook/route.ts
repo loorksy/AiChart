@@ -3,7 +3,11 @@ import {
   consumeLinkCode,
   setTelegramChatId,
   getUserByTelegramChatId,
+  getUserByTelegramId,
+  setUserTelegramId,
   getSettings,
+  getLimits,
+  getTodayUsage,
   updateSettings,
   countOpenTrades,
   listTrades,
@@ -17,12 +21,26 @@ import {
   answerCallback,
   editMessageText,
   webhookSecret,
+  downloadTelegramPhoto,
 } from "@/lib/telegram";
+import { validateChatImage } from "@/lib/chatImage";
+import { runTelegramAgentChat } from "@/lib/telegramAgent";
+import { isAnthropicConfigured } from "@/lib/anthropic";
+
+interface TgPhotoSize {
+  file_id: string;
+  file_size?: number;
+  width: number;
+  height: number;
+}
 
 interface TgUpdate {
   message?: {
     chat: { id: number };
+    from?: { id: number; username?: string };
     text?: string;
+    caption?: string;
+    photo?: TgPhotoSize[];
   };
   callback_query?: {
     id: string;
@@ -58,8 +76,19 @@ export async function POST(req: NextRequest) {
   try {
     if (update.callback_query) {
       await handleCallback(update.callback_query);
+    } else if (update.message?.photo?.length) {
+      await handlePhotoMessage(
+        update.message.chat.id,
+        update.message.photo,
+        update.message.caption?.trim(),
+        update.message.from?.id,
+      );
     } else if (update.message?.text) {
-      await handleMessage(update.message.chat.id, update.message.text.trim());
+      await handleMessage(
+        update.message.chat.id,
+        update.message.text.trim(),
+        update.message.from?.id,
+      );
     }
   } catch (e) {
     console.error("[telegram] webhook error", e);
@@ -69,15 +98,84 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-async function handleMessage(chatId: number, text: string) {
+async function handlePhotoMessage(
+  chatId: number,
+  photos: TgPhotoSize[],
+  caption: string | undefined,
+  fromId?: number,
+) {
+  const cid = String(chatId);
+  const userId = getUserByTelegramChatId(cid);
+  if (!userId) {
+    await sendMessage(
+      chatId,
+      "حسابك غير مربوط. اربطه من إعدادات الموقع أولاً.\n" +
+        "Your account isn't linked. Link it from the website settings first.",
+    );
+    return;
+  }
+
+  if (!isAnthropicConfigured()) {
+    await sendMessage(chatId, HELP);
+    return;
+  }
+
+  const limits = getLimits(userId);
+  const used = getTodayUsage(userId);
+  if (limits.claude_quota > 0 && used >= limits.claude_quota) {
+    await sendMessage(
+      chatId,
+      "⚠️ بلغت حصّتك اليومية من الوكيل. حاول غداً.\n" +
+        "⚠️ Daily agent quota reached. Try again tomorrow.",
+    );
+    return;
+  }
+
+  const largest = photos[photos.length - 1]!;
+  await sendMessage(chatId, "⏳ جاري تحليل الشارت… · Analyzing chart…");
+
+  try {
+    const downloaded = await downloadTelegramPhoto(largest.file_id);
+    const validated = validateChatImage(downloaded.media_type, downloaded.data);
+    if (!validated.ok) {
+      await sendMessage(chatId, validated.error);
+      return;
+    }
+
+    const result = await runTelegramAgentChat(
+      userId,
+      caption ?? "",
+      validated.image,
+    );
+    if (!result.ok) {
+      await sendMessage(chatId, result.error);
+      return;
+    }
+    await sendMessage(chatId, result.reply);
+  } catch (e) {
+    console.error("[telegram] photo analysis", e);
+    await sendMessage(
+      chatId,
+      "تعذّر تحليل الصورة. حاول لاحقاً. · Could not analyze the image. Try again later.",
+    );
+  }
+}
+
+async function handleMessage(
+  chatId: number,
+  text: string,
+  fromId?: number,
+) {
   const cid = String(chatId);
 
   if (text.startsWith("/start")) {
     const code = text.split(/\s+/)[1];
-    if (code) {
+
+    if (code && code !== "welcome") {
       const userId = consumeLinkCode(code);
       if (userId) {
         setTelegramChatId(userId, cid);
+        if (fromId) setUserTelegramId(userId, fromId);
         await sendMessage(
           chatId,
           "✅ تم ربط حسابك بنجاح! ستصلك إشعارات الصفقات والتوصيات هنا.\n" +
@@ -88,15 +186,30 @@ async function handleMessage(chatId: number, text: string) {
       }
       await sendMessage(
         chatId,
-        "⚠️ رمز الربط غير صالح أو منتهٍ. أنشئ رمزاً جديداً من الموقع.\n" +
-          "⚠️ Invalid or expired link code. Generate a new one from the website.",
+        "⚠️ رمز الربط غير صالح أو منتهٍ. سجّل الدخول عبر تليجرام من الموقع.\n" +
+          "⚠️ Invalid or expired link code. Log in with Telegram on the website.",
       );
       return;
     }
+
+    if (fromId) {
+      const user = getUserByTelegramId(fromId);
+      if (user) {
+        setTelegramChatId(user.id, cid);
+        await sendMessage(
+          chatId,
+          "✅ أهلاً بك في <b>AiChart</b> — حسابك مربوط.\n" +
+            "✅ Welcome to <b>AiChart</b> — your account is linked.\n\n" +
+            HELP,
+        );
+        return;
+      }
+    }
+
     await sendMessage(
       chatId,
-      "أهلاً بك في <b>AiChart</b> 🤖\nاربط حسابك من إعدادات الموقع للحصول على رمز، ثم أرسله هنا.\n\n" +
-        "Welcome to <b>AiChart</b> 🤖\nLink your account from the website settings to get a code, then send it here.",
+      "أهلاً بك في <b>AiChart</b> 🤖\nسجّل الدخول من الموقع عبر زر تليجرام لربط حسابك تلقائياً.\n\n" +
+        "Welcome to <b>AiChart</b> 🤖\nLog in on the website with the Telegram button to link automatically.",
     );
     return;
   }
@@ -173,8 +286,37 @@ async function handleMessage(chatId: number, text: string) {
       );
       break;
     }
-    default:
+    default: {
+      if (!text.startsWith("/") && isAnthropicConfigured()) {
+        const limits = getLimits(userId);
+        const used = getTodayUsage(userId);
+        if (limits.claude_quota > 0 && used >= limits.claude_quota) {
+          await sendMessage(
+            chatId,
+            "⚠️ بلغت حصّتك اليومية من الوكيل. حاول غداً.\n" +
+              "⚠️ Daily agent quota reached. Try again tomorrow.",
+          );
+          break;
+        }
+        await sendMessage(chatId, "⏳ جاري التحليل… · Analyzing…");
+        try {
+          const result = await runTelegramAgentChat(userId, text);
+          if (!result.ok) {
+            await sendMessage(chatId, result.error);
+            break;
+          }
+          await sendMessage(chatId, result.reply);
+        } catch (e) {
+          console.error("[telegram] agent chat", e);
+          await sendMessage(
+            chatId,
+            "تعذّر الرد. حاول لاحقاً. · Could not reply. Try again later.",
+          );
+        }
+        break;
+      }
       await sendMessage(chatId, HELP);
+    }
   }
 }
 

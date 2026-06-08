@@ -1,6 +1,9 @@
 import crypto from "crypto";
 import { getDb } from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
+import { hashPassword } from "./auth";
+import type { TelegramLoginPayload } from "./telegramAuth";
+import { telegramDisplayEmail } from "./telegramAuth";
 import type {
   AdminLimits,
   BinanceAccountMeta,
@@ -125,6 +128,76 @@ export function deleteBinanceAccount(userId: number) {
   getDb().prepare("DELETE FROM binance_accounts WHERE user_id = ?").run(userId);
 }
 
+export function getUserByTelegramId(telegramId: number): PublicUser | null {
+  return (
+    (getDb()
+      .prepare(
+        "SELECT id, email, role, status, created_at FROM users WHERE telegram_id = ?",
+      )
+      .get(telegramId) as PublicUser | undefined) ?? null
+  );
+}
+
+export function setUserTelegramId(userId: number, telegramId: number): void {
+  getDb()
+    .prepare("UPDATE users SET telegram_id = ? WHERE id = ?")
+    .run(telegramId, userId);
+}
+
+function uniqueTelegramEmail(base: string): string {
+  const db = getDb();
+  let email = base.toLowerCase();
+  if (!db.prepare("SELECT id FROM users WHERE email = ?").get(email)) {
+    return email;
+  }
+  let n = 1;
+  while (n < 1000) {
+    const candidate = base.replace("@", `+${n}@`).toLowerCase();
+    if (!db.prepare("SELECT id FROM users WHERE email = ?").get(candidate)) {
+      return candidate;
+    }
+    n++;
+  }
+  return `tg_${crypto.randomBytes(4).toString("hex")}@telegram.user`;
+}
+
+/** Login or register via Telegram Login Widget; auto-links bot chat id. */
+export function upsertTelegramUser(
+  payload: TelegramLoginPayload,
+): { user: PublicUser; isNew: boolean } {
+  const telegramId = payload.id;
+  const existing = getUserByTelegramId(telegramId);
+  if (existing) {
+    setTelegramChatId(existing.id, String(telegramId));
+    return { user: existing, isNew: false };
+  }
+
+  const email = uniqueTelegramEmail(telegramDisplayEmail(payload));
+  const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
+  const info = getDb()
+    .prepare(
+      `INSERT INTO users (email, password_hash, role, status, telegram_id)
+       VALUES (?, ?, 'user', 'pending', ?)`,
+    )
+    .run(email, passwordHash, telegramId);
+  const userId = Number(info.lastInsertRowid);
+  ensureUserDefaults(userId);
+  setTelegramChatId(userId, String(telegramId));
+
+  const user = getPublicUser(userId)!;
+  return { user, isNew: true };
+}
+
+export function getPublicUser(userId: number): PublicUser | null {
+  return (
+    (getDb()
+      .prepare(
+        "SELECT id, email, role, status, created_at FROM users WHERE id = ?",
+      )
+      .get(userId) as PublicUser | undefined) ?? null
+  );
+}
+
 export interface AdminUserView extends PublicUser {
   has_binance: number;
   binance_env: string | null;
@@ -231,6 +304,17 @@ export function listRecommendations(
     .all(userId, limit) as Recommendation[];
 }
 
+export function updateRecommendationChartUrl(
+  id: number,
+  chartImageUrl: string,
+): void {
+  getDb()
+    .prepare(
+      "UPDATE recommendations SET chart_image_url = ? WHERE id = ?",
+    )
+    .run(chartImageUrl, id);
+}
+
 // ─── Claude usage / quota ───────────────────────────────────────────
 
 function today(): string {
@@ -251,6 +335,13 @@ export function incrementUsage(userId: number, by = 1): void {
        ON CONFLICT(user_id, day) DO UPDATE SET count = count + excluded.count`,
     )
     .run(userId, today(), by);
+}
+
+/** Returns true when adding `cost` would exceed the user's daily Claude quota. */
+export function wouldExceedQuota(userId: number, cost: number): boolean {
+  const limits = getLimits(userId);
+  if (limits.claude_quota <= 0) return false;
+  return getTodayUsage(userId) + cost > limits.claude_quota;
 }
 
 // ─── Trade intents ──────────────────────────────────────────────────
@@ -589,4 +680,111 @@ export function listUsersForDailySummary(): { id: number; chatId: string }[] {
     )
     .all() as { id: number; chatId: string }[];
   return rows;
+}
+
+// ─── Admin analytics ────────────────────────────────────────────────
+
+export interface AdminPlatformStats {
+  users_total: number;
+  users_active: number;
+  users_pending: number;
+  users_suspended: number;
+  users_with_binance: number;
+  trades_total: number;
+  trades_open: number;
+  intents_pending: number;
+  intents_executed: number;
+  recommendations_total: number;
+  claude_calls_today: number;
+}
+
+export function getAdminPlatformStats(): AdminPlatformStats {
+  const db = getDb();
+  const users = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+         SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended
+       FROM users`,
+    )
+    .get() as {
+    total: number;
+    active: number;
+    pending: number;
+    suspended: number;
+  };
+
+  const withBinance = db
+    .prepare("SELECT COUNT(*) AS n FROM binance_accounts")
+    .get() as { n: number };
+
+  const trades = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open
+       FROM trades`,
+    )
+    .get() as { total: number; open: number };
+
+  const intents = db
+    .prepare(
+      `SELECT
+         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+         SUM(CASE WHEN status = 'executed' THEN 1 ELSE 0 END) AS executed
+       FROM trade_intents`,
+    )
+    .get() as { pending: number | null; executed: number | null };
+
+  const recs = db
+    .prepare("SELECT COUNT(*) AS n FROM recommendations")
+    .get() as { n: number };
+
+  const claudeToday = db
+    .prepare("SELECT COALESCE(SUM(count), 0) AS n FROM claude_usage WHERE day = ?")
+    .get(today()) as { n: number };
+
+  return {
+    users_total: users.total,
+    users_active: users.active,
+    users_pending: users.pending,
+    users_suspended: users.suspended,
+    users_with_binance: withBinance.n,
+    trades_total: trades.total,
+    trades_open: trades.open,
+    intents_pending: intents.pending ?? 0,
+    intents_executed: intents.executed ?? 0,
+    recommendations_total: recs.n,
+    claude_calls_today: claudeToday.n,
+  };
+}
+
+export interface ClaudeUsageRow {
+  user_id: number;
+  email: string;
+  status: string;
+  used_today: number;
+  quota: number;
+}
+
+export function listClaudeUsageForAdmin(): ClaudeUsageRow[] {
+  return getDb()
+    .prepare(
+      `SELECT u.id AS user_id, u.email, u.status,
+              COALESCE(c.count, 0) AS used_today,
+              COALESCE(a.claude_quota, 1000) AS quota
+       FROM users u
+       LEFT JOIN claude_usage c ON c.user_id = u.id AND c.day = ?
+       LEFT JOIN admin_limits a ON a.user_id = u.id
+       WHERE u.role != 'admin'
+       ORDER BY used_today DESC, u.email`,
+    )
+    .all(today()) as ClaudeUsageRow[];
+}
+
+export function deleteUser(userId: number): boolean {
+  const info = getDb().prepare("DELETE FROM users WHERE id = ?").run(userId);
+  return info.changes > 0;
 }

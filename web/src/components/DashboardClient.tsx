@@ -1,21 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import {
+  ArrowLeftRight,
+  BarChart3,
+  CreditCard,
+  LineChart,
+  Power,
+  Send,
+  Shield,
+} from "lucide-react";
 import type { AdminLimits, PublicUser, TradingSettings } from "@/lib/types";
-
-interface BinanceStatus {
-  connected: boolean;
-  env?: string;
-  canTrade?: boolean;
-  canWithdraw?: boolean;
-  reachable?: boolean;
-  error?: string;
-  balances?: { asset: string; free: string; locked: string }[];
-}
+import { SurfaceCard } from "@/components/ui/shell";
+import { displayNameFromEmail } from "@/lib/displayName";
+import { useMe } from "@/hooks/useMe";
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "بانتظار موافقة الإدارة",
+  pending: "بانتظار الموافقة",
   active: "مفعّل",
   suspended: "موقوف",
 };
@@ -31,10 +33,15 @@ export default function DashboardClient({
   limits: AdminLimits;
   hasBinance: boolean;
 }) {
-  const [status, setStatus] = useState<BinanceStatus | null>(null);
-  const [loading, setLoading] = useState(hasBinance);
+  const { data: me } = useMe();
   const [killOn, setKillOn] = useState(settings.kill_switch === 1);
   const [killBusy, setKillBusy] = useState(false);
+
+  const used = me?.quota.used ?? 0;
+  const remaining = me?.quota.remaining ?? Math.max(0, limits.claude_quota - used);
+  const limit = me?.quota.limit ?? limits.claude_quota;
+  const displayName = displayNameFromEmail(user.email);
+  const tgLinked = Boolean(settings.telegram_chat_id);
 
   async function toggleKill() {
     const next = !killOn;
@@ -52,183 +59,143 @@ export default function DashboardClient({
     }
   }
 
-  useEffect(() => {
-    if (!hasBinance) return;
-    fetch("/api/binance/status")
-      .then((r) => r.json())
-      .then(setStatus)
-      .finally(() => setLoading(false));
-  }, [hasBinance]);
-
-  const modeLabel = settings.mode === "auto" ? "تنفيذ تلقائي" : "توصيات فقط";
-
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">مرحباً 👋</h1>
-          <p className="text-sm text-[var(--muted)]" dir="ltr">
+    <main className="page-shell space-y-4">
+      <div>
+        <h1 className="page-title">حسابي</h1>
+        <p className="page-subtitle">لوحة الحساب والرصيد</p>
+      </div>
+
+      <SurfaceCard className="flex items-center gap-4">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 font-serif text-lg font-bold text-primary">
+          {displayName.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-serif text-lg font-bold">{displayName}</p>
+          <p className="truncate text-sm text-muted-foreground" dir="ltr">
             {user.email}
           </p>
+          <div className="mt-1 flex flex-wrap gap-2 text-xs">
+            <span
+              className={`rounded-full px-2 py-0.5 ${
+                user.status === "active"
+                  ? "bg-secondary text-foreground"
+                  : user.status === "pending"
+                    ? "bg-accent text-accent-foreground"
+                    : "bg-destructive/10 text-destructive"
+              }`}
+            >
+              {STATUS_LABEL[user.status]}
+            </span>
+            {tgLinked && (
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-muted-foreground">
+                تليجرام مرتبط
+              </span>
+            )}
+          </div>
         </div>
-        <span
-          className={`rounded-full px-3 py-1 text-sm font-medium ${
-            user.status === "active"
-              ? "bg-[var(--accent)]/15 text-[var(--accent)]"
-              : user.status === "pending"
-                ? "bg-[var(--warning)]/15 text-[var(--warning)]"
-                : "bg-[var(--danger)]/15 text-[var(--danger)]"
+      </SurfaceCard>
+
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <SurfaceCard padding="sm" className="text-center">
+          <p className="text-[10px] text-muted-foreground sm:text-xs">متبقّي</p>
+          <p className="font-serif text-xl font-bold sm:text-2xl">{remaining}</p>
+        </SurfaceCard>
+        <SurfaceCard padding="sm" className="text-center">
+          <p className="text-[10px] text-muted-foreground sm:text-xs">مُستهلك</p>
+          <p className="font-serif text-xl font-bold sm:text-2xl">{used}</p>
+        </SurfaceCard>
+        <SurfaceCard padding="sm" className="text-center">
+          <p className="text-[10px] text-muted-foreground sm:text-xs">الإجمالي</p>
+          <p className="font-serif text-xl font-bold sm:text-2xl">{limit}</p>
+        </SurfaceCard>
+      </div>
+
+      <SurfaceCard className="space-y-3">
+        <div className="flex items-start gap-3">
+          <CreditCard className="mt-0.5 h-5 w-5 text-accent-gold" />
+          <div>
+            <h2 className="font-semibold">الاشتراك</h2>
+            <p className="text-sm text-muted-foreground">
+              {user.status === "active"
+                ? "حسابك مفعّل. تواصل مع الإدارة لتوسيع الرصيد."
+                : "حسابك بانتظار موافقة الإدارة."}
+            </p>
+          </div>
+        </div>
+        <Link href="/plan" className="btn btn-primary w-full">
+          <Send className="h-4 w-4" />
+          تواصل للاشتراك
+        </Link>
+      </SurfaceCard>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Link href="/settings" className="block">
+          <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
+            <ArrowLeftRight className="h-5 w-5 text-accent-gold" />
+            <div>
+              <p className="font-medium">ربط Binance</p>
+              <p className="text-xs text-muted-foreground">
+                {hasBinance ? "مرتبط" : "غير مربوط"}
+              </p>
+            </div>
+          </SurfaceCard>
+        </Link>
+
+        <Link href="/trades" className="block">
+          <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
+            <BarChart3 className="h-5 w-5 text-accent-gold" />
+            <div>
+              <p className="font-medium">الصفقات</p>
+              <p className="text-xs text-muted-foreground">سجل التنفيذ</p>
+            </div>
+          </SurfaceCard>
+        </Link>
+
+        <Link href="/market" className="block">
+          <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
+            <LineChart className="h-5 w-5 text-accent-gold" />
+            <div>
+              <p className="font-medium">الشارت</p>
+              <p className="text-xs text-muted-foreground">تحليل فني مباشر</p>
+            </div>
+          </SurfaceCard>
+        </Link>
+
+        <SurfaceCard
+          className={`flex items-center justify-between gap-3 ${
+            killOn ? "border-destructive/30" : ""
           }`}
         >
-          {STATUS_LABEL[user.status]}
-        </span>
-      </div>
-
-      <div
-        className={`card mb-6 flex flex-wrap items-center justify-between gap-3 p-5 ${
-          killOn ? "border-[var(--danger)]" : ""
-        }`}
-      >
-        <div>
-          <h2 className="font-bold">الإيقاف الطارئ (Kill Switch)</h2>
-          <p className="text-sm text-[var(--muted)]">
-            {killOn
-              ? "التداول موقوف بالكامل في حسابك. لن يفتح الوكيل أي صفقة."
-              : "التداول مفعّل. يمكنك إيقاف كل شيء فوراً عند الحاجة."}
-          </p>
-        </div>
-        <button
-          onClick={toggleKill}
-          disabled={killBusy}
-          className={`btn ${killOn ? "btn-secondary" : "btn-danger"}`}
-        >
-          {killBusy ? "…" : killOn ? "إلغاء الإيقاف" : "إيقاف طارئ الآن"}
-        </button>
-      </div>
-
-      {user.status === "pending" && (
-        <div className="card mb-6 border-[var(--warning)]/40 p-5">
-          <p className="text-sm">
-            حسابك قيد المراجعة. بإمكانك ربط مفاتيح Binance (Testnet) الآن، لكن
-            التداول الفعلي يبدأ بعد موافقة الإدارة.
-          </p>
-        </div>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="card p-5">
-          <p className="text-sm text-[var(--muted)]">الوضع الحالي</p>
-          <p className="mt-1 text-xl font-bold">{modeLabel}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            {settings.experience === "beginner" ? "مستوى مبتدئ" : "مستوى خبير"} ·
-            أسلوب{" "}
-            {settings.style === "conservative"
-              ? "محافظ"
-              : settings.style === "balanced"
-                ? "متوازن"
-                : "نشِط"}
-          </p>
-        </div>
-
-        <div className="card p-5">
-          <p className="text-sm text-[var(--muted)]">صلاحية التنفيذ</p>
-          <p
-            className={`mt-1 text-xl font-bold ${limits.can_execute ? "text-[var(--accent)]" : "text-[var(--warning)]"}`}
-          >
-            {limits.can_execute ? "مفعّلة" : "غير مفعّلة"}
-          </p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            {limits.can_execute
-              ? `سقف رأس المال: ${limits.max_capital_cap || "غير محدّد"}`
-              : "تتطلب موافقة الإدارة"}
-          </p>
-        </div>
-
-        <div className="card p-5">
-          <p className="text-sm text-[var(--muted)]">حدّ الخسارة اليومي</p>
-          <p className="mt-1 text-xl font-bold text-[var(--danger)]">
-            −{settings.daily_loss_limit_pct}%
-          </p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            هدف الربح اليومي: +{settings.daily_profit_target_pct}%
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <div className="card p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-bold">اتصال Binance</h2>
-            <Link href="/settings" className="text-sm text-[var(--accent-2)]">
-              إدارة
-            </Link>
-          </div>
-          {!hasBinance && (
-            <p className="text-sm text-[var(--muted)]">
-              لم تربط حساب Binance بعد.{" "}
-              <Link href="/settings" className="text-[var(--accent-2)]">
-                اربطه الآن
-              </Link>
-              .
-            </p>
-          )}
-          {hasBinance && loading && (
-            <p className="text-sm text-[var(--muted)]">جارٍ فحص الاتصال…</p>
-          )}
-          {status?.connected && status.reachable !== false && (
-            <div className="space-y-2 text-sm">
-              <p>
-                البيئة:{" "}
-                <span className="font-semibold">
-                  {status.env === "testnet" ? "تجريبية (Testnet)" : "حقيقية"}
-                </span>
+          <div className="flex items-center gap-3">
+            <Power
+              className={`h-5 w-5 ${killOn ? "text-destructive" : "text-accent-gold"}`}
+            />
+            <div>
+              <p className="font-medium">الإيقاف الطارئ</p>
+              <p className="text-xs text-muted-foreground">
+                {killOn ? "التداول موقوف" : "التداول مفعّل"}
               </p>
-              <p>
-                التداول:{" "}
-                <span className="text-[var(--accent)]">
-                  {status.canTrade ? "مسموح" : "غير مسموح"}
-                </span>
-              </p>
-              {status.canWithdraw && (
-                <p className="text-[var(--warning)]">
-                  ⚠ صلاحية السحب مفعّلة — يُنصح بتعطيلها.
-                </p>
-              )}
-              <div className="mt-2 border-t border-[var(--border)] pt-2">
-                <p className="mb-1 text-[var(--muted)]">الأرصدة:</p>
-                {status.balances && status.balances.length > 0 ? (
-                  <ul className="space-y-1" dir="ltr">
-                    {status.balances.slice(0, 6).map((b) => (
-                      <li key={b.asset} className="flex justify-between">
-                        <span>{b.asset}</span>
-                        <span className="font-mono">{b.free}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-[var(--muted)]">لا توجد أرصدة.</p>
-                )}
-              </div>
             </div>
-          )}
-          {status?.reachable === false && (
-            <p className="text-sm text-[var(--danger)]">
-              تعذّر الاتصال: {status.error}
-            </p>
-          )}
-        </div>
-
-        <div className="card p-5">
-          <h2 className="mb-3 font-bold">الدردشة مع الوكيل</h2>
-          <p className="text-sm text-[var(--muted)]">
-            تحدّث مع الخبير، اطلب تحليل أي عملة مسموح بها، وتلقَّ توصياته
-            (شراء/بيع/انتظار) مع وقف الخسارة والهدف.
-          </p>
-          <Link href="/chat" className="btn btn-primary mt-4">
-            ابدأ الدردشة
-          </Link>
-        </div>
+          </div>
+          <button
+            onClick={() => void toggleKill()}
+            disabled={killBusy}
+            className={`btn text-xs ${killOn ? "btn-secondary" : "btn-danger"}`}
+          >
+            {killBusy ? "…" : killOn ? "تفعيل" : "إيقاف"}
+          </button>
+        </SurfaceCard>
       </div>
+
+      {limits.can_execute === 0 && (
+        <SurfaceCard className="flex items-start gap-3 border-accent-gold/30">
+          <Shield className="mt-0.5 h-5 w-5 text-accent-gold" />
+          <p className="text-sm text-muted-foreground">
+            التنفيذ التلقائي غير مفعّل. تواصل مع الإدارة لتفعيله.
+          </p>
+        </SurfaceCard>
+      )}
     </main>
   );
 }

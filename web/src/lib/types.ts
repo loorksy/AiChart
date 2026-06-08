@@ -7,6 +7,7 @@ export interface UserRow {
   password_hash: string;
   role: Role;
   status: UserStatus;
+  telegram_id: number | null;
   created_at: string;
 }
 
@@ -74,6 +75,7 @@ export interface Recommendation {
   timeframe: string | null;
   rationale: string | null;
   factors: string | null; // JSON array of short reason strings
+  chart_image_url: string | null;
   created_at: string;
 }
 
@@ -100,6 +102,25 @@ export interface TradeIntent {
   reason: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Conversation {
+  id: number;
+  user_id: number;
+  title: string;
+  summary: string | null;
+  archived: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessageRow {
+  id: number;
+  conversation_id: number;
+  role: "user" | "assistant";
+  content: string;
+  metadata_json: string | null;
+  created_at: string;
 }
 
 export interface Trade {

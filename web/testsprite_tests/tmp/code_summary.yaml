@@ -1,0 +1,220 @@
+version: "2"
+type: backend
+tech_stack:
+  - TypeScript
+  - Next.js 16
+  - React 19
+  - Tailwind CSS v4
+  - SQLite (better-sqlite3)
+  - Anthropic Claude API
+  - Binance API
+  - Telegram Bot API
+features:
+  - name: Authentication
+    description: Email/password and Telegram login with JWT sessions
+    files:
+      - src/app/api/auth/login/route.ts
+      - src/app/api/auth/register/route.ts
+      - src/app/api/auth/logout/route.ts
+      - src/app/api/auth/telegram/route.ts
+    endpoints:
+      - method: POST
+        path: /api/auth/login
+        description: Login with email and password
+        auth_required: false
+        request_schema:
+          body:
+            email: string
+            password: string
+        response_schema:
+          "200": User session
+          "401": Invalid credentials
+      - method: POST
+        path: /api/auth/register
+        description: Register new user account
+        auth_required: false
+        response_schema:
+          "200": User created
+      - method: POST
+        path: /api/auth/logout
+        description: Clear session cookie
+        auth_required: true
+        response_schema:
+          "200": ok
+    depends_on: []
+  - name: AI Chat Agent
+    description: Streaming Claude agent with tools for market analysis, recommendations, and image upload
+    files:
+      - src/app/api/chat/route.ts
+      - src/app/api/chat/status/route.ts
+      - src/lib/agent.ts
+      - src/lib/anthropic.ts
+    endpoints:
+      - method: GET
+        path: /api/chat/status
+        description: Check if Anthropic is configured and which model is active
+        auth_required: true
+        response_schema:
+          "200": "{ ready: boolean, model: string }"
+      - method: POST
+        path: /api/chat
+        description: Send chat message with optional image; returns SSE stream
+        auth_required: true
+        request_schema:
+          body:
+            message: string
+            stream: boolean
+            conversationId: number
+            image: object
+        response_schema:
+          "200": SSE events (delta, activity, done)
+          "429": Quota exceeded
+    depends_on:
+      - Authentication
+  - name: Conversations
+    description: Persist and manage chat conversation history
+    files:
+      - src/app/api/conversations/route.ts
+      - src/app/api/conversations/[id]/route.ts
+      - src/lib/conversations.ts
+    endpoints:
+      - method: GET
+        path: /api/conversations
+        description: List user conversations
+        auth_required: true
+        response_schema:
+          "200": Conversation[]
+      - method: POST
+        path: /api/conversations
+        description: Create new conversation
+        auth_required: true
+        response_schema:
+          "200": Conversation
+      - method: GET
+        path: /api/conversations/{id}
+        description: Load conversation messages
+        auth_required: true
+        response_schema:
+          "200": Messages
+    depends_on:
+      - Authentication
+  - name: Signals Wizard
+    description: Generate structured trade plans via 4-step wizard
+    files:
+      - src/app/signals/new/page.tsx
+      - src/app/api/signals/generate/route.ts
+      - src/app/api/instruments/route.ts
+    endpoints:
+      - method: GET
+        path: /api/instruments
+        description: List Binance USDT trading pairs with search
+        auth_required: true
+        response_schema:
+          "200": Instrument[]
+      - method: POST
+        path: /api/signals/generate
+        description: Generate signal plan (costs 5 credits)
+        auth_required: true
+        request_schema:
+          body:
+            symbol: string
+            style: string
+            riskPercent: number
+            capital: number
+            stopLossStyle: string
+            notes: string
+        response_schema:
+          "200": Recommendation result
+          "429": Quota exceeded
+    depends_on:
+      - Authentication
+      - AI Chat Agent
+  - name: User Profile and Settings
+    description: User profile, trading settings, Binance link, Telegram link
+    files:
+      - src/app/api/me/route.ts
+      - src/app/api/settings/route.ts
+      - src/app/dashboard/page.tsx
+      - src/app/settings/page.tsx
+    endpoints:
+      - method: GET
+        path: /api/me
+        description: Current user, settings, limits, Binance status, quota
+        auth_required: true
+        response_schema:
+          "200": User profile bundle
+      - method: PATCH
+        path: /api/settings
+        description: Update trading settings
+        auth_required: true
+        response_schema:
+          "200": Updated settings
+    depends_on:
+      - Authentication
+  - name: Trades and Market
+    description: Trade intents, execution, market klines for charts
+    files:
+      - src/app/api/trades/route.ts
+      - src/app/api/trades/intents/route.ts
+      - src/app/api/market/klines/route.ts
+      - src/lib/execution.ts
+    endpoints:
+      - method: GET
+        path: /api/trades
+        description: List user trades
+        auth_required: true
+        response_schema:
+          "200": Trade[]
+      - method: GET
+        path: /api/market/klines
+        description: Binance candlestick data for chart
+        auth_required: true
+        response_schema:
+          "200": Kline[]
+    depends_on:
+      - Authentication
+  - name: Frontend Pages
+    description: RTL Arabic UI with chat, dashboard, signals wizard, admin panel
+    files:
+      - src/app/chat/page.tsx
+      - src/app/dashboard/page.tsx
+      - src/app/signals/new/page.tsx
+      - src/components/AppShell.tsx
+      - src/components/ChatSquareClient.tsx
+    endpoints:
+      - method: GET
+        path: /chat
+        description: Main AI chat interface
+        auth_required: true
+        response_schema:
+          "200": HTML page
+      - method: GET
+        path: /dashboard
+        description: User account dashboard with credits
+        auth_required: true
+        response_schema:
+          "200": HTML page
+      - method: GET
+        path: /signals/new
+        description: 4-step signal builder wizard
+        auth_required: true
+        response_schema:
+          "200": HTML page
+      - method: GET
+        path: /login
+        description: Login page
+        auth_required: false
+        response_schema:
+          "200": HTML page
+    depends_on:
+      - Authentication
+known_limitations:
+  - issue: Telegram webhook requires public URL (not localhost without tunnel)
+    location: src/app/api/telegram/webhook/route.ts
+    impact: Telegram bot features unavailable in pure local dev without ngrok
+  - issue: Claude API key required for chat and signals
+    location: src/lib/anthropic.ts
+    impact: Chat returns error if ANTHROPIC_API_KEY not configured
+  - issue: Dev server limits TestSprite to 15 high-priority frontend tests
+    location: TestSprite MCP
+    impact: Full test suite requires production build (npm run build && npm run start)

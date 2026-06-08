@@ -4,19 +4,20 @@
  */
 
 import { getTelegramChatId } from "./store";
+import { getPlatformValue } from "./platformConfig";
 
 const API = "https://api.telegram.org";
 
 export function isTelegramConfigured(): boolean {
-  return Boolean(process.env.TELEGRAM_BOT_TOKEN);
+  return Boolean(getPlatformValue("TELEGRAM_BOT_TOKEN"));
 }
 
 export function webhookSecret(): string {
-  return process.env.TELEGRAM_WEBHOOK_SECRET || "aichart-webhook-secret";
+  return getPlatformValue("TELEGRAM_WEBHOOK_SECRET") || "aichart-webhook-secret";
 }
 
 function token(): string {
-  const t = process.env.TELEGRAM_BOT_TOKEN;
+  const t = getPlatformValue("TELEGRAM_BOT_TOKEN");
   if (!t) throw new Error("TELEGRAM_BOT_TOKEN غير مُعدّ.");
   return t;
 }
@@ -71,15 +72,37 @@ export async function sendMessage(
   });
 }
 
+/** Downloads a Telegram file by file_id and returns base64 + media type. */
+export async function downloadTelegramPhoto(
+  fileId: string,
+): Promise<{ data: string; media_type: "image/jpeg" | "image/png" | "image/webp" }> {
+  const fileInfo = (await call("getFile", { file_id: fileId })) as {
+    file_path: string;
+  };
+  const url = `${API}/file/bot${token()}/${fileInfo.file_path}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error("تعذّر تنزيل الصورة من تليجرام.");
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const lower = fileInfo.file_path.toLowerCase();
+  const media_type = lower.endsWith(".png")
+    ? "image/png"
+    : lower.endsWith(".webp")
+      ? "image/webp"
+      : "image/jpeg";
+  return { data: buffer.toString("base64"), media_type };
+}
+
 export async function sendPhoto(
   chatId: string | number,
   photoUrl: string,
   caption?: string,
+  buttons?: InlineButton[][],
 ): Promise<void> {
   await call("sendPhoto", {
     chat_id: chatId,
     photo: photoUrl,
     ...(caption ? { caption, parse_mode: "HTML" } : {}),
+    ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
   });
 }
 
@@ -88,15 +111,16 @@ export async function notifyUserPhoto(
   userId: number,
   photoUrl: string,
   caption?: string,
+  buttons?: InlineButton[][],
 ): Promise<void> {
   if (!isTelegramConfigured()) return;
   const chatId = getTelegramChatId(userId);
   if (!chatId) return;
   try {
-    await sendPhoto(chatId, photoUrl, caption);
+    await sendPhoto(chatId, photoUrl, caption, buttons);
   } catch (e) {
     console.error("[telegram] photo notify failed", e);
-    if (caption) await notifyUser(userId, caption);
+    if (caption) await notifyUser(userId, caption, buttons);
   }
 }
 
@@ -125,7 +149,8 @@ export async function editMessageText(
 
 let cachedUsername: string | null = null;
 export async function getBotUsername(): Promise<string | null> {
-  if (process.env.TELEGRAM_BOT_USERNAME) return process.env.TELEGRAM_BOT_USERNAME;
+  const configured = getPlatformValue("TELEGRAM_BOT_USERNAME");
+  if (configured) return configured;
   if (cachedUsername) return cachedUsername;
   if (!isTelegramConfigured()) return null;
   try {
@@ -166,6 +191,38 @@ export const REJECT_BUTTON_TEXT = "❌ رفض · Reject";
 
 const sideBilingual = (s: string) =>
   s === "buy" ? "🟢 شراء · Buy" : "🔴 بيع · Sell";
+
+const sideBilingualShort = (s: string) =>
+  s === "buy" ? "شراء · Buy" : s === "sell" ? "بيع · Sell" : "انتظار · Wait";
+
+/** Bilingual card for a recorded recommendation (advisory / chart caption). */
+export function recommendationCard(rec: {
+  symbol: string;
+  action: string;
+  confidence: number;
+  entry: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  timeframe: string | null;
+  rationale: string | null;
+}): string {
+  const lines = [
+    `<b>📊 توصية جديدة من الخبير</b>`,
+    `<b>New recommendation from the Expert</b>`,
+    ``,
+    `الزوج · Pair: <b>${rec.symbol}</b>`,
+    `الاتجاه · Action: <b>${sideBilingualShort(rec.action)}</b>`,
+    `الثقة · Confidence: <b>${rec.confidence}%</b>`,
+  ];
+  if (rec.timeframe) lines.push(`الإطار · TF: <code>${rec.timeframe}</code>`);
+  if (rec.entry) lines.push(`الدخول · Entry: <code>${rec.entry}</code>`);
+  if (rec.stop_loss)
+    lines.push(`وقف الخسارة · Stop: <code>${rec.stop_loss}</code>`);
+  if (rec.take_profit)
+    lines.push(`الهدف · Target: <code>${rec.take_profit}</code>`);
+  if (rec.rationale) lines.push(``, `📝 ${rec.rationale}`);
+  return lines.join("\n");
+}
 
 /** Builds a professional bilingual trade-approval card. */
 export function approvalCard(intent: {

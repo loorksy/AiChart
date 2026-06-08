@@ -6,11 +6,13 @@ import {
 import { executeIntent } from "./execution";
 import {
   notifyUser,
+  notifyUserPhoto,
   approvalCard,
   APPROVE_BUTTON_TEXT,
   REJECT_BUTTON_TEXT,
 } from "./telegram";
 import { notifyTradeResult } from "./notifyTrade";
+import { resolveChartUrl } from "./recommendationChart";
 import type { Recommendation } from "./types";
 
 export interface ProcessedIntent {
@@ -87,6 +89,7 @@ export async function processRecommendations(
         exec,
         intent.symbol,
         rec.timeframe ?? "1h",
+        rec.chart_image_url,
       );
     } else {
       intents.push({
@@ -96,12 +99,23 @@ export async function processRecommendations(
         notional: intent.notional,
         status: "pending",
       });
-      await notifyUser(userId, approvalCard(intent), [
+      const caption = approvalCard(intent);
+      const buttons = [
         [
           { text: APPROVE_BUTTON_TEXT, callback_data: `approve:${intent.id}` },
           { text: REJECT_BUTTON_TEXT, callback_data: `reject:${intent.id}` },
         ],
-      ]);
+      ];
+      if (settings.send_screenshot === 1) {
+        const chartUrl = await resolveChartUrl(rec);
+        if (chartUrl) {
+          await notifyUserPhoto(userId, chartUrl, caption, buttons);
+        } else {
+          await notifyUser(userId, caption, buttons);
+        }
+      } else {
+        await notifyUser(userId, caption, buttons);
+      }
     }
   }
 

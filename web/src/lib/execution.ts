@@ -16,6 +16,11 @@ import {
   roundToStep,
   placeMarketOrder,
 } from "./binance";
+import {
+  emitActivity,
+  type ActivityListener,
+  type AgentActivity,
+} from "./agentActivity";
 
 export interface ExecutionResult {
   ok: boolean;
@@ -36,17 +41,37 @@ export interface ExecutionResult {
  * order is sent unless every hard cap passes. Defaults to the user's Binance
  * environment (Testnet by default).
  */
+export interface ExecuteIntentOptions {
+  onActivity?: ActivityListener;
+}
+
 export async function executeIntent(
   userId: number,
   intentId: number,
-): Promise<ExecutionResult> {
+  options?: ExecuteIntentOptions,
+): Promise<ExecutionResult & { activities: AgentActivity[] }> {
+  const onActivity = options?.onActivity;
+  const activities: AgentActivity[] = [];
+  const push = (activity: AgentActivity) => {
+    const idx = activities.findIndex((a) => a.id === activity.id);
+    if (idx >= 0) activities[idx] = activity;
+    else activities.push(activity);
+    emitActivity(onActivity, activity);
+  };
+
   const intent = getIntent(intentId);
   if (!intent || intent.user_id !== userId) {
-    return { ok: false, status: "failed", reason: "الطلب غير موجود." };
+    return { ok: false, status: "failed", reason: "الطلب غير موجود.", activities };
   }
   if (intent.status === "executed") {
-    return { ok: false, status: "failed", reason: "سبق تنفيذ هذا الطلب." };
+    return { ok: false, status: "failed", reason: "سبق تنفيذ هذا الطلب.", activities };
   }
+
+  push({
+    id: "risk",
+    label: `فحص حدود المخاطر · ${intent.symbol}`,
+    status: "running",
+  });
 
   const settings = getSettings(userId);
   const limits = getLimits(userId);
@@ -68,38 +93,75 @@ export async function executeIntent(
   });
 
   if (!decision.ok) {
+    push({
+      id: "risk",
+      label: `فحص حدود المخاطر · ${intent.symbol}`,
+      status: "error",
+      detail: decision.reason,
+    });
     updateIntentStatus(intentId, "failed", decision.reason);
-    return { ok: false, status: "failed", reason: decision.reason };
+    return { ok: false, status: "failed", reason: decision.reason, activities };
   }
+  push({
+    id: "risk",
+    label: `فحص حدود المخاطر · ${intent.symbol}`,
+    status: "done",
+  });
 
-  // 2) Credentials.
+  push({
+    id: "creds",
+    label: "التحقق من حساب Binance",
+    status: "running",
+  });
+
   const creds = getBinanceCredentials(userId);
   if (!creds) {
     const reason = "لا يوجد حساب Binance مرتبط.";
+    push({ id: "creds", label: "التحقق من حساب Binance", status: "error", detail: reason });
     updateIntentStatus(intentId, "failed", reason);
-    return { ok: false, status: "failed", reason };
+    return { ok: false, status: "failed", reason, activities };
   }
+  push({
+    id: "creds",
+    label: `التحقق من حساب Binance · ${creds.env === "testnet" ? "تجريبي" : "حقيقي"}`,
+    status: "done",
+  });
 
-  // 3) Build a valid order (quantity rounded to the symbol's step size).
   try {
+    push({
+      id: "quote",
+      label: `جلب السعر ومرشحات ${intent.symbol}`,
+      status: "running",
+    });
     const [price, filters] = await Promise.all([
       getPrice(intent.symbol, "prod"),
       getSymbolFilters(intent.symbol, "prod"),
     ]);
+    push({
+      id: "quote",
+      label: `جلب السعر ومرشحات ${intent.symbol}`,
+      status: "done",
+      detail: `السعر ${price}`,
+    });
     const qty = roundToStep(intent.notional / price, filters.stepSize);
 
     if (qty < filters.minQty || qty <= 0) {
       const reason = `الكمية أقل من الحد الأدنى للرمز (${filters.minQty}).`;
       updateIntentStatus(intentId, "failed", reason);
-      return { ok: false, status: "failed", reason };
+      return { ok: false, status: "failed", reason, activities };
     }
     if (filters.minNotional > 0 && qty * price < filters.minNotional) {
       const reason = `قيمة الصفقة أقل من الحد الأدنى (${filters.minNotional}).`;
       updateIntentStatus(intentId, "failed", reason);
-      return { ok: false, status: "failed", reason };
+      return { ok: false, status: "failed", reason, activities };
     }
 
-    // 4) Place the order on the user's environment (Testnet by default).
+    const sideLabel = intent.side === "buy" ? "شراء" : "بيع";
+    push({
+      id: "order",
+      label: `إرسال أمر ${sideLabel} · ${qty} ${intent.symbol}`,
+      status: "running",
+    });
     const order = await placeMarketOrder(
       creds.apiKey,
       creds.apiSecret,
@@ -125,6 +187,18 @@ export async function executeIntent(
       status: "open",
     });
 
+    push({
+      id: "order",
+      label: `إرسال أمر ${sideLabel} · ${qty} ${intent.symbol}`,
+      status: "done",
+      detail: `طلب #${order.orderId}`,
+    });
+    push({
+      id: "record",
+      label: "تسجيل الصفقة وإرسال الإشعار",
+      status: "done",
+    });
+
     updateIntentStatus(intentId, "executed", `نُفّذت (طلب #${order.orderId}).`);
     return {
       ok: true,
@@ -138,10 +212,17 @@ export async function executeIntent(
         avg_price: trade.avg_price,
         env: trade.env,
       },
+      activities,
     };
   } catch (e) {
     const reason = e instanceof Error ? e.message : "فشل تنفيذ الأمر.";
+    push({
+      id: "order",
+      label: "إرسال الأمر إلى Binance",
+      status: "error",
+      detail: reason,
+    });
     updateIntentStatus(intentId, "failed", reason);
-    return { ok: false, status: "failed", reason };
+    return { ok: false, status: "failed", reason, activities };
   }
 }

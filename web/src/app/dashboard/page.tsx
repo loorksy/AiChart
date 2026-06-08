@@ -6,7 +6,7 @@ import {
   getBinanceAccountMeta,
   isOnboardingDone,
 } from "@/lib/store";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import DashboardClient from "@/components/DashboardClient";
 
 export default async function DashboardPage() {
@@ -21,14 +21,13 @@ export default async function DashboardPage() {
   const binance = getBinanceAccountMeta(user.id);
 
   return (
-    <>
-      <Nav email={user.email} role={user.role} />
+    <AppShell email={user.email} role={user.role}>
       <DashboardClient
         user={user}
         settings={settings}
         limits={limits}
         hasBinance={Boolean(binance)}
       />
-    </>
+    </AppShell>
   );
 }

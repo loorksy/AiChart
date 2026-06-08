@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getAppSecret } from "./env";
 import { getDb } from "./db";
 import type { PublicUser, SessionPayload, UserRow } from "./types";
@@ -46,7 +46,8 @@ export async function verifySessionToken(
   }
 }
 
-export async function setSession(payload: SessionPayload): Promise<void> {
+/** Sets session cookie; returns JWT for API clients (Bearer header). */
+export async function setSession(payload: SessionPayload): Promise<string> {
   const token = await createSessionToken(payload);
   const store = await cookies();
   store.set(SESSION_COOKIE, token, {
@@ -56,6 +57,7 @@ export async function setSession(payload: SessionPayload): Promise<void> {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
+  return token;
 }
 
 export async function clearSession(): Promise<void> {
@@ -63,9 +65,18 @@ export async function clearSession(): Promise<void> {
   store.delete(SESSION_COOKIE);
 }
 
-export async function getCurrentUser(): Promise<PublicUser | null> {
+async function sessionTokenFromRequest(): Promise<string | null> {
   const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
+  const cookieToken = store.get(SESSION_COOKIE)?.value;
+  if (cookieToken) return cookieToken;
+  const h = await headers();
+  const auth = h.get("authorization");
+  if (auth?.startsWith("Bearer ")) return auth.slice(7).trim() || null;
+  return null;
+}
+
+export async function getCurrentUser(): Promise<PublicUser | null> {
+  const token = await sessionTokenFromRequest();
   if (!token) return null;
   const session = await verifySessionToken(token);
   if (!session) return null;

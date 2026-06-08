@@ -11,7 +11,7 @@ const BASE_URLS: Record<BinanceEnv, string> = {
 // Public market-data endpoints. `data-api.binance.vision` is Binance's
 // dedicated public market-data host and is not geo-restricted, which keeps
 // the agent's monitoring layer working across regions.
-const PUBLIC_DATA_URLS: Record<BinanceEnv, string> = {
+export const PUBLIC_DATA_URLS: Record<BinanceEnv, string> = {
   testnet: "https://testnet.binance.vision",
   prod: "https://data-api.binance.vision",
 };

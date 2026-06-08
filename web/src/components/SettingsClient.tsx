@@ -1,12 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  ChevronLeft,
+  LogOut,
+  Moon,
+  Sun,
+  User,
+} from "lucide-react";
 import type {
   AdminLimits,
   BinanceAccountMeta,
+  PublicUser,
   TradingSettings,
 } from "@/lib/types";
+import { SurfaceCard, PillButton } from "@/components/ui/shell";
+import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
+import { displayNameFromEmail } from "@/lib/displayName";
 
 function Field({
   label,
@@ -24,21 +36,194 @@ function Field({
 }
 
 export default function SettingsClient({
+  user,
   settings: initialSettings,
   limits,
   binance,
 }: {
+  user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
   binance: BinanceAccountMeta | null;
 }) {
+  const [view, setView] = useState<
+    "menu" | "profile" | "subscription" | "appearance" | "binance" | "telegram" | "trading"
+  >("menu");
+  const { theme, setTheme } = useTheme();
+  const router = useRouter();
+  const displayName = displayNameFromEmail(user.email);
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
+
+  if (view !== "menu") {
+    return (
+      <main className="page-shell max-w-lg">
+        <button
+          type="button"
+          onClick={() => setView("menu")}
+          className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          رجوع
+        </button>
+
+        {view === "profile" && (
+          <SurfaceCard className="space-y-3">
+            <h2 className="font-serif text-xl font-bold">الملف الشخصي</h2>
+            <p className="text-sm text-muted-foreground" dir="ltr">
+              {user.email}
+            </p>
+            <p className="text-sm">
+              الحالة:{" "}
+              <span className="font-medium">
+                {user.status === "active"
+                  ? "مفعّل"
+                  : user.status === "pending"
+                    ? "بانتظار الموافقة"
+                    : "موقوف"}
+              </span>
+            </p>
+          </SurfaceCard>
+        )}
+
+        {view === "subscription" && (
+          <SurfaceCard className="space-y-3">
+            <h2 className="font-serif text-xl font-bold">الاشتراك</h2>
+            <p className="text-sm text-muted-foreground">
+              الرصيد اليومي: {limits.claude_quota} رسالة
+            </p>
+            <Link href="/plan" className="btn btn-primary w-full">
+              تواصل للاشتراك
+            </Link>
+          </SurfaceCard>
+        )}
+
+        {view === "appearance" && (
+          <SurfaceCard className="space-y-4">
+            <h2 className="font-serif text-xl font-bold">المظهر</h2>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { id: "light" as const, label: "فاتح", icon: Sun },
+                  { id: "dark" as const, label: "داكن", icon: Moon },
+                  { id: "system" as const, label: "تلقائي", icon: Sun },
+                ] as const
+              ).map((opt) => {
+                const Icon = opt.icon;
+                return (
+                  <PillButton
+                    key={opt.id}
+                    variant={theme === opt.id ? "primary" : "outline"}
+                    onClick={() => setTheme(opt.id as ThemePreference)}
+                    className="gap-2"
+                  >
+                    <Icon className="h-4 w-4" />
+                    {opt.label}
+                  </PillButton>
+                );
+              })}
+            </div>
+          </SurfaceCard>
+        )}
+
+        {view === "binance" && <BinanceCard binance={binance} />}
+        {view === "telegram" && (
+          <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
+        )}
+        {view === "trading" && (
+          <TradingCard settings={initialSettings} limits={limits} />
+        )}
+      </main>
+    );
+  }
+
+  const menuItems = [
+    {
+      id: "profile" as const,
+      label: "الملف الشخصي",
+      desc: displayName,
+      icon: User,
+    },
+    {
+      id: "subscription" as const,
+      label: "الاشتراك",
+      desc: `${limits.claude_quota} رصيد يومي`,
+      icon: User,
+    },
+    {
+      id: "appearance" as const,
+      label: "المظهر",
+      desc:
+        theme === "light"
+          ? "فاتح"
+          : theme === "dark"
+            ? "داكن"
+            : "تلقائي",
+      icon: Sun,
+    },
+    {
+      id: "binance" as const,
+      label: "Binance",
+      desc: binance ? "مرتبط" : "غير مربوط",
+      icon: User,
+    },
+    {
+      id: "telegram" as const,
+      label: "تليجرام",
+      desc: initialSettings.telegram_chat_id ? "مرتبط" : "غير مربوط",
+      icon: User,
+    },
+    {
+      id: "trading" as const,
+      label: "التداول والمخاطر",
+      desc: "الحدود والإعدادات",
+      icon: User,
+    },
+  ];
+
   return (
-    <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-8">
-      <h1 className="mb-6 text-2xl font-bold">الإعدادات</h1>
-      <div className="space-y-6">
-        <BinanceCard binance={binance} />
-        <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
-        <TradingCard settings={initialSettings} limits={limits} />
+    <main className="page-shell max-w-lg space-y-4">
+      <div>
+        <h1 className="page-title">الإعدادات</h1>
+        <p className="page-subtitle">إدارة حسابك وتفضيلاتك</p>
+      </div>
+
+      <div className="space-y-2">
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setView(item.id)}
+              className="w-full text-start"
+            >
+              <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary">
+                  <Icon className="h-5 w-5 text-accent-gold" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">{item.desc}</p>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </SurfaceCard>
+            </button>
+          );
+        })}
+
+        <button type="button" onClick={() => void logout()} className="w-full">
+          <SurfaceCard className="flex items-center gap-3 text-destructive transition hover:bg-destructive/5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
+              <LogOut className="h-5 w-5" />
+            </div>
+            <p className="font-medium">تسجيل الخروج</p>
+          </SurfaceCard>
+        </button>
       </div>
     </main>
   );
@@ -94,18 +279,17 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
   }
 
   return (
-    <section className="card p-6">
-      <h2 className="mb-1 text-lg font-bold">ربط Binance</h2>
-      <p className="mb-4 text-sm text-[var(--muted)]">
-        فعّل صلاحية <b>التداول</b> فقط، وعطّل <b>السحب</b>، ويُفضّل تقييد المفتاح
-        بعنوان IP الخادم.
+    <SurfaceCard>
+      <h2 className="mb-1 font-serif text-xl font-bold">ربط Binance</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        فعّل صلاحية التداول فقط، وعطّل السحب.
       </p>
 
       {binance && (
-        <div className="mb-4 flex items-center justify-between rounded-lg bg-[var(--surface-2)] px-4 py-3">
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
           <div className="text-sm">
-            <span className="text-[var(--accent)]">● مرتبط</span> — البيئة:{" "}
-            {binance.env === "testnet" ? "تجريبية (Testnet)" : "حقيقية"}
+            <span className="text-accent-gold">● مرتبط</span> —{" "}
+            {binance.env === "testnet" ? "تجريبية" : "حقيقية"}
           </div>
           <button onClick={disconnect} className="btn btn-danger py-1.5 text-sm">
             فصل
@@ -114,48 +298,42 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
       )}
 
       <form onSubmit={connect} className="space-y-4">
-        <div>
-          <label htmlFor="env">البيئة</label>
+        <Field label="البيئة">
           <select
-            id="env"
-            className="input mt-1"
+            className="input"
             value={env}
             onChange={(e) => setEnv(e.target.value as "testnet" | "prod")}
           >
-            <option value="testnet">تجريبية (Testnet) — موصى به</option>
+            <option value="testnet">تجريبية (Testnet)</option>
             <option value="prod">حقيقية (Mainnet)</option>
           </select>
-        </div>
-        <div>
-          <label htmlFor="apiKey">API Key</label>
+        </Field>
+        <Field label="API Key">
           <input
-            id="apiKey"
-            className="input mt-1"
+            className="input"
             dir="ltr"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="مفتاح API"
           />
-        </div>
-        <div>
-          <label htmlFor="apiSecret">API Secret</label>
+        </Field>
+        <Field label="API Secret">
           <input
-            id="apiSecret"
             type="password"
-            className="input mt-1"
+            className="input"
             dir="ltr"
             value={apiSecret}
             onChange={(e) => setApiSecret(e.target.value)}
             placeholder="السر"
           />
-        </div>
+        </Field>
 
         {msg && (
           <p
             className={`rounded-lg px-3 py-2 text-sm ${
               msg.type === "ok"
-                ? "bg-[var(--accent)]/10 text-[var(--accent)]"
-                : "bg-[var(--danger)]/10 text-[var(--danger)]"
+                ? "bg-secondary text-foreground"
+                : "bg-destructive/10 text-destructive"
             }`}
           >
             {msg.text}
@@ -166,89 +344,72 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
           {busy ? "جارٍ التحقق…" : binance ? "تحديث المفاتيح" : "ربط وتحقق"}
         </button>
       </form>
-    </section>
+    </SurfaceCard>
   );
 }
 
 function TelegramCard({ linked }: { linked: boolean }) {
   const router = useRouter();
-  const [link, setLink] = useState<{ code: string; deepLink: string | null } | null>(
-    null,
-  );
-  const [msg, setMsg] = useState<string | null>(null);
+  const [botLink, setBotLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function generate() {
+  useEffect(() => {
+    void fetch("/api/telegram/link")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.botUsername) {
+          setBotLink(`https://t.me/${d.botUsername}?start=welcome`);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function unlink() {
+    if (!confirm("فصل حساب تليجرام؟")) return;
     setBusy(true);
-    setMsg(null);
     try {
-      const res = await fetch("/api/telegram/link", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setMsg(data.error ?? "تعذّر إنشاء الرمز.");
-        return;
-      }
-      setLink({ code: data.code, deepLink: data.deepLink });
+      await fetch("/api/telegram/link", { method: "DELETE" });
+      router.refresh();
     } finally {
       setBusy(false);
     }
   }
 
-  async function unlink() {
-    if (!confirm("فصل حساب تليجرام؟")) return;
-    await fetch("/api/telegram/link", { method: "DELETE" });
-    setLink(null);
-    router.refresh();
-  }
-
   return (
-    <section className="card p-6">
-      <h2 className="mb-1 text-lg font-bold">إشعارات تليجرام</h2>
-      <p className="mb-4 text-sm text-[var(--muted)]">
-        اربط تليجرام لتصلك إشعارات الصفقات والتوصيات، ولتوافق على الصفقات بأزرار
-        مباشرة من البوت.
+    <SurfaceCard>
+      <h2 className="mb-1 font-serif text-xl font-bold">إشعارات تليجرام</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        إشعارات الصفقات وأزرار الموافقة.
       </p>
 
       {linked ? (
-        <div className="flex items-center justify-between rounded-lg bg-[var(--surface-2)] px-4 py-3">
-          <span className="text-sm">
-            <span className="text-[var(--accent)]">● مرتبط</span> بتليجرام
-          </span>
-          <button onClick={unlink} className="btn btn-danger py-1.5 text-sm">
-            فصل
-          </button>
-        </div>
-      ) : (
         <div className="space-y-3">
-          <button onClick={generate} className="btn btn-primary" disabled={busy}>
-            {busy ? "…" : "إنشاء رمز ربط"}
-          </button>
-          {msg && <p className="text-sm text-[var(--danger)]">{msg}</p>}
-          {link && (
-            <div className="rounded-lg bg-[var(--surface-2)] p-4 text-sm">
-              {link.deepLink ? (
-                <a
-                  href={link.deepLink}
-                  target="_blank"
-                  className="text-[var(--accent-2)] underline"
-                  rel="noreferrer"
-                >
-                  افتح البوت لإتمام الربط ←
-                </a>
-              ) : (
-                <p>
-                  أرسل هذا الأمر للبوت:{" "}
-                  <code dir="ltr">/start {link.code}</code>
-                </p>
-              )}
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                الرمز صالح لمدة ساعة. بعد الربط، حدّث الصفحة.
-              </p>
-            </div>
+          <div className="flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
+            <span className="text-sm">
+              <span className="text-accent-gold">● مرتبط</span>
+            </span>
+            <button
+              onClick={unlink}
+              disabled={busy}
+              className="btn btn-danger py-1.5 text-sm"
+            >
+              فصل
+            </button>
+          </div>
+          {botLink && (
+            <a href={botLink} target="_blank" rel="noreferrer" className="text-link text-sm">
+              افتح البوت ←
+            </a>
           )}
         </div>
+      ) : (
+        <div className="rounded-xl bg-secondary p-4 text-sm text-muted-foreground">
+          <Link href="/login" className="text-link underline">
+            سجّل الدخول عبر تليجرام
+          </Link>
+        </div>
       )}
-    </section>
+    </SurfaceCard>
   );
 }
 
@@ -306,10 +467,7 @@ function TradingCard({
         setMsg({ type: "err", text: data.error ?? "فشل الحفظ." });
         return;
       }
-      setMsg({
-        type: "ok",
-        text: data.capped ?? "تم حفظ الإعدادات.",
-      });
+      setMsg({ type: "ok", text: data.capped ?? "تم حفظ الإعدادات." });
       router.refresh();
     } catch {
       setMsg({ type: "err", text: "تعذّر الاتصال بالخادم." });
@@ -319,10 +477,10 @@ function TradingCard({
   }
 
   return (
-    <section className="card p-6">
-      <h2 className="mb-1 text-lg font-bold">إعدادات التداول والمخاطر</h2>
-      <p className="mb-4 text-sm text-[var(--muted)]">
-        هذه الحدود تُفرض برمجياً قبل أي صفقة. سقوف الإدارة لا يمكن تجاوزها.
+    <SurfaceCard>
+      <h2 className="mb-1 font-serif text-xl font-bold">التداول والمخاطر</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        حدود تُفرض قبل أي صفقة.
       </p>
 
       <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
@@ -334,34 +492,8 @@ function TradingCard({
           >
             <option value="advisory">توصيات فقط</option>
             <option value="auto" disabled={!limits.can_execute}>
-              تنفيذ تلقائي {limits.can_execute ? "" : "(يتطلب موافقة الإدارة)"}
+              تنفيذ تلقائي
             </option>
-          </select>
-        </Field>
-
-        <Field label="نمط الموافقة">
-          <select
-            className="input"
-            value={s.approval}
-            onChange={(e) =>
-              set("approval", e.target.value as TradingSettings["approval"])
-            }
-          >
-            <option value="manual">تأكيد يدوي لكل صفقة</option>
-            <option value="delegate">تفويض تلقائي ضمن الحدود</option>
-          </select>
-        </Field>
-
-        <Field label="مستوى الخبرة">
-          <select
-            className="input"
-            value={s.experience}
-            onChange={(e) =>
-              set("experience", e.target.value as TradingSettings["experience"])
-            }
-          >
-            <option value="beginner">مبتدئ (الوكيل يقترح الإعدادات)</option>
-            <option value="expert">خبير (أضبط الإعدادات بنفسي)</option>
           </select>
         </Field>
 
@@ -377,9 +509,7 @@ function TradingCard({
           </select>
         </Field>
 
-        <Field
-          label={`سقف رأس المال (USDT)${limits.max_capital_cap ? ` — الحد الأقصى ${limits.max_capital_cap}` : ""}`}
-        >
+        <Field label="سقف رأس المال (USDT)">
           <input
             type="number"
             min={0}
@@ -389,7 +519,7 @@ function TradingCard({
           />
         </Field>
 
-        <Field label="حجم الصفقة (% من رأس المال)">
+        <Field label="حجم الصفقة %">
           <input
             type="number"
             min={0.1}
@@ -401,59 +531,9 @@ function TradingCard({
           />
         </Field>
 
-        <Field
-          label={`أقصى صفقات مفتوحة (الحد الأقصى ${limits.max_open_trades_cap})`}
-        >
+        <Field label="الأصول المسموحة">
           <input
-            type="number"
-            min={1}
-            max={limits.max_open_trades_cap}
-            className="input"
-            value={s.max_open_trades}
-            onChange={(e) => set("max_open_trades", Number(e.target.value))}
-          />
-        </Field>
-
-        <Field label="هدف الربح اليومي %">
-          <input
-            type="number"
-            min={0}
-            step={0.1}
-            className="input"
-            value={s.daily_profit_target_pct}
-            onChange={(e) =>
-              set("daily_profit_target_pct", Number(e.target.value))
-            }
-          />
-        </Field>
-
-        <Field label="حد الخسارة اليومي %">
-          <input
-            type="number"
-            min={0}
-            step={0.1}
-            className="input"
-            value={s.daily_loss_limit_pct}
-            onChange={(e) => set("daily_loss_limit_pct", Number(e.target.value))}
-          />
-        </Field>
-
-        <Field label="حد الخسارة الشهري %">
-          <input
-            type="number"
-            min={0}
-            step={0.1}
-            className="input"
-            value={s.monthly_loss_limit_pct}
-            onChange={(e) =>
-              set("monthly_loss_limit_pct", Number(e.target.value))
-            }
-          />
-        </Field>
-
-        <Field label="الأصول المسموحة (مفصولة بفاصلة)">
-          <input
-            className="input"
+            className="input sm:col-span-2"
             dir="ltr"
             value={assets}
             onChange={(e) => setAssets(e.target.value)}
@@ -461,51 +541,23 @@ function TradingCard({
           />
         </Field>
 
-        <Field label="معرّف تليجرام (Chat ID)">
-          <input
-            className="input"
-            dir="ltr"
-            value={s.telegram_chat_id ?? ""}
-            onChange={(e) => set("telegram_chat_id", e.target.value)}
-            placeholder="اختياري"
-          />
-        </Field>
-
-        <label className="flex items-center gap-2 text-sm text-[var(--foreground)]">
-          <input
-            type="checkbox"
-            checked={Boolean(s.send_screenshot)}
-            onChange={(e) => set("send_screenshot", e.target.checked ? 1 : 0)}
-          />
-          إرسال سكرين شوت لكل صفقة
-        </label>
-
-        <label className="flex items-center gap-2 text-sm text-[var(--danger)]">
-          <input
-            type="checkbox"
-            checked={Boolean(s.kill_switch)}
-            onChange={(e) => set("kill_switch", e.target.checked ? 1 : 0)}
-          />
-          الإيقاف الطارئ (إيقاف كل التداول)
-        </label>
-
         <div className="sm:col-span-2">
           {msg && (
             <p
               className={`mb-3 rounded-lg px-3 py-2 text-sm ${
                 msg.type === "ok"
-                  ? "bg-[var(--accent)]/10 text-[var(--accent)]"
-                  : "bg-[var(--danger)]/10 text-[var(--danger)]"
+                  ? "bg-secondary text-foreground"
+                  : "bg-destructive/10 text-destructive"
               }`}
             >
               {msg.text}
             </p>
           )}
           <button className="btn btn-primary" disabled={busy}>
-            {busy ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
+            {busy ? "جارٍ الحفظ…" : "حفظ"}
           </button>
         </div>
       </form>
-    </section>
+    </SurfaceCard>
   );
 }

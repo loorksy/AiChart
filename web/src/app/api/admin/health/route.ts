@@ -7,6 +7,7 @@ import {
 } from "@/lib/store";
 import { isAnthropicConfigured } from "@/lib/anthropic";
 import { isTelegramConfigured } from "@/lib/telegram";
+import { getPlatformValue } from "@/lib/platformConfig";
 
 export async function GET() {
   try {
@@ -20,7 +21,7 @@ export async function GET() {
       master_kill: isMasterKillOn(),
       anthropic: isAnthropicConfigured(),
       telegram: isTelegramConfigured(),
-      cron_secret_set: Boolean(process.env.CRON_SECRET),
+      cron_secret_set: Boolean(getPlatformValue("CRON_SECRET")),
       users: {
         total: users.length,
         active: users.filter((u) => u.status === "active").length,

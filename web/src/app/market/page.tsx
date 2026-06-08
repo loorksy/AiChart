@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getSettings, listRecommendations } from "@/lib/store";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import MarketClient from "@/components/MarketClient";
 
 export default async function MarketPage() {
@@ -17,12 +17,11 @@ export default async function MarketPage() {
   }
 
   return (
-    <>
-      <Nav email={user.email} role={user.role} />
+    <AppShell email={user.email} role={user.role}>
       <MarketClient
         allowedAssets={allowed}
         recommendations={listRecommendations(user.id, 50)}
       />
-    </>
+    </AppShell>
   );
 }
