@@ -145,6 +145,109 @@ export async function getKlines(
   }));
 }
 
+async function signedRequest(
+  method: "GET" | "POST" | "DELETE",
+  endpoint: string,
+  params: Record<string, string | number>,
+  apiKey: string,
+  apiSecret: string,
+  env: BinanceEnv,
+): Promise<unknown> {
+  const base = BASE_URLS[env];
+  const query =
+    Object.entries({ ...params, timestamp: Date.now(), recvWindow: 10000 })
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join("&");
+  const signature = sign(query, apiSecret);
+  const url = `${base}${endpoint}?${query}&signature=${signature}`;
+  const res = await fetch(url, {
+    method,
+    headers: { "X-MBX-APIKEY": apiKey },
+    cache: "no-store",
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg =
+      body && typeof body === "object" && "msg" in body
+        ? (body as { msg: string }).msg
+        : `Binance error (HTTP ${res.status})`;
+    throw new Error(msg);
+  }
+  return body;
+}
+
+export interface SymbolFilters {
+  stepSize: number;
+  minQty: number;
+  minNotional: number;
+  tickSize: number;
+}
+
+/** Fetches LOT_SIZE / NOTIONAL filters needed to build valid orders. */
+export async function getSymbolFilters(
+  symbol: string,
+  env: BinanceEnv = "prod",
+): Promise<SymbolFilters> {
+  const base = PUBLIC_DATA_URLS[env];
+  const res = await fetch(
+    `${base}/api/v3/exchangeInfo?symbol=${encodeURIComponent(symbol)}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`Failed to fetch exchange info for ${symbol}`);
+  const data = (await res.json()) as {
+    symbols: { filters: Record<string, string>[] }[];
+  };
+  const filters = data.symbols?.[0]?.filters ?? [];
+  const lot = filters.find((f) => f.filterType === "LOT_SIZE");
+  const notional = filters.find(
+    (f) => f.filterType === "NOTIONAL" || f.filterType === "MIN_NOTIONAL",
+  );
+  const price = filters.find((f) => f.filterType === "PRICE_FILTER");
+  return {
+    stepSize: lot ? Number(lot.stepSize) : 0.00000001,
+    minQty: lot ? Number(lot.minQty) : 0,
+    minNotional: notional ? Number(notional.minNotional ?? notional.notional) : 0,
+    tickSize: price ? Number(price.tickSize) : 0.01,
+  };
+}
+
+/** Rounds a quantity down to the symbol's step size. */
+export function roundToStep(qty: number, stepSize: number): number {
+  if (stepSize <= 0) return qty;
+  const decimals = Math.max(0, Math.round(-Math.log10(stepSize)));
+  const rounded = Math.floor(qty / stepSize) * stepSize;
+  return Number(rounded.toFixed(decimals));
+}
+
+export interface PlacedOrder {
+  orderId: number;
+  symbol: string;
+  side: string;
+  status: string;
+  executedQty: string;
+  cummulativeQuoteQty: string;
+  fills?: { price: string; qty: string }[];
+}
+
+/** Places a MARKET order on the spot account. */
+export async function placeMarketOrder(
+  apiKey: string,
+  apiSecret: string,
+  env: BinanceEnv,
+  symbol: string,
+  side: "BUY" | "SELL",
+  quantity: number,
+): Promise<PlacedOrder> {
+  return (await signedRequest(
+    "POST",
+    "/api/v3/order",
+    { symbol, side, type: "MARKET", quantity },
+    apiKey,
+    apiSecret,
+    env,
+  )) as PlacedOrder;
+}
+
 /** 24h ticker stats (price change %, high, low, volume). */
 export async function get24hStats(
   symbol: string,

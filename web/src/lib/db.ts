@@ -86,6 +86,52 @@ function init(db: Database.Database) {
       PRIMARY KEY (user_id, day),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    -- A proposed trade awaiting approval (manual) or immediate execution
+    -- (delegate). Every execution path passes through the Risk Guard.
+    CREATE TABLE IF NOT EXISTS trade_intents (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id           INTEGER NOT NULL,
+      recommendation_id INTEGER,
+      symbol            TEXT NOT NULL,
+      side              TEXT NOT NULL,
+      notional          REAL NOT NULL,
+      entry             REAL,
+      stop_loss         REAL,
+      take_profit       REAL,
+      confidence        INTEGER NOT NULL DEFAULT 0,
+      rationale         TEXT,
+      status            TEXT NOT NULL DEFAULT 'pending',
+      reason            TEXT,
+      created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- Executed trades.
+    CREATE TABLE IF NOT EXISTS trades (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER NOT NULL,
+      intent_id   INTEGER,
+      symbol      TEXT NOT NULL,
+      side        TEXT NOT NULL,
+      qty         REAL NOT NULL DEFAULT 0,
+      quote_qty   REAL NOT NULL DEFAULT 0,
+      avg_price   REAL NOT NULL DEFAULT 0,
+      order_id    TEXT,
+      env         TEXT NOT NULL DEFAULT 'testnet',
+      status      TEXT NOT NULL DEFAULT 'open',
+      pnl         REAL NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      closed_at   TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- Global key/value flags (e.g. master kill switch).
+    CREATE TABLE IF NOT EXISTS system_flags (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   seedAdmin(db);
