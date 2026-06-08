@@ -5,6 +5,8 @@ import type {
   BinanceAccountMeta,
   PublicUser,
   Recommendation,
+  Trade,
+  TradeIntent,
   TradingSettings,
 } from "./types";
 import type { BinanceEnv } from "./binance";
@@ -244,4 +246,174 @@ export function incrementUsage(userId: number, by = 1): void {
        ON CONFLICT(user_id, day) DO UPDATE SET count = count + excluded.count`,
     )
     .run(userId, today(), by);
+}
+
+// ─── Trade intents ──────────────────────────────────────────────────
+
+export function createIntent(
+  userId: number,
+  intent: {
+    recommendation_id?: number | null;
+    symbol: string;
+    side: "buy" | "sell";
+    notional: number;
+    entry?: number | null;
+    stop_loss?: number | null;
+    take_profit?: number | null;
+    confidence?: number;
+    rationale?: string | null;
+    status?: string;
+    reason?: string | null;
+  },
+): TradeIntent {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO trade_intents
+        (user_id, recommendation_id, symbol, side, notional, entry, stop_loss, take_profit, confidence, rationale, status, reason)
+       VALUES (@user_id, @recommendation_id, @symbol, @side, @notional, @entry, @stop_loss, @take_profit, @confidence, @rationale, @status, @reason)`,
+    )
+    .run({
+      user_id: userId,
+      recommendation_id: intent.recommendation_id ?? null,
+      symbol: intent.symbol.toUpperCase(),
+      side: intent.side,
+      notional: intent.notional,
+      entry: intent.entry ?? null,
+      stop_loss: intent.stop_loss ?? null,
+      take_profit: intent.take_profit ?? null,
+      confidence: Math.round(intent.confidence ?? 0),
+      rationale: intent.rationale ?? null,
+      status: intent.status ?? "pending",
+      reason: intent.reason ?? null,
+    });
+  return getIntent(Number(info.lastInsertRowid))!;
+}
+
+export function getIntent(id: number): TradeIntent | null {
+  return (
+    (getDb()
+      .prepare("SELECT * FROM trade_intents WHERE id = ?")
+      .get(id) as TradeIntent | undefined) ?? null
+  );
+}
+
+export function listIntents(
+  userId: number,
+  status?: string,
+  limit = 30,
+): TradeIntent[] {
+  if (status) {
+    return getDb()
+      .prepare(
+        "SELECT * FROM trade_intents WHERE user_id = ? AND status = ? ORDER BY id DESC LIMIT ?",
+      )
+      .all(userId, status, limit) as TradeIntent[];
+  }
+  return getDb()
+    .prepare(
+      "SELECT * FROM trade_intents WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+    )
+    .all(userId, limit) as TradeIntent[];
+}
+
+export function updateIntentStatus(
+  id: number,
+  status: string,
+  reason?: string | null,
+): void {
+  getDb()
+    .prepare(
+      "UPDATE trade_intents SET status = ?, reason = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .run(status, reason ?? null, id);
+}
+
+// ─── Trades ─────────────────────────────────────────────────────────
+
+export function recordTrade(
+  userId: number,
+  trade: {
+    intent_id?: number | null;
+    symbol: string;
+    side: string;
+    qty: number;
+    quote_qty: number;
+    avg_price: number;
+    order_id?: string | null;
+    env: string;
+    status?: string;
+  },
+): Trade {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO trades
+        (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, status)
+       VALUES (@user_id, @intent_id, @symbol, @side, @qty, @quote_qty, @avg_price, @order_id, @env, @status)`,
+    )
+    .run({
+      user_id: userId,
+      intent_id: trade.intent_id ?? null,
+      symbol: trade.symbol.toUpperCase(),
+      side: trade.side,
+      qty: trade.qty,
+      quote_qty: trade.quote_qty,
+      avg_price: trade.avg_price,
+      order_id: trade.order_id ?? null,
+      env: trade.env,
+      status: trade.status ?? "open",
+    });
+  return getDb()
+    .prepare("SELECT * FROM trades WHERE id = ?")
+    .get(Number(info.lastInsertRowid)) as Trade;
+}
+
+export function listTrades(userId: number, limit = 50): Trade[] {
+  return getDb()
+    .prepare(
+      "SELECT * FROM trades WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+    )
+    .all(userId, limit) as Trade[];
+}
+
+export function countOpenTrades(userId: number): number {
+  const row = getDb()
+    .prepare(
+      "SELECT COUNT(*) AS n FROM trades WHERE user_id = ? AND status = 'open'",
+    )
+    .get(userId) as { n: number };
+  return row.n;
+}
+
+/** Today's realized PnL as a % of the user's capital cap (negative = loss). */
+export function todayRealizedPnlPct(userId: number, capital: number): number {
+  if (capital <= 0) return 0;
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trades
+       WHERE user_id = ? AND status = 'closed' AND date(closed_at) = date('now')`,
+    )
+    .get(userId) as { pnl: number };
+  return (row.pnl / capital) * 100;
+}
+
+// ─── System flags (master kill switch, etc.) ────────────────────────
+
+export function getFlag(key: string): string | null {
+  const row = getDb()
+    .prepare("SELECT value FROM system_flags WHERE key = ?")
+    .get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setFlag(key: string, value: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO system_flags (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    )
+    .run(key, value);
+}
+
+export function isMasterKillOn(): boolean {
+  return getFlag("master_kill") === "1";
 }

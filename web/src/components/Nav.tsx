@@ -17,6 +17,7 @@ export default function Nav({
     { href: "/dashboard", label: "اللوحة" },
     { href: "/market", label: "الشارت" },
     { href: "/chat", label: "الدردشة" },
+    { href: "/trades", label: "الصفقات" },
     { href: "/settings", label: "الإعدادات" },
     ...(role === "admin" ? [{ href: "/admin", label: "الإدارة" }] : []),
   ];

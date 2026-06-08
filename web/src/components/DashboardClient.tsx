@@ -33,6 +33,24 @@ export default function DashboardClient({
 }) {
   const [status, setStatus] = useState<BinanceStatus | null>(null);
   const [loading, setLoading] = useState(hasBinance);
+  const [killOn, setKillOn] = useState(settings.kill_switch === 1);
+  const [killBusy, setKillBusy] = useState(false);
+
+  async function toggleKill() {
+    const next = !killOn;
+    setKillBusy(true);
+    try {
+      const res = await fetch("/api/kill-switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ on: next }),
+      });
+      const data = await res.json();
+      if (res.ok) setKillOn(data.kill_switch === 1);
+    } finally {
+      setKillBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!hasBinance) return;
@@ -64,6 +82,28 @@ export default function DashboardClient({
         >
           {STATUS_LABEL[user.status]}
         </span>
+      </div>
+
+      <div
+        className={`card mb-6 flex flex-wrap items-center justify-between gap-3 p-5 ${
+          killOn ? "border-[var(--danger)]" : ""
+        }`}
+      >
+        <div>
+          <h2 className="font-bold">الإيقاف الطارئ (Kill Switch)</h2>
+          <p className="text-sm text-[var(--muted)]">
+            {killOn
+              ? "التداول موقوف بالكامل في حسابك. لن يفتح الوكيل أي صفقة."
+              : "التداول مفعّل. يمكنك إيقاف كل شيء فوراً عند الحاجة."}
+          </p>
+        </div>
+        <button
+          onClick={toggleKill}
+          disabled={killBusy}
+          className={`btn ${killOn ? "btn-secondary" : "btn-danger"}`}
+        >
+          {killBusy ? "…" : killOn ? "إلغاء الإيقاف" : "إيقاف طارئ الآن"}
+        </button>
       </div>
 
       {user.status === "pending" && (

@@ -6,12 +6,33 @@ import type { AdminUserView } from "@/lib/store";
 export default function AdminClient({
   initialUsers,
   adminId,
+  initialMasterKill,
 }: {
   initialUsers: AdminUserView[];
   adminId: number;
+  initialMasterKill: boolean;
 }) {
   const [users, setUsers] = useState(initialUsers);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [masterKill, setMasterKill] = useState(initialMasterKill);
+  const [killBusy, setKillBusy] = useState(false);
+
+  async function toggleMasterKill() {
+    const next = !masterKill;
+    if (next && !confirm("إيقاف كل التداول لجميع المستخدمين فوراً؟")) return;
+    setKillBusy(true);
+    try {
+      const res = await fetch("/api/admin/kill-switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ on: next }),
+      });
+      const data = await res.json();
+      if (res.ok) setMasterKill(data.master_kill);
+    } finally {
+      setKillBusy(false);
+    }
+  }
 
   async function patch(userId: number, body: Record<string, unknown>) {
     setSavingId(userId);
@@ -50,6 +71,28 @@ export default function AdminClient({
       <p className="mb-6 text-sm text-[var(--muted)]">
         مركز التحكّم الكامل — فعّل المستخدمين وحدّد سقوف التداول لكل مستخدم يدوياً.
       </p>
+
+      <div
+        className={`card mb-6 flex flex-wrap items-center justify-between gap-3 p-5 ${
+          masterKill ? "border-[var(--danger)]" : ""
+        }`}
+      >
+        <div>
+          <h2 className="font-bold">الإيقاف الطارئ العام (Master Kill Switch)</h2>
+          <p className="text-sm text-[var(--muted)]">
+            {masterKill
+              ? "كل التداول موقوف على مستوى المنصة لجميع المستخدمين."
+              : "إيقاف فوري لكل التداول لجميع المستخدمين عند الطوارئ."}
+          </p>
+        </div>
+        <button
+          onClick={toggleMasterKill}
+          disabled={killBusy}
+          className={`btn ${masterKill ? "btn-secondary" : "btn-danger"}`}
+        >
+          {killBusy ? "…" : masterKill ? "إلغاء الإيقاف العام" : "إيقاف عام الآن"}
+        </button>
+      </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Stat label="إجمالي المستخدمين" value={total} />

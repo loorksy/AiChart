@@ -74,3 +74,45 @@ export interface Recommendation {
   rationale: string | null;
   created_at: string;
 }
+
+export type IntentStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "executed"
+  | "failed";
+
+export interface TradeIntent {
+  id: number;
+  user_id: number;
+  recommendation_id: number | null;
+  symbol: string;
+  side: "buy" | "sell";
+  notional: number;
+  entry: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  confidence: number;
+  rationale: string | null;
+  status: IntentStatus;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Trade {
+  id: number;
+  user_id: number;
+  intent_id: number | null;
+  symbol: string;
+  side: string;
+  qty: number;
+  quote_qty: number;
+  avg_price: number;
+  order_id: string | null;
+  env: string;
+  status: string;
+  pnl: number;
+  created_at: string;
+  closed_at: string | null;
+}
