@@ -11,6 +11,12 @@ import {
 import { runAgent } from "@/lib/agent";
 import { executeIntent } from "@/lib/execution";
 import { isAnthropicConfigured, type Message } from "@/lib/anthropic";
+import {
+  notifyUser,
+  approvalCard,
+  APPROVE_BUTTON_TEXT,
+  REJECT_BUTTON_TEXT,
+} from "@/lib/telegram";
 
 export const maxDuration = 60;
 
@@ -80,6 +86,20 @@ export async function POST(req: NextRequest) {
       for (const rec of result.recommendations) {
         if (rec.action !== "buy" && rec.action !== "sell") continue;
         const delegate = settings.approval === "delegate";
+        // Combine the rationale with the technical factors so the reasons
+        // appear in the Telegram approval card too.
+        let factorsList: string[] = [];
+        try {
+          factorsList = rec.factors ? (JSON.parse(rec.factors) as string[]) : [];
+        } catch {
+          factorsList = [];
+        }
+        const richRationale = [
+          rec.rationale ?? "",
+          ...factorsList.map((f) => `• ${f}`),
+        ]
+          .filter(Boolean)
+          .join("\n");
         const intent = createIntent(user.id, {
           recommendation_id: rec.id,
           symbol: rec.symbol,
@@ -89,7 +109,7 @@ export async function POST(req: NextRequest) {
           stop_loss: rec.stop_loss,
           take_profit: rec.take_profit,
           confidence: rec.confidence,
-          rationale: rec.rationale,
+          rationale: richRationale || rec.rationale,
           status: delegate ? "approved" : "pending",
         });
         if (delegate) {
@@ -102,6 +122,12 @@ export async function POST(req: NextRequest) {
             status: exec.status,
             reason: exec.reason,
           });
+          await notifyUser(
+            user.id,
+            exec.ok
+              ? `✅ نُفّذت صفقة ${intent.symbol} (${intent.side === "buy" ? "شراء · Buy" : "بيع · Sell"}). · Executed.`
+              : `⚠️ تعذّر تنفيذ ${intent.symbol} · Not executed: ${exec.reason}`,
+          );
         } else {
           intents.push({
             id: intent.id,
@@ -110,6 +136,13 @@ export async function POST(req: NextRequest) {
             notional: intent.notional,
             status: "pending",
           });
+          // Send an approval card with bilingual inline buttons to Telegram.
+          await notifyUser(user.id, approvalCard(intent), [
+            [
+              { text: APPROVE_BUTTON_TEXT, callback_data: `approve:${intent.id}` },
+              { text: REJECT_BUTTON_TEXT, callback_data: `reject:${intent.id}` },
+            ],
+          ]);
         }
       }
     }

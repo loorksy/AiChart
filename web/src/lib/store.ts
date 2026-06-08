@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { getDb } from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
 import type {
@@ -191,13 +192,14 @@ export function saveRecommendation(
     take_profit?: number | null;
     timeframe?: string | null;
     rationale?: string | null;
+    factors?: string[] | null;
   },
 ): Recommendation {
   const info = getDb()
     .prepare(
       `INSERT INTO recommendations
-         (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale)
-       VALUES (@user_id, @symbol, @action, @confidence, @entry, @stop_loss, @take_profit, @timeframe, @rationale)`,
+         (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors)
+       VALUES (@user_id, @symbol, @action, @confidence, @entry, @stop_loss, @take_profit, @timeframe, @rationale, @factors)`,
     )
     .run({
       user_id: userId,
@@ -209,6 +211,8 @@ export function saveRecommendation(
       take_profit: rec.take_profit ?? null,
       timeframe: rec.timeframe ?? null,
       rationale: rec.rationale ?? null,
+      factors:
+        rec.factors && rec.factors.length ? JSON.stringify(rec.factors) : null,
     });
   return getDb()
     .prepare("SELECT * FROM recommendations WHERE id = ?")
@@ -416,4 +420,60 @@ export function setFlag(key: string, value: string): void {
 
 export function isMasterKillOn(): boolean {
   return getFlag("master_kill") === "1";
+}
+
+// ─── Telegram linking ───────────────────────────────────────────────
+
+export function createLinkCode(userId: number): string {
+  const db = getDb();
+  db.prepare("DELETE FROM telegram_link_codes WHERE user_id = ?").run(userId);
+  const code = crypto.randomBytes(6).toString("hex");
+  db.prepare(
+    "INSERT INTO telegram_link_codes (code, user_id) VALUES (?, ?)",
+  ).run(code, userId);
+  return code;
+}
+
+/** Consumes a link code (valid 1 hour) and returns the owning user id. */
+export function consumeLinkCode(code: string): number | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT user_id FROM telegram_link_codes WHERE code = ? AND created_at > datetime('now','-1 hour')",
+    )
+    .get(code) as { user_id: number } | undefined;
+  if (!row) return null;
+  db.prepare("DELETE FROM telegram_link_codes WHERE code = ?").run(code);
+  return row.user_id;
+}
+
+export function setTelegramChatId(userId: number, chatId: string): void {
+  ensureUserDefaults(userId);
+  getDb()
+    .prepare(
+      "UPDATE trading_settings SET telegram_chat_id = ?, updated_at = datetime('now') WHERE user_id = ?",
+    )
+    .run(chatId, userId);
+}
+
+export function clearTelegramChatId(userId: number): void {
+  getDb()
+    .prepare(
+      "UPDATE trading_settings SET telegram_chat_id = NULL WHERE user_id = ?",
+    )
+    .run(userId);
+}
+
+export function getUserByTelegramChatId(chatId: string): number | null {
+  const row = getDb()
+    .prepare("SELECT user_id FROM trading_settings WHERE telegram_chat_id = ?")
+    .get(chatId) as { user_id: number } | undefined;
+  return row?.user_id ?? null;
+}
+
+export function getTelegramChatId(userId: number): string | null {
+  const row = getDb()
+    .prepare("SELECT telegram_chat_id FROM trading_settings WHERE user_id = ?")
+    .get(userId) as { telegram_chat_id: string | null } | undefined;
+  return row?.telegram_chat_id ?? null;
 }

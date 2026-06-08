@@ -9,6 +9,12 @@ import { buildSnapshot } from "./market";
 import { getPrice } from "./binance";
 import { getBinanceCredentials, saveRecommendation } from "./store";
 import { getAccountSummary } from "./binance";
+import {
+  smartMoneySignals,
+  cryptoMarketRank,
+  type MarketRankCommand,
+} from "./binanceWeb3";
+import { runBinanceCli, isBinanceCliEnabled } from "./binanceCli";
 import type { Recommendation, TradingSettings } from "./types";
 
 const TOOLS: ToolDef[] = [
@@ -43,9 +49,60 @@ const TOOLS: ToolDef[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "smart_money_signals",
+    description:
+      "إشارات 'الأموال الذكية' (Smart Money) على السلسلة من Binance Web3 — صفقات شراء/بيع لمحافظ محترفة. مفيدة لقياس اتجاه كبار المتداولين. السلاسل: 56 (BSC)، CT_501 (Solana).",
+    input_schema: {
+      type: "object",
+      properties: {
+        chainId: { type: "string", enum: ["56", "CT_501"] },
+        pageSize: { type: "number" },
+      },
+      required: ["chainId"],
+    },
+  },
+  {
+    name: "crypto_market_rank",
+    description:
+      "بيانات سوق ذكية من Binance Web3: الرواج الاجتماعي (social-hype)، ترتيب العملات (token-rank)، تدفّق الأموال الذكية (smart-money-inflow)، ترتيب الميمز (meme-rank)، وترتيب أرباح المتداولين (address-pnl-rank). استخدمها لقياس مزاج السوق وزخمه.",
+    input_schema: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          enum: [
+            "social-hype",
+            "token-rank",
+            "smart-money-inflow",
+            "meme-rank",
+            "address-pnl-rank",
+          ],
+        },
+        chainId: { type: "string", description: "مثل 56 (BSC) أو CT_501 (Solana)" },
+      },
+      required: ["command", "chainId"],
+    },
+  },
+  ...(isBinanceCliEnabled()
+    ? [
+        {
+          name: "binance_cli",
+          description:
+            "قراءة بيانات Binance الرسمية الموسّعة (سبوت/فيوتشرز/أرنينغ/محفظة) عبر binance-cli — للقراءة فقط. مرّر args كمصفوفة، مثل [\"spot\",\"exchange-info\",\"--symbol\",\"BTCUSDT\"]. لا يُستخدم لفتح أو إغلاق الصفقات إطلاقاً.",
+          input_schema: {
+            type: "object",
+            properties: {
+              args: { type: "array", items: { type: "string" } },
+            },
+            required: ["args"],
+          },
+        },
+      ]
+    : []),
+  {
     name: "record_recommendation",
     description:
-      "يسجّل توصية منظّمة للمستخدم. استخدمها عند وجود رأي واضح (شراء/بيع/انتظار). ضع وقف خسارة وهدفاً منطقيين لتوصيات الشراء/البيع.",
+      "يسجّل توصية منظّمة للمستخدم. استخدمها عند وجود رأي واضح (شراء/بيع/انتظار). ضع وقف خسارة وهدفاً منطقيين لتوصيات الشراء/البيع. يجب دائماً شرح الأسباب بوضوح.",
     input_schema: {
       type: "object",
       properties: {
@@ -56,9 +113,19 @@ const TOOLS: ToolDef[] = [
         stop_loss: { type: "number" },
         take_profit: { type: "number" },
         timeframe: { type: "string" },
-        rationale: { type: "string", description: "السبب بإيجاز" },
+        rationale: {
+          type: "string",
+          description:
+            "شرح واضح ومترابط للقرار: لماذا هذه التوصية الآن؟ يربط بين المؤشرات والسياق.",
+        },
+        factors: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "قائمة عوامل فنية محدّدة بنيت عليها التوصية، كل عامل جملة قصيرة مع الرقم. مثال: 'RSI 28 تشبّع بيعي'، 'ارتداد من دعم 60000'، 'تقاطع MACD صعودي'، 'الاتجاه العام صاعد'. 3 عوامل على الأقل.",
+        },
       },
-      required: ["symbol", "action", "confidence", "rationale"],
+      required: ["symbol", "action", "confidence", "rationale", "factors"],
     },
   },
 ];
@@ -114,6 +181,27 @@ async function executeTool(
           }),
         };
       }
+      case "smart_money_signals": {
+        const data = await smartMoneySignals({
+          chainId: String(input.chainId ?? "56"),
+          pageSize: input.pageSize ? Number(input.pageSize) : 30,
+        });
+        return { content: JSON.stringify(data).slice(0, 6000) };
+      }
+      case "crypto_market_rank": {
+        const data = await cryptoMarketRank(
+          String(input.command) as MarketRankCommand,
+          { ...input, command: undefined },
+        );
+        return { content: JSON.stringify(data).slice(0, 6000) };
+      }
+      case "binance_cli": {
+        const args = Array.isArray(input.args)
+          ? input.args.map((a) => String(a))
+          : [];
+        const res = await runBinanceCli(ctx.userId, args);
+        return { content: res.output, isError: !res.ok };
+      }
       case "record_recommendation": {
         const rec = saveRecommendation(ctx.userId, {
           symbol: String(input.symbol ?? ""),
@@ -125,6 +213,9 @@ async function executeTool(
             input.take_profit != null ? Number(input.take_profit) : null,
           timeframe: input.timeframe != null ? String(input.timeframe) : null,
           rationale: input.rationale != null ? String(input.rationale) : null,
+          factors: Array.isArray(input.factors)
+            ? input.factors.map((f) => String(f)).slice(0, 8)
+            : null,
         });
         recorded.push(rec);
         return { content: JSON.stringify({ ok: true, id: rec.id }) };

@@ -74,6 +74,7 @@ function init(db: Database.Database) {
       take_profit  REAL,
       timeframe    TEXT,
       rationale    TEXT,
+      factors      TEXT,
       created_at   TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
@@ -132,9 +133,31 @@ function init(db: Database.Database) {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    -- One-time codes for linking a user's Telegram account.
+    CREATE TABLE IF NOT EXISTS telegram_link_codes (
+      code       TEXT PRIMARY KEY,
+      user_id    INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_settings_tg
+      ON trading_settings (telegram_chat_id);
   `);
 
+  migrate(db);
   seedAdmin(db);
+}
+
+/** Adds columns introduced after initial release (safe to run repeatedly). */
+function migrate(db: Database.Database) {
+  const cols = db
+    .prepare("PRAGMA table_info(recommendations)")
+    .all() as { name: string }[];
+  if (!cols.some((c) => c.name === "factors")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN factors TEXT");
+  }
 }
 
 function seedAdmin(db: Database.Database) {

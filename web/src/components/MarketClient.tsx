@@ -6,6 +6,25 @@ import type { Recommendation } from "@/lib/types";
 
 const INTERVALS = ["15m", "1h", "4h", "1d", "1w"];
 
+function RecFactors({ factors }: { factors: string | null }) {
+  let list: string[] = [];
+  try {
+    list = factors ? (JSON.parse(factors) as string[]) : [];
+  } catch {
+    list = [];
+  }
+  if (!list.length) return null;
+  return (
+    <ul className="mt-2 space-y-0.5 border-t border-[var(--border)] pt-2">
+      {list.map((f, i) => (
+        <li key={i} className="text-xs text-[var(--muted)]">
+          • {f}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function MarketClient({
   allowedAssets,
   recommendations,
@@ -100,6 +119,7 @@ export default function MarketClient({
                   {r.rationale && (
                     <p className="text-xs text-[var(--muted)]">{r.rationale}</p>
                   )}
+                  <RecFactors factors={r.factors} />
                 </div>
               ))}
           </div>
