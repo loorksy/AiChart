@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
+  LineChart,
   LogOut,
   MessageSquare,
   TrendingUp,
@@ -18,8 +19,14 @@ import { displayNameFromEmail } from "@/lib/displayName";
 const MAIN_TABS = [
   { href: "/chat", label: "المحادثة", icon: MessageSquare },
   { href: "/dashboard", label: "اللوحة", icon: LayoutDashboard },
+  { href: "/market", label: "السوق", icon: LineChart },
   { href: "/signals/new", label: "الإشارات", icon: TrendingUp },
 ] as const;
+
+function isTabActive(pathname: string, href: string): boolean {
+  if (href === "/signals/new") return pathname.startsWith("/signals");
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export default function AppShell({
   email,
@@ -69,6 +76,7 @@ export default function AppShell({
         onMenuClick={() => setDrawerOpen(true)}
         credits={meLoading ? null : creditsRemaining}
         creditsLoading={meLoading}
+        pendingIntents={me?.pendingIntents ?? 0}
       />
 
       <MobileDrawer
@@ -85,9 +93,7 @@ export default function AppShell({
         <div className="mx-auto flex w-full max-w-4xl items-center gap-1 py-2">
           {MAIN_TABS.map((tab) => {
             const Icon = tab.icon;
-            const active =
-              pathname === tab.href ||
-              (tab.href === "/signals/new" && pathname.startsWith("/signals"));
+            const active = isTabActive(pathname, tab.href);
             return (
               <Link
                 key={tab.href}
@@ -144,9 +150,7 @@ export default function AppShell({
           <div className="flex items-stretch">
             {MAIN_TABS.map((tab) => {
               const Icon = tab.icon;
-              const active =
-                pathname === tab.href ||
-                (tab.href === "/signals/new" && pathname.startsWith("/signals"));
+              const active = isTabActive(pathname, tab.href);
               return (
                 <Link
                   key={tab.href}

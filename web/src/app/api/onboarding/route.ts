@@ -16,7 +16,10 @@ const schema = z.object({
   style: z.enum(["conservative", "balanced", "aggressive"]).optional(),
   max_capital: z.number().min(0).optional(),
   per_trade_pct: z.number().min(1).max(100).optional(),
+  max_open_trades: z.number().int().min(1).max(20).optional(),
+  daily_profit_target_pct: z.number().min(0).max(100).optional(),
   daily_loss_limit_pct: z.number().min(1).max(50).optional(),
+  monthly_loss_limit_pct: z.number().min(1).max(100).optional(),
   finish: z.boolean().optional(),
 });
 
@@ -49,6 +52,15 @@ export async function POST(req: NextRequest) {
     if (body.per_trade_pct !== undefined) patch.per_trade_pct = body.per_trade_pct;
     if (body.daily_loss_limit_pct !== undefined) {
       patch.daily_loss_limit_pct = body.daily_loss_limit_pct;
+    }
+    if (body.daily_profit_target_pct !== undefined) {
+      patch.daily_profit_target_pct = body.daily_profit_target_pct;
+    }
+    if (body.monthly_loss_limit_pct !== undefined) {
+      patch.monthly_loss_limit_pct = body.monthly_loss_limit_pct;
+    }
+    if (body.max_open_trades !== undefined) {
+      patch.max_open_trades = body.max_open_trades;
     }
 
     if (Object.keys(patch).length) await updateSettings(user.id, patch);

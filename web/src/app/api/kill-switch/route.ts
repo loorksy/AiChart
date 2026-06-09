@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, handleError } from "@/lib/api";
 import { updateSettings, getSettings } from "@/lib/store";
+import { closeAllOpenTrades } from "@/lib/tradeClose";
 
 const schema = z.object({ on: z.boolean() });
 
@@ -11,7 +12,14 @@ export async function POST(req: NextRequest) {
     const { on } = schema.parse(await req.json());
     await updateSettings(user.id, { kill_switch: on ? 1 : 0 });
     const settings = await getSettings(user.id);
-    return NextResponse.json({ kill_switch: settings.kill_switch });
+    let closeResult = null;
+    if (on) {
+      closeResult = await closeAllOpenTrades(user.id);
+    }
+    return NextResponse.json({
+      kill_switch: settings.kill_switch,
+      closeResult,
+    });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: "قيمة غير صالحة." }, { status: 400 });

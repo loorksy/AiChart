@@ -27,6 +27,10 @@ export function adaptSql(sql: string, backend: DbBackend): string {
     /date\s*\(\s*closed_at\s*\)\s*=\s*date\s*\(\s*'now'\s*\)/gi,
     "closed_at::date = CURRENT_DATE",
   );
+  s = s.replace(
+    /strftime\s*\(\s*'%Y-%m'\s*,\s*closed_at\s*\)\s*=\s*strftime\s*\(\s*'%Y-%m'\s*,\s*'now'\s*\)/gi,
+    "to_char(closed_at, 'YYYY-MM') = to_char(CURRENT_DATE, 'YYYY-MM')",
+  );
   s = s.replace(/ON CONFLICT\s*\(([^)]+)\)/gi, "ON CONFLICT ($1)");
   s = s.replace(
     /DO UPDATE SET count = count \+ excluded\.count/gi,

@@ -8,7 +8,7 @@ import {
   logAudit,
   touchScanCooldown,
 } from "./store";
-import { resolveAllowedAssets } from "./allowedAssets";
+import { resolveMonitorAssets } from "./allowedAssets";
 import { scanSymbol } from "./monitor";
 import { processRecommendations } from "./tradeFlow";
 import { isAnthropicConfigured } from "./anthropic";
@@ -39,7 +39,7 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
   result.usersScanned = users.length;
 
   for (const { id: userId, settings, limits } of users) {
-    const assets = await resolveAllowedAssets(settings.allowed_assets);
+    const assets = await resolveMonitorAssets(settings.allowed_assets);
     if (!assets.length) continue;
 
     for (const symbol of assets) {

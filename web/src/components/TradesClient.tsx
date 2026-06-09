@@ -39,8 +39,31 @@ export default function TradesClient({
   const { activities, reset: resetActivities, upsert: upsertActivity } =
     useAgentActivities();
 
+  const [trades, setTrades] = useState(initialTrades);
+  const [closingId, setClosingId] = useState<number | null>(null);
+
   const pending = intents.filter((i) => i.status === "pending");
   const history = intents.filter((i) => i.status !== "pending");
+  const openTrades = trades.filter((t) => t.status === "open");
+  const closedTrades = trades.filter((t) => t.status !== "open");
+
+  async function closeTrade(id: number) {
+    setClosingId(id);
+    try {
+      const res = await fetch(`/api/trades/${id}/close`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.reason ?? data.error ?? "تعذّر إغلاق الصفقة.");
+        return;
+      }
+      const r = await fetch("/api/trades");
+      const refreshed = await r.json();
+      setTrades(refreshed.trades);
+      router.refresh();
+    } finally {
+      setClosingId(null);
+    }
+  }
 
   async function act(id: number, action: "approve" | "reject") {
     setBusyId(id);
@@ -158,10 +181,42 @@ export default function TradesClient({
         )}
       </section>
 
+      {openTrades.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 font-bold text-foreground">
+            صفقات مفتوحة ({openTrades.length})
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {openTrades.map((t) => (
+              <div key={t.id} className="surface-card p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-bold text-foreground" dir="ltr">
+                    {t.symbol}
+                  </span>
+                  <span className="text-xs text-chart-1">مفتوحة</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {t.side === "buy" ? "شراء" : "بيع"} ·{" "}
+                  <span dir="ltr">{t.qty}</span> @{" "}
+                  <span dir="ltr">{t.avg_price}</span>
+                </p>
+                <button
+                  className="btn btn-secondary mt-3 w-full py-1.5 text-sm"
+                  disabled={closingId === t.id}
+                  onClick={() => void closeTrade(t.id)}
+                >
+                  {closingId === t.id ? "جاري الإغلاق…" : "إغلاق الصفقة"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="mb-8">
-        <h2 className="mb-3 font-bold text-foreground">الصفقات المنفّذة</h2>
-        {initialTrades.length === 0 ? (
-          <p className="text-sm text-muted-foreground">لا توجد صفقات منفّذة بعد.</p>
+        <h2 className="mb-3 font-bold text-foreground">سجل الصفقات</h2>
+        {closedTrades.length === 0 ? (
+          <p className="text-sm text-muted-foreground">لا توجد صفقات مغلقة بعد.</p>
         ) : (
           <div className="surface-card overflow-x-auto">
             <table className="w-full text-right text-sm">
@@ -171,22 +226,31 @@ export default function TradesClient({
                   <th className="p-3">الاتجاه</th>
                   <th className="p-3">الكمية</th>
                   <th className="p-3">السعر</th>
+                  <th className="p-3">PnL</th>
                   <th className="p-3">البيئة</th>
-                  <th className="p-3">الحالة</th>
                   <th className="p-3">الوقت</th>
                 </tr>
               </thead>
               <tbody>
-                {initialTrades.map((t) => (
+                {closedTrades.map((t) => (
                   <tr key={t.id} className="border-b border-border/50">
                     <td className="p-3" dir="ltr">{t.symbol}</td>
                     <td className="p-3">{t.side === "buy" ? "شراء" : "بيع"}</td>
                     <td className="p-3 font-mono" dir="ltr">{t.qty}</td>
                     <td className="p-3 font-mono" dir="ltr">{t.avg_price}</td>
+                    <td
+                      className={cn(
+                        "p-3 font-mono",
+                        t.pnl >= 0 ? "text-primary" : "text-destructive",
+                      )}
+                      dir="ltr"
+                    >
+                      {t.pnl >= 0 ? "+" : ""}
+                      {t.pnl.toFixed(2)}
+                    </td>
                     <td className="p-3">{t.env === "testnet" ? "تجريبي" : "حقيقي"}</td>
-                    <td className="p-3">{t.status === "open" ? "مفتوحة" : "مغلقة"}</td>
                     <td className="p-3 text-xs text-muted-foreground" dir="ltr">
-                      {t.created_at.slice(0, 16)}
+                      {(t.closed_at ?? t.created_at).slice(0, 16)}
                     </td>
                   </tr>
                 ))}

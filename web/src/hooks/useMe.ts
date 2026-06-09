@@ -17,6 +17,7 @@ export interface MeData {
   binance: BinanceAccountMeta | null;
   quota: QuotaInfo;
   displayName: string;
+  pendingIntents: number;
 }
 
 export function useMe(refreshKey = 0) {
@@ -45,6 +46,7 @@ export function useMe(refreshKey = 0) {
         binance: json.binance,
         quota: { used, limit, remaining },
         displayName: displayNameFromEmail(json.user.email),
+        pendingIntents: json.pendingIntents ?? 0,
       });
     } catch {
       setData(null);

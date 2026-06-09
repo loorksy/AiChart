@@ -11,6 +11,7 @@ export interface RiskContext {
   masterKill: boolean;
   openTradesCount: number;
   todayRealizedPnlPct: number; // negative = net loss today
+  monthRealizedPnlPct: number; // negative = net loss this calendar month
   /** User explicitly approved a trade (e.g. Telegram approve button). */
   explicitApproval?: boolean;
 }
@@ -85,6 +86,14 @@ export function evaluateTrade(
   )
     return deny(
       `بلغت حد الخسارة اليومي (−${settings.daily_loss_limit_pct}%). توقّف لليوم.`,
+    );
+
+  if (
+    settings.monthly_loss_limit_pct > 0 &&
+    ctx.monthRealizedPnlPct <= -settings.monthly_loss_limit_pct
+  )
+    return deny(
+      `بلغت حد الخسارة الشهري (−${settings.monthly_loss_limit_pct}%).`,
     );
 
   if (

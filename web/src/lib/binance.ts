@@ -219,6 +219,14 @@ export function roundToStep(qty: number, stepSize: number): number {
   return Number(rounded.toFixed(decimals));
 }
 
+/** Rounds a price down to the symbol's tick size. */
+export function roundToTick(price: number, tickSize: number): number {
+  if (tickSize <= 0) return price;
+  const decimals = Math.max(0, Math.round(-Math.log10(tickSize)));
+  const rounded = Math.floor(price / tickSize) * tickSize;
+  return Number(rounded.toFixed(decimals));
+}
+
 export interface PlacedOrder {
   orderId: number;
   symbol: string;
@@ -227,6 +235,44 @@ export interface PlacedOrder {
   executedQty: string;
   cummulativeQuoteQty: string;
   fills?: { price: string; qty: string }[];
+}
+
+export interface PlacedOcoOrder {
+  orderListId: number;
+  listStatusType: string;
+}
+
+/** Places an OCO exit (TP limit + stop) for a long spot position. */
+export async function placeOcoOrder(
+  apiKey: string,
+  apiSecret: string,
+  env: BinanceEnv,
+  symbol: string,
+  quantity: number,
+  takeProfitPrice: number,
+  stopPrice: number,
+  tickSize: number,
+): Promise<PlacedOcoOrder> {
+  const price = roundToTick(takeProfitPrice, tickSize);
+  const stop = roundToTick(stopPrice, tickSize);
+  const stopLimit = roundToTick(stopPrice * 0.999, tickSize);
+
+  return (await signedRequest(
+    "POST",
+    "/api/v3/order/oco",
+    {
+      symbol,
+      side: "SELL",
+      quantity,
+      price,
+      stopPrice: stop,
+      stopLimitPrice: stopLimit,
+      stopLimitTimeInForce: "GTC",
+    },
+    apiKey,
+    apiSecret,
+    env,
+  )) as PlacedOcoOrder;
 }
 
 /** Places a MARKET order on the spot account. */

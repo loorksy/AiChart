@@ -453,6 +453,41 @@ export async function listTrades(userId: number, limit = 50): Promise<Trade[]> {
   );
 }
 
+export async function listOpenTrades(userId: number, limit = 50): Promise<Trade[]> {
+  return query<Trade>(
+    "SELECT * FROM trades WHERE user_id = ? AND status = 'open' ORDER BY id DESC LIMIT ?",
+    [userId, limit],
+  );
+}
+
+export async function getTrade(
+  userId: number,
+  tradeId: number,
+): Promise<Trade | null> {
+  return queryOne<Trade>(
+    "SELECT * FROM trades WHERE id = ? AND user_id = ?",
+    [tradeId, userId],
+  );
+}
+
+export async function updateTradeClosed(
+  tradeId: number,
+  pnl: number,
+): Promise<void> {
+  await execute(
+    `UPDATE trades SET status = 'closed', pnl = ?, closed_at = datetime('now') WHERE id = ?`,
+    [pnl, tradeId],
+  );
+}
+
+export async function countPendingIntents(userId: number): Promise<number> {
+  const row = await queryOne<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM trade_intents WHERE user_id = ? AND status = 'pending'",
+    [userId],
+  );
+  return row?.n ?? 0;
+}
+
 export async function countOpenTrades(userId: number): Promise<number> {
   const row = await queryOne<{ n: number }>(
     "SELECT COUNT(*) AS n FROM trades WHERE user_id = ? AND status = 'open'",
@@ -469,6 +504,20 @@ export async function todayRealizedPnlPct(
   const row = await queryOne<{ pnl: number }>(
     `SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trades
      WHERE user_id = ? AND status = 'closed' AND date(closed_at) = date('now')`,
+    [userId],
+  );
+  return ((row?.pnl ?? 0) / capital) * 100;
+}
+
+export async function monthRealizedPnlPct(
+  userId: number,
+  capital: number,
+): Promise<number> {
+  if (capital <= 0) return 0;
+  const row = await queryOne<{ pnl: number }>(
+    `SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trades
+     WHERE user_id = ? AND status = 'closed'
+       AND strftime('%Y-%m', closed_at) = strftime('%Y-%m', 'now')`,
     [userId],
   );
   return ((row?.pnl ?? 0) / capital) * 100;

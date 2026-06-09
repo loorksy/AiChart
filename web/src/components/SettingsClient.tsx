@@ -437,6 +437,10 @@ function TradingCard({
   );
   const [busy, setBusy] = useState(false);
 
+  const canDelegate = limits.can_execute && s.mode === "auto";
+  const effectiveApproval =
+    s.approval === "delegate" && !canDelegate ? "manual" : s.approval;
+
   function set<K extends keyof TradingSettings>(k: K, v: TradingSettings[K]) {
     setS((prev) => ({ ...prev, [k]: v }));
   }
@@ -451,7 +455,7 @@ function TradingCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: s.mode,
-          approval: s.approval,
+          approval: effectiveApproval,
           experience: s.experience,
           style: s.style,
           max_capital: Number(s.max_capital),
@@ -497,12 +501,33 @@ function TradingCard({
           <select
             className="input"
             value={s.mode}
-            onChange={(e) => set("mode", e.target.value as TradingSettings["mode"])}
+            onChange={(e) => {
+              const mode = e.target.value as TradingSettings["mode"];
+              set("mode", mode);
+              if (mode !== "auto" && s.approval === "delegate") {
+                set("approval", "manual");
+              }
+            }}
           >
             <option value="advisory">توصيات فقط</option>
             <option value="auto" disabled={!limits.can_execute}>
               تنفيذ تلقائي
             </option>
+          </select>
+        </Field>
+
+        <Field label="الموافقة على الصفقات">
+          <select
+            className="input"
+            value={effectiveApproval}
+            onChange={(e) =>
+              set("approval", e.target.value as TradingSettings["approval"])
+            }
+          >
+            <option value="manual">تأكيد يدوي لكل صفقة</option>
+            {canDelegate && (
+              <option value="delegate">تفويض تلقائي ضمن الحدود</option>
+            )}
           </select>
         </Field>
 

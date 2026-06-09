@@ -16,8 +16,10 @@ import {
   type ChatImagePayload,
 } from "@/lib/chatImage";
 import { consumeSse } from "@/lib/sse";
+import type { ProcessedIntent } from "@/lib/tradeFlow";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
 
 function extractSymbol(text: string): string | null {
   const crypto = text.match(/\b([A-Z]{2,10}USDT)\b/i);
@@ -46,6 +48,10 @@ export default function ChatSquareClient({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSymbol, setPreviewSymbol] = useState("BTCUSDT");
   const [previewInterval, setPreviewInterval] = useState("1h");
+  const [busyIntentId, setBusyIntentId] = useState<number | null>(null);
+  const [executingIntentId, setExecutingIntentId] = useState<number | null>(
+    null,
+  );
 
   const { data: me, refresh: refreshMe } = useMe();
 
@@ -60,6 +66,11 @@ export default function ChatSquareClient({
     resetSelection,
   } = useChatStore();
 
+  const {
+    activities: intentActivities,
+    reset: resetIntentActivities,
+    upsert: upsertIntentActivity,
+  } = useAgentActivities();
   const { activities, reset: resetActivities, upsert: upsertActivity } =
     useAgentActivities();
 
@@ -101,6 +112,76 @@ export default function ChatSquareClient({
     setPendingImage(null);
     setPendingImagePreview(null);
     setImageError(null);
+  }
+
+  function patchMessageIntents(
+    messageId: string,
+    intentId: number,
+    patch: Partial<ProcessedIntent>,
+  ) {
+    setMessages(
+      useChatStore.getState().messages.map((m) => {
+        if (m.id !== messageId || !m.intents) return m;
+        return {
+          ...m,
+          intents: m.intents.map((i) =>
+            i.id === intentId ? { ...i, ...patch } : i,
+          ),
+        };
+      }),
+    );
+  }
+
+  async function actOnIntent(
+    messageId: string,
+    intentId: number,
+    action: "approve" | "reject",
+  ) {
+    setBusyIntentId(intentId);
+    const isApprove = action === "approve";
+    if (isApprove) {
+      setExecutingIntentId(intentId);
+      resetIntentActivities();
+    }
+    try {
+      const res = await fetch(`/api/trades/intents/${intentId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, stream: isApprove }),
+      });
+
+      if (isApprove) {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(
+            `لم تُنفّذ: ${(data as { reason?: string; error?: string }).reason ?? (data as { error?: string }).error ?? "سبب غير معروف"}`,
+          );
+        } else {
+          const data = await consumeSse<{ ok: boolean; reason?: string }>(res, {
+            onActivity: upsertIntentActivity,
+            onError: (msg) => setError(msg),
+          });
+          if (data && !data.ok) {
+            setError(`لم تُنفّذ: ${data.reason ?? "سبب غير معروف"}`);
+          }
+          patchMessageIntents(messageId, intentId, {
+            status: data?.ok ? "executed" : "failed",
+            reason: data?.reason,
+          });
+        }
+      } else if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError((data as { error?: string }).error ?? "تعذّر رفض الطلب.");
+      } else {
+        patchMessageIntents(messageId, intentId, { status: "rejected" });
+      }
+    } catch {
+      setError("تعذّر معالجة الطلب.");
+    } finally {
+      setBusyIntentId(null);
+      setExecutingIntentId(null);
+      resetIntentActivities();
+    }
   }
 
   async function send(text: string, image?: ChatImagePayload | null) {
@@ -172,6 +253,7 @@ export default function ChatSquareClient({
       const data = await consumeSse<{
         reply: string;
         recommendations?: Recommendation[];
+        intents?: ProcessedIntent[];
       }>(res, {
         onActivity: upsertActivity,
         onDelta: (t) => {
@@ -196,10 +278,14 @@ export default function ChatSquareClient({
         setPreviewOpen(true);
       }
 
+      const pendingIntents =
+        data.intents?.filter((i) => i.status === "pending") ?? [];
+
       updateLastAssistant({
         content: data.reply || streamed,
         streaming: false,
         recommendations: recs,
+        intents: pendingIntents.length ? pendingIntents : undefined,
       });
 
       void fetchConversations();
@@ -266,7 +352,28 @@ export default function ChatSquareClient({
               showActivity={showActivity}
               activities={activities}
               hideActivityOnMobile
+              busyIntentId={busyIntentId}
+              onIntentApprove={(id) => {
+                const msg = messages.find((m) =>
+                  m.intents?.some((i) => i.id === id),
+                );
+                if (msg) void actOnIntent(msg.id, id, "approve");
+              }}
+              onIntentReject={(id) => {
+                const msg = messages.find((m) =>
+                  m.intents?.some((i) => i.id === id),
+                );
+                if (msg) void actOnIntent(msg.id, id, "reject");
+              }}
             />
+          )}
+          {executingIntentId !== null && intentActivities.length > 0 && (
+            <div className="shrink-0 border-t border-border px-3 py-2">
+              <AgentActivityFeed
+                activities={intentActivities}
+                title="تنفيذ الصفقة"
+              />
+            </div>
           )}
 
           <ChatInputBar

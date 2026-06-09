@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { imageDataUrl, parseImageFromMetadata } from "@/lib/chatImage";
 import type { Conversation, ChatMessageRow } from "@/lib/types";
+import type { ProcessedIntent } from "@/lib/tradeFlow";
 
 export interface UiMessage {
   id: string;
@@ -9,6 +10,7 @@ export interface UiMessage {
   imageUrl?: string | null;
   streaming?: boolean;
   recommendations?: unknown[];
+  intents?: ProcessedIntent[];
 }
 
 interface ChatState {

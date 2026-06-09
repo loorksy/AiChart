@@ -27,11 +27,13 @@ export default function DashboardClient({
   settings,
   limits,
   hasBinance,
+  pendingIntentCount = 0,
 }: {
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
   hasBinance: boolean;
+  pendingIntentCount?: number;
 }) {
   const { data: me } = useMe();
   const [killOn, setKillOn] = useState(settings.kill_switch === 1);
@@ -65,6 +67,24 @@ export default function DashboardClient({
         <h1 className="page-title">حسابي</h1>
         <p className="page-subtitle">لوحة الحساب والرصيد</p>
       </div>
+
+      {pendingIntentCount > 0 && (
+        <Link href="/trades" className="block">
+          <SurfaceCard className="flex items-center justify-between gap-3 border-chart-1/40 bg-chart-1/5 transition hover:bg-chart-1/10">
+            <div>
+              <p className="font-semibold text-foreground">
+                {pendingIntentCount === 1
+                  ? "صفقة واحدة بانتظار موافقتك"
+                  : `${pendingIntentCount} صفقات بانتظار موافقتك`}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                راجع الطلبات ووافق أو ارفض من صفحة الصفقات
+              </p>
+            </div>
+            <BarChart3 className="h-5 w-5 shrink-0 text-chart-1" />
+          </SurfaceCard>
+        </Link>
+      )}
 
       <SurfaceCard className="flex items-center gap-4">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 font-serif text-lg font-bold text-primary">
@@ -174,7 +194,9 @@ export default function DashboardClient({
             <div>
               <p className="font-medium">الإيقاف الطارئ</p>
               <p className="text-xs text-muted-foreground">
-                {killOn ? "التداول موقوف" : "التداول مفعّل"}
+                {killOn
+                  ? "التداول موقوف"
+                  : "التداول مفعّل — الإيقاف يغلق الصفقات المفتوحة"}
               </p>
             </div>
           </div>

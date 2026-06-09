@@ -4,7 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TradingSettings } from "@/lib/types";
 
-const STEPS = ["المستوى", "Binance", "الإعدادات", "تليجرام"] as const;
+const EXPERT_STEPS = ["المستوى", "Binance", "الإعدادات", "تليجرام"] as const;
+const BEGINNER_STEPS = [
+  "المستوى",
+  "أهدافك",
+  "Binance",
+  "الإعدادات",
+  "تليجرام",
+] as const;
 
 export default function OnboardingClient({
   settings,
@@ -22,6 +29,12 @@ export default function OnboardingClient({
   const [maxCapital, setMaxCapital] = useState(settings.max_capital || 100);
   const [perTrade, setPerTrade] = useState(settings.per_trade_pct || 10);
   const [dailyLoss, setDailyLoss] = useState(settings.daily_loss_limit_pct || 5);
+  const [dailyProfit, setDailyProfit] = useState(
+    settings.daily_profit_target_pct || 3,
+  );
+  const [tradingGoal, setTradingGoal] = useState("");
+  const isBeginner = experience === "beginner";
+  const STEPS = isBeginner ? BEGINNER_STEPS : EXPERT_STEPS;
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [busy, setBusy] = useState(false);
@@ -144,7 +157,10 @@ export default function OnboardingClient({
           </label>
           <button
             disabled={busy}
-            onClick={() => save({ experience }, 1)}
+            onClick={() => {
+              if (isBeginner) setStep(1);
+              else void save({ experience }, 1);
+            }}
             className="btn btn-primary w-full"
           >
             التالي
@@ -152,7 +168,85 @@ export default function OnboardingClient({
         </section>
       )}
 
-      {step === 1 && (
+      {isBeginner && step === 1 && (
+        <section className="card space-y-4 p-6">
+          <h2 className="text-lg font-bold">حدّد أهدافك</h2>
+          <p className="text-sm text-muted-foreground">
+            أجب ببساطة — الوكيل يقترح إعدادات محافظة تناسب المبتدئين.
+          </p>
+          <label className="text-sm">كم رأس مال تخصّص للتداول؟ (USDT)</label>
+          <input
+            type="number"
+            className="input w-full"
+            min={10}
+            value={maxCapital}
+            onChange={(e) => setMaxCapital(Number(e.target.value))}
+          />
+          <label className="text-sm">هدف الربح اليومي (%)</label>
+          <input
+            type="number"
+            className="input w-full"
+            min={0.5}
+            max={20}
+            step={0.5}
+            value={dailyProfit}
+            onChange={(e) => setDailyProfit(Number(e.target.value))}
+          />
+          <label className="text-sm">أقصى خسارة يومية تتحمّلها (%)</label>
+          <input
+            type="number"
+            className="input w-full"
+            min={1}
+            max={15}
+            value={dailyLoss}
+            onChange={(e) => setDailyLoss(Number(e.target.value))}
+          />
+          <label className="text-sm">هدفك من التداول (اختياري)</label>
+          <textarea
+            className="input min-h-20 w-full"
+            placeholder="مثال: دخل إضافي شهري بحذر…"
+            value={tradingGoal}
+            onChange={(e) => setTradingGoal(e.target.value)}
+          />
+          <div className="rounded-[var(--radius)] bg-secondary/60 px-4 py-3 text-sm">
+            <p className="mb-1 font-medium">اقتراح الوكيل:</p>
+            <ul className="list-inside list-disc text-muted-foreground">
+              <li>وضع توصيات + موافقة يدوية</li>
+              <li>أسلوب محافظ · 5% لكل صفقة · حدّ صفقتين مفتوحتين</li>
+            </ul>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setStep(0)} className="btn btn-secondary flex-1">
+              رجوع
+            </button>
+            <button
+              disabled={busy}
+              onClick={() =>
+                void save(
+                  {
+                    experience: "beginner",
+                    mode: "advisory",
+                    approval: "manual",
+                    style: "conservative",
+                    max_capital: maxCapital,
+                    per_trade_pct: 5,
+                    max_open_trades: 2,
+                    daily_profit_target_pct: dailyProfit,
+                    daily_loss_limit_pct: dailyLoss,
+                    monthly_loss_limit_pct: Math.min(dailyLoss * 4, 20),
+                  },
+                  2,
+                )
+              }
+              className="btn btn-primary flex-1"
+            >
+              حفظ والمتابعة
+            </button>
+          </div>
+        </section>
+      )}
+
+      {step === (isBeginner ? 2 : 1) && (
         <section className="card space-y-4 p-6">
           <h2 className="text-lg font-bold">ربط Binance (Testnet)</h2>
           <p className="text-sm text-muted-foreground">
@@ -189,12 +283,15 @@ export default function OnboardingClient({
             </>
           )}
           <div className="flex gap-3">
-            <button onClick={() => setStep(0)} className="btn btn-secondary flex-1">
+            <button
+              onClick={() => setStep(isBeginner ? 1 : 0)}
+              className="btn btn-secondary flex-1"
+            >
               رجوع
             </button>
             <button
               disabled={busy}
-              onClick={() => setStep(2)}
+              onClick={() => setStep(isBeginner ? 3 : 2)}
               className="btn btn-primary flex-1"
             >
               {hasBinance ? "التالي" : "تخطّي مؤقتاً"}
@@ -203,7 +300,7 @@ export default function OnboardingClient({
         </section>
       )}
 
-      {step === 2 && (
+      {step === (isBeginner ? 3 : 2) && (
         <section className="card space-y-4 p-6">
           <h2 className="text-lg font-bold">أسلوب التداول</h2>
           <select
@@ -257,7 +354,10 @@ export default function OnboardingClient({
             </>
           )}
           <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="btn btn-secondary flex-1">
+            <button
+              onClick={() => setStep(isBeginner ? 2 : 1)}
+              className="btn btn-secondary flex-1"
+            >
               رجوع
             </button>
             <button
@@ -271,8 +371,9 @@ export default function OnboardingClient({
                     max_capital: maxCapital,
                     per_trade_pct: perTrade,
                     daily_loss_limit_pct: dailyLoss,
+                    daily_profit_target_pct: dailyProfit,
                   },
-                  3,
+                  isBeginner ? 4 : 3,
                 )
               }
               className="btn btn-primary flex-1"
@@ -283,7 +384,7 @@ export default function OnboardingClient({
         </section>
       )}
 
-      {step === 3 && (
+      {step === (isBeginner ? 4 : 3) && (
         <section className="card space-y-4 p-6">
           <h2 className="text-lg font-bold">ربط تليجرام (اختياري)</h2>
           <p className="text-sm text-muted-foreground">
@@ -291,7 +392,10 @@ export default function OnboardingClient({
             الإعدادات.
           </p>
           <div className="flex gap-3">
-            <button onClick={() => setStep(2)} className="btn btn-secondary flex-1">
+            <button
+              onClick={() => setStep(isBeginner ? 3 : 2)}
+              className="btn btn-secondary flex-1"
+            >
               رجوع
             </button>
             <button disabled={busy} onClick={finish} className="btn btn-primary flex-1">

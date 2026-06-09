@@ -7,6 +7,7 @@ import {
   recordTrade,
   countOpenTrades,
   todayRealizedPnlPct,
+  monthRealizedPnlPct,
   isMasterKillOn,
 } from "./store";
 import { evaluateTrade } from "./riskGuard";
@@ -15,6 +16,7 @@ import {
   getSymbolFilters,
   roundToStep,
   placeMarketOrder,
+  placeOcoOrder,
 } from "./binance";
 import {
   emitActivity,
@@ -93,6 +95,7 @@ export async function executeIntent(
     masterKill: await isMasterKillOn(),
     openTradesCount: await countOpenTrades(userId),
     todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
+    monthRealizedPnlPct: await monthRealizedPnlPct(userId, effectiveCapital),
     explicitApproval,
   });
 
@@ -138,8 +141,8 @@ export async function executeIntent(
       status: "running",
     });
     const [price, filters] = await Promise.all([
-      getPrice(intent.symbol, "prod"),
-      getSymbolFilters(intent.symbol, "prod"),
+      getPrice(intent.symbol, creds.env),
+      getSymbolFilters(intent.symbol, creds.env),
     ]);
     push({
       id: "quote",
@@ -190,6 +193,45 @@ export async function executeIntent(
       env: creds.env,
       status: "open",
     });
+
+    if (
+      intent.side === "buy" &&
+      intent.stop_loss != null &&
+      intent.take_profit != null &&
+      intent.take_profit > intent.stop_loss
+    ) {
+      try {
+        push({
+          id: "oco",
+          label: `OCO وقف/هدف · ${intent.symbol}`,
+          status: "running",
+        });
+        await placeOcoOrder(
+          creds.apiKey,
+          creds.apiSecret,
+          creds.env,
+          intent.symbol,
+          executedQty,
+          intent.take_profit,
+          intent.stop_loss,
+          filters.tickSize,
+        );
+        push({
+          id: "oco",
+          label: `OCO وقف/هدف · ${intent.symbol}`,
+          status: "done",
+          detail: `SL ${intent.stop_loss} · TP ${intent.take_profit}`,
+        });
+      } catch (e) {
+        const ocoErr = e instanceof Error ? e.message : "فشل OCO";
+        push({
+          id: "oco",
+          label: `OCO وقف/هدف · ${intent.symbol}`,
+          status: "error",
+          detail: ocoErr,
+        });
+      }
+    }
 
     push({
       id: "order",

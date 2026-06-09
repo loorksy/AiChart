@@ -6,12 +6,21 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import type { Recommendation } from "@/lib/types";
 import type { UiMessage } from "@/stores/chat-store";
+import { ChatIntentCard } from "./chat-intent-card";
 
 interface ChatMessageProps {
   message: UiMessage;
+  busyIntentId?: number | null;
+  onIntentApprove?: (id: number) => void;
+  onIntentReject?: (id: number) => void;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  busyIntentId,
+  onIntentApprove,
+  onIntentReject,
+}: ChatMessageProps) {
   const isUser = message.role === "user";
 
   return (
@@ -63,6 +72,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 <RecommendationSnippet key={rec.id} rec={rec} />
               ),
             )}
+            {message.intents?.map((intent) => (
+              <ChatIntentCard
+                key={intent.id}
+                intent={intent}
+                busy={busyIntentId === intent.id}
+                onApprove={onIntentApprove}
+                onReject={onIntentReject}
+              />
+            ))}
           </>
         )}
       </div>

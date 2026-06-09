@@ -5,6 +5,7 @@ import {
   getLimits,
   getBinanceAccountMeta,
   getTodayUsage,
+  countPendingIntents,
 } from "@/lib/store";
 
 export async function GET() {
@@ -28,5 +29,6 @@ export async function GET() {
       limit,
       remaining: Math.max(0, limit - used),
     },
+    pendingIntents: await countPendingIntents(user.id),
   });
 }

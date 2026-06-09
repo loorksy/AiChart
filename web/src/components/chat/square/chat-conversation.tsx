@@ -15,6 +15,9 @@ interface ChatConversationProps {
   showActivity?: boolean;
   activities?: AgentActivity[];
   hideActivityOnMobile?: boolean;
+  busyIntentId?: number | null;
+  onIntentApprove?: (id: number) => void;
+  onIntentReject?: (id: number) => void;
 }
 
 export function ChatConversation({
@@ -23,6 +26,9 @@ export function ChatConversation({
   showActivity,
   activities = [],
   hideActivityOnMobile = false,
+  busyIntentId,
+  onIntentApprove,
+  onIntentReject,
 }: ChatConversationProps) {
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +48,15 @@ export function ChatConversation({
         if (m.role === "assistant" && m.streaming && !m.content.trim()) {
           return null;
         }
-        return <ChatMessage key={m.id} message={m} />;
+        return (
+          <ChatMessage
+            key={m.id}
+            message={m}
+            busyIntentId={busyIntentId}
+            onIntentApprove={onIntentApprove}
+            onIntentReject={onIntentReject}
+          />
+        );
       })}
       {awaitingFirstToken && (
         <div className="px-3 py-2 sm:px-4">

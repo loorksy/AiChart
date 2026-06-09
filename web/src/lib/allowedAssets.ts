@@ -1,4 +1,10 @@
-import { getBinanceUsdtSpotSymbols } from "./binanceSymbols";
+import {
+  getBinanceUsdtSpotSymbols,
+  getTopUsdtSpotSymbolsByVolume,
+} from "./binanceSymbols";
+
+/** Max symbols scanned per monitor cycle when policy is open. */
+export const MONITOR_TOP_SYMBOL_LIMIT = 40;
 
 /** Stored alone in allowed_assets JSON to mean «all USDT spot pairs». */
 export const OPEN_ASSETS_TOKEN = "*";
@@ -33,6 +39,15 @@ export function parseAllowedAssets(raw: string): string[] {
 /** Resolves the effective symbol list (Binance live list when policy is open). */
 export async function resolveAllowedAssets(raw: string): Promise<string[]> {
   if (isOpenAssetsPolicy(raw)) return getBinanceUsdtSpotSymbols();
+  return parseAllowedAssets(raw);
+}
+
+/** Bounded list for 24/7 monitor — top volume when policy is open. */
+export async function resolveMonitorAssets(
+  raw: string,
+  topLimit = MONITOR_TOP_SYMBOL_LIMIT,
+): Promise<string[]> {
+  if (isOpenAssetsPolicy(raw)) return getTopUsdtSpotSymbolsByVolume(topLimit);
   return parseAllowedAssets(raw);
 }
 

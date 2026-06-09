@@ -6,6 +6,7 @@ import {
   Archive,
   CreditCard,
   LayoutDashboard,
+  LineChart,
   MessageSquare,
   MessageSquarePlus,
   MessagesSquare,
@@ -24,8 +25,14 @@ import { SurfaceCard } from "./SurfaceCard";
 const MAIN_TABS = [
   { href: "/chat", label: "المحادثة", icon: MessageSquare },
   { href: "/dashboard", label: "اللوحة", icon: LayoutDashboard },
+  { href: "/market", label: "السوق", icon: LineChart },
   { href: "/signals/new", label: "الإشارات", icon: TrendingUp },
 ] as const;
+
+function isTabActive(pathname: string, href: string): boolean {
+  if (href === "/signals/new") return pathname.startsWith("/signals");
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 const SECONDARY_LINKS = [
   { href: "/plan", label: "الخطة", icon: CreditCard },
@@ -109,9 +116,7 @@ export function MobileDrawer({
         <div className="flex gap-1 border-b border-border p-2">
           {MAIN_TABS.map((tab) => {
             const Icon = tab.icon;
-            const active =
-              pathname === tab.href ||
-              (tab.href === "/signals/new" && pathname.startsWith("/signals"));
+            const active = isTabActive(pathname, tab.href);
             return (
               <Link
                 key={tab.href}

@@ -5,6 +5,7 @@ import {
   getLimits,
   getBinanceAccountMeta,
   isOnboardingDone,
+  listIntents,
 } from "@/lib/store";
 import AppShell from "@/components/AppShell";
 import DashboardClient from "@/components/DashboardClient";
@@ -19,6 +20,7 @@ export default async function DashboardPage() {
   const settings = await getSettings(user.id);
   const limits = await getLimits(user.id);
   const binance = await getBinanceAccountMeta(user.id);
+  const pendingIntents = await listIntents(user.id, "pending", 50);
 
   return (
     <AppShell email={user.email} role={user.role}>
@@ -27,6 +29,7 @@ export default async function DashboardPage() {
         settings={settings}
         limits={limits}
         hasBinance={Boolean(binance)}
+        pendingIntentCount={pendingIntents.length}
       />
     </AppShell>
   );

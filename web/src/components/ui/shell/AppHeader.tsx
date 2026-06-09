@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, Sparkles } from "lucide-react";
+import { Bell, Menu, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function AppHeader({
   onMenuClick,
   credits,
   creditsLoading,
+  pendingIntents = 0,
   showMenu = true,
   className,
   center,
@@ -15,6 +16,7 @@ export function AppHeader({
   onMenuClick?: () => void;
   credits?: number | null;
   creditsLoading?: boolean;
+  pendingIntents?: number;
   showMenu?: boolean;
   className?: string;
   center?: React.ReactNode;
@@ -53,6 +55,18 @@ export function AppHeader({
       {center && <div className="min-w-0 flex-1 text-center">{center}</div>}
 
       <div className="flex shrink-0 items-center gap-2">
+        {pendingIntents > 0 && (
+          <Link
+            href="/trades"
+            className="relative rounded-full p-2 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            aria-label={`${pendingIntents} صفقات بانتظار الموافقة`}
+          >
+            <Bell className="h-4 w-4" />
+            <span className="absolute -end-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+              {pendingIntents > 9 ? "9+" : pendingIntents}
+            </span>
+          </Link>
+        )}
         {creditsLoading ? (
           <span className="rounded-full bg-secondary px-3 py-1 text-xs text-muted-foreground">
             …

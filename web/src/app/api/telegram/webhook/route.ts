@@ -15,6 +15,7 @@ import {
   updateIntentStatus,
 } from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
+import { closeAllOpenTrades } from "@/lib/tradeClose";
 import { notifyTradeResult } from "@/lib/notifyTrade";
 import {
   sendMessage,
@@ -136,11 +137,16 @@ async function renderMenuAction(
     }
     case "pause": {
       await updateSettings(userId, { kill_switch: 1 });
+      const closeResult = await closeAllOpenTrades(userId);
+      const closeNote =
+        closeResult.closed > 0
+          ? `\nأُغلقت ${closeResult.closed} صفقة مفتوحة.`
+          : "";
       return {
         text: actionResultCard(
           "🔴",
           "تم إيقاف التداول",
-          "لن يفتح الوكيل أي صفقة جديدة حتى تستأنف.",
+          `لن يفتح الوكيل أي صفقة جديدة حتى تستأنف.${closeNote}`,
         ),
         toast: "تم الإيقاف",
       };

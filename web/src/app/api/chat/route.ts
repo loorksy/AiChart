@@ -249,6 +249,8 @@ export async function POST(req: NextRequest) {
 
               result.recommendations,
 
+              { allowAdvisoryApproval: true },
+
             );
 
             send("done", {
@@ -325,7 +327,9 @@ export async function POST(req: NextRequest) {
 
     await logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
 
-    const intents = await processRecommendations(user.id, result.recommendations);
+    const intents = await processRecommendations(user.id, result.recommendations, {
+      allowAdvisoryApproval: true,
+    });
 
 
 
