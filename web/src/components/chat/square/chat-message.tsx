@@ -31,7 +31,14 @@ export function ChatMessage({
       )}
     >
       <Avatar className="h-7 w-7 shrink-0 rounded-lg sm:h-8 sm:w-8">
-        <AvatarFallback className="rounded-lg">
+        <AvatarFallback
+          className={cn(
+            "rounded-lg",
+            isUser
+              ? "bg-secondary text-muted-foreground"
+              : "bg-primary text-primary-foreground",
+          )}
+        >
           {isUser ? (
             <User className="h-4 w-4" />
           ) : (
@@ -42,10 +49,10 @@ export function ChatMessage({
 
       <div
         className={cn(
-          "min-w-0 max-w-[calc(100%-2.5rem)] rounded-xl border px-3 py-2.5 text-sm leading-relaxed sm:max-w-[85%] sm:px-4 sm:py-3",
+          "min-w-0 text-sm leading-relaxed",
           isUser
-            ? "border-primary/30 bg-primary/10 text-foreground"
-            : "border-border bg-card text-foreground",
+            ? "max-w-[calc(100%-2.5rem)] rounded-2xl bg-accent px-3 py-2.5 text-foreground sm:max-w-[85%] sm:px-4 sm:py-3"
+            : "max-w-[calc(100%-2.5rem)] flex-1 pt-1 text-foreground sm:max-w-[85%]",
         )}
       >
         {isUser ? (
@@ -64,7 +71,7 @@ export function ChatMessage({
             <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0">
               <ReactMarkdown>{message.content || " "}</ReactMarkdown>
               {message.streaming && (
-                <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary align-middle" />
+                <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-accent-gold align-middle" />
               )}
             </div>
             {(message.recommendations as Recommendation[] | undefined)?.map(
