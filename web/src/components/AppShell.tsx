@@ -8,11 +8,16 @@ import {
   LineChart,
   LogOut,
   MessageSquare,
+  MessageSquarePlus,
+  MessagesSquare,
   Settings,
   Shield,
   Sparkles,
+  Trash2,
   TrendingUp,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { ar } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { AppHeader, MobileDrawer } from "@/components/ui/shell";
 import { useMe } from "@/hooks/useMe";
@@ -50,6 +55,14 @@ export default function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { data: me, loading: meLoading } = useMe(creditsRefreshKey);
   const fetchConversations = useChatStore((s) => s.fetchConversations);
+  const conversations = useChatStore((s) => s.conversations);
+  const selectedId = useChatStore((s) => s.selectedId);
+  const selectConversation = useChatStore((s) => s.selectConversation);
+  const deleteConversation = useChatStore((s) => s.deleteConversation);
+  const resetSelection = useChatStore((s) => s.resetSelection);
+  const createNew = useChatStore((s) => s.createNew);
+
+  const onChatPage = pathname.startsWith("/chat");
 
   const displayName = me?.displayName ?? displayNameFromEmail(email);
   const creditsRemaining = me?.quota.remaining ?? 0;
@@ -57,14 +70,17 @@ export default function AppShell({
   const initials = displayName.slice(0, 2).toUpperCase();
 
   useEffect(() => {
-    if (drawerOpen || pathname.startsWith("/chat")) {
-      void fetchConversations();
-    }
+    void fetchConversations();
   }, [drawerOpen, pathname, fetchConversations]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
+  }
+
+  async function handleNewChat() {
+    resetSelection();
+    await createNew();
   }
 
   const showBottomNav = !chatLayout && !hideBottomNav;
@@ -91,6 +107,15 @@ export default function AppShell({
         </Link>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+          <button
+            type="button"
+            onClick={() => void handleNewChat()}
+            className="mb-2 flex w-full items-center gap-3 rounded-xl border border-border px-3 py-2.5 text-sm font-semibold transition hover:bg-secondary"
+          >
+            <MessageSquarePlus className="h-5 w-5 text-accent-gold" />
+            محادثة جديدة
+          </button>
+
           {MAIN_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = isTabActive(pathname, tab.href);
@@ -112,6 +137,51 @@ export default function AppShell({
               </Link>
             );
           })}
+
+          {/* Conversation history */}
+          <div className="pt-3">
+            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              المحادثات الأخيرة
+            </p>
+            {conversations.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                لا محادثات بعد
+              </p>
+            ) : (
+              conversations.map((c) => {
+                const active = selectedId === c.id && onChatPage;
+                return (
+                  <div
+                    key={c.id}
+                    className={cn(
+                      "group flex items-center gap-1 rounded-xl transition",
+                      active
+                        ? "bg-secondary"
+                        : "hover:bg-secondary/60",
+                    )}
+                  >
+                    <Link
+                      href="/chat"
+                      onClick={() => void selectConversation(c.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-start"
+                    >
+                      <MessagesSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate text-sm">{c.title}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void deleteConversation(c.id)}
+                      className="me-1 shrink-0 rounded-lg p-1.5 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100"
+                      title="حذف"
+                      aria-label="حذف المحادثة"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
 
           <div className="my-3 border-t border-border" />
 
