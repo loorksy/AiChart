@@ -215,7 +215,7 @@ export async function listUsersForAdmin(): Promise<AdminUserView[]> {
     `SELECT u.id, u.email, u.role, u.status, u.created_at,
             (b.user_id IS NOT NULL) AS has_binance,
             b.env AS binance_env,
-            COALESCE(a.can_execute, 0) AS can_execute,
+            COALESCE(a.can_execute, FALSE) AS can_execute,
             COALESCE(a.max_capital_cap, 0) AS max_capital_cap,
             COALESCE(a.max_open_trades_cap, 1) AS max_open_trades_cap,
             COALESCE(a.claude_quota, 1000) AS claude_quota

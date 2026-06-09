@@ -38,6 +38,10 @@ export function adaptSql(sql: string, backend: DbBackend): string {
   ]) {
     s = s.replace(new RegExp(`\\b${col}\\s*=\\s*1\\b`, "gi"), `${col} IS TRUE`);
     s = s.replace(new RegExp(`\\b${col}\\s*=\\s*0\\b`, "gi"), `${col} IS FALSE`);
+    s = s.replace(
+      new RegExp(`COALESCE\\(\\s*([a-z_.]*${col})\\s*,\\s*0\\s*\\)`, "gi"),
+      "COALESCE($1, FALSE)",
+    );
   }
   let i = 0;
   s = s.replace(/\?/g, () => `$${++i}`);
