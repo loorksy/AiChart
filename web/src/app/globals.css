@@ -1,66 +1,66 @@
 @import "tailwindcss";
 
 :root {
-  --card: #FAF8F4;
+  --card: #FBFAF6;
   --ring: #B8956B;
-  --input: #E8E4DC;
-  --muted: #EDE9E2;
-  --accent: #F5F0E6;
-  --accent-gold: #B8956B;
-  --border: #E0DBD2;
+  --input: #E6E1D8;
+  --muted: #EDE9E1;
+  --accent: #F4EFE5;
+  --accent-gold: #A8845C;
+  --border: #E3DED4;
   --radius: 1.25rem;
   --chart-1: #B8956B;
   --chart-2: #9A7B55;
   --chart-3: #7A6245;
-  --popover: #FAF8F4;
-  --primary: #1A1A1A;
-  --sidebar: #F2EFE9;
-  --secondary: #EDE9E2;
-  --background: #F2EFE9;
-  --foreground: #1A1A1A;
-  --destructive: #DC2626;
-  --sidebar-border: #E0DBD2;
-  --sidebar-accent: #EDE9E2;
-  --card-foreground: #1A1A1A;
-  --muted-foreground: #6B6560;
-  --accent-foreground: #7A6245;
-  --primary-foreground: #FAF8F4;
-  --sidebar-foreground: #1A1A1A;
-  --secondary-foreground: #3D3A36;
+  --popover: #FBFAF6;
+  --primary: #2E2A24;
+  --sidebar: #F1EDE5;
+  --secondary: #ECE7DF;
+  --background: #F3F0E9;
+  --foreground: #312D27;
+  --destructive: #C2410C;
+  --sidebar-border: #E3DED4;
+  --sidebar-accent: #ECE7DF;
+  --card-foreground: #312D27;
+  --muted-foreground: #78726A;
+  --accent-foreground: #6F5840;
+  --primary-foreground: #FBFAF6;
+  --sidebar-foreground: #312D27;
+  --secondary-foreground: #463F37;
   --destructive-foreground: #ffffff;
-  --sidebar-accent-foreground: #1A1A1A;
-  --surface-elevated: #FAF8F4;
+  --sidebar-accent-foreground: #312D27;
+  --surface-elevated: #FBFAF6;
 }
 
 .dark {
-  --card: #1C1C1C;
+  --card: #211F1C;
   --ring: #D4A574;
-  --input: #2A2A2A;
-  --muted: #242424;
-  --accent: #2A2418;
+  --input: #2E2B27;
+  --muted: #28251F;
+  --accent: #2E2718;
   --accent-gold: #D4A574;
-  --border: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.08);
   --chart-1: #D4A574;
   --chart-2: #B8956B;
   --chart-3: #9A7B55;
-  --popover: #1C1C1C;
-  --primary: #FAF8F4;
-  --sidebar: #141414;
-  --secondary: #242424;
-  --background: #111111;
-  --foreground: #F2EFE9;
-  --destructive: #F87171;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --popover: #211F1C;
+  --primary: #F0EBE2;
+  --sidebar: #181714;
+  --secondary: #2A2723;
+  --background: #161410;
+  --foreground: #E8E3D9;
+  --destructive: #F08A5D;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
   --sidebar-accent: rgba(212, 165, 116, 0.12);
-  --card-foreground: #F2EFE9;
-  --muted-foreground: #A8A29E;
+  --card-foreground: #E8E3D9;
+  --muted-foreground: #A39C90;
   --accent-foreground: #D4A574;
   --primary-foreground: #1A1A1A;
-  --sidebar-foreground: #E8E4DC;
-  --secondary-foreground: #D4D0C8;
+  --sidebar-foreground: #DDD7CB;
+  --secondary-foreground: #CFC9BD;
   --destructive-foreground: #ffffff;
   --sidebar-accent-foreground: #D4A574;
-  --surface-elevated: #1C1C1C;
+  --surface-elevated: #211F1C;
 }
 
 @theme inline {
@@ -100,6 +100,20 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-cairo), Inter, system-ui, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Smooth theme transitions for comfortable switching */
+body,
+.surface-card,
+.surface-prompt,
+.card,
+.btn,
+.input {
+  transition: background-color 0.25s ease, border-color 0.25s ease,
+    color 0.25s ease;
 }
 
 .font-serif {
@@ -109,14 +123,14 @@ body {
 /* Admin console */
 .admin-console .admin-card {
   border-radius: var(--radius);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #111111;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: #1B1916;
 }
 
 .admin-console .admin-input {
   border-radius: 0.5rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #0a0a0a;
+  background: #141210;
   color: var(--foreground);
   padding: 0.375rem 0.5rem;
 }
@@ -132,11 +146,11 @@ body {
   background: var(--surface-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 12px rgba(58, 46, 30, 0.04);
 }
 
 .dark .surface-card {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
 }
 
 .surface-prompt {
@@ -144,7 +158,7 @@ body {
   color: var(--card-foreground);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(58, 46, 30, 0.06);
 }
 
 .card {
