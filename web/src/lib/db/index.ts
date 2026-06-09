@@ -107,7 +107,7 @@ async function ensureDb(): Promise<void> {
   await initDb();
 }
 
-export async function query<T extends DbRow = DbRow>(
+export async function query<T = DbRow>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T[]> {
@@ -116,7 +116,7 @@ export async function query<T extends DbRow = DbRow>(
   return sqliteQuery<T>(sql, params);
 }
 
-export async function queryOne<T extends DbRow = DbRow>(
+export async function queryOne<T = DbRow>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T | null> {
@@ -146,7 +146,7 @@ export async function insertReturningId(
 
 export async function transaction<T>(
   fn: (helpers: {
-    query: <R extends DbRow>(sql: string, params?: unknown[]) => Promise<R[]>;
+    query: <R>(sql: string, params?: unknown[]) => Promise<R[]>;
     execute: (sql: string, params?: unknown[]) => Promise<ExecuteResult>;
     insertReturningId: (sql: string, params?: unknown[]) => Promise<number>;
   }) => Promise<T>,

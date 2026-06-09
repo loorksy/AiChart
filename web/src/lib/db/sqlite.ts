@@ -286,14 +286,14 @@ export async function initSqlite(): Promise<void> {
   getSqliteDb();
 }
 
-export async function sqliteQuery<T extends DbRow = DbRow>(
+export async function sqliteQuery<T = DbRow>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T[]> {
   return getSqliteDb().prepare(sql).all(...params) as T[];
 }
 
-export async function sqliteQueryOne<T extends DbRow = DbRow>(
+export async function sqliteQueryOne<T = DbRow>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T | null> {

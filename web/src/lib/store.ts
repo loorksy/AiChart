@@ -34,18 +34,18 @@ export async function ensureUserDefaults(userId: number) {
 
 export async function getSettings(userId: number): Promise<TradingSettings> {
   await ensureUserDefaults(userId);
-  return (await queryOne(
+  return (await queryOne<TradingSettings>(
     "SELECT * FROM trading_settings WHERE user_id = ?",
     [userId],
-  )) as TradingSettings;
+  ))!;
 }
 
 export async function getLimits(userId: number): Promise<AdminLimits> {
   await ensureUserDefaults(userId);
-  return (await queryOne(
+  return (await queryOne<AdminLimits>(
     "SELECT * FROM admin_limits WHERE user_id = ?",
     [userId],
-  )) as AdminLimits;
+  ))!;
 }
 
 const SETTABLE_FIELDS = [
@@ -105,10 +105,10 @@ export async function saveBinanceAccount(
 export async function getBinanceAccountMeta(
   userId: number,
 ): Promise<BinanceAccountMeta | null> {
-  return queryOne(
+  return queryOne<BinanceAccountMeta>(
     "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ?",
     [userId],
-  ) as Promise<BinanceAccountMeta | null>;
+  );
 }
 
 export async function getBinanceCredentials(
@@ -137,10 +137,10 @@ export async function deleteBinanceAccount(userId: number) {
 export async function getUserByTelegramId(
   telegramId: number,
 ): Promise<PublicUser | null> {
-  return queryOne(
+  return queryOne<PublicUser>(
     "SELECT id, email, role, status, created_at FROM users WHERE telegram_id = ?",
     [telegramId],
-  ) as Promise<PublicUser | null>;
+  );
 }
 
 export async function setUserTelegramId(
@@ -195,10 +195,10 @@ export async function upsertTelegramUser(
 }
 
 export async function getPublicUser(userId: number): Promise<PublicUser | null> {
-  return queryOne(
+  return queryOne<PublicUser>(
     "SELECT id, email, role, status, created_at FROM users WHERE id = ?",
     [userId],
-  ) as Promise<PublicUser | null>;
+  );
 }
 
 export interface AdminUserView extends PublicUser {
@@ -211,7 +211,7 @@ export interface AdminUserView extends PublicUser {
 }
 
 export async function listUsersForAdmin(): Promise<AdminUserView[]> {
-  return query(
+  return query<AdminUserView>(
     `SELECT u.id, u.email, u.role, u.status, u.created_at,
             (b.user_id IS NOT NULL) AS has_binance,
             b.env AS binance_env,
@@ -223,7 +223,7 @@ export async function listUsersForAdmin(): Promise<AdminUserView[]> {
      LEFT JOIN binance_accounts b ON b.user_id = u.id
      LEFT JOIN admin_limits a ON a.user_id = u.id
      ORDER BY u.created_at DESC`,
-  ) as Promise<AdminUserView[]>;
+  );
 }
 
 export async function setUserStatus(userId: number, status: string) {
@@ -284,20 +284,20 @@ export async function saveRecommendation(
       rec.factors && rec.factors.length ? JSON.stringify(rec.factors) : null,
     ],
   );
-  return (await queryOne(
+  return (await queryOne<Recommendation>(
     "SELECT * FROM recommendations WHERE id = ?",
     [id],
-  )) as Recommendation;
+  ))!;
 }
 
 export async function listRecommendations(
   userId: number,
   limit = 20,
 ): Promise<Recommendation[]> {
-  return query(
+  return query<Recommendation>(
     "SELECT * FROM recommendations WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
     [userId, limit],
-  ) as Promise<Recommendation[]>;
+  );
 }
 
 export async function updateRecommendationChartUrl(
@@ -378,10 +378,10 @@ export async function createIntent(
 }
 
 export async function getIntent(id: number): Promise<TradeIntent | null> {
-  return queryOne(
+  return queryOne<TradeIntent>(
     "SELECT * FROM trade_intents WHERE id = ?",
     [id],
-  ) as Promise<TradeIntent | null>;
+  );
 }
 
 export async function listIntents(
@@ -390,15 +390,15 @@ export async function listIntents(
   limit = 30,
 ): Promise<TradeIntent[]> {
   if (status) {
-    return query(
+    return query<TradeIntent>(
       "SELECT * FROM trade_intents WHERE user_id = ? AND status = ? ORDER BY id DESC LIMIT ?",
       [userId, status, limit],
-    ) as Promise<TradeIntent[]>;
+    );
   }
-  return query(
+  return query<TradeIntent>(
     "SELECT * FROM trade_intents WHERE user_id = ? ORDER BY id DESC LIMIT ?",
     [userId, limit],
-  ) as Promise<TradeIntent[]>;
+  );
 }
 
 export async function updateIntentStatus(
@@ -443,14 +443,14 @@ export async function recordTrade(
       trade.status ?? "open",
     ],
   );
-  return (await queryOne("SELECT * FROM trades WHERE id = ?", [id])) as Trade;
+  return (await queryOne<Trade>("SELECT * FROM trades WHERE id = ?", [id]))!;
 }
 
 export async function listTrades(userId: number, limit = 50): Promise<Trade[]> {
-  return query(
+  return query<Trade>(
     "SELECT * FROM trades WHERE user_id = ? ORDER BY id DESC LIMIT ?",
     [userId, limit],
-  ) as Promise<Trade[]>;
+  );
 }
 
 export async function countOpenTrades(userId: number): Promise<number> {
@@ -570,18 +570,16 @@ export async function listAuditLogs(limit = 100): Promise<
     created_at: string;
   }[]
 > {
-  return query(
+  return query<{
+    id: number;
+    user_id: number | null;
+    action: string;
+    detail: string | null;
+    created_at: string;
+  }>(
     "SELECT id, user_id, action, detail, created_at FROM audit_logs ORDER BY id DESC LIMIT ?",
     [limit],
-  ) as Promise<
-    {
-      id: number;
-      user_id: number | null;
-      action: string;
-      detail: string | null;
-      created_at: string;
-    }[]
-  >;
+  );
 }
 
 export interface MonitorUser {
@@ -653,13 +651,13 @@ export async function completeOnboarding(userId: number): Promise<void> {
 export async function listUsersForDailySummary(): Promise<
   { id: number; chatId: string }[]
 > {
-  return query(
+  return query<{ id: number; chatId: string }>(
     `SELECT s.user_id AS id, s.telegram_chat_id AS chatId
      FROM trading_settings s
      JOIN users u ON u.id = s.user_id
      WHERE u.status = 'active' AND s.telegram_chat_id IS NOT NULL
        AND s.onboarding_done = 1`,
-  ) as Promise<{ id: number; chatId: string }[]>;
+  );
 }
 
 export interface AdminPlatformStats {
@@ -677,46 +675,49 @@ export interface AdminPlatformStats {
 }
 
 export async function getAdminPlatformStats(): Promise<AdminPlatformStats> {
-  const users = (await queryOne(
+  const users = (await queryOne<{
+    total: number;
+    active: number;
+    pending: number;
+    suspended: number;
+  }>(
     `SELECT
        COUNT(*) AS total,
        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
        SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended
      FROM users`,
-  )) as {
-    total: number;
-    active: number;
-    pending: number;
-    suspended: number;
-  };
+  ))!;
 
-  const withBinance = (await queryOne(
+  const withBinance = (await queryOne<{ n: number }>(
     "SELECT COUNT(*) AS n FROM binance_accounts",
-  )) as { n: number };
+  ))!;
 
-  const trades = (await queryOne(
+  const trades = (await queryOne<{ total: number; open: number }>(
     `SELECT
        COUNT(*) AS total,
        SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open
      FROM trades`,
-  )) as { total: number; open: number };
+  ))!;
 
-  const intents = (await queryOne(
+  const intents = (await queryOne<{
+    pending: number | null;
+    executed: number | null;
+  }>(
     `SELECT
        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
        SUM(CASE WHEN status = 'executed' THEN 1 ELSE 0 END) AS executed
      FROM trade_intents`,
-  )) as { pending: number | null; executed: number | null };
+  ))!;
 
-  const recs = (await queryOne(
+  const recs = (await queryOne<{ n: number }>(
     "SELECT COUNT(*) AS n FROM recommendations",
-  )) as { n: number };
+  ))!;
 
-  const claudeToday = (await queryOne(
+  const claudeToday = (await queryOne<{ n: number }>(
     "SELECT COALESCE(SUM(count), 0) AS n FROM claude_usage WHERE day = ?",
     [today()],
-  )) as { n: number };
+  ))!;
 
   return {
     users_total: users.total,
@@ -742,7 +743,7 @@ export interface ClaudeUsageRow {
 }
 
 export async function listClaudeUsageForAdmin(): Promise<ClaudeUsageRow[]> {
-  return query(
+  return query<ClaudeUsageRow>(
     `SELECT u.id AS user_id, u.email, u.status,
             COALESCE(c.count, 0) AS used_today,
             COALESCE(a.claude_quota, 1000) AS quota
@@ -752,7 +753,7 @@ export async function listClaudeUsageForAdmin(): Promise<ClaudeUsageRow[]> {
      WHERE u.role != 'admin'
      ORDER BY used_today DESC, u.email`,
     [today()],
-  ) as Promise<ClaudeUsageRow[]>;
+  );
 }
 
 export async function deleteUser(userId: number): Promise<boolean> {

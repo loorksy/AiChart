@@ -255,11 +255,11 @@ export async function initPg(): Promise<void> {
   }
 }
 
-function mapRows<T extends DbRow>(rows: Record<string, unknown>[]): T[] {
+function mapRows<T>(rows: Record<string, unknown>[]): T[] {
   return rows.map((r) => normalizeRow(r) as T);
 }
 
-export async function pgQuery<T extends DbRow = DbRow>(
+export async function pgQuery<T = DbRow>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T[]> {
@@ -267,7 +267,7 @@ export async function pgQuery<T extends DbRow = DbRow>(
   return mapRows<T>(result.rows);
 }
 
-export async function pgQueryOne<T extends DbRow = DbRow>(
+export async function pgQueryOne<T = DbRow>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T | null> {
@@ -288,7 +288,7 @@ export async function pgExecute(
 
 export async function pgTransaction<T>(
   fn: (helpers: {
-    query: <R extends DbRow>(sql: string, params?: unknown[]) => Promise<R[]>;
+    query: <R>(sql: string, params?: unknown[]) => Promise<R[]>;
     execute: (sql: string, params?: unknown[]) => Promise<ExecuteResult>;
     insertReturningId: (sql: string, params?: unknown[]) => Promise<number>;
   }) => Promise<T>,
@@ -297,7 +297,7 @@ export async function pgTransaction<T>(
   try {
     await client.query("BEGIN");
     const helpers = {
-      query: async <R extends DbRow>(sql: string, params: unknown[] = []) => {
+      query: async <R>(sql: string, params: unknown[] = []) => {
         const result = await client.query(adaptSql(sql, "postgres"), params);
         return mapRows<R>(result.rows);
       },

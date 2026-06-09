@@ -5,6 +5,7 @@
  */
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import pg from "pg";
 
@@ -130,11 +131,22 @@ async function promoteAdmin(client) {
   }
 }
 
+async function ensureSchema(client) {
+  const schemaPath = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "pg-schema.sql",
+  );
+  const schemaSql = fs.readFileSync(schemaPath, "utf8");
+  console.log("Ensuring PostgreSQL schema…");
+  await client.query(schemaSql);
+}
+
 async function main() {
   console.log(`Source: ${sqlitePath}`);
   console.log(`Target: ${DATABASE_URL.replace(/:[^:@]+@/, ":***@")}`);
   const client = await pool.connect();
   try {
+    await ensureSchema(client);
     await client.query("BEGIN");
     for (const table of TABLES_ORDER) {
       await migrateTable(client, table);

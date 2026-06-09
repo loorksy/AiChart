@@ -44,7 +44,7 @@ grep -q '^ADMIN_EMAIL=' "$ENV_FILE" && sed -i 's|^ADMIN_EMAIL=.*|ADMIN_EMAIL=loo
 
 cd "$WEB_DIR"
 echo "==> npm install"
-npm install --omit=dev 2>/dev/null || npm install
+npm install
 
 echo "==> Building app (initializes PG schema on first request; run migration now)"
 export DATABASE_URL ADMIN_EMAIL=loorksy@gmail.com

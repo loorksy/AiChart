@@ -36,34 +36,34 @@ export async function getConversation(
   id: number,
   userId: number,
 ): Promise<Conversation | null> {
-  return queryOne(
+  return queryOne<Conversation>(
     "SELECT * FROM conversations WHERE id = ? AND user_id = ?",
     [id, userId],
-  ) as Promise<Conversation | null>;
+  );
 }
 
 export async function listConversations(
   userId: number,
   limit = 50,
 ): Promise<Conversation[]> {
-  return query(
+  return query<Conversation>(
     `SELECT * FROM conversations
      WHERE user_id = ? AND archived = 0
      ORDER BY updated_at DESC LIMIT ?`,
     [userId, limit],
-  ) as Promise<Conversation[]>;
+  );
 }
 
 export async function listArchivedConversations(
   userId: number,
   limit = 30,
 ): Promise<Conversation[]> {
-  return query(
+  return query<Conversation>(
     `SELECT * FROM conversations
      WHERE user_id = ? AND archived = 1
      ORDER BY updated_at DESC LIMIT ?`,
     [userId, limit],
-  ) as Promise<Conversation[]>;
+  );
 }
 
 export async function archiveConversation(
@@ -139,22 +139,22 @@ export async function appendChatMessage(
     `UPDATE conversations SET updated_at = datetime('now') WHERE id = ?`,
     [conversationId],
   );
-  return (await queryOne(
+  return (await queryOne<ChatMessageRow>(
     "SELECT * FROM chat_messages WHERE id = ?",
     [id],
-  )) as ChatMessageRow;
+  ))!;
 }
 
 export async function loadChatMessages(
   conversationId: number,
   limit = MAX_MESSAGES_LOAD,
 ): Promise<ChatMessageRow[]> {
-  const rows = (await query(
+  const rows = await query<ChatMessageRow>(
     `SELECT * FROM chat_messages
      WHERE conversation_id = ?
      ORDER BY id DESC LIMIT ?`,
     [conversationId, limit],
-  )) as ChatMessageRow[];
+  );
   return rows.reverse();
 }
 
