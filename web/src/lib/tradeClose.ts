@@ -11,7 +11,7 @@ import {
   placeMarketOrder,
   type BinanceEnv,
 } from "./binance";
-import { notifyUser } from "./telegram";
+import { dispatchAlert } from "./alerts";
 
 export interface CloseTradeResult {
   ok: boolean;
@@ -115,12 +115,15 @@ export async function closeOpenTrade(
     const result = await closeOneTrade(userId, tradeId, creds);
     if (result.ok) {
       const sign = result.pnl >= 0 ? "+" : "";
-      await notifyUser(
-        userId,
-        `✅ <b>إغلاق صفقة · Position closed</b>\n` +
+      await dispatchAlert(userId, {
+        type: "trade_closed",
+        title: `إغلاق صفقة ${result.symbol}`,
+        text:
+          `✅ <b>إغلاق صفقة · Position closed</b>\n` +
           `${result.symbol}\n` +
           `PnL: <b>${sign}${result.pnl.toFixed(2)} USDT</b>`,
-      );
+        symbol: result.symbol,
+      });
     }
     return result;
   } catch (e) {
@@ -167,12 +170,14 @@ export async function closeAllOpenTrades(userId: number): Promise<{
 
   if (closed > 0) {
     const sign = totalPnl >= 0 ? "+" : "";
-    await notifyUser(
-      userId,
-      `🛑 <b>إغلاق طارئ · Emergency close</b>\n` +
+    await dispatchAlert(userId, {
+      type: "trade_closed",
+      title: `إغلاق طارئ لـ ${closed} صفقة`,
+      text:
+        `🛑 <b>إغلاق طارئ · Emergency close</b>\n` +
         `أُغلقت ${closed} صفقة.\n` +
         `إجمالي PnL: <b>${sign}${totalPnl.toFixed(2)} USDT</b>`,
-    );
+    });
   }
 
   return { closed, failed, totalPnl, errors };

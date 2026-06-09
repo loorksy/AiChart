@@ -19,6 +19,10 @@ const schema = z
     send_screenshot: z.boolean(),
     telegram_chat_id: z.string().max(64).nullable().optional(),
     kill_switch: z.boolean(),
+    alerts_enabled: z.boolean(),
+    alert_trades: z.boolean(),
+    alert_signals: z.boolean(),
+    alert_min_confidence: z.number().int().min(0).max(100),
   })
   .partial();
 
@@ -65,6 +69,15 @@ export async function PUT(req: NextRequest) {
     }
     if (typeof input.kill_switch === "boolean") {
       patch.kill_switch = input.kill_switch ? 1 : 0;
+    }
+    if (typeof input.alerts_enabled === "boolean") {
+      patch.alerts_enabled = input.alerts_enabled ? 1 : 0;
+    }
+    if (typeof input.alert_trades === "boolean") {
+      patch.alert_trades = input.alert_trades ? 1 : 0;
+    }
+    if (typeof input.alert_signals === "boolean") {
+      patch.alert_signals = input.alert_signals ? 1 : 0;
     }
 
     await updateSettings(user.id, patch);
