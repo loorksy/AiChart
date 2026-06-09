@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ChevronLeft,
+  CreditCard,
   LogOut,
   Moon,
+  Send,
+  Settings as SettingsIcon,
+  SlidersHorizontal,
   Sun,
   User,
 } from "lucide-react";
@@ -20,6 +23,7 @@ import type {
   PublicUser,
   TradingSettings,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { SurfaceCard, PillButton } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { displayNameFromEmail } from "@/lib/displayName";
@@ -39,6 +43,21 @@ function Field({
   );
 }
 
+type TabId =
+  | "profile"
+  | "subscription"
+  | "appearance"
+  | "integrations"
+  | "trading";
+
+const TABS: { id: TabId; label: string; icon: typeof User; desc: string }[] = [
+  { id: "profile", label: "الملف الشخصي", icon: User, desc: "بيانات حسابك" },
+  { id: "subscription", label: "الاشتراك", icon: CreditCard, desc: "الرصيد والخطة" },
+  { id: "appearance", label: "المظهر", icon: Sun, desc: "السمة والعرض" },
+  { id: "integrations", label: "الربط والتكامل", icon: Send, desc: "Binance وتليجرام" },
+  { id: "trading", label: "التداول والمخاطر", icon: SlidersHorizontal, desc: "الحدود والإعدادات" },
+];
+
 export default function SettingsClient({
   user,
   settings: initialSettings,
@@ -50,9 +69,7 @@ export default function SettingsClient({
   limits: AdminLimits;
   binance: BinanceAccountMeta | null;
 }) {
-  const [view, setView] = useState<
-    "menu" | "profile" | "subscription" | "appearance" | "binance" | "telegram" | "trading"
-  >("menu");
+  const [tab, setTab] = useState<TabId>("profile");
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const displayName = displayNameFromEmail(user.email);
@@ -63,171 +80,190 @@ export default function SettingsClient({
     router.refresh();
   }
 
-  if (view !== "menu") {
-    return (
-      <main className="page-shell max-w-lg">
-        <button
-          type="button"
-          onClick={() => setView("menu")}
-          className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          رجوع
-        </button>
-
-        {view === "profile" && (
-          <SurfaceCard className="space-y-3">
-            <h2 className="font-serif text-xl font-bold">الملف الشخصي</h2>
-            <p className="text-sm text-muted-foreground" dir="ltr">
-              {user.email}
-            </p>
-            <p className="text-sm">
-              الحالة:{" "}
-              <span className="font-medium">
-                {user.status === "active"
-                  ? "مفعّل"
-                  : user.status === "pending"
-                    ? "بانتظار الموافقة"
-                    : "موقوف"}
-              </span>
-            </p>
-          </SurfaceCard>
-        )}
-
-        {view === "subscription" && (
-          <SurfaceCard className="space-y-3">
-            <h2 className="font-serif text-xl font-bold">الاشتراك</h2>
-            <p className="text-sm text-muted-foreground">
-              الرصيد اليومي: {limits.claude_quota} رسالة
-            </p>
-            <Link href="/plan" className="btn btn-primary w-full">
-              تواصل للاشتراك
-            </Link>
-          </SurfaceCard>
-        )}
-
-        {view === "appearance" && (
-          <SurfaceCard className="space-y-4">
-            <h2 className="font-serif text-xl font-bold">المظهر</h2>
-            <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  { id: "light" as const, label: "فاتح", icon: Sun },
-                  { id: "dark" as const, label: "داكن", icon: Moon },
-                  { id: "system" as const, label: "تلقائي", icon: Sun },
-                ] as const
-              ).map((opt) => {
-                const Icon = opt.icon;
-                return (
-                  <PillButton
-                    key={opt.id}
-                    variant={theme === opt.id ? "primary" : "outline"}
-                    onClick={() => setTheme(opt.id as ThemePreference)}
-                    className="gap-2"
-                  >
-                    <Icon className="h-4 w-4" />
-                    {opt.label}
-                  </PillButton>
-                );
-              })}
-            </div>
-          </SurfaceCard>
-        )}
-
-        {view === "binance" && <BinanceCard binance={binance} />}
-        {view === "telegram" && (
-          <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
-        )}
-        {view === "trading" && (
-          <TradingCard settings={initialSettings} limits={limits} />
-        )}
-      </main>
-    );
-  }
-
-  const menuItems = [
-    {
-      id: "profile" as const,
-      label: "الملف الشخصي",
-      desc: displayName,
-      icon: User,
-    },
-    {
-      id: "subscription" as const,
-      label: "الاشتراك",
-      desc: `${limits.claude_quota} رصيد يومي`,
-      icon: User,
-    },
-    {
-      id: "appearance" as const,
-      label: "المظهر",
-      desc:
-        theme === "light"
-          ? "فاتح"
-          : theme === "dark"
-            ? "داكن"
-            : "تلقائي",
-      icon: Sun,
-    },
-    {
-      id: "binance" as const,
-      label: "Binance",
-      desc: binance ? "مرتبط" : "غير مربوط",
-      icon: User,
-    },
-    {
-      id: "telegram" as const,
-      label: "تليجرام",
-      desc: initialSettings.telegram_chat_id ? "مرتبط" : "غير مربوط",
-      icon: User,
-    },
-    {
-      id: "trading" as const,
-      label: "التداول والمخاطر",
-      desc: "الحدود والإعدادات",
-      icon: User,
-    },
-  ];
-
   return (
-    <main className="page-shell max-w-lg space-y-4">
+    <main className="page-shell max-w-5xl space-y-4">
       <div>
         <h1 className="page-title">الإعدادات</h1>
         <p className="page-subtitle">إدارة حسابك وتفضيلاتك</p>
       </div>
 
-      <div className="space-y-2">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setView(item.id)}
-              className="w-full text-start"
-            >
-              <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary">
-                  <Icon className="h-5 w-5 text-accent-gold" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{item.label}</p>
-                  <p className="text-xs text-muted-foreground">{item.desc}</p>
-                </div>
-                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
-              </SurfaceCard>
-            </button>
-          );
-        })}
+      {/* Mobile: horizontal scrollable tabs */}
+      <div className="-mx-4 overflow-x-auto px-4 md:hidden">
+        <div className="flex w-max gap-2 pb-1">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium transition",
+                  tab === t.id
+                    ? "border-transparent bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-        <button type="button" onClick={() => void logout()} className="w-full">
-          <SurfaceCard className="flex items-center gap-3 text-destructive transition hover:bg-destructive/5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
-              <LogOut className="h-5 w-5" />
-            </div>
-            <p className="font-medium">تسجيل الخروج</p>
+      <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
+        {/* Desktop: vertical tab list */}
+        <aside className="hidden md:block">
+          <SurfaceCard padding="sm" className="space-y-1">
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTab(t.id)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start transition",
+                    tab === t.id
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/50",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-xl",
+                      tab === t.id ? "bg-primary/10" : "bg-secondary",
+                    )}
+                  >
+                    <Icon className="h-4 w-4 text-accent-gold" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{t.label}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {t.desc}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start text-destructive transition hover:bg-destructive/5"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-destructive/10">
+                <LogOut className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-medium">تسجيل الخروج</span>
+            </button>
           </SurfaceCard>
-        </button>
+        </aside>
+
+        {/* Tab content */}
+        <div className="min-w-0 space-y-4">
+          {tab === "profile" && (
+            <SurfaceCard className="space-y-3">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 font-serif text-lg font-bold text-primary">
+                  {displayName.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <h2 className="font-serif text-xl font-bold">{displayName}</h2>
+                  <p className="truncate text-sm text-muted-foreground" dir="ltr">
+                    {user.email}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm">
+                <span className="rounded-full bg-secondary px-3 py-1">
+                  الحالة:{" "}
+                  <span className="font-medium">
+                    {user.status === "active"
+                      ? "مفعّل"
+                      : user.status === "pending"
+                        ? "بانتظار الموافقة"
+                        : "موقوف"}
+                  </span>
+                </span>
+                <span className="rounded-full bg-secondary px-3 py-1">
+                  الدور: {user.role === "admin" ? "مدير" : "متداول"}
+                </span>
+              </div>
+            </SurfaceCard>
+          )}
+
+          {tab === "subscription" && (
+            <SurfaceCard className="space-y-3">
+              <div className="flex items-start gap-3">
+                <CreditCard className="mt-0.5 h-5 w-5 text-accent-gold" />
+                <div>
+                  <h2 className="font-serif text-xl font-bold">الاشتراك</h2>
+                  <p className="text-sm text-muted-foreground">
+                    الرصيد اليومي: {limits.claude_quota} رسالة
+                  </p>
+                </div>
+              </div>
+              <Link href="/plan" className="btn btn-primary w-full sm:w-auto">
+                <Send className="h-4 w-4" />
+                تواصل للاشتراك
+              </Link>
+            </SurfaceCard>
+          )}
+
+          {tab === "appearance" && (
+            <SurfaceCard className="space-y-4">
+              <h2 className="font-serif text-xl font-bold">المظهر</h2>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { id: "light" as const, label: "فاتح", icon: Sun },
+                    { id: "dark" as const, label: "داكن", icon: Moon },
+                    { id: "system" as const, label: "تلقائي", icon: SettingsIcon },
+                  ] as const
+                ).map((opt) => {
+                  const Icon = opt.icon;
+                  return (
+                    <PillButton
+                      key={opt.id}
+                      variant={theme === opt.id ? "primary" : "outline"}
+                      onClick={() => setTheme(opt.id as ThemePreference)}
+                      className="gap-2"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {opt.label}
+                    </PillButton>
+                  );
+                })}
+              </div>
+            </SurfaceCard>
+          )}
+
+          {tab === "integrations" && (
+            <div className="space-y-4">
+              <BinanceCard binance={binance} />
+              <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
+            </div>
+          )}
+
+          {tab === "trading" && (
+            <TradingCard settings={initialSettings} limits={limits} />
+          )}
+
+          {/* Mobile-only logout */}
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="w-full md:hidden"
+          >
+            <SurfaceCard className="flex items-center gap-3 text-destructive transition hover:bg-destructive/5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10">
+                <LogOut className="h-5 w-5" />
+              </div>
+              <p className="font-medium">تسجيل الخروج</p>
+            </SurfaceCard>
+          </button>
+        </div>
       </div>
     </main>
   );
