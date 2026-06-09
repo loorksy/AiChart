@@ -1,9 +1,8 @@
 import AuthForm from "@/components/AuthForm";
-import { getBotUsername, isTelegramConfigured } from "@/lib/telegram";
+import { getTelegramLoginConfig } from "@/lib/telegram";
 
 export default async function RegisterPage() {
-  const telegramConfigured = isTelegramConfigured();
-  const botUsername = telegramConfigured ? await getBotUsername() : null;
+  const { telegramConfigured, botUsername } = await getTelegramLoginConfig();
 
   return (
     <AuthForm

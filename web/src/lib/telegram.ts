@@ -4,12 +4,60 @@
  */
 
 import { getTelegramChatId } from "./store";
-import { getPlatformValue } from "./platformConfig";
+import {
+  getPlatformValue,
+  getPlatformValueAsync,
+  refreshPlatformConfigCache,
+} from "./platformConfig";
 
 const API = "https://api.telegram.org";
 
 export function isTelegramConfigured(): boolean {
   return Boolean(getPlatformValue("TELEGRAM_BOT_TOKEN"));
+}
+
+/** Loads DB-backed platform config then checks for a bot token. */
+export async function isTelegramConfiguredAsync(): Promise<boolean> {
+  await refreshPlatformConfigCache();
+  return Boolean(await getPlatformValueAsync("TELEGRAM_BOT_TOKEN"));
+}
+
+/** Resolves Telegram Login Widget props from DB / env (admin panel values). */
+export async function getTelegramLoginConfig(): Promise<{
+  telegramConfigured: boolean;
+  botUsername: string | null;
+}> {
+  await refreshPlatformConfigCache();
+  const token = await getPlatformValueAsync("TELEGRAM_BOT_TOKEN");
+  if (!token) {
+    return { telegramConfigured: false, botUsername: null };
+  }
+
+  const configuredUsername = await getPlatformValueAsync(
+    "TELEGRAM_BOT_USERNAME",
+  );
+  if (configuredUsername) {
+    return { telegramConfigured: true, botUsername: configuredUsername };
+  }
+  if (cachedUsername) {
+    return { telegramConfigured: true, botUsername: cachedUsername };
+  }
+
+  try {
+    const res = await fetch(`${API}/bot${token}/getMe`, { cache: "no-store" });
+    const data = (await res.json()) as {
+      ok: boolean;
+      result?: { username: string };
+    };
+    if (data.ok && data.result?.username) {
+      cachedUsername = data.result.username;
+      return { telegramConfigured: true, botUsername: cachedUsername };
+    }
+  } catch {
+    /* fall through */
+  }
+
+  return { telegramConfigured: true, botUsername: null };
 }
 
 export function webhookSecret(): string {
@@ -149,17 +197,8 @@ export async function editMessageText(
 
 let cachedUsername: string | null = null;
 export async function getBotUsername(): Promise<string | null> {
-  const configured = getPlatformValue("TELEGRAM_BOT_USERNAME");
-  if (configured) return configured;
-  if (cachedUsername) return cachedUsername;
-  if (!isTelegramConfigured()) return null;
-  try {
-    const me = (await call("getMe", {})) as { username: string };
-    cachedUsername = me.username;
-    return me.username;
-  } catch {
-    return null;
-  }
+  const { botUsername } = await getTelegramLoginConfig();
+  return botUsername;
 }
 
 export async function setWebhook(url: string): Promise<void> {

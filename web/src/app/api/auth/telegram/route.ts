@@ -7,8 +7,11 @@ import {
   verifyTelegramLogin,
   type TelegramLoginPayload,
 } from "@/lib/telegramAuth";
-import { getBotUsername, isTelegramConfigured } from "@/lib/telegram";
-import { getPlatformValue } from "@/lib/platformConfig";
+import {
+  getBotUsername,
+  isTelegramConfiguredAsync,
+} from "@/lib/telegram";
+import { getPlatformValueAsync } from "@/lib/platformConfig";
 
 const schema = z.object({
   id: z.number().int().positive(),
@@ -23,14 +26,14 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    if (!isTelegramConfigured()) {
+    if (!(await isTelegramConfiguredAsync())) {
       return NextResponse.json(
         { error: "تسجيل تليجرام غير مُفعّل على الخادم بعد." },
         { status: 503 },
       );
     }
 
-    const token = getPlatformValue("TELEGRAM_BOT_TOKEN");
+    const token = await getPlatformValueAsync("TELEGRAM_BOT_TOKEN");
     if (!token) {
       return NextResponse.json(
         { error: "توكن البوت غير مُعدّ." },
