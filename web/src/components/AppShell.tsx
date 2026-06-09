@@ -8,6 +8,9 @@ import {
   LineChart,
   LogOut,
   MessageSquare,
+  Settings,
+  Shield,
+  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,6 +54,7 @@ export default function AppShell({
   const displayName = me?.displayName ?? displayNameFromEmail(email);
   const creditsRemaining = me?.quota.remaining ?? 0;
   const creditsLimit = me?.quota.limit ?? 0;
+  const initials = displayName.slice(0, 2).toUpperCase();
 
   useEffect(() => {
     if (drawerOpen || pathname.startsWith("/chat")) {
@@ -68,29 +72,25 @@ export default function AppShell({
   return (
     <div
       className={cn(
-        "flex min-h-dvh flex-col bg-background",
+        "min-h-dvh bg-background md:flex md:flex-row-reverse",
         chatLayout && "h-dvh max-h-dvh overflow-hidden",
       )}
     >
-      <AppHeader
-        onMenuClick={() => setDrawerOpen(true)}
-        credits={meLoading ? null : creditsRemaining}
-        creditsLoading={meLoading}
-        pendingIntents={me?.pendingIntents ?? 0}
-      />
+      {/* Desktop sidebar (right side in RTL) */}
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-s border-border bg-sidebar md:flex">
+        <Link
+          href="/chat"
+          className="flex items-center gap-2 border-b border-border px-5 py-4"
+        >
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <span className="font-serif text-lg font-bold tracking-tight">
+            Ai<span className="text-accent-gold">Chart</span>
+          </span>
+        </Link>
 
-      <MobileDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        email={email}
-        displayName={displayName}
-        creditsRemaining={creditsRemaining}
-        creditsLimit={creditsLimit}
-      />
-
-      {/* Desktop top nav */}
-      <nav className="hidden shrink-0 border-b border-border bg-card/50 px-6 md:flex">
-        <div className="mx-auto flex w-full max-w-4xl items-center gap-1 py-2">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {MAIN_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = isTabActive(pathname, tab.href);
@@ -99,52 +99,126 @@ export default function AppShell({
                 key={tab.href}
                 href={tab.href}
                 className={cn(
-                  "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition",
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
                   active
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                    ? "bg-secondary text-foreground"
+                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
                 )}
               >
-                <Icon className="h-4 w-4" />
+                <Icon
+                  className={cn("h-5 w-5", active && "text-accent-gold")}
+                />
                 {tab.label}
               </Link>
             );
           })}
-          <div className="ms-auto flex items-center gap-2">
-            <Link
-              href="/settings"
-              className="rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary"
-            >
-              الإعدادات
-            </Link>
-            {role === "admin" && (
-              <Link
-                href="/admin"
-                className="rounded-full px-3 py-1.5 text-sm text-accent-gold hover:bg-secondary"
-              >
-                الأدمن
-              </Link>
+
+          <div className="my-3 border-t border-border" />
+
+          <Link
+            href="/settings"
+            className={cn(
+              "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
+              isTabActive(pathname, "/settings")
+                ? "bg-secondary text-foreground"
+                : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
             )}
+          >
+            <Settings className="h-5 w-5" />
+            الإعدادات
+          </Link>
+          {role === "admin" && (
+            <Link
+              href="/admin"
+              className={cn(
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
+                isTabActive(pathname, "/admin")
+                  ? "bg-secondary text-foreground"
+                  : "text-accent-gold hover:bg-secondary/60",
+              )}
+            >
+              <Shield className="h-5 w-5" />
+              لوحة الأدمن
+            </Link>
+          )}
+        </nav>
+
+        {/* Credits + user footer */}
+        <div className="space-y-2 border-t border-border p-3">
+          <Link
+            href="/dashboard"
+            className="block rounded-xl bg-secondary/60 px-3 py-2.5 transition hover:bg-secondary"
+          >
+            <p className="text-[11px] text-muted-foreground">الرصيد المتبقّي</p>
+            <p className="font-serif text-xl font-bold">
+              {meLoading ? "…" : creditsRemaining}
+              <span className="ms-1 text-xs font-normal text-muted-foreground">
+                / {creditsLimit}
+              </span>
+            </p>
+          </Link>
+          <div className="flex items-center gap-2 px-1">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{displayName}</p>
+              <p
+                className="truncate text-[10px] text-muted-foreground"
+                dir="ltr"
+              >
+                {email}
+              </p>
+            </div>
             <button
               onClick={() => void logout()}
-              className="rounded-full p-2 text-muted-foreground hover:bg-secondary"
+              className="rounded-lg p-2 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
               aria-label="خروج"
             >
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         </div>
-      </nav>
+      </aside>
 
-      <main
+      {/* Main column */}
+      <div
         className={cn(
-          "flex min-h-0 flex-1 flex-col",
-          chatLayout && "overflow-hidden",
+          "flex min-w-0 flex-1 flex-col",
+          chatLayout ? "h-dvh max-h-dvh overflow-hidden" : "min-h-dvh",
         )}
       >
-        {children}
-      </main>
+        {/* Header — full on mobile, slim on desktop */}
+        <div className="md:hidden">
+          <AppHeader
+            onMenuClick={() => setDrawerOpen(true)}
+            credits={meLoading ? null : creditsRemaining}
+            creditsLoading={meLoading}
+            pendingIntents={me?.pendingIntents ?? 0}
+          />
+        </div>
 
+        <MobileDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          email={email}
+          displayName={displayName}
+          creditsRemaining={creditsRemaining}
+          creditsLimit={creditsLimit}
+        />
+
+        <main
+          className={cn(
+            "flex min-h-0 flex-1 flex-col",
+            chatLayout && "overflow-hidden",
+            showBottomNav && "pb-16 md:pb-0",
+          )}
+        >
+          {children}
+        </main>
+      </div>
+
+      {/* Mobile bottom nav */}
       {showBottomNav && (
         <nav className="bottom-nav fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-md md:hidden">
           <div className="flex items-stretch">
@@ -157,16 +231,11 @@ export default function AppShell({
                   href={tab.href}
                   className={cn(
                     "flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition",
-                    active
-                      ? "text-foreground"
-                      : "text-muted-foreground",
+                    active ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   <Icon
-                    className={cn(
-                      "h-5 w-5",
-                      active && "text-accent-gold",
-                    )}
+                    className={cn("h-5 w-5", active && "text-accent-gold")}
                   />
                   {tab.label}
                 </Link>

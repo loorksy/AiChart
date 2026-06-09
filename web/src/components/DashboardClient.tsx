@@ -66,7 +66,7 @@ export default function DashboardClient({
   }
 
   return (
-    <main className="page-shell space-y-4">
+    <main className="page-shell max-w-6xl space-y-4">
       <div>
         <h1 className="page-title">حسابي</h1>
         <p className="page-subtitle">لوحة الحساب والرصيد</p>
