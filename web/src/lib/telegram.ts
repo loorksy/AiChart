@@ -111,13 +111,15 @@ export async function sendMessage(
   chatId: string | number,
   text: string,
   buttons?: InlineButton[][],
-): Promise<void> {
-  await call("sendMessage", {
+): Promise<number> {
+  const result = (await call("sendMessage", {
     chat_id: chatId,
     text,
     parse_mode: "HTML",
+    disable_web_page_preview: true,
     ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
-  });
+  })) as { message_id: number };
+  return result.message_id;
 }
 
 /** Downloads a Telegram file by file_id and returns base64 + media type. */
@@ -175,10 +177,11 @@ export async function notifyUserPhoto(
 export async function answerCallback(
   callbackId: string,
   text?: string,
+  showAlert = false,
 ): Promise<void> {
   await call("answerCallbackQuery", {
     callback_query_id: callbackId,
-    ...(text ? { text } : {}),
+    ...(text ? { text, show_alert: showAlert } : {}),
   });
 }
 
@@ -186,12 +189,22 @@ export async function editMessageText(
   chatId: string | number,
   messageId: number,
   text: string,
+  buttons?: InlineButton[][] | null,
 ): Promise<void> {
+  const markup =
+    buttons === null
+      ? { inline_keyboard: [] as InlineButton[][] }
+      : buttons
+        ? { inline_keyboard: buttons }
+        : undefined;
+
   await call("editMessageText", {
     chat_id: chatId,
     message_id: messageId,
     text,
     parse_mode: "HTML",
+    disable_web_page_preview: true,
+    ...(markup ? { reply_markup: markup } : {}),
   });
 }
 

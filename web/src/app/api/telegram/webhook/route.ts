@@ -23,6 +23,23 @@ import {
   webhookSecret,
   downloadTelegramPhoto,
 } from "@/lib/telegram";
+import {
+  actionResultCard,
+  agentReplyCard,
+  analyzingCard,
+  helpCard,
+  isMenuCallback,
+  linkedSuccessCard,
+  mainMenuKeyboard,
+  notLinkedCard,
+  parseMenuAction,
+  pnlCard,
+  positionsCard,
+  quotaExceededCard,
+  statusCard,
+  welcomeCard,
+  welcomeKeyboard,
+} from "@/lib/telegramBotUi";
 import { validateChatImage } from "@/lib/chatImage";
 import { runTelegramAgentChat } from "@/lib/telegramAgent";
 import { isAnthropicConfigured } from "@/lib/anthropic";
@@ -49,18 +66,7 @@ interface TgUpdate {
   };
 }
 
-const HELP = [
-  "<b>أوامر AiChart · AiChart commands</b>",
-  "/status — حالة حسابك · Account status",
-  "/positions — الصفقات المفتوحة · Open positions",
-  "/pnl — أرباح/خسائر اليوم · Today's PnL",
-  "/pause — إيقاف التداول · Pause trading",
-  "/resume — استئناف التداول · Resume trading",
-  "/stop — إيقاف طارئ · Emergency stop",
-].join("\n");
-
 export async function POST(req: NextRequest) {
-  // Verify the request actually came from Telegram.
   const secret = req.headers.get("x-telegram-bot-api-secret-token");
   if (secret !== webhookSecret()) {
     return NextResponse.json({ ok: false }, { status: 401 });
@@ -94,8 +100,70 @@ export async function POST(req: NextRequest) {
     console.error("[telegram] webhook error", e);
   }
 
-  // Always 200 so Telegram doesn't retry indefinitely.
   return NextResponse.json({ ok: true });
+}
+
+async function userQuota(userId: number) {
+  const limits = await getLimits(userId);
+  const used = await getTodayUsage(userId);
+  return { used, limit: limits.claude_quota };
+}
+
+async function renderMenuAction(
+  userId: number,
+  action: string,
+): Promise<{ text: string; toast?: string }> {
+  switch (action) {
+    case "status":
+    case "refresh": {
+      const s = await getSettings(userId);
+      const open = await countOpenTrades(userId);
+      const quota = await userQuota(userId);
+      return { text: statusCard(s, open, quota), toast: "تم التحديث ✓" };
+    }
+    case "positions": {
+      const open = (await listTrades(userId, 50)).filter((t) => t.status === "open");
+      return { text: positionsCard(open) };
+    }
+    case "pnl": {
+      const today = new Date().toISOString().slice(0, 10);
+      const trades = (await listTrades(userId, 200)).filter(
+        (t) => t.status === "closed" && t.closed_at?.slice(0, 10) === today,
+      );
+      const pnl = trades.reduce((a, t) => a + t.pnl, 0);
+      return { text: pnlCard(pnl, trades.length) };
+    }
+    case "pause": {
+      await updateSettings(userId, { kill_switch: 1 });
+      return {
+        text: actionResultCard(
+          "🔴",
+          "تم إيقاف التداول",
+          "لن يفتح الوكيل أي صفقة جديدة حتى تستأنف.",
+        ),
+        toast: "تم الإيقاف",
+      };
+    }
+    case "resume": {
+      await updateSettings(userId, { kill_switch: 0 });
+      return {
+        text: actionResultCard("🟢", "تم استئناف التداول", "الوكيل يعمل مجدداً."),
+        toast: "تم الاستئناف",
+      };
+    }
+    case "help":
+      return { text: helpCard() };
+    default:
+      return { text: helpCard() };
+  }
+}
+
+async function sendPanel(
+  chatId: number,
+  text: string,
+  keyboard = mainMenuKeyboard(),
+): Promise<void> {
+  await sendMessage(chatId, text, keyboard);
 }
 
 async function handlePhotoMessage(
@@ -107,38 +175,29 @@ async function handlePhotoMessage(
   const cid = String(chatId);
   const userId = await getUserByTelegramChatId(cid);
   if (!userId) {
-    await sendMessage(
-      chatId,
-      "حسابك غير مربوط. اربطه من إعدادات الموقع أولاً.\n" +
-        "Your account isn't linked. Link it from the website settings first.",
-    );
+    await sendMessage(chatId, notLinkedCard());
     return;
   }
 
   if (!isAnthropicConfigured()) {
-    await sendMessage(chatId, HELP);
+    await sendPanel(chatId, helpCard());
     return;
   }
 
-  const limits = await getLimits(userId);
-  const used = await getTodayUsage(userId);
-  if (limits.claude_quota > 0 && used >= limits.claude_quota) {
-    await sendMessage(
-      chatId,
-      "⚠️ بلغت حصّتك اليومية من الوكيل. حاول غداً.\n" +
-        "⚠️ Daily agent quota reached. Try again tomorrow.",
-    );
+  const quota = await userQuota(userId);
+  if (quota.limit > 0 && quota.used >= quota.limit) {
+    await sendPanel(chatId, quotaExceededCard());
     return;
   }
 
   const largest = photos[photos.length - 1]!;
-  await sendMessage(chatId, "⏳ جاري تحليل الشارت… · Analyzing chart…");
+  const loadingId = await sendMessage(chatId, analyzingCard());
 
   try {
     const downloaded = await downloadTelegramPhoto(largest.file_id);
     const validated = validateChatImage(downloaded.media_type, downloaded.data);
     if (!validated.ok) {
-      await sendMessage(chatId, validated.error);
+      await editMessageText(chatId, loadingId, validated.error, mainMenuKeyboard());
       return;
     }
 
@@ -148,15 +207,22 @@ async function handlePhotoMessage(
       validated.image,
     );
     if (!result.ok) {
-      await sendMessage(chatId, result.error);
+      await editMessageText(chatId, loadingId, result.error, mainMenuKeyboard());
       return;
     }
-    await sendMessage(chatId, result.reply);
+    await editMessageText(
+      chatId,
+      loadingId,
+      agentReplyCard(result.reply),
+      mainMenuKeyboard(),
+    );
   } catch (e) {
     console.error("[telegram] photo analysis", e);
-    await sendMessage(
+    await editMessageText(
       chatId,
-      "تعذّر تحليل الصورة. حاول لاحقاً. · Could not analyze the image. Try again later.",
+      loadingId,
+      actionResultCard("⚠️", "تعذّر التحليل", "حاول لاحقاً أو أرسل صورة أوضح."),
+      mainMenuKeyboard(),
     );
   }
 }
@@ -176,18 +242,16 @@ async function handleMessage(
       if (userId) {
         await setTelegramChatId(userId, cid);
         if (fromId) await setUserTelegramId(userId, fromId);
-        await sendMessage(
-          chatId,
-          "✅ تم ربط حسابك بنجاح! ستصلك إشعارات الصفقات والتوصيات هنا.\n" +
-            "✅ Your account is linked! You'll receive trade alerts here.\n\n" +
-            HELP,
-        );
+        await sendPanel(chatId, linkedSuccessCard(), welcomeKeyboard());
         return;
       }
       await sendMessage(
         chatId,
-        "⚠️ رمز الربط غير صالح أو منتهٍ. سجّل الدخول عبر تليجرام من الموقع.\n" +
-          "⚠️ Invalid or expired link code. Log in with Telegram on the website.",
+        actionResultCard(
+          "⚠️",
+          "رمز ربط غير صالح",
+          "سجّل الدخول عبر تليجرام من الموقع.",
+        ),
       );
       return;
     }
@@ -196,128 +260,76 @@ async function handleMessage(
       const user = await getUserByTelegramId(fromId);
       if (user) {
         await setTelegramChatId(user.id, cid);
-        await sendMessage(
-          chatId,
-          "✅ أهلاً بك في <b>AiChart</b> — حسابك مربوط.\n" +
-            "✅ Welcome to <b>AiChart</b> — your account is linked.\n\n" +
-            HELP,
-        );
+        await sendPanel(chatId, welcomeCard(true), welcomeKeyboard());
         return;
       }
     }
 
-    await sendMessage(
-      chatId,
-      "أهلاً بك في <b>AiChart</b> 🤖\nسجّل الدخول من الموقع عبر زر تليجرام لربط حسابك تلقائياً.\n\n" +
-        "Welcome to <b>AiChart</b> 🤖\nLog in on the website with the Telegram button to link automatically.",
-    );
+    await sendPanel(chatId, welcomeCard(false), welcomeKeyboard());
     return;
   }
 
   const userId = await getUserByTelegramChatId(cid);
   if (!userId) {
-    await sendMessage(
-      chatId,
-      "حسابك غير مربوط. اربطه من إعدادات الموقع أولاً.\n" +
-        "Your account isn't linked. Link it from the website settings first.",
-    );
+    await sendMessage(chatId, notLinkedCard());
     return;
   }
 
-  const cmd = text.split(/\s+/)[0].toLowerCase();
-  switch (cmd) {
-    case "/status": {
-      const s = await getSettings(userId);
-      await sendMessage(
-        chatId,
-        [
-          "<b>📊 حالة حسابك · Account status</b>",
-          `الوضع · Mode: ${s.mode === "auto" ? "تنفيذ تلقائي · Auto" : "توصيات فقط · Advisory"}`,
-          `الإيقاف الطارئ · Kill switch: ${s.kill_switch ? "🔴 مفعّل · ON" : "🟢 متوقف · OFF"}`,
-          `الصفقات المفتوحة · Open trades: ${await countOpenTrades(userId)}`,
-        ].join("\n"),
-      );
-      break;
-    }
-    case "/positions": {
-      const open = (await listTrades(userId, 50)).filter((t) => t.status === "open");
-      if (!open.length) {
-        await sendMessage(chatId, "لا توجد صفقات مفتوحة. · No open positions.");
-        break;
-      }
-      await sendMessage(
-        chatId,
-        "<b>الصفقات المفتوحة · Open positions</b>\n" +
-          open
-            .map(
-              (t) =>
-                `• ${t.symbol} ${t.side === "buy" ? "🟢" : "🔴"} ${t.qty} @ ${t.avg_price}`,
-            )
-            .join("\n"),
-      );
-      break;
-    }
-    case "/pnl": {
-      const trades = (await listTrades(userId, 200)).filter(
-        (t) => t.status === "closed" && t.closed_at?.slice(0, 10) === new Date().toISOString().slice(0, 10),
-      );
-      const pnl = trades.reduce((a, t) => a + t.pnl, 0);
-      await sendMessage(
-        chatId,
-        `<b>💰 أرباح/خسائر اليوم · Today's PnL</b>\n${pnl >= 0 ? "🟢 +" : "🔴 "}${pnl.toFixed(2)} USDT (${trades.length} صفقة مغلقة · closed)`,
-      );
-      break;
-    }
-    case "/pause":
-    case "/stop": {
-      await updateSettings(userId, { kill_switch: 1 });
-      await sendMessage(
-        chatId,
-        "🔴 تم إيقاف التداول. لن يفتح الوكيل أي صفقة جديدة.\n" +
-          "🔴 Trading paused. The agent won't open new trades.",
-      );
-      break;
-    }
-    case "/resume": {
-      await updateSettings(userId, { kill_switch: 0 });
-      await sendMessage(
-        chatId,
-        "🟢 تم استئناف التداول. · Trading resumed.",
-      );
-      break;
-    }
-    default: {
-      if (!text.startsWith("/") && isAnthropicConfigured()) {
-        const limits = await getLimits(userId);
-        const used = await getTodayUsage(userId);
-        if (limits.claude_quota > 0 && used >= limits.claude_quota) {
-          await sendMessage(
-            chatId,
-            "⚠️ بلغت حصّتك اليومية من الوكيل. حاول غداً.\n" +
-              "⚠️ Daily agent quota reached. Try again tomorrow.",
-          );
-          break;
-        }
-        await sendMessage(chatId, "⏳ جاري التحليل… · Analyzing…");
-        try {
-          const result = await runTelegramAgentChat(userId, text);
-          if (!result.ok) {
-            await sendMessage(chatId, result.error);
-            break;
-          }
-          await sendMessage(chatId, result.reply);
-        } catch (e) {
-          console.error("[telegram] agent chat", e);
-          await sendMessage(
-            chatId,
-            "تعذّر الرد. حاول لاحقاً. · Could not reply. Try again later.",
-          );
-        }
-        break;
-      }
-      await sendMessage(chatId, HELP);
-    }
+  const cmd = text.split(/\s+/)[0].toLowerCase().replace(/@\w+$/, "");
+  const menuAction =
+    cmd === "/status" || cmd === "/refresh"
+      ? "status"
+      : cmd === "/positions"
+        ? "positions"
+        : cmd === "/pnl"
+          ? "pnl"
+          : cmd === "/pause" || cmd === "/stop"
+            ? "pause"
+            : cmd === "/resume"
+              ? "resume"
+              : cmd === "/help"
+                ? "help"
+                : null;
+
+  if (menuAction) {
+    const { text: body } = await renderMenuAction(userId, menuAction);
+    await sendPanel(chatId, body);
+    return;
   }
+
+  if (!text.startsWith("/") && isAnthropicConfigured()) {
+    const quota = await userQuota(userId);
+    if (quota.limit > 0 && quota.used >= quota.limit) {
+      await sendPanel(chatId, quotaExceededCard());
+      return;
+    }
+
+    const loadingId = await sendMessage(chatId, analyzingCard());
+    try {
+      const result = await runTelegramAgentChat(userId, text);
+      if (!result.ok) {
+        await editMessageText(chatId, loadingId, result.error, mainMenuKeyboard());
+        return;
+      }
+      await editMessageText(
+        chatId,
+        loadingId,
+        agentReplyCard(result.reply),
+        mainMenuKeyboard(),
+      );
+    } catch (e) {
+      console.error("[telegram] agent chat", e);
+      await editMessageText(
+        chatId,
+        loadingId,
+        actionResultCard("⚠️", "تعذّر الرد", "حاول لاحقاً."),
+        mainMenuKeyboard(),
+      );
+    }
+    return;
+  }
+
+  await sendPanel(chatId, helpCard());
 }
 
 async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
@@ -327,9 +339,33 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
     await answerCallback(cq.id);
     return;
   }
+
+  if (isMenuCallback(cq.data)) {
+    const userId = await getUserByTelegramChatId(String(chatId));
+    if (!userId) {
+      await answerCallback(cq.id, "الحساب غير مربوط", true);
+      return;
+    }
+
+    const action = parseMenuAction(cq.data);
+    if (!action) {
+      await answerCallback(cq.id);
+      return;
+    }
+
+    const { text, toast } = await renderMenuAction(userId, action);
+    await answerCallback(cq.id, toast);
+    if (messageId) {
+      await editMessageText(chatId, messageId, text, mainMenuKeyboard());
+    } else {
+      await sendPanel(chatId, text);
+    }
+    return;
+  }
+
   const userId = await getUserByTelegramChatId(String(chatId));
   if (!userId) {
-    await answerCallback(cq.id, "حسابك غير مربوط · Not linked");
+    await answerCallback(cq.id, "حسابك غير مربوط");
     return;
   }
 
@@ -337,19 +373,25 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
   const intentId = Number(idStr);
   const intent = await getIntent(intentId);
   if (!intent || intent.user_id !== userId) {
-    await answerCallback(cq.id, "الطلب غير موجود · Not found");
+    await answerCallback(cq.id, "الطلب غير موجود");
     return;
   }
   if (intent.status !== "pending") {
-    await answerCallback(cq.id, "تمت المعالجة مسبقاً · Already handled");
+    await answerCallback(cq.id, "تمت المعالجة مسبقاً");
     return;
   }
 
   if (action === "reject") {
     await updateIntentStatus(intentId, "rejected", "رفضه المستخدم عبر تليجرام.");
-    await answerCallback(cq.id, "تم الرفض · Rejected");
-    if (messageId)
-      await editMessageText(chatId, messageId, "❌ رُفضت التوصية. · Recommendation rejected.");
+    await answerCallback(cq.id, "تم الرفض");
+    if (messageId) {
+      await editMessageText(
+        chatId,
+        messageId,
+        actionResultCard("❌", "رُفضت التوصية", `${intent.symbol} — لم يُنفَّذ.`),
+        null,
+      );
+    }
     return;
   }
 
@@ -359,15 +401,16 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
     await notifyTradeResult(userId, result, intent.symbol);
     await answerCallback(
       cq.id,
-      result.ok ? "تم التنفيذ ✅ · Executed" : "تعذّر التنفيذ · Failed",
+      result.ok ? "تم التنفيذ ✅" : "تعذّر التنفيذ",
     );
     if (messageId) {
       await editMessageText(
         chatId,
         messageId,
         result.ok
-          ? `✅ نُفّذت التوصية: ${intent.symbol}. · Executed.`
-          : `⚠️ لم تُنفّذ · Not executed: ${result.reason}`,
+          ? actionResultCard("✅", "نُفّذت التوصية", `${intent.symbol} — تم التنفيذ بنجاح.`)
+          : actionResultCard("⚠️", "لم تُنفَّذ", result.reason ?? "سبب غير معروف"),
+        null,
       );
     }
     return;
