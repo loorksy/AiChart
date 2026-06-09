@@ -28,6 +28,10 @@ export function adaptSql(sql: string, backend: DbBackend): string {
     "closed_at::date = CURRENT_DATE",
   );
   s = s.replace(/ON CONFLICT\s*\(([^)]+)\)/gi, "ON CONFLICT ($1)");
+  s = s.replace(
+    /DO UPDATE SET count = count \+ excluded\.count/gi,
+    "DO UPDATE SET count = claude_usage.count + excluded.count",
+  );
   for (const col of [
     "plain",
     "archived",

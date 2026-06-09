@@ -36,19 +36,31 @@ function richRationale(rec: Recommendation): string {
     .join("\n");
 }
 
+export interface ProcessRecommendationsOptions {
+  /** Telegram agent: send approve/reject even in advisory mode. */
+  allowAdvisoryApproval?: boolean;
+}
+
 /**
  * Turns agent recommendations into trade intents (and optionally executes).
- * Shared by chat and the 24/7 monitor cron.
+ * Shared by chat, Telegram, and the 24/7 monitor cron.
  */
 export async function processRecommendations(
   userId: number,
   recommendations: Recommendation[],
+  options?: ProcessRecommendationsOptions,
 ): Promise<ProcessedIntent[]> {
   const settings = await getSettings(userId);
   const limits = await getLimits(userId);
   const intents: ProcessedIntent[] = [];
 
-  if (settings.mode !== "auto" || limits.can_execute !== 1) return intents;
+  if (limits.can_execute !== 1) return intents;
+
+  const advisoryApproval = Boolean(options?.allowAdvisoryApproval);
+  if (settings.mode !== "auto" && !advisoryApproval) return intents;
+
+  const autoExecute =
+    settings.mode === "auto" && settings.approval === "delegate";
 
   const effectiveCapital =
     limits.max_capital_cap > 0
@@ -59,7 +71,6 @@ export async function processRecommendations(
   for (const rec of recommendations) {
     if (rec.action !== "buy" && rec.action !== "sell") continue;
 
-    const delegate = settings.approval === "delegate";
     const intent = await createIntent(userId, {
       recommendation_id: rec.id,
       symbol: rec.symbol,
@@ -70,10 +81,10 @@ export async function processRecommendations(
       take_profit: rec.take_profit,
       confidence: rec.confidence,
       rationale: richRationale(rec) || rec.rationale,
-      status: delegate ? "approved" : "pending",
+      status: autoExecute ? "approved" : "pending",
     });
 
-    if (delegate) {
+    if (autoExecute) {
       const exec = await executeIntent(userId, intent.id);
       intents.push({
         id: intent.id,

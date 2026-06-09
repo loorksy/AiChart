@@ -325,7 +325,7 @@ export async function getTodayUsage(userId: number): Promise<number> {
 export async function incrementUsage(userId: number, by = 1): Promise<void> {
   await execute(
     `INSERT INTO claude_usage (user_id, day, count) VALUES (?, ?, ?)
-     ON CONFLICT(user_id, day) DO UPDATE SET count = count + excluded.count`,
+     ON CONFLICT(user_id, day) DO UPDATE SET count = claude_usage.count + excluded.count`,
     [userId, today(), by],
   );
 }

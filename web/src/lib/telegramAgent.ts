@@ -74,7 +74,7 @@ export async function runTelegramAgentChat(
 
   const settings = await getSettings(userId);
   const result = await runAgent(
-    { userId, settings },
+    { userId, settings, telegramSession: true },
     history,
     { conversationSummary: await getConversationSummary(conv.id) },
   );
@@ -85,7 +85,9 @@ export async function runTelegramAgentChat(
 
   await incrementUsage(userId, 1);
   await logAudit(userId, "telegram_agent", `recs=${result.recommendations.length}`);
-  await processRecommendations(userId, result.recommendations);
+  await processRecommendations(userId, result.recommendations, {
+    allowAdvisoryApproval: true,
+  });
 
   const reply = result.reply.trim();
   const text = reply.length > 4000 ? `${reply.slice(0, 3997)}…` : reply;

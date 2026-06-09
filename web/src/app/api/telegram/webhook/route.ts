@@ -31,6 +31,7 @@ import {
   isMenuCallback,
   linkedSuccessCard,
   mainMenuKeyboard,
+  menuWithBackKeyboard,
   notLinkedCard,
   parseMenuAction,
   pnlCard,
@@ -153,6 +154,8 @@ async function renderMenuAction(
     }
     case "help":
       return { text: helpCard() };
+    case "home":
+      return { text: welcomeCard(true), toast: "القائمة الرئيسية" };
     default:
       return { text: helpCard() };
   }
@@ -161,7 +164,7 @@ async function renderMenuAction(
 async function sendPanel(
   chatId: number,
   text: string,
-  keyboard = mainMenuKeyboard(),
+  keyboard = menuWithBackKeyboard(),
 ): Promise<void> {
   await sendMessage(chatId, text, keyboard);
 }
@@ -197,7 +200,7 @@ async function handlePhotoMessage(
     const downloaded = await downloadTelegramPhoto(largest.file_id);
     const validated = validateChatImage(downloaded.media_type, downloaded.data);
     if (!validated.ok) {
-      await editMessageText(chatId, loadingId, validated.error, mainMenuKeyboard());
+      await editMessageText(chatId, loadingId, validated.error, menuWithBackKeyboard());
       return;
     }
 
@@ -207,14 +210,14 @@ async function handlePhotoMessage(
       validated.image,
     );
     if (!result.ok) {
-      await editMessageText(chatId, loadingId, result.error, mainMenuKeyboard());
+      await editMessageText(chatId, loadingId, result.error, menuWithBackKeyboard());
       return;
     }
     await editMessageText(
       chatId,
       loadingId,
       agentReplyCard(result.reply),
-      mainMenuKeyboard(),
+      menuWithBackKeyboard(),
     );
   } catch (e) {
     console.error("[telegram] photo analysis", e);
@@ -222,7 +225,7 @@ async function handlePhotoMessage(
       chatId,
       loadingId,
       actionResultCard("⚠️", "تعذّر التحليل", "حاول لاحقاً أو أرسل صورة أوضح."),
-      mainMenuKeyboard(),
+      menuWithBackKeyboard(),
     );
   }
 }
@@ -308,14 +311,14 @@ async function handleMessage(
     try {
       const result = await runTelegramAgentChat(userId, text);
       if (!result.ok) {
-        await editMessageText(chatId, loadingId, result.error, mainMenuKeyboard());
+        await editMessageText(chatId, loadingId, result.error, menuWithBackKeyboard());
         return;
       }
       await editMessageText(
         chatId,
         loadingId,
         agentReplyCard(result.reply),
-        mainMenuKeyboard(),
+        menuWithBackKeyboard(),
       );
     } catch (e) {
       console.error("[telegram] agent chat", e);
@@ -323,7 +326,7 @@ async function handleMessage(
         chatId,
         loadingId,
         actionResultCard("⚠️", "تعذّر الرد", "حاول لاحقاً."),
-        mainMenuKeyboard(),
+        menuWithBackKeyboard(),
       );
     }
     return;
@@ -355,10 +358,12 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
 
     const { text, toast } = await renderMenuAction(userId, action);
     await answerCallback(cq.id, toast);
+    const keyboard =
+      action === "home" ? welcomeKeyboard() : menuWithBackKeyboard();
     if (messageId) {
-      await editMessageText(chatId, messageId, text, mainMenuKeyboard());
+      await editMessageText(chatId, messageId, text, keyboard);
     } else {
-      await sendPanel(chatId, text);
+      await sendMessage(chatId, text, keyboard);
     }
     return;
   }

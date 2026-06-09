@@ -82,6 +82,9 @@ export async function executeIntent(
       : settings.max_capital;
 
   // 1) Risk Guard — the authority. Nothing executes if this denies.
+  const explicitApproval =
+    settings.mode === "advisory" && intent.status === "approved";
+
   const decision = evaluateTrade(settings, limits, {
     symbol: intent.symbol,
     side: intent.side,
@@ -90,6 +93,7 @@ export async function executeIntent(
     masterKill: await isMasterKillOn(),
     openTradesCount: await countOpenTrades(userId),
     todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
+    explicitApproval,
   });
 
   if (!decision.ok) {

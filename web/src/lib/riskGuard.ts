@@ -10,6 +10,8 @@ export interface RiskContext {
   masterKill: boolean;
   openTradesCount: number;
   todayRealizedPnlPct: number; // negative = net loss today
+  /** User explicitly approved a trade (e.g. Telegram approve button). */
+  explicitApproval?: boolean;
 }
 
 export interface RiskDecision {
@@ -60,7 +62,7 @@ export function evaluateTrade(
     return deny("الإيقاف الطارئ مفعّل في حسابك.");
   if (limits.can_execute !== 1)
     return deny("التنفيذ التلقائي غير مصرّح به من الإدارة.");
-  if (settings.mode !== "auto")
+  if (settings.mode !== "auto" && !ctx.explicitApproval)
     return deny("وضعك الحالي توصيات فقط، لا تنفيذ.");
 
   const allowed = allowedAssets(settings.allowed_assets);

@@ -37,6 +37,14 @@ export function mainMenuKeyboard(): InlineButton[][] {
   ];
 }
 
+/** Sub-menus: main actions plus a back row to the home card. */
+export function menuWithBackKeyboard(): InlineButton[][] {
+  return [
+    ...mainMenuKeyboard(),
+    [{ text: "◀️ رجوع", callback_data: TG_CALLBACK.menu("home") }],
+  ];
+}
+
 export function welcomeKeyboard(): InlineButton[][] {
   return [
     [{ text: "🚀 افتح لوحة التحكم", callback_data: TG_CALLBACK.menu("status") }],
@@ -97,6 +105,8 @@ export function helpCard(): string {
     `<code>/pause</code> · <code>/resume</code> · <code>/help</code>`,
     SEP,
     `💬 أرسل أي سؤال أو صورة شارت للتحليل الفوري.`,
+    SEP,
+    `◀️ استخدم زر <b>رجوع</b> للعودة للقائمة الرئيسية.`,
   ].join("\n");
 }
 

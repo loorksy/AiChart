@@ -191,6 +191,8 @@ export interface RunAgentOptions {
 interface AgentContext {
   userId: number;
   settings: TradingSettings;
+  /** Suppress advisory Telegram notify; tradeFlow sends approval cards instead. */
+  telegramSession?: boolean;
 }
 
 async function executeTool(
@@ -317,7 +319,8 @@ async function executeTool(
         });
         const notifyTelegram =
           (rec.action === "buy" || rec.action === "sell") &&
-          ctx.settings.mode === "advisory";
+          ctx.settings.mode === "advisory" &&
+          !ctx.telegramSession;
         const enriched = await attachChartToRecommendation(
           ctx.userId,
           rec,
