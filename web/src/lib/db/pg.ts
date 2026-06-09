@@ -279,7 +279,6 @@ export async function pgExecute(
   sql: string,
   params: unknown[] = [],
 ): Promise<ExecuteResult> {
-  const adapted = adaptSql(sql, "postgres");
   const result = await getPool().query(adaptSql(sql, "postgres"), params);
   return {
     changes: result.rowCount ?? 0,

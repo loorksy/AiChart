@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "migrate:sqlite-to-pg": "node scripts/migrate-sqlite-to-pg.mjs"
   },
   "dependencies": {
     "@binance/binance-cli": "^1.3.0",
