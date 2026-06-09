@@ -85,7 +85,7 @@ export function ChatInputBar({
           <p className="px-1 text-xs text-destructive">{imageError}</p>
         )}
 
-        <div className="flex gap-2 rounded-[var(--radius)] border border-border bg-card p-2 shadow-sm">
+        <div className="flex gap-2 rounded-3xl border border-border bg-card p-2 shadow-sm">
           <input
             ref={fileRef}
             type="file"

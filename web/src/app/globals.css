@@ -1,66 +1,66 @@
 @import "tailwindcss";
 
 :root {
-  --card: #FBFAF6;
-  --ring: #B8956B;
-  --input: #E6E1D8;
-  --muted: #EDE9E1;
-  --accent: #F4EFE5;
-  --accent-gold: #A8845C;
-  --border: #E3DED4;
+  --card: #ffffff;
+  --ring: #2563EB;
+  --input: #E5E5E5;
+  --muted: #F4F4F4;
+  --accent: #F4F4F4;
+  --accent-gold: #2563EB;
+  --border: #E5E5E5;
   --radius: 1.25rem;
-  --chart-1: #B8956B;
-  --chart-2: #9A7B55;
-  --chart-3: #7A6245;
-  --popover: #FBFAF6;
-  --primary: #2E2A24;
-  --sidebar: #F1EDE5;
-  --secondary: #ECE7DF;
-  --background: #F3F0E9;
-  --foreground: #312D27;
-  --destructive: #C2410C;
-  --sidebar-border: #E3DED4;
-  --sidebar-accent: #ECE7DF;
-  --card-foreground: #312D27;
-  --muted-foreground: #78726A;
-  --accent-foreground: #6F5840;
-  --primary-foreground: #FBFAF6;
-  --sidebar-foreground: #312D27;
-  --secondary-foreground: #463F37;
+  --chart-1: #2563EB;
+  --chart-2: #4F46E5;
+  --chart-3: #0EA5E9;
+  --popover: #ffffff;
+  --primary: #2563EB;
+  --sidebar: #F9F9F9;
+  --secondary: #F4F4F4;
+  --background: #ffffff;
+  --foreground: #0D0D0D;
+  --destructive: #DC2626;
+  --sidebar-border: #E5E5E5;
+  --sidebar-accent: #ECECEC;
+  --card-foreground: #0D0D0D;
+  --muted-foreground: #5D5D5D;
+  --accent-foreground: #2563EB;
+  --primary-foreground: #ffffff;
+  --sidebar-foreground: #0D0D0D;
+  --secondary-foreground: #2D2D2D;
   --destructive-foreground: #ffffff;
-  --sidebar-accent-foreground: #312D27;
-  --surface-elevated: #FBFAF6;
+  --sidebar-accent-foreground: #0D0D0D;
+  --surface-elevated: #ffffff;
 }
 
 .dark {
-  --card: #211F1C;
-  --ring: #D4A574;
-  --input: #2E2B27;
-  --muted: #28251F;
-  --accent: #2E2718;
-  --accent-gold: #D4A574;
-  --border: rgba(255, 255, 255, 0.08);
-  --chart-1: #D4A574;
-  --chart-2: #B8956B;
-  --chart-3: #9A7B55;
-  --popover: #211F1C;
-  --primary: #F0EBE2;
-  --sidebar: #181714;
-  --secondary: #2A2723;
-  --background: #161410;
-  --foreground: #E8E3D9;
-  --destructive: #F08A5D;
-  --sidebar-border: rgba(255, 255, 255, 0.06);
-  --sidebar-accent: rgba(212, 165, 116, 0.12);
-  --card-foreground: #E8E3D9;
-  --muted-foreground: #A39C90;
-  --accent-foreground: #D4A574;
-  --primary-foreground: #1A1A1A;
-  --sidebar-foreground: #DDD7CB;
-  --secondary-foreground: #CFC9BD;
+  --card: #2F2F2F;
+  --ring: #3B82F6;
+  --input: #3A3A3A;
+  --muted: #2F2F2F;
+  --accent: #2F2F2F;
+  --accent-gold: #6CA8FF;
+  --border: rgba(255, 255, 255, 0.1);
+  --chart-1: #6CA8FF;
+  --chart-2: #818CF8;
+  --chart-3: #38BDF8;
+  --popover: #2F2F2F;
+  --primary: #4B8BF5;
+  --sidebar: #171717;
+  --secondary: #2F2F2F;
+  --background: #212121;
+  --foreground: #ECECEC;
+  --destructive: #EF4444;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-accent: #2F2F2F;
+  --card-foreground: #ECECEC;
+  --muted-foreground: #B4B4B4;
+  --accent-foreground: #6CA8FF;
+  --primary-foreground: #ffffff;
+  --sidebar-foreground: #ECECEC;
+  --secondary-foreground: #ECECEC;
   --destructive-foreground: #ffffff;
-  --sidebar-accent-foreground: #D4A574;
-  --surface-elevated: #211F1C;
+  --sidebar-accent-foreground: #ECECEC;
+  --surface-elevated: #2F2F2F;
 }
 
 @theme inline {
@@ -123,14 +123,14 @@ body,
 /* Admin console */
 .admin-console .admin-card {
   border-radius: var(--radius);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: #1B1916;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #2F2F2F;
 }
 
 .admin-console .admin-input {
   border-radius: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #141210;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #212121;
   color: var(--foreground);
   padding: 0.375rem 0.5rem;
 }
@@ -146,19 +146,23 @@ body,
   background: var(--surface-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 2px 12px rgba(58, 46, 30, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .dark .surface-card {
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  box-shadow: none;
 }
 
 .surface-prompt {
   background: var(--card);
   color: var(--card-foreground);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 4px 20px rgba(58, 46, 30, 0.06);
+  border-radius: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.dark .surface-prompt {
+  box-shadow: none;
 }
 
 .card {
