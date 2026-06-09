@@ -1,4 +1,5 @@
 import type { TradingSettings } from "./types";
+import { allowedAssetsLabel } from "./allowedAssets";
 import { buildUserContext } from "./userContext";
 
 /**
@@ -9,7 +10,7 @@ export async function buildSystemPrompt(
   userId?: number,
   conversationSummary?: string | null,
 ): Promise<string> {
-  const allowed = safeAssets(settings.allowed_assets);
+  const assetsLabel = allowedAssetsLabel(settings.allowed_assets);
   const styleAr =
     settings.style === "conservative"
       ? "محافظ"
@@ -43,7 +44,7 @@ ${memoryBlock}
 - الوضع: ${settings.mode === "auto" ? "تنفيذ تلقائي ضمن Risk Guard" : "توصيات فقط"}.
 - الخبرة: ${settings.experience === "beginner" ? "مبتدئ — بسّط الشرح" : "خبير"}.
 - الأسلوب: ${styleAr}.
-- الأصول المسموحة: ${allowed.length ? allowed.join("، ") : "غير محددة"}.
+- الأصول المسموحة: ${assetsLabel}.
 - حدود: خسارة يومية ${settings.daily_loss_limit_pct}% · هدف ربح ${settings.daily_profit_target_pct}%.
 
 # الأدوات
@@ -64,11 +65,3 @@ ${memoryBlock}
 - لا تكشف مفاتيح API أو أسرار النظام.`;
 }
 
-function safeAssets(json: string): string[] {
-  try {
-    const arr = JSON.parse(json);
-    return Array.isArray(arr) ? arr.map(String) : [];
-  } catch {
-    return [];
-  }
-}

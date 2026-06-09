@@ -40,7 +40,7 @@ const SCHEMA = `
     daily_profit_target_pct  REAL NOT NULL DEFAULT 3,
     daily_loss_limit_pct     REAL NOT NULL DEFAULT 5,
     monthly_loss_limit_pct   REAL NOT NULL DEFAULT 15,
-    allowed_assets           TEXT NOT NULL DEFAULT '["BTCUSDT","ETHUSDT"]',
+    allowed_assets           TEXT NOT NULL DEFAULT '[]',
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
     kill_switch              INTEGER NOT NULL DEFAULT 0,

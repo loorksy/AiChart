@@ -71,15 +71,7 @@ export function scoreOpportunity(
   };
 }
 
-export function parseAllowedAssets(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((s) => String(s).toUpperCase().trim()).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
+export { parseAllowedAssets, isOpenAssetsPolicy } from "./allowedAssets";
 
 /** Scans one symbol and returns an opportunity candidate if signals align. */
 export async function scanSymbol(

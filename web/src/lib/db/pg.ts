@@ -38,7 +38,7 @@ const SCHEMA = `
     daily_profit_target_pct  DOUBLE PRECISION NOT NULL DEFAULT 3,
     daily_loss_limit_pct     DOUBLE PRECISION NOT NULL DEFAULT 5,
     monthly_loss_limit_pct   DOUBLE PRECISION NOT NULL DEFAULT 15,
-    allowed_assets           TEXT NOT NULL DEFAULT '["BTCUSDT","ETHUSDT"]',
+    allowed_assets           TEXT NOT NULL DEFAULT '[]',
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
     kill_switch              BOOLEAN NOT NULL DEFAULT FALSE,

@@ -15,7 +15,7 @@ const schema = z
     daily_profit_target_pct: z.number().min(0).max(1000),
     daily_loss_limit_pct: z.number().min(0).max(100),
     monthly_loss_limit_pct: z.number().min(0).max(100),
-    allowed_assets: z.array(z.string()).max(50),
+    allowed_assets: z.array(z.string().max(20)).max(100),
     send_screenshot: z.boolean(),
     telegram_chat_id: z.string().max(64).nullable().optional(),
     kill_switch: z.boolean(),

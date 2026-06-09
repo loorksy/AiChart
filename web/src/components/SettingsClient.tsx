@@ -10,6 +10,10 @@ import {
   Sun,
   User,
 } from "lucide-react";
+import {
+  isOpenAssetsPolicy,
+  parseAllowedAssets,
+} from "@/lib/allowedAssets";
 import type {
   AdminLimits,
   BinanceAccountMeta,
@@ -422,8 +426,11 @@ function TradingCard({
 }) {
   const router = useRouter();
   const [s, setS] = useState(settings);
+  const [openAssets, setOpenAssets] = useState(
+    isOpenAssetsPolicy(settings.allowed_assets),
+  );
   const [assets, setAssets] = useState(
-    (JSON.parse(settings.allowed_assets) as string[]).join(", "),
+    parseAllowedAssets(settings.allowed_assets).join(", "),
   );
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
     null,
@@ -453,10 +460,12 @@ function TradingCard({
           daily_profit_target_pct: Number(s.daily_profit_target_pct),
           daily_loss_limit_pct: Number(s.daily_loss_limit_pct),
           monthly_loss_limit_pct: Number(s.monthly_loss_limit_pct),
-          allowed_assets: assets
-            .split(",")
-            .map((a) => a.trim().toUpperCase())
-            .filter(Boolean),
+          allowed_assets: openAssets
+            ? []
+            : assets
+                .split(",")
+                .map((a) => a.trim().toUpperCase())
+                .filter(Boolean),
           send_screenshot: Boolean(s.send_screenshot),
           telegram_chat_id: s.telegram_chat_id || null,
           kill_switch: Boolean(s.kill_switch),
@@ -531,15 +540,30 @@ function TradingCard({
           />
         </Field>
 
-        <Field label="الأصول المسموحة">
-          <input
-            className="input sm:col-span-2"
-            dir="ltr"
-            value={assets}
-            onChange={(e) => setAssets(e.target.value)}
-            placeholder="BTCUSDT, ETHUSDT"
-          />
-        </Field>
+        <div className="sm:col-span-2 space-y-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={openAssets}
+              onChange={(e) => setOpenAssets(e.target.checked)}
+              className="rounded border-border"
+            />
+            <span>
+              جميع أزواج USDT على Binance (تحديث تلقائي عند إدراج أزواج جديدة)
+            </span>
+          </label>
+          {!openAssets && (
+            <Field label="قائمة مخصّصة (اختياري)">
+              <input
+                className="input"
+                dir="ltr"
+                value={assets}
+                onChange={(e) => setAssets(e.target.value)}
+                placeholder="BTCUSDT, ETHUSDT, SOLUSDT"
+              />
+            </Field>
+          )}
+        </div>
 
         <div className="sm:col-span-2">
           {msg && (

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { isOpenAssetsPolicy, parseAllowedAssets } from "@/lib/allowedAssets";
 import { getSettings, listRecommendations } from "@/lib/store";
 import AppShell from "@/components/AppShell";
 import MarketClient from "@/components/MarketClient";
@@ -9,16 +10,15 @@ export default async function MarketPage() {
   if (!user) redirect("/login");
 
   const settings = await getSettings(user.id);
-  let allowed: string[] = [];
-  try {
-    allowed = JSON.parse(settings.allowed_assets);
-  } catch {
-    allowed = [];
-  }
+  const openAssets = isOpenAssetsPolicy(settings.allowed_assets);
+  const allowed = openAssets
+    ? []
+    : parseAllowedAssets(settings.allowed_assets);
 
   return (
     <AppShell email={user.email} role={user.role}>
       <MarketClient
+        openAssets={openAssets}
         allowedAssets={allowed}
         recommendations={await listRecommendations(user.id, 50)}
       />

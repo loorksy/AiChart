@@ -7,6 +7,7 @@ import {
   listRecommendations,
   countOpenTrades,
 } from "./store";
+import { allowedAssetsLabel } from "./allowedAssets";
 import { displayNameFromEmail } from "./displayName";
 
 export { displayNameFromEmail };
@@ -27,13 +28,6 @@ export async function buildUserContext(userId: number): Promise<string> {
   const tgLinked = Boolean(settings.telegram_chat_id);
   const binanceLinked = Boolean(binance);
 
-  let assets: string[] = [];
-  try {
-    assets = JSON.parse(settings.allowed_assets) as string[];
-  } catch {
-    assets = [];
-  }
-
   const lines = [
     `# سياق المستخدم الحالي (بيانات حقيقية من المنصة)`,
     `- الاسم/المعرّف: ${name} (${user.email})`,
@@ -44,7 +38,7 @@ export async function buildUserContext(userId: number): Promise<string> {
     `- أسلوب التداول: ${settings.style}`,
     `- الصفقات المنفّذة: ${totalTrades} · المفتوحة: ${openTrades}`,
     `- نوايا بانتظار الموافقة: ${intents.length}`,
-    `- الأصول المسموحة: ${assets.length ? assets.join("، ") : "لم تُحدَّد"}`,
+    `- الأصول المسموحة: ${allowedAssetsLabel(settings.allowed_assets)}`,
   ];
 
   if (recs.length) {

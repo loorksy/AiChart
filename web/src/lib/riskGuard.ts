@@ -1,3 +1,4 @@
+import { isOpenAssetsPolicy, parseAllowedAssets } from "./allowedAssets";
 import type { AdminLimits, TradingSettings } from "./types";
 
 export interface ProposedTrade {
@@ -19,15 +20,6 @@ export interface RiskDecision {
   reason: string;
   effectiveCapital: number;
   perTradeMax: number;
-}
-
-function allowedAssets(json: string): string[] {
-  try {
-    const a = JSON.parse(json);
-    return Array.isArray(a) ? a.map((x) => String(x).toUpperCase()) : [];
-  } catch {
-    return [];
-  }
 }
 
 /**
@@ -65,9 +57,15 @@ export function evaluateTrade(
   if (settings.mode !== "auto" && !ctx.explicitApproval)
     return deny("وضعك الحالي توصيات فقط، لا تنفيذ.");
 
-  const allowed = allowedAssets(settings.allowed_assets);
-  if (allowed.length > 0 && !allowed.includes(proposed.symbol.toUpperCase()))
-    return deny(`الأصل ${proposed.symbol} غير ضمن قائمتك المسموح بها.`);
+  if (!isOpenAssetsPolicy(settings.allowed_assets)) {
+    const allowed = parseAllowedAssets(settings.allowed_assets);
+    if (
+      allowed.length > 0 &&
+      !allowed.includes(proposed.symbol.toUpperCase())
+    ) {
+      return deny(`الأصل ${proposed.symbol} غير ضمن قائمتك المسموح بها.`);
+    }
+  }
 
   if (effectiveCapital <= 0)
     return deny("لم تُحدّد سقف رأس مال صالحاً.");

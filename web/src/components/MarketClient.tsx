@@ -1,43 +1,118 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PriceChart from "./PriceChart";
 import type { Recommendation } from "@/lib/types";
 
 const INTERVALS = ["15m", "1h", "4h", "1d", "1w"];
 
+interface Instrument {
+  symbol: string;
+  base: string;
+  quote: string;
+}
+
 export default function MarketClient({
+  openAssets,
   allowedAssets,
   recommendations,
 }: {
+  openAssets: boolean;
   allowedAssets: string[];
   recommendations: Recommendation[];
 }) {
-  const symbols = allowedAssets.length ? allowedAssets : ["BTCUSDT", "ETHUSDT"];
-  const [symbol, setSymbol] = useState(symbols[0]);
+  const symbols = openAssets
+    ? []
+    : allowedAssets.length
+      ? allowedAssets
+      : ["BTCUSDT", "ETHUSDT"];
+
+  const [symbol, setSymbol] = useState(
+    openAssets ? "BTCUSDT" : symbols[0] ?? "BTCUSDT",
+  );
   const [interval, setInterval] = useState("1h");
+  const [search, setSearch] = useState("");
+  const [instruments, setInstruments] = useState<Instrument[]>([]);
+  const [loadingInstruments, setLoadingInstruments] = useState(false);
+
+  const fetchInstruments = useCallback(async (q: string) => {
+    setLoadingInstruments(true);
+    try {
+      const params = q ? `?q=${encodeURIComponent(q)}&wrapped=1` : "?wrapped=1";
+      const res = await fetch(`/api/instruments${params}`);
+      const data = await res.json();
+      if (res.ok) {
+        setInstruments(
+          Array.isArray(data) ? data : (data.instruments ?? []),
+        );
+      }
+    } catch {
+      setInstruments([]);
+    } finally {
+      setLoadingInstruments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!openAssets) return;
+    const t = setTimeout(() => void fetchInstruments(search), 300);
+    return () => clearTimeout(t);
+  }, [openAssets, search, fetchInstruments]);
+
+  const pickerOptions = openAssets
+    ? instruments
+    : symbols.map((s) => ({
+        symbol: s,
+        base: s.replace(/USDT$/, ""),
+        quote: "USDT",
+      }));
 
   const symbolRecs = recommendations.filter((r) => r.symbol === symbol);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Floating toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-card/80 px-4 py-3 backdrop-blur-md">
-        <h1 className="text-lg font-bold text-foreground">الشارت الحي</h1>
+        <div>
+          <h1 className="text-lg font-bold text-foreground">الشارت الحي</h1>
+          {openAssets && (
+            <p className="text-[11px] text-muted-foreground">
+              جميع أزواج USDT من Binance — تحديث تلقائي
+            </p>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
+          {openAssets && (
+            <div className="relative">
+              <Search className="absolute start-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                className="input w-40 py-1.5 ps-9 text-sm"
+                placeholder="ابحث…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                dir="ltr"
+              />
+            </div>
+          )}
           <select
-            className="input w-auto py-1.5 text-sm"
+            className="input w-auto max-w-[200px] py-1.5 text-sm"
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
             dir="ltr"
           >
-            {symbols.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {pickerOptions.length === 0 && (
+              <option value={symbol}>{symbol}</option>
+            )}
+            {pickerOptions.map((inst) => (
+              <option key={inst.symbol} value={inst.symbol}>
+                {inst.symbol}
               </option>
             ))}
           </select>
+          {openAssets && loadingInstruments && (
+            <span className="text-xs text-muted-foreground">…</span>
+          )}
           <div className="flex gap-1">
             {INTERVALS.map((iv) => (
               <button
@@ -58,7 +133,6 @@ export default function MarketClient({
         </div>
       </div>
 
-      {/* Full-height chart */}
       <div className="relative min-h-0 flex-1 p-2 md:p-4">
         <div className="surface-card h-full min-h-[50dvh] overflow-hidden p-1">
           <PriceChart
