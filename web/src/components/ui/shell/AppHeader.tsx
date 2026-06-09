@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, Sparkles } from "lucide-react";
+import { ChevronDown, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NotificationPanel } from "./NotificationPanel";
 
@@ -29,37 +29,36 @@ export function AppHeader({
   return (
     <header
       className={cn(
-        "z-40 flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-md",
-        "pt-[max(0.75rem,env(safe-area-inset-top))]",
+        "z-40 flex shrink-0 items-center justify-between gap-3 bg-background px-3 py-2.5 sm:px-4",
+        "pt-[max(0.5rem,env(safe-area-inset-top))]",
         className,
       )}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         {showMenu && onMenuClick && (
           <button
             type="button"
             onClick={onMenuClick}
-            className="rounded-xl p-2 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            className="rounded-lg p-2 text-muted-foreground transition hover:bg-secondary md:hidden"
             aria-label="القائمة"
           >
             <Menu className="h-5 w-5" />
           </button>
         )}
         {!center && (
-          <Link href="/chat" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <span className="font-serif text-base font-bold tracking-tight">
-              Ai<span className="text-accent-gold">Chart</span>
-            </span>
+          <Link
+            href="/chat"
+            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-semibold transition hover:bg-secondary"
+          >
+            <span>AiChart</span>
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </Link>
         )}
       </div>
 
       {center && <div className="min-w-0 flex-1 text-center">{center}</div>}
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
         <NotificationPanel
           pendingIntents={pendingIntents}
           unreadAlerts={unreadAlerts}
@@ -72,7 +71,7 @@ export function AppHeader({
         ) : credits != null ? (
           <Link
             href="/dashboard"
-            className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground"
+            className="hidden rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-secondary sm:inline-flex"
           >
             {credits} رصيد
           </Link>

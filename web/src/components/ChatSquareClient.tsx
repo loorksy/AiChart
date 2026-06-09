@@ -307,10 +307,11 @@ export default function ChatSquareClient({
     ? "تابع المحادثة…"
     : "اسأل الخبير عن السوق أو حسابك…";
 
+  const showWelcome = !hasConversation && !busy;
+
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Chat toolbar — chart toggle only */}
-      <div className="z-10 flex shrink-0 items-center justify-end border-b border-border bg-card/80 px-3 py-1.5 backdrop-blur-sm">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="z-10 flex shrink-0 items-center justify-end px-3 py-1.5 md:px-4">
         <button
           type="button"
           onClick={() => setPreviewOpen((o) => !o)}
@@ -318,7 +319,7 @@ export default function ChatSquareClient({
             "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition",
             previewOpen
               ? "bg-secondary text-foreground"
-              : "text-muted-foreground hover:bg-secondary",
+              : "text-muted-foreground hover:bg-secondary/80",
           )}
         >
           <LineChart className="h-4 w-4" />
@@ -339,12 +340,24 @@ export default function ChatSquareClient({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {!hasConversation && !busy ? (
-            <ChatWelcome
-              displayName={displayName}
-              model={model}
-              creditsRemaining={creditsRemaining}
-            />
+          {showWelcome ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <ChatWelcome model={model} creditsRemaining={creditsRemaining} />
+              <ChatInputBar
+                value={input}
+                onChange={setInput}
+                onSend={() => void send(input, pendingImage)}
+                onPickPrompt={(p) => setInput(p)}
+                pendingImage={pendingImage}
+                pendingImagePreview={pendingImagePreview}
+                onImageSelect={(file) => void handleImageSelect(file)}
+                onImageClear={clearPendingImage}
+                imageError={imageError}
+                disabled={busy}
+                placeholder="اسأل عن أي شيء…"
+                centered
+              />
+            </div>
           ) : (
             <ChatConversation
               messages={messages}
@@ -376,24 +389,21 @@ export default function ChatSquareClient({
             </div>
           )}
 
-          <ChatInputBar
-            value={input}
-            onChange={setInput}
-            onSend={() => void send(input, pendingImage)}
-            onPickPrompt={(p) => {
-              if (hasConversation) void send(p);
-              else setInput(p);
-            }}
-            pendingImage={pendingImage}
-            pendingImagePreview={pendingImagePreview}
-            onImageSelect={(file) => void handleImageSelect(file)}
-            onImageClear={clearPendingImage}
-            imageError={imageError}
-            disabled={busy}
-            placeholder={inputPlaceholder}
-            model={model}
-            creditsRemaining={creditsRemaining}
-          />
+          {!showWelcome && (
+            <ChatInputBar
+              value={input}
+              onChange={setInput}
+              onSend={() => void send(input, pendingImage)}
+              onPickPrompt={(p) => void send(p)}
+              pendingImage={pendingImage}
+              pendingImagePreview={pendingImagePreview}
+              onImageSelect={(file) => void handleImageSelect(file)}
+              onImageClear={clearPendingImage}
+              imageError={imageError}
+              disabled={busy}
+              placeholder={inputPlaceholder}
+            />
+          )}
         </div>
 
         {previewOpen && (

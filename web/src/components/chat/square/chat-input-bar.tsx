@@ -1,16 +1,34 @@
 "use client";
 
 import { useRef } from "react";
-import { ImagePlus, X } from "lucide-react";
+import {
+  ArrowUp,
+  BarChart3,
+  ImagePlus,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { PillButton } from "@/components/ui/shell";
 import type { ChatImagePayload } from "@/lib/chatImage";
+import { cn } from "@/lib/utils";
 
-const QUICK_PILLS = [
-  "حلّل BTCUSDT",
-  "نظرة على السوق اليوم",
-  "فحص مخاطر حسابي",
-  "آخر توصياتي",
+const QUICK_ACTIONS = [
+  {
+    label: "حلّل BTCUSDT",
+    icon: BarChart3,
+    prompt: "حلّل BTCUSDT",
+  },
+  {
+    label: "نظرة على السوق",
+    icon: Search,
+    prompt: "نظرة على السوق اليوم",
+  },
+  {
+    label: "فحص مخاطر حسابي",
+    icon: Sparkles,
+    prompt: "فحص مخاطر حسابي",
+  },
 ] as const;
 
 interface ChatInputBarProps {
@@ -25,8 +43,7 @@ interface ChatInputBarProps {
   imageError?: string | null;
   disabled?: boolean;
   placeholder?: string;
-  model?: string | null;
-  creditsRemaining?: number;
+  centered?: boolean;
 }
 
 export function ChatInputBar({
@@ -40,41 +57,34 @@ export function ChatInputBar({
   onImageClear,
   imageError,
   disabled,
-  placeholder = "اكتب رسالتك…",
-  model,
-  creditsRemaining,
+  placeholder = "اسأل عن أي شيء…",
+  centered = false,
 }: ChatInputBarProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const canSend = Boolean(value.trim() || pendingImage);
 
   return (
-    <div className="shrink-0 border-t border-border bg-background/95 px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-md">
-      <div className="mx-auto w-full max-w-3xl space-y-2">
-        {(model != null || creditsRemaining != null) && (
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[10px] text-muted-foreground">
-            {model && (
-              <span>
-                الموديل: <span dir="ltr" className="font-mono">{model}</span>
-              </span>
-            )}
-            {creditsRemaining != null && (
-              <span>1 رصيد لكل رسالة • {creditsRemaining} متبقّي</span>
-            )}
-          </div>
-        )}
-
+    <div
+      className={cn(
+        "shrink-0 px-3 py-3",
+        centered
+          ? "bg-transparent"
+          : "border-t border-border/60 bg-background/80 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md",
+      )}
+    >
+      <div className="mx-auto w-full max-w-3xl space-y-3">
         {pendingImagePreview && (
           <div className="relative inline-block px-1">
             <img
               src={pendingImagePreview}
               alt="صورة مرفقة"
-              className="h-20 w-auto max-w-[10rem] rounded-lg border border-border object-cover"
+              className="h-20 w-auto max-w-[10rem] rounded-xl border border-border object-cover"
             />
             <button
               type="button"
               onClick={onImageClear}
               disabled={disabled}
-              className="absolute -left-1 -top-1 rounded-full border border-border bg-card p-0.5 text-muted-foreground hover:text-foreground"
+              className="absolute -start-1 -top-1 rounded-full border border-border bg-card p-0.5 text-muted-foreground hover:text-foreground"
               aria-label="إزالة الصورة"
             >
               <X className="h-3.5 w-3.5" />
@@ -85,7 +95,7 @@ export function ChatInputBar({
           <p className="px-1 text-xs text-destructive">{imageError}</p>
         )}
 
-        <div className="flex gap-2 rounded-3xl border border-border bg-card p-2 shadow-sm">
+        <div className="chat-gpt-input flex items-end gap-1 p-2">
           <input
             ref={fileRef}
             type="file"
@@ -101,18 +111,22 @@ export function ChatInputBar({
             type="button"
             disabled={disabled}
             onClick={() => fileRef.current?.click()}
-            className="self-end rounded-full p-2.5 text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-50"
+            className="shrink-0 rounded-full p-2.5 text-muted-foreground transition hover:bg-secondary/80 hover:text-foreground disabled:opacity-50"
             aria-label="إرفاق صورة شارت"
-            title="إرفاق صورة شارت"
+            title="إرفاق صورة"
           >
             <ImagePlus className="h-5 w-5" />
           </button>
+
           <Textarea
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={pendingImage ? "أضف سؤالاً عن الشارت (اختياري)…" : placeholder}
+            placeholder={
+              pendingImage ? "أضف سؤالاً عن الشارت (اختياري)…" : placeholder
+            }
             disabled={disabled}
-            className="min-h-[48px] max-h-32 flex-1 resize-none border-0 bg-transparent text-base focus-visible:ring-0"
+            rows={1}
+            className="min-h-[44px] max-h-32 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 text-base leading-relaxed focus-visible:ring-0"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -120,29 +134,42 @@ export function ChatInputBar({
               }
             }}
           />
+
           <button
             type="button"
             disabled={disabled || !canSend}
             onClick={onSend}
-            className="self-end rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+            className={cn(
+              "mb-0.5 shrink-0 rounded-full p-2 transition disabled:opacity-40",
+              canSend
+                ? "bg-foreground text-background hover:opacity-90"
+                : "bg-secondary text-muted-foreground",
+            )}
+            aria-label="إرسال"
           >
-            إرسال
+            <ArrowUp className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {QUICK_PILLS.map((p) => (
-            <PillButton
-              key={p}
-              variant="outline"
-              disabled={disabled}
-              className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs"
-              onClick={() => onPickPrompt?.(p)}
-            >
-              {p}
-            </PillButton>
-          ))}
-        </div>
+        {centered && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {QUICK_ACTIONS.map((action) => {
+              const Icon = action.icon;
+              return (
+                <button
+                  key={action.label}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onPickPrompt?.(action.prompt)}
+                  className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm text-foreground transition hover:bg-secondary/80 disabled:opacity-50"
+                >
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                  {action.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

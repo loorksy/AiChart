@@ -51,7 +51,7 @@ export function ChatMessage({
         className={cn(
           "min-w-0 text-sm leading-relaxed",
           isUser
-            ? "max-w-[calc(100%-2.5rem)] rounded-2xl bg-accent px-3 py-2.5 text-foreground sm:max-w-[85%] sm:px-4 sm:py-3"
+            ? "max-w-[calc(100%-2.5rem)] rounded-3xl bg-secondary px-4 py-2.5 text-foreground sm:max-w-[85%]"
             : "max-w-[calc(100%-2.5rem)] flex-1 pt-1 text-foreground sm:max-w-[85%]",
         )}
       >

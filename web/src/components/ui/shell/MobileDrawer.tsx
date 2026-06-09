@@ -93,7 +93,7 @@ export function MobileDrawer({
         aria-label="إغلاق"
         onClick={onClose}
       />
-      <aside className="absolute inset-y-0 end-0 flex w-[min(100%,20rem)] flex-col border-s border-border bg-background shadow-2xl">
+      <aside className="absolute inset-y-0 end-0 flex w-[min(100%,20rem)] flex-col border-s border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <Link
             href="/chat"
