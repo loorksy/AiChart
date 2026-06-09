@@ -742,8 +742,10 @@ function TradingCard({
           per_trade_pct: Number(s.per_trade_pct),
           max_open_trades: Number(s.max_open_trades),
           daily_profit_target_pct: Number(s.daily_profit_target_pct),
+          daily_profit_target_usd: Number(s.daily_profit_target_usd ?? 0),
           daily_loss_limit_pct: Number(s.daily_loss_limit_pct),
           monthly_loss_limit_pct: Number(s.monthly_loss_limit_pct),
+          auto_take_profit_usd: Number(s.auto_take_profit_usd ?? 0),
           allowed_assets: openAssets
             ? []
             : assets
@@ -843,6 +845,103 @@ function TradingCard({
             value={s.per_trade_pct}
             onChange={(e) => set("per_trade_pct", Number(e.target.value))}
           />
+        </Field>
+
+        <Field label="الحد الأقصى للصفقات المفتوحة">
+          <input
+            type="number"
+            min={1}
+            max={50}
+            step={1}
+            className="input"
+            value={s.max_open_trades}
+            onChange={(e) => set("max_open_trades", Number(e.target.value))}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            سقف الأدمن: {limits.max_open_trades_cap} صفقة
+          </p>
+          {s.max_open_trades > limits.max_open_trades_cap && (
+            <p className="mt-1 text-xs text-destructive">
+              القيمة أعلى من سقف الأدمن — سيُخفَّض تلقائياً عند الحفظ.
+            </p>
+          )}
+        </Field>
+
+        <Field label="هدف الربح اليومي (%)">
+          <input
+            type="number"
+            min={0}
+            max={1000}
+            step={0.5}
+            className="input"
+            value={s.daily_profit_target_pct}
+            onChange={(e) =>
+              set("daily_profit_target_pct", Number(e.target.value))
+            }
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            0 = معطّل. عند بلوغ الهدف تتوقّف الصفقات الجديدة لليوم.
+          </p>
+        </Field>
+
+        <Field label="هدف الربح اليومي (USDT)">
+          <input
+            type="number"
+            min={0}
+            step={1}
+            className="input"
+            value={s.daily_profit_target_usd ?? 0}
+            onChange={(e) =>
+              set("daily_profit_target_usd", Number(e.target.value))
+            }
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            0 = معطّل. يُحسب من أرباح الصفقات المغلقة اليوم.
+          </p>
+        </Field>
+
+        <Field label="حد الخسارة اليومي (%)">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            className="input"
+            value={s.daily_loss_limit_pct}
+            onChange={(e) =>
+              set("daily_loss_limit_pct", Number(e.target.value))
+            }
+          />
+        </Field>
+
+        <Field label="حد الخسارة الشهري (%)">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            className="input"
+            value={s.monthly_loss_limit_pct}
+            onChange={(e) =>
+              set("monthly_loss_limit_pct", Number(e.target.value))
+            }
+          />
+        </Field>
+
+        <Field label="إغلاق تلقائي عند ربح (USDT)">
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            className="input"
+            value={s.auto_take_profit_usd ?? 0}
+            onChange={(e) =>
+              set("auto_take_profit_usd", Number(e.target.value))
+            }
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            0 = معطّل. يُغلق الصفقة عند تحقيق ربح غير محقّق بهذا المبلغ (لا يعمل مع OCO نشط).
+          </p>
         </Field>
 
         <div className="sm:col-span-2 space-y-2">

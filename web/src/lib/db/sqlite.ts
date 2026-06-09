@@ -38,8 +38,10 @@ const SCHEMA = `
     per_trade_pct            REAL NOT NULL DEFAULT 10,
     max_open_trades          INTEGER NOT NULL DEFAULT 1,
     daily_profit_target_pct  REAL NOT NULL DEFAULT 3,
+    daily_profit_target_usd  REAL NOT NULL DEFAULT 0,
     daily_loss_limit_pct     REAL NOT NULL DEFAULT 5,
     monthly_loss_limit_pct   REAL NOT NULL DEFAULT 15,
+    auto_take_profit_usd     REAL NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
@@ -120,6 +122,7 @@ const SCHEMA = `
     env         TEXT NOT NULL DEFAULT 'testnet',
     status      TEXT NOT NULL DEFAULT 'open',
     pnl         REAL NOT NULL DEFAULT 0,
+    oco_order_list_id TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     closed_at   TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -199,6 +202,7 @@ const SCHEMA = `
     body       TEXT,
     symbol     TEXT,
     delivered  INTEGER NOT NULL DEFAULT 0,
+    read_at    TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
@@ -245,6 +249,30 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN alert_min_confidence INTEGER NOT NULL DEFAULT 0",
     );
+  }
+  if (!settingsCols.some((c) => c.name === "daily_profit_target_usd")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN daily_profit_target_usd REAL NOT NULL DEFAULT 0",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "auto_take_profit_usd")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN auto_take_profit_usd REAL NOT NULL DEFAULT 0",
+    );
+  }
+
+  const tradeCols = db
+    .prepare("PRAGMA table_info(trades)")
+    .all() as { name: string }[];
+  if (!tradeCols.some((c) => c.name === "oco_order_list_id")) {
+    db.exec("ALTER TABLE trades ADD COLUMN oco_order_list_id TEXT");
+  }
+
+  const alertCols = db
+    .prepare("PRAGMA table_info(alert_log)")
+    .all() as { name: string }[];
+  if (!alertCols.some((c) => c.name === "read_at")) {
+    db.exec("ALTER TABLE alert_log ADD COLUMN read_at TEXT");
   }
 
   const userCols = db

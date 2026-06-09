@@ -1,17 +1,21 @@
 import {
   getBinanceCredentials,
+  getSettings,
   getTrade,
   updateTradeClosed,
   listOpenTrades,
+  listOpenTradesWithOco,
 } from "./store";
 import {
   getPrice,
   getSymbolFilters,
   roundToStep,
   placeMarketOrder,
+  getOcoOrderList,
   type BinanceEnv,
 } from "./binance";
 import { dispatchAlert } from "./alerts";
+import type { Trade } from "./types";
 
 export interface CloseTradeResult {
   ok: boolean;
@@ -181,4 +185,121 @@ export async function closeAllOpenTrades(userId: number): Promise<{
   }
 
   return { closed, failed, totalPnl, errors };
+}
+
+function unrealizedPnl(trade: Trade, currentPrice: number): number {
+  const marketValue = trade.qty * currentPrice;
+  if (trade.side === "buy") return marketValue - trade.quote_qty;
+  return trade.quote_qty - marketValue;
+}
+
+/** Closes open trades when unrealized profit reaches the user's threshold. */
+export async function scanOpenTradesForTakeProfit(
+  userId: number,
+  maxTrades = 5,
+): Promise<{ closed: number; errors: string[] }> {
+  const settings = await getSettings(userId);
+  const threshold = settings.auto_take_profit_usd;
+  if (threshold <= 0) return { closed: 0, errors: [] };
+
+  const creds = await getBinanceCredentials(userId);
+  if (!creds) return { closed: 0, errors: ["لا يوجد حساب Binance."] };
+
+  const open = (await listOpenTrades(userId, maxTrades)).filter(
+    (t) => !t.oco_order_list_id,
+  );
+  let closed = 0;
+  const errors: string[] = [];
+
+  for (const trade of open) {
+    try {
+      const price = await getPrice(trade.symbol, creds.env);
+      const pnl = unrealizedPnl(trade, price);
+      if (pnl < threshold) continue;
+
+      const result = await closeOneTrade(userId, trade.id, creds);
+      if (result.ok) {
+        closed++;
+        const sign = result.pnl >= 0 ? "+" : "";
+        await dispatchAlert(userId, {
+          type: "trade_closed",
+          title: `جني ربح تلقائي · ${result.symbol}`,
+          text:
+            `💰 <b>إغلاق تلقائي على ربح</b>\n` +
+            `${result.symbol}\n` +
+            `PnL: <b>${sign}${result.pnl.toFixed(2)} USDT</b>`,
+          symbol: result.symbol,
+        });
+      } else if (result.reason) {
+        errors.push(`${trade.symbol}: ${result.reason}`);
+      }
+    } catch (e) {
+      errors.push(
+        `${trade.symbol}: ${e instanceof Error ? e.message : "خطأ"}`,
+      );
+    }
+  }
+
+  return { closed, errors };
+}
+
+/** Syncs DB when Binance OCO orders have filled. */
+export async function syncOcoFills(
+  userId: number,
+  maxTrades = 5,
+): Promise<{ synced: number; errors: string[] }> {
+  const creds = await getBinanceCredentials(userId);
+  if (!creds) return { synced: 0, errors: ["لا يوجد حساب Binance."] };
+
+  const trades = await listOpenTradesWithOco(userId, maxTrades);
+  let synced = 0;
+  const errors: string[] = [];
+
+  for (const trade of trades) {
+    if (!trade.oco_order_list_id) continue;
+    try {
+      const oco = await getOcoOrderList(
+        creds.apiKey,
+        creds.apiSecret,
+        creds.env,
+        trade.oco_order_list_id,
+      );
+      if (oco.listStatusType !== "ALL_DONE") continue;
+
+      const filled = oco.orders.find((o) => o.status === "FILLED");
+      if (!filled) continue;
+
+      const executedQty = Number(filled.executedQty) || trade.qty;
+      const exitQuote =
+        Number(filled.cummulativeQuoteQty) || executedQty * Number(filled.price);
+      const exitPrice =
+        executedQty > 0 ? exitQuote / executedQty : Number(filled.price);
+      const pnl = computePnl(
+        trade.side,
+        trade.qty,
+        trade.quote_qty,
+        exitPrice,
+        executedQty,
+      );
+
+      await updateTradeClosed(trade.id, pnl);
+      synced++;
+      const sign = pnl >= 0 ? "+" : "";
+      await dispatchAlert(userId, {
+        type: "trade_closed",
+        title: `إغلاق OCO · ${trade.symbol}`,
+        text:
+          `✅ <b>إغلاق عبر OCO · Position closed</b>\n` +
+          `${trade.symbol}\n` +
+          `PnL: <b>${sign}${pnl.toFixed(2)} USDT</b>`,
+        symbol: trade.symbol,
+      });
+    } catch (e) {
+      errors.push(
+        `${trade.symbol}: ${e instanceof Error ? e.message : "خطأ"}`,
+      );
+    }
+  }
+
+  return { synced, errors };
 }

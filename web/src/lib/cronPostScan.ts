@@ -1,0 +1,50 @@
+import { listUsersForTradeMaintenance } from "./store";
+import { scanOpenTradesForTakeProfit, syncOcoFills } from "./tradeClose";
+
+const MAX_USERS = 8;
+const MAX_TRADES_PER_USER = 5;
+
+export interface CronPostScanResult {
+  usersProcessed: number;
+  ocoSynced: number;
+  autoClosed: number;
+  errors: string[];
+}
+
+/** OCO sync + auto take-profit after the monitor cycle (batched). */
+export async function runCronPostScan(): Promise<CronPostScanResult> {
+  const result: CronPostScanResult = {
+    usersProcessed: 0,
+    ocoSynced: 0,
+    autoClosed: 0,
+    errors: [],
+  };
+
+  const users = await listUsersForTradeMaintenance(MAX_USERS);
+  result.usersProcessed = users.length;
+
+  for (const { id: userId, settings } of users) {
+    try {
+      const oco = await syncOcoFills(userId, MAX_TRADES_PER_USER);
+      result.ocoSynced += oco.synced;
+      result.errors.push(...oco.errors.map((e) => `user ${userId} oco: ${e}`));
+
+      if (settings.auto_take_profit_usd > 0) {
+        const tp = await scanOpenTradesForTakeProfit(
+          userId,
+          MAX_TRADES_PER_USER,
+        );
+        result.autoClosed += tp.closed;
+        result.errors.push(
+          ...tp.errors.map((e) => `user ${userId} tp: ${e}`),
+        );
+      }
+    } catch (e) {
+      result.errors.push(
+        `user ${userId}: ${e instanceof Error ? e.message : "error"}`,
+      );
+    }
+  }
+
+  return result;
+}

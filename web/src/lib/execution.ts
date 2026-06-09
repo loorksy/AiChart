@@ -7,7 +7,9 @@ import {
   recordTrade,
   countOpenTrades,
   todayRealizedPnlPct,
+  todayRealizedPnlUsd,
   monthRealizedPnlPct,
+  updateTradeOcoOrderList,
   isMasterKillOn,
 } from "./store";
 import { evaluateTrade } from "./riskGuard";
@@ -95,6 +97,7 @@ export async function executeIntent(
     masterKill: await isMasterKillOn(),
     openTradesCount: await countOpenTrades(userId),
     todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
+    todayRealizedPnlUsd: await todayRealizedPnlUsd(userId),
     monthRealizedPnlPct: await monthRealizedPnlPct(userId, effectiveCapital),
     explicitApproval,
   });
@@ -206,7 +209,7 @@ export async function executeIntent(
           label: `OCO وقف/هدف · ${intent.symbol}`,
           status: "running",
         });
-        await placeOcoOrder(
+        const oco = await placeOcoOrder(
           creds.apiKey,
           creds.apiSecret,
           creds.env,
@@ -216,6 +219,7 @@ export async function executeIntent(
           intent.stop_loss,
           filters.tickSize,
         );
+        await updateTradeOcoOrderList(trade.id, oco.orderListId);
         push({
           id: "oco",
           label: `OCO وقف/هدف · ${intent.symbol}`,

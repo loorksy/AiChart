@@ -57,8 +57,10 @@ const SETTABLE_FIELDS = [
   "per_trade_pct",
   "max_open_trades",
   "daily_profit_target_pct",
+  "daily_profit_target_usd",
   "daily_loss_limit_pct",
   "monthly_loss_limit_pct",
+  "auto_take_profit_usd",
   "allowed_assets",
   "send_screenshot",
   "telegram_chat_id",
@@ -484,6 +486,28 @@ export async function updateTradeClosed(
   );
 }
 
+export async function updateTradeOcoOrderList(
+  tradeId: number,
+  orderListId: string | number,
+): Promise<void> {
+  await execute(
+    "UPDATE trades SET oco_order_list_id = ? WHERE id = ?",
+    [String(orderListId), tradeId],
+  );
+}
+
+export async function listOpenTradesWithOco(
+  userId: number,
+  limit = 20,
+): Promise<Trade[]> {
+  return query<Trade>(
+    `SELECT * FROM trades
+     WHERE user_id = ? AND status = 'open' AND oco_order_list_id IS NOT NULL
+     ORDER BY id ASC LIMIT ?`,
+    [userId, limit],
+  );
+}
+
 export async function countPendingIntents(userId: number): Promise<number> {
   const row = await queryOne<{ n: number }>(
     "SELECT COUNT(*) AS n FROM trade_intents WHERE user_id = ? AND status = 'pending'",
@@ -500,17 +524,21 @@ export async function countOpenTrades(userId: number): Promise<number> {
   return row?.n ?? 0;
 }
 
-export async function todayRealizedPnlPct(
-  userId: number,
-  capital: number,
-): Promise<number> {
-  if (capital <= 0) return 0;
+export async function todayRealizedPnlUsd(userId: number): Promise<number> {
   const row = await queryOne<{ pnl: number }>(
     `SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trades
      WHERE user_id = ? AND status = 'closed' AND date(closed_at) = date('now')`,
     [userId],
   );
-  return ((row?.pnl ?? 0) / capital) * 100;
+  return row?.pnl ?? 0;
+}
+
+export async function todayRealizedPnlPct(
+  userId: number,
+  capital: number,
+): Promise<number> {
+  if (capital <= 0) return 0;
+  return ((await todayRealizedPnlUsd(userId)) / capital) * 100;
 }
 
 export async function monthRealizedPnlPct(
@@ -650,6 +678,67 @@ export async function listAlerts(
 
 export async function clearAlerts(userId: number): Promise<void> {
   await execute("DELETE FROM alert_log WHERE user_id = ?", [userId]);
+}
+
+export async function countUnreadAlerts(userId: number): Promise<number> {
+  const row = await queryOne<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM alert_log WHERE user_id = ? AND read_at IS NULL",
+    [userId],
+  );
+  return row?.n ?? 0;
+}
+
+export async function markAlertsRead(
+  userId: number,
+  ids?: number[],
+): Promise<void> {
+  if (ids?.length) {
+    const placeholders = ids.map(() => "?").join(", ");
+    await execute(
+      `UPDATE alert_log SET read_at = datetime('now')
+       WHERE user_id = ? AND id IN (${placeholders}) AND read_at IS NULL`,
+      [userId, ...ids],
+    );
+    return;
+  }
+  await execute(
+    "UPDATE alert_log SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL",
+    [userId],
+  );
+}
+
+export interface TradeMaintenanceUser {
+  id: number;
+  settings: TradingSettings;
+  limits: AdminLimits;
+}
+
+/** Active users eligible for OCO sync / auto take-profit cron tasks. */
+export async function listUsersForTradeMaintenance(
+  limit = 10,
+): Promise<TradeMaintenanceUser[]> {
+  const rows = await query<{ id: number }>(
+    `SELECT u.id
+     FROM users u
+     JOIN trading_settings s ON s.user_id = u.id
+     JOIN admin_limits a ON a.user_id = u.id
+     JOIN binance_accounts b ON b.user_id = u.id
+     WHERE u.status = 'active' AND u.role = 'user'
+       AND a.can_execute = 1 AND s.kill_switch = 0 AND s.onboarding_done = 1
+       AND (s.mode = 'auto' OR s.auto_take_profit_usd > 0)
+     ORDER BY u.id ASC
+     LIMIT ?`,
+    [limit],
+  );
+  const out: TradeMaintenanceUser[] = [];
+  for (const r of rows) {
+    out.push({
+      id: r.id,
+      settings: await getSettings(r.id),
+      limits: await getLimits(r.id),
+    });
+  }
+  return out;
 }
 
 export async function listAuditLogs(limit = 100): Promise<

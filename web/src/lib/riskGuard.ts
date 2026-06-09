@@ -11,6 +11,7 @@ export interface RiskContext {
   masterKill: boolean;
   openTradesCount: number;
   todayRealizedPnlPct: number; // negative = net loss today
+  todayRealizedPnlUsd: number;
   monthRealizedPnlPct: number; // negative = net loss this calendar month
   /** User explicitly approved a trade (e.g. Telegram approve button). */
   explicitApproval?: boolean;
@@ -102,6 +103,14 @@ export function evaluateTrade(
   )
     return deny(
       `بلغت هدف الربح اليومي (+${settings.daily_profit_target_pct}%). لا صفقات جديدة اليوم.`,
+    );
+
+  if (
+    settings.daily_profit_target_usd > 0 &&
+    ctx.todayRealizedPnlUsd >= settings.daily_profit_target_usd
+  )
+    return deny(
+      `بلغت هدف الربح اليومي (+${settings.daily_profit_target_usd.toFixed(2)} USDT). لا صفقات جديدة اليوم.`,
     );
 
   return { ok: true, reason: "مسموح", effectiveCapital, perTradeMax };

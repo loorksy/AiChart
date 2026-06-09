@@ -29,8 +29,10 @@ export interface TradingSettings {
   per_trade_pct: number;
   max_open_trades: number;
   daily_profit_target_pct: number;
+  daily_profit_target_usd: number;
   daily_loss_limit_pct: number;
   monthly_loss_limit_pct: number;
+  auto_take_profit_usd: number;
   allowed_assets: string;
   send_screenshot: number;
   telegram_chat_id: string | null;
@@ -140,6 +142,7 @@ export interface Trade {
   env: string;
   status: string;
   pnl: number;
+  oco_order_list_id: string | null;
   created_at: string;
   closed_at: string | null;
 }
@@ -158,5 +161,6 @@ export interface AlertLog {
   body: string | null;
   symbol: string | null;
   delivered: number;
+  read_at: string | null;
   created_at: string;
 }

@@ -18,6 +18,7 @@ export interface MeData {
   quota: QuotaInfo;
   displayName: string;
   pendingIntents: number;
+  unreadAlerts: number;
 }
 
 export function useMe(refreshKey = 0) {
@@ -47,6 +48,7 @@ export function useMe(refreshKey = 0) {
         quota: { used, limit, remaining },
         displayName: displayNameFromEmail(json.user.email),
         pendingIntents: json.pendingIntents ?? 0,
+        unreadAlerts: json.unreadAlerts ?? 0,
       });
     } catch {
       setData(null);
@@ -58,6 +60,13 @@ export function useMe(refreshKey = 0) {
   useEffect(() => {
     void refresh();
   }, [refresh, refreshKey]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void refresh();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [refresh]);
 
   return { data, loading, refresh };
 }

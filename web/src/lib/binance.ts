@@ -242,6 +242,34 @@ export interface PlacedOcoOrder {
   listStatusType: string;
 }
 
+export interface OcoOrderListStatus {
+  orderListId: number;
+  listStatusType: string;
+  orders: {
+    status: string;
+    executedQty: string;
+    cummulativeQuoteQty: string;
+    price: string;
+  }[];
+}
+
+/** Fetches OCO order list status (for sync when TP/SL fills on Binance). */
+export async function getOcoOrderList(
+  apiKey: string,
+  apiSecret: string,
+  env: BinanceEnv,
+  orderListId: string | number,
+): Promise<OcoOrderListStatus> {
+  return (await signedRequest(
+    "GET",
+    "/api/v3/orderList",
+    { orderListId },
+    apiKey,
+    apiSecret,
+    env,
+  )) as OcoOrderListStatus;
+}
+
 /** Places an OCO exit (TP limit + stop) for a long spot position. */
 export async function placeOcoOrder(
   apiKey: string,

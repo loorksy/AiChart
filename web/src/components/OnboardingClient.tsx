@@ -33,6 +33,14 @@ export default function OnboardingClient({
     settings.daily_profit_target_pct || 3,
   );
   const [tradingGoal, setTradingGoal] = useState("");
+  const [suggestion, setSuggestion] = useState<{
+    mode: "advisory" | "auto";
+    style: "conservative" | "balanced" | "aggressive";
+    per_trade_pct: number;
+    max_open_trades: number;
+    summary_ar: string;
+  } | null>(null);
+  const [suggestBusy, setSuggestBusy] = useState(false);
   const isBeginner = experience === "beginner";
   const STEPS = isBeginner ? BEGINNER_STEPS : EXPERT_STEPS;
   const [apiKey, setApiKey] = useState("");
@@ -93,6 +101,36 @@ export default function OnboardingClient({
     if (ok) {
       router.push("/dashboard");
       router.refresh();
+    }
+  }
+
+  async function fetchSuggestion() {
+    setSuggestBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/onboarding/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          maxCapital,
+          dailyProfit,
+          dailyLoss,
+          tradingGoal: tradingGoal || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "تعذّر الحصول على الاقتراح.");
+        return;
+      }
+      setSuggestion(data.suggestion);
+      setMode(data.suggestion.mode);
+      setStyle(data.suggestion.style);
+      setPerTrade(data.suggestion.per_trade_pct);
+    } catch {
+      setError("تعذّر الاتصال بالخادم.");
+    } finally {
+      setSuggestBusy(false);
     }
   }
 
@@ -208,13 +246,37 @@ export default function OnboardingClient({
             value={tradingGoal}
             onChange={(e) => setTradingGoal(e.target.value)}
           />
-          <div className="rounded-[var(--radius)] bg-secondary/60 px-4 py-3 text-sm">
-            <p className="mb-1 font-medium">اقتراح الوكيل:</p>
-            <ul className="list-inside list-disc text-muted-foreground">
-              <li>وضع توصيات + موافقة يدوية</li>
-              <li>أسلوب محافظ · 5% لكل صفقة · حدّ صفقتين مفتوحتين</li>
-            </ul>
-          </div>
+          <button
+            type="button"
+            disabled={suggestBusy || busy}
+            onClick={() => void fetchSuggestion()}
+            className="btn btn-secondary w-full"
+          >
+            {suggestBusy ? "جارٍ التحليل…" : "احصل على اقتراح الوكيل"}
+          </button>
+
+          {suggestion && (
+            <div className="rounded-[var(--radius)] bg-secondary/60 px-4 py-3 text-sm">
+              <p className="mb-2 font-medium">اقتراح الوكيل:</p>
+              <p className="mb-2 text-muted-foreground">{suggestion.summary_ar}</p>
+              <ul className="list-inside list-disc text-muted-foreground">
+                <li>
+                  {suggestion.mode === "auto" ? "تنفيذ تلقائي" : "توصيات + موافقة يدوية"}
+                </li>
+                <li>
+                  أسلوب{" "}
+                  {suggestion.style === "conservative"
+                    ? "محافظ"
+                    : suggestion.style === "balanced"
+                      ? "متوازن"
+                      : "نشِط"}{" "}
+                  · {suggestion.per_trade_pct}% لكل صفقة · حدّ{" "}
+                  {suggestion.max_open_trades} صفقات مفتوحة
+                </li>
+              </ul>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button onClick={() => setStep(0)} className="btn btn-secondary flex-1">
               رجوع
@@ -225,12 +287,12 @@ export default function OnboardingClient({
                 void save(
                   {
                     experience: "beginner",
-                    mode: "advisory",
+                    mode: suggestion?.mode ?? "advisory",
                     approval: "manual",
-                    style: "conservative",
+                    style: suggestion?.style ?? "conservative",
                     max_capital: maxCapital,
-                    per_trade_pct: 5,
-                    max_open_trades: 2,
+                    per_trade_pct: suggestion?.per_trade_pct ?? 5,
+                    max_open_trades: suggestion?.max_open_trades ?? 2,
                     daily_profit_target_pct: dailyProfit,
                     daily_loss_limit_pct: dailyLoss,
                     monthly_loss_limit_pct: Math.min(dailyLoss * 4, 20),

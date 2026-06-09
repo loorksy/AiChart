@@ -53,7 +53,8 @@ export default function AppShell({
 }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { data: me, loading: meLoading } = useMe(creditsRefreshKey);
+  const { data: me, loading: meLoading, refresh: refreshMe } =
+    useMe(creditsRefreshKey);
   const fetchConversations = useChatStore((s) => s.fetchConversations);
   const conversations = useChatStore((s) => s.conversations);
   const selectedId = useChatStore((s) => s.selectedId);
@@ -265,6 +266,8 @@ export default function AppShell({
             credits={meLoading ? null : creditsRemaining}
             creditsLoading={meLoading}
             pendingIntents={me?.pendingIntents ?? 0}
+            unreadAlerts={me?.unreadAlerts ?? 0}
+            onNotificationsRefresh={() => void refreshMe()}
           />
         </div>
 

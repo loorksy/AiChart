@@ -36,8 +36,10 @@ const SCHEMA = `
     per_trade_pct            DOUBLE PRECISION NOT NULL DEFAULT 10,
     max_open_trades          INTEGER NOT NULL DEFAULT 1,
     daily_profit_target_pct  DOUBLE PRECISION NOT NULL DEFAULT 3,
+    daily_profit_target_usd  DOUBLE PRECISION NOT NULL DEFAULT 0,
     daily_loss_limit_pct     DOUBLE PRECISION NOT NULL DEFAULT 5,
     monthly_loss_limit_pct   DOUBLE PRECISION NOT NULL DEFAULT 15,
+    auto_take_profit_usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
@@ -113,6 +115,7 @@ const SCHEMA = `
     env         TEXT NOT NULL DEFAULT 'testnet',
     status      TEXT NOT NULL DEFAULT 'open',
     pnl         DOUBLE PRECISION NOT NULL DEFAULT 0,
+    oco_order_list_id TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     closed_at   TIMESTAMPTZ
   );
@@ -186,6 +189,7 @@ const SCHEMA = `
     body       TEXT,
     symbol     TEXT,
     delivered  BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at    TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -220,6 +224,20 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {
     /* table may not exist yet on first boot */
   });
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS daily_profit_target_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS auto_take_profit_usd    DOUBLE PRECISION NOT NULL DEFAULT 0
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trades ADD COLUMN IF NOT EXISTS oco_order_list_id TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ
+  `).catch(() => {});
 }
 
 async function seedAdminPg(client: PoolClient) {

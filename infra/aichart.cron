@@ -1,0 +1,10 @@
+# AiChart scheduled jobs — install to /etc/cron.d/aichart
+# Replace YOUR_DOMAIN and YOUR_CRON_SECRET before deploying.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Monitor markets every 15 minutes (signal scan + OCO sync + auto take-profit)
+*/15 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor >/dev/null 2>&1
+
+# Daily Telegram summary at 20:00 UTC
+0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
