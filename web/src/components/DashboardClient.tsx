@@ -13,7 +13,7 @@ import {
   Shield,
 } from "lucide-react";
 import type { AdminLimits, PublicUser, Trade, TradingSettings } from "@/lib/types";
-import { SurfaceCard } from "@/components/ui/shell";
+import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import { displayNameFromEmail } from "@/lib/displayName";
 import { useMe } from "@/hooks/useMe";
 import { DashboardAnalytics } from "@/components/dashboard/DashboardAnalytics";
@@ -66,11 +66,11 @@ export default function DashboardClient({
   }
 
   return (
-    <main className="page-shell max-w-6xl space-y-4">
-      <div>
-        <h1 className="page-title">حسابي</h1>
-        <p className="page-subtitle">لوحة الحساب والرصيد</p>
-      </div>
+    <PageLayout
+      title="حسابي"
+      subtitle="لوحة الحساب والرصيد"
+      maxWidth="6xl"
+    >
 
       {pendingIntentCount > 0 && (
         <Link href="/trades" className="block">
@@ -91,11 +91,11 @@ export default function DashboardClient({
       )}
 
       <SurfaceCard className="flex items-center gap-4">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 font-serif text-lg font-bold text-primary">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-secondary text-lg font-semibold text-foreground">
           {displayName.slice(0, 2).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-serif text-lg font-bold">{displayName}</p>
+          <p className="text-lg font-semibold">{displayName}</p>
           <p className="truncate text-sm text-muted-foreground" dir="ltr">
             {user.email}
           </p>
@@ -123,15 +123,15 @@ export default function DashboardClient({
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <SurfaceCard padding="sm" className="text-center">
           <p className="text-[10px] text-muted-foreground sm:text-xs">متبقّي</p>
-          <p className="font-serif text-xl font-bold sm:text-2xl">{remaining}</p>
+          <p className="text-xl font-semibold sm:text-2xl">{remaining}</p>
         </SurfaceCard>
         <SurfaceCard padding="sm" className="text-center">
           <p className="text-[10px] text-muted-foreground sm:text-xs">مُستهلك</p>
-          <p className="font-serif text-xl font-bold sm:text-2xl">{used}</p>
+          <p className="text-xl font-semibold sm:text-2xl">{used}</p>
         </SurfaceCard>
         <SurfaceCard padding="sm" className="text-center">
           <p className="text-[10px] text-muted-foreground sm:text-xs">الإجمالي</p>
-          <p className="font-serif text-xl font-bold sm:text-2xl">{limit}</p>
+          <p className="text-xl font-semibold sm:text-2xl">{limit}</p>
         </SurfaceCard>
       </div>
 
@@ -234,6 +234,6 @@ export default function DashboardClient({
           </p>
         </SurfaceCard>
       )}
-    </main>
+    </PageLayout>
   );
 }

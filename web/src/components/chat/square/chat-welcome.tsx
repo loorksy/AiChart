@@ -11,8 +11,8 @@ export function ChatWelcome({
   creditsRemaining,
 }: ChatWelcomeProps) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-4 py-6">
-      <h1 className="mb-8 text-center text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+    <div className="flex flex-1 flex-col items-center justify-center px-4 py-4 sm:py-6">
+      <h1 className="mb-6 text-center text-xl font-semibold tracking-tight text-foreground sm:mb-8 sm:text-3xl">
         ما الذي تريد البدء به؟
       </h1>
       {(model || creditsRemaining != null) && (

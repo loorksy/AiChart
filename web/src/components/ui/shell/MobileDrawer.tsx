@@ -3,25 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Archive,
-  CreditCard,
-  FileText,
+  ChevronDown,
   LayoutDashboard,
   LineChart,
+  LogOut,
   MessageSquare,
   MessageSquarePlus,
-  MessagesSquare,
   Settings,
+  Shield,
   Sparkles,
   Trash2,
   TrendingUp,
   X,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
 import { useChatStore } from "@/stores/chat-store";
 import { cn } from "@/lib/utils";
-import { SurfaceCard } from "./SurfaceCard";
 
 const MAIN_TABS = [
   { href: "/chat", label: "المحادثة", icon: MessageSquare },
@@ -35,36 +31,36 @@ function isTabActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-const SECONDARY_LINKS = [
-  { href: "/reports", label: "التقارير", icon: FileText },
-  { href: "/plan", label: "الخطة", icon: CreditCard },
-  { href: "/settings", label: "الإعدادات", icon: Settings },
-] as const;
-
 export function MobileDrawer({
   open,
   onClose,
   email,
   displayName,
+  role,
   creditsRemaining,
   creditsLimit,
+  creditsLoading,
   onNewChat,
+  onLogout,
 }: {
   open: boolean;
   onClose: () => void;
   email: string;
   displayName: string;
+  role: "user" | "admin";
   creditsRemaining: number;
   creditsLimit: number;
+  creditsLoading?: boolean;
   onNewChat?: () => void;
+  onLogout?: () => void;
 }) {
   const pathname = usePathname();
+  const onChatPage = pathname.startsWith("/chat");
   const {
     conversations,
     selectedId,
     selectConversation,
     deleteConversation,
-    archiveConversation,
     resetSelection,
     createNew,
   } = useChatStore();
@@ -93,29 +89,38 @@ export function MobileDrawer({
         aria-label="إغلاق"
         onClick={onClose}
       />
-      <aside className="absolute inset-y-0 end-0 flex w-[min(100%,20rem)] flex-col border-s border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <aside className="absolute inset-y-0 end-0 flex w-[min(100%,17.5rem)] flex-col border-s border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
+        <div className="flex items-center justify-between px-3 pt-3">
           <Link
             href="/chat"
             onClick={onClose}
-            className="flex items-center gap-2"
+            className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-sidebar-accent"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <span className="font-serif font-bold">AiChart</span>
+            <Sparkles className="h-5 w-5 shrink-0 text-foreground" />
+            <span className="truncate text-sm font-semibold">AiChart</span>
           </Link>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-muted-foreground hover:bg-secondary"
+            className="rounded-lg p-2 text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
             aria-label="إغلاق"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex gap-1 border-b border-border p-2">
+        <div className="px-2 pb-2">
+          <button
+            type="button"
+            onClick={() => void handleNewChat()}
+            className="flex w-full items-center gap-2 rounded-lg border border-sidebar-border px-3 py-2.5 text-sm font-medium transition hover:bg-sidebar-accent"
+          >
+            <MessageSquarePlus className="h-4 w-4 shrink-0" />
+            محادثة جديدة
+          </button>
+        </div>
+
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
           {MAIN_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = isTabActive(pathname, tab.href);
@@ -124,125 +129,110 @@ export function MobileDrawer({
                 key={tab.href}
                 href={tab.href}
                 onClick={onClose}
-                className={cn(
-                  "flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[10px] font-medium transition",
-                  active
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:bg-secondary/60",
-                )}
+                data-active={active}
+                className="sidebar-nav-item"
               >
-                <Icon className="h-4 w-4" />
-                {tab.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span>{tab.label}</span>
               </Link>
             );
           })}
-        </div>
 
-        <div className="flex gap-2 border-b border-border px-3 py-2">
-          <button
-            type="button"
-            onClick={() => void handleNewChat()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2 text-xs font-semibold text-primary-foreground"
-          >
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-            محادثة جديدة
-          </button>
-          {SECONDARY_LINKS.map((link) => {
-            const Icon = link.icon;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={onClose}
-                className="flex items-center gap-1 rounded-xl border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary"
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {link.label}
-              </Link>
-            );
-          })}
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2">
-          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            المحادثات
+          <p className="px-3 pb-1 pt-4 text-xs font-medium text-muted-foreground">
+            المحادثات الأخيرة
           </p>
           {conversations.length === 0 ? (
-            <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-              لا محادثات بعد
-            </p>
+            <p className="px-3 py-2 text-xs text-muted-foreground">لا محادثات بعد</p>
           ) : (
             conversations.map((c) => {
-              const active = selectedId === c.id;
+              const active = selectedId === c.id && onChatPage;
               return (
-                <div
-                  key={c.id}
-                  className={cn(
-                    "group mb-1 flex items-center gap-1 rounded-xl",
-                    active && "bg-secondary",
-                  )}
-                >
+                <div key={c.id} className="group flex items-center">
+                  <Link
+                    href="/chat"
+                    onClick={() => void handleSelect(c.id)}
+                    data-active={active}
+                    className="sidebar-conv-item min-w-0 flex-1 truncate"
+                  >
+                    {c.title}
+                  </Link>
                   <button
                     type="button"
-                    onClick={() => void handleSelect(c.id)}
-                    className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2.5 text-start"
+                    onClick={() => void deleteConversation(c.id)}
+                    className="me-0.5 shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100"
+                    title="حذف"
+                    aria-label="حذف المحادثة"
                   >
-                    <MessagesSquare className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{c.title}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {formatDistanceToNow(new Date(c.updated_at), {
-                          addSuffix: true,
-                          locale: ar,
-                        })}
-                      </p>
-                    </div>
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
-                  <div className="flex shrink-0 pe-1">
-                    <button
-                      type="button"
-                      onClick={() => void archiveConversation(c.id)}
-                      className="rounded p-1.5 text-muted-foreground hover:text-foreground"
-                      title="أرشفة"
-                    >
-                      <Archive className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteConversation(c.id)}
-                      className="rounded p-1.5 text-muted-foreground hover:text-destructive"
-                      title="حذف"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
                 </div>
               );
             })
           )}
-        </div>
 
-        <div className="space-y-2 border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <SurfaceCard padding="sm" className="bg-secondary/50">
-            <p className="text-xs text-muted-foreground">الرصيد المتبقّي</p>
-            <p className="font-serif text-2xl font-bold">
-              {creditsRemaining}
-              <span className="ms-1 text-sm font-normal text-muted-foreground">
+          <div className="my-2 border-t border-sidebar-border" />
+
+          <Link
+            href="/settings"
+            onClick={onClose}
+            data-active={isTabActive(pathname, "/settings")}
+            className="sidebar-nav-item"
+          >
+            <Settings className="h-4 w-4 shrink-0" />
+            <span>الإعدادات</span>
+          </Link>
+          {role === "admin" && (
+            <Link
+              href="/admin"
+              onClick={onClose}
+              data-active={isTabActive(pathname, "/admin")}
+              className="sidebar-nav-item text-accent-gold"
+            >
+              <Shield className="h-4 w-4 shrink-0" />
+              <span>لوحة الأدمن</span>
+            </Link>
+          )}
+        </nav>
+
+        <div className="border-t border-sidebar-border p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <Link
+            href="/dashboard"
+            onClick={onClose}
+            className="mb-2 block rounded-lg px-3 py-2 transition hover:bg-sidebar-accent"
+          >
+            <p className="text-[10px] text-muted-foreground">الرصيد</p>
+            <p className="text-sm font-semibold">
+              {creditsLoading ? "…" : creditsRemaining}
+              <span className="ms-1 text-xs font-normal text-muted-foreground">
                 / {creditsLimit}
               </span>
             </p>
-          </SurfaceCard>
-          <div className="flex items-center gap-2 rounded-xl bg-secondary px-3 py-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+          </Link>
+          <div className="flex items-center gap-2 rounded-lg p-1.5 transition hover:bg-sidebar-accent">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">
               {initials}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{displayName}</p>
-              <p className="truncate text-[10px] text-muted-foreground" dir="ltr">
-                {email}
+              <p className="flex items-center gap-1 truncate text-[10px] text-muted-foreground">
+                <span>مجاني</span>
+                <ChevronDown className="h-3 w-3" />
               </p>
             </div>
+            {onLogout && (
+              <button
+                type="button"
+                onClick={() => void onLogout()}
+                className="rounded-lg p-2 text-muted-foreground transition hover:text-foreground"
+                aria-label="خروج"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            )}
           </div>
+          <p className="mt-1 truncate px-2 text-[10px] text-muted-foreground" dir="ltr">
+            {email}
+          </p>
         </div>
       </aside>
     </div>

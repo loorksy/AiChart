@@ -126,7 +126,7 @@ export function ChatInputBar({
             }
             disabled={disabled}
             rows={1}
-            className="min-h-[44px] max-h-32 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 text-base leading-relaxed focus-visible:ring-0"
+            className="min-h-[44px] max-h-32 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 text-base leading-relaxed focus-visible:ring-0 focus-visible:outline-none"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();

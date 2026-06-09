@@ -27,7 +27,7 @@ import type {
   TradingSettings,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { SurfaceCard, PillButton } from "@/components/ui/shell";
+import { PageLayout, SurfaceCard, PillButton } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { displayNameFromEmail } from "@/lib/displayName";
 
@@ -86,11 +86,7 @@ export default function SettingsClient({
   }
 
   return (
-    <main className="page-shell max-w-5xl space-y-4">
-      <div>
-        <h1 className="page-title">الإعدادات</h1>
-        <p className="page-subtitle">إدارة حسابك وتفضيلاتك</p>
-      </div>
+    <PageLayout title="الإعدادات" subtitle="إدارة حسابك وتفضيلاتك" maxWidth="6xl">
 
       {/* Mobile: horizontal scrollable tabs */}
       <div className="-mx-4 overflow-x-auto px-4 md:hidden">
@@ -117,64 +113,17 @@ export default function SettingsClient({
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
-        {/* Desktop: vertical tab list */}
-        <aside className="hidden md:block">
-          <SurfaceCard padding="sm" className="space-y-1">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTab(t.id)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start transition",
-                    tab === t.id
-                      ? "bg-secondary text-foreground"
-                      : "text-muted-foreground hover:bg-secondary/50",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-xl",
-                      tab === t.id ? "bg-primary/10" : "bg-secondary",
-                    )}
-                  >
-                    <Icon className="h-4 w-4 text-accent-gold" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{t.label}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {t.desc}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => void logout()}
-              className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start text-destructive transition hover:bg-destructive/5"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-destructive/10">
-                <LogOut className="h-4 w-4" />
-              </span>
-              <span className="text-sm font-medium">تسجيل الخروج</span>
-            </button>
-          </SurfaceCard>
-        </aside>
-
-        {/* Tab content */}
-        <div className="min-w-0 space-y-4">
+      <div className="grid gap-4 md:grid-cols-[1fr_13rem]">
+        {/* Tab content — يسار في RTL */}
+        <div className="min-w-0 space-y-4 md:order-1">
           {tab === "profile" && (
             <SurfaceCard className="space-y-3">
               <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 font-serif text-lg font-bold text-primary">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-secondary text-lg font-semibold">
                   {displayName.slice(0, 2).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <h2 className="font-serif text-xl font-bold">{displayName}</h2>
+                  <h2 className="text-xl font-semibold">{displayName}</h2>
                   <p className="truncate text-sm text-muted-foreground" dir="ltr">
                     {user.email}
                   </p>
@@ -203,7 +152,7 @@ export default function SettingsClient({
               <div className="flex items-start gap-3">
                 <CreditCard className="mt-0.5 h-5 w-5 text-accent-gold" />
                 <div>
-                  <h2 className="font-serif text-xl font-bold">الاشتراك</h2>
+                  <h2 className="text-xl font-semibold">الاشتراك</h2>
                   <p className="text-sm text-muted-foreground">
                     الرصيد اليومي: {limits.claude_quota} رسالة
                   </p>
@@ -218,7 +167,7 @@ export default function SettingsClient({
 
           {tab === "appearance" && (
             <SurfaceCard className="space-y-4">
-              <h2 className="font-serif text-xl font-bold">المظهر</h2>
+              <h2 className="text-xl font-semibold">المظهر</h2>
               <div className="flex flex-wrap gap-2">
                 {(
                   [
@@ -273,8 +222,35 @@ export default function SettingsClient({
             </SurfaceCard>
           </button>
         </div>
+
+        {/* تبويبات سطح المكتب — يمين الشاشة في RTL */}
+        <aside className="hidden md:block md:order-2">
+          <nav className="sticky top-4 space-y-0.5 rounded-2xl border border-border bg-card p-2">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "sidebar-nav-item w-full",
+                  tab === t.id && "bg-sidebar-accent",
+                )}
+                data-active={tab === t.id}
+              >
+                {t.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="sidebar-nav-item mt-2 w-full text-destructive hover:bg-destructive/10"
+            >
+              تسجيل الخروج
+            </button>
+          </nav>
+        </aside>
       </div>
-    </main>
+    </PageLayout>
   );
 }
 
@@ -329,7 +305,7 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
 
   return (
     <SurfaceCard>
-      <h2 className="mb-1 font-serif text-xl font-bold">ربط Binance</h2>
+      <h2 className="mb-1 text-xl font-semibold">ربط Binance</h2>
       <p className="mb-4 text-sm text-muted-foreground">
         فعّل صلاحية التداول فقط، وعطّل السحب.
       </p>
@@ -426,7 +402,7 @@ function TelegramCard({ linked }: { linked: boolean }) {
 
   return (
     <SurfaceCard>
-      <h2 className="mb-1 font-serif text-xl font-bold">إشعارات تليجرام</h2>
+      <h2 className="mb-1 text-xl font-semibold">إشعارات تليجرام</h2>
       <p className="mb-4 text-sm text-muted-foreground">
         إشعارات الصفقات وأزرار الموافقة.
       </p>
@@ -561,7 +537,7 @@ function AlertsCard({ settings }: { settings: TradingSettings }) {
   return (
     <div className="space-y-4">
       <SurfaceCard>
-        <h2 className="mb-1 font-serif text-xl font-bold">تفضيلات التنبيهات</h2>
+        <h2 className="mb-1 text-xl font-semibold">تفضيلات التنبيهات</h2>
         <p className="mb-4 text-sm text-muted-foreground">
           تحكّم في ما يصلك عبر تليجرام.
         </p>
@@ -641,7 +617,7 @@ function AlertsCard({ settings }: { settings: TradingSettings }) {
 
       <SurfaceCard>
         <div className="mb-4 flex items-center justify-between gap-2">
-          <h2 className="font-serif text-xl font-bold">سجل التنبيهات</h2>
+          <h2 className="text-xl font-semibold">سجل التنبيهات</h2>
           {log.length > 0 && (
             <button
               type="button"
@@ -773,7 +749,7 @@ function TradingCard({
 
   return (
     <SurfaceCard>
-      <h2 className="mb-1 font-serif text-xl font-bold">التداول والمخاطر</h2>
+      <h2 className="mb-1 text-xl font-semibold">التداول والمخاطر</h2>
       <p className="mb-4 text-sm text-muted-foreground">
         حدود تُفرض قبل أي صفقة.
       </p>

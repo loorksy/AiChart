@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getLimits } from "@/lib/store";
 import AppShell from "@/components/AppShell";
-import { SurfaceCard } from "@/components/ui/shell";
+import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import { Send } from "lucide-react";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -20,22 +20,17 @@ export default async function PlanPage() {
 
   return (
     <AppShell email={user.email} role={user.role}>
-      <main className="page-shell max-w-lg space-y-4">
-        <div>
-          <h1 className="page-title">الخطة</h1>
-          <p className="page-subtitle">حالة اشتراكك والرصيد</p>
-        </div>
-
+      <PageLayout title="الخطة" subtitle="حالة اشتراكك والرصيد" maxWidth="lg">
         <SurfaceCard className="space-y-4">
           <div>
             <p className="text-sm text-muted-foreground">حالة الحساب</p>
-            <p className="font-serif text-2xl font-bold">
+            <p className="text-2xl font-semibold">
               {STATUS_LABEL[user.status]}
             </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">الرصيد اليومي</p>
-            <p className="font-serif text-2xl font-bold">
+            <p className="text-2xl font-semibold">
               {limits.claude_quota}{" "}
               <span className="text-base font-normal text-muted-foreground">
                 رسالة / يوم
@@ -63,7 +58,7 @@ export default async function PlanPage() {
         >
           العودة للوحة
         </Link>
-      </main>
+      </PageLayout>
     </AppShell>
   );
 }

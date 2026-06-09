@@ -54,19 +54,13 @@ export default function AuthForm({
   return (
     <div className="flex min-h-dvh">
       <div className="flex w-full flex-col justify-center bg-background px-6 py-10 sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">
-        <Link href="/" className="mb-10 flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <span className="text-xl font-bold">
-            Ai<span className="text-primary">Chart</span>
-          </span>
+        <Link href="/" className="mb-10 flex items-center gap-2 text-lg font-semibold">
+          <Sparkles className="h-5 w-5" />
+          AiChart
         </Link>
 
-        <h1 className="text-3xl font-bold leading-tight text-foreground">
-          {isLogin ? "تداول بذكاء" : "ابدأ رحلتك"}
-          <br />
-          <span className="text-primary">على Binance</span>
+        <h1 className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
+          {isLogin ? "مرحباً بعودتك" : "إنشاء حساب جديد"}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
           {canUseTelegram

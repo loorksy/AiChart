@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TradingSettings } from "@/lib/types";
+import { PageLayout } from "@/components/ui/shell";
 
 const EXPERT_STEPS = ["المستوى", "Binance", "الإعدادات", "تليجرام"] as const;
 const BEGINNER_STEPS = [
@@ -135,11 +136,11 @@ export default function OnboardingClient({
   }
 
   return (
-    <main className="page-shell max-w-2xl">
-      <h1 className="page-title mb-2 text-3xl">إعداد حسابك</h1>
-      <p className="page-subtitle mb-8">
-        خطوات سريعة قبل البدء — يمكنك تعديل كل شيء لاحقاً من الإعدادات.
-      </p>
+    <PageLayout
+      title="إعداد حسابك"
+      subtitle="خطوات سريعة قبل البدء — يمكنك تعديل كل شيء لاحقاً من الإعدادات."
+      maxWidth="2xl"
+    >
 
       <div className="mb-8 flex gap-2">
         {STEPS.map((label, i) => (
@@ -466,6 +467,6 @@ export default function OnboardingClient({
           </div>
         </section>
       )}
-    </main>
+    </PageLayout>
   );
 }

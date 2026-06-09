@@ -7,6 +7,7 @@ import type { Trade, TradeIntent } from "@/lib/types";
 import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
 import { useAgentActivities } from "@/hooks/useAgentActivities";
 import { MessageLoading } from "@/components/ui/message-loading";
+import { PageLayout, SectionTitle } from "@/components/ui/shell";
 import { consumeSse } from "@/lib/sse";
 
 const STATUS_AR: Record<string, string> = {
@@ -113,11 +114,9 @@ export default function TradesClient({
   }
 
   return (
-    <main className="page-shell max-w-5xl">
-      <h1 className="page-title mb-6">الصفقات</h1>
-
+    <PageLayout title="الصفقات" subtitle="موافقة، تنفيذ، وإغلاق الصفقات">
       <section className="mb-8">
-        <h2 className="mb-3 font-bold text-foreground">بانتظار موافقتك ({pending.length})</h2>
+        <SectionTitle>بانتظار موافقتك ({pending.length})</SectionTitle>
         {pending.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد صفقات بانتظار موافقتك.</p>
         ) : (
@@ -183,9 +182,7 @@ export default function TradesClient({
 
       {openTrades.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 font-bold text-foreground">
-            صفقات مفتوحة ({openTrades.length})
-          </h2>
+          <SectionTitle>صفقات مفتوحة ({openTrades.length})</SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2">
             {openTrades.map((t) => (
               <div key={t.id} className="surface-card p-4">
@@ -214,7 +211,7 @@ export default function TradesClient({
       )}
 
       <section className="mb-8">
-        <h2 className="mb-3 font-bold text-foreground">سجل الصفقات</h2>
+        <SectionTitle>سجل الصفقات</SectionTitle>
         {closedTrades.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد صفقات مغلقة بعد.</p>
         ) : (
@@ -262,7 +259,7 @@ export default function TradesClient({
 
       {history.length > 0 && (
         <section>
-          <h2 className="mb-3 font-bold text-foreground">سجلّ الطلبات</h2>
+          <SectionTitle>سجلّ الطلبات</SectionTitle>
           <div className="space-y-2">
             {history.map((i) => (
               <div
@@ -281,6 +278,6 @@ export default function TradesClient({
           </div>
         </section>
       )}
-    </main>
+    </PageLayout>
   );
 }

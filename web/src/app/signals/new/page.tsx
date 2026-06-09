@@ -12,7 +12,7 @@ export default async function SignalsNewPage() {
   }
 
   return (
-    <AppShell email={user.email} role={user.role} hideBottomNav>
+    <AppShell email={user.email} role={user.role}>
       <SignalsWizardClient />
     </AppShell>
   );

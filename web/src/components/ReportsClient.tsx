@@ -14,7 +14,7 @@ import {
 } from "@/lib/analytics";
 import { exportReportPdf, exportTradesCsv } from "@/lib/reportExport";
 import { cn } from "@/lib/utils";
-import { SurfaceCard } from "@/components/ui/shell";
+import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { PeriodSelector } from "@/components/charts/PeriodSelector";
 
@@ -38,13 +38,11 @@ export default function ReportsClient({
   const worst = symbolPerf.slice(-5).reverse();
 
   return (
-    <main className="page-shell max-w-5xl space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="page-title">التقارير</h1>
-          <p className="page-subtitle">ملخص الأداء وتصدير البيانات</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <PageLayout
+      title="التقارير"
+      subtitle="ملخص الأداء وتصدير البيانات"
+      actions={
+        <>
           <button
             type="button"
             onClick={() => exportTradesCsv(filtered, `aichart-${period}.csv`)}
@@ -65,8 +63,9 @@ export default function ReportsClient({
             <Download className="h-4 w-4" />
             تصدير PDF
           </button>
-        </div>
-      </div>
+        </>
+      }
+    >
 
       <PeriodSelector value={period} onChange={setPeriod} className="w-full sm:w-auto" />
 
@@ -176,7 +175,7 @@ export default function ReportsClient({
           </SurfaceCard>
         </>
       )}
-    </main>
+    </PageLayout>
   );
 }
 

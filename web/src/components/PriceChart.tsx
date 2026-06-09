@@ -13,6 +13,8 @@ import {
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
+import type { ChartOverlay } from "@/lib/chartOverlays";
+import { OVERLAY_COLORS } from "@/lib/chartOverlays";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -20,16 +22,26 @@ interface Props {
   symbol: string;
   interval: string;
   recommendations: Recommendation[];
+  overlays?: ChartOverlay[];
   className?: string;
   fill?: boolean;
   /** Muted decorative mode for page backgrounds */
   ambient?: boolean;
 }
 
+const OVERLAY_LABELS: Record<ChartOverlay["type"], string> = {
+  entry: "دخول",
+  stop_loss: "وقف خسارة",
+  take_profit: "هدف ربح",
+  support: "دعم",
+  resistance: "مقاومة",
+};
+
 export default function PriceChart({
   symbol,
   interval,
   recommendations,
+  overlays,
   className,
   fill = false,
   ambient = false,
@@ -123,6 +135,25 @@ export default function PriceChart({
       cancelled = true;
     };
   }, [symbol, interval, ambient]);
+
+  useEffect(() => {
+    if (ambient) return;
+    const series = seriesRef.current;
+    if (!series) return;
+    const priceLines = (overlays ?? []).map((o) =>
+      series.createPriceLine({
+        price: o.price,
+        color: OVERLAY_COLORS[o.type],
+        lineWidth: 2,
+        lineStyle: o.type === "support" || o.type === "resistance" ? 2 : 0,
+        axisLabelVisible: true,
+        title: o.label ?? OVERLAY_LABELS[o.type],
+      }),
+    );
+    return () => {
+      for (const line of priceLines) series.removePriceLine(line);
+    };
+  }, [overlays, ambient]);
 
   useEffect(() => {
     if (ambient) return;

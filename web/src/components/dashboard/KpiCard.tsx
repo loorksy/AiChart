@@ -34,7 +34,7 @@ export function KpiCard({
       </div>
       <p
         className={cn(
-          "font-serif text-lg font-bold sm:text-2xl",
+          "text-lg font-semibold sm:text-2xl",
           TONE_CLASS[tone],
         )}
         dir="ltr"

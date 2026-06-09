@@ -16,7 +16,7 @@ export default async function MarketPage() {
     : parseAllowedAssets(settings.allowed_assets);
 
   return (
-    <AppShell email={user.email} role={user.role}>
+    <AppShell email={user.email} role={user.role} chatLayout>
       <MarketClient
         openAssets={openAssets}
         allowedAssets={allowed}
