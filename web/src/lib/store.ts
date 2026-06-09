@@ -64,6 +64,10 @@ const SETTABLE_FIELDS = [
   "telegram_chat_id",
   "kill_switch",
   "onboarding_done",
+  "alerts_enabled",
+  "alert_trades",
+  "alert_signals",
+  "alert_min_confidence",
 ] as const;
 
 export async function updateSettings(
@@ -608,6 +612,44 @@ export async function logAudit(
     "INSERT INTO audit_logs (user_id, action, detail) VALUES (?, ?, ?)",
     [userId, action, detail ?? null],
   );
+}
+
+export async function recordAlert(
+  userId: number,
+  alert: {
+    type: string;
+    title: string;
+    body?: string | null;
+    symbol?: string | null;
+    delivered?: boolean;
+  },
+): Promise<void> {
+  await execute(
+    `INSERT INTO alert_log (user_id, type, title, body, symbol, delivered)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      alert.type,
+      alert.title,
+      alert.body ?? null,
+      alert.symbol ?? null,
+      alert.delivered ? 1 : 0,
+    ],
+  );
+}
+
+export async function listAlerts(
+  userId: number,
+  limit = 50,
+): Promise<import("./types").AlertLog[]> {
+  return query<import("./types").AlertLog>(
+    "SELECT * FROM alert_log WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+    [userId, limit],
+  );
+}
+
+export async function clearAlerts(userId: number): Promise<void> {
+  await execute("DELETE FROM alert_log WHERE user_id = ?", [userId]);
 }
 
 export async function listAuditLogs(limit = 100): Promise<

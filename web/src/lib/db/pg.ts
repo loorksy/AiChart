@@ -43,6 +43,10 @@ const SCHEMA = `
     telegram_chat_id         TEXT,
     kill_switch              BOOLEAN NOT NULL DEFAULT FALSE,
     onboarding_done          BOOLEAN NOT NULL DEFAULT FALSE,
+    alerts_enabled           BOOLEAN NOT NULL DEFAULT TRUE,
+    alert_trades             BOOLEAN NOT NULL DEFAULT TRUE,
+    alert_signals            BOOLEAN NOT NULL DEFAULT TRUE,
+    alert_min_confidence     INTEGER NOT NULL DEFAULT 0,
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -174,6 +178,20 @@ const SCHEMA = `
     PRIMARY KEY (user_id, symbol)
   );
 
+  CREATE TABLE IF NOT EXISTS alert_log (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type       TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    body       TEXT,
+    symbol     TEXT,
+    delivered  BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_alert_log_user
+    ON alert_log (user_id, id DESC);
+
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id
     ON users (telegram_id) WHERE telegram_id IS NOT NULL;
 `;
@@ -190,6 +208,17 @@ async function migratePg(client: PoolClient) {
       )
   `).catch(() => {
     /* table may be empty on first boot */
+  });
+
+  // Advanced alert preferences on trading_settings.
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS alerts_enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS alert_trades          BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS alert_signals         BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS alert_min_confidence  INTEGER NOT NULL DEFAULT 0
+  `).catch(() => {
+    /* table may not exist yet on first boot */
   });
 }
 

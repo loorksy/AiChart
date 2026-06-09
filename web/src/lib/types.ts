@@ -36,6 +36,10 @@ export interface TradingSettings {
   telegram_chat_id: string | null;
   kill_switch: number;
   onboarding_done: number;
+  alerts_enabled: number;
+  alert_trades: number;
+  alert_signals: number;
+  alert_min_confidence: number;
   updated_at: string;
 }
 
@@ -138,4 +142,21 @@ export interface Trade {
   pnl: number;
   created_at: string;
   closed_at: string | null;
+}
+
+export type AlertType =
+  | "trade_executed"
+  | "trade_closed"
+  | "trade_failed"
+  | "signal";
+
+export interface AlertLog {
+  id: number;
+  user_id: number;
+  type: AlertType;
+  title: string;
+  body: string | null;
+  symbol: string | null;
+  delivered: number;
+  created_at: string;
 }

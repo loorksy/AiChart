@@ -5,13 +5,12 @@ import {
 } from "./store";
 import { executeIntent } from "./execution";
 import {
-  notifyUser,
-  notifyUserPhoto,
   approvalCard,
   APPROVE_BUTTON_TEXT,
   REJECT_BUTTON_TEXT,
 } from "./telegram";
 import { notifyTradeResult } from "./notifyTrade";
+import { dispatchAlert } from "./alerts";
 import { resolveChartUrl } from "./recommendationChart";
 import type { Recommendation } from "./types";
 
@@ -117,16 +116,17 @@ export async function processRecommendations(
           { text: REJECT_BUTTON_TEXT, callback_data: `reject:${intent.id}` },
         ],
       ];
-      if (settings.send_screenshot === 1) {
-        const chartUrl = await resolveChartUrl(rec);
-        if (chartUrl) {
-          await notifyUserPhoto(userId, chartUrl, caption, buttons);
-        } else {
-          await notifyUser(userId, caption, buttons);
-        }
-      } else {
-        await notifyUser(userId, caption, buttons);
-      }
+      const chartUrl =
+        settings.send_screenshot === 1 ? await resolveChartUrl(rec) : null;
+      await dispatchAlert(userId, {
+        type: "signal",
+        title: `إشارة ${intent.side === "buy" ? "شراء" : "بيع"} ${intent.symbol}`,
+        text: caption,
+        symbol: intent.symbol,
+        confidence: rec.confidence,
+        photoUrl: chartUrl,
+        buttons,
+      });
     }
   }
 

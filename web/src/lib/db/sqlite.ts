@@ -45,6 +45,10 @@ const SCHEMA = `
     telegram_chat_id         TEXT,
     kill_switch              INTEGER NOT NULL DEFAULT 0,
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
+    alerts_enabled           INTEGER NOT NULL DEFAULT 1,
+    alert_trades             INTEGER NOT NULL DEFAULT 1,
+    alert_signals            INTEGER NOT NULL DEFAULT 1,
+    alert_min_confidence     INTEGER NOT NULL DEFAULT 0,
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
@@ -186,6 +190,21 @@ const SCHEMA = `
     PRIMARY KEY (user_id, symbol),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS alert_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    type       TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    body       TEXT,
+    symbol     TEXT,
+    delivered  INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_alert_log_user
+    ON alert_log (user_id, id DESC);
 `;
 
 function migrate(db: Database.Database) {
@@ -205,6 +224,26 @@ function migrate(db: Database.Database) {
   if (!settingsCols.some((c) => c.name === "onboarding_done")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "alerts_enabled")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN alerts_enabled INTEGER NOT NULL DEFAULT 1",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "alert_trades")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN alert_trades INTEGER NOT NULL DEFAULT 1",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "alert_signals")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN alert_signals INTEGER NOT NULL DEFAULT 1",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "alert_min_confidence")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN alert_min_confidence INTEGER NOT NULL DEFAULT 0",
     );
   }
 

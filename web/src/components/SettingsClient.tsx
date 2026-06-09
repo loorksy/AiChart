@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Bell,
   CreditCard,
   LogOut,
   Moon,
@@ -11,6 +12,7 @@ import {
   Settings as SettingsIcon,
   SlidersHorizontal,
   Sun,
+  Trash2,
   User,
 } from "lucide-react";
 import {
@@ -19,6 +21,7 @@ import {
 } from "@/lib/allowedAssets";
 import type {
   AdminLimits,
+  AlertLog,
   BinanceAccountMeta,
   PublicUser,
   TradingSettings,
@@ -48,6 +51,7 @@ type TabId =
   | "subscription"
   | "appearance"
   | "integrations"
+  | "alerts"
   | "trading";
 
 const TABS: { id: TabId; label: string; icon: typeof User; desc: string }[] = [
@@ -55,6 +59,7 @@ const TABS: { id: TabId; label: string; icon: typeof User; desc: string }[] = [
   { id: "subscription", label: "الاشتراك", icon: CreditCard, desc: "الرصيد والخطة" },
   { id: "appearance", label: "المظهر", icon: Sun, desc: "السمة والعرض" },
   { id: "integrations", label: "الربط والتكامل", icon: Send, desc: "Binance وتليجرام" },
+  { id: "alerts", label: "التنبيهات", icon: Bell, desc: "إشعارات تليجرام والسجل" },
   { id: "trading", label: "التداول والمخاطر", icon: SlidersHorizontal, desc: "الحدود والإعدادات" },
 ];
 
@@ -244,6 +249,10 @@ export default function SettingsClient({
               <BinanceCard binance={binance} />
               <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
             </div>
+          )}
+
+          {tab === "alerts" && (
+            <AlertsCard settings={initialSettings} />
           )}
 
           {tab === "trading" && (
@@ -450,6 +459,241 @@ function TelegramCard({ linked }: { linked: boolean }) {
         </div>
       )}
     </SurfaceCard>
+  );
+}
+
+function ToggleRow({
+  label,
+  desc,
+  checked,
+  onChange,
+}: {
+  label: string;
+  desc?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xl bg-secondary px-4 py-3">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{label}</span>
+        {desc && (
+          <span className="block text-xs text-muted-foreground">{desc}</span>
+        )}
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-1 h-4 w-4 shrink-0 rounded border-border"
+      />
+    </label>
+  );
+}
+
+const ALERT_TYPE_LABEL: Record<string, string> = {
+  trade_executed: "تنفيذ صفقة",
+  trade_closed: "إغلاق صفقة",
+  trade_failed: "تعذّر التنفيذ",
+  signal: "إشارة تداول",
+};
+
+function AlertsCard({ settings }: { settings: TradingSettings }) {
+  const router = useRouter();
+  const [s, setS] = useState(settings);
+  const [log, setLog] = useState<AlertLog[]>([]);
+  const [loadingLog, setLoadingLog] = useState(true);
+  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
+    null,
+  );
+  const [busy, setBusy] = useState(false);
+
+  function loadLog() {
+    setLoadingLog(true);
+    void fetch("/api/alerts")
+      .then((r) => r.json())
+      .then((d) => setLog(Array.isArray(d.alerts) ? d.alerts : []))
+      .catch(() => {})
+      .finally(() => setLoadingLog(false));
+  }
+
+  useEffect(() => {
+    loadLog();
+  }, []);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alerts_enabled: Boolean(s.alerts_enabled),
+          alert_trades: Boolean(s.alert_trades),
+          alert_signals: Boolean(s.alert_signals),
+          alert_min_confidence: Number(s.alert_min_confidence),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg({ type: "err", text: data.error ?? "فشل الحفظ." });
+        return;
+      }
+      setMsg({ type: "ok", text: "تم حفظ تفضيلات التنبيهات." });
+      router.refresh();
+    } catch {
+      setMsg({ type: "err", text: "تعذّر الاتصال بالخادم." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearLog() {
+    if (!confirm("مسح سجل التنبيهات بالكامل؟")) return;
+    await fetch("/api/alerts", { method: "DELETE" });
+    setLog([]);
+  }
+
+  const master = Boolean(s.alerts_enabled);
+
+  return (
+    <div className="space-y-4">
+      <SurfaceCard>
+        <h2 className="mb-1 font-serif text-xl font-bold">تفضيلات التنبيهات</h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          تحكّم في ما يصلك عبر تليجرام.
+        </p>
+
+        <form onSubmit={save} className="space-y-3">
+          <ToggleRow
+            label="تفعيل التنبيهات"
+            desc="المفتاح الرئيسي لكل الإشعارات"
+            checked={master}
+            onChange={(v) =>
+              setS((p) => ({ ...p, alerts_enabled: v ? 1 : 0 }))
+            }
+          />
+
+          <div
+            className={cn(
+              "space-y-3 transition",
+              !master && "pointer-events-none opacity-50",
+            )}
+          >
+            <ToggleRow
+              label="تنبيهات الصفقات"
+              desc="عند تنفيذ أو إغلاق أو تعذّر صفقة"
+              checked={Boolean(s.alert_trades)}
+              onChange={(v) =>
+                setS((p) => ({ ...p, alert_trades: v ? 1 : 0 }))
+              }
+            />
+            <ToggleRow
+              label="تنبيهات إشارات الوكيل"
+              desc="عند توليد توصية تداول جديدة"
+              checked={Boolean(s.alert_signals)}
+              onChange={(v) =>
+                setS((p) => ({ ...p, alert_signals: v ? 1 : 0 }))
+              }
+            />
+
+            <Field label={`أدنى ثقة للإشارة · ${s.alert_min_confidence}%`}>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={s.alert_min_confidence}
+                onChange={(e) =>
+                  setS((p) => ({
+                    ...p,
+                    alert_min_confidence: Number(e.target.value),
+                  }))
+                }
+                className="w-full accent-primary"
+                disabled={!s.alert_signals}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                يتم تجاهل الإشارات الأقل من هذه الثقة.
+              </p>
+            </Field>
+          </div>
+
+          {msg && (
+            <p
+              className={`rounded-lg px-3 py-2 text-sm ${
+                msg.type === "ok"
+                  ? "bg-secondary text-foreground"
+                  : "bg-destructive/10 text-destructive"
+              }`}
+            >
+              {msg.text}
+            </p>
+          )}
+
+          <button className="btn btn-primary" disabled={busy}>
+            {busy ? "جارٍ الحفظ…" : "حفظ"}
+          </button>
+        </form>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <h2 className="font-serif text-xl font-bold">سجل التنبيهات</h2>
+          {log.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void clearLog()}
+              className="btn btn-danger py-1.5 text-sm"
+            >
+              <Trash2 className="h-4 w-4" />
+              مسح
+            </button>
+          )}
+        </div>
+
+        {loadingLog ? (
+          <p className="text-sm text-muted-foreground">جارٍ التحميل…</p>
+        ) : log.length === 0 ? (
+          <div className="rounded-xl bg-secondary p-6 text-center text-sm text-muted-foreground">
+            لا توجد تنبيهات بعد.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {log.map((a) => (
+              <li
+                key={a.id}
+                className="rounded-xl border border-border bg-card px-4 py-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <Bell className="h-3.5 w-3.5 text-accent-gold" />
+                    {a.title}
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-2 py-0.5 text-[11px]",
+                      a.delivered
+                        ? "bg-primary/10 text-primary"
+                        : "bg-secondary text-muted-foreground",
+                    )}
+                  >
+                    {a.delivered ? "أُرسل" : "غير مُرسل"}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{ALERT_TYPE_LABEL[a.type] ?? a.type}</span>
+                  {a.symbol && <span dir="ltr">· {a.symbol}</span>}
+                  <span dir="ltr">· {a.created_at}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SurfaceCard>
+    </div>
   );
 }
 
