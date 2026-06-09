@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Archive,
   CreditCard,
+  FileText,
   LayoutDashboard,
   LineChart,
   MessageSquare,
@@ -35,6 +36,7 @@ function isTabActive(pathname: string, href: string): boolean {
 }
 
 const SECONDARY_LINKS = [
+  { href: "/reports", label: "التقارير", icon: FileText },
   { href: "/plan", label: "الخطة", icon: CreditCard },
   { href: "/settings", label: "الإعدادات", icon: Settings },
 ] as const;

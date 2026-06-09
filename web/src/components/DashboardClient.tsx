@@ -6,15 +6,17 @@ import {
   ArrowLeftRight,
   BarChart3,
   CreditCard,
+  FileText,
   LineChart,
   Power,
   Send,
   Shield,
 } from "lucide-react";
-import type { AdminLimits, PublicUser, TradingSettings } from "@/lib/types";
+import type { AdminLimits, PublicUser, Trade, TradingSettings } from "@/lib/types";
 import { SurfaceCard } from "@/components/ui/shell";
 import { displayNameFromEmail } from "@/lib/displayName";
 import { useMe } from "@/hooks/useMe";
+import { DashboardAnalytics } from "@/components/dashboard/DashboardAnalytics";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "بانتظار الموافقة",
@@ -28,12 +30,14 @@ export default function DashboardClient({
   limits,
   hasBinance,
   pendingIntentCount = 0,
+  trades = [],
 }: {
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
   hasBinance: boolean;
   pendingIntentCount?: number;
+  trades?: Trade[];
 }) {
   const { data: me } = useMe();
   const [killOn, setKillOn] = useState(settings.kill_switch === 1);
@@ -131,6 +135,8 @@ export default function DashboardClient({
         </SurfaceCard>
       </div>
 
+      <DashboardAnalytics trades={trades} />
+
       <SurfaceCard className="space-y-3">
         <div className="flex items-start gap-3">
           <CreditCard className="mt-0.5 h-5 w-5 text-accent-gold" />
@@ -178,6 +184,16 @@ export default function DashboardClient({
             <div>
               <p className="font-medium">الشارت</p>
               <p className="text-xs text-muted-foreground">تحليل فني مباشر</p>
+            </div>
+          </SurfaceCard>
+        </Link>
+
+        <Link href="/reports" className="block">
+          <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
+            <FileText className="h-5 w-5 text-accent-gold" />
+            <div>
+              <p className="font-medium">التقارير</p>
+              <p className="text-xs text-muted-foreground">ملخصات وتصدير</p>
             </div>
           </SurfaceCard>
         </Link>
