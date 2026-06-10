@@ -36,6 +36,7 @@ export default async function DashboardPage() {
         eaConnected={forex.connected}
         eaOnline={forex.online}
         pendingIntentCount={pendingIntents.length}
+        pendingIntents={pendingIntents}
         trades={trades}
       />
     </AppShell>

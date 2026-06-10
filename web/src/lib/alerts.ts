@@ -8,13 +8,17 @@
  *  - signal alerts (new agent recommendations), gated by a confidence floor
  */
 
-import { getSettings, recordAlert, getTelegramChatId } from "./store";
+import { getSettings, getRecommendation, recordAlert, getTelegramChatId } from "./store";
 import {
   notifyUser,
   notifyUserPhoto,
+  notifyUserPhotoBuffer,
   isTelegramConfigured,
   type InlineButton,
 } from "./telegram";
+import { buildChartSnapshotBuffer } from "./chartSnapshot";
+import { overlaysFromRecommendation } from "./chartOverlays";
+import { parseChartDrawingsJson } from "./chartDrawings";
 import type { AlertType } from "./types";
 
 export interface DispatchAlertOptions {
@@ -76,7 +80,30 @@ export async function dispatchAlert(
     const canDeliver = isTelegramConfigured() && Boolean(chatId);
     if (canDeliver) {
       try {
-        if (opts.photoUrl) {
+        if (opts.photoUrl?.startsWith("/api/chart-image/")) {
+          const recId = Number(opts.photoUrl.split("/").pop());
+          const rec =
+            Number.isFinite(recId) && recId > 0
+              ? await getRecommendation(recId)
+              : null;
+          const settings = await getSettings(userId);
+          if (rec && settings.send_screenshot === 1) {
+            const buffer = await buildChartSnapshotBuffer({
+              symbol: rec.symbol,
+              interval: rec.timeframe ?? "1h",
+              overlays: overlaysFromRecommendation(rec),
+              drawings: parseChartDrawingsJson(rec.chart_drawings_json),
+              patternName: rec.pattern_name,
+            });
+            if (buffer) {
+              await notifyUserPhotoBuffer(userId, buffer, body, opts.buttons);
+            } else {
+              await notifyUser(userId, body, opts.buttons);
+            }
+          } else {
+            await notifyUser(userId, body, opts.buttons);
+          }
+        } else if (opts.photoUrl) {
           await notifyUserPhoto(userId, opts.photoUrl, body, opts.buttons);
         } else {
           await notifyUser(userId, body, opts.buttons);
@@ -94,6 +121,7 @@ export async function dispatchAlert(
     title: opts.title,
     body: opts.text ?? null,
     symbol: opts.symbol ?? null,
+    image_url: opts.photoUrl ?? null,
     delivered,
   });
 }

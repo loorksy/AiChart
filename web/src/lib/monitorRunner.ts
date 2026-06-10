@@ -12,7 +12,7 @@ import { resolveMonitorAssets } from "./allowedAssets";
 import { scanSymbol } from "./monitor";
 import { processRecommendations } from "./tradeFlow";
 import { isAnthropicConfigured } from "./anthropic";
-import { notifyUser } from "./telegram";
+import { notifyRecommendation } from "./recommendationChart";
 
 export interface MonitorCycleResult {
   usersScanned: number;
@@ -84,12 +84,10 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
             (r) => r.action === "buy" || r.action === "sell",
           );
           if (actionable.length) {
-            await notifyUser(
-              userId,
-              `🔔 <b>فرصة مرصودة · Opportunity detected</b>\n` +
-                `${symbol}: ${actionable[0].action.toUpperCase()} (${actionable[0].confidence}%)\n` +
-                `${actionable[0].rationale ?? ""}`,
-            );
+            await notifyRecommendation(userId, actionable[0], {
+              notifyTelegram: true,
+              notifyWeb: true,
+            });
           }
         }
       } catch (e) {

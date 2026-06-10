@@ -332,6 +332,21 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
+    ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS image_url TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS last_manual_scan_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS scan_poll_minutes INTEGER NOT NULL DEFAULT 0
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS analysis_interval TEXT NOT NULL DEFAULT '1h'
+  `).catch(() => {});
+
+  await client.query(`
     ALTER TABLE recommendations
       ADD COLUMN IF NOT EXISTS chart_drawings_json TEXT,
       ADD COLUMN IF NOT EXISTS pattern_name TEXT,

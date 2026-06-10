@@ -156,6 +156,44 @@ export async function sendPhoto(
   });
 }
 
+export async function sendPhotoBuffer(
+  chatId: string | number,
+  buffer: Buffer,
+  caption?: string,
+  buttons?: InlineButton[][],
+): Promise<void> {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append(
+    "photo",
+    new Blob([new Uint8Array(buffer)], { type: "image/png" }),
+    "chart.png",
+  );
+  if (caption) {
+    form.append("caption", caption);
+    form.append("parse_mode", "HTML");
+  }
+  if (buttons) {
+    form.append(
+      "reply_markup",
+      JSON.stringify({ inline_keyboard: buttons }),
+    );
+  }
+
+  const res = await fetch(`${API}/bot${token()}/sendPhoto`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    ok: boolean;
+    description?: string;
+  };
+  if (!data.ok) {
+    throw new Error(data.description || "Telegram sendPhoto failed");
+  }
+}
+
 /** Sends a chart screenshot with optional caption to a linked user. */
 export async function notifyUserPhoto(
   userId: number,
@@ -170,6 +208,24 @@ export async function notifyUserPhoto(
     await sendPhoto(chatId, photoUrl, caption, buttons);
   } catch (e) {
     console.error("[telegram] photo notify failed", e);
+    if (caption) await notifyUser(userId, caption, buttons);
+  }
+}
+
+/** Sends PNG bytes directly (avoids long QuickChart URLs). */
+export async function notifyUserPhotoBuffer(
+  userId: number,
+  buffer: Buffer,
+  caption?: string,
+  buttons?: InlineButton[][],
+): Promise<void> {
+  if (!isTelegramConfigured()) return;
+  const chatId = await getTelegramChatId(userId);
+  if (!chatId) return;
+  try {
+    await sendPhotoBuffer(chatId, buffer, caption, buttons);
+  } catch (e) {
+    console.error("[telegram] photo buffer notify failed", e);
     if (caption) await notifyUser(userId, caption, buttons);
   }
 }

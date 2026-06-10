@@ -69,6 +69,15 @@ export default function PriceChart({
   const [loading, setLoading] = useState(!ambient);
   const [error, setError] = useState<string | null>(null);
   const [legendItems, setLegendItems] = useState<LegendItem[]>([]);
+  const stableBarTimeRef = useRef(0);
+
+  function parseRecTime(createdAt: string): number {
+    const normalized = createdAt.includes("T")
+      ? createdAt
+      : `${createdAt.replace(" ", "T")}Z`;
+    const ms = Date.parse(normalized);
+    return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
+  }
 
   useEffect(() => {
     const el = containerRef.current;
@@ -122,6 +131,19 @@ export default function PriceChart({
   }, [ambient]);
 
   useEffect(() => {
+    const el = containerRef.current;
+    const chart = chartRef.current;
+    if (!el || !chart || ambient) return;
+
+    const ro = new ResizeObserver(() => {
+      chart.resize(el.clientWidth, el.clientHeight);
+      chart.timeScale().fitContent();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ambient]);
+
+  useEffect(() => {
     let cancelled = false;
     const load = async () => {
       if (!ambient) {
@@ -143,10 +165,18 @@ export default function PriceChart({
         const candles = (data.candles ?? []) as CandlestickData<UTCTimestamp>[];
         series.setData(candles);
         const last = candles[candles.length - 1];
-        if (last) setLastBarTime(Number(last.time));
+        if (last) {
+          const t = Number(last.time);
+          setLastBarTime(t);
+          stableBarTimeRef.current = t;
+        }
         chartRef.current?.timeScale().fitContent();
         if (!ambient && candles.length === 0 && data.pending) {
-          setError("بانتظار بيانات MetaTrader لهذا الرمز. تأكد أن EA يبثّ هذا الزوج.");
+          setError(
+            market === "forex"
+              ? "بانتظار بيانات MetaTrader — ربط EA من الإعدادات → التكاملات"
+              : "لا توجد بيانات شارت لهذا الرمز.",
+          );
         }
       } catch {
         if (!cancelled && !ambient) setError("تعذّر تحميل بيانات الشارت.");
@@ -205,7 +235,7 @@ export default function PriceChart({
       chart,
       candleSeries,
       drawings ?? [],
-      lastBarTime,
+      stableBarTimeRef.current || lastBarTime,
       interval,
     );
     setLegendItems(result.legendItems);
@@ -224,8 +254,7 @@ export default function PriceChart({
     const recMarkers = recommendations
       .filter((r) => r.symbol === symbol.toUpperCase() && r.action !== "wait")
       .map<SeriesMarker<Time>>((r) => ({
-        time: (Math.floor(new Date(r.created_at + "Z").getTime() / 1000) ||
-          0) as UTCTimestamp,
+        time: parseRecTime(r.created_at) as UTCTimestamp,
         position: r.action === "buy" ? "belowBar" : "aboveBar",
         color: r.action === "buy" ? "#22c55e" : "#ef4444",
         shape: r.action === "buy" ? "arrowUp" : "arrowDown",

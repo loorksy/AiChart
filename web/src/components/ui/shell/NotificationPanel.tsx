@@ -149,6 +149,13 @@ export function NotificationPanel({
                     )}
                   >
                     <p className="font-medium leading-snug">{a.title}</p>
+                    {a.image_url && (
+                      <img
+                        src={a.image_url}
+                        alt=""
+                        className="mt-2 max-h-24 w-full rounded-md border border-border/50 object-cover"
+                      />
+                    )}
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {ALERT_TYPE_LABEL[a.type] ?? a.type}
                       {a.symbol && (

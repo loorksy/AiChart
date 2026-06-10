@@ -366,6 +366,19 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN active_market TEXT NOT NULL DEFAULT 'crypto'",
     );
   }
+  if (!settingsCols.some((c) => c.name === "last_manual_scan_at")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN last_manual_scan_at TEXT");
+  }
+  if (!settingsCols.some((c) => c.name === "scan_poll_minutes")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN scan_poll_minutes INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "analysis_interval")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN analysis_interval TEXT NOT NULL DEFAULT '1h'",
+    );
+  }
 
   const tradeCols = db
     .prepare("PRAGMA table_info(trades)")
@@ -399,6 +412,9 @@ function migrate(db: Database.Database) {
     .all() as { name: string }[];
   if (!alertCols.some((c) => c.name === "read_at")) {
     db.exec("ALTER TABLE alert_log ADD COLUMN read_at TEXT");
+  }
+  if (!alertCols.some((c) => c.name === "image_url")) {
+    db.exec("ALTER TABLE alert_log ADD COLUMN image_url TEXT");
   }
 
   const userCols = db

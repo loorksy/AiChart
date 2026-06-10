@@ -240,3 +240,47 @@ export async function buildChartSnapshotUrl(
     return null;
   }
 }
+
+/** PNG bytes via QuickChart POST (reliable for Telegram multipart upload). */
+export async function buildChartSnapshotBuffer(
+  input: ChartSnapshotInput,
+): Promise<Buffer | null> {
+  try {
+    const limit = input.limit ?? 80;
+    const candles = await getKlines(
+      input.symbol.toUpperCase(),
+      input.interval,
+      limit,
+      "prod",
+    );
+    if (candles.length < 10) return null;
+
+    const url = await buildChartSnapshotUrl(input);
+    if (!url) return null;
+
+    const chartParam = url.split("&c=")[1];
+    if (!chartParam) return null;
+    const chart = JSON.parse(decodeURIComponent(chartParam));
+
+    const res = await fetch("https://quickchart.io/chart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chart,
+        width: 900,
+        height: 480,
+        backgroundColor: "#0a0e17",
+        format: "png",
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+export function chartImagePathForRecommendation(recId: number): string {
+  return `/api/chart-image/${recId}`;
+}

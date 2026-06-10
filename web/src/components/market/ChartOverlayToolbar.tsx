@@ -1,6 +1,17 @@
 "use client";
 
-import { EyeOff, Loader2, Maximize2, Minimize2, Sparkles, TrendingDown, TrendingUp, Wifi, WifiOff } from "lucide-react";
+import {
+  EyeOff,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Radar,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import Link from "next/link";
 import { formatTickerPrice } from "@/components/market/formatLevel";
 import { IntervalPicker } from "@/components/market/IntervalPicker";
@@ -30,6 +41,8 @@ export function ChartOverlayToolbar({
   onIntervalChange,
   isAnalyzing,
   onAnalyze,
+  isScanning,
+  onQuickScan,
   isFullscreen,
   onToggleFullscreen,
   hasChartLayers,
@@ -52,6 +65,8 @@ export function ChartOverlayToolbar({
   onIntervalChange: (v: string) => void;
   isAnalyzing: boolean;
   onAnalyze: () => void;
+  isScanning?: boolean;
+  onQuickScan?: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   hasChartLayers?: boolean;
@@ -149,6 +164,28 @@ export function ChartOverlayToolbar({
           title="إخفاء الرسم"
         >
           <EyeOff className="h-3.5 w-3.5" />
+        </button>
+      )}
+
+      {onQuickScan && (
+        <button
+          type="button"
+          onClick={onQuickScan}
+          disabled={isScanning}
+          className={cn(
+            CTRL,
+            "pointer-events-auto px-2 text-chart-1",
+            isScanning && "opacity-60",
+          )}
+          aria-label={`مسح ${symbol} على ${interval}`}
+          title={`المسح على ${symbol} · ${interval}`}
+        >
+          {isScanning ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Radar className="h-3.5 w-3.5" />
+          )}
+          <span className="hidden sm:inline">مسح</span>
         </button>
       )}
 

@@ -397,12 +397,12 @@ async function executeTool(
             drawings.length > 0 ? JSON.stringify(drawings) : null,
           analysis_tier: profile.tier,
         });
-        const notifyTelegram =
+        const notifyAdvisory =
           (rec.action === "buy" || rec.action === "sell") &&
           ctx.settings.mode === "advisory" &&
           !ctx.telegramSession;
         const enriched = await attachChartToRecommendation(ctx.userId, rec, {
-          notifyTelegram,
+          notify: notifyAdvisory,
           drawings,
         });
         recorded.push(enriched);

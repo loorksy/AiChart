@@ -18,6 +18,7 @@ import {
 import {
   isOpenAssetsPolicy,
   parseAllowedAssets,
+  parseWatchlist,
 } from "@/lib/allowedAssets";
 import type {
   AdminLimits,
@@ -712,6 +713,9 @@ function TradingCard({
   const [forexAssets, setForexAssets] = useState(
     parseAllowedAssets(settings.allowed_assets, "forex").join(", "),
   );
+  const [watchlist, setWatchlist] = useState(
+    parseWatchlist(settings.allowed_assets).join(", "),
+  );
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
     null,
   );
@@ -755,8 +759,11 @@ function TradingCard({
           allowed_assets: {
             crypto: openAssets ? [] : parseCsv(assets),
             forex: forexOpen ? [] : parseCsv(forexAssets),
+            watchlist: parseCsv(watchlist),
           },
           send_screenshot: Boolean(s.send_screenshot),
+          scan_poll_minutes: Number(s.scan_poll_minutes ?? 0),
+          analysis_interval: s.analysis_interval ?? "1h",
           telegram_chat_id: s.telegram_chat_id || null,
           kill_switch: Boolean(s.kill_switch),
         }),
@@ -948,6 +955,52 @@ function TradingCard({
           </p>
         </Field>
 
+        <Field label="إطار المسح الافتراضي">
+          <select
+            className="input"
+            value={s.analysis_interval ?? "1h"}
+            onChange={(e) => set("analysis_interval", e.target.value)}
+          >
+            <option value="15m">15 دقيقة</option>
+            <option value="1h">1 ساعة</option>
+            <option value="4h">4 ساعات</option>
+            <option value="1d">يوم</option>
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            يُستخدم في «ابحث عن صفقة» والمسح التلقائي عند عدم اختيار إطار من
+            الشارت.
+          </p>
+        </Field>
+
+        <Field label="مسح تلقائي أثناء الجلسة (دقيقة)">
+          <select
+            className="input"
+            value={s.scan_poll_minutes ?? 0}
+            onChange={(e) =>
+              set("scan_poll_minutes", Number(e.target.value))
+            }
+          >
+            <option value={0}>معطّل</option>
+            <option value={5}>كل 5 دقائق</option>
+            <option value={15}>كل 15 دقيقة</option>
+            <option value={30}>كل 30 دقيقة</option>
+          </select>
+        </Field>
+
+        <div className="sm:col-span-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(s.send_screenshot)}
+              onChange={(e) =>
+                set("send_screenshot", e.target.checked ? 1 : 0)
+              }
+              className="rounded border-border"
+            />
+            <span>إرسال صورة الشارت مع التوصيات (تليجرام والموقع)</span>
+          </label>
+        </div>
+
         <div className="sm:col-span-2 space-y-4">
           <div className="space-y-2 rounded-xl border border-border/60 p-3">
             <p className="text-sm font-medium">الأصول المسموحة · كريبتو (Binance)</p>
@@ -973,6 +1026,15 @@ function TradingCard({
                 />
               </Field>
             )}
+            <Field label="قائمة المسح (watchlist) — 5–20 زوج للبحث عن صفقة">
+              <input
+                className="input"
+                dir="ltr"
+                value={watchlist}
+                onChange={(e) => setWatchlist(e.target.value)}
+                placeholder="BTCUSDT, ETHUSDT, SOLUSDT (فارغ = أفضل الأزواج حسب الحجم)"
+              />
+            </Field>
           </div>
 
           <div className="space-y-2 rounded-xl border border-border/60 p-3">

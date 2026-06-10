@@ -75,6 +75,9 @@ const SETTABLE_FIELDS = [
   "alert_trades",
   "alert_signals",
   "alert_min_confidence",
+  "last_manual_scan_at",
+  "scan_poll_minutes",
+  "analysis_interval",
 ] as const;
 
 export async function updateSettings(
@@ -842,20 +845,29 @@ export async function recordAlert(
     title: string;
     body?: string | null;
     symbol?: string | null;
+    image_url?: string | null;
     delivered?: boolean;
   },
 ): Promise<void> {
   await execute(
-    `INSERT INTO alert_log (user_id, type, title, body, symbol, delivered)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO alert_log (user_id, type, title, body, symbol, image_url, delivered)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       alert.type,
       alert.title,
       alert.body ?? null,
       alert.symbol ?? null,
+      alert.image_url ?? null,
       alert.delivered ? 1 : 0,
     ],
+  );
+}
+
+export async function touchManualScan(userId: number): Promise<void> {
+  await execute(
+    "UPDATE trading_settings SET last_manual_scan_at = datetime('now') WHERE user_id = ?",
+    [userId],
   );
 }
 

@@ -106,6 +106,21 @@ export default function OnboardingClient({
     }
   }
 
+  async function quickWaitPath() {
+    const ok = await save({
+      mode: "auto",
+      approval: "delegate",
+      style: "balanced",
+      per_trade_pct: perTrade,
+      max_open_trades: 3,
+      finish: true,
+    });
+    if (ok) {
+      router.push("/dashboard");
+      router.refresh();
+    }
+  }
+
   async function fetchSuggestion() {
     setSuggestBusy(true);
     setError(null);
@@ -213,6 +228,29 @@ export default function OnboardingClient({
             className="btn btn-primary w-full"
           >
             التالي
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              const ok = await save({
+                experience,
+                mode: "auto",
+                approval: "delegate",
+                style: "balanced",
+                per_trade_pct: 10,
+                max_open_trades: 3,
+                daily_loss_limit_pct: 5,
+                finish: true,
+              });
+              if (ok) {
+                router.push("/dashboard");
+                router.refresh();
+              }
+            }}
+            className="btn btn-secondary w-full text-sm"
+          >
+            مسار سريع: خذ صفقة وانتظر (الوكيل يبحث نيابة عني)
           </button>
         </section>
       )}
@@ -426,6 +464,15 @@ export default function OnboardingClient({
               />
             </>
           )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void quickWaitPath()}
+            className="btn btn-secondary w-full text-sm"
+          >
+            إعداد «خذ صفقة وانتظر» والذهاب للوحة
+          </button>
+
           <div className="flex gap-3">
             <button
               onClick={() => setStep(isBeginner ? 2 : 1)}

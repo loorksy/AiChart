@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, handleError } from "@/lib/api";
 import { getSettings, getLimits, updateSettings } from "@/lib/store";
-import { serializeMarketAssets, setMarketAssets } from "@/lib/allowedAssets";
+import {
+  serializeMarketAssets,
+  setMarketAssets,
+  setWatchlist,
+} from "@/lib/allowedAssets";
+import { normalizeInterval } from "@/lib/intervals";
 
 const assetList = z.array(z.string().max(20)).max(200);
 
@@ -23,7 +28,11 @@ const schema = z
     // Legacy array (crypto whitelist) OR structured per-market object.
     allowed_assets: z.union([
       assetList,
-      z.object({ crypto: assetList.optional(), forex: assetList.optional() }),
+      z.object({
+        crypto: assetList.optional(),
+        forex: assetList.optional(),
+        watchlist: assetList.optional(),
+      }),
     ]),
     active_market: z.enum(["crypto", "forex"]),
     send_screenshot: z.boolean(),
@@ -33,6 +42,8 @@ const schema = z
     alert_trades: z.boolean(),
     alert_signals: z.boolean(),
     alert_min_confidence: z.number().int().min(0).max(100),
+    scan_poll_minutes: z.number().int().min(0).max(120),
+    analysis_interval: z.string().min(2).max(4),
   })
   .partial();
 
@@ -85,6 +96,7 @@ export async function PUT(req: NextRequest) {
         let raw = current.allowed_assets;
         if (obj.crypto !== undefined) raw = setMarketAssets(raw, "crypto", obj.crypto);
         if (obj.forex !== undefined) raw = setMarketAssets(raw, "forex", obj.forex);
+        if (obj.watchlist !== undefined) raw = setWatchlist(raw, obj.watchlist);
         patch.allowed_assets = raw || serializeMarketAssets({ crypto: [], forex: [] });
       }
     }
@@ -102,6 +114,9 @@ export async function PUT(req: NextRequest) {
     }
     if (typeof input.alert_signals === "boolean") {
       patch.alert_signals = input.alert_signals ? 1 : 0;
+    }
+    if (input.analysis_interval) {
+      patch.analysis_interval = normalizeInterval(input.analysis_interval);
     }
 
     await updateSettings(user.id, patch);

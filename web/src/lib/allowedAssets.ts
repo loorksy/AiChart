@@ -13,6 +13,8 @@ export const OPEN_ASSETS_TOKEN = "*";
 export interface MarketAssets {
   crypto: string[]; // [] or ["*"] => open
   forex: string[]; // [] or ["*"] => open
+  /** Optional scan watchlist (crypto symbols); overrides top-volume when set. */
+  watchlist?: string[];
 }
 
 /**
@@ -32,6 +34,9 @@ export function parseMarketAssets(raw: string): MarketAssets {
       const obj = parsed as Record<string, unknown>;
       if (Array.isArray(obj.crypto)) out.crypto = obj.crypto.map((s) => String(s));
       if (Array.isArray(obj.forex)) out.forex = obj.forex.map((s) => String(s));
+      if (Array.isArray(obj.watchlist)) {
+        out.watchlist = obj.watchlist.map((s) => String(s));
+      }
     }
   } catch {
     /* fall through to defaults (open) */
@@ -50,6 +55,7 @@ export function serializeMarketAssets(assets: MarketAssets): string {
   return JSON.stringify({
     crypto: assets.crypto,
     forex: assets.forex,
+    watchlist: assets.watchlist ?? [],
   });
 }
 
@@ -62,6 +68,13 @@ export function setMarketAssets(
   const assets = parseMarketAssets(raw);
   if (market === "forex") assets.forex = list;
   else assets.crypto = list;
+  return serializeMarketAssets(assets);
+}
+
+/** Updates scan watchlist while preserving crypto/forex lists. */
+export function setWatchlist(raw: string, list: string[]): string {
+  const assets = parseMarketAssets(raw);
+  assets.watchlist = list;
   return serializeMarketAssets(assets);
 }
 
@@ -114,10 +127,48 @@ export async function resolveMonitorAssets(
   raw: string,
   topLimit = MONITOR_TOP_SYMBOL_LIMIT,
 ): Promise<string[]> {
+  const watchlist = parseWatchlist(raw);
+  if (watchlist.length > 0) return watchlist.slice(0, topLimit);
+
   if (isOpenAssetsPolicy(raw, "crypto")) {
     return getTopUsdtSpotSymbolsByVolume(topLimit);
   }
   return parseAllowedAssets(raw, "crypto");
+}
+
+/** Explicit watchlist from structured allowed_assets (empty if unset). */
+export function parseWatchlist(raw: string): string[] {
+  return cleanList(parseMarketAssets(raw).watchlist ?? []);
+}
+
+/** Assets for manual / user-triggered scans (watchlist → monitor list). */
+export async function resolveScanAssets(
+  raw: string,
+  topLimit = MONITOR_TOP_SYMBOL_LIMIT,
+): Promise<string[]> {
+  return resolveMonitorAssets(raw, topLimit);
+}
+
+const FOREX_SCAN_FALLBACK = ["EURUSD", "XAUUSD", "GBPUSD"];
+
+/** Scan symbol list for a market (crypto uses watchlist/top volume; forex uses allowed list). */
+export async function resolveScanAssetsForMarket(
+  raw: string,
+  market: MarketType,
+  topLimit = MONITOR_TOP_SYMBOL_LIMIT,
+): Promise<string[]> {
+  if (market === "forex") {
+    const watchlist = parseWatchlist(raw);
+    if (watchlist.length > 0) {
+      return watchlist.slice(0, topLimit);
+    }
+    if (isOpenAssetsPolicy(raw, "forex")) {
+      const allowed = parseAllowedAssets(raw, "forex");
+      return allowed.length > 0 ? allowed.slice(0, topLimit) : FOREX_SCAN_FALLBACK;
+    }
+    return parseAllowedAssets(raw, "forex").slice(0, topLimit);
+  }
+  return resolveScanAssets(raw, topLimit);
 }
 
 export function allowedAssetsLabel(raw: string, market: MarketType = "crypto"): string {

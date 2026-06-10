@@ -20,6 +20,11 @@ import { consumeSse } from "@/lib/sse";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 import { useEaLivePrice } from "@/hooks/useEaLivePrice";
+import { normalizeInterval } from "@/lib/intervals";
+
+const LS_SYMBOL = "aichart_last_symbol";
+const LS_INTERVAL = "aichart_last_interval";
+const LS_MARKET = "aichart_last_market";
 
 interface Instrument {
   symbol: string;
@@ -85,12 +90,21 @@ export default function MarketClient({
   const [symbol, setSymbol] = useState(
     openAssets ? DEFAULT_SYMBOL[initialMarket] : symbols[0] ?? DEFAULT_SYMBOL[initialMarket],
   );
-  const [interval, setMarketInterval] = useState("1h");
+  const [interval, setMarketInterval] = useState<string>(() => {
+    if (typeof window === "undefined") return "1h";
+    try {
+      const stored = localStorage.getItem(LS_INTERVAL);
+      return stored ? normalizeInterval(stored) : "1h";
+    } catch {
+      return "1h";
+    }
+  });
   const [search, setSearch] = useState("");
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [loadingInstruments, setLoadingInstruments] = useState(false);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [analysisText, setAnalysisText] = useState("");
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [overlays, setOverlays] = useState<ChartOverlay[]>([]);
@@ -141,6 +155,28 @@ export default function MarketClient({
     const t = window.setTimeout(() => void fetchInstruments(search), 300);
     return () => window.clearTimeout(t);
   }, [search, fetchInstruments]);
+
+  useEffect(() => {
+    try {
+      const storedMarket = localStorage.getItem(LS_MARKET);
+      const storedSymbol = localStorage.getItem(LS_SYMBOL);
+      if (storedSymbol && storedMarket === market) {
+        setSymbol(storedSymbol);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [market]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_SYMBOL, symbol);
+      localStorage.setItem(LS_INTERVAL, interval);
+      localStorage.setItem(LS_MARKET, market);
+    } catch {
+      /* ignore */
+    }
+  }, [symbol, interval, market]);
 
   // When the market switches, reset to that market's default symbol + state.
   const handleMarketChange = useCallback(
@@ -241,6 +277,43 @@ export default function MarketClient({
           ),
     );
     setDrawings(parseChartDrawingsJson(rec.chart_drawings_json));
+  }
+
+  async function handleQuickScan() {
+    if (isScanning) return;
+    setIsScanning(true);
+    setAnalyzeError(null);
+    try {
+      const res = await fetch("/api/opportunities/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deep: false,
+          skipCooldown: true,
+          symbol,
+          interval,
+          market,
+          focusOnly: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAnalyzeError(
+          (data as { error?: string }).error ?? "تعذّر المسح.",
+        );
+        return;
+      }
+      const count = (data as { candidates?: unknown[] }).candidates?.length ?? 0;
+      setToast(
+        count > 0
+          ? `وُجدت ${count} فرصة على ${symbol} · ${interval}`
+          : `لا فرص واضحة على ${symbol} · ${interval}`,
+      );
+    } catch {
+      setAnalyzeError("تعذّر الاتصال أثناء المسح.");
+    } finally {
+      setIsScanning(false);
+    }
   }
 
   async function handleAnalyze() {
@@ -366,6 +439,8 @@ export default function MarketClient({
               onIntervalChange={setMarketInterval}
               isAnalyzing={isAnalyzing}
               onAnalyze={() => void handleAnalyze()}
+              isScanning={isScanning}
+              onQuickScan={() => void handleQuickScan()}
               isFullscreen={isFullscreen}
               onToggleFullscreen={() => void toggleFullscreen()}
               hasChartLayers={overlays.length > 0 || drawings.length > 0}

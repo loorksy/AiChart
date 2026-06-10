@@ -16,6 +16,7 @@ import {
 } from "./chartDrawings";
 import type { ProcessedIntent } from "./tradeFlow";
 import { updateRecommendationContext } from "./store";
+import { attachChartToRecommendation } from "./recommendationChart";
 
 export const MARKET_ANALYZE_COST = 3;
 
@@ -123,6 +124,21 @@ export async function runMarketAnalyze(
         )
       : [];
 
+  let telegramSent = intents.some((i) => i.status === "pending");
+
+  if (
+    rec &&
+    (rec.action === "buy" || rec.action === "sell") &&
+    intents.length === 0
+  ) {
+    const enriched = await attachChartToRecommendation(userId, rec, {
+      notify: true,
+      drawings,
+    });
+    rec = enriched;
+    telegramSent = true;
+  }
+
   return {
     reply: result.reply,
     overlays: overlaysFromAnalysis(rec ?? undefined, snap),
@@ -133,6 +149,6 @@ export async function runMarketAnalyze(
     profileLabel: profile.labelAr,
     analysisTier: profile.tier,
     contextSummary: ctx ? contextSummary(ctx) : [],
-    telegramSent: intents.some((i) => i.status === "pending"),
+    telegramSent,
   };
 }

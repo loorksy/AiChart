@@ -17,6 +17,9 @@ import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import { displayNameFromEmail } from "@/lib/displayName";
 import { useMe } from "@/hooks/useMe";
 import { DashboardAnalytics } from "@/components/dashboard/DashboardAnalytics";
+import { WaitingRoom } from "@/components/dashboard/WaitingRoom";
+import { parseWatchlist } from "@/lib/allowedAssets";
+import type { TradeIntent } from "@/lib/types";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "بانتظار الموافقة",
@@ -32,6 +35,7 @@ export default function DashboardClient({
   eaConnected = false,
   eaOnline = false,
   pendingIntentCount = 0,
+  pendingIntents = [],
   trades = [],
 }: {
   user: PublicUser;
@@ -41,6 +45,7 @@ export default function DashboardClient({
   eaConnected?: boolean;
   eaOnline?: boolean;
   pendingIntentCount?: number;
+  pendingIntents?: TradeIntent[];
   trades?: Trade[];
 }) {
   const { data: me } = useMe();
@@ -75,6 +80,12 @@ export default function DashboardClient({
       subtitle="لوحة الحساب والرصيد"
       maxWidth="6xl"
     >
+
+      <WaitingRoom
+        settings={settings}
+        pendingIntents={pendingIntents}
+        watchlistCount={parseWatchlist(settings.allowed_assets).length}
+      />
 
       {pendingIntentCount > 0 && (
         <Link href="/trades" className="block">

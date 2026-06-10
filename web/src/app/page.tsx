@@ -8,7 +8,7 @@ export default async function Home() {
   if (user) {
     redirect(
       user.role === "admin" || (await isOnboardingDone(user.id))
-        ? "/chat"
+        ? "/dashboard"
         : "/onboarding",
     );
   }

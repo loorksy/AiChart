@@ -45,6 +45,9 @@ export interface TradingSettings {
   alert_trades: number;
   alert_signals: number;
   alert_min_confidence: number;
+  last_manual_scan_at?: string | null;
+  scan_poll_minutes?: number;
+  analysis_interval?: string;
   updated_at: string;
 }
 
@@ -172,6 +175,7 @@ export interface AlertLog {
   title: string;
   body: string | null;
   symbol: string | null;
+  image_url?: string | null;
   delivered: number;
   read_at: string | null;
   created_at: string;
