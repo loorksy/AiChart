@@ -13,12 +13,15 @@ export default function AuthForm({
   botUsername,
   telegramConfigured,
   allowRegister = true,
+  gateMode = false,
 }: {
   mode: "login" | "register";
   redirectTo?: string;
   botUsername?: string | null;
   telegramConfigured?: boolean;
   allowRegister?: boolean;
+  /** Single-user mode: one master password, no email and no Telegram login. */
+  gateMode?: boolean;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -27,7 +30,7 @@ export default function AuthForm({
   const [loading, setLoading] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
   const isLogin = mode === "login";
-  const canUseTelegram = telegramConfigured && Boolean(botUsername);
+  const canUseTelegram = !gateMode && telegramConfigured && Boolean(botUsername);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,7 +40,7 @@ export default function AuthForm({
       const res = await fetch(`/api/auth/${isLogin ? "login" : "register"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(gateMode ? { password } : { email, password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -65,9 +68,11 @@ export default function AuthForm({
           {isLogin ? "مرحباً بعودتك" : "إنشاء حساب جديد"}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          {canUseTelegram
-            ? "سجّل أو ادخل عبر تليجرام — يُربط البوت تلقائياً بحسابك."
-            : "سجّل الدخول للوصول إلى وكيل التداول"}
+          {gateMode
+            ? "أدخل كلمة المرور للوصول إلى منصتك"
+            : canUseTelegram
+              ? "سجّل أو ادخل عبر تليجرام — يُربط البوت تلقائياً بحسابك."
+              : "سجّل الدخول للوصول إلى وكيل التداول"}
         </p>
 
         {canUseTelegram && (
@@ -113,19 +118,21 @@ export default function AuthForm({
 
         {(showEmail || !canUseTelegram) && (
           <form onSubmit={submit} className="mt-4 space-y-4">
-            <div>
-              <label htmlFor="email">البريد الإلكتروني</label>
-              <input
-                id="email"
-                type="email"
-                required
-                className="input mt-1.5"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                dir="ltr"
-                placeholder="you@example.com"
-              />
-            </div>
+            {!gateMode && (
+              <div>
+                <label htmlFor="email">البريد الإلكتروني</label>
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  className="input mt-1.5"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  dir="ltr"
+                  placeholder="you@example.com"
+                />
+              </div>
+            )}
             <div>
               <label htmlFor="password">كلمة المرور</label>
               <input
@@ -137,6 +144,7 @@ export default function AuthForm({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 dir="ltr"
+                autoFocus={gateMode}
               />
             </div>
             <button
@@ -144,7 +152,13 @@ export default function AuthForm({
               className="btn btn-primary w-full py-3"
               disabled={loading}
             >
-              {loading ? "جارٍ المعالجة…" : isLogin ? "متابعة بالبريد" : "إنشاء حساب"}
+              {loading
+                ? "جارٍ المعالجة…"
+                : gateMode
+                  ? "دخول"
+                  : isLogin
+                    ? "متابعة بالبريد"
+                    : "إنشاء حساب"}
               {!loading && <ArrowUpRight className="h-4 w-4" />}
             </button>
           </form>

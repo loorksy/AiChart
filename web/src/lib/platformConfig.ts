@@ -5,7 +5,7 @@ export interface ConfigFieldMeta {
   key: string;
   label: string;
   labelEn: string;
-  group: "core" | "claude" | "telegram" | "ops";
+  group: "core" | "claude" | "voice" | "telegram" | "ops";
   secret: boolean;
   /** Store plaintext in DB (bootstrap keys used to encrypt others) */
   plainStorage: boolean;
@@ -48,6 +48,23 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     secret: false,
     plainStorage: false,
     placeholder: "claude-3-5-sonnet-latest",
+  },
+  {
+    key: "OPENROUTER_API_KEY",
+    label: "مفتاح OpenRouter (تفريغ الصوت)",
+    labelEn: "OPENROUTER_API_KEY",
+    group: "voice",
+    secret: true,
+    plainStorage: false,
+  },
+  {
+    key: "OPENROUTER_AUDIO_MODEL",
+    label: "نموذج تفريغ الصوت",
+    labelEn: "OPENROUTER_AUDIO_MODEL",
+    group: "voice",
+    secret: false,
+    plainStorage: false,
+    placeholder: "google/gemini-2.5-flash",
   },
   {
     key: "TELEGRAM_BOT_TOKEN",

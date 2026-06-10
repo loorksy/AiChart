@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
 import { ClaudeModelPicker } from "@/components/admin/ClaudeModelPicker";
+import { OpenRouterAudioPicker } from "@/components/admin/OpenRouterAudioPicker";
 import { cn } from "@/lib/utils";
 
 type ConfigField = {
   key: string;
   label: string;
   labelEn: string;
-  group: "core" | "claude" | "telegram" | "ops";
+  group: "core" | "claude" | "voice" | "telegram" | "ops";
   type?: "text" | "url" | "toggle";
   placeholder?: string;
   configured: boolean;
@@ -22,6 +23,7 @@ type ConfigField = {
 const GROUPS: { id: ConfigField["group"]; title: string }[] = [
   { id: "core", title: "الأساس والأمان" },
   { id: "claude", title: "Claude / Anthropic" },
+  { id: "voice", title: "الصوت — OpenRouter" },
   { id: "telegram", title: "تليجرام" },
   { id: "ops", title: "التشغيل والمراقبة" },
 ];
@@ -111,6 +113,8 @@ export function AdminKeysPanel() {
       f.key !== "ANTHROPIC_MODEL" &&
       f.key !== "ANTHROPIC_API_KEY",
   );
+  const orKeyField = fields.find((f) => f.key === "OPENROUTER_API_KEY");
+  const orModelField = fields.find((f) => f.key === "OPENROUTER_AUDIO_MODEL");
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -146,9 +150,13 @@ export function AdminKeysPanel() {
         const groupFields =
           group.id === "claude"
             ? claudeFields
-            : fields.filter((f) => f.group === group.id);
-        if (!groupFields.length && group.id !== "claude") return null;
+            : group.id === "voice"
+              ? []
+              : fields.filter((f) => f.group === group.id);
+        if (!groupFields.length && group.id !== "claude" && group.id !== "voice")
+          return null;
         if (group.id === "claude" && !apiKeyField) return null;
+        if (group.id === "voice" && !orKeyField) return null;
         return (
           <section key={group.id} className="admin-card p-4">
             <h3 className="mb-4 font-bold text-foreground">{group.title}</h3>
@@ -170,6 +178,28 @@ export function AdminKeysPanel() {
                     }
                     draftModel={draft.ANTHROPIC_MODEL ?? ""}
                     onSelectModel={(id) => setDraftValue("ANTHROPIC_MODEL", id)}
+                  />
+                </>
+              )}
+              {group.id === "voice" && orKeyField && (
+                <>
+                  <ConfigFieldRow
+                    f={orKeyField}
+                    draft={draft}
+                    setDraftValue={setDraftValue}
+                  />
+                  <OpenRouterAudioPicker
+                    apiKeyDraft={draft.OPENROUTER_API_KEY ?? ""}
+                    apiKeyConfigured={orKeyField.configured}
+                    currentModel={
+                      orModelField?.value ??
+                      orModelField?.placeholder ??
+                      "google/gemini-2.5-flash"
+                    }
+                    draftModel={draft.OPENROUTER_AUDIO_MODEL ?? ""}
+                    onSelectModel={(id) =>
+                      setDraftValue("OPENROUTER_AUDIO_MODEL", id)
+                    }
                   />
                 </>
               )}

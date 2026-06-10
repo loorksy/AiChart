@@ -12,13 +12,15 @@ export default async function LoginPage({
     next && next.startsWith("/") && !next.startsWith("//") ? next : undefined;
   const { telegramConfigured, botUsername } = await getTelegramLoginConfig();
 
+  const singleUser = isSingleUserMode();
   return (
     <AuthForm
       mode="login"
       redirectTo={redirectTo}
       botUsername={botUsername}
       telegramConfigured={telegramConfigured}
-      allowRegister={!isSingleUserMode()}
+      allowRegister={!singleUser}
+      gateMode={singleUser}
     />
   );
 }
