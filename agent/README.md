@@ -95,18 +95,12 @@ pm2 stop aichart-agent && sleep 5 && pm2 start aichart-agent
 {
   agents: {
     defaults: {
-      // 1) النموذج: Sonnet ≈ خُمس سعر Opus بنفس الجودة العملية لهذا العمل
-      model: { primary: "anthropic/claude-sonnet-4-6" },
+      // 1) النموذج: يتبع المختار في لوحة الأدمن — لا تكتبه يدوياً،
+      //    شغّل agent/scripts/sync-model.sh (يضبط primary + كاش الساعة معاً)
+      // model: { primary: "anthropic/<من لوحة التحكم>" },
+      // models: { "anthropic/<...>": { params: { cacheRetention: "long" } } },
 
-      // 2) Prompt Caching بمدة ساعة: القراءات المتكررة بـ 10% من السعر،
-      //    ونبضات كل 15د تُبقي الكاش دافئاً طوال اليوم
-      models: {
-        "anthropic/claude-sonnet-4-6": {
-          params: { cacheRetention: "long" },
-        },
-      },
-
-      // 3) تقليم مخرجات الأدوات القديمة من السياق قبل كل نداء
+      // 2) تقليم مخرجات الأدوات القديمة من السياق قبل كل نداء
       contextPruning: { mode: "cache-ttl" },
 
       heartbeat: {
@@ -121,7 +115,19 @@ pm2 stop aichart-agent && sleep 5 && pm2 start aichart-agent
 }
 ```
 
-ثم إيقاف/تشغيل كامل للبوابة. نصائح إضافية:
+**مزامنة النموذج مع لوحة التحكم** — بعد كل تغيير للنموذج من
+لوحة الأدمن → المفاتيح:
+
+```bash
+bash agent/scripts/sync-model.sh
+pm2 stop aichart-agent && sleep 5 && pm2 start aichart-agent
+```
+
+السكربت يقرأ النموذج المختار من `GET /api/agent/model` ويكتب
+`agents.defaults.model.primary` مع `cacheRetention: "long"` عليه.
+(نصيحة تكلفة: Sonnet ≈ خُمس سعر Opus بنفس الجودة العملية لهذا العمل.)
+
+نصائح إضافية:
 
 - `/compact` في المحادثة عندما تطول الجلسة كثيراً (يلخّص التاريخ القديم).
 - أبقِ `HEARTBEAT.md` وملفات المعرفة قصيرة — تُحقن في كل نداء.
