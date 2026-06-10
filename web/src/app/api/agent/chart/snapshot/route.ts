@@ -1,0 +1,68 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { handleError } from "@/lib/api";
+import { getSettings } from "@/lib/store";
+import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
+import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
+import { profileForInterval } from "@/lib/analysisProfile";
+import type { MarketType } from "@/lib/markets/types";
+
+const schema = z.object({
+  symbol: z.string().min(1),
+  interval: z.string().default("1h"),
+  market: z.enum(["crypto", "forex"]).optional(),
+  pattern_name: z.string().nullish(),
+  chart_drawings: z.array(z.record(z.string(), z.unknown())).optional(),
+});
+
+/**
+ * Bridge: ad-hoc annotated chart PNG for any symbol — for "show me the chart"
+ * requests and open-trade follow-ups, without recording a recommendation.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    requireAgentAuth(req);
+    const userId = await resolveAgentUserId();
+    const body = schema.parse(await req.json());
+
+    const settings = await getSettings(userId);
+    const market = (body.market ??
+      settings.active_market ??
+      "crypto") as MarketType;
+
+    const drawings = validateChartDrawings(
+      (body.chart_drawings ?? []) as unknown as ChartDrawing[],
+      "wait",
+      100,
+      profileForInterval(body.interval),
+    );
+
+    const buffer = await buildChartSnapshotBufferForMarket(
+      userId,
+      body.symbol.toUpperCase(),
+      body.interval,
+      market,
+      {
+        drawings,
+        patternName: body.pattern_name ?? null,
+      },
+    );
+
+    if (!buffer) {
+      return NextResponse.json(
+        { error: "تعذّر توليد صورة الشارت." },
+        { status: 503 },
+      );
+    }
+
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (e) {
+    return handleError(e);
+  }
+}
