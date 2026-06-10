@@ -29,6 +29,8 @@ export default function DashboardClient({
   settings,
   limits,
   hasBinance,
+  eaConnected = false,
+  eaOnline = false,
   pendingIntentCount = 0,
   trades = [],
 }: {
@@ -36,6 +38,8 @@ export default function DashboardClient({
   settings: TradingSettings;
   limits: AdminLimits;
   hasBinance: boolean;
+  eaConnected?: boolean;
+  eaOnline?: boolean;
   pendingIntentCount?: number;
   trades?: Trade[];
 }) {
@@ -156,13 +160,29 @@ export default function DashboardClient({
       </SurfaceCard>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Link href="/settings" className="block">
+        <Link href="/settings?tab=integrations" className="block">
           <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
             <ArrowLeftRight className="h-5 w-5 text-accent-gold" />
             <div>
               <p className="font-medium">ربط Binance</p>
               <p className="text-xs text-muted-foreground">
                 {hasBinance ? "مرتبط" : "غير مربوط"}
+              </p>
+            </div>
+          </SurfaceCard>
+        </Link>
+
+        <Link href="/settings?tab=integrations" className="block">
+          <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
+            <ArrowLeftRight className="h-5 w-5 text-accent-gold" />
+            <div>
+              <p className="font-medium">ربط MetaTrader (فوركس)</p>
+              <p className="text-xs text-muted-foreground">
+                {eaOnline
+                  ? "متصل"
+                  : eaConnected
+                    ? "مربوط — غير متصل"
+                    : "غير مربوط"}
               </p>
             </div>
           </SurfaceCard>
