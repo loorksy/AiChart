@@ -7,6 +7,7 @@ import {
   listRecommendations,
   countOpenTrades,
 } from "./store";
+import { getEaConnectionMeta } from "./eaStore";
 import { allowedAssetsLabel } from "./allowedAssets";
 import { displayNameFromEmail } from "./displayName";
 
@@ -18,6 +19,7 @@ export async function buildUserContext(userId: number): Promise<string> {
 
   const settings = await getSettings(userId);
   const binance = await getBinanceAccountMeta(userId);
+  const ea = await getEaConnectionMeta(userId);
   const trades = await listTrades(userId, 5);
   const intents = await listIntents(userId, "pending", 5);
   const recs = await listRecommendations(userId, 3);
@@ -27,18 +29,22 @@ export async function buildUserContext(userId: number): Promise<string> {
   const name = displayNameFromEmail(user.email);
   const tgLinked = Boolean(settings.telegram_chat_id);
   const binanceLinked = Boolean(binance);
+  const activeMarket = settings.active_market ?? "crypto";
 
   const lines = [
     `# سياق المستخدم الحالي (بيانات حقيقية من المنصة)`,
     `- الاسم/المعرّف: ${name} (${user.email})`,
     `- حالة الحساب: ${user.status}`,
+    `- السوق النشط: ${activeMarket === "forex" ? "فوركس (MetaTrader)" : "كريبتو (Binance)"}`,
     `- Binance: ${binanceLinked ? `مرتبط (${binance!.env}${binance!.label ? ` · ${binance!.label}` : ""})` : "غير مربوط"}`,
+    `- MetaTrader (فوركس): ${ea ? (ea.online ? `متصل (${ea.platform})` : "مربوط — غير متصل") : "غير مربوط"}`,
     `- Telegram: ${tgLinked ? "مرتبط" : "غير مربوط"}`,
     `- وضع التداول: ${settings.mode === "auto" ? "تنفيذ تلقائي" : "توصيات فقط"}`,
     `- أسلوب التداول: ${settings.style}`,
     `- الصفقات المنفّذة: ${totalTrades} · المفتوحة: ${openTrades}`,
     `- نوايا بانتظار الموافقة: ${intents.length}`,
-    `- الأصول المسموحة: ${allowedAssetsLabel(settings.allowed_assets)}`,
+    `- الأصول المسموحة (كريبتو): ${allowedAssetsLabel(settings.allowed_assets, "crypto")}`,
+    `- الأصول المسموحة (فوركس): ${allowedAssetsLabel(settings.allowed_assets, "forex")}`,
   ];
 
   if (recs.length) {

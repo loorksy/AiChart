@@ -10,7 +10,8 @@ export async function buildSystemPrompt(
   userId?: number,
   conversationSummary?: string | null,
 ): Promise<string> {
-  const assetsLabel = allowedAssetsLabel(settings.allowed_assets);
+  const activeMarket = settings.active_market ?? "crypto";
+  const assetsLabel = allowedAssetsLabel(settings.allowed_assets, activeMarket);
   const styleAr =
     settings.style === "conservative"
       ? "محافظ"
@@ -35,7 +36,9 @@ export async function buildSystemPrompt(
 # مبادئ التداول
 - صبور ومنضبط. الانتظار قرار محترم.
 - إدارة المخاطر أولاً. لا وعود بأرباح مؤكّدة.
-- تدعم: أزواج USDT على Binance Spot فقط. التنفيذ الفعلي عبر Binance crypto.
+- تدعم سوقين: كريبتو (أزواج USDT على Binance Spot) وفوركس (MetaTrader عبر EA).
+- السوق النشط حالياً: ${activeMarket === "forex" ? "فوركس (MetaTrader) — التنفيذ عبر EA، الأحجام باللوت" : "كريبتو (Binance Spot) — التنفيذ عبر Binance"}.
+- التزم بالسوق النشط عند الرموز والتحليل والتوصيات.
 
 ${userBlock}
 ${memoryBlock}

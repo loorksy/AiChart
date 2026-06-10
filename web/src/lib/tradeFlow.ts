@@ -64,6 +64,8 @@ export async function processRecommendations(
   const autoExecute =
     settings.mode === "auto" && settings.approval === "delegate";
 
+  const market = options?.market ?? settings.active_market ?? "crypto";
+
   const effectiveCapital =
     limits.max_capital_cap > 0
       ? Math.min(settings.max_capital, limits.max_capital_cap)
@@ -78,7 +80,7 @@ export async function processRecommendations(
       symbol: rec.symbol,
       side: rec.action,
       notional: perTrade,
-      market: options?.market ?? "crypto",
+      market,
       entry: rec.entry,
       stop_loss: rec.stop_loss,
       take_profit: rec.take_profit,

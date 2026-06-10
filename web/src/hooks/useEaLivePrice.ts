@@ -20,10 +20,9 @@ export function useEaLivePrice(symbol: string, enabled = true): LivePriceTick {
   const prevRef = useRef(0);
 
   useEffect(() => {
-    if (!enabled || !symbol) {
-      setTick({ price: 0, changePct: 0, direction: null, connected: false });
-      return;
-    }
+    // When disabled (e.g. crypto market active) we simply stop polling; the
+    // consumer reads the other market's tick, so a stale value is harmless.
+    if (!enabled || !symbol) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 

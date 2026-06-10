@@ -75,7 +75,10 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
         );
 
         if (agentResult.recommendations.length) {
-          await processRecommendations(userId, agentResult.recommendations);
+          // The monitor scans Binance crypto symbols, so executions stay crypto.
+          await processRecommendations(userId, agentResult.recommendations, {
+            market: "crypto",
+          });
 
           const actionable = agentResult.recommendations.filter(
             (r) => r.action === "buy" || r.action === "sell",
