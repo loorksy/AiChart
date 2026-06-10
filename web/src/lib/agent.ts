@@ -413,7 +413,7 @@ async function executeTool(
         });
         const notifyAdvisory =
           (rec.action === "buy" || rec.action === "sell") &&
-          ctx.settings.mode === "advisory" &&
+          ctx.settings.mode !== "auto" &&
           !ctx.telegramSession;
         const { rec: enriched, delivery } = await attachChartToRecommendation(ctx.userId, rec, {
           notify: notifyAdvisory,

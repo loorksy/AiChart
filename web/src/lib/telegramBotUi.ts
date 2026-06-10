@@ -53,7 +53,9 @@ export function welcomeKeyboard(): InlineButton[][] {
 }
 
 function modeLabel(mode: string): string {
-  return mode === "auto" ? "⚡ تنفيذ تلقائي" : "🎯 توصيات فقط";
+  if (mode === "auto") return "⚡ تنفيذ تلقائي";
+  if (mode === "direct") return "🎮 مباشر مع الوكيل";
+  return "🎯 موافقة يدوية";
 }
 
 function killLabel(on: boolean): string {

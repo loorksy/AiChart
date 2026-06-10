@@ -60,11 +60,13 @@ export async function processRecommendations(
 
   if (limits.can_execute !== 1) return intents;
 
-  const advisoryApproval = Boolean(options?.allowAdvisoryApproval);
-  if (settings.mode !== "auto" && !advisoryApproval) return intents;
+  // direct: the operator drives — recommendations never become intents here.
+  if (settings.mode === "direct") return intents;
 
-  const autoExecute =
-    settings.mode === "auto" && settings.approval === "delegate";
+  const approvalFlow = Boolean(options?.allowAdvisoryApproval);
+  if (settings.mode === "approval" && !approvalFlow) return intents;
+
+  const autoExecute = settings.mode === "auto";
 
   const market = options?.market ?? settings.active_market ?? "crypto";
 

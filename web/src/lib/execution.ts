@@ -40,6 +40,8 @@ export interface ExecutionResult {
  */
 export interface ExecuteIntentOptions {
   onActivity?: ActivityListener;
+  /** The human operator explicitly ordered/approved this trade (agent bridge). */
+  explicitApproval?: boolean;
 }
 
 export async function executeIntent(
@@ -79,8 +81,10 @@ export async function executeIntent(
       : settings.max_capital;
 
   // 1) Risk Guard — the authority. Nothing executes if this denies.
+  // In approval/direct modes an "approved" intent means a human said yes.
   const explicitApproval =
-    settings.mode === "advisory" && intent.status === "approved";
+    Boolean(options?.explicitApproval) ||
+    (settings.mode !== "auto" && intent.status === "approved");
 
   const decision = evaluateTrade(
     settings,

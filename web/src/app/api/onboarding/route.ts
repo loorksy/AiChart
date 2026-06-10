@@ -11,7 +11,7 @@ import {
 
 const schema = z.object({
   experience: z.enum(["beginner", "expert"]).optional(),
-  mode: z.enum(["advisory", "auto"]).optional(),
+  mode: z.enum(["auto", "approval", "direct", "advisory"]).optional(),
   approval: z.enum(["manual", "delegate"]).optional(),
   style: z.enum(["conservative", "balanced", "aggressive"]).optional(),
   max_capital: z.number().min(0).optional(),
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     const patch: Record<string, unknown> = {};
     if (body.experience) patch.experience = body.experience;
-    if (body.mode) patch.mode = body.mode;
+    if (body.mode) patch.mode = body.mode === "advisory" ? "approval" : body.mode;
     if (body.approval) patch.approval = body.approval;
     if (body.style) patch.style = body.style;
     if (body.max_capital !== undefined) patch.max_capital = body.max_capital;

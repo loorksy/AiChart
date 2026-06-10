@@ -36,7 +36,7 @@ export default function OnboardingClient({
   );
   const [tradingGoal, setTradingGoal] = useState("");
   const [suggestion, setSuggestion] = useState<{
-    mode: "advisory" | "auto";
+    mode: "auto" | "approval" | "direct";
     style: "conservative" | "balanced" | "aggressive";
     per_trade_pct: number;
     max_open_trades: number;
@@ -310,7 +310,11 @@ export default function OnboardingClient({
               <p className="mb-2 text-muted-foreground">{suggestion.summary_ar}</p>
               <ul className="list-inside list-disc text-muted-foreground">
                 <li>
-                  {suggestion.mode === "auto" ? "تنفيذ تلقائي" : "توصيات + موافقة يدوية"}
+                  {suggestion.mode === "auto"
+                    ? "تنفيذ تلقائي"
+                    : suggestion.mode === "direct"
+                      ? "مباشر — تنفيذ بأمرك"
+                      : "توصيات + موافقة يدوية"}
                 </li>
                 <li>
                   أسلوب{" "}
@@ -336,7 +340,7 @@ export default function OnboardingClient({
                 void save(
                   {
                     experience: "beginner",
-                    mode: suggestion?.mode ?? "advisory",
+                    mode: suggestion?.mode ?? "approval",
                     approval: "manual",
                     style: suggestion?.style ?? "conservative",
                     max_capital: maxCapital,
@@ -417,18 +421,15 @@ export default function OnboardingClient({
           <select
             className="input w-full"
             value={mode}
-            onChange={(e) => setMode(e.target.value as typeof mode)}
+            onChange={(e) => {
+              const m = e.target.value as typeof mode;
+              setMode(m);
+              setApproval(m === "auto" ? "delegate" : "manual");
+            }}
           >
-            <option value="advisory">توصيات فقط</option>
-            <option value="auto">تنفيذ تلقائي (يتطلب موافقة الأدمن)</option>
-          </select>
-          <select
-            className="input w-full"
-            value={approval}
-            onChange={(e) => setApproval(e.target.value as typeof approval)}
-          >
-            <option value="manual">تأكيد يدوي لكل صفقة</option>
-            <option value="delegate">تفويض تلقائي ضمن الحدود</option>
+            <option value="approval">موافقة يدوية — الوكيل يقترح وأنت توافق</option>
+            <option value="direct">مباشر — التنفيذ بأمرك الصريح فقط</option>
+            <option value="auto">تلقائي (يتطلب موافقة الأدمن)</option>
           </select>
           <select
             className="input w-full"
