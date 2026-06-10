@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       body.tradingGoal ? `- الهدف من التداول: ${body.tradingGoal}` : "",
       "",
       "أعد JSON فقط (بدون markdown) بالحقول:",
-      "mode (advisory أو auto), style (conservative أو balanced أو aggressive),",
+      "mode (approval أو auto أو direct), style (conservative أو balanced أو aggressive),",
       "per_trade_pct (رقم), max_open_trades (عدد صحيح 1-5), summary_ar (فقرتان عربيتان).",
     ]
       .filter(Boolean)
@@ -81,7 +81,12 @@ export async function POST(req: NextRequest) {
 
     const style = parsed.style;
     const suggestion = {
-      mode: parsed.mode === "auto" ? ("auto" as const) : ("advisory" as const),
+      mode:
+        parsed.mode === "auto"
+          ? ("auto" as const)
+          : parsed.mode === "direct"
+            ? ("direct" as const)
+            : ("approval" as const),
       style:
         style === "balanced" || style === "aggressive"
           ? style

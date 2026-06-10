@@ -30,7 +30,7 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS trading_settings (
     user_id                  INTEGER PRIMARY KEY,
-    mode                     TEXT NOT NULL DEFAULT 'advisory',
+    mode                     TEXT NOT NULL DEFAULT 'approval',
     approval                 TEXT NOT NULL DEFAULT 'manual',
     experience               TEXT NOT NULL DEFAULT 'beginner',
     style                    TEXT NOT NULL DEFAULT 'conservative',

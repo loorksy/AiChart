@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { NextResponse } from "next/server";
 import { requireAdmin, handleError } from "@/lib/api";
-import { isTelegramConfigured, setWebhook, setBotCommands } from "@/lib/telegram";
+import { isTelegramConfigured, deleteWebhook } from "@/lib/telegram";
 
-const schema = z.object({ baseUrl: z.string().url() });
-
-/** Admin-only: registers the Telegram webhook at <baseUrl>/api/telegram/webhook. */
-export async function POST(req: NextRequest) {
+/**
+ * Admin-only: releases the bot from any web-managed webhook so the OpenClaw
+ * gateway can own the Telegram conversation. The web app keeps using the bot
+ * token for outbound notifications only.
+ */
+export async function POST() {
   try {
     await requireAdmin();
     if (!isTelegramConfigured()) {
@@ -15,15 +16,13 @@ export async function POST(req: NextRequest) {
         { status: 503 },
       );
     }
-    const { baseUrl } = schema.parse(await req.json());
-    const webhookUrl = `${baseUrl.replace(/\/$/, "")}/api/telegram/webhook`;
-    await setWebhook(webhookUrl);
-    await setBotCommands();
-    return NextResponse.json({ ok: true, webhookUrl });
+    await deleteWebhook();
+    return NextResponse.json({
+      ok: true,
+      message:
+        "أُزيل الـ webhook — محادثة البوت يديرها وكيل OpenClaw الآن، والمنصة ترسل الإشعارات فقط.",
+    });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: "رابط غير صالح." }, { status: 400 });
-    }
     return handleError(err);
   }
 }

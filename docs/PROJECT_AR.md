@@ -167,16 +167,18 @@ AiChart/
 
 | المسار | الوظيفة |
 |--------|---------|
-| `POST /api/telegram/webhook` | استقبال تحديثات البوت |
 | `POST /api/telegram/link` | رمز ربط الحساب |
-| `POST /api/telegram/setup` | تسجيل Webhook والأوامر |
+| `POST /api/telegram/setup` | تحرير البوت لوكيل OpenClaw (إزالة الـ webhook) |
+
+> محادثة البوت يديرها وكيل OpenClaw (انظر `agent/README.md`) — لا webhook في web.
 
 ### المهام المجدولة (Cron)
 
 | المسار | الوظيفة |
 |--------|---------|
-| `POST /api/cron/monitor` | دورة مراقبة 24/7 — `monitorRunner.ts` |
-| `POST /api/cron/daily-summary` | ملخص يومي لتليجرام |
+| `POST /api/cron/daily-summary` | ملخص يومي لتليجرام (احتياطي — الوكيل يرسل ملخصه بنفسه) |
+
+> المراقبة 24/7 انتقلت إلى heartbeat وكيل OpenClaw عبر `/api/agent/*`.
 
 يُحمى Cron بـ `CRON_SECRET` (`web/src/lib/cronAuth.ts`).
 
@@ -287,9 +289,9 @@ AiChart/
 | المسار | الملف | ملاحظات |
 |--------|-------|---------|
 | محادثة الويب | `api/chat/route.ts` | دعم صورة + SSE؛ `processRecommendations` بعد الرد |
-| تليجرام | `telegramAgent.ts` | نفس `runAgent` + `telegramSession: true` |
+| تليجرام | وكيل OpenClaw | عبر Bridge API `/api/agent/*` (انظر `agent/`) |
 | إشارة معالج | `api/signals/generate/route.ts` | تكلفة 5 من الحصة |
-| مراقبة 24/7 | `monitorRunner.ts` | يستدعي الوكيل عند إشارات فنية فقط |
+| مراقبة 24/7 | heartbeat وكيل OpenClaw | مسح رخيص عبر `/api/agent/market/scan` |
 
 ### 8.5 الحصة والاستخدام
 
@@ -376,12 +378,10 @@ notifyTradeResult (تليجرام)
 
 | الملف | الدور |
 |-------|------|
-| `lib/telegram.ts` | إرسال رسائل، webhook secret، بطاقات موافقة |
-| `lib/telegramBotUi.ts` | بطاقات HTML وأزرار القائمة |
-| `lib/telegramAgent.ts` | تشغيل الوكيل من تليجرام |
-| `api/telegram/webhook/route.ts` | معالج التحديثات |
+| `lib/telegram.ts` | إشعارات صادرة فقط (رسائل/صور/بطاقات) |
 | `api/telegram/link/route.ts` | ربط الحساب |
 | `lib/telegramAuth.ts` | التحقق من Telegram Login |
+| وكيل OpenClaw (`agent/`) | محادثة البوت، الموافقات، الأوامر |
 
 ### 11.2 ربط الحساب
 

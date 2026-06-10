@@ -50,7 +50,13 @@ ${userBlock}
 ${memoryBlock}
 
 # إعدادات التداول
-- الوضع: ${settings.mode === "auto" ? "تنفيذ تلقائي ضمن Risk Guard" : "توصيات فقط"}.
+- الوضع: ${
+    settings.mode === "auto"
+      ? "تنفيذ تلقائي ضمن Risk Guard"
+      : settings.mode === "direct"
+        ? "مباشر — التنفيذ بأمر صريح من المستخدم فقط"
+        : "موافقة يدوية — اقترح وانتظر موافقة المستخدم"
+  }.
 - الخبرة: ${settings.experience === "beginner" ? "مبتدئ — بسّط الشرح" : "خبير"}.
 - الأسلوب: ${styleAr}.
 - الأصول المسموحة: ${assetsLabel}.

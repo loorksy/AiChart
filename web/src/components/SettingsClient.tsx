@@ -727,9 +727,8 @@ function TradingCard({
       .map((a) => a.trim().toUpperCase())
       .filter(Boolean);
 
-  const canDelegate = limits.can_execute && s.mode === "auto";
-  const effectiveApproval =
-    s.approval === "delegate" && !canDelegate ? "manual" : s.approval;
+  // Approval is derived from the mode: auto delegates, the rest are manual.
+  const effectiveApproval = s.mode === "auto" ? "delegate" : "manual";
 
   function set<K extends keyof TradingSettings>(k: K, v: TradingSettings[K]) {
     setS((prev) => ({ ...prev, [k]: v }));
@@ -797,30 +796,14 @@ function TradingCard({
             onChange={(e) => {
               const mode = e.target.value as TradingSettings["mode"];
               set("mode", mode);
-              if (mode !== "auto" && s.approval === "delegate") {
-                set("approval", "manual");
-              }
+              set("approval", mode === "auto" ? "delegate" : "manual");
             }}
           >
-            <option value="advisory">توصيات فقط</option>
+            <option value="approval">موافقة يدوية — الوكيل يقترح وأنت توافق</option>
+            <option value="direct">مباشر — التنفيذ بأمرك الصريح فقط</option>
             <option value="auto" disabled={!limits.can_execute}>
-              تنفيذ تلقائي
+              تلقائي — الوكيل يتداول وحده ضمن الحدود
             </option>
-          </select>
-        </Field>
-
-        <Field label="الموافقة على الصفقات">
-          <select
-            className="input"
-            value={effectiveApproval}
-            onChange={(e) =>
-              set("approval", e.target.value as TradingSettings["approval"])
-            }
-          >
-            <option value="manual">تأكيد يدوي لكل صفقة</option>
-            {canDelegate && (
-              <option value="delegate">تفويض تلقائي ضمن الحدود</option>
-            )}
           </select>
         </Field>
 

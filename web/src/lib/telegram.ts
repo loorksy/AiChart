@@ -60,10 +60,6 @@ export async function getTelegramLoginConfig(): Promise<{
   return { telegramConfigured: true, botUsername: null };
 }
 
-export function webhookSecret(): string {
-  return getPlatformValue("TELEGRAM_WEBHOOK_SECRET") || "aichart-webhook-secret";
-}
-
 function token(): string {
   const t = getPlatformValue("TELEGRAM_BOT_TOKEN");
   if (!t) throw new Error("TELEGRAM_BOT_TOKEN غير مُعدّ.");
@@ -120,26 +116,6 @@ export async function sendMessage(
     ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
   })) as { message_id: number };
   return result.message_id;
-}
-
-/** Downloads a Telegram file by file_id and returns base64 + media type. */
-export async function downloadTelegramPhoto(
-  fileId: string,
-): Promise<{ data: string; media_type: "image/jpeg" | "image/png" | "image/webp" }> {
-  const fileInfo = (await call("getFile", { file_id: fileId })) as {
-    file_path: string;
-  };
-  const url = `${API}/file/bot${token()}/${fileInfo.file_path}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error("تعذّر تنزيل الصورة من تليجرام.");
-  const buffer = Buffer.from(await res.arrayBuffer());
-  const lower = fileInfo.file_path.toLowerCase();
-  const media_type = lower.endsWith(".png")
-    ? "image/png"
-    : lower.endsWith(".webp")
-      ? "image/webp"
-      : "image/jpeg";
-  return { data: buffer.toString("base64"), media_type };
 }
 
 export async function sendPhoto(
@@ -230,72 +206,19 @@ export async function notifyUserPhotoBuffer(
   }
 }
 
-export async function answerCallback(
-  callbackId: string,
-  text?: string,
-  showAlert = false,
-): Promise<void> {
-  await call("answerCallbackQuery", {
-    callback_query_id: callbackId,
-    ...(text ? { text, show_alert: showAlert } : {}),
-  });
-}
-
-export async function editMessageText(
-  chatId: string | number,
-  messageId: number,
-  text: string,
-  buttons?: InlineButton[][] | null,
-): Promise<void> {
-  const markup =
-    buttons === null
-      ? { inline_keyboard: [] as InlineButton[][] }
-      : buttons
-        ? { inline_keyboard: buttons }
-        : undefined;
-
-  await call("editMessageText", {
-    chat_id: chatId,
-    message_id: messageId,
-    text,
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-    ...(markup ? { reply_markup: markup } : {}),
-  });
-}
-
 let cachedUsername: string | null = null;
 export async function getBotUsername(): Promise<string | null> {
   const { botUsername } = await getTelegramLoginConfig();
   return botUsername;
 }
 
-export async function setWebhook(url: string): Promise<void> {
-  await call("setWebhook", {
-    url,
-    secret_token: webhookSecret(),
-    allowed_updates: ["message", "callback_query"],
-  });
+/**
+ * Releases the bot from web-managed webhooks so the OpenClaw gateway can own
+ * the conversation (OpenClaw polls / manages its own webhook).
+ */
+export async function deleteWebhook(): Promise<void> {
+  await call("deleteWebhook", { drop_pending_updates: false });
 }
-
-/** Registers the bilingual (Arabic + English) command menu. */
-export async function setBotCommands(): Promise<void> {
-  await call("setMyCommands", {
-    commands: [
-      { command: "status", description: "الحالة · Account status" },
-      { command: "positions", description: "الصفقات المفتوحة · Open positions" },
-      { command: "pnl", description: "أرباح/خسائر اليوم · Today's PnL" },
-      { command: "pause", description: "إيقاف التداول · Pause trading" },
-      { command: "resume", description: "استئناف التداول · Resume trading" },
-      { command: "stop", description: "إيقاف طارئ · Emergency stop" },
-      { command: "help", description: "المساعدة · Help" },
-    ],
-  });
-}
-
-// Bilingual inline buttons reused across the bot.
-export const APPROVE_BUTTON_TEXT = "✅ موافقة · Approve";
-export const REJECT_BUTTON_TEXT = "❌ رفض · Reject";
 
 const sideBilingual = (s: string) =>
   s === "buy" ? "🟢 شراء · Buy" : "🔴 بيع · Sell";
@@ -370,8 +293,8 @@ export function approvalCard(intent: {
   if (intent.rationale) lines.push(``, `📝 ${intent.rationale}`);
   lines.push(
     ``,
-    `بعد الموافقة ستختار مبلغ التداول بالـ USDT.`,
-    `هل توافق على المتابعة؟ · Approve to continue?`,
+    `للتنفيذ: وافق من لوحة التحكم أو اطلب من الوكيل («نفّذ»).`,
+    `Approve from the dashboard or tell the agent to execute.`,
   );
   return lines.join("\n");
 }

@@ -52,7 +52,13 @@ export async function buildUserContext(userId: number): Promise<string> {
     `- Binance: ${binanceLinked ? `مرتبط (${binance!.env}${binance!.label ? ` · ${binance!.label}` : ""})` : "غير مربوط"}`,
     `- MetaTrader (فوركس${forex.backend === "metaapi" ? " · MetaApi" : " · EA"}): ${mtLine}`,
     `- Telegram: ${tgLinked ? "مرتبط" : "غير مربوط"}`,
-    `- وضع التداول: ${settings.mode === "auto" ? "تنفيذ تلقائي" : "توصيات فقط"}`,
+    `- وضع التداول: ${
+      settings.mode === "auto"
+        ? "تنفيذ تلقائي"
+        : settings.mode === "direct"
+          ? "مباشر (تنفيذ بأمر صريح)"
+          : "موافقة يدوية"
+    }`,
     `- أسلوب التداول: ${settings.style}`,
     `- الصفقات المنفّذة: ${totalTrades} · المفتوحة: ${openTrades}`,
     `- نوايا بانتظار الموافقة: ${intents.length}`,

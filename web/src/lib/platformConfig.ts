@@ -67,14 +67,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "بدون @",
   },
   {
-    key: "TELEGRAM_WEBHOOK_SECRET",
-    label: "سر Webhook تليجرام",
-    labelEn: "TELEGRAM_WEBHOOK_SECRET",
-    group: "telegram",
-    secret: true,
-    plainStorage: false,
-  },
-  {
     key: "CRON_SECRET",
     label: "سر مهام Cron / المراقبة",
     labelEn: "CRON_SECRET",

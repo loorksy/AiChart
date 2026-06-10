@@ -3,6 +3,7 @@ import { z } from "zod";
 import { initDb, insertReturningId, queryOne } from "@/lib/db";
 import { hashPassword, setSession } from "@/lib/auth";
 import { ensureUserDefaults } from "@/lib/store";
+import { isSingleUserMode } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 
 const schema = z.object({
@@ -12,6 +13,12 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    if (isSingleUserMode()) {
+      return NextResponse.json(
+        { error: "التسجيل معطّل — المنصة تعمل بوضع المستخدم الواحد." },
+        { status: 403 },
+      );
+    }
     const json = await req.json();
     const { email, password } = schema.parse(json);
     await initDb();

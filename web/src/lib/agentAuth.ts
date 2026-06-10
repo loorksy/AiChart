@@ -1,0 +1,80 @@
+import crypto from "crypto";
+import type { NextRequest } from "next/server";
+import { initDb, queryOne } from "./db";
+import { ensureUserDefaults } from "./store";
+import { ApiError } from "./api";
+
+/**
+ * Single-user mode + service auth for the OpenClaw agent bridge.
+ *
+ * The platform runs for one human operator. The OpenClaw agent talks to the
+ * bridge API (/api/agent/*) using a service token, never a browser session.
+ */
+
+/** Single-user mode is the default; set AICHART_SINGLE_USER=0 to re-enable SaaS signup. */
+export function isSingleUserMode(): boolean {
+  return process.env.AICHART_SINGLE_USER !== "0";
+}
+
+function serviceToken(): string | null {
+  const token = process.env.AICHART_SERVICE_TOKEN;
+  return token && token.length >= 16 ? token : null;
+}
+
+export function isAgentBridgeConfigured(): boolean {
+  return serviceToken() !== null;
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+/**
+ * Authenticates a bridge request via `Authorization: Bearer <token>` or the
+ * `x-agent-token` header. Throws ApiError on failure.
+ */
+export function requireAgentAuth(req: NextRequest): void {
+  const expected = serviceToken();
+  if (!expected) {
+    throw new ApiError(
+      503,
+      "جسر الوكيل غير مفعّل. عيّن AICHART_SERVICE_TOKEN (16 حرفاً على الأقل).",
+    );
+  }
+  const header = req.headers.get("authorization");
+  const bearer = header?.toLowerCase().startsWith("bearer ")
+    ? header.slice(7).trim()
+    : null;
+  const provided = bearer ?? req.headers.get("x-agent-token");
+  if (!provided || !timingSafeEqual(provided, expected)) {
+    throw new ApiError(401, "توكن الوكيل غير صحيح.");
+  }
+}
+
+let cachedAgentUserId: number | null = null;
+
+/**
+ * Resolves the single operator's user id for bridge calls:
+ * AICHART_AGENT_USER_ID env override, else the first admin account.
+ */
+export async function resolveAgentUserId(): Promise<number> {
+  if (cachedAgentUserId !== null) return cachedAgentUserId;
+
+  const fromEnv = Number(process.env.AICHART_AGENT_USER_ID);
+  if (Number.isInteger(fromEnv) && fromEnv > 0) {
+    cachedAgentUserId = fromEnv;
+    await ensureUserDefaults(fromEnv);
+    return fromEnv;
+  }
+
+  await initDb();
+  const row = await queryOne(
+    "SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1",
+  );
+  const id = row ? Number((row as { id: number }).id) : 1;
+  cachedAgentUserId = id;
+  await ensureUserDefaults(id);
+  return id;
+}

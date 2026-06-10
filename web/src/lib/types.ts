@@ -21,9 +21,26 @@ export interface PublicUser {
   created_at: string;
 }
 
+/**
+ * Trading modes:
+ * - auto:     the agent opens/closes trades on its own (Risk Guard gated).
+ * - approval: the agent proposes; the operator approves each entry.
+ * - direct:   the operator drives; the agent trades only on explicit command.
+ * Legacy DB rows may still hold "advisory" — normalized to "approval" on read.
+ */
+export const TRADING_MODES = ["auto", "approval", "direct"] as const;
+export type TradingMode = (typeof TRADING_MODES)[number];
+
+export function normalizeTradingMode(raw: string | null | undefined): TradingMode {
+  if (raw === "advisory") return "approval";
+  return (TRADING_MODES as readonly string[]).includes(raw ?? "")
+    ? (raw as TradingMode)
+    : "approval";
+}
+
 export interface TradingSettings {
   user_id: number;
-  mode: "advisory" | "auto";
+  mode: TradingMode;
   approval: "manual" | "delegate";
   experience: "expert" | "beginner";
   style: "conservative" | "balanced" | "aggressive";

@@ -13,7 +13,7 @@ const assetList = z.array(z.string().max(20)).max(200);
 
 const schema = z
   .object({
-    mode: z.enum(["advisory", "auto"]),
+    mode: z.enum(["auto", "approval", "direct", "advisory"]),
     approval: z.enum(["manual", "delegate"]),
     experience: z.enum(["expert", "beginner"]),
     style: z.enum(["conservative", "balanced", "aggressive"]),
@@ -78,9 +78,11 @@ export async function PUT(req: NextRequest) {
         limits.max_open_trades_cap,
       );
     }
+    // Legacy clients may still send "advisory".
+    if (input.mode === "advisory") patch.mode = "approval";
     // The user cannot enable auto-execution unless the admin granted it.
     if (input.mode === "auto" && limits.can_execute !== 1) {
-      patch.mode = "advisory";
+      patch.mode = "approval";
     }
     if (input.allowed_assets !== undefined) {
       const current = await getSettings(user.id);
@@ -124,7 +126,7 @@ export async function PUT(req: NextRequest) {
       settings: await getSettings(user.id),
       capped:
         input.mode === "auto" && limits.can_execute !== 1
-          ? "وضع التنفيذ التلقائي يتطلب موافقة الإدارة. تم الإبقاء على وضع التوصيات."
+          ? "وضع التنفيذ التلقائي يتطلب موافقة الإدارة. تم الإبقاء على وضع الموافقة اليدوية."
           : null,
     });
   } catch (err) {

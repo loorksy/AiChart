@@ -4,11 +4,7 @@ import {
   createIntent,
 } from "./store";
 import { executeIntent } from "./execution";
-import {
-  approvalCard,
-  APPROVE_BUTTON_TEXT,
-  REJECT_BUTTON_TEXT,
-} from "./telegram";
+import { approvalCard } from "./telegram";
 import { notifyTradeResult } from "./notifyTrade";
 import { dispatchAlert } from "./alerts";
 import { resolveChartUrl } from "./recommendationChart";
@@ -60,11 +56,13 @@ export async function processRecommendations(
 
   if (limits.can_execute !== 1) return intents;
 
-  const advisoryApproval = Boolean(options?.allowAdvisoryApproval);
-  if (settings.mode !== "auto" && !advisoryApproval) return intents;
+  // direct: the operator drives — recommendations never become intents here.
+  if (settings.mode === "direct") return intents;
 
-  const autoExecute =
-    settings.mode === "auto" && settings.approval === "delegate";
+  const approvalFlow = Boolean(options?.allowAdvisoryApproval);
+  if (settings.mode === "approval" && !approvalFlow) return intents;
+
+  const autoExecute = settings.mode === "auto";
 
   const market = options?.market ?? settings.active_market ?? "crypto";
 
@@ -115,12 +113,8 @@ export async function processRecommendations(
         pattern_name: rec.pattern_name,
         timeframe: rec.timeframe,
       });
-      const buttons = [
-        [
-          { text: APPROVE_BUTTON_TEXT, callback_data: `approve:${intent.id}` },
-          { text: REJECT_BUTTON_TEXT, callback_data: `reject:${intent.id}` },
-        ],
-      ];
+      // Approval happens on the dashboard or via the OpenClaw agent chat —
+      // inline callback buttons are gone with the old webhook bot.
       const chartUrl =
         settings.send_screenshot === 1 ? await resolveChartUrl(rec) : null;
       const delivery = await dispatchAlert(userId, {
@@ -130,7 +124,6 @@ export async function processRecommendations(
         symbol: intent.symbol,
         confidence: rec.confidence,
         photoUrl: chartUrl,
-        buttons,
       });
       intents.push({
         id: intent.id,

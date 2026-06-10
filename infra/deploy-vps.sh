@@ -69,10 +69,11 @@ write_env_if_missing() {
     return 0
   fi
   log "Creating web/.env with generated secrets..."
-  local enc app cron port ip
+  local enc app cron svc port ip
   enc="$(openssl rand -hex 32)"
   app="$(openssl rand -base64 48 | tr -d '\n')"
   cron="$(openssl rand -base64 32 | tr -d '\n')"
+  svc="$(openssl rand -hex 32)"
   port="$(cat "$INSTALL_DIR/.deploy-port" 2>/dev/null || pick_free_port)"
   ip="$(curl -fsS -4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
   cat >"$env_file" <<EOF
@@ -86,14 +87,17 @@ ANTHROPIC_MODEL=
 ENABLE_BINANCE_CLI=0
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_BOT_USERNAME=
-TELEGRAM_WEBHOOK_SECRET=
 CRON_SECRET=$cron
+AICHART_SINGLE_USER=1
+AICHART_SERVICE_TOKEN=$svc
 APP_URL=http://${ip}:${port}
 PORT=${port}
 NODE_ENV=production
 EOF
   chmod 600 "$env_file"
   log "IMPORTANT: edit $env_file — set ADMIN_PASSWORD, ANTHROPIC_API_KEY, APP_URL (domain)"
+  log "Agent: install OpenClaw (npm i -g openclaw), run agent/scripts/sync-workspace.sh,"
+  log "       export AICHART_SERVICE_TOKEN from web/.env, then: pm2 start openclaw -- gateway"
 }
 
 main() {

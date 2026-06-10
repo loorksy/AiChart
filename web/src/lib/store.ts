@@ -21,6 +21,7 @@ import type {
   TradeIntent,
   TradingSettings,
 } from "./types";
+import { normalizeTradingMode } from "./types";
 import type { BinanceEnv } from "./binance";
 import type { BrokerKind, MarketType, MtPlatform } from "./markets/types";
 import { brokerForMarket } from "./markets/types";
@@ -38,10 +39,13 @@ export async function ensureUserDefaults(userId: number) {
 
 export async function getSettings(userId: number): Promise<TradingSettings> {
   await ensureUserDefaults(userId);
-  return (await queryOne<TradingSettings>(
+  const row = (await queryOne<TradingSettings>(
     "SELECT * FROM trading_settings WHERE user_id = ?",
     [userId],
   ))!;
+  // Legacy rows store mode='advisory' — map to the new three-mode model.
+  row.mode = normalizeTradingMode(row.mode);
+  return row;
 }
 
 export async function getLimits(userId: number): Promise<AdminLimits> {
@@ -505,6 +509,8 @@ export async function wouldExceedQuota(
   userId: number,
   cost: number,
 ): Promise<boolean> {
+  // Single-user mode: the operator owns the API key — daily quotas are off.
+  if (process.env.AICHART_SINGLE_USER !== "0") return false;
   const limits = await getLimits(userId);
   if (limits.claude_quota <= 0) return false;
   return (await getTodayUsage(userId)) + cost > limits.claude_quota;

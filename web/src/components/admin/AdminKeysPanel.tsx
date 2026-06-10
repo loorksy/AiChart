@@ -90,12 +90,12 @@ export function AdminKeysPanel() {
       const res = await fetch("/api/admin/config", { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        setMsg({ type: "err", text: data.error ?? "فشل تسجيل Webhook." });
+        setMsg({ type: "err", text: data.error ?? "فشل تحرير البوت." });
         return;
       }
       setMsg({
         type: "ok",
-        text: `تم تسجيل Webhook: ${data.webhookUrl}`,
+        text: data.message ?? "أُزيل الـ webhook — البوت بيد وكيل OpenClaw.",
       });
     } finally {
       setWebhookBusy(false);
@@ -214,7 +214,7 @@ export function AdminKeysPanel() {
           disabled={webhookBusy}
           className="rounded-lg border border-white/10 px-5 py-2.5 text-sm text-muted-foreground hover:text-foreground"
         >
-          {webhookBusy ? "…" : "تسجيل Webhook تليجرام"}
+          {webhookBusy ? "…" : "تحرير البوت لوكيل OpenClaw"}
         </button>
       </div>
 
