@@ -17,6 +17,49 @@ export interface ToolDef {
   input_schema: Record<string, unknown>;
 }
 
+type CacheControl = { cache_control: { type: "ephemeral" } };
+
+/**
+ * Prompt caching: marking the system block caches the tools+system prefix,
+ * and marking the last message block caches the conversation prefix — repeat
+ * reads bill at ~10% of input price (5-minute TTL). Saves most within the
+ * multi-step tool loop and consecutive chat turns.
+ */
+function cachedSystem(system: string): ({ type: "text"; text: string } & CacheControl)[] {
+  return [
+    { type: "text", text: system, cache_control: { type: "ephemeral" } },
+  ];
+}
+
+function cachedTools(tools?: ToolDef[]): (ToolDef | (ToolDef & CacheControl))[] | undefined {
+  if (!tools || tools.length === 0) return undefined;
+  return tools.map((t, i) =>
+    i === tools.length - 1
+      ? { ...t, cache_control: { type: "ephemeral" as const } }
+      : t,
+  );
+}
+
+function cachedMessages(messages: Message[]): Message[] {
+  if (messages.length === 0) return messages;
+  const last = messages[messages.length - 1]!;
+  const content: ContentBlock[] =
+    typeof last.content === "string"
+      ? last.content
+        ? [{ type: "text", text: last.content }]
+        : []
+      : [...last.content];
+  if (content.length === 0) return messages;
+  const lastBlock = {
+    ...content[content.length - 1]!,
+    cache_control: { type: "ephemeral" as const },
+  } as unknown as ContentBlock;
+  return [
+    ...messages.slice(0, -1),
+    { ...last, content: [...content.slice(0, -1), lastBlock] },
+  ];
+}
+
 export type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
 
 export type ContentBlock =
@@ -141,9 +184,9 @@ export async function callAnthropic(params: {
     body: JSON.stringify({
       model: getAnthropicModel(),
       max_tokens: params.maxTokens ?? 1500,
-      system: params.system,
-      messages: params.messages,
-      ...(params.tools ? { tools: params.tools } : {}),
+      system: cachedSystem(params.system),
+      messages: cachedMessages(params.messages),
+      ...(params.tools ? { tools: cachedTools(params.tools) } : {}),
     }),
     cache: "no-store",
   });
@@ -198,10 +241,10 @@ export async function callAnthropicStream(
     body: JSON.stringify({
       model: getAnthropicModel(),
       max_tokens: params.maxTokens ?? 1500,
-      system: params.system,
-      messages: params.messages,
+      system: cachedSystem(params.system),
+      messages: cachedMessages(params.messages),
       stream: true,
-      ...(params.tools ? { tools: params.tools } : {}),
+      ...(params.tools ? { tools: cachedTools(params.tools) } : {}),
     }),
     cache: "no-store",
   });
