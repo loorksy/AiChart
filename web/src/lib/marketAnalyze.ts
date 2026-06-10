@@ -32,22 +32,12 @@ import {
 } from "./chatImage";
 import type { ContentBlock } from "./anthropic";
 
+import type { ChartVisionSource } from "./marketAnalyzeLabels";
+
 export const MARKET_ANALYZE_COST = 4;
 
-export type ChartVisionSource = "client" | "server" | "text";
-
-export function chartVisionLabelAr(source: ChartVisionSource): string | null {
-  switch (source) {
-    case "client":
-      return "تحليل من الشارت المعروض";
-    case "server":
-      return "تحليل من لقطة الخادم";
-    case "text":
-      return "تحليل نصي — لم تُلتقط صورة";
-    default:
-      return null;
-  }
-}
+export type { ChartVisionSource } from "./marketAnalyzeLabels";
+export { chartVisionLabelAr } from "./marketAnalyzeLabels";
 
 function buildAnalyzePrompt(
   symbol: string,

@@ -18,7 +18,10 @@ import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 import type { MarketSnapshot } from "@/lib/market";
 import { consumeSse } from "@/lib/sse";
 import type { AgentActivity } from "@/lib/agentActivity";
-import { chartVisionLabelAr, type ChartVisionSource } from "@/lib/marketAnalyze";
+import {
+  chartVisionLabelAr,
+  type ChartVisionSource,
+} from "@/lib/marketAnalyzeLabels";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 import { useEaLivePrice } from "@/hooks/useEaLivePrice";
