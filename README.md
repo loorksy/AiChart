@@ -41,21 +41,18 @@ npm run dev            # http://localhost:3000
 | `TELEGRAM_BOT_TOKEN` | (اختياري) بوت تليجرام للإشعارات |
 | `CRON_SECRET` | (إنتاج) سرّ لحماية مهام المراقبة والملخّص اليومي |
 
-## المراقبة 24/7 (المرحلة 6)
+## المراقبة 24/7 — وكيل OpenClaw
 
-طبقة المراقبة الرخيصة (`monitor.ts`) تفحص الأصول كل 15 دقيقة. Claude يُستدعى **فقط** عند ظهور إشارات فنية.
+المراقبة الدورية يتولاها وكيل OpenClaw عبر heartbeat (انظر [`agent/`](agent/README.md)):
+يفحص الصفقات المفتوحة كل 15 دقيقة ويمسح الفرص كل 30 دقيقة عبر Bridge API
+(`/api/agent/*`) — طبقة المسح الرخيصة (`monitor.ts`) تعمل بالكود ولا تستدعي
+Claude إلا عند ظهور مرشح حقيقي.
 
 ```bash
-# مثال — استدعاء دورة المراقبة
-curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
-  https://your-domain/api/cron/monitor
-
-# ملخّص يومي لتليجرام
+# ملخّص يومي لتليجرام (cron اختياري — الوكيل يرسله بنفسه أيضاً)
 curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
   https://your-domain/api/cron/daily-summary
 ```
-
-انظر [`infra/crontab.example`](infra/crontab.example) لجدولة cron على لينكس.
 
 ## النشر على خادم لينكس
 
