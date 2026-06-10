@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Loader2, Search, TrendingDown, TrendingUp, X } from "lucide-react";
 import { formatTickerPrice } from "@/components/market/formatLevel";
@@ -37,7 +37,6 @@ export function SymbolPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);
-  const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -58,13 +57,6 @@ export function SymbolPicker({
   );
   const liveTicks = useBinanceLivePrices(open ? liveSymbols : []);
 
-  const updatePopoverPos = useCallback(() => {
-    const el = triggerRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    setPopoverPos({ top: rect.bottom + 4, left: rect.left });
-  }, []);
-
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023px)");
     const sync = () => setMobile(mq.matches);
@@ -72,20 +64,6 @@ export function SymbolPicker({
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    if (!mobile) updatePopoverPos();
-    const onReposition = () => {
-      if (!mobile) updatePopoverPos();
-    };
-    window.addEventListener("resize", onReposition);
-    window.addEventListener("scroll", onReposition, true);
-    return () => {
-      window.removeEventListener("resize", onReposition);
-      window.removeEventListener("scroll", onReposition, true);
-    };
-  }, [open, mobile, updatePopoverPos]);
 
   useEffect(() => {
     if (!open || mobile) return;
@@ -104,19 +82,16 @@ export function SymbolPicker({
   }, [open, mobile]);
 
   useEffect(() => {
-    if (!open || !mobile) return;
+    if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [open, mobile]);
+  }, [open]);
 
   function openPanel() {
-    if (!open) {
-      onOpen?.();
-      if (!mobile) updatePopoverPos();
-    }
+    if (!open) onOpen?.();
     setOpen((o) => !o);
   }
 
@@ -150,7 +125,7 @@ export function SymbolPicker({
       <div
         className={cn(
           "overflow-y-auto p-2",
-          mobile ? "max-h-[50dvh]" : "max-h-[min(60dvh,20rem)]",
+          mobile ? "max-h-[50dvh]" : "max-h-[min(60dvh,24rem)]",
         )}
       >
         {filtered.length === 0 && !loading ? (
@@ -222,12 +197,33 @@ export function SymbolPicker({
     !mobile &&
     typeof document !== "undefined" &&
     createPortal(
-      <div
-        ref={panelRef}
-        className="pointer-events-auto fixed z-[60] w-[min(42rem,calc(100vw-1rem))] rounded-xl border border-border bg-card shadow-xl"
-        style={{ top: popoverPos.top, left: popoverPos.left }}
-      >
-        {panelContent}
+      <div className="pointer-events-auto fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+          aria-label="إغلاق"
+          onClick={() => setOpen(false)}
+        />
+        <div
+          ref={panelRef}
+          className="relative z-10 flex w-full max-w-3xl flex-col rounded-2xl border border-border bg-card shadow-2xl"
+          role="dialog"
+          aria-modal
+          aria-label="اختيار الزوج"
+        >
+          <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+            <span className="text-sm font-semibold">اختيار الزوج</span>
+            <button
+              type="button"
+              className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"
+              aria-label="إغلاق"
+              onClick={() => setOpen(false)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {panelContent}
+        </div>
       </div>,
       document.body,
     );
