@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  Bot,
   ChevronDown,
   LayoutDashboard,
   LineChart,
@@ -23,6 +24,7 @@ import type { Conversation } from "@/lib/types";
 const MAIN_TABS = [
   { href: "/chat", label: "المحادثة", icon: MessageSquare },
   { href: "/dashboard", label: "اللوحة", icon: LayoutDashboard },
+  { href: "/agent", label: "الوكيل", icon: Bot },
   { href: "/market", label: "السوق", icon: LineChart },
   { href: "/signals/new", label: "الإشارات", icon: TrendingUp },
 ] as const;

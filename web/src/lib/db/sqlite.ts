@@ -311,6 +311,11 @@ function migrate(db: Database.Database) {
   if (!recCols.some((c) => c.name === "context_json")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN context_json TEXT");
   }
+  if (!recCols.some((c) => c.name === "source")) {
+    db.exec(
+      "ALTER TABLE recommendations ADD COLUMN source TEXT NOT NULL DEFAULT 'web'",
+    );
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS telegram_pending (

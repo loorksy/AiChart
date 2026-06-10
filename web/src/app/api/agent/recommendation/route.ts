@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { saveRecommendation } from "@/lib/store";
+import { logAudit, saveRecommendation } from "@/lib/store";
 import { profileForInterval } from "@/lib/analysisProfile";
 import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
 import { attachChartToRecommendation } from "@/lib/recommendationChart";
@@ -52,7 +52,13 @@ export async function POST(req: NextRequest) {
       pattern_name: body.pattern_name ?? null,
       chart_drawings_json: drawings.length ? JSON.stringify(drawings) : null,
       analysis_tier: profile.tier,
+      source: "agent",
     });
+    await logAudit(
+      userId,
+      "agent_recommendation",
+      `${rec.symbol} ${rec.action} ${rec.confidence}% (#${rec.id})`,
+    );
 
     // The agent delivers messages itself (OpenClaw channel) — no web notify.
     const { rec: enriched } = await attachChartToRecommendation(userId, rec, {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import {
+  Bot,
   ChevronDown,
   LayoutDashboard,
   LineChart,
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils";
 const MAIN_TABS = [
   { href: "/chat", label: "المحادثة", icon: MessageSquare },
   { href: "/dashboard", label: "اللوحة", icon: LayoutDashboard },
+  { href: "/agent", label: "الوكيل", icon: Bot },
   { href: "/market", label: "السوق", icon: LineChart },
   { href: "/signals/new", label: "الإشارات", icon: TrendingUp },
 ] as const;

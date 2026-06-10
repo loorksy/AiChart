@@ -17,6 +17,7 @@ import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import { displayNameFromEmail } from "@/lib/displayName";
 import { useMe } from "@/hooks/useMe";
 import { DashboardAnalytics } from "@/components/dashboard/DashboardAnalytics";
+import { AgentStatusBar } from "@/components/dashboard/AgentStatusBar";
 import { WaitingRoom } from "@/components/dashboard/WaitingRoom";
 import { parseWatchlist } from "@/lib/allowedAssets";
 import type { TradeIntent } from "@/lib/types";
@@ -80,6 +81,8 @@ export default function DashboardClient({
       subtitle="لوحة الحساب والرصيد"
       maxWidth="6xl"
     >
+
+      <AgentStatusBar />
 
       <WaitingRoom
         settings={settings}
