@@ -1,5 +1,6 @@
 import AuthForm from "@/components/AuthForm";
 import { getTelegramLoginConfig } from "@/lib/telegram";
+import { isSingleUserMode } from "@/lib/agentAuth";
 
 export default async function LoginPage({
   searchParams,
@@ -17,6 +18,7 @@ export default async function LoginPage({
       redirectTo={redirectTo}
       botUsername={botUsername}
       telegramConfigured={telegramConfigured}
+      allowRegister={!isSingleUserMode()}
     />
   );
 }

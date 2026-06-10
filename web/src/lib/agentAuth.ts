@@ -1,8 +1,11 @@
 import crypto from "crypto";
 import type { NextRequest } from "next/server";
 import { initDb, queryOne } from "./db";
-import { ensureUserDefaults } from "./store";
+import { ensureUserDefaults, setFlag } from "./store";
 import { ApiError } from "./api";
+
+/** Flag key holding the timestamp of the agent's last authenticated call. */
+export const AGENT_LAST_SEEN_FLAG = "agent_last_seen";
 
 /**
  * Single-user mode + service auth for the OpenClaw agent bridge.
@@ -51,6 +54,8 @@ export function requireAgentAuth(req: NextRequest): void {
   if (!provided || !timingSafeEqual(provided, expected)) {
     throw new ApiError(401, "توكن الوكيل غير صحيح.");
   }
+  // Bridge pulse for the dashboard — fire and forget.
+  setFlag(AGENT_LAST_SEEN_FLAG, new Date().toISOString()).catch(() => {});
 }
 
 let cachedAgentUserId: number | null = null;

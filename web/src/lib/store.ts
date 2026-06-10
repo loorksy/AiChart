@@ -17,6 +17,7 @@ import type {
   MtAccountMeta,
   PublicUser,
   Recommendation,
+  RecommendationSource,
   Trade,
   TradeIntent,
   TradingSettings,
@@ -425,13 +426,14 @@ export async function saveRecommendation(
     pattern_name?: string | null;
     analysis_tier?: string | null;
     context_json?: string | null;
+    source?: RecommendationSource;
   },
 ): Promise<Recommendation> {
   const id = await insertReturningId(
     `INSERT INTO recommendations
        (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors,
-        chart_drawings_json, pattern_name, analysis_tier, context_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        chart_drawings_json, pattern_name, analysis_tier, context_json, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       rec.symbol.toUpperCase(),
@@ -447,6 +449,7 @@ export async function saveRecommendation(
       rec.pattern_name ?? null,
       rec.analysis_tier ?? null,
       rec.context_json ?? null,
+      rec.source ?? "web",
     ],
   );
   return (await queryOne<Recommendation>(
@@ -950,6 +953,26 @@ export async function listUsersForTradeMaintenance(
     });
   }
   return out;
+}
+
+/** Agent-originated audit entries (bridge actions) for the activity timeline. */
+export async function listAgentAuditLogs(
+  userId: number,
+  limit = 50,
+): Promise<
+  { id: number; action: string; detail: string | null; created_at: string }[]
+> {
+  return query<{
+    id: number;
+    action: string;
+    detail: string | null;
+    created_at: string;
+  }>(
+    `SELECT id, action, detail, created_at FROM audit_logs
+     WHERE user_id = ? AND action LIKE 'agent\\_%' ESCAPE '\\'
+     ORDER BY id DESC LIMIT ?`,
+    [userId, limit],
+  );
 }
 
 export async function listAuditLogs(limit = 100): Promise<

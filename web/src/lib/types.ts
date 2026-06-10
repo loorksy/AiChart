@@ -92,6 +92,9 @@ export interface SessionPayload {
 
 export type RecommendationAction = "buy" | "sell" | "wait";
 
+/** Who produced a recommendation: web chat/scan vs the OpenClaw agent. */
+export type RecommendationSource = "web" | "agent";
+
 export interface Recommendation {
   id: number;
   user_id: number;
@@ -109,6 +112,7 @@ export interface Recommendation {
   pattern_name: string | null;
   analysis_tier: string | null;
   context_json: string | null;
+  source: RecommendationSource;
   created_at: string;
 }
 

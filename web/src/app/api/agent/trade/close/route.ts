@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { closeAllOpenTrades, closeOpenTrade } from "@/lib/tradeClose";
+import { logAudit } from "@/lib/store";
 
 const schema = z
   .object({
@@ -22,10 +23,20 @@ export async function POST(req: NextRequest) {
 
     if (body.all) {
       const result = await closeAllOpenTrades(userId);
+      await logAudit(
+        userId,
+        "agent_trade_close",
+        `all: closed ${result.closed}, pnl ${result.totalPnl.toFixed(2)} USDT`,
+      );
       return NextResponse.json({ ok: result.failed === 0, ...result });
     }
 
     const result = await closeOpenTrade(userId, body.trade_id as number);
+    await logAudit(
+      userId,
+      "agent_trade_close",
+      `#${body.trade_id} ${result.symbol}: ${result.ok ? `pnl ${result.pnl.toFixed(2)} USDT` : result.reason}`,
+    );
     return NextResponse.json(result);
   } catch (e) {
     return handleError(e);

@@ -351,7 +351,8 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS chart_drawings_json TEXT,
       ADD COLUMN IF NOT EXISTS pattern_name TEXT,
       ADD COLUMN IF NOT EXISTS analysis_tier TEXT,
-      ADD COLUMN IF NOT EXISTS context_json TEXT
+      ADD COLUMN IF NOT EXISTS context_json TEXT,
+      ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'web'
   `).catch(() => {});
 
   await client.query(`

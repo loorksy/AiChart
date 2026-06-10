@@ -12,11 +12,13 @@ export default function AuthForm({
   redirectTo,
   botUsername,
   telegramConfigured,
+  allowRegister = true,
 }: {
   mode: "login" | "register";
   redirectTo?: string;
   botUsername?: string | null;
   telegramConfigured?: boolean;
+  allowRegister?: boolean;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -156,7 +158,7 @@ export default function AuthForm({
             </Link>
           </p>
         )}
-        {isLogin && (
+        {isLogin && allowRegister && (
           <p className="mt-6 text-center text-sm text-muted-foreground">
             {!canUseTelegram && "ليس لديك حساب؟ "}
             <Link

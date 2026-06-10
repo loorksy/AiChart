@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { createIntent, getLimits, getSettings } from "@/lib/store";
+import { createIntent, getLimits, getSettings, logAudit } from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
 import type { MarketType } from "@/lib/markets/types";
 
@@ -62,6 +62,14 @@ export async function POST(req: NextRequest) {
     const result = await executeIntent(userId, intent.id, {
       explicitApproval: body.approved_by_user,
     });
+
+    await logAudit(
+      userId,
+      "agent_trade_open",
+      `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USDT → ${result.status}${
+        result.ok ? "" : ` (${result.reason})`
+      }`,
+    );
 
     return NextResponse.json({
       ok: result.ok,
