@@ -1,4 +1,4 @@
-import { buildSnapshot } from "./market";
+import { buildSnapshot, buildForexSnapshot } from "./market";
 import { profileForInterval, buildProfilePromptHints } from "./analysisProfile";
 import {
   fetchMarketContext,
@@ -8,6 +8,7 @@ import {
 import { runAgent } from "./agent";
 import { processRecommendations } from "./tradeFlow";
 import type { TradingSettings } from "./types";
+import type { MarketType } from "./markets/types";
 import { overlaysFromAnalysis } from "./chartOverlays";
 import {
   parseChartDrawingsJson,
@@ -68,21 +69,27 @@ export async function runMarketAnalyze(
     onActivity?: (a: import("./agentActivity").AgentActivity) => void;
     onDelta?: (text: string) => void;
     telegramSession?: boolean;
+    market?: MarketType;
   },
 ): Promise<MarketAnalyzeResult> {
   const sym = symbol.toUpperCase().trim();
+  const market: MarketType = opts?.market ?? "crypto";
   const profile = profileForInterval(interval);
-  const [snap, ctx] = await Promise.all([
-    buildSnapshot(sym, interval),
-    fetchMarketContext(sym, profile),
-  ]);
-  const prompt = buildAnalyzePrompt(
-    sym,
-    interval,
-    snap,
-    formatContextForPrompt(ctx),
-    profile,
-  );
+
+  let snap: Awaited<ReturnType<typeof buildSnapshot>>;
+  let ctx: Awaited<ReturnType<typeof fetchMarketContext>> | null = null;
+  if (market === "forex") {
+    snap = await buildForexSnapshot(userId, sym, interval);
+  } else {
+    [snap, ctx] = await Promise.all([
+      buildSnapshot(sym, interval),
+      fetchMarketContext(sym, profile),
+    ]);
+  }
+  const contextBlock = ctx
+    ? formatContextForPrompt(ctx)
+    : "سوق فوركس عبر MetaTrader — لا يتوفر سياق Web3/أخبار. اعتمد على التحليل الفني.";
+  const prompt = buildAnalyzePrompt(sym, interval, snap, contextBlock, profile);
 
   const result = await runAgent(
     { userId, settings, telegramSession: opts?.telegramSession ?? true },
@@ -92,6 +99,7 @@ export async function runMarketAnalyze(
 
   const intents = await processRecommendations(userId, result.recommendations, {
     allowAdvisoryApproval: true,
+    market,
   });
 
   let rec =
@@ -99,7 +107,7 @@ export async function runMarketAnalyze(
     result.recommendations[0] ??
     null;
 
-  if (rec) {
+  if (rec && ctx) {
     await updateRecommendationContext(rec.id, JSON.stringify(ctx));
     rec = { ...rec, context_json: JSON.stringify(ctx) };
   }
@@ -124,7 +132,7 @@ export async function runMarketAnalyze(
     intents,
     profileLabel: profile.labelAr,
     analysisTier: profile.tier,
-    contextSummary: contextSummary(ctx),
+    contextSummary: ctx ? contextSummary(ctx) : [],
     telegramSent: intents.some((i) => i.status === "pending"),
   };
 }

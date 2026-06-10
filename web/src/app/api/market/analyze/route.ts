@@ -20,13 +20,14 @@ import { INTERVAL_SET } from "@/lib/intervals";
 export const maxDuration = 60;
 
 const schema = z.object({
-  symbol: z.string().min(6).max(20),
+  symbol: z.string().min(3).max(20),
   interval: z
     .string()
     .min(2)
     .max(4)
     .default("1h")
     .refine((v) => INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
+  market: z.enum(["crypto", "forex"]).optional(),
   stream: z.boolean().optional(),
 });
 
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
     const settings = await getSettings(user.id);
     const symbol = body.symbol.toUpperCase().trim();
     const interval = body.interval;
+    const market = body.market ?? settings.active_market ?? "crypto";
     const profile = profileForInterval(interval);
     const stream = body.stream !== false;
 
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest) {
         | undefined,
       onDelta: undefined as ((text: string) => void) | undefined,
       telegramSession: true,
+      market,
     };
 
     if (stream) {
@@ -146,7 +149,7 @@ export async function POST(req: NextRequest) {
       settings,
       symbol,
       interval,
-      { telegramSession: true },
+      { telegramSession: true, market },
     );
 
     await incrementUsage(user.id, MARKET_ANALYZE_COST);

@@ -239,18 +239,30 @@ async function executeTool(
   try {
     switch (name) {
       case "resolve_symbol": {
-        const resolved = resolveSymbol(String(input.query ?? ""));
+        const resolved = resolveSymbol(
+          String(input.query ?? ""),
+          ctx.settings.active_market,
+        );
         return { content: JSON.stringify(resolved) };
       }
       case "get_market_snapshot": {
         const symbol = String(input.symbol ?? "");
         const interval = input.interval ? String(input.interval) : "1h";
-        const snap = await getUnifiedSnapshot(symbol, interval);
+        const snap = await getUnifiedSnapshot(
+          symbol,
+          ctx.settings.active_market,
+          interval,
+          ctx.userId,
+        );
         return { content: JSON.stringify(snap) };
       }
       case "get_price": {
         const symbol = String(input.symbol ?? "");
-        const { resolved, price } = await getUnifiedPrice(symbol);
+        const { resolved, price } = await getUnifiedPrice(
+          symbol,
+          ctx.settings.active_market,
+          ctx.userId,
+        );
         return {
           content: JSON.stringify({
             symbol: resolved.symbol,
