@@ -505,6 +505,8 @@ export async function wouldExceedQuota(
   userId: number,
   cost: number,
 ): Promise<boolean> {
+  // Single-user mode: the operator owns the API key — daily quotas are off.
+  if (process.env.AICHART_SINGLE_USER !== "0") return false;
   const limits = await getLimits(userId);
   if (limits.claude_quota <= 0) return false;
   return (await getTodayUsage(userId)) + cost > limits.claude_quota;
