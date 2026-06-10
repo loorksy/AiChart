@@ -1,5 +1,4 @@
 import {
-  buildChartSnapshotBuffer,
   buildChartSnapshotUrl,
   chartImagePathForRecommendation,
 } from "./chartSnapshot";
@@ -8,7 +7,7 @@ import type { ChartDrawing } from "./chartDrawings";
 import { parseChartDrawingsJson } from "./chartDrawings";
 import { getSettings, updateRecommendationChartUrl } from "./store";
 import { recommendationCard } from "./telegram";
-import { dispatchAlert } from "./alerts";
+import { dispatchAlert, type DeliveryResult } from "./alerts";
 import type { Recommendation } from "./types";
 import type { InlineButton } from "./telegram";
 
@@ -20,8 +19,6 @@ export interface AttachChartOptions {
 }
 
 export interface NotifyRecommendationOptions {
-  notifyTelegram?: boolean;
-  notifyWeb?: boolean;
   buttons?: InlineButton[][];
   drawings?: ChartDrawing[];
 }
@@ -33,28 +30,26 @@ export async function attachChartToRecommendation(
   userId: number,
   rec: Recommendation,
   options: AttachChartOptions = {},
-): Promise<Recommendation> {
-  if (rec.action === "wait") return rec;
+): Promise<{ rec: Recommendation; delivery?: DeliveryResult }> {
+  if (rec.action === "wait") return { rec };
 
   const overlays = overlaysFromRecommendation(rec);
   const drawings =
     options.drawings ?? parseChartDrawingsJson(rec.chart_drawings_json);
-  const timeframe = rec.timeframe ?? "1h";
 
   const imagePath = chartImagePathForRecommendation(rec.id);
   await updateRecommendationChartUrl(rec.id, imagePath);
   const enriched: Recommendation = { ...rec, chart_image_url: imagePath };
 
+  let delivery: DeliveryResult | undefined;
   if (options.notify) {
-    await notifyRecommendation(userId, enriched, {
-      notifyTelegram: true,
-      notifyWeb: true,
+    delivery = await notifyRecommendation(userId, enriched, {
       buttons: options.buttons,
       drawings,
     });
   }
 
-  return enriched;
+  return { rec: enriched, delivery };
 }
 
 /**
@@ -64,57 +59,28 @@ export async function notifyRecommendation(
   userId: number,
   rec: Recommendation,
   options: NotifyRecommendationOptions = {},
-): Promise<void> {
-  if (rec.action === "wait") return;
+): Promise<DeliveryResult> {
+  if (rec.action === "wait") {
+    return { delivered: false, reason: "no_actionable_signal" };
+  }
 
   const settings = await getSettings(userId);
   const caption = recommendationCard(rec);
-  const drawings =
-    options.drawings ?? parseChartDrawingsJson(rec.chart_drawings_json);
-  const overlays = overlaysFromRecommendation(rec);
-  const timeframe = rec.timeframe ?? "1h";
 
   let imageUrl = rec.chart_image_url ?? chartImagePathForRecommendation(rec.id);
   if (!rec.chart_image_url) {
     await updateRecommendationChartUrl(rec.id, imageUrl);
   }
 
-  const photoBuffer =
-    settings.send_screenshot === 1
-      ? await buildChartSnapshotBuffer({
-          symbol: rec.symbol,
-          interval: timeframe,
-          overlays,
-          drawings,
-          patternName: rec.pattern_name,
-        })
-      : null;
-
-  if (options.notifyTelegram && settings.telegram_chat_id) {
-    const { notifyUser, notifyUserPhotoBuffer } = await import("./telegram");
-    if (settings.send_screenshot === 1 && photoBuffer) {
-      await notifyUserPhotoBuffer(
-        userId,
-        photoBuffer,
-        caption,
-        options.buttons,
-      );
-    } else {
-      await notifyUser(userId, caption, options.buttons);
-    }
-  }
-
-  if (options.notifyWeb) {
-    await dispatchAlert(userId, {
-      type: "signal",
-      title: `توصية ${rec.action === "buy" ? "شراء" : "بيع"} ${rec.symbol}`,
-      text: caption,
-      symbol: rec.symbol,
-      confidence: rec.confidence,
-      photoUrl: settings.send_screenshot === 1 ? imageUrl : null,
-      buttons: options.buttons,
-    });
-  }
+  return dispatchAlert(userId, {
+    type: "signal",
+    title: `توصية ${rec.action === "buy" ? "شراء" : "بيع"} ${rec.symbol}`,
+    text: caption,
+    symbol: rec.symbol,
+    confidence: rec.confidence,
+    photoUrl: settings.send_screenshot === 1 ? imageUrl : null,
+    buttons: options.buttons,
+  });
 }
 
 /** Resolves chart URL from recommendation metadata or builds a fresh one. */

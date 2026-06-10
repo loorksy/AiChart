@@ -190,8 +190,8 @@
     "semantic_hash": ""
   },
   "web/src/app/api/market/analyze/route.ts": {
-    "mtime": 1781107101.720284,
-    "ast_hash": "173ca410fba84930afefb2b37741eac0",
+    "mtime": 1781118107.0265694,
+    "ast_hash": "61666d8d2b74cce3288edfbe3dc4b8cf",
     "semantic_hash": ""
   },
   "web/src/app/api/market/forex-price/route.ts": {
@@ -395,8 +395,8 @@
     "semantic_hash": ""
   },
   "web/src/components/MarketClient.tsx": {
-    "mtime": 1781116622.0210085,
-    "ast_hash": "c2713e8fa9f9588f0495aa19712bd7ce",
+    "mtime": 1781118122.1951401,
+    "ast_hash": "1ed624aa32f894f9caafc3ec018c0d2a",
     "semantic_hash": ""
   },
   "web/src/components/Nav.tsx": {
@@ -550,8 +550,8 @@
     "semantic_hash": ""
   },
   "web/src/components/dashboard/OpportunityScanCard.tsx": {
-    "mtime": 1781116508.5423753,
-    "ast_hash": "ab9d3b93d7e52d5a9b33739f890a7208",
+    "mtime": 1781118137.931278,
+    "ast_hash": "ebc5a980819ed3f57d48f5b7ab08454f",
     "semantic_hash": ""
   },
   "web/src/components/dashboard/PendingIntentQuickActions.tsx": {
@@ -585,8 +585,8 @@
     "semantic_hash": ""
   },
   "web/src/components/market/MarketRecPanel.tsx": {
-    "mtime": 1781058170.536111,
-    "ast_hash": "5a69cf39b83da7ed72f3a2037226fb2f",
+    "mtime": 1781118113.7112021,
+    "ast_hash": "358b68f6ee58b43d7231f7f4b93728ba",
     "semantic_hash": ""
   },
   "web/src/components/market/MarketTickerBar.tsx": {
@@ -740,8 +740,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/agent.ts": {
-    "mtime": 1781115647.5010302,
-    "ast_hash": "322d0a63479d204055f55f60ccb1f639",
+    "mtime": 1781118063.2219107,
+    "ast_hash": "0618d1356c2cf403aeb1f7893d8178f7",
     "semantic_hash": ""
   },
   "web/src/lib/agentActivity.ts": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/alerts.ts": {
-    "mtime": 1781115679.1385078,
-    "ast_hash": "0f4b59ce0c3cfb65509815f5e81c4e97",
+    "mtime": 1781117990.0716565,
+    "ast_hash": "2bf431ed1bcd4fd1e6704c7e13d15f2c",
     "semantic_hash": ""
   },
   "web/src/lib/allowedAssets.ts": {
@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/analysisProfile.ts": {
-    "mtime": 1781057274.9132104,
-    "ast_hash": "7fbfb1ee24de825c3631cffa697dd2e9",
+    "mtime": 1781118084.4086058,
+    "ast_hash": "658e1cc72d52a48737b51b9453d81150",
     "semantic_hash": ""
   },
   "web/src/lib/analytics.ts": {
@@ -995,13 +995,13 @@
     "semantic_hash": ""
   },
   "web/src/lib/marketAnalyze.ts": {
-    "mtime": 1781115685.4365964,
-    "ast_hash": "081745a99c98b70359dbc158fec9e1df",
+    "mtime": 1781118083.7344987,
+    "ast_hash": "32ef2f900461e08af60ae8ef8b695b59",
     "semantic_hash": ""
   },
   "web/src/lib/marketContext.ts": {
-    "mtime": 1781057961.111932,
-    "ast_hash": "59afd51d1d17485fe32d891259edfbcb",
+    "mtime": 1781118137.2087216,
+    "ast_hash": "136889916e9c6bf20262560142f68fea",
     "semantic_hash": ""
   },
   "web/src/lib/markets/forexInstruments.ts": {
@@ -1040,8 +1040,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/monitorRunner.ts": {
-    "mtime": 1781115649.6250813,
-    "ast_hash": "991bc29dc3bfec306e52f883a8200da2",
+    "mtime": 1781118138.791188,
+    "ast_hash": "f54e95cafcce3fb5afa4888f25d27f8e",
     "semantic_hash": ""
   },
   "web/src/lib/notifyTrade.ts": {
@@ -1055,8 +1055,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/opportunityScan.ts": {
-    "mtime": 1781116440.8872795,
-    "ast_hash": "6dc4f1979ab50a04ea2db7c3fec5fc3d",
+    "mtime": 1781118137.2076516,
+    "ast_hash": "957346e54d6427c5bce6cae6d5bb20d4",
     "semantic_hash": ""
   },
   "web/src/lib/persona.ts": {
@@ -1070,8 +1070,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/recommendationChart.ts": {
-    "mtime": 1781115647.04186,
-    "ast_hash": "1a338df15b23ec17576573a8bae98ada",
+    "mtime": 1781118050.689706,
+    "ast_hash": "852d2edb673a1500ea56fae8576c70d6",
     "semantic_hash": ""
   },
   "web/src/lib/reportExport.ts": {
@@ -1140,8 +1140,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/tradeFlow.ts": {
-    "mtime": 1781107101.8480215,
-    "ast_hash": "214261606cfb63c23b86affcce0b2a06",
+    "mtime": 1781118062.8534675,
+    "ast_hash": "96f4782134c9c3552d7fad38b18c9787",
     "semantic_hash": ""
   },
   "web/src/lib/types.ts": {

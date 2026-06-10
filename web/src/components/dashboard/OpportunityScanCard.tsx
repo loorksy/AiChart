@@ -162,6 +162,34 @@ export function OpportunityScanCard({
               ({result.deepAnalysis.recommendation.confidence}%)
             </p>
           )}
+          {result.telegram && (
+            <div className="space-y-1 rounded-lg border border-border/50 bg-secondary/20 p-2 text-xs">
+              {result.telegram.technical && (
+                <p>
+                  تليجرام (فرصة فنية):{" "}
+                  {result.telegram.technical.delivered ? (
+                    <span className="text-green-600">أُرسل</span>
+                  ) : (
+                    <span className="text-amber-600">
+                      لم يُرسل — {result.telegram.technical.reasonAr ?? "غير معروف"}
+                    </span>
+                  )}
+                </p>
+              )}
+              {result.telegram.final && (
+                <p>
+                  تليجرام (النتيجة):{" "}
+                  {result.telegram.final.delivered ? (
+                    <span className="text-green-600">أُرسل</span>
+                  ) : (
+                    <span className="text-amber-600">
+                      لم يُرسل — {result.telegram.final.reasonAr ?? "غير معروف"}
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
           {result.errors.length > 0 && (
             <p className="text-xs text-amber-600">{result.errors.join(" · ")}</p>
           )}

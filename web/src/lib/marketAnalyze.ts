@@ -1,9 +1,10 @@
-import { buildSnapshot, buildForexSnapshot } from "./market";
+import { buildSnapshot, buildForexSnapshot, type MarketSnapshot } from "./market";
 import { profileForInterval, buildProfilePromptHints } from "./analysisProfile";
 import {
   fetchMarketContext,
   formatContextForPrompt,
   contextSummary,
+  snapshotSummaryLines,
 } from "./marketContext";
 import { runAgent } from "./agent";
 import { processRecommendations } from "./tradeFlow";
@@ -16,14 +17,16 @@ import {
 } from "./chartDrawings";
 import type { ProcessedIntent } from "./tradeFlow";
 import { updateRecommendationContext } from "./store";
-import { attachChartToRecommendation } from "./recommendationChart";
+import { attachChartToRecommendation, notifyRecommendation } from "./recommendationChart";
+import type { DeliveryResult } from "./alerts";
+import { deliveryReasonAr } from "./alerts";
 
 export const MARKET_ANALYZE_COST = 3;
 
 function buildAnalyzePrompt(
   symbol: string,
   interval: string,
-  snap: Awaited<ReturnType<typeof buildSnapshot>>,
+  snap: MarketSnapshot,
   contextBlock: string,
   profile: ReturnType<typeof profileForInterval>,
 ): string {
@@ -58,7 +61,32 @@ export interface MarketAnalyzeResult {
   profileLabel: string;
   analysisTier: string;
   contextSummary: string[];
+  symbol: string;
+  interval: string;
   telegramSent: boolean;
+  telegramReasonAr?: string;
+}
+
+function pickTelegramDelivery(
+  intents: ProcessedIntent[],
+  agentDeliveries?: DeliveryResult[],
+): DeliveryResult {
+  const intentWithTelegram = intents.find(
+    (i) => i.telegramDelivered != null || i.telegramReasonAr,
+  );
+  if (intentWithTelegram) {
+    return {
+      delivered: intentWithTelegram.telegramDelivered ?? false,
+      reasonAr: intentWithTelegram.telegramReasonAr,
+    };
+  }
+  const agentDelivery = agentDeliveries?.[agentDeliveries.length - 1];
+  if (agentDelivery) return agentDelivery;
+  return {
+    delivered: false,
+    reason: "no_actionable_signal",
+    reasonAr: deliveryReasonAr("no_actionable_signal"),
+  };
 }
 
 export async function runMarketAnalyze(
@@ -77,7 +105,7 @@ export async function runMarketAnalyze(
   const market: MarketType = opts?.market ?? "crypto";
   const profile = profileForInterval(interval);
 
-  let snap: Awaited<ReturnType<typeof buildSnapshot>>;
+  let snap: MarketSnapshot;
   let ctx: Awaited<ReturnType<typeof fetchMarketContext>> | null = null;
   if (market === "forex") {
     snap = await buildForexSnapshot(userId, sym, interval);
@@ -93,7 +121,7 @@ export async function runMarketAnalyze(
   const prompt = buildAnalyzePrompt(sym, interval, snap, contextBlock, profile);
 
   const result = await runAgent(
-    { userId, settings, telegramSession: opts?.telegramSession ?? true },
+    { userId, settings, telegramSession: opts?.telegramSession ?? false },
     [{ role: "user", content: prompt }],
     { onActivity: opts?.onActivity, onDelta: opts?.onDelta },
   );
@@ -124,20 +152,29 @@ export async function runMarketAnalyze(
         )
       : [];
 
-  let telegramSent = intents.some((i) => i.status === "pending");
+  if (rec && (rec.action === "buy" || rec.action === "sell")) {
+    const attached = await attachChartToRecommendation(userId, rec, {
+      notify: false,
+      drawings,
+    });
+    rec = attached.rec;
+  }
+
+  let telegram = pickTelegramDelivery(intents, result.signalDeliveries);
 
   if (
+    !telegram.delivered &&
     rec &&
     (rec.action === "buy" || rec.action === "sell") &&
     intents.length === 0
   ) {
-    const enriched = await attachChartToRecommendation(userId, rec, {
-      notify: true,
-      drawings,
-    });
-    rec = enriched;
-    telegramSent = true;
+    telegram = await notifyRecommendation(userId, rec);
   }
+
+  const summaryLines = [
+    ...snapshotSummaryLines(snap),
+    ...(ctx ? contextSummary(ctx) : []),
+  ];
 
   return {
     reply: result.reply,
@@ -148,7 +185,10 @@ export async function runMarketAnalyze(
     intents,
     profileLabel: profile.labelAr,
     analysisTier: profile.tier,
-    contextSummary: ctx ? contextSummary(ctx) : [],
-    telegramSent,
+    contextSummary: summaryLines,
+    symbol: sym,
+    interval,
+    telegramSent: telegram.delivered,
+    telegramReasonAr: telegram.reasonAr,
   };
 }

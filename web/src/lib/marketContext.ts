@@ -1,5 +1,6 @@
 import type { AnalysisProfile } from "./analysisProfile";
 import { cryptoMarketRank } from "./binanceWeb3";
+import type { MarketSnapshot } from "./market";
 
 export interface MarketHeadline {
   title: string;
@@ -137,7 +138,7 @@ export function formatContextForPrompt(ctx: MarketContext): string {
   const parts: string[] = [];
   if (ctx.fearGreed) {
     parts.push(
-      `مزاج السوق (Fear&Greed): ${ctx.fearGreed.value} — ${ctx.fearGreed.label}`,
+      `مؤشر الخوف والطمع (عام — للسوق ككل): ${ctx.fearGreed.value} — ${ctx.fearGreed.label}`,
     );
   }
   if (ctx.macroNote) parts.push(ctx.macroNote);
@@ -155,10 +156,32 @@ export function formatContextForPrompt(ctx: MarketContext): string {
   return parts.join("\n");
 }
 
+export function snapshotSummaryLines(snap: MarketSnapshot): string[] {
+  const trend =
+    snap.trend === "uptrend"
+      ? "صاعد"
+      : snap.trend === "downtrend"
+        ? "هابط"
+        : "عرضي";
+  const lines = [
+    `${snap.symbol} · ${snap.interval}`,
+    `اتجاه: ${trend}`,
+  ];
+  if (snap.rsi14 != null) {
+    lines.push(`RSI(14): ${snap.rsi14.toFixed(1)}`);
+  }
+  lines.push(
+    `تغيّر 24س: ${snap.change24hPct >= 0 ? "+" : ""}${snap.change24hPct.toFixed(2)}%`,
+  );
+  return lines;
+}
+
 export function contextSummary(ctx: MarketContext): string[] {
   const items = ctx.headlines.slice(0, 3).map((h) => h.title);
   if (ctx.fearGreed) {
-    items.unshift(`مزاج السوق: ${ctx.fearGreed.value}/100`);
+    items.unshift(
+      `مؤشر الخوف والطمع (عام): ${ctx.fearGreed.value}/100`,
+    );
   }
   if (ctx.socialHype) {
     items.unshift(ctx.socialHype);

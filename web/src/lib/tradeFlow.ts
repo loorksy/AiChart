@@ -22,6 +22,8 @@ export interface ProcessedIntent {
   notional: number;
   status: string;
   reason?: string;
+  telegramDelivered?: boolean;
+  telegramReasonAr?: string;
 }
 
 function richRationale(rec: Recommendation): string {
@@ -108,13 +110,6 @@ export async function processRecommendations(
         rec.chart_image_url,
       );
     } else {
-      intents.push({
-        id: intent.id,
-        symbol: intent.symbol,
-        side: intent.side,
-        notional: intent.notional,
-        status: "pending",
-      });
       const caption = approvalCard({
         ...intent,
         pattern_name: rec.pattern_name,
@@ -128,7 +123,7 @@ export async function processRecommendations(
       ];
       const chartUrl =
         settings.send_screenshot === 1 ? await resolveChartUrl(rec) : null;
-      await dispatchAlert(userId, {
+      const delivery = await dispatchAlert(userId, {
         type: "signal",
         title: `إشارة ${intent.side === "buy" ? "شراء" : "بيع"} ${intent.symbol}`,
         text: caption,
@@ -136,6 +131,15 @@ export async function processRecommendations(
         confidence: rec.confidence,
         photoUrl: chartUrl,
         buttons,
+      });
+      intents.push({
+        id: intent.id,
+        symbol: intent.symbol,
+        side: intent.side,
+        notional: intent.notional,
+        status: "pending",
+        telegramDelivered: delivery.delivered,
+        telegramReasonAr: delivery.reasonAr,
       });
     }
   }

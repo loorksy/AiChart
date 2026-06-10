@@ -30,7 +30,7 @@ const INTRADAY: AnalysisProfile = {
 
 const SWING: AnalysisProfile = {
   tier: "swing",
-  labelAr: "تحليل مختلط",
+  labelAr: "تحليل متوسط المدى (1h–4h)",
   newsLookbackHours: 48,
   taWeight: 0.55,
   contextWeight: 0.45,

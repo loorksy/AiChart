@@ -14,6 +14,7 @@ import {
 } from "./markets";
 import { getBinanceCredentials, saveRecommendation, getPublicUser, listTrades, listIntents, listRecommendations, countOpenTrades, getBinanceAccountMeta, getSettings } from "./store";
 import { attachChartToRecommendation } from "./recommendationChart";
+import type { DeliveryResult } from "./alerts";
 import { profileForInterval } from "./analysisProfile";
 import {
   fetchMarketContext,
@@ -215,6 +216,7 @@ export interface AgentResult {
   recommendations: Recommendation[];
   usageTokens: number;
   activities: AgentActivity[];
+  signalDeliveries?: DeliveryResult[];
 }
 
 export interface RunAgentOptions {
@@ -235,6 +237,7 @@ async function executeTool(
   input: Record<string, unknown>,
   ctx: AgentContext,
   recorded: Recommendation[],
+  signalDeliveries: DeliveryResult[],
 ): Promise<{ content: string; isError?: boolean }> {
   try {
     switch (name) {
@@ -401,10 +404,11 @@ async function executeTool(
           (rec.action === "buy" || rec.action === "sell") &&
           ctx.settings.mode === "advisory" &&
           !ctx.telegramSession;
-        const enriched = await attachChartToRecommendation(ctx.userId, rec, {
+        const { rec: enriched, delivery } = await attachChartToRecommendation(ctx.userId, rec, {
           notify: notifyAdvisory,
           drawings,
         });
+        if (delivery) signalDeliveries.push(delivery);
         recorded.push(enriched);
         return {
           content: JSON.stringify({
@@ -451,6 +455,7 @@ export async function runAgent(
   );
   const messages: Message[] = [...history];
   const recorded: Recommendation[] = [];
+  const signalDeliveries: DeliveryResult[] = [];
   let usageTokens = 0;
   let finalText = "";
 
@@ -504,7 +509,7 @@ export async function runAgent(
         status: "running",
         tool: tu.name,
       });
-      const out = await executeTool(tu.name, tu.input, ctx, recorded);
+      const out = await executeTool(tu.name, tu.input, ctx, recorded, signalDeliveries);
       push({
         id: tu.id,
         label,
@@ -540,5 +545,11 @@ export async function runAgent(
     status: "done",
   });
 
-  return { reply: finalText, recommendations: recorded, usageTokens, activities };
+  return {
+    reply: finalText,
+    recommendations: recorded,
+    usageTokens,
+    activities,
+    signalDeliveries: signalDeliveries.length ? signalDeliveries : undefined,
+  };
 }

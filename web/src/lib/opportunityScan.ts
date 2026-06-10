@@ -18,6 +18,7 @@ import {
 import { runAgent } from "./agent";
 import { processRecommendations, type ProcessedIntent } from "./tradeFlow";
 import { notifyRecommendation } from "./recommendationChart";
+import { dispatchAlert, type DeliveryResult } from "./alerts";
 import { normalizeInterval } from "./intervals";
 import type { Recommendation, TradingSettings } from "./types";
 import type { AdminLimits } from "./types";
@@ -42,6 +43,10 @@ export interface OpportunityScanResult {
     recommendation: Recommendation | null;
     intents: ProcessedIntent[];
     reply: string;
+  };
+  telegram?: {
+    technical?: DeliveryResult;
+    final?: DeliveryResult;
   };
   errors: string[];
 }
@@ -95,6 +100,27 @@ async function buildSymbolList(
   if (!focus) return base;
 
   return [focus, ...base.filter((s) => s !== focus)].slice(0, max);
+}
+
+function technicalPreviewText(c: ScanResultItem): string {
+  return [
+    `🔍 <b>فرصة فنية — ${c.symbol}</b> · ${c.interval}`,
+    `نقاط: ${c.score}`,
+    `إشارات: ${c.signals.join("، ")}`,
+    c.snapshot.summary,
+    "",
+    "جارٍ التحليل العميق بالذكاء الاصطناعي…",
+  ].join("\n");
+}
+
+function waitSummaryText(c: ScanResultItem, rationale?: string | null): string {
+  return [
+    `⏸ <b>لا توصية تنفيذية الآن — ${c.symbol}</b>`,
+    rationale ? `السبب: ${rationale}` : "الوكيل يفضّل الانتظار رغم الإشارات الفنية.",
+    "",
+    `إشارات فنية: ${c.signals.join("، ")}`,
+    c.snapshot.summary,
+  ].join("\n");
 }
 
 /**
@@ -188,18 +214,32 @@ export async function runOpportunityScan(
     return result;
   }
 
+  const topCandidate = candidates[0];
+  result.telegram = {
+    technical: await dispatchAlert(userId, {
+      type: "signal",
+      title: `فرصة فنية — ${topCandidate.symbol}`,
+      text: technicalPreviewText(topCandidate),
+      symbol: topCandidate.symbol,
+      bypassConfidenceGate: true,
+    }),
+  };
+
   const top = candidates.slice(0, MAX_DEEP_CANDIDATES);
   let bestRec: Recommendation | null = null;
   let bestReply = "";
   let allIntents: ProcessedIntent[] = [];
+  let finalDelivery: DeliveryResult | undefined;
 
   for (const c of top) {
     try {
       const prompt =
         `راجع الرمز ${c.symbol} على إطار ${c.interval}. ` +
-        `ظهرت إشارات فنية: ${c.signals.join("، ")}. ` +
+        `ظهرت إشارات فنية قوية (نقاط ${c.score}): ${c.signals.join("، ")}. ` +
         `البيانات: ${c.snapshot.summary}. ` +
-        `هل توجد فرصة حقيقية الآن؟ سجّل توصية منظّمة على إطار ${c.interval} للرمز ${c.symbol} أو انتظر.`;
+        `الإشارات الفنية قوية — يجب تسجيل buy أو sell مع مستويات دخول ووقف خسارة وجني أرباح، ` +
+        `أو wait مع تبرير صريح لماذا ترفض الإشارات. ` +
+        `مرّر factors من الإشارات الفنية في record_recommendation.`;
 
       const agentResult = await runAgent(
         { userId, settings },
@@ -224,20 +264,61 @@ export async function runOpportunityScan(
         const actionable = agentResult.recommendations.find(
           (r) => r.action === "buy" || r.action === "sell",
         );
+        const waitRec = agentResult.recommendations.find(
+          (r) => r.action === "wait",
+        );
+
         if (actionable && !bestRec) {
           bestRec = actionable;
           bestReply = agentResult.reply;
-          await notifyRecommendation(userId, actionable, {
-            notifyTelegram: true,
-            notifyWeb: true,
+
+          const intentDelivery = intents.find(
+            (i) =>
+              i.telegramDelivered != null ||
+              Boolean(i.telegramReasonAr),
+          );
+          if (intentDelivery) {
+            finalDelivery = {
+              delivered: intentDelivery.telegramDelivered ?? false,
+              reasonAr: intentDelivery.telegramReasonAr,
+            };
+          } else if (intents.length > 0) {
+            finalDelivery = {
+              delivered: true,
+              reason: "delivered",
+              reasonAr: "أُرسل عبر مسار التنفيذ",
+            };
+          } else {
+            finalDelivery = await notifyRecommendation(userId, actionable);
+          }
+        } else if (waitRec && !bestRec && !finalDelivery) {
+          bestReply = agentResult.reply;
+          finalDelivery = await dispatchAlert(userId, {
+            type: "signal",
+            title: `لا توصية — ${c.symbol}`,
+            text: waitSummaryText(c, waitRec.rationale),
+            symbol: c.symbol,
+            bypassConfidenceGate: true,
           });
         }
+      } else if (!bestRec && !finalDelivery) {
+        finalDelivery = await dispatchAlert(userId, {
+          type: "signal",
+          title: `لا توصية — ${c.symbol}`,
+          text: waitSummaryText(c, agentResult.reply.slice(0, 400)),
+          symbol: c.symbol,
+          bypassConfidenceGate: true,
+        });
       }
     } catch (e) {
       result.errors.push(
         `deep/${c.symbol}: ${e instanceof Error ? e.message : "error"}`,
       );
     }
+  }
+
+  if (result.telegram) {
+    result.telegram.final = finalDelivery;
   }
 
   result.deepAnalysis = {

@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
         | ((a: import("@/lib/agentActivity").AgentActivity) => void)
         | undefined,
       onDelta: undefined as ((text: string) => void) | undefined,
-      telegramSession: true,
+      telegramSession: false,
       market,
     };
 
@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
               activities: result.activities,
               intents: result.intents,
               telegramSent: result.telegramSent,
+              telegramReasonAr: result.telegramReasonAr,
               contextSummary: result.contextSummary,
               profileLabel: result.profileLabel,
               analysisTier: result.analysisTier,
@@ -149,7 +150,7 @@ export async function POST(req: NextRequest) {
       settings,
       symbol,
       interval,
-      { telegramSession: true, market },
+      { telegramSession: false, market },
     );
 
     await incrementUsage(user.id, MARKET_ANALYZE_COST);
@@ -167,6 +168,7 @@ export async function POST(req: NextRequest) {
       activities: result.activities,
       intents: result.intents,
       telegramSent: result.telegramSent,
+      telegramReasonAr: result.telegramReasonAr,
       contextSummary: result.contextSummary,
       profileLabel: result.profileLabel,
       analysisTier: result.analysisTier,

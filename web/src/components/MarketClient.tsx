@@ -350,6 +350,7 @@ export default function MarketClient({
         profileLabel?: string;
         contextSummary?: string[];
         telegramSent?: boolean;
+        telegramReasonAr?: string;
       }>(res, {
         onDelta: (t) => {
           streamed += t;
@@ -373,6 +374,11 @@ export default function MarketClient({
       if (data.contextSummary?.length) setContextSummary(data.contextSummary);
       if (data.telegramSent) {
         setToast("أُرسلت التوصية إلى تليجرام — اختر المبلغ بعد الموافقة");
+      } else if (
+        data.telegramReasonAr &&
+        data.telegramReasonAr !== "لا إشارة تنفيذية"
+      ) {
+        setToast(`لم يُرسل إلى تليجرام — ${data.telegramReasonAr}`);
       }
     } catch {
       setAnalyzeError("حدث خطأ أثناء التحليل.");
@@ -460,6 +466,8 @@ export default function MarketClient({
             isAnalyzing={isAnalyzing}
             profileLabel={profileLabel}
             contextSummary={contextSummary}
+            symbol={symbol}
+            interval={interval}
           />
         )}
       </div>

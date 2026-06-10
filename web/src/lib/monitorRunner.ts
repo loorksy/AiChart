@@ -84,10 +84,7 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
             (r) => r.action === "buy" || r.action === "sell",
           );
           if (actionable.length) {
-            await notifyRecommendation(userId, actionable[0], {
-              notifyTelegram: true,
-              notifyWeb: true,
-            });
+            await notifyRecommendation(userId, actionable[0]);
           }
         }
       } catch (e) {

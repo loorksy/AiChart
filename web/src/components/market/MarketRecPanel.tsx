@@ -14,6 +14,8 @@ export function MarketRecPanel({
   isAnalyzing,
   profileLabel,
   contextSummary,
+  symbol,
+  interval,
 }: {
   open: boolean;
   onClose: () => void;
@@ -23,6 +25,8 @@ export function MarketRecPanel({
   isAnalyzing?: boolean;
   profileLabel?: string | null;
   contextSummary?: string[];
+  symbol?: string;
+  interval?: string;
 }) {
   if (!open) return null;
 
@@ -128,8 +132,17 @@ export function MarketRecPanel({
 
           {kind === "analysis" && (
             <div className="space-y-3 leading-relaxed text-foreground">
+              {(symbol || interval) && (
+                <p className="text-xs font-medium text-muted-foreground" dir="ltr">
+                  {symbol}
+                  {interval ? ` · ${interval}` : ""}
+                </p>
+              )}
               {profileLabel && (
-                <span className="inline-block rounded-lg bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                <span
+                  className="inline-block rounded-lg bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
+                  title="لحظي = زخم قصير · متوسط المدى = 1h–4h · شامل = يومي+"
+                >
                   {profileLabel}
                 </span>
               )}
