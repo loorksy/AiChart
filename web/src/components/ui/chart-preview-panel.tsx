@@ -2,10 +2,9 @@
 
 import { X, Maximize2, Minimize2 } from "lucide-react";
 import PriceChart from "@/components/PriceChart";
+import { IntervalPicker } from "@/components/market/IntervalPicker";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-const INTERVALS = ["15m", "1h", "4h", "1d"];
 
 export function ChartPreviewPanel({
   symbol,
@@ -33,29 +32,18 @@ export function ChartPreviewPanel({
         className,
       )}
     >
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">معاينة</span>
-          <span className="rounded-md bg-secondary px-2 py-0.5 font-mono text-sm font-semibold text-foreground" dir="ltr">
+          <span
+            className="rounded-md bg-secondary px-2 py-0.5 font-mono text-sm font-semibold text-foreground"
+            dir="ltr"
+          >
             {symbol}
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {INTERVALS.map((iv) => (
-            <button
-              key={iv}
-              type="button"
-              onClick={() => onIntervalChange(iv)}
-              className={cn(
-                "rounded-md px-2 py-1 text-xs transition",
-                interval === iv
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-secondary",
-              )}
-            >
-              {iv}
-            </button>
-          ))}
+          <IntervalPicker value={interval} onChange={onIntervalChange} />
           {onToggleExpand && (
             <button
               type="button"
@@ -63,7 +51,11 @@ export function ChartPreviewPanel({
               className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary"
               aria-label={expanded ? "تصغير" : "توسيع"}
             >
-              {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {expanded ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
             </button>
           )}
           {onClose && (

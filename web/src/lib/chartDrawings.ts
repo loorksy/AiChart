@@ -35,13 +35,16 @@ export interface DrawingStyle {
   opacity: number;
 }
 
-const DEFAULT_COLORS: Partial<Record<DrawingType, string>> = {
+const DEFAULT_COLORS: Record<DrawingType, string> = {
   price_line: "#22c55e",
   trend_line: "#a78bfa",
   forecast_path: "#f59e0b",
   channel: "#38bdf8",
   zone: "#6366f1",
+  fib_retracement: "#ec4899",
+  baseline: "#14b8a6",
   marker: "#eab308",
+  histogram_band: "#f97316",
 };
 
 export function styleForConfidence(conf: number, type: DrawingType): DrawingStyle {

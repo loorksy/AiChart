@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   CandlestickSeries,
-  LineSeries,
   createSeriesMarkers,
   ColorType,
   type IChartApi,
@@ -18,9 +17,11 @@ import type { ChartOverlay } from "@/lib/chartOverlays";
 import { OVERLAY_COLORS } from "@/lib/chartOverlays";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import {
-  pointsToLineData,
-  styleForConfidence,
-} from "@/lib/chartDrawings";
+  applyChartDrawings,
+  collectDrawingMarkers,
+} from "@/lib/chartDrawingEngine";
+import type { LegendItem } from "@/lib/chartDrawingLabels";
+import { ChartDrawingLegend } from "@/components/market/ChartDrawingLegend";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -30,11 +31,9 @@ interface Props {
   recommendations: Recommendation[];
   overlays?: ChartOverlay[];
   drawings?: ChartDrawing[];
-  /** Live last price — updates the current candle on each tick */
   livePrice?: number;
   className?: string;
   fill?: boolean;
-  /** Muted decorative mode for page backgrounds */
   ambient?: boolean;
 }
 
@@ -60,9 +59,10 @@ export default function PriceChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const lastBarTimeRef = useRef<number>(0);
+  const [lastBarTime, setLastBarTime] = useState(0);
   const [loading, setLoading] = useState(!ambient);
   const [error, setError] = useState<string | null>(null);
+  const [legendItems, setLegendItems] = useState<LegendItem[]>([]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -137,7 +137,7 @@ export default function PriceChart({
         const candles = data.candles as CandlestickData<UTCTimestamp>[];
         series.setData(candles);
         const last = candles[candles.length - 1];
-        if (last) lastBarTimeRef.current = Number(last.time);
+        if (last) setLastBarTime(Number(last.time));
         chartRef.current?.timeScale().fitContent();
       } catch {
         if (!cancelled && !ambient) setError("تعذّر تحميل بيانات الشارت.");
@@ -192,65 +192,27 @@ export default function PriceChart({
     const candleSeries = seriesRef.current;
     if (!chart || !candleSeries) return;
 
-    const extraSeries: ISeriesApi<"Line">[] = [];
-    const extraLines: ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[] =
-      [];
-    const lastTime = lastBarTimeRef.current;
-
-    for (const d of drawings ?? []) {
-      const style = styleForConfidence(d.confidence, d.type);
-      if (d.type === "price_line" && d.points[0]) {
-        extraLines.push(
-          candleSeries.createPriceLine({
-            price: d.points[0].price,
-            color: d.color ?? style.color,
-            lineWidth: style.lineWidth,
-            lineStyle: style.lineStyle,
-            axisLabelVisible: true,
-            title: d.label ?? "مستوى",
-          }),
-        );
-      }
-      if (
-        (d.type === "forecast_path" ||
-          d.type === "trend_line" ||
-          d.type === "channel") &&
-        d.points.length >= 2 &&
-        lastTime > 0
-      ) {
-        const line = chart.addSeries(LineSeries, {
-          color: d.color ?? style.color,
-          lineWidth: style.lineWidth,
-          lineStyle: style.lineStyle,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
-        });
-        line.setData(
-          pointsToLineData(d.points, lastTime, interval) as {
-            time: UTCTimestamp;
-            value: number;
-          }[],
-        );
-        extraSeries.push(line);
-      }
-    }
-
-    if ((drawings ?? []).some((d) => d.type === "forecast_path")) {
-      chart.timeScale().applyOptions({ rightOffset: 12 });
-    }
+    const result = applyChartDrawings(
+      chart,
+      candleSeries,
+      drawings ?? [],
+      lastBarTime,
+      interval,
+    );
+    setLegendItems(result.legendItems);
 
     return () => {
-      for (const line of extraLines) candleSeries.removePriceLine(line);
-      for (const s of extraSeries) chart.removeSeries(s);
+      result.cleanup();
+      setLegendItems([]);
     };
-  }, [drawings, interval, ambient]);
+  }, [drawings, interval, lastBarTime, ambient]);
 
   useEffect(() => {
     if (ambient) return;
     const series = seriesRef.current;
     if (!series) return;
-    const relevant = recommendations
+
+    const recMarkers = recommendations
       .filter((r) => r.symbol === symbol.toUpperCase() && r.action !== "wait")
       .map<SeriesMarker<Time>>((r) => ({
         time: (Math.floor(new Date(r.created_at + "Z").getTime() / 1000) ||
@@ -259,11 +221,19 @@ export default function PriceChart({
         color: r.action === "buy" ? "#22c55e" : "#ef4444",
         shape: r.action === "buy" ? "arrowUp" : "arrowDown",
         text: `${r.action === "buy" ? "شراء" : "بيع"} ${r.confidence}%`,
-      }))
-      .sort((a, b) => Number(a.time) - Number(b.time));
-    const markers = createSeriesMarkers(series, relevant);
+      }));
+
+    const drawingMarkers =
+      lastBarTime > 0
+        ? collectDrawingMarkers(drawings ?? [], lastBarTime, interval)
+        : [];
+
+    const merged = [...recMarkers, ...drawingMarkers].sort(
+      (a, b) => Number(a.time) - Number(b.time),
+    );
+    const markers = createSeriesMarkers(series, merged);
     return () => markers.detach();
-  }, [recommendations, symbol, ambient]);
+  }, [recommendations, symbol, drawings, interval, lastBarTime, ambient]);
 
   return (
     <div className={cn("relative w-full", fill && "h-full", className)}>
@@ -271,6 +241,9 @@ export default function PriceChart({
         ref={containerRef}
         className={cn("w-full", fill ? "h-full min-h-[200px]" : "h-[420px]")}
       />
+      {!ambient && legendItems.length > 0 && (
+        <ChartDrawingLegend items={legendItems} />
+      )}
       {!ambient && loading && (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
           جارٍ تحميل الشارت…

@@ -14,6 +14,7 @@ import {
   validateChartDrawings,
 } from "./chartDrawings";
 import type { ProcessedIntent } from "./tradeFlow";
+import { updateRecommendationContext } from "./store";
 
 export const MARKET_ANALYZE_COST = 3;
 
@@ -38,6 +39,7 @@ function buildAnalyzePrompt(
     ``,
     "المطلوب: تحليل مفصّل مع مستويات دخول ووقف خسارة وجني أرباح.",
     "سجّل التوصية عبر record_recommendation مع timeframe و chart_drawings و pattern_name.",
+    "chart_drawings: استخدم الأنواع المناسبة كلها — price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker, histogram_band — كل عنصر له confidence و points.",
     "مرّر timeframe نفس إطار التحليل.",
   ]
     .filter(Boolean)
@@ -92,10 +94,15 @@ export async function runMarketAnalyze(
     allowAdvisoryApproval: true,
   });
 
-  const rec =
+  let rec =
     result.recommendations.find((r) => r.symbol === sym) ??
     result.recommendations[0] ??
     null;
+
+  if (rec) {
+    await updateRecommendationContext(rec.id, JSON.stringify(ctx));
+    rec = { ...rec, context_json: JSON.stringify(ctx) };
+  }
 
   const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : [];
   const drawings =

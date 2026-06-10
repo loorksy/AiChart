@@ -81,6 +81,16 @@ export function MarketRecPanel({
                 <span className="text-xs text-muted-foreground">
                   ثقة {rec.confidence}%
                 </span>
+                {rec.timeframe && (
+                  <span className="text-xs text-muted-foreground" dir="ltr">
+                    {rec.timeframe}
+                  </span>
+                )}
+                {rec.pattern_name && (
+                  <span className="rounded-lg bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                    {rec.pattern_name}
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center text-xs">

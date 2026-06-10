@@ -53,7 +53,7 @@ ${memoryBlock}
 - get_account_balances: أرصدة Binance إن وُجد ربط.
 - smart_money_signals / crypto_market_rank: بيانات Web3 لعملات رقمية.
 - get_market_context: أخبار ومزاج السوق حسب الإطار الزمني.
-- record_recommendation: سجّل توصية مع chart_drawings (مسار تنبؤي، خطوط، markers) و pattern_name و rationale و factors. يُرفق لقطة شارت ويُرسل للمستخدم.
+- record_recommendation: سجّل توصية مع chart_drawings بجميع الأنواع (price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker, histogram_band) و pattern_name و rationale و factors. يُرفق لقطة شارت ويُرسل للمستخدم.
 
 # توصيات
 - استخدم الأدوات قبل أي رأي فني — لا تخمّن.

@@ -75,6 +75,7 @@ export default function MarketClient({
   const [profileLabel, setProfileLabel] = useState<string | null>(null);
   const [contextSummary, setContextSummary] = useState<string[]>([]);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null);
   const [recDetailOpen, setRecDetailOpen] = useState(false);
@@ -122,6 +123,12 @@ export default function MarketClient({
     setAnalyzeError(null);
     setRecDetailOpen(false);
   }, [symbol, interval]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -231,6 +238,9 @@ export default function MarketClient({
       if (data.drawings?.length) setDrawings(data.drawings);
       if (data.profileLabel) setProfileLabel(data.profileLabel);
       if (data.contextSummary?.length) setContextSummary(data.contextSummary);
+      if (data.telegramSent) {
+        setToast("أُرسلت التوصية إلى تليجرام — اختر المبلغ بعد الموافقة");
+      }
     } catch {
       setAnalyzeError("حدث خطأ أثناء التحليل.");
     } finally {
@@ -243,6 +253,11 @@ export default function MarketClient({
       {analyzeError && (
         <p className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
           {analyzeError}
+        </p>
+      )}
+      {toast && (
+        <p className="shrink-0 border-b border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary">
+          {toast}
         </p>
       )}
 

@@ -1,4 +1,5 @@
 import type { AnalysisProfile } from "./analysisProfile";
+import { cryptoMarketRank } from "./binanceWeb3";
 
 export interface MarketHeadline {
   title: string;
@@ -82,24 +83,52 @@ async function fetchCryptoPanicHeadlines(
   }
 }
 
+async function fetchSocialHype(symbol: string): Promise<string | undefined> {
+  try {
+    const base = baseAsset(symbol).toLowerCase();
+    const raw = await cryptoMarketRank("social-hype", { chainId: "56" });
+    const text = JSON.stringify(raw).slice(0, 8000).toLowerCase();
+    if (text.includes(base)) {
+      return `رواج اجتماعي مرتفع لـ ${baseAsset(symbol)} على BSC (social-hype)`;
+    }
+    const parsed = raw as {
+      data?: { list?: { symbol?: string; name?: string; score?: number }[] };
+    };
+    const hit = parsed?.data?.list?.find(
+      (t) =>
+        t.symbol?.toLowerCase() === base ||
+        t.name?.toLowerCase().includes(base),
+    );
+    if (hit) {
+      return `رواج ${baseAsset(symbol)}: score ${hit.score ?? "—"} (social-hype)`;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function fetchMarketContext(
   symbol: string,
   profile: AnalysisProfile,
 ): Promise<MarketContext> {
-  const [headlines, fearGreed] = await Promise.all([
+  const [headlines, fearGreed, socialHype] = await Promise.all([
     fetchCryptoPanicHeadlines(symbol, profile.newsLookbackHours),
     fetchFearGreed(),
+    fetchSocialHype(symbol),
   ]);
 
-  const macroNote =
-    fearGreed != null
-      ? `مؤشر الخوف والطمع: ${fearGreed.value} (${fearGreed.label})`
-      : undefined;
+  const notes: string[] = [];
+  if (fearGreed != null) {
+    notes.push(`مؤشر الخوف والطمع: ${fearGreed.value} (${fearGreed.label})`);
+  }
+  if (socialHype) notes.push(socialHype);
 
   return {
     headlines,
     fearGreed,
-    macroNote,
+    socialHype,
+    macroNote: notes.length > 0 ? notes.join(" · ") : undefined,
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -112,6 +141,7 @@ export function formatContextForPrompt(ctx: MarketContext): string {
     );
   }
   if (ctx.macroNote) parts.push(ctx.macroNote);
+  if (ctx.socialHype) parts.push(ctx.socialHype);
   if (ctx.headlines.length > 0) {
     parts.push("أبرز العناوين:");
     for (const h of ctx.headlines.slice(0, 5)) {
@@ -130,5 +160,8 @@ export function contextSummary(ctx: MarketContext): string[] {
   if (ctx.fearGreed) {
     items.unshift(`مزاج السوق: ${ctx.fearGreed.value}/100`);
   }
-  return items;
+  if (ctx.socialHype) {
+    items.unshift(ctx.socialHype);
+  }
+  return items.slice(0, 4);
 }

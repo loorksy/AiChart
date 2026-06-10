@@ -1,5 +1,6 @@
 import { getKlines } from "./binance";
 import type { ChartDrawing } from "./chartDrawings";
+import { DRAWING_TYPE_COLORS } from "./chartDrawingLabels";
 import type { ChartOverlay } from "./chartOverlays";
 import { OVERLAY_COLORS } from "./chartOverlays";
 
@@ -12,8 +13,14 @@ export interface ChartSnapshotInput {
   limit?: number;
 }
 
+const FIB_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+
+function fibLevels(high: number, low: number): number[] {
+  return FIB_RATIOS.map((r) => high - (high - low) * r);
+}
+
 /**
- * Builds a QuickChart URL with candles, strategy levels, and forecast path.
+ * Builds a QuickChart URL with candles, all drawing types, and strategy levels.
  */
 export async function buildChartSnapshotUrl(
   input: ChartSnapshotInput,
@@ -28,10 +35,12 @@ export async function buildChartSnapshotUrl(
     );
     if (candles.length < 10) return null;
 
+    const n = candles.length;
     const labels = candles.map((_, i) =>
-      i % Math.max(1, Math.floor(candles.length / 8)) === 0 ? String(i) : "",
+      i % Math.max(1, Math.floor(n / 8)) === 0 ? String(i) : "",
     );
     const closeData = candles.map((c) => Number(c.close.toFixed(4)));
+    const lastClose = closeData[n - 1]!;
 
     const datasets: Record<string, unknown>[] = [
       {
@@ -46,55 +55,136 @@ export async function buildChartSnapshotUrl(
       },
     ];
 
-    const forecast = input.drawings?.find((d) => d.type === "forecast_path");
-    if (forecast && forecast.points.length >= 2) {
-      const lastIdx = candles.length - 1;
-      const lastClose = candles[lastIdx]!.close;
-      const pathData = new Array(candles.length).fill(null) as (number | null)[];
-      pathData[lastIdx] = lastClose;
-      const extra = forecast.points.filter((p) => p.barsAhead > 0);
-      for (let i = 0; i < extra.length; i++) {
-        pathData.push(extra[i]!.price);
-        labels.push(`+${extra[i]!.barsAhead}`);
-      }
-      datasets.push({
-        label: "تنبؤ",
-        data: pathData,
-        borderColor: "#f59e0b",
-        borderDash: [6, 4],
-        fill: false,
-        pointRadius: 2,
-        borderWidth: 2,
-        yAxisID: "y",
-      });
-    }
-
     const annotations: Record<string, unknown> = {};
     let annIdx = 0;
-    const addHLine = (price: number, color: string, label: string) => {
+
+    const addHLine = (
+      price: number,
+      color: string,
+      label: string,
+      dashed = false,
+    ) => {
       annotations[`l${annIdx++}`] = {
         type: "line",
         yMin: price,
         yMax: price,
         borderColor: color,
-        borderWidth: 2,
-        borderDash: label.includes("وقف") ? [4, 4] : undefined,
+        borderWidth: label.includes("فيب") ? 1 : 2,
+        borderDash: dashed ? [4, 4] : undefined,
         label: {
           display: true,
           content: label,
           position: "start",
           color: "#e2e8f0",
           backgroundColor: "rgba(10,14,23,0.7)",
+          font: { size: 9 },
         },
       };
+    };
+
+    const addPathDataset = (
+      drawing: ChartDrawing,
+      label: string,
+      dash: number[] | undefined,
+    ) => {
+      const pathData = new Array(n).fill(null) as (number | null)[];
+      pathData[n - 1] = lastClose;
+      const extra = drawing.points.filter((p) => p.barsAhead > 0);
+      const localLabels = [...labels];
+      for (let i = 0; i < extra.length; i++) {
+        pathData.push(extra[i]!.price);
+        localLabels.push(`+${extra[i]!.barsAhead}`);
+      }
+      while (localLabels.length < pathData.length) localLabels.push("");
+      datasets.push({
+        label,
+        data: pathData,
+        borderColor: drawing.color ?? DRAWING_TYPE_COLORS[drawing.type],
+        borderDash: dash,
+        fill: false,
+        pointRadius: 2,
+        borderWidth: 2,
+        yAxisID: "y",
+      });
+      return localLabels;
     };
 
     for (const o of input.overlays ?? []) {
       addHLine(o.price, OVERLAY_COLORS[o.type], o.label ?? o.type);
     }
+
+    let extendedLabels = labels;
+
     for (const d of input.drawings ?? []) {
-      if (d.type === "price_line" && d.points[0]) {
-        addHLine(d.points[0].price, d.color ?? "#22c55e", d.label ?? "مستوى");
+      const color = d.color ?? DRAWING_TYPE_COLORS[d.type];
+      switch (d.type) {
+        case "price_line":
+          if (d.points[0]) addHLine(d.points[0].price, color, d.label ?? "مستوى");
+          break;
+        case "forecast_path":
+          extendedLabels = addPathDataset(d, d.label ?? "تنبؤ", [6, 4]);
+          break;
+        case "trend_line":
+          addPathDataset(d, d.label ?? "اتجاه", undefined);
+          break;
+        case "channel": {
+          const half = Math.ceil(d.points.length / 2);
+          addPathDataset(
+            { ...d, points: d.points.slice(0, half) },
+            d.label ? `${d.label} علوي` : "قناة علوي",
+            [3, 3],
+          );
+          addPathDataset(
+            { ...d, points: d.points.slice(half) },
+            d.label ? `${d.label} سفلي` : "قناة سفلي",
+            [3, 3],
+          );
+          break;
+        }
+        case "zone": {
+          const top =
+            (d.meta?.top as number) ??
+            Math.max(...d.points.map((p) => p.price));
+          const bottom =
+            (d.meta?.bottom as number) ??
+            Math.min(...d.points.map((p) => p.price));
+          addHLine(top, color, d.label ? `${d.label} أعلى` : "منطقة أعلى", true);
+          addHLine(bottom, color, d.label ? `${d.label} أسفل` : "منطقة أسفل", true);
+          break;
+        }
+        case "fib_retracement": {
+          const high =
+            (d.meta?.high as number) ??
+            Math.max(...d.points.map((p) => p.price));
+          const low =
+            (d.meta?.low as number) ??
+            Math.min(...d.points.map((p) => p.price));
+          if (high > low) {
+            for (const price of fibLevels(high, low)) {
+              addHLine(price, color, `فيب ${price.toFixed(0)}`, true);
+            }
+          }
+          break;
+        }
+        case "baseline":
+          if (d.points[0]) {
+            addHLine(d.points[0].price, color, d.label ?? "خط أساس", true);
+          }
+          break;
+        case "histogram_band":
+          datasets.push({
+            type: "bar",
+            label: d.label ?? "زخم",
+            data: d.points.map((p) => Math.abs(p.price)),
+            backgroundColor: `${color}66`,
+            yAxisID: "y2",
+            barPercentage: 0.6,
+          });
+          break;
+        case "marker":
+          break;
+        default:
+          break;
       }
     }
 
@@ -106,13 +196,23 @@ export async function buildChartSnapshotUrl(
       .filter(Boolean)
       .join(" ");
 
+    const hasY2 = (input.drawings ?? []).some((d) => d.type === "histogram_band");
+
     const chart = {
       type: "line",
-      data: { labels, datasets },
+      data: { labels: extendedLabels, datasets },
       options: {
         plugins: {
-          title: { display: true, text: title, color: "#e2e8f0", font: { size: 14 } },
-          legend: { display: datasets.length > 1, labels: { color: "#94a3b8" } },
+          title: {
+            display: true,
+            text: title,
+            color: "#e2e8f0",
+            font: { size: 14 },
+          },
+          legend: {
+            display: datasets.length > 1,
+            labels: { color: "#94a3b8", boxWidth: 10, font: { size: 10 } },
+          },
           annotation: { annotations },
         },
         scales: {
@@ -121,6 +221,15 @@ export async function buildChartSnapshotUrl(
             ticks: { color: "#94a3b8" },
             grid: { color: "rgba(148,163,184,0.12)" },
           },
+          ...(hasY2
+            ? {
+                y2: {
+                  position: "right",
+                  display: false,
+                  grid: { display: false },
+                },
+              }
+            : {}),
         },
       },
     };

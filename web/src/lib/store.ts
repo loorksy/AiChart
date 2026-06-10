@@ -325,6 +325,16 @@ export async function updateRecommendationChartUrl(
   ]);
 }
 
+export async function updateRecommendationContext(
+  id: number,
+  contextJson: string,
+): Promise<void> {
+  await execute("UPDATE recommendations SET context_json = ? WHERE id = ?", [
+    contextJson,
+    id,
+  ]);
+}
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
