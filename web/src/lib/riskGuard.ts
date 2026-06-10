@@ -1,10 +1,12 @@
-import { isOpenAssetsPolicy, parseAllowedAssets } from "./allowedAssets";
+import { isSymbolAllowed } from "./allowedAssets";
+import type { MarketType } from "./markets/types";
 import type { AdminLimits, TradingSettings } from "./types";
 
 export interface ProposedTrade {
   symbol: string;
   side: "buy" | "sell";
-  notional: number; // quote-currency amount (e.g. USDT)
+  notional: number; // quote-currency amount (e.g. USDT) / risk budget
+  market?: MarketType;
 }
 
 export interface RiskContext {
@@ -59,14 +61,9 @@ export function evaluateTrade(
   if (settings.mode !== "auto" && !ctx.explicitApproval)
     return deny("وضعك الحالي توصيات فقط، لا تنفيذ.");
 
-  if (!isOpenAssetsPolicy(settings.allowed_assets)) {
-    const allowed = parseAllowedAssets(settings.allowed_assets);
-    if (
-      allowed.length > 0 &&
-      !allowed.includes(proposed.symbol.toUpperCase())
-    ) {
-      return deny(`الأصل ${proposed.symbol} غير ضمن قائمتك المسموح بها.`);
-    }
+  const market: MarketType = proposed.market ?? "crypto";
+  if (!isSymbolAllowed(settings.allowed_assets, proposed.symbol, market)) {
+    return deny(`الأصل ${proposed.symbol} غير ضمن قائمتك المسموح بها.`);
   }
 
   if (effectiveCapital <= 0)

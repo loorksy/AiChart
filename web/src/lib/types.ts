@@ -1,3 +1,5 @@
+import type { MarketType, BrokerKind, MtPlatform } from "./markets/types";
+
 export type Role = "user" | "admin";
 export type UserStatus = "pending" | "active" | "suspended";
 
@@ -34,6 +36,7 @@ export interface TradingSettings {
   monthly_loss_limit_pct: number;
   auto_take_profit_usd: number;
   allowed_assets: string;
+  active_market: MarketType;
   send_screenshot: number;
   telegram_chat_id: string | null;
   kill_switch: number;
@@ -104,6 +107,8 @@ export interface TradeIntent {
   symbol: string;
   side: "buy" | "sell";
   notional: number;
+  market: MarketType;
+  broker: BrokerKind;
   entry: number | null;
   stop_loss: number | null;
   take_profit: number | null;
@@ -145,6 +150,8 @@ export interface Trade {
   avg_price: number;
   order_id: string | null;
   env: string;
+  market: MarketType;
+  broker: BrokerKind;
   status: string;
   pnl: number;
   oco_order_list_id: string | null;
@@ -168,4 +175,76 @@ export interface AlertLog {
   delivered: number;
   read_at: string | null;
   created_at: string;
+}
+
+export type EaStatus = "online" | "offline" | "revoked";
+
+export interface EaConnection {
+  id: number;
+  user_id: number;
+  platform: MtPlatform;
+  token_hash: string;
+  label: string | null;
+  broker_name: string | null;
+  account_login: string | null;
+  account_currency: string | null;
+  balance: number;
+  equity: number;
+  status: EaStatus;
+  symbol_specs_json: string | null;
+  last_heartbeat_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Non-secret EA connection view for the UI. */
+export interface EaConnectionMeta {
+  id: number;
+  platform: MtPlatform;
+  label: string | null;
+  broker_name: string | null;
+  account_login: string | null;
+  account_currency: string | null;
+  balance: number;
+  equity: number;
+  status: EaStatus;
+  online: boolean;
+  last_heartbeat_at: string | null;
+}
+
+export type EaCommandType = "open_market" | "close_position" | "modify_sl_tp";
+
+export type EaCommandStatus =
+  | "pending"
+  | "sent"
+  | "acked"
+  | "failed"
+  | "expired";
+
+export interface EaCommand {
+  id: number;
+  user_id: number;
+  intent_id: number | null;
+  command_type: EaCommandType;
+  payload_json: string;
+  status: EaCommandStatus;
+  result_json: string | null;
+  created_at: string;
+  expires_at: string | null;
+  updated_at: string;
+}
+
+/** Per-symbol contract spec reported by the EA in heartbeats. */
+export interface EaSymbolSpec {
+  symbol: string;
+  bid?: number;
+  ask?: number;
+  digits?: number;
+  point?: number;
+  contract_size?: number;
+  tick_value?: number;
+  tick_size?: number;
+  min_lot?: number;
+  max_lot?: number;
+  lot_step?: number;
 }
