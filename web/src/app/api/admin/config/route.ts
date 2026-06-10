@@ -7,8 +7,7 @@ import {
   PLATFORM_CONFIG_FIELDS,
 } from "@/lib/platformConfig";
 import { logAudit } from "@/lib/store";
-import { isTelegramConfigured, setWebhook, setBotCommands } from "@/lib/telegram";
-import { getPlatformValue } from "@/lib/platformConfig";
+import { isTelegramConfigured, deleteWebhook } from "@/lib/telegram";
 
 const patchSchema = z.record(z.string(), z.union([z.string(), z.boolean()]).optional());
 
@@ -44,8 +43,8 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-/** Register Telegram webhook using APP_URL from config. */
-export async function POST(req: NextRequest) {
+/** Releases the bot webhook — conversation is owned by the OpenClaw gateway. */
+export async function POST() {
   try {
     await requireAdmin();
     if (!isTelegramConfigured()) {
@@ -54,17 +53,11 @@ export async function POST(req: NextRequest) {
         { status: 503 },
       );
     }
-    const appUrl = getPlatformValue("APP_URL");
-    if (!appUrl) {
-      return NextResponse.json(
-        { error: "أضِف APP_URL أولاً." },
-        { status: 400 },
-      );
-    }
-    const webhookUrl = `${appUrl.replace(/\/$/, "")}/api/telegram/webhook`;
-    await setWebhook(webhookUrl);
-    await setBotCommands();
-    return NextResponse.json({ ok: true, webhookUrl });
+    await deleteWebhook();
+    return NextResponse.json({
+      ok: true,
+      message: "أُزيل الـ webhook — البوت بيد وكيل OpenClaw.",
+    });
   } catch (err) {
     return handleError(err);
   }
