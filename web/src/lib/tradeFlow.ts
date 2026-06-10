@@ -13,6 +13,7 @@ import { notifyTradeResult } from "./notifyTrade";
 import { dispatchAlert } from "./alerts";
 import { resolveChartUrl } from "./recommendationChart";
 import type { Recommendation } from "./types";
+import type { MarketType } from "./markets/types";
 
 export interface ProcessedIntent {
   id: number;
@@ -38,6 +39,8 @@ function richRationale(rec: Recommendation): string {
 export interface ProcessRecommendationsOptions {
   /** Telegram agent: send approve/reject even in advisory mode. */
   allowAdvisoryApproval?: boolean;
+  /** Market the recommendations belong to (selects the broker). */
+  market?: MarketType;
 }
 
 /**
@@ -61,6 +64,8 @@ export async function processRecommendations(
   const autoExecute =
     settings.mode === "auto" && settings.approval === "delegate";
 
+  const market = options?.market ?? settings.active_market ?? "crypto";
+
   const effectiveCapital =
     limits.max_capital_cap > 0
       ? Math.min(settings.max_capital, limits.max_capital_cap)
@@ -75,6 +80,7 @@ export async function processRecommendations(
       symbol: rec.symbol,
       side: rec.action,
       notional: perTrade,
+      market,
       entry: rec.entry,
       stop_loss: rec.stop_loss,
       take_profit: rec.take_profit,

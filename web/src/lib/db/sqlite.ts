@@ -43,6 +43,7 @@ const SCHEMA = `
     monthly_loss_limit_pct   REAL NOT NULL DEFAULT 15,
     auto_take_profit_usd     REAL NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
+    active_market            TEXT NOT NULL DEFAULT 'crypto',
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
     kill_switch              INTEGER NOT NULL DEFAULT 0,
@@ -97,6 +98,8 @@ const SCHEMA = `
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          REAL NOT NULL,
+    market            TEXT NOT NULL DEFAULT 'crypto',
+    broker            TEXT NOT NULL DEFAULT 'binance',
     entry             REAL,
     stop_loss         REAL,
     take_profit       REAL,
@@ -120,11 +123,64 @@ const SCHEMA = `
     avg_price   REAL NOT NULL DEFAULT 0,
     order_id    TEXT,
     env         TEXT NOT NULL DEFAULT 'testnet',
+    market      TEXT NOT NULL DEFAULT 'crypto',
+    broker      TEXT NOT NULL DEFAULT 'binance',
     status      TEXT NOT NULL DEFAULT 'open',
     pnl         REAL NOT NULL DEFAULT 0,
     oco_order_list_id TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     closed_at   TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS ea_connections (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER NOT NULL,
+    platform          TEXT NOT NULL DEFAULT 'mt5',
+    token_hash        TEXT NOT NULL,
+    label             TEXT,
+    broker_name       TEXT,
+    account_login     TEXT,
+    account_currency  TEXT,
+    balance           REAL NOT NULL DEFAULT 0,
+    equity            REAL NOT NULL DEFAULT 0,
+    status            TEXT NOT NULL DEFAULT 'offline',
+    symbol_specs_json TEXT,
+    last_heartbeat_at TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ea_connections_user
+    ON ea_connections (user_id);
+  CREATE INDEX IF NOT EXISTS idx_ea_connections_token
+    ON ea_connections (token_hash);
+
+  CREATE TABLE IF NOT EXISTS ea_commands (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    intent_id     INTEGER,
+    command_type  TEXT NOT NULL,
+    payload_json  TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    result_json   TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at    TEXT,
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_ea_commands_poll
+    ON ea_commands (user_id, status, id);
+
+  CREATE TABLE IF NOT EXISTS ea_market_cache (
+    user_id      INTEGER NOT NULL,
+    symbol       TEXT NOT NULL,
+    interval     TEXT NOT NULL,
+    candles_json TEXT NOT NULL,
+    updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, symbol, interval),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -283,12 +339,37 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN auto_take_profit_usd REAL NOT NULL DEFAULT 0",
     );
   }
+  if (!settingsCols.some((c) => c.name === "active_market")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN active_market TEXT NOT NULL DEFAULT 'crypto'",
+    );
+  }
 
   const tradeCols = db
     .prepare("PRAGMA table_info(trades)")
     .all() as { name: string }[];
   if (!tradeCols.some((c) => c.name === "oco_order_list_id")) {
     db.exec("ALTER TABLE trades ADD COLUMN oco_order_list_id TEXT");
+  }
+  if (!tradeCols.some((c) => c.name === "market")) {
+    db.exec("ALTER TABLE trades ADD COLUMN market TEXT NOT NULL DEFAULT 'crypto'");
+  }
+  if (!tradeCols.some((c) => c.name === "broker")) {
+    db.exec("ALTER TABLE trades ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance'");
+  }
+
+  const intentCols = db
+    .prepare("PRAGMA table_info(trade_intents)")
+    .all() as { name: string }[];
+  if (!intentCols.some((c) => c.name === "market")) {
+    db.exec(
+      "ALTER TABLE trade_intents ADD COLUMN market TEXT NOT NULL DEFAULT 'crypto'",
+    );
+  }
+  if (!intentCols.some((c) => c.name === "broker")) {
+    db.exec(
+      "ALTER TABLE trade_intents ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance'",
+    );
   }
 
   const alertCols = db

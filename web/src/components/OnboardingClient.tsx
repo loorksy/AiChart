@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { TradingSettings } from "@/lib/types";
 import { PageLayout } from "@/components/ui/shell";
 
@@ -164,6 +165,15 @@ export default function OnboardingClient({
           {error}
         </div>
       )}
+
+      <div className="mb-4 rounded-[var(--radius)] border border-border bg-secondary/40 px-4 py-3 text-xs text-muted-foreground">
+        تتداول على الكريبتو عبر Binance والفوركس عبر MetaTrader (EA). يمكنك ربط
+        MetaTrader لاحقاً من{" "}
+        <Link href="/settings?tab=integrations" className="text-link underline">
+          الإعدادات ← الربط والتكامل
+        </Link>
+        .
+      </div>
 
       {step === 0 && (
         <section className="card space-y-4 p-6">

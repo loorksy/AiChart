@@ -35,6 +35,7 @@ interface Props {
   drawings?: ChartDrawing[];
   livePrice?: number;
   liveTick?: LivePriceTick;
+  market?: "crypto" | "forex";
   className?: string;
   fill?: boolean;
   ambient?: boolean;
@@ -56,6 +57,7 @@ export default function PriceChart({
   drawings,
   livePrice,
   liveTick,
+  market = "crypto",
   className,
   fill = false,
   ambient = false,
@@ -128,7 +130,7 @@ export default function PriceChart({
       }
       try {
         const res = await fetch(
-          `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=${ambient ? 120 : 300}`,
+          `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&market=${market}&limit=${ambient ? 120 : 300}`,
         );
         const data = await res.json();
         if (cancelled) return;
@@ -138,11 +140,14 @@ export default function PriceChart({
         }
         const series = seriesRef.current;
         if (!series) return;
-        const candles = data.candles as CandlestickData<UTCTimestamp>[];
+        const candles = (data.candles ?? []) as CandlestickData<UTCTimestamp>[];
         series.setData(candles);
         const last = candles[candles.length - 1];
         if (last) setLastBarTime(Number(last.time));
         chartRef.current?.timeScale().fitContent();
+        if (!ambient && candles.length === 0 && data.pending) {
+          setError("بانتظار بيانات MetaTrader لهذا الرمز. تأكد أن EA يبثّ هذا الزوج.");
+        }
       } catch {
         if (!cancelled && !ambient) setError("تعذّر تحميل بيانات الشارت.");
       } finally {
@@ -153,7 +158,7 @@ export default function PriceChart({
     return () => {
       cancelled = true;
     };
-  }, [symbol, interval, ambient]);
+  }, [symbol, interval, ambient, market]);
 
   useEffect(() => {
     if (ambient || !livePrice || livePrice <= 0) return;

@@ -20,6 +20,8 @@ import type {
   TradingSettings,
 } from "./types";
 import type { BinanceEnv } from "./binance";
+import type { BrokerKind, MarketType } from "./markets/types";
+import { brokerForMarket } from "./markets/types";
 
 export async function ensureUserDefaults(userId: number) {
   await execute(
@@ -62,6 +64,7 @@ const SETTABLE_FIELDS = [
   "monthly_loss_limit_pct",
   "auto_take_profit_usd",
   "allowed_assets",
+  "active_market",
   "send_screenshot",
   "telegram_chat_id",
   "kill_switch",
@@ -371,6 +374,8 @@ export async function createIntent(
     symbol: string;
     side: "buy" | "sell";
     notional: number;
+    market?: MarketType;
+    broker?: BrokerKind;
     entry?: number | null;
     stop_loss?: number | null;
     take_profit?: number | null;
@@ -380,16 +385,20 @@ export async function createIntent(
     reason?: string | null;
   },
 ): Promise<TradeIntent> {
+  const market: MarketType = intent.market ?? "crypto";
+  const broker: BrokerKind = intent.broker ?? brokerForMarket(market);
   const id = await insertReturningId(
     `INSERT INTO trade_intents
-      (user_id, recommendation_id, symbol, side, notional, entry, stop_loss, take_profit, confidence, rationale, status, reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       intent.recommendation_id ?? null,
       intent.symbol.toUpperCase(),
       intent.side,
       intent.notional,
+      market,
+      broker,
       intent.entry ?? null,
       intent.stop_loss ?? null,
       intent.take_profit ?? null,
@@ -467,13 +476,17 @@ export async function recordTrade(
     avg_price: number;
     order_id?: string | null;
     env: string;
+    market?: MarketType;
+    broker?: BrokerKind;
     status?: string;
   },
 ): Promise<Trade> {
+  const market: MarketType = trade.market ?? "crypto";
+  const broker: BrokerKind = trade.broker ?? brokerForMarket(market);
   const id = await insertReturningId(
     `INSERT INTO trades
-      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, market, broker, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       trade.intent_id ?? null,
@@ -484,6 +497,8 @@ export async function recordTrade(
       trade.avg_price,
       trade.order_id ?? null,
       trade.env,
+      market,
+      broker,
       trade.status ?? "open",
     ],
   );

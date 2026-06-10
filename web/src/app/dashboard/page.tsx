@@ -8,6 +8,7 @@ import {
   listIntents,
   listTrades,
 } from "@/lib/store";
+import { getEaConnectionMeta } from "@/lib/eaStore";
 import AppShell from "@/components/AppShell";
 import DashboardClient from "@/components/DashboardClient";
 
@@ -21,6 +22,7 @@ export default async function DashboardPage() {
   const settings = await getSettings(user.id);
   const limits = await getLimits(user.id);
   const binance = await getBinanceAccountMeta(user.id);
+  const ea = await getEaConnectionMeta(user.id);
   const pendingIntents = await listIntents(user.id, "pending", 50);
   const trades = await listTrades(user.id, 200);
 
@@ -31,6 +33,8 @@ export default async function DashboardPage() {
         settings={settings}
         limits={limits}
         hasBinance={Boolean(binance)}
+        eaConnected={Boolean(ea && ea.status !== "revoked")}
+        eaOnline={Boolean(ea?.online)}
         pendingIntentCount={pendingIntents.length}
         trades={trades}
       />

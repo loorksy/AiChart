@@ -1,0 +1,55 @@
+---
+description: استخدم graphify لاستكشاف المشروع والبنية — استعلام الرسم المعرفي قبل القراءة العشوائية
+alwaysApply: true
+---
+
+# graphify — الرسم المعرفي لـ AiChart
+
+المشروع يملك رسمًا معرفيًا في `graphify-out/` — يغطي **`web/src`** (203 ملف كود، ~968 عقدة). أُعيد بناؤه بـ:
+
+```powershell
+py -m graphify web/src --exclude vendor --no-viz
+py -m graphify cluster-only web/src --no-viz
+```
+
+## متى تستخدم graphify (إلزامي)
+
+قبل **Read / Grep / Glob / SemanticSearch** الواسع لاستكشاف الكود أو البنية، شغّل أولاً:
+
+```powershell
+py -m graphify query "<سؤالك بالعربية أو الإنجليزية>"
+py -m graphify path "<رمزأ>" "<رمزب>"      # مسار تبعيات بين مكوّنين
+py -m graphify explain "<مفهوم>"           # شرح عقدة/مفهوم
+```
+
+**طبّق هذا عليك وعلى أي subagent** يستكشف الكود. لا تتخطّى graphify لأن الملفات «معروفة» أو لأنك تنفّذ خطة — الرسم يكشف روابط عبر الملفات وحدود INFERRED لا يجدها grep.
+
+## متى لا تحتاج graphify
+
+- تعديل أو تصحيح أسطر محددة بعد أن وجّهك graphify أو المستخدم.
+- `graphify-out/graph.json` غير موجود بعد — ابنِه بـ `py -m graphify .` ثم استمر.
+
+## ترتيب القراءة
+
+1. `py -m graphify query` / `path` / `explain`
+2. إن وُجد: `graphify-out/wiki/index.md`
+3. `graphify-out/GRAPH_REPORT.md` — مراجعة معمارية واسعة فقط
+4. Read/Grep على ملفات محددة للتنفيذ
+
+## بعد تعديل الكود
+
+```powershell
+py -m graphify update .
+```
+
+(AST فقط، بدون تكلفة API — يحافظ على الرسم محدثًا.)
+
+## أوامر مفيدة
+
+| الأمر | الغرض |
+|--------|--------|
+| `py -m graphify .` | بناء كامل للرسم |
+| `py -m graphify query "..."` | سياق مركّز لسؤال |
+| `py -m graphify update .` | تحديث بعد التعديلات |
+
+على Windows استخدم دائمًا `py -m graphify` وليس `graphify` فقط.

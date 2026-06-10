@@ -23,9 +23,11 @@ import type {
   AdminLimits,
   AlertLog,
   BinanceAccountMeta,
+  EaConnectionMeta,
   PublicUser,
   TradingSettings,
 } from "@/lib/types";
+import { EaConnectCard } from "@/components/settings/EaConnectCard";
 import { cn } from "@/lib/utils";
 import { PageLayout, SurfaceCard, PillButton } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
@@ -58,7 +60,7 @@ const TABS: { id: TabId; label: string; icon: typeof User; desc: string }[] = [
   { id: "profile", label: "الملف الشخصي", icon: User, desc: "بيانات حسابك" },
   { id: "subscription", label: "الاشتراك", icon: CreditCard, desc: "الرصيد والخطة" },
   { id: "appearance", label: "المظهر", icon: Sun, desc: "السمة والعرض" },
-  { id: "integrations", label: "الربط والتكامل", icon: Send, desc: "Binance وتليجرام" },
+  { id: "integrations", label: "الربط والتكامل", icon: Send, desc: "Binance وMetaTrader وتليجرام" },
   { id: "alerts", label: "التنبيهات", icon: Bell, desc: "إشعارات تليجرام والسجل" },
   { id: "trading", label: "التداول والمخاطر", icon: SlidersHorizontal, desc: "الحدود والإعدادات" },
 ];
@@ -68,13 +70,17 @@ export default function SettingsClient({
   settings: initialSettings,
   limits,
   binance,
+  ea,
+  initialTab,
 }: {
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
   binance: BinanceAccountMeta | null;
+  ea: EaConnectionMeta | null;
+  initialTab?: TabId;
 }) {
-  const [tab, setTab] = useState<TabId>("profile");
+  const [tab, setTab] = useState<TabId>(initialTab ?? "profile");
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const displayName = displayNameFromEmail(user.email);
@@ -196,6 +202,7 @@ export default function SettingsClient({
           {tab === "integrations" && (
             <div className="space-y-4">
               <BinanceCard binance={binance} />
+              <EaConnectCard connection={ea} />
               <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
             </div>
           )}
@@ -683,15 +690,27 @@ function TradingCard({
   const router = useRouter();
   const [s, setS] = useState(settings);
   const [openAssets, setOpenAssets] = useState(
-    isOpenAssetsPolicy(settings.allowed_assets),
+    isOpenAssetsPolicy(settings.allowed_assets, "crypto"),
   );
   const [assets, setAssets] = useState(
-    parseAllowedAssets(settings.allowed_assets).join(", "),
+    parseAllowedAssets(settings.allowed_assets, "crypto").join(", "),
+  );
+  const [forexOpen, setForexOpen] = useState(
+    isOpenAssetsPolicy(settings.allowed_assets, "forex"),
+  );
+  const [forexAssets, setForexAssets] = useState(
+    parseAllowedAssets(settings.allowed_assets, "forex").join(", "),
   );
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
     null,
   );
   const [busy, setBusy] = useState(false);
+
+  const parseCsv = (v: string) =>
+    v
+      .split(",")
+      .map((a) => a.trim().toUpperCase())
+      .filter(Boolean);
 
   const canDelegate = limits.can_execute && s.mode === "auto";
   const effectiveApproval =
@@ -722,12 +741,10 @@ function TradingCard({
           daily_loss_limit_pct: Number(s.daily_loss_limit_pct),
           monthly_loss_limit_pct: Number(s.monthly_loss_limit_pct),
           auto_take_profit_usd: Number(s.auto_take_profit_usd ?? 0),
-          allowed_assets: openAssets
-            ? []
-            : assets
-                .split(",")
-                .map((a) => a.trim().toUpperCase())
-                .filter(Boolean),
+          allowed_assets: {
+            crypto: openAssets ? [] : parseCsv(assets),
+            forex: forexOpen ? [] : parseCsv(forexAssets),
+          },
           send_screenshot: Boolean(s.send_screenshot),
           telegram_chat_id: s.telegram_chat_id || null,
           kill_switch: Boolean(s.kill_switch),
@@ -920,29 +937,56 @@ function TradingCard({
           </p>
         </Field>
 
-        <div className="sm:col-span-2 space-y-2">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={openAssets}
-              onChange={(e) => setOpenAssets(e.target.checked)}
-              className="rounded border-border"
-            />
-            <span>
-              جميع أزواج USDT على Binance (تحديث تلقائي عند إدراج أزواج جديدة)
-            </span>
-          </label>
-          {!openAssets && (
-            <Field label="قائمة مخصّصة (اختياري)">
+        <div className="sm:col-span-2 space-y-4">
+          <div className="space-y-2 rounded-xl border border-border/60 p-3">
+            <p className="text-sm font-medium">الأصول المسموحة · كريبتو (Binance)</p>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
-                className="input"
-                dir="ltr"
-                value={assets}
-                onChange={(e) => setAssets(e.target.value)}
-                placeholder="BTCUSDT, ETHUSDT, SOLUSDT"
+                type="checkbox"
+                checked={openAssets}
+                onChange={(e) => setOpenAssets(e.target.checked)}
+                className="rounded border-border"
               />
-            </Field>
-          )}
+              <span>
+                جميع أزواج USDT على Binance (تحديث تلقائي عند إدراج أزواج جديدة)
+              </span>
+            </label>
+            {!openAssets && (
+              <Field label="قائمة مخصّصة (اختياري)">
+                <input
+                  className="input"
+                  dir="ltr"
+                  value={assets}
+                  onChange={(e) => setAssets(e.target.value)}
+                  placeholder="BTCUSDT, ETHUSDT, SOLUSDT"
+                />
+              </Field>
+            )}
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-border/60 p-3">
+            <p className="text-sm font-medium">الأصول المسموحة · فوركس (MetaTrader)</p>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={forexOpen}
+                onChange={(e) => setForexOpen(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>كل أزواج الفوركس المتاحة لدى الوسيط</span>
+            </label>
+            {!forexOpen && (
+              <Field label="قائمة مخصّصة (اختياري)">
+                <input
+                  className="input"
+                  dir="ltr"
+                  value={forexAssets}
+                  onChange={(e) => setForexAssets(e.target.value)}
+                  placeholder="EURUSD, XAUUSD, GBPUSD"
+                />
+              </Field>
+            )}
+          </div>
         </div>
 
         <div className="sm:col-span-2">

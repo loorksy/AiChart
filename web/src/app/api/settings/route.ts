@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, handleError } from "@/lib/api";
 import { getSettings, getLimits, updateSettings } from "@/lib/store";
+import { serializeMarketAssets, setMarketAssets } from "@/lib/allowedAssets";
+
+const assetList = z.array(z.string().max(20)).max(200);
 
 const schema = z
   .object({
@@ -17,7 +20,12 @@ const schema = z
     daily_loss_limit_pct: z.number().min(0).max(100),
     monthly_loss_limit_pct: z.number().min(0).max(100),
     auto_take_profit_usd: z.number().min(0).max(100_000),
-    allowed_assets: z.array(z.string().max(20)).max(100),
+    // Legacy array (crypto whitelist) OR structured per-market object.
+    allowed_assets: z.union([
+      assetList,
+      z.object({ crypto: assetList.optional(), forex: assetList.optional() }),
+    ]),
+    active_market: z.enum(["crypto", "forex"]),
     send_screenshot: z.boolean(),
     telegram_chat_id: z.string().max(64).nullable().optional(),
     kill_switch: z.boolean(),
@@ -63,8 +71,22 @@ export async function PUT(req: NextRequest) {
     if (input.mode === "auto" && limits.can_execute !== 1) {
       patch.mode = "advisory";
     }
-    if (Array.isArray(input.allowed_assets)) {
-      patch.allowed_assets = JSON.stringify(input.allowed_assets);
+    if (input.allowed_assets !== undefined) {
+      const current = await getSettings(user.id);
+      if (Array.isArray(input.allowed_assets)) {
+        // Legacy crypto array: update crypto, preserve forex.
+        patch.allowed_assets = setMarketAssets(
+          current.allowed_assets,
+          "crypto",
+          input.allowed_assets,
+        );
+      } else {
+        const obj = input.allowed_assets;
+        let raw = current.allowed_assets;
+        if (obj.crypto !== undefined) raw = setMarketAssets(raw, "crypto", obj.crypto);
+        if (obj.forex !== undefined) raw = setMarketAssets(raw, "forex", obj.forex);
+        patch.allowed_assets = raw || serializeMarketAssets({ crypto: [], forex: [] });
+      }
     }
     if (typeof input.send_screenshot === "boolean") {
       patch.send_screenshot = input.send_screenshot ? 1 : 0;

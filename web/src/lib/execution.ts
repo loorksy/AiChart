@@ -1,25 +1,17 @@
 import {
-  getBinanceCredentials,
   getSettings,
   getLimits,
   getIntent,
   updateIntentStatus,
-  recordTrade,
   countOpenTrades,
   todayRealizedPnlPct,
   todayRealizedPnlUsd,
   monthRealizedPnlPct,
-  updateTradeOcoOrderList,
   isMasterKillOn,
 } from "./store";
 import { evaluateTrade } from "./riskGuard";
-import {
-  getPrice,
-  getSymbolFilters,
-  roundToStep,
-  placeMarketOrder,
-  placeOcoOrder,
-} from "./binance";
+import { brokerForMarket } from "./markets/types";
+import { getBrokerAdapter } from "./brokers";
 import {
   emitActivity,
   type ActivityListener,
@@ -42,8 +34,9 @@ export interface ExecutionResult {
 
 /**
  * Executes a pending/approved trade intent. The Risk Guard is the gate: no
- * order is sent unless every hard cap passes. Defaults to the user's Binance
- * environment (Testnet by default).
+ * order is sent unless every hard cap passes. Order placement is delegated to
+ * the broker adapter selected by the intent's market (Binance for crypto,
+ * the MetaTrader EA bridge for forex).
  */
 export interface ExecuteIntentOptions {
   onActivity?: ActivityListener;
@@ -89,18 +82,24 @@ export async function executeIntent(
   const explicitApproval =
     settings.mode === "advisory" && intent.status === "approved";
 
-  const decision = evaluateTrade(settings, limits, {
-    symbol: intent.symbol,
-    side: intent.side,
-    notional: intent.notional,
-  }, {
-    masterKill: await isMasterKillOn(),
-    openTradesCount: await countOpenTrades(userId),
-    todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
-    todayRealizedPnlUsd: await todayRealizedPnlUsd(userId),
-    monthRealizedPnlPct: await monthRealizedPnlPct(userId, effectiveCapital),
-    explicitApproval,
-  });
+  const decision = evaluateTrade(
+    settings,
+    limits,
+    {
+      symbol: intent.symbol,
+      side: intent.side,
+      notional: intent.notional,
+      market: intent.market,
+    },
+    {
+      masterKill: await isMasterKillOn(),
+      openTradesCount: await countOpenTrades(userId),
+      todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
+      todayRealizedPnlUsd: await todayRealizedPnlUsd(userId),
+      monthRealizedPnlPct: await monthRealizedPnlPct(userId, effectiveCapital),
+      explicitApproval,
+    },
+  );
 
   if (!decision.ok) {
     push({
@@ -118,161 +117,16 @@ export async function executeIntent(
     status: "done",
   });
 
-  push({
-    id: "creds",
-    label: "التحقق من حساب Binance",
-    status: "running",
+  // 2) Delegate placement to the broker that owns this market.
+  const broker = intent.broker ?? brokerForMarket(intent.market);
+  const adapter = getBrokerAdapter(broker);
+  const result = await adapter.placeOrder(userId, {
+    intent,
+    settings,
+    limits,
+    effectiveCapital,
+    push,
   });
 
-  const creds = await getBinanceCredentials(userId);
-  if (!creds) {
-    const reason = "لا يوجد حساب Binance مرتبط.";
-    push({ id: "creds", label: "التحقق من حساب Binance", status: "error", detail: reason });
-    await updateIntentStatus(intentId, "failed", reason);
-    return { ok: false, status: "failed", reason, activities };
-  }
-  push({
-    id: "creds",
-    label: `التحقق من حساب Binance · ${creds.env === "testnet" ? "تجريبي" : "حقيقي"}`,
-    status: "done",
-  });
-
-  try {
-    push({
-      id: "quote",
-      label: `جلب السعر ومرشحات ${intent.symbol}`,
-      status: "running",
-    });
-    const [price, filters] = await Promise.all([
-      getPrice(intent.symbol, creds.env),
-      getSymbolFilters(intent.symbol, creds.env),
-    ]);
-    push({
-      id: "quote",
-      label: `جلب السعر ومرشحات ${intent.symbol}`,
-      status: "done",
-      detail: `السعر ${price}`,
-    });
-    const qty = roundToStep(intent.notional / price, filters.stepSize);
-
-    if (qty < filters.minQty || qty <= 0) {
-      const reason = `الكمية أقل من الحد الأدنى للرمز (${filters.minQty}).`;
-      await updateIntentStatus(intentId, "failed", reason);
-      return { ok: false, status: "failed", reason, activities };
-    }
-    if (filters.minNotional > 0 && qty * price < filters.minNotional) {
-      const reason = `قيمة الصفقة أقل من الحد الأدنى (${filters.minNotional}).`;
-      await updateIntentStatus(intentId, "failed", reason);
-      return { ok: false, status: "failed", reason, activities };
-    }
-
-    const sideLabel = intent.side === "buy" ? "شراء" : "بيع";
-    push({
-      id: "order",
-      label: `إرسال أمر ${sideLabel} · ${qty} ${intent.symbol}`,
-      status: "running",
-    });
-    const order = await placeMarketOrder(
-      creds.apiKey,
-      creds.apiSecret,
-      creds.env,
-      intent.symbol,
-      intent.side === "buy" ? "BUY" : "SELL",
-      qty,
-    );
-
-    const executedQty = Number(order.executedQty) || qty;
-    const quoteQty = Number(order.cummulativeQuoteQty) || qty * price;
-    const avgPrice = executedQty > 0 ? quoteQty / executedQty : price;
-
-    const trade = await recordTrade(userId, {
-      intent_id: intentId,
-      symbol: intent.symbol,
-      side: intent.side,
-      qty: executedQty,
-      quote_qty: quoteQty,
-      avg_price: avgPrice,
-      order_id: String(order.orderId),
-      env: creds.env,
-      status: "open",
-    });
-
-    if (
-      intent.side === "buy" &&
-      intent.stop_loss != null &&
-      intent.take_profit != null &&
-      intent.take_profit > intent.stop_loss
-    ) {
-      try {
-        push({
-          id: "oco",
-          label: `OCO وقف/هدف · ${intent.symbol}`,
-          status: "running",
-        });
-        const oco = await placeOcoOrder(
-          creds.apiKey,
-          creds.apiSecret,
-          creds.env,
-          intent.symbol,
-          executedQty,
-          intent.take_profit,
-          intent.stop_loss,
-          filters.tickSize,
-        );
-        await updateTradeOcoOrderList(trade.id, oco.orderListId);
-        push({
-          id: "oco",
-          label: `OCO وقف/هدف · ${intent.symbol}`,
-          status: "done",
-          detail: `SL ${intent.stop_loss} · TP ${intent.take_profit}`,
-        });
-      } catch (e) {
-        const ocoErr = e instanceof Error ? e.message : "فشل OCO";
-        push({
-          id: "oco",
-          label: `OCO وقف/هدف · ${intent.symbol}`,
-          status: "error",
-          detail: ocoErr,
-        });
-      }
-    }
-
-    push({
-      id: "order",
-      label: `إرسال أمر ${sideLabel} · ${qty} ${intent.symbol}`,
-      status: "done",
-      detail: `طلب #${order.orderId}`,
-    });
-    push({
-      id: "record",
-      label: "تسجيل الصفقة وإرسال الإشعار",
-      status: "done",
-    });
-
-    await updateIntentStatus(intentId, "executed", `نُفّذت (طلب #${order.orderId}).`);
-    return {
-      ok: true,
-      status: "executed",
-      reason: "تم التنفيذ.",
-      tradeId: trade.id,
-      trade: {
-        symbol: trade.symbol,
-        side: trade.side,
-        qty: trade.qty,
-        avg_price: trade.avg_price,
-        env: trade.env,
-      },
-      activities,
-    };
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : "فشل تنفيذ الأمر.";
-    push({
-      id: "order",
-      label: "إرسال الأمر إلى Binance",
-      status: "error",
-      detail: reason,
-    });
-    await updateIntentStatus(intentId, "failed", reason);
-    return { ok: false, status: "failed", reason, activities };
-  }
+  return { ...result, activities };
 }

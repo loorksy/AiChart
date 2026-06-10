@@ -41,6 +41,7 @@ const SCHEMA = `
     monthly_loss_limit_pct   DOUBLE PRECISION NOT NULL DEFAULT 15,
     auto_take_profit_usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
+    active_market            TEXT NOT NULL DEFAULT 'crypto',
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
     kill_switch              BOOLEAN NOT NULL DEFAULT FALSE,
@@ -91,6 +92,8 @@ const SCHEMA = `
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          DOUBLE PRECISION NOT NULL,
+    market            TEXT NOT NULL DEFAULT 'crypto',
+    broker            TEXT NOT NULL DEFAULT 'binance',
     entry             DOUBLE PRECISION,
     stop_loss         DOUBLE PRECISION,
     take_profit       DOUBLE PRECISION,
@@ -113,11 +116,61 @@ const SCHEMA = `
     avg_price   DOUBLE PRECISION NOT NULL DEFAULT 0,
     order_id    TEXT,
     env         TEXT NOT NULL DEFAULT 'testnet',
+    market      TEXT NOT NULL DEFAULT 'crypto',
+    broker      TEXT NOT NULL DEFAULT 'binance',
     status      TEXT NOT NULL DEFAULT 'open',
     pnl         DOUBLE PRECISION NOT NULL DEFAULT 0,
     oco_order_list_id TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     closed_at   TIMESTAMPTZ
+  );
+
+  CREATE TABLE IF NOT EXISTS ea_connections (
+    id                SERIAL PRIMARY KEY,
+    user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    platform          TEXT NOT NULL DEFAULT 'mt5',
+    token_hash        TEXT NOT NULL,
+    label             TEXT,
+    broker_name       TEXT,
+    account_login     TEXT,
+    account_currency  TEXT,
+    balance           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    equity            DOUBLE PRECISION NOT NULL DEFAULT 0,
+    status            TEXT NOT NULL DEFAULT 'offline',
+    symbol_specs_json TEXT,
+    last_heartbeat_at TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ea_connections_user
+    ON ea_connections (user_id);
+  CREATE INDEX IF NOT EXISTS idx_ea_connections_token
+    ON ea_connections (token_hash);
+
+  CREATE TABLE IF NOT EXISTS ea_commands (
+    id            SERIAL PRIMARY KEY,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    intent_id     INTEGER,
+    command_type  TEXT NOT NULL,
+    payload_json  TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    result_json   TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at    TIMESTAMPTZ,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_ea_commands_poll
+    ON ea_commands (user_id, status, id);
+
+  CREATE TABLE IF NOT EXISTS ea_market_cache (
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    symbol       TEXT NOT NULL,
+    interval     TEXT NOT NULL,
+    candles_json TEXT NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, symbol, interval)
   );
 
   CREATE TABLE IF NOT EXISTS system_flags (
@@ -232,7 +285,24 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS active_market TEXT NOT NULL DEFAULT 'crypto'
+  `).catch(() => {});
+
+  await client.query(`
     ALTER TABLE trades ADD COLUMN IF NOT EXISTS oco_order_list_id TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trades
+      ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'crypto',
+      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'binance'
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trade_intents
+      ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'crypto',
+      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'binance'
   `).catch(() => {});
 
   await client.query(`
