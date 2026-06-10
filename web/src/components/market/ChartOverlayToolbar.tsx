@@ -1,16 +1,23 @@
 "use client";
 
-import { EyeOff, Loader2, Maximize2, Minimize2, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { EyeOff, Loader2, Maximize2, Minimize2, Sparkles, TrendingDown, TrendingUp, Wifi, WifiOff } from "lucide-react";
+import Link from "next/link";
 import { formatTickerPrice } from "@/components/market/formatLevel";
 import { IntervalPicker } from "@/components/market/IntervalPicker";
+import { MarketTypeSelector } from "@/components/market/MarketTypeSelector";
 import { SymbolPicker, type SymbolOption } from "@/components/market/SymbolPicker";
 import type { LivePriceTick } from "@/hooks/useBinanceLivePrice";
+import type { MarketType } from "@/lib/markets/types";
 import { cn } from "@/lib/utils";
 
 const CTRL =
   "inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-border/50 bg-background/80 text-xs font-medium text-foreground backdrop-blur-md transition hover:bg-background/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function ChartOverlayToolbar({
+  market,
+  onMarketChange,
+  forexConnected,
+  forexOnline,
   openAssets,
   search,
   onSearchChange,
@@ -29,6 +36,10 @@ export function ChartOverlayToolbar({
   onClearLayers,
   live,
 }: {
+  market: MarketType;
+  onMarketChange: (m: MarketType) => void;
+  forexConnected?: boolean;
+  forexOnline?: boolean;
   openAssets: boolean;
   search: string;
   onSearchChange: (v: string) => void;
@@ -52,6 +63,31 @@ export function ChartOverlayToolbar({
 
   return (
     <div className="pointer-events-none absolute inset-x-2 top-2 z-20 flex flex-wrap items-center gap-1.5">
+      <MarketTypeSelector value={market} onChange={onMarketChange} />
+
+      {market === "forex" && (
+        <Link
+          href="/settings?tab=integrations"
+          className={cn(
+            CTRL,
+            "pointer-events-auto gap-1 px-2",
+            forexOnline
+              ? "text-green-500 ring-1 ring-green-500/30"
+              : "text-amber-500 ring-1 ring-amber-500/30",
+          )}
+          title={forexOnline ? "MetaTrader متصل" : "MetaTrader غير متصل — اضغط للإعداد"}
+        >
+          {forexOnline ? (
+            <Wifi className="h-3.5 w-3.5" />
+          ) : (
+            <WifiOff className="h-3.5 w-3.5" />
+          )}
+          <span className="hidden sm:inline">
+            {forexOnline ? "MT متصل" : forexConnected ? "MT غير متصل" : "اربط MT"}
+          </span>
+        </Link>
+      )}
+
       <SymbolPicker
         value={symbol}
         onChange={onSymbolChange}
@@ -59,8 +95,9 @@ export function ChartOverlayToolbar({
         openAssets={openAssets}
         search={search}
         onSearchChange={onSearchChange}
-        loading={openAssets && loadingInstruments}
+        loading={loadingInstruments}
         onOpen={onPickerOpen}
+        market={market}
       />
 
       {hasLive && live && (

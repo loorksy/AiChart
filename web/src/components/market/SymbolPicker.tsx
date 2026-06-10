@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Loader2, Search, TrendingDown, TrendingUp, X } from "lucide-react";
 import { formatTickerPrice } from "@/components/market/formatLevel";
 import { useBinanceLivePrices } from "@/hooks/useBinanceLivePrice";
+import type { MarketType } from "@/lib/markets/types";
 import { cn } from "@/lib/utils";
 
 const CTRL =
@@ -25,6 +26,7 @@ export function SymbolPicker({
   onSearchChange,
   loading,
   onOpen,
+  market = "crypto",
 }: {
   value: string;
   onChange: (symbol: string) => void;
@@ -34,7 +36,9 @@ export function SymbolPicker({
   onSearchChange: (q: string) => void;
   loading?: boolean;
   onOpen?: () => void;
+  market?: MarketType;
 }) {
+  const isForex = market === "forex";
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -55,7 +59,9 @@ export function SymbolPicker({
     () => filtered.slice(0, 60).map((o) => o.symbol),
     [filtered],
   );
-  const liveTicks = useBinanceLivePrices(open ? liveSymbols : []);
+  const liveTicks = useBinanceLivePrices(
+    open && !isForex ? liveSymbols : [],
+  );
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023px)");
@@ -106,7 +112,13 @@ export function SymbolPicker({
         <Search className="absolute start-5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <input
           className="h-9 w-full rounded-lg border border-border bg-secondary/50 ps-9 pe-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder={openAssets ? "ابحث عن زوج USDT…" : "فلترة الأزواج…"}
+          placeholder={
+            isForex
+              ? "ابحث عن زوج فوركس…"
+              : openAssets
+                ? "ابحث عن زوج USDT…"
+                : "فلترة الأزواج…"
+          }
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           dir="ltr"
@@ -272,7 +284,9 @@ export function SymbolPicker({
         onClick={openPanel}
         dir="ltr"
       >
-        <span className="truncate">{value.replace(/USDT$/, "")}</span>
+        <span className="truncate">
+          {isForex ? value : value.replace(/USDT$/, "")}
+        </span>
         <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
       </button>
       {desktopPanel}

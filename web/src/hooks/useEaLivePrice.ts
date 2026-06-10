@@ -1,0 +1,65 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import type { LivePriceTick } from "./useBinanceLivePrice";
+
+const POLL_MS = 2000;
+
+/**
+ * Live forex price for a symbol, polled from the EA bridge cache
+ * (`/api/market/forex-price`). Mirrors the LivePriceTick shape used by the
+ * Binance hook so the chart/toolbar can consume either market uniformly.
+ */
+export function useEaLivePrice(symbol: string, enabled = true): LivePriceTick {
+  const [tick, setTick] = useState<LivePriceTick>({
+    price: 0,
+    changePct: 0,
+    direction: null,
+    connected: false,
+  });
+  const prevRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled || !symbol) {
+      setTick({ price: 0, changePct: 0, direction: null, connected: false });
+      return;
+    }
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/market/forex-price?symbol=${encodeURIComponent(symbol)}`,
+        );
+        const data = (await res.json()) as {
+          online?: boolean;
+          price?: number | null;
+        };
+        if (!alive) return;
+        const price = Number(data.price) || 0;
+        const prev = prevRef.current || price;
+        const direction = price > prev ? "up" : price < prev ? "down" : null;
+        prevRef.current = price;
+        setTick({
+          price,
+          changePct: 0,
+          direction,
+          connected: Boolean(data.online),
+        });
+      } catch {
+        /* keep last tick */
+      } finally {
+        if (alive) timer = setTimeout(poll, POLL_MS);
+      }
+    };
+    void poll();
+
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [symbol, enabled]);
+
+  return tick;
+}
