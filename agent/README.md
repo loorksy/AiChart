@@ -39,6 +39,39 @@ bash agent/scripts/sync-workspace.sh
 openclaw gateway          # أو عبر pm2/docker — راجع infra/
 ```
 
+## الرسائل الصوتية (تيليجرام)
+
+Claude لا يفرّغ الصوت — بدون مزوّد تفريغ تصل الرسالة الصوتية للوكيل فارغة.
+فعّل خط الصوت في `~/.openclaw/openclaw.json`:
+
+```json5
+{
+  tools: {
+    media: {
+      audio: {
+        enabled: true,
+        models: [
+          // يتطلب OPENAI_API_KEY في بيئة الوكيل (مثلاً ~/.openclaw/.env)
+          { provider: "openai", model: "gpt-4o-mini-transcribe" },
+          // أو بديل محلي بلا API: pip install -U openai-whisper
+          // { type: "cli", command: "whisper", args: ["--model", "base", "{{MediaPath}}"], timeoutSeconds: 45 },
+        ],
+      },
+    },
+  },
+}
+```
+
+ثم أعد التشغيل **بإيقاف كامل** (تعديلات config متكررة قد تترك خط الصوت
+بحالة معطلة بعد restart عادي):
+
+```bash
+pm2 stop aichart-agent && sleep 5 && pm2 start aichart-agent
+```
+
+ملاحظات: حدّث OpenClaw إن كان أقدم من `2026.4.11` (ثغرات معروفة في صوتيات
+تيليجرام)، والصوتيات الأقصر من ثانية (~1KB) تُتخطى عمداً كفارغة.
+
 ## الملفات
 
 | الملف | الدور |
