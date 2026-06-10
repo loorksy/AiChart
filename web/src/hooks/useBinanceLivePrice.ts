@@ -63,6 +63,40 @@ export function useBinanceLivePrices(symbols: string[]): LivePriceMap {
     }
 
     const upper = symbols.map((s) => s.toUpperCase());
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/market/tickers?symbols=${encodeURIComponent(upper.join(","))}`,
+        );
+        const data = (await res.json()) as Record<
+          string,
+          { price: number; changePct: number }
+        >;
+        if (cancelled || !res.ok) return;
+
+        setTicks((prev) => {
+          const next = { ...prev };
+          for (const sym of upper) {
+            const row = data[sym];
+            if (!row?.price) continue;
+            prevPrices.current[sym] = row.price;
+            changePctRef.current[sym] = row.changePct;
+            next[sym] = {
+              price: row.price,
+              changePct: row.changePct,
+              direction: prev[sym]?.direction ?? null,
+              connected: prev[sym]?.connected ?? false,
+            };
+          }
+          return next;
+        });
+      } catch {
+        /* REST bootstrap optional */
+      }
+    })();
+
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let alive = true;
@@ -147,6 +181,7 @@ export function useBinanceLivePrices(symbols: string[]): LivePriceMap {
     connect();
 
     return () => {
+      cancelled = true;
       alive = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();

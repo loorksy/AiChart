@@ -1,8 +1,10 @@
 "use client";
 
-import { EyeOff, Loader2, Maximize2, Minimize2, Sparkles } from "lucide-react";
+import { EyeOff, Loader2, Maximize2, Minimize2, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { formatTickerPrice } from "@/components/market/formatLevel";
 import { IntervalPicker } from "@/components/market/IntervalPicker";
 import { SymbolPicker, type SymbolOption } from "@/components/market/SymbolPicker";
+import type { LivePriceTick } from "@/hooks/useBinanceLivePrice";
 import { cn } from "@/lib/utils";
 
 const CTRL =
@@ -25,6 +27,7 @@ export function ChartOverlayToolbar({
   onToggleFullscreen,
   hasChartLayers,
   onClearLayers,
+  live,
 }: {
   openAssets: boolean;
   search: string;
@@ -42,9 +45,13 @@ export function ChartOverlayToolbar({
   onToggleFullscreen: () => void;
   hasChartLayers?: boolean;
   onClearLayers?: () => void;
+  live?: LivePriceTick;
 }) {
+  const hasLive = (live?.price ?? 0) > 0;
+  const up = (live?.changePct ?? 0) >= 0;
+
   return (
-    <div className="pointer-events-none absolute inset-x-2 top-2 z-10 flex flex-wrap items-center gap-1.5">
+    <div className="pointer-events-none absolute inset-x-2 top-2 z-20 flex flex-wrap items-center gap-1.5">
       <SymbolPicker
         value={symbol}
         onChange={onSymbolChange}
@@ -55,6 +62,44 @@ export function ChartOverlayToolbar({
         loading={openAssets && loadingInstruments}
         onOpen={onPickerOpen}
       />
+
+      {hasLive && live && (
+        <div
+          className={cn(
+            CTRL,
+            "pointer-events-none hidden min-w-0 max-w-[9rem] flex-col items-start px-2 py-1 lg:inline-flex",
+            live.direction === "up" && "ring-1 ring-green-500/30",
+            live.direction === "down" && "ring-1 ring-red-500/30",
+          )}
+          dir="ltr"
+          aria-live="polite"
+        >
+          <span
+            className={cn(
+              "w-full truncate text-[11px] font-semibold tabular-nums leading-tight",
+              live.direction === "up" && "text-green-500",
+              live.direction === "down" && "text-red-500",
+              !live.direction && "text-foreground",
+            )}
+          >
+            {formatTickerPrice(live.price)}
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-[9px] font-medium tabular-nums",
+              up ? "text-green-500" : "text-red-500",
+            )}
+          >
+            {up ? (
+              <TrendingUp className="h-2.5 w-2.5 shrink-0" />
+            ) : (
+              <TrendingDown className="h-2.5 w-2.5 shrink-0" />
+            )}
+            {up ? "+" : ""}
+            {live.changePct.toFixed(2)}%
+          </span>
+        </div>
+      )}
 
       <IntervalPicker value={interval} onChange={onIntervalChange} />
 

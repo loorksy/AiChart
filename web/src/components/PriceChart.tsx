@@ -22,6 +22,8 @@ import {
 } from "@/lib/chartDrawingEngine";
 import type { LegendItem } from "@/lib/chartDrawingLabels";
 import { ChartDrawingLegend } from "@/components/market/ChartDrawingLegend";
+import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
+import type { LivePriceTick } from "@/hooks/useBinanceLivePrice";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,7 @@ interface Props {
   overlays?: ChartOverlay[];
   drawings?: ChartDrawing[];
   livePrice?: number;
+  liveTick?: LivePriceTick;
   className?: string;
   fill?: boolean;
   ambient?: boolean;
@@ -52,6 +55,7 @@ export default function PriceChart({
   overlays,
   drawings,
   livePrice,
+  liveTick,
   className,
   fill = false,
   ambient = false,
@@ -236,11 +240,18 @@ export default function PriceChart({
   }, [recommendations, symbol, drawings, interval, lastBarTime, ambient]);
 
   return (
-    <div className={cn("relative w-full", fill && "h-full", className)}>
+    <div className={cn("relative isolate z-0 w-full", fill && "h-full", className)}>
       <div
         ref={containerRef}
-        className={cn("w-full", fill ? "h-full min-h-[200px]" : "h-[420px]")}
+        className={cn("relative z-0 w-full", fill ? "h-full min-h-[200px]" : "h-[420px]")}
       />
+      {!ambient && liveTick && (
+        <ChartLivePriceBadge
+          symbol={symbol}
+          live={liveTick}
+          className="lg:hidden"
+        />
+      )}
       {!ambient && legendItems.length > 0 && (
         <ChartDrawingLegend items={legendItems} />
       )}

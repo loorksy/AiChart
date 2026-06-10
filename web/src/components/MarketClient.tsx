@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SectionTitle, SurfaceCard } from "@/components/ui/shell";
-import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
 import { ChartOverlayToolbar } from "@/components/market/ChartOverlayToolbar";
 import { MarketRecPanel } from "@/components/market/MarketRecPanel";
 import { formatLevel } from "@/components/market/formatLevel";
@@ -289,6 +288,7 @@ export default function MarketClient({
               overlays={overlays}
               drawings={drawings}
               livePrice={live.price > 0 ? live.price : undefined}
+              liveTick={live}
               fill
               className="h-full min-h-0 p-0"
             />
@@ -310,9 +310,8 @@ export default function MarketClient({
               onToggleFullscreen={() => void toggleFullscreen()}
               hasChartLayers={overlays.length > 0 || drawings.length > 0}
               onClearLayers={clearChartLayers}
+              live={live}
             />
-
-            <ChartLivePriceBadge symbol={symbol} />
           </div>
         </SurfaceCard>
 

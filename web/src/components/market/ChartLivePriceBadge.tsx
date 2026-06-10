@@ -1,21 +1,34 @@
 "use client";
 
 import { TrendingDown, TrendingUp } from "lucide-react";
-import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
+import {
+  useBinanceLivePrice,
+  type LivePriceTick,
+} from "@/hooks/useBinanceLivePrice";
 import { formatTickerPrice } from "@/components/market/formatLevel";
 import { cn } from "@/lib/utils";
 
-export function ChartLivePriceBadge({ symbol }: { symbol: string }) {
-  const live = useBinanceLivePrice(symbol);
+export function ChartLivePriceBadge({
+  symbol,
+  live: liveProp,
+  className,
+}: {
+  symbol: string;
+  live?: LivePriceTick;
+  className?: string;
+}) {
+  const fromHook = useBinanceLivePrice(liveProp ? "" : symbol);
+  const live = liveProp ?? fromHook;
   const up = live.changePct >= 0;
   const hasPrice = live.price > 0;
 
   return (
     <div
       className={cn(
-        "pointer-events-none absolute bottom-2 left-2 z-10 rounded-lg border border-border/50 bg-background/80 px-2 py-1.5 shadow-sm backdrop-blur-md",
+        "pointer-events-none absolute bottom-10 left-2 z-50 rounded-lg border border-border/50 bg-background/95 px-2 py-1.5 shadow-md backdrop-blur-md",
         live.direction === "up" && "ring-1 ring-green-500/40",
         live.direction === "down" && "ring-1 ring-red-500/40",
+        className,
       )}
       dir="ltr"
       aria-live="polite"
