@@ -24,10 +24,13 @@ import type {
   AlertLog,
   BinanceAccountMeta,
   EaConnectionMeta,
+  MtAccountMeta,
   PublicUser,
   TradingSettings,
 } from "@/lib/types";
+import type { ForexBackendMode } from "@/lib/brokers/forexBackend";
 import { EaConnectCard } from "@/components/settings/EaConnectCard";
+import { MtConnectCard } from "@/components/settings/MtConnectCard";
 import { cn } from "@/lib/utils";
 import { PageLayout, SurfaceCard, PillButton } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
@@ -71,6 +74,8 @@ export default function SettingsClient({
   limits,
   binance,
   ea,
+  mt,
+  forexBackend,
   initialTab,
 }: {
   user: PublicUser;
@@ -78,6 +83,8 @@ export default function SettingsClient({
   limits: AdminLimits;
   binance: BinanceAccountMeta | null;
   ea: EaConnectionMeta | null;
+  mt: MtAccountMeta | null;
+  forexBackend: ForexBackendMode;
   initialTab?: TabId;
 }) {
   const [tab, setTab] = useState<TabId>(initialTab ?? "profile");
@@ -202,7 +209,11 @@ export default function SettingsClient({
           {tab === "integrations" && (
             <div className="space-y-4">
               <BinanceCard binance={binance} />
-              <EaConnectCard connection={ea} />
+              {forexBackend === "metaapi" ? (
+                <MtConnectCard account={mt} />
+              ) : (
+                <EaConnectCard connection={ea} />
+              )}
               <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
             </div>
           )}

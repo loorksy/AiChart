@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api";
+import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { searchBinanceInstruments } from "@/lib/binanceSymbols";
 import {
   forexBaseQuote,
   searchForexInstruments,
 } from "@/lib/markets/forexInstruments";
 import { getEaConnection, parseEaSymbolSpecs } from "@/lib/eaStore";
+import { getRpcConnection } from "@/lib/metaapi/client";
+import { getMtAccount } from "@/lib/store";
 
 interface Instrument {
   symbol: string;
@@ -13,7 +16,7 @@ interface Instrument {
   quote: string;
 }
 
-async function forexInstruments(
+async function metaApiForexInstruments(
   userId: number,
   q: string,
 ): Promise<{ instruments: Instrument[]; total: number }> {
@@ -22,7 +25,38 @@ async function forexInstruments(
     map.set(i.symbol, { symbol: i.symbol, base: i.base, quote: i.quote });
   }
 
-  // Merge symbols actually offered by the user's broker (from EA heartbeat).
+  const row = await getMtAccount(userId);
+  if (row?.metaapi_account_id) {
+    try {
+      const conn = await getRpcConnection(userId, row.metaapi_account_id);
+      const symbols = await conn.getSymbols();
+      const query = q.trim().toUpperCase();
+      for (const sym of symbols) {
+        const symbol = sym.toUpperCase();
+        if (query && !symbol.includes(query)) continue;
+        if (!map.has(symbol)) {
+          const { base, quote } = forexBaseQuote(symbol);
+          map.set(symbol, { symbol, base, quote });
+        }
+      }
+    } catch {
+      /* fall back to static list */
+    }
+  }
+
+  const instruments = Array.from(map.values());
+  return { instruments, total: instruments.length };
+}
+
+async function eaForexInstruments(
+  userId: number,
+  q: string,
+): Promise<{ instruments: Instrument[]; total: number }> {
+  const map = new Map<string, Instrument>();
+  for (const i of searchForexInstruments(q)) {
+    map.set(i.symbol, { symbol: i.symbol, base: i.base, quote: i.quote });
+  }
+
   const conn = await getEaConnection(userId);
   if (conn) {
     const query = q.trim().toUpperCase();
@@ -55,7 +89,9 @@ export async function GET(request: NextRequest) {
 
     const { instruments, total } =
       market === "forex"
-        ? await forexInstruments(user.id, q)
+        ? getForexBackend() === "metaapi"
+          ? await metaApiForexInstruments(user.id, q)
+          : await eaForexInstruments(user.id, q)
         : await searchBinanceInstruments(q, 200);
 
     const wrapped = request.nextUrl.searchParams.get("wrapped") === "1";

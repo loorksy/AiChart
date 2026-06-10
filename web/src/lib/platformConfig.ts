@@ -101,6 +101,24 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     plainStorage: false,
     type: "toggle",
   },
+  {
+    key: "METAAPI_TOKEN",
+    label: "رمز MetaApi (فوركس)",
+    labelEn: "METAAPI_TOKEN",
+    group: "ops",
+    secret: true,
+    plainStorage: false,
+    placeholder: "من app.metaapi.cloud/token",
+  },
+  {
+    key: "METAAPI_REGION",
+    label: "منطقة MetaApi (اختياري)",
+    labelEn: "METAAPI_REGION",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    placeholder: "new-york",
+  },
 ];
 
 const cache = new Map<string, string>();

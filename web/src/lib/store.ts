@@ -13,6 +13,8 @@ import { telegramDisplayEmail } from "./telegramAuth";
 import type {
   AdminLimits,
   BinanceAccountMeta,
+  MtAccount,
+  MtAccountMeta,
   PublicUser,
   Recommendation,
   Trade,
@@ -20,7 +22,7 @@ import type {
   TradingSettings,
 } from "./types";
 import type { BinanceEnv } from "./binance";
-import type { BrokerKind, MarketType } from "./markets/types";
+import type { BrokerKind, MarketType, MtPlatform } from "./markets/types";
 import { brokerForMarket } from "./markets/types";
 
 export async function ensureUserDefaults(userId: number) {
@@ -141,6 +143,144 @@ export async function getBinanceCredentials(
 
 export async function deleteBinanceAccount(userId: number) {
   await execute("DELETE FROM binance_accounts WHERE user_id = ?", [userId]);
+}
+
+export async function saveMtAccount(
+  userId: number,
+  data: {
+    platform: MtPlatform;
+    server: string;
+    login: string;
+    password: string;
+    metaapiAccountId: string;
+    region?: string | null;
+    state?: string;
+    connectionStatus?: string | null;
+    balance?: number;
+    equity?: number;
+    currency?: string | null;
+  },
+) {
+  await execute(
+    `INSERT INTO mt_accounts (
+       user_id, platform, server, login, password_enc, metaapi_account_id,
+       region, state, connection_status, balance, equity, currency, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET
+       platform = excluded.platform,
+       server = excluded.server,
+       login = excluded.login,
+       password_enc = excluded.password_enc,
+       metaapi_account_id = excluded.metaapi_account_id,
+       region = excluded.region,
+       state = excluded.state,
+       connection_status = excluded.connection_status,
+       balance = excluded.balance,
+       equity = excluded.equity,
+       currency = excluded.currency,
+       updated_at = datetime('now')`,
+    [
+      userId,
+      data.platform,
+      data.server.trim(),
+      data.login.replace(/\D/g, ""),
+      encryptSecret(data.password),
+      data.metaapiAccountId,
+      data.region ?? null,
+      data.state ?? "CREATED",
+      data.connectionStatus ?? null,
+      data.balance ?? 0,
+      data.equity ?? 0,
+      data.currency ?? null,
+    ],
+  );
+}
+
+export async function getMtAccount(userId: number): Promise<MtAccount | null> {
+  return queryOne<MtAccount>("SELECT * FROM mt_accounts WHERE user_id = ?", [
+    userId,
+  ]);
+}
+
+export async function getMtAccountMeta(
+  userId: number,
+): Promise<MtAccountMeta | null> {
+  const row = await queryOne<MtAccount>(
+    "SELECT * FROM mt_accounts WHERE user_id = ?",
+    [userId],
+  );
+  if (!row) return null;
+  const online =
+    row.state === "DEPLOYED" && row.connection_status === "CONNECTED";
+  return {
+    id: row.id,
+    platform: row.platform,
+    server: row.server,
+    login: row.login,
+    balance: row.balance,
+    equity: row.equity,
+    currency: row.currency,
+    state: row.state,
+    connection_status: row.connection_status,
+    online,
+    updated_at: row.updated_at,
+  };
+}
+
+export async function getMtAccountPassword(
+  userId: number,
+): Promise<string | null> {
+  const row = await queryOne<{ password_enc: string }>(
+    "SELECT password_enc FROM mt_accounts WHERE user_id = ?",
+    [userId],
+  );
+  if (!row) return null;
+  return decryptSecret(row.password_enc);
+}
+
+export async function updateMtAccountStatus(
+  userId: number,
+  patch: {
+    state?: string;
+    connectionStatus?: string | null;
+    balance?: number;
+    equity?: number;
+    currency?: string | null;
+  },
+) {
+  const fields: string[] = [];
+  const params: unknown[] = [];
+  if (patch.state != null) {
+    fields.push("state = ?");
+    params.push(patch.state);
+  }
+  if (patch.connectionStatus !== undefined) {
+    fields.push("connection_status = ?");
+    params.push(patch.connectionStatus);
+  }
+  if (patch.balance != null) {
+    fields.push("balance = ?");
+    params.push(patch.balance);
+  }
+  if (patch.equity != null) {
+    fields.push("equity = ?");
+    params.push(patch.equity);
+  }
+  if (patch.currency !== undefined) {
+    fields.push("currency = ?");
+    params.push(patch.currency);
+  }
+  if (fields.length === 0) return;
+  fields.push("updated_at = datetime('now')");
+  params.push(userId);
+  await execute(
+    `UPDATE mt_accounts SET ${fields.join(", ")} WHERE user_id = ?`,
+    params,
+  );
+}
+
+export async function deleteMtAccount(userId: number) {
+  await execute("DELETE FROM mt_accounts WHERE user_id = ?", [userId]);
 }
 
 export async function getUserByTelegramId(

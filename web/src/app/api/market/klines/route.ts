@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser, handleError } from "@/lib/api";
+import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { getKlines } from "@/lib/binance";
 import { getEaCandles } from "@/lib/eaStore";
+import { getMetaApi } from "@/lib/metaapi/client";
+import { getMtAccount } from "@/lib/store";
 
 const ALLOWED = new Set(["1m", "5m", "15m", "1h", "4h", "1d", "1w"]);
 
@@ -11,6 +14,50 @@ interface Candle {
   high: number;
   low: number;
   close: number;
+}
+
+function mapInterval(interval: string): string {
+  if (interval === "1w") return "1w";
+  return interval;
+}
+
+async function metaApiForexCandles(
+  userId: number,
+  symbol: string,
+  interval: string,
+  limit: number,
+): Promise<Candle[]> {
+  const row = await getMtAccount(userId);
+  if (!row?.metaapi_account_id) return [];
+
+  const api = await getMetaApi();
+  const account = await api.metatraderAccountApi.getAccount(row.metaapi_account_id);
+  if (account.state !== "DEPLOYED") return [];
+
+  const tf = mapInterval(interval);
+  const raw = (await account.getHistoricalCandles(
+    symbol,
+    tf,
+    undefined,
+    limit,
+  )) as Array<{
+    time: string | Date;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  }>;
+  return raw
+    .map((c) => ({
+      time: Math.floor(new Date(c.time as string | Date).getTime() / 1000),
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close),
+    }))
+    .filter((b) => Number.isFinite(b.time) && b.time > 0)
+    .sort((a, b) => a.time - b.time)
+    .slice(-limit);
 }
 
 export async function GET(req: NextRequest) {
@@ -30,6 +77,22 @@ export async function GET(req: NextRequest) {
       : "crypto";
 
     if (market === "forex") {
+      if (getForexBackend() === "metaapi") {
+        const candles = await metaApiForexCandles(
+          user.id,
+          symbol,
+          interval,
+          limit,
+        );
+        return NextResponse.json({
+          symbol,
+          interval,
+          market,
+          candles,
+          pending: candles.length === 0,
+        });
+      }
+
       const cached = await getEaCandles(user.id, symbol, interval);
       let candles: Candle[] = [];
       if (cached) {
@@ -50,8 +113,6 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // No cached data yet: the EA streams its configured StreamSymbol; the
-      // chart will populate once a heartbeat with this symbol's candles arrives.
       return NextResponse.json({
         symbol,
         interval,

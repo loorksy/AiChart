@@ -184,6 +184,28 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS mt_accounts (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL,
+    platform            TEXT NOT NULL DEFAULT 'mt5',
+    server              TEXT NOT NULL,
+    login               TEXT NOT NULL,
+    password_enc        TEXT NOT NULL,
+    metaapi_account_id  TEXT NOT NULL,
+    region              TEXT,
+    state               TEXT NOT NULL DEFAULT 'CREATED',
+    connection_status   TEXT,
+    balance             REAL NOT NULL DEFAULT 0,
+    equity              REAL NOT NULL DEFAULT 0,
+    currency            TEXT,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
+    ON mt_accounts (user_id);
+
   CREATE TABLE IF NOT EXISTS system_flags (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -396,8 +418,32 @@ function migrate(db: Database.Database) {
         'ANTHROPIC_MODEL',
         'TELEGRAM_BOT_USERNAME',
         'APP_URL',
-        'ENABLE_BINANCE_CLI'
+        'ENABLE_BINANCE_CLI',
+        'METAAPI_REGION'
       )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mt_accounts (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id             INTEGER NOT NULL,
+      platform            TEXT NOT NULL DEFAULT 'mt5',
+      server              TEXT NOT NULL,
+      login               TEXT NOT NULL,
+      password_enc        TEXT NOT NULL,
+      metaapi_account_id  TEXT NOT NULL,
+      region              TEXT,
+      state               TEXT NOT NULL DEFAULT 'CREATED',
+      connection_status   TEXT,
+      balance             REAL NOT NULL DEFAULT 0,
+      equity              REAL NOT NULL DEFAULT 0,
+      currency            TEXT,
+      created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
+      ON mt_accounts (user_id);
   `);
 }
 

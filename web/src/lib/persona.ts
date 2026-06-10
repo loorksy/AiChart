@@ -1,6 +1,7 @@
 import type { TradingSettings } from "./types";
 import { allowedAssetsLabel } from "./allowedAssets";
 import { buildUserContext } from "./userContext";
+import { getForexBackend } from "./brokers/forexBackend";
 
 /**
  * Builds the system prompt for the expert trading agent.
@@ -12,6 +13,11 @@ export async function buildSystemPrompt(
 ): Promise<string> {
   const activeMarket = settings.active_market ?? "crypto";
   const assetsLabel = allowedAssetsLabel(settings.allowed_assets, activeMarket);
+  const forexMode = getForexBackend();
+  const forexExecLabel =
+    forexMode === "metaapi"
+      ? "MetaTrader عبر MetaApi (ربط بـ 3 حقول — بدون EA)"
+      : "MetaTrader عبر EA";
   const styleAr =
     settings.style === "conservative"
       ? "محافظ"
@@ -36,8 +42,8 @@ export async function buildSystemPrompt(
 # مبادئ التداول
 - صبور ومنضبط. الانتظار قرار محترم.
 - إدارة المخاطر أولاً. لا وعود بأرباح مؤكّدة.
-- تدعم سوقين: كريبتو (أزواج USDT على Binance Spot) وفوركس (MetaTrader عبر EA).
-- السوق النشط حالياً: ${activeMarket === "forex" ? "فوركس (MetaTrader) — التنفيذ عبر EA، الأحجام باللوت" : "كريبتو (Binance Spot) — التنفيذ عبر Binance"}.
+- تدعم سوقين: كريبتو (أزواج USDT على Binance Spot) وفوركس (${forexExecLabel}).
+- السوق النشط حالياً: ${activeMarket === "forex" ? `فوركس (${forexExecLabel}) — الأحجام باللوت` : "كريبتو (Binance Spot) — التنفيذ عبر Binance"}.
 - التزم بالسوق النشط عند الرموز والتحليل والتوصيات.
 
 ${userBlock}

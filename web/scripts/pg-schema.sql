@@ -158,6 +158,27 @@ CREATE TABLE IF NOT EXISTS ea_market_cache (
   PRIMARY KEY (user_id, symbol, interval)
 );
 
+CREATE TABLE IF NOT EXISTS mt_accounts (
+  id                  SERIAL PRIMARY KEY,
+  user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform            TEXT NOT NULL DEFAULT 'mt5',
+  server              TEXT NOT NULL,
+  login               TEXT NOT NULL,
+  password_enc        TEXT NOT NULL,
+  metaapi_account_id  TEXT NOT NULL,
+  region              TEXT,
+  state               TEXT NOT NULL DEFAULT 'CREATED',
+  connection_status   TEXT,
+  balance             DOUBLE PRECISION NOT NULL DEFAULT 0,
+  equity              DOUBLE PRECISION NOT NULL DEFAULT 0,
+  currency            TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
+  ON mt_accounts (user_id);
+
 CREATE TABLE IF NOT EXISTS system_flags (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

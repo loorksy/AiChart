@@ -167,8 +167,8 @@ export default function OnboardingClient({
       )}
 
       <div className="mb-4 rounded-[var(--radius)] border border-border bg-secondary/40 px-4 py-3 text-xs text-muted-foreground">
-        تتداول على الكريبتو عبر Binance والفوركس عبر MetaTrader (EA). يمكنك ربط
-        MetaTrader لاحقاً من{" "}
+        تتداول على الكريبتو عبر Binance والفوركس عبر MetaTrader (3 حقول فقط — بدون
+        تثبيت). يمكنك ربط MetaTrader لاحقاً من{" "}
         <Link href="/settings?tab=integrations" className="text-link underline">
           الإعدادات ← الربط والتكامل
         </Link>

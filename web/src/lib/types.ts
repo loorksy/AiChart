@@ -248,3 +248,46 @@ export interface EaSymbolSpec {
   max_lot?: number;
   lot_step?: number;
 }
+
+export type MtAccountState =
+  | "CREATED"
+  | "DEPLOYING"
+  | "DEPLOYED"
+  | "DEPLOY_FAILED"
+  | "UNDEPLOYING"
+  | "UNDEPLOYED"
+  | "DRAFT"
+  | "unknown";
+
+export interface MtAccount {
+  id: number;
+  user_id: number;
+  platform: MtPlatform;
+  server: string;
+  login: string;
+  password_enc: string;
+  metaapi_account_id: string;
+  region: string | null;
+  state: string;
+  connection_status: string | null;
+  balance: number;
+  equity: number;
+  currency: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+/** Non-secret MT account view for the UI (MetaApi bridge). */
+export interface MtAccountMeta {
+  id: number;
+  platform: MtPlatform;
+  server: string;
+  login: string;
+  balance: number;
+  equity: number;
+  currency: string | null;
+  state: string;
+  connection_status: string | null;
+  online: boolean;
+  updated_at: string;
+}
