@@ -348,6 +348,10 @@ label {
   background: var(--sidebar-accent);
 }
 
+.market-segment {
+  gap: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

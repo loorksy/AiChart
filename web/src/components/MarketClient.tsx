@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Search, Sparkles, X } from "lucide-react";
-import {
-  PageLayout,
-  SectionTitle,
-  SurfaceCard,
-} from "@/components/ui/shell";
+import { Loader2, Search } from "lucide-react";
+import { SectionTitle, SurfaceCard } from "@/components/ui/shell";
+import { MarketIntervalTabs } from "@/components/market/MarketIntervalTabs";
+import { MarketRecPanel } from "@/components/market/MarketRecPanel";
+import { MarketTickerBar } from "@/components/market/MarketTickerBar";
+import { formatLevel } from "@/components/market/formatLevel";
 import { cn } from "@/lib/utils";
 import PriceChart from "./PriceChart";
 import type { ChartOverlay } from "@/lib/chartOverlays";
@@ -18,22 +18,10 @@ import type { MarketSnapshot } from "@/lib/market";
 import { consumeSse } from "@/lib/sse";
 import type { Recommendation } from "@/lib/types";
 
-const INTERVALS = ["15m", "1h", "4h", "1d", "1w"];
-
-const TOOLBAR_BTN =
-  "inline-flex h-11 min-h-[44px] items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
 interface Instrument {
   symbol: string;
   base: string;
   quote: string;
-}
-
-function formatLevel(price: number | null): string {
-  if (price == null) return "—";
-  if (price >= 1000) return price.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  if (price >= 1) return price.toLocaleString(undefined, { maximumFractionDigits: 4 });
-  return price.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
 function emptySnap(symbol: string, interval: string, price = 0): MarketSnapshot {
@@ -129,6 +117,20 @@ export default function MarketClient({
 
   const symbolRecs = recommendations.filter((r) => r.symbol === symbol);
 
+  const panelOpen = recDetailOpen || analysisOpen;
+  const panelKind = recDetailOpen ? "rec" : "analysis";
+
+  function closePanel() {
+    if (recDetailOpen) {
+      setRecDetailOpen(false);
+      setSelectedRec(null);
+      setOverlays([]);
+    }
+    if (analysisOpen) {
+      setAnalysisOpen(false);
+    }
+  }
+
   function selectRecommendation(rec: Recommendation) {
     setSelectedRec(rec);
     setRecDetailOpen(true);
@@ -200,92 +202,60 @@ export default function MarketClient({
     }
   }
 
-  const toolbar = (
-    <div className="flex flex-wrap items-center gap-2">
-      {openAssets && (
-        <div className="relative">
-          <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            className="input h-11 w-40 ps-10 text-sm"
-            placeholder="ابحث…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            dir="ltr"
-          />
-        </div>
-      )}
-      <select
-        className="input h-11 w-auto max-w-[200px] text-sm"
-        value={symbol}
-        onChange={(e) => setSymbol(e.target.value)}
-        dir="ltr"
-      >
-        {pickerOptions.length === 0 && (
-          <option value={symbol}>{symbol}</option>
-        )}
-        {pickerOptions.map((inst) => (
-          <option key={inst.symbol} value={inst.symbol}>
-            {inst.symbol}
-          </option>
-        ))}
-      </select>
-      {openAssets && loadingInstruments && (
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-      )}
-      <div className="flex gap-1">
-        {INTERVALS.map((iv) => (
-          <button
-            key={iv}
-            type="button"
-            onClick={() => setInterval(iv)}
-            className={cn(
-              TOOLBAR_BTN,
-              "min-w-[44px] px-3 text-xs",
-              interval === iv
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {iv}
-          </button>
-        ))}
-      </div>
-      <button
-        type="button"
-        onClick={() => void handleAnalyze()}
-        disabled={isAnalyzing}
-        className={cn(
-          TOOLBAR_BTN,
-          isAnalyzing
-            ? "bg-secondary text-muted-foreground"
-            : "bg-primary text-primary-foreground hover:opacity-90",
-        )}
-      >
-        {isAnalyzing ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Sparkles className="h-4 w-4" />
-        )}
-        تحليل
-      </button>
-    </div>
-  );
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <PageLayout
-        title="الشارت الحي"
-        subtitle={
-          openAssets
-            ? "جميع أزواج USDT من Binance — تحديث تلقائي"
-            : undefined
-        }
-        maxWidth="full"
-        actions={toolbar}
-        className="shrink-0 space-y-0 !px-4 !pb-3 !pt-3"
-      >
-        <span className="hidden" aria-hidden="true" />
-      </PageLayout>
+      {/* Header */}
+      <header className="shrink-0 space-y-3 border-b border-border/60 px-4 py-3">
+        <div>
+          <h1 className="page-title text-base sm:text-lg">الشارت الحي</h1>
+          {openAssets && (
+            <p className="page-subtitle text-[11px] sm:text-xs">
+              جميع أزواج USDT من Binance — تحديث تلقائي
+            </p>
+          )}
+        </div>
+
+        <MarketTickerBar
+          symbol={symbol}
+          onAnalyze={() => void handleAnalyze()}
+          isAnalyzing={isAnalyzing}
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          {openAssets && (
+            <div className="relative min-w-0 flex-1 sm:flex-none">
+              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                className="input h-11 w-full min-w-[8rem] ps-10 text-sm sm:w-44"
+                placeholder="ابحث…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                dir="ltr"
+              />
+            </div>
+          )}
+          <select
+            className="input h-11 w-auto max-w-[200px] shrink-0 text-sm"
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value)}
+            dir="ltr"
+            aria-label="اختيار الزوج"
+          >
+            {pickerOptions.length === 0 && (
+              <option value={symbol}>{symbol}</option>
+            )}
+            {pickerOptions.map((inst) => (
+              <option key={inst.symbol} value={inst.symbol}>
+                {inst.symbol}
+              </option>
+            ))}
+          </select>
+          {openAssets && loadingInstruments && (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+          )}
+          <MarketIntervalTabs value={interval} onChange={setInterval} />
+        </div>
+      </header>
 
       {analyzeError && (
         <p className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
@@ -293,10 +263,11 @@ export default function MarketClient({
         </p>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 pb-2">
+      {/* Chart + side/bottom panel */}
+      <div className="relative flex min-h-0 flex-1 flex-col gap-2 px-4 py-2 lg:flex-row">
         <SurfaceCard
           padding="none"
-          className="relative min-h-0 flex-1 overflow-hidden"
+          className="relative min-h-[40dvh] min-w-0 flex-1 overflow-hidden lg:min-h-0"
         >
           <PriceChart
             symbol={symbol}
@@ -306,104 +277,23 @@ export default function MarketClient({
             fill
             className="h-full min-h-0 p-1"
           />
-
-          {recDetailOpen && selectedRec && (
-            <div className="absolute inset-x-2 top-2 z-10 overflow-hidden rounded-xl border border-border/60 bg-background/95 shadow-lg backdrop-blur-md motion-reduce:transition-none sm:inset-x-4 sm:top-4">
-              <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-                <span className="text-xs font-medium text-muted-foreground">
-                  تفاصيل التوصية
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecDetailOpen(false);
-                    setSelectedRec(null);
-                    setOverlays([]);
-                  }}
-                  className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-                  aria-label="إغلاق التوصية"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="space-y-3 px-3 py-3 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={cn(
-                      "rounded-lg px-2 py-1 text-xs font-semibold",
-                      selectedRec.action === "buy"
-                        ? "bg-green-500/15 text-green-500"
-                        : "bg-red-500/15 text-red-500",
-                    )}
-                  >
-                    {selectedRec.action === "buy" ? "شراء" : "بيع"}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    ثقة {selectedRec.confidence}%
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="rounded-lg bg-secondary/60 px-2 py-2">
-                    <p className="text-muted-foreground">دخول</p>
-                    <p className="mt-0.5 font-semibold tabular-nums" dir="ltr">
-                      {formatLevel(selectedRec.entry)}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-secondary/60 px-2 py-2">
-                    <p className="text-muted-foreground">وقف خسارة</p>
-                    <p className="mt-0.5 font-semibold tabular-nums text-red-500" dir="ltr">
-                      {formatLevel(selectedRec.stop_loss)}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-secondary/60 px-2 py-2">
-                    <p className="text-muted-foreground">هدف ربح</p>
-                    <p className="mt-0.5 font-semibold tabular-nums text-blue-500" dir="ltr">
-                      {formatLevel(selectedRec.take_profit)}
-                    </p>
-                  </div>
-                </div>
-
-                {selectedRec.rationale && (
-                  <p className="leading-relaxed text-foreground">
-                    {selectedRec.rationale}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {analysisOpen && (analysisText || isAnalyzing) && !recDetailOpen && (
-            <div className="absolute inset-x-2 bottom-2 z-10 max-h-[40%] overflow-hidden rounded-xl border border-border/60 bg-background/95 shadow-lg backdrop-blur-md">
-              <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {isAnalyzing ? "جارٍ التحليل…" : "تحليل الذكاء الاصطناعي"}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAnalysisOpen(false)}
-                  className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-                  aria-label="إغلاق التحليل"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="overflow-y-auto px-3 py-2 text-sm leading-relaxed text-foreground">
-                {analysisText || (
-                  <span className="text-muted-foreground">جارٍ التحليل…</span>
-                )}
-                {isAnalyzing && (
-                  <span className="ms-1 inline-block h-3 w-1 animate-pulse bg-primary" />
-                )}
-              </div>
-            </div>
-          )}
         </SurfaceCard>
+
+        {panelOpen && (
+          <MarketRecPanel
+            open={panelOpen}
+            onClose={closePanel}
+            kind={panelKind}
+            rec={selectedRec}
+            analysisText={analysisText}
+            isAnalyzing={isAnalyzing}
+          />
+        )}
       </div>
 
       {symbolRecs.length > 0 && (
         <div className="shrink-0 border-t border-border/60 bg-card/80 px-4 py-3 backdrop-blur-md">
-          <SectionTitle className="mb-2">
+          <SectionTitle className="mb-2 text-xs">
             آخر توصيات {symbol}
           </SectionTitle>
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -415,7 +305,7 @@ export default function MarketClient({
                 className={cn(
                   "shrink-0 rounded-xl border px-3 py-2 text-start text-xs transition",
                   selectedRec?.id === r.id
-                    ? "border-primary bg-secondary"
+                    ? "border-foreground/30 bg-secondary"
                     : "border-border bg-card hover:border-foreground/20 hover:bg-secondary/50",
                 )}
               >
@@ -427,15 +317,21 @@ export default function MarketClient({
                 >
                   {r.action === "buy" ? "شراء" : "بيع"} {r.confidence}%
                 </span>
-                {(r.entry != null || r.stop_loss != null || r.take_profit != null) && (
-                  <p className="mt-1 text-[10px] text-muted-foreground" dir="ltr">
+                {(r.entry != null ||
+                  r.stop_loss != null ||
+                  r.take_profit != null) && (
+                  <p
+                    className="mt-1 text-[10px] text-muted-foreground"
+                    dir="ltr"
+                  >
                     {r.entry != null && `E ${formatLevel(r.entry)}`}
                     {r.stop_loss != null && ` · SL ${formatLevel(r.stop_loss)}`}
-                    {r.take_profit != null && ` · TP ${formatLevel(r.take_profit)}`}
+                    {r.take_profit != null &&
+                      ` · TP ${formatLevel(r.take_profit)}`}
                   </p>
                 )}
                 {r.rationale && (
-                  <p className="mt-1 max-w-[200px] truncate text-muted-foreground">
+                  <p className="mt-1 max-w-[180px] truncate text-muted-foreground">
                     {r.rationale}
                   </p>
                 )}

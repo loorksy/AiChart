@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import {
   ChevronDown,
   LayoutDashboard,
@@ -79,6 +80,15 @@ export function MobileDrawer({
 
   const initials = displayName.slice(0, 2).toUpperCase();
 
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   return (
     <div
       className={cn(
@@ -98,8 +108,11 @@ export function MobileDrawer({
         tabIndex={open ? 0 : -1}
       />
       <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="القائمة الجانبية"
         className={cn(
-          "absolute inset-y-0 end-0 flex w-[min(100%,17.5rem)] flex-col border-s border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none",
+          "absolute inset-y-0 start-0 flex w-[min(100%,17.5rem)] flex-col overscroll-contain border-e border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none",
           open ? "translate-x-0" : "translate-x-full",
         )}
       >
