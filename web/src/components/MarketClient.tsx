@@ -62,7 +62,7 @@ export default function MarketClient({
   const [symbol, setSymbol] = useState(
     openAssets ? "BTCUSDT" : symbols[0] ?? "BTCUSDT",
   );
-  const [interval, setInterval] = useState("1h");
+  const [interval, setMarketInterval] = useState("1h");
   const [search, setSearch] = useState("");
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [loadingInstruments, setLoadingInstruments] = useState(false);
@@ -102,10 +102,16 @@ export default function MarketClient({
     }
   }, []);
 
+  const handlePickerOpen = useCallback(() => {
+    if (openAssets && instruments.length === 0) {
+      void fetchInstruments("");
+    }
+  }, [openAssets, instruments.length, fetchInstruments]);
+
   useEffect(() => {
     if (!openAssets) return;
-    const t = setTimeout(() => void fetchInstruments(search), 300);
-    return () => clearTimeout(t);
+    const t = window.setTimeout(() => void fetchInstruments(search), 300);
+    return () => window.clearTimeout(t);
   }, [openAssets, search, fetchInstruments]);
 
   function clearChartLayers() {
@@ -291,12 +297,13 @@ export default function MarketClient({
               openAssets={openAssets}
               search={search}
               onSearchChange={setSearch}
+              onPickerOpen={handlePickerOpen}
               symbol={symbol}
               onSymbolChange={setSymbol}
               pickerOptions={pickerOptions}
               loadingInstruments={loadingInstruments}
               interval={interval}
-              onIntervalChange={setInterval}
+              onIntervalChange={setMarketInterval}
               isAnalyzing={isAnalyzing}
               onAnalyze={() => void handleAnalyze()}
               isFullscreen={isFullscreen}

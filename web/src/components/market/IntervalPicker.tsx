@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Clock, X } from "lucide-react";
 import { INTERVAL_GROUPS } from "@/lib/intervals";
 import { cn } from "@/lib/utils";
@@ -17,8 +18,17 @@ export function IntervalPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+
+  const updatePopoverPos = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPopoverPos({ top: rect.bottom + 4, left: rect.left });
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023px)");
@@ -29,11 +39,30 @@ export function IntervalPicker({
   }, []);
 
   useEffect(() => {
+    if (!open) return;
+    if (!mobile) updatePopoverPos();
+    const onReposition = () => {
+      if (!mobile) updatePopoverPos();
+    };
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [open, mobile, updatePopoverPos]);
+
+  useEffect(() => {
     if (!open || mobile) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
+      const t = e.target as Node;
+      if (
+        triggerRef.current?.contains(t) ||
+        panelRef.current?.contains(t)
+      ) {
+        return;
       }
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -61,7 +90,7 @@ export function IntervalPicker({
       className={cn(
         mobile
           ? "max-h-[40dvh] overflow-y-auto px-3 pb-4"
-          : "absolute start-0 top-full z-50 mt-1 min-w-[10rem] rounded-xl border border-border bg-card p-2 shadow-xl",
+          : "min-w-[10rem] rounded-xl border border-border bg-card p-2 shadow-xl",
       )}
     >
       {INTERVAL_GROUPS.map((g) => (
@@ -94,46 +123,71 @@ export function IntervalPicker({
     </div>
   );
 
+  const desktopPanel =
+    open &&
+    !mobile &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        ref={panelRef}
+        className="pointer-events-auto fixed z-[60]"
+        style={{ top: popoverPos.top, left: popoverPos.left }}
+      >
+        {list}
+      </div>,
+      document.body,
+    );
+
+  const mobilePanel =
+    open &&
+    mobile &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <>
+        <button
+          type="button"
+          className="pointer-events-auto fixed inset-0 z-[60] bg-black/40 backdrop-blur-[2px]"
+          aria-label="إغلاق"
+          onClick={() => setOpen(false)}
+        />
+        <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-[70] flex max-h-[50dvh] flex-col rounded-t-2xl border-t border-border bg-card shadow-xl">
+          <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+            <span className="text-sm font-semibold">الإطار الزمني</span>
+            <button
+              type="button"
+              className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"
+              aria-label="إغلاق"
+              onClick={() => setOpen(false)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {list}
+        </div>
+      </>,
+      document.body,
+    );
+
   return (
-    <div ref={rootRef} className="relative">
+    <div className="relative pointer-events-auto">
       <button
+        ref={triggerRef}
         type="button"
-        className={cn(CTRL, "pointer-events-auto px-2")}
+        className={cn(CTRL, "px-2")}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open && !mobile) updatePopoverPos();
+          setOpen((o) => !o);
+        }}
       >
         <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span dir="ltr">{value}</span>
       </button>
 
-      {open && !mobile && list}
-
-      {open && mobile && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
-            aria-label="إغلاق"
-            onClick={() => setOpen(false)}
-          />
-          <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[50dvh] flex-col rounded-t-2xl border-t border-border bg-card shadow-xl">
-            <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-              <span className="text-sm font-semibold">الإطار الزمني</span>
-              <button
-                type="button"
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary"
-                aria-label="إغلاق"
-                onClick={() => setOpen(false)}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            {list}
-          </div>
-        </>
-      )}
+      {desktopPanel}
+      {mobilePanel}
     </div>
   );
 }
