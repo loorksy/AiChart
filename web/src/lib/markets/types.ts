@@ -1,14 +1,16 @@
 export type MarketType = "crypto" | "forex";
 
+import { forexBrokerKind } from "../brokers/forexBackend";
+
 /** Underlying broker/execution backend for a market. */
-export type BrokerKind = "binance" | "mt_ea";
+export type BrokerKind = "binance" | "mt_ea" | "metaapi";
 
 /** MetaTrader platform variant for the EA bridge. */
 export type MtPlatform = "mt4" | "mt5";
 
 /** Maps a market to the broker that executes its orders. */
 export function brokerForMarket(market: MarketType): BrokerKind {
-  return market === "forex" ? "mt_ea" : "binance";
+  return market === "forex" ? forexBrokerKind() : "binance";
 }
 
 export interface ResolvedSymbol {

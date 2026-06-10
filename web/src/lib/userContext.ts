@@ -7,7 +7,7 @@ import {
   listRecommendations,
   countOpenTrades,
 } from "./store";
-import { getEaConnectionMeta } from "./eaStore";
+import { getForexConnectionView } from "./forexConnection";
 import { allowedAssetsLabel } from "./allowedAssets";
 import { displayNameFromEmail } from "./displayName";
 
@@ -19,7 +19,7 @@ export async function buildUserContext(userId: number): Promise<string> {
 
   const settings = await getSettings(userId);
   const binance = await getBinanceAccountMeta(userId);
-  const ea = await getEaConnectionMeta(userId);
+  const forex = await getForexConnectionView(userId);
   const trades = await listTrades(userId, 5);
   const intents = await listIntents(userId, "pending", 5);
   const recs = await listRecommendations(userId, 3);
@@ -31,13 +31,26 @@ export async function buildUserContext(userId: number): Promise<string> {
   const binanceLinked = Boolean(binance);
   const activeMarket = settings.active_market ?? "crypto";
 
+  const mtLine =
+    forex.backend === "metaapi"
+      ? forex.mt
+        ? forex.online
+          ? `متصل (${forex.mt.platform} · ${forex.mt.login})`
+          : "مربوط — جارٍ الاتصال"
+        : "غير مربوط"
+      : forex.ea
+        ? forex.online
+          ? `متصل (${forex.ea.platform})`
+          : "مربوط — غير متصل"
+        : "غير مربوط";
+
   const lines = [
     `# سياق المستخدم الحالي (بيانات حقيقية من المنصة)`,
     `- الاسم/المعرّف: ${name} (${user.email})`,
     `- حالة الحساب: ${user.status}`,
     `- السوق النشط: ${activeMarket === "forex" ? "فوركس (MetaTrader)" : "كريبتو (Binance)"}`,
     `- Binance: ${binanceLinked ? `مرتبط (${binance!.env}${binance!.label ? ` · ${binance!.label}` : ""})` : "غير مربوط"}`,
-    `- MetaTrader (فوركس): ${ea ? (ea.online ? `متصل (${ea.platform})` : "مربوط — غير متصل") : "غير مربوط"}`,
+    `- MetaTrader (فوركس${forex.backend === "metaapi" ? " · MetaApi" : " · EA"}): ${mtLine}`,
     `- Telegram: ${tgLinked ? "مرتبط" : "غير مربوط"}`,
     `- وضع التداول: ${settings.mode === "auto" ? "تنفيذ تلقائي" : "توصيات فقط"}`,
     `- أسلوب التداول: ${settings.style}`,

@@ -1,4 +1,5 @@
 import type { MarketType, ResolvedSymbol } from "./types";
+import { getForexBackend } from "../brokers/forexBackend";
 
 /** Normalizes a crypto symbol to a Binance spot USDT pair (e.g. BTC → BTCUSDT). */
 function resolveCrypto(query: string): ResolvedSymbol {
@@ -55,7 +56,8 @@ export function resolveSymbol(
 }
 
 export function marketLabel(market: MarketType = "crypto"): string {
-  return market === "forex"
-    ? "فوركس (MetaTrader عبر EA)"
-    : "عملات رقمية (Binance Spot)";
+  if (market !== "forex") return "عملات رقمية (Binance Spot)";
+  return getForexBackend() === "metaapi"
+    ? "فوركس (MetaTrader · MetaApi)"
+    : "فوركس (MetaTrader · EA)";
 }
