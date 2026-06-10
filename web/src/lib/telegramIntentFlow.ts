@@ -307,10 +307,13 @@ export async function handleRescanConfirm(
       settings,
       intent.symbol,
       tf,
-      { telegramSession: true },
+      {
+        telegramSession: true,
+        market: settings.active_market ?? "crypto",
+      },
     );
     await incrementUsage(userId, MARKET_ANALYZE_COST);
-    const sent = result.intents.length > 0;
+    const sent = result.telegramSent;
     await editMessageText(
       chatId,
       messageId,

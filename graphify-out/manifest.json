@@ -190,8 +190,8 @@
     "semantic_hash": ""
   },
   "web/src/app/api/market/analyze/route.ts": {
-    "mtime": 1781118107.0265694,
-    "ast_hash": "61666d8d2b74cce3288edfbe3dc4b8cf",
+    "mtime": 1781119363.106218,
+    "ast_hash": "ad3b0f58fa6948d4b523ae75787fcd8e",
     "semantic_hash": ""
   },
   "web/src/app/api/market/forex-price/route.ts": {
@@ -395,8 +395,8 @@
     "semantic_hash": ""
   },
   "web/src/components/MarketClient.tsx": {
-    "mtime": 1781118122.1951401,
-    "ast_hash": "1ed624aa32f894f9caafc3ec018c0d2a",
+    "mtime": 1781119413.8619971,
+    "ast_hash": "5a2eb6091faede68e9550e523570340b",
     "semantic_hash": ""
   },
   "web/src/components/Nav.tsx": {
@@ -410,8 +410,8 @@
     "semantic_hash": ""
   },
   "web/src/components/PriceChart.tsx": {
-    "mtime": 1781115728.159807,
-    "ast_hash": "0b5c5c7ff010255c015fbb067f9e4a69",
+    "mtime": 1781119151.8163016,
+    "ast_hash": "1cc5629dd17efabfe11e804ffcd45d07",
     "semantic_hash": ""
   },
   "web/src/components/ReportsClient.tsx": {
@@ -740,8 +740,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/agent.ts": {
-    "mtime": 1781118063.2219107,
-    "ast_hash": "0618d1356c2cf403aeb1f7893d8178f7",
+    "mtime": 1781119307.3624532,
+    "ast_hash": "cc6ed63ba83b132e483dc8125532e6e2",
     "semantic_hash": ""
   },
   "web/src/lib/agentActivity.ts": {
@@ -870,8 +870,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/chartSnapshot.ts": {
-    "mtime": 1781115633.5499756,
-    "ast_hash": "238c32fa3bb5fd699b6c2894cf4f9193",
+    "mtime": 1781119274.025993,
+    "ast_hash": "6f52d3582f0f98fc8b99ebf42b3a60f8",
     "semantic_hash": ""
   },
   "web/src/lib/chatImage.ts": {
@@ -995,8 +995,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/marketAnalyze.ts": {
-    "mtime": 1781118083.7344987,
-    "ast_hash": "32ef2f900461e08af60ae8ef8b695b59",
+    "mtime": 1781119329.5732286,
+    "ast_hash": "6b18649eab088c4f5fa0988effbfd5e3",
     "semantic_hash": ""
   },
   "web/src/lib/marketContext.ts": {
@@ -1060,8 +1060,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/persona.ts": {
-    "mtime": 1781109396.623943,
-    "ast_hash": "2ee91c51a8b669756ddc0c6dda5e4218",
+    "mtime": 1781119284.1689045,
+    "ast_hash": "2459b7d20d9b014191189a5759203173",
     "semantic_hash": ""
   },
   "web/src/lib/platformConfig.ts": {

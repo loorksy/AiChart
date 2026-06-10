@@ -1,5 +1,6 @@
 import { buildSnapshot, buildForexSnapshot, type MarketSnapshot } from "./market";
 import { profileForInterval, buildProfilePromptHints } from "./analysisProfile";
+import type { AnalysisProfile } from "./analysisProfile";
 import {
   fetchMarketContext,
   formatContextForPrompt,
@@ -20,15 +21,40 @@ import { updateRecommendationContext } from "./store";
 import { attachChartToRecommendation, notifyRecommendation } from "./recommendationChart";
 import type { DeliveryResult } from "./alerts";
 import { deliveryReasonAr } from "./alerts";
+import {
+  buildChartSnapshotBufferForMarket,
+  bufferToChatImage,
+} from "./chartSnapshot";
+import {
+  buildUserMessageContent,
+  validateChatImage,
+  type ChatImagePayload,
+} from "./chatImage";
+import type { ContentBlock } from "./anthropic";
 
-export const MARKET_ANALYZE_COST = 3;
+export const MARKET_ANALYZE_COST = 4;
+
+export type ChartVisionSource = "client" | "server" | "text";
+
+export function chartVisionLabelAr(source: ChartVisionSource): string | null {
+  switch (source) {
+    case "client":
+      return "تحليل من الشارت المعروض";
+    case "server":
+      return "تحليل من لقطة الخادم";
+    case "text":
+      return "تحليل نصي — لم تُلتقط صورة";
+    default:
+      return null;
+  }
+}
 
 function buildAnalyzePrompt(
   symbol: string,
   interval: string,
   snap: MarketSnapshot,
   contextBlock: string,
-  profile: ReturnType<typeof profileForInterval>,
+  profile: AnalysisProfile,
 ): string {
   return [
     `حلّل ${symbol} على إطار ${interval} بالعربية.`,
@@ -51,6 +77,32 @@ function buildAnalyzePrompt(
     .join("\n");
 }
 
+function buildVisionAnalyzePrompt(
+  symbol: string,
+  interval: string,
+  snap: MarketSnapshot,
+  contextBlock: string,
+  profile: AnalysisProfile,
+): string {
+  const trend =
+    snap.trend === "uptrend"
+      ? "صاعد"
+      : snap.trend === "downtrend"
+        ? "هابط"
+        : "عرضي";
+  return [
+    `حلّل الشارت المرفق لـ ${symbol} على إطار ${interval} بالعربية.`,
+    ...buildProfilePromptHints(symbol, interval, profile),
+    `مرجع سريع: RSI ${snap.rsi14?.toFixed(1) ?? "—"} · اتجاه ${trend} · ${snap.summary}`,
+    contextBlock ? `سياق:\n${contextBlock}` : "",
+    "المطلوب: تحليل مرئي من الصورة — أنماط، دعم/مقاومة، مستويات دخول/SL/TP.",
+    "سجّل عبر record_recommendation مع timeframe و chart_drawings و pattern_name.",
+    "chart_drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker, histogram_band.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export interface MarketAnalyzeResult {
   reply: string;
   overlays: ReturnType<typeof overlaysFromAnalysis>;
@@ -65,6 +117,7 @@ export interface MarketAnalyzeResult {
   interval: string;
   telegramSent: boolean;
   telegramReasonAr?: string;
+  chartVisionSource: ChartVisionSource;
 }
 
 function pickTelegramDelivery(
@@ -89,6 +142,31 @@ function pickTelegramDelivery(
   };
 }
 
+async function resolveChartImage(
+  userId: number,
+  sym: string,
+  interval: string,
+  market: MarketType,
+  clientImage?: ChatImagePayload | null,
+): Promise<{ image: ChatImagePayload | null; source: ChartVisionSource }> {
+  if (clientImage) {
+    return { image: clientImage, source: "client" };
+  }
+
+  const buffer = await buildChartSnapshotBufferForMarket(
+    userId,
+    sym,
+    interval,
+    market,
+  );
+  const serverImage = buffer ? bufferToChatImage(buffer) : null;
+  if (serverImage) {
+    return { image: serverImage, source: "server" };
+  }
+
+  return { image: null, source: "text" };
+}
+
 export async function runMarketAnalyze(
   userId: number,
   settings: TradingSettings,
@@ -99,6 +177,7 @@ export async function runMarketAnalyze(
     onDelta?: (text: string) => void;
     telegramSession?: boolean;
     market?: MarketType;
+    chartImage?: ChatImagePayload | null;
   },
 ): Promise<MarketAnalyzeResult> {
   const sym = symbol.toUpperCase().trim();
@@ -118,12 +197,52 @@ export async function runMarketAnalyze(
   const contextBlock = ctx
     ? formatContextForPrompt(ctx)
     : "سوق فوركس عبر MetaTrader — لا يتوفر سياق Web3/أخبار. اعتمد على التحليل الفني.";
-  const prompt = buildAnalyzePrompt(sym, interval, snap, contextBlock, profile);
+
+  let validatedClient: ChatImagePayload | null = null;
+  if (opts?.chartImage) {
+    const check = validateChatImage(
+      opts.chartImage.media_type,
+      opts.chartImage.data,
+    );
+    if (check.ok) validatedClient = check.image;
+  }
+
+  const { image: chartImage, source: chartVisionSource } =
+    await resolveChartImage(userId, sym, interval, market, validatedClient);
+
+  const useVision = chartImage != null;
+  if (useVision) {
+    opts?.onActivity?.({
+      id: "chart-vision",
+      label:
+        chartVisionSource === "client"
+          ? "يحلّل الشارت المعروض على الشاشة"
+          : "يحلّل لقطة شارت من الخادم",
+      status: "done",
+    });
+  } else {
+    opts?.onActivity?.({
+      id: "chart-vision",
+      label: "تحليل نصي — لم تُلتقط صورة الشارت",
+      status: "done",
+    });
+  }
+  const prompt = useVision
+    ? buildVisionAnalyzePrompt(sym, interval, snap, contextBlock, profile)
+    : buildAnalyzePrompt(sym, interval, snap, contextBlock, profile);
+
+  const userContent: string | ContentBlock[] = useVision
+    ? buildUserMessageContent(prompt, chartImage, false)
+    : prompt;
 
   const result = await runAgent(
     { userId, settings, telegramSession: opts?.telegramSession ?? false },
-    [{ role: "user", content: prompt }],
-    { onActivity: opts?.onActivity, onDelta: opts?.onDelta },
+    [{ role: "user", content: userContent }],
+    {
+      onActivity: opts?.onActivity,
+      onDelta: opts?.onDelta,
+      mode: useVision ? "chart_analyze" : "default",
+    },
   );
 
   const intents = await processRecommendations(userId, result.recommendations, {
@@ -190,5 +309,6 @@ export async function runMarketAnalyze(
     interval,
     telegramSent: telegram.delivered,
     telegramReasonAr: telegram.reasonAr,
+    chartVisionSource,
   };
 }

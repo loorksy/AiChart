@@ -16,6 +16,7 @@ import {
 import { profileForInterval } from "@/lib/analysisProfile";
 import { sseEncode } from "@/lib/sse";
 import { INTERVAL_SET } from "@/lib/intervals";
+import { validateChatImage } from "@/lib/chatImage";
 
 export const maxDuration = 60;
 
@@ -29,6 +30,12 @@ const schema = z.object({
     .refine((v) => INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
   market: z.enum(["crypto", "forex"]).optional(),
   stream: z.boolean().optional(),
+  image: z
+    .object({
+      media_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      data: z.string().min(1),
+    })
+    .optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -62,6 +69,16 @@ export async function POST(req: NextRequest) {
     const profile = profileForInterval(interval);
     const stream = body.stream !== false;
 
+    let chartImage: { media_type: "image/jpeg" | "image/png" | "image/webp"; data: string } | null =
+      null;
+    if (body.image) {
+      const validated = validateChatImage(body.image.media_type, body.image.data);
+      if (!validated.ok) {
+        return NextResponse.json({ error: validated.error }, { status: 400 });
+      }
+      chartImage = validated.image;
+    }
+
     const runOpts = {
       onActivity: undefined as
         | ((a: import("@/lib/agentActivity").AgentActivity) => void)
@@ -69,6 +86,7 @@ export async function POST(req: NextRequest) {
       onDelta: undefined as ((text: string) => void) | undefined,
       telegramSession: false,
       market,
+      chartImage,
     };
 
     if (stream) {
@@ -114,6 +132,7 @@ export async function POST(req: NextRequest) {
               intents: result.intents,
               telegramSent: result.telegramSent,
               telegramReasonAr: result.telegramReasonAr,
+              chartVisionSource: result.chartVisionSource,
               contextSummary: result.contextSummary,
               profileLabel: result.profileLabel,
               analysisTier: result.analysisTier,
@@ -150,7 +169,7 @@ export async function POST(req: NextRequest) {
       settings,
       symbol,
       interval,
-      { telegramSession: false, market },
+      { telegramSession: false, market, chartImage },
     );
 
     await incrementUsage(user.id, MARKET_ANALYZE_COST);
@@ -169,6 +188,7 @@ export async function POST(req: NextRequest) {
       intents: result.intents,
       telegramSent: result.telegramSent,
       telegramReasonAr: result.telegramReasonAr,
+      chartVisionSource: result.chartVisionSource,
       contextSummary: result.contextSummary,
       profileLabel: result.profileLabel,
       analysisTier: result.analysisTier,

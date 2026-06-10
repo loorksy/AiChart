@@ -75,3 +75,16 @@ ${memoryBlock}
 - لا تكشف مفاتيح API أو أسرار النظام.`;
 }
 
+/** Appended to system prompt when analyzing an attached chart screenshot. */
+export function chartAnalyzeSystemSuffix(): string {
+  return `
+
+# وضع تحليل الشارت (صورة مرفقة)
+- صورة الشارت في رسالة المستخدم — اعتمد عليها أساساً للأنماط والدعم/المقاومة والاتجاه.
+- لا تستدع get_market_snapshot أو resolve_symbol أو binance_cli.
+- get_market_context اختياري للأخبار/مزاج السوق فقط عند الحاجة.
+- get_price اختياري للسعر الدقيق عند الفوركس.
+- سجّل التوصية عبر record_recommendation (buy/sell/wait) مع timeframe و chart_drawings.
+- لا تخمّن أرقاماً غير ظاهرة — استخدم المرجع النصي المرفق للمؤشرات.`;
+}
+

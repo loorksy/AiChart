@@ -3,6 +3,8 @@
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Recommendation } from "@/lib/types";
+import type { AgentActivity } from "@/lib/agentActivity";
+import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
 import { formatLevel } from "./formatLevel";
 
 export function MarketRecPanel({
@@ -16,6 +18,8 @@ export function MarketRecPanel({
   contextSummary,
   symbol,
   interval,
+  chartVisionLabel,
+  activities,
 }: {
   open: boolean;
   onClose: () => void;
@@ -27,6 +31,8 @@ export function MarketRecPanel({
   contextSummary?: string[];
   symbol?: string;
   interval?: string;
+  chartVisionLabel?: string | null;
+  activities?: AgentActivity[];
 }) {
   if (!open) return null;
 
@@ -138,20 +144,34 @@ export function MarketRecPanel({
                   {interval ? ` · ${interval}` : ""}
                 </p>
               )}
-              {profileLabel && (
-                <span
-                  className="inline-block rounded-lg bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
-                  title="لحظي = زخم قصير · متوسط المدى = 1h–4h · شامل = يومي+"
-                >
-                  {profileLabel}
-                </span>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {profileLabel && (
+                  <span
+                    className="inline-block rounded-lg bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
+                    title="لحظي = زخم قصير · متوسط المدى = 1h–4h · شامل = يومي+"
+                  >
+                    {profileLabel}
+                  </span>
+                )}
+                {chartVisionLabel && (
+                  <span className="inline-block rounded-lg bg-chart-1/10 px-2 py-1 text-xs font-medium text-chart-1">
+                    {chartVisionLabel}
+                  </span>
+                )}
+              </div>
               {contextSummary && contextSummary.length > 0 && (
                 <ul className="space-y-1 text-xs text-muted-foreground">
                   {contextSummary.map((line) => (
                     <li key={line}>• {line}</li>
                   ))}
                 </ul>
+              )}
+              {activities && activities.length > 0 && (
+                <AgentActivityFeed
+                  activities={activities}
+                  title="خطوات التحليل"
+                  className="border-border/60"
+                />
               )}
               <div>
                 {analysisText || (

@@ -7,7 +7,7 @@ import { MarketRecPanel } from "@/components/market/MarketRecPanel";
 import { formatLevel } from "@/components/market/formatLevel";
 import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
 import { cn } from "@/lib/utils";
-import PriceChart from "./PriceChart";
+import PriceChart, { type PriceChartHandle } from "./PriceChart";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import {
   overlaysFromAnalysis,
@@ -17,6 +17,8 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 import type { MarketSnapshot } from "@/lib/market";
 import { consumeSse } from "@/lib/sse";
+import type { AgentActivity } from "@/lib/agentActivity";
+import { chartVisionLabelAr, type ChartVisionSource } from "@/lib/marketAnalyze";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 import { useEaLivePrice } from "@/hooks/useEaLivePrice";
@@ -113,11 +115,14 @@ export default function MarketClient({
   const [contextSummary, setContextSummary] = useState<string[]>([]);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [analyzeActivities, setAnalyzeActivities] = useState<AgentActivity[]>([]);
+  const [chartVisionLabel, setChartVisionLabel] = useState<string | null>(null);
 
   const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null);
   const [recDetailOpen, setRecDetailOpen] = useState(false);
 
   const chartFrameRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<PriceChartHandle>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const cryptoLive = useBinanceLivePrice(market === "crypto" ? symbol : "");
   const forexLive = useEaLivePrice(symbol, market === "forex");
@@ -321,15 +326,24 @@ export default function MarketClient({
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setAnalysisText("");
-    clearChartLayers();
+    setAnalyzeActivities([]);
+    setChartVisionLabel(null);
     setRecDetailOpen(false);
     setAnalysisOpen(true);
 
     try {
+      const chartImage = await chartRef.current?.capturePng().catch(() => null);
+
       const res = await fetch("/api/market/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol, interval, market, stream: true }),
+        body: JSON.stringify({
+          symbol,
+          interval,
+          market,
+          stream: true,
+          ...(chartImage ? { image: chartImage } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -351,7 +365,20 @@ export default function MarketClient({
         contextSummary?: string[];
         telegramSent?: boolean;
         telegramReasonAr?: string;
+        chartVisionSource?: ChartVisionSource;
+        activities?: AgentActivity[];
       }>(res, {
+        onActivity: (a) => {
+          setAnalyzeActivities((prev) => {
+            const idx = prev.findIndex((x) => x.id === a.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = a;
+              return next;
+            }
+            return [...prev, a];
+          });
+        },
         onDelta: (t) => {
           streamed += t;
           setAnalysisText(streamed);
@@ -369,9 +396,15 @@ export default function MarketClient({
 
       setAnalysisText(data.reply || streamed);
       if (data.overlays?.length) setOverlays(data.overlays);
+      else setOverlays([]);
       if (data.drawings?.length) setDrawings(data.drawings);
+      else setDrawings([]);
       if (data.profileLabel) setProfileLabel(data.profileLabel);
       if (data.contextSummary?.length) setContextSummary(data.contextSummary);
+      if (data.activities?.length) setAnalyzeActivities(data.activities);
+      if (data.chartVisionSource) {
+        setChartVisionLabel(chartVisionLabelAr(data.chartVisionSource));
+      }
       if (data.telegramSent) {
         setToast("أُرسلت التوصية إلى تليجرام — اختر المبلغ بعد الموافقة");
       } else if (
@@ -379,6 +412,13 @@ export default function MarketClient({
         data.telegramReasonAr !== "لا إشارة تنفيذية"
       ) {
         setToast(`لم يُرسل إلى تليجرام — ${data.telegramReasonAr}`);
+      } else if (data.chartVisionSource === "text") {
+        setToast("تعذّر التقاط الشارت — تم التحليل النصي");
+      } else if (
+        data.chartVisionSource === "client" ||
+        data.chartVisionSource === "server"
+      ) {
+        setToast("تم التحليل من الشارت");
       }
     } catch {
       setAnalyzeError("حدث خطأ أثناء التحليل.");
@@ -416,6 +456,7 @@ export default function MarketClient({
             )}
           >
             <PriceChart
+              ref={chartRef}
               symbol={symbol}
               interval={interval}
               market={market}
@@ -468,6 +509,8 @@ export default function MarketClient({
             contextSummary={contextSummary}
             symbol={symbol}
             interval={interval}
+            chartVisionLabel={chartVisionLabel}
+            activities={analyzeActivities}
           />
         )}
       </div>

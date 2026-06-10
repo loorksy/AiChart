@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   createChart,
   CandlestickSeries,
@@ -26,6 +32,10 @@ import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
 import type { LivePriceTick } from "@/hooks/useBinanceLivePrice";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  validateChatImage,
+  type ChatImagePayload,
+} from "@/lib/chatImage";
 
 interface Props {
   symbol: string;
@@ -41,6 +51,10 @@ interface Props {
   ambient?: boolean;
 }
 
+export type PriceChartHandle = {
+  capturePng: () => Promise<ChatImagePayload | null>;
+};
+
 const OVERLAY_LABELS: Record<ChartOverlay["type"], string> = {
   entry: "دخول",
   stop_loss: "وقف خسارة",
@@ -49,19 +63,48 @@ const OVERLAY_LABELS: Record<ChartOverlay["type"], string> = {
   resistance: "مقاومة",
 };
 
-export default function PriceChart({
-  symbol,
-  interval,
-  recommendations,
-  overlays,
-  drawings,
-  livePrice,
-  liveTick,
-  market = "crypto",
-  className,
-  fill = false,
-  ambient = false,
-}: Props) {
+function compositeCanvases(container: HTMLElement): string | null {
+  const canvases = Array.from(container.querySelectorAll("canvas"));
+  if (!canvases.length) return null;
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  if (width <= 0 || height <= 0) return null;
+
+  const composite = document.createElement("canvas");
+  composite.width = width;
+  composite.height = height;
+  const ctx = composite.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#0a0e17";
+  ctx.fillRect(0, 0, width, height);
+
+  for (const canvas of canvases) {
+    ctx.drawImage(canvas, 0, 0, width, height);
+  }
+
+  const dataUrl = composite.toDataURL("image/png");
+  const base64 = dataUrl.split(",")[1];
+  return base64 ?? null;
+}
+
+const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
+  {
+    symbol,
+    interval,
+    recommendations,
+    overlays,
+    drawings,
+    livePrice,
+    liveTick,
+    market = "crypto",
+    className,
+    fill = false,
+    ambient = false,
+  },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -70,6 +113,30 @@ export default function PriceChart({
   const [error, setError] = useState<string | null>(null);
   const [legendItems, setLegendItems] = useState<LegendItem[]>([]);
   const stableBarTimeRef = useRef(0);
+  const loadingRef = useRef(loading);
+  const errorRef = useRef(error);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    errorRef.current = error;
+  }, [error]);
+
+  useImperativeHandle(ref, () => ({
+    async capturePng(): Promise<ChatImagePayload | null> {
+      if (ambient || loadingRef.current || errorRef.current) return null;
+      const container = containerRef.current;
+      if (!container) return null;
+
+      const base64 = compositeCanvases(container);
+      if (!base64) return null;
+
+      const validated = validateChatImage("image/png", base64);
+      return validated.ok ? validated.image : null;
+    },
+  }));
 
   function parseRecTime(createdAt: string): number {
     const normalized = createdAt.includes("T")
@@ -301,4 +368,6 @@ export default function PriceChart({
       )}
     </div>
   );
-}
+});
+
+export default PriceChart;

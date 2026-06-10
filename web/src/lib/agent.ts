@@ -5,7 +5,7 @@ import {
   type Message,
   type ToolDef,
 } from "./anthropic";
-import { buildSystemPrompt } from "./persona";
+import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "./persona";
 import { buildUserContext, displayNameFromEmail } from "./userContext";
 import {
   getUnifiedSnapshot,
@@ -211,6 +211,16 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
+const CHART_ANALYZE_TOOL_NAMES = new Set([
+  "record_recommendation",
+  "get_market_context",
+  "get_price",
+]);
+
+const CHART_ANALYZE_TOOLS = TOOLS.filter((t) =>
+  CHART_ANALYZE_TOOL_NAMES.has(t.name),
+);
+
 export interface AgentResult {
   reply: string;
   recommendations: Recommendation[];
@@ -223,6 +233,7 @@ export interface RunAgentOptions {
   onActivity?: ActivityListener;
   onDelta?: (text: string) => void;
   conversationSummary?: string | null;
+  mode?: "default" | "chart_analyze";
 }
 
 interface AgentContext {
@@ -448,11 +459,18 @@ export async function runAgent(
     emitActivity(onActivity, activity);
   };
 
-  const system = await buildSystemPrompt(
+  const systemBase = await buildSystemPrompt(
     ctx.settings,
     ctx.userId,
     options?.conversationSummary,
   );
+  const system =
+    options?.mode === "chart_analyze"
+      ? systemBase + chartAnalyzeSystemSuffix()
+      : systemBase;
+  const activeTools =
+    options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;
+  const maxSteps = options?.mode === "chart_analyze" ? 2 : 6;
   const messages: Message[] = [...history];
   const recorded: Recommendation[] = [];
   const signalDeliveries: DeliveryResult[] = [];
@@ -465,7 +483,7 @@ export async function runAgent(
     status: "running",
   });
 
-  const MAX_STEPS = 6;
+  const MAX_STEPS = maxSteps;
   for (let step = 0; step < MAX_STEPS; step++) {
     push({
       id: `think-${step}`,
@@ -476,10 +494,10 @@ export async function runAgent(
     const useStream = Boolean(onDelta);
     const res = useStream
       ? await callAnthropicStream(
-          { system, messages, tools: TOOLS },
+          { system, messages, tools: activeTools },
           { onTextDelta: onDelta },
         )
-      : await callAnthropic({ system, messages, tools: TOOLS });
+      : await callAnthropic({ system, messages, tools: activeTools });
     usageTokens += res.usage.input_tokens + res.usage.output_tokens;
 
     push({ id: `think-${step}`, label: step === 0 ? "تحليل سؤالك" : "متابعة التحليل مع Claude", status: "done" });
