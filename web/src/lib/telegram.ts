@@ -257,6 +257,7 @@ export function recommendationCard(rec: {
   take_profit: number | null;
   timeframe: string | null;
   rationale: string | null;
+  pattern_name?: string | null;
 }): string {
   const lines = [
     `<b>📊 توصية جديدة من الخبير</b>`,
@@ -267,6 +268,7 @@ export function recommendationCard(rec: {
     `الثقة · Confidence: <b>${rec.confidence}%</b>`,
   ];
   if (rec.timeframe) lines.push(`الإطار · TF: <code>${rec.timeframe}</code>`);
+  if (rec.pattern_name) lines.push(`النمط · Pattern: <b>${rec.pattern_name}</b>`);
   if (rec.entry) lines.push(`الدخول · Entry: <code>${rec.entry}</code>`);
   if (rec.stop_loss)
     lines.push(`وقف الخسارة · Stop: <code>${rec.stop_loss}</code>`);
@@ -286,6 +288,8 @@ export function approvalCard(intent: {
   stop_loss: number | null;
   take_profit: number | null;
   rationale: string | null;
+  pattern_name?: string | null;
+  timeframe?: string | null;
 }): string {
   const lines = [
     `<b>🤖 توصية جديدة من الخبير</b>`,
@@ -293,16 +297,26 @@ export function approvalCard(intent: {
     ``,
     `الزوج · Pair: <b>${intent.symbol}</b>`,
     `الاتجاه · Side: <b>${sideBilingual(intent.side)}</b>`,
-    `الحجم · Size: <b>${intent.notional.toFixed(2)} USDT</b>`,
+    `الحجم المقترح · Size: <b>${intent.notional.toFixed(2)} USDT</b>`,
     `الثقة · Confidence: <b>${intent.confidence}%</b>`,
   ];
+  if (intent.timeframe) {
+    lines.push(`الإطار · TF: <code>${intent.timeframe}</code>`);
+  }
+  if (intent.pattern_name) {
+    lines.push(`النمط · Pattern: <b>${intent.pattern_name}</b>`);
+  }
   if (intent.entry) lines.push(`الدخول · Entry: <code>${intent.entry}</code>`);
   if (intent.stop_loss)
     lines.push(`وقف الخسارة · Stop: <code>${intent.stop_loss}</code>`);
   if (intent.take_profit)
     lines.push(`الهدف · Target: <code>${intent.take_profit}</code>`);
   if (intent.rationale) lines.push(``, `📝 ${intent.rationale}`);
-  lines.push(``, `هل توافق على التنفيذ؟ · Approve this trade?`);
+  lines.push(
+    ``,
+    `بعد الموافقة ستختار مبلغ التداول بالـ USDT.`,
+    `هل توافق على المتابعة؟ · Approve to continue?`,
+  );
   return lines.join("\n");
 }
 

@@ -14,6 +14,8 @@ import {
   overlaysFromAnalysis,
   overlaysFromRecommendation,
 } from "@/lib/chartOverlays";
+import type { ChartDrawing } from "@/lib/chartDrawings";
+import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 import type { MarketSnapshot } from "@/lib/market";
 import { consumeSse } from "@/lib/sse";
 import type { Recommendation } from "@/lib/types";
@@ -69,6 +71,9 @@ export default function MarketClient({
   const [analysisText, setAnalysisText] = useState("");
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [overlays, setOverlays] = useState<ChartOverlay[]>([]);
+  const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
+  const [profileLabel, setProfileLabel] = useState<string | null>(null);
+  const [contextSummary, setContextSummary] = useState<string[]>([]);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
   const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null);
@@ -102,12 +107,19 @@ export default function MarketClient({
     return () => clearTimeout(t);
   }, [openAssets, search, fetchInstruments]);
 
-  useEffect(() => {
+  function clearChartLayers() {
     setOverlays([]);
+    setDrawings([]);
+    setSelectedRec(null);
+    setProfileLabel(null);
+    setContextSummary([]);
+  }
+
+  useEffect(() => {
+    clearChartLayers();
     setAnalysisText("");
     setAnalysisOpen(false);
     setAnalyzeError(null);
-    setSelectedRec(null);
     setRecDetailOpen(false);
   }, [symbol, interval]);
 
@@ -144,14 +156,8 @@ export default function MarketClient({
   const panelKind = recDetailOpen ? "rec" : "analysis";
 
   function closePanel() {
-    if (recDetailOpen) {
-      setRecDetailOpen(false);
-      setSelectedRec(null);
-      setOverlays([]);
-    }
-    if (analysisOpen) {
-      setAnalysisOpen(false);
-    }
+    if (recDetailOpen) setRecDetailOpen(false);
+    if (analysisOpen) setAnalysisOpen(false);
   }
 
   function selectRecommendation(rec: Recommendation) {
@@ -167,6 +173,7 @@ export default function MarketClient({
             emptySnap(rec.symbol, interval, rec.entry ?? 0),
           ),
     );
+    setDrawings(parseChartDrawingsJson(rec.chart_drawings_json));
   }
 
   async function handleAnalyze() {
@@ -174,8 +181,7 @@ export default function MarketClient({
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setAnalysisText("");
-    setOverlays([]);
-    setSelectedRec(null);
+    clearChartLayers();
     setRecDetailOpen(false);
     setAnalysisOpen(true);
 
@@ -200,6 +206,10 @@ export default function MarketClient({
       const data = await consumeSse<{
         reply: string;
         overlays?: ChartOverlay[];
+        drawings?: ChartDrawing[];
+        profileLabel?: string;
+        contextSummary?: string[];
+        telegramSent?: boolean;
       }>(res, {
         onDelta: (t) => {
           streamed += t;
@@ -218,6 +228,9 @@ export default function MarketClient({
 
       setAnalysisText(data.reply || streamed);
       if (data.overlays?.length) setOverlays(data.overlays);
+      if (data.drawings?.length) setDrawings(data.drawings);
+      if (data.profileLabel) setProfileLabel(data.profileLabel);
+      if (data.contextSummary?.length) setContextSummary(data.contextSummary);
     } catch {
       setAnalyzeError("حدث خطأ أثناء التحليل.");
     } finally {
@@ -253,6 +266,7 @@ export default function MarketClient({
               interval={interval}
               recommendations={recommendations}
               overlays={overlays}
+              drawings={drawings}
               livePrice={live.price > 0 ? live.price : undefined}
               fill
               className="h-full min-h-0 p-0"
@@ -272,6 +286,8 @@ export default function MarketClient({
               onAnalyze={() => void handleAnalyze()}
               isFullscreen={isFullscreen}
               onToggleFullscreen={() => void toggleFullscreen()}
+              hasChartLayers={overlays.length > 0 || drawings.length > 0}
+              onClearLayers={clearChartLayers}
             />
 
             <ChartLivePriceBadge symbol={symbol} />
@@ -286,6 +302,8 @@ export default function MarketClient({
             rec={selectedRec}
             analysisText={analysisText}
             isAnalyzing={isAnalyzing}
+            profileLabel={profileLabel}
+            contextSummary={contextSummary}
           />
         )}
       </div>
@@ -304,7 +322,7 @@ export default function MarketClient({
                 className={cn(
                   "shrink-0 rounded-xl border px-3 py-2 text-start text-xs transition",
                   selectedRec?.id === r.id
-                    ? "border-foreground/30 bg-secondary"
+                    ? "border-primary/50 bg-primary/10"
                     : "border-border bg-card hover:border-foreground/20 hover:bg-secondary/50",
                 )}
               >

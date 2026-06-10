@@ -221,6 +221,29 @@ function migrate(db: Database.Database) {
   if (!recCols.some((c) => c.name === "chart_image_url")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN chart_image_url TEXT");
   }
+  if (!recCols.some((c) => c.name === "chart_drawings_json")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN chart_drawings_json TEXT");
+  }
+  if (!recCols.some((c) => c.name === "pattern_name")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN pattern_name TEXT");
+  }
+  if (!recCols.some((c) => c.name === "analysis_tier")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN analysis_tier TEXT");
+  }
+  if (!recCols.some((c) => c.name === "context_json")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN context_json TEXT");
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS telegram_pending (
+      user_id    INTEGER PRIMARY KEY,
+      intent_id  INTEGER NOT NULL,
+      step       TEXT NOT NULL,
+      message_id INTEGER,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
 
   const settingsCols = db
     .prepare("PRAGMA table_info(trading_settings)")

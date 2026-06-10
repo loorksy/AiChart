@@ -14,6 +14,15 @@ import {
 } from "./markets";
 import { getBinanceCredentials, saveRecommendation, getPublicUser, listTrades, listIntents, listRecommendations, countOpenTrades, getBinanceAccountMeta, getSettings } from "./store";
 import { attachChartToRecommendation } from "./recommendationChart";
+import { profileForInterval } from "./analysisProfile";
+import {
+  fetchMarketContext,
+  formatContextForPrompt,
+} from "./marketContext";
+import {
+  validateChartDrawings,
+  type ChartDrawing,
+} from "./chartDrawings";
 import { getAccountSummary } from "./binance";
 import {
   smartMoneySignals,
@@ -145,6 +154,22 @@ const TOOLS: ToolDef[] = [
       ]
     : []),
   {
+    name: "get_market_context",
+    description:
+      "يجلب سياق السوق: أخبار، مؤشر الخوف والطمع، وملخص مزاج — حسب الإطار الزمني. استخدمها قبل التوصيات على إطارات 1h+.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        interval: {
+          type: "string",
+          description: "1m,5m,15m,1h,4h,1d,1w",
+        },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
     name: "record_recommendation",
     description:
       "يسجّل توصية منظّمة للمستخدم. استخدمها عند وجود رأي واضح (شراء/بيع/انتظار). ضع وقف خسارة وهدفاً منطقيين لتوصيات الشراء/البيع. يجب دائماً شرح الأسباب بوضوح.",
@@ -167,7 +192,17 @@ const TOOLS: ToolDef[] = [
           type: "array",
           items: { type: "string" },
           description:
-            "قائمة عوامل فنية محدّدة بنيت عليها التوصية، كل عامل جملة قصيرة مع الرقم. مثال: 'RSI 28 تشبّع بيعي'، 'ارتداد من دعم 60000'، 'تقاطع MACD صعودي'، 'الاتجاه العام صاعد'. 3 عوامل على الأقل.",
+            "قائمة عوامل محدّدة بنيت عليها التوصية. بادئة [فني] أو [خبر] أو [مزاج]. 3 عوامل على الأقل.",
+        },
+        pattern_name: {
+          type: "string",
+          description: "اسم النمط بالعربية مثل قاع W متوقع، قمة مزدوجة",
+        },
+        chart_drawings: {
+          type: "array",
+          description:
+            "مصفوفة رسوم الشارت: price_line, trend_line, forecast_path, marker, channel, zone… كل عنصر له confidence و points",
+          items: { type: "object" },
         },
       },
       required: ["symbol", "action", "confidence", "rationale", "factors"],
@@ -302,30 +337,62 @@ async function executeTool(
         const res = await runBinanceCli(ctx.userId, args);
         return { content: res.output, isError: !res.ok };
       }
+      case "get_market_context": {
+        const symbol = String(input.symbol ?? "");
+        const interval = input.interval ? String(input.interval) : "1h";
+        const profile = profileForInterval(interval);
+        const ctx = await fetchMarketContext(symbol, profile);
+        return {
+          content: JSON.stringify({
+            profile: profile.labelAr,
+            context: formatContextForPrompt(ctx),
+            headlines: ctx.headlines.slice(0, 5),
+            fearGreed: ctx.fearGreed ?? null,
+          }),
+        };
+      }
       case "record_recommendation": {
+        const action = String(input.action ?? "wait");
+        const confidence = Number(input.confidence ?? 0);
+        const timeframe =
+          input.timeframe != null ? String(input.timeframe) : "1h";
+        const profile = profileForInterval(timeframe);
+        const rawDrawings = Array.isArray(input.chart_drawings)
+          ? (input.chart_drawings as ChartDrawing[])
+          : [];
+        const drawings = validateChartDrawings(
+          rawDrawings,
+          action,
+          confidence,
+          profile,
+        );
         const rec = await saveRecommendation(ctx.userId, {
           symbol: String(input.symbol ?? ""),
-          action: String(input.action ?? "wait"),
-          confidence: Number(input.confidence ?? 0),
+          action,
+          confidence,
           entry: input.entry != null ? Number(input.entry) : null,
           stop_loss: input.stop_loss != null ? Number(input.stop_loss) : null,
           take_profit:
             input.take_profit != null ? Number(input.take_profit) : null,
-          timeframe: input.timeframe != null ? String(input.timeframe) : null,
+          timeframe,
           rationale: input.rationale != null ? String(input.rationale) : null,
           factors: Array.isArray(input.factors)
             ? input.factors.map((f) => String(f)).slice(0, 8)
             : null,
+          pattern_name:
+            input.pattern_name != null ? String(input.pattern_name) : null,
+          chart_drawings_json:
+            drawings.length > 0 ? JSON.stringify(drawings) : null,
+          analysis_tier: profile.tier,
         });
         const notifyTelegram =
           (rec.action === "buy" || rec.action === "sell") &&
           ctx.settings.mode === "advisory" &&
           !ctx.telegramSession;
-        const enriched = await attachChartToRecommendation(
-          ctx.userId,
-          rec,
-          { notifyTelegram },
-        );
+        const enriched = await attachChartToRecommendation(ctx.userId, rec, {
+          notifyTelegram,
+          drawings,
+        });
         recorded.push(enriched);
         return {
           content: JSON.stringify({

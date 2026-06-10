@@ -17,15 +17,7 @@ export interface MarketSnapshot {
   summary: string;
 }
 
-const ALLOWED_INTERVALS = new Set([
-  "1m",
-  "5m",
-  "15m",
-  "1h",
-  "4h",
-  "1d",
-  "1w",
-]);
+import { normalizeInterval } from "./intervals";
 
 /**
  * Builds a structured technical snapshot for a symbol. This is the cheap
@@ -37,7 +29,7 @@ export async function buildSnapshot(
   env: BinanceEnv = "prod",
 ): Promise<MarketSnapshot> {
   const sym = symbol.toUpperCase().trim();
-  const tf = ALLOWED_INTERVALS.has(interval) ? interval : "1h";
+  const tf = normalizeInterval(interval);
 
   const [candles, stats, price] = await Promise.all([
     getKlines(sym, tf, 200, env),

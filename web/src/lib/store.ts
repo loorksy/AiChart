@@ -271,12 +271,17 @@ export async function saveRecommendation(
     timeframe?: string | null;
     rationale?: string | null;
     factors?: string[] | null;
+    chart_drawings_json?: string | null;
+    pattern_name?: string | null;
+    analysis_tier?: string | null;
+    context_json?: string | null;
   },
 ): Promise<Recommendation> {
   const id = await insertReturningId(
     `INSERT INTO recommendations
-       (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors,
+        chart_drawings_json, pattern_name, analysis_tier, context_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       rec.symbol.toUpperCase(),
@@ -288,6 +293,10 @@ export async function saveRecommendation(
       rec.timeframe ?? null,
       rec.rationale ?? null,
       rec.factors && rec.factors.length ? JSON.stringify(rec.factors) : null,
+      rec.chart_drawings_json ?? null,
+      rec.pattern_name ?? null,
+      rec.analysis_tier ?? null,
+      rec.context_json ?? null,
     ],
   );
   return (await queryOne<Recommendation>(
@@ -415,6 +424,25 @@ export async function updateIntentStatus(
   await execute(
     "UPDATE trade_intents SET status = ?, reason = ?, updated_at = datetime('now') WHERE id = ?",
     [status, reason ?? null, id],
+  );
+}
+
+export async function updateIntentNotional(
+  id: number,
+  notional: number,
+): Promise<void> {
+  await execute(
+    "UPDATE trade_intents SET notional = ?, updated_at = datetime('now') WHERE id = ?",
+    [notional, id],
+  );
+}
+
+export async function getRecommendation(
+  id: number,
+): Promise<Recommendation | null> {
+  return queryOne<Recommendation>(
+    "SELECT * FROM recommendations WHERE id = ?",
+    [id],
   );
 }
 

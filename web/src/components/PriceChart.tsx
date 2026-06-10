@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   CandlestickSeries,
+  LineSeries,
   createSeriesMarkers,
   ColorType,
   type IChartApi,
@@ -15,6 +16,11 @@ import {
 } from "lightweight-charts";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import { OVERLAY_COLORS } from "@/lib/chartOverlays";
+import type { ChartDrawing } from "@/lib/chartDrawings";
+import {
+  pointsToLineData,
+  styleForConfidence,
+} from "@/lib/chartDrawings";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +29,7 @@ interface Props {
   interval: string;
   recommendations: Recommendation[];
   overlays?: ChartOverlay[];
+  drawings?: ChartDrawing[];
   /** Live last price — updates the current candle on each tick */
   livePrice?: number;
   className?: string;
@@ -44,6 +51,7 @@ export default function PriceChart({
   interval,
   recommendations,
   overlays,
+  drawings,
   livePrice,
   className,
   fill = false,
@@ -52,6 +60,7 @@ export default function PriceChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const lastBarTimeRef = useRef<number>(0);
   const [loading, setLoading] = useState(!ambient);
   const [error, setError] = useState<string | null>(null);
 
@@ -125,7 +134,10 @@ export default function PriceChart({
         }
         const series = seriesRef.current;
         if (!series) return;
-        series.setData(data.candles as CandlestickData<UTCTimestamp>[]);
+        const candles = data.candles as CandlestickData<UTCTimestamp>[];
+        series.setData(candles);
+        const last = candles[candles.length - 1];
+        if (last) lastBarTimeRef.current = Number(last.time);
         chartRef.current?.timeScale().fitContent();
       } catch {
         if (!cancelled && !ambient) setError("تعذّر تحميل بيانات الشارت.");
@@ -173,6 +185,66 @@ export default function PriceChart({
       for (const line of priceLines) series.removePriceLine(line);
     };
   }, [overlays, ambient]);
+
+  useEffect(() => {
+    if (ambient) return;
+    const chart = chartRef.current;
+    const candleSeries = seriesRef.current;
+    if (!chart || !candleSeries) return;
+
+    const extraSeries: ISeriesApi<"Line">[] = [];
+    const extraLines: ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[] =
+      [];
+    const lastTime = lastBarTimeRef.current;
+
+    for (const d of drawings ?? []) {
+      const style = styleForConfidence(d.confidence, d.type);
+      if (d.type === "price_line" && d.points[0]) {
+        extraLines.push(
+          candleSeries.createPriceLine({
+            price: d.points[0].price,
+            color: d.color ?? style.color,
+            lineWidth: style.lineWidth,
+            lineStyle: style.lineStyle,
+            axisLabelVisible: true,
+            title: d.label ?? "مستوى",
+          }),
+        );
+      }
+      if (
+        (d.type === "forecast_path" ||
+          d.type === "trend_line" ||
+          d.type === "channel") &&
+        d.points.length >= 2 &&
+        lastTime > 0
+      ) {
+        const line = chart.addSeries(LineSeries, {
+          color: d.color ?? style.color,
+          lineWidth: style.lineWidth,
+          lineStyle: style.lineStyle,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+        line.setData(
+          pointsToLineData(d.points, lastTime, interval) as {
+            time: UTCTimestamp;
+            value: number;
+          }[],
+        );
+        extraSeries.push(line);
+      }
+    }
+
+    if ((drawings ?? []).some((d) => d.type === "forecast_path")) {
+      chart.timeScale().applyOptions({ rightOffset: 12 });
+    }
+
+    return () => {
+      for (const line of extraLines) candleSeries.removePriceLine(line);
+      for (const s of extraSeries) chart.removeSeries(s);
+    };
+  }, [drawings, interval, ambient]);
 
   useEffect(() => {
     if (ambient) return;

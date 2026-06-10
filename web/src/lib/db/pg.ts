@@ -238,6 +238,24 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ
   `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE recommendations
+      ADD COLUMN IF NOT EXISTS chart_drawings_json TEXT,
+      ADD COLUMN IF NOT EXISTS pattern_name TEXT,
+      ADD COLUMN IF NOT EXISTS analysis_tier TEXT,
+      ADD COLUMN IF NOT EXISTS context_json TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS telegram_pending (
+      user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      intent_id  INTEGER NOT NULL,
+      step       TEXT NOT NULL,
+      message_id INTEGER,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
 }
 
 async function seedAdminPg(client: PoolClient) {

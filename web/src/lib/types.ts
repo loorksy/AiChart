@@ -82,6 +82,10 @@ export interface Recommendation {
   rationale: string | null;
   factors: string | null; // JSON array of short reason strings
   chart_image_url: string | null;
+  chart_drawings_json: string | null;
+  pattern_name: string | null;
+  analysis_tier: string | null;
+  context_json: string | null;
   created_at: string;
 }
 
@@ -90,7 +94,8 @@ export type IntentStatus =
   | "approved"
   | "rejected"
   | "executed"
-  | "failed";
+  | "failed"
+  | "expired";
 
 export interface TradeIntent {
   id: number;

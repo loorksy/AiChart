@@ -1,4 +1,6 @@
-import { buildChartImageUrl } from "./chartImage";
+import { buildChartSnapshotUrl } from "./chartSnapshot";
+import { overlaysFromRecommendation } from "./chartOverlays";
+import type { ChartDrawing } from "./chartDrawings";
 import { getSettings, updateRecommendationChartUrl } from "./store";
 import { notifyUser, notifyUserPhoto, recommendationCard } from "./telegram";
 import type { Recommendation } from "./types";
@@ -6,6 +8,7 @@ import type { Recommendation } from "./types";
 export interface AttachChartOptions {
   /** Send Telegram notification (advisory mode). Auto mode defers to tradeFlow. */
   notifyTelegram?: boolean;
+  drawings?: ChartDrawing[];
 }
 
 /**
@@ -20,7 +23,14 @@ export async function attachChartToRecommendation(
   if (rec.action === "wait") return rec;
 
   const timeframe = rec.timeframe ?? "1h";
-  const chartUrl = await buildChartImageUrl(rec.symbol, timeframe);
+  const overlays = overlaysFromRecommendation(rec);
+  const chartUrl = await buildChartSnapshotUrl({
+    symbol: rec.symbol,
+    interval: timeframe,
+    overlays,
+    drawings: options.drawings,
+    patternName: rec.pattern_name,
+  });
   if (!chartUrl) return rec;
 
   await updateRecommendationChartUrl(rec.id, chartUrl);
@@ -43,8 +53,25 @@ export async function attachChartToRecommendation(
 
 /** Resolves chart URL from recommendation metadata or builds a fresh one. */
 export async function resolveChartUrl(
-  rec: Pick<Recommendation, "symbol" | "timeframe" | "chart_image_url">,
+  rec: Pick<
+    Recommendation,
+    | "symbol"
+    | "timeframe"
+    | "chart_image_url"
+    | "entry"
+    | "stop_loss"
+    | "take_profit"
+    | "pattern_name"
+    | "chart_drawings_json"
+  >,
 ): Promise<string | null> {
   if (rec.chart_image_url) return rec.chart_image_url;
-  return buildChartImageUrl(rec.symbol, rec.timeframe ?? "1h");
+  const { parseChartDrawingsJson } = await import("./chartDrawings");
+  return buildChartSnapshotUrl({
+    symbol: rec.symbol,
+    interval: rec.timeframe ?? "1h",
+    overlays: overlaysFromRecommendation(rec as Recommendation),
+    drawings: parseChartDrawingsJson(rec.chart_drawings_json),
+    patternName: rec.pattern_name,
+  });
 }

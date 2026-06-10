@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2, Maximize2, Minimize2, Search, Sparkles } from "lucide-react";
-import { MarketIntervalTabs } from "@/components/market/MarketIntervalTabs";
+import { EyeOff, Loader2, Maximize2, Minimize2, Search, Sparkles } from "lucide-react";
+import { IntervalPicker } from "@/components/market/IntervalPicker";
 import { cn } from "@/lib/utils";
 
 const CTRL =
@@ -21,6 +21,8 @@ export function ChartOverlayToolbar({
   onAnalyze,
   isFullscreen,
   onToggleFullscreen,
+  hasChartLayers,
+  onClearLayers,
 }: {
   openAssets: boolean;
   search: string;
@@ -35,6 +37,8 @@ export function ChartOverlayToolbar({
   onAnalyze: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  hasChartLayers?: boolean;
+  onClearLayers?: () => void;
 }) {
   return (
     <div className="pointer-events-none absolute inset-x-2 top-2 z-10 flex flex-wrap items-center gap-1.5">
@@ -71,9 +75,19 @@ export function ChartOverlayToolbar({
         <Loader2 className="pointer-events-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />
       )}
 
-      <div className="pointer-events-auto">
-        <MarketIntervalTabs compact value={interval} onChange={onIntervalChange} />
-      </div>
+      <IntervalPicker value={interval} onChange={onIntervalChange} />
+
+      {hasChartLayers && onClearLayers && (
+        <button
+          type="button"
+          onClick={onClearLayers}
+          className={cn(CTRL, "pointer-events-auto h-8 w-8 px-0")}
+          aria-label="إخفاء الرسم"
+          title="إخفاء الرسم"
+        >
+          <EyeOff className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       <button
         type="button"

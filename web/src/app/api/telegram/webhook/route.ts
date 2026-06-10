@@ -14,9 +14,17 @@ import {
   getIntent,
   updateIntentStatus,
 } from "@/lib/store";
-import { executeIntent } from "@/lib/execution";
 import { closeAllOpenTrades } from "@/lib/tradeClose";
-import { notifyTradeResult } from "@/lib/notifyTrade";
+import { clearTelegramPending } from "@/lib/telegramPending";
+import {
+  handleApproveStart,
+  handleAmountSelect,
+  handleAmountCustom,
+  handleCustomAmountText,
+  handleRescanYes,
+  handleRescanConfirm,
+  handleRescanNo,
+} from "@/lib/telegramIntentFlow";
 import {
   sendMessage,
   answerCallback,
@@ -306,6 +314,11 @@ async function handleMessage(
     return;
   }
 
+  if (!text.startsWith("/")) {
+    const handledAmount = await handleCustomAmountText(userId, text, chatId);
+    if (handledAmount) return;
+  }
+
   if (!text.startsWith("/") && isAnthropicConfigured()) {
     const quota = await userQuota(userId);
     if (quota.limit > 0 && quota.used >= quota.limit) {
@@ -380,20 +393,18 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
     return;
   }
 
-  const [action, idStr] = cq.data.split(":");
-  const intentId = Number(idStr);
+  const parts = cq.data.split(":");
+  const action = parts[0];
+  const intentId = Number(parts[1]);
   const intent = await getIntent(intentId);
-  if (!intent || intent.user_id !== userId) {
-    await answerCallback(cq.id, "الطلب غير موجود");
-    return;
-  }
-  if (intent.status !== "pending") {
-    await answerCallback(cq.id, "تمت المعالجة مسبقاً");
-    return;
-  }
 
   if (action === "reject") {
+    if (!intent || intent.user_id !== userId) {
+      await answerCallback(cq.id, "الطلب غير موجود");
+      return;
+    }
     await updateIntentStatus(intentId, "rejected", "رفضه المستخدم عبر تليجرام.");
+    await clearTelegramPending(userId);
     await answerCallback(cq.id, "تم الرفض");
     if (messageId) {
       await editMessageText(
@@ -406,26 +417,71 @@ async function handleCallback(cq: NonNullable<TgUpdate["callback_query"]>) {
     return;
   }
 
-  if (action === "approve") {
-    await updateIntentStatus(intentId, "approved", "وافق المستخدم عبر تليجرام.");
-    const result = await executeIntent(userId, intentId);
-    await notifyTradeResult(userId, result, intent.symbol);
-    await answerCallback(
-      cq.id,
-      result.ok ? "تم التنفيذ ✅" : "تعذّر التنفيذ",
-    );
-    if (messageId) {
-      await editMessageText(
-        chatId,
-        messageId,
-        result.ok
-          ? actionResultCard("✅", "نُفّذت التوصية", `${intent.symbol} — تم التنفيذ بنجاح.`)
-          : actionResultCard("⚠️", "لم تُنفَّذ", result.reason ?? "سبب غير معروف"),
-        null,
-      );
-    }
+  if (!intent || intent.user_id !== userId) {
+    await answerCallback(cq.id, "الطلب غير موجود");
     return;
   }
 
-  await answerCallback(cq.id);
+  if (!messageId) {
+    await answerCallback(cq.id);
+    return;
+  }
+
+  if (action === "approve" && intent.status === "pending") {
+    await handleApproveStart(userId, intent, chatId, messageId, cq.id);
+    return;
+  }
+
+  if (action === "amount" && intent.status === "pending") {
+    const notional = Number(parts[2]);
+    await handleAmountSelect(
+      userId,
+      intent,
+      notional,
+      chatId,
+      messageId,
+      cq.id,
+    );
+    return;
+  }
+
+  if (action === "amount_custom" && intent.status === "pending") {
+    await handleAmountCustom(userId, intent, chatId, messageId, cq.id);
+    return;
+  }
+
+  if (action === "rescan" && parts[1] === "yes") {
+    const rid = Number(parts[2]);
+    const rIntent = await getIntent(rid);
+    if (!rIntent || rIntent.user_id !== userId) {
+      await answerCallback(cq.id, "الطلب غير موجود");
+      return;
+    }
+    await handleRescanYes(userId, rIntent, chatId, messageId, cq.id);
+    return;
+  }
+
+  if (action === "rescan" && parts[1] === "confirm") {
+    const rid = Number(parts[2]);
+    const rIntent = await getIntent(rid);
+    if (!rIntent || rIntent.user_id !== userId) {
+      await answerCallback(cq.id, "الطلب غير موجود");
+      return;
+    }
+    await handleRescanConfirm(userId, rIntent, chatId, messageId, cq.id);
+    return;
+  }
+
+  if (action === "rescan" && parts[1] === "no") {
+    const rid = Number(parts[2]);
+    const rIntent = await getIntent(rid);
+    if (!rIntent || rIntent.user_id !== userId) {
+      await answerCallback(cq.id, "الطلب غير موجود");
+      return;
+    }
+    await handleRescanNo(userId, rIntent, chatId, messageId, cq.id);
+    return;
+  }
+
+  await answerCallback(cq.id, "تمت المعالجة مسبقاً");
 }

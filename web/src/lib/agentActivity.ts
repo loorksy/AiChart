@@ -16,6 +16,11 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   get_user_profile: () => "قراءة ملف المستخدم",
   get_trades_summary: () => "ملخص الصفقات",
   get_recommendations_history: () => "سجل التوصيات",
+  get_market_context: (input) => {
+    const symbol = String(input.symbol ?? "الرمز");
+    const interval = input.interval ? String(input.interval) : "1h";
+    return `سياق السوق · ${symbol} · ${interval}`;
+  },
   get_market_snapshot: (input) => {
     const symbol = String(input.symbol ?? "الرمز");
     const interval = input.interval ? String(input.interval) : "1h";

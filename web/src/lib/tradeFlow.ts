@@ -109,7 +109,11 @@ export async function processRecommendations(
         notional: intent.notional,
         status: "pending",
       });
-      const caption = approvalCard(intent);
+      const caption = approvalCard({
+        ...intent,
+        pattern_name: rec.pattern_name,
+        timeframe: rec.timeframe,
+      });
       const buttons = [
         [
           { text: APPROVE_BUTTON_TEXT, callback_data: `approve:${intent.id}` },

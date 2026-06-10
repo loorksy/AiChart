@@ -12,6 +12,8 @@ export function MarketRecPanel({
   rec,
   analysisText,
   isAnalyzing,
+  profileLabel,
+  contextSummary,
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,6 +21,8 @@ export function MarketRecPanel({
   rec?: Recommendation | null;
   analysisText?: string;
   isAnalyzing?: boolean;
+  profileLabel?: string | null;
+  contextSummary?: string[];
 }) {
   if (!open) return null;
 
@@ -113,12 +117,31 @@ export function MarketRecPanel({
           )}
 
           {kind === "analysis" && (
-            <div className="leading-relaxed text-foreground">
-              {analysisText || (
-                <span className="text-muted-foreground">جارٍ التحليل…</span>
+            <div className="space-y-3 leading-relaxed text-foreground">
+              {profileLabel && (
+                <span className="inline-block rounded-lg bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                  {profileLabel}
+                </span>
               )}
-              {isAnalyzing && (
-                <span className="ms-1 inline-block h-3 w-1 animate-pulse bg-primary" />
+              {contextSummary && contextSummary.length > 0 && (
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {contextSummary.map((line) => (
+                    <li key={line}>• {line}</li>
+                  ))}
+                </ul>
+              )}
+              <div>
+                {analysisText || (
+                  <span className="text-muted-foreground">جارٍ التحليل…</span>
+                )}
+                {isAnalyzing && (
+                  <span className="ms-1 inline-block h-3 w-1 animate-pulse bg-primary" />
+                )}
+              </div>
+              {!isAnalyzing && analysisText && (
+                <p className="text-[10px] text-muted-foreground">
+                  سيناريو تنبؤي — ليس ضماناً.
+                </p>
               )}
             </div>
           )}

@@ -8,36 +8,27 @@ import {
   incrementUsage,
   logAudit,
 } from "@/lib/store";
-import { runAgent } from "@/lib/agent";
 import { isAnthropicConfigured } from "@/lib/anthropic";
-import { buildSnapshot } from "@/lib/market";
-import { overlaysFromAnalysis } from "@/lib/chartOverlays";
+import {
+  runMarketAnalyze,
+  MARKET_ANALYZE_COST,
+} from "@/lib/marketAnalyze";
+import { profileForInterval } from "@/lib/analysisProfile";
 import { sseEncode } from "@/lib/sse";
-export const maxDuration = 60;
+import { INTERVAL_SET } from "@/lib/intervals";
 
-const ANALYZE_COST = 3;
+export const maxDuration = 60;
 
 const schema = z.object({
   symbol: z.string().min(6).max(20),
-  interval: z.string().min(2).max(4).default("1h"),
+  interval: z
+    .string()
+    .min(2)
+    .max(4)
+    .default("1h")
+    .refine((v) => INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
   stream: z.boolean().optional(),
 });
-
-function buildAnalyzePrompt(symbol: string, interval: string, snap: Awaited<ReturnType<typeof buildSnapshot>>) {
-  return [
-    `حلّل ${symbol} على إطار ${interval} تقنياً بالعربية.`,
-    `البيانات الحالية: ${snap.summary}`,
-    snap.rsi14 != null ? `RSI(14): ${snap.rsi14.toFixed(1)}` : "",
-    snap.sma20 != null ? `SMA20: ${snap.sma20.toFixed(2)}` : "",
-    snap.sma50 != null ? `SMA50: ${snap.sma50.toFixed(2)}` : "",
-    `الاتجاه: ${snap.trend === "uptrend" ? "صاعد" : snap.trend === "downtrend" ? "هابط" : "عرضي"}`,
-    "",
-    "المطلوب: تحليل فني مفصّل مع مستويات دخول ووقف خسارة وجني أرباح ودعم ومقاومة.",
-    "استخدم get_market_snapshot إن لزم ثم سجّل التوصية عبر record_recommendation مع entry و stop_loss و take_profit محددة.",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,10 +45,10 @@ export async function POST(req: NextRequest) {
     const limits = await getLimits(user.id);
     const used = await getTodayUsage(user.id);
 
-    if (limits.claude_quota > 0 && used + ANALYZE_COST > limits.claude_quota) {
+    if (limits.claude_quota > 0 && used + MARKET_ANALYZE_COST > limits.claude_quota) {
       return NextResponse.json(
         {
-          error: `رصيد غير كافٍ. تحتاج ${ANALYZE_COST} رصيد، المتبقّي ${Math.max(0, limits.claude_quota - used)}.`,
+          error: `رصيد غير كافٍ. تحتاج ${MARKET_ANALYZE_COST} رصيد، المتبقّي ${Math.max(0, limits.claude_quota - used)}.`,
         },
         { status: 429 },
       );
@@ -66,8 +57,7 @@ export async function POST(req: NextRequest) {
     const settings = await getSettings(user.id);
     const symbol = body.symbol.toUpperCase().trim();
     const interval = body.interval;
-    const snap = await buildSnapshot(symbol, interval);
-    const prompt = buildAnalyzePrompt(symbol, interval, snap);
+    const profile = profileForInterval(interval);
     const stream = body.stream !== false;
 
     const runOpts = {
@@ -75,6 +65,7 @@ export async function POST(req: NextRequest) {
         | ((a: import("@/lib/agentActivity").AgentActivity) => void)
         | undefined,
       onDelta: undefined as ((text: string) => void) | undefined,
+      telegramSession: true,
     };
 
     if (stream) {
@@ -84,39 +75,51 @@ export async function POST(req: NextRequest) {
             controller.enqueue(sseEncode(event, data));
           };
 
-          send("meta", { symbol, interval, cost: ANALYZE_COST });
+          send("meta", {
+            symbol,
+            interval,
+            cost: MARKET_ANALYZE_COST,
+            analysisTier: profile.tier,
+            profileLabel: profile.labelAr,
+          });
 
           try {
             runOpts.onActivity = (a) => send("activity", a);
             runOpts.onDelta = (text) => send("delta", { text });
 
-            const result = await runAgent(
-              { userId: user.id, settings },
-              [{ role: "user", content: prompt }],
+            const result = await runMarketAnalyze(
+              user.id,
+              settings,
+              symbol,
+              interval,
               runOpts,
             );
 
-            await incrementUsage(user.id, ANALYZE_COST);
+            await incrementUsage(user.id, MARKET_ANALYZE_COST);
             await logAudit(
               user.id,
               "market_analyze",
-              `${symbol}@${interval} recs=${result.recommendations.length}`,
+              `${symbol}@${interval} recs=${result.recommendation ? 1 : 0}`,
             );
-
-            const rec = result.recommendations.find(
-              (r) => r.symbol === symbol,
-            ) ?? result.recommendations[0];
-            const overlays = overlaysFromAnalysis(rec, snap);
 
             send("done", {
               reply: result.reply,
-              overlays,
-              recommendation: rec ?? null,
+              overlays: result.overlays,
+              drawings: result.drawings,
+              recommendation: result.recommendation,
               activities: result.activities,
+              intents: result.intents,
+              telegramSent: result.telegramSent,
+              contextSummary: result.contextSummary,
+              profileLabel: result.profileLabel,
+              analysisTier: result.analysisTier,
               quota: {
-                used: used + ANALYZE_COST,
+                used: used + MARKET_ANALYZE_COST,
                 limit: limits.claude_quota,
-                remaining: Math.max(0, limits.claude_quota - used - ANALYZE_COST),
+                remaining: Math.max(
+                  0,
+                  limits.claude_quota - used - MARKET_ANALYZE_COST,
+                ),
               },
             });
           } catch (err) {
@@ -138,31 +141,36 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const result = await runAgent(
-      { userId: user.id, settings },
-      [{ role: "user", content: prompt }],
+    const result = await runMarketAnalyze(
+      user.id,
+      settings,
+      symbol,
+      interval,
+      { telegramSession: true },
     );
 
-    await incrementUsage(user.id, ANALYZE_COST);
+    await incrementUsage(user.id, MARKET_ANALYZE_COST);
     await logAudit(
       user.id,
       "market_analyze",
-      `${symbol}@${interval} recs=${result.recommendations.length}`,
+      `${symbol}@${interval} recs=${result.recommendation ? 1 : 0}`,
     );
-
-    const rec = result.recommendations.find((r) => r.symbol === symbol) ??
-      result.recommendations[0];
-    const overlays = overlaysFromAnalysis(rec, snap);
 
     return NextResponse.json({
       reply: result.reply,
-      overlays,
-      recommendation: rec ?? null,
+      overlays: result.overlays,
+      drawings: result.drawings,
+      recommendation: result.recommendation,
       activities: result.activities,
+      intents: result.intents,
+      telegramSent: result.telegramSent,
+      contextSummary: result.contextSummary,
+      profileLabel: result.profileLabel,
+      analysisTier: result.analysisTier,
       quota: {
-        used: used + ANALYZE_COST,
+        used: used + MARKET_ANALYZE_COST,
         limit: limits.claude_quota,
-        remaining: Math.max(0, limits.claude_quota - used - ANALYZE_COST),
+        remaining: Math.max(0, limits.claude_quota - used - MARKET_ANALYZE_COST),
       },
     });
   } catch (err) {

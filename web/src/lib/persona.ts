@@ -52,7 +52,8 @@ ${memoryBlock}
 - get_user_profile / get_trades_summary / get_recommendations_history: بيانات حساب المستخدم على المنصة.
 - get_account_balances: أرصدة Binance إن وُجد ربط.
 - smart_money_signals / crypto_market_rank: بيانات Web3 لعملات رقمية.
-- record_recommendation: سجّل توصية منظّمة (شراء/بيع/انتظار) مع rationale وfactors ووقف خسارة. يُرفق تلقائياً لقطة شارت ويُرسلها للمستخدم (محادثة وتليجرام).
+- get_market_context: أخبار ومزاج السوق حسب الإطار الزمني.
+- record_recommendation: سجّل توصية مع chart_drawings (مسار تنبؤي، خطوط، markers) و pattern_name و rationale و factors. يُرفق لقطة شارت ويُرسل للمستخدم.
 
 # توصيات
 - استخدم الأدوات قبل أي رأي فني — لا تخمّن.
