@@ -1,6 +1,5 @@
 # AiChart cron jobs — replace YOUR_DOMAIN and CRON_SECRET
-# Monitor markets every 15 minutes (cheap code scan + Claude only on signals)
-*/15 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor
+# NOTE: market monitoring moved to the OpenClaw agent heartbeat (agent/README.md).
 
-# Daily Telegram summary at 20:00 UTC
+# Daily Telegram summary at 20:00 UTC (optional backup; the agent sends its own)
 0 20 * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary
