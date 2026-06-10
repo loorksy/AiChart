@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, Search } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SectionTitle, SurfaceCard } from "@/components/ui/shell";
-import { MarketIntervalTabs } from "@/components/market/MarketIntervalTabs";
+import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
+import { ChartOverlayToolbar } from "@/components/market/ChartOverlayToolbar";
 import { MarketRecPanel } from "@/components/market/MarketRecPanel";
-import { MarketTickerBar } from "@/components/market/MarketTickerBar";
 import { formatLevel } from "@/components/market/formatLevel";
+import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
 import { cn } from "@/lib/utils";
 import PriceChart from "./PriceChart";
 import type { ChartOverlay } from "@/lib/chartOverlays";
@@ -74,6 +74,10 @@ export default function MarketClient({
   const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null);
   const [recDetailOpen, setRecDetailOpen] = useState(false);
 
+  const chartFrameRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const live = useBinanceLivePrice(symbol);
+
   const fetchInstruments = useCallback(async (q: string) => {
     setLoadingInstruments(true);
     try {
@@ -106,6 +110,25 @@ export default function MarketClient({
     setSelectedRec(null);
     setRecDetailOpen(false);
   }, [symbol, interval]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(document.fullscreenElement === chartFrameRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  async function toggleFullscreen() {
+    const el = chartFrameRef.current;
+    if (!el) return;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await el.requestFullscreen();
+    } catch {
+      /* unsupported or denied */
+    }
+  }
 
   const pickerOptions = openAssets
     ? instruments
@@ -204,79 +227,55 @@ export default function MarketClient({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <header className="shrink-0 space-y-3 border-b border-border/60 px-4 py-3">
-        <div>
-          <h1 className="page-title text-base sm:text-lg">الشارت الحي</h1>
-          {openAssets && (
-            <p className="page-subtitle text-[11px] sm:text-xs">
-              جميع أزواج USDT من Binance — تحديث تلقائي
-            </p>
-          )}
-        </div>
-
-        <MarketTickerBar
-          symbol={symbol}
-          onAnalyze={() => void handleAnalyze()}
-          isAnalyzing={isAnalyzing}
-        />
-
-        <div className="flex flex-wrap items-center gap-2">
-          {openAssets && (
-            <div className="relative min-w-0 flex-1 sm:flex-none">
-              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                className="input h-11 w-full min-w-[8rem] ps-10 text-sm sm:w-44"
-                placeholder="ابحث…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                dir="ltr"
-              />
-            </div>
-          )}
-          <select
-            className="input h-11 w-auto max-w-[200px] shrink-0 text-sm"
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            dir="ltr"
-            aria-label="اختيار الزوج"
-          >
-            {pickerOptions.length === 0 && (
-              <option value={symbol}>{symbol}</option>
-            )}
-            {pickerOptions.map((inst) => (
-              <option key={inst.symbol} value={inst.symbol}>
-                {inst.symbol}
-              </option>
-            ))}
-          </select>
-          {openAssets && loadingInstruments && (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-          )}
-          <MarketIntervalTabs value={interval} onChange={setInterval} />
-        </div>
-      </header>
-
       {analyzeError && (
         <p className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
           {analyzeError}
         </p>
       )}
 
-      {/* Chart + side/bottom panel */}
-      <div className="relative flex min-h-0 flex-1 flex-col gap-2 px-4 py-2 lg:flex-row">
+      <div className="relative flex min-h-0 flex-1 flex-col gap-2 p-2 lg:flex-row">
         <SurfaceCard
           padding="none"
-          className="relative min-h-[40dvh] min-w-0 flex-1 overflow-hidden lg:min-h-0"
+          className={cn(
+            "relative min-h-0 min-w-0 flex-1 overflow-hidden",
+            isFullscreen && "rounded-none border-0",
+          )}
         >
-          <PriceChart
-            symbol={symbol}
-            interval={interval}
-            recommendations={recommendations}
-            overlays={overlays}
-            fill
-            className="h-full min-h-0 p-1"
-          />
+          <div
+            ref={chartFrameRef}
+            className={cn(
+              "relative h-full min-h-[50dvh] w-full bg-card",
+              isFullscreen && "min-h-dvh",
+            )}
+          >
+            <PriceChart
+              symbol={symbol}
+              interval={interval}
+              recommendations={recommendations}
+              overlays={overlays}
+              livePrice={live.price > 0 ? live.price : undefined}
+              fill
+              className="h-full min-h-0 p-0"
+            />
+
+            <ChartOverlayToolbar
+              openAssets={openAssets}
+              search={search}
+              onSearchChange={setSearch}
+              symbol={symbol}
+              onSymbolChange={setSymbol}
+              pickerOptions={pickerOptions}
+              loadingInstruments={loadingInstruments}
+              interval={interval}
+              onIntervalChange={setInterval}
+              isAnalyzing={isAnalyzing}
+              onAnalyze={() => void handleAnalyze()}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={() => void toggleFullscreen()}
+            />
+
+            <ChartLivePriceBadge symbol={symbol} />
+          </div>
         </SurfaceCard>
 
         {panelOpen && (

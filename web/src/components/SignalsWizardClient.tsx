@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useBinanceLivePrices } from "@/hooks/useBinanceLivePrice";
 import { useRouter } from "next/navigation";
 import { Search, TrendingDown, TrendingUp } from "lucide-react";
 import {
@@ -17,8 +18,6 @@ interface Instrument {
   base: string;
   quote: string;
 }
-
-type TickerStat = { price: number; changePct: number };
 
 const STEP_LABELS = ["الأداة", "الأسلوب", "المخاطر", "التأكيد"];
 
@@ -53,7 +52,6 @@ export default function SignalsWizardClient() {
   const [search, setSearch] = useState("");
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [loadingInstruments, setLoadingInstruments] = useState(false);
-  const [tickerMap, setTickerMap] = useState<Record<string, TickerStat>>({});
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,27 +80,11 @@ export default function SignalsWizardClient() {
     return () => clearTimeout(t);
   }, [search, fetchInstruments]);
 
-  useEffect(() => {
-    if (instruments.length === 0) return;
-    const symbols = instruments.map((i) => i.symbol).join(",");
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/market/tickers?symbols=${encodeURIComponent(symbols)}`,
-        );
-        const data = (await res.json()) as Record<string, TickerStat>;
-        if (!cancelled && res.ok) setTickerMap(data);
-      } catch {
-        if (!cancelled) setTickerMap({});
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [instruments]);
+  const liveSymbols = useMemo(
+    () => instruments.slice(0, 40).map((i) => i.symbol),
+    [instruments],
+  );
+  const liveTicks = useBinanceLivePrices(liveSymbols);
 
   async function generate() {
     setGenerating(true);
@@ -192,8 +174,8 @@ export default function SignalsWizardClient() {
               )}
               <div className="grid grid-cols-2 gap-2">
                 {instruments.map((inst) => {
-                  const stat = tickerMap[inst.symbol];
-                  const up = stat ? stat.changePct >= 0 : null;
+                  const stat = liveTicks[inst.symbol];
+                  const up = stat?.price ? stat.changePct >= 0 : null;
                   return (
                     <button
                       key={inst.symbol}
@@ -210,7 +192,7 @@ export default function SignalsWizardClient() {
                         <p className="font-semibold" dir="ltr">
                           {inst.base}
                         </p>
-                        {stat && (
+                        {stat?.price ? (
                           <span
                             className={cn(
                               "inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums",
@@ -226,16 +208,21 @@ export default function SignalsWizardClient() {
                             {stat.changePct >= 0 ? "+" : ""}
                             {stat.changePct.toFixed(2)}%
                           </span>
-                        )}
+                        ) : null}
                       </div>
-                      {stat && (
+                      {stat?.price ? (
                         <p
-                          className="mt-1 text-sm font-medium tabular-nums text-foreground"
+                          className={cn(
+                            "mt-1 text-sm font-medium tabular-nums transition-colors duration-75",
+                            stat.direction === "up" && "text-green-500",
+                            stat.direction === "down" && "text-red-500",
+                            !stat.direction && "text-foreground",
+                          )}
                           dir="ltr"
                         >
                           {formatTickerPrice(stat.price)}
                         </p>
-                      )}
+                      ) : null}
                       <p className="text-[10px] text-muted-foreground" dir="ltr">
                         {inst.symbol}
                       </p>

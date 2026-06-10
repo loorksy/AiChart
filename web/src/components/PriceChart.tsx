@@ -23,6 +23,8 @@ interface Props {
   interval: string;
   recommendations: Recommendation[];
   overlays?: ChartOverlay[];
+  /** Live last price — updates the current candle on each tick */
+  livePrice?: number;
   className?: string;
   fill?: boolean;
   /** Muted decorative mode for page backgrounds */
@@ -42,6 +44,7 @@ export default function PriceChart({
   interval,
   recommendations,
   overlays,
+  livePrice,
   className,
   fill = false,
   ambient = false,
@@ -135,6 +138,22 @@ export default function PriceChart({
       cancelled = true;
     };
   }, [symbol, interval, ambient]);
+
+  useEffect(() => {
+    if (ambient || !livePrice || livePrice <= 0) return;
+    const series = seriesRef.current;
+    if (!series) return;
+    const data = series.data();
+    if (data.length === 0) return;
+    const last = data[data.length - 1];
+    if (!("close" in last)) return;
+    series.update({
+      ...last,
+      close: livePrice,
+      high: Math.max(last.high, livePrice),
+      low: Math.min(last.low, livePrice),
+    });
+  }, [livePrice, ambient]);
 
   useEffect(() => {
     if (ambient) return;

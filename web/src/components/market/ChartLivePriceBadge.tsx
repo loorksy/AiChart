@@ -1,0 +1,56 @@
+"use client";
+
+import { TrendingDown, TrendingUp } from "lucide-react";
+import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
+import { formatTickerPrice } from "@/components/market/formatLevel";
+import { cn } from "@/lib/utils";
+
+export function ChartLivePriceBadge({ symbol }: { symbol: string }) {
+  const live = useBinanceLivePrice(symbol);
+  const up = live.changePct >= 0;
+  const hasPrice = live.price > 0;
+
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute bottom-2 left-2 z-10 rounded-lg border border-border/50 bg-background/80 px-2 py-1.5 shadow-sm backdrop-blur-md",
+        live.direction === "up" && "ring-1 ring-green-500/40",
+        live.direction === "down" && "ring-1 ring-red-500/40",
+      )}
+      dir="ltr"
+      aria-live="polite"
+      aria-atomic
+    >
+      <p className="text-[10px] font-medium text-muted-foreground">{symbol}</p>
+      <p
+        className={cn(
+          "text-sm font-semibold tabular-nums transition-colors duration-75",
+          live.direction === "up" && "text-green-500",
+          live.direction === "down" && "text-red-500",
+          !live.direction && "text-foreground",
+        )}
+      >
+        {hasPrice ? formatTickerPrice(live.price) : "—"}
+      </p>
+      {hasPrice && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums",
+            up ? "text-green-500" : "text-red-500",
+          )}
+        >
+          {up ? (
+            <TrendingUp className="h-3 w-3" aria-hidden />
+          ) : (
+            <TrendingDown className="h-3 w-3" aria-hidden />
+          )}
+          {up ? "+" : ""}
+          {live.changePct.toFixed(2)}%
+        </span>
+      )}
+      {!live.connected && hasPrice && (
+        <span className="ms-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+      )}
+    </div>
+  );
+}
