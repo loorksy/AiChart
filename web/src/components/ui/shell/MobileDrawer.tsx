@@ -9,12 +9,12 @@ import {
   LogOut,
   MessageSquare,
   MessageSquarePlus,
+  PanelRightClose,
   Settings,
   Shield,
   Sparkles,
   Trash2,
   TrendingUp,
-  X,
 } from "lucide-react";
 import { useChatStore } from "@/stores/chat-store";
 import { cn } from "@/lib/utils";
@@ -65,8 +65,6 @@ export function MobileDrawer({
     createNew,
   } = useChatStore();
 
-  if (!open) return null;
-
   async function handleNewChat() {
     resetSelection();
     await createNew();
@@ -82,14 +80,29 @@ export function MobileDrawer({
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <div className="fixed inset-0 z-50 md:hidden">
+    <div
+      className={cn(
+        "fixed inset-0 z-50 md:hidden",
+        !open && "pointer-events-none",
+      )}
+      aria-hidden={!open}
+    >
       <button
         type="button"
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className={cn(
+          "absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-out motion-reduce:transition-none",
+          open ? "opacity-100" : "opacity-0",
+        )}
         aria-label="إغلاق"
         onClick={onClose}
+        tabIndex={open ? 0 : -1}
       />
-      <aside className="absolute inset-y-0 end-0 flex w-[min(100%,17.5rem)] flex-col border-s border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
+      <aside
+        className={cn(
+          "absolute inset-y-0 end-0 flex w-[min(100%,17.5rem)] flex-col border-s border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none",
+          open ? "translate-x-0" : "translate-x-full",
+        )}
+      >
         <div className="flex items-center justify-between px-3 pt-3">
           <Link
             href="/chat"
@@ -102,10 +115,11 @@ export function MobileDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
-            aria-label="إغلاق"
+            className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
+            aria-label="إغلاق القائمة"
+            title="طي"
           >
-            <X className="h-5 w-5" />
+            <PanelRightClose className="h-5 w-5" />
           </button>
         </div>
 
@@ -113,7 +127,7 @@ export function MobileDrawer({
           <button
             type="button"
             onClick={() => void handleNewChat()}
-            className="flex w-full items-center gap-2 rounded-lg border border-sidebar-border px-3 py-2.5 text-sm font-medium transition hover:bg-sidebar-accent"
+            className="flex h-11 min-h-[44px] w-full items-center gap-2 rounded-lg border border-sidebar-border px-3 text-sm font-medium transition hover:bg-sidebar-accent"
           >
             <MessageSquarePlus className="h-4 w-4 shrink-0" />
             محادثة جديدة
@@ -223,7 +237,7 @@ export function MobileDrawer({
               <button
                 type="button"
                 onClick={() => void onLogout()}
-                className="rounded-lg p-2 text-muted-foreground transition hover:text-foreground"
+                className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-muted-foreground transition hover:text-foreground"
                 aria-label="خروج"
               >
                 <LogOut className="h-4 w-4" />

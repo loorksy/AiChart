@@ -12,7 +12,7 @@ export default async function SignalsNewPage() {
   }
 
   return (
-    <AppShell email={user.email} role={user.role}>
+    <AppShell email={user.email} role={user.role} chatLayout>
       <SignalsWizardClient />
     </AppShell>
   );

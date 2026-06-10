@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, TrendingDown, TrendingUp } from "lucide-react";
 import {
   PageLayout,
   StepIndicator,
@@ -18,9 +18,24 @@ interface Instrument {
   quote: string;
 }
 
+type TickerStat = { price: number; changePct: number };
+
 const STEP_LABELS = ["الأداة", "الأسلوب", "المخاطر", "التأكيد"];
 
 const CAPITAL_OPTIONS = [500, 1000, 2500, 5000, 10000];
+
+const WIZARD_BTN =
+  "btn inline-flex h-11 min-h-[44px] items-center justify-center px-5";
+
+function formatTickerPrice(price: number): string {
+  if (price >= 1000) {
+    return price.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+  if (price >= 1) {
+    return price.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  }
+  return price.toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
 
 export default function SignalsWizardClient() {
   const router = useRouter();
@@ -38,6 +53,7 @@ export default function SignalsWizardClient() {
   const [search, setSearch] = useState("");
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [loadingInstruments, setLoadingInstruments] = useState(false);
+  const [tickerMap, setTickerMap] = useState<Record<string, TickerStat>>({});
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +81,28 @@ export default function SignalsWizardClient() {
     const t = setTimeout(() => void fetchInstruments(search), 300);
     return () => clearTimeout(t);
   }, [search, fetchInstruments]);
+
+  useEffect(() => {
+    if (instruments.length === 0) return;
+    const symbols = instruments.map((i) => i.symbol).join(",");
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/market/tickers?symbols=${encodeURIComponent(symbols)}`,
+        );
+        const data = (await res.json()) as Record<string, TickerStat>;
+        if (!cancelled && res.ok) setTickerMap(data);
+      } catch {
+        if (!cancelled) setTickerMap({});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [instruments]);
 
   async function generate() {
     setGenerating(true);
@@ -119,14 +157,14 @@ export default function SignalsWizardClient() {
           : remaining >= 5;
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="mx-auto max-w-lg space-y-6">
-          <div>
-            <h1 className="page-title">إشارة جديدة</h1>
-            <p className="page-subtitle">معالج 4 خطوات — Binance فقط</p>
-          </div>
-
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
+        <PageLayout
+          title="إشارة جديدة"
+          subtitle="معالج 4 خطوات — Binance فقط"
+          maxWidth="lg"
+          className="space-y-6"
+        >
           <StepIndicator current={step} labels={STEP_LABELS} />
 
           {error && (
@@ -140,7 +178,7 @@ export default function SignalsWizardClient() {
               <div className="relative">
                 <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
-                  className="input ps-10"
+                  className="input h-11 ps-10"
                   placeholder="ابحث عن زوج USDT…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -153,26 +191,57 @@ export default function SignalsWizardClient() {
                 </p>
               )}
               <div className="grid grid-cols-2 gap-2">
-                {instruments.map((inst) => (
-                  <button
-                    key={inst.symbol}
-                    type="button"
-                    onClick={() => setSymbol(inst.symbol)}
-                    className={cn(
-                      "rounded-xl border px-3 py-3 text-start transition",
-                      symbol === inst.symbol
-                        ? "border-primary bg-secondary"
-                        : "border-border bg-card hover:bg-secondary/50",
-                    )}
-                  >
-                    <p className="font-semibold" dir="ltr">
-                      {inst.base}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground" dir="ltr">
-                      {inst.symbol}
-                    </p>
-                  </button>
-                ))}
+                {instruments.map((inst) => {
+                  const stat = tickerMap[inst.symbol];
+                  const up = stat ? stat.changePct >= 0 : null;
+                  return (
+                    <button
+                      key={inst.symbol}
+                      type="button"
+                      onClick={() => setSymbol(inst.symbol)}
+                      className={cn(
+                        "rounded-xl border px-3 py-3 text-start transition",
+                        symbol === inst.symbol
+                          ? "border-primary bg-secondary"
+                          : "border-border bg-card hover:bg-secondary/50",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold" dir="ltr">
+                          {inst.base}
+                        </p>
+                        {stat && (
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums",
+                              up ? "text-green-500" : "text-red-500",
+                            )}
+                            dir="ltr"
+                          >
+                            {up ? (
+                              <TrendingUp className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3 shrink-0" />
+                            )}
+                            {stat.changePct >= 0 ? "+" : ""}
+                            {stat.changePct.toFixed(2)}%
+                          </span>
+                        )}
+                      </div>
+                      {stat && (
+                        <p
+                          className="mt-1 text-sm font-medium tabular-nums text-foreground"
+                          dir="ltr"
+                        >
+                          {formatTickerPrice(stat.price)}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground" dir="ltr">
+                        {inst.symbol}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -198,7 +267,7 @@ export default function SignalsWizardClient() {
                   type="button"
                   onClick={() => setStyle(opt.id)}
                   className={cn(
-                    "rounded-[var(--radius)] border p-4 text-start transition",
+                    "rounded-[var(--radius)] border p-4 text-start transition min-h-[88px]",
                     style === opt.id
                       ? "border-primary bg-secondary"
                       : "border-border bg-card hover:bg-secondary/50",
@@ -236,7 +305,7 @@ export default function SignalsWizardClient() {
                       key={c}
                       variant={capital === c ? "primary" : "outline"}
                       onClick={() => setCapital(c)}
-                      className="text-xs"
+                      className="h-11 min-h-[44px] px-4 text-xs"
                     >
                       ${c.toLocaleString()}
                     </PillButton>
@@ -258,6 +327,7 @@ export default function SignalsWizardClient() {
                       key={opt.id}
                       variant={stopLossStyle === opt.id ? "primary" : "outline"}
                       onClick={() => setStopLossStyle(opt.id)}
+                      className="h-11 min-h-[44px]"
                     >
                       {opt.label}
                     </PillButton>
@@ -318,16 +388,18 @@ export default function SignalsWizardClient() {
               </p>
             </SurfaceCard>
           )}
-        </div>
+        </PageLayout>
       </div>
 
-      <footer className="shrink-0 border-t border-border bg-background/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md">
+      <footer
+        className="shrink-0 border-t border-border bg-background/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md"
+      >
         <div className="mx-auto flex max-w-lg gap-3">
           {step > 1 && (
             <button
               type="button"
               onClick={back}
-              className="btn btn-secondary flex-1"
+              className={cn(WIZARD_BTN, "btn-secondary flex-1")}
               disabled={generating}
             >
               رجوع
@@ -337,7 +409,7 @@ export default function SignalsWizardClient() {
             type="button"
             onClick={() => void next()}
             disabled={!canNext || generating}
-            className="btn btn-primary flex-1"
+            className={cn(WIZARD_BTN, "btn-primary flex-1")}
           >
             {generating
               ? "جارٍ التوليد…"

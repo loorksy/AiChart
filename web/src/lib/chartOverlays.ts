@@ -22,6 +22,29 @@ export const OVERLAY_COLORS: Record<ChartOverlayType, string> = {
   resistance: "#9ca3af",
 };
 
+/** Strategy levels from a stored recommendation (no SMA overlays). */
+export function overlaysFromRecommendation(rec: Recommendation): ChartOverlay[] {
+  const overlays: ChartOverlay[] = [];
+  if (rec.entry != null) {
+    overlays.push({ price: rec.entry, type: "entry", label: "دخول" });
+  }
+  if (rec.stop_loss != null) {
+    overlays.push({
+      price: rec.stop_loss,
+      type: "stop_loss",
+      label: "وقف خسارة",
+    });
+  }
+  if (rec.take_profit != null) {
+    overlays.push({
+      price: rec.take_profit,
+      type: "take_profit",
+      label: "هدف ربح",
+    });
+  }
+  return overlays;
+}
+
 export function overlaysFromAnalysis(
   rec: Recommendation | undefined,
   snap: MarketSnapshot,
