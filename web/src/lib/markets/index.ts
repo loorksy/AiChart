@@ -1,6 +1,8 @@
 import { buildSnapshot, buildForexSnapshot } from "../market";
 import { getPrice } from "../binance";
 import { getEaConnection, parseEaSymbolSpecs } from "../eaStore";
+import { getForexBackend } from "../brokers/forexBackend";
+import { mt5Price } from "../mt5local/client";
 import { resolveSymbol, marketLabel } from "./resolve";
 import type { MarketType, ResolvedSymbol, UnifiedSnapshot } from "./types";
 
@@ -8,6 +10,15 @@ export { resolveSymbol, marketLabel };
 export type { ResolvedSymbol, UnifiedSnapshot };
 
 async function forexPrice(userId: number, symbol: string): Promise<number> {
+  if (getForexBackend() === "mt5local") {
+    try {
+      const { bid, ask } = await mt5Price(symbol);
+      if (bid && ask) return (bid + ask) / 2;
+      return bid || ask || 0;
+    } catch {
+      return 0;
+    }
+  }
   const conn = await getEaConnection(userId);
   if (!conn) return 0;
   const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(

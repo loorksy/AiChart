@@ -15,6 +15,7 @@ import {
   type BinanceEnv,
 } from "./binance";
 import { dispatchAlert } from "./alerts";
+import { mt5Close } from "./mt5local/client";
 import type { Trade } from "./types";
 
 export interface CloseTradeResult {
@@ -99,11 +100,67 @@ async function closeOneTrade(
   return { ok: true, tradeId, symbol: trade.symbol, pnl };
 }
 
-/** Closes an open spot trade with the opposite market order and records PnL. */
+/** Closes an MT5-bridge position by its ticket and records realized PnL. */
+async function closeMt5LocalTrade(
+  trade: Trade,
+): Promise<CloseTradeResult> {
+  const ticket = Number(trade.order_id);
+  if (!Number.isFinite(ticket) || ticket <= 0) {
+    return {
+      ok: false,
+      tradeId: trade.id,
+      symbol: trade.symbol,
+      pnl: 0,
+      reason: "لا توجد تذكرة MT5 مسجلة لهذه الصفقة.",
+    };
+  }
+  const result = await mt5Close({ ticket });
+  if (!result.ok || result.closed.length === 0) {
+    return {
+      ok: false,
+      tradeId: trade.id,
+      symbol: trade.symbol,
+      pnl: 0,
+      reason: result.errors.join("، ") || "رفض MT5 إغلاق الصفقة.",
+    };
+  }
+  const pnl = result.closed.reduce((sum, c) => sum + (Number(c.profit) || 0), 0);
+  await updateTradeClosed(trade.id, pnl);
+  return { ok: true, tradeId: trade.id, symbol: trade.symbol, pnl };
+}
+
+/** Closes an open trade with the opposite market order and records PnL. */
 export async function closeOpenTrade(
   userId: number,
   tradeId: number,
 ): Promise<CloseTradeResult> {
+  const trade = await getTrade(userId, tradeId);
+  if (!trade) {
+    return { ok: false, tradeId, symbol: "", pnl: 0, reason: "الصفقة غير موجودة." };
+  }
+
+  if (trade.broker === "mt5_local") {
+    try {
+      const result = await closeMt5LocalTrade(trade);
+      if (result.ok) {
+        const sign = result.pnl >= 0 ? "+" : "";
+        await dispatchAlert(userId, {
+          type: "trade_closed",
+          title: `إغلاق صفقة ${result.symbol}`,
+          text:
+            `✅ <b>إغلاق صفقة · Position closed</b>\n` +
+            `${result.symbol}\n` +
+            `PnL: <b>${sign}${result.pnl.toFixed(2)}</b>`,
+          symbol: result.symbol,
+        });
+      }
+      return result;
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : "فشل إغلاق الصفقة.";
+      return { ok: false, tradeId, symbol: trade.symbol, pnl: 0, reason };
+    }
+  }
+
   const creds = await getBinanceCredentials(userId);
   if (!creds) {
     return {
@@ -143,12 +200,12 @@ export async function closeAllOpenTrades(userId: number): Promise<{
   totalPnl: number;
   errors: string[];
 }> {
+  const open = await listOpenTrades(userId);
   const creds = await getBinanceCredentials(userId);
-  if (!creds) {
+  if (!creds && open.some((t) => t.broker !== "mt5_local")) {
     return { closed: 0, failed: 0, totalPnl: 0, errors: ["لا يوجد حساب Binance."] };
   }
 
-  const open = await listOpenTrades(userId);
   let closed = 0;
   let failed = 0;
   let totalPnl = 0;
@@ -156,7 +213,10 @@ export async function closeAllOpenTrades(userId: number): Promise<{
 
   for (const t of open) {
     try {
-      const result = await closeOneTrade(userId, t.id, creds);
+      const result =
+        t.broker === "mt5_local"
+          ? await closeMt5LocalTrade(t)
+          : await closeOneTrade(userId, t.id, creds!);
       if (result.ok) {
         closed++;
         totalPnl += result.pnl;

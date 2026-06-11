@@ -2,13 +2,59 @@ import { NextResponse } from "next/server";
 import { requireUser, handleError } from "@/lib/api";
 import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { getMetaApi, getRpcConnection } from "@/lib/metaapi/client";
+import { mt5Status } from "@/lib/mt5local/client";
 import { getMtAccount, getMtAccountMeta, updateMtAccountStatus } from "@/lib/store";
 
-/** Live MetaTrader connection status via MetaApi. */
+/** Live MetaTrader connection status (MetaApi cloud or self-hosted bridge). */
 export async function GET() {
   try {
     const user = await requireUser();
-    if (getForexBackend() !== "metaapi") {
+    const backend = getForexBackend();
+
+    if (backend === "mt5local") {
+      const meta = await getMtAccountMeta(user.id);
+      if (!meta) {
+        return NextResponse.json({
+          backend: "mt5local",
+          connected: false,
+          online: false,
+        });
+      }
+      try {
+        const status = await mt5Status();
+        const online = Boolean(status.connected);
+        await updateMtAccountStatus(user.id, {
+          state: online ? "DEPLOYED" : "UNDEPLOYED",
+          connectionStatus: online ? "CONNECTED" : "DISCONNECTED",
+          ...(status.account
+            ? {
+                balance: status.account.balance,
+                equity: status.account.equity,
+                currency: status.account.currency,
+              }
+            : {}),
+        });
+        return NextResponse.json({
+          backend: "mt5local",
+          connected: true,
+          online,
+          state: online ? "DEPLOYED" : "UNDEPLOYED",
+          connectionStatus: online ? "CONNECTED" : "DISCONNECTED",
+          balance: status.account?.balance ?? meta.balance,
+          equity: status.account?.equity ?? meta.equity,
+          currency: status.account?.currency ?? meta.currency,
+        });
+      } catch (e) {
+        return NextResponse.json({
+          backend: "mt5local",
+          connected: true,
+          online: false,
+          error: e instanceof Error ? e.message : "تعذّر الوصول لحاوية MT5.",
+        });
+      }
+    }
+
+    if (backend !== "metaapi") {
       return NextResponse.json({ backend: "ea", connected: false });
     }
 

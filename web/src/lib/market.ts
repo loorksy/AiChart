@@ -1,6 +1,8 @@
 import { getKlines, get24hStats, getPrice, type BinanceEnv } from "./binance";
 import { rsi, sma, ema, macd } from "./indicators";
 import { getEaCandles } from "./eaStore";
+import { getForexBackend } from "./brokers/forexBackend";
+import { mt5Rates } from "./mt5local/client";
 import { normalizeInterval } from "./intervals";
 
 export interface MarketSnapshot {
@@ -78,7 +80,7 @@ function snapshotFromCandles(
   };
 }
 
-/** Forex snapshot built from EA-streamed candles (no Binance calls). */
+/** Forex snapshot from the MT5 bridge or EA-streamed candles (no Binance). */
 export async function buildForexSnapshot(
   userId: number,
   symbol: string,
@@ -86,20 +88,36 @@ export async function buildForexSnapshot(
 ): Promise<MarketSnapshot> {
   const sym = symbol.toUpperCase().trim();
   const tf = normalizeInterval(interval);
-  const cached = await getEaCandles(userId, sym, tf);
   let candles: OhlcBar[] = [];
-  if (cached) {
+
+  if (getForexBackend() === "mt5local") {
     try {
-      candles = (JSON.parse(cached.candles_json) as OhlcBar[]).map((b) => ({
-        open: Number(b.open),
-        high: Number(b.high),
-        low: Number(b.low),
-        close: Number(b.close),
+      const bars = await mt5Rates(sym, tf, 120);
+      candles = bars.map((b) => ({
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
       }));
     } catch {
       candles = [];
     }
+  } else {
+    const cached = await getEaCandles(userId, sym, tf);
+    if (cached) {
+      try {
+        candles = (JSON.parse(cached.candles_json) as OhlcBar[]).map((b) => ({
+          open: Number(b.open),
+          high: Number(b.high),
+          low: Number(b.low),
+          close: Number(b.close),
+        }));
+      } catch {
+        candles = [];
+      }
+    }
   }
+
   const last = candles[candles.length - 1]?.close ?? 0;
   const snap = snapshotFromCandles(sym, tf, candles, last);
   if (candles.length === 0) {

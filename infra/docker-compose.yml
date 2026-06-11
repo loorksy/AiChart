@@ -7,8 +7,24 @@ services:
       - "3000:3000"
     env_file:
       - ../web/.env
+    environment:
+      - MT5_BRIDGE_URL=http://mt5:18812
+      - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
     volumes:
       - aichart-data:/app/data
+    restart: unless-stopped
+
+  # Self-hosted MetaTrader 5 (Wine) + REST shim — free MetaApi replacement.
+  # Needs ~1.5-2GB RAM. Start standalone with: docker compose up -d mt5
+  mt5:
+    build:
+      context: ./mt5
+    ports:
+      - "127.0.0.1:18812:18812" # localhost only — never expose publicly
+    environment:
+      - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
+    volumes:
+      - mt5-data:/data # persisted credentials for auto-reconnect
     restart: unless-stopped
 
   # OpenClaw gateway — the live trading agent (Telegram + heartbeat + memory).
@@ -33,3 +49,4 @@ services:
 volumes:
   aichart-data:
   openclaw-state: # agent memory/sessions survive restarts
+  mt5-data: # MT5 login credentials for auto-reconnect
