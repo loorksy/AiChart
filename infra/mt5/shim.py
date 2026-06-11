@@ -45,16 +45,18 @@ TERMINAL_PATH = os.environ.get(
 )
 CREDS_FILE = os.environ.get("MT5_CREDS_FILE", r"Z:\data\credentials.json")
 
-TIMEFRAMES = {
-    "1m": mt5.TIMEFRAME_M1,
-    "5m": mt5.TIMEFRAME_M5,
-    "15m": mt5.TIMEFRAME_M15,
-    "30m": mt5.TIMEFRAME_M30,
-    "1h": mt5.TIMEFRAME_H1,
-    "4h": mt5.TIMEFRAME_H4,
-    "1d": mt5.TIMEFRAME_D1,
-    "1w": mt5.TIMEFRAME_W1,
-}
+def _timeframe_map():
+    m = _load_mt5()
+    return {
+        "1m": m.TIMEFRAME_M1,
+        "5m": m.TIMEFRAME_M5,
+        "15m": m.TIMEFRAME_M15,
+        "30m": m.TIMEFRAME_M30,
+        "1h": m.TIMEFRAME_H1,
+        "4h": m.TIMEFRAME_H4,
+        "1d": m.TIMEFRAME_D1,
+        "1w": m.TIMEFRAME_W1,
+    }
 
 _lock = threading.Lock()
 _state = {"initialized": False, "login": None, "server": None}
@@ -151,7 +153,9 @@ def spec_dict(symbol):
     }
 
 
-FILLINGS = [mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN]
+def _fillings():
+    m = _load_mt5()
+    return [m.ORDER_FILLING_IOC, m.ORDER_FILLING_FOK, m.ORDER_FILLING_RETURN]
 
 
 def place_order(body):
@@ -183,7 +187,7 @@ def place_order(body):
         request["tp"] = float(body["tp"])
 
     last = None
-    for filling in FILLINGS:
+    for filling in _fillings():
         request["type_filling"] = filling
         result = mt5.order_send(request)
         if result is None:
@@ -235,7 +239,7 @@ def close_positions(body):
             "type_time": mt5.ORDER_TIME_GTC,
         }
         done = False
-        for filling in FILLINGS:
+        for filling in _fillings():
             request["type_filling"] = filling
             result = mt5.order_send(request)
             if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
@@ -346,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
 
             if url.path == "/rates":
                 symbol = qs.get("symbol", "").upper()
-                tf = TIMEFRAMES.get(qs.get("timeframe", "1h"))
+                tf = _timeframe_map().get(qs.get("timeframe", "1h"))
                 count = min(int(qs.get("count", "120")), 1000)
                 if tf is None:
                     return self._send(400, {"error": "bad timeframe"})
@@ -420,7 +424,6 @@ def auto_reconnect():
 
 
 if __name__ == "__main__":
-    auto_reconnect()
     server = HTTPServer(("0.0.0.0", PORT), Handler)
     print(f"[shim] listening on :{PORT}", flush=True)
     server.serve_forever()

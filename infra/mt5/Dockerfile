@@ -1,20 +1,25 @@
-# MT5 bridge — Ubuntu Wine 6 + embed Python 3.11 (shim lazy-imports MetaTrader5).
+# MT5 bridge — WineHQ staging 9+ (UCRT/fetestexcept) + embed Python 3.11.
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     WINEPREFIX=/opt/mt5 \
     WINEARCH=win64 \
     WINEDEBUG=-all \
-    DISPLAY=:99
+    DISPLAY=:99 \
+    PATH="/opt/wine-staging/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-      wine wine32 wine64 unzip \
-      xvfb xauth wget ca-certificates cabextract winbind && \
+      gnupg unzip xvfb xauth wget ca-certificates cabextract winbind && \
+    mkdir -pm755 /etc/apt/keyrings && \
+    wget -qO /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key && \
+    wget -qNP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/jammy/winehq-jammy.sources && \
+    apt-get update && \
+    apt-get install -y --install-recommends winehq-staging && \
     rm -rf /var/lib/apt/lists/*
 
-RUN /bin/bash -c 'Xvfb :99 -screen 0 1280x800x16 & sleep 5; wineboot --init; wineserver -w'
+RUN xvfb-run -a wineboot --init && wineserver -w
 
 RUN wget -q https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86_64.msi -O /tmp/gecko.msi && \
     xvfb-run -a wine msiexec /i /tmp/gecko.msi /qn && rm /tmp/gecko.msi && wineserver -w
@@ -33,6 +38,9 @@ RUN mkdir -p "$WINEPREFIX/drive_c/Python311" && \
 
 RUN xvfb-run -a wine C:\\Python311\\python.exe C:\\Python311\\get-pip.py && wineserver -w
 RUN xvfb-run -a wine C:\\Python311\\python.exe -m pip install --no-warn-script-location "numpy<2" MetaTrader5 && wineserver -w
+
+# Fail the image build if numpy/MetaTrader5 cannot import under Wine.
+RUN xvfb-run -a wine C:\\Python311\\python.exe -c "import numpy; import MetaTrader5; print('mt5-import-ok')" && wineserver -w
 
 RUN wget -q "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe" -O /tmp/mt5setup.exe && \
     (xvfb-run -a wine /tmp/mt5setup.exe /auto || true) && wineserver -w && rm /tmp/mt5setup.exe && \
