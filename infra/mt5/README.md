@@ -1,4 +1,9 @@
-# جسر MT5 الذاتي — بديل MetaApi المجاني
+# جسر MT5 الذاتي — بديل MetaApi (تجريبي على Linux)
+
+> **تنبيه (2026):** على **Linux + Wine** يفشل `mt5.initialize()` بـ `IPC timeout (-10005)`.
+> **الحل الموصى به:** `FOREX_BACKEND=ea` + MetaTrader على **VPS Windows** — راجع
+> [`docs/EA_WINDOWS_VPS.md`](../../docs/EA_WINDOWS_VPS.md). استخدم هذا الجسر فقط على
+> **Windows VM** حيث يعمل IPC أصلياً.
 
 MetaTrader 5 حقيقي يعمل داخل حاوية Docker على سيرفرك (تحت Wine) مع واجهة
 REST صغيرة. لا خدمات خارجية، لا اشتراكات — الاتصال الخارجي الوحيد هو اتصال
@@ -58,3 +63,4 @@ pm2 restart aichart-web
 | فشل تسجيل الدخول | تحقق من اسم السيرفر حرفياً كما في تطبيق MT5 (مثل `Exness-MT5Real8`) |
 | `symbol not found` | بعض الوسطاء يضيفون لاحقة للرموز (`EURUSDm`) — استخدم الرمز كما يظهر في Market Watch |
 | الحاوية تستهلك ذاكرة كبيرة | طبيعي (~1.5GB) — هذا MT5 كامل تحت Wine |
+| `IPC timeout` / `-10005` | Wine على Linux — انتقل إلى جسر EA (Windows) |

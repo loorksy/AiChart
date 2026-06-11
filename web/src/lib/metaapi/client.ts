@@ -205,6 +205,9 @@ export function mapMetaApiError(err: unknown): string {
   if (/DRAFT/i.test(`${msg} ${details}`)) {
     return "الحساب بحاجة إعداد إضافي. تواصل مع الدعم.";
   }
+  if (/IPC timeout|-10005/i.test(`${msg} ${details}`)) {
+    return "تعذّر الاتصال بمنصّة MetaTrader على الخادم (IPC). جرّب ربط EA من الإعدادات أو تواصل مع الدعم.";
+  }
   if (/timeout|Timeout/i.test(msg)) {
     return "انتهت مهلة الاتصال بالوسيط. جرّب لاحقاً أو تحقق من السيرفر.";
   }

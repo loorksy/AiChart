@@ -31,8 +31,9 @@ GET /api/agent/risk/status
 GET /api/agent/market/snapshot?symbol=BTCUSDT&interval=1h   # RSI/MACD/SMA/الاتجاه
 GET /api/agent/market/price?symbol=BTCUSDT                  # سعر لحظي
 GET /api/agent/market/context?symbol=BTCUSDT&interval=4h    # أخبار + خوف/طمع
-POST /api/agent/market/scan          # مسح رخيص لقائمة المراقبة (كريبتو)
-# body اختياري: {"symbols":["BTCUSDT","ETHUSDT"],"interval":"1h"}
+POST /api/agent/market/scan          # مسح رخيص لقائمة المراقبة
+# body اختياري: {"market":"crypto"|"forex","symbols":["EURUSD"],"interval":"1h"}
+# إن حُذف market يُستخدم active_market من الإعدادات
 ```
 
 `scan` يرجع مرشحين فقط عند تطابق عدة إشارات فنية — حلّل بعمق فقط عند وجود مرشح.

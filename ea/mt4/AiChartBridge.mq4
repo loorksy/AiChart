@@ -14,7 +14,7 @@ input string EaToken          = "";                            // EA token from 
 input string StreamSymbol     = "EURUSD";                      // Symbol to stream candles for
 input int    StreamTF         = PERIOD_H1;                     // Candle timeframe (minutes enum)
 input int    CandleCount      = 200;                           // Candles per heartbeat
-input int    HeartbeatSeconds = 2;                             // Heartbeat interval
+input int    HeartbeatSeconds = 1;                             // Heartbeat interval
 input int    MaxSymbols       = 40;                            // Max symbols to report
 input int    MagicNumber      = 880011;                        // Order magic
 

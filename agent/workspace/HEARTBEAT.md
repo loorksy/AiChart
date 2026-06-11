@@ -6,7 +6,7 @@ tasks:
 
 - name: market-scan
   interval: 30m
-  prompt: "مسح الفرص (كريبتو فقط): استدعِ POST /api/agent/market/scan. لا مرشحين → HEARTBEAT_OK. عند وجود مرشح: حلّله بعمق (snapshot + context)، وراجع ذاكرتك حتى لا تكرر توصية خلال 4 ساعات. رأي واضح بثقة ≥75%؟ سجّل توصية مع chart_drawings وأرسل الشارت — ثم تصرف حسب الوضع: auto نفّذ وأبلغ، approval اطلب الموافقة، direct أرسل تنبيهاً فقط."
+  prompt: "مسح الفرص: اقرأ GET /api/agent/risk/status لمعرفة active_market ثم استدعِ POST /api/agent/market/scan مع body {\"market\":\"<active_market>\"} (crypto أو forex). لا مرشحين → HEARTBEAT_OK. عند وجود مرشح: حلّله بعمق (snapshot + context)، وراجع ذاكرتك حتى لا تكرر توصية خلال 4 ساعات. رأي واضح بثقة ≥75%؟ سجّل توصية مع chart_drawings وأرسل الشارت — ثم تصرف حسب الوضع: auto نفّذ وأبلغ، approval اطلب الموافقة، direct أرسل تنبيهاً فقط. للفوركس: تأكد أن EA online من portfolio قبل أي تنفيذ."
 
 - name: daily-summary
   interval: 24h

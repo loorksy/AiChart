@@ -11,5 +11,23 @@ if [ -n "${MT5_BRIDGE_TOKEN:-}" ]; then
   printf '%s' "$MT5_BRIDGE_TOKEN" > /data/bridge_token
 fi
 
+MT5_DIR='C:\Program Files\MetaTrader 5'
+CONFIG_WIN="${MT5_DIR}\\Config"
+CONFIG_LINUX="/opt/mt5/drive_c/Program Files/MetaTrader 5/Config"
+mkdir -p "$CONFIG_LINUX" /data/mt5-config
+if [ -f /data/mt5-config/servers.dat ]; then
+  cp /data/mt5-config/servers.dat "$CONFIG_LINUX/servers.dat"
+fi
+
+echo "[mt5-bridge] starting MT5 terminal (portable)..."
+wine "${MT5_DIR}\\terminal64.exe" /portable &
+for _ in $(seq 1 30); do
+  if pgrep -f terminal64.exe >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+sleep 10
+
 echo "[mt5-bridge] starting REST shim on :18812"
 exec wine C:\\Python39\\python.exe Z:\\opt\\shim.py

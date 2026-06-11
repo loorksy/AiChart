@@ -16,7 +16,7 @@ input string  EaToken          = "";                            // EA token from
 input string  StreamSymbol     = "EURUSD";                      // Symbol to stream candles for
 input ENUM_TIMEFRAMES StreamTF = PERIOD_H1;                     // Candle timeframe
 input int     CandleCount      = 200;                           // Candles per heartbeat
-input int     HeartbeatSeconds = 2;                             // Heartbeat interval
+input int     HeartbeatSeconds = 1;                             // Heartbeat interval
 input int     MaxSymbols       = 40;                            // Max symbols in Market Watch to report
 
 CTrade  trade;

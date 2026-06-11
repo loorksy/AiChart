@@ -102,15 +102,18 @@ def do_connect(login, password, server):
     with _lock:
         mt5.shutdown()
         ok = mt5.initialize(
-            TERMINAL_PATH,
+            path=TERMINAL_PATH,
             login=int(login),
             password=str(password),
             server=str(server),
-            timeout=90_000,
+            timeout=120_000,
+            portable=True,
         )
         if not ok:
             _state["initialized"] = False
-            return False, _last_error()
+            err = _last_error()
+            print(f"[shim] connect failed: {err}", flush=True)
+            return False, err
         info = mt5.account_info()
         if info is None:
             _state["initialized"] = False
