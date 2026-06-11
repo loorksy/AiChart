@@ -7,5 +7,9 @@ rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 Xvfb :99 -screen 0 1280x800x16 &
 sleep 2
 
+if [ -n "${MT5_BRIDGE_TOKEN:-}" ]; then
+  printf '%s' "$MT5_BRIDGE_TOKEN" > /data/bridge_token
+fi
+
 echo "[mt5-bridge] starting REST shim on :18812"
 exec wine C:\\Python39\\python.exe Z:\\opt\\shim.py

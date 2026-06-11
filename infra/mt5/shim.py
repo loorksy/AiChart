@@ -38,7 +38,18 @@ class _Mt5Lazy:
 mt5 = _Mt5Lazy()
 
 PORT = int(os.environ.get("MT5_BRIDGE_PORT", "18812"))
-TOKEN = os.environ.get("MT5_BRIDGE_TOKEN", "")
+TOKEN_FILE = os.environ.get("MT5_TOKEN_FILE", r"Z:\data\bridge_token")
+
+
+def _bridge_token():
+    tok = os.environ.get("MT5_BRIDGE_TOKEN", "").strip()
+    if tok:
+        return tok
+    try:
+        with open(TOKEN_FILE, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
 TERMINAL_PATH = os.environ.get(
     "MT5_TERMINAL_PATH",
     r"C:\Program Files\MetaTrader 5\terminal64.exe",
@@ -296,9 +307,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _authed(self):
-        if not TOKEN:
+        tok = _bridge_token()
+        if not tok:
             return True
-        return self.headers.get("X-Bridge-Token", "") == TOKEN
+        return self.headers.get("X-Bridge-Token", "").strip() == tok
 
     def _body(self):
         length = int(self.headers.get("Content-Length") or 0)
