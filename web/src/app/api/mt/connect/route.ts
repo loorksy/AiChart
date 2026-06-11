@@ -13,6 +13,8 @@ import {
   getMtAccount,
   saveMtAccount,
 } from "@/lib/store";
+import { getForexBackend } from "@/lib/brokers/forexBackend";
+import { isMt5LocalConfigured, mt5Connect } from "@/lib/mt5local/client";
 
 const schema = z.object({
   platform: z.enum(["mt4", "mt5"]),
@@ -21,10 +23,62 @@ const schema = z.object({
   password: z.string().min(1, "كلمة المرور مطلوبة."),
 });
 
-/** Connect user's MT4/MT5 account via MetaApi (login + password + server). */
+/**
+ * Connect user's MT account (login + password + server) — via MetaApi cloud
+ * or the self-hosted MT5 bridge container, per the configured backend.
+ */
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
+    const backend = getForexBackend();
+
+    if (backend === "mt5local") {
+      if (!isMt5LocalConfigured()) {
+        return NextResponse.json(
+          { error: "حاوية MT5 غير مفعّلة (MT5_BRIDGE_URL مفقود)." },
+          { status: 503 },
+        );
+      }
+      const body = schema.parse(await req.json());
+      const login = body.login.replace(/\D/g, "");
+      if (!login) {
+        return NextResponse.json(
+          { error: "رقم الحساب يجب أن يحتوي على أرقام فقط." },
+          { status: 400 },
+        );
+      }
+      // The bridge runs MT5 itself — login happens right now, synchronously.
+      const account = await mt5Connect({
+        login,
+        password: body.password,
+        server: body.server.trim(),
+      });
+      await saveMtAccount(user.id, {
+        platform: "mt5",
+        server: body.server.trim(),
+        login,
+        password: body.password,
+        metaapiAccountId: "mt5local",
+        state: "DEPLOYED",
+        connectionStatus: "CONNECTED",
+        balance: account.balance,
+        equity: account.equity,
+        currency: account.currency,
+      });
+      return NextResponse.json({
+        ok: true,
+        platform: "mt5",
+        login,
+        server: body.server.trim(),
+        state: "DEPLOYED",
+        connectionStatus: "CONNECTED",
+        online: true,
+        balance: account.balance,
+        equity: account.equity,
+        currency: account.currency,
+      });
+    }
+
     if (!isMetaApiConfigured()) {
       return NextResponse.json(
         { error: "ربط الفوركس غير متاح حالياً. تواصل مع الإدارة." },
@@ -42,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     const existing = await getMtAccount(user.id);
-    if (existing?.metaapi_account_id) {
+    if (existing?.metaapi_account_id && existing.metaapi_account_id !== "mt5local") {
       clearRpcCache(user.id);
       try {
         await removeMetaApiAccount(existing.metaapi_account_id);
@@ -104,7 +158,7 @@ export async function DELETE() {
     }
 
     clearRpcCache(user.id);
-    if (existing.metaapi_account_id) {
+    if (existing.metaapi_account_id && existing.metaapi_account_id !== "mt5local") {
       try {
         await removeMetaApiAccount(existing.metaapi_account_id);
       } catch {

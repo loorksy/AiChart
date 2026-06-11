@@ -210,7 +210,7 @@ export default function SettingsClient({
           {tab === "integrations" && (
             <div className="space-y-4">
               <BinanceCard binance={binance} />
-              {forexBackend === "metaapi" ? (
+              {forexBackend === "metaapi" || forexBackend === "mt5local" ? (
                 <MtConnectCard account={mt} />
               ) : (
                 <EaConnectCard connection={ea} />
