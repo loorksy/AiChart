@@ -126,16 +126,19 @@ pm2 stop aichart-agent && sleep 5 && pm2 start aichart-agent
 }
 ```
 
-**مزامنة النموذج مع لوحة التحكم** — بعد كل تغيير للنموذج من
-لوحة الأدمن → المفاتيح:
+**مزامنة النموذج مع لوحة التحكم** — عند الحفظ من `/admin/keys` تُزامَن
+`ANTHROPIC_MODEL` تلقائياً إلى `openclaw.json` (مع `thinking=off`) إذا
+وُجد `OPENCLAW_CONFIG` و`OPENCLAW_AUTO_RESTART=1` في `web/.env`.
+
+يدوياً (احتياط):
 
 ```bash
 bash agent/scripts/sync-model.sh
 pm2 stop aichart-agent && sleep 5 && pm2 start aichart-agent
 ```
 
-السكربت يقرأ النموذج المختار من `GET /api/agent/model` ويكتب
-`agents.defaults.model.primary` مع `cacheRetention: "long"` عليه.
+السكربت يقرأ النموذج من `GET /api/agent/model` ويكتب
+`agents.defaults.model.primary` مع `cacheRetention: "long"` و`thinking: "off"`.
 (نصيحة تكلفة: Sonnet ≈ خُمس سعر Opus بنفس الجودة العملية لهذا العمل.)
 
 نصائح إضافية:

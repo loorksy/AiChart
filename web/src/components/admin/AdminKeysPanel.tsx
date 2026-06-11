@@ -35,17 +35,38 @@ export function AdminKeysPanel() {
   const [saving, setSaving] = useState(false);
   const [webhookBusy, setWebhookBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [agentModel, setAgentModel] = useState<{
+    platformRef: string;
+    gatewayPrimary: string | null;
+    inSync: boolean;
+    gatewayConfigReadable: boolean;
+  } | null>(null);
+
+  const loadAgentModelStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/agent-model-status", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (res.ok) setAgentModel(data);
+    } catch {
+      setAgentModel(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/config");
-      const data = await res.json();
-      if (res.ok) setFields(data.fields);
+      const [configRes] = await Promise.all([
+        fetch("/api/admin/config"),
+        loadAgentModelStatus(),
+      ]);
+      const data = await configRes.json();
+      if (configRes.ok) setFields(data.fields);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadAgentModelStatus]);
 
   useEffect(() => {
     void load();
@@ -79,7 +100,27 @@ export function AdminKeysPanel() {
       }
       setFields(data.fields);
       setDraft({});
-      setMsg({ type: "ok", text: "تم حفظ المفاتيح في قاعدة البيانات." });
+      await loadAgentModelStatus();
+      const sync = data.agentModelSync as
+        | { ok: boolean; ref?: string; restarted?: boolean; error?: string }
+        | undefined;
+      if (sync?.ok) {
+        setMsg({
+          type: "ok",
+          text: sync.restarted
+            ? `تم الحفظ ومزامنة وكيل Telegram على ${sync.ref} (أُعيد تشغيل Gateway).`
+            : `تم الحفظ ومزامنة openclaw.json على ${sync.ref}.`,
+        });
+      } else if (sync && !sync.ok) {
+        setMsg({
+          type: "err",
+          text:
+            sync.error ??
+            "حُفظت الإعدادات لكن فشلت مزامنة وكيل OpenClaw — شغّل sync-model.sh على السيرفر.",
+        });
+      } else {
+        setMsg({ type: "ok", text: "تم حفظ المفاتيح في قاعدة البيانات." });
+      }
     } finally {
       setSaving(false);
     }
@@ -179,6 +220,39 @@ export function AdminKeysPanel() {
                     draftModel={draft.ANTHROPIC_MODEL ?? ""}
                     onSelectModel={(id) => setDraftValue("ANTHROPIC_MODEL", id)}
                   />
+                  {agentModel && (
+                    <p
+                      className={cn(
+                        "rounded-lg px-3 py-2 text-xs",
+                        agentModel.inSync
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                          : "bg-amber-500/10 text-amber-800 dark:text-amber-200",
+                      )}
+                    >
+                      {agentModel.inSync ? (
+                        <>
+                          وكيل Telegram متزامن:{" "}
+                          <code dir="ltr">{agentModel.gatewayPrimary}</code>
+                        </>
+                      ) : agentModel.gatewayConfigReadable ? (
+                        <>
+                          وكيل Telegram غير متزامن — المنصة:{" "}
+                          <code dir="ltr">{agentModel.platformRef}</code>
+                          {" · "}
+                          Gateway:{" "}
+                          <code dir="ltr">
+                            {agentModel.gatewayPrimary ?? "غير مُعدّ"}
+                          </code>
+                          . احفظ النموذج لمزامنة تلقائية.
+                        </>
+                      ) : (
+                        <>
+                          لم يُعثر على openclaw.json على السيرفر — المزامنة
+                          التلقائية تعمل على VPS فقط.
+                        </>
+                      )}
+                    </p>
+                  )}
                 </>
               )}
               {group.id === "voice" && orKeyField && (

@@ -64,7 +64,19 @@ function deepMerge(t, s) {
   }
   return t;
 }
+// Preserve exec no-approval if already disabled (Telegram timeout workaround).
+const execAsk = cfg.tools?.exec?.ask;
+const execSecurity = cfg.tools?.exec?.security;
 deepMerge(cfg, patch);
+if (execAsk === "off" || execSecurity === "full") {
+  cfg.tools ??= {};
+  cfg.tools.exec = {
+    ...(cfg.tools.exec ?? {}),
+    ask: execAsk ?? cfg.tools.exec?.ask,
+    security: execSecurity ?? cfg.tools.exec?.security,
+  };
+  console.log("preserved tools.exec ask/security (no-approval mode)");
+}
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
 console.log("merged AiChart openclaw defaults");
 NODE

@@ -8,6 +8,7 @@ import {
 } from "@/lib/platformConfig";
 import { logAudit } from "@/lib/store";
 import { isTelegramConfigured, deleteWebhook } from "@/lib/telegram";
+import { syncOpenClawModelFromPlatform } from "@/lib/openclawModelSync";
 
 const patchSchema = z.record(z.string(), z.union([z.string(), z.boolean()]).optional());
 
@@ -34,7 +35,21 @@ export async function PUT(req: NextRequest) {
     }
     await savePlatformConfig(patch);
     await logAudit(admin.id, "platform_config", Object.keys(patch).join(", "));
-    return NextResponse.json({ ok: true, fields: await listPlatformConfigStatus() });
+
+    let agentModelSync: Awaited<
+      ReturnType<typeof syncOpenClawModelFromPlatform>
+    > | null = null;
+    if (patch.ANTHROPIC_MODEL !== undefined) {
+      agentModelSync = await syncOpenClawModelFromPlatform(
+        String(patch.ANTHROPIC_MODEL),
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      fields: await listPlatformConfigStatus(),
+      agentModelSync,
+    });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: "بيانات غير صالحة." }, { status: 400 });
