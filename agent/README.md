@@ -39,6 +39,17 @@ bash agent/scripts/sync-workspace.sh
 openclaw gateway          # أو عبر pm2/docker — راجع infra/
 ```
 
+## Control Web UI من المتصفح
+
+بعد `bash infra/vps-openclaw-control-ui.sh` وإعداد nginx (`infra/nginx/aichart-openclaw.conf`):
+
+- العام: `https://aichart.lork.cloud/openclaw/`
+- من AiChart: **الوكيل** → **إعدادات OpenClaw** (`/agent/console`) — أدمن فقط
+
+كل إعدادات OpenClaw (Config، قنوات، tools، موافقات) من اللوحة — ليس من `/admin/keys`.
+
+التفاصيل: [`docs/OPENCLAW_UI_INTEGRATION.md`](../docs/OPENCLAW_UI_INTEGRATION.md).
+
 ## الرسائل الصوتية (تيليجرام) — عبر OpenRouter
 
 Claude لا يفرّغ الصوت — بدون مزوّد تفريغ تصل الرسالة الصوتية للوكيل فارغة.

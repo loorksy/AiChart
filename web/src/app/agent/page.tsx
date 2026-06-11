@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   BarChart3,
   Power,
+  Settings2,
   SlidersHorizontal,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
@@ -54,6 +55,25 @@ export default async function AgentPage() {
         maxWidth="6xl"
       >
         <AgentStatusBar />
+
+        {user.role === "admin" && (
+          <SurfaceCard className="border-border/80">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-semibold">
+                  <Settings2 className="h-4 w-4 text-muted-foreground" />
+                  إعدادات OpenClaw
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Control Web UI — Config، قنوات، tools، موافقات exec.
+                </p>
+              </div>
+              <Link href="/agent/console" className="btn btn-primary shrink-0">
+                فتح اللوحة
+              </Link>
+            </div>
+          </SurfaceCard>
+        )}
 
         {!isAgentBridgeConfigured() && (
           <SurfaceCard className="border-accent-gold/40 bg-accent-gold/5 text-sm">

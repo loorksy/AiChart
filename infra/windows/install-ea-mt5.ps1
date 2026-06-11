@@ -53,5 +53,5 @@ Write-Host "  4. Enable AutoTrading (green button)"
 Write-Host "  5. Verify AiChart Settings shows EA online"
 if ($EaToken) {
     Write-Host ""
-    Write-Host "EaToken provided — set it in EA inputs after attach."
+    Write-Host "EaToken provided - set it in EA inputs after attach."
 }
