@@ -1,7 +1,4 @@
-# Self-hosted MetaTrader 5 bridge — MT5 terminal under Wine + a tiny REST
-# shim (Windows Python inside Wine, required by the MetaTrader5 package).
-# No third-party services: official Wine, official mql5.com installer,
-# official python.org installer. Image ~3GB, build ~10 minutes.
+# MT5 bridge — Ubuntu Wine 6 + embed Python 3.11 (shim lazy-imports MetaTrader5).
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -13,34 +10,41 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-      wine wine32 wine64 xvfb xauth wget ca-certificates cabextract winbind && \
+      wine wine32 wine64 unzip \
+      xvfb xauth wget ca-certificates cabextract winbind && \
     rm -rf /var/lib/apt/lists/*
 
-# Windows Python (the MetaTrader5 package only runs on Windows Python).
+RUN /bin/bash -c 'Xvfb :99 -screen 0 1280x800x16 & sleep 5; wineboot --init; wineserver -w'
+
+RUN wget -q https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-x86_64.msi -O /tmp/gecko.msi && \
+    xvfb-run -a wine msiexec /i /tmp/gecko.msi /qn && rm /tmp/gecko.msi && wineserver -w
+RUN wget -q https://dl.winehq.org/wine/wine-mono/7.4.0/wine-mono-7.4.0-x86.msi -O /tmp/mono.msi && \
+    xvfb-run -a wine msiexec /i /tmp/mono.msi /qn && rm /tmp/mono.msi && wineserver -w
+
+RUN wget -q https://aka.ms/vs/17/release/vc_redist.x64.exe -O /tmp/vc64.exe && \
+    xvfb-run -a wine /tmp/vc64.exe /install /quiet /norestart && rm /tmp/vc64.exe && wineserver -w
+
 ARG PYTHON_VERSION=3.11.9
-RUN wget -q "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-amd64.exe" -O /tmp/python.exe && \
-    xvfb-run -a wine /tmp/python.exe /quiet InstallAllUsers=1 PrependPath=1 Include_test=0 && \
-    rm /tmp/python.exe && \
-    wineserver -w
+RUN mkdir -p "$WINEPREFIX/drive_c/Python311" && \
+    wget -q "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip" -O /tmp/py.zip && \
+    unzip -q /tmp/py.zip -d "$WINEPREFIX/drive_c/Python311" && rm /tmp/py.zip && \
+    sed -i 's/^#import site/import site/' "$WINEPREFIX/drive_c/Python311/python311._pth" && \
+    wget -q https://bootstrap.pypa.io/get-pip.py -O "$WINEPREFIX/drive_c/Python311/get-pip.py"
 
-RUN xvfb-run -a wine python -m pip install --no-warn-script-location MetaTrader5 && \
-    wineserver -w
+RUN xvfb-run -a wine C:\\Python311\\python.exe C:\\Python311\\get-pip.py && wineserver -w
+RUN xvfb-run -a wine C:\\Python311\\python.exe -m pip install --no-warn-script-location "numpy<2" MetaTrader5 && wineserver -w
 
-# MetaTrader 5 terminal (official MetaQuotes installer, silent mode).
 RUN wget -q "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe" -O /tmp/mt5setup.exe && \
-    (xvfb-run -a wine /tmp/mt5setup.exe /auto || true) && \
-    wineserver -w && \
-    rm /tmp/mt5setup.exe && \
+    (xvfb-run -a wine /tmp/mt5setup.exe /auto || true) && wineserver -w && rm /tmp/mt5setup.exe && \
     test -f "$WINEPREFIX/drive_c/Program Files/MetaTrader 5/terminal64.exe"
 
 COPY shim.py /opt/shim.py
 COPY entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/entrypoint.sh
+RUN sed -i 's/\r$//' /opt/entrypoint.sh && chmod +x /opt/entrypoint.sh
 
-# REST shim port (keep it on the internal docker network only).
 EXPOSE 18812
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
   CMD wget -q -O- "http://127.0.0.1:18812/health" || exit 1
 
 ENTRYPOINT ["/opt/entrypoint.sh"]

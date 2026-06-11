@@ -24,7 +24,18 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
-import MetaTrader5 as mt5
+def _load_mt5():
+    import MetaTrader5 as m
+
+    return m
+
+
+class _Mt5Lazy:
+    def __getattr__(self, name: str):
+        return getattr(_load_mt5(), name)
+
+
+mt5 = _Mt5Lazy()
 
 PORT = int(os.environ.get("MT5_BRIDGE_PORT", "18812"))
 TOKEN = os.environ.get("MT5_BRIDGE_TOKEN", "")
