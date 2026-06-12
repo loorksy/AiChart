@@ -1007,7 +1007,7 @@ export async function listUsersForTradeMaintenance(
      JOIN trading_settings s ON s.user_id = u.id
      JOIN admin_limits a ON a.user_id = u.id
      JOIN binance_accounts b ON b.user_id = u.id
-     WHERE u.status = 'active' AND u.role = 'user'
+     WHERE u.status = 'active' AND u.role IN ('user', 'admin')
        AND a.can_execute = 1 AND s.kill_switch = 0 AND s.onboarding_done = 1
        AND (s.mode = 'auto' OR s.auto_take_profit_usd > 0)
      ORDER BY u.id ASC
@@ -1077,7 +1077,7 @@ export async function listUsersForMonitor(): Promise<MonitorUser[]> {
     `SELECT u.id
      FROM users u
      JOIN trading_settings s ON s.user_id = u.id
-     WHERE u.status = 'active' AND u.role = 'user'
+     WHERE u.status = 'active' AND u.role IN ('user', 'admin')
        AND s.kill_switch = 0 AND s.onboarding_done = 1`,
   );
 
@@ -1117,6 +1117,33 @@ export async function touchScanCooldown(
      ON CONFLICT(user_id, symbol) DO UPDATE SET scanned_at = datetime('now')`,
     [userId, symbol.toUpperCase()],
   );
+}
+
+const TRADE_FAIL_BRAKE_MINUTES = 15;
+
+/**
+ * True when the agent already failed to open a trade on this symbol recently.
+ * Failed agent_trade_open audit entries embed the denial reason in
+ * parentheses (see /api/agent/trade/open), so we match on that marker.
+ * Stops wasted AI retry loops hammering the same denied symbol.
+ */
+export async function hasRecentTradeOpenFailure(
+  userId: number,
+  symbol: string,
+): Promise<boolean> {
+  const row = await queryOne<{ id: number }>(
+    `SELECT id FROM audit_logs
+     WHERE user_id = ? AND action = 'agent_trade_open'
+       AND detail LIKE ? AND detail LIKE '%(%'
+       AND created_at > datetime('now', ?)
+     ORDER BY id DESC LIMIT 1`,
+    [
+      userId,
+      `${symbol.toUpperCase()} %`,
+      `-${TRADE_FAIL_BRAKE_MINUTES} minutes`,
+    ],
+  );
+  return Boolean(row);
 }
 
 export async function isOnboardingDone(userId: number): Promise<boolean> {

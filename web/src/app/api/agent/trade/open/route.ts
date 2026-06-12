@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { createIntent, getLimits, getSettings, logAudit } from "@/lib/store";
+import {
+  createIntent,
+  getLimits,
+  getSettings,
+  hasRecentTradeOpenFailure,
+  logAudit,
+} from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
 import type { MarketType } from "@/lib/markets/types";
 
@@ -32,6 +38,28 @@ export async function POST(req: NextRequest) {
     requireAgentAuth(req);
     const userId = await resolveAgentUserId();
     const body = schema.parse(await req.json());
+
+    // Failure brake: if a recent attempt on this symbol was denied, reject
+    // immediately with a clear reason instead of re-running the full
+    // intent → Risk Guard → broker pipeline (stops wasted AI retry loops).
+    // Explicit human approval bypasses the brake.
+    if (
+      !body.approved_by_user &&
+      (await hasRecentTradeOpenFailure(userId, body.symbol))
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          status: "denied",
+          reason:
+            "failure_brake: a trade on this symbol was denied within the last 15 minutes — do NOT retry; wait or move on to another opportunity",
+          intentId: null,
+          tradeId: null,
+          trade: null,
+        },
+        { status: 429 },
+      );
+    }
 
     const settings = await getSettings(userId);
     const limits = await getLimits(userId);
