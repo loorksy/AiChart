@@ -39,6 +39,7 @@ export function AdminKeysPanel() {
     platformRef: string;
     gatewayPrimary: string | null;
     inSync: boolean;
+    providerRegistered: boolean;
     gatewayConfigReadable: boolean;
   } | null>(null);
 
@@ -102,14 +103,23 @@ export function AdminKeysPanel() {
       setDraft({});
       await loadAgentModelStatus();
       const sync = data.agentModelSync as
-        | { ok: boolean; ref?: string; restarted?: boolean; error?: string }
+        | {
+            ok: boolean;
+            ref?: string;
+            restarted?: boolean;
+            verified?: boolean;
+            error?: string;
+          }
         | undefined;
       if (sync?.ok) {
         setMsg({
           type: "ok",
-          text: sync.restarted
-            ? `تم الحفظ ومزامنة وكيل Telegram على ${sync.ref} (أُعيد تشغيل Gateway).`
-            : `تم الحفظ ومزامنة openclaw.json على ${sync.ref}.`,
+          text:
+            sync.verified
+              ? `تم الحفظ — وكيل Telegram يعمل الآن على ${sync.ref} (لا حاجة لإعادة تشغيل يدوي).`
+              : sync.restarted
+                ? `تم الحفظ ومزامنة ${sync.ref} (أُعيد تشغيل Gateway).`
+                : `تم الحفظ ومزامنة openclaw.json على ${sync.ref} — أعد تشغيل aichart-agent يدوياً.`,
         });
       } else if (sync && !sync.ok) {
         setMsg({
@@ -243,6 +253,14 @@ export function AdminKeysPanel() {
                           <code dir="ltr">
                             {agentModel.gatewayPrimary ?? "غير مُعدّ"}
                           </code>
+                          {!agentModel.providerRegistered &&
+                            agentModel.gatewayPrimary && (
+                              <>
+                                {" "}
+                                (النموذج غير مُسجّل في providers — احفظ من
+                                اللوحة)
+                              </>
+                            )}
                           . احفظ النموذج لمزامنة تلقائية.
                         </>
                       ) : (

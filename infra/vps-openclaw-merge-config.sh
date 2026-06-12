@@ -6,7 +6,7 @@ ENV_FILE="/root/.openclaw/.env"
 WEB_ENV="/opt/aichart/web/.env"
 
 PORT="$(grep '^PORT=' "$WEB_ENV" 2>/dev/null | cut -d= -f2- || echo 3010)"
-SVC="$(grep '^AICHART_SERVICE_TOKEN=' "$WEB_ENV" 2>/dev/null | cut -d= -f2- || true)"
+SVC="$(grep '^AICHART_SERVICE_TOKEN=' "$WEB_ENV" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
 mkdir -p /root/.openclaw
 touch "$ENV_FILE"
 upsert() {
@@ -81,8 +81,14 @@ fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
 console.log("merged AiChart openclaw defaults");
 NODE
 
-# Pre-allow curl + wget for bridge API and chart images
-node - <<'NODE'
+# Sync host exec approvals with tools.exec (stricter file wins over openclaw.json).
+EXEC_ASK="$(node -e "const c=require(process.argv[1]); console.log(c.tools?.exec?.ask||'');" "$CONFIG")"
+EXEC_SEC="$(node -e "const c=require(process.argv[1]); console.log(c.tools?.exec?.security||'');" "$CONFIG")"
+if [[ "$EXEC_ASK" == "off" || "$EXEC_SEC" == "full" ]]; then
+  openclaw exec-policy preset yolo 2>/dev/null || openclaw exec-policy set --ask off --security full --ask-fallback full
+  echo "exec-policy synced (ask=off)"
+else
+  node - <<'NODE'
 const fs = require("fs");
 const path = "/root/.openclaw/exec-approvals.json";
 let cfg = { version: 1, defaults: { security: "allowlist", ask: "on-miss", askFallback: "deny" }, agents: { main: { allowlist: [] } } };
@@ -99,6 +105,7 @@ for (const p of patterns) {
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
 console.log("curl/wget allow-always in exec-approvals");
 NODE
+fi
 
 pm2 stop aichart-agent && sleep 4 && pm2 start aichart-agent --update-env
 sleep 6

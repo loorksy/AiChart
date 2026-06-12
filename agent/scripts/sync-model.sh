@@ -60,12 +60,26 @@ cfg.agents.defaults.models[ref] = {
   },
 };
 
+// Register in models.providers so OpenClaw accepts new Anthropic model ids.
+const slash = ref.indexOf("/");
+const provider = slash >= 0 ? ref.slice(0, slash) : "anthropic";
+const modelId = slash >= 0 ? ref.slice(slash + 1) : ref;
+cfg.models ??= {};
+cfg.models.providers ??= {};
+const bucket = cfg.models.providers[provider] ?? { models: [] };
+const provModels = [...(bucket.models ?? [])];
+if (!provModels.some((m) => m.id === modelId)) {
+  provModels.push({ id: modelId, name: modelId });
+}
+cfg.models.providers[provider] = { ...bucket, models: provModels };
+
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
-console.log(`primary model → ${ref}`);
+console.log(`primary model → ${ref} (provider registered)`);
 EOF
 
 if [[ "${OPENCLAW_AUTO_RESTART:-}" == "1" ]]; then
-  pm2 start aichart-agent --update-env 2>/dev/null || pm2 restart aichart-agent --update-env 2>/dev/null || true
+  pm2 restart aichart-agent --update-env 2>/dev/null || pm2 start aichart-agent --update-env 2>/dev/null || true
+  sleep 5
   echo "أُعيد تشغيل aichart-agent"
 else
   echo "أعد تشغيل البوابة لتطبيق النموذج:"
