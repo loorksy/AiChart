@@ -97,6 +97,8 @@ export async function POST(req: NextRequest) {
       rationale: body.rationale ?? null,
       status: "approved",
       practice: body.practice,
+      market_type: marketType,
+      leverage,
     });
 
     const result = await executeIntent(userId, intent.id, {
@@ -107,9 +109,9 @@ export async function POST(req: NextRequest) {
     await logAudit(
       userId,
       "agent_trade_open",
-      `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USDT → ${result.status}${
-        result.ok ? "" : ` (${result.reason})`
-      }`,
+      `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USDT${
+        marketType === "futures" ? ` futures ${leverage}x` : ""
+      } → ${result.status}${result.ok ? "" : ` (${result.reason})`}`,
     );
 
     return NextResponse.json({

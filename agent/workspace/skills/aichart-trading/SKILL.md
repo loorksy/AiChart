@@ -182,13 +182,55 @@ POST /api/agent/trade/open
 - `practice: true` — صفقة تجريبية بقواعد مخفّفة على الديمو.
 - `approved_by_user: true` — أمر صريح جداً («نفّذ الآن») أو بعد زر الموافقة.
 
+### فتح صفقة Futures (شورت + رافعة — Binance USDT-M)
+
+```bash
+POST /api/agent/trade/open
+{
+  "symbol": "BTCUSDT", "side": "sell",
+  "notional": 50,
+  "market_type": "futures", "leverage": 3,
+  "stop_loss": 64200, "take_profit": 61500,
+  "confidence": 78, "rationale": "كسر دعم + زخم هابط",
+  "approved_by_user": true
+}
+```
+
+- `side: "sell"` مع `market_type: "futures"` يفتح **شورت** حقيقي.
+- `notional` = **الهامش** الذي تخاطر به؛ حجم المركز = الهامش × الرافعة.
+- الهامش **معزول (ISOLATED)** دائماً — الخسارة القصوى = الهامش فقط.
+- **وقف الخسارة إلزامي** في الفيوتشرز — الطلب بدونه يُرفض من Risk Guard.
+- الرافعة محدودة بسقف الأدمن (`max_leverage_cap`) — الافتراضي من الإعدادات
+  (`default_leverage`) إن لم تحدد.
+- يتطلب تفعيل `futures_enabled` في إعدادات المستخدم — إن رُفض بـ «غير مفعّل»
+  أبلغ المشغّل ليفعّله من الإعدادات.
+
+## 9ب) مراكز Futures المفتوحة وتعديل SL/TP
+
+```bash
+GET /api/agent/futures/positions            # المراكز + سعر التصفية + PnL غير المحقق + الرصيد
+GET /api/agent/futures/positions?symbol=BTCUSDT
+
+POST /api/agent/futures/modify              # تعديل SL/TP على مركز مفتوح (MT5-style)
+{"symbol":"BTCUSDT","stop_loss":64500,"take_profit":61000}
+
+GET /api/agent/futures/orders?symbol=BTCUSDT       # الأوامر المعلقة
+DELETE /api/agent/futures/orders                   # إلغاء أمر/كل الأوامر
+{"symbol":"BTCUSDT","order_id":123}   # أو {"symbol":"BTCUSDT","all":true}
+```
+
+- راقب `liquidationPrice` في positions — إن اقترب السعر منه أبلغ المشغّل فوراً.
+- `modify` يلغي أوامر الحماية القديمة ويعيد وضعها على المستويات الجديدة.
+
 ## 10) إغلاق صفقات
 
 ```bash
 POST /api/agent/trade/close
-{"trade_id": 45}        # صفقة واحدة
+{"trade_id": 45}        # صفقة واحدة (سبوت أو فيوتشرز — تلقائياً)
 {"all": true}           # كل الصفقات (طوارئ)
 ```
+
+إغلاق صفقة فيوتشرز يلغي أوامر SL/TP أولاً ثم يغلق المركز بأمر reduce-only.
 
 ## 11) وضع التداول وKill Switch
 
@@ -211,7 +253,7 @@ GET /api/agent/ea/diagnostics?symbol=EURUSD
 
 ## أخطاء شائعة
 
-- `401` → التوكن خاطئ. `503` → الجسر غير مفعّل على المنصة.
+- `401` → التوكن خاطئ. `503` → الجسر غير مف��ّل على المنصة.
 - `ok:false` مع reason من Risk Guard → قرار نهائي، أبلغ المشغّل.
 - الفوركس: أضف `"market":"forex"` للنداءات — فقط بطلب صريح من المشغّل.
 - **retcode 10016** → SL/TP مرفوض عند الوسيط (ليس «صيغة EA»). جرّب يدوياً بدون stops.

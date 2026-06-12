@@ -14,6 +14,13 @@ import {
   getOcoOrderList,
   type BinanceEnv,
 } from "./binance";
+import {
+  cancelAllFuturesOrders,
+  getFuturesPositions,
+  getFuturesPrice,
+  getFuturesSymbolFilters,
+  placeFuturesMarketOrder,
+} from "./binanceFutures";
 import { dispatchAlert } from "./alerts";
 import { mt5Close } from "./mt5local/client";
 import { runTradePostMortem } from "./tradePostMortem";
@@ -47,6 +54,60 @@ function afterTradeClosed(userId: number, tradeId: number, pnl: number): void {
   });
 }
 
+/** Closes a futures position: cancel SL/TP orders, then reduce-only market. */
+async function closeFuturesTrade(
+  trade: Trade,
+  creds: { apiKey: string; apiSecret: string; env: BinanceEnv },
+): Promise<CloseTradeResult> {
+  const closeSide = trade.side === "buy" ? "SELL" : "BUY";
+  const filters = await getFuturesSymbolFilters(trade.symbol, creds.env);
+  const qty = roundToStep(trade.qty, filters.stepSize);
+  if (qty <= 0) {
+    return {
+      ok: false,
+      tradeId: trade.id,
+      symbol: trade.symbol,
+      pnl: 0,
+      reason: "كمية غير صالحة للإغلاق.",
+    };
+  }
+
+  // Remove protective orders first so closePosition doesn't conflict.
+  await cancelAllFuturesOrders(
+    creds.apiKey,
+    creds.apiSecret,
+    creds.env,
+    trade.symbol,
+  ).catch(() => {});
+
+  const order = await placeFuturesMarketOrder(
+    creds.apiKey,
+    creds.apiSecret,
+    creds.env,
+    trade.symbol,
+    closeSide,
+    qty,
+    true, // reduceOnly
+  );
+
+  const executedQty = Number(order.executedQty) || qty;
+  const exitPrice =
+    Number(order.avgPrice) ||
+    (Number(order.cumQuote) > 0 ? Number(order.cumQuote) / executedQty : 0);
+  // quote_qty stores position notional (entry price × qty).
+  const pnl = computePnl(
+    trade.side,
+    trade.qty,
+    trade.quote_qty,
+    exitPrice,
+    executedQty,
+  );
+
+  await updateTradeClosed(trade.id, pnl);
+  afterTradeClosed(trade.user_id, trade.id, pnl);
+  return { ok: true, tradeId: trade.id, symbol: trade.symbol, pnl };
+}
+
 async function closeOneTrade(
   userId: number,
   tradeId: number,
@@ -64,6 +125,10 @@ async function closeOneTrade(
       pnl: 0,
       reason: "الصفقة مغلقة مسبقاً.",
     };
+  }
+
+  if (trade.market_type === "futures") {
+    return closeFuturesTrade(trade, creds);
   }
 
   const closeSide = trade.side === "buy" ? "SELL" : "BUY";
@@ -310,6 +375,83 @@ export async function scanOpenTradesForTakeProfit(
   }
 
   return { closed, errors };
+}
+
+/**
+ * Syncs DB when futures positions were closed externally (SL/TP triggered,
+ * liquidation, or manual close on Binance). An open DB trade whose exchange
+ * position no longer exists is marked closed with mark-price PnL.
+ */
+export async function syncFuturesClosures(
+  userId: number,
+  maxTrades = 5,
+): Promise<{ synced: number; errors: string[] }> {
+  const creds = await getBinanceCredentials(userId);
+  if (!creds) return { synced: 0, errors: ["لا يوجد حساب Binance."] };
+
+  const open = (await listOpenTrades(userId, maxTrades * 4))
+    .filter((t) => t.market_type === "futures")
+    .slice(0, maxTrades);
+  if (open.length === 0) return { synced: 0, errors: [] };
+
+  let synced = 0;
+  const errors: string[] = [];
+  let positions: Awaited<ReturnType<typeof getFuturesPositions>>;
+  try {
+    positions = await getFuturesPositions(
+      creds.apiKey,
+      creds.apiSecret,
+      creds.env,
+    );
+  } catch (e) {
+    return {
+      synced: 0,
+      errors: [e instanceof Error ? e.message : "فشل جلب مراكز Futures."],
+    };
+  }
+
+  for (const trade of open) {
+    try {
+      const live = positions.find((p) => p.symbol === trade.symbol);
+      if (live) continue; // still open on the exchange
+
+      // Position is gone — closed by SL/TP/liquidation/manual close.
+      const price = await getFuturesPrice(trade.symbol, creds.env);
+      const pnl = computePnl(
+        trade.side,
+        trade.qty,
+        trade.quote_qty,
+        price,
+        trade.qty,
+      );
+      await updateTradeClosed(trade.id, pnl);
+      afterTradeClosed(trade.user_id, trade.id, pnl);
+      // Clean up any orphaned protective orders.
+      await cancelAllFuturesOrders(
+        creds.apiKey,
+        creds.apiSecret,
+        creds.env,
+        trade.symbol,
+      ).catch(() => {});
+      synced++;
+      const sign = pnl >= 0 ? "+" : "";
+      await dispatchAlert(userId, {
+        type: "trade_closed",
+        title: `إغلاق مركز Futures · ${trade.symbol}`,
+        text:
+          `✅ <b>أُغلق مركز Futures</b>\n` +
+          `${trade.symbol} (${trade.side === "buy" ? "Long" : "Short"} ${trade.leverage ?? 1}x)\n` +
+          `PnL تقريبي: <b>${sign}${pnl.toFixed(2)} USDT</b>`,
+        symbol: trade.symbol,
+      });
+    } catch (e) {
+      errors.push(
+        `${trade.symbol}: ${e instanceof Error ? e.message : "خطأ"}`,
+      );
+    }
+  }
+
+  return { synced, errors };
 }
 
 /** Syncs DB when Binance OCO orders have filled. */

@@ -45,6 +45,8 @@ const schema = z
     scan_poll_minutes: z.number().int().min(0).max(120),
     analysis_interval: z.string().min(2).max(4),
     execution_env_preference: z.enum(["demo", "live"]),
+    futures_enabled: z.boolean(),
+    default_leverage: z.number().min(1).max(125),
   })
   .partial();
 
@@ -120,6 +122,17 @@ export async function PUT(req: NextRequest) {
     }
     if (input.analysis_interval) {
       patch.analysis_interval = normalizeInterval(input.analysis_interval);
+    }
+    if (typeof input.futures_enabled === "boolean") {
+      patch.futures_enabled = input.futures_enabled ? 1 : 0;
+    }
+    // Default leverage is hard-capped by the admin's max_leverage_cap.
+    if (typeof input.default_leverage === "number") {
+      const leverageCap =
+        limits.max_leverage_cap && limits.max_leverage_cap > 0
+          ? limits.max_leverage_cap
+          : 10;
+      patch.default_leverage = Math.min(input.default_leverage, leverageCap);
     }
 
     await updateSettings(user.id, patch);
