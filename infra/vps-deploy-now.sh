@@ -24,6 +24,12 @@ npm ci
 log "npm run build"
 npm run build
 
+# Tar/scp from Windows leaves CRLF — breaks bash (set: pipefail: invalid option name).
+find /opt/aichart/infra /opt/aichart/agent/scripts -name '*.sh' -type f 2>/dev/null | while read -r f; do
+  sed -i 's/\r$//' "$f"
+  chmod +x "$f"
+done
+
 if [[ -f /opt/aichart/agent/scripts/sync-workspace.sh ]]; then
   log "sync OpenClaw workspace"
   bash /opt/aichart/agent/scripts/sync-workspace.sh || true
