@@ -106,9 +106,18 @@ for (const full of activeRefs) {
   cfg.agents.defaults.models[full] = entry;
 }
 
-const PROVIDER_BASE_URL = {
-  openai: "https://api.openai.com/v1",
-};
+function applyOpenAiCompatProvider(provider, merged, providerKeys) {
+  const urls = {
+    openai: "https://api.openai.com/v1",
+    google: "https://generativelanguage.googleapis.com/v1beta/openai",
+  };
+  const baseUrl = urls[provider];
+  if (!baseUrl) return;
+  const key = providerKeys[provider];
+  if (key) merged.apiKey = key;
+  merged.baseUrl = baseUrl;
+  merged.api = "openai-completions";
+}
 const idsByProvider = new Map();
 for (const full of activeRefs) {
   const slash = full.indexOf("/");
@@ -127,13 +136,7 @@ for (const [provider, allowedIds] of idsByProvider) {
     return existing?.name ? existing : { id, name: id };
   });
   const merged = { ...bucket, models };
-  if (provider === "openai") {
-    if (providerKeys[provider]) merged.apiKey = providerKeys[provider];
-    merged.baseUrl = PROVIDER_BASE_URL[provider];
-    merged.api = "openai-completions";
-  } else if (provider === "google") {
-    if (providerKeys.google) merged.apiKey = providerKeys.google;
-  }
+  applyOpenAiCompatProvider(provider, merged, providerKeys);
   cfg.models.providers[provider] = merged;
 }
 

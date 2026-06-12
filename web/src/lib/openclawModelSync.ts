@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import fs from "fs";
 import path from "path";
 import { promisify } from "util";
+import { GEMINI_OPENAI_BASE_URL } from "./gemini";
 import {
   getActiveModel,
   getActiveProvider,
@@ -32,8 +33,9 @@ export function modelRefFromPlatform(model?: string): string {
 }
 
 /** Provider base URLs OpenClaw needs for OpenAI-compatible providers. */
-const PROVIDER_BASE_URL: Partial<Record<LLMProvider, string>> = {
+const PROVIDER_BASE_URL: Partial<Record<LLMProvider | "google", string>> = {
   openai: "https://api.openai.com/v1",
+  google: GEMINI_OPENAI_BASE_URL,
 };
 
 /** Cheap-model fallback candidates per provider (used when its key is set). */
@@ -151,18 +153,16 @@ export function ensureProviderModelRegistered(
 
   const merged: ProviderBucket = { ...bucket, models };
   // OpenAI-compatible providers need credentials + base URL inside the
-  // gateway config (Anthropic reads its own env key).
-  if (provider === "openai") {
-    const apiKey = getProviderApiKey(provider);
+  // gateway config (Anthropic reads ANTHROPIC_API_KEY from env).
+  if (provider === "openai" || provider === "google") {
+    const keyProvider = provider as LLMProvider;
+    const apiKey = getProviderApiKey(keyProvider);
     if (apiKey) merged.apiKey = apiKey;
-    const baseUrl = PROVIDER_BASE_URL[provider];
+    const baseUrl = PROVIDER_BASE_URL[keyProvider];
     if (baseUrl) {
       merged.baseUrl = baseUrl;
       merged.api = "openai-completions";
     }
-  } else if (provider === "google") {
-    const apiKey = getProviderApiKey("google");
-    if (apiKey) merged.apiKey = apiKey;
   }
   next.models.providers[provider] = merged;
   return next;
