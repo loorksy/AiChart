@@ -1,5 +1,8 @@
 import { getPrice } from "./binance";
 import {
+  getFuturesPositions,
+} from "./binanceFutures";
+import {
   getEaConnection,
   isHeartbeatFresh,
   parseEaSymbolSpecs,
@@ -18,6 +21,7 @@ import type { Trade, TradingSettings, AdminLimits } from "./types";
 
 const PROXIMITY_PCT = 1.5;
 const DAILY_LOSS_WARN_RATIO = 0.8;
+const LIQUIDATION_WARN_PCT = 10;
 
 async function intentStopsForTrade(
   intentId: number | null,
@@ -153,12 +157,53 @@ export async function watchDailyLossProximity(
   );
 }
 
+export async function watchFuturesLiquidationProximity(
+  userId: number,
+): Promise<TradeWatchAlert[]> {
+  const settings = await getSettings(userId);
+  if (!settings.futures_enabled) return [];
+
+  const creds = await getBinanceCredentials(userId);
+  if (!creds) return [];
+
+  let positions: Awaited<ReturnType<typeof getFuturesPositions>>;
+  try {
+    positions = await getFuturesPositions(
+      creds.apiKey,
+      creds.apiSecret,
+      creds.env,
+    );
+  } catch {
+    return [];
+  }
+
+  const alerts: TradeWatchAlert[] = [];
+  for (const p of positions) {
+    if (p.liquidationPrice <= 0 || p.markPrice <= 0) continue;
+    const distancePct =
+      (Math.abs(p.markPrice - p.liquidationPrice) / p.markPrice) * 100;
+    if (distancePct >= LIQUIDATION_WARN_PCT) continue;
+
+    const direction = p.positionAmt > 0 ? "Long" : "Short";
+    alerts.push({
+      symbol: p.symbol,
+      source: "aichart",
+      hits: [],
+      detail:
+        `⚠️ اقتراب تصفية Futures · ${p.symbol} ${direction} ${p.leverage}x\n` +
+        `السعر ${p.markPrice} · تصفية ${p.liquidationPrice} · بعد ${distancePct.toFixed(1)}%`,
+    });
+  }
+  return alerts;
+}
+
 export async function collectTradeWatchAlerts(
   userId: number,
 ): Promise<TradeWatchAlert[]> {
-  const [aichart, mt5] = await Promise.all([
+  const [aichart, mt5, liquidation] = await Promise.all([
     watchAichartOpenTrades(userId),
     watchMt5Positions(userId),
+    watchFuturesLiquidationProximity(userId),
   ]);
-  return [...aichart, ...mt5];
+  return [...aichart, ...mt5, ...liquidation];
 }

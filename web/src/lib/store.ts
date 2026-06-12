@@ -609,14 +609,16 @@ export async function createIntent(
     practice?: boolean;
     market_type?: "spot" | "futures";
     leverage?: number;
+    order_type?: "market" | "limit";
+    limit_price?: number | null;
   },
 ): Promise<TradeIntent> {
   const market: MarketType = intent.market ?? "crypto";
   const broker: BrokerKind = intent.broker ?? brokerForMarket(market);
   const id = await insertReturningId(
     `INSERT INTO trade_intents
-      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       intent.recommendation_id ?? null,
@@ -635,6 +637,8 @@ export async function createIntent(
       intent.practice ? 1 : 0,
       intent.market_type ?? "spot",
       intent.leverage ?? 1,
+      intent.order_type ?? "market",
+      intent.limit_price ?? null,
     ],
   );
   return (await getIntent(id))!;
@@ -710,14 +714,16 @@ export async function recordTrade(
     status?: string;
     market_type?: "spot" | "futures";
     leverage?: number;
+    order_type?: "market" | "limit";
+    limit_price?: number | null;
   },
 ): Promise<Trade> {
   const market: MarketType = trade.market ?? "crypto";
   const broker: BrokerKind = trade.broker ?? brokerForMarket(market);
   const id = await insertReturningId(
     `INSERT INTO trades
-      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, market, broker, status, market_type, leverage)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, market, broker, status, market_type, leverage, order_type, limit_price)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       trade.intent_id ?? null,
@@ -733,6 +739,8 @@ export async function recordTrade(
       trade.status ?? "open",
       trade.market_type ?? "spot",
       trade.leverage ?? 1,
+      trade.order_type ?? "market",
+      trade.limit_price ?? null,
     ],
   );
   return (await queryOne<Trade>("SELECT * FROM trades WHERE id = ?", [id]))!;
@@ -804,10 +812,39 @@ export async function countPendingIntents(userId: number): Promise<number> {
 
 export async function countOpenTrades(userId: number): Promise<number> {
   const row = await queryOne<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM trades WHERE user_id = ? AND status = 'open'",
+    "SELECT COUNT(*) AS n FROM trades WHERE user_id = ? AND status IN ('open', 'pending_entry')",
     [userId],
   );
   return row?.n ?? 0;
+}
+
+export async function listPendingEntryTrades(
+  userId: number,
+  limit = 10,
+): Promise<Trade[]> {
+  return query<Trade>(
+    "SELECT * FROM trades WHERE user_id = ? AND status = 'pending_entry' ORDER BY id DESC LIMIT ?",
+    [userId, limit],
+  );
+}
+
+export async function updateTradeEntryFilled(
+  tradeId: number,
+  qty: number,
+  quoteQty: number,
+  avgPrice: number,
+): Promise<void> {
+  await execute(
+    `UPDATE trades SET status = 'open', qty = ?, quote_qty = ?, avg_price = ? WHERE id = ?`,
+    [qty, quoteQty, avgPrice, tradeId],
+  );
+}
+
+export async function updateTradeCancelled(tradeId: number): Promise<void> {
+  await execute(
+    `UPDATE trades SET status = 'cancelled', closed_at = datetime('now') WHERE id = ?`,
+    [tradeId],
+  );
 }
 
 export async function todayRealizedPnlUsd(userId: number): Promise<number> {

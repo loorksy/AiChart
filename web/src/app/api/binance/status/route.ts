@@ -1,11 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireUser, handleError } from "@/lib/api";
 import { getBinanceCredentials, getBinanceAccountMeta } from "@/lib/store";
-import { getAccountSummary } from "@/lib/binance";
+import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
+import { buildBinancePermissionReport } from "@/lib/binanceVerify";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const user = await requireUser();
+    const futuresRequired =
+      req.nextUrl.searchParams.get("futuresRequired") === "1" ||
+      req.nextUrl.searchParams.get("futuresRequired") === "true";
+
     const meta = await getBinanceAccountMeta(user.id);
     if (!meta) {
       return NextResponse.json({ connected: false });
@@ -19,12 +24,28 @@ export async function GET() {
         creds.apiSecret,
         creds.env,
       );
+      const restrictions = await getApiRestrictions(
+        creds.apiKey,
+        creds.apiSecret,
+        creds.env,
+      );
+      const permissionReport = buildBinancePermissionReport(
+        summary,
+        restrictions,
+        creds.env,
+        { futuresRequired },
+      );
+
       return NextResponse.json({
         connected: true,
         env: meta.env,
         label: meta.label,
         canTrade: summary.canTrade,
         canWithdraw: summary.canWithdraw,
+        restrictions,
+        permissionReport,
+        withdrawWarning: permissionReport.withdrawWarning,
+        ipRestrictionAdvice: permissionReport.ipRestrictionAdvice,
         balances: summary.balances.slice(0, 30),
       });
     } catch (e) {

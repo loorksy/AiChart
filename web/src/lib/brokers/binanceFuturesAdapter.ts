@@ -8,6 +8,7 @@ import {
   getFuturesPrice,
   getFuturesSymbolFilters,
   placeFuturesExitOrder,
+  placeFuturesLimitOrder,
   placeFuturesMarketOrder,
   setIsolatedMargin,
   setLeverage,
@@ -54,6 +55,8 @@ export const binanceFuturesAdapter: BrokerAdapter = {
 
     const leverage = Math.max(1, intent.leverage ?? 1);
     const positionSide = intent.side === "buy" ? "long" : "short";
+    const orderType = intent.order_type ?? "market";
+    const limitPrice = intent.limit_price ?? null;
 
     try {
       push({
@@ -61,27 +64,29 @@ export const binanceFuturesAdapter: BrokerAdapter = {
         label: `جلب السعر ومرشحات ${intent.symbol} (Futures)`,
         status: "running",
       });
-      const [price, filters] = await Promise.all([
+      const [markPrice, filters] = await Promise.all([
         getFuturesPrice(intent.symbol, creds.env),
         getFuturesSymbolFilters(intent.symbol, creds.env),
       ]);
+      const entryPrice =
+        orderType === "limit" && limitPrice != null ? limitPrice : markPrice;
       push({
         id: "quote",
         label: `جلب السعر ومرشحات ${intent.symbol} (Futures)`,
         status: "done",
-        detail: `السعر ${price}`,
+        detail: `السعر ${entryPrice}`,
       });
 
       // notional = margin; position size = margin × leverage.
       const positionNotional = intent.notional * leverage;
-      const qty = roundToStep(positionNotional / price, filters.stepSize);
+      const qty = roundToStep(positionNotional / entryPrice, filters.stepSize);
 
       if (qty < filters.minQty || qty <= 0) {
         const reason = `الكمية أقل من الحد الأدنى للرمز (${filters.minQty}).`;
         await updateIntentStatus(intent.id, "failed", reason);
         return { ok: false, status: "failed", reason };
       }
-      if (filters.minNotional > 0 && qty * price < filters.minNotional) {
+      if (filters.minNotional > 0 && qty * entryPrice < filters.minNotional) {
         const reason = `قيمة الصفقة أقل من الحد الأدنى (${filters.minNotional} USDT).`;
         await updateIntentStatus(intent.id, "failed", reason);
         return { ok: false, status: "failed", reason };
@@ -107,22 +112,89 @@ export const binanceFuturesAdapter: BrokerAdapter = {
       });
 
       const sideLabel = intent.side === "buy" ? "شراء (Long)" : "بيع (Short)";
+      const orderLabel =
+        orderType === "limit"
+          ? `Limit ${sideLabel} · ${qty} @ ${entryPrice}`
+          : `Market ${sideLabel} · ${qty} ${intent.symbol}`;
       push({
         id: "order",
-        label: `إرسال أمر ${sideLabel} · ${qty} ${intent.symbol}`,
+        label: `إرسال أمر ${orderLabel}`,
         status: "running",
       });
-      const order = await placeFuturesMarketOrder(
-        creds.apiKey,
-        creds.apiSecret,
-        creds.env,
-        intent.symbol,
-        intent.side === "buy" ? "BUY" : "SELL",
-        qty,
-      );
+
+      const order =
+        orderType === "limit" && limitPrice != null
+          ? await placeFuturesLimitOrder(
+              creds.apiKey,
+              creds.apiSecret,
+              creds.env,
+              intent.symbol,
+              intent.side === "buy" ? "BUY" : "SELL",
+              qty,
+              roundToTick(limitPrice, filters.tickSize),
+            )
+          : await placeFuturesMarketOrder(
+              creds.apiKey,
+              creds.apiSecret,
+              creds.env,
+              intent.symbol,
+              intent.side === "buy" ? "BUY" : "SELL",
+              qty,
+            );
+
+      if (orderType === "limit") {
+        const trade = await recordTrade(userId, {
+          intent_id: intent.id,
+          symbol: intent.symbol,
+          side: intent.side,
+          qty,
+          quote_qty: qty * entryPrice,
+          avg_price: entryPrice,
+          order_id: String(order.orderId),
+          env: creds.env,
+          market: "crypto",
+          broker: "binance",
+          status: "pending_entry",
+          market_type: "futures",
+          leverage: appliedLeverage,
+          order_type: "limit",
+          limit_price: entryPrice,
+        });
+
+        push({
+          id: "order",
+          label: `إرسال أمر ${orderLabel}`,
+          status: "done",
+          detail: `طلب Limit #${order.orderId} · رافعة ${appliedLeverage}x`,
+        });
+        push({
+          id: "record",
+          label: "تسجيل أمر Limit (بانتظار التعبئة)",
+          status: "done",
+        });
+
+        await updateIntentStatus(
+          intent.id,
+          "executed",
+          `أُرسِل Limit Futures (طلب #${order.orderId}، رافعة ${appliedLeverage}x).`,
+        );
+        return {
+          ok: true,
+          status: "executed",
+          reason: "أُرسِل أمر Limit — بانتظار التعبئة.",
+          tradeId: trade.id,
+          trade: {
+            symbol: trade.symbol,
+            side: trade.side,
+            qty: trade.qty,
+            avg_price: trade.avg_price,
+            env: trade.env,
+          },
+        };
+      }
 
       const executedQty = Number(order.executedQty) || qty;
-      const avgPrice = Number(order.avgPrice) || price;
+      const avgPrice = Number(order.avgPrice) || entryPrice;
       const quoteQty = Number(order.cumQuote) || executedQty * avgPrice;
 
       const trade = await recordTrade(userId, {
@@ -139,6 +211,7 @@ export const binanceFuturesAdapter: BrokerAdapter = {
         status: "open",
         market_type: "futures",
         leverage: appliedLeverage,
+        order_type: "market",
       });
 
       // SL/TP exits (close the whole position when triggered).

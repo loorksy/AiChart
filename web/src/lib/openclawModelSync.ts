@@ -78,6 +78,8 @@ type OpenClawCfg = {
     defaults?: {
       thinking?: unknown;
       thinkingDefault?: string;
+      heartbeat?: { isolatedSession?: boolean };
+      contextPruning?: { mode?: string };
       model?: { primary?: string; fallbacks?: string[]; thinking?: unknown };
       models?: Record<
         string,

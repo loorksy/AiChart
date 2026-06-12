@@ -472,6 +472,17 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trade_intents ADD COLUMN leverage REAL NOT NULL DEFAULT 1",
     );
   }
+  if (!intentCols.some((c) => c.name === "order_type")) {
+    db.exec(
+      "ALTER TABLE trade_intents ADD COLUMN order_type TEXT NOT NULL DEFAULT 'market'",
+    );
+  }
+  if (!intentCols.some((c) => c.name === "limit_price")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN limit_price REAL");
+  }
+  if (!tradeCols.some((c) => c.name === "limit_price")) {
+    db.exec("ALTER TABLE trades ADD COLUMN limit_price REAL");
+  }
 
   // Futures is opt-in per user (settings) with an admin hard leverage cap.
   if (!settingsCols.some((c) => c.name === "futures_enabled")) {

@@ -20,6 +20,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       master_kill: await isMasterKillOn(),
       anthropic: isLLMConfigured(),
+      llm: isLLMConfigured(),
       ai_provider: getActiveProvider(),
       telegram: isTelegramConfigured(),
       cron_secret_set: Boolean(getPlatformValue("CRON_SECRET")),

@@ -27,6 +27,8 @@ curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 | شارت لحظي | `POST /api/agent/chart/snapshot` |
 | موافقة أزرار | `POST /api/agent/approval/request` |
 | فتح/إغلاق | `POST /api/agent/trade/open|close` |
+| Futures مراكز/أوامر | `GET /api/agent/futures/positions|orders` · `POST /api/agent/futures/modify` |
+| فحص صلاحيات Binance | `GET /api/binance/verify` أو `GET /api/agent/binance/connect` |
 | ديمو/حقيقي | `GET|POST /api/agent/execution/env` |
 | EA تشخيص | `GET /api/agent/ea/diagnostics?symbol=` |
 | وضع/Kill | `POST /api/agent/mode` · `POST /api/agent/kill-switch` |
@@ -50,6 +52,33 @@ curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 
 `approval/request` مع `practice:true` للتجربة. بعد ✅ المنصة تنفّذ.
 `trade/open` يحتاج `approved_by_user:true` أو auto + شروط.
+
+## Futures (Binance USDT-M)
+
+```bash
+POST /api/agent/trade/open
+{
+  "symbol": "BTCUSDT", "side": "sell",
+  "notional": 50, "market_type": "futures", "leverage": 3,
+  "stop_loss": 64200, "take_profit": 61500,
+  "order_type": "market", "approved_by_user": true
+}
+```
+
+- `side: "sell"` + `market_type: "futures"` = **شورت** حقيقي.
+- `notional` = **الهامش**؛ حجم المركز = الهامش × الرافعة.
+- **SL إلزامي** — بدونه Risk Guard يرفض.
+- Limit entry: `"order_type": "limit", "limit_price": 62000` — SL/TP يُوضَع تلقائياً بعد التعبئة.
+- يتطلب `futures_enabled` في إعدادات المستخدم + صلاحية Futures على المفتاح (prod).
+
+```bash
+GET /api/agent/futures/positions
+POST /api/agent/futures/modify {"symbol":"BTCUSDT","stop_loss":64500}
+GET /api/agent/futures/orders?symbol=BTCUSDT
+```
+
+- عند `[EVENT:trade_alert]` مع futures → `GET /api/agent/futures/positions` (راقب `liquidationPrice`).
+- قبل futures على prod: `GET /api/agent/binance/connect?futuresRequired=1` — تأكد `enableFutures`.
 
 ## فوركس
 

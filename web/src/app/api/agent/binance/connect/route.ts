@@ -3,22 +3,115 @@ import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
-import { logAudit, saveBinanceAccount } from "@/lib/store";
+import { buildBinancePermissionReport } from "@/lib/binanceVerify";
+import { logAudit, saveBinanceAccount, getBinanceCredentials, getBinanceAccountMeta } from "@/lib/store";
 
 const schema = z.object({
-  apiKey: z.string().min(10),
-  apiSecret: z.string().min(10),
-  env: z.enum(["testnet", "prod"]).default("testnet"),
+  apiKey: z.string().min(10).optional(),
+  apiSecret: z.string().min(10).optional(),
+  env: z.enum(["testnet", "prod"]).optional(),
   label: z.string().max(60).optional(),
+  futuresRequired: z.boolean().optional(),
+  /** When true, check permissions only — do not save keys. */
+  verify_only: z.boolean().optional(),
 });
+
+/** Bridge: connect or verify Binance API key permissions. */
+export async function GET(req: NextRequest) {
+  try {
+    requireAgentAuth(req);
+    const userId = await resolveAgentUserId();
+    const futuresRequired =
+      req.nextUrl.searchParams.get("futuresRequired") === "1" ||
+      req.nextUrl.searchParams.get("futuresRequired") === "true";
+
+    const meta = await getBinanceAccountMeta(userId);
+    const creds = await getBinanceCredentials(userId);
+    if (!meta || !creds) {
+      return NextResponse.json(
+        { ok: false, reason: "لا يوجد حساب Binance مرتبط." },
+        { status: 400 },
+      );
+    }
+
+    const summary = await getAccountSummary(
+      creds.apiKey,
+      creds.apiSecret,
+      creds.env,
+    );
+    const restrictions = await getApiRestrictions(
+      creds.apiKey,
+      creds.apiSecret,
+      creds.env,
+    );
+    const permissionReport = buildBinancePermissionReport(
+      summary,
+      restrictions,
+      creds.env,
+      { futuresRequired },
+    );
+
+    return NextResponse.json({
+      ok: permissionReport.ok,
+      env: creds.env,
+      canTrade: summary.canTrade,
+      canWithdraw: summary.canWithdraw,
+      restrictions,
+      permissionReport,
+      warning: permissionReport.withdrawWarning,
+      balances: summary.balances.slice(0, 10),
+    });
+  } catch (e) {
+    return handleError(e);
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
     requireAgentAuth(req);
     const userId = await resolveAgentUserId();
-    const { apiKey, apiSecret, env, label } = schema.parse(await req.json());
+    const body = schema.parse(await req.json());
+    const env = body.env ?? "testnet";
+    const futuresRequired = body.futuresRequired ?? false;
 
-    const summary = await getAccountSummary(apiKey, apiSecret, env);
+    if (body.verify_only) {
+      if (!body.apiKey || !body.apiSecret) {
+        return NextResponse.json(
+          { ok: false, error: "apiKey و apiSecret مطلوبان للتحقق." },
+          { status: 400 },
+        );
+      }
+      const summary = await getAccountSummary(body.apiKey, body.apiSecret, env);
+      const restrictions = await getApiRestrictions(
+        body.apiKey,
+        body.apiSecret,
+        env,
+      );
+      const permissionReport = buildBinancePermissionReport(
+        summary,
+        restrictions,
+        env,
+        { futuresRequired },
+      );
+      return NextResponse.json({
+        ok: permissionReport.ok,
+        env,
+        canTrade: summary.canTrade,
+        canWithdraw: summary.canWithdraw,
+        restrictions,
+        permissionReport,
+        warning: permissionReport.withdrawWarning,
+      });
+    }
+
+    if (!body.apiKey || !body.apiSecret) {
+      return NextResponse.json(
+        { ok: false, error: "apiKey و apiSecret مطلوبان." },
+        { status: 400 },
+      );
+    }
+
+    const summary = await getAccountSummary(body.apiKey, body.apiSecret, env);
     if (!summary.canTrade) {
       return NextResponse.json(
         { ok: false, error: "المفتاح لا يملك صلاحية التداول." },
@@ -26,18 +119,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await saveBinanceAccount(userId, apiKey, apiSecret, env, label);
+    await saveBinanceAccount(userId, body.apiKey, body.apiSecret, env, body.label);
     await logAudit(userId, "agent_binance_connect", env);
 
-    // Withdrawals must stay disabled on API keys: a leaked key with
-    // withdrawal rights means total loss. Warn loudly (but don't block).
-    const restrictions = await getApiRestrictions(apiKey, apiSecret, env);
-    const withdrawalsEnabled =
-      summary.canWithdraw || Boolean(restrictions?.enableWithdrawals);
-    const warning = withdrawalsEnabled
-      ? "تحذير أمني: هذا المفتاح يسمح بالسحب (Withdrawals). عطّل صلاحية السحب من إعدادات Binance API فوراً — تسريب المفتاح يعني سرقة كامل الرصيد."
-      : null;
-    if (warning) {
+    const restrictions = await getApiRestrictions(
+      body.apiKey,
+      body.apiSecret,
+      env,
+    );
+    const permissionReport = buildBinancePermissionReport(
+      summary,
+      restrictions,
+      env,
+      { futuresRequired },
+    );
+    if (permissionReport.withdrawWarning) {
       await logAudit(userId, "agent_binance_connect_warning", "canWithdraw=true");
     }
 
@@ -47,7 +143,8 @@ export async function POST(req: NextRequest) {
       canTrade: summary.canTrade,
       canWithdraw: summary.canWithdraw,
       restrictions,
-      warning,
+      permissionReport,
+      warning: permissionReport.withdrawWarning,
       balances: summary.balances.slice(0, 10),
     });
   } catch (e) {

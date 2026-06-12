@@ -284,6 +284,38 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
     null,
   );
   const [busy, setBusy] = useState(false);
+  const [permBusy, setPermBusy] = useState(false);
+  const [permissionReport, setPermissionReport] = useState<{
+    checks: {
+      label: string;
+      ok: boolean;
+      severity: string;
+      detail?: string;
+    }[];
+    withdrawWarning: string | null;
+    ipRestrictionAdvice: string | null;
+  } | null>(null);
+
+  async function refreshPermissions() {
+    if (!binance) return;
+    setPermBusy(true);
+    try {
+      const res = await fetch("/api/binance/status?futuresRequired=1");
+      const data = await res.json();
+      if (data.connected && data.permissionReport) {
+        setPermissionReport(data.permissionReport);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setPermBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (binance) void refreshPermissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [binance?.env, binance?.updated_at]);
 
   async function connect(e: React.FormEvent) {
     e.preventDefault();
@@ -308,6 +340,7 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
           ? `تم الربط بنجاح. ${data.withdrawWarning}`
           : "تم الربط والتحقق بنجاح.",
       });
+      if (data.permissionReport) setPermissionReport(data.permissionReport);
       router.refresh();
     } catch {
       setMsg({ type: "err", text: "تعذّر الاتصال بالخادم." });
@@ -330,14 +363,67 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
       </p>
 
       {binance && (
-        <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
-          <div className="text-sm">
-            <span className="text-accent-gold">● مرتبط</span> —{" "}
-            {binance.env === "testnet" ? "تجريبية" : "حقيقية"}
+        <div className="mb-4 space-y-3">
+          <div className="flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
+            <div className="text-sm">
+              <span className="text-accent-gold">● مرتبط</span> —{" "}
+              {binance.env === "testnet" ? "تجريبية" : "حقيقية"}
+            </div>
+            <button onClick={disconnect} className="btn btn-danger py-1.5 text-sm">
+              فصل
+            </button>
           </div>
-          <button onClick={disconnect} className="btn btn-danger py-1.5 text-sm">
-            فصل
-          </button>
+
+          {permissionReport && (
+            <div className="rounded-xl border border-border/60 p-3 text-sm">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="font-medium">صلاحيات المفتاح</p>
+                <button
+                  type="button"
+                  onClick={() => void refreshPermissions()}
+                  disabled={permBusy}
+                  className="text-xs text-link"
+                >
+                  {permBusy ? "جارٍ الفحص…" : "إعادة فحص"}
+                </button>
+              </div>
+              <ul className="space-y-1.5">
+                {permissionReport.checks.map((c) => (
+                  <li key={c.label} className="flex items-start gap-2">
+                    <span
+                      className={
+                        c.ok
+                          ? "text-accent-gold"
+                          : c.severity === "error"
+                            ? "text-destructive"
+                            : "text-amber-500"
+                      }
+                    >
+                      {c.ok ? "✓" : "✗"}
+                    </span>
+                    <span>
+                      {c.label}
+                      {c.detail ? (
+                        <span className="block text-xs text-muted-foreground">
+                          {c.detail}
+                        </span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {permissionReport.withdrawWarning && (
+                <p className="mt-2 text-xs text-destructive">
+                  {permissionReport.withdrawWarning}
+                </p>
+              )}
+              {permissionReport.ipRestrictionAdvice && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {permissionReport.ipRestrictionAdvice}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

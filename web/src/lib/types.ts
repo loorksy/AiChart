@@ -205,6 +205,10 @@ export interface TradeIntent {
   market_type?: "spot" | "futures";
   /** Leverage multiplier for futures (1 = no leverage). */
   leverage?: number;
+  /** 'market' (default) or 'limit' (futures entry). */
+  order_type?: "market" | "limit";
+  /** Limit entry price (futures limit orders). */
+  limit_price?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -248,6 +252,10 @@ export interface Trade {
   market_type?: "spot" | "futures";
   /** Leverage used (1 = spot/no leverage). */
   leverage?: number;
+  /** 'market' or 'limit'. */
+  order_type?: "market" | "limit";
+  /** Limit entry price when order_type is limit. */
+  limit_price?: number | null;
   created_at: string;
   closed_at: string | null;
 }

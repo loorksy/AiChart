@@ -111,6 +111,11 @@ export function evaluateTrade(
       );
     if (proposed.stopLoss == null)
       return deny("وقف الخسارة إلزامي في صفقات العقود الآجلة (حماية من التصفية).");
+    const positionNotional = proposed.notional * leverage;
+    if (positionNotional > effectiveCapital + 1e-8)
+      return deny(
+        `حجم المركز (${positionNotional.toFixed(2)} USDT) يتجاوز سقف رأس المال (${effectiveCapital.toFixed(2)}).`,
+      );
   }
 
   if (effectiveCapital <= 0)

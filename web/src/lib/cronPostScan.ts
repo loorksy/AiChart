@@ -2,6 +2,7 @@ import { listUsersForTradeMaintenance } from "./store";
 import {
   scanOpenTradesForTakeProfit,
   syncFuturesClosures,
+  syncFuturesLimitFills,
   syncOcoFills,
 } from "./tradeClose";
 
@@ -32,6 +33,12 @@ export async function runCronPostScan(): Promise<CronPostScanResult> {
       const oco = await syncOcoFills(userId, MAX_TRADES_PER_USER);
       result.ocoSynced += oco.synced;
       result.errors.push(...oco.errors.map((e) => `user ${userId} oco: ${e}`));
+
+      const limit = await syncFuturesLimitFills(userId, MAX_TRADES_PER_USER);
+      result.ocoSynced += limit.synced;
+      result.errors.push(
+        ...limit.errors.map((e) => `user ${userId} limit: ${e}`),
+      );
 
       const fut = await syncFuturesClosures(userId, MAX_TRADES_PER_USER);
       result.ocoSynced += fut.synced;

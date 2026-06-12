@@ -317,6 +317,24 @@ export async function getFuturesOpenOrders(
   }));
 }
 
+/** Query a single futures order by id. */
+export async function getFuturesOrder(
+  apiKey: string,
+  apiSecret: string,
+  env: BinanceEnv,
+  symbol: string,
+  orderId: number,
+): Promise<FuturesPlacedOrder & { status: string }> {
+  return (await futuresRequest(
+    "GET",
+    "/fapi/v1/order",
+    { symbol, orderId },
+    apiKey,
+    apiSecret,
+    env,
+  )) as FuturesPlacedOrder & { status: string };
+}
+
 /** Cancels a single pending order. */
 export async function cancelFuturesOrder(
   apiKey: string,

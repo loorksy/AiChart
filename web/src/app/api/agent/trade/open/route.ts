@@ -4,34 +4,51 @@ import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   createIntent,
+  getBinanceCredentials,
   getLimits,
   getSettings,
   hasRecentTradeOpenFailure,
   logAudit,
 } from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
+import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
+import { futuresPermissionBlockReason } from "@/lib/binanceVerify";
 import type { MarketType } from "@/lib/markets/types";
 
-const schema = z.object({
-  symbol: z.string().min(1),
-  side: z.enum(["buy", "sell"]),
-  /** Quote amount (USDT) — defaults to per-trade budget from settings. */
-  notional: z.number().positive().optional(),
-  market: z.enum(["crypto", "forex"]).optional(),
-  entry: z.number().nullish(),
-  stop_loss: z.number().nullish(),
-  take_profit: z.number().nullish(),
-  confidence: z.number().min(0).max(100).default(0),
-  rationale: z.string().nullish(),
-  recommendation_id: z.number().nullish(),
-  /** True when the human operator explicitly ordered/approved this trade. */
-  approved_by_user: z.boolean().default(false),
-  practice: z.boolean().default(false),
-  /** 'futures' opens a Binance USDT-M position (short + leverage supported). */
-  market_type: z.enum(["spot", "futures"]).default("spot"),
-  /** Leverage multiplier (futures only; capped by admin max_leverage_cap). */
-  leverage: z.number().min(1).max(125).optional(),
-});
+const schema = z
+  .object({
+    symbol: z.string().min(1),
+    side: z.enum(["buy", "sell"]),
+    /** Quote amount (USDT) — defaults to per-trade budget from settings. */
+    notional: z.number().positive().optional(),
+    market: z.enum(["crypto", "forex"]).optional(),
+    entry: z.number().nullish(),
+    stop_loss: z.number().nullish(),
+    take_profit: z.number().nullish(),
+    confidence: z.number().min(0).max(100).default(0),
+    rationale: z.string().nullish(),
+    recommendation_id: z.number().nullish(),
+    /** True when the human operator explicitly ordered/approved this trade. */
+    approved_by_user: z.boolean().default(false),
+    practice: z.boolean().default(false),
+    /** 'futures' opens a Binance USDT-M position (short + leverage supported). */
+    market_type: z.enum(["spot", "futures"]).default("spot"),
+    /** Leverage multiplier (futures only; capped by admin max_leverage_cap). */
+    leverage: z.number().min(1).max(125).optional(),
+    /** 'market' (default) or 'limit' (futures pending entry). */
+    order_type: z.enum(["market", "limit"]).default("market"),
+    /** Required when order_type is limit. */
+    limit_price: z.number().positive().optional(),
+  })
+  .refine(
+    (b) =>
+      b.order_type !== "limit" ||
+      (b.market_type === "futures" && b.limit_price != null),
+    { message: "limit_price مطلوب لأوامر Limit في Futures." },
+  )
+  .refine((b) => b.order_type !== "limit" || b.market_type === "futures", {
+    message: "أوامر Limit متاحة في Futures فقط.",
+  });
 
 /**
  * Bridge: opens a real trade. Every call runs the full intent → Risk Guard →
@@ -71,6 +88,56 @@ export async function POST(req: NextRequest) {
       settings.active_market ??
       "crypto") as MarketType;
 
+    const marketType = body.market_type ?? "spot";
+    const orderType = body.order_type ?? "market";
+
+    if (marketType === "futures") {
+      const creds = await getBinanceCredentials(userId);
+      if (!creds) {
+        return NextResponse.json(
+          {
+            ok: false,
+            status: "denied",
+            reason: "لا يوجد حساب Binance مرتبط.",
+            intentId: null,
+            tradeId: null,
+            trade: null,
+          },
+          { status: 400 },
+        );
+      }
+      if (creds.env === "prod") {
+        const summary = await getAccountSummary(
+          creds.apiKey,
+          creds.apiSecret,
+          creds.env,
+        );
+        const restrictions = await getApiRestrictions(
+          creds.apiKey,
+          creds.apiSecret,
+          creds.env,
+        );
+        const block = futuresPermissionBlockReason(
+          summary,
+          restrictions,
+          creds.env,
+        );
+        if (block) {
+          return NextResponse.json(
+            {
+              ok: false,
+              status: "denied",
+              reason: block,
+              intentId: null,
+              tradeId: null,
+              trade: null,
+            },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
     const effectiveCapital =
       limits.max_capital_cap > 0
         ? Math.min(settings.max_capital, limits.max_capital_cap)
@@ -78,7 +145,6 @@ export async function POST(req: NextRequest) {
     const notional =
       body.notional ?? (effectiveCapital * settings.per_trade_pct) / 100;
 
-    const marketType = body.market_type ?? "spot";
     const leverage =
       marketType === "futures"
         ? (body.leverage ?? settings.default_leverage ?? 3)
@@ -99,6 +165,8 @@ export async function POST(req: NextRequest) {
       practice: body.practice,
       market_type: marketType,
       leverage,
+      order_type: orderType,
+      limit_price: body.limit_price ?? null,
     });
 
     const result = await executeIntent(userId, intent.id, {
@@ -110,7 +178,9 @@ export async function POST(req: NextRequest) {
       userId,
       "agent_trade_open",
       `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USDT${
-        marketType === "futures" ? ` futures ${leverage}x` : ""
+        marketType === "futures"
+          ? ` futures ${leverage}x${orderType === "limit" ? " limit" : ""}`
+          : ""
       } → ${result.status}${result.ok ? "" : ` (${result.reason})`}`,
     );
 

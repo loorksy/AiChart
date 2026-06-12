@@ -12,6 +12,7 @@ import {
   type AnthropicResponse,
   type Message,
   type StreamHandlers,
+  type SystemPromptInput,
   type ToolDef,
 } from "./anthropic";
 import {
@@ -97,16 +98,26 @@ function compatTarget(provider: "openrouter" | "openai"): OpenAICompatTarget {
 }
 
 export interface LLMCallParams {
-  system: string;
+  system: SystemPromptInput;
   messages: Message[];
   tools?: ToolDef[];
   maxTokens?: number;
 }
 
+function flattenSystem(system: SystemPromptInput): string {
+  if (typeof system === "string") return system;
+  return system.dynamic?.trim()
+    ? `${system.static}\n\n${system.dynamic}`
+    : system.static;
+}
+
 export async function callLLM(params: LLMCallParams): Promise<AnthropicResponse> {
   const provider = getActiveProvider();
   if (provider === "anthropic") return callAnthropic(params);
-  return callOpenAICompat(compatTarget(provider), params);
+  return callOpenAICompat(compatTarget(provider), {
+    ...params,
+    system: flattenSystem(params.system),
+  });
 }
 
 export async function callLLMStream(
@@ -115,7 +126,11 @@ export async function callLLMStream(
 ): Promise<AnthropicResponse> {
   const provider = getActiveProvider();
   if (provider === "anthropic") return callAnthropicStream(params, handlers);
-  return callOpenAICompatStream(compatTarget(provider), params, handlers);
+  return callOpenAICompatStream(
+    compatTarget(provider),
+    { ...params, system: flattenSystem(params.system) },
+    handlers,
+  );
 }
 
 // Re-export shared types so callers can import everything from "llm".

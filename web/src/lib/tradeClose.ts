@@ -1,24 +1,31 @@
 import {
   getBinanceCredentials,
+  getIntent,
   getSettings,
   getTrade,
   updateTradeClosed,
   listOpenTrades,
   listOpenTradesWithOco,
+  listPendingEntryTrades,
+  updateTradeEntryFilled,
+  updateTradeCancelled,
 } from "./store";
 import {
   getPrice,
   getSymbolFilters,
   roundToStep,
+  roundToTick,
   placeMarketOrder,
   getOcoOrderList,
   type BinanceEnv,
 } from "./binance";
 import {
   cancelAllFuturesOrders,
+  getFuturesOrder,
   getFuturesPositions,
   getFuturesPrice,
   getFuturesSymbolFilters,
+  placeFuturesExitOrder,
   placeFuturesMarketOrder,
 } from "./binanceFutures";
 import { dispatchAlert } from "./alerts";
@@ -442,6 +449,160 @@ export async function syncFuturesClosures(
           `✅ <b>أُغلق مركز Futures</b>\n` +
           `${trade.symbol} (${trade.side === "buy" ? "Long" : "Short"} ${trade.leverage ?? 1}x)\n` +
           `PnL تقريبي: <b>${sign}${pnl.toFixed(2)} USDT</b>`,
+        symbol: trade.symbol,
+      });
+    } catch (e) {
+      errors.push(
+        `${trade.symbol}: ${e instanceof Error ? e.message : "خطأ"}`,
+      );
+    }
+  }
+
+  return { synced, errors };
+}
+
+const CANCELLED_ORDER_STATUSES = new Set([
+  "CANCELED",
+  "CANCELLED",
+  "EXPIRED",
+  "REJECTED",
+]);
+
+async function placeFuturesProtectiveOrders(
+  creds: { apiKey: string; apiSecret: string; env: BinanceEnv },
+  symbol: string,
+  side: "buy" | "sell",
+  stopLoss: number | null | undefined,
+  takeProfit: number | null | undefined,
+): Promise<void> {
+  const positionSide = side === "buy" ? "long" : "short";
+  const filters = await getFuturesSymbolFilters(symbol, creds.env);
+  if (stopLoss != null) {
+    await placeFuturesExitOrder(
+      creds.apiKey,
+      creds.apiSecret,
+      creds.env,
+      symbol,
+      positionSide,
+      "stop_loss",
+      roundToTick(stopLoss, filters.tickSize),
+    );
+  }
+  if (takeProfit != null) {
+    await placeFuturesExitOrder(
+      creds.apiKey,
+      creds.apiSecret,
+      creds.env,
+      symbol,
+      positionSide,
+      "take_profit",
+      roundToTick(takeProfit, filters.tickSize),
+    );
+  }
+}
+
+/**
+ * When a futures Limit entry order fills, promote pending_entry → open and
+ * attach SL/TP from the originating intent.
+ */
+export async function syncFuturesLimitFills(
+  userId: number,
+  maxTrades = 5,
+): Promise<{ synced: number; errors: string[] }> {
+  const creds = await getBinanceCredentials(userId);
+  if (!creds) return { synced: 0, errors: ["لا يوجد حساب Binance."] };
+
+  const pending = await listPendingEntryTrades(userId, maxTrades);
+  if (pending.length === 0) return { synced: 0, errors: [] };
+
+  let positions: Awaited<ReturnType<typeof getFuturesPositions>>;
+  try {
+    positions = await getFuturesPositions(
+      creds.apiKey,
+      creds.apiSecret,
+      creds.env,
+    );
+  } catch (e) {
+    return {
+      synced: 0,
+      errors: [e instanceof Error ? e.message : "فشل جلب مراكز Futures."],
+    };
+  }
+
+  let synced = 0;
+  const errors: string[] = [];
+
+  for (const trade of pending) {
+    if (!trade.order_id) continue;
+    try {
+      const orderId = Number(trade.order_id);
+      const order = await getFuturesOrder(
+        creds.apiKey,
+        creds.apiSecret,
+        creds.env,
+        trade.symbol,
+        orderId,
+      );
+      const status = String(order.status ?? "").toUpperCase();
+
+      if (CANCELLED_ORDER_STATUSES.has(status)) {
+        await updateTradeCancelled(trade.id);
+        await dispatchAlert(userId, {
+          type: "trade_failed",
+          title: `إلغاء Limit · ${trade.symbol}`,
+          text: `❌ <b>أُلغي أمر Limit</b>\n${trade.symbol} · طلب #${orderId}`,
+          symbol: trade.symbol,
+        });
+        synced++;
+        continue;
+      }
+
+      const live = positions.find((p) => p.symbol === trade.symbol);
+      const filled =
+        status === "FILLED" ||
+        (live != null && Math.abs(live.positionAmt) > 0);
+
+      if (!filled) continue;
+
+      const intent = trade.intent_id
+        ? await getIntent(trade.intent_id)
+        : null;
+      const executedQty =
+        Number(order.executedQty) > 0
+          ? Number(order.executedQty)
+          : live
+            ? Math.abs(live.positionAmt)
+            : trade.qty;
+      const avgPrice =
+        Number(order.avgPrice) > 0
+          ? Number(order.avgPrice)
+          : live?.entryPrice ?? trade.avg_price;
+      const quoteQty = Number(order.cumQuote) || executedQty * avgPrice;
+
+      await updateTradeEntryFilled(
+        trade.id,
+        executedQty,
+        quoteQty,
+        avgPrice,
+      );
+
+      if (intent) {
+        await placeFuturesProtectiveOrders(
+          creds,
+          trade.symbol,
+          trade.side as "buy" | "sell",
+          intent.stop_loss,
+          intent.take_profit,
+        );
+      }
+
+      synced++;
+      await dispatchAlert(userId, {
+        type: "trade_executed",
+        title: `تعبئة Limit · ${trade.symbol}`,
+        text:
+          `✅ <b>تعبّأ أمر Limit Futures</b>\n` +
+          `${trade.symbol} · ${executedQty} @ ${avgPrice}`,
         symbol: trade.symbol,
       });
     } catch (e) {
