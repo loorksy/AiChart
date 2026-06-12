@@ -96,13 +96,15 @@ const tokenParams = {
 };
 const activeRefs = [ref, ...fallbacks];
 for (const full of activeRefs) {
-  cfg.agents.defaults.models[full] = { params: tokenParams };
+  const entry = { params: tokenParams };
+  if (full === ref) {
+    const slash = ref.indexOf("/");
+    entry.alias = slash >= 0 ? ref.slice(slash + 1) : ref;
+  }
+  cfg.agents.defaults.models[full] = entry;
 }
 
-// Register primary + fallbacks in models.providers so OpenClaw accepts them,
-// and attach credentials/baseUrl for OpenAI-compatible providers.
 const PROVIDER_BASE_URL = {
-  openrouter: "https://openrouter.ai/api/v1",
   openai: "https://api.openai.com/v1",
 };
 const idsByProvider = new Map();
@@ -123,7 +125,7 @@ for (const [provider, allowedIds] of idsByProvider) {
     return existing?.name ? existing : { id, name: id };
   });
   const merged = { ...bucket, models };
-  if (provider === "openrouter" || provider === "openai") {
+  if (provider === "openai") {
     if (providerKeys[provider]) merged.apiKey = providerKeys[provider];
     merged.baseUrl = PROVIDER_BASE_URL[provider];
     merged.api = "openai-completions";
@@ -131,6 +133,12 @@ for (const [provider, allowedIds] of idsByProvider) {
     if (providerKeys.google) merged.apiKey = providerKeys.google;
   }
   cfg.models.providers[provider] = merged;
+}
+
+for (const provider of Object.keys(cfg.models.providers)) {
+  if (!idsByProvider.has(provider)) {
+    delete cfg.models.providers[provider];
+  }
 }
 
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");

@@ -1,5 +1,5 @@
 /**
- * OpenAI-compatible chat-completions client (OpenRouter + OpenAI speak the
+ * OpenAI-compatible chat-completions client (OpenAI + Gemini OpenAI-compat).
  * same dialect). Converts to/from the Anthropic-shaped Message / ToolDef /
  * ContentBlock types used across the codebase so callers never change.
  */
@@ -16,7 +16,7 @@ export interface OpenAICompatTarget {
   baseUrl: string;
   apiKey: string;
   model: string;
-  /** Extra headers (OpenRouter attribution etc.) */
+  /** Extra optional HTTP headers for the upstream API */
   headers?: Record<string, string>;
 }
 
@@ -351,30 +351,6 @@ export async function callOpenAICompatStream(
 export interface CompatModelInfo {
   id: string;
   display_name: string;
-}
-
-export async function listOpenRouterChatModels(
-  apiKey: string,
-): Promise<CompatModelInfo[]> {
-  const res = await fetch("https://openrouter.ai/api/v1/models", {
-    headers: { authorization: `Bearer ${apiKey}` },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(await readError(res, "OpenRouter"));
-  const data = (await res.json()) as {
-    data?: {
-      id: string;
-      name?: string;
-      architecture?: { output_modalities?: string[] };
-    }[];
-  };
-  return (data.data ?? [])
-    .filter((m) => {
-      const out = m.architecture?.output_modalities;
-      return !out || out.includes("text");
-    })
-    .map((m) => ({ id: m.id, display_name: m.name || m.id }))
-    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export async function listOpenAIChatModels(

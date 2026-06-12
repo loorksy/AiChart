@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
-import { synthesizeSpeech } from "@/lib/openrouter";
+import { synthesizeSpeech } from "@/lib/embeddings";
 import { notifyUserVoice } from "@/lib/telegram";
 
 const schema = z.object({

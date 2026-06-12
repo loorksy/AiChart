@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAgentAuth } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { transcribeAudio } from "@/lib/openrouter";
+import { transcribeAudio } from "@/lib/gemini";
 
 export const maxDuration = 120;
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024;

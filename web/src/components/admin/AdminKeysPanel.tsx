@@ -3,14 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
 import { ClaudeModelPicker } from "@/components/admin/ClaudeModelPicker";
-import { OpenRouterAudioPicker } from "@/components/admin/OpenRouterAudioPicker";
 import { cn } from "@/lib/utils";
 
 type ConfigField = {
   key: string;
   label: string;
   labelEn: string;
-  group: "core" | "claude" | "voice" | "telegram" | "ops";
+  group: "core" | "claude" | "telegram" | "ops";
   type?: "text" | "url" | "toggle";
   placeholder?: string;
   configured: boolean;
@@ -23,7 +22,6 @@ type ConfigField = {
 const GROUPS: { id: ConfigField["group"]; title: string }[] = [
   { id: "core", title: "الأساس والأمان" },
   { id: "claude", title: "الذكاء الاصطناعي — المزود والنموذج" },
-  { id: "voice", title: "الصوت — OpenRouter" },
   { id: "telegram", title: "تليجرام" },
   { id: "ops", title: "التشغيل والمراقبة" },
 ];
@@ -137,19 +135,24 @@ export function AdminKeysPanel() {
 
   const configuredCount = fields.filter((f) => f.configured).length;
 
-  // Provider → key → models flow
   const AI_PROVIDERS = [
     { id: "anthropic", label: "Anthropic (Claude)", keyField: "ANTHROPIC_API_KEY" },
-    { id: "openrouter", label: "OpenRouter", keyField: "OPENROUTER_API_KEY" },
     { id: "openai", label: "OpenAI", keyField: "OPENAI_API_KEY" },
     { id: "google", label: "Google (Gemini)", keyField: "GEMINI_API_KEY" },
   ] as const;
   type ProviderId = (typeof AI_PROVIDERS)[number]["id"];
 
   const providerField = fields.find((f) => f.key === "AI_PROVIDER");
-  const savedProvider = (providerField?.value || "anthropic") as ProviderId;
-  const selectedProvider = ((draft.AI_PROVIDER || savedProvider) ??
-    "anthropic") as ProviderId;
+  const rawSaved = (providerField?.value || "anthropic").toLowerCase();
+  const savedProvider = (
+    rawSaved === "openrouter" || rawSaved === "gemini" ? "google" : rawSaved
+  ) as ProviderId;
+  const draftProvider = draft.AI_PROVIDER?.toLowerCase();
+  const selectedProvider = (
+    draftProvider === "openrouter" || draftProvider === "gemini"
+      ? "google"
+      : draftProvider || savedProvider
+  ) as ProviderId;
   const providerMeta =
     AI_PROVIDERS.find((p) => p.id === selectedProvider) ?? AI_PROVIDERS[0];
 
@@ -172,8 +175,6 @@ export function AdminKeysPanel() {
       f.key !== "OPENAI_API_KEY" &&
       f.key !== "GEMINI_API_KEY",
   );
-  const orKeyField = fields.find((f) => f.key === "OPENROUTER_API_KEY");
-  const orModelField = fields.find((f) => f.key === "OPENROUTER_AUDIO_MODEL");
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -209,13 +210,9 @@ export function AdminKeysPanel() {
         const groupFields =
           group.id === "claude"
             ? claudeFields
-            : group.id === "voice"
-              ? []
-              : fields.filter((f) => f.group === group.id);
-        if (!groupFields.length && group.id !== "claude" && group.id !== "voice")
-          return null;
+            : fields.filter((f) => f.group === group.id);
+        if (!groupFields.length && group.id !== "claude") return null;
         if (group.id === "claude" && !apiKeyField) return null;
-        if (group.id === "voice" && !orKeyField) return null;
         return (
           <section key={group.id} className="admin-card p-4">
             <h3 className="mb-4 font-bold text-foreground">{group.title}</h3>
@@ -332,28 +329,6 @@ export function AdminKeysPanel() {
                       )}
                     </div>
                   )}
-                </>
-              )}
-              {group.id === "voice" && orKeyField && (
-                <>
-                  <ConfigFieldRow
-                    f={orKeyField}
-                    draft={draft}
-                    setDraftValue={setDraftValue}
-                  />
-                  <OpenRouterAudioPicker
-                    apiKeyDraft={draft.OPENROUTER_API_KEY ?? ""}
-                    apiKeyConfigured={orKeyField.configured}
-                    currentModel={
-                      orModelField?.value ??
-                      orModelField?.placeholder ??
-                      "google/gemini-2.5-flash"
-                    }
-                    draftModel={draft.OPENROUTER_AUDIO_MODEL ?? ""}
-                    onSelectModel={(id) =>
-                      setDraftValue("OPENROUTER_AUDIO_MODEL", id)
-                    }
-                  />
                 </>
               )}
               {groupFields.map((f) => (

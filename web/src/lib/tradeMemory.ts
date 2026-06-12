@@ -1,5 +1,5 @@
 import { getDbBackend, insertReturningId, query, queryOne } from "./db";
-import { createEmbedding } from "./openrouter";
+import { createEmbedding } from "./embeddings";
 import type { MarketType } from "./markets/types";
 import type {
   TradeLesson,

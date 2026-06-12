@@ -8,24 +8,35 @@ export function OpenClawConsoleClient() {
   const [webUiUrl, setWebUiUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [agentModel, setAgentModel] = useState<{
+    platformRef: string;
+    gatewayPrimary: string | null;
+    inSync: boolean;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/openclaw-console", {
-        cache: "no-store",
-      });
-      const data = (await res.json()) as {
+      const [consoleRes, modelRes] = await Promise.all([
+        fetch("/api/admin/openclaw-console", { cache: "no-store" }),
+        fetch("/api/admin/agent-model-status", { cache: "no-store" }),
+      ]);
+      const data = (await consoleRes.json()) as {
         webUiUrl?: string;
         error?: string;
       };
-      if (!res.ok) {
+      if (!consoleRes.ok) {
         setError(data.error ?? "تعذّر تحميل رابط اللوحة.");
         setWebUiUrl(null);
-        return;
+      } else {
+        setWebUiUrl(data.webUiUrl ?? null);
       }
-      setWebUiUrl(data.webUiUrl ?? null);
+      if (modelRes.ok) {
+        setAgentModel(await modelRes.json());
+      } else {
+        setAgentModel(null);
+      }
     } catch {
       setError("تعذّر الاتصال بالخادم.");
     } finally {
@@ -47,13 +58,33 @@ export function OpenClawConsoleClient() {
         قنوات Telegram، tools.exec، موافقات الأوامر، heartbeat، plugins، skills —
         من تبويب Config داخل اللوحة.
       </p>
-      <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
-        <strong>النموذج (Gemini / Claude):</strong> يُضبط من{" "}
-        <a href="/console/platform" className="underline">
-          /console/platform
-        </a>{" "}
-        فقط — لا تغيّر Model من Quick Settings في OpenClaw؛ التغيير اليدوي
-        يُبقي نماذج قديمة ويُفسد المزامنة مع المنصة.
+      <div className="mb-4 space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+        <p>
+          <strong>النموذج:</strong> يُضبط من{" "}
+          <a href="/console/platform" className="underline">
+            /console/platform
+          </a>{" "}
+          فقط — لا تغيّر Model من Quick Settings في OpenClaw.
+        </p>
+        {agentModel && (
+          <p className="text-xs">
+            Quick Settings قد تعرض <code dir="ltr">default</code> — هذا يعني
+            استخدام النموذج العالمي من المنصة:{" "}
+            <code dir="ltr">
+              {agentModel.inSync
+                ? agentModel.gatewayPrimary
+                : agentModel.platformRef}
+            </code>
+            {!agentModel.inSync && agentModel.gatewayPrimary && (
+              <>
+                {" "}
+                (Gateway حالياً:{" "}
+                <code dir="ltr">{agentModel.gatewayPrimary}</code> — احفظ من
+                المنصة لمزامنة)
+              </>
+            )}
+          </p>
+        )}
       </div>
 
       {loading && (

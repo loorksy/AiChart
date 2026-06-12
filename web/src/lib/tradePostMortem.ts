@@ -1,7 +1,7 @@
 import { callLLM } from "./llm";
 import { getIntent, getRecommendation, getTrade } from "./store";
 import { insertTradeLesson } from "./tradeMemory";
-import { createEmbedding } from "./openrouter";
+import { createEmbedding } from "./embeddings";
 import type { TradeLessonOutcome } from "./types";
 
 function extractText(content: { type: string; text?: string }[]): string {

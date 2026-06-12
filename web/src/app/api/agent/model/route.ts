@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     // OpenAI-compatible provider keys so the gateway script can register
     // them in openclaw.json (same trusted bridge token as trading ops).
     const providerKeys: Record<string, string> = {};
-    for (const p of ["openrouter", "openai", "google"] as const) {
+    for (const p of ["openai", "google"] as const) {
       const key = getProviderApiKey(p);
       if (key) providerKeys[p] = key;
     }

@@ -33,22 +33,22 @@ export function modelRefFromPlatform(model?: string): string {
 
 /** Provider base URLs OpenClaw needs for OpenAI-compatible providers. */
 const PROVIDER_BASE_URL: Partial<Record<LLMProvider, string>> = {
-  openrouter: "https://openrouter.ai/api/v1",
   openai: "https://api.openai.com/v1",
 };
 
 /** Cheap-model fallback candidates per provider (used when its key is set). */
 const FALLBACK_CANDIDATES: Record<LLMProvider, string> = {
   anthropic: "anthropic/claude-haiku-4-5",
-  openrouter: "openrouter/anthropic/claude-haiku-4.5",
   openai: "openai/gpt-4.1-mini",
   google: "google/gemini-2.5-flash",
 };
 
-/** Fallback refs across all providers whose API keys are configured. */
+const SYNC_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "google"];
+
+/** Fallback refs across configured providers (never OpenRouter). */
 export function buildFallbackRefs(primaryRef: string): string[] {
   const out: string[] = [];
-  for (const provider of ["anthropic", "openrouter", "openai", "google"] as const) {
+  for (const provider of SYNC_PROVIDERS) {
     if (!getProviderApiKey(provider)) continue;
     const candidate = FALLBACK_CANDIDATES[provider];
     if (candidate.toLowerCase() === primaryRef.toLowerCase()) continue;
@@ -85,6 +85,7 @@ type OpenClawCfg = {
       models?: Record<
         string,
         {
+          alias?: string;
           params?: {
             cacheRetention?: string;
             thinking?: string;
@@ -142,7 +143,7 @@ export function ensureProviderModelRegistered(
   const merged: ProviderBucket = { ...bucket, models };
   // OpenAI-compatible providers need credentials + base URL inside the
   // gateway config (Anthropic reads its own env key).
-  if (provider === "openrouter" || provider === "openai") {
+  if (provider === "openai") {
     const apiKey = getProviderApiKey(provider);
     if (apiKey) merged.apiKey = apiKey;
     const baseUrl = PROVIDER_BASE_URL[provider];
@@ -194,6 +195,12 @@ function pruneModelCatalog(cfg: OpenClawCfg, activeRefs: string[]): void {
     });
     cfg.models.providers[provider] = { ...bucket, models };
   }
+
+  for (const provider of Object.keys(cfg.models.providers)) {
+    if (!idsByProvider.has(provider)) {
+      delete cfg.models.providers[provider];
+    }
+  }
 }
 
 /** Patch model, thinking, and provider registry — never touches telegram/exec/controlUi. */
@@ -228,7 +235,13 @@ export function patchOpenClawModelConfig(
   };
   d.models = {};
   for (const modelRef of activeRefs) {
-    d.models[modelRef] = { params: tokenParams };
+    const entry: { alias?: string; params: typeof tokenParams } = {
+      params: tokenParams,
+    };
+    if (modelRef === ref) {
+      entry.alias = modelIdFromRef(ref);
+    }
+    d.models[modelRef] = entry;
   }
 
   next = ensureProviderModelRegistered(next, ref);

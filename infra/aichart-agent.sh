@@ -19,7 +19,7 @@ const env = Object.fromEntries(
 );
 const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
 const { rows } = await pool.query(
-  \"SELECT key, value, plain FROM platform_config WHERE key IN ('ANTHROPIC_API_KEY','OPENROUTER_API_KEY','OPENAI_API_KEY','GEMINI_API_KEY','TELEGRAM_BOT_TOKEN')\"
+  \"SELECT key, value, plain FROM platform_config WHERE key IN ('ANTHROPIC_API_KEY','OPENAI_API_KEY','GEMINI_API_KEY','TELEGRAM_BOT_TOKEN')\"
 );
 await pool.end();
 

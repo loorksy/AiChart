@@ -42,6 +42,11 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "لا توجد حقول صالحة للحفظ." }, { status: 400 });
     }
 
+    if (patch.AI_PROVIDER !== undefined) {
+      const p = String(patch.AI_PROVIDER).toLowerCase();
+      if (p === "openrouter" || p === "gemini") patch.AI_PROVIDER = "google";
+    }
+
     const nextProvider =
       patch.AI_PROVIDER !== undefined
         ? String(patch.AI_PROVIDER).toLowerCase()
@@ -83,7 +88,6 @@ export async function PUT(req: NextRequest) {
       patch.AI_PROVIDER !== undefined ||
       patch.ANTHROPIC_MODEL !== undefined ||
       patch.ANTHROPIC_API_KEY !== undefined ||
-      patch.OPENROUTER_API_KEY !== undefined ||
       patch.OPENAI_API_KEY !== undefined ||
       patch.GEMINI_API_KEY !== undefined
     ) {

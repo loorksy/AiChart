@@ -522,7 +522,7 @@ flowchart TB
 |--------|--------|-----|
 | **Post-mortem + pgvector** | بعد إغلاق كل صفقة يُولَّد درس + embedding في `trade_lessons` | `CREATE EXTENSION IF NOT EXISTS vector;` على PostgreSQL |
 | **لجنة الوكلاء** | ثلاث شخصيات LLM قبل التنفيذ؛ veto من RiskOfficer | — |
-| **رد صوتي** | `POST /api/agent/notify/voice` + `VOICE_RESPONSES_ENABLED` | OpenRouter TTS model |
+| **رد صوتي** | `POST /api/agent/notify/voice` + `VOICE_RESPONSES_ENABLED` | OpenAI TTS (`OPENAI_API_KEY`) |
 | **مركز القيادة** | `/command` — heatmap، whale bubbles، لجنة، ذاكرة | — |
 
 SQLite محلياً يستخدم `embedding_json` + cosine خطي؛ الإنتاج على PostgreSQL + pgvector.

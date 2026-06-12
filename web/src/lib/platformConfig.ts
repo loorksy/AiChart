@@ -5,7 +5,7 @@ export interface ConfigFieldMeta {
   key: string;
   label: string;
   labelEn: string;
-  group: "core" | "claude" | "voice" | "telegram" | "ops";
+  group: "core" | "claude" | "telegram" | "ops";
   secret: boolean;
   /** Store plaintext in DB (bootstrap keys used to encrypt others) */
   plainStorage: boolean;
@@ -39,7 +39,7 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     group: "claude",
     secret: false,
     plainStorage: false,
-    placeholder: "anthropic | openrouter | openai | google",
+    placeholder: "anthropic | openai | google",
   },
   {
     key: "AI_MODEL",
@@ -85,45 +85,10 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "claude-3-5-sonnet-latest",
   },
   {
-    key: "OPENROUTER_API_KEY",
-    label: "مفتاح OpenRouter (دردشة + صوت)",
-    labelEn: "OPENROUTER_API_KEY",
-    group: "voice",
-    secret: true,
-    plainStorage: false,
-  },
-  {
-    key: "OPENROUTER_AUDIO_MODEL",
-    label: "نموذج تفريغ الصوت",
-    labelEn: "OPENROUTER_AUDIO_MODEL",
-    group: "voice",
-    secret: false,
-    plainStorage: false,
-    placeholder: "google/gemini-2.5-flash",
-  },
-  {
-    key: "OPENROUTER_EMBED_MODEL",
-    label: "نموذج embeddings (ذاكرة الصفقات)",
-    labelEn: "OPENROUTER_EMBED_MODEL",
-    group: "voice",
-    secret: false,
-    plainStorage: false,
-    placeholder: "openai/text-embedding-3-small",
-  },
-  {
-    key: "OPENROUTER_TTS_MODEL",
-    label: "نموذج TTS (رد صوتي)",
-    labelEn: "OPENROUTER_TTS_MODEL",
-    group: "voice",
-    secret: false,
-    plainStorage: false,
-    placeholder: "openai/tts-1",
-  },
-  {
     key: "VOICE_RESPONSES_ENABLED",
-    label: "تفعيل الردود الصوتية",
+    label: "تفعيل الردود الصوتية (OpenAI TTS)",
     labelEn: "VOICE_RESPONSES_ENABLED",
-    group: "voice",
+    group: "ops",
     secret: false,
     plainStorage: false,
     type: "toggle",

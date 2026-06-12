@@ -25,7 +25,7 @@ export function ClaudeModelPicker({
   currentModel: string;
   draftModel: string;
   onSelectModel: (modelId: string) => void;
-  provider?: "anthropic" | "openrouter" | "openai" | "google";
+  provider?: "anthropic" | "openai" | "google";
   providerLabel?: string;
 }) {
   const [models, setModels] = useState<ClaudeModelOption[]>([]);

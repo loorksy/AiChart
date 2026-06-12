@@ -15,7 +15,8 @@
 **المصدر الوحيد:** [`/console/platform`](/console/platform) (لوحة المفاتيح → الذكاء الاصطناعي).
 
 - اختر المزود والنموذج واحفظ — يُشغَّل `syncOpenClawModelFromPlatform` ويُحدَّث `~/.openclaw/openclaw.json`.
-- **لا تغيّر Model** من Quick Settings أو تبويب Config في OpenClaw — التغيير اليدوي يُبقي نماذج قديمة (gemma، tts) ويُفسد المزامنة.
+- **لا تغيّر Model** من Quick Settings أو تبويب Config في OpenClaw — التغيير اليدوي يُبقي نماذج قديمة ويُفسد المزامنة.
+- Quick Settings قد تعرض **default** — هذا يعني استخدام `agents.defaults.model.primary` من المنصة (مثل `google/gemini-2.5-flash`)، وليس نموذجاً مختلفاً.
 - بعد الحفظ من المنصة: أعد تحميل لوحة OpenClaw أو ابدأ جلسة Telegram جديدة.
 
 إعدادات **المفاتيح الأخرى** (Binance، Telegram token) تبقى في `/console/platform`. إعدادات **التداول** في `/settings`.
@@ -56,8 +57,8 @@ OPENCLAW_GATEWAY_TOKEN=<نفس gateway.auth.token في openclaw.json>
 | WebSocket فشل | تأكد من `Upgrade` في nginx |
 | Origin مرفوض | `allowedOrigins` يجب أن يتضمن `https://aichart.lork.cloud` |
 | زر اللوحة معطّل | أضف `OPENCLAW_GATEWAY_TOKEN` في `web/.env` |
-| OpenClaw يعرض gemma/tts رغم Gemini | غيّر النموذج من `/console/platform` واحفظ — لا من OpenClaw UI |
-| billing / 402 OpenRouter | تحقق من مفتاح Gemini (`AIza…`) ونموذج `gemini-2.5-flash` (ليس `-tts`) |
+| OpenClaw Quick Settings = default | طبيعي — يعني `agents.defaults.model.primary` من `/console/platform` |
+| gemma/tts رغم Gemini | احفظ من `/console/platform` — لا من OpenClaw UI |
 
 ## Workspace Skills vs Built-in
 

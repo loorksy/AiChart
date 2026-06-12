@@ -48,9 +48,9 @@ openclaw gateway          # أو عبر pm2/docker — راجع infra/
 
 كل إعدادات OpenClaw (قنوات، tools، موافقات) من اللوحة — **ليس** النموذج.
 
-**النموذج** (Gemini / Claude / OpenRouter) يُضبط من **لوحة المنصة** → `/console/platform`
+**النموذج** (Gemini / Claude / OpenAI) يُضبط من **لوحة المنصة** → `/console/platform`
 → «الذكاء الاصطناعي» — الحفظ يُشغّل `sync-model.sh` تلقائياً. لا تغيّر Model من
-Quick Settings في OpenClaw.
+Quick Settings في OpenClaw (عرض «default» = النموذج العالمي من المنصة).
 
 ## Workspace Skills
 
@@ -74,16 +74,15 @@ bash agent/scripts/sync-workspace.sh
 لمهارات ClawHub مشتركة بين وكلاء: `openclaw skills install --global` → `~/.openclaw/skills`.
 لتفعيل/تعطيل Built-in: `skills.entries.<name>.enabled` في `openclaw.json` — لا نقل ملفات.
 
-## الرسائل الصوتية (تيليجرام) — عبر OpenRouter
+## الرسائل الصوتية (تيليجرام)
 
-Claude لا يفرّغ الصوت — بدون مزوّد تفريغ تصل الرسالة الصوتية للوكيل فارغة.
+Claude لا يفرّغ الصوت — بدون تفريغ تصل الرسالة الصوتية للوكيل فارغة.
 
-التفريغ يمر عبر **منصة AiChart نفسها**: مفتاح OpenRouter ونموذج الصوت
-يُضبطان من **لوحة الأدمن → المفاتيح → «الصوت — OpenRouter»** (أدخل المفتاح،
-اضغط «جلب النماذج»، اختر نموذجاً يدعم الصوت مثل
-`google/gemini-2.5-flash`، ثم «حفظ المفاتيح»).
+- **التفريغ:** `POST /api/agent/transcribe` عبر **Gemini** (`GEMINI_API_KEY` من `/console/platform`).
+- **embeddings الذاكرة:** OpenAI مباشرة (`OPENAI_API_KEY`) — `text-embedding-3-small`.
+- **ردود صوتية (TTS):** OpenAI مباشرة — فعّل `VOICE_RESPONSES_ENABLED` في التشغيل.
 
-ثم وجّه OpenClaw لخط التفريغ في `~/.openclaw/openclaw.json`:
+وجّه OpenClaw لخط التفريغ في `~/.openclaw/openclaw.json`:
 
 ```json5
 {

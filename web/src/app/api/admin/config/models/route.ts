@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError } from "@/lib/api";
 import { listAnthropicModels } from "@/lib/anthropic";
-import {
-  listOpenAIChatModels,
-  listOpenRouterChatModels,
-} from "@/lib/openaiCompat";
+import { listOpenAIChatModels } from "@/lib/openaiCompat";
 import { listGeminiChatModels } from "@/lib/gemini";
 import {
   getActiveModel,
@@ -14,7 +11,7 @@ import {
   type LLMProvider,
 } from "@/lib/llm";
 
-const providerSchema = z.enum(["anthropic", "openrouter", "openai", "google"]);
+const providerSchema = z.enum(["anthropic", "openai", "google"]);
 
 const bodySchema = z.object({
   provider: providerSchema.optional(),
@@ -34,7 +31,6 @@ async function fetchModels(
     const models = await listAnthropicModels(key);
     return models.map((m) => ({ id: m.id, display_name: m.display_name }));
   }
-  if (provider === "openrouter") return listOpenRouterChatModels(key);
   if (provider === "google") return listGeminiChatModels(key);
   return listOpenAIChatModels(key);
 }

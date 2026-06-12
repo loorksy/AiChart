@@ -64,3 +64,98 @@ export async function listGeminiChatModels(
     .filter((m) => isGeminiChatModelId(m.id))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
+
+const DEFAULT_TRANSCRIBE_MODEL = "gemini-2.5-flash";
+
+function audioMimeFromFormat(format: string): string {
+  switch (format) {
+    case "ogg":
+      return "audio/ogg";
+    case "mp3":
+      return "audio/mpeg";
+    case "wav":
+      return "audio/wav";
+    case "mp4":
+      return "audio/mp4";
+    case "flac":
+      return "audio/flac";
+    case "webm":
+      return "audio/webm";
+    default:
+      return "audio/ogg";
+  }
+}
+
+function audioFormatFromMime(mime: string): string {
+  const sub = mime.split("/")[1]?.toLowerCase() ?? "";
+  if (sub.includes("ogg") || sub.includes("opus") || sub === "oga") return "ogg";
+  if (sub.includes("mpeg") || sub === "mp3") return "mp3";
+  if (sub.includes("wav")) return "wav";
+  if (sub.includes("mp4") || sub === "m4a" || sub === "x-m4a") return "mp4";
+  if (sub.includes("flac")) return "flac";
+  if (sub.includes("webm")) return "webm";
+  return sub || "ogg";
+}
+
+async function geminiApiKey(): Promise<string> {
+  const { getPlatformValueAsync, refreshPlatformConfigCache } = await import(
+    "./platformConfig"
+  );
+  await refreshPlatformConfigCache();
+  const key = await getPlatformValueAsync("GEMINI_API_KEY");
+  if (!key || !isGeminiStudioApiKey(key)) {
+    throw new Error(
+      "تفريغ الصوت غير مفعّل — أضِف GEMINI_API_KEY (AIza…) من لوحة المنصة.",
+    );
+  }
+  return key;
+}
+
+/** Transcribes audio via Gemini multimodal generateContent. */
+export async function transcribeAudio(
+  data: Buffer,
+  mime: string,
+): Promise<string> {
+  const key = await geminiApiKey();
+  const model = DEFAULT_TRANSCRIBE_MODEL;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            {
+              text: "فرّغ هذا التسجيل الصوتي حرفياً بلغته الأصلية. أعد النص فقط دون أي تعليق أو مقدمة.",
+            },
+            {
+              inline_data: {
+                mime_type: audioMimeFromFormat(audioFormatFromMime(mime)),
+                data: data.toString("base64"),
+              },
+            },
+          ],
+        },
+      ],
+    }),
+    cache: "no-store",
+  });
+
+  const body = (await res.json().catch(() => ({}))) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    error?: { message?: string };
+  };
+  if (!res.ok) {
+    throw new Error(
+      body.error?.message || `فشل تفريغ الصوت (HTTP ${res.status}).`,
+    );
+  }
+  const text = body.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text ?? "")
+    .join("")
+    .trim();
+  if (!text) throw new Error("لم يُرجِع Gemini أي نص.");
+  return text;
+}
