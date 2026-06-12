@@ -34,14 +34,16 @@ try {
 }
 
 const ref = payload.ref;
-const fallbacks = Array.isArray(payload.fallbacks) ? payload.fallbacks : [];
+const fallbacks = (Array.isArray(payload.fallbacks) ? payload.fallbacks : []).filter(
+  (f) => typeof f === "string" && !f.toLowerCase().includes("openrouter") && !f.includes("-tts"),
+);
 const providerKeys =
   payload.providerKeys && typeof payload.providerKeys === "object"
     ? payload.providerKeys
     : {};
 
-if (!ref) {
-  console.error("لا يوجد ref في رد /api/agent/model");
+if (!ref || ref.toLowerCase().includes("openrouter") || ref.includes("-tts")) {
+  console.error(`ref غير صالح من /api/agent/model: ${ref}`);
   process.exit(1);
 }
 

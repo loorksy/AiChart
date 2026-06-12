@@ -45,6 +45,14 @@ const FALLBACK_CANDIDATES: Record<LLMProvider, string> = {
 
 const SYNC_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "google"];
 
+function isAllowedModelRef(ref: string): boolean {
+  const lower = ref.toLowerCase();
+  if (lower.includes("openrouter")) return false;
+  if (lower.includes("-tts")) return false;
+  const provider = providerKeyFromRef(ref);
+  return SYNC_PROVIDERS.includes(provider as LLMProvider);
+}
+
 /** Fallback refs across configured providers (never OpenRouter). */
 export function buildFallbackRefs(primaryRef: string): string[] {
   const out: string[] = [];
@@ -52,6 +60,7 @@ export function buildFallbackRefs(primaryRef: string): string[] {
     if (!getProviderApiKey(provider)) continue;
     const candidate = FALLBACK_CANDIDATES[provider];
     if (candidate.toLowerCase() === primaryRef.toLowerCase()) continue;
+    if (!isAllowedModelRef(candidate)) continue;
     out.push(candidate);
   }
   return out;
@@ -215,13 +224,16 @@ export function patchOpenClawModelConfig(
   const d = next.agents.defaults;
   delete d.thinking;
 
-  const fallbacks = buildFallbackRefs(ref);
-  const activeRefs = [ref, ...fallbacks];
+  const safeRef = isAllowedModelRef(ref)
+    ? ref
+    : modelRefFromPlatform(getActiveModel());
+  const fallbacks = buildFallbackRefs(safeRef);
+  const activeRefs = [safeRef, ...fallbacks];
   const model = d.model;
   d.model =
     model && typeof model === "object"
-      ? { ...model, primary: ref, fallbacks }
-      : { primary: ref, fallbacks };
+      ? { ...model, primary: safeRef, fallbacks }
+      : { primary: safeRef, fallbacks };
   if (d.model && typeof d.model === "object") {
     delete (d.model as { thinking?: unknown }).thinking;
   }
@@ -238,13 +250,13 @@ export function patchOpenClawModelConfig(
     const entry: { alias?: string; params: typeof tokenParams } = {
       params: tokenParams,
     };
-    if (modelRef === ref) {
-      entry.alias = modelIdFromRef(ref);
+    if (modelRef === safeRef) {
+      entry.alias = modelIdFromRef(safeRef);
     }
     d.models[modelRef] = entry;
   }
 
-  next = ensureProviderModelRegistered(next, ref);
+  next = ensureProviderModelRegistered(next, safeRef);
   for (const fb of fallbacks) {
     next = ensureProviderModelRegistered(next, fb);
   }
