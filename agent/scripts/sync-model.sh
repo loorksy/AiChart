@@ -39,11 +39,21 @@ try {
 cfg.agents ??= {};
 cfg.agents.defaults ??= {};
 delete cfg.agents.defaults.thinking;
+
+// Rate-limit resilience: when the primary model hits Anthropic's
+// tokens-per-minute limit, OpenClaw falls back to the next model instead
+// of replying "All models are temporarily rate-limited".
+const FALLBACK_POOL = [
+  "anthropic/claude-haiku-4-5",
+  "anthropic/claude-sonnet-4-5",
+];
+const fallbacks = FALLBACK_POOL.filter((m) => m !== ref);
+
 const model = cfg.agents.defaults.model;
 cfg.agents.defaults.model =
   model && typeof model === "object"
-    ? { ...model, primary: ref }
-    : { primary: ref };
+    ? { ...model, primary: ref, fallbacks }
+    : { primary: ref, fallbacks };
 if (cfg.agents.defaults.model && typeof cfg.agents.defaults.model === "object") {
   delete cfg.agents.defaults.model.thinking;
 }
@@ -74,21 +84,25 @@ cfg.agents.defaults.models[ref] = {
   },
 };
 
-// Register in models.providers so OpenClaw accepts new Anthropic model ids.
-const slash = ref.indexOf("/");
-const provider = slash >= 0 ? ref.slice(0, slash) : "anthropic";
-const modelId = slash >= 0 ? ref.slice(slash + 1) : ref;
+// Register primary + fallbacks in models.providers so OpenClaw accepts them.
 cfg.models ??= {};
 cfg.models.providers ??= {};
-const bucket = cfg.models.providers[provider] ?? { models: [] };
-const provModels = [...(bucket.models ?? [])];
-if (!provModels.some((m) => m.id === modelId)) {
-  provModels.push({ id: modelId, name: modelId });
+for (const full of [ref, ...fallbacks]) {
+  const slash = full.indexOf("/");
+  const provider = slash >= 0 ? full.slice(0, slash) : "anthropic";
+  const modelId = slash >= 0 ? full.slice(slash + 1) : full;
+  const bucket = cfg.models.providers[provider] ?? { models: [] };
+  const provModels = [...(bucket.models ?? [])];
+  if (!provModels.some((m) => m.id === modelId)) {
+    provModels.push({ id: modelId, name: modelId });
+  }
+  cfg.models.providers[provider] = { ...bucket, models: provModels };
 }
-cfg.models.providers[provider] = { ...bucket, models: provModels };
 
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
-console.log(`primary model → ${ref} (provider registered)`);
+console.log(
+  `primary model → ${ref} (fallbacks: ${fallbacks.join(", ") || "none"})`,
+);
 EOF
 
 if [[ "${OPENCLAW_AUTO_RESTART:-}" == "1" ]]; then
