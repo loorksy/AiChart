@@ -19,16 +19,41 @@ export interface ToolDef {
 
 type CacheControl = { cache_control: { type: "ephemeral" } };
 
+export const DEFAULT_MAX_TOKENS = 2048;
+export const ROUTINE_MAX_TOKENS = 4096;
+
+export type SystemPromptInput =
+  | string
+  | { static: string; dynamic?: string };
+
 /**
- * Prompt caching: marking the system block caches the tools+system prefix,
- * and marking the last message block caches the conversation prefix — repeat
- * reads bill at ~10% of input price (5-minute TTL). Saves most within the
- * multi-step tool loop and consecutive chat turns.
+ * Prompt caching: static system + tools prefix cached; dynamic tail and last
+ * message block cached for multi-step tool loops (~10% read cost).
  */
-function cachedSystem(system: string): ({ type: "text"; text: string } & CacheControl)[] {
-  return [
-    { type: "text", text: system, cache_control: { type: "ephemeral" } },
+function buildSystemBlocks(
+  system: SystemPromptInput,
+): Array<{ type: "text"; text: string } & Partial<CacheControl>> {
+  if (typeof system === "string") {
+    return [
+      { type: "text", text: system, cache_control: { type: "ephemeral" } },
+    ];
+  }
+  const blocks: Array<{ type: "text"; text: string } & Partial<CacheControl>> = [
+    {
+      type: "text",
+      text: system.static,
+      cache_control: { type: "ephemeral" },
+    },
   ];
+  if (system.dynamic?.trim()) {
+    blocks.push({ type: "text", text: system.dynamic });
+  }
+  return blocks;
+}
+
+function clampMaxTokens(n?: number): number {
+  const v = n ?? DEFAULT_MAX_TOKENS;
+  return Math.min(Math.max(v, 256), ROUTINE_MAX_TOKENS);
 }
 
 function cachedTools(tools?: ToolDef[]): (ToolDef | (ToolDef & CacheControl))[] | undefined {
@@ -162,7 +187,7 @@ export async function listAnthropicModels(
 }
 
 export async function callAnthropic(params: {
-  system: string;
+  system: SystemPromptInput;
   messages: Message[];
   tools?: ToolDef[];
   maxTokens?: number;
@@ -183,8 +208,8 @@ export async function callAnthropic(params: {
     },
     body: JSON.stringify({
       model: getAnthropicModel(),
-      max_tokens: params.maxTokens ?? 1500,
-      system: cachedSystem(params.system),
+      max_tokens: clampMaxTokens(params.maxTokens),
+      system: buildSystemBlocks(params.system),
       messages: cachedMessages(params.messages),
       ...(params.tools ? { tools: cachedTools(params.tools) } : {}),
     }),
@@ -217,7 +242,7 @@ export interface StreamHandlers {
 /** Streaming Messages API — accumulates full response while emitting text deltas. */
 export async function callAnthropicStream(
   params: {
-    system: string;
+    system: SystemPromptInput;
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
@@ -240,8 +265,8 @@ export async function callAnthropicStream(
     },
     body: JSON.stringify({
       model: getAnthropicModel(),
-      max_tokens: params.maxTokens ?? 1500,
-      system: cachedSystem(params.system),
+      max_tokens: clampMaxTokens(params.maxTokens),
+      system: buildSystemBlocks(params.system),
       messages: cachedMessages(params.messages),
       stream: true,
       ...(params.tools ? { tools: cachedTools(params.tools) } : {}),

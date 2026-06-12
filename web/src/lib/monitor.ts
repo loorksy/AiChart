@@ -93,3 +93,39 @@ export async function scanForexSymbol(
   const snap = await buildForexSnapshot(userId, symbol, interval);
   return scoreOpportunity(snap, style);
 }
+
+export type ProximityKind = "sl" | "tp" | "entry";
+
+export interface ProximityHit {
+  kind: ProximityKind;
+  level: number;
+  current: number;
+  distancePct: number;
+}
+
+function levelProximity(
+  current: number,
+  level: number | null | undefined,
+  kind: ProximityKind,
+  thresholdPct: number,
+): ProximityHit | null {
+  if (level == null || !Number.isFinite(level) || level <= 0) return null;
+  if (!Number.isFinite(current) || current <= 0) return null;
+  const distancePct = (Math.abs(current - level) / current) * 100;
+  if (distancePct > thresholdPct) return null;
+  return { kind, level, current, distancePct };
+}
+
+export function checkSlTpProximity(
+  current: number,
+  sl: number | null | undefined,
+  tp: number | null | undefined,
+  thresholdPct = 1.5,
+): ProximityHit[] {
+  const hits: ProximityHit[] = [];
+  const slHit = levelProximity(current, sl, "sl", thresholdPct);
+  if (slHit) hits.push(slHit);
+  const tpHit = levelProximity(current, tp, "tp", thresholdPct);
+  if (tpHit) hits.push(tpHit);
+  return hits;
+}

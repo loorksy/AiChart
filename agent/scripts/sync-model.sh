@@ -48,6 +48,8 @@ if (cfg.agents.defaults.model && typeof cfg.agents.defaults.model === "object") 
   delete cfg.agents.defaults.model.thinking;
 }
 cfg.agents.defaults.thinkingDefault = "off";
+cfg.agents.defaults.contextPruning = { mode: "cache-ttl" };
+delete cfg.agents.defaults.heartbeat;
 
 cfg.agents.defaults.models ??= {};
 const entry = cfg.agents.defaults.models[ref] ?? {};

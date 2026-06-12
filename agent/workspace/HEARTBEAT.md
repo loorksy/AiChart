@@ -1,20 +1,28 @@
-tasks:
+# مراقبة Event-Driven (بدون نبض دوري)
 
-- name: open-trades-review
-  interval: 15m
-  prompt: "راجع الصفقات المفتوحة: استدعِ GET /api/agent/portfolio ثم POST /api/agent/maintenance. قارن كل صفقة مفتوحة بأطروحتها في ذاكرتك — إن انكسرت الأطروحة أغلق الصفقة (حسب الوضع الحالي) وأبلغ المشغّل مع السبب. إن اقتربت خسارة اليوم من حدّها أنذر المشغّل. لا صفقات مفتوحة ولا مشاكل؟ HEARTBEAT_OK."
+النبض الدوري (heartbeat) **معطّل**. المراقبة 24/7 تتم بالكود عبر `monitorRunner.ts` و cron:
 
-- name: market-scan
-  interval: 30m
-  prompt: "مسح الفرص: اقرأ GET /api/agent/risk/status لمعرفة active_market ثم استدعِ POST /api/agent/market/scan مع body {\"market\":\"<active_market>\"} (crypto أو forex). لا مرشحين → HEARTBEAT_OK فقط (لا إشارة فنية كافية — لا تربط ذلك بانقطاع EA أو عدم رؤية رموز فوركس). عند وجود مرشح: حلّله بعمق (snapshot + context)، وراجع ذاكرتك حتى لا تكرر توصية خلال 4 ساعات. رأي واضح بثقة ≥75%؟ سجّل توصية مع chart_drawings وأرسل الشارت — ثم تصرف حسب الوضع: auto نفّذ وأبلغ، approval اطلب الموافقة، direct أرسل تنبيهاً فقط. للفوركس قبل التنفيذ: GET /api/agent/ea/diagnostics?symbol=… و portfolio.forex.ea.online."
+`POST /api/cron/event-monitor` — كل 10 دقائق (كود فقط، بدون AI).
 
-- name: daily-summary
-  interval: 24h
-  prompt: "أرسل الملخص اليومي للمشغّل: أداء اليوم (من /api/agent/risk/status و/api/agent/portfolio)، الصفقات المفتوحة والمغلقة وأرباحها، أهم ملاحظات السوق، ودرس اليوم إن وجد. حدّث MEMORY.md بالدروس الدائمة ودوّن يوميات اليوم في memory/."
+## متى يصلك حدث على تيليجرام
 
-# تعليمات إضافية
+| الوسم | المعنى | ماذا تفعل |
+|-------|--------|-----------|
+| `[EVENT:market_candidate]` | إشارات فنية قوية على رمز | حلّل، سجّل توصية + شارت إن ≥75%، نفّذ حسب الوضع |
+| `[EVENT:trade_alert]` | السعر قريب من SL/TP (≤1.5%) | راجع الأطروحة في الذاكرة؛ أغلق أو عدّل إن انكسرت |
+| `[EVENT:daily_loss_warn]` | خسارة اليوم قرب الحد (80%+) | أنذر المشغّل؛ لا صفقات جديدة بلا موافقة |
+| `[EVENT:daily_memory]` | بعد الملخص اليومي 20:00 UTC | حدّث `MEMORY.md` و`memory/` |
 
-- اقرأ الوضع الحالي من GET /api/agent/risk/status قبل أي تنفيذ.
-- Kill Switch مفعّل → لا تنفيذ، أبلغ المشغّل مرة واحدة فقط.
-- التنبيهات قصيرة ومباشرة، ومع الشارت عند التوصيات.
-- لا شيء يستحق الانتباه بعد كل المهام المستحقة → HEARTBEAT_OK.
+## قواعد ثابتة عند أي حدث
+
+1. اقرأ `GET /api/agent/risk/status` قبل تنفيذ.
+2. Kill Switch مفعّل → لا تنفيذ، أبلغ مرة واحدة.
+3. للفوركس قبل التنفيذ: `GET /api/agent/ea/diagnostics?symbol=…`
+4. صفقة تجريبية: `practice: true` + `POST /api/agent/approval/request` عند الحاجة.
+5. التنبيهات قصيرة؛ مع الشارت عند التوصيات.
+
+## APIs للأحداث
+
+- مسح كود: `POST /api/agent/market/scan`
+- صفقات مفتوحة: `GET /api/agent/trades/open`
+- صيانة OCO/TP: `POST /api/agent/maintenance` (يُشغّلها الكود تلقائياً)

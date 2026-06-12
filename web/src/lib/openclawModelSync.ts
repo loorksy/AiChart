@@ -41,6 +41,8 @@ type OpenClawCfg = {
     defaults?: {
       thinking?: unknown;
       thinkingDefault?: string;
+      contextPruning?: { mode?: string };
+      heartbeat?: unknown;
       model?: { primary?: string; thinking?: unknown };
       models?: Record<
         string,
@@ -134,6 +136,8 @@ export function patchOpenClawModelConfig(
   }
 
   d.thinkingDefault = "off";
+  d.contextPruning = { mode: "cache-ttl" };
+  delete d.heartbeat;
   d.models ??= {};
   const entry = d.models[ref] ?? {};
   d.models[ref] = {

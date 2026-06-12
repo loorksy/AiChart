@@ -524,7 +524,10 @@ export async function runAgent(
   );
   const system =
     options?.mode === "chart_analyze"
-      ? systemBase + chartAnalyzeSystemSuffix()
+      ? {
+          static: systemBase.static + chartAnalyzeSystemSuffix(),
+          dynamic: systemBase.dynamic,
+        }
       : systemBase;
   const activeTools =
     options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;
@@ -552,10 +555,20 @@ export async function runAgent(
     const useStream = Boolean(onDelta);
     const res = useStream
       ? await callAnthropicStream(
-          { system, messages, tools: activeTools },
+          {
+            system,
+            messages,
+            tools: activeTools,
+            maxTokens: options?.mode === "chart_analyze" ? 2048 : 2048,
+          },
           { onTextDelta: onDelta },
         )
-      : await callAnthropic({ system, messages, tools: activeTools });
+      : await callAnthropic({
+          system,
+          messages,
+          tools: activeTools,
+          maxTokens: 2048,
+        });
     usageTokens += res.usage.input_tokens + res.usage.output_tokens;
 
     push({ id: `think-${step}`, label: step === 0 ? "تحليل سؤالك" : "متابعة التحليل مع Claude", status: "done" });
