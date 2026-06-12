@@ -82,7 +82,7 @@ export function ChartOverlayToolbar({
 
       {market === "forex" && (
         <Link
-          href="/settings?tab=integrations"
+          href="/console/connect"
           className={cn(
             CTRL,
             "pointer-events-auto gap-1 px-2",

@@ -1,5 +1,5 @@
-import { AdminKeysPanel } from "@/components/admin/AdminKeysPanel";
+import { redirect } from "next/navigation";
 
-export default function AdminKeysPage() {
-  return <AdminKeysPanel />;
+export default function AdminKeysRedirect() {
+  redirect("/console/platform?tab=keys");
 }

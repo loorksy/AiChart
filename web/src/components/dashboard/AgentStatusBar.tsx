@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { Bot, ChevronLeft } from "lucide-react";
+import { Bot } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
 import { cn } from "@/lib/utils";
 import type { TradingMode } from "@/lib/types";
@@ -96,7 +95,7 @@ export function AgentStatusBar({ className }: { className?: string }) {
       padding="sm"
       className={cn("flex flex-wrap items-center gap-x-4 gap-y-2", className)}
     >
-      <Link href="/agent" className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary">
           <Bot className="h-5 w-5 text-foreground" />
           <span
@@ -108,14 +107,13 @@ export function AgentStatusBar({ className }: { className?: string }) {
         </span>
         <span className="min-w-0">
           <span className="flex items-center gap-1 text-sm font-semibold">
-            الوكيل
-            <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
+            OpenClaw
           </span>
           <span className="block truncate text-xs text-muted-foreground">
             {pulse.label}
           </span>
         </span>
-      </Link>
+      </div>
 
       <div className="flex items-center gap-1 rounded-full bg-secondary p-1 text-xs">
         {(Object.keys(MODE_LABEL) as TradingMode[]).map((m) => (

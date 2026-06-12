@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { PageLayout, SurfaceCard, PillButton } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { displayNameFromEmail } from "@/lib/displayName";
+import { InfoTip, LabelWithTip } from "@/components/ui/InfoTip";
 
 function Field({
   label,
@@ -78,6 +79,8 @@ export default function SettingsClient({
   mt,
   forexBackend,
   initialTab,
+  embedMode = false,
+  visibleTabs,
 }: {
   user: PublicUser;
   settings: TradingSettings;
@@ -87,8 +90,18 @@ export default function SettingsClient({
   mt: MtAccountMeta | null;
   forexBackend: ForexBackendMode;
   initialTab?: TabId;
+  /** When true, omit PageLayout — for bridge console sections. */
+  embedMode?: boolean;
+  /** Restrict which tabs appear; defaults to all. */
+  visibleTabs?: TabId[];
 }) {
-  const [tab, setTab] = useState<TabId>(initialTab ?? "profile");
+  const allowedTabs = visibleTabs
+    ? TABS.filter((t) => visibleTabs.includes(t.id))
+    : TABS;
+  const defaultTab = initialTab && allowedTabs.some((t) => t.id === initialTab)
+    ? initialTab
+    : allowedTabs[0]?.id ?? "profile";
+  const [tab, setTab] = useState<TabId>(defaultTab);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const displayName = displayNameFromEmail(user.email);
@@ -99,13 +112,15 @@ export default function SettingsClient({
     router.refresh();
   }
 
-  return (
-    <PageLayout title="الإعدادات" subtitle="إدارة حسابك وتفضيلاتك" maxWidth="6xl">
+  const showTabNav = allowedTabs.length > 1;
 
+  const body = (
+    <>
       {/* Mobile: horizontal scrollable tabs */}
+      {showTabNav && (
       <div className="-mx-4 overflow-x-auto px-4 md:hidden">
         <div className="flex w-max gap-2 pb-1">
-          {TABS.map((t) => {
+          {allowedTabs.map((t) => {
             const Icon = t.icon;
             return (
               <button
@@ -126,8 +141,9 @@ export default function SettingsClient({
           })}
         </div>
       </div>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-[1fr_13rem]">
+      <div className={cn("grid gap-4", showTabNav && "md:grid-cols-[1fr_13rem]")}>
         {/* Tab content — يسار في RTL */}
         <div className="min-w-0 space-y-4 md:order-1">
           {tab === "profile" && (
@@ -172,7 +188,7 @@ export default function SettingsClient({
                   </p>
                 </div>
               </div>
-              <Link href="/plan" className="btn btn-primary w-full sm:w-auto">
+              <Link href="/console/platform?tab=profile" className="btn btn-primary w-full sm:w-auto">
                 <Send className="h-4 w-4" />
                 تواصل للاشتراك
               </Link>
@@ -243,32 +259,44 @@ export default function SettingsClient({
         </div>
 
         {/* تبويبات سطح المكتب — يمين الشاشة في RTL */}
-        <aside className="hidden md:block md:order-2">
-          <nav className="sticky top-4 space-y-0.5 rounded-2xl border border-border bg-card p-2">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={cn(
-                  "sidebar-nav-item w-full",
-                  tab === t.id && "bg-sidebar-accent",
-                )}
-                data-active={tab === t.id}
-              >
-                {t.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => void logout()}
-              className="sidebar-nav-item mt-2 w-full text-destructive hover:bg-destructive/10"
-            >
-              تسجيل الخروج
-            </button>
-          </nav>
-        </aside>
+        {showTabNav && (
+          <aside className="hidden md:block md:order-2">
+            <nav className="sticky top-4 space-y-0.5 rounded-2xl border border-border bg-card p-2">
+              {allowedTabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTab(t.id)}
+                  className={cn(
+                    "sidebar-nav-item w-full",
+                    tab === t.id && "bg-sidebar-accent",
+                  )}
+                  data-active={tab === t.id}
+                >
+                  {t.label}
+                </button>
+              ))}
+              {!embedMode && (
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  className="sidebar-nav-item mt-2 w-full text-destructive hover:bg-destructive/10"
+                >
+                  تسجيل الخروج
+                </button>
+              )}
+            </nav>
+          </aside>
+        )}
       </div>
+    </>
+  );
+
+  if (embedMode) return body;
+
+  return (
+    <PageLayout title="الإعدادات" subtitle="إدارة حسابك وتفضيلاتك" maxWidth="6xl">
+      {body}
     </PageLayout>
   );
 }
@@ -357,10 +385,12 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
 
   return (
     <SurfaceCard>
-      <h2 className="mb-1 text-xl font-semibold">ربط Binance</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
-        فعّل صلاحية التداول فقط، وعطّل السحب.
-      </p>
+      <div className="mb-4 flex items-center gap-2">
+        <h2 className="text-xl font-semibold">ربط Binance</h2>
+        <InfoTip label="أمان المفتاح">
+          فعّل التداول فقط وعطّل السحب. على Mainnet فعّل Futures إن احتجت شورت/رافعة.
+        </InfoTip>
+      </div>
 
       {binance && (
         <div className="mb-4 space-y-3">
@@ -1043,37 +1073,39 @@ function TradingCard({
           </p>
         </Field>
 
-        <Field label="العقود الآجلة (Futures)">
+        <div>
+          <LabelWithTip
+            label="Futures"
+            tip="Binance USDT-M: شورت + رافعة. هامش معزول ووقف خسارة إلزامي — الخسارة القصوى = هامش الصفقة."
+          />
           <select
-            className="input"
+            className="input mt-1"
             value={s.futures_enabled ? "on" : "off"}
             onChange={(e) =>
               set("futures_enabled", e.target.value === "on" ? 1 : 0)
             }
           >
-            <option value="off">معطّل — سبوت فقط (افتراضي)</option>
-            <option value="on">مفعّل — شورت ورافعة (Binance USDT-M)</option>
+            <option value="off">معطّل</option>
+            <option value="on">مفعّل</option>
           </select>
-          <p className="mt-1 text-xs text-muted-foreground">
-            هامش معزول دائماً ووقف خسارة إلزامي. الخسارة القصوى = هامش الصفقة.
-          </p>
-        </Field>
+        </div>
 
-        <Field label="الرافعة الافتراضية (Futures)">
+        <div>
+          <LabelWithTip
+            label="الرافعة"
+            tip={`الافتراضي للصفقات الجديدة. سقف الأدمن: ${limits.max_leverage_cap && limits.max_leverage_cap > 0 ? limits.max_leverage_cap : 10}x`}
+          />
           <input
             type="number"
             min={1}
             max={limits.max_leverage_cap && limits.max_leverage_cap > 0 ? limits.max_leverage_cap : 10}
             step={1}
-            className="input"
+            className="input mt-1"
             value={s.default_leverage ?? 3}
             onChange={(e) => set("default_leverage", Number(e.target.value))}
             disabled={!s.futures_enabled}
           />
-          <p className="mt-1 text-xs text-muted-foreground">
-            سقف الأدمن: {limits.max_leverage_cap && limits.max_leverage_cap > 0 ? limits.max_leverage_cap : 10}x
-          </p>
-        </Field>
+        </div>
 
         <Field label="إطار المسح الافتراضي">
           <select

@@ -8,6 +8,7 @@ import {
 import { getActiveProvider, isLLMConfigured } from "@/lib/llm";
 import { isTelegramConfigured } from "@/lib/telegram";
 import { getPlatformValue } from "@/lib/platformConfig";
+import { getBinanceCaptureStatus } from "@/lib/binanceChartCapture";
 
 export async function GET() {
   try {
@@ -24,6 +25,7 @@ export async function GET() {
       ai_provider: getActiveProvider(),
       telegram: isTelegramConfigured(),
       cron_secret_set: Boolean(getPlatformValue("CRON_SECRET")),
+      binance_capture: await getBinanceCaptureStatus(),
       users: {
         total: users.length,
         active: users.filter((u) => u.status === "active").length,

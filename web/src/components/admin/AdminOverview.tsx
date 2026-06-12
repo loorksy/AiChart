@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { AdminPlatformStats } from "@/lib/store";
 import { MasterKillCard } from "@/components/admin/MasterKillCard";
+import { cn } from "@/lib/utils";
 
 function StatTile({
   label,
@@ -63,22 +64,26 @@ function Section({
 export function AdminOverview({
   stats,
   masterKill,
+  embedded = false,
 }: {
   stats: AdminPlatformStats;
   masterKill: boolean;
+  embedded?: boolean;
 }) {
   const activeRate = stats.users_total
     ? Math.round((stats.users_active / stats.users_total) * 100)
     : 0;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h2 className="text-xl font-bold">نظرة عامة</h2>
-        <p className="text-sm text-muted-foreground">
-          إحصائيات المنصة والتحكّم الطارئ — حسب خطة المشروع (القسم 7).
-        </p>
-      </div>
+    <div className={cn("space-y-6", !embedded && "mx-auto max-w-6xl")}>
+      {!embedded && (
+        <div>
+          <h2 className="text-xl font-bold">نظرة عامة</h2>
+          <p className="text-sm text-muted-foreground">
+            إحصائيات المنصة والتحكّم الطارئ
+          </p>
+        </div>
+      )}
 
       <MasterKillCard initialOn={masterKill} />
 

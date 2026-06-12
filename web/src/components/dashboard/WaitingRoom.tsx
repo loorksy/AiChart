@@ -102,7 +102,7 @@ export function WaitingRoom({
             آخر مسح: {new Date(lastScan).toLocaleString("ar")}
           </p>
         )}
-        <Link href="/market" className="text-sm text-primary hover:underline">
+        <Link href="/console" className="text-sm text-primary hover:underline">
           افتح الشارت →
         </Link>
       </SurfaceCard>

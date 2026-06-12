@@ -11,6 +11,11 @@ interface HealthPayload {
   anthropic: boolean;
   telegram: boolean;
   cron_secret_set: boolean;
+  binance_capture?: {
+    enabled: boolean;
+    chromiumReady: boolean;
+    detail: string;
+  };
   users: {
     total: number;
     active: number;
@@ -78,6 +83,19 @@ export function AdminSystemPanel() {
             <StatusPill ok={health.telegram} label="بوت تليجرام" />
             <StatusPill ok={health.cron_secret_set} label="Cron / المراقبة 24/7" />
             <StatusPill ok={!health.master_kill} label="التداول غير موقوف عالمياً" />
+            {health.binance_capture && (
+              <StatusPill
+                ok={
+                  !health.binance_capture.enabled ||
+                  health.binance_capture.chromiumReady
+                }
+                label={
+                  health.binance_capture.enabled
+                    ? "Playwright Binance"
+                    : "Playwright (معطّل)"
+                }
+              />
+            )}
           </div>
 
           <div className="admin-card p-4 text-sm">

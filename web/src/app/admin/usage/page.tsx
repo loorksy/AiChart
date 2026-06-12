@@ -1,6 +1,5 @@
-import { listClaudeUsageForAdmin } from "@/lib/store";
-import { AdminUsagePanel } from "@/components/admin/AdminUsagePanel";
+import { redirect } from "next/navigation";
 
-export default async function AdminUsagePage() {
-  return <AdminUsagePanel initialUsage={await listClaudeUsageForAdmin()} />;
+export default function AdminUsageRedirect() {
+  redirect("/console/platform?tab=usage");
 }

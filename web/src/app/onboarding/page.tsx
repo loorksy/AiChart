@@ -11,7 +11,7 @@ export default async function OnboardingPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role === "admin" || (await isOnboardingDone(user.id))) {
-    redirect("/dashboard");
+    redirect("/console");
   }
 
   const settings = await getSettings(user.id);

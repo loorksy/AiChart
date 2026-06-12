@@ -1,5 +1,5 @@
-import { AdminSystemPanel } from "@/components/admin/AdminSystemPanel";
+import { redirect } from "next/navigation";
 
-export default function AdminSystemPage() {
-  return <AdminSystemPanel />;
+export default function AdminSystemRedirect() {
+  redirect("/console/platform?tab=system");
 }

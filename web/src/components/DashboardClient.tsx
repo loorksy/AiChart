@@ -91,7 +91,7 @@ export default function DashboardClient({
       />
 
       {pendingIntentCount > 0 && (
-        <Link href="/trades" className="block">
+        <Link href="/console/trades" className="block">
           <SurfaceCard className="flex items-center justify-between gap-3 border-chart-1/40 bg-chart-1/5 transition hover:bg-chart-1/10">
             <div>
               <p className="font-semibold text-foreground">
@@ -174,7 +174,7 @@ export default function DashboardClient({
       </SurfaceCard>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Link href="/settings?tab=integrations" className="block">
+        <Link href="/console/connect" className="block">
           <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
             <ArrowLeftRight className="h-5 w-5 text-accent-gold" />
             <div>
@@ -186,7 +186,7 @@ export default function DashboardClient({
           </SurfaceCard>
         </Link>
 
-        <Link href="/settings?tab=integrations" className="block">
+        <Link href="/console/connect" className="block">
           <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
             <ArrowLeftRight className="h-5 w-5 text-accent-gold" />
             <div>
@@ -202,7 +202,7 @@ export default function DashboardClient({
           </SurfaceCard>
         </Link>
 
-        <Link href="/trades" className="block">
+        <Link href="/console/trades" className="block">
           <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
             <BarChart3 className="h-5 w-5 text-accent-gold" />
             <div>
@@ -212,7 +212,7 @@ export default function DashboardClient({
           </SurfaceCard>
         </Link>
 
-        <Link href="/market" className="block">
+        <Link href="/console/connect" className="block">
           <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
             <LineChart className="h-5 w-5 text-accent-gold" />
             <div>

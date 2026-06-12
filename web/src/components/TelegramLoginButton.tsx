@@ -40,7 +40,7 @@ export function TelegramLoginButton({
           onError?.(data.error ?? "فشل تسجيل الدخول عبر تليجرام.");
           return;
         }
-        router.push(data.redirect ?? "/chat");
+        router.push(data.redirect ?? "/console");
         router.refresh();
       } catch {
         onError?.("تعذّر الاتصال بالخادم.");

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
         ? body.redirectTo
         : undefined;
 
-    let redirect = redirectTo ?? "/chat";
+    let redirect = redirectTo ?? "/console";
     if (isNew || !(await isOnboardingDone(user.id))) {
       redirect = "/onboarding";
     }

@@ -10,6 +10,8 @@ services:
     environment:
       - MT5_BRIDGE_URL=http://mt5:18812
       - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
+      - BINANCE_CAPTURE_ENABLED=${BINANCE_CAPTURE_ENABLED:-1}
+      - PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
     volumes:
       - aichart-data:/app/data
     restart: unless-stopped

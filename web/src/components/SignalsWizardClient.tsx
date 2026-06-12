@@ -112,7 +112,7 @@ export default function SignalsWizardClient() {
         "aichart_pending_prompt",
         `اعرض خطة الإشارة التي أنشأتها لـ ${symbol}`,
       );
-      router.push("/chat");
+      router.push("/console");
     } catch {
       setError("تعذّر الاتصال بالخادم.");
     } finally {

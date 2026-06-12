@@ -22,6 +22,8 @@ tasks:
 | `[EVENT:daily_loss_warn]` | خسارة اليوم قرب الحد (80%+) | أنذر المشغّل؛ لا صفقات جديدة بلا موافقة |
 | `[EVENT:daily_memory]` | بعد الملخص اليومي 20:00 UTC | حدّث `MEMORY.md` و`memory/` |
 
+**شارت Binance:** `POST /api/agent/chart/binance-capture` — Playwright عند `BINANCE_CAPTURE_ENABLED=1`، وإلا fallback برمجي.
+
 - اقرأ الوضع الحالي من GET /api/agent/risk/status قبل أي إغلاق.
 - Kill Switch مفعّل → لا تنفيذ، أبلغ المشغّل مرة واحدة فقط.
 - التنبيهات قصيرة ومباشرة.

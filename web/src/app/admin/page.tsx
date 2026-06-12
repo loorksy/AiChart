@@ -1,14 +1,5 @@
-import {
-  getAdminPlatformStats,
-  isMasterKillOn,
-} from "@/lib/store";
-import { AdminOverview } from "@/components/admin/AdminOverview";
+import { redirect } from "next/navigation";
 
-export default async function AdminOverviewPage() {
-  return (
-    <AdminOverview
-      stats={await getAdminPlatformStats()}
-      masterKill={await isMasterKillOn()}
-    />
-  );
+export default function AdminOverviewRedirect() {
+  redirect("/console");
 }

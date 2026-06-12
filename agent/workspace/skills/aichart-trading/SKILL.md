@@ -25,6 +25,7 @@ curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 | ذاكرة دروس | `GET /api/agent/memory/lessons?symbol=&limit=3` |
 | توصية + شارت | `POST /api/agent/recommendation` |
 | شارت لحظي | `POST /api/agent/chart/snapshot` |
+| شارت Binance (Playwright) | `POST /api/agent/chart/binance-capture` |
 | موافقة أزرار | `POST /api/agent/approval/request` |
 | فتح/إغلاق | `POST /api/agent/trade/open|close` |
 | Futures مراكز/أوامر | `GET /api/agent/futures/positions|orders` · `POST /api/agent/futures/modify` |
@@ -42,6 +43,29 @@ curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 
 أنواع الرسم: `zone`, `trend_line`, `forecast_path`, `channel`, `fib_retracement`,
 `price_line`, `baseline`, `marker`, `histogram_band` — نقاط: `barsAhead`, `price`.
+
+## شارت Binance (Playwright)
+
+**تفعيل محلي (Windows / dev):**
+```powershell
+cd web
+npm run playwright:setup
+# في web/.env:
+# BINANCE_CAPTURE_ENABLED=1
+npm run playwright:test-capture
+# اختبار عبر الخادم (أدمن): POST /api/admin/binance-capture?symbol=BTCUSDT
+```
+
+**Docker:** `BINANCE_CAPTURE_ENABLED=1` مفعّل في `infra/Dockerfile` + Chromium مثبّت.
+
+يتطلب `BINANCE_CAPTURE_ENABLED=1` + Chromium. عند الفشل (CAPTCHA/geo) أو وجود `chart_drawings` → fallback برمجي (`chartSnapshot`).
+
+```bash
+POST /api/agent/chart/binance-capture
+{"symbol":"BTCUSDT","interval":"1h","market_type":"futures","chart_drawings":[...]}
+```
+
+يرجع JSON: `{ ok, source: "playwright"|"fallback", image_base64, content_type }`.
 
 ## شارت MT5 (EA)
 

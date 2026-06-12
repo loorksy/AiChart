@@ -117,7 +117,7 @@ export function NotificationPanel({
                   {pendingIntents} صفقة بانتظار الموافقة
                 </p>
                 <Link
-                  href="/trades"
+                  href="/console/trades"
                   onClick={() => setOpen(false)}
                   className="text-link text-xs"
                 >
@@ -170,7 +170,7 @@ export function NotificationPanel({
 
           <div className="border-t border-border px-4 py-2">
             <Link
-              href="/settings"
+              href="/console/connect"
               onClick={() => setOpen(false)}
               className="text-link text-xs"
             >
