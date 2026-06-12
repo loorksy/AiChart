@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       app_url: getPublicAppUrl(),
       notes: {
         chart_media:
-          "لا تستخدم GET localhost/binance-capture. POST binance-capture ثم chart_url_public أو image_base64.",
+          "POST binance-capture ثم MEDIA:<chart_url_telegram> (توكن مدمج). لا تستخدم localhost ولا ?token= يدوياً.",
       },
     });
   } catch (e) {

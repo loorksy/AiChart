@@ -32,7 +32,7 @@ function dec(val, encKey) {
 }
 
 for (const r of rows) {
-  const v = r.plain ? r.value : dec(r.value, env.ENCRYPTION_KEY);
+  const v = (r.plain ? r.value : dec(r.value, env.ENCRYPTION_KEY)).replace(/\r$/, "");
   if (v) {
     console.log('export ' + r.key + '=' + JSON.stringify(v));
     if (r.key === 'GEMINI_API_KEY') {
@@ -40,7 +40,7 @@ for (const r of rows) {
     }
   }
 }
-const svc = env.AICHART_SERVICE_TOKEN;
+const svc = env.AICHART_SERVICE_TOKEN?.replace(/\r$/, "");
 if (svc) console.log('export AICHART_SERVICE_TOKEN=' + JSON.stringify(svc));
 console.log('export AICHART_API_URL=' + JSON.stringify('http://127.0.0.1:' + (env.PORT || '$PORT')));
 ")"

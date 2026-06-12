@@ -52,7 +52,10 @@ if [[ -f "$WEB_ENV" ]]; then
     fi
   }
   upsert "AICHART_API_URL" "http://127.0.0.1:${PORT}"
-  [[ -n "$SVC" ]] && upsert "AICHART_SERVICE_TOKEN" "$SVC"
+  if [[ -n "$SVC" ]]; then
+    SVC="$(printf '%s' "$SVC" | tr -d '\r')"
+    upsert "AICHART_SERVICE_TOKEN" "$SVC"
+  fi
   log "updated /root/.openclaw/.env (AICHART_API_URL=http://127.0.0.1:${PORT})"
 fi
 

@@ -16,6 +16,7 @@ import {
 import { profileForInterval } from "@/lib/analysisProfile";
 import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
 import { attachChartToRecommendation } from "@/lib/recommendationChart";
+import { agentChartUrls } from "@/lib/chartBridgeUrl";
 import {
   canUseMt5ChartCapture,
   mt5ChartUrl,
@@ -150,7 +151,7 @@ export async function POST(req: NextRequest) {
       recommendation: enriched,
       committee,
       similar_lessons: similarLessons,
-      chart_url: chartUrl,
+      ...agentChartUrls(chartUrl),
       mt5_pending: mt5Pending,
       mt5_symbol: mt5.mt5Symbol ?? null,
       mt5_unavailable_reason: mt5.ok ? null : mt5.reason ?? null,

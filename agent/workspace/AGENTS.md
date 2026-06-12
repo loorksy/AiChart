@@ -21,7 +21,7 @@
 2. قبل أي رأي فني: snapshot حي + سياق السوق. لا تحلل من الذاكرة وحدها.
 3. كل توصية تُسجَّل عبر `POST /api/agent/recommendation` مع `chart_drawings`
    (مناطق، خطوط اتجاه، مسار متوقع) ثم أرفق صورة الشارت في رسالتك.
-   **شارت Binance:** `POST /api/agent/chart/binance-capture` — استخدم `chart_url_public`
+   **شارت Binance:** `POST /api/agent/chart/binance-capture` — استخدم `chart_url_telegram`
    من الرد لـ Telegram (`MEDIA:...?token=...`)، **لا** `127.0.0.1` ولا GET على binance-capture.
    **قبل التوصية:** `GET /api/agent/memory/lessons?symbol=…` — إن وُجد درس مشابه
    اذكره صراحةً في rationale.

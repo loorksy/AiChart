@@ -2,7 +2,7 @@ import { execFile } from "child_process";
 import fs from "fs";
 import path from "path";
 import { promisify } from "util";
-import { GEMINI_OPENAI_BASE_URL } from "./gemini";
+import { GEMINI_OPENAI_BASE_URL, isGeminiStudioApiKey } from "./gemini";
 import {
   getActiveModel,
   getActiveProvider,
@@ -38,12 +38,18 @@ const PROVIDER_BASE_URL: Partial<Record<LLMProvider | "google", string>> = {
   google: GEMINI_OPENAI_BASE_URL,
 };
 
-/** Cheap-model fallback candidates per provider (used when its key is set). */
-const FALLBACK_CANDIDATES: Record<LLMProvider, string> = {
-  anthropic: "anthropic/claude-haiku-4-5",
+/** Cheap cross-provider fallbacks (Anthropic excluded — OpenClaw needs OAuth, not API key in catalog). */
+const CROSS_FALLBACK_CANDIDATES: Partial<Record<LLMProvider, string>> = {
   openai: "openai/gpt-4.1-mini",
   google: "google/gemini-2.5-flash",
 };
+
+/** Same-provider lighter model when primary hits rate limits. */
+const SAME_PROVIDER_ALT: Partial<Record<LLMProvider, string>> = {
+  google: "google/gemini-2.0-flash",
+};
+
+const FALLBACK_PROVIDER_ORDER: LLMProvider[] = ["openai", "google"];
 
 const SYNC_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "google"];
 
@@ -55,14 +61,35 @@ function isAllowedModelRef(ref: string): boolean {
   return SYNC_PROVIDERS.includes(provider as LLMProvider);
 }
 
-/** Fallback refs across configured providers (never OpenRouter). */
+function providerKeyConfigured(provider: LLMProvider): boolean {
+  const key = getProviderApiKey(provider);
+  if (!key?.trim()) return false;
+  if (provider === "google") return isGeminiStudioApiKey(key);
+  return true;
+}
+
+/** Fallback refs across configured providers (never OpenRouter or Anthropic cross-fallback). */
 export function buildFallbackRefs(primaryRef: string): string[] {
+  const primaryProvider = providerKeyFromRef(primaryRef) as LLMProvider;
   const out: string[] = [];
-  for (const provider of SYNC_PROVIDERS) {
-    if (!getProviderApiKey(provider)) continue;
-    const candidate = FALLBACK_CANDIDATES[provider];
+
+  const sameAlt = SAME_PROVIDER_ALT[primaryProvider];
+  if (
+    sameAlt &&
+    sameAlt.toLowerCase() !== primaryRef.toLowerCase() &&
+    providerKeyConfigured(primaryProvider) &&
+    isAllowedModelRef(sameAlt)
+  ) {
+    out.push(sameAlt);
+  }
+
+  for (const provider of FALLBACK_PROVIDER_ORDER) {
+    if (provider === primaryProvider) continue;
+    if (!providerKeyConfigured(provider)) continue;
+    const candidate = CROSS_FALLBACK_CANDIDATES[provider];
+    if (!candidate || !isAllowedModelRef(candidate)) continue;
     if (candidate.toLowerCase() === primaryRef.toLowerCase()) continue;
-    if (!isAllowedModelRef(candidate)) continue;
+    if (out.some((r) => r.toLowerCase() === candidate.toLowerCase())) continue;
     out.push(candidate);
   }
   return out;

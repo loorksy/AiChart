@@ -70,8 +70,8 @@ POST /api/agent/chart/binance-capture
 **Telegram — ممنوع** `MEDIA:http://127.0.0.1:...` أو GET على `binance-capture`.
 
 1. `POST` كما أعلاه (Bearer token).
-2. للصورة في تيليجرام استخدم **`chart_url_public`** مع `?token=$AICHART_SERVICE_TOKEN`  
-   مثال: `MEDIA:https://aichart.lork.cloud/api/agent/chart/capture/abc123?token=...`
+2. للصورة في تيليجرام استخدم **`chart_url_telegram`** مباشرة (التوكن مدمج من الخادم)  
+   مثال: `MEDIA:<chart_url_telegram>` من رد `binance-capture` أو `recommendation`
 3. أو أرفق `image_base64` مباشرة إن دعم القناة ذلك.
 
 ## شارت MT5 (EA)

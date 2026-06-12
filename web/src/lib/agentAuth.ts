@@ -20,8 +20,10 @@ export function isSingleUserMode(): boolean {
 }
 
 function serviceToken(): string | null {
-  const token = process.env.AICHART_SERVICE_TOKEN;
-  return token && token.length >= 16 ? token : null;
+  const raw = process.env.AICHART_SERVICE_TOKEN;
+  if (!raw) return null;
+  const token = raw.trim().replace(/\r$/, "");
+  return token.length >= 16 ? token : null;
 }
 
 export function isAgentBridgeConfigured(): boolean {
@@ -37,7 +39,8 @@ function timingSafeEqual(a: string, b: string): boolean {
 export function isValidAgentToken(provided: string | null | undefined): boolean {
   const expected = serviceToken();
   if (!expected || !provided?.trim()) return false;
-  return timingSafeEqual(provided.trim(), expected);
+  const normalized = provided.trim().replace(/\r$/, "");
+  return timingSafeEqual(normalized, expected);
 }
 
 /**
