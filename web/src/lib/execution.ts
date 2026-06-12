@@ -94,6 +94,7 @@ export async function executeIntent(
   const envPreference =
     settings.execution_env_preference === "live" ? "live" : "demo";
 
+  const marketType = intent.market_type === "futures" ? "futures" : "spot";
   const decision = evaluateTrade(
     settings,
     limits,
@@ -102,6 +103,9 @@ export async function executeIntent(
       side: intent.side,
       notional: intent.notional,
       market: intent.market,
+      marketType,
+      leverage: intent.leverage ?? 1,
+      stopLoss: intent.stop_loss,
     },
     {
       masterKill: await isMasterKillOn(),
@@ -130,11 +134,15 @@ export async function executeIntent(
     id: "risk",
     label: `فحص حدود المخاطر · ${intent.symbol}`,
     status: "done",
+    detail:
+      marketType === "futures"
+        ? `Futures · رافعة ${intent.leverage ?? 1}x · هامش معزول`
+        : undefined,
   });
 
   // 2) Delegate placement to the broker that owns this market.
   const broker = intent.broker ?? brokerForMarket(intent.market);
-  const adapter = getBrokerAdapter(broker);
+  const adapter = getBrokerAdapter(broker, marketType);
   const result = await adapter.placeOrder(userId, {
     intent,
     settings,

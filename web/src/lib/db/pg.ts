@@ -356,6 +356,30 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
+    ALTER TABLE trades
+      ADD COLUMN IF NOT EXISTS market_type TEXT NOT NULL DEFAULT 'spot',
+      ADD COLUMN IF NOT EXISTS leverage DOUBLE PRECISION NOT NULL DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS order_type TEXT NOT NULL DEFAULT 'market'
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trade_intents
+      ADD COLUMN IF NOT EXISTS market_type TEXT NOT NULL DEFAULT 'spot',
+      ADD COLUMN IF NOT EXISTS leverage DOUBLE PRECISION NOT NULL DEFAULT 1
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS futures_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS default_leverage DOUBLE PRECISION NOT NULL DEFAULT 3
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE admin_limits
+      ADD COLUMN IF NOT EXISTS max_leverage_cap DOUBLE PRECISION NOT NULL DEFAULT 10
+  `).catch(() => {});
+
+  await client.query(`
     ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ
   `).catch(() => {});
 

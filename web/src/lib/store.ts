@@ -87,6 +87,8 @@ const SETTABLE_FIELDS = [
   "scan_poll_minutes",
   "analysis_interval",
   "execution_env_preference",
+  "futures_enabled",
+  "default_leverage",
 ] as const;
 
 export async function updateSettings(
@@ -433,6 +435,7 @@ const ADMIN_LIMIT_FIELDS = [
   "max_capital_cap",
   "max_open_trades_cap",
   "claude_quota",
+  "max_leverage_cap",
 ] as const;
 
 export async function updateAdminLimits(
@@ -604,14 +607,16 @@ export async function createIntent(
     status?: string;
     reason?: string | null;
     practice?: boolean;
+    market_type?: "spot" | "futures";
+    leverage?: number;
   },
 ): Promise<TradeIntent> {
   const market: MarketType = intent.market ?? "crypto";
   const broker: BrokerKind = intent.broker ?? brokerForMarket(market);
   const id = await insertReturningId(
     `INSERT INTO trade_intents
-      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       intent.recommendation_id ?? null,
@@ -628,6 +633,8 @@ export async function createIntent(
       intent.status ?? "pending",
       intent.reason ?? null,
       intent.practice ? 1 : 0,
+      intent.market_type ?? "spot",
+      intent.leverage ?? 1,
     ],
   );
   return (await getIntent(id))!;
@@ -701,14 +708,16 @@ export async function recordTrade(
     market?: MarketType;
     broker?: BrokerKind;
     status?: string;
+    market_type?: "spot" | "futures";
+    leverage?: number;
   },
 ): Promise<Trade> {
   const market: MarketType = trade.market ?? "crypto";
   const broker: BrokerKind = trade.broker ?? brokerForMarket(market);
   const id = await insertReturningId(
     `INSERT INTO trades
-      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, market, broker, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, market, broker, status, market_type, leverage)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       trade.intent_id ?? null,
@@ -722,6 +731,8 @@ export async function recordTrade(
       market,
       broker,
       trade.status ?? "open",
+      trade.market_type ?? "spot",
+      trade.leverage ?? 1,
     ],
   );
   return (await queryOne<Trade>("SELECT * FROM trades WHERE id = ?", [id]))!;

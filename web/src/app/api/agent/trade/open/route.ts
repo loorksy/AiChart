@@ -27,6 +27,10 @@ const schema = z.object({
   /** True when the human operator explicitly ordered/approved this trade. */
   approved_by_user: z.boolean().default(false),
   practice: z.boolean().default(false),
+  /** 'futures' opens a Binance USDT-M position (short + leverage supported). */
+  market_type: z.enum(["spot", "futures"]).default("spot"),
+  /** Leverage multiplier (futures only; capped by admin max_leverage_cap). */
+  leverage: z.number().min(1).max(125).optional(),
 });
 
 /**
@@ -73,6 +77,12 @@ export async function POST(req: NextRequest) {
         : settings.max_capital;
     const notional =
       body.notional ?? (effectiveCapital * settings.per_trade_pct) / 100;
+
+    const marketType = body.market_type ?? "spot";
+    const leverage =
+      marketType === "futures"
+        ? (body.leverage ?? settings.default_leverage ?? 3)
+        : 1;
 
     const intent = await createIntent(userId, {
       recommendation_id: body.recommendation_id ?? null,
