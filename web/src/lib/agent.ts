@@ -1,10 +1,10 @@
 import {
-  callAnthropic,
-  callAnthropicStream,
+  callLLM,
+  callLLMStream,
   type ContentBlock,
   type Message,
   type ToolDef,
-} from "./anthropic";
+} from "./llm";
 import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "./persona";
 import { buildUserContext, displayNameFromEmail } from "./userContext";
 import {
@@ -551,11 +551,11 @@ export async function runAgent(
 
     const useStream = Boolean(onDelta);
     const res = useStream
-      ? await callAnthropicStream(
+      ? await callLLMStream(
           { system, messages, tools: activeTools },
           { onTextDelta: onDelta },
         )
-      : await callAnthropic({ system, messages, tools: activeTools });
+      : await callLLM({ system, messages, tools: activeTools });
     usageTokens += res.usage.input_tokens + res.usage.output_tokens;
 
     push({ id: `think-${step}`, label: step === 0 ? "تحليل سؤالك" : "متابعة التحليل مع Claude", status: "done" });

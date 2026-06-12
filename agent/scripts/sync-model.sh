@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Syncs the OpenClaw primary model from the model chosen in the AiChart
-# admin panel (ANTHROPIC_MODEL), and keeps cacheRetention: "long" on it.
+# Syncs the OpenClaw primary model from the provider + model chosen in the
+# AiChart admin panel (AI_PROVIDER / AI_MODEL), including cross-provider
+# fallbacks and OpenAI-compatible provider credentials.
 # Run after changing the model in the dashboard, then restart the gateway.
 set -euo pipefail
 
@@ -8,10 +9,9 @@ API="${AICHART_API_URL:-http://localhost:3000}"
 TOKEN="${AICHART_SERVICE_TOKEN:?AICHART_SERVICE_TOKEN غير معرّف في البيئة}"
 CONFIG="${OPENCLAW_CONFIG:-$HOME/.openclaw/openclaw.json}"
 
-REF="$(curl -sf -H "Authorization: Bearer $TOKEN" "$API/api/agent/model" \
-  | node -pe 'JSON.parse(require("fs").readFileSync(0, "utf8")).ref')"
+PAYLOAD="$(curl -sf -H "Authorization: Bearer $TOKEN" "$API/api/agent/model")"
 
-if [ -z "$REF" ]; then
+if [ -z "$PAYLOAD" ]; then
   echo "تعذّر جلب النموذج من $API/api/agent/model" >&2
   exit 1
 fi
@@ -21,9 +21,30 @@ if [[ "${OPENCLAW_AUTO_RESTART:-}" == "1" ]]; then
   sleep 3
 fi
 
-node - "$CONFIG" "$REF" <<'EOF'
+node - "$CONFIG" "$PAYLOAD" <<'EOF'
 const fs = require("fs");
-const [, , path, ref] = process.argv;
+const [, , path, payloadJson] = process.argv;
+
+let payload;
+try {
+  payload = JSON.parse(payloadJson);
+} catch (e) {
+  console.error(`رد غير صالح من /api/agent/model: ${e.message}`);
+  process.exit(1);
+}
+
+const ref = payload.ref;
+const fallbacks = Array.isArray(payload.fallbacks) ? payload.fallbacks : [];
+const providerKeys =
+  payload.providerKeys && typeof payload.providerKeys === "object"
+    ? payload.providerKeys
+    : {};
+
+if (!ref) {
+  console.error("لا يوجد ref في رد /api/agent/model");
+  process.exit(1);
+}
+
 let cfg = {};
 try {
   cfg = JSON.parse(fs.readFileSync(path, "utf8"));
@@ -40,15 +61,8 @@ cfg.agents ??= {};
 cfg.agents.defaults ??= {};
 delete cfg.agents.defaults.thinking;
 
-// Rate-limit resilience: when the primary model hits Anthropic's
-// tokens-per-minute limit, OpenClaw falls back to the next model instead
-// of replying "All models are temporarily rate-limited".
-const FALLBACK_POOL = [
-  "anthropic/claude-haiku-4-5",
-  "anthropic/claude-sonnet-4-5",
-];
-const fallbacks = FALLBACK_POOL.filter((m) => m !== ref);
-
+// Rate-limit resilience: cross-provider fallbacks (built server-side from
+// the providers whose API keys are configured in the admin panel).
 const model = cfg.agents.defaults.model;
 cfg.agents.defaults.model =
   model && typeof model === "object"
@@ -79,12 +93,18 @@ cfg.agents.defaults.models[ref] = {
   ...entry,
   params: {
     ...(entry.params ?? {}),
+    // cacheRetention applies to Anthropic; harmless for other providers.
     cacheRetention: "long",
     thinking: "off",
   },
 };
 
-// Register primary + fallbacks in models.providers so OpenClaw accepts them.
+// Register primary + fallbacks in models.providers so OpenClaw accepts them,
+// and attach credentials/baseUrl for OpenAI-compatible providers.
+const PROVIDER_BASE_URL = {
+  openrouter: "https://openrouter.ai/api/v1",
+  openai: "https://api.openai.com/v1",
+};
 cfg.models ??= {};
 cfg.models.providers ??= {};
 for (const full of [ref, ...fallbacks]) {
@@ -96,7 +116,13 @@ for (const full of [ref, ...fallbacks]) {
   if (!provModels.some((m) => m.id === modelId)) {
     provModels.push({ id: modelId, name: modelId });
   }
-  cfg.models.providers[provider] = { ...bucket, models: provModels };
+  const merged = { ...bucket, models: provModels };
+  if (provider === "openrouter" || provider === "openai") {
+    if (providerKeys[provider]) merged.apiKey = providerKeys[provider];
+    merged.baseUrl = PROVIDER_BASE_URL[provider];
+    merged.api = "openai-completions";
+  }
+  cfg.models.providers[provider] = merged;
 }
 
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");

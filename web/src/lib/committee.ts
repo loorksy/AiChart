@@ -1,4 +1,4 @@
-import { callAnthropic } from "./anthropic";
+import { callLLM } from "./llm";
 import {
   countOpenTrades,
   getSettings,
@@ -108,7 +108,7 @@ export async function evaluateCommittee(
     .join("\n");
 
   try {
-    const res = await callAnthropic({
+    const res = await callLLM({
       system,
       messages: [{ role: "user", content: userMsg }],
       maxTokens: 900,

@@ -1,19 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAgentAuth } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { getAnthropicModel } from "@/lib/anthropic";
+import { getActiveModel, getActiveProvider, getProviderApiKey } from "@/lib/llm";
+import { buildFallbackRefs, modelRefFromPlatform } from "@/lib/openclawModelSync";
 import { refreshPlatformConfigCache } from "@/lib/platformConfig";
 
 /**
- * Bridge: the Claude model chosen in the admin panel — lets the OpenClaw
- * gateway follow the same selection (see agent/scripts/sync-model.sh).
+ * Bridge: the AI provider + model chosen in the admin panel — lets the
+ * OpenClaw gateway follow the same selection (see agent/scripts/sync-model.sh).
  */
 export async function GET(req: NextRequest) {
   try {
     requireAgentAuth(req);
     await refreshPlatformConfigCache();
-    const model = getAnthropicModel();
-    return NextResponse.json({ model, ref: `anthropic/${model}` });
+    const provider = getActiveProvider();
+    const model = getActiveModel();
+    const ref = modelRefFromPlatform(model);
+    // OpenAI-compatible provider keys so the gateway script can register
+    // them in openclaw.json (same trusted bridge token as trading ops).
+    const providerKeys: Record<string, string> = {};
+    for (const p of ["openrouter", "openai"] as const) {
+      const key = getProviderApiKey(p);
+      if (key) providerKeys[p] = key;
+    }
+    return NextResponse.json({
+      provider,
+      model,
+      ref,
+      fallbacks: buildFallbackRefs(ref),
+      providerKeys,
+    });
   } catch (e) {
     return handleError(e);
   }

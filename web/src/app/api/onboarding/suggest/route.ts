@@ -7,7 +7,7 @@ import {
   incrementUsage,
   wouldExceedQuota,
 } from "@/lib/store";
-import { callAnthropic, isAnthropicConfigured } from "@/lib/anthropic";
+import { callLLM, isLLMConfigured } from "@/lib/llm";
 
 const SUGGEST_COST = 1;
 
@@ -21,7 +21,7 @@ const schema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
-    if (!isAnthropicConfigured()) {
+    if (!isLLMConfigured()) {
       return NextResponse.json(
         { error: "وكيل Claude غير مُفعّل." },
         { status: 503 },
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join("\n");
 
-    const response = await callAnthropic({
+    const response = await callLLM({
       system: "أعد JSON صالحاً فقط. لا نص خارج JSON.",
       messages: [{ role: "user", content: prompt }],
       maxTokens: 450,

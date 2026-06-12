@@ -8,7 +8,7 @@ import {
   incrementUsage,
 } from "@/lib/store";
 import { runAgent } from "@/lib/agent";
-import { isAnthropicConfigured } from "@/lib/anthropic";
+import { isLLMConfigured } from "@/lib/llm";
 import { processRecommendations } from "@/lib/tradeFlow";
 
 const SIGNAL_COST = 5;
@@ -56,7 +56,7 @@ const SL_LABEL = {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser();
-    if (!isAnthropicConfigured()) {
+    if (!isLLMConfigured()) {
       return NextResponse.json(
         { error: "وكيل Claude غير مُفعّل." },
         { status: 503 },

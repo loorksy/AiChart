@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { isOnboardingDone } from "@/lib/store";
-import { isAnthropicConfigured } from "@/lib/anthropic";
+import { isLLMConfigured } from "@/lib/llm";
 import ChatPageClient from "@/components/ChatPageClient";
 
 export default async function ChatPage() {
@@ -15,7 +15,7 @@ export default async function ChatPage() {
     <ChatPageClient
       email={user.email}
       role={user.role}
-      agentReady={isAnthropicConfigured()}
+      agentReady={isLLMConfigured()}
     />
   );
 }

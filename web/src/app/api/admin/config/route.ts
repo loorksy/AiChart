@@ -39,10 +39,14 @@ export async function PUT(req: NextRequest) {
     let agentModelSync: Awaited<
       ReturnType<typeof syncOpenClawModelFromPlatform>
     > | null = null;
-    if (patch.ANTHROPIC_MODEL !== undefined) {
-      agentModelSync = await syncOpenClawModelFromPlatform(
-        String(patch.ANTHROPIC_MODEL),
-      );
+    if (
+      patch.AI_MODEL !== undefined ||
+      patch.AI_PROVIDER !== undefined ||
+      patch.ANTHROPIC_MODEL !== undefined
+    ) {
+      // savePlatformConfig already refreshed the cache, so the sync reads
+      // the new provider/model from platform config directly.
+      agentModelSync = await syncOpenClawModelFromPlatform();
     }
 
     return NextResponse.json({

@@ -22,7 +22,7 @@ type ConfigField = {
 
 const GROUPS: { id: ConfigField["group"]; title: string }[] = [
   { id: "core", title: "الأساس والأمان" },
-  { id: "claude", title: "Claude / Anthropic" },
+  { id: "claude", title: "الذكاء الاصطناعي — المزود والنموذج" },
   { id: "voice", title: "الصوت — OpenRouter" },
   { id: "telegram", title: "تليجرام" },
   { id: "ops", title: "التشغيل والمراقبة" },
@@ -156,13 +156,39 @@ export function AdminKeysPanel() {
   }
 
   const configuredCount = fields.filter((f) => f.configured).length;
-  const apiKeyField = fields.find((f) => f.key === "ANTHROPIC_API_KEY");
-  const modelField = fields.find((f) => f.key === "ANTHROPIC_MODEL");
+
+  // Provider → key → models flow
+  const AI_PROVIDERS = [
+    { id: "anthropic", label: "Anthropic (Claude)", keyField: "ANTHROPIC_API_KEY" },
+    { id: "openrouter", label: "OpenRouter", keyField: "OPENROUTER_API_KEY" },
+    { id: "openai", label: "OpenAI", keyField: "OPENAI_API_KEY" },
+  ] as const;
+  type ProviderId = (typeof AI_PROVIDERS)[number]["id"];
+
+  const providerField = fields.find((f) => f.key === "AI_PROVIDER");
+  const savedProvider = (providerField?.value || "anthropic") as ProviderId;
+  const selectedProvider = ((draft.AI_PROVIDER || savedProvider) ??
+    "anthropic") as ProviderId;
+  const providerMeta =
+    AI_PROVIDERS.find((p) => p.id === selectedProvider) ?? AI_PROVIDERS[0];
+
+  const apiKeyField = fields.find((f) => f.key === providerMeta.keyField);
+  const aiModelField = fields.find((f) => f.key === "AI_MODEL");
+  const legacyModelField = fields.find((f) => f.key === "ANTHROPIC_MODEL");
+  const currentAiModel =
+    aiModelField?.value ||
+    (selectedProvider === "anthropic"
+      ? legacyModelField?.value ?? "claude-3-5-sonnet-latest"
+      : "");
+
   const claudeFields = fields.filter(
     (f) =>
       f.group === "claude" &&
+      f.key !== "AI_PROVIDER" &&
+      f.key !== "AI_MODEL" &&
       f.key !== "ANTHROPIC_MODEL" &&
-      f.key !== "ANTHROPIC_API_KEY",
+      f.key !== "ANTHROPIC_API_KEY" &&
+      f.key !== "OPENAI_API_KEY",
   );
   const orKeyField = fields.find((f) => f.key === "OPENROUTER_API_KEY");
   const orModelField = fields.find((f) => f.key === "OPENROUTER_AUDIO_MODEL");
@@ -214,21 +240,50 @@ export function AdminKeysPanel() {
             <div className="space-y-4">
               {group.id === "claude" && apiKeyField && (
                 <>
+                  <div>
+                    <p className="mb-1.5 text-sm font-medium">
+                      المزود
+                      <span
+                        className="mr-2 text-[10px] text-muted-foreground"
+                        dir="ltr"
+                      >
+                        AI_PROVIDER
+                      </span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {AI_PROVIDERS.map((p) => {
+                        const active = selectedProvider === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setDraftValue("AI_PROVIDER", p.id)}
+                            className={cn(
+                              "rounded-lg border px-3 py-1.5 text-xs font-medium transition",
+                              active
+                                ? "border-primary/50 bg-primary/10 text-primary"
+                                : "border-white/10 text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <ConfigFieldRow
                     f={apiKeyField}
                     draft={draft}
                     setDraftValue={setDraftValue}
                   />
                   <ClaudeModelPicker
-                    apiKeyDraft={draft.ANTHROPIC_API_KEY ?? ""}
+                    provider={selectedProvider}
+                    providerLabel={providerMeta.label}
+                    apiKeyDraft={draft[providerMeta.keyField] ?? ""}
                     apiKeyConfigured={apiKeyField.configured}
-                    currentModel={
-                      modelField?.value ??
-                      modelField?.placeholder ??
-                      "claude-3-5-sonnet-latest"
-                    }
-                    draftModel={draft.ANTHROPIC_MODEL ?? ""}
-                    onSelectModel={(id) => setDraftValue("ANTHROPIC_MODEL", id)}
+                    currentModel={currentAiModel}
+                    draftModel={draft.AI_MODEL ?? ""}
+                    onSelectModel={(id) => setDraftValue("AI_MODEL", id)}
                   />
                   {agentModel && (
                     <p

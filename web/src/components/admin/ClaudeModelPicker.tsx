@@ -17,12 +17,16 @@ export function ClaudeModelPicker({
   currentModel,
   draftModel,
   onSelectModel,
+  provider = "anthropic",
+  providerLabel = "Anthropic",
 }: {
   apiKeyDraft: string;
   apiKeyConfigured: boolean;
   currentModel: string;
   draftModel: string;
   onSelectModel: (modelId: string) => void;
+  provider?: "anthropic" | "openrouter" | "openai";
+  providerLabel?: string;
 }) {
   const [models, setModels] = useState<ClaudeModelOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,6 +45,7 @@ export function ClaudeModelPicker({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider,
           ...(apiKeyDraft.trim() ? { apiKey: apiKeyDraft.trim() } : {}),
         }),
       });
@@ -63,7 +68,14 @@ export function ClaudeModelPicker({
     } finally {
       setLoading(false);
     }
-  }, [apiKeyDraft, canFetch, currentModel, draftModel, onSelectModel]);
+  }, [apiKeyDraft, canFetch, currentModel, draftModel, onSelectModel, provider]);
+
+  // Refetch when the provider changes.
+  useEffect(() => {
+    setFetched(false);
+    setModels([]);
+    setError(null);
+  }, [provider]);
 
   useEffect(() => {
     if (apiKeyConfigured && !fetched && !apiKeyDraft.trim()) {
@@ -81,7 +93,7 @@ export function ClaudeModelPicker({
   if (!canFetch) {
     return (
       <p className="text-xs text-muted-foreground">
-        أدخل مفتاح Claude أعلاه لعرض النماذج المتاحة.
+        أدخل مفتاح {providerLabel} أعلاه لعرض النماذج المتاحة.
       </p>
     );
   }
@@ -132,7 +144,7 @@ export function ClaudeModelPicker({
 
       {loading && models.length === 0 && (
         <p className="py-4 text-center text-xs text-muted-foreground">
-          جارٍ جلب النماذج من Anthropic…
+          جارٍ جلب النماذج من {providerLabel}…
         </p>
       )}
 

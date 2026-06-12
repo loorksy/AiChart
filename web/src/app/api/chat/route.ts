@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireUser, handleError } from "@/lib/api";
 import { getSettings, getLimits, getTodayUsage, incrementUsage, logAudit } from "@/lib/store";
 import { runAgent } from "@/lib/agent";
-import { isAnthropicConfigured } from "@/lib/anthropic";
+import { isLLMConfigured } from "@/lib/llm";
 import { validateChatImage } from "@/lib/chatImage";
 import { sanitizeUserInput } from "@/lib/security";
 import { processRecommendations } from "@/lib/tradeFlow";
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
 
 
-    if (!isAnthropicConfigured()) {
+    if (!isLLMConfigured()) {
 
       return NextResponse.json(
 

@@ -5,7 +5,7 @@ import {
   listAuditLogs,
   listUsersForAdmin,
 } from "@/lib/store";
-import { isAnthropicConfigured } from "@/lib/anthropic";
+import { getActiveProvider, isLLMConfigured } from "@/lib/llm";
 import { isTelegramConfigured } from "@/lib/telegram";
 import { getPlatformValue } from "@/lib/platformConfig";
 
@@ -19,7 +19,8 @@ export async function GET() {
       status: "ok",
       timestamp: new Date().toISOString(),
       master_kill: await isMasterKillOn(),
-      anthropic: isAnthropicConfigured(),
+      anthropic: isLLMConfigured(),
+      ai_provider: getActiveProvider(),
       telegram: isTelegramConfigured(),
       cron_secret_set: Boolean(getPlatformValue("CRON_SECRET")),
       users: {

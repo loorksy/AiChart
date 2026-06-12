@@ -1,4 +1,4 @@
-import { callAnthropic } from "./anthropic";
+import { callLLM } from "./llm";
 import { getIntent, getRecommendation, getTrade } from "./store";
 import { insertTradeLesson } from "./tradeMemory";
 import { createEmbedding } from "./openrouter";
@@ -95,7 +95,7 @@ export async function runTradePostMortem(
     .filter(Boolean)
     .join("\n");
 
-  const res = await callAnthropic({
+  const res = await callLLM({
     system,
     messages: [{ role: "user", content: userMsg }],
     maxTokens: 600,

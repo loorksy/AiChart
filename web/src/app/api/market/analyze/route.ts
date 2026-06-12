@@ -8,7 +8,7 @@ import {
   incrementUsage,
   logAudit,
 } from "@/lib/store";
-import { isAnthropicConfigured } from "@/lib/anthropic";
+import { isLLMConfigured } from "@/lib/llm";
 import {
   runMarketAnalyze,
   MARKET_ANALYZE_COST,
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const user = await requireUser();
     const body = schema.parse(await req.json());
 
-    if (!isAnthropicConfigured()) {
+    if (!isLLMConfigured()) {
       return NextResponse.json(
         { error: "وكيل Claude غير مُفعّل على الخادم." },
         { status: 503 },
