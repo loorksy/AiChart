@@ -3,8 +3,10 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-# NOTE: 24/7 market monitoring is handled by the OpenClaw agent heartbeat
-# (see agent/README.md) — no monitor cron is needed anymore.
+# 24/7 market monitor every 30 min — pure-code scan, deep AI only on real candidates.
+# (Replaces the OpenClaw heartbeat market-scan; the heartbeat now only reviews
+#  open-trade theses hourly — see agent/workspace/HEARTBEAT.md.)
+*/30 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor >/dev/null 2>&1
 
-# Daily Telegram summary at 20:00 UTC (optional backup; the agent sends its own)
+# Daily Telegram summary at 20:00 UTC
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1

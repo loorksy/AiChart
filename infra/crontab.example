@@ -1,5 +1,9 @@
 # AiChart cron jobs — replace YOUR_DOMAIN and CRON_SECRET
-# NOTE: market monitoring moved to the OpenClaw agent heartbeat (agent/README.md).
+# Event-driven monitoring: pure-code scan via cron; the OpenClaw heartbeat only
+# reviews open-trade theses hourly (agent/workspace/HEARTBEAT.md).
 
-# Daily Telegram summary at 20:00 UTC (optional backup; the agent sends its own)
+# 24/7 market monitor every 30 min — deep AI runs only when candidates appear.
+*/30 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor
+
+# Daily Telegram summary at 20:00 UTC
 0 20 * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary

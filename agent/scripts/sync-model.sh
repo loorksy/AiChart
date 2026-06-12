@@ -49,6 +49,20 @@ if (cfg.agents.defaults.model && typeof cfg.agents.defaults.model === "object") 
 }
 cfg.agents.defaults.thinkingDefault = "off";
 
+// Token savings: isolated heartbeat session (~2-5K tokens instead of full
+// conversation history) + prune stale tool outputs once the cache TTL expires.
+const hb = cfg.agents.defaults.heartbeat;
+cfg.agents.defaults.heartbeat = {
+  ...(hb && typeof hb === "object" ? hb : {}),
+  isolatedSession: true,
+};
+cfg.agents.defaults.contextPruning = {
+  ...(typeof cfg.agents.defaults.contextPruning === "object"
+    ? cfg.agents.defaults.contextPruning
+    : {}),
+  mode: "cache-ttl",
+};
+
 cfg.agents.defaults.models ??= {};
 const entry = cfg.agents.defaults.models[ref] ?? {};
 cfg.agents.defaults.models[ref] = {
