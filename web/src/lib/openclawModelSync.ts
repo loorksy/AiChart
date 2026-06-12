@@ -174,6 +174,28 @@ export function readGatewayPrimaryModel(configPath?: string): string | null {
   }
 }
 
+/** Keep only model ids referenced by primary + fallbacks in the catalog. */
+function pruneModelCatalog(cfg: OpenClawCfg, activeRefs: string[]): void {
+  const idsByProvider = new Map<string, Set<string>>();
+  for (const full of activeRefs) {
+    const provider = providerKeyFromRef(full);
+    const id = modelIdFromRef(full);
+    if (!idsByProvider.has(provider)) idsByProvider.set(provider, new Set());
+    idsByProvider.get(provider)!.add(id);
+  }
+
+  cfg.models ??= {};
+  cfg.models.providers ??= {};
+  for (const [provider, allowed] of idsByProvider) {
+    const bucket = cfg.models.providers[provider] ?? { models: [] };
+    const models = [...allowed].map((id) => {
+      const existing = (bucket.models ?? []).find((m) => m.id === id);
+      return existing?.name ? existing : { id, name: id };
+    });
+    cfg.models.providers[provider] = { ...bucket, models };
+  }
+}
+
 /** Patch model, thinking, and provider registry — never touches telegram/exec/controlUi. */
 export function patchOpenClawModelConfig(
   cfg: OpenClawCfg,
@@ -187,6 +209,7 @@ export function patchOpenClawModelConfig(
   delete d.thinking;
 
   const fallbacks = buildFallbackRefs(ref);
+  const activeRefs = [ref, ...fallbacks];
   const model = d.model;
   d.model =
     model && typeof model === "object"
@@ -199,25 +222,22 @@ export function patchOpenClawModelConfig(
   d.thinkingDefault = "off";
   d.contextPruning = { mode: "cache-ttl" };
   delete d.heartbeat;
-  d.models ??= {};
   const tokenParams = {
     cacheRetention: "long",
     thinking: "off",
-    /** Avoid OpenRouter 402 when balance is low but non-zero (64000 max request). */
-    maxTokens: 8192,
+    /** OpenRouter 402 when balance is low — stay under ~1733 afford hint. */
+    maxTokens: 1024,
   };
-  for (const modelRef of [ref, ...fallbacks]) {
-    const entry = d.models[modelRef] ?? {};
-    d.models[modelRef] = {
-      ...entry,
-      params: { ...(entry.params ?? {}), ...tokenParams },
-    };
+  d.models = {};
+  for (const modelRef of activeRefs) {
+    d.models[modelRef] = { params: tokenParams };
   }
 
   next = ensureProviderModelRegistered(next, ref);
   for (const fb of fallbacks) {
     next = ensureProviderModelRegistered(next, fb);
   }
+  pruneModelCatalog(next, activeRefs);
   return next;
 }
 

@@ -6,11 +6,19 @@
 
 ## ماذا تتحكم بها
 
-- تبويب **Config** (نموذج + Raw JSON) — كل `~/.openclaw/openclaw.json`
+- تبويب **Config** (Raw JSON، قنوات، exec، plugins) — **ليس** لتغيير النموذج
 - قنوات (Telegram)، `tools.exec`، موافقات exec
 - agents، plugins، skills، heartbeat، جلسات
 
-إعدادات **المنصة** (Anthropic، Binance) تبقى في `/admin/keys`. إعدادات **التداول** في `/settings`.
+### النموذج (Gemini / Claude / …)
+
+**المصدر الوحيد:** [`/console/platform`](/console/platform) (لوحة المفاتيح → الذكاء الاصطناعي).
+
+- اختر المزود والنموذج واحفظ — يُشغَّل `syncOpenClawModelFromPlatform` ويُحدَّث `~/.openclaw/openclaw.json`.
+- **لا تغيّر Model** من Quick Settings أو تبويب Config في OpenClaw — التغيير اليدوي يُبقي نماذج قديمة (gemma، tts) ويُفسد المزامنة.
+- بعد الحفظ من المنصة: أعد تحميل لوحة OpenClaw أو ابدأ جلسة Telegram جديدة.
+
+إعدادات **المفاتيح الأخرى** (Binance، Telegram token) تبقى في `/console/platform`. إعدادات **التداول** في `/settings`.
 
 ## الدخول
 
@@ -48,5 +56,19 @@ OPENCLAW_GATEWAY_TOKEN=<نفس gateway.auth.token في openclaw.json>
 | WebSocket فشل | تأكد من `Upgrade` في nginx |
 | Origin مرفوض | `allowedOrigins` يجب أن يتضمن `https://aichart.lork.cloud` |
 | زر اللوحة معطّل | أضف `OPENCLAW_GATEWAY_TOKEN` في `web/.env` |
+| OpenClaw يعرض gemma/tts رغم Gemini | غيّر النموذج من `/console/platform` واحفظ — لا من OpenClaw UI |
+| billing / 402 OpenRouter | تحقق من مفتاح Gemini (`AIza…`) ونموذج `gemini-2.5-flash` (ليس `-tts`) |
 
-راجع [`agent/README.md`](../agent/README.md) للجسر و Bridge API.
+## Workspace Skills vs Built-in
+
+OpenClaw يحمّل المهارات من مصادر متعددة — **لا تنسخ** الـ 57 Built-in إلى workspace.
+
+| المصدر | المسار | الغرض |
+|--------|--------|--------|
+| Workspace (أعلى أولوية) | `~/.openclaw/workspace/skills/` | مهارات AiChart المخصّصة فقط |
+| Managed / global | `~/.openclaw/skills` | مهارات مشتركة (`openclaw skills install --global`) |
+| Bundled | مُرفقة مع التثبيت | تظهر في تبويب **Built-in Skills** — لا نقل |
+
+مهارة AiChart الوحيدة في workspace: `aichart-trading` (Bridge API). تُزامَن من `agent/workspace/skills/` عبر `sync-workspace.sh`.
+
+راجع [`agent/README.md`](../agent/README.md) للتفاصيل.

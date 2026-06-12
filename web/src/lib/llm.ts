@@ -15,7 +15,7 @@ import {
   type SystemPromptInput,
   type ToolDef,
 } from "./anthropic";
-import { GEMINI_OPENAI_BASE_URL } from "./gemini";
+import { GEMINI_OPENAI_BASE_URL, normalizeGeminiChatModel } from "./gemini";
 import {
   callOpenAICompat,
   callOpenAICompatStream,
@@ -58,7 +58,10 @@ export function getActiveProvider(): LLMProvider {
 export function getActiveModel(): string {
   const provider = getActiveProvider();
   const model = getPlatformValue("AI_MODEL");
-  if (model) return model;
+  if (model) {
+    if (provider === "google") return normalizeGeminiChatModel(model);
+    return model;
+  }
   // Backward compat: anthropic keeps honoring ANTHROPIC_MODEL.
   if (provider === "anthropic") return getAnthropicModel();
   return DEFAULT_MODEL[provider];

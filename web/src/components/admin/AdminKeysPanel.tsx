@@ -288,45 +288,69 @@ export function AdminKeysPanel() {
                     onSelectModel={(id) => setDraftValue("AI_MODEL", id)}
                   />
                   {agentModel && (
-                    <p
-                      className={cn(
-                        "rounded-lg px-3 py-2 text-xs",
-                        agentModel.inSync
-                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                          : "bg-amber-500/10 text-amber-800 dark:text-amber-200",
-                      )}
-                    >
-                      {agentModel.inSync ? (
-                        <>
-                          وكيل Telegram متزامن:{" "}
-                          <code dir="ltr">{agentModel.gatewayPrimary}</code>
-                        </>
-                      ) : agentModel.gatewayConfigReadable ? (
-                        <>
-                          وكيل Telegram غير متزامن — المنصة:{" "}
-                          <code dir="ltr">{agentModel.platformRef}</code>
-                          {" · "}
-                          Gateway:{" "}
-                          <code dir="ltr">
-                            {agentModel.gatewayPrimary ?? "غير مُعدّ"}
-                          </code>
-                          {!agentModel.providerRegistered &&
-                            agentModel.gatewayPrimary && (
-                              <>
-                                {" "}
-                                (النموذج غير مُسجّل في providers — احفظ من
-                                اللوحة)
-                              </>
+                    <div className="space-y-2">
+                      <p
+                        className={cn(
+                          "rounded-lg px-3 py-2 text-xs",
+                          agentModel.inSync
+                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            : "bg-amber-500/10 text-amber-800 dark:text-amber-200",
+                        )}
+                      >
+                        {agentModel.inSync ? (
+                          <>
+                            وكيل Telegram متزامن:{" "}
+                            <code dir="ltr">{agentModel.gatewayPrimary}</code>
+                          </>
+                        ) : agentModel.gatewayConfigReadable ? (
+                          <>
+                            وكيل Telegram غير متزامن — المنصة:{" "}
+                            <code dir="ltr">{agentModel.platformRef}</code>
+                            {" · "}
+                            Gateway:{" "}
+                            <code dir="ltr">
+                              {agentModel.gatewayPrimary ?? "غير مُعدّ"}
+                            </code>
+                            {!agentModel.providerRegistered &&
+                              agentModel.gatewayPrimary && (
+                                <>
+                                  {" "}
+                                  (النموذج غير مُسجّل في providers — احفظ من
+                                  اللوحة)
+                                </>
+                              )}
+                            . احفظ النموذج لمزامنة تلقائية.
+                          </>
+                        ) : (
+                          <>
+                            لم يُعثر على openclaw.json على السيرفر — المزامنة
+                            التلقائية تعمل على VPS فقط.
+                          </>
+                        )}
+                      </p>
+                      {!agentModel.inSync && agentModel.gatewayConfigReadable && (
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() =>
+                            void save({
+                              AI_PROVIDER: selectedProvider,
+                              AI_MODEL:
+                                draft.AI_MODEL?.trim() || currentAiModel,
+                            })
+                          }
+                          className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-100"
+                        >
+                          <RefreshCw
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              saving && "animate-spin",
                             )}
-                          . احفظ النموذج لمزامنة تلقائية.
-                        </>
-                      ) : (
-                        <>
-                          لم يُعثر على openclaw.json على السيرفر — المزامنة
-                          التلقائية تعمل على VPS فقط.
-                        </>
+                          />
+                          إعادة مزامنة الآن
+                        </button>
                       )}
-                    </p>
+                    </div>
                   )}
                 </>
               )}

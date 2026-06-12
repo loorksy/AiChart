@@ -46,9 +46,33 @@ openclaw gateway          # أو عبر pm2/docker — راجع infra/
 - العام: `https://aichart.lork.cloud/openclaw/`
 - من AiChart: **الوكيل** → **إعدادات OpenClaw** (`/agent/console`) — أدمن فقط
 
-كل إعدادات OpenClaw (Config، قنوات، tools، موافقات) من اللوحة — ليس من `/admin/keys`.
+كل إعدادات OpenClaw (قنوات، tools، موافقات) من اللوحة — **ليس** النموذج.
 
-التفاصيل: [`docs/OPENCLAW_UI_INTEGRATION.md`](../docs/OPENCLAW_UI_INTEGRATION.md).
+**النموذج** (Gemini / Claude / OpenRouter) يُضبط من **لوحة المنصة** → `/console/platform`
+→ «الذكاء الاصطناعي» — الحفظ يُشغّل `sync-model.sh` تلقائياً. لا تغيّر Model من
+Quick Settings في OpenClaw.
+
+## Workspace Skills
+
+OpenClaw يحمّل المهارات من مصادر متعددة ([التوثيق الرسمي](https://documentation.openclaw.ai/tools/skills)):
+
+| الأولوية | المصدر | المسار |
+|----------|--------|--------|
+| 1 (أعلى) | Workspace | `~/.openclaw/workspace/skills/` |
+| 4 | Managed / global | `~/.openclaw/skills` |
+| 5 | Bundled (Built-in) | مُرفقة مع التثبيت — **لا تُنسخ** |
+
+**AiChart يضع مهارة واحدة فقط في workspace:** `aichart-trading` (Bridge API كاملاً).
+هذا **بالتصميم** — الـ 57 Built-in تظهر في تبويب منفصل ولا تُنسخ إلى workspace
+(النسخ يسبب تعارض أسماء لأن workspace أولويته أعلى).
+
+```bash
+# من مستودع AiChart — ينسخ agent/workspace/skills/* فقط
+bash agent/scripts/sync-workspace.sh
+```
+
+لمهارات ClawHub مشتركة بين وكلاء: `openclaw skills install --global` → `~/.openclaw/skills`.
+لتفعيل/تعطيل Built-in: `skills.entries.<name>.enabled` في `openclaw.json` — لا نقل ملفات.
 
 ## الرسائل الصوتية (تيليجرام) — عبر OpenRouter
 

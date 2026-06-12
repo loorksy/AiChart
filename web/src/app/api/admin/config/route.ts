@@ -9,6 +9,15 @@ import {
 import { logAudit } from "@/lib/store";
 import { isTelegramConfigured, deleteWebhook } from "@/lib/telegram";
 import { syncOpenClawModelFromPlatform } from "@/lib/openclawModelSync";
+import {
+  getActiveProvider,
+  getActiveModel,
+} from "@/lib/llm";
+import {
+  isGeminiChatModelId,
+  isGeminiStudioApiKey,
+  normalizeGeminiChatModel,
+} from "@/lib/gemini";
 
 const patchSchema = z.record(z.string(), z.union([z.string(), z.boolean()]).optional());
 
@@ -33,6 +42,37 @@ export async function PUT(req: NextRequest) {
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "لا توجد حقول صالحة للحفظ." }, { status: 400 });
     }
+
+    const nextProvider =
+      patch.AI_PROVIDER !== undefined
+        ? String(patch.AI_PROVIDER).toLowerCase()
+        : getActiveProvider();
+    const nextModel =
+      patch.AI_MODEL !== undefined
+        ? String(patch.AI_MODEL).trim()
+        : getActiveModel();
+
+    if (patch.GEMINI_API_KEY !== undefined) {
+      const key = String(patch.GEMINI_API_KEY).trim();
+      if (key && !isGeminiStudioApiKey(key)) {
+        return NextResponse.json(
+          {
+            error:
+              "مفتاح Gemini غير صالح — استخدم مفتاح AI Studio (يبدأ بـ AIza…) من aistudio.google.com/apikey وليس رمز OAuth (AQ.…).",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (
+      (nextProvider === "google" || nextProvider === "gemini") &&
+      patch.AI_MODEL !== undefined &&
+      !isGeminiChatModelId(nextModel)
+    ) {
+      patch.AI_MODEL = normalizeGeminiChatModel(nextModel);
+    }
+
     await savePlatformConfig(patch);
     await logAudit(admin.id, "platform_config", Object.keys(patch).join(", "));
 

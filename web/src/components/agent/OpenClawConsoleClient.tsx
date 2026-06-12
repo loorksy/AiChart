@@ -44,9 +44,17 @@ export function OpenClawConsoleClient() {
         لوحة OpenClaw (Control Web UI)
       </h2>
       <p className="mb-4 text-sm text-muted-foreground">
-        كل إعدادات الوكيل: Config، قنوات Telegram، tools.exec، موافقات الأوامر،
-        heartbeat، plugins — من تبويب Config داخل اللوحة.
+        قنوات Telegram، tools.exec، موافقات الأوامر، heartbeat، plugins، skills —
+        من تبويب Config داخل اللوحة.
       </p>
+      <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+        <strong>النموذج (Gemini / Claude):</strong> يُضبط من{" "}
+        <a href="/console/platform" className="underline">
+          /console/platform
+        </a>{" "}
+        فقط — لا تغيّر Model من Quick Settings في OpenClaw؛ التغيير اليدوي
+        يُبقي نماذج قديمة ويُفسد المزامنة مع المنصة.
+      </div>
 
       {loading && (
         <p className="text-sm text-muted-foreground">جارٍ التحميل…</p>

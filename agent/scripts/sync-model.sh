@@ -89,18 +89,15 @@ cfg.agents.defaults.contextPruning = {
   mode: "cache-ttl",
 };
 
-cfg.agents.defaults.models ??= {};
+cfg.agents.defaults.models = {};
 const tokenParams = {
   cacheRetention: "long",
   thinking: "off",
-  maxTokens: 8192,
+  maxTokens: 1024,
 };
-for (const full of [ref, ...fallbacks]) {
-  const entry = cfg.agents.defaults.models[full] ?? {};
-  cfg.agents.defaults.models[full] = {
-    ...entry,
-    params: { ...(entry.params ?? {}), ...tokenParams },
-  };
+const activeRefs = [ref, ...fallbacks];
+for (const full of activeRefs) {
+  cfg.agents.defaults.models[full] = { params: tokenParams };
 }
 
 // Register primary + fallbacks in models.providers so OpenClaw accepts them,
@@ -109,18 +106,24 @@ const PROVIDER_BASE_URL = {
   openrouter: "https://openrouter.ai/api/v1",
   openai: "https://api.openai.com/v1",
 };
-cfg.models ??= {};
-cfg.models.providers ??= {};
-for (const full of [ref, ...fallbacks]) {
+const idsByProvider = new Map();
+for (const full of activeRefs) {
   const slash = full.indexOf("/");
   const provider = slash >= 0 ? full.slice(0, slash) : "anthropic";
   const modelId = slash >= 0 ? full.slice(slash + 1) : full;
+  if (!idsByProvider.has(provider)) idsByProvider.set(provider, new Set());
+  idsByProvider.get(provider).add(modelId);
+}
+
+cfg.models ??= {};
+cfg.models.providers ??= {};
+for (const [provider, allowedIds] of idsByProvider) {
   const bucket = cfg.models.providers[provider] ?? { models: [] };
-  const provModels = [...(bucket.models ?? [])];
-  if (!provModels.some((m) => m.id === modelId)) {
-    provModels.push({ id: modelId, name: modelId });
-  }
-  const merged = { ...bucket, models: provModels };
+  const models = [...allowedIds].map((id) => {
+    const existing = (bucket.models ?? []).find((m) => m.id === id);
+    return existing?.name ? existing : { id, name: id };
+  });
+  const merged = { ...bucket, models };
   if (provider === "openrouter" || provider === "openai") {
     if (providerKeys[provider]) merged.apiKey = providerKeys[provider];
     merged.baseUrl = PROVIDER_BASE_URL[provider];
