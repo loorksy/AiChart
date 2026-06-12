@@ -126,3 +126,76 @@ export async function transcribeAudio(
   if (!text) throw new Error("لم يُرجِع النموذج أي نص.");
   return text;
 }
+
+const DEFAULT_EMBED_MODEL = "openai/text-embedding-3-small";
+const DEFAULT_TTS_MODEL = "openai/tts-1";
+
+/** Creates a 1536-dim embedding vector via OpenRouter. */
+export async function createEmbedding(text: string): Promise<number[]> {
+  const key = await apiKey();
+  if (!key) {
+    throw new Error("OPENROUTER_API_KEY غير مُعدّ — لا يمكن إنشاء embedding.");
+  }
+  const model =
+    (await getPlatformValueAsync("OPENROUTER_EMBED_MODEL")) ||
+    DEFAULT_EMBED_MODEL;
+
+  const res = await fetch(`${API}/embeddings`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model, input: text.slice(0, 8000) }),
+    cache: "no-store",
+  });
+
+  const body = (await res.json().catch(() => ({}))) as {
+    data?: { embedding?: number[] }[];
+    error?: { message?: string };
+  };
+  if (!res.ok) {
+    throw new Error(
+      body.error?.message || `فشل embedding (HTTP ${res.status}).`,
+    );
+  }
+  const vec = body.data?.[0]?.embedding;
+  if (!vec?.length) throw new Error("embedding فارغ من OpenRouter.");
+  return vec;
+}
+
+/** Synthesizes OGG speech bytes for Telegram sendVoice. */
+export async function synthesizeSpeech(
+  text: string,
+  voice = "alloy",
+): Promise<Buffer> {
+  const key = await apiKey();
+  if (!key) {
+    throw new Error("OPENROUTER_API_KEY غير مُعدّ — لا يمكن توليد الصوت.");
+  }
+  const model =
+    (await getPlatformValueAsync("OPENROUTER_TTS_MODEL")) || DEFAULT_TTS_MODEL;
+
+  const res = await fetch(`${API}/audio/speech`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      input: text.slice(0, 4000),
+      voice,
+      response_format: "opus",
+    }),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    throw new Error(
+      errBody.slice(0, 200) || `فشل TTS (HTTP ${res.status}).`,
+    );
+  }
+  return Buffer.from(await res.arrayBuffer());
+}

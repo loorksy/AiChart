@@ -48,6 +48,14 @@ GET /api/agent/portfolio
 
 ## 4) تسجيل توصية مع شارت مرسوم
 
+**قبل أي توصية:** استدعِ ذاكرة الدروس إن وُجدت:
+
+```bash
+GET /api/agent/memory/lessons?symbol=BTCUSDT&limit=3
+```
+
+إن وُجد درس مشابه (score > 0.75) — **اذكره صراحةً** في `rationale`.
+
 ```bash
 POST /api/agent/recommendation
 {
@@ -66,12 +74,37 @@ POST /api/agent/recommendation
 }
 ```
 
-يرجع `chart_url` — **حمّل الصورة وأرفقها في رسالتك دائماً**:
+يرجع `chart_url` — **حمّل الصورة وأرفقها في رسالتك دائماً**.
+
+عند اتصال EA على MetaTrader 5 يكون المسار `/api/agent/chart/{id}/mt5` ويرجع
+`mt5_pending: true` حتى تُرفع اللقطة من المنصّة. **انتظر اللقطة بإعادة المحاولة:**
+
+```bash
+CHART_URL="/api/agent/chart/42/mt5"   # من حقل chart_url في الرد
+for i in 1 2 3 4 5; do
+  CODE=$(curl -s -o /tmp/aichart-rec.png -w "%{http_code}" \
+    -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
+    "${AICHART_API_URL}${CHART_URL}")
+  if [ "$CODE" = "200" ]; then break; fi
+  if [ "$CODE" = "503" ]; then echo "EA غير متصل — استخدم chart_url القديم أو أبلغ المشغّل"; break; fi
+  sleep 2
+done
+```
+
+- `200` → PNG جاهز (شارت MT5 أصلي مع الرسومات).
+- `202` → ما زال الرسم/الرفع جارياً — أعد المحاولة بعد ثانيتين (حتى 5 مرات).
+- `503` → EA غير متصل؛ إن وُجد `/api/agent/chart/{id}` استخدمه كـ fallback أو أبلغ المشغّل.
+
+بدون MT5 (fallback QuickChart):
 
 ```bash
 curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
   -o /tmp/aichart-rec.png "$AICHART_API_URL{chart_url}"
 ```
+
+**رموز الكريبتو على MT5:** المنصّة تحوّل تلقائياً `BTCUSDT` → `BTCUSD` (ورموز
+مماثلة) حسب الرموز المُبلَّغة في heartbeat الـ EA. إن رجع
+`mt5_unavailable_reason: symbol_unavailable_on_mt5` الرمز غير متوفر عند الوسيط.
 
 الصورة تتضمن تلقائياً: شموع، صندوق هدف أخضر، صندوق وقف أحمر، ونسبة R/R.
 
@@ -80,12 +113,26 @@ curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 `fib_retracement` · `baseline` · `marker` · `histogram_band`
 (كل نقطة: `{"barsAhead": عدد الشموع من آخر شمعة — 0 الآن وموجب مستقبلاً, "price": السعر}`)
 
+**لجنة التداول:** يرجع `committee` — إن `riskOfficer.vote === reject` لا تفترض
+تنفيذاً تلقائياً في وضع auto.
+
+**رد صوتي** (عند طلب صريح «رد عليّ بصوت»):
+
+```bash
+POST /api/agent/notify/voice
+{"text": "نص الرد بالعربية"}
+```
+
 ## 5) شارت لحظي بدون توصية («وريني الشارت»)
 
 ```bash
-POST /api/agent/chart/snapshot     # يرجع PNG مباشرة
+POST /api/agent/chart/snapshot
 {"symbol":"BTCUSDT","interval":"1h","chart_drawings":[...]}
 ```
+
+- إن كان EA متصلاً: `202` + `chart_url` مثل `/api/agent/chart/snap_…/mt5` — نفس حلقة
+  poll أعلاه.
+- إن كان EA غير متصل: `200` PNG مباشرة (QuickChart).
 
 ## 6) فتح صفقة حقيقية
 

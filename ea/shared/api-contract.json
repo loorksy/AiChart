@@ -73,12 +73,52 @@
         "status": "acked|failed",
         "result": { "ticket": 5566778, "price": 1.0854, "lots": 0.10, "error": "optional" }
       }
+    },
+    "chart_upload": {
+      "method": "POST",
+      "path": "/api/ea/chart-upload",
+      "auth": "Bearer EA token",
+      "content_type": "multipart/form-data",
+      "request": {
+        "recommendation_id": "number (required unless capture_key)",
+        "capture_key": "string (optional, for ad-hoc snapshots e.g. snap_1717000000)",
+        "chart": "PNG file field"
+      },
+      "response": {
+        "ok": true,
+        "path": "/data/charts/ea/{userId}/{id}.png"
+      }
     }
   },
   "command_types": {
     "open_market": "Open a market order (side=buy|sell, lots, optional stop_loss/take_profit).",
     "close_position": "Close an open position by ticket.",
-    "modify_sl_tp": "Modify stop loss / take profit of an open position."
+    "modify_sl_tp": "Modify stop loss / take profit of an open position.",
+    "draw_and_capture": "Clear prior AICHART_* objects, draw chart_drawings on MT5 chart, ChartScreenShot, upload PNG.",
+    "clear_chart": "Delete all chart objects with prefix AICHART_{recommendation_id}_ (or all AICHART_* if no id)."
+  },
+  "draw_and_capture_payload": {
+    "symbol": "MT5 symbol e.g. EURUSD or BTCUSD",
+    "interval": "1m|5m|15m|1h|4h|1d|1w",
+    "recommendation_id": "number (links upload + object prefix)",
+    "capture_key": "optional string when recommendation_id is 0",
+    "entry": "optional number",
+    "stop_loss": "optional number",
+    "take_profit": "optional number",
+    "drawings": [
+      {
+        "type": "zone|trend_line|price_line|forecast_path|channel|fib_retracement|baseline|marker|histogram_band",
+        "confidence": 80,
+        "label": "optional",
+        "color": "optional #hex",
+        "points": [{ "barsAhead": 0, "price": 1.085, "time": "optional unix sec" }]
+      }
+    ]
+  },
+  "clear_chart_payload": {
+    "symbol": "MT5 symbol",
+    "interval": "optional — switches chart timeframe before clear",
+    "recommendation_id": "optional — limits delete to AICHART_{id}_*"
   },
   "idempotency": "The EA must remember the last acked command id and never execute the same command id twice."
 }

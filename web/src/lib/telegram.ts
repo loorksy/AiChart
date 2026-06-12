@@ -206,6 +206,54 @@ export async function notifyUserPhotoBuffer(
   }
 }
 
+export async function sendVoice(
+  chatId: string | number,
+  buffer: Buffer,
+  caption?: string,
+): Promise<void> {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append(
+    "voice",
+    new Blob([new Uint8Array(buffer)], { type: "audio/ogg" }),
+    "voice.ogg",
+  );
+  if (caption) {
+    form.append("caption", caption);
+    form.append("parse_mode", "HTML");
+  }
+
+  const res = await fetch(`${API}/bot${token()}/sendVoice`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    ok: boolean;
+    description?: string;
+  };
+  if (!data.ok) {
+    throw new Error(data.description || "Telegram sendVoice failed");
+  }
+}
+
+/** Sends synthesized voice clip to a linked user. */
+export async function notifyUserVoice(
+  userId: number,
+  buffer: Buffer,
+  caption?: string,
+): Promise<void> {
+  if (!isTelegramConfigured()) return;
+  const chatId = await getTelegramChatId(userId);
+  if (!chatId) return;
+  try {
+    await sendVoice(chatId, buffer, caption);
+  } catch (e) {
+    console.error("[telegram] voice notify failed", e);
+    if (caption) await notifyUser(userId, caption);
+  }
+}
+
 let cachedUsername: string | null = null;
 export async function getBotUsername(): Promise<string | null> {
   const { botUsername } = await getTelegramLoginConfig();

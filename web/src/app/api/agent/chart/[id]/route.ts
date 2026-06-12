@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { getRecommendation } from "@/lib/store";
-import { buildChartSnapshotBuffer } from "@/lib/chartSnapshot";
+import { getRecommendation, getSettings } from "@/lib/store";
+import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import { overlaysFromRecommendation } from "@/lib/chartOverlays";
 import { parseChartDrawingsJson } from "@/lib/chartDrawings";
+import type { MarketType } from "@/lib/markets/types";
 
 /** Bridge: annotated chart PNG for a recommendation (token auth, no cookies). */
 export async function GET(
@@ -25,13 +26,20 @@ export async function GET(
       return NextResponse.json({ error: "غير موجود." }, { status: 404 });
     }
 
-    const buffer = await buildChartSnapshotBuffer({
-      symbol: rec.symbol,
-      interval: rec.timeframe ?? "1h",
-      overlays: overlaysFromRecommendation(rec),
-      drawings: parseChartDrawingsJson(rec.chart_drawings_json),
-      patternName: rec.pattern_name,
-    });
+    const settings = await getSettings(userId);
+    const market = (rec.market ?? settings.active_market ?? "crypto") as MarketType;
+
+    const buffer = await buildChartSnapshotBufferForMarket(
+      userId,
+      rec.symbol,
+      rec.timeframe ?? "1h",
+      market,
+      {
+        overlays: overlaysFromRecommendation(rec),
+        drawings: parseChartDrawingsJson(rec.chart_drawings_json),
+        patternName: rec.pattern_name,
+      },
+    );
 
     if (!buffer) {
       return NextResponse.json(

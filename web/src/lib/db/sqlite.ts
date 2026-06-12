@@ -287,6 +287,31 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_alert_log_user
     ON alert_log (user_id, id DESC);
+
+  CREATE TABLE IF NOT EXISTS trade_lessons (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL,
+    trade_id            INTEGER NOT NULL,
+    recommendation_id   INTEGER,
+    symbol              TEXT NOT NULL,
+    market              TEXT NOT NULL DEFAULT 'crypto',
+    timeframe           TEXT,
+    pattern_name        TEXT,
+    outcome             TEXT NOT NULL,
+    pnl                 REAL NOT NULL DEFAULT 0,
+    pnl_pct             REAL NOT NULL DEFAULT 0,
+    entry_context_json  TEXT,
+    lesson_ar           TEXT NOT NULL,
+    tags_json           TEXT,
+    embedding_json      TEXT,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_trade_lessons_user
+    ON trade_lessons (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_trade_lessons_symbol
+    ON trade_lessons (user_id, symbol);
 `;
 
 function migrate(db: Database.Database) {
@@ -315,6 +340,9 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE recommendations ADD COLUMN source TEXT NOT NULL DEFAULT 'web'",
     );
+  }
+  if (!recCols.some((c) => c.name === "market")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN market TEXT");
   }
 
   db.exec(`
@@ -442,6 +470,39 @@ function migrate(db: Database.Database) {
         'ENABLE_BINANCE_CLI',
         'METAAPI_REGION'
       )
+  `);
+
+  if (!recCols.some((c) => c.name === "committee_json")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN committee_json TEXT");
+  }
+  if (!recCols.some((c) => c.name === "memory_refs_json")) {
+    db.exec("ALTER TABLE recommendations ADD COLUMN memory_refs_json TEXT");
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS trade_lessons (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id             INTEGER NOT NULL,
+      trade_id            INTEGER NOT NULL,
+      recommendation_id   INTEGER,
+      symbol              TEXT NOT NULL,
+      market              TEXT NOT NULL DEFAULT 'crypto',
+      timeframe           TEXT,
+      pattern_name        TEXT,
+      outcome             TEXT NOT NULL,
+      pnl                 REAL NOT NULL DEFAULT 0,
+      pnl_pct             REAL NOT NULL DEFAULT 0,
+      entry_context_json  TEXT,
+      lesson_ar           TEXT NOT NULL,
+      tags_json           TEXT,
+      embedding_json      TEXT,
+      created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_trade_lessons_user
+      ON trade_lessons (user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_trade_lessons_symbol
+      ON trade_lessons (user_id, symbol);
   `);
 
   db.exec(`

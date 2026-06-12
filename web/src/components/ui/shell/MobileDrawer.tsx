@@ -12,6 +12,7 @@ import {
   MessageSquare,
   MessageSquarePlus,
   PanelRightClose,
+  Radar,
   Settings,
   Shield,
   Sparkles,
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 const MAIN_TABS = [
   { href: "/chat", label: "المحادثة", icon: MessageSquare },
   { href: "/dashboard", label: "اللوحة", icon: LayoutDashboard },
+  { href: "/command", label: "القيادة", icon: Radar },
   { href: "/agent", label: "الوكيل", icon: Bot },
   { href: "/market", label: "السوق", icon: LineChart },
   { href: "/signals/new", label: "الإشارات", icon: TrendingUp },

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser, handleError } from "@/lib/api";
-import { getRecommendation } from "@/lib/store";
-import { buildChartSnapshotBuffer } from "@/lib/chartSnapshot";
+import { getRecommendation, getSettings } from "@/lib/store";
+import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
+import type { MarketType } from "@/lib/markets/types";
 import { overlaysFromRecommendation } from "@/lib/chartOverlays";
 import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 
@@ -22,13 +23,20 @@ export async function GET(
       return NextResponse.json({ error: "غير موجود." }, { status: 404 });
     }
 
-    const buffer = await buildChartSnapshotBuffer({
-      symbol: rec.symbol,
-      interval: rec.timeframe ?? "1h",
-      overlays: overlaysFromRecommendation(rec),
-      drawings: parseChartDrawingsJson(rec.chart_drawings_json),
-      patternName: rec.pattern_name,
-    });
+    const settings = await getSettings(user.id);
+    const market = (rec.market ?? settings.active_market ?? "crypto") as MarketType;
+
+    const buffer = await buildChartSnapshotBufferForMarket(
+      user.id,
+      rec.symbol,
+      rec.timeframe ?? "1h",
+      market,
+      {
+        overlays: overlaysFromRecommendation(rec),
+        drawings: parseChartDrawingsJson(rec.chart_drawings_json),
+        patternName: rec.pattern_name,
+      },
+    );
 
     if (!buffer) {
       return NextResponse.json(

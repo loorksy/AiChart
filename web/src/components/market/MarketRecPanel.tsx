@@ -6,6 +6,32 @@ import type { Recommendation } from "@/lib/types";
 import type { AgentActivity } from "@/lib/agentActivity";
 import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
 import { formatLevel } from "./formatLevel";
+import type { CommitteeResult } from "@/lib/types";
+
+function CommitteeVotesBlock({ committeeJson }: { committeeJson: string }) {
+  let committee: CommitteeResult | null = null;
+  try {
+    committee = JSON.parse(committeeJson) as CommitteeResult;
+  } catch {
+    return null;
+  }
+  if (!committee) return null;
+  const row = (label: string, v: CommitteeResult["aggressive"]) => (
+    <div className="flex justify-between gap-2 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{v.vote} · {v.confidence}%</span>
+    </div>
+  );
+  return (
+    <div className="rounded-lg border border-border/50 bg-secondary/30 p-2 space-y-1">
+      <p className="text-xs font-medium">لجنة التداول</p>
+      {row("عدواني", committee.aggressive)}
+      {row("مخاطر", committee.riskOfficer)}
+      {row("ماكرو", committee.macro)}
+      <p className="pt-1 text-[11px] text-muted-foreground">{committee.summary_ar}</p>
+    </div>
+  );
+}
 
 export function MarketRecPanel({
   open,
@@ -132,6 +158,10 @@ export function MarketRecPanel({
 
               {rec.rationale && (
                 <p className="leading-relaxed text-foreground">{rec.rationale}</p>
+              )}
+
+              {rec.committee_json && (
+                <CommitteeVotesBlock committeeJson={rec.committee_json} />
               )}
             </div>
           )}

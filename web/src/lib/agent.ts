@@ -12,7 +12,7 @@ import {
   getUnifiedPrice,
   resolveSymbol,
 } from "./markets";
-import { getBinanceCredentials, saveRecommendation, getPublicUser, listTrades, listIntents, listRecommendations, countOpenTrades, getBinanceAccountMeta, getSettings } from "./store";
+import { getBinanceCredentials, saveRecommendation, getPublicUser, listTrades, listIntents, listRecommendations, countOpenTrades, getBinanceAccountMeta, getSettings, updateRecommendationIntelligence } from "./store";
 import { attachChartToRecommendation } from "./recommendationChart";
 import type { DeliveryResult } from "./alerts";
 import { profileForInterval } from "./analysisProfile";
@@ -31,6 +31,11 @@ import {
   type MarketRankCommand,
 } from "./binanceWeb3";
 import { runBinanceCli, isBinanceCliEnabled } from "./binanceCli";
+import {
+  searchSimilarLessons,
+  formatLessonsForPrompt,
+} from "./tradeMemory";
+import { evaluateCommittee } from "./committee";
 import type { Recommendation, TradingSettings } from "./types";
 import {
   describeToolUse,
@@ -166,6 +171,20 @@ const TOOLS: ToolDef[] = [
           type: "string",
           description: "1m,5m,15m,1h,4h,1d,1w",
         },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "search_trade_memory",
+    description:
+      "يبحث في دروس صفقات مغلقة سابقة (ذاكرة post-mortem) عن أنماط/رموز مشابهة. استخدمها قبل توصية جديدة.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        pattern: { type: "string" },
+        limit: { type: "number" },
       },
       required: ["symbol"],
     },
@@ -377,6 +396,24 @@ async function executeTool(
           }),
         };
       }
+      case "search_trade_memory": {
+        const symbol = String(input.symbol ?? "");
+        const pattern =
+          input.pattern != null ? String(input.pattern) : undefined;
+        const limit = input.limit ? Number(input.limit) : 3;
+        const lessons = await searchSimilarLessons(ctx.userId, {
+          symbol,
+          pattern,
+          limit,
+        });
+        return {
+          content: JSON.stringify({
+            count: lessons.length,
+            lessons,
+            promptBlock: formatLessonsForPrompt(lessons),
+          }),
+        };
+      }
       case "record_recommendation": {
         const action = String(input.action ?? "wait");
         const confidence = Number(input.confidence ?? 0);
@@ -392,7 +429,7 @@ async function executeTool(
           confidence,
           profile,
         );
-        const rec = await saveRecommendation(ctx.userId, {
+        let rec = await saveRecommendation(ctx.userId, {
           symbol: String(input.symbol ?? ""),
           action,
           confidence,
@@ -411,6 +448,27 @@ async function executeTool(
             drawings.length > 0 ? JSON.stringify(drawings) : null,
           analysis_tier: profile.tier,
         });
+        const lessons = await searchSimilarLessons(ctx.userId, {
+          symbol: rec.symbol,
+          pattern: rec.pattern_name ?? undefined,
+          limit: 3,
+        });
+        if (lessons.length || action === "buy" || action === "sell") {
+          const committee = await evaluateCommittee(ctx.userId, rec, lessons);
+          await updateRecommendationIntelligence(rec.id, {
+            committee_json: JSON.stringify(committee),
+            memory_refs_json: lessons.length
+              ? JSON.stringify(lessons.map((l) => l.id))
+              : null,
+          });
+          rec = {
+            ...rec,
+            committee_json: JSON.stringify(committee),
+            memory_refs_json: lessons.length
+              ? JSON.stringify(lessons.map((l) => l.id))
+              : null,
+          };
+        }
         const notifyAdvisory =
           (rec.action === "buy" || rec.action === "sell") &&
           ctx.settings.mode !== "auto" &&

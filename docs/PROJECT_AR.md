@@ -510,7 +510,23 @@ flowchart TB
 | إشعار الصفقات | `web/src/lib/notifyTrade.ts` |
 | أمان المدخلات | `web/src/lib/security.ts` |
 | تشفير الأسرار | `web/src/lib/crypto.ts` |
+| ذاكرة post-mortem | `web/src/lib/tradeMemory.ts`, `tradePostMortem.ts` |
+| لجنة الوكلاء | `web/src/lib/committee.ts` |
+| مركز القيادة | `web/src/app/command/page.tsx` |
 
 ---
 
-*آخر تحديث للمستند: مبني على شيفرة المستودع المحلي (يشمل الأزواج المفتوحة، وكيل تليجرام المتكامل، Risk Guard، PostgreSQL).*
+## 17. القدرات الذكية (Intelligence Suite)
+
+| القدرة | الوصف | VPS |
+|--------|--------|-----|
+| **Post-mortem + pgvector** | بعد إغلاق كل صفقة يُولَّد درس + embedding في `trade_lessons` | `CREATE EXTENSION IF NOT EXISTS vector;` على PostgreSQL |
+| **لجنة الوكلاء** | ثلاث شخصيات LLM قبل التنفيذ؛ veto من RiskOfficer | — |
+| **رد صوتي** | `POST /api/agent/notify/voice` + `VOICE_RESPONSES_ENABLED` | OpenRouter TTS model |
+| **مركز القيادة** | `/command` — heatmap، whale bubbles، لجنة، ذاكرة | — |
+
+SQLite محلياً يستخدم `embedding_json` + cosine خطي؛ الإنتاج على PostgreSQL + pgvector.
+
+---
+
+*آخر تحديث للمستند: مبني على شيفرة المستودع المحلي (يشمل Intelligence Suite، وكيل تليجرام، Risk Guard، PostgreSQL).*

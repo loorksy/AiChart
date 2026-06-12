@@ -16,6 +16,7 @@ import {
 } from "./binance";
 import { dispatchAlert } from "./alerts";
 import { mt5Close } from "./mt5local/client";
+import { runTradePostMortem } from "./tradePostMortem";
 import type { Trade } from "./types";
 
 export interface CloseTradeResult {
@@ -38,6 +39,12 @@ function computePnl(
     return exitQuote - quoteQty;
   }
   return quoteQty - exitQuote;
+}
+
+function afterTradeClosed(userId: number, tradeId: number, pnl: number): void {
+  void runTradePostMortem(userId, tradeId, pnl).catch((err) => {
+    console.error("[tradeClose] post-mortem failed", tradeId, err);
+  });
 }
 
 async function closeOneTrade(
@@ -97,6 +104,7 @@ async function closeOneTrade(
   );
 
   await updateTradeClosed(tradeId, pnl);
+  afterTradeClosed(userId, tradeId, pnl);
   return { ok: true, tradeId, symbol: trade.symbol, pnl };
 }
 
@@ -126,6 +134,7 @@ async function closeMt5LocalTrade(
   }
   const pnl = result.closed.reduce((sum, c) => sum + (Number(c.profit) || 0), 0);
   await updateTradeClosed(trade.id, pnl);
+  afterTradeClosed(trade.user_id, trade.id, pnl);
   return { ok: true, tradeId: trade.id, symbol: trade.symbol, pnl };
 }
 
@@ -343,6 +352,7 @@ export async function syncOcoFills(
       );
 
       await updateTradeClosed(trade.id, pnl);
+      afterTradeClosed(trade.user_id, trade.id, pnl);
       synced++;
       const sign = pnl >= 0 ? "+" : "";
       await dispatchAlert(userId, {

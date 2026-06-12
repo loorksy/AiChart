@@ -2,10 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { logAudit, saveRecommendation } from "@/lib/store";
+import {
+  evaluateCommittee,
+  committeeSummaryTelegram,
+} from "@/lib/committee";
+import {
+  logAudit,
+  getSettings,
+  saveRecommendation,
+  updateRecommendationChartUrl,
+  updateRecommendationIntelligence,
+} from "@/lib/store";
 import { profileForInterval } from "@/lib/analysisProfile";
 import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
 import { attachChartToRecommendation } from "@/lib/recommendationChart";
+import {
+  canUseMt5ChartCapture,
+  mt5ChartUrl,
+  queueMt5ChartCapture,
+} from "@/lib/eaChartDraw";
+import {
+  searchSimilarLessons,
+  formatLessonsForPrompt,
+} from "@/lib/tradeMemory";
+import { notifyUser } from "@/lib/telegram";
+import type { Recommendation } from "@/lib/types";
 
 const schema = z.object({
   symbol: z.string().min(1),
@@ -30,6 +51,7 @@ export async function POST(req: NextRequest) {
     requireAgentAuth(req);
     const userId = await resolveAgentUserId();
     const body = schema.parse(await req.json());
+    const settings = await getSettings(userId);
 
     const profile = profileForInterval(body.timeframe);
     const drawings = validateChartDrawings(
@@ -39,6 +61,17 @@ export async function POST(req: NextRequest) {
       profile,
     );
 
+    const similarLessons = await searchSimilarLessons(userId, {
+      symbol: body.symbol,
+      pattern: body.pattern_name ?? undefined,
+      limit: 3,
+    });
+    const memoryBlock = formatLessonsForPrompt(similarLessons);
+    const rationale =
+      memoryBlock && !body.rationale.includes("دروس مشابهة")
+        ? `${body.rationale}\n\n${memoryBlock}`
+        : body.rationale;
+
     const rec = await saveRecommendation(userId, {
       symbol: body.symbol.toUpperCase(),
       action: body.action,
@@ -47,29 +80,80 @@ export async function POST(req: NextRequest) {
       stop_loss: body.stop_loss ?? null,
       take_profit: body.take_profit ?? null,
       timeframe: body.timeframe,
-      rationale: body.rationale,
+      rationale,
       factors: body.factors,
       pattern_name: body.pattern_name ?? null,
       chart_drawings_json: drawings.length ? JSON.stringify(drawings) : null,
       analysis_tier: profile.tier,
       source: "agent",
+      market: settings.active_market,
     });
+
+    const committee = await evaluateCommittee(userId, rec, similarLessons);
+    await updateRecommendationIntelligence(rec.id, {
+      committee_json: JSON.stringify(committee),
+      memory_refs_json: similarLessons.length
+        ? JSON.stringify(similarLessons.map((l) => l.id))
+        : null,
+    });
+
     await logAudit(
       userId,
       "agent_recommendation",
       `${rec.symbol} ${rec.action} ${rec.confidence}% (#${rec.id})`,
     );
 
-    // The agent delivers messages itself (OpenClaw channel) — no web notify.
-    const { rec: enriched } = await attachChartToRecommendation(userId, rec, {
-      notify: false,
-      drawings,
+    const committeeNote = committeeSummaryTelegram({
+      ...rec,
+      committee_json: JSON.stringify(committee),
     });
+    if (committeeNote && settings.telegram_chat_id) {
+      void notifyUser(userId, committeeNote).catch(() => {});
+    }
+
+    const mt5 = await canUseMt5ChartCapture(userId, body.symbol);
+    let enriched: Recommendation = {
+      ...rec,
+      committee_json: JSON.stringify(committee),
+      memory_refs_json: similarLessons.length
+        ? JSON.stringify(similarLessons.map((l) => l.id))
+        : null,
+    };
+    let chartUrl: string;
+    let mt5Pending = false;
+
+    if (mt5.ok && rec.action !== "wait") {
+      await queueMt5ChartCapture(userId, {
+        recommendationId: rec.id,
+        symbol: body.symbol,
+        interval: body.timeframe,
+        drawings,
+        entry: body.entry ?? null,
+        stop_loss: body.stop_loss ?? null,
+        take_profit: body.take_profit ?? null,
+      });
+      chartUrl = mt5ChartUrl(rec.id);
+      await updateRecommendationChartUrl(rec.id, chartUrl);
+      enriched = { ...enriched, chart_image_url: chartUrl };
+      mt5Pending = true;
+    } else {
+      const attached = await attachChartToRecommendation(userId, enriched, {
+        notify: false,
+        drawings,
+      });
+      enriched = attached.rec;
+      chartUrl = `/api/agent/chart/${enriched.id}`;
+    }
 
     return NextResponse.json({
       ok: true,
       recommendation: enriched,
-      chart_url: `/api/agent/chart/${enriched.id}`,
+      committee,
+      similar_lessons: similarLessons,
+      chart_url: chartUrl,
+      mt5_pending: mt5Pending,
+      mt5_symbol: mt5.mt5Symbol ?? null,
+      mt5_unavailable_reason: mt5.ok ? null : mt5.reason ?? null,
     });
   } catch (e) {
     return handleError(e);

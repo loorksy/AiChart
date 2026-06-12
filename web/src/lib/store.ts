@@ -427,13 +427,14 @@ export async function saveRecommendation(
     analysis_tier?: string | null;
     context_json?: string | null;
     source?: RecommendationSource;
+    market?: MarketType | null;
   },
 ): Promise<Recommendation> {
   const id = await insertReturningId(
     `INSERT INTO recommendations
        (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors,
-        chart_drawings_json, pattern_name, analysis_tier, context_json, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        chart_drawings_json, pattern_name, analysis_tier, context_json, source, market)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       rec.symbol.toUpperCase(),
@@ -450,6 +451,7 @@ export async function saveRecommendation(
       rec.analysis_tier ?? null,
       rec.context_json ?? null,
       rec.source ?? "web",
+      rec.market ?? null,
     ],
   );
   return (await queryOne<Recommendation>(
@@ -486,6 +488,31 @@ export async function updateRecommendationContext(
     contextJson,
     id,
   ]);
+}
+
+export async function updateRecommendationIntelligence(
+  id: number,
+  patch: {
+    committee_json?: string | null;
+    memory_refs_json?: string | null;
+  },
+): Promise<void> {
+  const fields: string[] = [];
+  const params: unknown[] = [];
+  if ("committee_json" in patch) {
+    fields.push("committee_json = ?");
+    params.push(patch.committee_json ?? null);
+  }
+  if ("memory_refs_json" in patch) {
+    fields.push("memory_refs_json = ?");
+    params.push(patch.memory_refs_json ?? null);
+  }
+  if (fields.length === 0) return;
+  params.push(id);
+  await execute(
+    `UPDATE recommendations SET ${fields.join(", ")} WHERE id = ?`,
+    params,
+  );
 }
 
 function today(): string {

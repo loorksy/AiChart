@@ -1,3 +1,4 @@
+import type { ChartDrawing } from "./chartDrawings";
 import type { MarketType, BrokerKind, MtPlatform } from "./markets/types";
 
 export type Role = "user" | "admin";
@@ -113,7 +114,58 @@ export interface Recommendation {
   analysis_tier: string | null;
   context_json: string | null;
   source: RecommendationSource;
+  /** Market context when the recommendation was created (crypto | forex). */
+  market: MarketType | null;
+  /** Multi-agent committee votes (JSON). */
+  committee_json: string | null;
+  /** IDs of trade_lessons referenced during analysis (JSON array). */
+  memory_refs_json: string | null;
   created_at: string;
+}
+
+export type TradeLessonOutcome = "win" | "loss" | "breakeven";
+
+export interface TradeLesson {
+  id: number;
+  user_id: number;
+  trade_id: number;
+  recommendation_id: number | null;
+  symbol: string;
+  market: MarketType;
+  timeframe: string | null;
+  pattern_name: string | null;
+  outcome: TradeLessonOutcome;
+  pnl: number;
+  pnl_pct: number;
+  entry_context_json: string | null;
+  lesson_ar: string;
+  tags_json: string | null;
+  /** PostgreSQL pgvector — null in SQLite rows (use embedding_json). */
+  embedding: string | null;
+  /** SQLite brute-force search payload. */
+  embedding_json: string | null;
+  created_at: string;
+}
+
+export interface TradeLessonMatch extends TradeLesson {
+  score: number;
+}
+
+export type CommitteeVoteValue = "approve" | "reject" | "wait";
+
+export interface CommitteePersonaVote {
+  vote: CommitteeVoteValue;
+  confidence: number;
+  rationale_ar: string;
+}
+
+export interface CommitteeResult {
+  aggressive: CommitteePersonaVote;
+  riskOfficer: CommitteePersonaVote;
+  macro: CommitteePersonaVote;
+  summary_ar: string;
+  veto: boolean;
+  autoBlocked: boolean;
 }
 
 export type IntentStatus =
@@ -237,7 +289,31 @@ export interface EaConnectionMeta {
   last_heartbeat_at: string | null;
 }
 
-export type EaCommandType = "open_market" | "close_position" | "modify_sl_tp";
+export type EaCommandType =
+  | "open_market"
+  | "close_position"
+  | "modify_sl_tp"
+  | "draw_and_capture"
+  | "clear_chart";
+
+/** Payload queued for EA `draw_and_capture` commands. */
+export interface EaDrawAndCapturePayload {
+  symbol: string;
+  interval: string;
+  recommendation_id: number;
+  capture_key?: string | null;
+  entry?: number | null;
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  drawings: ChartDrawing[];
+}
+
+/** Payload queued for EA `clear_chart` commands. */
+export interface EaClearChartPayload {
+  symbol: string;
+  interval?: string | null;
+  recommendation_id?: number | null;
+}
 
 export type EaCommandStatus =
   | "pending"

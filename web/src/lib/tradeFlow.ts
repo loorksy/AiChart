@@ -8,6 +8,7 @@ import { approvalCard } from "./telegram";
 import { notifyTradeResult } from "./notifyTrade";
 import { dispatchAlert } from "./alerts";
 import { resolveChartUrl } from "./recommendationChart";
+import { committeeBlocksAuto } from "./committee";
 import type { Recommendation } from "./types";
 import type { MarketType } from "./markets/types";
 
@@ -74,6 +75,18 @@ export async function processRecommendations(
 
   for (const rec of recommendations) {
     if (rec.action !== "buy" && rec.action !== "sell") continue;
+
+    if (autoExecute && committeeBlocksAuto(rec)) {
+      intents.push({
+        id: 0,
+        symbol: rec.symbol,
+        side: rec.action,
+        notional: perTrade,
+        status: "rejected",
+        reason: "رفضت لجنة المخاطر (veto) — لا تنفيذ تلقائي.",
+      });
+      continue;
+    }
 
     const intent = await createIntent(userId, {
       recommendation_id: rec.id,

@@ -17,8 +17,15 @@ import {
   validateChartDrawings,
 } from "./chartDrawings";
 import type { ProcessedIntent } from "./tradeFlow";
-import { updateRecommendationContext } from "./store";
+import { updateRecommendationContext, updateRecommendationIntelligence } from "./store";
 import { attachChartToRecommendation, notifyRecommendation } from "./recommendationChart";
+import {
+  searchSimilarLessons,
+  formatLessonsForPrompt,
+} from "./tradeMemory";
+import {
+  evaluateCommittee,
+} from "./committee";
 import type { DeliveryResult } from "./alerts";
 import { deliveryReasonAr } from "./alerts";
 import {
@@ -45,6 +52,7 @@ function buildAnalyzePrompt(
   snap: MarketSnapshot,
   contextBlock: string,
   profile: AnalysisProfile,
+  memoryBlock = "",
 ): string {
   return [
     `حلّل ${symbol} على إطار ${interval} بالعربية.`,
@@ -57,8 +65,12 @@ function buildAnalyzePrompt(
     `الاتجاه: ${snap.trend === "uptrend" ? "صاعد" : snap.trend === "downtrend" ? "هابط" : "عرضي"}`,
     ``,
     `سياق السوق:\n${contextBlock}`,
+    memoryBlock ? `\n${memoryBlock}` : "",
     ``,
     "المطلوب: تحليل مفصّل مع مستويات دخول ووقف خسارة وجني أرباح.",
+    memoryBlock
+      ? "إن وُجد درس مشابه أعلاه — اذكره صراحةً في rationale."
+      : "",
     "سجّل التوصية عبر record_recommendation مع timeframe و chart_drawings و pattern_name.",
     "chart_drawings: استخدم الأنواع المناسبة كلها — price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker, histogram_band — كل عنصر له confidence و points.",
     "مرّر timeframe نفس إطار التحليل.",
@@ -73,6 +85,7 @@ function buildVisionAnalyzePrompt(
   snap: MarketSnapshot,
   contextBlock: string,
   profile: AnalysisProfile,
+  memoryBlock = "",
 ): string {
   const trend =
     snap.trend === "uptrend"
@@ -85,7 +98,9 @@ function buildVisionAnalyzePrompt(
     ...buildProfilePromptHints(symbol, interval, profile),
     `مرجع سريع: RSI ${snap.rsi14?.toFixed(1) ?? "—"} · اتجاه ${trend} · ${snap.summary}`,
     contextBlock ? `سياق:\n${contextBlock}` : "",
+    memoryBlock ? memoryBlock : "",
     "المطلوب: تحليل مرئي من الصورة — أنماط، دعم/مقاومة، مستويات دخول/SL/TP.",
+    memoryBlock ? "اذكر أي درس مشابه من الذاكرة في rationale." : "",
     "سجّل عبر record_recommendation مع timeframe و chart_drawings و pattern_name.",
     "chart_drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker, histogram_band.",
   ]
@@ -188,6 +203,13 @@ export async function runMarketAnalyze(
     ? formatContextForPrompt(ctx)
     : "سوق فوركس عبر MetaTrader — لا يتوفر سياق Web3/أخبار. اعتمد على التحليل الفني.";
 
+  const similarLessons = await searchSimilarLessons(userId, {
+    symbol: sym,
+    snapshot: { rsi: snap.rsi14, trend: snap.trend },
+    limit: 3,
+  });
+  const memoryBlock = formatLessonsForPrompt(similarLessons);
+
   let validatedClient: ChatImagePayload | null = null;
   if (opts?.chartImage) {
     const check = validateChatImage(
@@ -218,8 +240,8 @@ export async function runMarketAnalyze(
     });
   }
   const prompt = useVision
-    ? buildVisionAnalyzePrompt(sym, interval, snap, contextBlock, profile)
-    : buildAnalyzePrompt(sym, interval, snap, contextBlock, profile);
+    ? buildVisionAnalyzePrompt(sym, interval, snap, contextBlock, profile, memoryBlock)
+    : buildAnalyzePrompt(sym, interval, snap, contextBlock, profile, memoryBlock);
 
   const userContent: string | ContentBlock[] = useVision
     ? buildUserMessageContent(prompt, chartImage, false)
@@ -248,6 +270,24 @@ export async function runMarketAnalyze(
   if (rec && ctx) {
     await updateRecommendationContext(rec.id, JSON.stringify(ctx));
     rec = { ...rec, context_json: JSON.stringify(ctx) };
+  }
+
+  if (rec && similarLessons.length) {
+    await updateRecommendationIntelligence(rec.id, {
+      memory_refs_json: JSON.stringify(similarLessons.map((l) => l.id)),
+    });
+    rec = {
+      ...rec,
+      memory_refs_json: JSON.stringify(similarLessons.map((l) => l.id)),
+    };
+  }
+
+  if (rec && (rec.action === "buy" || rec.action === "sell")) {
+    const committee = await evaluateCommittee(userId, rec, similarLessons);
+    await updateRecommendationIntelligence(rec.id, {
+      committee_json: JSON.stringify(committee),
+    });
+    rec = { ...rec, committee_json: JSON.stringify(committee) };
   }
 
   const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : [];

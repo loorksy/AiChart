@@ -272,9 +272,37 @@ const SCHEMA = `
 
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id
     ON users (telegram_id) WHERE telegram_id IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS trade_lessons (
+    id                  SERIAL PRIMARY KEY,
+    user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    trade_id            INTEGER NOT NULL,
+    recommendation_id   INTEGER,
+    symbol              TEXT NOT NULL,
+    market              TEXT NOT NULL DEFAULT 'crypto',
+    timeframe           TEXT,
+    pattern_name        TEXT,
+    outcome             TEXT NOT NULL,
+    pnl                 DOUBLE PRECISION NOT NULL DEFAULT 0,
+    pnl_pct             DOUBLE PRECISION NOT NULL DEFAULT 0,
+    entry_context_json  TEXT,
+    lesson_ar           TEXT NOT NULL,
+    tags_json           TEXT,
+    embedding           vector(1536),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_trade_lessons_user
+    ON trade_lessons (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_trade_lessons_symbol
+    ON trade_lessons (user_id, symbol);
 `;
 
 async function migratePg(client: PoolClient) {
+  await client.query(`CREATE EXTENSION IF NOT EXISTS vector`).catch((err) => {
+    console.warn("[db] pgvector extension unavailable:", err);
+  });
+
   await client.query(`
     UPDATE platform_config SET plain = TRUE
     WHERE plain = FALSE
@@ -352,7 +380,8 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS pattern_name TEXT,
       ADD COLUMN IF NOT EXISTS analysis_tier TEXT,
       ADD COLUMN IF NOT EXISTS context_json TEXT,
-      ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'web'
+      ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'web',
+      ADD COLUMN IF NOT EXISTS market TEXT
   `).catch(() => {});
 
   await client.query(`
@@ -388,6 +417,43 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
       ON mt_accounts (user_id)
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE recommendations
+      ADD COLUMN IF NOT EXISTS committee_json TEXT,
+      ADD COLUMN IF NOT EXISTS memory_refs_json TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS trade_lessons (
+      id                  SERIAL PRIMARY KEY,
+      user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      trade_id            INTEGER NOT NULL,
+      recommendation_id   INTEGER,
+      symbol              TEXT NOT NULL,
+      market              TEXT NOT NULL DEFAULT 'crypto',
+      timeframe           TEXT,
+      pattern_name        TEXT,
+      outcome             TEXT NOT NULL,
+      pnl                 DOUBLE PRECISION NOT NULL DEFAULT 0,
+      pnl_pct             DOUBLE PRECISION NOT NULL DEFAULT 0,
+      entry_context_json  TEXT,
+      lesson_ar           TEXT NOT NULL,
+      tags_json           TEXT,
+      embedding           vector(1536),
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_trade_lessons_user
+      ON trade_lessons (user_id, created_at DESC)
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_trade_lessons_symbol
+      ON trade_lessons (user_id, symbol)
   `).catch(() => {});
 }
 

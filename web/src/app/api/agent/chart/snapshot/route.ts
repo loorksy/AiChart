@@ -7,6 +7,11 @@ import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
 import { profileForInterval } from "@/lib/analysisProfile";
 import type { MarketType } from "@/lib/markets/types";
+import {
+  canUseMt5ChartCapture,
+  mt5ChartUrl,
+  queueMt5ChartCapture,
+} from "@/lib/eaChartDraw";
 
 const schema = z.object({
   symbol: z.string().min(1),
@@ -37,6 +42,26 @@ export async function POST(req: NextRequest) {
       100,
       profileForInterval(body.interval),
     );
+
+    const mt5 = await canUseMt5ChartCapture(userId, body.symbol);
+    if (mt5.ok) {
+      const captureKey = `snap_${Date.now()}`;
+      await queueMt5ChartCapture(userId, {
+        captureKey,
+        symbol: body.symbol,
+        interval: body.interval,
+        drawings,
+      });
+      return NextResponse.json(
+        {
+          ok: true,
+          status: "pending",
+          chart_url: mt5ChartUrl(captureKey),
+          mt5_symbol: mt5.mt5Symbol,
+        },
+        { status: 202 },
+      );
+    }
 
     const buffer = await buildChartSnapshotBufferForMarket(
       userId,
