@@ -20,6 +20,7 @@ const schema = z.object({
   recommendation_id: z.number().nullish(),
   /** True when the human operator explicitly ordered/approved this trade. */
   approved_by_user: z.boolean().default(false),
+  practice: z.boolean().default(false),
 });
 
 /**
@@ -57,10 +58,12 @@ export async function POST(req: NextRequest) {
       confidence: body.confidence,
       rationale: body.rationale ?? null,
       status: "approved",
+      practice: body.practice,
     });
 
     const result = await executeIntent(userId, intent.id, {
       explicitApproval: body.approved_by_user,
+      practiceMode: body.practice,
     });
 
     await logAudit(

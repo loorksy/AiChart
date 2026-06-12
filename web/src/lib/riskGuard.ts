@@ -1,4 +1,5 @@
 import { isSymbolAllowed } from "./allowedAssets";
+import type { ExecutionEnv } from "./executionEnv";
 import type { MarketType } from "./markets/types";
 import type { AdminLimits, TradingSettings } from "./types";
 
@@ -17,6 +18,12 @@ export interface RiskContext {
   monthRealizedPnlPct: number; // negative = net loss this calendar month
   /** User explicitly approved a trade (e.g. Telegram approve button). */
   explicitApproval?: boolean;
+  /** Practice / demo trial trade — relaxes some caps. */
+  practiceMode?: boolean;
+  /** Actual broker env for the active market. */
+  resolvedEnv?: ExecutionEnv | null;
+  /** User preference from settings. */
+  envPreference?: ExecutionEnv;
 }
 
 export interface RiskDecision {
@@ -58,8 +65,22 @@ export function evaluateTrade(
     return deny("الإيقاف الطارئ مفعّل في حسابك.");
   if (limits.can_execute !== 1)
     return deny("التنفيذ التلقائي غير مصرّح به من الإدارة.");
-  if (settings.mode !== "auto" && !ctx.explicitApproval)
+  const relaxed =
+    ctx.practiceMode === true || ctx.resolvedEnv === "demo";
+
+  if (settings.mode !== "auto" && !ctx.explicitApproval && !ctx.practiceMode)
     return deny("وضعك الحالي توصيات فقط، لا تنفيذ.");
+
+  const preference = ctx.envPreference ?? "demo";
+  if (
+    preference === "demo" &&
+    ctx.resolvedEnv === "live" &&
+    !ctx.practiceMode
+  ) {
+    return deny(
+      "التفضيل تجريبي لكن الحساب المتصل حقيقي — بدّل الحساب أو البيئة أولاً.",
+    );
+  }
 
   const market: MarketType = proposed.market ?? "crypto";
   if (!isSymbolAllowed(settings.allowed_assets, proposed.symbol, market)) {
@@ -94,21 +115,23 @@ export function evaluateTrade(
       `بلغت حد الخسارة الشهري (−${settings.monthly_loss_limit_pct}%).`,
     );
 
-  if (
-    settings.daily_profit_target_pct > 0 &&
-    ctx.todayRealizedPnlPct >= settings.daily_profit_target_pct
-  )
-    return deny(
-      `بلغت هدف الربح اليومي (+${settings.daily_profit_target_pct}%). لا صفقات جديدة اليوم.`,
-    );
+  if (!relaxed) {
+    if (
+      settings.daily_profit_target_pct > 0 &&
+      ctx.todayRealizedPnlPct >= settings.daily_profit_target_pct
+    )
+      return deny(
+        `بلغت هدف الربح اليومي (+${settings.daily_profit_target_pct}%). لا صفقات جديدة اليوم.`,
+      );
 
-  if (
-    settings.daily_profit_target_usd > 0 &&
-    ctx.todayRealizedPnlUsd >= settings.daily_profit_target_usd
-  )
-    return deny(
-      `بلغت هدف الربح اليومي (+${settings.daily_profit_target_usd.toFixed(2)} USDT). لا صفقات جديدة اليوم.`,
-    );
+    if (
+      settings.daily_profit_target_usd > 0 &&
+      ctx.todayRealizedPnlUsd >= settings.daily_profit_target_usd
+    )
+      return deny(
+        `بلغت هدف الربح اليومي (+${settings.daily_profit_target_usd.toFixed(2)} USDT). لا صفقات جديدة اليوم.`,
+      );
+  }
 
   return { ok: true, reason: "مسموح", effectiveCapital, perTradeMax };
 }

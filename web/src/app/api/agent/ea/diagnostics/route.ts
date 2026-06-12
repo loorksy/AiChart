@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
       broker: meta.broker_name,
       account_login: meta.account_login,
       account_currency: meta.account_currency,
+      account_trade_mode: meta.account_trade_mode,
       balance: meta.balance,
       equity: meta.equity,
       last_heartbeat_at: meta.last_heartbeat_at,

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "AiChart"
 #property link      "https://aichart.lork.cloud"
-#property version   "1.02"
+#property version   "1.03"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -57,6 +57,10 @@ string BuildHeartbeat()
    double balance  = AccountInfoDouble(ACCOUNT_BALANCE);
    double equity   = AccountInfoDouble(ACCOUNT_EQUITY);
    string broker   = AccountInfoString(ACCOUNT_COMPANY);
+   long   tradeMode = AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   string modeStr  = "demo";
+   if(tradeMode == ACCOUNT_TRADE_MODE_REAL) modeStr = "live";
+   else if(tradeMode == ACCOUNT_TRADE_MODE_CONTEST) modeStr = "contest";
 
    string json = "{";
    json += "\"account\":{";
@@ -64,12 +68,51 @@ string BuildHeartbeat()
    json += "\"currency\":\"" + currency + "\",";
    json += "\"balance\":" + DoubleToString(balance, 2) + ",";
    json += "\"equity\":" + DoubleToString(equity, 2) + ",";
-   json += "\"broker\":" + JsonStr(broker);
+   json += "\"broker\":" + JsonStr(broker) + ",";
+   json += "\"trade_mode\":" + JsonStr(modeStr);
    json += "},";
    json += "\"symbols\":" + BuildSymbols() + ",";
+   json += "\"positions\":" + BuildPositions() + ",";
    json += "\"candles\":" + BuildCandles();
    json += "}";
    return json;
+}
+
+string BuildPositions()
+{
+   string arr = "[";
+   int total = PositionsTotal();
+   int count = 0;
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+
+      string sym  = PositionGetString(POSITION_SYMBOL);
+      long   ptype = PositionGetInteger(POSITION_TYPE);
+      double lots = PositionGetDouble(POSITION_VOLUME);
+      double open = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl   = PositionGetDouble(POSITION_SL);
+      double tp   = PositionGetDouble(POSITION_TP);
+      double prof = PositionGetDouble(POSITION_PROFIT);
+      string side = (ptype == POSITION_TYPE_SELL) ? "sell" : "buy";
+
+      if(count > 0) arr += ",";
+      arr += "{";
+      arr += "\"ticket\":" + (string)ticket + ",";
+      arr += "\"symbol\":" + JsonStr(sym) + ",";
+      arr += "\"side\":" + JsonStr(side) + ",";
+      arr += "\"lots\":" + DoubleToString(lots, 2) + ",";
+      arr += "\"open_price\":" + DoubleToString(open, 5) + ",";
+      arr += "\"sl\":" + DoubleToString(sl, 5) + ",";
+      arr += "\"tp\":" + DoubleToString(tp, 5) + ",";
+      arr += "\"profit\":" + DoubleToString(prof, 2);
+      arr += "}";
+      count++;
+   }
+   arr += "]";
+   return arr;
 }
 
 string BuildSymbols()

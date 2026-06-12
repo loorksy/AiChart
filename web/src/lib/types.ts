@@ -66,6 +66,8 @@ export interface TradingSettings {
   last_manual_scan_at?: string | null;
   scan_poll_minutes?: number;
   analysis_interval?: string;
+  /** demo | live — preferred execution environment for agent + UI. */
+  execution_env_preference?: string;
   updated_at: string;
 }
 
@@ -192,6 +194,7 @@ export interface TradeIntent {
   rationale: string | null;
   status: IntentStatus;
   reason: string | null;
+  practice: number;
   created_at: string;
   updated_at: string;
 }
@@ -270,6 +273,8 @@ export interface EaConnection {
   status: EaStatus;
   symbol_specs_json: string | null;
   last_heartbeat_at: string | null;
+  account_trade_mode: string | null;
+  positions_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -287,6 +292,7 @@ export interface EaConnectionMeta {
   status: EaStatus;
   online: boolean;
   last_heartbeat_at: string | null;
+  account_trade_mode: string | null;
 }
 
 export type EaCommandType =

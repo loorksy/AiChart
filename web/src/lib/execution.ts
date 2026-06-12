@@ -9,6 +9,7 @@ import {
   monthRealizedPnlPct,
   isMasterKillOn,
 } from "./store";
+import { getResolvedExecutionEnv } from "./executionEnv";
 import { evaluateTrade } from "./riskGuard";
 import { brokerForMarket } from "./markets/types";
 import { getBrokerAdapter } from "./brokers";
@@ -42,6 +43,7 @@ export interface ExecuteIntentOptions {
   onActivity?: ActivityListener;
   /** The human operator explicitly ordered/approved this trade (agent bridge). */
   explicitApproval?: boolean;
+  practiceMode?: boolean;
 }
 
 export async function executeIntent(
@@ -86,6 +88,12 @@ export async function executeIntent(
     Boolean(options?.explicitApproval) ||
     (settings.mode !== "auto" && intent.status === "approved");
 
+  const practiceMode =
+    Boolean(options?.practiceMode) || intent.practice === 1;
+  const resolvedEnv = await getResolvedExecutionEnv(userId, intent.market);
+  const envPreference =
+    settings.execution_env_preference === "live" ? "live" : "demo";
+
   const decision = evaluateTrade(
     settings,
     limits,
@@ -102,6 +110,9 @@ export async function executeIntent(
       todayRealizedPnlUsd: await todayRealizedPnlUsd(userId),
       monthRealizedPnlPct: await monthRealizedPnlPct(userId, effectiveCapital),
       explicitApproval,
+      practiceMode,
+      resolvedEnv,
+      envPreference,
     },
   );
 

@@ -426,6 +426,39 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS execution_env_preference TEXT NOT NULL DEFAULT 'demo'
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trade_intents
+      ADD COLUMN IF NOT EXISTS practice BOOLEAN NOT NULL DEFAULT FALSE
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE ea_connections
+      ADD COLUMN IF NOT EXISTS account_trade_mode TEXT,
+      ADD COLUMN IF NOT EXISTS positions_json TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'binance_accounts_pkey'
+          AND conrelid = 'binance_accounts'::regclass
+          AND pg_get_constraintdef(oid) LIKE '%user_id, env%'
+      ) THEN
+        ALTER TABLE binance_accounts DROP CONSTRAINT IF EXISTS binance_accounts_pkey;
+        ALTER TABLE binance_accounts ADD PRIMARY KEY (user_id, env);
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END $$;
+  `).catch(() => {});
+
+  await client.query(`
     CREATE TABLE IF NOT EXISTS trade_lessons (
       id                  SERIAL PRIMARY KEY,
       user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

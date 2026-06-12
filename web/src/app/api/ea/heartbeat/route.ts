@@ -14,7 +14,9 @@ interface HeartbeatBody {
     balance?: number;
     equity?: number;
     broker?: string;
+    trade_mode?: string;
   };
+  positions?: unknown[];
   symbols?: unknown[];
   candles?: {
     symbol?: string;
@@ -38,10 +40,14 @@ export async function POST(req: NextRequest) {
       account_login:
         body.account?.login != null ? String(body.account.login) : null,
       account_currency: body.account?.currency ?? null,
+      account_trade_mode: body.account?.trade_mode ?? null,
       balance: Number(body.account?.balance ?? 0) || 0,
       equity: Number(body.account?.equity ?? 0) || 0,
       symbol_specs_json: Array.isArray(body.symbols)
         ? JSON.stringify(body.symbols)
+        : null,
+      positions_json: Array.isArray(body.positions)
+        ? JSON.stringify(body.positions)
         : null,
     });
 

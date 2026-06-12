@@ -157,7 +157,7 @@ export const eaAdapter: BrokerAdapter = {
       quote_qty: filledLots * fillPrice * (Number(spec?.contract_size) || 0),
       avg_price: fillPrice,
       order_id: ticket,
-      env: conn.platform,
+      env: conn.account_trade_mode === "live" ? "live" : "demo",
       market: "forex",
       broker: "mt_ea",
       status: "open",

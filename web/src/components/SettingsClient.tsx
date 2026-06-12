@@ -763,6 +763,8 @@ function TradingCard({
           send_screenshot: Boolean(s.send_screenshot),
           scan_poll_minutes: Number(s.scan_poll_minutes ?? 0),
           analysis_interval: s.analysis_interval ?? "1h",
+          execution_env_preference:
+            s.execution_env_preference === "live" ? "live" : "demo",
           telegram_chat_id: s.telegram_chat_id || null,
           kill_switch: Boolean(s.kill_switch),
         }),
@@ -789,6 +791,21 @@ function TradingCard({
       </p>
 
       <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
+        <Field label="بيئة التنفيذ المفضّلة">
+          <select
+            className="input"
+            value={s.execution_env_preference === "live" ? "live" : "demo"}
+            onChange={(e) =>
+              set(
+                "execution_env_preference",
+                e.target.value as "demo" | "live",
+              )
+            }
+          >
+            <option value="demo">تجريبي (ديمو / Testnet)</option>
+            <option value="live">حقيقي (Live / Prod)</option>
+          </select>
+        </Field>
         <Field label="الوضع">
           <select
             className="input"

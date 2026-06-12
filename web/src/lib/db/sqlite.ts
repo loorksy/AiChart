@@ -412,6 +412,11 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN analysis_interval TEXT NOT NULL DEFAULT '1h'",
     );
   }
+  if (!settingsCols.some((c) => c.name === "execution_env_preference")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN execution_env_preference TEXT NOT NULL DEFAULT 'demo'",
+    );
+  }
 
   const tradeCols = db
     .prepare("PRAGMA table_info(trades)")
@@ -438,6 +443,21 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE trade_intents ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance'",
     );
+  }
+  if (!intentCols.some((c) => c.name === "practice")) {
+    db.exec(
+      "ALTER TABLE trade_intents ADD COLUMN practice INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+
+  const eaCols = db
+    .prepare("PRAGMA table_info(ea_connections)")
+    .all() as { name: string }[];
+  if (!eaCols.some((c) => c.name === "account_trade_mode")) {
+    db.exec("ALTER TABLE ea_connections ADD COLUMN account_trade_mode TEXT");
+  }
+  if (!eaCols.some((c) => c.name === "positions_json")) {
+    db.exec("ALTER TABLE ea_connections ADD COLUMN positions_json TEXT");
   }
 
   const alertCols = db
@@ -477,6 +497,33 @@ function migrate(db: Database.Database) {
   }
   if (!recCols.some((c) => c.name === "memory_refs_json")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN memory_refs_json TEXT");
+  }
+
+  const binanceSql = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='binance_accounts'")
+    .get() as { sql?: string } | undefined;
+  if (
+    binanceSql?.sql &&
+    !binanceSql.sql.includes("PRIMARY KEY (user_id, env)")
+  ) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS binance_accounts_v2 (
+        user_id        INTEGER NOT NULL,
+        api_key_enc    TEXT NOT NULL,
+        api_secret_enc TEXT NOT NULL,
+        env            TEXT NOT NULL DEFAULT 'testnet',
+        label          TEXT,
+        updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (user_id, env),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      INSERT OR IGNORE INTO binance_accounts_v2
+        (user_id, api_key_enc, api_secret_enc, env, label, updated_at)
+      SELECT user_id, api_key_enc, api_secret_enc, env, label, updated_at
+        FROM binance_accounts;
+      DROP TABLE binance_accounts;
+      ALTER TABLE binance_accounts_v2 RENAME TO binance_accounts;
+    `);
   }
 
   db.exec(`

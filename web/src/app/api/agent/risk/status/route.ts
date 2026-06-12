@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
+import { getExecutionEnvSnapshot } from "@/lib/executionEnv";
 import {
   countOpenTrades,
   countPendingIntents,
@@ -62,6 +63,7 @@ export async function GET(req: NextRequest) {
         ),
       },
       allowedAssets: settings.allowed_assets,
+      executionEnv: await getExecutionEnvSnapshot(userId),
     });
   } catch (e) {
     return handleError(e);

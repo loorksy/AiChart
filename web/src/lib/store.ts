@@ -46,6 +46,9 @@ export async function getSettings(userId: number): Promise<TradingSettings> {
   ))!;
   // Legacy rows store mode='advisory' — map to the new three-mode model.
   row.mode = normalizeTradingMode(row.mode);
+  if (!row.execution_env_preference) {
+    row.execution_env_preference = "demo";
+  }
   return row;
 }
 
@@ -83,6 +86,7 @@ const SETTABLE_FIELDS = [
   "last_manual_scan_at",
   "scan_poll_minutes",
   "analysis_interval",
+  "execution_env_preference",
 ] as const;
 
 export async function updateSettings(
@@ -111,35 +115,65 @@ export async function saveBinanceAccount(
   await execute(
     `INSERT INTO binance_accounts (user_id, api_key_enc, api_secret_enc, env, label, updated_at)
      VALUES (?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(user_id) DO UPDATE SET
+     ON CONFLICT(user_id, env) DO UPDATE SET
        api_key_enc = excluded.api_key_enc,
        api_secret_enc = excluded.api_secret_enc,
-       env = excluded.env,
        label = excluded.label,
        updated_at = datetime('now')`,
     [userId, encryptSecret(apiKey), encryptSecret(apiSecret), env, label ?? null],
   );
 }
 
+export async function listBinanceAccountMetas(
+  userId: number,
+): Promise<BinanceAccountMeta[]> {
+  return query<BinanceAccountMeta>(
+    "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ? ORDER BY env",
+    [userId],
+  );
+}
+
 export async function getBinanceAccountMeta(
   userId: number,
+  env?: BinanceEnv,
 ): Promise<BinanceAccountMeta | null> {
-  return queryOne<BinanceAccountMeta>(
-    "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ?",
-    [userId],
+  if (env) {
+    return queryOne<BinanceAccountMeta>(
+      "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ? AND env = ?",
+      [userId, env],
+    );
+  }
+  const settings = await getSettings(userId);
+  const pref =
+    settings.execution_env_preference === "live" ? "prod" : "testnet";
+  return (
+    (await queryOne<BinanceAccountMeta>(
+      "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ? AND env = ?",
+      [userId, pref],
+    )) ??
+    (await queryOne<BinanceAccountMeta>(
+      "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+      [userId],
+    ))
   );
 }
 
 export async function getBinanceCredentials(
   userId: number,
+  env?: BinanceEnv,
 ): Promise<{ apiKey: string; apiSecret: string; env: BinanceEnv } | null> {
+  let target = env;
+  if (!target) {
+    const settings = await getSettings(userId);
+    target = settings.execution_env_preference === "live" ? "prod" : "testnet";
+  }
   const row = await queryOne<{
     api_key_enc: string;
     api_secret_enc: string;
     env: BinanceEnv;
   }>(
-    "SELECT api_key_enc, api_secret_enc, env FROM binance_accounts WHERE user_id = ?",
-    [userId],
+    "SELECT api_key_enc, api_secret_enc, env FROM binance_accounts WHERE user_id = ? AND env = ?",
+    [userId, target],
   );
   if (!row) return null;
   return {
@@ -149,7 +183,14 @@ export async function getBinanceCredentials(
   };
 }
 
-export async function deleteBinanceAccount(userId: number) {
+export async function deleteBinanceAccount(userId: number, env?: BinanceEnv) {
+  if (env) {
+    await execute("DELETE FROM binance_accounts WHERE user_id = ? AND env = ?", [
+      userId,
+      env,
+    ]);
+    return;
+  }
   await execute("DELETE FROM binance_accounts WHERE user_id = ?", [userId]);
 }
 
@@ -370,14 +411,14 @@ export interface AdminUserView extends PublicUser {
 export async function listUsersForAdmin(): Promise<AdminUserView[]> {
   return query<AdminUserView>(
     `SELECT u.id, u.email, u.role, u.status, u.created_at,
-            (b.user_id IS NOT NULL) AS has_binance,
-            b.env AS binance_env,
+            EXISTS (SELECT 1 FROM binance_accounts bx WHERE bx.user_id = u.id) AS has_binance,
+            (SELECT bx.env FROM binance_accounts bx
+              WHERE bx.user_id = u.id ORDER BY bx.updated_at DESC LIMIT 1) AS binance_env,
             COALESCE(a.can_execute, FALSE) AS can_execute,
             COALESCE(a.max_capital_cap, 0) AS max_capital_cap,
             COALESCE(a.max_open_trades_cap, 1) AS max_open_trades_cap,
             COALESCE(a.claude_quota, 1000) AS claude_quota
      FROM users u
-     LEFT JOIN binance_accounts b ON b.user_id = u.id
      LEFT JOIN admin_limits a ON a.user_id = u.id
      ORDER BY u.created_at DESC`,
   );
@@ -562,14 +603,15 @@ export async function createIntent(
     rationale?: string | null;
     status?: string;
     reason?: string | null;
+    practice?: boolean;
   },
 ): Promise<TradeIntent> {
   const market: MarketType = intent.market ?? "crypto";
   const broker: BrokerKind = intent.broker ?? brokerForMarket(market);
   const id = await insertReturningId(
     `INSERT INTO trade_intents
-      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       intent.recommendation_id ?? null,
@@ -585,6 +627,7 @@ export async function createIntent(
       intent.rationale ?? null,
       intent.status ?? "pending",
       intent.reason ?? null,
+      intent.practice ? 1 : 0,
     ],
   );
   return (await getIntent(id))!;

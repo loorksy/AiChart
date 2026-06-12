@@ -82,10 +82,9 @@ async function call(method: string, body: Record<string, unknown>): Promise<unkn
   return data.result;
 }
 
-export interface InlineButton {
-  text: string;
-  callback_data: string;
-}
+export type InlineButton =
+  | { text: string; callback_data: string }
+  | { text: string; url: string };
 
 /** Best-effort notification to a user's linked Telegram (no-op if unlinked). */
 export async function notifyUser(
@@ -341,8 +340,8 @@ export function approvalCard(intent: {
   if (intent.rationale) lines.push(``, `📝 ${intent.rationale}`);
   lines.push(
     ``,
-    `للتنفيذ: وافق من لوحة التحكم أو اطلب من الوكيل («نفّذ»).`,
-    `Approve from the dashboard or tell the agent to execute.`,
+    `اضغط ✅ للموافقة أو ❌ للرفض أدناه.`,
+    `Tap ✅ Approve or ❌ Reject below.`,
   );
   return lines.join("\n");
 }

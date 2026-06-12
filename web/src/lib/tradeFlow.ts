@@ -4,6 +4,7 @@ import {
   createIntent,
 } from "./store";
 import { executeIntent } from "./execution";
+import { buildApprovalButtons } from "./approvalFlow";
 import { approvalCard } from "./telegram";
 import { notifyTradeResult } from "./notifyTrade";
 import { dispatchAlert } from "./alerts";
@@ -126,8 +127,6 @@ export async function processRecommendations(
         pattern_name: rec.pattern_name,
         timeframe: rec.timeframe,
       });
-      // Approval happens on the dashboard or via the OpenClaw agent chat —
-      // inline callback buttons are gone with the old webhook bot.
       const chartUrl =
         settings.send_screenshot === 1 ? await resolveChartUrl(rec) : null;
       const delivery = await dispatchAlert(userId, {
@@ -137,6 +136,7 @@ export async function processRecommendations(
         symbol: intent.symbol,
         confidence: rec.confidence,
         photoUrl: chartUrl,
+        buttons: buildApprovalButtons(intent.id, "trade"),
       });
       intents.push({
         id: intent.id,

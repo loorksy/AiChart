@@ -88,9 +88,11 @@ export interface EaHeartbeatPatch {
   broker_name?: string | null;
   account_login?: string | null;
   account_currency?: string | null;
+  account_trade_mode?: string | null;
   balance?: number;
   equity?: number;
   symbol_specs_json?: string | null;
+  positions_json?: string | null;
 }
 
 export async function recordEaHeartbeat(
@@ -102,9 +104,11 @@ export async function recordEaHeartbeat(
        broker_name = COALESCE(?, broker_name),
        account_login = COALESCE(?, account_login),
        account_currency = COALESCE(?, account_currency),
+       account_trade_mode = COALESCE(?, account_trade_mode),
        balance = ?,
        equity = ?,
        symbol_specs_json = COALESCE(?, symbol_specs_json),
+       positions_json = COALESCE(?, positions_json),
        status = 'online',
        last_heartbeat_at = datetime('now'),
        updated_at = datetime('now')
@@ -113,9 +117,11 @@ export async function recordEaHeartbeat(
       patch.broker_name ?? null,
       patch.account_login ?? null,
       patch.account_currency ?? null,
+      patch.account_trade_mode ?? null,
       patch.balance ?? 0,
       patch.equity ?? 0,
       patch.symbol_specs_json ?? null,
+      patch.positions_json ?? null,
       userId,
     ],
   );
@@ -136,6 +142,7 @@ export function toEaConnectionMeta(conn: EaConnection): EaConnectionMeta {
     status: online ? "online" : conn.status === "revoked" ? "revoked" : "offline",
     online,
     last_heartbeat_at: conn.last_heartbeat_at,
+    account_trade_mode: conn.account_trade_mode ?? null,
   };
 }
 

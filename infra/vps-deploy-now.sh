@@ -12,12 +12,10 @@ git checkout main
 git reset --hard origin/main
 log "Now at: $(git log -1 --oneline)"
 
-if [[ -f web/.env ]]; then
-  DATABASE_URL="$(grep -E '^DATABASE_URL=' web/.env | cut -d= -f2- | tr -d '\r' || true)"
-  if [[ -n "${DATABASE_URL:-}" ]]; then
-    log "pgvector extension"
-    psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;" || log "pgvector warn"
-  fi
+if command -v psql >/dev/null 2>&1; then
+  log "pgvector extension (postgres superuser)"
+  sudo -u postgres psql -d aichart -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null \
+    || log "pgvector warn — install postgresql-16-pgvector if needed"
 fi
 
 cd /opt/aichart/web
@@ -26,7 +24,7 @@ npm ci
 log "npm run build"
 npm run build
 
-if [[ -x /opt/aichart/agent/scripts/sync-workspace.sh ]]; then
+if [[ -f /opt/aichart/agent/scripts/sync-workspace.sh ]]; then
   log "sync OpenClaw workspace"
   bash /opt/aichart/agent/scripts/sync-workspace.sh || true
 fi
@@ -40,6 +38,9 @@ sleep 4
 test -f src/lib/tradePostMortem.ts && log "tradePostMortem.ts OK"
 test -f src/lib/committee.ts && log "committee.ts OK"
 test -f src/app/command/page.tsx && log "command page OK"
+test -f src/app/api/agent/ea/diagnostics/route.ts && log "ea/diagnostics OK"
+test -f /opt/aichart/agent/workspace/EA_TROUBLESHOOTING.md && log "EA_TROUBLESHOOTING.md OK"
+test -f /opt/aichart/ea/mt5/AiChartBridge.mq5 && log "AiChartBridge.mq5 OK"
 curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://aichart.lork.cloud/ || true
 pm2 list | grep aichart || true
 log "Done"

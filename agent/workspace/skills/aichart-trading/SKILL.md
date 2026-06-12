@@ -22,7 +22,7 @@ curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 GET /api/agent/risk/status
 ```
 
-يرجع: `mode` (auto/approval/direct)، `killSwitch`، حدود رأس المال، الصفقات
+يرجع: `mode`، `killSwitch`، `executionEnv` (ديمو/حقيقي)، حدود رأس المال، الصفقات
 المفتوحة، وربح/خسارة اليوم والشهر. **التزم بالوضع المذكور في AGENTS.md.**
 
 ## 2) بيانات السوق
@@ -134,27 +134,55 @@ POST /api/agent/chart/snapshot
   poll أعلاه.
 - إن كان EA غير متصل: `200` PNG مباشرة (QuickChart).
 
-## 6) فتح صفقة حقيقية
+## 6) عرض الصفقات المفتوحة
+
+```bash
+GET /api/agent/trades/open
+```
+
+يرجع `summary_ar` جاهزاً + `aichartTrades` + `brokerPositions.mt5` + `executionEnv`.
+
+## 7) بيئة التنفيذ (ديمو / حقيقي)
+
+```bash
+GET /api/agent/execution/env
+POST /api/agent/execution/env   {"preference":"demo"|"live"}
+POST /api/agent/binance/connect {"apiKey":"…","apiSecret":"…","env":"testnet"|"prod"}
+```
+
+## 8) موافقة بأزرار تيليجرام
+
+```bash
+POST /api/agent/approval/request
+{
+  "symbol": "EURUSD", "side": "buy", "confidence": 70,
+  "practice": true, "rationale": "تجربة قدرة الوكيل",
+  "market": "forex"
+}
+GET /api/agent/approval/pending
+POST /api/agent/approval/respond   {"intent_id":12,"action":"approve"|"reject"}
+```
+
+- **الافتراضي عند الحاجة لموافقة:** `approval/request` — يُرسل ✅/❌؛ لا تنتظر «وافق» نصياً.
+- بعد ضغط الزر تنفّذ المنصة تلقائياً.
+
+## 9) فتح صفقة (مباشر)
 
 ```bash
 POST /api/agent/trade/open
 {
   "symbol": "BTCUSDT", "side": "buy",
-  "notional": 100,                  # USDT — احذفه ليُستخدم حد الصفقة من الإعدادات
-  "entry": 61500, "stop_loss": 60700, "take_profit": 63500,
-  "confidence": 82,
-  "rationale": "سبب الدخول",
-  "recommendation_id": 123,         # اربطها بالتوصية إن وجدت
-  "approved_by_user": true          # فقط عندما وافق/أمر المشغّل صراحة
+  "notional": 100,
+  "confidence": 82, "rationale": "سبب الدخول",
+  "approved_by_user": true,
+  "practice": false
 }
 ```
 
-- يمر دائماً عبر Risk Guard — إن رُفض يرجع `ok:false` مع `reason`. انقل السبب
-  حرفياً ولا تتحايل.
-- `approved_by_user: true` **حصراً** عند موافقة/أمر صريح في المحادثة
-  (وضعا approval/direct). في وضع auto أرسله false.
+- `practice: true` — صفقة تجريبية بقواعد مخفّفة على الديمو.
+- `approved_by_user: true` — أمر صريح جداً («نفّذ الآن») أو بعد زر الموافقة.
 
-## 7) إغلاق صفقات
+## 10) إغلاق صفقات
 
 ```bash
 POST /api/agent/trade/close
@@ -162,14 +190,14 @@ POST /api/agent/trade/close
 {"all": true}           # كل الصفقات (طوارئ)
 ```
 
-## 8) وضع التداول وKill Switch
+## 11) وضع التداول وKill Switch
 
 ```bash
 POST /api/agent/mode          {"mode":"auto"|"approval"|"direct"}
 POST /api/agent/kill-switch   {"on":true,"scope":"user","close_open_trades":true}
 ```
 
-## 9) تشخيص EA (فوركس) — قبل فتح صفقة
+## 12) تشخيص EA (فوركس) — قبل فتح صفقة
 
 ```bash
 GET /api/agent/ea/diagnostics?symbol=EURUSD
