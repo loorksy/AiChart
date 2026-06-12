@@ -5,6 +5,8 @@ import { handleError } from "@/lib/api";
 import { captureBinanceChart } from "@/lib/binanceChartCapture";
 import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
 import { profileForInterval } from "@/lib/analysisProfile";
+import { putChartCapture } from "@/lib/chartCaptureStore";
+import { getPublicAppUrl } from "@/lib/appUrl";
 
 const schema = z.object({
   symbol: z.string().min(1),
@@ -46,11 +48,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const captureKey = putChartCapture(result.buffer);
+    const chartPath = `/api/agent/chart/capture/${captureKey}`;
+    const publicBase = getPublicAppUrl();
+
     return NextResponse.json({
       ok: true,
       source: result.source,
       image_base64: result.buffer.toString("base64"),
       content_type: "image/png",
+      chart_url: chartPath,
+      /** Use this for Telegram MEDIA — never localhost / never GET binance-capture directly. */
+      chart_url_public: `${publicBase}${chartPath}`,
+      media_hint:
+        "Telegram: MEDIA:<chart_url_public>?token=$AICHART_SERVICE_TOKEN — or send image_base64 via message attachment.",
     });
   } catch (e) {
     return handleError(e);

@@ -42,7 +42,11 @@ export async function PUT(req: NextRequest) {
     if (
       patch.AI_MODEL !== undefined ||
       patch.AI_PROVIDER !== undefined ||
-      patch.ANTHROPIC_MODEL !== undefined
+      patch.ANTHROPIC_MODEL !== undefined ||
+      patch.ANTHROPIC_API_KEY !== undefined ||
+      patch.OPENROUTER_API_KEY !== undefined ||
+      patch.OPENAI_API_KEY !== undefined ||
+      patch.GEMINI_API_KEY !== undefined
     ) {
       // savePlatformConfig already refreshed the cache, so the sync reads
       // the new provider/model from platform config directly.

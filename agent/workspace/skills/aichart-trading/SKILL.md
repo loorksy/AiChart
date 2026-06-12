@@ -65,7 +65,14 @@ POST /api/agent/chart/binance-capture
 {"symbol":"BTCUSDT","interval":"1h","market_type":"futures","chart_drawings":[...]}
 ```
 
-يرجع JSON: `{ ok, source: "playwright"|"fallback", image_base64, content_type }`.
+يرجع JSON: `{ ok, source, image_base64, chart_url, chart_url_public, content_type }`.
+
+**Telegram — ممنوع** `MEDIA:http://127.0.0.1:...` أو GET على `binance-capture`.
+
+1. `POST` كما أعلاه (Bearer token).
+2. للصورة في تيليجرام استخدم **`chart_url_public`** مع `?token=$AICHART_SERVICE_TOKEN`  
+   مثال: `MEDIA:https://aichart.lork.cloud/api/agent/chart/capture/abc123?token=...`
+3. أو أرفق `image_base64` مباشرة إن دعم القناة ذلك.
 
 ## شارت MT5 (EA)
 

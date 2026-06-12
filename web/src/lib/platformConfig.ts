@@ -39,7 +39,7 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     group: "claude",
     secret: false,
     plainStorage: false,
-    placeholder: "anthropic | openrouter | openai",
+    placeholder: "anthropic | openrouter | openai | google",
   },
   {
     key: "AI_MODEL",
@@ -65,6 +65,15 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     group: "claude",
     secret: true,
     plainStorage: false,
+  },
+  {
+    key: "GEMINI_API_KEY",
+    label: "مفتاح Google Gemini",
+    labelEn: "GEMINI_API_KEY",
+    group: "claude",
+    secret: true,
+    plainStorage: false,
+    placeholder: "AIza… من Google AI Studio",
   },
   {
     key: "ANTHROPIC_MODEL",

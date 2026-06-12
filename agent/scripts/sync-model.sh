@@ -90,16 +90,18 @@ cfg.agents.defaults.contextPruning = {
 };
 
 cfg.agents.defaults.models ??= {};
-const entry = cfg.agents.defaults.models[ref] ?? {};
-cfg.agents.defaults.models[ref] = {
-  ...entry,
-  params: {
-    ...(entry.params ?? {}),
-    // cacheRetention applies to Anthropic; harmless for other providers.
-    cacheRetention: "long",
-    thinking: "off",
-  },
+const tokenParams = {
+  cacheRetention: "long",
+  thinking: "off",
+  maxTokens: 8192,
 };
+for (const full of [ref, ...fallbacks]) {
+  const entry = cfg.agents.defaults.models[full] ?? {};
+  cfg.agents.defaults.models[full] = {
+    ...entry,
+    params: { ...(entry.params ?? {}), ...tokenParams },
+  };
+}
 
 // Register primary + fallbacks in models.providers so OpenClaw accepts them,
 // and attach credentials/baseUrl for OpenAI-compatible providers.
@@ -123,6 +125,8 @@ for (const full of [ref, ...fallbacks]) {
     if (providerKeys[provider]) merged.apiKey = providerKeys[provider];
     merged.baseUrl = PROVIDER_BASE_URL[provider];
     merged.api = "openai-completions";
+  } else if (provider === "google") {
+    if (providerKeys.google) merged.apiKey = providerKeys.google;
   }
   cfg.models.providers[provider] = merged;
 }

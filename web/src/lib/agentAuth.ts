@@ -34,6 +34,12 @@ function timingSafeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ha, hb);
 }
 
+export function isValidAgentToken(provided: string | null | undefined): boolean {
+  const expected = serviceToken();
+  if (!expected || !provided?.trim()) return false;
+  return timingSafeEqual(provided.trim(), expected);
+}
+
 /**
  * Authenticates a bridge request via `Authorization: Bearer <token>` or the
  * `x-agent-token` header. Throws ApiError on failure.
@@ -50,8 +56,11 @@ export function requireAgentAuth(req: NextRequest): void {
   const bearer = header?.toLowerCase().startsWith("bearer ")
     ? header.slice(7).trim()
     : null;
-  const provided = bearer ?? req.headers.get("x-agent-token");
-  if (!provided || !timingSafeEqual(provided, expected)) {
+  const provided =
+    bearer ??
+    req.headers.get("x-agent-token") ??
+    req.nextUrl.searchParams.get("token");
+  if (!isValidAgentToken(provided)) {
     throw new ApiError(401, "توكن الوكيل غير صحيح.");
   }
   // Bridge pulse for the dashboard — fire and forget.

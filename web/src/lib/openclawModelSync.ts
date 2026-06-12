@@ -42,12 +42,13 @@ const FALLBACK_CANDIDATES: Record<LLMProvider, string> = {
   anthropic: "anthropic/claude-haiku-4-5",
   openrouter: "openrouter/anthropic/claude-haiku-4.5",
   openai: "openai/gpt-4.1-mini",
+  google: "google/gemini-2.5-flash",
 };
 
 /** Fallback refs across all providers whose API keys are configured. */
 export function buildFallbackRefs(primaryRef: string): string[] {
   const out: string[] = [];
-  for (const provider of ["anthropic", "openrouter", "openai"] as const) {
+  for (const provider of ["anthropic", "openrouter", "openai", "google"] as const) {
     if (!getProviderApiKey(provider)) continue;
     const candidate = FALLBACK_CANDIDATES[provider];
     if (candidate.toLowerCase() === primaryRef.toLowerCase()) continue;
@@ -83,7 +84,13 @@ type OpenClawCfg = {
       model?: { primary?: string; fallbacks?: string[]; thinking?: unknown };
       models?: Record<
         string,
-        { params?: { cacheRetention?: string; thinking?: string } }
+        {
+          params?: {
+            cacheRetention?: string;
+            thinking?: string;
+            maxTokens?: number;
+          };
+        }
       >;
     };
   };
@@ -143,6 +150,9 @@ export function ensureProviderModelRegistered(
       merged.baseUrl = baseUrl;
       merged.api = "openai-completions";
     }
+  } else if (provider === "google") {
+    const apiKey = getProviderApiKey("google");
+    if (apiKey) merged.apiKey = apiKey;
   }
   next.models.providers[provider] = merged;
   return next;
@@ -190,15 +200,19 @@ export function patchOpenClawModelConfig(
   d.contextPruning = { mode: "cache-ttl" };
   delete d.heartbeat;
   d.models ??= {};
-  const entry = d.models[ref] ?? {};
-  d.models[ref] = {
-    ...entry,
-    params: {
-      ...(entry.params ?? {}),
-      cacheRetention: "long",
-      thinking: "off",
-    },
+  const tokenParams = {
+    cacheRetention: "long",
+    thinking: "off",
+    /** Avoid OpenRouter 402 when balance is low but non-zero (64000 max request). */
+    maxTokens: 8192,
   };
+  for (const modelRef of [ref, ...fallbacks]) {
+    const entry = d.models[modelRef] ?? {};
+    d.models[modelRef] = {
+      ...entry,
+      params: { ...(entry.params ?? {}), ...tokenParams },
+    };
+  }
 
   next = ensureProviderModelRegistered(next, ref);
   for (const fb of fallbacks) {

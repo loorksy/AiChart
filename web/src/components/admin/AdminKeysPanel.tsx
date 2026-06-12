@@ -162,6 +162,7 @@ export function AdminKeysPanel() {
     { id: "anthropic", label: "Anthropic (Claude)", keyField: "ANTHROPIC_API_KEY" },
     { id: "openrouter", label: "OpenRouter", keyField: "OPENROUTER_API_KEY" },
     { id: "openai", label: "OpenAI", keyField: "OPENAI_API_KEY" },
+    { id: "google", label: "Google (Gemini)", keyField: "GEMINI_API_KEY" },
   ] as const;
   type ProviderId = (typeof AI_PROVIDERS)[number]["id"];
 
@@ -188,7 +189,8 @@ export function AdminKeysPanel() {
       f.key !== "AI_MODEL" &&
       f.key !== "ANTHROPIC_MODEL" &&
       f.key !== "ANTHROPIC_API_KEY" &&
-      f.key !== "OPENAI_API_KEY",
+      f.key !== "OPENAI_API_KEY" &&
+      f.key !== "GEMINI_API_KEY",
   );
   const orKeyField = fields.find((f) => f.key === "OPENROUTER_API_KEY");
   const orModelField = fields.find((f) => f.key === "OPENROUTER_AUDIO_MODEL");
