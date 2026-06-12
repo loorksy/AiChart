@@ -185,6 +185,8 @@ export function patchOpenClawModelConfig(
   }
 
   d.thinkingDefault = "off";
+  d.contextPruning = { mode: "cache-ttl" };
+  delete d.heartbeat;
   d.models ??= {};
   const entry = d.models[ref] ?? {};
   d.models[ref] = {

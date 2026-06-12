@@ -524,7 +524,10 @@ export async function runAgent(
   );
   const system =
     options?.mode === "chart_analyze"
-      ? systemBase + chartAnalyzeSystemSuffix()
+      ? {
+          static: systemBase.static + chartAnalyzeSystemSuffix(),
+          dynamic: systemBase.dynamic,
+        }
       : systemBase;
   const activeTools =
     options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;

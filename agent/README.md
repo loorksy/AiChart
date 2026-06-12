@@ -96,59 +96,32 @@ pm2 stop aichart-agent && sleep 5 && pm2 start aichart-agent
 ملاحظات: حدّث OpenClaw إن كان أقدم من `2026.4.11` (ثغرات معروفة في صوتيات
 تيليجرام)، والصوتيات الأقصر من ثانية (~1KB) تُتخطى عمداً كفارغة.
 
-## خفض تكلفة التوكنز (من ~0.5$ للرسالة إلى سنتات)
+## خفض تكلفة التوكنز — Event-Driven
 
-التكلفة العالية سببها إعادة إرسال كامل السياق (شخصية + مهارات + تاريخ
-المحادثة) مع كل رسالة وكل نبضة. العلاج ثلاث طبقات في
-`~/.openclaw/openclaw.json` — **بدون أي مساس بالذكاء**:
+**النبض الدوري (heartbeat) معطّل.** المراقبة 24/7 بالكود عبر
+`POST /api/cron/event-monitor` (كل 10 دقائق). الوكيل (AI) يُستدعى **فقط**
+عند حدث عبر تيليجرام `[EVENT:…]` — انظر [`workspace/HEARTBEAT.md`](workspace/HEARTBEAT.md).
 
-```json5
-{
-  agents: {
-    defaults: {
-      // 1) النموذج: يتبع المختار في لوحة الأدمن — لا تكتبه يدوياً،
-      //    شغّل agent/scripts/sync-model.sh (يضبط primary + كاش الساعة معاً)
-      // model: { primary: "anthropic/<من لوحة التحكم>" },
-      // models: { "anthropic/<...>": { params: { cacheRetention: "long" } } },
+`sync-model.sh` يضبط تلقائياً (بدون تغيير النموذج من لوحة الأدمن):
 
-      // 2) تقليم مخرجات الأدوات القديمة من السياق قبل كل نداء
-      contextPruning: { mode: "cache-ttl" },
-
-      heartbeat: {
-        every: "15m",
-        target: "last",
-        // النبضة تعمل بجلسة معزولة: بلا تاريخ محادثة (~2-5K توكن بدل 100K+).
-        // ملفات المعرفة (SOUL/AGENTS/MEMORY) تبقى حاضرة — الذكاء لا يتأثر.
-        isolatedSession: true,
-      },
-    },
-  },
-}
-```
-
-**مزامنة النموذج مع لوحة التحكم** — عند الحفظ من `/admin/keys` تُزامَن
-`ANTHROPIC_MODEL` تلقائياً إلى `openclaw.json` (مع `thinking=off`) إذا
-وُجد `OPENCLAW_CONFIG` و`OPENCLAW_AUTO_RESTART=1` في `web/.env`.
-
-يدوياً (احتياط):
+- `cacheRetention: "long"` على النموذج المختار
+- `contextPruning: { mode: "cache-ttl" }`
+- `thinkingDefault: "off"`
+- **لا heartbeat** في `openclaw.json`
 
 ```bash
 bash agent/scripts/sync-model.sh
 pm2 stop aichart-agent && sleep 5 && pm2 start aichart-agent
 ```
 
-السكربت يقرأ النموذج من `GET /api/agent/model` ويكتب
-`agents.defaults.model.primary` مع `cacheRetention: "long"` و`thinking: "off"`.
-(نصيحة تكلفة: Sonnet ≈ خُمس سعر Opus بنفس الجودة العملية لهذا العمل.)
-
 نصائح إضافية:
 
-- `/compact` في المحادثة عندما تطول الجلسة كثيراً (يلخّص التاريخ القديم).
-- أبقِ `HEARTBEAT.md` وملفات المعرفة قصيرة — تُحقن في كل نداء.
-- راقب التكلفة الفعلية: `/usage` في المحادثة يعرض توكنز الكاش والقراءة.
+- `/compact` عندما تطول جلسة تيليجرام.
+- ملفات المعرفة مختصرة — تُحقن في كل نداء.
+- `/usage` لمراقبة توكنز الكاش.
 
-> منصة web تستخدم prompt caching تلقائياً (system + tools + التاريخ) —
-> خطوات حلقة الأدوات المتعددة وردود الشات المتتالية تُقرأ من الكاش.
+> منصة web تستخدم prompt caching (system ثابت + tools + تاريخ) —
+> راجع `web/src/lib/anthropic.ts`.
 
 ## أمان الخادم المشترك (مشاريع أخرى على نفس الـ VPS)
 

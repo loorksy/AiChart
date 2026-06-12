@@ -72,6 +72,8 @@ if (cfg.agents.defaults.model && typeof cfg.agents.defaults.model === "object") 
   delete cfg.agents.defaults.model.thinking;
 }
 cfg.agents.defaults.thinkingDefault = "off";
+cfg.agents.defaults.contextPruning = { mode: "cache-ttl" };
+delete cfg.agents.defaults.heartbeat;
 
 // Token savings: isolated heartbeat session (~2-5K tokens instead of full
 // conversation history) + prune stale tool outputs once the cache TTL expires.

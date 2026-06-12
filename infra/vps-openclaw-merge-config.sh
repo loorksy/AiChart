@@ -29,7 +29,6 @@ const patch = {
   agents: {
     defaults: {
       contextPruning: { mode: "cache-ttl" },
-      heartbeat: { every: "15m", target: "last", isolatedSession: true },
     },
   },
   tools: {

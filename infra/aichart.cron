@@ -3,12 +3,10 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-# 24/7 market monitor every 30 min — pure-code scan, deep AI only on real candidates.
-# (Replaces the OpenClaw heartbeat market-scan; the heartbeat now only reviews
-#  open-trade theses hourly — see agent/workspace/HEARTBEAT.md.)
-*/30 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor >/dev/null 2>&1
+# Event-driven monitor — code-only checks; wakes OpenClaw via Telegram on events only.
+*/10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/event-monitor >/dev/null 2>&1
 
-# Daily Telegram summary at 20:00 UTC
+# Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 
 # Weekly cleanup (Sun 04:00 UTC): delete OpenClaw session transcripts older
