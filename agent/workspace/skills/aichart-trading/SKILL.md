@@ -169,8 +169,26 @@ POST /api/agent/mode          {"mode":"auto"|"approval"|"direct"}
 POST /api/agent/kill-switch   {"on":true,"scope":"user","close_open_trades":true}
 ```
 
+## 9) تشخيص EA (فوركس) — قبل فتح صفقة
+
+```bash
+GET /api/agent/ea/diagnostics?symbol=EURUSD
+```
+
+يرجع: `online`, `symbols[]`, `hasSymbol`, `quotesOk`, `retcodeLegend`.
+إن `hasSymbol: false` → لا تفتح صفقة؛ اطلب من المشغّل إضافة الرمز لـ Market Watch
+بالاسم الدقيق.
+
+راجع **`EA_TROUBLESHOOTING.md`** في workspace للتفاصيل.
+
 ## أخطاء شائعة
 
 - `401` → التوكن خاطئ. `503` → الجسر غير مفعّل على المنصة.
 - `ok:false` مع reason من Risk Guard → قرار نهائي، أبلغ المشغّل.
 - الفوركس: أضف `"market":"forex"` للنداءات — فقط بطلب صريح من المشغّل.
+- **retcode 10016** → SL/TP مرفوض عند الوسيط (ليس «صيغة EA»). جرّب يدوياً بدون stops.
+- **retcode 10026** → لا سعر حي (سوق مغلق / لا quotes) — ليس «رمز مرفوض من EA».
+- **retcode 10019** → هامش غير كافٍ (رافعة/رصيد).
+- «مواصفات الرمز غير متاحة» → الرمز غير في heartbeat أو EA offline؛ استدعِ diagnostics.
+- **لا مرشحين في scan** → إشارة فنية ضعيفة فقط؛ `HEARTBEAT_OK` — لا تربط بـ EA.
+- TRXUSDT مع `activeMarket=crypto` → Binance؛ لا تنتظر مواصفات MT5.

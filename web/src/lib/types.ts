@@ -348,6 +348,9 @@ export interface EaSymbolSpec {
   min_lot?: number;
   max_lot?: number;
   lot_step?: number;
+  /** Minimum stop distance in points (SYMBOL_TRADE_STOPS_LEVEL). */
+  stops_level?: number;
+  freeze_level?: number;
 }
 
 export type MtAccountState =

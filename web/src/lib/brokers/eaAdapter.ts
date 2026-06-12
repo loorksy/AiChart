@@ -7,6 +7,8 @@ import {
 } from "../eaStore";
 import { recordTrade, updateIntentStatus } from "../store";
 import { computeForexLots } from "./lotSizing";
+import { formatMt5TradeError } from "./mt5Retcode";
+import { normalizeMt5Stops } from "./mt5Stops";
 import type { BrokerAdapter, OrderResult, PlaceOrderContext } from "./types";
 
 /** Max time to wait for the EA to confirm a command before failing the order. */
@@ -70,6 +72,22 @@ export const eaAdapter: BrokerAdapter = {
       detail: `${sizing.lots} لوت`,
     });
 
+    const stops = normalizeMt5Stops(
+      intent.side,
+      refPrice,
+      intent.stop_loss,
+      intent.take_profit,
+      spec,
+    );
+    if (stops.note) {
+      push({
+        id: "stops",
+        label: `ضبط SL/TP · ${intent.symbol}`,
+        status: "done",
+        detail: stops.note,
+      });
+    }
+
     // Queue the command for the EA and wait for its acknowledgement.
     const sideLabel = intent.side === "buy" ? "شراء" : "بيع";
     push({
@@ -84,8 +102,8 @@ export const eaAdapter: BrokerAdapter = {
         symbol: intent.symbol,
         side: intent.side,
         lots: sizing.lots,
-        stop_loss: intent.stop_loss ?? null,
-        take_profit: intent.take_profit ?? null,
+        stop_loss: stops.stop_loss,
+        take_profit: stops.take_profit,
       },
       ttlMs: ACK_TIMEOUT_MS,
     });
@@ -115,9 +133,12 @@ export const eaAdapter: BrokerAdapter = {
     }
 
     if (finalStatus !== "acked") {
+      const rawErr = result?.error != null ? String(result.error) : "";
       const reason =
         finalStatus === "failed"
-          ? `رفض MetaTrader الأمر${result?.error ? ` · ${String(result.error)}` : ""}`
+          ? rawErr
+            ? formatMt5TradeError(rawErr)
+            : "رفض MetaTrader الأمر."
           : "انتهت مهلة انتظار تنفيذ MetaTrader. تأكد من اتصال المنصّة.";
       push({ id: "order", label: `إرسال أمر ${sideLabel} · ${intent.symbol}`, status: "error", detail: reason });
       await updateIntentStatus(intent.id, "failed", reason);

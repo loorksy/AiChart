@@ -10,7 +10,7 @@ DEST_DIR="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
 mkdir -p "$DEST_DIR/skills" "$DEST_DIR/memory"
 
 # Knowledge files: repo is the source of truth.
-for f in SOUL.md AGENTS.md USER.md HEARTBEAT.md; do
+for f in SOUL.md AGENTS.md USER.md HEARTBEAT.md EA_TROUBLESHOOTING.md; do
   if [ -f "$SRC_DIR/$f" ]; then
     cp "$SRC_DIR/$f" "$DEST_DIR/$f"
     echo "synced $f"

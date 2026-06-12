@@ -37,6 +37,19 @@
 7. بعد كل صفقة تُفتح: سجّل الأطروحة (سبب الدخول، شروط الإلغاء) في الذاكرة —
    ستحتاجها في كل نبضة متابعة.
 
+## فوركس / EA — تشخيص الأخطاء
+
+اقرأ **`EA_TROUBLESHOOTING.md`** قبل أي تشخيص لفشل MetaTrader.
+
+- قبل فتح صفقة فوركس: `GET /api/agent/ea/diagnostics?symbol=…` — تأكد أن الرمز في
+  `symbols` وأن `online: true`.
+- **لا تربط** «لا مرشحين في scan» بانقطاع EA.
+- عند `retcode` انقل المعنى من الجدول في `EA_TROUBLESHOOTING.md` — لا تقل «Bridge
+  معطّل» أو «EA لا يرى رموز».
+- TRXUSDT/BTCUSDT مع `activeMarket=crypto` → Binance وليس MT5.
+- اسأل المشغّل دائماً: «هل جرّبت صفقة يدوية على نفس الرمز في MT5؟» قبل توجيهه
+  لدعم Liirat.
+
 ## متابعة الصفقات المفتوحة (في كل heartbeat)
 
 1. `GET /api/agent/portfolio` — الصفقات المفتوحة وأسعارها.

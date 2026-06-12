@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "AiChart"
 #property link      "https://aichart.lork.cloud"
-#property version   "1.01"
+#property version   "1.02"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -91,6 +91,8 @@ string BuildSymbols()
       double minlot = SymbolInfoDouble(sym, SYMBOL_VOLUME_MIN);
       double maxlot = SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX);
       double lstep  = SymbolInfoDouble(sym, SYMBOL_VOLUME_STEP);
+      long   stopsLevel  = SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL);
+      long   freezeLevel = SymbolInfoInteger(sym, SYMBOL_TRADE_FREEZE_LEVEL);
 
       if(count > 0) arr += ",";
       arr += "{";
@@ -104,7 +106,9 @@ string BuildSymbols()
       arr += "\"tick_size\":" + DoubleToString(ts, 8) + ",";
       arr += "\"min_lot\":" + DoubleToString(minlot, 2) + ",";
       arr += "\"max_lot\":" + DoubleToString(maxlot, 2) + ",";
-      arr += "\"lot_step\":" + DoubleToString(lstep, 2);
+      arr += "\"lot_step\":" + DoubleToString(lstep, 2) + ",";
+      arr += "\"stops_level\":" + (string)stopsLevel + ",";
+      arr += "\"freeze_level\":" + (string)freezeLevel;
       arr += "}";
       count++;
    }

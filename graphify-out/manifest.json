@@ -945,8 +945,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/brokers/eaAdapter.ts": {
-    "mtime": 1781107101.7797508,
-    "ast_hash": "926131a5b1db30dd67f6297c0084529a",
+    "mtime": 1781267188.428429,
+    "ast_hash": "d63969c2cca3266eab59b8f216413cec",
     "semantic_hash": ""
   },
   "web/src/lib/brokers/forexBackend.ts": {
@@ -1280,8 +1280,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/types.ts": {
-    "mtime": 1781226724.781783,
-    "ast_hash": "404bcc7982bfd533c1b084165364b58f",
+    "mtime": 1781267171.5844293,
+    "ast_hash": "17e942a206f3d9267e6716f692c914dc",
     "semantic_hash": ""
   },
   "web/src/lib/userContext.ts": {
@@ -1345,7 +1345,7 @@
     "semantic_hash": ""
   },
   "web/src/app/api/cron/monitor/route.ts": {
-    "mtime": 1781224368.6107984,
+    "mtime": 1781262821.5265353,
     "ast_hash": "5bc00e58f3691e85e8d5b15135f538c0",
     "semantic_hash": ""
   },
@@ -1397,6 +1397,21 @@
   "web/src/lib/tradePostMortem.ts": {
     "mtime": 1781226742.9824183,
     "ast_hash": "7fe01bfb8d67c13243ff40340e1836bd",
+    "semantic_hash": ""
+  },
+  "web/src/app/api/agent/ea/diagnostics/route.ts": {
+    "mtime": 1781267169.4818468,
+    "ast_hash": "2dd0911fc5c869d6ed1077f8bf6a7cd1",
+    "semantic_hash": ""
+  },
+  "web/src/lib/brokers/mt5Retcode.ts": {
+    "mtime": 1781267164.0400066,
+    "ast_hash": "69077172dd2a377e5c4fe2423adff3e7",
+    "semantic_hash": ""
+  },
+  "web/src/lib/brokers/mt5Stops.ts": {
+    "mtime": 1781267168.101296,
+    "ast_hash": "74be222fb14560c8e999236624350e20",
     "semantic_hash": ""
   }
 }
