@@ -767,6 +767,8 @@ function TradingCard({
             s.execution_env_preference === "live" ? "live" : "demo",
           telegram_chat_id: s.telegram_chat_id || null,
           kill_switch: Boolean(s.kill_switch),
+          futures_enabled: Boolean(s.futures_enabled),
+          default_leverage: Number(s.default_leverage ?? 3),
         }),
       });
       const data = await res.json();
@@ -952,6 +954,38 @@ function TradingCard({
           />
           <p className="mt-1 text-xs text-muted-foreground">
             0 = معطّل. يُغلق الصفقة عند تحقيق ربح غير محقّق بهذا المبلغ (لا يعمل مع OCO نشط).
+          </p>
+        </Field>
+
+        <Field label="العقود الآجلة (Futures)">
+          <select
+            className="input"
+            value={s.futures_enabled ? "on" : "off"}
+            onChange={(e) =>
+              set("futures_enabled", e.target.value === "on" ? 1 : 0)
+            }
+          >
+            <option value="off">معطّل — سبوت فقط (افتراضي)</option>
+            <option value="on">مفعّل — شورت ورافعة (Binance USDT-M)</option>
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            هامش معزول دائماً ووقف خسارة إلزامي. الخسارة القصوى = هامش الصفقة.
+          </p>
+        </Field>
+
+        <Field label="الرافعة الافتراضية (Futures)">
+          <input
+            type="number"
+            min={1}
+            max={limits.max_leverage_cap && limits.max_leverage_cap > 0 ? limits.max_leverage_cap : 10}
+            step={1}
+            className="input"
+            value={s.default_leverage ?? 3}
+            onChange={(e) => set("default_leverage", Number(e.target.value))}
+            disabled={!s.futures_enabled}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            سقف الأدمن: {limits.max_leverage_cap && limits.max_leverage_cap > 0 ? limits.max_leverage_cap : 10}x
           </p>
         </Field>
 

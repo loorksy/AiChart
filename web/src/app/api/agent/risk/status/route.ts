@@ -62,6 +62,14 @@ export async function GET(req: NextRequest) {
           effectiveCapital,
         ),
       },
+      futures: {
+        enabled: Boolean(settings.futures_enabled),
+        defaultLeverage: settings.default_leverage ?? 3,
+        maxLeverageCap:
+          limits.max_leverage_cap && limits.max_leverage_cap > 0
+            ? limits.max_leverage_cap
+            : 10,
+      },
       allowedAssets: settings.allowed_assets,
       executionEnv: await getExecutionEnvSnapshot(userId),
     });

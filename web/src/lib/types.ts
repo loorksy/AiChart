@@ -68,6 +68,10 @@ export interface TradingSettings {
   analysis_interval?: string;
   /** demo | live — preferred execution environment for agent + UI. */
   execution_env_preference?: string;
+  /** Binance USDT-M futures opt-in (0 = spot only). */
+  futures_enabled?: number;
+  /** Default leverage for futures intents (capped by admin max_leverage_cap). */
+  default_leverage?: number;
   updated_at: string;
 }
 
@@ -77,6 +81,8 @@ export interface AdminLimits {
   max_capital_cap: number;
   max_open_trades_cap: number;
   claude_quota: number;
+  /** Admin hard cap on leverage for futures (default 10x). */
+  max_leverage_cap?: number;
   updated_at: string;
 }
 
@@ -195,6 +201,10 @@ export interface TradeIntent {
   status: IntentStatus;
   reason: string | null;
   practice: number;
+  /** 'spot' (default) or 'futures' (USDT-M, supports short + leverage). */
+  market_type?: "spot" | "futures";
+  /** Leverage multiplier for futures (1 = no leverage). */
+  leverage?: number;
   created_at: string;
   updated_at: string;
 }
@@ -234,6 +244,10 @@ export interface Trade {
   status: string;
   pnl: number;
   oco_order_list_id: string | null;
+  /** 'spot' (default) or 'futures'. */
+  market_type?: "spot" | "futures";
+  /** Leverage used (1 = spot/no leverage). */
+  leverage?: number;
   created_at: string;
   closed_at: string | null;
 }

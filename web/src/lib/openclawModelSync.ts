@@ -2,7 +2,12 @@ import { execFile } from "child_process";
 import fs from "fs";
 import path from "path";
 import { promisify } from "util";
-import { getAnthropicModel } from "./anthropic";
+import {
+  getActiveModel,
+  getActiveProvider,
+  getProviderApiKey,
+  type LLMProvider,
+} from "./llm";
 
 const execFileAsync = promisify(execFile);
 const PM2_BIN = () => process.env.PM2_BIN?.trim() || "/usr/bin/pm2";
@@ -21,8 +26,34 @@ export function openClawConfigPath(): string {
 }
 
 export function modelRefFromPlatform(model?: string): string {
-  const id = (model ?? getAnthropicModel()).trim();
-  return id.startsWith("anthropic/") ? id : `anthropic/${id}`;
+  const provider = getActiveProvider();
+  const id = (model ?? getActiveModel()).trim();
+  return id.startsWith(`${provider}/`) ? id : `${provider}/${id}`;
+}
+
+/** Provider base URLs OpenClaw needs for OpenAI-compatible providers. */
+const PROVIDER_BASE_URL: Partial<Record<LLMProvider, string>> = {
+  openrouter: "https://openrouter.ai/api/v1",
+  openai: "https://api.openai.com/v1",
+};
+
+/** Cheap-model fallback candidates per provider (used when its key is set). */
+const FALLBACK_CANDIDATES: Record<LLMProvider, string> = {
+  anthropic: "anthropic/claude-haiku-4-5",
+  openrouter: "openrouter/anthropic/claude-haiku-4.5",
+  openai: "openai/gpt-4.1-mini",
+};
+
+/** Fallback refs across all providers whose API keys are configured. */
+export function buildFallbackRefs(primaryRef: string): string[] {
+  const out: string[] = [];
+  for (const provider of ["anthropic", "openrouter", "openai"] as const) {
+    if (!getProviderApiKey(provider)) continue;
+    const candidate = FALLBACK_CANDIDATES[provider];
+    if (candidate.toLowerCase() === primaryRef.toLowerCase()) continue;
+    out.push(candidate);
+  }
+  return out;
 }
 
 export function modelIdFromRef(ref: string): string {
@@ -36,14 +67,18 @@ export function providerKeyFromRef(ref: string): string {
 }
 
 type ProviderModelEntry = { id: string; name: string };
+type ProviderBucket = {
+  models?: ProviderModelEntry[];
+  apiKey?: string;
+  baseUrl?: string;
+  api?: string;
+};
 type OpenClawCfg = {
   agents?: {
     defaults?: {
       thinking?: unknown;
       thinkingDefault?: string;
-      contextPruning?: { mode?: string };
-      heartbeat?: unknown;
-      model?: { primary?: string; thinking?: unknown };
+      model?: { primary?: string; fallbacks?: string[]; thinking?: unknown };
       models?: Record<
         string,
         { params?: { cacheRetention?: string; thinking?: string } }
@@ -51,7 +86,7 @@ type OpenClawCfg = {
     };
   };
   models?: {
-    providers?: Record<string, { models?: ProviderModelEntry[] }>;
+    providers?: Record<string, ProviderBucket>;
   };
 };
 
@@ -76,7 +111,7 @@ export function isProviderModelRegistered(
   return models.some((m) => m.id === id);
 }
 
-/** Register runtime model in models.providers (required for new Anthropic model ids). */
+/** Register runtime model in models.providers (required for new model ids). */
 export function ensureProviderModelRegistered(
   cfg: OpenClawCfg,
   ref: string,
@@ -94,7 +129,20 @@ export function ensureProviderModelRegistered(
   } else if (!models[idx].name) {
     models[idx] = { ...models[idx], name: id };
   }
-  next.models.providers[provider] = { ...bucket, models };
+
+  const merged: ProviderBucket = { ...bucket, models };
+  // OpenAI-compatible providers need credentials + base URL inside the
+  // gateway config (Anthropic reads its own env key).
+  if (provider === "openrouter" || provider === "openai") {
+    const apiKey = getProviderApiKey(provider);
+    if (apiKey) merged.apiKey = apiKey;
+    const baseUrl = PROVIDER_BASE_URL[provider];
+    if (baseUrl) {
+      merged.baseUrl = baseUrl;
+      merged.api = "openai-completions";
+    }
+  }
+  next.models.providers[provider] = merged;
   return next;
 }
 
@@ -126,11 +174,12 @@ export function patchOpenClawModelConfig(
   const d = next.agents.defaults;
   delete d.thinking;
 
+  const fallbacks = buildFallbackRefs(ref);
   const model = d.model;
   d.model =
     model && typeof model === "object"
-      ? { ...model, primary: ref }
-      : { primary: ref };
+      ? { ...model, primary: ref, fallbacks }
+      : { primary: ref, fallbacks };
   if (d.model && typeof d.model === "object") {
     delete (d.model as { thinking?: unknown }).thinking;
   }
@@ -150,6 +199,9 @@ export function patchOpenClawModelConfig(
   };
 
   next = ensureProviderModelRegistered(next, ref);
+  for (const fb of fallbacks) {
+    next = ensureProviderModelRegistered(next, fb);
+  }
   return next;
 }
 
@@ -195,7 +247,7 @@ export type AgentModelStatus = {
 };
 
 export function getAgentModelStatus(): AgentModelStatus {
-  const platformModel = getAnthropicModel();
+  const platformModel = getActiveModel();
   const platformRef = modelRefFromPlatform(platformModel);
   const configPath = openClawConfigPath();
   const gatewayConfigReadable = fs.existsSync(configPath);

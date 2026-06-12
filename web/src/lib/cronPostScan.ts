@@ -1,5 +1,9 @@
 import { listUsersForTradeMaintenance } from "./store";
-import { scanOpenTradesForTakeProfit, syncOcoFills } from "./tradeClose";
+import {
+  scanOpenTradesForTakeProfit,
+  syncFuturesClosures,
+  syncOcoFills,
+} from "./tradeClose";
 
 const MAX_USERS = 8;
 const MAX_TRADES_PER_USER = 5;
@@ -28,6 +32,12 @@ export async function runCronPostScan(): Promise<CronPostScanResult> {
       const oco = await syncOcoFills(userId, MAX_TRADES_PER_USER);
       result.ocoSynced += oco.synced;
       result.errors.push(...oco.errors.map((e) => `user ${userId} oco: ${e}`));
+
+      const fut = await syncFuturesClosures(userId, MAX_TRADES_PER_USER);
+      result.ocoSynced += fut.synced;
+      result.errors.push(
+        ...fut.errors.map((e) => `user ${userId} futures: ${e}`),
+      );
 
       if (settings.auto_take_profit_usd > 0) {
         const tp = await scanOpenTradesForTakeProfit(

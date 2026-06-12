@@ -6,8 +6,14 @@ import type { AdminLimits, TradingSettings } from "./types";
 export interface ProposedTrade {
   symbol: string;
   side: "buy" | "sell";
-  notional: number; // quote-currency amount (e.g. USDT) / risk budget
+  notional: number; // quote-currency amount (e.g. USDT) / risk budget (= margin for futures)
   market?: MarketType;
+  /** 'spot' (default) or 'futures' (Binance USDT-M). */
+  marketType?: "spot" | "futures";
+  /** Leverage multiplier (futures only, 1 = none). */
+  leverage?: number;
+  /** Stop-loss price — mandatory for futures. */
+  stopLoss?: number | null;
 }
 
 export interface RiskContext {
@@ -85,6 +91,26 @@ export function evaluateTrade(
   const market: MarketType = proposed.market ?? "crypto";
   if (!isSymbolAllowed(settings.allowed_assets, proposed.symbol, market)) {
     return deny(`الأصل ${proposed.symbol} غير ضمن قائمتك المسموح بها.`);
+  }
+
+  // Futures-specific gates (opt-in, leverage cap, mandatory SL).
+  const marketType = proposed.marketType ?? "spot";
+  if (marketType === "futures") {
+    if (market !== "crypto")
+      return deny("العقود الآجلة متاحة لسوق الكريبتو (Binance) فقط.");
+    if (!settings.futures_enabled)
+      return deny("تداول العقود الآجلة (Futures) غير مفعّل في إعداداتك.");
+    const leverageCap =
+      limits.max_leverage_cap && limits.max_leverage_cap > 0
+        ? limits.max_leverage_cap
+        : 10;
+    const leverage = proposed.leverage ?? 1;
+    if (leverage < 1 || leverage > leverageCap)
+      return deny(
+        `الرافعة (${leverage}x) خارج النطاق المسموح (1x — ${leverageCap}x).`,
+      );
+    if (proposed.stopLoss == null)
+      return deny("وقف الخسارة إلزامي في صفقات العقود الآجلة (حماية من التصفية).");
   }
 
   if (effectiveCapital <= 0)

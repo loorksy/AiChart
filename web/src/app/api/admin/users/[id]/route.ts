@@ -9,6 +9,7 @@ const schema = z.object({
   max_capital_cap: z.number().min(0).optional(),
   max_open_trades_cap: z.number().int().min(1).max(50).optional(),
   claude_quota: z.number().int().min(0).optional(),
+  max_leverage_cap: z.number().min(1).max(125).optional(),
 });
 
 export async function PATCH(
@@ -39,6 +40,8 @@ export async function PATCH(
       limitPatch.max_open_trades_cap = input.max_open_trades_cap;
     if (typeof input.claude_quota === "number")
       limitPatch.claude_quota = input.claude_quota;
+    if (typeof input.max_leverage_cap === "number")
+      limitPatch.max_leverage_cap = input.max_leverage_cap;
     if (Object.keys(limitPatch).length > 0) {
       await updateAdminLimits(userId, limitPatch);
     }

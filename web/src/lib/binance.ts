@@ -92,6 +92,41 @@ export async function getAccountSummary(
   };
 }
 
+export interface ApiRestrictions {
+  enableSpotAndMarginTrading: boolean;
+  enableFutures: boolean;
+  enableWithdrawals: boolean;
+  ipRestrict: boolean;
+}
+
+/**
+ * API key permission report (prod only — testnet has no /sapi).
+ * Used to warn loudly when withdrawals are enabled on the key.
+ */
+export async function getApiRestrictions(
+  apiKey: string,
+  apiSecret: string,
+  env: BinanceEnv,
+): Promise<ApiRestrictions | null> {
+  if (env !== "prod") return null;
+  try {
+    const data = (await signedGet(
+      "/sapi/v1/account/apiRestrictions",
+      apiKey,
+      apiSecret,
+      env,
+    )) as Record<string, boolean>;
+    return {
+      enableSpotAndMarginTrading: Boolean(data.enableSpotAndMarginTrading),
+      enableFutures: Boolean(data.enableFutures),
+      enableWithdrawals: Boolean(data.enableWithdrawals),
+      ipRestrict: Boolean(data.ipRestrict),
+    };
+  } catch {
+    return null; // non-fatal: some key types can't read restrictions
+  }
+}
+
 /** Public endpoint: latest price for a symbol (no auth needed). */
 export async function getPrice(
   symbol: string,

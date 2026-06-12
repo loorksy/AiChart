@@ -430,6 +430,19 @@ function migrate(db: Database.Database) {
   if (!tradeCols.some((c) => c.name === "broker")) {
     db.exec("ALTER TABLE trades ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance'");
   }
+  if (!tradeCols.some((c) => c.name === "market_type")) {
+    db.exec(
+      "ALTER TABLE trades ADD COLUMN market_type TEXT NOT NULL DEFAULT 'spot'",
+    );
+  }
+  if (!tradeCols.some((c) => c.name === "leverage")) {
+    db.exec("ALTER TABLE trades ADD COLUMN leverage REAL NOT NULL DEFAULT 1");
+  }
+  if (!tradeCols.some((c) => c.name === "order_type")) {
+    db.exec(
+      "ALTER TABLE trades ADD COLUMN order_type TEXT NOT NULL DEFAULT 'market'",
+    );
+  }
 
   const intentCols = db
     .prepare("PRAGMA table_info(trade_intents)")
@@ -447,6 +460,36 @@ function migrate(db: Database.Database) {
   if (!intentCols.some((c) => c.name === "practice")) {
     db.exec(
       "ALTER TABLE trade_intents ADD COLUMN practice INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!intentCols.some((c) => c.name === "market_type")) {
+    db.exec(
+      "ALTER TABLE trade_intents ADD COLUMN market_type TEXT NOT NULL DEFAULT 'spot'",
+    );
+  }
+  if (!intentCols.some((c) => c.name === "leverage")) {
+    db.exec(
+      "ALTER TABLE trade_intents ADD COLUMN leverage REAL NOT NULL DEFAULT 1",
+    );
+  }
+
+  // Futures is opt-in per user (settings) with an admin hard leverage cap.
+  if (!settingsCols.some((c) => c.name === "futures_enabled")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN futures_enabled INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "default_leverage")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN default_leverage REAL NOT NULL DEFAULT 3",
+    );
+  }
+  const limitCols = db
+    .prepare("PRAGMA table_info(admin_limits)")
+    .all() as { name: string }[];
+  if (!limitCols.some((c) => c.name === "max_leverage_cap")) {
+    db.exec(
+      "ALTER TABLE admin_limits ADD COLUMN max_leverage_cap REAL NOT NULL DEFAULT 10",
     );
   }
 

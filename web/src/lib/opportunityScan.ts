@@ -2,7 +2,7 @@ import {
   resolveScanAssetsForMarket,
   isSymbolAllowed,
 } from "./allowedAssets";
-import { isAnthropicConfigured } from "./anthropic";
+import { isLLMConfigured } from "./llm";
 import {
   getTodayUsage,
   incrementUsage,
@@ -203,7 +203,7 @@ export async function runOpportunityScan(
 
   if (!opts?.deep || candidates.length === 0) return result;
 
-  if (!isAnthropicConfigured()) {
+  if (!isLLMConfigured()) {
     result.errors.push("وكيل Claude غير مُفعّل — المسح السريع فقط.");
     return result;
   }

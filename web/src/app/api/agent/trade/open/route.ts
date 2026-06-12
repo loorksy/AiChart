@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { createIntent, getLimits, getSettings, logAudit } from "@/lib/store";
+import {
+  createIntent,
+  getLimits,
+  getSettings,
+  hasRecentTradeOpenFailure,
+  logAudit,
+} from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
 import type { MarketType } from "@/lib/markets/types";
 
@@ -21,6 +27,10 @@ const schema = z.object({
   /** True when the human operator explicitly ordered/approved this trade. */
   approved_by_user: z.boolean().default(false),
   practice: z.boolean().default(false),
+  /** 'futures' opens a Binance USDT-M position (short + leverage supported). */
+  market_type: z.enum(["spot", "futures"]).default("spot"),
+  /** Leverage multiplier (futures only; capped by admin max_leverage_cap). */
+  leverage: z.number().min(1).max(125).optional(),
 });
 
 /**
@@ -32,6 +42,28 @@ export async function POST(req: NextRequest) {
     requireAgentAuth(req);
     const userId = await resolveAgentUserId();
     const body = schema.parse(await req.json());
+
+    // Failure brake: if a recent attempt on this symbol was denied, reject
+    // immediately with a clear reason instead of re-running the full
+    // intent → Risk Guard → broker pipeline (stops wasted AI retry loops).
+    // Explicit human approval bypasses the brake.
+    if (
+      !body.approved_by_user &&
+      (await hasRecentTradeOpenFailure(userId, body.symbol))
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          status: "denied",
+          reason:
+            "failure_brake: a trade on this symbol was denied within the last 15 minutes — do NOT retry; wait or move on to another opportunity",
+          intentId: null,
+          tradeId: null,
+          trade: null,
+        },
+        { status: 429 },
+      );
+    }
 
     const settings = await getSettings(userId);
     const limits = await getLimits(userId);
@@ -46,6 +78,12 @@ export async function POST(req: NextRequest) {
     const notional =
       body.notional ?? (effectiveCapital * settings.per_trade_pct) / 100;
 
+    const marketType = body.market_type ?? "spot";
+    const leverage =
+      marketType === "futures"
+        ? (body.leverage ?? settings.default_leverage ?? 3)
+        : 1;
+
     const intent = await createIntent(userId, {
       recommendation_id: body.recommendation_id ?? null,
       symbol: body.symbol.toUpperCase(),
@@ -59,6 +97,8 @@ export async function POST(req: NextRequest) {
       rationale: body.rationale ?? null,
       status: "approved",
       practice: body.practice,
+      market_type: marketType,
+      leverage,
     });
 
     const result = await executeIntent(userId, intent.id, {
@@ -69,9 +109,9 @@ export async function POST(req: NextRequest) {
     await logAudit(
       userId,
       "agent_trade_open",
-      `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USDT → ${result.status}${
-        result.ok ? "" : ` (${result.reason})`
-      }`,
+      `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USDT${
+        marketType === "futures" ? ` futures ${leverage}x` : ""
+      } → ${result.status}${result.ok ? "" : ` (${result.reason})`}`,
     );
 
     return NextResponse.json({

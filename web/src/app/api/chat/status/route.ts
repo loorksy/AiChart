@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { isAnthropicConfigured, getAnthropicModel } from "@/lib/anthropic";
+import { getActiveModel, getActiveProvider, isLLMConfigured } from "@/lib/llm";
 
 export async function GET() {
-  const configured = isAnthropicConfigured();
+  const configured = isLLMConfigured();
   return NextResponse.json({
     ready: configured,
-    model: configured ? getAnthropicModel() : null,
+    provider: getActiveProvider(),
+    model: configured ? getActiveModel() : null,
   });
 }

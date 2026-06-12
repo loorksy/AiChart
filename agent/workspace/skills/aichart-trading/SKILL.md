@@ -57,7 +57,12 @@ curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 
 ## أخطاء
 
-- `401` توكن · `503` جسر · Risk Guard `ok:false` = نهائي
-- **10016** SL/TP · **10026** لا quotes · **10019** هامش
-- لا مرشحين scan = إشارة ضعيفة فقط (ليس EA)
-- crypto symbols → Binance لا MT5
+- `401` → التوكن خاطئ. `503` → الجسر غير مف��ّل على المنصة.
+- `ok:false` مع reason من Risk Guard → قرار نهائي، أبلغ المشغّل.
+- الفوركس: أضف `"market":"forex"` للنداءات — فقط بطلب صريح من المشغّل.
+- **retcode 10016** → SL/TP مرفوض عند الوسيط (ليس «صيغة EA»). جرّب يدوياً بدون stops.
+- **retcode 10026** → لا سعر حي (سوق مغلق / لا quotes) — ليس «رمز مرفوض من EA».
+- **retcode 10019** → هامش غير كافٍ (رافعة/رصيد).
+- «مواصفات الرمز غير متاحة» → الرمز غير في heartbeat أو EA offline؛ استدعِ diagnostics.
+- **لا مرشحين في scan** → إشارة فنية ضعيفة فقط؛ `HEARTBEAT_OK` — لا تربط بـ EA.
+- TRXUSDT مع `activeMarket=crypto` → Binance؛ لا تنتظر مواصفات MT5.
