@@ -7,7 +7,6 @@ import {
   PLATFORM_CONFIG_FIELDS,
 } from "@/lib/platformConfig";
 import { logAudit } from "@/lib/store";
-import { isTelegramConfigured, deleteWebhook } from "@/lib/telegram";
 import { syncOpenClawModelFromPlatform } from "@/lib/openclawModelSync";
 import {
   getActiveProvider,
@@ -102,26 +101,6 @@ export async function PUT(req: NextRequest) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: "بيانات غير صالحة." }, { status: 400 });
     }
-    return handleError(err);
-  }
-}
-
-/** Releases the bot webhook — conversation is owned by the OpenClaw gateway. */
-export async function POST() {
-  try {
-    await requireAdmin();
-    if (!isTelegramConfigured()) {
-      return NextResponse.json(
-        { error: "أضِف TELEGRAM_BOT_TOKEN أولاً." },
-        { status: 503 },
-      );
-    }
-    await deleteWebhook();
-    return NextResponse.json({
-      ok: true,
-      message: "أُزيل الـ webhook — البوت بيد وكيل OpenClaw.",
-    });
-  } catch (err) {
     return handleError(err);
   }
 }

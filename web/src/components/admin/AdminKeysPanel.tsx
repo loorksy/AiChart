@@ -33,7 +33,6 @@ export function AdminKeysPanel() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [webhookBusy, setWebhookBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [agentModel, setAgentModel] = useState<{
     platformRef: string;
@@ -133,25 +132,6 @@ export function AdminKeysPanel() {
       }
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function registerWebhook() {
-    setWebhookBusy(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/admin/config", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setMsg({ type: "err", text: data.error ?? "فشل تحرير البوت." });
-        return;
-      }
-      setMsg({
-        type: "ok",
-        text: data.message ?? "أُزيل الـ webhook — البوت بيد وكيل OpenClaw.",
-      });
-    } finally {
-      setWebhookBusy(false);
     }
   }
 
@@ -410,14 +390,6 @@ export function AdminKeysPanel() {
           className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
         >
           {saving ? "جارٍ الحفظ…" : "حفظ المفاتيح"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void registerWebhook()}
-          disabled={webhookBusy}
-          className="rounded-lg border border-white/10 px-5 py-2.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          {webhookBusy ? "…" : "تحرير البوت لوكيل OpenClaw"}
         </button>
       </div>
 

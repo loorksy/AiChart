@@ -225,8 +225,6 @@ export function patchOpenClawModelConfig(
   const tokenParams = {
     cacheRetention: "long",
     thinking: "off",
-    /** OpenRouter 402 when balance is low — stay under ~1733 afford hint. */
-    maxTokens: 1024,
   };
   d.models = {};
   for (const modelRef of activeRefs) {

@@ -93,7 +93,6 @@ cfg.agents.defaults.models = {};
 const tokenParams = {
   cacheRetention: "long",
   thinking: "off",
-  maxTokens: 1024,
 };
 const activeRefs = [ref, ...fallbacks];
 for (const full of activeRefs) {

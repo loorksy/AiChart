@@ -32,8 +32,6 @@ export async function GET(req: NextRequest) {
       providerKeys,
       app_url: getPublicAppUrl(),
       notes: {
-        billing_402:
-          "OpenRouter 402 مع رصيد متبقٍ غالباً يعني max_tokens مرتفع — maxTokens=8192 في openclaw.json.",
         chart_media:
           "لا تستخدم GET localhost/binance-capture. POST binance-capture ثم chart_url_public أو image_base64.",
       },
