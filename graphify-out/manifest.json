@@ -55,18 +55,13 @@
     "semantic_hash": ""
   },
   "web/src/app/api/admin/config/models/route.ts": {
-    "mtime": 1781300491.1617348,
-    "ast_hash": "95ce96c097010dc51a96c5ebb51a0500",
-    "semantic_hash": ""
-  },
-  "web/src/app/api/admin/config/openrouter-models/route.ts": {
-    "mtime": 1781188428.9205782,
-    "ast_hash": "3dd63bb2a123cf1d7412176975726037",
+    "mtime": 1781304630.8755505,
+    "ast_hash": "171c1877ca55d1d20e3a3749a4f8ec39",
     "semantic_hash": ""
   },
   "web/src/app/api/admin/config/route.ts": {
-    "mtime": 1781300480.847164,
-    "ast_hash": "d4f0e88dd863c4c671fb1c6c4277f965",
+    "mtime": 1781304641.578106,
+    "ast_hash": "be06a3dc2a479f91bb0e5e8949a038e2",
     "semantic_hash": ""
   },
   "web/src/app/api/admin/health/route.ts": {
@@ -160,8 +155,8 @@
     "semantic_hash": ""
   },
   "web/src/app/api/agent/model/route.ts": {
-    "mtime": 1781300480.4214277,
-    "ast_hash": "0aecc2976d93841613de42d9a3489fac",
+    "mtime": 1781307008.6702778,
+    "ast_hash": "cbdffd87c918314cbaa715b185f7d5f7",
     "semantic_hash": ""
   },
   "web/src/app/api/agent/portfolio/route.ts": {
@@ -170,8 +165,8 @@
     "semantic_hash": ""
   },
   "web/src/app/api/agent/recommendation/route.ts": {
-    "mtime": 1781227244.7400515,
-    "ast_hash": "1187eb915d78823498d5172868b43af5",
+    "mtime": 1781306990.948386,
+    "ast_hash": "3b95d9a29ffdecc33e5aad98986f9d88",
     "semantic_hash": ""
   },
   "web/src/app/api/agent/risk/status/route.ts": {
@@ -190,8 +185,8 @@
     "semantic_hash": ""
   },
   "web/src/app/api/agent/transcribe/route.ts": {
-    "mtime": 1781188428.9296887,
-    "ast_hash": "1f92beaa3d4e01b237632d89bd4a725a",
+    "mtime": 1781304666.7792048,
+    "ast_hash": "6a31e931ffd36b53e97b594948109213",
     "semantic_hash": ""
   },
   "web/src/app/api/alerts/route.ts": {
@@ -555,8 +550,8 @@
     "semantic_hash": ""
   },
   "web/src/components/admin/AdminKeysPanel.tsx": {
-    "mtime": 1781300506.1616957,
-    "ast_hash": "ca0a1421d0f753c1b3ba15a1d3c30695",
+    "mtime": 1781304629.2558827,
+    "ast_hash": "92061dde23a1860488b31a65496e3c2a",
     "semantic_hash": ""
   },
   "web/src/components/admin/AdminOverview.tsx": {
@@ -590,18 +585,13 @@
     "semantic_hash": ""
   },
   "web/src/components/admin/ClaudeModelPicker.tsx": {
-    "mtime": 1781300500.70563,
-    "ast_hash": "eb6a92ab0418efead9eaf37b41d94ae4",
+    "mtime": 1781304627.6286604,
+    "ast_hash": "fe0d5bc2e76229a5c0e32d5669feda7f",
     "semantic_hash": ""
   },
   "web/src/components/admin/MasterKillCard.tsx": {
     "mtime": 1781038219.8073971,
     "ast_hash": "b4acf9c00b3539714f02586c1f14cac3",
-    "semantic_hash": ""
-  },
-  "web/src/components/admin/OpenRouterAudioPicker.tsx": {
-    "mtime": 1781188428.9377398,
-    "ast_hash": "06db3550622d36fb24fef80c9711b048",
     "semantic_hash": ""
   },
   "web/src/components/admin/adminNav.ts": {
@@ -610,8 +600,8 @@
     "semantic_hash": ""
   },
   "web/src/components/agent/OpenClawConsoleClient.tsx": {
-    "mtime": 1781214074.1765082,
-    "ast_hash": "baa91d3794288e4804d1edd053ae42f9",
+    "mtime": 1781304689.967287,
+    "ast_hash": "8c7885e69dde4a51bdd6ef2602548885",
     "semantic_hash": ""
   },
   "web/src/components/charts/AssetDistributionChart.tsx": {
@@ -875,8 +865,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/agentAuth.ts": {
-    "mtime": 1781298802.37979,
-    "ast_hash": "dbb6eeee4a9d6c99034f200f64392b52",
+    "mtime": 1781306970.9295967,
+    "ast_hash": "ac05f71280378766508dd4488ce3b3bc",
     "semantic_hash": ""
   },
   "web/src/lib/agentPlanSteps.ts": {
@@ -1200,13 +1190,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/openclawModelSync.ts": {
-    "mtime": 1781300486.510381,
-    "ast_hash": "bdcc53dcaf4ef44ff815e58a609d08f4",
-    "semantic_hash": ""
-  },
-  "web/src/lib/openrouter.ts": {
-    "mtime": 1781226752.8917546,
-    "ast_hash": "ccc9d85a0c8500e15e5661a65b8f0b97",
+    "mtime": 1781307008.6328578,
+    "ast_hash": "04b39d79bc65764a7fc7a97f5d4e5370",
     "semantic_hash": ""
   },
   "web/src/lib/opportunityCheck.ts": {
@@ -1225,8 +1210,8 @@
     "semantic_hash": ""
   },
   "web/src/lib/platformConfig.ts": {
-    "mtime": 1781300486.3483317,
-    "ast_hash": "0af13b45c9b325a9adcf289013ab10ad",
+    "mtime": 1781304604.9511094,
+    "ast_hash": "c6df227be05b9132896f2c564e01f51e",
     "semantic_hash": ""
   },
   "web/src/lib/recommendationChart.ts": {
@@ -1320,8 +1305,8 @@
     "semantic_hash": ""
   },
   "web/src/app/api/agent/notify/voice/route.ts": {
-    "mtime": 1781226807.7584808,
-    "ast_hash": "df5df33e6c877ade5fe7271f606b2d57",
+    "mtime": 1781304667.2189825,
+    "ast_hash": "01cb7b16f89bd471e1117ed98c716b35",
     "semantic_hash": ""
   },
   "web/src/app/api/command/flow/route.ts": {
@@ -1390,13 +1375,13 @@
     "semantic_hash": ""
   },
   "web/src/lib/tradeMemory.ts": {
-    "mtime": 1781227348.327291,
-    "ast_hash": "3902352ac1bd0d3819a999ec28ea067c",
+    "mtime": 1781304666.7792048,
+    "ast_hash": "405a33a682b7fa457dbaac09a71f599f",
     "semantic_hash": ""
   },
   "web/src/lib/tradePostMortem.ts": {
-    "mtime": 1781290369.8402145,
-    "ast_hash": "b4c3e5907d57c6dee2f22064e8e24c57",
+    "mtime": 1781304666.7827375,
+    "ast_hash": "47dca08fea4a3182678255b757deae8e",
     "semantic_hash": ""
   },
   "web/src/app/api/agent/ea/diagnostics/route.ts": {
@@ -1515,18 +1500,18 @@
     "semantic_hash": ""
   },
   "web/src/lib/llm.ts": {
-    "mtime": 1781300473.7653022,
-    "ast_hash": "4a39c9f8f86b617e71646bfcc50209c7",
+    "mtime": 1781304593.7867768,
+    "ast_hash": "029fe6c6be73fb6e985abf6ad45e4957",
     "semantic_hash": ""
   },
   "web/src/lib/openaiCompat.ts": {
-    "mtime": 1781290369.8023453,
-    "ast_hash": "ac56a9ff4cba909440697f96bb525a51",
+    "mtime": 1781305304.7329216,
+    "ast_hash": "8a019920d4b226b868a2fd0c222da0a0",
     "semantic_hash": ""
   },
   "web/src/app/api/agent/chart/binance-capture/route.ts": {
-    "mtime": 1781298807.5236888,
-    "ast_hash": "46ff26bd4da4555fa6505bc786e87b49",
+    "mtime": 1781306982.319047,
+    "ast_hash": "17ebe9736cc2bfccc16dc7e111fc8b13",
     "semantic_hash": ""
   },
   "web/src/app/api/chart/binance-capture/route.ts": {
@@ -1665,8 +1650,18 @@
     "semantic_hash": ""
   },
   "web/src/lib/gemini.ts": {
-    "mtime": 1781300458.1287947,
-    "ast_hash": "9149649a5c720a56e9f6937fb1f6af02",
+    "mtime": 1781304611.4921541,
+    "ast_hash": "1ce7bfcf645fdd7470deee803a87173f",
+    "semantic_hash": ""
+  },
+  "web/src/lib/embeddings.ts": {
+    "mtime": 1781304597.6519258,
+    "ast_hash": "679d8738806bf854452aadb53198afde",
+    "semantic_hash": ""
+  },
+  "web/src/lib/chartBridgeUrl.ts": {
+    "mtime": 1781306961.6973438,
+    "ast_hash": "a1f1d7cab96b6f00273d7b26dcab2678",
     "semantic_hash": ""
   }
 }
