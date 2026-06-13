@@ -9,7 +9,7 @@ export function isGeminiChatModelId(id: string): boolean {
   const lower = id.trim().toLowerCase();
   if (!lower || !/gemini/i.test(lower)) return false;
   if (
-    /-tts\b|tts-|embed|imagen|veo\b|aqa|robotics|learnlm|nano-banana/i.test(
+    /-tts\b|tts-|embed|imagen|veo\b|aqa|robotics|learnlm|nano-banana|customtools/i.test(
       lower,
     )
   ) {
