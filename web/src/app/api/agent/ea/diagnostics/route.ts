@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { spreadFromBidAsk } from "@/lib/spread";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { MT5_RETCODE_LEGEND } from "@/lib/brokers/mt5Retcode";
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
     const bid = Number(targetSpec?.bid) || 0;
     const ask = Number(targetSpec?.ask) || 0;
     const quotesOk = symbolQ ? bid > 0 && ask > 0 : undefined;
+    const spread = symbolQ && quotesOk ? spreadFromBidAsk(bid, ask, symbolQ) : null;
 
     return NextResponse.json({
       online: meta.online,
@@ -60,6 +62,8 @@ export async function GET(req: NextRequest) {
             querySymbol: symbolQ,
             hasSymbol,
             quotesOk,
+            spreadPips: spread?.spreadPips ?? null,
+            spreadPct: spread?.spreadPct ?? null,
             spec: targetSpec,
           }
         : {}),

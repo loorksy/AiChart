@@ -4,8 +4,9 @@ import {
   createIntent,
 } from "./store";
 import { executeIntent } from "./execution";
-import { buildApprovalButtons } from "./approvalFlow";
-import { approvalCard } from "./telegram";
+import { buildAccountProfile } from "./accountProfile";
+import { buildApprovalButtonsForIntent } from "./approvalFlow";
+import { approvalCard } from "./telegramCards";
 import { notifyTradeResult } from "./notifyTrade";
 import { dispatchAlert } from "./alerts";
 import { resolveChartUrl } from "./recommendationChart";
@@ -122,10 +123,17 @@ export async function processRecommendations(
         rec.chart_image_url,
       );
     } else {
+      const profile = await buildAccountProfile(userId, intent.symbol);
       const caption = approvalCard({
-        ...intent,
-        pattern_name: rec.pattern_name,
-        timeframe: rec.timeframe,
+        symbol: intent.symbol,
+        side: intent.side,
+        notional: intent.notional,
+        confidence: intent.confidence,
+        entry: intent.entry,
+        stop_loss: intent.stop_loss,
+        take_profit: intent.take_profit,
+        profile,
+        style: settings.style,
       });
       const chartUrl =
         settings.send_screenshot === 1 ? await resolveChartUrl(rec) : null;
@@ -136,7 +144,7 @@ export async function processRecommendations(
         symbol: intent.symbol,
         confidence: rec.confidence,
         photoUrl: chartUrl,
-        buttons: buildApprovalButtons(intent.id, "trade"),
+        buttons: buildApprovalButtonsForIntent(intent.id, "trade"),
       });
       intents.push({
         id: intent.id,

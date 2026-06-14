@@ -6,6 +6,7 @@ import {
   getLimits,
   getTodayUsage,
   incrementUsage,
+  isDailyQuotaEnforced,
 } from "@/lib/store";
 import { runAgent } from "@/lib/agent";
 import { isLLMConfigured } from "@/lib/llm";
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     const limits = await getLimits(user.id);
     const used = await getTodayUsage(user.id);
 
-    if (limits.claude_quota > 0 && used + SIGNAL_COST > limits.claude_quota) {
+    if (isDailyQuotaEnforced() && limits.claude_quota > 0 && used + SIGNAL_COST > limits.claude_quota) {
       return NextResponse.json(
         {
           error: `رصيد غير كافٍ. تحتاج ${SIGNAL_COST} رصيد، المتبقّي ${Math.max(0, limits.claude_quota - used)}.`,

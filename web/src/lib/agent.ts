@@ -531,7 +531,7 @@ export async function runAgent(
       : systemBase;
   const activeTools =
     options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;
-  const maxSteps = options?.mode === "chart_analyze" ? 2 : 6;
+  const maxSteps = options?.mode === "chart_analyze" ? 2 : 10;
   const messages: Message[] = [...history];
   const recorded: Recommendation[] = [];
   const signalDeliveries: DeliveryResult[] = [];

@@ -6,7 +6,7 @@ import {
 import { execute, insertReturningId, query, queryOne } from "./db";
 import type { ChatMessageRow, Conversation } from "./types";
 
-const MAX_MESSAGES_LOAD = 40;
+const MAX_MESSAGES_LOAD = 80;
 
 const TELEGRAM_TITLE = "📱 تليجرام";
 

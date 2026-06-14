@@ -117,6 +117,37 @@ export async function sendMessage(
   return result.message_id;
 }
 
+/** Sends a message with a persistent Arabic reply keyboard (bottom panel). */
+export async function sendMessageWithReplyKeyboard(
+  chatId: string | number,
+  text: string,
+  keyboardRows: string[][],
+): Promise<number> {
+  const result = (await call("sendMessage", {
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true,
+    reply_markup: {
+      keyboard: keyboardRows.map((row) => row.map((label) => ({ text: label }))),
+      resize_keyboard: true,
+      is_persistent: true,
+    },
+  })) as { message_id: number };
+  return result.message_id;
+}
+
+/** Removes the reply keyboard from a chat. */
+export async function removeReplyKeyboard(
+  chatId: string | number,
+  text?: string,
+): Promise<void> {
+  await call("sendMessage", {
+    chat_id: chatId,
+    text: text ?? " ",
+    reply_markup: { remove_keyboard: true },
+  });
+}
+
 export async function sendPhoto(
   chatId: string | number,
   photoUrl: string,
@@ -270,81 +301,8 @@ export async function deleteWebhook(): Promise<void> {
 const sideBilingual = (s: string) =>
   s === "buy" ? "🟢 شراء · Buy" : "🔴 بيع · Sell";
 
-const sideBilingualShort = (s: string) =>
-  s === "buy" ? "شراء · Buy" : s === "sell" ? "بيع · Sell" : "انتظار · Wait";
-
-/** Bilingual card for a recorded recommendation (advisory / chart caption). */
-export function recommendationCard(rec: {
-  symbol: string;
-  action: string;
-  confidence: number;
-  entry: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
-  timeframe: string | null;
-  rationale: string | null;
-  pattern_name?: string | null;
-}): string {
-  const lines = [
-    `<b>📊 توصية جديدة من الخبير</b>`,
-    `<b>New recommendation from the Expert</b>`,
-    ``,
-    `الزوج · Pair: <b>${rec.symbol}</b>`,
-    `الاتجاه · Action: <b>${sideBilingualShort(rec.action)}</b>`,
-    `الثقة · Confidence: <b>${rec.confidence}%</b>`,
-  ];
-  if (rec.timeframe) lines.push(`الإطار · TF: <code>${rec.timeframe}</code>`);
-  if (rec.pattern_name) lines.push(`النمط · Pattern: <b>${rec.pattern_name}</b>`);
-  if (rec.entry) lines.push(`الدخول · Entry: <code>${rec.entry}</code>`);
-  if (rec.stop_loss)
-    lines.push(`وقف الخسارة · Stop: <code>${rec.stop_loss}</code>`);
-  if (rec.take_profit)
-    lines.push(`الهدف · Target: <code>${rec.take_profit}</code>`);
-  if (rec.rationale) lines.push(``, `📝 ${rec.rationale}`);
-  return lines.join("\n");
-}
-
-/** Builds a professional bilingual trade-approval card. */
-export function approvalCard(intent: {
-  symbol: string;
-  side: string;
-  notional: number;
-  confidence: number;
-  entry: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
-  rationale: string | null;
-  pattern_name?: string | null;
-  timeframe?: string | null;
-}): string {
-  const lines = [
-    `<b>🤖 توصية جديدة من الخبير</b>`,
-    `<b>New recommendation from the Expert</b>`,
-    ``,
-    `الزوج · Pair: <b>${intent.symbol}</b>`,
-    `الاتجاه · Side: <b>${sideBilingual(intent.side)}</b>`,
-    `الحجم المقترح · Size: <b>${intent.notional.toFixed(2)} USDT</b>`,
-    `الثقة · Confidence: <b>${intent.confidence}%</b>`,
-  ];
-  if (intent.timeframe) {
-    lines.push(`الإطار · TF: <code>${intent.timeframe}</code>`);
-  }
-  if (intent.pattern_name) {
-    lines.push(`النمط · Pattern: <b>${intent.pattern_name}</b>`);
-  }
-  if (intent.entry) lines.push(`الدخول · Entry: <code>${intent.entry}</code>`);
-  if (intent.stop_loss)
-    lines.push(`وقف الخسارة · Stop: <code>${intent.stop_loss}</code>`);
-  if (intent.take_profit)
-    lines.push(`الهدف · Target: <code>${intent.take_profit}</code>`);
-  if (intent.rationale) lines.push(``, `📝 ${intent.rationale}`);
-  lines.push(
-    ``,
-    `اضغط ✅ للموافقة أو ❌ للرفض أدناه.`,
-    `Tap ✅ Approve or ❌ Reject below.`,
-  );
-  return lines.join("\n");
-}
+/** Bilingual card for a recorded recommendation — delegates to telegramCards. */
+export { recommendationCard, approvalCard } from "./telegramCards";
 
 export function executedCard(t: {
   symbol: string;

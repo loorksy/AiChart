@@ -6,7 +6,9 @@ import { overlaysFromRecommendation } from "./chartOverlays";
 import type { ChartDrawing } from "./chartDrawings";
 import { parseChartDrawingsJson } from "./chartDrawings";
 import { getSettings, updateRecommendationChartUrl } from "./store";
-import { recommendationCard } from "./telegram";
+import { buildAccountProfile } from "./accountProfile";
+import { recommendationCard } from "./telegramCards";
+import { postAnalysisButtons } from "./telegramCommands";
 import { dispatchAlert, type DeliveryResult } from "./alerts";
 import type { Recommendation } from "./types";
 import type { InlineButton } from "./telegram";
@@ -65,7 +67,17 @@ export async function notifyRecommendation(
   }
 
   const settings = await getSettings(userId);
-  const caption = recommendationCard(rec);
+  const profile = await buildAccountProfile(userId, rec.symbol);
+  const caption = recommendationCard({
+    symbol: rec.symbol,
+    action: rec.action,
+    confidence: rec.confidence,
+    entry: rec.entry,
+    stop_loss: rec.stop_loss,
+    take_profit: rec.take_profit,
+    profile,
+    style: settings.style,
+  });
 
   let imageUrl = rec.chart_image_url ?? chartImagePathForRecommendation(rec.id);
   if (!rec.chart_image_url) {

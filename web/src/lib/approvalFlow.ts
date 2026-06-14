@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { buildAccountProfile } from "./accountProfile";
 import { getAppSecret } from "./env";
 import { getPlatformValue } from "./platformConfig";
 import {
@@ -11,11 +12,15 @@ import {
 } from "./store";
 import { executeIntent } from "./execution";
 import { dispatchAlert } from "./alerts";
-import { approvalCard } from "./telegram";
 import type { InlineButton } from "./telegram";
 import { resolveChartUrl } from "./recommendationChart";
 import type { MarketType } from "./markets/types";
 import { notifyTradeResult } from "./notifyTrade";
+import {
+  revalidatePendingIntent,
+  shouldRevalidateBeforeApprove,
+} from "./intentRevalidate";
+import { approvalCard, cancelledTradeCard } from "./telegramCards";
 
 export type ApprovalKind = "trade" | "practice" | "env_switch" | "kill_switch" | "mode_change";
 
@@ -36,6 +41,7 @@ function signPayload(intentId: number, action: "approve" | "reject", exp: number
     .digest("hex");
 }
 
+/** @deprecated URL buttons — kept for legacy /api/telegram/act links. */
 export function buildSignedActionUrl(
   intentId: number,
   action: "approve" | "reject",
@@ -67,16 +73,20 @@ export function verifySignedAction(
   }
 }
 
-export function buildApprovalButtons(intentId: number, kind: ApprovalKind): InlineButton[][] {
-  const approveLabel =
-    kind === "practice"
-      ? "✅ تجربة · Try"
-      : "✅ موافقة · Approve";
-  const rejectLabel = "❌ رفض · Reject";
+export function buildApprovalButtonsForIntent(
+  intentId: number,
+  kind: ApprovalKind,
+): InlineButton[][] {
+  const practice = kind === "practice";
+  const approveLabel = practice ? "✅ تجربة" : "✅ موافق";
   return [
     [
-      { text: approveLabel, url: buildSignedActionUrl(intentId, "approve") },
-      { text: rejectLabel, url: buildSignedActionUrl(intentId, "reject") },
+      { text: approveLabel, callback_data: `cmd:approve:${intentId}` },
+      { text: "❌ رفض", callback_data: `cmd:reject:${intentId}` },
+    ],
+    [
+      { text: "🔄 زوج آخر", callback_data: "cmd:analyze:pick" },
+      { text: "📋 القائمة", callback_data: "cmd:home" },
     ],
   ];
 }
@@ -126,21 +136,20 @@ export async function createApprovalRequest(
     practice: Boolean(input.practice),
   });
 
-  let pattern_name: string | null = null;
-  let timeframe: string | null = null;
-  if (input.recommendation_id) {
-    const rec = await getRecommendation(input.recommendation_id);
-    pattern_name = rec?.pattern_name ?? null;
-    timeframe = rec?.timeframe ?? null;
-  }
-
+  const profile = await buildAccountProfile(userId, intent.symbol);
   const kind = input.kind ?? (input.practice ? "practice" : "trade");
   const caption = approvalCard({
-    ...intent,
-    pattern_name,
-    timeframe,
+    symbol: intent.symbol,
+    side: intent.side,
+    notional: intent.notional,
+    confidence: intent.confidence,
+    entry: intent.entry,
+    stop_loss: intent.stop_loss,
+    take_profit: intent.take_profit,
+    profile,
+    style: settings.style,
   });
-  const buttons = buildApprovalButtons(intent.id, kind);
+  const buttons = buildApprovalButtonsForIntent(intent.id, kind);
 
   let photoUrl = input.photoUrl ?? null;
   if (!photoUrl && input.recommendation_id && settings.send_screenshot === 1) {
@@ -175,6 +184,7 @@ export async function respondToApproval(
   status: string;
   reason?: string;
   tradeId?: number | null;
+  revalidated?: boolean;
 }> {
   const intent = await getIntent(intentId);
   if (!intent || intent.user_id !== userId) {
@@ -193,7 +203,32 @@ export async function respondToApproval(
     return { ok: true, status: "rejected" };
   }
 
-  await updateIntentStatus(intentId, "approved", "وافق المشغّل (زر تيليجرام).");
+  if (shouldRevalidateBeforeApprove(intent)) {
+    const check = await revalidatePendingIntent(userId, intentId);
+    if (!check.valid) {
+      await updateIntentStatus(intentId, "cancelled", check.reasonAr);
+      const profile = await buildAccountProfile(userId, intent.symbol);
+      await dispatchAlert(userId, {
+        type: "signal",
+        title: `إلغاء ${intent.symbol}`,
+        text: cancelledTradeCard({
+          symbol: intent.symbol,
+          reason: check.reasonAr,
+          profile,
+        }),
+        symbol: intent.symbol,
+        bypassConfidenceGate: true,
+      });
+      return {
+        ok: false,
+        status: "cancelled",
+        reason: check.reasonAr,
+        revalidated: true,
+      };
+    }
+  }
+
+  await updateIntentStatus(intentId, "approved", "وافق المشغّل.");
   const result = await executeIntent(userId, intentId, {
     explicitApproval: true,
     practiceMode: intent.practice === 1,
@@ -208,5 +243,6 @@ export async function respondToApproval(
     status: result.status,
     reason: result.reason,
     tradeId: result.tradeId ?? null,
+    revalidated: shouldRevalidateBeforeApprove(intent),
   };
 }

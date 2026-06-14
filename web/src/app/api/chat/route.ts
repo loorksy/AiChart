@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, handleError } from "@/lib/api";
-import { getSettings, getLimits, getTodayUsage, incrementUsage, logAudit } from "@/lib/store";
+import { getSettings, getLimits, getTodayUsage, incrementUsage, logAudit, isDailyQuotaEnforced } from "@/lib/store";
 import { runAgent } from "@/lib/agent";
 import { isLLMConfigured } from "@/lib/llm";
 import { validateChatImage } from "@/lib/chatImage";
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     const used = await getTodayUsage(user.id);
 
-    if (limits.claude_quota > 0 && used >= limits.claude_quota) {
+    if (isDailyQuotaEnforced() && limits.claude_quota > 0 && used >= limits.claude_quota) {
 
       return NextResponse.json(
 

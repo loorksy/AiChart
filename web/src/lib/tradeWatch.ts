@@ -9,6 +9,7 @@ import {
 } from "./eaStore";
 import { parseEaPositions, type EaBrokerPosition } from "./executionEnv";
 import { checkSlTpProximity } from "./monitor";
+import { buildSnapshot } from "./market";
 import { queryOne } from "./db";
 import {
   getBinanceCredentials,
@@ -78,20 +79,46 @@ export async function watchAichartOpenTrades(
     if (price == null) continue;
     const { sl, tp } = await intentStopsForTrade(trade.intent_id);
     const hits = checkSlTpProximity(price, sl, tp, PROXIMITY_PCT);
-    if (!hits.length) continue;
-    alerts.push({
-      symbol: trade.symbol,
-      source: "aichart",
-      hits,
-      detail:
-        `صفقة AiChart #${trade.id} ${trade.symbol} ${trade.side} @ ${trade.avg_price} — ` +
-        hits
-          .map(
-            (h) =>
-              `${h.kind.toUpperCase()} ${h.level} (بعد ${h.distancePct.toFixed(2)}%)`,
-          )
-          .join(" · "),
-    });
+    if (hits.length) {
+      alerts.push({
+        symbol: trade.symbol,
+        source: "aichart",
+        hits,
+        detail:
+          `صفقة AiChart #${trade.id} ${trade.symbol} ${trade.side} @ ${trade.avg_price} — ` +
+          hits
+            .map(
+              (h) =>
+                `${h.kind.toUpperCase()} ${h.level} (بعد ${h.distancePct.toFixed(2)}%)`,
+            )
+            .join(" · "),
+      });
+      continue;
+    }
+    if (trade.market !== "forex" && trade.broker !== "mt5_local" && trade.broker !== "mt_ea") {
+      try {
+        const snap = await buildSnapshot(trade.symbol, "15m", creds?.env ?? "prod");
+        if (snap.rsi14 != null) {
+          if (trade.side === "buy" && snap.rsi14 > 72) {
+            alerts.push({
+              symbol: trade.symbol,
+              source: "aichart",
+              hits: [],
+              detail: `صفقة #${trade.id} ${trade.symbol} — RSI تشبّع شرائي ${snap.rsi14.toFixed(0)}`,
+            });
+          } else if (trade.side === "sell" && snap.rsi14 < 28) {
+            alerts.push({
+              symbol: trade.symbol,
+              source: "aichart",
+              hits: [],
+              detail: `صفقة #${trade.id} ${trade.symbol} — RSI تشبّع بيعي ${snap.rsi14.toFixed(0)}`,
+            });
+          }
+        }
+      } catch {
+        /* skip */
+      }
+    }
   }
   return alerts;
 }

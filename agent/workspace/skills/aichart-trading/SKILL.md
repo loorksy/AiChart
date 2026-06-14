@@ -17,7 +17,9 @@ curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 
 | الغرض | الطريقة |
 |--------|---------|
-| مخاطر/وضع/executionEnv | `GET /api/agent/risk/status` |
+| مخاطر/وضع/executionEnv | `GET /api/agent/risk/status` (+ `accountProfile`) |
+| تقييم صفقة مفتوحة | `GET /api/agent/trade/evaluate?trade_id=` |
+| قرار خروج (audit) | `POST /api/agent/trade/exit-decision` |
 | snapshot/price/context | `GET /api/agent/market/snapshot|price|context` |
 | مسح كود | `POST /api/agent/market/scan` body: `{"market","symbols","interval"}` |
 | محفظة | `GET /api/agent/portfolio` |
@@ -126,3 +128,96 @@ GET /api/agent/futures/orders?symbol=BTCUSDT
 - «مواصفات الرمز غير متاحة» → الرمز غير في heartbeat أو EA offline؛ استدعِ diagnostics.
 - **لا مرشحين في scan** → إشارة فنية ضعيفة فقط؛ `HEARTBEAT_OK` — لا تربط بـ EA.
 - TRXUSDT مع `activeMarket=crypto` → Binance؛ لا تنتظر مواصفات MT5.
+
+## تيليجرام — قائمة / عربية + Reply Keyboard
+
+عند `/start` أو `/qaima`:
+```bash
+curl -s -X POST -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
+  "${AICHART_API_URL}/api/agent/telegram/menu"
+```
+
+| أمر / أو زر لوحة | نفّذ |
+|------------------|------|
+| `/qaima` · `/start` | `POST /api/agent/telegram/menu` |
+| `/tahil` · `📊 تحليل زوج` | تحليل + قائمة رموز |
+| `/rased` · `💰 الرصيد` | `GET /api/agent/portfolio` |
+| `/safaqat` · `📈 الصفقات` | `GET /api/agent/trades/open` |
+| `/iadadat` · `⚙️ الإعدادات` | `GET /api/agent/risk/status` |
+| `/crypto` · `🪙 كربتو` | سوق كربتو |
+| `/forex` · `💱 فوركس` | سوق فوركس |
+| `/demo` · `🧪 ديمو` | `POST execution/env` demo |
+| `/live` · `🔴 حقيقي` | `POST execution/env` live |
+
+**إصلاح «البوت لا يرد» على VPS:**
+```bash
+bash agent/scripts/sync-telegram-bot.sh
+bash infra/vps-openclaw-telegram-reconnect.sh
+bash infra/vps-telegram-bot-health.sh
+```
+
+## أزرار تيليجرام → أوامر الوكيل
+
+كل `callback_data` يصل كـ `[CMD:…]` — **أنت** تنفّذ عبر curl:
+
+| callback_data | ماذا تفعل |
+|---------------|-----------|
+| `cmd:home` | بطاقة قائمة + `mainMenuButtons` |
+| `cmd:balance` | `GET /api/agent/portfolio` → `balanceCard` |
+| `cmd:trades` | `GET /api/agent/trades/open` |
+| `cmd:settings` | `GET /api/agent/risk/status` |
+| `cmd:market:crypto` | `POST /api/agent/market/active` أو إعدادات السوق |
+| `cmd:market:forex` | نفس الأمر لـ forex |
+| `cmd:env:demo` | `POST /api/agent/execution/env` `{"preference":"demo"}` |
+| `cmd:env:live` | `{"preference":"live"}` |
+| `cmd:analyze:pick` | اعرض رموز مسموحة ثم حلّل المختار |
+| `cmd:approve:{id}` | إن ≥60ث: أعد scan؛ وإلا `POST approval/respond` approve |
+| `cmd:reject:{id}` | `POST approval/respond` reject |
+| `cmd:review:{id}` | `GET trade/evaluate` ثم قرّر hold/close |
+| `cmd:close:{id}` | evaluate ثم `trade/close` إن مبرر |
+
+### أزرار تحت كل بطاقة
+
+| السياق | أزرار |
+|--------|-------|
+| القائمة | تحليل · كربتو/فوركس · صفقات · رصيد · إعدادات · ديمو/حقيقي |
+| بعد تحليل (pending) | موافق · رفض · زوج آخر · القائمة |
+| صفقة مفتوحة | مراجعة · إغلاق · القائمة |
+| بعد ربح/خسارة | كمّل؟ · الصفقات · الرصيد · القائمة |
+
+## موافقة متأخرة (≥60 ثانية)
+
+```bash
+# 1. أعد المسح
+curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
+  -X POST "${AICHART_API_URL}/api/agent/market/scan" \
+  -d '{"market":"crypto","symbols":["EURUSD"],"interval":"1h"}'
+
+# 2. موافقة (المنصة تعيد التحقق تلقائياً)
+curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
+  -X POST "${AICHART_API_URL}/api/agent/approval/respond" \
+  -d '{"intent_id":12,"action":"approve"}'
+```
+
+إن أُلغيت: أرسل `cancelledTradeCard` بالسبب (انعكاس MACD، تجاوز الدخول، انتهاء 30 دقيقة).
+
+## إدارة صفقة مفتوحة
+
+```bash
+curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
+  "${AICHART_API_URL}/api/agent/trade/evaluate?trade_id=5"
+
+curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
+  -X POST "${AICHART_API_URL}/api/agent/trade/exit-decision" \
+  -d '{"trade_id":5,"decision":"close","reason":"انعكاس MACD · كسر الدعم"}'
+
+curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
+  -X POST "${AICHART_API_URL}/api/agent/trade/close" \
+  -d '{"trade_id":5}'
+```
+
+## رافعة وسبريد
+
+من `risk/status` → `accountProfile.hasLeverage`, `leverage`, `spreadPips`.
+فوركس: `GET /api/agent/ea/diagnostics?symbol=EURUSD` → `spreadPips`, `spreadPct`.
+اذكر الرافعة والسبريد في بطاقة التحليل عند توفرها.

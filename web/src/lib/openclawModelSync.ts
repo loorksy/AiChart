@@ -9,6 +9,7 @@ import {
   getProviderApiKey,
   type LLMProvider,
 } from "./llm";
+import { arabicBotCommands } from "./telegramCommands";
 
 const execFileAsync = promisify(execFile);
 const PM2_BIN = () => process.env.PM2_BIN?.trim() || "/usr/bin/pm2";
@@ -135,6 +136,16 @@ type OpenClawCfg = {
   };
   models?: {
     providers?: Record<string, ProviderBucket>;
+  };
+  channels?: {
+    telegram?: {
+      enabled?: boolean;
+      botToken?: string;
+      dmPolicy?: string;
+      commands?: { native?: boolean; nativeSkills?: boolean };
+      customCommands?: { command: string; description: string }[];
+      capabilities?: { inlineButtons?: string };
+    };
   };
 };
 
@@ -266,11 +277,12 @@ export function patchOpenClawModelConfig(
   }
 
   d.thinkingDefault = "off";
-  d.contextPruning = { mode: "cache-ttl" };
+  delete d.contextPruning;
   delete d.heartbeat;
   const tokenParams = {
     cacheRetention: "long",
     thinking: "off",
+    maxTokens: 16384,
   };
   d.models = {};
   for (const modelRef of activeRefs) {
@@ -288,6 +300,30 @@ export function patchOpenClawModelConfig(
     next = ensureProviderModelRegistered(next, fb);
   }
   pruneModelCatalog(next, activeRefs);
+  return patchTelegramChannelConfig(next);
+}
+
+/** Arabic custom commands + disable native English slash menu. */
+export function patchTelegramChannelConfig(cfg: OpenClawCfg): OpenClawCfg {
+  const next = { ...cfg };
+  const existing = next.channels?.telegram ?? {};
+  next.channels = {
+    ...next.channels,
+    telegram: {
+      ...existing,
+      enabled: existing.enabled ?? true,
+      dmPolicy: existing.dmPolicy ?? "open",
+      commands: {
+        native: false,
+        nativeSkills: false,
+      },
+      customCommands: arabicBotCommands(),
+      capabilities: {
+        ...(existing.capabilities ?? {}),
+        inlineButtons: existing.capabilities?.inlineButtons ?? "dm",
+      },
+    },
+  };
   return next;
 }
 

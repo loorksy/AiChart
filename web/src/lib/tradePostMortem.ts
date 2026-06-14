@@ -98,7 +98,7 @@ export async function runTradePostMortem(
   const res = await callLLM({
     system,
     messages: [{ role: "user", content: userMsg }],
-    maxTokens: 600,
+    maxTokens: 4096,
   });
   const raw = extractText(res.content);
   const parsed = parsePostMortemJson(raw);

@@ -6,6 +6,7 @@ import { isLLMConfigured } from "./llm";
 import {
   getTodayUsage,
   incrementUsage,
+  isDailyQuotaEnforced,
   isOnCooldown,
   logAudit,
   touchScanCooldown,
@@ -209,7 +210,7 @@ export async function runOpportunityScan(
   }
 
   const used = await getTodayUsage(userId);
-  if (limits.claude_quota > 0 && used >= limits.claude_quota) {
+  if (isDailyQuotaEnforced() && limits.claude_quota > 0 && used >= limits.claude_quota) {
     result.errors.push("رصيد Claude غير كافٍ للتحليل العميق.");
     return result;
   }

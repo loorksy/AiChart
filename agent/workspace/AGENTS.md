@@ -17,7 +17,7 @@
 
 ## قواعد التنفيذ
 
-1. قبل أي صفقة: `GET /api/agent/risk/status` — تحقق من kill switch والحدود و`executionEnv` (ديمو/حقيقي).
+1. قبل أي صفقة: `GET /api/agent/risk/status` — تحقق من kill switch والحدود و`executionEnv` و**`accountProfile`** (رافعة، سبريد، منصة، حساب).
 2. قبل أي رأي فني: snapshot حي + سياق السوق. لا تحلل من الذاكرة وحدها.
 3. كل توصية تُسجَّل عبر `POST /api/agent/recommendation` مع `chart_drawings`
    (مناطق، خطوط اتجاه، مسار متوقع) ثم أرفق صورة الشارت في رسالتك.
@@ -61,13 +61,53 @@
 
 | الموقف | الأزرار | نص |
 |--------|---------|-----|
-| صفقة تحتاج موافقة / practice | `approval/request` | لا تفترض موافقة من النقاش |
+| صفقة تحتاج موافقة / practice | `approval/request` → `cmd:approve:{id}` / `cmd:reject:{id}` | لا تفترض موافقة من النقاش |
 | تبديل ديمو↔حقيقي، Kill Switch | أزرار تأكيد | |
 | تحليل وأسئلة عامة | لا | محادثة عادية |
 | `auto` + شروط مستوفاة | لا | نفّذ وأبلغ |
 | «نفّذ الآن EURUSD» صريح | اختياري | `trade/open` + `approved_by_user:true` |
 
-بعد ضغط ✅ المنصة تنفّذ وحدها — لا تطلب «اكتب وافق».
+**أزرار = أوامر للوكيل** — عند `[CMD:cmd:approve:12]` أو ضغط زر:
+1. إن مرّ **≥60 ثانية** منذ الطلب: `GET market/scan` أو أعد التحليل — لا `trade/open` إن الفرصة ضاعت
+2. موافقة صالحة: `POST /api/agent/approval/respond` مع `{"intent_id":12,"action":"approve"}`
+3. رفض: `action":"reject"` أو أرسل بطاقة إلغاء بالسبب
+
+بعد ضغط ✅ المنصة قد تنفّذ وحدها — عند الموافقة المتأخرة تُعاد التحقق تلقائياً.
+
+## تيليجرام — لوحة عربية وأوامر /
+
+عند **`/start`** أو **`/qaima`** أو «القائمة الرئيسية»:
+```bash
+curl -s -X POST -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
+  "${AICHART_API_URL}/api/agent/telegram/menu"
+```
+يرسل بطاقة ترحيب + **Reply Keyboard** عربي للمشغّل.
+
+| المدخل | الفعل |
+|--------|--------|
+| `/start` · `/qaima` | `POST /api/agent/telegram/menu` |
+| `/tahil` · `📊 تحليل زوج` | تحليل + قائمة رموز |
+| `/rased` · `💰 الرصيد` | `GET /api/agent/portfolio` → بطاقة |
+| `/safaqat` · `📈 الصفقات` | `GET /api/agent/trades/open` |
+| `/iadadat` · `⚙️ الإعدادات` | `GET /api/agent/risk/status` |
+| `/crypto` · `🪙 كربتو` | تفعيل سوق كربتو |
+| `/forex` · `💱 فوركس` | تفعيل سوق فوركس |
+| `/demo` · `🧪 ديمو` | `POST /api/agent/execution/env` demo |
+| `/live` · `🔴 حقيقي` | `POST /api/agent/execution/env` live |
+| `callback_data: cmd:*` | كما في SKILL |
+
+لا تستخدم `/help` أو أوامر OpenClaw الإنجليزية — وجّه للقائمة العربية.
+
+## إدارة المركز المفتوح
+
+عند `[EVENT:trade_alert]` أو `cmd:review:{id}`:
+1. `GET /api/agent/trade/evaluate?trade_id=` — سعر حي، شموع، PnL، سياق
+2. حلّل الشموع والأخبار — قرّر `hold` | `close` | `adjust_sl`
+3. `POST /api/agent/trade/exit-decision` مع السبب (audit)
+4. إن `close`: `POST /api/agent/trade/close` ثم بطاقة نتيجة + أزرار «كمّل؟»
+
+معايير الخروج: انكسار الأطروحة، RSI/MACD عكس الاتجاه، قرب SL/TP، هدف الربح اليومي.
+لا إغلاق عشوائي — وثّق السبب دائماً.
 
 ## متابعة الصفقات المفتوحة (نبضة المراجعة الساعية)
 

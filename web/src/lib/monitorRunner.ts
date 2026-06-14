@@ -1,4 +1,5 @@
 import { resolveScanAssetsForMarket } from "./allowedAssets";
+import { buildAccountProfile } from "./accountProfile";
 import { wakeAgentViaTelegram } from "./agentWake";
 import { runCronPostScan } from "./cronPostScan";
 import {
@@ -119,7 +120,20 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
     try {
       const tradeAlerts = await collectTradeWatchAlerts(userId);
       if (tradeAlerts.length > 0) {
-        const detail = tradeAlerts.map((a) => a.detail).join("\n");
+        const profile = await buildAccountProfile(userId);
+        const envLine = `المنصة: ${profile.platform} · الحساب: ${profile.accountLogin ?? "—"} · ${profile.accountType}`;
+        const detail = [
+          envLine,
+          profile.hasLeverage && profile.leverage
+            ? `الرافعة: ${profile.leverage}x`
+            : null,
+          profile.hasSpread && profile.spreadPips != null
+            ? `السبريد: ${profile.spreadPips} نقطة`
+            : null,
+          ...tradeAlerts.map((a) => a.detail),
+        ]
+          .filter(Boolean)
+          .join("\n");
         const woke = await wakeAgentViaTelegram(userId, {
           event: "trade_alert",
           detail,

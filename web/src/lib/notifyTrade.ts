@@ -1,8 +1,10 @@
-import { getSettings } from "./store";
-import { buildChartImageUrl } from "./chartImage";
-import { executedCard } from "./telegram";
+import { buildAccountProfile } from "./accountProfile";
 import { dispatchAlert } from "./alerts";
 import type { ExecutionResult } from "./execution";
+import { getSettings } from "./store";
+import { buildChartImageUrl } from "./chartImage";
+import { tradeResultCard } from "./telegramCards";
+import { postTradeButtons } from "./telegramCommands";
 
 /** Notifies the user on Telegram after a trade execution attempt. */
 export async function notifyTradeResult(
@@ -16,14 +18,21 @@ export async function notifyTradeResult(
     await dispatchAlert(userId, {
       type: "trade_failed",
       title: `تعذّر تنفيذ ${symbol}`,
-      text: `⚠️ تعذّر تنفيذ ${symbol} · Not executed: ${result.reason}`,
+      text: `⚠️ تعذّر تنفيذ ${symbol}: ${result.reason}`,
       symbol,
     });
     return;
   }
 
   const settings = await getSettings(userId);
-  const text = executedCard(result.trade);
+  const profile = await buildAccountProfile(userId, symbol);
+  const text = tradeResultCard({
+    symbol: result.trade.symbol,
+    side: result.trade.side,
+    qty: result.trade.qty,
+    avg_price: result.trade.avg_price,
+    profile,
+  });
   let photoUrl: string | null = null;
   if (settings.send_screenshot === 1) {
     photoUrl = chartUrl ?? (await buildChartImageUrl(symbol, timeframe));
@@ -34,5 +43,6 @@ export async function notifyTradeResult(
     text,
     symbol,
     photoUrl,
+    buttons: postTradeButtons(),
   });
 }

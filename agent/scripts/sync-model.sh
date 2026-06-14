@@ -5,6 +5,14 @@
 # Run after changing the model in the dashboard, then restart the gateway.
 set -euo pipefail
 
+WEB_DIR="${WEB_DIR:-/opt/aichart/web}"
+if [[ -z "${AICHART_SERVICE_TOKEN:-}" && -f "$WEB_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$WEB_DIR/.env"
+  set +a
+fi
+
 API="${AICHART_API_URL:-http://localhost:3000}"
 TOKEN="${AICHART_SERVICE_TOKEN:?AICHART_SERVICE_TOKEN غير معرّف في البيئة}"
 CONFIG="${OPENCLAW_CONFIG:-$HOME/.openclaw/openclaw.json}"
@@ -21,9 +29,10 @@ if [[ "${OPENCLAW_AUTO_RESTART:-}" == "1" ]]; then
   sleep 3
 fi
 
-node - "$CONFIG" "$PAYLOAD" <<'EOF'
+node - "$CONFIG" "$PAYLOAD" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" <<'EOF'
 const fs = require("fs");
-const [, , path, payloadJson] = process.argv;
+const path = require("path");
+const [, , configPath, payloadJson, scriptDir] = process.argv;
 
 let payload;
 try {
@@ -49,10 +58,10 @@ if (!ref || ref.toLowerCase().includes("openrouter") || ref.includes("-tts")) {
 
 let cfg = {};
 try {
-  cfg = JSON.parse(fs.readFileSync(path, "utf8"));
+  cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
 } catch (e) {
   console.error(
-    `تعذّر قراءة ${path} (ربما يحوي تعليقات JSON5؟) — عدّل يدوياً:\n` +
+    `تعذّر قراءة ${configPath} (ربما يحوي تعليقات JSON5؟) — عدّل يدوياً:\n` +
       `  agents.defaults.model.primary = "${ref}"\n` +
       `السبب: ${e.message}`,
   );
@@ -74,28 +83,15 @@ if (cfg.agents.defaults.model && typeof cfg.agents.defaults.model === "object") 
   delete cfg.agents.defaults.model.thinking;
 }
 cfg.agents.defaults.thinkingDefault = "off";
-cfg.agents.defaults.contextPruning = { mode: "cache-ttl" };
+delete cfg.agents.defaults.contextPruning;
 delete cfg.agents.defaults.heartbeat;
 
-// Token savings: isolated heartbeat session (~2-5K tokens instead of full
-// conversation history) + prune stale tool outputs once the cache TTL expires.
-const hb = cfg.agents.defaults.heartbeat;
-cfg.agents.defaults.heartbeat = {
-  ...(hb && typeof hb === "object" ? hb : {}),
-  isolatedSession: true,
-};
-cfg.agents.defaults.contextPruning = {
-  ...(typeof cfg.agents.defaults.contextPruning === "object"
-    ? cfg.agents.defaults.contextPruning
-    : {}),
-  mode: "cache-ttl",
-};
-
-cfg.agents.defaults.models = {};
 const tokenParams = {
   cacheRetention: "long",
   thinking: "off",
+  maxTokens: 16384,
 };
+cfg.agents.defaults.models = {};
 const activeRefs = [ref, ...fallbacks];
 for (const full of activeRefs) {
   const entry = { params: tokenParams };
@@ -146,7 +142,39 @@ for (const provider of Object.keys(cfg.models.providers)) {
   }
 }
 
-fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
+const arPath = path.join(scriptDir || ".", "../../web/src/lib/telegram-ar-commands.json");
+let customCommands = [];
+try {
+  customCommands = JSON.parse(fs.readFileSync(arPath, "utf8")).botCommands || [];
+} catch {
+  customCommands = [
+    { command: "qaima", description: "القائمة الرئيسية" },
+    { command: "tahil", description: "تحليل زوج" },
+    { command: "rased", description: "الرصيد والمحفظة" },
+    { command: "safaqat", description: "الصفقات المفتوحة" },
+    { command: "iadadat", description: "الإعدادات والوضع الحالي" },
+    { command: "crypto", description: "السوق: كربتو" },
+    { command: "forex", description: "السوق: فوركس" },
+    { command: "demo", description: "تفعيل وضع الديمو" },
+    { command: "live", description: "تفعيل الوضع الحقيقي" },
+  ];
+}
+cfg.channels ??= {};
+cfg.channels.telegram = {
+  ...(cfg.channels.telegram && typeof cfg.channels.telegram === "object"
+    ? cfg.channels.telegram
+    : {}),
+  enabled: cfg.channels.telegram?.enabled ?? true,
+  dmPolicy: cfg.channels.telegram?.dmPolicy ?? "open",
+  commands: { native: false, nativeSkills: false },
+  customCommands,
+  capabilities: {
+    ...(cfg.channels.telegram?.capabilities ?? {}),
+    inlineButtons: cfg.channels.telegram?.capabilities?.inlineButtons ?? "dm",
+  },
+};
+
+fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2) + "\n");
 console.log(
   `primary model → ${ref} (fallbacks: ${fallbacks.join(", ") || "none"})`,
 );

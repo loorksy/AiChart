@@ -5,6 +5,7 @@ import { isTelegramConfigured, notifyUser } from "./telegram";
 export type AgentWakeEvent =
   | "market_candidate"
   | "trade_alert"
+  | "position_review"
   | "daily_loss_warn"
   | "daily_memory";
 
@@ -12,7 +13,9 @@ const EVENT_INSTRUCTIONS: Record<AgentWakeEvent, string> = {
   market_candidate:
     "راجع المرشح الفني أدناه. حلّل بعمق، سجّل توصية مع شارت إن وُجدت ثقة ≥75%، وتصرف حسب الوضع (auto/approval/direct). للفوركس: تحقق من diagnostics قبل التنفيذ.",
   trade_alert:
-    "راجع تنبيه الصفقة أدناه. قارن بأطروحتك في الذاكرة — إن انكسرت الأطروحة أغلق أو عدّل حسب الوضع وأبلغ المشغّل.",
+    "راجع تنبيه الصفقة أدناه. استدعِ GET /api/agent/trade/evaluate ثم حلّل الشموع والأخبار — قرّر hold أو close عبر exit-decision ثم نفّذ إن لزم.",
+  position_review:
+    "راجع المركز المفتوح: GET /api/agent/trade/evaluate — حلّل الشموع والأخبار ثم قرّر hold/close/adjust_sl ووثّق السبب.",
   daily_loss_warn:
     "اقتربت خسارة اليوم من الحد. أبلغ المشغّل بوضوح — لا تفتح صفقات جديدة إلا بموافقة صريحة.",
   daily_memory:

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildAccountProfile } from "@/lib/accountProfile";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getExecutionEnvSnapshot } from "@/lib/executionEnv";
@@ -72,6 +73,7 @@ export async function GET(req: NextRequest) {
       },
       allowedAssets: settings.allowed_assets,
       executionEnv: await getExecutionEnvSnapshot(userId),
+      accountProfile: await buildAccountProfile(userId),
     });
   } catch (e) {
     return handleError(e);
