@@ -2,11 +2,14 @@ import { buildSnapshot, buildForexSnapshot } from "../market";
 import { getPrice } from "../binance";
 import { getEaConnection, parseEaSymbolSpecs } from "../eaStore";
 import { getForexBackend } from "../brokers/forexBackend";
+import { resolveLiveForexMid } from "../eaLiveState";
+import { getBinanceLivePrice, ensureBinanceLiveQuotes, getBinanceLiveQuotes } from "../binanceLiveState";
 import { mt5Price } from "../mt5local/client";
 import { resolveSymbol, marketLabel } from "./resolve";
 import type { MarketType, ResolvedSymbol, UnifiedSnapshot } from "./types";
 
 export { resolveSymbol, marketLabel };
+export { getBinanceLiveQuotes, ensureBinanceLiveQuotes, getBinanceLivePrice };
 export type { ResolvedSymbol, UnifiedSnapshot };
 
 async function forexPrice(userId: number, symbol: string): Promise<number> {
@@ -24,11 +27,13 @@ async function forexPrice(userId: number, symbol: string): Promise<number> {
   const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(
     (s) => s.symbol?.toUpperCase() === symbol.toUpperCase(),
   );
-  if (!spec) return 0;
-  const bid = Number(spec.bid) || 0;
-  const ask = Number(spec.ask) || 0;
-  if (bid && ask) return (bid + ask) / 2;
-  return bid || ask || 0;
+  const resolved = resolveLiveForexMid(
+    userId,
+    symbol,
+    spec?.bid,
+    spec?.ask,
+  );
+  return resolved.price;
 }
 
 export async function getUnifiedPrice(
@@ -40,6 +45,13 @@ export async function getUnifiedPrice(
   if (market === "forex") {
     const price = userId ? await forexPrice(userId, resolved.symbol) : 0;
     return { resolved, price };
+  }
+  if (userId) {
+    await ensureBinanceLiveQuotes(userId);
+    const live = await getBinanceLivePrice(userId, resolved.symbol);
+    if (live && live.price > 0) {
+      return { resolved, price: live.price };
+    }
   }
   const price = await getPrice(resolved.symbol, "prod");
   return { resolved, price };

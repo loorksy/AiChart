@@ -322,7 +322,12 @@ export type EaCommandType =
   | "close_position"
   | "modify_sl_tp"
   | "draw_and_capture"
-  | "clear_chart";
+  | "clear_chart"
+  | "open_pending"
+  | "cancel_order"
+  | "close_partial"
+  | "ensure_symbol"
+  | "query_terminal";
 
 /** Payload queued for EA `draw_and_capture` commands. */
 export interface EaDrawAndCapturePayload {

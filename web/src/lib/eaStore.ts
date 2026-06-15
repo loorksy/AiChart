@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 /** Heartbeat freshness window. Older than this and the EA is considered offline. */
-export const EA_HEARTBEAT_TIMEOUT_MS = 30_000;
+export const EA_HEARTBEAT_TIMEOUT_MS = 90_000;
 /** How long an unfetched command stays valid before it expires. */
 export const EA_COMMAND_TTL_MS = 60_000;
 

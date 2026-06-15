@@ -27,6 +27,18 @@ export function openClawConfigPath(): string {
   );
 }
 
+/** False when OPENCLAW_ENABLED=0 or openclaw.json is absent. */
+export function isOpenClawEnabled(): boolean {
+  const env = process.env.OPENCLAW_ENABLED?.trim().toLowerCase();
+  if (env === "0" || env === "false" || env === "no") return false;
+  if (env === "1" || env === "true" || env === "yes") return true;
+  try {
+    return fs.existsSync(openClawConfigPath());
+  } catch {
+    return false;
+  }
+}
+
 export function modelRefFromPlatform(model?: string): string {
   const provider = getActiveProvider();
   const id = (model ?? getActiveModel()).trim();
@@ -191,8 +203,10 @@ export function ensureProviderModelRegistered(
 
   const merged: ProviderBucket = { ...bucket, models };
   // OpenAI-compatible providers need credentials + base URL inside the
-  // gateway config (Anthropic reads ANTHROPIC_API_KEY from env).
-  if (provider === "openai" || provider === "google") {
+  // gateway config (Anthropic reads API key from agent auth store).
+  if (provider === "anthropic") {
+    merged.api = merged.api || "anthropic-messages";
+  } else if (provider === "openai" || provider === "google") {
     const keyProvider = provider as LLMProvider;
     const apiKey = getProviderApiKey(keyProvider);
     if (apiKey) merged.apiKey = apiKey;
@@ -240,7 +254,11 @@ function pruneModelCatalog(cfg: OpenClawCfg, activeRefs: string[]): void {
       const existing = (bucket.models ?? []).find((m) => m.id === id);
       return existing?.name ? existing : { id, name: id };
     });
-    cfg.models.providers[provider] = { ...bucket, models };
+    const merged: ProviderBucket = { ...bucket, models };
+    if (provider === "anthropic") {
+      merged.api = merged.api || "anthropic-messages";
+    }
+    cfg.models.providers[provider] = merged;
   }
 
   for (const provider of Object.keys(cfg.models.providers)) {
@@ -359,6 +377,7 @@ export function isGatewayModelReady(
 }
 
 export type AgentModelStatus = {
+  openclawEnabled: boolean;
   platformModel: string;
   platformRef: string;
   gatewayPrimary: string | null;
@@ -369,8 +388,21 @@ export type AgentModelStatus = {
 };
 
 export function getAgentModelStatus(): AgentModelStatus {
+  const openclawEnabled = isOpenClawEnabled();
   const platformModel = getActiveModel();
   const platformRef = modelRefFromPlatform(platformModel);
+  if (!openclawEnabled) {
+    return {
+      openclawEnabled: false,
+      platformModel,
+      platformRef,
+      gatewayPrimary: null,
+      gatewayConfigReadable: false,
+      providerRegistered: false,
+      inSync: true,
+      thinkingDefault: null,
+    };
+  }
   const configPath = openClawConfigPath();
   const gatewayConfigReadable = fs.existsSync(configPath);
   const gatewayPrimary = readGatewayPrimaryModel(configPath);
@@ -394,6 +426,7 @@ export function getAgentModelStatus(): AgentModelStatus {
     providerRegistered;
 
   return {
+    openclawEnabled: true,
     platformModel,
     platformRef,
     gatewayPrimary,
@@ -483,6 +516,7 @@ export type SyncResult = {
   restarted: boolean;
   verified: boolean;
   providerRegistered: boolean;
+  skipped?: boolean;
   error?: string;
 };
 
@@ -491,6 +525,16 @@ export async function syncOpenClawModelFromPlatform(
   model?: string,
 ): Promise<SyncResult> {
   const ref = modelRefFromPlatform(model);
+  if (!isOpenClawEnabled()) {
+    return {
+      ok: true,
+      ref,
+      restarted: false,
+      verified: false,
+      providerRegistered: false,
+      skipped: true,
+    };
+  }
   const configPath = openClawConfigPath();
   const autoRestart = process.env.OPENCLAW_AUTO_RESTART === "1";
 

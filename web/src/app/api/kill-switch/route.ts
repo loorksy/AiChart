@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, handleError } from "@/lib/api";
-import { updateSettings, getSettings } from "@/lib/store";
+import {
+  eaKillCloseFlagKey,
+  queueEaCloseAllPositions,
+} from "@/lib/eaTradeCommands";
+import { updateSettings, getSettings, setFlag } from "@/lib/store";
 import { closeAllOpenTrades } from "@/lib/tradeClose";
 
 const schema = z.object({ on: z.boolean() });
@@ -14,6 +18,8 @@ export async function POST(req: NextRequest) {
     const settings = await getSettings(user.id);
     let closeResult = null;
     if (on) {
+      await queueEaCloseAllPositions(user.id);
+      await setFlag(eaKillCloseFlagKey(user.id), "1");
       closeResult = await closeAllOpenTrades(user.id);
     }
     return NextResponse.json({

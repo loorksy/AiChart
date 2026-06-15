@@ -199,6 +199,25 @@ const SCHEMA = `
     value TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+    client_id   TEXT PRIMARY KEY,
+    client_json TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (
+    token_hash  TEXT PRIMARY KEY,
+    client_id   TEXT NOT NULL,
+    email       TEXT NOT NULL,
+    scopes_json TEXT NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    revoked     BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_mcp_refresh_client
+    ON mcp_oauth_refresh_tokens (client_id, revoked);
+
   CREATE TABLE IF NOT EXISTS platform_config (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,

@@ -13,9 +13,14 @@ if [[ -z "${AICHART_SERVICE_TOKEN:-}" && -f "$WEB_DIR/.env" ]]; then
   set +a
 fi
 
-API="${AICHART_API_URL:-http://localhost:3000}"
+API="${AICHART_API_URL:-http://127.0.0.1:${PORT:-3010}}"
 TOKEN="${AICHART_SERVICE_TOKEN:?AICHART_SERVICE_TOKEN غير معرّف في البيئة}"
 CONFIG="${OPENCLAW_CONFIG:-$HOME/.openclaw/openclaw.json}"
+
+if [[ "${OPENCLAW_ENABLED:-1}" == "0" ]]; then
+  echo "OpenClaw معطّل (OPENCLAW_ENABLED=0) — تخطّي sync-model"
+  exit 0
+fi
 
 PAYLOAD="$(curl -sf -H "Authorization: Bearer $TOKEN" "$API/api/agent/model")"
 
@@ -133,6 +138,9 @@ for (const [provider, allowedIds] of idsByProvider) {
   });
   const merged = { ...bucket, models };
   applyOpenAiCompatProvider(provider, merged, providerKeys);
+  if (provider === "anthropic") {
+    merged.api = merged.api || "anthropic-messages";
+  }
   cfg.models.providers[provider] = merged;
 }
 

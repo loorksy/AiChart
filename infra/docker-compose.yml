@@ -29,7 +29,7 @@ services:
       - mt5-data:/data # persisted credentials for auto-reconnect
     restart: unless-stopped
 
-  # OpenClaw gateway — the live trading agent (Telegram + heartbeat + memory).
+  # OpenClaw gateway — optional if using Claude MCP (see mcp/ + docs/MCP_CLAUDE_SETUP.md).
   agent:
     image: node:22-bookworm-slim
     command: >
@@ -44,6 +44,23 @@ services:
     volumes:
       - openclaw-state:/root/.openclaw
       - ../agent/workspace:/workspace-src:ro
+    depends_on:
+      - web
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.mcp
+    ports:
+      - "127.0.0.1:8787:8787"
+    env_file:
+      - ../web/.env
+    environment:
+      - AICHART_API_URL=http://web:3000
+      - MCP_PORT=8787
+      - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-http://127.0.0.1:8787/mcp}
+      - MCP_AUTH_MODE=${MCP_AUTH_MODE:-oauth}
     depends_on:
       - web
     restart: unless-stopped

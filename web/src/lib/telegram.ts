@@ -78,7 +78,18 @@ async function call(method: string, body: Record<string, unknown>): Promise<unkn
     description?: string;
     result?: unknown;
   };
-  if (!data.ok) throw new Error(data.description || `Telegram error: ${method}`);
+  if (!data.ok) {
+    // #region agent log
+    const { debugSessionLog } = await import("./debugSessionLog");
+    debugSessionLog({
+      location: "telegram.ts:call",
+      message: "telegram api error",
+      hypothesisId: "E",
+      data: { method, description: data.description?.slice(0, 120) },
+    });
+    // #endregion
+    throw new Error(data.description || `Telegram error: ${method}`);
+  }
   return data.result;
 }
 

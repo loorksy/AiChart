@@ -5,9 +5,11 @@
 ## قبل أي تشخيص
 
 ```bash
+GET /api/agent/live/account           # بث موحّد MT5+Binance + quoteAgeMs
 GET /api/agent/risk/status          # activeMarket: crypto | forex
 GET /api/agent/portfolio            # forex.ea.online, account_login
 GET /api/agent/ea/diagnostics?symbol=EURUSD   # الرموز من heartbeat
+GET /api/agent/ea/live-quotes?symbol=EURUSD   # أسعار live من EA v3
 ```
 
 ## ممنوعات (لا تقلها للمشغّل)
@@ -22,7 +24,7 @@ GET /api/agent/ea/diagnostics?symbol=EURUSD   # الرموز من heartbeat
 | retcode | المعنى | ماذا تقول |
 |---------|--------|-----------|
 | 10016 | INVALID_STOPS — SL/TP غير مقبول | وقف خسارة/جني ربح مرفوض؛ جرّب يدوياً **بدون SL/TP** |
-| 10026 | OFF_QUOTES — لا سعر حي | سوق مغلق أو لا bid/ask؛ تحقق Market Watch |
+| 10026 | OFF_QUOTES — لا tick حي لحظ التنفيذ | **لا تفترض إغلاق السوق**؛ تحقق Market Watch و`quoteAgeMs` |
 | 10019 | NO_MONEY — هامش غير كافٍ | رصيد/رافعة/حجم لوت — هنا فقط تُذكر الرافعة |
 | 10014 | INVALID_VOLUME | حجم لوت خاطئ |
 | 10015 | INVALID_PRICE | سعر غير صالح |
@@ -44,6 +46,13 @@ GET /api/agent/ea/diagnostics?symbol=EURUSD   # الرموز من heartbeat
 2. اسأل: «هل فتحت صفقة يدوية على نفس الرمز في MT5؟»
 3. إن retcode 10016 ونجح اليدوي بدون SL/TP → المشكلة من مستويات التوصية (ليس الاتصال).
 4. إن فشل اليدوي أيضاً → Liirat/الحساب/السوق — ليس AiChart.
+
+## off quotes رغم تداول يدوي ناجح
+
+- EA v3 يبث أسعار live كل 1–2ث عبر `POST /api/ea/quotes`.
+- التحليل قد يقرأ **cache heartbeat** بينما التنفيذ يتحقق **لحظياً**.
+- إن `quotesOk: true` في diagnostics **واليدوي ينجح** → **ممنوع** قول «السوق مغلق».
+- الحل: تأكد EA v3، الرمز في Market Watch، `quoteAgeMs < 5000` في `get_live_account`.
 
 ## نموذج رد صحيح
 

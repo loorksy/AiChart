@@ -30,19 +30,32 @@ find /opt/aichart/infra /opt/aichart/agent/scripts -name '*.sh' -type f 2>/dev/n
   chmod +x "$f"
 done
 
+set -a
+# shellcheck source=/dev/null
+source /opt/aichart/web/.env 2>/dev/null || true
+set +a
+
 if [[ -f /opt/aichart/agent/scripts/sync-workspace.sh ]]; then
-  log "sync OpenClaw workspace"
-  bash /opt/aichart/agent/scripts/sync-workspace.sh || true
+  if [[ "${OPENCLAW_ENABLED:-0}" != "0" ]] && [[ -f /root/.openclaw/openclaw.json ]]; then
+    log "sync OpenClaw workspace"
+    bash /opt/aichart/agent/scripts/sync-workspace.sh || true
+  else
+    log "skip OpenClaw workspace (OPENCLAW_ENABLED=0 or no config)"
+  fi
 fi
 
 if [[ -f /opt/aichart/agent/scripts/sync-model.sh ]]; then
-  log "sync OpenClaw model (disable heartbeat, cache-ttl)"
-  set -a
-  # shellcheck source=/dev/null
-  source /opt/aichart/web/.env 2>/dev/null || true
-  set +a
-  export AICHART_API_URL="${AICHART_API_URL:-http://127.0.0.1:3010}"
-  bash /opt/aichart/agent/scripts/sync-model.sh || log "sync-model warn"
+  if [[ "${OPENCLAW_ENABLED:-0}" != "0" ]] && [[ -f /root/.openclaw/openclaw.json ]]; then
+    log "sync OpenClaw model (disable heartbeat, cache-ttl)"
+    set -a
+    # shellcheck source=/dev/null
+    source /opt/aichart/web/.env 2>/dev/null || true
+    set +a
+    export AICHART_API_URL="${AICHART_API_URL:-http://127.0.0.1:3010}"
+    bash /opt/aichart/agent/scripts/sync-model.sh || log "sync-model warn"
+  else
+    log "skip sync-model (OpenClaw disabled)"
+  fi
 fi
 
 if [[ -f /opt/aichart/infra/aichart.cron ]] && [[ -f /opt/aichart/web/.env ]]; then
@@ -56,7 +69,19 @@ fi
 
 log "pm2 restart"
 pm2 restart aichart-web --update-env
-pm2 restart aichart-agent --update-env 2>/dev/null || log "aichart-agent skip"
+set -a
+# shellcheck source=/dev/null
+source /opt/aichart/web/.env 2>/dev/null || true
+set +a
+if [[ "${OPENCLAW_ENABLED:-0}" != "0" ]] && pm2 describe aichart-agent >/dev/null 2>&1; then
+  pm2 restart aichart-agent --update-env
+else
+  log "skip aichart-agent (OpenClaw disabled or not installed)"
+fi
+if [[ -f /opt/aichart/infra/vps-mcp-deploy.sh ]]; then
+  log "deploy MCP"
+  bash /opt/aichart/infra/vps-mcp-deploy.sh || log "mcp deploy warn"
+fi
 pm2 save
 sleep 4
 

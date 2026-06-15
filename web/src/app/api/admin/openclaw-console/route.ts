@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, handleError } from "@/lib/api";
+import { isOpenClawEnabled } from "@/lib/openclawModelSync";
 
 function openClawConsoleUrl(): string | null {
   const base =
@@ -16,6 +17,15 @@ function openClawConsoleUrl(): string | null {
 export async function GET() {
   try {
     await requireAdmin();
+    if (!isOpenClawEnabled()) {
+      return NextResponse.json(
+        {
+          openclawEnabled: false,
+          error: "OpenClaw معطّل — استخدم Claude MCP Connector.",
+        },
+        { status: 503 },
+      );
+    }
     const webUiUrl = openClawConsoleUrl();
     if (!webUiUrl) {
       return NextResponse.json(

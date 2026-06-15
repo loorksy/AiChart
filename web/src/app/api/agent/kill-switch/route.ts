@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
+import {
+  eaKillCloseFlagKey,
+  queueEaCloseAllPositions,
+} from "@/lib/eaTradeCommands";
 import { logAudit, setFlag, updateSettings } from "@/lib/store";
 import { closeAllOpenTrades } from "@/lib/tradeClose";
 
@@ -33,6 +37,8 @@ export async function POST(req: NextRequest) {
 
     let closed = null;
     if (body.on && body.close_open_trades) {
+      await queueEaCloseAllPositions(userId);
+      await setFlag(eaKillCloseFlagKey(userId), "1");
       closed = await closeAllOpenTrades(userId);
     }
 

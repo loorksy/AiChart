@@ -48,6 +48,19 @@ export async function GET(
       );
     }
 
+    const asJson =
+      req.nextUrl.searchParams.get("format") === "json" ||
+      req.nextUrl.searchParams.get("response_format") === "json";
+    if (asJson) {
+      return NextResponse.json({
+        ok: true,
+        recommendation_id: recId,
+        symbol: rec.symbol,
+        content_type: "image/png",
+        image_base64: buffer.toString("base64"),
+      });
+    }
+
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "image/png",

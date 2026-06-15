@@ -1,0 +1,160 @@
+# ربط AiChart MCP مع Claude.ai Connectors
+
+## أين تضع عنوان MCP
+
+**المسار:** [claude.ai/customize/connectors](https://claude.ai/customize/connectors) → **Add custom connector** (BETA)
+
+| حقل الواجهة | القيمة |
+|-------------|--------|
+| **Name** | `AiChart Trading` |
+| **Remote MCP server URL** | `https://aichart.lork.cloud/mcp` |
+| **OAuth Client ID** (Advanced) | فارغ |
+| **OAuth Client Secret** (Advanced) | فارغ |
+
+### لا تضع في URL
+
+- لا `AICHART_SERVICE_TOKEN`
+- لا `?token=` في الرابط
+- لا `/api/agent/…` — Claude يتصل بـ MCP Server فقط
+
+---
+
+## 1) تجهيز VPS
+
+### متغيرات في `web/.env`
+
+```env
+AICHART_SERVICE_TOKEN=...          # موجود مسبقاً
+MCP_AUTH_SECRET=...                # openssl rand -hex 32
+MCP_PUBLIC_URL=https://aichart.lork.cloud/mcp
+MCP_PORT=8787
+MCP_AUTH_MODE=oauth
+MCP_ACCESS_TOKEN_TTL_DAYS=365
+MCP_REFRESH_TOKEN_TTL_DAYS=365
+```
+
+`MCP_AUTH_SECRET` **نفس القيمة** على عملية MCP وفي web (لـ `/api/admin/mcp-auth/verify`).
+
+### مصادقة ثابتة (v2)
+
+- **Access token:** JWT موقّع — صالح **365 يوم** — يبقى بعد `pm2 restart aichart-mcp`
+- **Refresh token:** مخزّن في SQLite — Claude يجدّد تلقائياً
+- **OAuth clients:** مخزّنة في SQLite — لا تُفقد عند restart
+
+بعد ترقية MCP لأول مرة: **أعد OAuth في Claude مرة واحدة** (التوكنات القديمة UUID لم تعد صالحة).
+
+### نشر MCP
+
+```bash
+cd /opt/aichart
+bash infra/vps-mcp-deploy.sh
+```
+
+### nginx
+
+أضف محتوى [`infra/nginx/aichart-mcp.conf`](../infra/nginx/aichart-mcp.conf) داخل vhost `aichart.lork.cloud`:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### تحقق
+
+```bash
+curl -s https://aichart.lork.cloud/health
+curl -sI https://aichart.lork.cloud/.well-known/oauth-protected-resource
+```
+
+---
+
+## 2) ربط Claude
+
+1. Customize → Connectors → Add custom connector
+2. URL: `https://aichart.lork.cloud/mcp`
+3. Add → يفتح OAuth → سجّل admin AiChart
+4. بعد الموافقة تظهر أدوات التداول في الشات
+
+---
+
+## 3) أمثلة prompts
+
+```
+تحقق من get_risk_status ثم حلّل BTCUSDT على 1h
+```
+
+```
+ورّيني الصفقات المفتوحة والرصيد
+```
+
+```
+سجّل توصية sell على ETHUSDT بثقة 80% مع SL و TP
+```
+
+```
+افتح صفقة demo على BTCUSDT — approved_by_user: true بعد موافقتي
+```
+
+---
+
+## 4) تعليمات Claude (Project)
+
+> قبل أي صفقة: `get_risk_status` + `get_live_account`. قبل رأي فني: `get_market_snapshot`.  
+> Risk Guard يرفض تجاوز الحدود — انقل السبب حرفياً.  
+> في وضع approval: `request_approval` قبل `open_trade`.  
+> اقرأ resource `aichart://trading-rules` عند الحاجة.
+
+### قائمة أدوات MCP (كاملة)
+
+| الفئة | الأدوات |
+|-------|---------|
+| **حالة** | `get_risk_status`, `get_agent_capabilities`, `get_agent_settings`, `get_execution_env`, `get_live_account` |
+| **إعدادات** | `set_execution_env`, `set_trading_mode`, `set_active_market`, `set_futures_enabled`, `set_kill_switch` |
+| **سوق** | `get_market_snapshot`, `get_market_price`, `get_market_context`, `scan_market` |
+| **محفظة** | `get_portfolio`, `get_open_trades`, `get_trade_lessons`, `get_pending_approvals` |
+| **تداول** | `create_recommendation`, `open_trade`, `close_trade`, `evaluate_trade`, `record_exit_decision` |
+| **موافقات** | `request_approval`, `respond_approval` |
+| **Binance** | `connect_binance`, `verify_binance`, `get_binance_status`, `disconnect_binance`, `capture_binance_chart` |
+| **Futures** | `get_futures_positions`, `get_futures_orders`, `modify_futures_sl_tp`, `cancel_futures_order` |
+| **MT5 EA** | `get_ea_diagnostics`, `get_ea_live_quotes`, `capture_mt5_chart`, `modify_sl_tp`, `open_pending_order`, `cancel_mt5_order`, `close_partial`, `query_mt5_terminal` |
+| **MT5 MetaApi** | `connect_mt5`, `disconnect_mt5`, `get_mt5_status` |
+| **شارت** | `capture_chart_snapshot`, `get_recommendation_chart` |
+| **أخرى** | `run_trade_maintenance`, `send_telegram_menu` |
+
+### أمثلة إضافية
+
+```
+connect_binance testnet ثم get_binance_status
+```
+
+```
+set_active_market forex ثم get_live_account — تحقق quoteAgeMs
+```
+
+```
+open_trade BTCUSDT market_type futures leverage 5 stop_loss …
+```
+
+---
+
+## 5) إيقاف OpenClaw (موصى به)
+
+Claude MCP هو القناة الأساسية. لإزالة OpenClaw من VPS:
+
+```bash
+bash infra/vps-openclaw-decommission.sh
+```
+
+راجع [`OPENCLAW_DECOMMISSION.md`](OPENCLAW_DECOMMISSION.md).
+
+---
+
+## استكشاف الأخطاء
+
+| العرض | الحل |
+|-------|------|
+| Add معطّل / فشل الاتصال | تحقق `curl /health` و nginx `/mcp` |
+| OAuth loop | امسح cookies `aichart_mcp_session` |
+| 401 على الأدوات | أعد ربط Connector (مرة واحدة بعد ترقية JWT) |
+| أدوات تفشل بعد restart | يجب ألا يحدث — JWT ثابت؛ تحقق `pm2 logs aichart-mcp` |
+| Bridge 503 | `AICHART_SERVICE_TOKEN` في web + MCP |
+| login فاشل | `MCP_AUTH_SECRET` متطابق؛ حساب admin |

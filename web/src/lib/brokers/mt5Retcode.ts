@@ -21,7 +21,7 @@ export const MT5_RETCODE_LEGEND: Record<number, string> = {
   10023: "مستوى الأمر مرفوض",
   10024: "عدد الطلبات مرفوض",
   10025: "لا تغيير — الطلب قريب جداً من السوق",
-  10026: "لا سعر حي (off quotes) — سوق مغلق أو لا bid/ask",
+  10026: "لا tick حي لحظ التنفيذ — أضف الرمز إلى Market Watch",
   10027: "الوسيط مشغول",
   10028: "إعادة الاقتباس فقط",
   10029: "التداول مجمّد على الرمز",
@@ -42,6 +42,9 @@ export function formatMt5TradeError(raw: string): string {
   if (code == null) {
     if (/symbol not found/i.test(raw)) {
       return "الرمز غير موجود في MetaTrader — انسخ الاسم من Market Watch حرفياً.";
+    }
+    if (/off quotes/i.test(raw)) {
+      return "لا tick حي لحظ التنفيذ — تأكد أن الرمز في Market Watch ثم أعد المحاولة (ليس بالضرورة إغلاق السوق).";
     }
     return raw;
   }

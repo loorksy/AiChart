@@ -1,5 +1,7 @@
 # AiChart Agent — OpenClaw
 
+> **بديل Claude MCP:** للتداول من **Claude.ai Connectors** بدون OpenClaw، راجع [`mcp/`](../mcp/README.md) و [`docs/MCP_CLAUDE_SETUP.md`](../docs/MCP_CLAUDE_SETUP.md).
+
 الوكيل الحي للمنصة: [OpenClaw](https://openclaw.ai) يدير المحادثة (Telegram)،
 النبض الدوري (heartbeat)، والذاكرة — ويتداول فعلياً عبر Bridge API الخاص
 بالمنصة (`web` → `/api/agent/*`) خلف Risk Guard.

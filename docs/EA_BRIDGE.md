@@ -8,13 +8,14 @@
 
 ```text
 MetaTrader (المستخدم)              AiChart (سيرفر Linux)
-  EA AiChartBridge   ──heartbeat──▶  POST /api/ea/heartbeat
-                     ◀──commands───  (الأوامر المعلّقة في الرد)
+  EA AiChartBridge   ──heartbeat──▶  POST /api/ea/heartbeat  (state + flags)
+                     ──poll───────▶  GET  /api/ea/commands   (every ~1s, v2)
                      ──ack────────▶  POST /api/ea/commands/{id}/ack
 ```
 
-- **heartbeat** كل ثانيتين: يرسل الرصيد/الحقوق، مواصفات الرموز، وشموع الرمز النشط.
-- الرد يتضمن **الأوامر المعلّقة**؛ ينفّذها EA فوراً ثم يرسل **ack**.
+- **heartbeat** كل 30 ثانية (v2): يرسل الرصيد/الحقوق، البوزيشنز المفتوحة، مواصفات الرموز، وشموع الرمز النشط. الرد يتضمن `flags.kill_switch`.
+- **poll** كل ثانية (v2): `GET /api/ea/commands` — ينفّذ الأوامر ثم **ack**.
+- المخدم يُزامِن `positions[]` مع جدول `trades` تلقائياً (صفقات يدوية على MT5).
 - بث الأسعار/الشموع يُخزَّن في `ea_market_cache` ويستخدمه شارت الفوركس.
 
 ## مسار التنفيذ عبر الوكيل
@@ -24,12 +25,17 @@ MetaTrader (المستخدم)              AiChart (سيرفر Linux)
    → createIntent (broker=mt_ea)
    → executeIntent → Risk Guard (نفس الحدود)
    → eaAdapter.placeOrder:
-        - تأكد أن EA online (heartbeat حديث < 30s)
+        - تأكد أن EA online (heartbeat حديث < 90s)
         - احسب اللوت من مواصفات الرمز (lotSizing)
+        - رفض إن لم يُحدَّد stop_loss
         - أنشئ ea_command(open_market)
         - انتظر ack حتى 30s
         - سجّل الصفقة + حدّث حالة الـ intent
 ```
+
+إغلاق / تعديل SL:
+- `POST /api/agent/trade/close` → `close_position` للـ EA
+- `POST /api/agent/trade/exit-decision` مع `adjust_sl` → `modify_sl_tp`
 
 Risk Guard يبقى **السلطة الوحيدة**: لا يصل أمر إلى MT إلا بعد اجتياز كل الحدود.
 
@@ -76,7 +82,7 @@ Risk Guard يبقى **السلطة الوحيدة**: لا يصل أمر إلى M
 ## ملاحظات تشغيلية
 
 - يجب أن يبقى MetaTrader مفتوحاً ومتصلاً (جهاز المستخدم أو VPS Windows خارج سوريا).
-- إذا تأخّر heartbeat أكثر من 30 ثانية تُرفض الأوامر مع رسالة «MetaTrader غير متصل».
+- إذا تأخّر heartbeat أكثر من **90 ثانية** تُرفض الأوامر مع رسالة «MetaTrader غير متصل».
 - الأوامر idempotent: يتذكّر EA آخر `command id` نُفّذ ولا يكرّره.
 - **MT4** يتطلب إضافة رابط AiChart في إعدادات WebRequest.
 

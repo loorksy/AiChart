@@ -41,6 +41,21 @@ npm run dev            # http://localhost:3000
 | `TELEGRAM_BOT_TOKEN` | (اختياري) بوت تليجرام للإشعارات |
 | `CRON_SECRET` | (إنتاج) سرّ لحماية مهام المراقبة والملخّص اليومي |
 
+## Claude MCP — التداول من Connectors
+
+بديل/مكمّل لـ OpenClaw: MCP Server في [`mcp/`](mcp/) يغلّف Bridge API للربط مع **Claude.ai → Customize → Connectors**.
+
+| الحقل | القيمة |
+|-------|--------|
+| Remote MCP server URL | `https://aichart.lork.cloud/mcp` |
+
+دليل كامل: [`docs/MCP_CLAUDE_SETUP.md`](docs/MCP_CLAUDE_SETUP.md) · إيقاف OpenClaw: [`docs/OPENCLAW_DECOMMISSION.md`](docs/OPENCLAW_DECOMMISSION.md)
+
+```bash
+cd mcp && npm install && npm run build
+bash infra/vps-mcp-deploy.sh /opt/aichart
+```
+
 ## المراقبة 24/7 — Event-Driven
 
 الكود (`monitorRunner.ts` + `monitor.ts`) يفحص السوق والصفقات كل 10 دقائق

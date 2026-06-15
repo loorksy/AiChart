@@ -1,21 +1,18 @@
 import {
   createEaCommand,
-  getEaCommand,
   getEaConnection,
   getEaSymbolSpec,
   isHeartbeatFresh,
 } from "../eaStore";
+import { waitForEaCommandAck, EA_ACK_TIMEOUT_MS } from "../eaCommandWait";
 import { recordTrade, updateIntentStatus } from "../store";
 import { computeForexLots } from "./lotSizing";
-import { formatMt5TradeError } from "./mt5Retcode";
 import { normalizeMt5Stops } from "./mt5Stops";
+import { resolveMt5Symbol } from "../mt5SymbolMap";
 import type { BrokerAdapter, OrderResult, PlaceOrderContext } from "./types";
 
 /** Max time to wait for the EA to confirm a command before failing the order. */
-const ACK_TIMEOUT_MS = 30_000;
-const ACK_POLL_MS = 1_000;
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const ACK_TIMEOUT_MS = EA_ACK_TIMEOUT_MS;
 
 /** MetaTrader (MT4/MT5) execution backend via the self-hosted EA bridge. */
 export const eaAdapter: BrokerAdapter = {
@@ -49,9 +46,17 @@ export const eaAdapter: BrokerAdapter = {
       status: "done",
     });
 
+    const mt5Symbol = await resolveMt5Symbol(userId, intent.symbol);
+    if (!mt5Symbol) {
+      const reason = `الرمز ${intent.symbol} غير موجود في heartbeat MetaTrader — أضفه إلى Market Watch.`;
+      push({ id: "quote", label: `الرمز · ${intent.symbol}`, status: "error", detail: reason });
+      await updateIntentStatus(intent.id, "failed", reason);
+      return { ok: false, status: "failed", reason };
+    }
+
     // Size the order in lots from the EA-reported symbol spec.
-    push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "running" });
-    const spec = await getEaSymbolSpec(userId, intent.symbol);
+    push({ id: "quote", label: `حساب حجم اللوت · ${mt5Symbol}`, status: "running" });
+    const spec = await getEaSymbolSpec(userId, mt5Symbol);
     const sideQuote = intent.side === "buy" ? Number(spec?.ask) : Number(spec?.bid);
     const refPrice =
       (intent.entry ?? 0) ||
@@ -88,6 +93,18 @@ export const eaAdapter: BrokerAdapter = {
       });
     }
 
+    if (!stops.stop_loss || stops.stop_loss <= 0) {
+      const reason = "وقف الخسارة مطلوب لفتح الصفقة على MetaTrader.";
+      push({
+        id: "stops",
+        label: `وقف الخسارة · ${intent.symbol}`,
+        status: "error",
+        detail: reason,
+      });
+      await updateIntentStatus(intent.id, "failed", reason);
+      return { ok: false, status: "failed", reason };
+    }
+
     // Queue the command for the EA and wait for its acknowledgement.
     const sideLabel = intent.side === "buy" ? "شراء" : "بيع";
     push({
@@ -99,7 +116,7 @@ export const eaAdapter: BrokerAdapter = {
       intent_id: intent.id,
       command_type: "open_market",
       payload: {
-        symbol: intent.symbol,
+        symbol: mt5Symbol,
         side: intent.side,
         lots: sizing.lots,
         stop_loss: stops.stop_loss,
@@ -108,38 +125,12 @@ export const eaAdapter: BrokerAdapter = {
       ttlMs: ACK_TIMEOUT_MS,
     });
 
-    const deadline = Date.now() + ACK_TIMEOUT_MS;
-    let result: Record<string, unknown> | null = null;
-    let finalStatus: string = "sent";
-    while (Date.now() < deadline) {
-      await sleep(ACK_POLL_MS);
-      const current = await getEaCommand(command.id);
-      if (!current) break;
-      if (current.status === "acked" || current.status === "failed") {
-        finalStatus = current.status;
-        try {
-          result = current.result_json
-            ? (JSON.parse(current.result_json) as Record<string, unknown>)
-            : {};
-        } catch {
-          result = {};
-        }
-        break;
-      }
-      if (current.status === "expired") {
-        finalStatus = "expired";
-        break;
-      }
-    }
+    const ack = await waitForEaCommandAck(command.id, ACK_TIMEOUT_MS);
+    const finalStatus = ack.status;
+    const result = ack.result;
 
-    if (finalStatus !== "acked") {
-      const rawErr = result?.error != null ? String(result.error) : "";
-      const reason =
-        finalStatus === "failed"
-          ? rawErr
-            ? formatMt5TradeError(rawErr)
-            : "رفض MetaTrader الأمر."
-          : "انتهت مهلة انتظار تنفيذ MetaTrader. تأكد من اتصال المنصّة.";
+    if (!ack.ok) {
+      const reason = ack.reason ?? "رفض MetaTrader الأمر.";
       push({ id: "order", label: `إرسال أمر ${sideLabel} · ${intent.symbol}`, status: "error", detail: reason });
       await updateIntentStatus(intent.id, "failed", reason);
       return { ok: false, status: "failed", reason };

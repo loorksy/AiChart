@@ -1,6 +1,6 @@
 {
   "name": "AiChart EA Bridge API",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "auth": {
     "scheme": "Bearer",
     "header": "Authorization",
@@ -9,19 +9,42 @@
     "note": "Generate the token from AiChart → الإعدادات → الربط والتكامل → MetaTrader. Shown once."
   },
   "base_url": "https://aichart.lork.cloud",
+  "ea_inputs_v2": {
+    "ApiBase": "https://aichart.lork.cloud",
+    "EaToken": "API key from AiChart settings",
+    "HeartbeatSeconds": 30,
+    "PollIntervalMs": 1000,
+    "AllowNoSL": false,
+    "MaxRetries": 3,
+    "RetryDelayMs": 500,
+    "AutoSync": true
+  },
   "endpoints": {
     "heartbeat": {
       "method": "POST",
       "path": "/api/ea/heartbeat",
-      "interval_seconds": 2,
+      "interval_seconds": 30,
       "request": {
         "account": {
           "login": "string|number",
           "currency": "string",
           "balance": "number",
           "equity": "number",
-          "broker": "string"
+          "broker": "string",
+          "trade_mode": "demo|live|contest"
         },
+        "positions": [
+          {
+            "ticket": 7927833,
+            "symbol": "EURUSD",
+            "side": "sell",
+            "lots": 0.01,
+            "open_price": 1.085,
+            "sl": 1.09,
+            "tp": 1.08,
+            "profit": -2.5
+          }
+        ],
         "symbols": [
           {
             "symbol": "EURUSD",
@@ -46,25 +69,23 @@
       "response": {
         "ok": true,
         "server_time": "ISO8601",
-        "commands": [
-          {
-            "id": 123,
-            "type": "open_market",
-            "payload": {
-              "symbol": "EURUSD",
-              "side": "buy",
-              "lots": 0.10,
-              "stop_loss": 1.08,
-              "take_profit": 1.10
-            }
-          }
-        ]
-      }
+        "flags": {
+          "kill_switch": false,
+          "close_open_trades": false
+        },
+        "commands": []
+      },
+      "notes": [
+        "v2 EA polls GET /api/ea/commands for trade commands; heartbeat carries state + flags.",
+        "Server reconciles positions[] into aichartTrades on each heartbeat.",
+        "Offline threshold: 90s without heartbeat (EA_HEARTBEAT_TIMEOUT_MS)."
+      ]
     },
     "commands": {
       "method": "GET",
       "path": "/api/ea/commands",
-      "note": "Alternative to commands embedded in the heartbeat response."
+      "poll_interval_ms": 1000,
+      "note": "Primary command delivery for EA v2. Marks commands as sent."
     },
     "ack": {
       "method": "POST",
@@ -88,14 +109,35 @@
         "ok": true,
         "path": "/data/charts/ea/{userId}/{id}.png"
       }
+    },
+    "quotes": {
+      "method": "POST",
+      "path": "/api/ea/quotes",
+      "interval_seconds": 1,
+      "note": "EA v3 live bid/ask push for Market Watch symbols."
+    },
+    "event": {
+      "method": "POST",
+      "path": "/api/ea/event",
+      "note": "EA v3 immediate trade events (OnTradeTransaction)."
     }
   },
   "command_types": {
-    "open_market": "Open a market order (side=buy|sell, lots, optional stop_loss/take_profit).",
+    "open_market": "Open a market order (side=buy|sell, lots, stop_loss required unless EA AllowNoSL).",
     "close_position": "Close an open position by ticket.",
-    "modify_sl_tp": "Modify stop loss / take profit of an open position.",
+    "modify_sl_tp": "Modify stop loss / take profit: { ticket, stop_loss, take_profit? }.",
     "draw_and_capture": "Clear prior AICHART_* objects, draw chart_drawings on MT5 chart, ChartScreenShot, upload PNG.",
-    "clear_chart": "Delete all chart objects with prefix AICHART_{recommendation_id}_ (or all AICHART_* if no id)."
+    "clear_chart": "Delete all chart objects with prefix AICHART_{recommendation_id}_ (or all AICHART_* if no id).",
+    "open_pending": "Pending order: { symbol, side, order_type: limit|stop|stop_limit, lots, price, stop_loss?, take_profit? }.",
+    "cancel_order": "Cancel pending order: { ticket }.",
+    "close_partial": "Partial close: { ticket, lots }.",
+    "ensure_symbol": "SymbolSelect + wait for ticks: { symbol }.",
+    "query_terminal": "Snapshot margin/equity/pending orders (result in ack)."
+  },
+  "modify_sl_tp_payload": {
+    "ticket": "MT5 position ticket",
+    "stop_loss": "new SL price",
+    "take_profit": "optional new TP price"
   },
   "draw_and_capture_payload": {
     "symbol": "MT5 symbol e.g. EURUSD or BTCUSD",
@@ -120,5 +162,5 @@
     "interval": "optional — switches chart timeframe before clear",
     "recommendation_id": "optional — limits delete to AICHART_{id}_*"
   },
-  "idempotency": "The EA must remember the last acked command id and never execute the same command id twice."
+  "idempotency": "The EA remembers recent acked command ids and never executes the same command id twice."
 }

@@ -1,0 +1,215 @@
+import { randomUUID } from "node:crypto";
+import cookieParser from "cookie-parser";
+import express from "express";
+import {
+  createOAuthMetadata,
+  getOAuthProtectedResourceMetadataUrl,
+  mcpAuthMetadataRouter,
+  mcpAuthRouter,
+} from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { BridgeClient } from "./bridge/client.js";
+import { AiChartOAuthProvider } from "./auth/provider.js";
+import { mountLoginRoutes } from "./auth/login.js";
+import { loadConfig } from "./config.js";
+import { createAiChartMcpServer } from "./server/mcpServer.js";
+
+const cfg = loadConfig();
+const bridge = new BridgeClient(cfg);
+const mcpServerUrl = cfg.publicUrl;
+const issuerUrl = new URL(mcpServerUrl.origin);
+
+const app = createMcpExpressApp({
+  host: "0.0.0.0",
+  allowedHosts:
+    cfg.allowedHosts.length > 0
+      ? cfg.allowedHosts
+      : ["localhost", "127.0.0.1", mcpServerUrl.hostname],
+});
+
+app.set("trust proxy", 1);
+
+app.use(cookieParser());
+app.use(express.json({ limit: "4mb" }));
+app.use(express.urlencoded({ extended: false }));
+
+app.get("/health", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "aichart-mcp",
+    authMode: cfg.authMode,
+    mcpUrl: mcpServerUrl.href,
+  });
+});
+
+let authMiddleware: ReturnType<typeof requireBearerAuth> | null = null;
+let oauthProvider: AiChartOAuthProvider | null = null;
+
+if (cfg.authMode === "oauth") {
+  oauthProvider = new AiChartOAuthProvider(cfg);
+  mountLoginRoutes(app, oauthProvider);
+
+  app.use(
+    mcpAuthRouter({
+      provider: oauthProvider,
+      issuerUrl,
+      baseUrl: issuerUrl,
+      scopesSupported: ["mcp:tools"],
+      resourceName: "AiChart Trading MCP",
+      resourceServerUrl: mcpServerUrl,
+    }),
+  );
+
+  const oauthMetadata = createOAuthMetadata({
+    provider: oauthProvider,
+    issuerUrl,
+    baseUrl: issuerUrl,
+    scopesSupported: ["mcp:tools"],
+  });
+  oauthMetadata.introspection_endpoint = new URL(
+    "/oauth/introspect",
+    issuerUrl,
+  ).href;
+
+  app.post("/oauth/introspect", async (req, res) => {
+    try {
+      const token = String(req.body?.token ?? "");
+      if (!token) {
+        res.status(400).json({ error: "token required" });
+        return;
+      }
+      const info = await oauthProvider!.verifyAccessToken(token);
+      res.json({
+        active: true,
+        client_id: info.clientId,
+        scope: info.scopes.join(" "),
+        exp: info.expiresAt,
+        aud: info.resource?.href,
+      });
+    } catch {
+      res.status(401).json({ active: false });
+    }
+  });
+
+  app.use(
+    mcpAuthMetadataRouter({
+      oauthMetadata,
+      resourceServerUrl: mcpServerUrl,
+      scopesSupported: ["mcp:tools"],
+      resourceName: "AiChart Trading MCP",
+    }),
+  );
+
+  const tokenVerifier = {
+    verifyAccessToken: async (token: string) =>
+      oauthProvider!.verifyAccessToken(token),
+  };
+
+  authMiddleware = requireBearerAuth({
+    verifier: tokenVerifier,
+    requiredScopes: [],
+    resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(mcpServerUrl),
+  });
+}
+
+const transports: Record<string, StreamableHTTPServerTransport> = {};
+
+const mcpPostHandler = async (
+  req: import("express").Request,
+  res: import("express").Response,
+) => {
+  try {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    let transport: StreamableHTTPServerTransport | undefined;
+
+    if (sessionId && transports[sessionId]) {
+      transport = transports[sessionId];
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sid) => {
+          transports[sid] = transport!;
+        },
+      });
+      transport.onclose = () => {
+        const sid = transport!.sessionId;
+        if (sid && transports[sid]) delete transports[sid];
+      };
+      const server = createAiChartMcpServer(bridge);
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+      return;
+    } else {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Bad Request: No valid session ID provided",
+        },
+        id: null,
+      });
+      return;
+    }
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error("[mcp] POST error:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal server error" },
+        id: null,
+      });
+    }
+  }
+};
+
+const mcpGetHandler = async (
+  req: import("express").Request,
+  res: import("express").Response,
+) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  if (!sessionId || !transports[sessionId]) {
+    res.status(400).send("Invalid or missing session ID");
+    return;
+  }
+  await transports[sessionId].handleRequest(req, res);
+};
+
+const mcpDeleteHandler = async (
+  req: import("express").Request,
+  res: import("express").Response,
+) => {
+  const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  if (!sessionId || !transports[sessionId]) {
+    res.status(400).send("Invalid or missing session ID");
+    return;
+  }
+  await transports[sessionId].handleRequest(req, res);
+};
+
+if (authMiddleware) {
+  app.post("/mcp", authMiddleware, mcpPostHandler);
+  app.get("/mcp", authMiddleware, mcpGetHandler);
+  app.delete("/mcp", authMiddleware, mcpDeleteHandler);
+} else {
+  app.post("/mcp", mcpPostHandler);
+  app.get("/mcp", mcpGetHandler);
+  app.delete("/mcp", mcpDeleteHandler);
+}
+
+app.listen(cfg.port, () => {
+  console.log(
+    `[aichart-mcp] listening on :${cfg.port} auth=${cfg.authMode} public=${mcpServerUrl.href}`,
+  );
+});
+
+process.on("SIGINT", async () => {
+  for (const sid of Object.keys(transports)) {
+    await transports[sid]?.close().catch(() => {});
+    delete transports[sid];
+  }
+  process.exit(0);
+});

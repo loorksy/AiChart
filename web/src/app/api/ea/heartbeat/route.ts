@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleError } from "@/lib/api";
 import { requireEaConnection } from "@/lib/eaAuth";
 import {
-  fetchPendingEaCommands,
   recordEaHeartbeat,
   saveEaCandles,
 } from "@/lib/eaStore";
+import { reconcileEaPositions } from "@/lib/eaPositionSync";
+import { eaKillCloseFlagKey } from "@/lib/eaTradeCommands";
+import { parseEaPositions } from "@/lib/executionEnv";
+import { getFlag, getSettings, setFlag } from "@/lib/store";
 
 interface HeartbeatBody {
   account?: {
@@ -26,14 +29,17 @@ interface HeartbeatBody {
 }
 
 /**
- * EA → server heartbeat. The EA posts account state, symbol specs, and
- * (optionally) candles for the active symbol. We return any pending trade
- * commands so the EA can execute them in the same round-trip.
+ * EA → server heartbeat. Posts account state; v2 EA polls commands via GET.
  */
 export async function POST(req: NextRequest) {
   try {
     const conn = await requireEaConnection(req);
     const body = (await req.json().catch(() => ({}))) as HeartbeatBody;
+
+    const previousPositions = parseEaPositions(conn.positions_json ?? null);
+    const incomingPositions = Array.isArray(body.positions)
+      ? parseEaPositions(JSON.stringify(body.positions))
+      : [];
 
     await recordEaHeartbeat(conn.user_id, {
       broker_name: body.account?.broker ?? null,
@@ -51,6 +57,14 @@ export async function POST(req: NextRequest) {
         : null,
     });
 
+    if (incomingPositions.length > 0 || previousPositions.length > 0) {
+      await reconcileEaPositions(
+        conn.user_id,
+        incomingPositions,
+        previousPositions,
+      );
+    }
+
     if (
       body.candles?.symbol &&
       body.candles.interval &&
@@ -64,15 +78,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const commands = await fetchPendingEaCommands(conn.user_id);
+    const settings = await getSettings(conn.user_id);
+    const killCloseKey = eaKillCloseFlagKey(conn.user_id);
+    const closeOpenPending = (await getFlag(killCloseKey)) === "1";
+    if (closeOpenPending) {
+      await setFlag(killCloseKey, "0");
+    }
+
     return NextResponse.json({
       ok: true,
       server_time: new Date().toISOString(),
-      commands: commands.map((c) => ({
-        id: c.id,
-        type: c.command_type,
-        payload: JSON.parse(c.payload_json) as unknown,
-      })),
+      flags: {
+        kill_switch: settings.kill_switch === 1,
+        close_open_trades: closeOpenPending,
+      },
+      commands: [],
     });
   } catch (err) {
     return handleError(err);

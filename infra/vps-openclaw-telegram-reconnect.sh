@@ -51,6 +51,11 @@ if [[ -x "$SCRIPT_DIR/telegram-setup-ar-commands.sh" ]]; then
   bash "$SCRIPT_DIR/telegram-setup-ar-commands.sh" || log "setup-ar-commands failed (continuing)"
 fi
 
+if [[ -x "$SCRIPT_DIR/sync-openclaw-auth.sh" ]]; then
+  log "sync LLM API keys from platform_config to OpenClaw auth"
+  bash "$SCRIPT_DIR/sync-openclaw-auth.sh" anthropic || log "sync-openclaw-auth failed (continuing)"
+fi
+
 if [[ -f "$WEB_ENV" ]]; then
   PORT="$(grep '^PORT=' "$WEB_ENV" | cut -d= -f2- || echo 3010)"
   SVC="$(grep '^AICHART_SERVICE_TOKEN=' "$WEB_ENV" | cut -d= -f2- || true)"

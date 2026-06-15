@@ -27,6 +27,19 @@
    `Tools → Options → Expert Advisors → Allow WebRequest for listed URL`.
 5. فعّل **AutoTrading** (الزر الأخضر).
 
+## EA v2.00 — إعدادات جديدة
+
+| Input | الافتراضي | الغرض |
+|-------|-----------|--------|
+| `HeartbeatSeconds` | 30 | نبضة الحالة (رصيد، بوزيشنز، شموع) |
+| `PollIntervalMs` | 1000 | استطلاع الأوامر عبر `GET /api/ea/commands` |
+| `AllowNoSL` | false | رفض فتح صفقة بدون وقف خسارة |
+| `MaxRetries` | 3 | إعادة المحاولة عند broker busy / requote |
+| `RetryDelayMs` | 500 | الفاصل بين المحاولات |
+| `AutoSync` | true | heartbeat فوري عند تغيير البوزيشن |
+
+راجع [`mt5/CHANGELOG.md`](mt5/CHANGELOG.md) للتفاصيل.
+
 عند نجاح الاتصال ستظهر الحالة **online** في صفحة الإعدادات وفي شارة السوق.
 
 راجع التفاصيل الكاملة في [`docs/EA_BRIDGE.md`](../docs/EA_BRIDGE.md).

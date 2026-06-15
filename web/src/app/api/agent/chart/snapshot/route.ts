@@ -19,6 +19,8 @@ const schema = z.object({
   market: z.enum(["crypto", "forex"]).optional(),
   pattern_name: z.string().nullish(),
   chart_drawings: z.array(z.record(z.string(), z.unknown())).optional(),
+  /** json = base64 PNG for MCP; png = raw image (default for curl). */
+  response_format: z.enum(["json", "png"]).optional().default("json"),
 });
 
 /**
@@ -79,6 +81,14 @@ export async function POST(req: NextRequest) {
         { error: "تعذّر توليد صورة الشارت." },
         { status: 503 },
       );
+    }
+
+    if (body.response_format === "json") {
+      return NextResponse.json({
+        ok: true,
+        content_type: "image/png",
+        image_base64: buffer.toString("base64"),
+      });
     }
 
     return new NextResponse(new Uint8Array(buffer), {

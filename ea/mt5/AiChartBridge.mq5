@@ -5,22 +5,37 @@
 //+------------------------------------------------------------------+
 #property copyright "AiChart"
 #property link      "https://aichart.lork.cloud"
-#property version   "1.03"
+#property version   "3.00"
 #property strict
 
 #include <Trade/Trade.mqh>
 
 //--- Inputs --------------------------------------------------------
-input string  ApiBase          = "https://aichart.lork.cloud"; // AiChart base URL
+input string  ApiBase          = "https://aichart.lork.cloud"; // AiChart base URL (ApiKey = EaToken)
 input string  EaToken          = "";                            // EA token from AiChart settings
 input string  StreamSymbol     = "EURUSD";                      // Symbol to stream candles for
 input ENUM_TIMEFRAMES StreamTF = PERIOD_H1;                     // Candle timeframe
 input int     CandleCount      = 200;                           // Candles per heartbeat
-input int     HeartbeatSeconds = 1;                             // Heartbeat interval
+input int     HeartbeatSeconds = 30;                            // Heartbeat interval (seconds)
+input int     PollIntervalMs   = 1000;                          // Command poll interval (ms)
+input bool    AllowNoSL        = false;                         // Allow trades without stop loss
+input int     MaxRetries       = 3;                             // Retries for broker busy / requote
+input int     RetryDelayMs     = 500;                           // Delay between retries (ms)
+input bool    AutoSync         = true;                          // Immediate heartbeat on position change
 input int     MaxSymbols       = 40;                            // Max symbols in Market Watch to report
+input int     QuoteFlushSeconds = 1;                            // Live quote push interval (seconds)
+input int     QuoteWaitAttempts = 8;                            // Ticks to wait before off-quotes fail
+input int     QuoteWaitDelayMs  = 250;                          // Delay between quote wait attempts (ms)
 
 CTrade  trade;
-long    g_last_acked = 0;     // last executed command id (idempotency)
+long    g_last_acked = 0;
+long    g_acked_ids[32];
+int     g_acked_count = 0;
+int     g_hb_failures = 0;
+bool    g_trading_halted = false;
+datetime g_last_sync_hb = 0;
+datetime g_last_hb_time = 0;
+datetime g_last_quote_flush = 0;
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -30,19 +45,92 @@ int OnInit()
       Print("AiChartBridge: EaToken is not set. Open EA properties and paste your token.");
       return(INIT_FAILED);
    }
-   EventSetTimer(MathMax(1, HeartbeatSeconds));
-   Print("AiChartBridge MT5 started. Base=", ApiBase);
+   // FIX: 1 — millisecond timer drives poll + heartbeat scheduling in OnTimer
+   EventSetMillisecondTimer(MathMax(200, PollIntervalMs));
+   Print("AiChartBridge MT5 v3 started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s");
+   PreWarmSymbols();
+   // FIX: 1 — immediate heartbeat on attach
+   SendHeartbeat();
    return(INIT_SUCCEEDED);
 }
 
-void OnDeinit(const int reason) { EventKillTimer(); }
+void OnDeinit(const int reason)
+{
+   EventKillTimer();
+}
+
+//+------------------------------------------------------------------+
+// FIX: 1 — OnTradeTransaction triggers debounced sync heartbeat
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+{
+   if(!AutoSync) return;
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD &&
+      trans.type != TRADE_TRANSACTION_ORDER_ADD &&
+      trans.type != TRADE_TRANSACTION_POSITION)
+      return;
+   datetime now = TimeCurrent();
+   if(now - g_last_sync_hb < 2) return;
+   g_last_sync_hb = now;
+   // v3 — immediate trade event + sync heartbeat
+   SendTradeEvent("trade_transaction", trans.symbol, (long)trans.deal);
+   SendHeartbeat();
+}
 
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   static ulong lastPollMs = 0;
+   ulong nowMs = GetTickCount64();
+   if(nowMs - lastPollMs >= (ulong)MathMax(200, PollIntervalMs))
+   {
+      lastPollMs = nowMs;
+      PollCommands();
+   }
+
+   datetime now = TimeCurrent();
+   if(g_last_hb_time == 0 || now - g_last_hb_time >= HeartbeatSeconds)
+   {
+      g_last_hb_time = now;
+      SendHeartbeat();
+   }
+
+   if(QuoteFlushSeconds > 0 &&
+      (g_last_quote_flush == 0 || now - g_last_quote_flush >= QuoteFlushSeconds))
+   {
+      g_last_quote_flush = now;
+      FlushLiveQuotes();
+   }
+}
+
+//+------------------------------------------------------------------+
+// FIX: 1 — resilient heartbeat (no silent drop on transient failure)
+void SendHeartbeat()
+{
    string body = BuildHeartbeat();
    string resp = "";
    if(!HttpPost("/api/ea/heartbeat", body, resp))
+   {
+      g_hb_failures++;
+      if(g_hb_failures == 1 || g_hb_failures % 10 == 0)
+         Print("AiChartBridge: heartbeat failed (", g_hb_failures, "). Check WebRequest URL and network.");
+      return;
+   }
+   if(g_hb_failures > 0)
+   {
+      Print("AiChartBridge: heartbeat restored after ", g_hb_failures, " failure(s).");
+      g_hb_failures = 0;
+   }
+   // FIX: 6 — process kill switch flags from server (commands via PollCommands)
+   ProcessKillSwitchFlags(resp);
+}
+
+//+------------------------------------------------------------------+
+void PollCommands()
+{
+   string resp = "";
+   if(!HttpGet("/api/ea/commands", resp))
       return;
    ProcessCommands(resp);
 }
@@ -226,12 +314,18 @@ void HandleCommand(string obj)
    long   id   = (long)JsonNum(obj, "id");
    string type = JsonStrVal(obj, "type");
    if(id <= 0) return;
-   if(id == g_last_acked) return; // idempotency
+   if(IsCommandAcked(id)) return;
 
    string payload = PayloadBlock(obj);
 
    if(type == "open_market")
    {
+      // FIX: 6 — reject new trades while kill switch active
+      if(g_trading_halted)
+      {
+         AckCommand(id, "failed", 0, 0, 0, "kill switch active");
+         return;
+      }
       string sym  = PayloadStrVal(payload, obj, "symbol");
       string side = PayloadStrVal(payload, obj, "side");
       double lots = PayloadNum(payload, obj, "lots");
@@ -244,6 +338,14 @@ void HandleCommand(string obj)
       long ticket = (long)PayloadNum(payload, obj, "ticket");
       ClosePosition(id, ticket);
    }
+   else if(type == "modify_sl_tp")
+   {
+      // FIX: 5 — remote SL/TP modify
+      long ticket = (long)PayloadNum(payload, obj, "ticket");
+      double sl = PayloadNum(payload, obj, "stop_loss");
+      double tp = PayloadNum(payload, obj, "take_profit");
+      ModifyPosition(id, ticket, sl, tp);
+   }
    else if(type == "draw_and_capture")
    {
       DrawAndCapture(id, payload);
@@ -252,10 +354,160 @@ void HandleCommand(string obj)
    {
       ClearChartCommand(id, payload);
    }
+   else if(type == "open_pending")
+   {
+      if(g_trading_halted)
+      {
+         AckCommand(id, "failed", 0, 0, 0, "kill switch active");
+         return;
+      }
+      string sym = PayloadStrVal(payload, obj, "symbol");
+      string side = PayloadStrVal(payload, obj, "side");
+      string orderType = PayloadStrVal(payload, obj, "order_type");
+      double lots = PayloadNum(payload, obj, "lots");
+      double price = PayloadNum(payload, obj, "price");
+      double sl = PayloadNum(payload, obj, "stop_loss");
+      double tp = PayloadNum(payload, obj, "take_profit");
+      ExecutePending(id, sym, side, orderType, lots, price, sl, tp);
+   }
+   else if(type == "cancel_order")
+   {
+      long ticket = (long)PayloadNum(payload, obj, "ticket");
+      CancelOrderCommand(id, ticket);
+   }
+   else if(type == "close_partial")
+   {
+      long ticket = (long)PayloadNum(payload, obj, "ticket");
+      double lots = PayloadNum(payload, obj, "lots");
+      ClosePartial(id, ticket, lots);
+   }
+   else if(type == "ensure_symbol")
+   {
+      string sym = PayloadStrVal(payload, obj, "symbol");
+      EnsureSymbol(id, sym);
+   }
+   else if(type == "query_terminal")
+   {
+      QueryTerminal(id);
+   }
    else
    {
       AckCommand(id, "failed", 0, 0, 0, "unsupported command type");
    }
+}
+
+// v3 — pre-warm Market Watch symbols for live ticks
+void PreWarmSymbols()
+{
+   string core[] = {"EURUSD", "GBPUSD", "USDJPY", "XAUUSD"};
+   for(int i = 0; i < ArraySize(core); i++)
+      SymbolSelect(core[i], true);
+   if(StreamSymbol != "")
+      SymbolSelect(StreamSymbol, true);
+   int total = SymbolsTotal(true);
+   for(int j = 0; j < total && j < MaxSymbols; j++)
+   {
+      string s = SymbolName(j, true);
+      if(s != "") SymbolSelect(s, true);
+   }
+}
+
+// v3 — wait for live bid/ask after SymbolSelect
+bool WaitForLiveQuotes(string sym)
+{
+   if(!SymbolSelect(sym, true)) return false;
+   for(int attempt = 0; attempt < MathMax(1, QuoteWaitAttempts); attempt++)
+   {
+      long tradeMode = SymbolInfoInteger(sym, SYMBOL_TRADE_MODE);
+      if(tradeMode == SYMBOL_TRADE_MODE_DISABLED) return false;
+
+      MqlTick tick;
+      if(SymbolInfoTick(sym, tick) && tick.bid > 0 && tick.ask > 0)
+         return true;
+
+      double bid = SymbolInfoDouble(sym, SYMBOL_BID);
+      double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
+      if(bid > 0 && ask > 0) return true;
+
+      Sleep(MathMax(50, QuoteWaitDelayMs));
+   }
+   return false;
+}
+
+// FIX: 3 — retry broker busy (10027), requote (10004), off quotes (10026)
+bool TryMarketOrder(string sym, string side, double lots, double sl, double tp, uint &retcode)
+{
+   for(int attempt = 0; attempt < MathMax(1, MaxRetries); attempt++)
+   {
+      if(!WaitForLiveQuotes(sym))
+      {
+         retcode = 10026;
+         Sleep(MathMax(100, RetryDelayMs));
+         continue;
+      }
+
+      trade.SetDeviationInPoints(20);
+      bool ok = false;
+      if(side == "buy")
+         ok = trade.Buy(lots, sym, 0.0, sl, tp, "AiChart");
+      else
+         ok = trade.Sell(lots, sym, 0.0, sl, tp, "AiChart");
+
+      if(ok)
+      {
+         retcode = trade.ResultRetcode();
+         return true;
+      }
+
+      retcode = trade.ResultRetcode();
+      if(retcode == 10027 || retcode == 10004 || retcode == 10026)
+      {
+         Sleep(MathMax(100, RetryDelayMs));
+         continue;
+      }
+      break;
+   }
+   return false;
+}
+
+bool TryPositionClose(ulong ticket, uint &retcode)
+{
+   for(int attempt = 0; attempt < MathMax(1, MaxRetries); attempt++)
+   {
+      if(trade.PositionClose(ticket))
+      {
+         retcode = trade.ResultRetcode();
+         return true;
+      }
+      retcode = trade.ResultRetcode();
+      if(retcode == 10027 || retcode == 10004)
+      {
+         Sleep(MathMax(100, RetryDelayMs));
+         continue;
+      }
+      break;
+   }
+   return false;
+}
+
+bool TryPositionModify(ulong ticket, double sl, double tp, uint &retcode)
+{
+   for(int attempt = 0; attempt < MathMax(1, MaxRetries); attempt++)
+   {
+      if(trade.PositionModify(ticket, sl, tp))
+      {
+         retcode = trade.ResultRetcode();
+         return true;
+      }
+      retcode = trade.ResultRetcode();
+      if(retcode == 10027 || retcode == 10004)
+      {
+         Sleep(MathMax(100, RetryDelayMs));
+         continue;
+      }
+      break;
+   }
+   return false;
 }
 
 void ExecuteMarket(long id, string sym, string side, double lots, double sl, double tp)
@@ -265,40 +517,390 @@ void ExecuteMarket(long id, string sym, string side, double lots, double sl, dou
       AckCommand(id, "failed", 0, 0, 0, "invalid order params");
       return;
    }
+   // FIX: 7 — require stop loss unless explicitly allowed
+   if(!AllowNoSL && sl <= 0)
+   {
+      AckCommand(id, "failed", 0, 0, 0, "stop_loss required");
+      return;
+   }
    if(!SymbolSelect(sym, true))
    {
       AckCommand(id, "failed", 0, 0, 0, "symbol not found: " + sym);
       return;
    }
-   trade.SetDeviationInPoints(20);
-   bool ok = false;
-   if(side == "buy")
-      ok = trade.Buy(lots, sym, 0.0, sl, tp, "AiChart");
-   else
-      ok = trade.Sell(lots, sym, 0.0, sl, tp, "AiChart");
+   if(!WaitForLiveQuotes(sym))
+   {
+      AckCommand(id, "failed", 0, 0, 0, "off quotes: no live bid/ask for " + sym);
+      return;
+   }
 
-   if(ok)
+   uint retcode = 0;
+   if(TryMarketOrder(sym, side, lots, sl, tp, retcode))
    {
       long   ticket = (long)trade.ResultOrder();
       double price  = trade.ResultPrice();
-      g_last_acked  = id;
+      MarkCommandAcked(id);
       AckCommand(id, "acked", ticket, price, lots, "");
    }
    else
    {
-      AckCommand(id, "failed", 0, 0, 0, "retcode " + (string)trade.ResultRetcode());
+      AckCommand(id, "failed", 0, 0, 0, "retcode " + (string)retcode);
    }
 }
 
 void ClosePosition(long id, long ticket)
 {
-   if(trade.PositionClose((ulong)ticket))
+   uint retcode = 0;
+   if(TryPositionClose((ulong)ticket, retcode))
    {
-      g_last_acked = id;
+      MarkCommandAcked(id);
       AckCommand(id, "acked", ticket, 0, 0, "");
    }
    else
-      AckCommand(id, "failed", ticket, 0, 0, "close failed " + (string)trade.ResultRetcode());
+      AckCommand(id, "failed", ticket, 0, 0, "close failed retcode " + (string)retcode);
+}
+
+// FIX: 5 — modify SL/TP on open position
+void ModifyPosition(long id, long ticket, double sl, double tp)
+{
+   if(ticket <= 0)
+   {
+      AckCommand(id, "failed", 0, 0, 0, "invalid ticket");
+      return;
+   }
+   if(!PositionSelectByTicket((ulong)ticket))
+   {
+      AckCommand(id, "failed", ticket, 0, 0, "position not found");
+      return;
+   }
+
+   double curSl = PositionGetDouble(POSITION_SL);
+   double curTp = PositionGetDouble(POSITION_TP);
+   double newSl = (sl > 0) ? sl : curSl;
+   double newTp = (tp > 0) ? tp : curTp;
+
+   uint retcode = 0;
+   if(TryPositionModify((ulong)ticket, newSl, newTp, retcode))
+   {
+      MarkCommandAcked(id);
+      AckCommand(id, "acked", ticket, 0, 0, "");
+   }
+   else
+      AckCommand(id, "failed", ticket, 0, 0, "modify failed retcode " + (string)retcode);
+}
+
+// v3 — pending limit/stop orders
+void ExecutePending(long id, string sym, string side, string orderType, double lots, double price, double sl, double tp)
+{
+   if(sym == "" || lots <= 0 || price <= 0)
+   {
+      AckCommand(id, "failed", 0, 0, 0, "invalid pending order params");
+      return;
+   }
+   if(!AllowNoSL && sl <= 0)
+   {
+      AckCommand(id, "failed", 0, 0, 0, "stop_loss required");
+      return;
+   }
+   if(!SymbolSelect(sym, true))
+   {
+      AckCommand(id, "failed", 0, 0, 0, "symbol not found: " + sym);
+      return;
+   }
+   if(!WaitForLiveQuotes(sym))
+   {
+      AckCommand(id, "failed", 0, 0, 0, "off quotes: no live bid/ask for " + sym);
+      return;
+   }
+
+   trade.SetDeviationInPoints(20);
+   bool ok = false;
+   long placedTicket = 0;
+   bool isBuy = (side == "buy");
+   string ot = orderType;
+   if(ot == "limit")
+   {
+      if(isBuy)
+         ok = trade.BuyLimit(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
+      else
+         ok = trade.SellLimit(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
+   }
+   else if(ot == "stop")
+   {
+      if(isBuy)
+         ok = trade.BuyStop(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
+      else
+         ok = trade.SellStop(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
+   }
+   else if(ot == "stop_limit")
+   {
+      MqlTradeRequest req;
+      MqlTradeResult  res;
+      ZeroMemory(req);
+      ZeroMemory(res);
+      req.action       = TRADE_ACTION_PENDING;
+      req.symbol       = sym;
+      req.volume       = lots;
+      req.type         = isBuy ? ORDER_TYPE_BUY_STOP_LIMIT : ORDER_TYPE_SELL_STOP_LIMIT;
+      req.price        = price;
+      req.stoplimit    = price;
+      req.sl           = (sl > 0) ? sl : 0;
+      req.tp           = (tp > 0) ? tp : 0;
+      req.type_time    = ORDER_TIME_GTC;
+      req.type_filling = ORDER_FILLING_RETURN;
+      req.comment      = "AiChart";
+      ok = OrderSend(req, res) &&
+           (res.retcode == TRADE_RETCODE_DONE || res.retcode == TRADE_RETCODE_PLACED);
+      if(ok) placedTicket = (long)res.order;
+   }
+   else
+   {
+      AckCommand(id, "failed", 0, 0, 0, "unsupported order_type: " + ot);
+      return;
+   }
+
+   if(ok)
+   {
+      long ticket = placedTicket > 0 ? placedTicket : (long)trade.ResultOrder();
+      MarkCommandAcked(id);
+      AckCommand(id, "acked", ticket, price, lots, "");
+   }
+   else
+      AckCommand(id, "failed", 0, 0, 0, "retcode " + (string)trade.ResultRetcode());
+}
+
+void CancelOrderCommand(long id, long ticket)
+{
+   if(ticket <= 0)
+   {
+      AckCommand(id, "failed", 0, 0, 0, "invalid ticket");
+      return;
+   }
+   if(trade.OrderDelete((ulong)ticket))
+   {
+      MarkCommandAcked(id);
+      AckCommand(id, "acked", ticket, 0, 0, "");
+   }
+   else
+      AckCommand(id, "failed", ticket, 0, 0, "cancel failed retcode " + (string)trade.ResultRetcode());
+}
+
+void ClosePartial(long id, long ticket, double lots)
+{
+   if(ticket <= 0 || lots <= 0)
+   {
+      AckCommand(id, "failed", 0, 0, 0, "invalid partial close params");
+      return;
+   }
+   if(!PositionSelectByTicket((ulong)ticket))
+   {
+      AckCommand(id, "failed", ticket, 0, 0, "position not found");
+      return;
+   }
+   uint retcode = 0;
+   for(int attempt = 0; attempt < MathMax(1, MaxRetries); attempt++)
+   {
+      if(trade.PositionClosePartial((ulong)ticket, lots))
+      {
+         retcode = trade.ResultRetcode();
+         MarkCommandAcked(id);
+         AckCommand(id, "acked", ticket, trade.ResultPrice(), lots, "");
+         return;
+      }
+      retcode = trade.ResultRetcode();
+      if(retcode == 10027 || retcode == 10004 || retcode == 10026)
+      {
+         Sleep(MathMax(100, RetryDelayMs));
+         continue;
+      }
+      break;
+   }
+   AckCommand(id, "failed", ticket, 0, 0, "partial close retcode " + (string)retcode);
+}
+
+void EnsureSymbol(long id, string sym)
+{
+   if(sym == "")
+   {
+      AckCommand(id, "failed", 0, 0, 0, "symbol required");
+      return;
+   }
+   if(WaitForLiveQuotes(sym))
+   {
+      double bid = SymbolInfoDouble(sym, SYMBOL_BID);
+      double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
+      string inner = "\"symbol\":" + JsonStr(sym) + ",\"bid\":" + DoubleToString(bid, 5) + ",\"ask\":" + DoubleToString(ask, 5);
+      MarkCommandAcked(id);
+      AckCommandEx(id, "acked", inner, "");
+   }
+   else
+      AckCommand(id, "failed", 0, 0, 0, "off quotes: no live bid/ask for " + sym);
+}
+
+void QueryTerminal(long id)
+{
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   double margin = AccountInfoDouble(ACCOUNT_MARGIN);
+   double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+   double profit = AccountInfoDouble(ACCOUNT_PROFIT);
+   long leverage = AccountInfoInteger(ACCOUNT_LEVERAGE);
+
+   string pending = "[";
+   int pc = 0;
+   for(int i = 0; i < OrdersTotal(); i++)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0) continue;
+      if(!OrderSelect(ticket)) continue;
+      if(pc > 0) pending += ",";
+      pending += "{";
+      pending += "\"ticket\":" + (string)(long)ticket + ",";
+      pending += "\"symbol\":" + JsonStr(OrderGetString(ORDER_SYMBOL)) + ",";
+      pending += "\"type\":" + (string)OrderGetInteger(ORDER_TYPE) + ",";
+      pending += "\"volume\":" + DoubleToString(OrderGetDouble(ORDER_VOLUME_CURRENT), 2) + ",";
+      pending += "\"price\":" + DoubleToString(OrderGetDouble(ORDER_PRICE_OPEN), 5);
+      pending += "}";
+      pc++;
+   }
+   pending += "]";
+
+   string inner = "\"balance\":" + DoubleToString(balance, 2) + ",";
+   inner += "\"equity\":" + DoubleToString(equity, 2) + ",";
+   inner += "\"margin\":" + DoubleToString(margin, 2) + ",";
+   inner += "\"free_margin\":" + DoubleToString(freeMargin, 2) + ",";
+   inner += "\"profit\":" + DoubleToString(profit, 2) + ",";
+   inner += "\"leverage\":" + (string)leverage + ",";
+   inner += "\"positions_count\":" + (string)PositionsTotal() + ",";
+   inner += "\"pending_orders\":" + pending;
+
+   MarkCommandAcked(id);
+   AckCommandEx(id, "acked", inner, "");
+}
+
+// v3 — push live quotes to server
+void FlushLiveQuotes()
+{
+   string arr = "[";
+   int total = SymbolsTotal(true);
+   int count = 0;
+   for(int i = 0; i < total && count < MaxSymbols; i++)
+   {
+      string sym = SymbolName(i, true);
+      if(sym == "") continue;
+      double bid = SymbolInfoDouble(sym, SYMBOL_BID);
+      double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
+      if(bid <= 0 && ask <= 0) continue;
+      datetime tickTime = (datetime)SymbolInfoInteger(sym, SYMBOL_TIME);
+
+      if(count > 0) arr += ",";
+      arr += "{";
+      arr += "\"symbol\":" + JsonStr(sym) + ",";
+      arr += "\"bid\":" + DoubleToString(bid, 8) + ",";
+      arr += "\"ask\":" + DoubleToString(ask, 8) + ",";
+      arr += "\"tick_time\":" + (string)(long)tickTime;
+      arr += "}";
+      count++;
+   }
+   arr += "]";
+   if(count == 0) return;
+
+   string body = "{\"quotes\":" + arr + "}";
+   string resp = "";
+   HttpPost("/api/ea/quotes", body, resp);
+}
+
+// v3 — immediate trade event push
+void SendTradeEvent(string eventType, string sym, long dealId)
+{
+   string body = "{";
+   body += "\"type\":" + JsonStr(eventType) + ",";
+   body += "\"symbol\":" + JsonStr(sym) + ",";
+   body += "\"deal_id\":" + (string)dealId + ",";
+   body += "\"time\":" + (string)(long)TimeCurrent();
+   body += "}";
+   string resp = "";
+   HttpPost("/api/ea/event", body, resp);
+}
+
+// FIX: 6 — close every open position (kill switch)
+void CloseAllPositions()
+{
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      uint retcode = 0;
+      TryPositionClose(ticket, retcode);
+   }
+}
+
+// FIX: 6 — parse kill_switch flags from heartbeat JSON
+void ProcessKillSwitchFlags(string resp)
+{
+   int fi = StringFind(resp, "\"flags\"");
+   if(fi < 0) return;
+   int blockStart = StringFind(resp, "{", fi);
+   if(blockStart < 0) return;
+
+   int depth = 0;
+   string flagsBlock = "";
+   for(int p = blockStart; p < StringLen(resp); p++)
+   {
+      ushort ch = StringGetCharacter(resp, p);
+      if(ch == '{') depth++;
+      else if(ch == '}')
+      {
+         depth--;
+         if(depth == 0)
+         {
+            flagsBlock = StringSubstr(resp, blockStart, p - blockStart + 1);
+            break;
+         }
+      }
+   }
+   if(flagsBlock == "") return;
+
+   bool killOn = JsonBool(flagsBlock, "kill_switch");
+   bool closeOpen = JsonBool(flagsBlock, "close_open_trades");
+
+   if(killOn && !g_trading_halted)
+   {
+      g_trading_halted = true;
+      Print("AiChartBridge: KILL SWITCH active — new trades blocked.");
+   }
+   else if(!killOn && g_trading_halted)
+   {
+      g_trading_halted = false;
+      Print("AiChartBridge: Kill switch cleared — trading resumed.");
+   }
+
+   if(closeOpen)
+   {
+      Print("AiChartBridge: Kill switch requested close of all open positions.");
+      CloseAllPositions();
+   }
+}
+
+bool IsCommandAcked(long id)
+{
+   if(id == g_last_acked) return true;
+   for(int i = 0; i < g_acked_count; i++)
+      if(g_acked_ids[i] == id) return true;
+   return false;
+}
+
+void MarkCommandAcked(long id)
+{
+   if(IsCommandAcked(id)) return;
+   if(g_acked_count >= 32)
+   {
+      for(int i = 0; i < 31; i++)
+         g_acked_ids[i] = g_acked_ids[i + 1];
+      g_acked_count = 31;
+   }
+   g_acked_ids[g_acked_count++] = id;
+   g_last_acked = id;
 }
 
 void AckCommand(long id, string status, long ticket, double price, double lots, string err)
@@ -315,15 +917,25 @@ void AckCommand(long id, string status, long ticket, double price, double lots, 
    HttpPost("/api/ea/commands/" + (string)id + "/ack", body, resp);
 }
 
+void AckCommandEx(long id, string status, string innerFields, string err)
+{
+   string body = "{";
+   body += "\"status\":\"" + status + "\",";
+   body += "\"result\":{";
+   body += innerFields;
+   if(err != "") body += ",\"error\":" + JsonStr(err);
+   body += "}}";
+   string resp = "";
+   HttpPost("/api/ea/commands/" + (string)id + "/ack", body, resp);
+}
+
 //+------------------------------------------------------------------+
 //| HTTP                                                             |
 //+------------------------------------------------------------------+
 bool HttpPost(string path, string body, string &response)
 {
    string url = ApiBase + path;
-   string headers = "Content-Type: application/json\r\n";
-   headers += "Authorization: Bearer " + EaToken + "\r\n";
-   headers += "X-EA-Token: " + EaToken + "\r\n";
+   string headers = BuildAuthHeaders("Content-Type: application/json\r\n");
 
    char post[], result[];
    string result_headers;
@@ -336,12 +948,43 @@ bool HttpPost(string path, string body, string &response)
    if(res == -1)
    {
       int err = GetLastError();
-      Print("WebRequest failed (", err, "). Add ", ApiBase,
+      Print("WebRequest POST failed (", err, "). Add ", ApiBase,
             " to Tools > Options > Expert Advisors > Allow WebRequest.");
       return false;
    }
    response = CharArrayToString(result, 0, ArraySize(result), CP_UTF8);
    return (res >= 200 && res < 300);
+}
+
+bool HttpGet(string path, string &response)
+{
+   string url = ApiBase + path;
+   string headers = BuildAuthHeaders("");
+
+   char empty[];
+   char result[];
+   string result_headers;
+   ArrayResize(empty, 0);
+
+   ResetLastError();
+   int res = WebRequest("GET", url, headers, 5000, empty, result, result_headers);
+   if(res == -1)
+   {
+      int err = GetLastError();
+      if(err != 0)
+         Print("WebRequest GET failed (", err, ").");
+      return false;
+   }
+   response = CharArrayToString(result, 0, ArraySize(result), CP_UTF8);
+   return (res >= 200 && res < 300);
+}
+
+string BuildAuthHeaders(string prefix)
+{
+   string headers = prefix;
+   headers += "Authorization: Bearer " + EaToken + "\r\n";
+   headers += "X-EA-Token: " + EaToken + "\r\n";
+   return headers;
 }
 
 //+------------------------------------------------------------------+
@@ -371,6 +1014,36 @@ double JsonNum(string json, string key)
    }
    if(num == "" || num == "null") return 0;
    return StringToDouble(num);
+}
+
+bool JsonBool(string json, string key)
+{
+   string pat = "\"" + key + "\"";
+   int k = StringFind(json, pat);
+   if(k < 0) return false;
+   int c = StringFind(json, ":", k);
+   if(c < 0) return false;
+   int p = c + 1;
+   while(p < StringLen(json))
+   {
+      ushort ch = StringGetCharacter(json, p);
+      if(ch == 't' || ch == 'T')
+      {
+         if(StringFind(json, "true", p) == p) return true;
+         return false;
+      }
+      if(ch == 'f' || ch == 'F')
+      {
+         if(StringFind(json, "false", p) == p) return false;
+         return false;
+      }
+      if(ch == '1') return true;
+      if(ch == '0') return false;
+      if(ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n')
+         break;
+      p++;
+   }
+   return false;
 }
 
 string JsonStrVal(string json, string key)
@@ -772,6 +1445,7 @@ void DrawAndCapture(long id, string payload)
    }
 
    g_last_acked = id;
+   MarkCommandAcked(id);
    AckCommand(id, "acked", recId, 0, 0, "");
 }
 
@@ -789,7 +1463,7 @@ void ClearChartCommand(long id, string payload)
 
    DeleteAichartObjects(recId);
    ChartRedraw(0);
-   g_last_acked = id;
+   MarkCommandAcked(id);
    AckCommand(id, "acked", recId, 0, 0, "");
 }
 //+------------------------------------------------------------------+

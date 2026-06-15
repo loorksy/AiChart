@@ -8,10 +8,12 @@ export function OpenClawConsoleClient() {
   const [webUiUrl, setWebUiUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [openclawEnabled, setOpenclawEnabled] = useState(true);
   const [agentModel, setAgentModel] = useState<{
     platformRef: string;
     gatewayPrimary: string | null;
     inSync: boolean;
+    openclawEnabled?: boolean;
   } | null>(null);
 
   const load = useCallback(async () => {
@@ -25,17 +27,28 @@ export function OpenClawConsoleClient() {
       const data = (await consoleRes.json()) as {
         webUiUrl?: string;
         error?: string;
+        openclawEnabled?: boolean;
       };
+      if (modelRes.ok) {
+        const modelData = await modelRes.json();
+        setAgentModel(modelData);
+        if (modelData.openclawEnabled === false) {
+          setOpenclawEnabled(false);
+          setWebUiUrl(null);
+          setLoading(false);
+          return;
+        }
+      }
       if (!consoleRes.ok) {
-        setError(data.error ?? "تعذّر تحميل رابط اللوحة.");
-        setWebUiUrl(null);
+        if (data.openclawEnabled === false) {
+          setOpenclawEnabled(false);
+          setWebUiUrl(null);
+        } else {
+          setError(data.error ?? "تعذّر تحميل رابط اللوحة.");
+          setWebUiUrl(null);
+        }
       } else {
         setWebUiUrl(data.webUiUrl ?? null);
-      }
-      if (modelRes.ok) {
-        setAgentModel(await modelRes.json());
-      } else {
-        setAgentModel(null);
       }
     } catch {
       setError("تعذّر الاتصال بالخادم.");
@@ -47,6 +60,32 @@ export function OpenClawConsoleClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  if (!loading && !openclawEnabled) {
+    return (
+      <SurfaceCard>
+        <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold">
+          <Settings2 className="h-5 w-5 text-muted-foreground" />
+          Claude MCP (القناة الأساسية)
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          OpenClaw معطّل على هذا الخادم. استخدم{" "}
+          <a
+            href="https://claude.ai/customize/connectors"
+            className="underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Claude Connectors
+          </a>{" "}
+          مع عنوان MCP: <code dir="ltr">/mcp</code>
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          راجع <code>docs/MCP_CLAUDE_SETUP.md</code> في المستودع.
+        </p>
+      </SurfaceCard>
+    );
+  }
 
   return (
     <SurfaceCard>
