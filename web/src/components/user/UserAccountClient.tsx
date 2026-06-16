@@ -4,13 +4,47 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { CountryCode } from "libphonenumber-js";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
-import { SurfaceCard } from "@/components/ui/shell";
+import { Mail, MessageCircle, Shield, User } from "lucide-react";
+import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import { PhoneInput } from "@/components/PhoneInput";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import { formatAccessExpiryLabel } from "@/lib/platformAccess";
 import type { PublicUser } from "@/lib/types";
 import { displayNameForUser } from "@/lib/displayName";
 import { needsMcpCredentials } from "@/lib/userCredentials";
+import { cn } from "@/lib/utils";
+
+function ProfileField({
+  label,
+  children,
+  mono,
+}: {
+  label: string;
+  children: React.ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="py-3.5">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div
+        className={cn(
+          "mt-1.5 text-sm font-medium leading-relaxed text-foreground",
+          mono && "font-mono text-[0.8125rem] break-all",
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function LtrValue({ children }: { children: React.ReactNode }) {
+  return (
+    <span dir="ltr" className="inline-block w-full text-end">
+      {children}
+    </span>
+  );
+}
 
 export function UserAccountClient({ user }: { user: PublicUser }) {
   const [whatsapp, setWhatsapp] = useState(user.whatsapp_e164 ?? "");
@@ -26,6 +60,8 @@ export function UserAccountClient({ user }: { user: PublicUser }) {
   const [busy, setBusy] = useState(false);
 
   const needsCredentials = needsMcpCredentials(user);
+  const displayName = displayNameForUser(user);
+  const usernameLabel = user.username?.trim() || displayName;
 
   useEffect(() => {
     if (user.whatsapp_e164) return;
@@ -64,89 +100,129 @@ export function UserAccountClient({ user }: { user: PublicUser }) {
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-6">
-      <h1 className="text-2xl font-bold">حسابي</h1>
-      <SurfaceCard className="space-y-4 text-sm">
-        <div>
-          <p className="text-muted-foreground">اسم المستخدم</p>
-          <p dir="ltr">{user.username ?? "—"}</p>
+    <PageLayout
+      title="حسابي"
+      subtitle="بياناتك الشخصية ووسائل التواصل"
+      maxWidth="2xl"
+    >
+      <SurfaceCard padding="lg" className="overflow-visible">
+        <div className="mb-4 flex items-center gap-3 border-b border-border pb-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+            <User className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{displayName}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {needsCredentials ? "يلزم إكمال البريد لـ MCP" : user.email}
+            </p>
+          </div>
         </div>
-        <div>
-          <p className="text-muted-foreground">البريد</p>
-          {needsCredentials ? (
-            <div className="mt-1 space-y-2">
-              <p className="text-muted-foreground">لم يُضبط بعد — مطلوب لـ MCP</p>
-              <Link href="/complete-profile" className="text-link text-sm">
-                إكمال بريد وكلمة المرور
-              </Link>
-            </div>
-          ) : (
-            <p dir="ltr">{user.email}</p>
-          )}
+
+        <div className="divide-y divide-border">
+          <ProfileField label="اسم المستخدم">
+            <LtrValue>{usernameLabel}</LtrValue>
+            {!user.username?.trim() && (
+              <p className="mt-1 text-xs font-normal text-muted-foreground">
+                لم يُضبط اسم مستخدم — يُعرض اسم العرض.
+              </p>
+            )}
+          </ProfileField>
+
+          <ProfileField label="البريد">
+            {needsCredentials ? (
+              <div className="space-y-2">
+                <p className="font-normal text-muted-foreground">لم يُضبط بعد — مطلوب لربط Claude</p>
+                <Link href="/complete-profile" className="text-link text-sm font-medium">
+                  إكمال بريد وكلمة المرور ←
+                </Link>
+              </div>
+            ) : (
+              <LtrValue mono>{user.email}</LtrValue>
+            )}
+          </ProfileField>
+
+          <ProfileField label="صلاحية الحساب">
+            <span className="inline-flex items-center gap-1.5">
+              <Shield className="h-3.5 w-3.5 text-primary" />
+              {formatAccessExpiryLabel(user.access_expires_at)}
+            </span>
+          </ProfileField>
+
+          <ProfileField label="Telegram">
+            <span className="inline-flex items-center gap-1.5">
+              <MessageCircle className="h-3.5 w-3.5 text-primary" />
+              {user.telegram_id ? "مرتبط" : "غير مرتبط"}
+            </span>
+          </ProfileField>
         </div>
-        <div>
-          <p className="text-muted-foreground">صلاحية الحساب</p>
-          <p>{formatAccessExpiryLabel(user.access_expires_at)}</p>
+      </SurfaceCard>
+
+      <SurfaceCard padding="lg" className="overflow-visible">
+        <div className="mb-4 flex items-center gap-2">
+          <Mail className="h-4 w-4 text-primary" />
+          <h2 className="font-semibold">واتساب</h2>
         </div>
-        <div>
-          <p className="text-muted-foreground">Telegram</p>
-          <p>{user.telegram_id ? "مرتبط" : "—"}</p>
-        </div>
-        <div>
-          <p className="mb-2 text-muted-foreground">واتساب</p>
-          {savedWhatsapp && !editingWhatsapp ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <p dir="ltr">{formatWhatsAppDisplay(savedWhatsapp)}</p>
+
+        {savedWhatsapp && !editingWhatsapp ? (
+          <div className="space-y-3">
+            <p className="text-sm">
+              <LtrValue mono>{formatWhatsAppDisplay(savedWhatsapp)}</LtrValue>
+            </p>
+            <button
+              type="button"
+              className="btn btn-secondary text-sm"
+              onClick={() => {
+                setWhatsapp(savedWhatsapp);
+                setEditingWhatsapp(true);
+              }}
+            >
+              تعديل الرقم
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <PhoneInput
+              value={whatsapp}
+              onChange={setWhatsapp}
+              disabled={busy}
+              defaultCountry={defaultCountry}
+            />
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                className="text-xs text-link"
-                onClick={() => {
-                  setWhatsapp(savedWhatsapp);
-                  setEditingWhatsapp(true);
-                }}
-              >
-                تعديل
-              </button>
-            </div>
-          ) : (
-            <>
-              <PhoneInput
-                value={whatsapp}
-                onChange={setWhatsapp}
+                className="btn btn-primary text-sm"
                 disabled={busy}
-                defaultCountry={defaultCountry}
-              />
-              <div className="mt-3 flex flex-wrap gap-2">
+                onClick={() => void saveWhatsapp()}
+              >
+                {busy ? "جاري الحفظ…" : "حفظ واتساب"}
+              </button>
+              {savedWhatsapp && (
                 <button
                   type="button"
-                  className="btn btn-primary text-sm"
+                  className="btn btn-secondary text-sm"
                   disabled={busy}
-                  onClick={() => void saveWhatsapp()}
+                  onClick={() => {
+                    setWhatsapp(savedWhatsapp);
+                    setEditingWhatsapp(false);
+                  }}
                 >
-                  {busy ? "…" : "حفظ واتساب"}
+                  إلغاء
                 </button>
-                {savedWhatsapp && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary text-sm"
-                    disabled={busy}
-                    onClick={() => {
-                      setWhatsapp(savedWhatsapp);
-                      setEditingWhatsapp(false);
-                    }}
-                  >
-                    إلغاء
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        {msg && <p className="text-primary">{msg}</p>}
-        <p className="text-xs text-muted-foreground">
-          {displayNameForUser(user)} · AiChart
-        </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {msg && (
+          <p className={cn("mt-3 text-sm", msg.includes("فشل") ? "text-destructive" : "text-primary")}>
+            {msg}
+          </p>
+        )}
       </SurfaceCard>
-    </div>
+
+      <p className="text-center text-xs text-muted-foreground">
+        {displayName} · AiChart
+      </p>
+    </PageLayout>
   );
 }
