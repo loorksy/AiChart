@@ -38,9 +38,18 @@ function ProfileField({
   );
 }
 
-function LtrValue({ children }: { children: React.ReactNode }) {
+function LtrValue({
+  children,
+  mono,
+}: {
+  children: React.ReactNode;
+  mono?: boolean;
+}) {
   return (
-    <span dir="ltr" className="inline-block w-full text-end">
+    <span
+      dir="ltr"
+      className={cn("inline-block w-full text-end", mono && "font-mono text-[0.8125rem] break-all")}
+    >
       {children}
     </span>
   );
