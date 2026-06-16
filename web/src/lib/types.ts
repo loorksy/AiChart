@@ -11,6 +11,9 @@ export interface UserRow {
   role: Role;
   status: UserStatus;
   telegram_id: number | null;
+  username: string | null;
+  whatsapp_e164: string | null;
+  access_expires_at: string | null;
   created_at: string;
 }
 
@@ -19,6 +22,10 @@ export interface PublicUser {
   email: string;
   role: Role;
   status: UserStatus;
+  username: string | null;
+  whatsapp_e164: string | null;
+  telegram_id: number | null;
+  access_expires_at: string | null;
   created_at: string;
 }
 
@@ -101,7 +108,7 @@ export interface SessionPayload {
 
 export type RecommendationAction = "buy" | "sell" | "wait";
 
-/** Who produced a recommendation: web chat/scan vs the OpenClaw agent. */
+/** Who produced a recommendation: web chat/scan vs MCP agent. */
 export type RecommendationSource = "web" | "agent";
 
 export interface Recommendation {
@@ -384,6 +391,12 @@ export interface EaSymbolSpec {
   /** Minimum stop distance in points (SYMBOL_TRADE_STOPS_LEVEL). */
   stops_level?: number;
   freeze_level?: number;
+  /** instant | market | exchange | request — from SYMBOL_TRADE_EXECUTION (EA v3.01+). */
+  trade_execution?: string;
+  /** Broker-supported filling flags, e.g. ioc|fok|return (EA v3.01+). */
+  filling_mode?: string;
+  /** Current spread in points (EA v3.01+). */
+  spread_points?: number;
 }
 
 export type MtAccountState =

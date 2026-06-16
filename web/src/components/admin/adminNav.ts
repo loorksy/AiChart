@@ -27,5 +27,7 @@ export const ADMIN_ACTION_LABELS: Record<string, string> = {
   settings_update: "تحديث إعدادات",
   telegram_register: "تسجيل عبر تليجرام",
   telegram_login: "دخول عبر تليجرام",
+  user_access_granted: "موافقة وصول مستخدم",
+  user_access_renewed: "تجديد صلاحية مستخدم",
   platform_config: "تحديث مفاتيح المنصة",
 };

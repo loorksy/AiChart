@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requireUser, requirePlatformAccess, handleError } from "@/lib/api";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
 import { buildBinancePermissionReport } from "@/lib/binanceVerify";
 import { getBinanceCredentials, getBinanceAccountMeta } from "@/lib/store";
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireUser();
+    await requirePlatformAccess();
     const body = bodySchema.parse(await req.json().catch(() => ({})));
     const { apiKey, apiSecret, env = "testnet", futuresRequired = false } =
       body;

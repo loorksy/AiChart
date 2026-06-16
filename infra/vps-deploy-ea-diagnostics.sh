@@ -7,7 +7,7 @@ cd /opt/aichart/web
 log "npm run build"
 npm run build
 
-log "sync OpenClaw workspace"
+log "sync MCP workspace"
 bash /opt/aichart/agent/scripts/sync-workspace.sh
 
 pm2 restart aichart-web --update-env

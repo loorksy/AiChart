@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { isOnboardingDone } from "@/lib/store";
+import { hasPlatformAccess } from "@/lib/platformAccess";
 import BridgeShell from "@/components/bridge/BridgeShell";
+import UserShell from "@/components/user/UserShell";
 
 export const metadata: Metadata = {
-  title: "AiChart Bridge — مركز الجسر",
-  description: "جسر OpenClaw ↔ Binance / MT5 — اتصالات، مخاطر، ومراقبة.",
+  title: "AiChart — لوحة التحكم",
+  description: "منصة AiChart — Claude MCP · Binance · MT5",
 };
 
 export default async function ConsoleLayout({
@@ -16,13 +17,17 @@ export default async function ConsoleLayout({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/console");
-  if (user.role !== "admin" && !(await isOnboardingDone(user.id))) {
-    redirect("/onboarding");
+  if (user.role !== "admin" && !hasPlatformAccess(user)) {
+    redirect("/awaiting-approval");
   }
 
-  return (
-    <BridgeShell email={user.email} role={user.role}>
-      {children}
-    </BridgeShell>
-  );
+  if (user.role === "admin") {
+    return (
+      <BridgeShell email={user.email} role={user.role}>
+        {children}
+      </BridgeShell>
+    );
+  }
+
+  return <UserShell user={user}>{children}</UserShell>;
 }

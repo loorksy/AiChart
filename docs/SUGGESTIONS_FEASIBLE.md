@@ -178,12 +178,12 @@
 
 | الاقتراح | السبب | المرجع |
 |----------|--------|--------|
-| **OpenClaw كـ daemon منفصل** | التنفيذ الفعلي: Claude مدمج في Next.js (`agent.ts`) — ترحيل معماري كبير | PLAN §3 |
+| **Claude MCP كـ daemon منفصل** | التنفيذ الفعلي: Claude مدمج في Next.js (`agent.ts`) — ترحيل معماري كبير | PLAN §3 |
 | **Binance Futures** | خارج نطاق Spot الحالي | PLAN «ما بعد الإطلاق» |
 | **واتساب** | غير مُنفَّذ؛ تليجرام هو القناة الحالية | PLAN §2، §8 |
 | **باقات اشتراك آلية** | الأدمن يتحكم يدوياً بكل مستخدم | PLAN §2 |
 | **أخبار عاجلة تلقائية** | مذكورة في PLAN §8 بدون كود | — |
-| **Monorepo** (`apps/`, `agent/openclaw/`) | الهيكل الحالي `web/` فقط | PLAN §10 |
+| **Monorepo** (`apps/`, `agent/mcp/`) | الهيكل الحالي `web/` فقط | PLAN §10 |
 | **MT4/MT5، فوركس، أسهم** | خارج Binance Spot USDT | PLAN §301 |
 
 ---
@@ -207,7 +207,7 @@ flowchart LR
   end
 
   subgraph deferred [مؤجل]
-    OpenClaw[OpenClaw_daemon]
+    Claude MCP[Claude MCP_daemon]
     Futures[Futures]
     WhatsApp[WhatsApp]
   end

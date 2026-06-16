@@ -57,7 +57,12 @@
             "tick_size": 0.00001,
             "min_lot": 0.01,
             "max_lot": 100.0,
-            "lot_step": 0.01
+            "lot_step": 0.01,
+            "stops_level": 0,
+            "freeze_level": 0,
+            "trade_execution": "instant",
+            "filling_mode": "ioc|fok",
+            "spread_points": 8
           }
         ],
         "candles": {
@@ -132,7 +137,7 @@
     "cancel_order": "Cancel pending order: { ticket }.",
     "close_partial": "Partial close: { ticket, lots }.",
     "ensure_symbol": "SymbolSelect + wait for ticks: { symbol }.",
-    "query_terminal": "Snapshot margin/equity/pending orders (result in ack)."
+    "query_terminal": "Snapshot margin/equity/pending orders + reference_symbol trade_execution/filling_mode (v3.01+, result in ack)."
   },
   "modify_sl_tp_payload": {
     "ticket": "MT5 position ticket",
@@ -140,26 +145,37 @@
     "take_profit": "optional new TP price"
   },
   "draw_and_capture_payload": {
-    "symbol": "MT5 symbol e.g. EURUSD or BTCUSD",
-    "interval": "1m|5m|15m|1h|4h|1d|1w",
-    "recommendation_id": "number (links upload + object prefix)",
+    "symbol": "MT5 symbol — broker-exact case (EURUSDm); resolved via ResolveBrokerSymbol",
+    "interval": "1m|5m|15m|30m|1h|4h|1d|1w or M1|H1|… — empty or chart = Period(); used for iTime() coords only (EA does NOT change chart symbol/period)",
+    "recommendation_id": "number (links upload + object prefix AICHART_{id}_*)",
     "capture_key": "optional string when recommendation_id is 0",
     "entry": "optional number",
     "stop_loss": "optional number",
     "take_profit": "optional number",
     "drawings": [
       {
-        "type": "zone|trend_line|price_line|forecast_path|channel|fib_retracement|baseline|marker|histogram_band",
+        "type": "semantic: price_line|trend_line|forecast_path|channel|zone|fib_retracement|baseline|marker|histogram_band — OR MT5-native: hline|vline|trend|rectangle|triangle|ellipse|arrow_*|fibo|fibo_fan|fibo_arc|pitchfork|expansion|gann_*|text|label",
         "confidence": 80,
         "label": "optional",
-        "color": "optional #hex",
-        "points": [{ "barsAhead": 0, "price": 1.085, "time": "optional unix sec" }]
+        "color": "optional #RRGGBB (EA HexToColor v3.09+)",
+        "width": "optional 1-5",
+        "style": "optional solid|dashed|dotted",
+        "fill": "optional bool (rectangles/zones)",
+        "fill_color": "optional #hex",
+        "font_size": "optional",
+        "arrow_code": "optional for type arrow",
+        "points": [{ "barsAhead": 0, "price": 1.085, "time": "optional unix sec" }],
+        "price": "optional flat Y (when no points[])",
+        "price2": "optional second anchor",
+        "time_offset": "optional bar index from current (alias barsAhead)",
+        "time_offset2": "optional"
       }
-    ]
+    ],
+    "poll_chart": "GET /api/agent/chart/{recommendation_id}/mt5 — 202 pending until PNG ready, then 200 image/png"
   },
   "clear_chart_payload": {
     "symbol": "MT5 symbol",
-    "interval": "optional — switches chart timeframe before clear",
+    "interval": "optional — unused for clear; objects deleted by recommendation_id prefix",
     "recommendation_id": "optional — limits delete to AICHART_{id}_*"
   },
   "idempotency": "The EA remembers recent acked command ids and never executes the same command id twice."

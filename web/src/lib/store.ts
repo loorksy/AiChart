@@ -21,8 +21,15 @@ import type {
   Trade,
   TradeIntent,
   TradingSettings,
+  UserRow,
+  UserStatus,
 } from "./types";
 import { normalizeTradingMode } from "./types";
+import { PUBLIC_USER_COLUMNS } from "./userSelect";
+import {
+  computeAccessExpiresAt,
+  DEFAULT_ACCESS_DAYS,
+} from "./platformAccess";
 import type { BinanceEnv } from "./binance";
 import type { BrokerKind, MarketType, MtPlatform } from "./markets/types";
 import { brokerForMarket } from "./markets/types";
@@ -338,7 +345,7 @@ export async function getUserByTelegramId(
   telegramId: number,
 ): Promise<PublicUser | null> {
   return queryOne<PublicUser>(
-    "SELECT id, email, role, status, created_at FROM users WHERE telegram_id = ?",
+    `SELECT ${PUBLIC_USER_COLUMNS} FROM users WHERE telegram_id = ?`,
     [telegramId],
   );
 }
@@ -382,10 +389,11 @@ export async function upsertTelegramUser(
 
   const email = await uniqueTelegramEmail(telegramDisplayEmail(payload));
   const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
+  const tgUsername = payload.username?.replace(/^@/, "").trim();
   const userId = await insertReturningId(
-    `INSERT INTO users (email, password_hash, role, status, telegram_id)
-     VALUES (?, ?, 'user', 'pending', ?)`,
-    [email, passwordHash, telegramId],
+    `INSERT INTO users (email, password_hash, role, status, telegram_id, username)
+     VALUES (?, ?, 'user', 'pending', ?, ?)`,
+    [email, passwordHash, telegramId, tgUsername || null],
   );
   await ensureUserDefaults(userId);
   await setTelegramChatId(userId, String(telegramId));
@@ -396,9 +404,31 @@ export async function upsertTelegramUser(
 
 export async function getPublicUser(userId: number): Promise<PublicUser | null> {
   return queryOne<PublicUser>(
-    "SELECT id, email, role, status, created_at FROM users WHERE id = ?",
+    `SELECT ${PUBLIC_USER_COLUMNS} FROM users WHERE id = ?`,
     [userId],
   );
+}
+
+export async function updateUserProfile(
+  userId: number,
+  patch: { whatsapp_e164?: string | null },
+): Promise<void> {
+  if (!("whatsapp_e164" in patch)) return;
+  await execute("UPDATE users SET whatsapp_e164 = ? WHERE id = ?", [
+    patch.whatsapp_e164 ?? null,
+    userId,
+  ]);
+}
+
+export async function updateUserCredentials(
+  userId: number,
+  patch: { email: string; password_hash: string },
+): Promise<void> {
+  await execute("UPDATE users SET email = ?, password_hash = ? WHERE id = ?", [
+    patch.email.toLowerCase(),
+    patch.password_hash,
+    userId,
+  ]);
 }
 
 export interface AdminUserView extends PublicUser {
@@ -408,11 +438,14 @@ export interface AdminUserView extends PublicUser {
   max_capital_cap: number;
   max_open_trades_cap: number;
   claude_quota: number;
+  signup_via: "telegram" | "email";
 }
 
 export async function listUsersForAdmin(): Promise<AdminUserView[]> {
   return query<AdminUserView>(
-    `SELECT u.id, u.email, u.role, u.status, u.created_at,
+    `SELECT u.id, u.email, u.role, u.status, u.username, u.whatsapp_e164,
+            u.telegram_id, u.access_expires_at, u.created_at,
+            CASE WHEN u.telegram_id IS NOT NULL THEN 'telegram' ELSE 'email' END AS signup_via,
             EXISTS (SELECT 1 FROM binance_accounts bx WHERE bx.user_id = u.id) AS has_binance,
             (SELECT bx.env FROM binance_accounts bx
               WHERE bx.user_id = u.id ORDER BY bx.updated_at DESC LIMIT 1) AS binance_env,
@@ -426,8 +459,58 @@ export async function listUsersForAdmin(): Promise<AdminUserView[]> {
   );
 }
 
+export async function setUserAccess(
+  userId: number,
+  patch: {
+    status?: UserStatus;
+    access_days?: number;
+    renew?: boolean;
+  },
+): Promise<void> {
+  const row = await queryOne<UserRow>(
+    "SELECT id, role, status, access_expires_at FROM users WHERE id = ?",
+    [userId],
+  );
+  if (!row) return;
+
+  const updates: string[] = [];
+  const params: unknown[] = [];
+
+  if (patch.status !== undefined) {
+    updates.push("status = ?");
+    params.push(patch.status);
+    if (patch.status === "pending" || patch.status === "suspended") {
+      updates.push("access_expires_at = NULL");
+    } else if (patch.status === "active") {
+      const days = patch.access_days ?? DEFAULT_ACCESS_DAYS;
+      const expires = computeAccessExpiresAt(
+        days,
+        row.access_expires_at,
+        Boolean(patch.renew),
+      );
+      updates.push("access_expires_at = ?");
+      params.push(expires);
+    }
+  } else if (patch.access_days !== undefined && row.status === "active") {
+    const expires = computeAccessExpiresAt(
+      patch.access_days,
+      row.access_expires_at,
+      true,
+    );
+    updates.push("access_expires_at = ?");
+    params.push(expires);
+  }
+
+  if (updates.length === 0) return;
+  params.push(userId);
+  await execute(
+    `UPDATE users SET ${updates.join(", ")} WHERE id = ?`,
+    params,
+  );
+}
+
 export async function setUserStatus(userId: number, status: string) {
-  await execute("UPDATE users SET status = ? WHERE id = ?", [status, userId]);
+  await setUserAccess(userId, { status: status as UserStatus });
 }
 
 const ADMIN_LIMIT_FIELDS = [
@@ -591,7 +674,7 @@ export async function wouldExceedQuota(
 
 /** When false, daily claude_quota checks are skipped (single-user / unlimited). */
 export function isDailyQuotaEnforced(): boolean {
-  if (process.env.AICHART_SINGLE_USER !== "0") return false;
+  if (process.env.AICHART_SINGLE_USER === "1") return false;
   return true;
 }
 

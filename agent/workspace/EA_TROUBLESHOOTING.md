@@ -24,12 +24,48 @@ GET /api/agent/ea/live-quotes?symbol=EURUSD   # أسعار live من EA v3
 | retcode | المعنى | ماذا تقول |
 |---------|--------|-----------|
 | 10016 | INVALID_STOPS — SL/TP غير مقبول | وقف خسارة/جني ربح مرفوض؛ جرّب يدوياً **بدون SL/TP** |
-| 10026 | OFF_QUOTES — لا tick حي لحظ التنفيذ | **لا تفترض إغلاق السوق**؛ تحقق Market Watch و`quoteAgeMs` |
+| 10026 | OFF_QUOTES — لا tick حي أو سعر غير مقبول لحظ الإرسال | **لا تفترض إغلاق السوق**؛ تحقق Market Watch و`quoteAgeMs`؛ إن quotes حية → Instant Execution / filling (EA v3.01+) |
 | 10019 | NO_MONEY — هامش غير كافٍ | رصيد/رافعة/حجم لوت — هنا فقط تُذكر الرافعة |
 | 10014 | INVALID_VOLUME | حجم لوت خاطئ |
 | 10015 | INVALID_PRICE | سعر غير صالح |
 
-إن ظهر `symbol not found` (ليس retcode) → اسم الرمز لا يطابق MT5 حرفياً.
+إن ظهر `symbol not found` (ليس retcode) → اسم الرمز لا يطابق MT5 **حرفياً** (حالة الأحرف مهمة).
+
+## Exness / suffix case (`EURUSDm`)
+
+بعض الوسطاء (Exness، Pepperstone، …) يستخدمون لاحقات **حساسة لحالة الأحرف**:
+- صحيح: `EURUSDm`, `GBPUSDm`, `XAUUSDm`
+- خطأ: `EURUSDM`, `GBPUSDM` — MT5 يرفض `SymbolSelect`
+
+**الجسر (web):** `resolveMt5Symbol` يرجع الاسم **كما في heartbeat**؛ `EURUSD` من الوكيل يُطابق `EURUSDm` تلقائياً.
+
+**تشخيص:**
+```bash
+GET /api/agent/ea/diagnostics?symbol=EURUSDm   # hasSymbol, quotesOk
+GET /api/agent/ea/query-terminal               # ea_version >= 3.05
+```
+
+**Experts tab (v3.05+):** `Market Watch symbols: EURUSDm, GBPUSDm, …` عند attach.
+
+**EA v3.06+:** `ResolveBrokerSymbol()` — إن وصل الجسر `EURUSDM` يُحوَّل تلقائياً إلى `EURUSDm` من Market Watch (بدون `StringToUpper`).
+
+إن ack يحتوي `symbol not found: EURUSDM` → deploy web + reattach EA v3.06+.
+
+## تغيير الإطار الزمني / الرمز (AutoTrading)
+
+عند تغيير H1→M15 أو رمز الشارت يدوياً، MT5 يعطّل **AutoTrading** تلقائياً:
+- رسالة: `Automated Trading disabled because chart symbol or period has been changed`
+- **EA v3.09+** يبقى حياً: heartbeat + أوامر الرسم (`draw_and_capture`) تعمل
+- **الصفقات** تحتاج إعادة تفعيل زر AutoTrading يدوياً في MT5
+- Experts tab: `AiChartBridge: chart symbol/period changed — re-enable AutoTrading if disabled.`
+- **EA v3.10+:** `EventSetTimer(30)` keepalive — يُعاد تفعيله بعد تغيير الشارت؛ poll/heartbeat على `OnTick` أيضاً
+- **لا** يستدعي EA `ChartSetSymbolPeriod` — إحداثيات الرسم عبر `iTime(sym, tf, offset)` فقط
+
+## AutoTrading disabled by server (retcode 10026)
+
+بعض حسابات demo/live تمنع EA من السير-side رغم زر AutoTrading الأخضر محلياً.
+- Experts: `AutoTrading disabled by server`
+- الحل: حساب/وسيط آخر، أو تفعيل algo trading من Liirat/Exness support — ليس bug في AiChart.
 
 ## crypto vs forex
 
@@ -52,7 +88,23 @@ GET /api/agent/ea/live-quotes?symbol=EURUSD   # أسعار live من EA v3
 - EA v3 يبث أسعار live كل 1–2ث عبر `POST /api/ea/quotes`.
 - التحليل قد يقرأ **cache heartbeat** بينما التنفيذ يتحقق **لحظياً**.
 - إن `quotesOk: true` في diagnostics **واليدوي ينجح** → **ممنوع** قول «السوق مغلق».
-- الحل: تأكد EA v3، الرمز في Market Watch، `quoteAgeMs < 5000` في `get_live_account`.
+- الحل: تأكد EA **v3.01+**، الرمز في Market Watch، `quoteAgeMs < 5000` في `get_live_account`.
+
+## 10026 مع quotes حية (Instant Execution)
+
+يحدث غالباً على وسطاء مثل Liirat عندما:
+- `trade_execution` = **instant** (ليس market)
+- الـ EA يمرّر `price=0` أو filling غير مدعوم
+
+**تشخيص MCP:**
+```bash
+GET /api/agent/ea/diagnostics?symbol=EURUSD   # trade_execution, filling_mode في symbol spec
+POST query_mt5_terminal                       # reference_symbol + trade_execution
+```
+
+**Experts tab (بعد v3.01):** سطر `AiChartBridge: ORDER market ... price=... filling=... execution=instant`
+
+**إصلاح:** Compile EA v3.01 من `ea/mt5/AiChartBridge.mq5` → Reattach على الشارت.
 
 ## نموذج رد صحيح
 

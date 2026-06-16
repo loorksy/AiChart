@@ -1,17 +1,16 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { isOnboardingDone } from "@/lib/store";
-import HomeHero from "@/components/HomeHero";
+import { hasPlatformAccess } from "@/lib/platformAccess";
+import LandingPage from "@/components/landing/LandingPage";
 
 export default async function Home() {
   const user = await getCurrentUser();
   if (user) {
-    redirect(
-      user.role === "admin" || (await isOnboardingDone(user.id))
-        ? "/console"
-        : "/onboarding",
-    );
+    if (user.role !== "admin" && !hasPlatformAccess(user)) {
+      redirect("/awaiting-approval");
+    }
+    redirect("/console");
   }
 
-  return <HomeHero />;
+  return <LandingPage />;
 }

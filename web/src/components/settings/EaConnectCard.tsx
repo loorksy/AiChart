@@ -6,11 +6,14 @@ import { Copy, RefreshCw } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
 import type { EaConnectionMeta } from "@/lib/types";
 import type { MtPlatform } from "@/lib/markets/types";
+import { Download } from "lucide-react";
 
 export function EaConnectCard({
   connection,
+  canDownloadEa = false,
 }: {
   connection: EaConnectionMeta | null;
+  canDownloadEa?: boolean;
 }) {
   const router = useRouter();
   const [platform, setPlatform] = useState<MtPlatform>(
@@ -174,10 +177,28 @@ export function EaConnectCard({
               : "توليد رمز الربط"}
         </button>
 
+        {canDownloadEa ? (
+          <a
+            href="/api/ea/download"
+            className="btn btn-secondary inline-flex gap-2"
+            download="AiChartBridge.ex5"
+          >
+            <Download className="h-4 w-4" />
+            تحميل AiChartBridge.ex5
+          </a>
+        ) : (
+          <p className="rounded-xl bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+            تحميل ملف EA يتاح بعد موافقة الإدارة على حسابك.
+          </p>
+        )}
+
         <ol className="list-decimal space-y-1 rounded-xl bg-secondary/60 p-4 ps-8 text-xs text-muted-foreground">
           <li>
-            حمّل ملف EA من المستودع: <code dir="ltr">ea/mt5/AiChartBridge.mq5</code> أو{" "}
-            <code dir="ltr">ea/mt4/AiChartBridge.mq4</code>.
+            {canDownloadEa
+              ? "حمّل AiChartBridge.ex5 بالزر أعلاه، أو من المستودع:"
+              : "بعد الموافقة: حمّل AiChartBridge.ex5 من الزر أعلاه، أو من المستودع:"}{" "}
+            <code dir="ltr">ea/mt5/AiChartBridge.mq5</code>
+            {canDownloadEa ? "" : " (مصدر)"}.
           </li>
           <li>ضعه في مجلد Experts ثم أعد الترجمة في MetaEditor.</li>
           <li>اسحب EA على شارت، والصق الرمز في خانة <code dir="ltr">EaToken</code>.</li>

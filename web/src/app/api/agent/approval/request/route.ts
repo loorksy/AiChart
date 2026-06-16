@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { createApprovalRequest } from "@/lib/approvalFlow";
+import { normalizeIntentSymbol } from "@/lib/markets/resolve";
+import type { MarketType } from "@/lib/markets/types";
 import { logAudit } from "@/lib/store";
 
 const schema = z.object({
@@ -29,8 +31,10 @@ export async function POST(req: NextRequest) {
     const userId = await resolveAgentUserId();
     const body = schema.parse(await req.json());
 
+    const market = (body.market ?? "crypto") as MarketType;
+
     const result = await createApprovalRequest(userId, {
-      symbol: body.symbol.toUpperCase(),
+      symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
       notional: body.notional,
       market: body.market,

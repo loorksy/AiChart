@@ -7,9 +7,8 @@ export const maxDuration = 120;
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 
 /**
- * Bridge: voice-note transcription for the OpenClaw agent. Accepts multipart
- * (`file` field) or JSON `{data: base64, mime}` and returns the transcript as
- * plain text — wired into OpenClaw via a CLI entry in tools.media.audio.
+ * Bridge: voice-note transcription. Accepts multipart
+ * (`file` field) or JSON `{data: base64, mime}` and returns plain text.
  */
 export async function POST(req: NextRequest) {
   try {

@@ -1,4 +1,5 @@
 import { wakeAgentViaTelegram } from "./agentWake";
+import { isAgentWakeEnabled } from "./agentWakeConfig";
 import { listTrades } from "./store";
 import { sendMessage } from "./telegram";
 
@@ -46,9 +47,11 @@ export async function sendDailySummary(
 ): Promise<void> {
   const summary = await buildDailySummary(userId, capital);
   await sendMessage(chatId, summary.text);
-  await wakeAgentViaTelegram(userId, {
-    event: "daily_memory",
-    detail: summary.text.replace(/<[^>]+>/g, ""),
-    dedupeMinutes: 1200,
-  });
+  if (isAgentWakeEnabled()) {
+    await wakeAgentViaTelegram(userId, {
+      event: "daily_memory",
+      detail: summary.text.replace(/<[^>]+>/g, ""),
+      dedupeMinutes: 1200,
+    });
+  }
 }

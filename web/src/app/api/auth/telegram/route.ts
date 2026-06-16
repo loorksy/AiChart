@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { setSession } from "@/lib/auth";
 import { handleError } from "@/lib/api";
-import { upsertTelegramUser, isOnboardingDone, logAudit } from "@/lib/store";
+import { hasPlatformAccess } from "@/lib/platformAccess";
+import { needsMcpCredentials } from "@/lib/userCredentials";
+import { upsertTelegramUser, logAudit } from "@/lib/store";
 import {
   verifyTelegramLogin,
   type TelegramLoginPayload,
@@ -69,8 +71,12 @@ export async function POST(req: NextRequest) {
         : undefined;
 
     let redirect = redirectTo ?? "/console";
-    if (isNew || !(await isOnboardingDone(user.id))) {
-      redirect = "/onboarding";
+    if (needsMcpCredentials(user)) {
+      redirect = "/complete-profile";
+    } else if (!hasPlatformAccess(user)) {
+      redirect = "/awaiting-approval";
+    } else {
+      redirect = redirectTo ?? "/console";
     }
 
     return NextResponse.json({
@@ -78,6 +84,7 @@ export async function POST(req: NextRequest) {
       isNew,
       linked: true,
       redirect,
+      platform_access: hasPlatformAccess(user),
       botDeepLink: botUsername ? `https://t.me/${botUsername}?start=welcome` : null,
     });
   } catch (err) {

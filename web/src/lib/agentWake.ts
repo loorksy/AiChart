@@ -47,7 +47,7 @@ export async function wasRecentlyWoken(
   return (row?.n ?? 0) > 0;
 }
 
-/** Sends a structured Telegram message so OpenClaw treats it as an event. */
+/** Sends a structured Telegram message (legacy agent wake when AGENT_WAKE_ENABLED=1). */
 export async function wakeAgentViaTelegram(
   userId: number,
   opts: WakeAgentOptions,

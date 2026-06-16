@@ -8,7 +8,7 @@ import { TradingRiskSection } from "@/components/bridge/sections/TradingRiskSect
 export default async function ConsoleRiskPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-
+  if (user.role !== "admin") redirect("/console");
   const props = await loadConsoleSettingsProps(user);
   const isAdmin = user.role === "admin";
 

@@ -21,10 +21,20 @@
 
 ## 1) تجهيز VPS
 
+### تسجيل المستخدمين
+
+```env
+AICHART_SINGLE_USER=0   # 0 = تسجيل متعدد؛ 1 = مشغّل واحد فقط
+```
+
+- مستخدم جديد: `status=pending` — الكونسول وMCP مقفلان حتى موافقة الأدmin.
+- الموافقة من **المنصة → المستخدمون** مع تحديد أيام الصلاحية (افتراضي **30**).
+
 ### متغيرات في `web/.env`
 
 ```env
 AICHART_SERVICE_TOKEN=...          # موجود مسبقاً
+# AGENT_WAKE_ENABLED=1             # افتراضي: معطّل — قرارات MCP فقط
 MCP_AUTH_SECRET=...                # openssl rand -hex 32
 MCP_PUBLIC_URL=https://aichart.lork.cloud/mcp
 MCP_PORT=8787
@@ -71,7 +81,7 @@ curl -sI https://aichart.lork.cloud/.well-known/oauth-protected-resource
 
 1. Customize → Connectors → Add custom connector
 2. URL: `https://aichart.lork.cloud/mcp`
-3. Add → يفتح OAuth → سجّل admin AiChart
+3. Add → يفتح OAuth → سجّل دخول **حسابك في AiChart** (بعد موافقة الأدmin)
 4. بعد الموافقة تظهر أدوات التداول في الشات
 
 ---
@@ -79,35 +89,69 @@ curl -sI https://aichart.lork.cloud/.well-known/oauth-protected-resource
 ## 3) أمثلة prompts
 
 ```
-تحقق من get_risk_status ثم حلّل BTCUSDT على 1h
+خذ صفقة
+```
+→ Claude يسأل الزوج، يمسح البدائل، يعرض الحساب، يسأل المبلغ.
+
+```
+BTC أو ETH — أيهما أفضل؟
 ```
 
 ```
-ورّيني الصفقات المفتوحة والرصيد
+40 USDT — نفّذ
 ```
 
 ```
-سجّل توصية sell على ETHUSDT بثقة 80% مع SL و TP
+خسرنا — كيف نعوّض؟
 ```
 
 ```
-افتح صفقة demo على BTCUSDT — approved_by_user: true بعد موافقتي
+ورّيني الحساب والصفقات المفتوحة
 ```
 
 ---
 
-## 4) تعليمات Claude (Project)
+## 4) تعليمات Claude (Project) — انسخ إلى Project Instructions
 
-> قبل أي صفقة: `get_risk_status` + `get_live_account`. قبل رأي فني: `get_market_snapshot`.  
-> Risk Guard يرفض تجاوز الحدود — انقل السبب حرفياً.  
-> في وضع approval: `request_approval` قبل `open_trade`.  
-> اقرأ resource `aichart://trading-rules` عند الحاجة.
+```
+أنت وكيل تداول موكّل عني عبر AiChart MCP. تتكلم بصيغة «نحن»: «ندخل» / «لا ندخل» / «دخلنا» / «خسرنا» — لا «تدخل».
+
+بداية أي جلسة تداول:
+1. get_account_overview
+2. اذكر الرصيد، demo/live، الرافعة، PnL اليوم، perTradeMaxUsd
+
+عند «خذ صفقة» أو أي أمر عام:
+1. اسأل: على أي زوج ندخل؟
+2. scan_market + get_market_snapshot — قارن بدائل (BTC vs ETH …)
+3. get_trade_lessons (+ recent:true)
+4. اقترح أو ارفض + ثقة % + 2–4 جمل
+
+قبل open_trade:
+- اسأل: بكم ندخل؟ (USDT) — لا تستخدم perTradeMax تلقائياً
+- create_recommendation أولاً (rationale + confidence + شارت)
+- open_trade فقط بعد موافقتي + notional + approved_by_user:true + stop_loss
+
+بعد خسارة:
+- get_risk_status + get_trade_lessons recent:true
+- لا revenge — لا مضاعفة المبلغ
+- خطة تعويض واقعية
+
+Risk Guard يرفض تجاوز الحدود — انقل السبب حرفياً.
+اقرأ aichart://trading-rules عند الحاجة.
+```
+
+### متى create_recommendation vs open_trade
+
+| الخطوة | الأداة |
+|--------|--------|
+| رأي + شارت + ثقة | `create_recommendation` |
+| تنفيذ فعلي | `open_trade` (بعد موافقة + مبلغ) |
 
 ### قائمة أدوات MCP (كاملة)
 
 | الفئة | الأدوات |
 |-------|---------|
-| **حالة** | `get_risk_status`, `get_agent_capabilities`, `get_agent_settings`, `get_execution_env`, `get_live_account` |
+| **حالة** | `get_account_overview`, `get_risk_status`, `get_agent_capabilities`, `get_agent_settings`, `get_execution_env`, `get_live_account` |
 | **إعدادات** | `set_execution_env`, `set_trading_mode`, `set_active_market`, `set_futures_enabled`, `set_kill_switch` |
 | **سوق** | `get_market_snapshot`, `get_market_price`, `get_market_context`, `scan_market` |
 | **محفظة** | `get_portfolio`, `get_open_trades`, `get_trade_lessons`, `get_pending_approvals` |
@@ -133,18 +177,6 @@ set_active_market forex ثم get_live_account — تحقق quoteAgeMs
 ```
 open_trade BTCUSDT market_type futures leverage 5 stop_loss …
 ```
-
----
-
-## 5) إيقاف OpenClaw (موصى به)
-
-Claude MCP هو القناة الأساسية. لإزالة OpenClaw من VPS:
-
-```bash
-bash infra/vps-openclaw-decommission.sh
-```
-
-راجع [`OPENCLAW_DECOMMISSION.md`](OPENCLAW_DECOMMISSION.md).
 
 ---
 

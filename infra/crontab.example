@@ -1,5 +1,4 @@
 # AiChart cron jobs — replace YOUR_DOMAIN and CRON_SECRET
-# Event-driven monitoring: pure-code scan via cron; the OpenClaw heartbeat only
 # reviews open-trade theses hourly (agent/workspace/HEARTBEAT.md).
 
 # 24/7 market monitor every 30 min — deep AI runs only when candidates appear.
@@ -7,6 +6,3 @@
 
 # Daily Telegram summary at 20:00 UTC
 0 20 * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary
-
-# Weekly cleanup (Sun 04:00 UTC): delete OpenClaw session transcripts older than 14 days
-0 4 * * 0 find $HOME/.openclaw -type f -path "*session*" -mtime +14 -delete

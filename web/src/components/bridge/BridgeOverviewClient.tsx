@@ -85,7 +85,7 @@ export function BridgeOverviewClient({
       <div>
         <h2 className="text-xl font-bold">نظرة عامة</h2>
         <p className="text-sm text-muted-foreground">
-          جسر OpenClaw — اتصالات، مخاطر، وصفقات حية.
+          جسر MCP — اتصالات، مخاطر، وصفقات حية.
         </p>
       </div>
 
@@ -93,9 +93,9 @@ export function BridgeOverviewClient({
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatusCard
-          title="OpenClaw"
-          chip={{ label: "عبر الجسر", tone: "ok" }}
-          detail="الوكيل خارج الويب"
+          title="Claude MCP"
+          chip={{ label: "محادثة", tone: "ok" }}
+          detail="التداول عبر Connectors"
           href={isAdmin ? "/console/platform?tab=system" : "/console/risk"}
         />
         <StatusCard
@@ -160,7 +160,7 @@ export function BridgeOverviewClient({
                 : `${pendingIntents.length} صفقات بانتظار الموافقة`}
             </p>
             <p className="text-xs text-muted-foreground">
-              OpenClaw ينتظر موافقتك عبر Telegram أو الجسر.
+              Claude MCP أو Telegram — راجع الموافقة.
             </p>
           </SurfaceCard>
         </Link>

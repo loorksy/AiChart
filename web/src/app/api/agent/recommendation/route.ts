@@ -27,6 +27,7 @@ import {
   formatLessonsForPrompt,
 } from "@/lib/tradeMemory";
 import { notifyUser } from "@/lib/telegram";
+import { normalizeIntentSymbol } from "@/lib/markets/resolve";
 import type { Recommendation } from "@/lib/types";
 
 const schema = z.object({
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
         : body.rationale;
 
     const rec = await saveRecommendation(userId, {
-      symbol: body.symbol.toUpperCase(),
+      symbol: normalizeIntentSymbol(body.symbol, settings.active_market),
       action: body.action,
       confidence: body.confidence,
       entry: body.entry ?? null,

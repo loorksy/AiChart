@@ -1,6 +1,6 @@
 # موافقة الصفقات بأزرار تيليجرام
 
-OpenClaw يملك webhook المحادثة؛ المنصة ترسل **إشعارات صادرة** مع أزرار inline.
+Claude MCP يملك webhook المحادثة؛ المنصة ترسل **إشعارات صادرة** مع أزرار inline.
 
 ## التدفق
 
@@ -11,7 +11,7 @@ OpenClaw يملك webhook المحادثة؛ المنصة ترسل **إشعار�
 
 ## جسر callback (اختياري)
 
-إن مرّرت `callback_query` من OpenClaw:
+إن مرّرت `callback_query` من Claude MCP:
 
 ```bash
 curl -sf -X POST -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \

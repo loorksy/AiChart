@@ -5,8 +5,16 @@ import { hashPassword, setSession } from "@/lib/auth";
 import { ensureUserDefaults } from "@/lib/store";
 import { isSingleUserMode } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
+import { hasPlatformAccess } from "@/lib/platformAccess";
+import { normalizeWhatsApp } from "@/lib/phone";
 
 const schema = z.object({
+  username: z
+    .string()
+    .min(3, "اسم المستخدم 3 أحرف على الأقل.")
+    .max(32)
+    .regex(/^[a-zA-Z0-9_.]+$/, "اسم المستخدم: حروف وأرقام و _ . فقط."),
+  whatsapp: z.string().min(8, "رقم واتساب مطلوب."),
   email: z.string().email("بريد إلكتروني غير صالح."),
   password: z.string().min(8, "كلمة المرور يجب أن تكون 8 أحرف على الأقل."),
 });
@@ -20,28 +28,69 @@ export async function POST(req: NextRequest) {
       );
     }
     const json = await req.json();
-    const { email, password } = schema.parse(json);
-    await initDb();
+    const { username, whatsapp, email, password } = schema.parse(json);
+    const phone = normalizeWhatsApp(whatsapp);
+    if (!phone.ok) {
+      return NextResponse.json({ error: phone.error }, { status: 400 });
+    }
 
-    const existing = await queryOne("SELECT id FROM users WHERE email = ?", [
+    await initDb();
+    const uname = username.toLowerCase();
+
+    const existingEmail = await queryOne("SELECT id FROM users WHERE email = ?", [
       email.toLowerCase(),
     ]);
-    if (existing) {
+    if (existingEmail) {
       return NextResponse.json(
         { error: "هذا البريد مسجّل بالفعل." },
         { status: 409 },
       );
     }
 
+    const existingUser = await queryOne(
+      "SELECT id FROM users WHERE username = ?",
+      [uname],
+    );
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "اسم المستخدم محجوز." },
+        { status: 409 },
+      );
+    }
+
+    const existingPhone = await queryOne(
+      "SELECT id FROM users WHERE whatsapp_e164 = ?",
+      [phone.e164],
+    );
+    if (existingPhone) {
+      return NextResponse.json(
+        { error: "رقم واتساب مسجّل مسبقاً." },
+        { status: 409 },
+      );
+    }
+
     const userId = await insertReturningId(
-      "INSERT INTO users (email, password_hash, role, status) VALUES (?, ?, 'user', 'pending')",
-      [email.toLowerCase(), hashPassword(password)],
+      `INSERT INTO users (email, password_hash, role, status, username, whatsapp_e164)
+       VALUES (?, ?, 'user', 'pending', ?, ?)`,
+      [email.toLowerCase(), hashPassword(password), uname, phone.e164],
     );
     await ensureUserDefaults(userId);
 
     await setSession({ sub: userId, email: email.toLowerCase(), role: "user" });
+    const publicUser = {
+      id: userId,
+      email: email.toLowerCase(),
+      role: "user" as const,
+      status: "pending" as const,
+      username: uname,
+      whatsapp_e164: phone.e164,
+      telegram_id: null,
+      access_expires_at: null,
+      created_at: new Date().toISOString(),
+    };
     return NextResponse.json({
-      user: { id: userId, email: email.toLowerCase(), role: "user", status: "pending" },
+      user: publicUser,
+      platform_access: hasPlatformAccess(publicUser),
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

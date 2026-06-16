@@ -7,11 +7,12 @@ import { AdminKeysPanel } from "@/components/admin/AdminKeysPanel";
 import { AdminSystemPanel } from "@/components/admin/AdminSystemPanel";
 import { AdminSecurityPanel } from "@/components/admin/AdminSecurityPanel";
 import { AdminUsagePanel } from "@/components/admin/AdminUsagePanel";
-import { OpenClawConsoleClient } from "@/components/agent/OpenClawConsoleClient";
+import { AdminUsersTable } from "@/components/admin/AdminUsersTable";
 import { ProfileSection } from "@/components/bridge/sections/ProfileSection";
 import type { ComponentProps } from "react";
 
 const TABS = [
+  { id: "users", label: "المستخدمون" },
   { id: "keys", label: "المفاتيح" },
   { id: "system", label: "النظام" },
   { id: "security", label: "الأمن" },
@@ -36,15 +37,19 @@ export function PlatformSection({
   profileProps,
   audit = [],
   usage = [],
+  adminUsers = [],
+  adminId = 0,
 }: {
   isAdmin: boolean;
   profileProps: ProfileProps;
   audit?: AuditRow[];
   usage?: ClaudeUsageRow[];
+  adminUsers?: import("@/lib/store").AdminUserView[];
+  adminId?: number;
 }) {
   const params = useSearchParams();
   const tabParam = params.get("tab") as TabId | null;
-  const defaultTab: TabId = isAdmin ? "keys" : "profile";
+  const defaultTab: TabId = isAdmin ? "users" : "profile";
   const requestedTab =
     tabParam && TABS.some((t) => t.id === tabParam) ? tabParam : defaultTab;
   const tab: TabId =
@@ -55,7 +60,7 @@ export function PlatformSection({
       <div>
         <h2 className="text-xl font-bold">المنصة والمفاتيح</h2>
         <p className="text-sm text-muted-foreground">
-          OpenClaw، مفاتيح API، الأمن
+          MCP، مفاتيح API، الأمن
         </p>
       </div>
 
@@ -76,13 +81,15 @@ export function PlatformSection({
         ))}
       </div>
 
-      {tab === "keys" && isAdmin && <AdminKeysPanel />}
-      {tab === "system" && isAdmin && (
-        <div className="space-y-4">
-          <OpenClawConsoleClient />
-          <AdminSystemPanel />
-        </div>
+      {tab === "users" && isAdmin && (
+        <AdminUsersTable
+          initialUsers={adminUsers}
+          adminId={adminId}
+          mode="full"
+        />
       )}
+      {tab === "keys" && isAdmin && <AdminKeysPanel />}
+      {tab === "system" && isAdmin && <AdminSystemPanel />}
       {tab === "security" && isAdmin && (
         <AdminSecurityPanel audit={audit} />
       )}

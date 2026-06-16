@@ -6,6 +6,8 @@ import Link from "next/link";
 import { ArrowUpRight, ChevronDown, Sparkles } from "lucide-react";
 import PriceChart from "@/components/PriceChart";
 import { TelegramLoginButton } from "@/components/TelegramLoginButton";
+import type { CountryCode } from "libphonenumber-js";
+import { PhoneInput } from "@/components/PhoneInput";
 
 export default function AuthForm({
   mode,
@@ -14,21 +16,23 @@ export default function AuthForm({
   telegramConfigured,
   allowRegister = true,
   gateMode = false,
+  defaultCountry,
 }: {
   mode: "login" | "register";
   redirectTo?: string;
   botUsername?: string | null;
   telegramConfigured?: boolean;
   allowRegister?: boolean;
-  /** Single-user mode: one master password, no email and no Telegram login. */
   gateMode?: boolean;
+  defaultCountry?: CountryCode;
 }) {
   const router = useRouter();
+  const [username, setUsername] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showEmail, setShowEmail] = useState(false);
   const isLogin = mode === "login";
   const canUseTelegram = !gateMode && telegramConfigured && Boolean(botUsername);
 
@@ -37,17 +41,29 @@ export default function AuthForm({
     setError(null);
     setLoading(true);
     try {
+      const body = gateMode
+        ? { password }
+        : isLogin
+          ? { email, password }
+          : { username, whatsapp, email, password };
+
       const res = await fetch(`/api/auth/${isLogin ? "login" : "register"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(gateMode ? { password } : { email, password }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "حدث خطأ.");
         return;
       }
-      router.push(isLogin ? (redirectTo ?? "/chat") : "/onboarding");
+      const dest =
+        data.platform_access === true
+          ? isLogin
+            ? (redirectTo ?? "/console")
+            : "/awaiting-approval"
+          : "/awaiting-approval";
+      router.push(dest);
       router.refresh();
     } catch {
       setError("تعذّر الاتصال بالخادم.");
@@ -65,14 +81,18 @@ export default function AuthForm({
         </Link>
 
         <h1 className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
-          {isLogin ? "مرحباً بعودتك" : "إنشاء حساب جديد"}
+          {gateMode
+            ? "دخول المشغّل"
+            : isLogin
+              ? "تسجيل الدخول"
+              : "إنشاء حساب"}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
           {gateMode
             ? "أدخل كلمة المرور للوصول إلى منصتك"
-            : canUseTelegram
-              ? "سجّل أو ادخل عبر تليجرام — يُربط البوت تلقائياً بحسابك."
-              : "سجّل الدخول للوصول إلى وكيل التداول"}
+            : isLogin
+              ? "أدخل بريدك وكلمة المرور"
+              : "سجّل بياناتك — التفعيل بعد موافقة الإدارة"}
         </p>
 
         {canUseTelegram && (
@@ -82,16 +102,12 @@ export default function AuthForm({
               redirectTo={redirectTo}
               onError={setError}
             />
-            <p className="text-center text-xs text-muted-foreground">
-              بعد الدخول ستصلك إشعارات الصفقات على نفس حساب تليجرام — بدون رمز
-              يدوي.
-            </p>
             <div className="relative py-2">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border" />
               </div>
               <p className="relative mx-auto w-fit bg-background px-3 text-xs text-muted-foreground">
-                أو
+                {isLogin ? "أو الدخول بالبريد" : "أو التسجيل بالبريد"}
               </p>
             </div>
           </div>
@@ -103,83 +119,95 @@ export default function AuthForm({
           </p>
         )}
 
-        {canUseTelegram ? (
-          <button
-            type="button"
-            onClick={() => setShowEmail((v) => !v)}
-            className="mt-2 flex w-full items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            الدخول بالبريد (للمشرفين)
-            <ChevronDown
-              className={`h-4 w-4 transition ${showEmail ? "rotate-180" : ""}`}
-            />
-          </button>
-        ) : null}
-
-        {(showEmail || !canUseTelegram) && (
-          <form onSubmit={submit} className="mt-4 space-y-4">
-            {!gateMode && (
+        <form onSubmit={submit} className="mt-4 space-y-4">
+          {!gateMode && !isLogin && (
+            <>
               <div>
-                <label htmlFor="email">البريد الإلكتروني</label>
+                <label htmlFor="username">اسم المستخدم</label>
                 <input
-                  id="email"
-                  type="email"
+                  id="username"
                   required
+                  minLength={3}
+                  maxLength={32}
+                  pattern="[a-zA-Z0-9_.]+"
                   className="input mt-1.5"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   dir="ltr"
-                  placeholder="you@example.com"
+                  placeholder="ahmed_trader"
                 />
               </div>
-            )}
+              <div>
+                <label>رقم واتساب</label>
+                <div className="mt-1.5">
+                  <PhoneInput
+                    value={whatsapp}
+                    onChange={setWhatsapp}
+                    disabled={loading}
+                    defaultCountry={defaultCountry}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+          {!gateMode && (
             <div>
-              <label htmlFor="password">كلمة المرور</label>
+              <label htmlFor="email">البريد الإلكتروني</label>
               <input
-                id="password"
-                type="password"
+                id="email"
+                type="email"
                 required
-                minLength={isLogin ? 1 : 8}
                 className="input mt-1.5"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 dir="ltr"
-                autoFocus={gateMode}
+                placeholder="you@example.com"
               />
             </div>
-            <button
-              type="submit"
-              className="btn btn-primary w-full py-3"
-              disabled={loading}
-            >
-              {loading
-                ? "جارٍ المعالجة…"
-                : gateMode
-                  ? "دخول"
-                  : isLogin
-                    ? "متابعة بالبريد"
-                    : "إنشاء حساب"}
-              {!loading && <ArrowUpRight className="h-4 w-4" />}
-            </button>
-          </form>
-        )}
+          )}
+          <div>
+            <label htmlFor="password">كلمة المرور</label>
+            <input
+              id="password"
+              type="password"
+              required
+              minLength={isLogin ? 1 : 8}
+              className="input mt-1.5"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              dir="ltr"
+              autoFocus={gateMode}
+            />
+          </div>
+          <button
+            type="submit"
+            className="btn btn-primary w-full py-3"
+            disabled={loading}
+          >
+            {loading
+              ? "جارٍ المعالجة…"
+              : gateMode
+                ? "دخول"
+                : isLogin
+                  ? "تسجيل الدخول"
+                  : "إنشاء حساب"}
+            {!loading && <ArrowUpRight className="h-4 w-4" />}
+          </button>
+        </form>
 
-        {!isLogin && canUseTelegram && (
+        {isLogin && allowRegister && (
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            ليس لديك حساب؟{" "}
+            <Link href="/signup" className="text-link font-medium">
+              سجّل الآن
+            </Link>
+          </p>
+        )}
+        {!isLogin && (
           <p className="mt-6 text-center text-sm text-muted-foreground">
             لديك حساب؟{" "}
             <Link href="/login" className="text-link font-medium">
               دخول
-            </Link>
-          </p>
-        )}
-        {isLogin && allowRegister && (
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {!canUseTelegram && "ليس لديك حساب؟ "}
-            <Link
-              href="/register"
-              className="text-link font-medium"
-            >
-              {canUseTelegram ? "تسجيل جديد عبر تليجرام" : "سجّل الآن"}
             </Link>
           </p>
         )}
@@ -202,8 +230,8 @@ export default function AuthForm({
         <div className="relative flex h-full items-center justify-center p-8">
           <div className="surface-card w-full max-w-2xl overflow-hidden">
             <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold text-foreground">معاينة السوق الحي</p>
-              <p className="text-xs text-muted-foreground">BTCUSDT · بيانات Binance</p>
+              <p className="text-sm font-semibold text-foreground">AiChart</p>
+              <p className="text-xs text-muted-foreground">Claude MCP · Binance · MT5</p>
             </div>
             <PriceChart symbol="BTCUSDT" interval="1h" recommendations={[]} className="h-[360px]" />
           </div>

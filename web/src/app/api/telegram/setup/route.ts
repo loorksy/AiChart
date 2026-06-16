@@ -3,9 +3,8 @@ import { requireAdmin, handleError } from "@/lib/api";
 import { isTelegramConfigured, deleteWebhook } from "@/lib/telegram";
 
 /**
- * Admin-only: releases the bot from any web-managed webhook so the OpenClaw
- * gateway can own the Telegram conversation. The web app keeps using the bot
- * token for outbound notifications only.
+ * Admin-only: releases web-managed webhook. Bot is outbound notifications only;
+ * trading conversation is via Claude MCP.
  */
 export async function POST() {
   try {
@@ -20,7 +19,7 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       message:
-        "أُزيل الـ webhook — محادثة البوت يديرها وكيل OpenClaw الآن، والمنصة ترسل الإشعارات فقط.",
+        "أُزيل الـ webhook — التداول عبر Claude MCP، والمنصة ترسل الإشعارات فقط.",
     });
   } catch (err) {
     return handleError(err);

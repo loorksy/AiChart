@@ -5,6 +5,24 @@ import { bridgeCall, bridgeWrap } from "./helpers.js";
 
 export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
+    "get_account_overview",
+    {
+      description:
+        "ملخص موحّد للحساب قبل أي تداول: رصيد، رافعة، demo/live، PnL اليوم، حدود، perTradeMaxUsd، صفقات مفتوحة، quotes. استدعِه في بداية جلسة التداول.",
+      inputSchema: {},
+    },
+    async () =>
+      bridgeCall(async () => {
+        const [risk, portfolio, live] = await Promise.all([
+          bridge.get("/api/agent/risk/status"),
+          bridge.get("/api/agent/portfolio"),
+          bridge.get("/api/agent/live/account"),
+        ]);
+        return { risk, portfolio, live };
+      }),
+  );
+
+  server.registerTool(
     "get_risk_status",
     {
       description:
@@ -45,28 +63,39 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "get_trade_lessons",
     {
-      description: "دروس مشابهة من الذاكرة بعد صفقات سابقة.",
+      description:
+        "دروس من صفقات سابقة — استخدم قبل التحليل. recent=true للأخطاء الأخيرة (تعويض خسارة).",
       inputSchema: {
         symbol: z.string().optional(),
         pattern: z.string().optional(),
         limit: z.number().int().min(1).max(10).optional(),
+        recent: z
+          .boolean()
+          .optional()
+          .describe("true = آخر الدروس بغض النظر عن الرمز"),
       },
     },
-    async ({ symbol, pattern, limit }) =>
+    async ({ symbol, pattern, limit, recent }) =>
       bridgeCall(() =>
-        bridge.get("/api/agent/memory/lessons", { symbol, pattern, limit }),
+        bridge.get("/api/agent/memory/lessons", {
+          symbol,
+          pattern,
+          limit,
+          ...(recent ? { recent: "1" } : {}),
+        }),
       ),
   );
 
   server.registerTool(
     "create_recommendation",
     {
-      description: "تسجيل توصية منظمة مع شارت (chart_drawings اختياري).",
+      description:
+        "تسجيل توصية قبل التنفيذ. rationale = 2–4 جمل عربية بصيغة «نحن» (لماذا ندخل/لا ندخل). confidence إلزامي.",
       inputSchema: {
         symbol: z.string(),
         action: z.enum(["buy", "sell", "wait"]),
         confidence: z.number().min(0).max(100),
-        rationale: z.string(),
+        rationale: z.string().min(10),
         factors: z.array(z.string()).min(1).max(8),
         entry: z.number().optional(),
         stop_loss: z.number().optional(),
@@ -84,17 +113,17 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "open_trade",
     {
       description:
-        "فتح صفقة عبر Risk Guard. Spot أو Futures (market_type:futures, leverage, order_type:limit+limit_price). approved_by_user:true عند موافقة صريحة.",
+        "فتح صفقة عبر Risk Guard. notional و rationale مطلوبان — اسأل المشغّل «بكم ندخل؟» ولا تستخدم perTradeMax تلقائياً. approved_by_user:true بعد موافقة صريحة في الشات.",
       inputSchema: {
         symbol: z.string(),
         side: z.enum(["buy", "sell"]),
-        notional: z.number().positive().optional(),
+        notional: z.number().positive(),
         market: z.enum(["crypto", "forex"]).optional(),
         entry: z.number().optional(),
         stop_loss: z.number().optional(),
         take_profit: z.number().optional(),
-        confidence: z.number().min(0).max(100).optional(),
-        rationale: z.string().optional(),
+        confidence: z.number().min(0).max(100),
+        rationale: z.string().min(10),
         recommendation_id: z.number().optional(),
         approved_by_user: z.boolean().optional(),
         practice: z.boolean().optional(),

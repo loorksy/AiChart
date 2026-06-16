@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
 import { buildBinancePermissionReport } from "@/lib/binanceVerify";
 import { saveBinanceAccount } from "@/lib/store";
@@ -14,7 +14,7 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const { apiKey, apiSecret, env, label } = schema.parse(await req.json());
 
     // Verify the credentials work before persisting them.

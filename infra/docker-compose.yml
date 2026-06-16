@@ -16,36 +16,15 @@ services:
       - aichart-data:/app/data
     restart: unless-stopped
 
-  # Self-hosted MetaTrader 5 (Wine) + REST shim — free MetaApi replacement.
-  # Needs ~1.5-2GB RAM. Start standalone with: docker compose up -d mt5
   mt5:
     build:
       context: ./mt5
     ports:
-      - "127.0.0.1:18812:18812" # localhost only — never expose publicly
+      - "127.0.0.1:18812:18812"
     environment:
       - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
     volumes:
-      - mt5-data:/data # persisted credentials for auto-reconnect
-    restart: unless-stopped
-
-  # OpenClaw gateway — optional if using Claude MCP (see mcp/ + docs/MCP_CLAUDE_SETUP.md).
-  agent:
-    image: node:22-bookworm-slim
-    command: >
-      sh -c "npm install -g openclaw &&
-             cp -r /workspace-src/* /root/.openclaw/workspace/ 2>/dev/null;
-             openclaw gateway"
-    environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - AICHART_API_URL=http://web:3000
-      - AICHART_SERVICE_TOKEN=${AICHART_SERVICE_TOKEN}
-    volumes:
-      - openclaw-state:/root/.openclaw
-      - ../agent/workspace:/workspace-src:ro
-    depends_on:
-      - web
+      - mt5-data:/data
     restart: unless-stopped
 
   mcp:
@@ -67,5 +46,4 @@ services:
 
 volumes:
   aichart-data:
-  openclaw-state: # agent memory/sessions survive restarts
-  mt5-data: # MT5 login credentials for auto-reconnect
+  mt5-data:

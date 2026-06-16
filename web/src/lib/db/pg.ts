@@ -406,7 +406,23 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
-    ALTER TABLE alert_log ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMPTZ
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT
+  `).catch(() => {});
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username
+      ON users (username) WHERE username IS NOT NULL
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_e164 TEXT
+  `).catch(() => {});
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_whatsapp
+      ON users (whatsapp_e164) WHERE whatsapp_e164 IS NOT NULL
   `).catch(() => {});
 
   await client.query(`

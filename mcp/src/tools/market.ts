@@ -57,7 +57,8 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "scan_market",
     {
-      description: "مسح فرص فنية على قائمة رموز (كود فقط، بدون AI).",
+      description:
+        "مسح فرص فنية على عدة رموز (كود فقط). استخدم عند «خذ صفقة» لمقارنة BTC/ETH/… قبل اختيار الزوج.",
       inputSchema: {
         symbols: z.array(z.string()).max(30).optional(),
         interval: z.string().optional(),

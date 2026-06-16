@@ -35,7 +35,7 @@ import { MtConnectCard } from "@/components/settings/MtConnectCard";
 import { cn } from "@/lib/utils";
 import { PageLayout, SurfaceCard, PillButton } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
-import { displayNameFromEmail } from "@/lib/displayName";
+import { displayNameForUser } from "@/lib/displayName";
 import { InfoTip, LabelWithTip } from "@/components/ui/InfoTip";
 
 function Field({
@@ -78,6 +78,7 @@ export default function SettingsClient({
   ea,
   mt,
   forexBackend,
+  canDownloadEa = false,
   initialTab,
   embedMode = false,
   visibleTabs,
@@ -89,6 +90,7 @@ export default function SettingsClient({
   ea: EaConnectionMeta | null;
   mt: MtAccountMeta | null;
   forexBackend: ForexBackendMode;
+  canDownloadEa?: boolean;
   initialTab?: TabId;
   /** When true, omit PageLayout — for bridge console sections. */
   embedMode?: boolean;
@@ -104,7 +106,7 @@ export default function SettingsClient({
   const [tab, setTab] = useState<TabId>(defaultTab);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
-  const displayName = displayNameFromEmail(user.email);
+  const displayName = displayNameForUser(user);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -229,7 +231,7 @@ export default function SettingsClient({
               {forexBackend === "metaapi" || forexBackend === "mt5local" ? (
                 <MtConnectCard account={mt} />
               ) : (
-                <EaConnectCard connection={ea} />
+                <EaConnectCard connection={ea} canDownloadEa={canDownloadEa} />
               )}
               <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
             </div>

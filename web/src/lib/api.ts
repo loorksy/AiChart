@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "./auth";
 import type { PublicUser } from "./types";
+import {
+  accessBlockMessage,
+  getAccessBlockReason,
+  hasPlatformAccess,
+} from "./platformAccess";
 
 export class ApiError extends Error {
   status: number;
@@ -23,6 +28,18 @@ export async function requireActiveUser(): Promise<PublicUser> {
   const user = await requireUser();
   if (user.status !== "active") {
     throw new ApiError(403, "حسابك بانتظار موافقة الإدارة لتفعيله.");
+  }
+  return user;
+}
+
+export async function requirePlatformAccess(): Promise<PublicUser> {
+  const user = await requireUser();
+  if (!hasPlatformAccess(user)) {
+    const reason = getAccessBlockReason(user);
+    throw new ApiError(
+      403,
+      reason ? accessBlockMessage(reason) : "الوصول غير متاح.",
+    );
   }
   return user;
 }

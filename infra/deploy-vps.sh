@@ -88,7 +88,7 @@ ENABLE_BINANCE_CLI=0
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_BOT_USERNAME=
 CRON_SECRET=$cron
-AICHART_SINGLE_USER=1
+AICHART_SINGLE_USER=0
 AICHART_SERVICE_TOKEN=$svc
 APP_URL=http://${ip}:${port}
 PORT=${port}
@@ -96,8 +96,8 @@ NODE_ENV=production
 EOF
   chmod 600 "$env_file"
   log "IMPORTANT: edit $env_file — set ADMIN_PASSWORD, ANTHROPIC_API_KEY, APP_URL (domain)"
-  log "Agent: install OpenClaw (npm i -g openclaw), run agent/scripts/sync-workspace.sh,"
-  log "       export AICHART_SERVICE_TOKEN from web/.env, then: pm2 start openclaw -- gateway"
+  log "Agent: install MCP (npm i -g aichart-mcp), run agent/scripts/sync-workspace.sh,"
+  log "       export AICHART_SERVICE_TOKEN from web/.env, then: pm2 start aichart-mcp -- gateway"
 }
 
 main() {

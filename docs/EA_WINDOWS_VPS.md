@@ -7,7 +7,7 @@
 
 ```
 VPS Linux (AiChart)  <── HTTPS heartbeat كل 1ث ──  VPS Windows (MT5 + EA)
-  OpenClaw + Risk Guard                              حساب الوسيط (Liirat-Live)
+  Claude MCP + Risk Guard                              حساب الوسيط (Liirat-Live)
 ```
 
 ## 1) اختيار VPS Windows
@@ -86,7 +86,7 @@ FOREX_BACKEND=ea
 | الإعدادات → EA | **online** (نقطة ذهبية) |
 | Experts tab في MT5 | وجوه مبتسمة على EA |
 | شارت السوق (فوركس) | شموع تظهر |
-| OpenClaw `GET /api/agent/portfolio` | `ea.online: true` |
+| Claude MCP `GET /api/agent/portfolio` | `ea.online: true` |
 
 ## 8) MT4 (لاحقاً)
 
@@ -94,7 +94,7 @@ FOREX_BACKEND=ea
 - **مطلوب:** WebRequest URL = `https://aichart.lork.cloud`
 - النظام يدعم **اتصال EA واحد** (MT4 **أو** MT5) لكل مستخدم — لتشغيل الاثنين معاً يلزم توسيع لاحقاً
 
-## 9) OpenClaw والتنفيذ
+## 9) Claude MCP والتنفيذ
 
 الوكيل ينفّذ عبر `POST /api/agent/trade/open` مع `market: "forex"`:
 Risk Guard → `ea_commands` → EA → MT5 → الوسيط.

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import {
+  getAccessBlockReason,
+  hasPlatformAccess,
+} from "@/lib/platformAccess";
+import { needsMcpCredentials } from "@/lib/userCredentials";
+import {
   getSettings,
   getLimits,
   getBinanceAccountMeta,
@@ -20,8 +25,13 @@ export async function GET() {
   const limits = await getLimits(user.id);
   const used = await getTodayUsage(user.id);
   const limit = limits.claude_quota;
+  const platformAccess = hasPlatformAccess(user);
+  const accessBlockReason = platformAccess ? null : getAccessBlockReason(user);
   return NextResponse.json({
     user,
+    needs_mcp_credentials: needsMcpCredentials(user),
+    platform_access: platformAccess,
+    access_block_reason: accessBlockReason,
     settings: await getSettings(user.id),
     limits,
     binance: await getBinanceAccountMeta(user.id),

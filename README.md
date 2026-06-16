@@ -43,24 +43,23 @@ npm run dev            # http://localhost:3000
 
 ## Claude MCP — التداول من Connectors
 
-بديل/مكمّل لـ OpenClaw: MCP Server في [`mcp/`](mcp/) يغلّف Bridge API للربط مع **Claude.ai → Customize → Connectors**.
+MCP Server في [`mcp/`](mcp/) يغلّف Bridge API للربط مع **Claude.ai → Customize → Connectors**.
 
 | الحقل | القيمة |
 |-------|--------|
 | Remote MCP server URL | `https://aichart.lork.cloud/mcp` |
 
-دليل كامل: [`docs/MCP_CLAUDE_SETUP.md`](docs/MCP_CLAUDE_SETUP.md) · إيقاف OpenClaw: [`docs/OPENCLAW_DECOMMISSION.md`](docs/OPENCLAW_DECOMMISSION.md)
+دليل كامل: [`docs/MCP_CLAUDE_SETUP.md`](docs/MCP_CLAUDE_SETUP.md)
 
 ```bash
 cd mcp && npm install && npm run build
 bash infra/vps-mcp-deploy.sh /opt/aichart
 ```
 
-## المراقبة 24/7 — Event-Driven
+## المراقبة — صيانة ميكانيكية
 
-الكود (`monitorRunner.ts` + `monitor.ts`) يفحص السوق والصفقات كل 10 دقائق
-عبر cron — **بدون AI**. عند حدث (مرشح فني، اقتراب SL/TP، خسارة يومية) تُرسل
-رسالة `[EVENT:…]` لتيليجرام فيستيقظ OpenClaw. انظر [`agent/`](agent/README.md).
+Cron (`monitorRunner.ts`) يشغّل صيانة OCO/journal كل 10 دقائق — **بدون استيقاظ وكيل**.
+قرارات التداول في محادثة Claude MCP. انظر [`agent/`](agent/README.md).
 
 ```bash
 # مراقبة بالأحداث (كل 10 دقائق)

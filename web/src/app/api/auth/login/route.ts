@@ -5,6 +5,7 @@ import { initDb, queryOne } from "@/lib/db";
 import { verifyPassword, setSession } from "@/lib/auth";
 import { isSingleUserMode, resolveAgentUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
+import { hasPlatformAccess } from "@/lib/platformAccess";
 import type { UserRow } from "@/lib/types";
 
 const schema = z.object({
@@ -64,13 +65,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const publicUser = {
+      id: row.id,
+      email: row.email,
+      role: row.role,
+      status: row.status,
+      username: row.username ?? null,
+      whatsapp_e164: row.whatsapp_e164 ?? null,
+      telegram_id: row.telegram_id ?? null,
+      access_expires_at: row.access_expires_at ?? null,
+      created_at: row.created_at,
+    };
     const token = await setSession({
       sub: row.id,
       email: row.email,
       role: row.role,
     });
     return NextResponse.json({
-      user: { id: row.id, email: row.email, role: row.role, status: row.status },
+      user: publicUser,
+      platform_access: hasPlatformAccess(publicUser),
       token,
     });
   } catch (err) {

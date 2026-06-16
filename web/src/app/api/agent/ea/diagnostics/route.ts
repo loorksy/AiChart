@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
   try {
     requireAgentAuth(req);
     const userId = await resolveAgentUserId();
-    const symbolQ = req.nextUrl.searchParams.get("symbol")?.toUpperCase().trim() ?? "";
+    const symbolRaw = req.nextUrl.searchParams.get("symbol")?.trim() ?? "";
+    const symbolQ = symbolRaw.toUpperCase();
 
     const conn = await getEaConnection(userId);
     if (!conn) {
@@ -57,9 +58,9 @@ export async function GET(req: NextRequest) {
       heartbeatFresh: isHeartbeatFresh(conn.last_heartbeat_at),
       symbols,
       symbolCount: symbols.length,
-      ...(symbolQ
+      ...(symbolRaw
         ? {
-            querySymbol: symbolQ,
+            querySymbol: symbolRaw,
             hasSymbol,
             quotesOk,
             spreadPips: spread?.spreadPips ?? null,

@@ -29,7 +29,7 @@ else
 fi
 
 if [ -x "$INSTALL_DIR/agent/scripts/sync-workspace.sh" ]; then
-  log "Syncing OpenClaw workspace..."
+  log "Syncing MCP workspace..."
   bash "$INSTALL_DIR/agent/scripts/sync-workspace.sh" || true
 fi
 

@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { getAppSecret } from "./env";
 import { initDb, queryOne } from "./db";
 import type { PublicUser, SessionPayload, UserRow } from "./types";
+import { userRowToPublicUser } from "./userSelect";
 
 const SESSION_COOKIE = "aichart_session";
 const SESSION_TTL = "7d";
@@ -87,13 +88,7 @@ export async function getCurrentUser(): Promise<PublicUser | null> {
     [session.sub],
   );
   if (!row) return null;
-  return {
-    id: row.id,
-    email: row.email,
-    role: row.role,
-    status: row.status,
-    created_at: row.created_at,
-  };
+  return userRowToPublicUser(row);
 }
 
 export { SESSION_COOKIE };

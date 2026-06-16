@@ -7,7 +7,6 @@ import {
   PLATFORM_CONFIG_FIELDS,
 } from "@/lib/platformConfig";
 import { logAudit } from "@/lib/store";
-import { syncOpenClawModelFromPlatform } from "@/lib/openclawModelSync";
 import {
   getActiveProvider,
   getActiveModel,
@@ -80,26 +79,9 @@ export async function PUT(req: NextRequest) {
     await savePlatformConfig(patch);
     await logAudit(admin.id, "platform_config", Object.keys(patch).join(", "));
 
-    let agentModelSync: Awaited<
-      ReturnType<typeof syncOpenClawModelFromPlatform>
-    > | null = null;
-    if (
-      patch.AI_MODEL !== undefined ||
-      patch.AI_PROVIDER !== undefined ||
-      patch.ANTHROPIC_MODEL !== undefined ||
-      patch.ANTHROPIC_API_KEY !== undefined ||
-      patch.OPENAI_API_KEY !== undefined ||
-      patch.GEMINI_API_KEY !== undefined
-    ) {
-      // savePlatformConfig already refreshed the cache, so the sync reads
-      // the new provider/model from platform config directly.
-      agentModelSync = await syncOpenClawModelFromPlatform();
-    }
-
     return NextResponse.json({
       ok: true,
       fields: await listPlatformConfigStatus(),
-      agentModelSync,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

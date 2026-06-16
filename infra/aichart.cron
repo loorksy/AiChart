@@ -3,13 +3,9 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-# Event-driven monitor — code-only checks; wakes OpenClaw via Telegram on events only.
 */10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/event-monitor >/dev/null 2>&1
 
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 
-# Weekly cleanup (Sun 04:00 UTC): delete OpenClaw session transcripts older
 # than 14 days so stale history never bloats disk or future context.
-# Adjust AGENT_USER to the Linux user that runs pm2/OpenClaw.
-0 4 * * 0 root find /home/AGENT_USER/.openclaw -type f -path "*session*" -mtime +14 -delete >/dev/null 2>&1

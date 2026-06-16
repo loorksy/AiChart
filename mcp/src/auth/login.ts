@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import type { AiChartOAuthProvider } from "./provider.js";
 import { SESSION_COOKIE } from "./provider.js";
+import { mcpLoginErrorMessage } from "./platformAccess.js";
 
 function loginPage(pending: string, error?: string): string {
   const err = error
@@ -26,7 +27,7 @@ function loginPage(pending: string, error?: string): string {
 <body>
   <form method="post" action="/oauth/login">
     <h1>AiChart Trading MCP</h1>
-    <p>سجّل دخول بحساب <strong>admin</strong> في المنصة للربط مع Claude.</p>
+    <p>سجّل دخول <strong>حسابك في AiChart</strong> للربط مع Claude (بعد موافقة الإدارة).</p>
     ${err}
     <input type="hidden" name="pending" value="${escapeHtml(pending)}"/>
     <label for="email">البريد</label>
@@ -54,7 +55,12 @@ export function mountLoginRoutes(app: Express, provider: AiChartOAuthProvider) {
       res.status(400).send("جلسة OAuth غير صالحة أو منتهية.");
       return;
     }
-    res.type("html").send(loginPage(pending));
+    const errQuery = String(req.query.error ?? "");
+    const err =
+      errQuery === "expired"
+        ? "انتهت صلاحية حسابك أو الجلسة. سجّل الدخول مجدداً."
+        : undefined;
+    res.type("html").send(loginPage(pending, err));
   });
 
   app.post("/oauth/login", async (req: Request, res: Response) => {
@@ -69,9 +75,11 @@ export function mountLoginRoutes(app: Express, provider: AiChartOAuthProvider) {
       res.status(400).send("جلسة OAuth غير صالحة أو منتهية.");
       return;
     }
-    const ok = await provider.verifyAdmin(email, password);
-    if (!ok) {
-      res.type("html").send(loginPage(pending, "بيانات الدخول غير صحيحة."));
+    const result = await provider.verifyPlatformUser(email, password);
+    if (!result.ok) {
+      res
+        .type("html")
+        .send(loginPage(pending, mcpLoginErrorMessage(result.reason)));
       return;
     }
     const secure = req.secure || req.headers["x-forwarded-proto"] === "https";
@@ -81,7 +89,12 @@ export function mountLoginRoutes(app: Express, provider: AiChartOAuthProvider) {
       provider.sessionCookieOptions(secure),
     );
     try {
-      provider.completePendingLogin(pending, email, res);
+      provider.completePendingLogin(
+        pending,
+        email,
+        result.accessExpiresAt ?? null,
+        res,
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "OAuth error";
       res.status(400).send(msg);

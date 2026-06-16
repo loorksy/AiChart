@@ -20,7 +20,7 @@ export const BRIDGE_NAV_MORE = [
 
 export const BRIDGE_NAV_SECONDARY = [
   { href: "/console/risk#kill", label: "Kill Switch", icon: Shield },
-  { href: "/console/platform?tab=system", label: "OpenClaw", icon: KeyRound },
+  { href: "/console/platform?tab=system", label: "MCP", icon: KeyRound },
   { href: "/console/platform?tab=security", label: "سجل التدقيق", icon: KeyRound },
 ] as const;
 

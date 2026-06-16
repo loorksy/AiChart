@@ -7,7 +7,7 @@ MCP Server يغلّف Bridge API (`/api/agent/*`) للربط مع **Claude.ai �
 | المتغير | مطلوب | الوصف |
 |---------|--------|--------|
 | `AICHART_API_URL` | نعم | مثل `http://127.0.0.1:3010` |
-| `AICHART_SERVICE_TOKEN` | نعم* | نفس توكن جسر OpenClaw |
+| `AICHART_SERVICE_TOKEN` | نعم* | توكن جسر `/api/agent/*` |
 | `MCP_PUBLIC_URL` | نعم | `https://aichart.lork.cloud/mcp` |
 | `MCP_AUTH_SECRET` | نعم* | `openssl rand -hex 32` — نفس القيمة في `web/.env` |
 | `MCP_PORT` | لا | افتراضي `8787` |
@@ -47,8 +47,8 @@ bash infra/vps-mcp-deploy.sh /opt/aichart
 # أضف infra/nginx/aichart-mcp.conf إلى nginx vhost
 ```
 
-## الأدوات (19)
+## الأدوات
 
-`get_risk_status`, `get_market_snapshot`, `get_market_price`, `get_market_context`, `scan_market`, `get_portfolio`, `get_open_trades`, `get_trade_lessons`, `create_recommendation`, `open_trade`, `close_trade`, `evaluate_trade`, `record_exit_decision`, `request_approval`, `respond_approval`, `get_execution_env`, `set_execution_env`, `set_trading_mode`, `set_kill_switch`
+`get_account_overview`, `get_risk_status`, `get_market_snapshot`, `get_market_price`, `get_market_context`, `scan_market`, `get_portfolio`, `get_open_trades`, `get_trade_lessons`, `create_recommendation`, `open_trade`, `close_trade`, `evaluate_trade`, `record_exit_decision`, `request_approval`, `respond_approval`, `get_execution_env`, `set_execution_env`, `set_trading_mode`, `set_kill_switch`, …
 
 Resource: `aichart://trading-rules`

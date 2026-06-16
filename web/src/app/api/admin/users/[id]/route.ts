@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError, ApiError } from "@/lib/api";
-import { setUserStatus, updateAdminLimits, deleteUser, getPublicUser } from "@/lib/store";
+import {
+  setUserAccess,
+  deleteUser,
+  getPublicUser,
+  logAudit,
+  updateAdminLimits,
+} from "@/lib/store";
+import { DEFAULT_ACCESS_DAYS } from "@/lib/platformAccess";
 
 const schema = z.object({
   status: z.enum(["pending", "active", "suspended"]).optional(),
+  access_days: z.number().int().min(1).max(3650).optional(),
+  renew: z.boolean().optional(),
   can_execute: z.boolean().optional(),
   max_capital_cap: z.number().min(0).optional(),
   max_open_trades_cap: z.number().int().min(1).max(50).optional(),
@@ -23,12 +32,38 @@ export async function PATCH(
     if (!Number.isInteger(userId)) throw new ApiError(400, "معرّف غير صالح.");
 
     const input = schema.parse(await req.json());
+    const before = await getPublicUser(userId);
 
-    if (input.status) {
-      if (userId === admin.id && input.status !== "active") {
+    if (input.status || input.access_days !== undefined) {
+      if (userId === admin.id && input.status && input.status !== "active") {
         throw new ApiError(400, "لا يمكنك تعطيل حسابك الإداري.");
       }
-      await setUserStatus(userId, input.status);
+      const accessDays =
+        input.access_days ??
+        (input.status === "active" ? DEFAULT_ACCESS_DAYS : undefined);
+      await setUserAccess(userId, {
+        status: input.status,
+        access_days: accessDays,
+        renew: input.renew ?? input.access_days !== undefined,
+      });
+
+      if (input.status === "active" || input.access_days !== undefined) {
+        const after = await getPublicUser(userId);
+        const action =
+          before?.status === "active" && before.access_expires_at
+            ? "user_access_renewed"
+            : "user_access_granted";
+        await logAudit(
+          admin.id,
+          action,
+          JSON.stringify({
+            target_user_id: userId,
+            email: after?.email,
+            access_expires_at: after?.access_expires_at,
+            access_days: accessDays,
+          }),
+        );
+      }
     }
 
     const limitPatch: Record<string, unknown> = {};

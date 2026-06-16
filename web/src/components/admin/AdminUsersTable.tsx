@@ -2,9 +2,35 @@
 
 import { useState } from "react";
 import type { AdminUserView } from "@/lib/store";
+import { DEFAULT_ACCESS_DAYS, accessDaysRemaining } from "@/lib/platformAccess";
+import { displayNameForUser } from "@/lib/displayName";
+import { formatWhatsAppDisplay } from "@/lib/phone";
+import { isSyntheticTelegramEmail } from "@/lib/userCredentials";
 import { cn } from "@/lib/utils";
 
 type TableMode = "full" | "limits";
+
+function formatExpiry(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("ar-EG", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatExpiryCell(
+  iso: string | null | undefined,
+  status: string,
+): string {
+  const date = formatExpiry(iso);
+  if (!iso || status !== "active") return date;
+  const days = accessDaysRemaining(iso);
+  if (days === null || days === 0) return date;
+  return `${date} (متبقي ${days} يوم)`;
+}
 
 export function AdminUsersTable({
   initialUsers,
@@ -18,6 +44,11 @@ export function AdminUsersTable({
   const [users, setUsers] = useState(initialUsers);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [accessDays, setAccessDays] = useState<Record<number, number>>({});
+
+  function daysFor(userId: number): number {
+    return accessDays[userId] ?? DEFAULT_ACCESS_DAYS;
+  }
 
   async function refresh() {
     const r = await fetch("/api/admin/users");
@@ -70,7 +101,11 @@ export function AdminUsersTable({
         <thead className="border-b border-white/10 text-muted-foreground">
           <tr>
             <th className="p-3">المستخدم</th>
+            {mode === "full" && <th className="p-3">المصدر</th>}
+            {mode === "full" && <th className="p-3">واتساب</th>}
             {mode === "full" && <th className="p-3">الحالة</th>}
+            {mode === "full" && <th className="p-3">صلاحية حتى</th>}
+            {mode === "full" && <th className="p-3">أيام</th>}
             {mode === "full" && <th className="p-3">Binance</th>}
             <th className="p-3">التنفيذ</th>
             <th className="p-3">سقف رأس المال</th>
@@ -84,9 +119,32 @@ export function AdminUsersTable({
             .filter((u) => u.role !== "admin")
             .map((u) => (
               <tr key={u.id} className="border-b border-white/5">
-                <td className="p-3" dir="ltr">
-                  {u.email}
+                <td className="p-3">
+                  <div dir="ltr" className="text-xs">
+                    <p className="font-medium">{displayNameForUser(u)}</p>
+                    <p className="text-muted-foreground">{u.email}</p>
+                    {isSyntheticTelegramEmail(u.email) && (
+                      <span className="mt-1 inline-block rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">
+                        Telegram — بريد MCP ناقص
+                      </span>
+                    )}
+                    {u.username && u.username !== displayNameForUser(u) && (
+                      <p className="text-muted-foreground">@{u.username}</p>
+                    )}
+                  </div>
                 </td>
+                {mode === "full" && (
+                  <td className="p-3 text-xs">
+                    {u.signup_via === "telegram" ? "Telegram" : "بريد"}
+                  </td>
+                )}
+                {mode === "full" && (
+                  <td className="p-3 text-xs" dir="ltr">
+                    {u.whatsapp_e164
+                      ? formatWhatsAppDisplay(u.whatsapp_e164)
+                      : "—"}
+                  </td>
+                )}
                 {mode === "full" && (
                   <td className="p-3">
                     <select
@@ -99,6 +157,26 @@ export function AdminUsersTable({
                       <option value="active">مفعّل</option>
                       <option value="suspended">موقوف</option>
                     </select>
+                  </td>
+                )}
+                {mode === "full" && (
+                  <td className="p-3 text-xs">{formatExpiryCell(u.access_expires_at, u.status)}</td>
+                )}
+                {mode === "full" && (
+                  <td className="p-3">
+                    <input
+                      type="number"
+                      min={1}
+                      max={3650}
+                      className="admin-input w-16 py-1 text-xs"
+                      value={daysFor(u.id)}
+                      onChange={(e) =>
+                        setAccessDays((prev) => ({
+                          ...prev,
+                          [u.id]: Number(e.target.value) || DEFAULT_ACCESS_DAYS,
+                        }))
+                      }
+                    />
                   </td>
                 )}
                 {mode === "full" && (
@@ -155,7 +233,37 @@ export function AdminUsersTable({
                   />
                 </td>
                 <td className="p-3">
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap gap-1">
+                    {mode === "full" && (
+                      <>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white"
+                          disabled={savingId === u.id}
+                          onClick={() =>
+                            patch(u.id, {
+                              status: "active",
+                              access_days: daysFor(u.id),
+                            })
+                          }
+                        >
+                          {savingId === u.id ? "…" : "موافقة"}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-primary/40 px-2 py-1 text-xs text-primary"
+                          disabled={savingId === u.id || u.status !== "active"}
+                          onClick={() =>
+                            patch(u.id, {
+                              access_days: daysFor(u.id),
+                              renew: true,
+                            })
+                          }
+                        >
+                          تجديد
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       className="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"

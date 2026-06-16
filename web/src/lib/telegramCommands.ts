@@ -34,7 +34,7 @@ export function resolveUserMenuInput(text: string): string | null {
   return replyLabelToAgentCommand(t);
 }
 
-/** callback_data → agent command text (OpenClaw receives as user message). */
+/** callback_data → command text for approval buttons. */
 export const CMD_CALLBACK_MAP: Record<string, string> = {
   "cmd:home": MENU_ACTIONS.qaima,
   "cmd:balance": MENU_ACTIONS.rased,

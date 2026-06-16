@@ -168,9 +168,9 @@ AiChart/
 | المسار | الوظيفة |
 |--------|---------|
 | `POST /api/telegram/link` | رمز ربط الحساب |
-| `POST /api/telegram/setup` | تحرير البوت لوكيل OpenClaw (إزالة الـ webhook) |
+| `POST /api/telegram/setup` | تحرير البوت لوكيل Claude MCP (إزالة الـ webhook) |
 
-> محادثة البوت يديرها وكيل OpenClaw (انظر `agent/README.md`) — لا webhook في web.
+> محادثة البوت يديرها وكيل Claude MCP (انظر `agent/README.md`) — لا webhook في web.
 
 ### المهام المجدولة (Cron)
 
@@ -178,7 +178,7 @@ AiChart/
 |--------|---------|
 | `POST /api/cron/daily-summary` | ملخص يومي لتليجرام (احتياطي — الوكيل يرسل ملخصه بنفسه) |
 
-> المراقبة 24/7 انتقلت إلى heartbeat وكيل OpenClaw عبر `/api/agent/*`.
+> المراقبة 24/7 انتقلت إلى heartbeat وكيل Claude MCP عبر `/api/agent/*`.
 
 يُحمى Cron بـ `CRON_SECRET` (`web/src/lib/cronAuth.ts`).
 
@@ -289,9 +289,9 @@ AiChart/
 | المسار | الملف | ملاحظات |
 |--------|-------|---------|
 | محادثة الويب | `api/chat/route.ts` | دعم صورة + SSE؛ `processRecommendations` بعد الرد |
-| تليجرام | وكيل OpenClaw | عبر Bridge API `/api/agent/*` (انظر `agent/`) |
+| تليجرام | وكيل Claude MCP | عبر Bridge API `/api/agent/*` (انظر `agent/`) |
 | إشارة معالج | `api/signals/generate/route.ts` | تكلفة 5 من الحصة |
-| مراقبة 24/7 | heartbeat وكيل OpenClaw | مسح رخيص عبر `/api/agent/market/scan` |
+| مراقبة 24/7 | heartbeat وكيل Claude MCP | مسح رخيص عبر `/api/agent/market/scan` |
 
 ### 8.5 الحصة والاستخدام
 
@@ -381,7 +381,7 @@ notifyTradeResult (تليجرام)
 | `lib/telegram.ts` | إشعارات صادرة فقط (رسائل/صور/بطاقات) |
 | `api/telegram/link/route.ts` | ربط الحساب |
 | `lib/telegramAuth.ts` | التحقق من Telegram Login |
-| وكيل OpenClaw (`agent/`) | محادثة البوت، الموافقات، الأوامر |
+| وكيل Claude MCP (`agent/`) | محادثة البوت، الموافقات، الأوامر |
 
 ### 11.2 ربط الحساب
 

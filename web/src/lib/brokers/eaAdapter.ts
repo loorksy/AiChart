@@ -8,7 +8,11 @@ import { waitForEaCommandAck, EA_ACK_TIMEOUT_MS } from "../eaCommandWait";
 import { recordTrade, updateIntentStatus } from "../store";
 import { computeForexLots } from "./lotSizing";
 import { normalizeMt5Stops } from "./mt5Stops";
-import { resolveMt5Symbol } from "../mt5SymbolMap";
+import {
+  formatEaSymbolHint,
+  getEaSymbolList,
+  resolveMt5Symbol,
+} from "../mt5SymbolMap";
 import type { BrokerAdapter, OrderResult, PlaceOrderContext } from "./types";
 
 /** Max time to wait for the EA to confirm a command before failing the order. */
@@ -48,7 +52,9 @@ export const eaAdapter: BrokerAdapter = {
 
     const mt5Symbol = await resolveMt5Symbol(userId, intent.symbol);
     if (!mt5Symbol) {
-      const reason = `الرمز ${intent.symbol} غير موجود في heartbeat MetaTrader — أضفه إلى Market Watch.`;
+      const available = await getEaSymbolList(userId);
+      const hint = formatEaSymbolHint(available);
+      const reason = `الرمز ${intent.symbol} غير موجود في heartbeat MetaTrader — أضفه إلى Market Watch. Available: ${hint}`;
       push({ id: "quote", label: `الرمز · ${intent.symbol}`, status: "error", detail: reason });
       await updateIntentStatus(intent.id, "failed", reason);
       return { ok: false, status: "failed", reason };

@@ -8,15 +8,15 @@ import { ApiError } from "./api";
 export const AGENT_LAST_SEEN_FLAG = "agent_last_seen";
 
 /**
- * Single-user mode + service auth for the OpenClaw agent bridge.
+ * Single-user mode + service auth for the MCP agent bridge.
  *
- * The platform runs for one human operator. The OpenClaw agent talks to the
+ * The platform runs for one human operator. The Claude MCP server talks to the
  * bridge API (/api/agent/*) using a service token, never a browser session.
  */
 
-/** Single-user mode is the default; set AICHART_SINGLE_USER=0 to re-enable SaaS signup. */
+/** Multi-user is the default; set AICHART_SINGLE_USER=1 for operator-only gate. */
 export function isSingleUserMode(): boolean {
-  return process.env.AICHART_SINGLE_USER !== "0";
+  return process.env.AICHART_SINGLE_USER === "1";
 }
 
 function serviceToken(): string | null {

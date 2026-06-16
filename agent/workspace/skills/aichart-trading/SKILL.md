@@ -1,12 +1,35 @@
 ---
 name: aichart-trading
-description: تداول عبر AiChart — بيانات حية، صفقات Binance/MT5، توصيات بشارت، مسح، Risk Guard، ديمو/حقيقي، موافقة أزرار.
-metadata: {"openclaw":{"requires":{"env":["AICHART_SERVICE_TOKEN"]}}}
+description: تداول عبر AiChart MCP — Claude Connectors، بيانات حية، Binance/MT5، توصيات بشارت، Risk Guard.
+metadata: {"aichart":{"requires":{"env":["AICHART_SERVICE_TOKEN"]}}}
 ---
 
 # مهارة AiChart Trading
 
-`$AICHART_API_URL` + `Authorization: Bearer $AICHART_SERVICE_TOKEN` — استخدم curl.
+## القناة الأساسية: MCP (Claude Connectors)
+
+**استخدم أدوات MCP** — راجع [`docs/MCP_CLAUDE_SETUP.md`](../../../docs/MCP_CLAUDE_SETUP.md).
+
+| الغرض | أداة MCP |
+|--------|----------|
+| ملخص الحساب | `get_account_overview` |
+| مخاطر/حدود | `get_risk_status` |
+| محفظة/رصيد | `get_portfolio` · `get_live_account` |
+| تحليل | `get_market_snapshot` · `get_market_context` · `scan_market` |
+| دروس | `get_trade_lessons` (+ `recent:true`) |
+| توصية | `create_recommendation` |
+| تنفيذ | `open_trade` (notional + rationale إلزاميان) |
+| إغلاق | `close_trade` · `evaluate_trade` |
+
+**قواعد:** صيغة «**ندخل**» (موكّل). اسأل الزوج والمبلغ. لا تنفيذ مع «خذ صفقة» مباشرة.
+
+Resource: `aichart://trading-rules` (يقرأ `AGENTS.md`).
+
+---
+
+## APIs (curl — صيانة فقط)
+
+`$AICHART_API_URL` + `Authorization: Bearer $AICHART_SERVICE_TOKEN` — للصيانة فقط.
 
 ```bash
 curl -s -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
@@ -152,7 +175,7 @@ curl -s -X POST -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 **إصلاح «البوت لا يرد» على VPS:**
 ```bash
 bash agent/scripts/sync-telegram-bot.sh
-bash infra/vps-openclaw-telegram-reconnect.sh
+bash infra/vps-mcp-deploy.sh
 bash infra/vps-telegram-bot-health.sh
 ```
 

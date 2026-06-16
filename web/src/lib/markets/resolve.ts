@@ -36,14 +36,15 @@ function resolveCrypto(query: string): ResolvedSymbol {
  * separators are stripped, since the EA matches against the broker's symbols.
  */
 function resolveForex(query: string): ResolvedSymbol {
-  const raw = query.trim().toUpperCase();
-  if (!raw) {
+  const trimmed = query.trim();
+  if (!trimmed) {
     return { raw: query, symbol: "EURUSD", market: "forex", displayName: "EUR/USD" };
   }
-  const sym = raw.replace(/[\s/_-]+/g, "");
+  const sym = trimmed.replace(/[\s/_-]+/g, "");
+  const symUpper = sym.toUpperCase();
   // Pretty display for the canonical 6-letter pairs (e.g. EURUSD → EUR/USD).
   const display =
-    /^[A-Z]{6}$/.test(sym) ? `${sym.slice(0, 3)}/${sym.slice(3)}` : sym;
+    /^[A-Za-z]{6}$/.test(sym) ? `${symUpper.slice(0, 3)}/${symUpper.slice(3)}` : sym;
   return { raw: query, symbol: sym, market: "forex", displayName: display };
 }
 
@@ -53,6 +54,16 @@ export function resolveSymbol(
   market: MarketType = "crypto",
 ): ResolvedSymbol {
   return market === "forex" ? resolveForex(query) : resolveCrypto(query);
+}
+
+/** Intent/recommendation symbol: uppercase for crypto; preserve broker suffix case for forex. */
+export function normalizeIntentSymbol(
+  symbol: string,
+  market: MarketType = "crypto",
+): string {
+  const trimmed = symbol.trim();
+  if (market === "forex") return trimmed.replace(/[\s/_-]+/g, "");
+  return trimmed.toUpperCase();
 }
 
 export function marketLabel(market: MarketType = "crypto"): string {

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "AiChart"
 #property link      "https://aichart.lork.cloud"
-#property version   "3.00"
+#property version   "3.10"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -36,7 +36,15 @@ bool    g_trading_halted = false;
 datetime g_last_sync_hb = 0;
 datetime g_last_hb_time = 0;
 datetime g_last_quote_flush = 0;
+long    g_last_trade_ticket = 0;
+double  g_last_trade_price = 0;
+string  g_last_trade_error = "";
+const string EA_VERSION = "3.10";
 
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| NEVER call ChartSetSymbolPeriod — MT5 disables AutoTrading.      |
+//| Drawing coords: iTime(sym, tf, offset) only.                     |
 //+------------------------------------------------------------------+
 int OnInit()
 {
@@ -45,10 +53,10 @@ int OnInit()
       Print("AiChartBridge: EaToken is not set. Open EA properties and paste your token.");
       return(INIT_FAILED);
    }
-   // FIX: 1 — millisecond timer drives poll + heartbeat scheduling in OnTimer
-   EventSetMillisecondTimer(MathMax(200, PollIntervalMs));
-   Print("AiChartBridge MT5 v3 started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s");
+   EventSetTimer(30);
+   Print("AiChartBridge MT5 v3.10 started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s");
    PreWarmSymbols();
+   LogAvailableSymbols();
    // FIX: 1 — immediate heartbeat on attach
    SendHeartbeat();
    return(INIT_SUCCEEDED);
@@ -60,26 +68,24 @@ void OnDeinit(const int reason)
 }
 
 //+------------------------------------------------------------------+
-// FIX: 1 — OnTradeTransaction triggers debounced sync heartbeat
-void OnTradeTransaction(const MqlTradeTransaction &trans,
-                        const MqlTradeRequest &request,
-                        const MqlTradeResult &result)
+void ArmKeepaliveTimer()
 {
-   if(!AutoSync) return;
-   if(trans.type != TRADE_TRANSACTION_DEAL_ADD &&
-      trans.type != TRADE_TRANSACTION_ORDER_ADD &&
-      trans.type != TRADE_TRANSACTION_POSITION)
-      return;
-   datetime now = TimeCurrent();
-   if(now - g_last_sync_hb < 2) return;
-   g_last_sync_hb = now;
-   // v3 — immediate trade event + sync heartbeat
-   SendTradeEvent("trade_transaction", trans.symbol, (long)trans.deal);
+   EventSetTimer(30);
+}
+
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id, const long& lparam,
+                  const double& dparam, const string& sparam)
+{
+   if(id != CHARTEVENT_CHART_CHANGE) return;
+   Print("AiChartBridge: chart symbol/period changed — re-enable AutoTrading if disabled.");
+   ArmKeepaliveTimer();
+   g_last_hb_time = 0;
    SendHeartbeat();
 }
 
 //+------------------------------------------------------------------+
-void OnTimer()
+void ProcessBridgeTick()
 {
    static ulong lastPollMs = 0;
    ulong nowMs = GetTickCount64();
@@ -102,6 +108,36 @@ void OnTimer()
       g_last_quote_flush = now;
       FlushLiveQuotes();
    }
+}
+
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   ProcessBridgeTick();
+}
+// FIX: 1 — OnTradeTransaction triggers debounced sync heartbeat
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+{
+   if(!AutoSync) return;
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD &&
+      trans.type != TRADE_TRANSACTION_ORDER_ADD &&
+      trans.type != TRADE_TRANSACTION_POSITION)
+      return;
+   datetime now = TimeCurrent();
+   if(now - g_last_sync_hb < 2) return;
+   g_last_sync_hb = now;
+   // v3 — immediate trade event + sync heartbeat
+   SendTradeEvent("trade_transaction", trans.symbol, (long)trans.deal);
+   SendHeartbeat();
+}
+
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+   ArmKeepaliveTimer();
+   ProcessBridgeTick();
 }
 
 //+------------------------------------------------------------------+
@@ -203,6 +239,289 @@ string BuildPositions()
    return arr;
 }
 
+// v3.01 — broker execution / filling helpers (used by heartbeat + order paths)
+string TradeExecutionToString(long mode)
+{
+   if(mode == SYMBOL_TRADE_EXECUTION_INSTANT) return "instant";
+   if(mode == SYMBOL_TRADE_EXECUTION_EXCHANGE) return "exchange";
+   if(mode == SYMBOL_TRADE_EXECUTION_MARKET) return "market";
+   if(mode == SYMBOL_TRADE_EXECUTION_REQUEST) return "request";
+   return "unknown";
+}
+
+string FillingModeToString(int mode)
+{
+   string s = "";
+   if((mode & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK)
+   {
+      if(s != "") s += "|";
+      s += "fok";
+   }
+   if((mode & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+   {
+      if(s != "") s += "|";
+      s += "ioc";
+   }
+   if(s == "") s = "return";
+   return s;
+}
+
+string FillingEnumLabel(ENUM_ORDER_TYPE_FILLING fill)
+{
+   if(fill == ORDER_FILLING_FOK) return "FOK";
+   if(fill == ORDER_FILLING_IOC) return "IOC";
+   return "RETURN";
+}
+
+ENUM_ORDER_TYPE_FILLING ResolveFillingMode(string sym)
+{
+   int mode = (int)SymbolInfoInteger(sym, SYMBOL_FILLING_MODE);
+   if((mode & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+      return ORDER_FILLING_IOC;
+   if((mode & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK)
+      return ORDER_FILLING_FOK;
+   return ORDER_FILLING_RETURN;
+}
+
+uint DeviationForSymbol(string sym)
+{
+   long stopsLevel = SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL);
+   return (uint)MathMax(20, (int)stopsLevel + 5);
+}
+
+void ConfigureTradeForSymbol(string sym)
+{
+   trade.SetTypeFilling(ResolveFillingMode(sym));
+   trade.SetDeviationInPoints(DeviationForSymbol(sym));
+}
+
+bool GetFreshTick(string sym, MqlTick &tick)
+{
+   if(!SymbolSelect(sym, true)) return false;
+   if(SymbolInfoTick(sym, tick) && tick.bid > 0 && tick.ask > 0)
+      return true;
+   tick.bid = SymbolInfoDouble(sym, SYMBOL_BID);
+   tick.ask = SymbolInfoDouble(sym, SYMBOL_ASK);
+   tick.time = TimeCurrent();
+   return (tick.bid > 0 && tick.ask > 0);
+}
+
+double NormalizeSymbolPrice(string sym, double price)
+{
+   int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   return NormalizeDouble(price, digits);
+}
+
+double MarketOrderPrice(string sym, string side)
+{
+   MqlTick tick;
+   if(!GetFreshTick(sym, tick)) return 0;
+   double price = (side == "buy") ? tick.ask : tick.bid;
+   return NormalizeSymbolPrice(sym, price);
+}
+
+string TradingPermissionError(string sym)
+{
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+      return "terminal trading disabled — enable AutoTrading button";
+   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+      return "EA trading not allowed — check Allow Algo Trading in EA properties";
+   if(!SymbolInfoInteger(sym, SYMBOL_SELECT))
+      return "symbol not selected: " + sym;
+   long tradeMode = SymbolInfoInteger(sym, SYMBOL_TRADE_MODE);
+   if(tradeMode == SYMBOL_TRADE_MODE_DISABLED)
+      return "symbol trade disabled: " + sym;
+   return "";
+}
+
+bool SendMarketDealDirect(string sym, string side, double lots, double sl, double tp,
+                          ENUM_ORDER_TYPE_FILLING fill, bool useFillType, uint deviation,
+                          uint &retcode, long &outTicket, double &outPrice)
+{
+   g_last_trade_error = "";
+   string permErr = TradingPermissionError(sym);
+   if(permErr != "")
+   {
+      g_last_trade_error = permErr;
+      retcode = 10017;
+      Print("AiChartBridge: ", permErr);
+      return false;
+   }
+
+   MqlTick tick;
+   if(!GetFreshTick(sym, tick))
+   {
+      g_last_trade_error = "no fresh tick";
+      retcode = 10026;
+      return false;
+   }
+
+   MqlTradeRequest req;
+   MqlTradeResult  res;
+   ZeroMemory(req);
+   ZeroMemory(res);
+   req.action       = TRADE_ACTION_DEAL;
+   req.symbol       = sym;
+   req.volume       = lots;
+   req.type         = (side == "buy") ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   req.price        = (side == "buy") ? tick.ask : tick.bid;
+   req.sl           = (sl > 0) ? sl : 0;
+   req.tp           = (tp > 0) ? tp : 0;
+   req.deviation    = deviation;
+   if(useFillType)
+      req.type_filling = fill;
+   req.comment      = "AiChart";
+
+   long execMode = SymbolInfoInteger(sym, SYMBOL_TRADE_EXEMODE);
+   string fillLabel = useFillType ? FillingEnumLabel(fill) : "DEFAULT";
+   LogTradeRequest("deal-" + fillLabel, sym, side, lots, req.price, sl, tp,
+                   deviation, useFillType ? fill : ORDER_FILLING_RETURN, execMode);
+
+   MqlTradeCheckResult chk;
+   if(!OrderCheck(req, chk))
+   {
+      retcode = chk.retcode;
+      g_last_trade_error = "OrderCheck " + (string)chk.retcode + ": " + chk.comment;
+      Print("AiChartBridge: ", g_last_trade_error);
+      return false;
+   }
+
+   if(!OrderSend(req, res))
+   {
+      retcode = res.retcode;
+      g_last_trade_error = "OrderSend " + (string)res.retcode + ": " + res.comment;
+      LogTradeRequest("deal-fail-" + fillLabel, sym, side, lots, req.price, sl, tp,
+                      deviation, useFillType ? fill : ORDER_FILLING_RETURN, execMode, retcode);
+      return false;
+   }
+
+   retcode = res.retcode;
+   if(retcode == TRADE_RETCODE_DONE || retcode == TRADE_RETCODE_PLACED)
+   {
+      outTicket = (long)res.order;
+      outPrice  = res.price;
+      return true;
+   }
+   g_last_trade_error = "OrderSend retcode " + (string)retcode + ": " + res.comment;
+   LogTradeRequest("deal-fail-" + fillLabel, sym, side, lots, req.price, sl, tp,
+                   deviation, useFillType ? fill : ORDER_FILLING_RETURN, execMode, retcode);
+   return false;
+}
+
+int AppendDealFillCandidates(string sym, ENUM_ORDER_TYPE_FILLING &fills[])
+{
+   int fillCount = 0;
+   long execMode = SymbolInfoInteger(sym, SYMBOL_TRADE_EXEMODE);
+   int mode = (int)SymbolInfoInteger(sym, SYMBOL_FILLING_MODE);
+
+   // Market execution: FOK from symbol flags often applies to pending only — not deals.
+   if(execMode == SYMBOL_TRADE_EXECUTION_MARKET)
+   {
+      if((mode & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+         fills[fillCount++] = ORDER_FILLING_IOC;
+      fills[fillCount++] = ORDER_FILLING_RETURN;
+   }
+   else
+   {
+      if((mode & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK)
+         fills[fillCount++] = ORDER_FILLING_FOK;
+      if((mode & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+         fills[fillCount++] = ORDER_FILLING_IOC;
+      fills[fillCount++] = ORDER_FILLING_RETURN;
+   }
+   return fillCount;
+}
+
+bool ModifyOpenPositionStops(string sym, double sl, double tp, uint &retcode)
+{
+   if(sl <= 0 && tp <= 0) return true;
+   for(int i = 0; i < 5; i++)
+   {
+      if(!PositionSelect(sym))
+      {
+         Sleep(100);
+         continue;
+      }
+      ulong ticket = (ulong)PositionGetInteger(POSITION_TICKET);
+      double curSl = PositionGetDouble(POSITION_SL);
+      double curTp = PositionGetDouble(POSITION_TP);
+      double newSl = (sl > 0) ? sl : curSl;
+      double newTp = (tp > 0) ? tp : curTp;
+      if(TryPositionModify(ticket, newSl, newTp, retcode))
+         return true;
+      if(retcode != 10004 && retcode != 10027)
+         break;
+      Sleep(100);
+   }
+   return false;
+}
+
+bool TryMarketDealFillings(string sym, string side, double lots, double sl, double tp,
+                           uint deviation, uint &retcode, long &outTicket, double &outPrice)
+{
+   ENUM_ORDER_TYPE_FILLING fills[3];
+   int fillCount = AppendDealFillCandidates(sym, fills);
+
+   for(int i = 0; i < fillCount; i++)
+   {
+      if(SendMarketDealDirect(sym, side, lots, sl, tp, fills[i], true, deviation, retcode, outTicket, outPrice))
+         return true;
+      if(retcode != 10026 && retcode != 10004 && retcode != 10027 && retcode != 10030 && retcode != 10016)
+         break;
+      Sleep(MathMax(100, RetryDelayMs));
+   }
+
+   if(SendMarketDealDirect(sym, side, lots, sl, tp, ORDER_FILLING_RETURN, false, deviation, retcode, outTicket, outPrice))
+      return true;
+
+   if(sl <= 0 && tp <= 0)
+      return false;
+
+   Print("AiChartBridge: retry market deal without SL/TP then modify");
+   for(int j = 0; j < fillCount; j++)
+   {
+      if(SendMarketDealDirect(sym, side, lots, 0, 0, fills[j], true, deviation, retcode, outTicket, outPrice))
+      {
+         Sleep(150);
+         if(ModifyOpenPositionStops(sym, sl, tp, retcode))
+            return true;
+         g_last_trade_error = "opened but modify SL/TP failed retcode " + (string)retcode;
+         return true;
+      }
+      if(retcode != 10026 && retcode != 10004 && retcode != 10027 && retcode != 10030)
+         break;
+      Sleep(MathMax(100, RetryDelayMs));
+   }
+
+   if(SendMarketDealDirect(sym, side, lots, 0, 0, ORDER_FILLING_RETURN, false, deviation, retcode, outTicket, outPrice))
+   {
+      Sleep(150);
+      if(ModifyOpenPositionStops(sym, sl, tp, retcode))
+         return true;
+      g_last_trade_error = "opened but modify SL/TP failed retcode " + (string)retcode;
+      return true;
+   }
+   return false;
+}
+
+void LogTradeRequest(string context, string sym, string side, double lots, double price,
+                     double sl, double tp, uint deviation, ENUM_ORDER_TYPE_FILLING fill,
+                     long execMode, uint retcode = 0)
+{
+   string msg = "AiChartBridge: ORDER " + context +
+                " sym=" + sym + " side=" + side +
+                " lots=" + DoubleToString(lots, 2) +
+                " price=" + DoubleToString(price, 8) +
+                " sl=" + DoubleToString(sl, 8) +
+                " tp=" + DoubleToString(tp, 8) +
+                " deviation=" + (string)deviation +
+                " filling=" + FillingEnumLabel(fill) +
+                " execution=" + TradeExecutionToString(execMode);
+   if(retcode > 0)
+      msg += " retcode=" + (string)retcode;
+   Print(msg);
+}
+
 string BuildSymbols()
 {
    string arr = "[";
@@ -239,7 +558,13 @@ string BuildSymbols()
       arr += "\"max_lot\":" + DoubleToString(maxlot, 2) + ",";
       arr += "\"lot_step\":" + DoubleToString(lstep, 2) + ",";
       arr += "\"stops_level\":" + (string)stopsLevel + ",";
-      arr += "\"freeze_level\":" + (string)freezeLevel;
+      arr += "\"freeze_level\":" + (string)freezeLevel + ",";
+      long   execMode  = SymbolInfoInteger(sym, SYMBOL_TRADE_EXEMODE);
+      int    fillMode  = (int)SymbolInfoInteger(sym, SYMBOL_FILLING_MODE);
+      long   spreadPts = SymbolInfoInteger(sym, SYMBOL_SPREAD);
+      arr += "\"trade_execution\":" + JsonStr(TradeExecutionToString(execMode)) + ",";
+      arr += "\"filling_mode\":" + JsonStr(FillingModeToString(fillMode)) + ",";
+      arr += "\"spread_points\":" + (string)spreadPts;
       arr += "}";
       count++;
    }
@@ -326,11 +651,18 @@ void HandleCommand(string obj)
          AckCommand(id, "failed", 0, 0, 0, "kill switch active");
          return;
       }
-      string sym  = PayloadStrVal(payload, obj, "symbol");
+      string symRaw = PayloadStrVal(payload, obj, "symbol");
+      string sym  = ResolveBrokerSymbol(symRaw);
       string side = PayloadStrVal(payload, obj, "side");
       double lots = PayloadNum(payload, obj, "lots");
       double sl   = PayloadNum(payload, obj, "stop_loss");
       double tp   = PayloadNum(payload, obj, "take_profit");
+      if(sym == "")
+      {
+         AckCommand(id, "failed", 0, 0, 0,
+                    "symbol not found: " + symRaw + " | Available: " + GetMarketWatchSymbols());
+         return;
+      }
       ExecuteMarket(id, sym, side, lots, sl, tp);
    }
    else if(type == "close_position")
@@ -361,13 +693,20 @@ void HandleCommand(string obj)
          AckCommand(id, "failed", 0, 0, 0, "kill switch active");
          return;
       }
-      string sym = PayloadStrVal(payload, obj, "symbol");
+      string symRaw = PayloadStrVal(payload, obj, "symbol");
+      string sym = ResolveBrokerSymbol(symRaw);
       string side = PayloadStrVal(payload, obj, "side");
       string orderType = PayloadStrVal(payload, obj, "order_type");
       double lots = PayloadNum(payload, obj, "lots");
       double price = PayloadNum(payload, obj, "price");
       double sl = PayloadNum(payload, obj, "stop_loss");
       double tp = PayloadNum(payload, obj, "take_profit");
+      if(sym == "")
+      {
+         AckCommand(id, "failed", 0, 0, 0,
+                    "symbol not found: " + symRaw + " | Available: " + GetMarketWatchSymbols());
+         return;
+      }
       ExecutePending(id, sym, side, orderType, lots, price, sl, tp);
    }
    else if(type == "cancel_order")
@@ -383,7 +722,14 @@ void HandleCommand(string obj)
    }
    else if(type == "ensure_symbol")
    {
-      string sym = PayloadStrVal(payload, obj, "symbol");
+      string symRaw = PayloadStrVal(payload, obj, "symbol");
+      string sym = ResolveBrokerSymbol(symRaw);
+      if(sym == "")
+      {
+         AckCommand(id, "failed", 0, 0, 0,
+                    "symbol not found: " + symRaw + " | Available: " + GetMarketWatchSymbols());
+         return;
+      }
       EnsureSymbol(id, sym);
    }
    else if(type == "query_terminal")
@@ -394,6 +740,69 @@ void HandleCommand(string obj)
    {
       AckCommand(id, "failed", 0, 0, 0, "unsupported command type");
    }
+}
+
+// v3.06 — resolve broker-exact symbol case (Exness EURUSDm). NEVER StringToUpper on symbols.
+string ResolveBrokerSymbol(string requested)
+{
+   if(requested == "") return "";
+
+   if(SymbolSelect(requested, true))
+      return requested;
+
+   int total = SymbolsTotal(true);
+   for(int i = 0; i < total; i++)
+   {
+      string brokerSym = SymbolName(i, true);
+      if(brokerSym == "") continue;
+      if(StringCompare(requested, brokerSym, false) == 0)
+      {
+         SymbolSelect(brokerSym, true);
+         return brokerSym;
+      }
+   }
+
+   total = SymbolsTotal(false);
+   for(int j = 0; j < total; j++)
+   {
+      string brokerSym = SymbolName(j, false);
+      if(brokerSym == "") continue;
+      if(StringCompare(requested, brokerSym, false) == 0)
+      {
+         SymbolSelect(brokerSym, true);
+         return brokerSym;
+      }
+   }
+
+   return "";
+}
+
+// v3.05 — Market Watch symbol helpers (case-sensitive broker names)
+string GetMarketWatchSymbols(const int maxCount = 20)
+{
+   string symbols = "";
+   int total = SymbolsTotal(true);
+   int limit = MathMin(total, maxCount);
+   for(int i = 0; i < limit; i++)
+   {
+      string s = SymbolName(i, true);
+      if(s == "") continue;
+      if(symbols != "") symbols += ", ";
+      symbols += s;
+   }
+   if(total > maxCount)
+      symbols += " … +" + (string)(total - maxCount) + " more";
+   return symbols;
+}
+
+bool IsSymbolValid(string symbol)
+{
+   return ResolveBrokerSymbol(symbol) != "";
+}
+
+void LogAvailableSymbols()
+{
+   Print("Market Watch symbols: ", GetMarketWatchSymbols(50));
 }
 
 // v3 — pre-warm Market Watch symbols for live ticks
@@ -437,6 +846,9 @@ bool WaitForLiveQuotes(string sym)
 // FIX: 3 — retry broker busy (10027), requote (10004), off quotes (10026)
 bool TryMarketOrder(string sym, string side, double lots, double sl, double tp, uint &retcode)
 {
+   g_last_trade_ticket = 0;
+   g_last_trade_price = 0;
+
    for(int attempt = 0; attempt < MathMax(1, MaxRetries); attempt++)
    {
       if(!WaitForLiveQuotes(sym))
@@ -446,20 +858,130 @@ bool TryMarketOrder(string sym, string side, double lots, double sl, double tp, 
          continue;
       }
 
-      trade.SetDeviationInPoints(20);
+      ConfigureTradeForSymbol(sym);
+      uint deviation = DeviationForSymbol(sym);
+      long outTicket = 0;
+      double outPrice = 0;
+
+      if(TryMarketDealFillings(sym, side, lots, sl, tp, deviation, retcode, outTicket, outPrice))
+      {
+         g_last_trade_ticket = outTicket;
+         g_last_trade_price = outPrice;
+         return true;
+      }
+
+      long execMode = SymbolInfoInteger(sym, SYMBOL_TRADE_EXEMODE);
+      ENUM_ORDER_TYPE_FILLING fill = ResolveFillingMode(sym);
+      double price = MarketOrderPrice(sym, side);
+      if(price <= 0)
+      {
+         retcode = 10026;
+         Sleep(MathMax(100, RetryDelayMs));
+         continue;
+      }
+
+      LogTradeRequest("ctrade-fallback", sym, side, lots, price, sl, tp, deviation, fill, execMode);
+
       bool ok = false;
       if(side == "buy")
-         ok = trade.Buy(lots, sym, 0.0, sl, tp, "AiChart");
+         ok = trade.Buy(lots, sym, price, sl, tp, "AiChart");
       else
-         ok = trade.Sell(lots, sym, 0.0, sl, tp, "AiChart");
+         ok = trade.Sell(lots, sym, price, sl, tp, "AiChart");
 
       if(ok)
       {
          retcode = trade.ResultRetcode();
+         g_last_trade_ticket = (long)trade.ResultOrder();
+         g_last_trade_price = trade.ResultPrice();
          return true;
       }
 
       retcode = trade.ResultRetcode();
+      LogTradeRequest("ctrade-fail", sym, side, lots, price, sl, tp, deviation, fill, execMode, retcode);
+      if(retcode == 10027 || retcode == 10004 || retcode == 10026 || retcode == 10030)
+      {
+         Sleep(MathMax(100, RetryDelayMs));
+         continue;
+      }
+      break;
+   }
+   return false;
+}
+
+bool TryPendingOrder(string sym, string side, string orderType, double lots, double price,
+                     double sl, double tp, uint &retcode, long &placedTicket)
+{
+   placedTicket = 0;
+   price = NormalizeSymbolPrice(sym, price);
+   bool isBuy = (side == "buy");
+
+   for(int attempt = 0; attempt < MathMax(1, MaxRetries); attempt++)
+   {
+      if(!WaitForLiveQuotes(sym))
+      {
+         retcode = 10026;
+         Sleep(MathMax(100, RetryDelayMs));
+         continue;
+      }
+
+      ConfigureTradeForSymbol(sym);
+      long execMode = SymbolInfoInteger(sym, SYMBOL_TRADE_EXEMODE);
+      ENUM_ORDER_TYPE_FILLING fill = ResolveFillingMode(sym);
+      uint deviation = DeviationForSymbol(sym);
+      bool ok = false;
+
+      LogTradeRequest("pending-" + orderType, sym, side, lots, price, sl, tp, deviation, fill, execMode);
+
+      if(orderType == "limit")
+      {
+         if(isBuy)
+            ok = trade.BuyLimit(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
+         else
+            ok = trade.SellLimit(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
+      }
+      else if(orderType == "stop")
+      {
+         if(isBuy)
+            ok = trade.BuyStop(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
+         else
+            ok = trade.SellStop(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
+      }
+      else if(orderType == "stop_limit")
+      {
+         MqlTradeRequest req;
+         MqlTradeResult  res;
+         ZeroMemory(req);
+         ZeroMemory(res);
+         req.action       = TRADE_ACTION_PENDING;
+         req.symbol       = sym;
+         req.volume       = lots;
+         req.type         = isBuy ? ORDER_TYPE_BUY_STOP_LIMIT : ORDER_TYPE_SELL_STOP_LIMIT;
+         req.price        = price;
+         req.stoplimit    = price;
+         req.sl           = (sl > 0) ? sl : 0;
+         req.tp           = (tp > 0) ? tp : 0;
+         req.type_time    = ORDER_TIME_GTC;
+         req.type_filling = fill;
+         req.deviation    = deviation;
+         req.comment      = "AiChart";
+         ok = OrderSend(req, res) &&
+              (res.retcode == TRADE_RETCODE_DONE || res.retcode == TRADE_RETCODE_PLACED);
+         if(ok) placedTicket = (long)res.order;
+         if(!ok) retcode = res.retcode;
+      }
+
+      if(ok)
+      {
+         if(orderType != "stop_limit")
+            retcode = trade.ResultRetcode();
+         return true;
+      }
+
+      if(orderType != "stop_limit")
+         retcode = trade.ResultRetcode();
+
+      LogTradeRequest("pending-fail-" + orderType, sym, side, lots, price, sl, tp,
+                      deviation, fill, execMode, retcode);
       if(retcode == 10027 || retcode == 10004 || retcode == 10026)
       {
          Sleep(MathMax(100, RetryDelayMs));
@@ -523,11 +1045,15 @@ void ExecuteMarket(long id, string sym, string side, double lots, double sl, dou
       AckCommand(id, "failed", 0, 0, 0, "stop_loss required");
       return;
    }
-   if(!SymbolSelect(sym, true))
+   string requestedSym = sym;
+   sym = ResolveBrokerSymbol(sym);
+   if(sym == "")
    {
-      AckCommand(id, "failed", 0, 0, 0, "symbol not found: " + sym);
+      AckCommand(id, "failed", 0, 0, 0,
+                 "symbol not found: " + requestedSym + " | Available: " + GetMarketWatchSymbols());
       return;
    }
+   Sleep(200);
    if(!WaitForLiveQuotes(sym))
    {
       AckCommand(id, "failed", 0, 0, 0, "off quotes: no live bid/ask for " + sym);
@@ -537,14 +1063,17 @@ void ExecuteMarket(long id, string sym, string side, double lots, double sl, dou
    uint retcode = 0;
    if(TryMarketOrder(sym, side, lots, sl, tp, retcode))
    {
-      long   ticket = (long)trade.ResultOrder();
-      double price  = trade.ResultPrice();
+      long   ticket = g_last_trade_ticket > 0 ? g_last_trade_ticket : (long)trade.ResultOrder();
+      double price  = g_last_trade_price > 0 ? g_last_trade_price : trade.ResultPrice();
       MarkCommandAcked(id);
       AckCommand(id, "acked", ticket, price, lots, "");
    }
    else
    {
-      AckCommand(id, "failed", 0, 0, 0, "retcode " + (string)retcode);
+      string err = "retcode " + (string)retcode;
+      if(g_last_trade_error != "")
+         err = g_last_trade_error;
+      AckCommand(id, "failed", 0, 0, 0, err);
    }
 }
 
@@ -602,71 +1131,38 @@ void ExecutePending(long id, string sym, string side, string orderType, double l
       AckCommand(id, "failed", 0, 0, 0, "stop_loss required");
       return;
    }
-   if(!SymbolSelect(sym, true))
+   string requestedSym = sym;
+   sym = ResolveBrokerSymbol(sym);
+   if(sym == "")
    {
-      AckCommand(id, "failed", 0, 0, 0, "symbol not found: " + sym);
+      AckCommand(id, "failed", 0, 0, 0,
+                 "symbol not found: " + requestedSym + " | Available: " + GetMarketWatchSymbols());
       return;
    }
+   Sleep(200);
    if(!WaitForLiveQuotes(sym))
    {
       AckCommand(id, "failed", 0, 0, 0, "off quotes: no live bid/ask for " + sym);
       return;
    }
 
-   trade.SetDeviationInPoints(20);
-   bool ok = false;
-   long placedTicket = 0;
-   bool isBuy = (side == "buy");
    string ot = orderType;
-   if(ot == "limit")
-   {
-      if(isBuy)
-         ok = trade.BuyLimit(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
-      else
-         ok = trade.SellLimit(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
-   }
-   else if(ot == "stop")
-   {
-      if(isBuy)
-         ok = trade.BuyStop(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
-      else
-         ok = trade.SellStop(lots, price, sym, sl, tp, ORDER_TIME_GTC, 0, "AiChart");
-   }
-   else if(ot == "stop_limit")
-   {
-      MqlTradeRequest req;
-      MqlTradeResult  res;
-      ZeroMemory(req);
-      ZeroMemory(res);
-      req.action       = TRADE_ACTION_PENDING;
-      req.symbol       = sym;
-      req.volume       = lots;
-      req.type         = isBuy ? ORDER_TYPE_BUY_STOP_LIMIT : ORDER_TYPE_SELL_STOP_LIMIT;
-      req.price        = price;
-      req.stoplimit    = price;
-      req.sl           = (sl > 0) ? sl : 0;
-      req.tp           = (tp > 0) ? tp : 0;
-      req.type_time    = ORDER_TIME_GTC;
-      req.type_filling = ORDER_FILLING_RETURN;
-      req.comment      = "AiChart";
-      ok = OrderSend(req, res) &&
-           (res.retcode == TRADE_RETCODE_DONE || res.retcode == TRADE_RETCODE_PLACED);
-      if(ok) placedTicket = (long)res.order;
-   }
-   else
+   if(ot != "limit" && ot != "stop" && ot != "stop_limit")
    {
       AckCommand(id, "failed", 0, 0, 0, "unsupported order_type: " + ot);
       return;
    }
 
-   if(ok)
+   uint retcode = 0;
+   long placedTicket = 0;
+   if(TryPendingOrder(sym, side, ot, lots, price, sl, tp, retcode, placedTicket))
    {
       long ticket = placedTicket > 0 ? placedTicket : (long)trade.ResultOrder();
       MarkCommandAcked(id);
       AckCommand(id, "acked", ticket, price, lots, "");
    }
    else
-      AckCommand(id, "failed", 0, 0, 0, "retcode " + (string)trade.ResultRetcode());
+      AckCommand(id, "failed", 0, 0, 0, "retcode " + (string)retcode);
 }
 
 void CancelOrderCommand(long id, long ticket)
@@ -765,13 +1261,26 @@ void QueryTerminal(long id)
    }
    pending += "]";
 
-   string inner = "\"balance\":" + DoubleToString(balance, 2) + ",";
+   string refSym = (StreamSymbol != "") ? StreamSymbol : "EURUSD";
+   string inner = "\"ea_version\":" + JsonStr(EA_VERSION) + ",";
+   inner += "\"trade_allowed\":" + (string)(TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) ? "true" : "false") + ",";
+   inner += "\"mql_trade_allowed\":" + (string)(MQLInfoInteger(MQL_TRADE_ALLOWED) ? "true" : "false") + ",";
+   inner += "\"balance\":" + DoubleToString(balance, 2) + ",";
    inner += "\"equity\":" + DoubleToString(equity, 2) + ",";
    inner += "\"margin\":" + DoubleToString(margin, 2) + ",";
    inner += "\"free_margin\":" + DoubleToString(freeMargin, 2) + ",";
    inner += "\"profit\":" + DoubleToString(profit, 2) + ",";
    inner += "\"leverage\":" + (string)leverage + ",";
    inner += "\"positions_count\":" + (string)PositionsTotal() + ",";
+   if(SymbolSelect(refSym, true))
+   {
+      inner += "\"reference_symbol\":" + JsonStr(refSym) + ",";
+      inner += "\"trade_execution\":" + JsonStr(TradeExecutionToString(SymbolInfoInteger(refSym, SYMBOL_TRADE_EXEMODE))) + ",";
+      inner += "\"filling_mode\":" + JsonStr(FillingModeToString((int)SymbolInfoInteger(refSym, SYMBOL_FILLING_MODE))) + ",";
+      inner += "\"spread_points\":" + (string)SymbolInfoInteger(refSym, SYMBOL_SPREAD) + ",";
+      inner += "\"bid\":" + DoubleToString(SymbolInfoDouble(refSym, SYMBOL_BID), (int)SymbolInfoInteger(refSym, SYMBOL_DIGITS)) + ",";
+      inner += "\"ask\":" + DoubleToString(SymbolInfoDouble(refSym, SYMBOL_ASK), (int)SymbolInfoInteger(refSym, SYMBOL_DIGITS)) + ",";
+   }
    inner += "\"pending_orders\":" + pending;
 
    MarkCommandAcked(id);
@@ -1088,16 +1597,29 @@ string TfToString(ENUM_TIMEFRAMES tf)
    }
 }
 
+ENUM_TIMEFRAMES ResolveTimeframe(string interval)
+{
+   string iv = interval;
+   StringTrimLeft(iv);
+   StringTrimRight(iv);
+   if(iv == "" || iv == "chart") return Period();
+
+   if(iv == "1m" || iv == "M1")  return PERIOD_M1;
+   if(iv == "5m" || iv == "M5")  return PERIOD_M5;
+   if(iv == "15m" || iv == "M15") return PERIOD_M15;
+   if(iv == "30m" || iv == "M30") return PERIOD_M30;
+   if(iv == "1h" || iv == "H1")  return PERIOD_H1;
+   if(iv == "4h" || iv == "H4")  return PERIOD_H4;
+   if(iv == "1d" || iv == "D1")  return PERIOD_D1;
+   if(iv == "1w" || iv == "W1")  return PERIOD_W1;
+   if(iv == "MN" || iv == "1mn") return PERIOD_MN1;
+
+   return Period();
+}
+
 ENUM_TIMEFRAMES TfFromInterval(string interval)
 {
-   if(interval == "1m")  return PERIOD_M1;
-   if(interval == "5m")  return PERIOD_M5;
-   if(interval == "15m") return PERIOD_M15;
-   if(interval == "1h")  return PERIOD_H1;
-   if(interval == "4h")  return PERIOD_H4;
-   if(interval == "1d")  return PERIOD_D1;
-   if(interval == "1w")  return PERIOD_W1;
-   return PERIOD_H1;
+   return ResolveTimeframe(interval);
 }
 
 //+------------------------------------------------------------------+
@@ -1139,25 +1661,87 @@ double PayloadNum(string payload, string root, string key)
 }
 
 //+------------------------------------------------------------------+
-//| Chart drawing + screenshot                                     |
+//| Chart drawing + screenshot (v3.09)                               |
 //+------------------------------------------------------------------+
-color ParseHexColor(string hex, color fallback)
+color DRAW_COLOR_DEFAULT = C'58,134,255'; // #3A86FF
+
+long HexCharToLong(string hex)
 {
-   if(StringLen(hex) < 7 || StringGetCharacter(hex, 0) != '#') return fallback;
-   int r = (int)StringToInteger("0x" + StringSubstr(hex, 1, 2));
-   int g = (int)StringToInteger("0x" + StringSubstr(hex, 3, 2));
-   int b = (int)StringToInteger("0x" + StringSubstr(hex, 5, 2));
-   return (color)((b << 16) | (g << 8) | r);
+   StringToUpper(hex);
+   long result = 0;
+   for(int i = 0; i < StringLen(hex); i++)
+   {
+      ushort c = StringGetCharacter(hex, i);
+      result *= 16;
+      if(c >= '0' && c <= '9') result += c - '0';
+      else if(c >= 'A' && c <= 'F') result += c - 'A' + 10;
+   }
+   return result;
 }
 
-datetime BarsAheadToTime(string sym, ENUM_TIMEFRAMES tf, int barsAhead, double timeOverride)
+color HexToColor(string hex, color fallback)
 {
-   if(timeOverride > 0)
-      return (datetime)(long)timeOverride;
-   datetime t0 = iTime(sym, tf, 0);
-   if(t0 == 0) t0 = TimeCurrent();
-   if(barsAhead <= 0) return t0;
-   return t0 + (datetime)(barsAhead * PeriodSeconds(tf));
+   if(StringGetCharacter(hex, 0) == '#')
+      hex = StringSubstr(hex, 1);
+   if(StringLen(hex) != 6) return fallback;
+   long r = HexCharToLong(StringSubstr(hex, 0, 2));
+   long g = HexCharToLong(StringSubstr(hex, 2, 2));
+   long b = HexCharToLong(StringSubstr(hex, 4, 2));
+   return (color)((r << 16) | (g << 8) | b);
+}
+
+void ApplyFillStyle(string name, color fillClr, bool doFill)
+{
+   if(doFill)
+   {
+      ObjectSetInteger(0, name, OBJPROP_FILL, true);
+      ObjectSetInteger(0, name, OBJPROP_BGCOLOR, fillClr);
+   }
+   ObjectSetInteger(0, name, OBJPROP_BACK, true);
+}
+
+int ClampDrawWidth(int w)
+{
+   if(w < 1) return 1;
+   if(w > 5) return 5;
+   return w;
+}
+
+ENUM_LINE_STYLE LineStyleFromString(string style)
+{
+   if(style == "dashed") return STYLE_DASH;
+   if(style == "dotted") return STYLE_DOT;
+   return STYLE_SOLID;
+}
+
+datetime TimeFromBarOffset(string sym, ENUM_TIMEFRAMES tf, int barOffset, double unixOverride)
+{
+   if(unixOverride > 0) return (datetime)(long)unixOverride;
+
+   datetime t = iTime(sym, tf, barOffset);
+   if(t > 0) return t;
+
+   t = iTime(sym, tf, 0);
+   if(t > 0) return t;
+
+   Print("AiChartBridge: iTime empty for ", sym, " tf=", (int)tf, " offset=", barOffset);
+   return TimeCurrent();
+}
+
+void ApplyObjectLabel(string name, string label, int fsize, color clr)
+{
+   if(label == "") return;
+   ObjectSetString(0, name, OBJPROP_TEXT, label);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fsize > 0 ? fsize : 9);
+   ObjectSetString(0, name, OBJPROP_FONT, "Arial");
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+}
+
+void ApplyLineStyle(string name, color clr, int width, ENUM_LINE_STYLE lineStyle)
+{
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, ClampDrawWidth(width));
+   ObjectSetInteger(0, name, OBJPROP_STYLE, lineStyle);
 }
 
 void DeleteAichartObjects(long recId)
@@ -1170,60 +1754,6 @@ void DeleteAichartObjects(long recId)
       if(StringFind(name, prefix) == 0)
          ObjectDelete(0, name);
    }
-}
-
-bool EnsureChartSymbol(string sym, ENUM_TIMEFRAMES tf)
-{
-   if(sym == "" || !SymbolSelect(sym, true))
-      return false;
-   ChartSetSymbolPeriod(0, sym, tf);
-   ChartRedraw(0);
-   Sleep(200);
-   return true;
-}
-
-void DrawHLine(string name, double price, color clr, string label)
-{
-   if(price <= 0) return;
-   ObjectCreate(0, name, OBJ_HLINE, 0, 0, price);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
-   ObjectSetString(0, name, OBJPROP_TEXT, label);
-}
-
-void DrawTrendSegment(string name, datetime t1, double p1, datetime t2, double p2, color clr)
-{
-   if(t1 == 0 || t2 == 0) return;
-   ObjectCreate(0, name, OBJ_TREND, 0, t1, p1, t2, p2);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
-   ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
-}
-
-void DrawRectangle(string name, datetime t1, double p1, datetime t2, double p2, color clr)
-{
-   if(t1 == 0 || t2 == 0) return;
-   ObjectCreate(0, name, OBJ_RECTANGLE, 0, t1, p1, t2, p2);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_FILL, true);
-   ObjectSetInteger(0, name, OBJPROP_BACK, true);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
-}
-
-void DrawFib(string name, datetime t1, double p1, datetime t2, double p2, color clr)
-{
-   if(t1 == 0 || t2 == 0) return;
-   ObjectCreate(0, name, OBJ_FIBO, 0, t1, p1, t2, p2);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
-}
-
-void DrawArrowMarker(string name, datetime t, double price, color clr)
-{
-   if(t == 0 || price <= 0) return;
-   ObjectCreate(0, name, OBJ_ARROW, 0, t, price);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_ARROWCODE, 233);
 }
 
 int ParsePointsArray(string drawingJson, string sym, ENUM_TIMEFRAMES tf,
@@ -1254,9 +1784,11 @@ int ParsePointsArray(string drawingJson, string sym, ENUM_TIMEFRAMES tf,
          {
             string pt = StringSubstr(drawingJson, objStart, p - objStart + 1);
             int barsAhead = (int)JsonNum(pt, "barsAhead");
+            int timeOffset = (int)JsonNum(pt, "time_offset");
+            int barOff = (timeOffset != 0 || StringFind(pt, "\"time_offset\"") >= 0) ? timeOffset : barsAhead;
             double price = JsonNum(pt, "price");
             double timeVal = JsonNum(pt, "time");
-            times[count] = BarsAheadToTime(sym, tf, barsAhead, timeVal);
+            times[count] = TimeFromBarOffset(sym, tf, barOff, timeVal);
             prices[count] = price;
             count++;
             objStart = -1;
@@ -1268,47 +1800,291 @@ int ParsePointsArray(string drawingJson, string sym, ENUM_TIMEFRAMES tf,
    return count;
 }
 
-void DrawSingleDrawing(string prefix, int idx, string drawingJson, string sym, ENUM_TIMEFRAMES tf)
+int ReadDrawingCoords(string drawingJson, string sym, ENUM_TIMEFRAMES tf,
+                      datetime &times[], double &prices[], int maxPts)
 {
-   string dtype = JsonStrVal(drawingJson, "type");
+   int n = ParsePointsArray(drawingJson, sym, tf, times, prices, maxPts);
+   if(n > 0) return n;
+
+   double price = JsonNum(drawingJson, "price");
+   if(price <= 0) return 0;
+
+   ArrayResize(times, maxPts);
+   ArrayResize(prices, maxPts);
+
+   int tOff = (int)JsonNum(drawingJson, "time_offset");
+   if(tOff == 0 && StringFind(drawingJson, "\"time_offset\"") < 0)
+      tOff = (int)JsonNum(drawingJson, "barsAhead");
+   times[0] = TimeFromBarOffset(sym, tf, tOff, JsonNum(drawingJson, "time"));
+   prices[0] = price;
+   n = 1;
+
+   double price2 = JsonNum(drawingJson, "price2");
+   if(price2 > 0)
+   {
+      int tOff2 = (int)JsonNum(drawingJson, "time_offset2");
+      if(tOff2 == 0 && StringFind(drawingJson, "\"time_offset2\"") < 0) tOff2 = 10;
+      times[1] = TimeFromBarOffset(sym, tf, tOff2, 0);
+      prices[1] = price2;
+      n = 2;
+   }
+
+   double price3 = JsonNum(drawingJson, "price3");
+   if(price3 > 0)
+   {
+      int tOff3 = (int)JsonNum(drawingJson, "time_offset3");
+      if(tOff3 == 0 && StringFind(drawingJson, "\"time_offset3\"") < 0) tOff3 = 5;
+      times[2] = TimeFromBarOffset(sym, tf, tOff3, 0);
+      prices[2] = price3;
+      n = 3;
+   }
+   return n;
+}
+
+string ResolveDrawingType(string dtype, string label)
+{
+   if(dtype == "price_line" || dtype == "baseline") return "hline";
+   if(dtype == "trend_line" || dtype == "forecast_path") return "trend_path";
+   if(dtype == "zone" || dtype == "histogram_band") return "rectangle";
+   if(dtype == "channel") return "channel";
+   if(dtype == "fib_retracement") return "fibo";
+   if(dtype == "marker")
+   {
+      string low = label;
+      StringToLower(low);
+      if(StringFind(low, "buy") >= 0 || StringFind(low, "شراء") >= 0) return "arrow_up";
+      if(StringFind(low, "sell") >= 0 || StringFind(low, "بيع") >= 0) return "arrow_down";
+      return "arrow";
+   }
+   if(dtype == "trendline") return "trend";
+   if(dtype == "fibonacci") return "fibo";
+   return dtype;
+}
+
+void DrawMt5Object(string name, string dtype, string drawingJson, string sym, ENUM_TIMEFRAMES tf,
+                   datetime &times[], double &prices[], int n)
+{
    string label = JsonStrVal(drawingJson, "label");
    string colorHex = JsonStrVal(drawingJson, "color");
-   color clr = ParseHexColor(colorHex, clrDodgerBlue);
+   if(colorHex == "") colorHex = JsonStrVal(drawingJson, "fill_color");
+   color clr = HexToColor(colorHex, DRAW_COLOR_DEFAULT);
+   int width = (int)JsonNum(drawingJson, "width");
+   if(width <= 0) width = 2;
+   string style = JsonStrVal(drawingJson, "style");
+   if(style == "") style = "solid";
+   ENUM_LINE_STYLE lineStyle = LineStyleFromString(style);
+   int fsize = (int)JsonNum(drawingJson, "font_size");
+   bool fill = JsonBool(drawingJson, "fill");
+   string fillHex = JsonStrVal(drawingJson, "fill_color");
+   color fillClr = HexToColor(fillHex, clr);
 
-   datetime times[];
-   double prices[];
-   int n = ParsePointsArray(drawingJson, sym, tf, times, prices, 16);
-   if(n <= 0) return;
+   datetime t1 = (n > 0) ? times[0] : 0;
+   datetime t2 = (n > 1) ? times[1] : t1;
+   double p1 = (n > 0) ? prices[0] : 0;
+   double p2 = (n > 1) ? prices[1] : p1;
+   datetime t3 = (n > 2) ? times[2] : t1;
+   double p3 = (n > 2) ? prices[2] : p1;
 
-   string base = prefix + dtype + "_" + (string)idx;
-
-   if(dtype == "price_line" || dtype == "baseline")
+   if(dtype == "hline")
    {
-      DrawHLine(base, prices[0], clr, label);
+      if(p1 <= 0) return;
+      ObjectCreate(0, name, OBJ_HLINE, 0, 0, p1);
+      ApplyLineStyle(name, clr, width, lineStyle);
+      ApplyObjectLabel(name, label, fsize, clr);
    }
-   else if(dtype == "trend_line" || dtype == "forecast_path")
+   else if(dtype == "vline")
+   {
+      if(t1 == 0) return;
+      ObjectCreate(0, name, OBJ_VLINE, 0, t1, p1);
+      ApplyLineStyle(name, clr, width, lineStyle);
+   }
+   else if(dtype == "trend" || dtype == "ray")
+   {
+      if(t1 == 0 || t2 == 0) return;
+      ObjectCreate(0, name, OBJ_TREND, 0, t2, p2, t1, p1);
+      ApplyLineStyle(name, clr, width, lineStyle);
+      ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, (dtype == "ray"));
+      ApplyObjectLabel(name, label, fsize, clr);
+   }
+   else if(dtype == "trend_path")
    {
       for(int i = 1; i < n; i++)
-         DrawTrendSegment(base + "_seg" + (string)i, times[i-1], prices[i-1], times[i], prices[i], clr);
-   }
-   else if(dtype == "zone" || dtype == "histogram_band")
-   {
-      if(n >= 2)
-         DrawRectangle(base, times[0], prices[0], times[1], prices[1], clr);
+      {
+         string seg = name + "_seg" + (string)i;
+         if(times[i-1] == 0 || times[i] == 0) continue;
+         ObjectCreate(0, seg, OBJ_TREND, 0, times[i-1], prices[i-1], times[i], prices[i]);
+         ApplyLineStyle(seg, clr, width, lineStyle);
+         ObjectSetInteger(0, seg, OBJPROP_RAY_RIGHT, false);
+      }
+      if(label != "" && n > 0)
+         ApplyObjectLabel(name + "_lbl", label, fsize, clr);
    }
    else if(dtype == "channel" && n >= 4)
    {
-      DrawTrendSegment(base + "_a", times[0], prices[0], times[1], prices[1], clr);
-      DrawTrendSegment(base + "_b", times[2], prices[2], times[3], prices[3], clr);
+      ObjectCreate(0, name + "_a", OBJ_TREND, 0, times[0], prices[0], times[1], prices[1]);
+      ApplyLineStyle(name + "_a", clr, width, lineStyle);
+      ObjectCreate(0, name + "_b", OBJ_TREND, 0, times[2], prices[2], times[3], prices[3]);
+      ApplyLineStyle(name + "_b", clr, width, lineStyle);
+      ApplyObjectLabel(name + "_lbl", label, fsize, clr);
    }
-   else if(dtype == "fib_retracement" && n >= 2)
+   else if(dtype == "rectangle" || dtype == "zone")
    {
-      DrawFib(base, times[0], prices[0], times[1], prices[1], clr);
+      if(t1 == 0 || t2 == 0) return;
+      ObjectCreate(0, name, OBJ_RECTANGLE, 0, t2, p2, t1, p1);
+      ApplyLineStyle(name, clr, width, lineStyle);
+      bool doFill = fill || dtype == "zone" || dtype == "rectangle";
+      ApplyFillStyle(name, fillClr, doFill);
+      ApplyObjectLabel(name, label, fsize, clr);
    }
-   else if(dtype == "marker")
+   else if(dtype == "triangle" && n >= 3)
    {
-      DrawArrowMarker(base, times[0], prices[0], clr);
+      ObjectCreate(0, name, OBJ_TRIANGLE, 0, t1, p1, t2, p2, t3, p3);
+      ApplyLineStyle(name, clr, width, lineStyle);
+      if(fill) ApplyFillStyle(name, fillClr, true);
+      ApplyObjectLabel(name, label, fsize, clr);
    }
+   else if(dtype == "ellipse")
+   {
+      if(t1 == 0 || t2 == 0) return;
+      ObjectCreate(0, name, OBJ_ELLIPSE, 0, t2, p2, t1, p1);
+      ApplyLineStyle(name, clr, width, lineStyle);
+      if(fill) ApplyFillStyle(name, fillClr, true);
+      ApplyObjectLabel(name, label, fsize, clr);
+   }
+   else if(dtype == "arrow_down" || dtype == "arrow_sell")
+   {
+      if(t1 == 0 || p1 <= 0) return;
+      ObjectCreate(0, name, OBJ_ARROW_DOWN, 0, t1, p1);
+      ApplyLineStyle(name, clr, width + 1, lineStyle);
+   }
+   else if(dtype == "arrow_up" || dtype == "arrow_buy")
+   {
+      if(t1 == 0 || p1 <= 0) return;
+      ObjectCreate(0, name, OBJ_ARROW_UP, 0, t1, p1);
+      ApplyLineStyle(name, clr, width + 1, lineStyle);
+   }
+   else if(dtype == "arrow_stop")
+   {
+      if(t1 == 0 || p1 <= 0) return;
+      ObjectCreate(0, name, OBJ_ARROW_STOP, 0, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "arrow_check")
+   {
+      if(t1 == 0 || p1 <= 0) return;
+      ObjectCreate(0, name, OBJ_ARROW_CHECK, 0, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "arrow_thumb_up")
+   {
+      if(t1 == 0 || p1 <= 0) return;
+      ObjectCreate(0, name, OBJ_ARROW_THUMB_UP, 0, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "arrow_thumb_down")
+   {
+      if(t1 == 0 || p1 <= 0) return;
+      ObjectCreate(0, name, OBJ_ARROW_THUMB_DOWN, 0, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "arrow")
+   {
+      if(t1 == 0 || p1 <= 0) return;
+      int code = (int)JsonNum(drawingJson, "arrow_code");
+      if(code <= 0) code = 242;
+      ObjectCreate(0, name, OBJ_ARROW, 0, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_ARROWCODE, code);
+      ApplyLineStyle(name, clr, width, lineStyle);
+   }
+   else if(dtype == "fibo")
+   {
+      if(t1 == 0 || t2 == 0) return;
+      ObjectCreate(0, name, OBJ_FIBO, 0, t2, p2, t1, p1);
+      ApplyLineStyle(name, clr, 1, STYLE_SOLID);
+      ApplyObjectLabel(name, label, fsize, clr);
+   }
+   else if(dtype == "fibo_fan")
+   {
+      if(t1 == 0 || t2 == 0) return;
+      ObjectCreate(0, name, OBJ_FIBOFAN, 0, t2, p2, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "fibo_arc")
+   {
+      if(t1 == 0 || t2 == 0) return;
+      ObjectCreate(0, name, OBJ_FIBOARC, 0, t2, p2, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "expansion" && n >= 3)
+   {
+      ObjectCreate(0, name, OBJ_EXPANSION, 0, t2, p2, t1, p1, t3, p3);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "pitchfork" && n >= 3)
+   {
+      ObjectCreate(0, name, OBJ_PITCHFORK, 0, t2, p2, t1, p1, t3, p3);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "gann_line")
+   {
+      if(t1 == 0 || t2 == 0) return;
+      ObjectCreate(0, name, OBJ_GANNLINE, 0, t2, p2, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "gann_fan")
+   {
+      if(t1 == 0 || t2 == 0) return;
+      ObjectCreate(0, name, OBJ_GANNFAN, 0, t2, p2, t1, p1);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   }
+   else if(dtype == "text")
+   {
+      if(t1 == 0) return;
+      ObjectCreate(0, name, OBJ_TEXT, 0, t1, p1);
+      ObjectSetString(0, name, OBJPROP_TEXT, label);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fsize > 0 ? fsize : 10);
+      ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+   }
+   else if(dtype == "label")
+   {
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+      ObjectSetString(0, name, OBJPROP_TEXT, label);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fsize > 0 ? fsize : 10);
+      int xdist = (int)JsonNum(drawingJson, "x");
+      int ydist = (int)JsonNum(drawingJson, "y");
+      if(xdist <= 0) xdist = 20;
+      if(ydist <= 0) ydist = 20;
+      ObjectSetInteger(0, name, OBJPROP_XDISTANCE, xdist);
+      ObjectSetInteger(0, name, OBJPROP_YDISTANCE, ydist);
+      ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   }
+   else
+   {
+      Print("AiChartBridge: unsupported drawing type: ", dtype);
+      return;
+   }
+
+   if(label != "" && dtype != "text" && dtype != "label" && dtype != "trend_path" && dtype != "channel")
+      ApplyObjectLabel(name, label, fsize, clr);
+}
+
+void DrawSingleDrawing(string prefix, int idx, string drawingJson, string sym, ENUM_TIMEFRAMES tf)
+{
+   string rawType = JsonStrVal(drawingJson, "type");
+   if(rawType == "") return;
+   string label = JsonStrVal(drawingJson, "label");
+   string dtype = ResolveDrawingType(rawType, label);
+
+   datetime times[];
+   double prices[];
+   int n = ReadDrawingCoords(drawingJson, sym, tf, times, prices, 16);
+
+   if(n <= 0 && dtype != "label") return;
+
+   string base = prefix + rawType + "_" + (string)idx;
+   DrawMt5Object(base, dtype, drawingJson, sym, tf, times, prices, n);
 }
 
 void DrawAllDrawings(string payload, string sym, ENUM_TIMEFRAMES tf, long recId)
@@ -1399,16 +2175,17 @@ bool HttpPostMultipart(string path, long recId, string captureKey, string fileNa
 
 void DrawAndCapture(long id, string payload)
 {
-   string sym = PayloadStrVal(payload, payload, "symbol");
+   string symRaw = PayloadStrVal(payload, payload, "symbol");
+   string sym = ResolveBrokerSymbol(symRaw);
    string interval = PayloadStrVal(payload, payload, "interval");
    long recId = (long)PayloadNum(payload, payload, "recommendation_id");
    string captureKey = PayloadStrVal(payload, payload, "capture_key");
    if(captureKey == "" && recId > 0) captureKey = (string)recId;
 
-   ENUM_TIMEFRAMES tf = TfFromInterval(interval);
-   if(!EnsureChartSymbol(sym, tf))
+   ENUM_TIMEFRAMES tf = ResolveTimeframe(interval);
+   if(sym == "")
    {
-      AckCommand(id, "failed", 0, 0, 0, "symbol not available: " + sym);
+      AckCommand(id, "failed", 0, 0, 0, "symbol not available: " + symRaw + " | Available: " + GetMarketWatchSymbols());
       return;
    }
 
@@ -1451,15 +2228,7 @@ void DrawAndCapture(long id, string payload)
 
 void ClearChartCommand(long id, string payload)
 {
-   string sym = PayloadStrVal(payload, payload, "symbol");
-   string interval = PayloadStrVal(payload, payload, "interval");
    long recId = (long)PayloadNum(payload, payload, "recommendation_id");
-
-   if(sym != "")
-   {
-      ENUM_TIMEFRAMES tf = TfFromInterval(interval);
-      EnsureChartSymbol(sym, tf);
-   }
 
    DeleteAichartObjects(recId);
    ChartRedraw(0);

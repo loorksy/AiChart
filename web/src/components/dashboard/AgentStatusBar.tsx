@@ -107,7 +107,7 @@ export function AgentStatusBar({ className }: { className?: string }) {
         </span>
         <span className="min-w-0">
           <span className="flex items-center gap-1 text-sm font-semibold">
-            OpenClaw
+            Claude MCP
           </span>
           <span className="block truncate text-xs text-muted-foreground">
             {pulse.label}

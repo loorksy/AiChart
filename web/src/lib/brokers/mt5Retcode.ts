@@ -21,7 +21,7 @@ export const MT5_RETCODE_LEGEND: Record<number, string> = {
   10023: "مستوى الأمر مرفوض",
   10024: "عدد الطلبات مرفوض",
   10025: "لا تغيير — الطلب قريب جداً من السوق",
-  10026: "لا tick حي لحظ التنفيذ — أضف الرمز إلى Market Watch",
+  10026: "سعر/ت quote غير مقبول لحظ الإرسال — Market Watch أو Instant Execution (EA v3.01+)",
   10027: "الوسيط مشغول",
   10028: "إعادة الاقتباس فقط",
   10029: "التداول مجمّد على الرمز",
@@ -49,5 +49,8 @@ export function formatMt5TradeError(raw: string): string {
     return raw;
   }
   const label = MT5_RETCODE_LEGEND[code] ?? "رفض MetaTrader";
+  if (code === 10026) {
+    return `رفض MetaTrader · retcode 10026 (${label}). إن كانت الأسعار حية (quoteAgeMs منخفض) جرّب EA v3.01+ أو صفقة يدوية market على نفس الرمز.`;
+  }
   return `رفض MetaTrader · retcode ${code} (${label})`;
 }

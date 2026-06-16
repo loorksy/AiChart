@@ -6,6 +6,7 @@ import {
   getMtAccountMeta,
 } from "@/lib/store";
 import { getEaConnectionMeta } from "@/lib/eaStore";
+import { hasPlatformAccess } from "@/lib/platformAccess";
 import type { PublicUser } from "@/lib/types";
 
 export async function loadConsoleSettingsProps(user: PublicUser) {
@@ -18,5 +19,6 @@ export async function loadConsoleSettingsProps(user: PublicUser) {
     ea: await getEaConnectionMeta(user.id),
     mt: forexBackend === "metaapi" ? await getMtAccountMeta(user.id) : null,
     forexBackend,
+    canDownloadEa: hasPlatformAccess(user),
   };
 }

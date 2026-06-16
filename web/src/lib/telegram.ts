@@ -302,8 +302,7 @@ export async function getBotUsername(): Promise<string | null> {
 }
 
 /**
- * Releases the bot from web-managed webhooks so the OpenClaw gateway can own
- * the conversation (OpenClaw polls / manages its own webhook).
+ * Releases the bot from web-managed webhooks (outbound-only notifications).
  */
 export async function deleteWebhook(): Promise<void> {
   await call("deleteWebhook", { drop_pending_updates: false });

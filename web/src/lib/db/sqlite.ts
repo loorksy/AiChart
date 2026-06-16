@@ -552,6 +552,30 @@ function migrate(db: Database.Database) {
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users (telegram_id) WHERE telegram_id IS NOT NULL",
     );
   }
+  const userCols2 = db
+    .prepare("PRAGMA table_info(users)")
+    .all() as { name: string }[];
+  if (!userCols2.some((c) => c.name === "access_expires_at")) {
+    db.exec("ALTER TABLE users ADD COLUMN access_expires_at TEXT");
+  }
+  const userCols3 = db
+    .prepare("PRAGMA table_info(users)")
+    .all() as { name: string }[];
+  if (!userCols3.some((c) => c.name === "username")) {
+    db.exec("ALTER TABLE users ADD COLUMN username TEXT");
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username) WHERE username IS NOT NULL",
+    );
+  }
+  const userCols4 = db
+    .prepare("PRAGMA table_info(users)")
+    .all() as { name: string }[];
+  if (!userCols4.some((c) => c.name === "whatsapp_e164")) {
+    db.exec("ALTER TABLE users ADD COLUMN whatsapp_e164 TEXT");
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_whatsapp ON users (whatsapp_e164) WHERE whatsapp_e164 IS NOT NULL",
+    );
+  }
 
   db.exec(`
     UPDATE platform_config SET plain = 1

@@ -41,7 +41,7 @@ cd /opt/aichart/web
 npm ci
 npm run build
 
-echo "==> Sync OpenClaw workspace"
+echo "==> Sync MCP workspace"
 bash /opt/aichart/agent/scripts/sync-workspace.sh || true
 
 echo "==> Restart PM2"

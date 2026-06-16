@@ -5,7 +5,7 @@ import { mt5Rates } from "./mt5local/client";
 import { barDurationSec, normalizeInterval } from "./intervals";
 import type { MarketType } from "./markets/types";
 import type { ChartDrawing } from "./chartDrawings";
-import { DRAWING_TYPE_COLORS } from "./chartDrawingLabels";
+import { colorForType } from "./chartDrawingLabels";
 import type { ChartOverlay } from "./chartOverlays";
 import { OVERLAY_COLORS } from "./chartOverlays";
 import {
@@ -215,7 +215,7 @@ function buildChartJson(
       type: "line",
       label,
       data: points,
-      borderColor: drawing.color ?? DRAWING_TYPE_COLORS[drawing.type],
+      borderColor: drawing.color ?? colorForType(drawing.type),
       borderDash: dash,
       fill: false,
       pointRadius: 2,
@@ -256,7 +256,7 @@ function buildChartJson(
 
   // ── Agent drawings ──
   for (const d of input.drawings ?? []) {
-    const color = d.color ?? DRAWING_TYPE_COLORS[d.type];
+    const color = d.color ?? colorForType(d.type);
     switch (d.type) {
       case "price_line":
         if (d.points[0]) addHLine(d.points[0].price, color, d.label ?? "مستوى");

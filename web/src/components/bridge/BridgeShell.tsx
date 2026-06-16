@@ -102,7 +102,7 @@ export default function BridgeShell({
             <div>
               <p className="text-sm font-bold">AiChart Bridge</p>
               <p className="text-[10px] text-muted-foreground">
-                OpenClaw ↔ Binance / MT5
+                Claude MCP · Binance / MT5
               </p>
             </div>
           </div>

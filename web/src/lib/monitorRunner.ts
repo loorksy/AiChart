@@ -1,6 +1,7 @@
 import { resolveScanAssetsForMarket } from "./allowedAssets";
 import { buildAccountProfile } from "./accountProfile";
 import { wakeAgentViaTelegram } from "./agentWake";
+import { isAgentWakeEnabled } from "./agentWakeConfig";
 import { runCronPostScan } from "./cronPostScan";
 import {
   getEaConnection,
@@ -98,7 +99,8 @@ function candidateDetail(c: OpportunityCandidate, market: MarketType): string {
 }
 
 /**
- * Event-driven monitor — pure code checks; wakes OpenClaw via Telegram only on events.
+ * Event-driven monitor — mechanical maintenance always; agent wakes only when
+ * AGENT_WAKE_ENABLED=1 (legacy). MCP conversational mode skips wakes.
  */
 export async function runMonitorCycle(): Promise<MonitorCycleResult> {
   const result: MonitorCycleResult = {
@@ -110,6 +112,10 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
 
   if (await isMasterKillOn()) {
     result.errors.push("master kill switch — تخطّي المسح");
+    return result;
+  }
+
+  if (!isAgentWakeEnabled()) {
     return result;
   }
 

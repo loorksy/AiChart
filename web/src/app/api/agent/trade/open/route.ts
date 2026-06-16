@@ -14,6 +14,7 @@ import { executeIntent } from "@/lib/execution";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
 import { futuresPermissionBlockReason } from "@/lib/binanceVerify";
 import type { MarketType } from "@/lib/markets/types";
+import { normalizeIntentSymbol } from "@/lib/markets/resolve";
 
 const schema = z
   .object({
@@ -48,7 +49,25 @@ const schema = z
   )
   .refine((b) => b.order_type !== "limit" || b.market_type === "futures", {
     message: "أوامر Limit متاحة في Futures فقط.",
-  });
+  })
+  .refine(
+    (b) =>
+      !b.approved_by_user ||
+      (b.notional != null && b.notional > 0),
+    {
+      message:
+        "notional مطلوب عند approved_by_user — اسأل المشغّل «بكم ندخل؟» ولا تستخدم الحد الافتراضي.",
+    },
+  )
+  .refine(
+    (b) =>
+      !b.approved_by_user ||
+      (typeof b.rationale === "string" && b.rationale.trim().length >= 10),
+    {
+      message:
+        "rationale مطلوب (≥10 أحرف) عند approved_by_user — اذكر لماذا ندخل بجملتين.",
+    },
+  );
 
 /**
  * Bridge: opens a real trade. Every call runs the full intent → Risk Guard →
@@ -152,7 +171,7 @@ export async function POST(req: NextRequest) {
 
     const intent = await createIntent(userId, {
       recommendation_id: body.recommendation_id ?? null,
-      symbol: body.symbol.toUpperCase(),
+      symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
       notional,
       market,
