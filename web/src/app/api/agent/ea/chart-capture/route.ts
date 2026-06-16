@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { queueMt5ChartCapture } from "@/lib/eaChartDraw";
 import type { ChartDrawing } from "@/lib/chartDrawings";
@@ -21,8 +21,7 @@ const schema = z.object({
 /** Bridge: draw on MT5 chart + screenshot (EA draw_and_capture). */
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
 
     const result = await queueMt5ChartCapture(userId, {

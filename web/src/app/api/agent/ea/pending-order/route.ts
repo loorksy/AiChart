@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { queueEaCommandAndWait } from "@/lib/eaAgentCommands";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
@@ -18,8 +18,7 @@ const schema = z.object({
 /** Bridge: queue MT5 pending order via EA. */
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
     const mt5Symbol = (await resolveMt5Symbol(userId, body.symbol)) ?? body.symbol;
 

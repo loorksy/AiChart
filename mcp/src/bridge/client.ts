@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { AppConfig } from "../config.js";
 
 export class BridgeError extends Error {
@@ -11,15 +13,47 @@ export class BridgeError extends Error {
   }
 }
 
+export function bridgeUserSig(serviceToken: string, email: string): string {
+  return createHmac("sha256", serviceToken)
+    .update(email.toLowerCase())
+    .digest("hex");
+}
+
 export class BridgeClient {
-  constructor(private readonly cfg: AppConfig) {}
+  constructor(
+    private readonly cfg: AppConfig,
+    private readonly actAsEmail?: string,
+  ) {}
+
+  static forUser(cfg: AppConfig, email: string): BridgeClient {
+    return new BridgeClient(cfg, email.toLowerCase());
+  }
+
+  static fromAuthInfo(cfg: AppConfig, authInfo: AuthInfo): BridgeClient {
+    const extra = authInfo.extra as { email?: string } | undefined;
+    const email = extra?.email?.trim() || "";
+    if (!email) {
+      throw new BridgeError(
+        "OAuth token missing user email — cannot scope bridge.",
+        401,
+        null,
+      );
+    }
+    return BridgeClient.forUser(cfg, email);
+  }
 
   private headers(): Record<string, string> {
-    return {
+    const base: Record<string, string> = {
       Authorization: `Bearer ${this.cfg.serviceToken}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     };
+    if (this.actAsEmail) {
+      const email = this.actAsEmail.toLowerCase();
+      base["X-Aichart-User-Email"] = email;
+      base["X-Aichart-User-Sig"] = bridgeUserSig(this.cfg.serviceToken, email);
+    }
+    return base;
   }
 
   async get(path: string, query?: Record<string, string | number | undefined>) {
@@ -60,6 +94,13 @@ export class BridgeClient {
       throw new BridgeError(
         "AICHART_SERVICE_TOKEN غير مُعدّ على MCP Server.",
         503,
+        null,
+      );
+    }
+    if (this.cfg.authMode === "oauth" && !this.actAsEmail) {
+      throw new BridgeError(
+        "Bridge session missing user identity.",
+        401,
         null,
       );
     }

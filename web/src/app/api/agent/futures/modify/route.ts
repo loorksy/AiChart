@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getBinanceCredentials, logAudit } from "@/lib/store";
 import {
@@ -25,8 +25,7 @@ const schema = z
  */
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
     const symbol = body.symbol.toUpperCase();
 

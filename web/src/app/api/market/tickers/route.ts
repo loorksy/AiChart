@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 
 const TICKER_24H_URL = "https://data-api.binance.vision/api/v3/ticker/24hr";
 
@@ -12,7 +12,7 @@ type TickerRow = {
 /** 24h price + change % for USDT pairs (filtered by optional `symbols` comma list). */
 export async function GET(req: NextRequest) {
   try {
-    await requireUser();
+    await requirePlatformAccess();
 
     const symbolsParam = req.nextUrl.searchParams.get("symbols");
     const wanted = symbolsParam

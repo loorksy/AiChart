@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getBinanceCredentials, logAudit } from "@/lib/store";
 import {
@@ -12,8 +12,7 @@ import {
 /** Bridge: lists pending futures orders (optionally for one symbol). */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const creds = await getBinanceCredentials(userId);
     if (!creds) {
       return NextResponse.json(
@@ -47,8 +46,7 @@ const cancelSchema = z
 /** Bridge: cancels one pending futures order, or all for a symbol. */
 export async function DELETE(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = cancelSchema.parse(await req.json());
     const symbol = body.symbol.toUpperCase();
 

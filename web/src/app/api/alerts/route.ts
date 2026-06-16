@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { listAlerts, clearAlerts, markAlertsRead } from "@/lib/store";
 
 const patchSchema = z
@@ -14,7 +14,7 @@ const patchSchema = z
 
 export async function GET() {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     return NextResponse.json({ alerts: await listAlerts(user.id, 50) });
   } catch (err) {
     return handleError(err);
@@ -23,7 +23,7 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const body = patchSchema.parse(await req.json());
     await markAlertsRead(user.id, body.markAll ? undefined : body.ids);
     return NextResponse.json({ ok: true });
@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE() {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     await clearAlerts(user.id);
     return NextResponse.json({ ok: true });
   } catch (err) {

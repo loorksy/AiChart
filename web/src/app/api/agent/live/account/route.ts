@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   getEaConnection,
@@ -21,10 +21,9 @@ import { parseEaPositions } from "@/lib/executionEnv";
 import { getFuturesPositions, getFuturesOpenOrders } from "@/lib/binanceFutures";
 
 /** Bridge: unified live account view — MT5 EA quotes + Binance + positions. */
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(_req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const now = Date.now();
 
     const [conn, eaMeta, openTrades, creds] = await Promise.all([

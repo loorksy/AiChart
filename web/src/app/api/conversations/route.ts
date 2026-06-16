@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import {
   createConversation,
   listConversations,
@@ -9,7 +9,7 @@ import {
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const archived = req.nextUrl.searchParams.get("archived") === "1";
     const conversations = archived
       ? await listArchivedConversations(user.id)
@@ -26,7 +26,7 @@ const createSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const body = createSchema.parse(await req.json().catch(() => ({})));
     const conv = await createConversation(user.id, body.title);
     return NextResponse.json(conv);

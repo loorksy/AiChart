@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spreadFromBidAsk } from "@/lib/spread";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { MT5_RETCODE_LEGEND } from "@/lib/brokers/mt5Retcode";
 import {
@@ -13,8 +13,7 @@ import {
 /** Bridge: EA connection diagnostics — symbols from heartbeat, quotes, retcode legend. */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const symbolRaw = req.nextUrl.searchParams.get("symbol")?.trim() ?? "";
     const symbolQ = symbolRaw.toUpperCase();
 

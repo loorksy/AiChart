@@ -13,7 +13,6 @@ const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   try {
     requireAgentAuth(req);
-
     let buffer: Buffer | null = null;
     let mime = "audio/ogg";
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getRecommendation, getSettings } from "@/lib/store";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import type { MarketType } from "@/lib/markets/types";
@@ -11,7 +11,7 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const { id } = await ctx.params;
     const recId = Number(id);
     if (!Number.isFinite(recId) || recId <= 0) {

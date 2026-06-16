@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrice } from "@/lib/binance";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { buildAccountProfile } from "@/lib/accountProfile";
 import { getEaConnection, isHeartbeatFresh, parseEaSymbolSpecs } from "@/lib/eaStore";
@@ -31,8 +31,7 @@ async function livePrice(
 /** Bridge: live snapshot for an open trade — price, candles, PnL, context. */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const tradeId = Number(req.nextUrl.searchParams.get("trade_id"));
     if (!Number.isInteger(tradeId) || tradeId <= 0) {
       return NextResponse.json({ error: "trade_id مطلوب." }, { status: 400 });

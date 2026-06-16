@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   captureKeyForRecommendation,
@@ -19,8 +19,7 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const { id } = await ctx.params;
     const recId = Number(id);
     const isNumeric = Number.isFinite(recId) && recId > 0;

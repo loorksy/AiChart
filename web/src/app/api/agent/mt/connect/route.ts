@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { logAudit } from "@/lib/store";
 import {
@@ -13,8 +13,7 @@ import {
 /** Bridge: connect MetaTrader via MetaApi or mt5local (server + login + password). */
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = mtConnectSchema.parse(await req.json());
     const result = await connectMtAccount(userId, body);
     await logAudit(userId, "agent_mt_connect", `${body.platform}:${body.login}`);
@@ -34,8 +33,7 @@ export async function POST(req: NextRequest) {
 /** Bridge: disconnect MetaTrader account. */
 export async function DELETE(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const result = await disconnectMtAccount(userId);
     await logAudit(userId, "agent_mt_disconnect", "ok");
     return NextResponse.json(result);

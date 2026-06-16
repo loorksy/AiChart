@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPlatformAccess } from "@/lib/platformAccess";
+import { needsMcpCredentials } from "@/lib/userCredentials";
 import BridgeShell from "@/components/bridge/BridgeShell";
 import UserShell from "@/components/user/UserShell";
 
@@ -17,6 +18,7 @@ export default async function ConsoleLayout({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/console");
+  if (needsMcpCredentials(user)) redirect("/complete-profile");
   if (user.role !== "admin" && !hasPlatformAccess(user)) {
     redirect("/awaiting-approval");
   }

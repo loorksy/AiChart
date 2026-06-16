@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import {
   countOpenTrades,
   getFlag,
@@ -17,7 +17,7 @@ import { TRADING_MODES } from "@/lib/types";
 /** Web UI (session auth): live agent/bridge status for the dashboard bar. */
 export async function GET() {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const settings = await getSettings(user.id);
     const limits = await getLimits(user.id);
 
@@ -43,7 +43,7 @@ const schema = z.object({ mode: z.enum(TRADING_MODES) });
 /** Quick mode switch from the dashboard bar. */
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const body = schema.parse(await req.json());
     const limits = await getLimits(user.id);
 

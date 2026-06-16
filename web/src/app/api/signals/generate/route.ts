@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import {
   getSettings,
   getLimits,
@@ -56,7 +56,7 @@ const SL_LABEL = {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     if (!isLLMConfigured()) {
       return NextResponse.json(
         { error: "وكيل Claude غير مُفعّل." },

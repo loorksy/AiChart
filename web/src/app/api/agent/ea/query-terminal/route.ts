@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { queueEaCommandAndWait } from "@/lib/eaAgentCommands";
 
 /** Bridge: MT5 terminal snapshot (margin, pending orders) via EA query_terminal. */
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(_req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
 
     const ack = await queueEaCommandAndWait(userId, "query_terminal", {});
 

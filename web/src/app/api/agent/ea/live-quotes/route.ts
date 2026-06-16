@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getEaLiveQuotes } from "@/lib/eaLiveState";
 
 /** Bridge: EA live quote cache with freshness (quoteAgeMs). */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const symbol = req.nextUrl.searchParams.get("symbol")?.toUpperCase().trim();
     const quotes = getEaLiveQuotes(userId);
 

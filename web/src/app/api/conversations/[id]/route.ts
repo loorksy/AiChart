@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import {
   getConversation,
   deleteConversation,
@@ -14,7 +14,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const id = Number((await params).id);
     const conv = await getConversation(id, user.id);
     if (!conv) {
@@ -34,7 +34,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const id = Number((await params).id);
     const conv = await getConversation(id, user.id);
     if (!conv) {
@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const id = Number((await params).id);
     if (!(await deleteConversation(id, user.id))) {
       return NextResponse.json({ error: "المحادثة غير موجودة." }, { status: 404 });

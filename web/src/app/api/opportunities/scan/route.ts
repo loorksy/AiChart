@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getSettings, getLimits, touchManualScan } from "@/lib/store";
 import { runOpportunityScan } from "@/lib/opportunityScan";
 import { normalizeInterval } from "@/lib/intervals";
@@ -16,7 +16,7 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const body = schema.parse(await req.json().catch(() => ({})));
 
     const settings = await getSettings(user.id);

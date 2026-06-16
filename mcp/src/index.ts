@@ -18,7 +18,6 @@ import { loadConfig } from "./config.js";
 import { createAiChartMcpServer } from "./server/mcpServer.js";
 
 const cfg = loadConfig();
-const bridge = new BridgeClient(cfg);
 const mcpServerUrl = cfg.publicUrl;
 const issuerUrl = new URL(mcpServerUrl.origin);
 
@@ -117,6 +116,29 @@ if (cfg.authMode === "oauth") {
 
 const transports: Record<string, StreamableHTTPServerTransport> = {};
 
+async function bridgeForRequest(
+  req: import("express").Request,
+): Promise<BridgeClient> {
+  if (cfg.authMode === "oauth") {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : null;
+    if (!token || !oauthProvider) {
+      throw new Error("Missing OAuth bearer token for bridge session.");
+    }
+    const authInfo = await oauthProvider.verifyAccessToken(token);
+    return BridgeClient.fromAuthInfo(cfg, authInfo);
+  }
+  const email = process.env.AICHART_AGENT_USER_EMAIL?.trim();
+  if (!email) {
+    throw new Error(
+      "Set AICHART_AGENT_USER_EMAIL when MCP_AUTH_MODE is not oauth.",
+    );
+  }
+  return BridgeClient.forUser(cfg, email);
+}
+
 const mcpPostHandler = async (
   req: import("express").Request,
   res: import("express").Response,
@@ -128,6 +150,7 @@ const mcpPostHandler = async (
     if (sessionId && transports[sessionId]) {
       transport = transports[sessionId];
     } else if (!sessionId && isInitializeRequest(req.body)) {
+      const userBridge = await bridgeForRequest(req);
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (sid) => {
@@ -138,7 +161,7 @@ const mcpPostHandler = async (
         const sid = transport!.sessionId;
         if (sid && transports[sid]) delete transports[sid];
       };
-      const server = createAiChartMcpServer(bridge);
+      const server = createAiChartMcpServer(userBridge);
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
       return;

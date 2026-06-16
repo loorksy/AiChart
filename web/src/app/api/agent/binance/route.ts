@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { deleteBinanceAccount, logAudit } from "@/lib/store";
 
@@ -11,8 +11,7 @@ const schema = z.object({
 /** Bridge: disconnect Binance API keys for the operator account. */
 export async function DELETE(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const envParam = req.nextUrl.searchParams.get("env");
     let env: "testnet" | "prod" | undefined;
     if (envParam === "testnet" || envParam === "prod") {

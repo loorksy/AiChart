@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getSettings, getLimits, updateSettings } from "@/lib/store";
 import {
   serializeMarketAssets,
@@ -52,7 +52,7 @@ const schema = z
 
 export async function GET() {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     return NextResponse.json({
       settings: await getSettings(user.id),
       limits: await getLimits(user.id),
@@ -64,7 +64,7 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const input = schema.parse(await req.json());
     const limits = await getLimits(user.id);
 

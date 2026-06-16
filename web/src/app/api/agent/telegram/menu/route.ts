@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { buildAccountProfile } from "@/lib/accountProfile";
 import { debugSessionLog } from "@/lib/debugSessionLog";
@@ -12,10 +12,9 @@ import {
 } from "@/lib/telegram";
 
 /** Bridge: welcome card + Arabic reply keyboard for linked Telegram chat. */
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(_req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     // #region agent log
     debugSessionLog({
       location: "telegram/menu/route.ts:POST",

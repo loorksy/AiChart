@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { cryptoMarketRank, smartMoneySignals } from "@/lib/binanceWeb3";
 
 let flowCache: {
@@ -12,7 +12,7 @@ const CACHE_MS = 30_000;
 /** Smart-money flow + market rank for whale bubbles (30s cache). */
 export async function GET() {
   try {
-    await requireUser();
+    await requirePlatformAccess();
     const now = Date.now();
     if (flowCache && now - flowCache.at < CACHE_MS) {
       return NextResponse.json({

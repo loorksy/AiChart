@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getBinanceCredentials, getBinanceAccountMeta } from "@/lib/store";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
 import { buildBinancePermissionReport } from "@/lib/binanceVerify";
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const futuresRequired =
       req.nextUrl.searchParams.get("futuresRequired") === "1" ||
       req.nextUrl.searchParams.get("futuresRequired") === "true";

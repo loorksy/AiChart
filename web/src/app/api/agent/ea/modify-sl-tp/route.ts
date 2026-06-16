@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { queueEaModifySlTp } from "@/lib/eaTradeCommands";
 import { waitForEaCommandAck } from "@/lib/eaCommandWait";
@@ -14,8 +14,7 @@ const schema = z.object({
 /** Bridge: modify SL/TP on open MT5 position. */
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
 
     const command = await queueEaModifySlTp(

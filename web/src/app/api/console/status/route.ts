@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import {
   getExecutionEnvSnapshot,
   executionEnvLabelAr,
@@ -10,7 +10,7 @@ import { getForexConnectionView } from "@/lib/forexConnection";
 
 export async function GET() {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const settings = await getSettings(user.id);
     const [binance, forex, executionEnv, futuresOk] = await Promise.all([
       getBinanceAccountMeta(user.id),

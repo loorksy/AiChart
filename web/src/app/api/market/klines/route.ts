@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { getKlines } from "@/lib/binance";
 import { getEaCandles } from "@/lib/eaStore";
@@ -62,7 +62,7 @@ async function metaApiForexCandles(
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const symbol = (req.nextUrl.searchParams.get("symbol") || "BTCUSDT")
       .toUpperCase()
       .replace(/[^A-Z0-9.]/g, "");

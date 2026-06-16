@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getLimits, getSettings, logAudit, updateSettings } from "@/lib/store";
 
@@ -15,8 +15,7 @@ const patchSchema = z
 /** Bridge: read trading settings relevant to the agent. */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const settings = await getSettings(userId);
     return NextResponse.json({
       active_market: settings.active_market ?? "crypto",
@@ -33,8 +32,7 @@ export async function GET(req: NextRequest) {
 /** Bridge: patch a limited subset of operator settings. */
 export async function PATCH(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const input = patchSchema.parse(await req.json());
     if (Object.keys(input).length === 0) {
       return NextResponse.json(

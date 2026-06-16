@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgentAuth } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { runCronPostScan } from "@/lib/cronPostScan";
+import { runUserPostScan } from "@/lib/cronPostScan";
 
 /**
- * Bridge: mechanical trade maintenance — OCO fill sync + auto take-profit.
- * The heartbeat calls this each open-trades review tick (replaces the cron).
+ * Bridge: mechanical trade maintenance — OCO fill sync + auto take-profit
+ * for the authenticated MCP user only.
  */
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const result = await runCronPostScan();
+    const userId = await resolveBridgeUserId(req);
+    const result = await runUserPostScan(userId);
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     return handleError(e);

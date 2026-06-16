@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { parseAllowedAssets, isOpenAssetsPolicy } from "@/lib/allowedAssets";
 import { buildSymbolPerformance } from "@/lib/analytics";
 import { getSettings, listTrades } from "@/lib/store";
@@ -15,7 +15,7 @@ type TickerRow = {
 /** Historical PnL per symbol + 24h change for command-center heatmap. */
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const settings = await getSettings(user.id);
     const trades = await listTrades(user.id, 500);
     const performance = buildSymbolPerformance(trades);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
 import { buildBinancePermissionReport } from "@/lib/binanceVerify";
@@ -19,8 +19,7 @@ const schema = z.object({
 /** Bridge: connect or verify Binance API key permissions. */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const futuresRequired =
       req.nextUrl.searchParams.get("futuresRequired") === "1" ||
       req.nextUrl.searchParams.get("futuresRequired") === "true";
@@ -68,8 +67,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
     const env = body.env ?? "testnet";
     const futuresRequired = body.futuresRequired ?? false;

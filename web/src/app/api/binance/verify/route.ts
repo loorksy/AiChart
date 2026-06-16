@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, requirePlatformAccess, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
 import { buildBinancePermissionReport } from "@/lib/binanceVerify";
 import { getBinanceCredentials, getBinanceAccountMeta } from "@/lib/store";
@@ -18,7 +18,7 @@ const bodySchema = z.object({
  */
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const futuresRequired =
       req.nextUrl.searchParams.get("futuresRequired") === "1" ||
       req.nextUrl.searchParams.get("futuresRequired") === "true";

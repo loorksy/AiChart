@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { getEaConnection, isHeartbeatFresh, parseEaSymbolSpecs } from "@/lib/eaStore";
 import { getRpcConnection } from "@/lib/metaapi/client";
@@ -8,7 +8,7 @@ import { getMtAccount, getMtAccountMeta } from "@/lib/store";
 /** Live forex price — MetaApi or EA heartbeat depending on backend. */
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const symbol = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
       .toUpperCase()
       .replace(/[^A-Z0-9.]/g, "");

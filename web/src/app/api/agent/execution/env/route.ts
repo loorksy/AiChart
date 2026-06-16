@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   executionToBinanceEnv,
@@ -15,8 +15,7 @@ import {
 
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     return NextResponse.json(await getExecutionEnvSnapshot(userId));
   } catch (e) {
     return handleError(e);
@@ -29,8 +28,7 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
     const preference = body.preference as ExecutionEnv;
 

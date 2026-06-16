@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import {
   getLimits,
   getTodayUsage,
@@ -20,7 +20,7 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     if (!isLLMConfigured()) {
       return NextResponse.json(
         { error: "وكيل Claude غير مُفعّل." },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   searchSimilarLessons,
@@ -11,8 +11,7 @@ import {
  */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const symbol = req.nextUrl.searchParams.get("symbol") ?? undefined;
     const pattern = req.nextUrl.searchParams.get("pattern") ?? undefined;
     const limit = Number(req.nextUrl.searchParams.get("limit") ?? "3");

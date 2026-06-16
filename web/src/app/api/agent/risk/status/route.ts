@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildAccountProfile } from "@/lib/accountProfile";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getExecutionEnvSnapshot } from "@/lib/executionEnv";
 import {
@@ -21,8 +21,7 @@ import {
  */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
 
     const settings = await getSettings(userId);
     const limits = await getLimits(userId);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getSettings, logAudit, updateSettings } from "@/lib/store";
 import { TRADING_MODES, type TradingMode } from "@/lib/types";
@@ -8,8 +8,7 @@ import { TRADING_MODES, type TradingMode } from "@/lib/types";
 /** Bridge: read the current trading mode. */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const settings = await getSettings(userId);
     return NextResponse.json({ mode: settings.mode });
   } catch (e) {
@@ -24,8 +23,7 @@ const schema = z.object({
 /** Bridge: switch trading mode (auto / approval / direct) by user request. */
 export async function POST(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
 
     await updateSettings(userId, { mode: body.mode as TradingMode });

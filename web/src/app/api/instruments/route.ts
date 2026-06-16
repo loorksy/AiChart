@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/api";
+import { requirePlatformAccess } from "@/lib/api";
 import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { searchBinanceInstruments } from "@/lib/binanceSymbols";
 import {
@@ -77,7 +77,7 @@ async function eaForexInstruments(
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     const q = (
       request.nextUrl.searchParams.get("q") ??
       request.nextUrl.searchParams.get("search") ??

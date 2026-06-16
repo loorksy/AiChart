@@ -6,6 +6,7 @@ import {
   getAccessBlockReason,
   hasPlatformAccess,
 } from "@/lib/platformAccess";
+import { isSyntheticTelegramEmail } from "@/lib/userCredentials";
 import type { UserRow } from "@/lib/types";
 import { userRowToPublicUser } from "@/lib/userSelect";
 
@@ -33,6 +34,12 @@ export async function POST(req: NextRequest) {
     );
     if (!row) {
       return NextResponse.json({ ok: false, reason: "invalid" }, { status: 401 });
+    }
+    if (isSyntheticTelegramEmail(row.email)) {
+      return NextResponse.json(
+        { ok: false, reason: "needs_credentials" },
+        { status: 403 },
+      );
     }
 
     const user = userRowToPublicUser(row);

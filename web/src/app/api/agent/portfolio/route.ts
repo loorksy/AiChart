@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAgentAuth, resolveAgentUserId } from "@/lib/agentAuth";
+import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   getBinanceCredentials,
@@ -16,8 +16,7 @@ import { getAccountSummary } from "@/lib/binance";
 /** Bridge: full portfolio view — balances, open/recent trades, pending intents. */
 export async function GET(req: NextRequest) {
   try {
-    requireAgentAuth(req);
-    const userId = await resolveAgentUserId();
+    const userId = await resolveBridgeUserId(req);
 
     let binance: unknown = null;
     const creds = await getBinanceCredentials(userId);

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireUser, handleError } from "@/lib/api";
+import { requirePlatformAccess, handleError } from "@/lib/api";
 import { listRecommendations } from "@/lib/store";
 
 export async function GET() {
   try {
-    const user = await requireUser();
+    const user = await requirePlatformAccess();
     return NextResponse.json({
       recommendations: await listRecommendations(user.id, 30),
     });
