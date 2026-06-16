@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import type { CountryCode } from "libphonenumber-js";
 import {
   getCountries,
@@ -8,10 +9,24 @@ import {
   parsePhoneNumberFromString,
 } from "libphonenumber-js";
 import { detectCountryFromBrowser } from "@/lib/geoCountry";
+import { cn } from "@/lib/utils";
 
-const PRIORITY: CountryCode[] = ["SA", "AE", "EG", "KW", "QA", "BH", "OM", "JO", "LB", "IQ"];
+const PRIORITY: CountryCode[] = [
+  "SY",
+  "SA",
+  "AE",
+  "EG",
+  "KW",
+  "QA",
+  "BH",
+  "OM",
+  "JO",
+  "LB",
+  "IQ",
+];
 
 const LABELS: Partial<Record<CountryCode, string>> = {
+  SY: "سوريا",
   SA: "السعودية",
   AE: "الإمارات",
   EG: "مصر",
@@ -38,11 +53,13 @@ export function PhoneInput({
   onChange,
   disabled,
   defaultCountry,
+  className,
 }: {
   value: string;
   onChange: (full: string) => void;
   disabled?: boolean;
   defaultCountry?: CountryCode;
+  className?: string;
 }) {
   const [country, setCountry] = useState<CountryCode>(() => initialCountry(defaultCountry));
   const [local, setLocal] = useState("");
@@ -101,47 +118,78 @@ export function PhoneInput({
     onChange(digits ? `+${code}${digits}` : "");
   }
 
+  const dialCode = getCountryCallingCode(country);
+
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch" dir="ltr">
-      <select
-        className="input w-full shrink-0 py-2.5 text-sm sm:min-w-[12rem] sm:w-auto"
-        value={country}
-        disabled={disabled}
-        onChange={(e) => {
-          const c = e.target.value as CountryCode;
-          setCountry(c);
-          emit(c, local);
-        }}
+    <div className={cn("space-y-2", className)} dir="ltr">
+      <div
+        className={cn(
+          "flex overflow-hidden rounded-xl border border-border bg-card",
+          "focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20",
+          disabled && "opacity-60",
+        )}
       >
-        {countries.map((c) => {
-          const dial = getCountryCallingCode(c);
-          const label = countryLabel(c, displayNames);
-          return (
-            <option key={c} value={c}>
-              {label} +{dial}
-            </option>
-          );
-        })}
-      </select>
-      <input
-        type="tel"
-        inputMode="numeric"
-        autoComplete="tel-national"
-        className="input min-w-0 w-full flex-1 py-2.5"
-        placeholder="5xxxxxxxx"
-        value={local}
-        disabled={disabled}
-        onChange={(e) => {
-          const v = e.target.value;
-          setLocal(v);
-          emit(country, v);
-        }}
-      />
+        <div className="relative shrink-0 border-e border-border sm:w-[10.5rem]">
+          <select
+            className={cn(
+              "h-11 w-full appearance-none bg-transparent py-2 pl-3 pr-8 text-sm",
+              "text-foreground outline-none",
+              "max-w-[9.5rem] sm:max-w-none",
+            )}
+            value={country}
+            disabled={disabled}
+            aria-label="رمز الدولة"
+            onChange={(e) => {
+              const c = e.target.value as CountryCode;
+              setCountry(c);
+              emit(c, local);
+            }}
+          >
+            {countries.map((c) => {
+              const dial = getCountryCallingCode(c);
+              const label = countryLabel(c, displayNames);
+              return (
+                <option key={c} value={c}>
+                  {label} +{dial}
+                </option>
+              );
+            })}
+          </select>
+          <ChevronDown
+            className="pointer-events-none absolute end-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
+          <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+            +{dialCode}
+          </span>
+          <input
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel-national"
+            className="min-w-0 flex-1 bg-transparent py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            placeholder="9xxxxxxxx"
+            value={local}
+            disabled={disabled}
+            aria-label="رقم الهاتف"
+            onChange={(e) => {
+              const v = e.target.value;
+              setLocal(v);
+              emit(country, v);
+            }}
+          />
+        </div>
+      </div>
+
       {value ? (
-        <span className="hidden text-xs text-muted-foreground sm:flex sm:items-center">
-          {value}
-        </span>
-      ) : null}
+        <p className="text-end text-xs tabular-nums text-muted-foreground">{value}</p>
+      ) : (
+        <p className="text-end text-xs text-muted-foreground">
+          أدخل رقم واتساب بدون صفر في البداية
+        </p>
+      )}
     </div>
   );
 }
