@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { handleError, ApiError } from "@/lib/api";
 import { requireEaConnection } from "@/lib/eaAuth";
-import { ackEaCommand, getEaCommand } from "@/lib/eaStore";
+import { ackEaCommand, getEaCommand, saveEaCandles } from "@/lib/eaStore";
 
 const schema = z.object({
   status: z.enum(["acked", "failed"]).default("acked"),
@@ -34,6 +34,31 @@ export async function POST(
       status,
       result ?? {},
     );
+
+    if (
+      existing.command_type === "get_ohlc" &&
+      status === "acked" &&
+      result &&
+      typeof result === "object"
+    ) {
+      const ohlc = result as Record<string, unknown>;
+      const symbol = String(ohlc.symbol ?? "").trim();
+      const timeframe = String(ohlc.timeframe ?? ohlc.interval ?? "").trim();
+      const candles = Array.isArray(ohlc.candles)
+        ? ohlc.candles
+        : Array.isArray(ohlc.bars)
+          ? ohlc.bars
+          : null;
+      if (symbol && timeframe && candles) {
+        await saveEaCandles(
+          conn.user_id,
+          symbol,
+          timeframe,
+          JSON.stringify(candles),
+        );
+      }
+    }
+
     return NextResponse.json({ ok: true, command_id: updated?.id ?? commandId });
   } catch (err) {
     if (err instanceof z.ZodError) {

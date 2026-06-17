@@ -17,6 +17,7 @@ import {
   saveMtAccount,
   updateMtAccountStatus,
 } from "./store";
+import { getEaConnectionMeta } from "./eaStore";
 import type { MtPlatform } from "./markets/types";
 
 export const mtConnectSchema = z.object({
@@ -155,7 +156,25 @@ export async function getMtConnectionStatus(userId: number) {
   const backend = getForexBackend();
 
   if (backend === "ea") {
-    return { backend: "ea" as const, connected: false, online: false };
+    const meta = await getEaConnectionMeta(userId);
+    if (!meta) {
+      return { backend: "ea" as const, connected: false, online: false };
+    }
+    return {
+      backend: "ea" as const,
+      connected: meta.status !== "revoked",
+      online: meta.online,
+      platform: meta.platform,
+      broker: meta.broker_name,
+      login: meta.account_login,
+      balance: meta.balance,
+      equity: meta.equity,
+      currency: meta.account_currency,
+      last_heartbeat_at: meta.last_heartbeat_at,
+      missedHeartbeats: meta.missedHeartbeats,
+      settledOnlineSeconds: meta.settledOnlineSeconds,
+      updated_at: new Date().toISOString(),
+    };
   }
 
   if (backend === "mt5local") {

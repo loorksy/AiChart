@@ -1,6 +1,6 @@
 import { createEaCommand } from "./eaStore";
 import { waitForEaCommandAck, EA_ACK_TIMEOUT_MS } from "./eaCommandWait";
-import type { EaCommand, EaCommandType } from "./types";
+import type { EaCommand, EaCommandType, EaGetOhlcPayload } from "./types";
 
 export async function queueEaCommandAndWait(
   userId: number,
@@ -20,4 +20,21 @@ export async function queueEaCommandAndWait(
     result: ack.result,
     reason: ack.reason,
   };
+}
+
+export async function queueEaGetOhlc(
+  userId: number,
+  payload: EaGetOhlcPayload,
+  timeoutMs?: number,
+) {
+  return queueEaCommandAndWait(
+    userId,
+    "get_ohlc",
+    {
+      symbol: payload.symbol,
+      timeframe: payload.timeframe,
+      count: payload.count ?? 200,
+    },
+    timeoutMs,
+  );
 }

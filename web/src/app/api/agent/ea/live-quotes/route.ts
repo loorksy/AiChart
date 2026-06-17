@@ -1,27 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { resolveBridgeUserId } from "@/lib/agentAuth";
-import { handleError } from "@/lib/api";
-import { getEaLiveQuotes } from "@/lib/eaLiveState";
+import { withBridge } from "@/lib/bridge";
+import { buildEaLiveQuotesSummary } from "@/lib/eaLiveState";
 
-/** Bridge: EA live quote cache with freshness (quoteAgeMs). */
-export async function GET(req: NextRequest) {
-  try {
-    const userId = await resolveBridgeUserId(req);
-    const symbol = req.nextUrl.searchParams.get("symbol")?.toUpperCase().trim();
-    const quotes = getEaLiveQuotes(userId);
+/** Bridge: EA live quote cache with freshness metadata (spreadPips, isFresh, source). */
+export const GET = withBridge(async ({ req, userId }) => {
+  const symbol = req.nextUrl.searchParams.get("symbol")?.toUpperCase().trim();
+  const summary = await buildEaLiveQuotesSummary(userId);
 
-    if (symbol) {
-      const q = quotes[symbol];
-      return NextResponse.json({
-        symbol,
-        quote: q ?? null,
-        quotesOk: Boolean(q && q.bid > 0 && q.ask > 0),
-        quoteAgeMs: q?.quoteAgeMs ?? null,
-      });
-    }
-
-    return NextResponse.json({ quotes, count: Object.keys(quotes).length });
-  } catch (e) {
-    return handleError(e);
+  if (symbol) {
+    const quote =
+      summary.quotes.find((q) => q.symbol.toUpperCase() === symbol) ?? null;
+    return {
+      symbol,
+      quote,
+      quotesOk: Boolean(quote && quote.bid > 0 && quote.ask > 0),
+      quoteAgeMs: quote?.quoteAgeMs ?? null,
+      spreadPips: quote?.spreadPips ?? null,
+      isFresh: quote?.isFresh ?? false,
+      source: quote?.source ?? null,
+      staleThresholdMs: summary.staleThresholdMs,
+    };
   }
-}
+
+  return summary;
+}, { routeKey: "/api/agent/ea/live-quotes" });

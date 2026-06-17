@@ -1,3 +1,14 @@
+import {
+  getEaConnection,
+  parseEaSymbolSpecs,
+} from "./eaStore";
+import {
+  getStaleQuoteThresholdMs,
+  isQuoteFresh,
+  type FreshnessSource,
+} from "./bridge/freshness";
+import { spreadFromBidAsk } from "./spread";
+
 /** In-memory live quote cache pushed by EA v3 (single VPS process). */
 
 export interface EaLiveQuote {
@@ -6,6 +17,22 @@ export interface EaLiveQuote {
   ask: number;
   tickTime?: number;
   updatedAt: number;
+}
+
+export interface EnrichedEaLiveQuote extends EaLiveQuote {
+  quoteAgeMs: number;
+  spreadPips: number | null;
+  isFresh: boolean;
+  source: FreshnessSource;
+}
+
+export interface EaLiveQuotesSummary {
+  quotes: EnrichedEaLiveQuote[];
+  freshCount: number;
+  staleCount: number;
+  freshSymbols: string[];
+  staleThresholdMs: number;
+  count: number;
 }
 
 export interface EaLiveEvent {
@@ -87,6 +114,79 @@ export function pushEaEvent(
 
 export function getEaRecentEvents(userId: number, limit = 10): EaLiveEvent[] {
   return (eventsByUser.get(userId) ?? []).slice(0, limit);
+}
+
+function heartbeatQuoteAgeMs(lastHeartbeatAt: string | null): number {
+  if (!lastHeartbeatAt) return 60_000;
+  const iso = lastHeartbeatAt.includes("T")
+    ? lastHeartbeatAt
+    : `${lastHeartbeatAt.replace(" ", "T")}Z`;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? Date.now() - ms : 60_000;
+}
+
+function enrichQuote(
+  quote: EaLiveQuote & { quoteAgeMs: number },
+  source: FreshnessSource,
+  thresholdMs: number,
+): EnrichedEaLiveQuote {
+  const spread = spreadFromBidAsk(quote.bid, quote.ask, quote.symbol);
+  return {
+    ...quote,
+    spreadPips: spread ? Math.round(spread.spreadPips * 10) / 10 : null,
+    isFresh: isQuoteFresh(quote.quoteAgeMs, thresholdMs),
+    source,
+  };
+}
+
+/** Live quotes with freshness metadata — fresh symbols sorted first. */
+export async function buildEaLiveQuotesSummary(
+  userId: number,
+): Promise<EaLiveQuotesSummary> {
+  const thresholdMs = getStaleQuoteThresholdMs();
+  const liveMap = getEaLiveQuotes(userId);
+  const conn = await getEaConnection(userId);
+  const heartbeatSpecs = parseEaSymbolSpecs(conn?.symbol_specs_json ?? null);
+  const hbAgeMs = heartbeatQuoteAgeMs(conn?.last_heartbeat_at ?? null);
+
+  const bySymbol = new Map<string, EnrichedEaLiveQuote>();
+
+  for (const [key, q] of Object.entries(liveMap)) {
+    if (q.bid <= 0 || q.ask <= 0) continue;
+    const fresh = isQuoteFresh(q.quoteAgeMs, thresholdMs);
+    bySymbol.set(key, enrichQuote(q, fresh ? "live" : "stale", thresholdMs));
+  }
+
+  for (const spec of heartbeatSpecs) {
+    const sym = spec.symbol?.trim().toUpperCase();
+    if (!sym || bySymbol.has(sym)) continue;
+    const bid = Number(spec.bid) || 0;
+    const ask = Number(spec.ask) || 0;
+    if (bid <= 0 || ask <= 0) continue;
+    const quote: EaLiveQuote & { quoteAgeMs: number } = {
+      symbol: spec.symbol,
+      bid,
+      ask,
+      updatedAt: Date.now() - hbAgeMs,
+      quoteAgeMs: hbAgeMs,
+    };
+    bySymbol.set(sym, enrichQuote(quote, "heartbeat", thresholdMs));
+  }
+
+  const quotes = [...bySymbol.values()].sort((a, b) => {
+    if (a.isFresh !== b.isFresh) return a.isFresh ? -1 : 1;
+    return a.symbol.localeCompare(b.symbol);
+  });
+
+  const freshSymbols = quotes.filter((q) => q.isFresh).map((q) => q.symbol);
+  return {
+    quotes,
+    freshCount: freshSymbols.length,
+    staleCount: quotes.length - freshSymbols.length,
+    freshSymbols,
+    staleThresholdMs: thresholdMs,
+    count: quotes.length,
+  };
 }
 
 /** Prefer live push; fall back to heartbeat spec bid/ask. */

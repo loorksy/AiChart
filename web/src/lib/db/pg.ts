@@ -50,6 +50,7 @@ const SCHEMA = `
     alert_trades             BOOLEAN NOT NULL DEFAULT TRUE,
     alert_signals            BOOLEAN NOT NULL DEFAULT TRUE,
     alert_min_confidence     INTEGER NOT NULL DEFAULT 0,
+    min_confidence           INTEGER NOT NULL DEFAULT 80,
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -497,6 +498,16 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS min_confidence INTEGER NOT NULL DEFAULT 80
+  `).catch(() => {});
+
+  await client.query(`
+    UPDATE trading_settings SET min_confidence = 80
+    WHERE min_confidence IS NULL
+  `).catch(() => {});
+
+  await client.query(`
     ALTER TABLE trade_intents
       ADD COLUMN IF NOT EXISTS practice BOOLEAN NOT NULL DEFAULT FALSE
   `).catch(() => {});
@@ -553,6 +564,22 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_trade_lessons_symbol
       ON trade_lessons (user_id, symbol)
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS idempotency_keys (
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      key         TEXT NOT NULL,
+      result_json TEXT NOT NULL,
+      expires_at  TIMESTAMPTZ NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, key)
+    )
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires
+      ON idempotency_keys (expires_at)
   `).catch(() => {});
 }
 

@@ -52,6 +52,7 @@ const SCHEMA = `
     alert_trades             INTEGER NOT NULL DEFAULT 1,
     alert_signals            INTEGER NOT NULL DEFAULT 1,
     alert_min_confidence     INTEGER NOT NULL DEFAULT 0,
+    min_confidence           INTEGER NOT NULL DEFAULT 80,
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
@@ -436,6 +437,12 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN execution_env_preference TEXT NOT NULL DEFAULT 'demo'",
     );
   }
+  if (!settingsCols.some((c) => c.name === "min_confidence")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN min_confidence INTEGER NOT NULL DEFAULT 80",
+    );
+    db.exec("UPDATE trading_settings SET min_confidence = 80 WHERE min_confidence IS NULL");
+  }
 
   const tradeCols = db
     .prepare("PRAGMA table_info(trades)")
@@ -670,6 +677,20 @@ function migrate(db: Database.Database) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_mt_accounts_user
       ON mt_accounts (user_id);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS idempotency_keys (
+      user_id     INTEGER NOT NULL,
+      key         TEXT NOT NULL,
+      result_json TEXT NOT NULL,
+      expires_at  TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, key),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires
+      ON idempotency_keys (expires_at);
   `);
 }
 

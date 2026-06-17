@@ -1,7 +1,21 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { BridgeClient } from "../bridge/client.js";
+import { formatBridgeError } from "../bridge/client.js";
 import { bridgeCall, bridgeWrap } from "./helpers.js";
+import {
+  DESTRUCTIVE,
+  IDEMPOTENT_WRITE,
+  MCP_SERVER_VERSION,
+  READ_ONLY,
+  withAnnotations,
+} from "./registry.js";
+import {
+  chartInlineContent,
+  chartTimeoutContent,
+  mt5ChartPollId,
+  pollBridgeMt5ChartPng,
+} from "./chartInline.js";
 
 export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
@@ -26,20 +40,75 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "get_risk_status",
     {
       description:
-        "حالة المخاطر والوضع (auto/approval/direct)، kill switch، حدود رأس المال، executionEnv، activeMarket.",
+        "حالة المخاطر والوضع (auto/approval/direct)، kill switch، حدود رأس المال، executionEnv، activeMarket. يعيد envelope { ok, data } على المسارات المحدّثة.",
       inputSchema: {},
+      ...withAnnotations(READ_ONLY),
     },
     bridgeWrap(bridge, () => bridge.get("/api/agent/risk/status")),
+  );
+
+  server.registerTool(
+    "get_trade_readiness",
+    {
+      description:
+        "فحص جاهزية التداول قبل open_trade. متى: قبل أي صفقة فوركس أو عند quoteAgeMs>5000. لا تستخدم بديلاً عن get_risk_status. confidence اختياري للتحقق من بوابة ≥80%. لا تنفّذ open_trade إذا ready=false. مثال: symbol=EURUSD&confidence=85&market=forex.",
+      inputSchema: {
+        symbol: z
+          .string()
+          .optional()
+          .describe("رمز الزوج — مطلوب لفحص quote/spread في الفوركس"),
+        market: z.enum(["crypto", "forex"]).optional(),
+        confidence: z
+          .number()
+          .min(0)
+          .max(100)
+          .optional()
+          .describe("ثقة الصفقة المقترحة — يُقارَن بـ min_confidence"),
+        practice: z.boolean().optional(),
+      },
+      ...withAnnotations(READ_ONLY),
+    },
+    async ({ symbol, market, confidence, practice }) =>
+      bridgeCall(() =>
+        bridge.get("/api/agent/trade/readiness", {
+          symbol,
+          market,
+          confidence,
+          practice: practice ? "true" : undefined,
+        }),
+      ),
   );
 
   server.registerTool(
     "get_agent_capabilities",
     {
       description:
-        "قدرات المنصة: نموذج AI، fallbacks، forex backend (ea/metaapi)، ملاحظات الشارت.",
+        "قدرات المنصة: نموذج AI، fallbacks، forex backend، serverVersion، featureFlags، EA debounce (3-strike). استدعِه عند بداية الجلسة.",
       inputSchema: {},
+      ...withAnnotations(READ_ONLY),
     },
-    bridgeWrap(bridge, () => bridge.get("/api/agent/model")),
+    async () => {
+      try {
+        const model = await bridge.get("/api/agent/model");
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  ...(typeof model === "object" && model !== null ? model : {}),
+                  mcpServerVersion: MCP_SERVER_VERSION,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (e) {
+        return formatBridgeError(e);
+      }
+    },
   );
 
   server.registerTool(
@@ -113,7 +182,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "open_trade",
     {
       description:
-        "فتح صفقة عبر Risk Guard. notional و rationale مطلوبان — اسأل المشغّل «بكم ندخل؟» ولا تستخدم perTradeMax تلقائياً. approved_by_user:true بعد موافقة صريحة في الشات.",
+        "فتح صفقة عبر Risk Guard. notional و rationale مطلوبان — اسأل «بكم ندخل؟». approved_by_user:true بعد موافقة صريحة. يرفض confidence<80 (LOW_CONFIDENCE) و quote قديم (STALE_QUOTE). idempotencyKey اختياري.",
       inputSchema: {
         symbol: z.string(),
         side: z.enum(["buy", "sell"]),
@@ -131,7 +200,13 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         leverage: z.number().min(1).max(125).optional(),
         order_type: z.enum(["market", "limit"]).optional(),
         limit_price: z.number().positive().optional(),
+        idempotencyKey: z
+          .string()
+          .max(128)
+          .optional()
+          .describe("مفتاح idempotency اختياري — يعيد نفس النتيجة خلال 24h"),
       },
+      ...withAnnotations(IDEMPOTENT_WRITE),
     },
     async (body) => bridgeCall(() => bridge.post("/api/agent/trade/open", body)),
   );
@@ -144,6 +219,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         trade_id: z.number().int().positive().optional(),
         all: z.boolean().optional(),
       },
+      ...withAnnotations(DESTRUCTIVE),
     },
     async (body) => bridgeCall(() => bridge.post("/api/agent/trade/close", body)),
   );
@@ -334,7 +410,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "capture_chart_snapshot",
     {
       description:
-        "شارت PNG مع رسوم (crypto أو forex). يرجع image_base64 أو chart_url لـ MT5 pending.",
+        "شارت PNG مع رسوم (crypto أو forex). يرجع image inline (base64) — MT5 pending يُستطلَع تلقائياً.",
       inputSchema: {
         symbol: z.string(),
         interval: z.string().optional(),
@@ -343,13 +419,59 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         chart_drawings: z.array(z.record(z.string(), z.unknown())).optional(),
       },
     },
-    async (body) =>
-      bridgeCall(() =>
-        bridge.post("/api/agent/chart/snapshot", {
+    async (body) => {
+      try {
+        const res = (await bridge.post("/api/agent/chart/snapshot", {
           ...body,
           response_format: "json",
-        }),
-      ),
+        })) as {
+          ok?: boolean;
+          status?: string;
+          chart_url?: string;
+          image_base64?: string;
+          mt5_symbol?: string;
+        };
+
+        if (res.status === "pending" && res.chart_url) {
+          const chartId = mt5ChartPollId(res.chart_url);
+          if (chartId) {
+            const polled = await pollBridgeMt5ChartPng(bridge, chartId);
+            if ("timeout" in polled) {
+              return chartTimeoutContent(
+                { chartUrl: res.chart_url, mt5Symbol: res.mt5_symbol },
+                polled.retryAfterMs,
+              );
+            }
+            return chartInlineContent(
+              {
+                ok: true,
+                status: "ready",
+                chartUrl: res.chart_url,
+                mt5Symbol: res.mt5_symbol,
+              },
+              polled.base64,
+            );
+          }
+        }
+
+        if (res.image_base64) {
+          return chartInlineContent(
+            {
+              ok: true,
+              status: "ready",
+              content_type: "image/png",
+            },
+            res.image_base64,
+          );
+        }
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
+        };
+      } catch (e) {
+        return formatBridgeError(e);
+      }
+    },
   );
 
   server.registerTool(

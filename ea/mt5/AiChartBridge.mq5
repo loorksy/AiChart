@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "AiChart"
 #property link      "https://aichart.lork.cloud"
-#property version   "3.10"
+#property version   "4.00"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -39,7 +39,7 @@ datetime g_last_quote_flush = 0;
 long    g_last_trade_ticket = 0;
 double  g_last_trade_price = 0;
 string  g_last_trade_error = "";
-const string EA_VERSION = "3.10";
+const string EA_VERSION = "4.00";
 
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
@@ -54,7 +54,7 @@ int OnInit()
       return(INIT_FAILED);
    }
    EventSetTimer(30);
-   Print("AiChartBridge MT5 v3.10 started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s");
+   Print("AiChartBridge MT5 v4.00 started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s");
    PreWarmSymbols();
    LogAvailableSymbols();
    // FIX: 1 — immediate heartbeat on attach
@@ -158,8 +158,8 @@ void SendHeartbeat()
       Print("AiChartBridge: heartbeat restored after ", g_hb_failures, " failure(s).");
       g_hb_failures = 0;
    }
-   // FIX: 6 — process kill switch flags from server (commands via PollCommands)
-   ProcessKillSwitchFlags(resp);
+   // FIX: 6 — process server flags from heartbeat (commands via PollCommands)
+   ProcessHeartbeatFlags(resp);
 }
 
 //+------------------------------------------------------------------+
@@ -736,6 +736,10 @@ void HandleCommand(string obj)
    {
       QueryTerminal(id);
    }
+   else if(type == "get_ohlc")
+   {
+      GetOhlc(id, payload, obj);
+   }
    else
    {
       AckCommand(id, "failed", 0, 0, 0, "unsupported command type");
@@ -1287,6 +1291,62 @@ void QueryTerminal(long id)
    AckCommandEx(id, "acked", inner, "");
 }
 
+// v4 — on-demand OHLC via CopyRates
+void GetOhlc(long id, string payload, string root)
+{
+   string symRaw = PayloadStrVal(payload, root, "symbol");
+   string sym = ResolveBrokerSymbol(symRaw);
+   string tfStr = PayloadStrVal(payload, root, "timeframe");
+   if(tfStr == "")
+      tfStr = PayloadStrVal(payload, root, "interval");
+   int count = (int)PayloadNum(payload, root, "count");
+   if(count <= 0) count = 200;
+   if(count > 500) count = 500;
+
+   if(sym == "")
+   {
+      AckCommand(id, "failed", 0, 0, 0,
+                 "symbol not found: " + symRaw + " | Available: " + GetMarketWatchSymbols());
+      return;
+   }
+   if(tfStr == "")
+      tfStr = "1h";
+
+   ENUM_TIMEFRAMES tf = ResolveTimeframe(tfStr);
+   MqlRates rates[];
+   ArraySetAsSeries(rates, true);
+   int got = CopyRates(sym, tf, 0, count, rates);
+   if(got <= 0)
+   {
+      AckCommand(id, "failed", 0, 0, 0, "CopyRates failed for " + sym + " " + tfStr);
+      return;
+   }
+
+   string candles = "[";
+   for(int i = got - 1; i >= 0; i--)
+   {
+      if(candles != "[") candles += ",";
+      candles += "{";
+      candles += "\"time\":" + (string)(long)rates[i].time + ",";
+      candles += "\"open\":" + DoubleToString(rates[i].open, 8) + ",";
+      candles += "\"high\":" + DoubleToString(rates[i].high, 8) + ",";
+      candles += "\"low\":" + DoubleToString(rates[i].low, 8) + ",";
+      candles += "\"close\":" + DoubleToString(rates[i].close, 8) + ",";
+      candles += "\"volume\":" + (string)(long)rates[i].tick_volume;
+      candles += "}";
+   }
+   candles += "]";
+
+   string interval = TfToString(tf);
+   string inner = "\"symbol\":" + JsonStr(sym) + ",";
+   inner += "\"timeframe\":" + JsonStr(interval) + ",";
+   inner += "\"count\":" + (string)got + ",";
+   inner += "\"candles\":" + candles;
+
+   MarkCommandAcked(id);
+   AckCommandEx(id, "acked", inner, "");
+}
+
 // v3 — push live quotes to server
 void FlushLiveQuotes()
 {
@@ -1344,8 +1404,8 @@ void CloseAllPositions()
    }
 }
 
-// FIX: 6 — parse kill_switch flags from heartbeat JSON
-void ProcessKillSwitchFlags(string resp)
+// FIX: 6 — parse server flags from heartbeat JSON (kill switch + reconnect)
+void ProcessHeartbeatFlags(string resp)
 {
    int fi = StringFind(resp, "\"flags\"");
    if(fi < 0) return;
@@ -1372,6 +1432,8 @@ void ProcessKillSwitchFlags(string resp)
 
    bool killOn = JsonBool(flagsBlock, "kill_switch");
    bool closeOpen = JsonBool(flagsBlock, "close_open_trades");
+   bool reconnect = JsonBool(flagsBlock, "reconnect");
+   bool resyncCandles = JsonBool(flagsBlock, "resync_candles");
 
    if(killOn && !g_trading_halted)
    {
@@ -1389,6 +1451,28 @@ void ProcessKillSwitchFlags(string resp)
       Print("AiChartBridge: Kill switch requested close of all open positions.");
       CloseAllPositions();
    }
+
+   if(reconnect || resyncCandles)
+      HandleServerReconnect(reconnect, resyncCandles);
+}
+
+// v4 — server-requested reconnect: re-arm bridge, flush quotes, re-push symbols
+void HandleServerReconnect(bool fullReconnect, bool resyncCandles)
+{
+   Print("AiChartBridge: server reconnect",
+         fullReconnect ? " (full)" : "",
+         resyncCandles ? " + resync_candles" : "",
+         " — re-syncing bridge.");
+   g_hb_failures = 0;
+   g_last_hb_time = 0;
+   if(fullReconnect)
+   {
+      PreWarmSymbols();
+      FlushLiveQuotes();
+   }
+   if(resyncCandles || fullReconnect)
+      g_last_hb_time = 0;
+   SendHeartbeat();
 }
 
 bool IsCommandAcked(long id)

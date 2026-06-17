@@ -1,5 +1,24 @@
 # AiChartBridge MT5 — Changelog
 
+## v4.00 (2026-06-17) — get_ohlc + reconnect flags
+
+### New command
+- **`get_ohlc`**: `{ symbol, timeframe, count? }` → `CopyRates` → ack with `candles[]` (max 500 bars).
+- Web ack handler saves candles to `ea_market_cache`.
+
+### Reconnect
+- Heartbeat flags `reconnect` / `resync_candles` (set via `POST /api/agent/ea/reconnect`).
+- `HandleServerReconnect()` — PreWarm symbols, flush quotes, immediate heartbeat.
+
+### Web (paired deploy)
+- 3-strike heartbeat debounce (`missedHeartbeats`, `settledOnlineSeconds`).
+- `getMtConnectionStatus` delegates to EA meta when `FOREX_BACKEND=ea`.
+
+### Deploy
+1. Compile in MetaEditor (see `EA_COMMANDS_V4.md`).
+2. Reattach EA; confirm `ea_version: "4.00"`.
+3. Deploy web before or with EA — reconnect flags are web-driven.
+
 ## v3.10 (2026-06-16) — Keepalive timer + offline fix
 
 ### Keepalive

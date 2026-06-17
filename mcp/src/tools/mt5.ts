@@ -1,7 +1,15 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { BridgeClient } from "../bridge/client.js";
+import { formatBridgeError } from "../bridge/client.js";
 import { bridgeCall, bridgeWrap } from "./helpers.js";
+import { DESTRUCTIVE, READ_ONLY, withAnnotations } from "./registry.js";
+import {
+  chartInlineContent,
+  chartTimeoutContent,
+  mt5ChartPollId,
+  pollBridgeMt5ChartPng,
+} from "./chartInline.js";
 
 export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
@@ -65,10 +73,12 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "get_ea_live_quotes",
     {
-      description: "أسعار MT5 live من EA v3 مع quoteAgeMs.",
+      description:
+        "أسعار MT5 live من EA مع quoteAgeMs و spreadPips و isFresh و source (live|stale|heartbeat). يعيد freshCount و freshSymbols[] — رتّب fresh أولاً. read-only.",
       inputSchema: {
         symbol: z.string().optional(),
       },
+      ...withAnnotations(READ_ONLY),
     },
     async ({ symbol }) =>
       bridgeCall(() =>
@@ -79,7 +89,8 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "capture_mt5_chart",
     {
-      description: "رسم على شارت MT5 + screenshot (draw_and_capture). يتطلب EA v3.",
+      description:
+        "رسم على شارت MT5 + screenshot (draw_and_capture). يتطلب EA v3. يعيد صورة PNG inline (base64) + chartUrl.",
       inputSchema: {
         symbol: z.string(),
         interval: z.string().optional(),
@@ -91,8 +102,72 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
         drawings: z.array(z.record(z.string(), z.unknown())).optional(),
       },
     },
-    async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/ea/chart-capture", body)),
+    async (body) => {
+      try {
+        const queued = (await bridge.post(
+          "/api/agent/ea/chart-capture",
+          body,
+        )) as {
+          queued?: boolean;
+          chartUrl?: string;
+          captureKey?: string;
+          reason?: string;
+        };
+
+        if (!queued.queued) {
+          return {
+            content: [
+              { type: "text", text: JSON.stringify(queued, null, 2) },
+            ],
+          };
+        }
+
+        const chartId = mt5ChartPollId(
+          queued.chartUrl,
+          queued.captureKey ?? body.capture_key,
+          body.recommendation_id,
+        );
+        if (!chartId) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    ...queued,
+                    status: "pending",
+                    message: "Chart queued but poll id missing.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        const polled = await pollBridgeMt5ChartPng(bridge, chartId);
+        if ("timeout" in polled) {
+          return chartTimeoutContent(
+            { chartUrl: queued.chartUrl, captureKey: chartId },
+            polled.retryAfterMs,
+          );
+        }
+
+        return chartInlineContent(
+          {
+            ok: true,
+            queued: true,
+            chartUrl: queued.chartUrl,
+            captureKey: chartId,
+            mt5Symbol: (queued as { mt5Symbol?: string }).mt5Symbol,
+          },
+          polled.base64,
+        );
+      } catch (e) {
+        return formatBridgeError(e);
+      }
+    },
   );
 
   server.registerTool(
@@ -159,5 +234,19 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
       inputSchema: {},
     },
     bridgeWrap(bridge, () => bridge.get("/api/agent/ea/query-terminal")),
+  );
+
+  server.registerTool(
+    "request_ea_reconnect",
+    {
+      description:
+        "يطلب إعادة اتصال EA عند heartbeat التالي (~30ث). متى: quotes قديمة أو EA متقطع — لا تكرّر أكثر من مرة/دقيقة. resync_candles لإعادة مزامنة الشموع. side-effect: يضبط flags في DB.",
+      inputSchema: {
+        resync_candles: z.boolean().optional(),
+      },
+      ...withAnnotations(DESTRUCTIVE),
+    },
+    async (body) =>
+      bridgeCall(() => bridge.post("/api/agent/ea/reconnect", body)),
   );
 }

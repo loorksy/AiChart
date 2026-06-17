@@ -56,6 +56,9 @@ export async function getSettings(userId: number): Promise<TradingSettings> {
   if (!row.execution_env_preference) {
     row.execution_env_preference = "demo";
   }
+  if (row.min_confidence == null || Number.isNaN(Number(row.min_confidence))) {
+    row.min_confidence = 80;
+  }
   return row;
 }
 
@@ -90,6 +93,7 @@ const SETTABLE_FIELDS = [
   "alert_trades",
   "alert_signals",
   "alert_min_confidence",
+  "min_confidence",
   "last_manual_scan_at",
   "scan_poll_minutes",
   "analysis_interval",

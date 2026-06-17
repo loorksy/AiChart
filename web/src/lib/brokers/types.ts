@@ -6,6 +6,7 @@ export interface OrderResult {
   ok: boolean;
   status: "executed" | "failed";
   reason: string;
+  errorCode?: string;
   tradeId?: number;
   trade?: {
     symbol: string;

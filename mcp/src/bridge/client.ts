@@ -68,6 +68,53 @@ export class BridgeClient {
     return this.request(url.toString(), { method: "GET" });
   }
 
+  /** GET that preserves status codes and supports binary PNG responses. */
+  async getRaw(path: string): Promise<{
+    status: number;
+    contentType: string;
+    body: Buffer | unknown;
+  }> {
+    if (!this.cfg.serviceToken) {
+      throw new BridgeError(
+        "AICHART_SERVICE_TOKEN غير مُعدّ على MCP Server.",
+        503,
+        null,
+      );
+    }
+    if (this.cfg.authMode === "oauth" && !this.actAsEmail) {
+      throw new BridgeError(
+        "Bridge session missing user identity.",
+        401,
+        null,
+      );
+    }
+    const url = `${this.cfg.apiUrl}${path}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: this.headers(),
+      cache: "no-store",
+    });
+    const contentType = res.headers.get("content-type") ?? "";
+    if (contentType.includes("image/")) {
+      const arrayBuf = await res.arrayBuffer();
+      return {
+        status: res.status,
+        contentType,
+        body: Buffer.from(arrayBuf),
+      };
+    }
+    const text = await res.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+    return { status: res.status, contentType, body: data };
+  }
+
   async post(path: string, body?: unknown) {
     return this.request(`${this.cfg.apiUrl}${path}`, {
       method: "POST",
@@ -132,10 +179,23 @@ export class BridgeClient {
   }
 }
 
+function isBridgeFailureEnvelope(
+  data: unknown,
+): data is { ok: false; error: unknown } {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "ok" in data &&
+    (data as { ok: unknown }).ok === false &&
+    "error" in data
+  );
+}
+
 export function formatBridgeResult(data: unknown): {
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
 } {
+  const isError = isBridgeFailureEnvelope(data);
   return {
     content: [
       {
@@ -143,6 +203,7 @@ export function formatBridgeResult(data: unknown): {
         text: JSON.stringify(data, null, 2),
       },
     ],
+    ...(isError ? { isError: true as const } : {}),
   };
 }
 
@@ -151,6 +212,9 @@ export function formatBridgeError(err: unknown): {
   isError: true;
 } {
   if (err instanceof BridgeError) {
+    if (isBridgeFailureEnvelope(err.body)) {
+      return { ...formatBridgeResult(err.body), isError: true as const };
+    }
     return {
       content: [
         {

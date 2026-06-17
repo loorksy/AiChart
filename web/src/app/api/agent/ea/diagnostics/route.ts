@@ -5,6 +5,7 @@ import { handleError } from "@/lib/api";
 import { MT5_RETCODE_LEGEND } from "@/lib/brokers/mt5Retcode";
 import {
   getEaConnection,
+  getEaOnlineState,
   isHeartbeatFresh,
   parseEaSymbolSpecs,
   toEaConnectionMeta,
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
     }
 
     const meta = toEaConnectionMeta(conn);
+    const onlineState = getEaOnlineState(userId, conn.last_heartbeat_at);
     const specs = parseEaSymbolSpecs(conn.symbol_specs_json);
     const symbols = specs.map((s) => s.symbol).filter(Boolean);
 
@@ -55,6 +57,9 @@ export async function GET(req: NextRequest) {
       equity: meta.equity,
       last_heartbeat_at: meta.last_heartbeat_at,
       heartbeatFresh: isHeartbeatFresh(conn.last_heartbeat_at),
+      missedHeartbeats: onlineState.missedHeartbeats,
+      settledOnlineSeconds: onlineState.settledOnlineSeconds,
+      onlineDebounced: onlineState.online,
       symbols,
       symbolCount: symbols.length,
       ...(symbolRaw

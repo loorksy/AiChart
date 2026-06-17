@@ -179,6 +179,7 @@ export async function revalidatePendingIntent(
       marketType: intent.market_type,
       leverage: intent.leverage,
       stopLoss: intent.stop_loss,
+      confidence: intent.confidence ?? 0,
     },
     {
       masterKill: await isMasterKillOn(),

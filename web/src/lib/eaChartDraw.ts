@@ -166,3 +166,44 @@ export async function getPendingChartCapture(
 }
 
 export { EA_COMMAND_TTL_MS, DRAW_CAPTURE_TTL_MS };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export interface PollMt5ChartOptions {
+  maxMs?: number;
+  intervalMs?: number;
+}
+
+export interface PollMt5ChartResult {
+  ok: boolean;
+  buffer?: Buffer;
+  status: "ready" | "timeout" | "offline";
+  retryAfterMs?: number;
+}
+
+/** Poll local EA chart PNG until ready or timeout (web-side helper). */
+export async function pollMt5ChartPng(
+  userId: number,
+  captureKey: string,
+  options: PollMt5ChartOptions = {},
+): Promise<PollMt5ChartResult> {
+  const maxMs = options.maxMs ?? 8000;
+  const intervalMs = options.intervalMs ?? 500;
+
+  if (!(await isEaOnline(userId))) {
+    return { ok: false, status: "offline" };
+  }
+
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    if (isEaChartFileReady(userId, captureKey)) {
+      const buffer = await readEaChartPng(userId, captureKey);
+      if (buffer) {
+        return { ok: true, buffer, status: "ready" };
+      }
+    }
+    await sleep(intervalMs);
+  }
+
+  return { ok: false, status: "timeout", retryAfterMs: 2000 };
+}

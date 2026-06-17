@@ -70,6 +70,8 @@ export interface TradingSettings {
   alert_trades: number;
   alert_signals: number;
   alert_min_confidence: number;
+  /** Minimum trade confidence (0–100) enforced by Risk Guard on live execution. */
+  min_confidence: number;
   last_manual_scan_at?: string | null;
   scan_poll_minutes?: number;
   analysis_interval?: string;
@@ -322,6 +324,10 @@ export interface EaConnectionMeta {
   online: boolean;
   last_heartbeat_at: string | null;
   account_trade_mode: string | null;
+  /** Consecutive missed heartbeat intervals (0 when fresh). */
+  missedHeartbeats?: number;
+  /** Seconds the EA has been stably online (debounced). */
+  settledOnlineSeconds?: number;
 }
 
 export type EaCommandType =
@@ -334,7 +340,30 @@ export type EaCommandType =
   | "cancel_order"
   | "close_partial"
   | "ensure_symbol"
-  | "query_terminal";
+  | "query_terminal"
+  | "get_ohlc";
+
+/** Payload queued for EA `get_ohlc` commands (v4+). */
+export interface EaGetOhlcPayload {
+  symbol: string;
+  timeframe: string;
+  count?: number;
+}
+
+/** Result acked by EA for `get_ohlc`. */
+export interface EaGetOhlcResult {
+  symbol: string;
+  timeframe: string;
+  count: number;
+  candles: Array<{
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume?: number;
+  }>;
+}
 
 /** Payload queued for EA `draw_and_capture` commands. */
 export interface EaDrawAndCapturePayload {

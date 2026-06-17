@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
@@ -10,7 +10,18 @@ import {
   hasRecentTradeOpenFailure,
   logAudit,
 } from "@/lib/store";
-import { executeIntent } from "@/lib/execution";
+import { executeIntent, bridgeEnvelopeForExecutionDenial } from "@/lib/execution";
+import {
+  bridgeError,
+  bridgeSuccess,
+  BridgeErrorCode,
+  checkForexTradePreflight,
+  getIdempotencyResult,
+  readIdempotencyKey,
+  storeIdempotencyResult,
+  toBridgeResponse,
+  type BridgeEnvelope,
+} from "@/lib/bridge";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
 import { futuresPermissionBlockReason } from "@/lib/binanceVerify";
 import type { MarketType } from "@/lib/markets/types";
@@ -40,6 +51,8 @@ const schema = z
     order_type: z.enum(["market", "limit"]).default("market"),
     /** Required when order_type is limit. */
     limit_price: z.number().positive().optional(),
+    /** Optional idempotency key — replays cached result within TTL. */
+    idempotencyKey: z.string().max(128).optional(),
   })
   .refine(
     (b) =>
@@ -69,6 +82,35 @@ const schema = z
     },
   );
 
+function tradeOpenPayload(
+  ok: boolean,
+  status: string,
+  reason: string | undefined,
+  intentId: number | null,
+  tradeId: number | null | undefined,
+  trade: unknown,
+) {
+  return {
+    ok,
+    status,
+    reason,
+    intentId,
+    tradeId: tradeId ?? null,
+    trade: trade ?? null,
+  };
+}
+
+async function respondWithIdempotency(
+  userId: number,
+  key: string | null,
+  envelope: BridgeEnvelope,
+) {
+  if (key) {
+    await storeIdempotencyResult(userId, key, envelope);
+  }
+  return toBridgeResponse(envelope);
+}
+
 /**
  * Bridge: opens a real trade. Every call runs the full intent → Risk Guard →
  * broker pipeline; the Risk Guard can deny regardless of who asked.
@@ -77,6 +119,17 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
+    const idempotencyKey = readIdempotencyKey(
+      req.headers.get("x-idempotency-key"),
+      body.idempotencyKey,
+    );
+
+    if (idempotencyKey) {
+      const cached = await getIdempotencyResult(userId, idempotencyKey);
+      if (cached) {
+        return toBridgeResponse(cached, { idempotentReplay: true });
+      }
+    }
 
     // Failure brake: if a recent attempt on this symbol was denied, reject
     // immediately with a clear reason instead of re-running the full
@@ -86,18 +139,17 @@ export async function POST(req: NextRequest) {
       !body.approved_by_user &&
       (await hasRecentTradeOpenFailure(userId, body.symbol))
     ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          status: "denied",
-          reason:
-            "failure_brake: a trade on this symbol was denied within the last 15 minutes — do NOT retry; wait or move on to another opportunity",
-          intentId: null,
-          tradeId: null,
-          trade: null,
-        },
-        { status: 429 },
+      const envelope = bridgeSuccess(
+        tradeOpenPayload(
+          false,
+          "denied",
+          "failure_brake: a trade on this symbol was denied within the last 15 minutes — do NOT retry; wait or move on to another opportunity",
+          null,
+          null,
+          null,
+        ),
       );
+      return respondWithIdempotency(userId, idempotencyKey, envelope);
     }
 
     const settings = await getSettings(userId);
@@ -106,23 +158,35 @@ export async function POST(req: NextRequest) {
       settings.active_market ??
       "crypto") as MarketType;
 
+    if (market === "forex") {
+      const preflight = await checkForexTradePreflight(userId, body.symbol);
+      if (preflight) {
+        await logAudit(
+          userId,
+          "agent_trade_open",
+          `${body.symbol} ${body.side} denied ${preflight.error.code} (pre-flight)`,
+        );
+        return respondWithIdempotency(userId, idempotencyKey, preflight);
+      }
+    }
+
     const marketType = body.market_type ?? "spot";
     const orderType = body.order_type ?? "market";
 
     if (marketType === "futures") {
       const creds = await getBinanceCredentials(userId);
       if (!creds) {
-        return NextResponse.json(
-          {
-            ok: false,
-            status: "denied",
-            reason: "لا يوجد حساب Binance مرتبط.",
-            intentId: null,
-            tradeId: null,
-            trade: null,
-          },
-          { status: 400 },
+        const envelope = bridgeSuccess(
+          tradeOpenPayload(
+            false,
+            "denied",
+            "لا يوجد حساب Binance مرتبط.",
+            null,
+            null,
+            null,
+          ),
         );
+        return respondWithIdempotency(userId, idempotencyKey, envelope);
       }
       if (creds.env === "prod") {
         const summary = await getAccountSummary(
@@ -141,17 +205,10 @@ export async function POST(req: NextRequest) {
           creds.env,
         );
         if (block) {
-          return NextResponse.json(
-            {
-              ok: false,
-              status: "denied",
-              reason: block,
-              intentId: null,
-              tradeId: null,
-              trade: null,
-            },
-            { status: 400 },
+          const envelope = bridgeSuccess(
+            tradeOpenPayload(false, "denied", block, null, null, null),
           );
+          return respondWithIdempotency(userId, idempotencyKey, envelope);
         }
       }
     }
@@ -192,6 +249,32 @@ export async function POST(req: NextRequest) {
       practiceMode: body.practice,
     });
 
+    const confidenceEnvelope = bridgeEnvelopeForExecutionDenial(result);
+    if (confidenceEnvelope) {
+      await logAudit(
+        userId,
+        "agent_trade_open",
+        `${intent.symbol} ${intent.side} denied LOW_CONFIDENCE (${body.confidence}% < threshold)`,
+      );
+      return respondWithIdempotency(userId, idempotencyKey, confidenceEnvelope);
+    }
+
+    if (result.errorCode === BridgeErrorCode.UPSTREAM_TIMEOUT) {
+      const timeoutEnvelope = bridgeError(
+        BridgeErrorCode.UPSTREAM_TIMEOUT,
+        result.reason,
+        result.reason,
+        { symbol: intent.symbol, intentId: intent.id },
+        { retriable: true, retryAfterMs: 3000 },
+      );
+      await logAudit(
+        userId,
+        "agent_trade_open",
+        `${intent.symbol} ${intent.side} denied UPSTREAM_TIMEOUT`,
+      );
+      return respondWithIdempotency(userId, idempotencyKey, timeoutEnvelope);
+    }
+
     await logAudit(
       userId,
       "agent_trade_open",
@@ -202,14 +285,17 @@ export async function POST(req: NextRequest) {
       } → ${result.status}${result.ok ? "" : ` (${result.reason})`}`,
     );
 
-    return NextResponse.json({
-      ok: result.ok,
-      status: result.status,
-      reason: result.reason,
-      intentId: intent.id,
-      tradeId: result.tradeId ?? null,
-      trade: result.trade ?? null,
-    });
+    const envelope = bridgeSuccess(
+      tradeOpenPayload(
+        result.ok,
+        result.status,
+        result.reason,
+        intent.id,
+        result.tradeId,
+        result.trade,
+      ),
+    );
+    return respondWithIdempotency(userId, idempotencyKey, envelope);
   } catch (e) {
     return handleError(e);
   }

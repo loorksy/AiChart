@@ -1,6 +1,6 @@
 {
   "name": "aichart-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AiChart MCP Server — Claude Connectors bridge to /api/agent/*",
   "type": "module",
   "private": true,

@@ -10,6 +10,11 @@ import {
   isMasterKillOn,
 } from "./store";
 import { getResolvedExecutionEnv } from "./executionEnv";
+import {
+  BridgeErrorCode,
+  lowConfidenceFailure,
+  type BridgeFailure,
+} from "./bridge/errors";
 import { evaluateTrade } from "./riskGuard";
 import { brokerForMarket } from "./markets/types";
 import { getBrokerAdapter } from "./brokers";
@@ -23,6 +28,9 @@ export interface ExecutionResult {
   ok: boolean;
   status: "executed" | "failed";
   reason: string;
+  denyCode?: BridgeErrorCode;
+  denyDetails?: Record<string, unknown>;
+  errorCode?: string;
   tradeId?: number;
   trade?: {
     symbol: string;
@@ -31,6 +39,20 @@ export interface ExecutionResult {
     avg_price: number;
     env: string;
   };
+}
+
+/** Map a Risk Guard LOW_CONFIDENCE denial to the bridge envelope (no broker call). */
+export function bridgeEnvelopeForExecutionDenial(
+  result: Pick<ExecutionResult, "ok" | "denyCode" | "denyDetails">,
+): BridgeFailure | null {
+  if (result.ok || result.denyCode !== BridgeErrorCode.LOW_CONFIDENCE) {
+    return null;
+  }
+  const details = result.denyDetails as
+    | { confidence: number; minConfidence: number }
+    | undefined;
+  if (!details) return null;
+  return lowConfidenceFailure(details.confidence, details.minConfidence);
 }
 
 /**
@@ -106,6 +128,7 @@ export async function executeIntent(
       marketType,
       leverage: intent.leverage ?? 1,
       stopLoss: intent.stop_loss,
+      confidence: intent.confidence ?? 0,
     },
     {
       masterKill: await isMasterKillOn(),
@@ -128,7 +151,14 @@ export async function executeIntent(
       detail: decision.reason,
     });
     await updateIntentStatus(intentId, "failed", decision.reason);
-    return { ok: false, status: "failed", reason: decision.reason, activities };
+    return {
+      ok: false,
+      status: "failed",
+      reason: decision.reason,
+      denyCode: decision.denyCode,
+      denyDetails: decision.denyDetails,
+      activities,
+    };
   }
   push({
     id: "risk",

@@ -1,7 +1,22 @@
 import { isSymbolAllowed } from "./allowedAssets";
+import { BridgeErrorCode } from "./bridge/errors";
 import type { ExecutionEnv } from "./executionEnv";
 import type { MarketType } from "./markets/types";
 import type { AdminLimits, TradingSettings } from "./types";
+
+export const DEFAULT_MIN_CONFIDENCE = 80;
+export const PRACTICE_MIN_CONFIDENCE_FLOOR = 50;
+
+/** Effective confidence threshold: demo/practice uses 50; live uses settings.min_confidence. */
+export function getEffectiveMinConfidence(
+  settings: TradingSettings,
+  ctx: Pick<RiskContext, "practiceMode" | "resolvedEnv">,
+): number {
+  const relaxed =
+    ctx.practiceMode === true || ctx.resolvedEnv === "demo";
+  if (relaxed) return PRACTICE_MIN_CONFIDENCE_FLOOR;
+  return settings.min_confidence ?? DEFAULT_MIN_CONFIDENCE;
+}
 
 export interface ProposedTrade {
   symbol: string;
@@ -14,6 +29,8 @@ export interface ProposedTrade {
   leverage?: number;
   /** Stop-loss price — mandatory for futures. */
   stopLoss?: number | null;
+  /** Agent confidence 0–100 — enforced against settings.min_confidence on live. */
+  confidence: number;
 }
 
 export interface RiskContext {
@@ -37,6 +54,8 @@ export interface RiskDecision {
   reason: string;
   effectiveCapital: number;
   perTradeMax: number;
+  denyCode?: BridgeErrorCode;
+  denyDetails?: Record<string, unknown>;
 }
 
 /**
@@ -58,11 +77,15 @@ export function evaluateTrade(
   const perTradeMax = (effectiveCapital * settings.per_trade_pct) / 100;
   const maxOpen = Math.min(settings.max_open_trades, limits.max_open_trades_cap);
 
-  const deny = (reason: string): RiskDecision => ({
+  const deny = (
+    reason: string,
+    extras?: Pick<RiskDecision, "denyCode" | "denyDetails">,
+  ): RiskDecision => ({
     ok: false,
     reason,
     effectiveCapital,
     perTradeMax,
+    ...extras,
   });
 
   if (ctx.masterKill)
@@ -73,6 +96,20 @@ export function evaluateTrade(
     return deny("التنفيذ التلقائي غير مصرّح به من الإدارة.");
   const relaxed =
     ctx.practiceMode === true || ctx.resolvedEnv === "demo";
+
+  const minConfidence = getEffectiveMinConfidence(settings, ctx);
+  if (proposed.confidence < minConfidence) {
+    return deny(
+      `الثقة (${proposed.confidence}%) أقل من الحد الأدنى (${minConfidence}%) — لا ننفّذ. ننتظر فرصة أوضح (≥${minConfidence}%).`,
+      {
+        denyCode: BridgeErrorCode.LOW_CONFIDENCE,
+        denyDetails: {
+          confidence: proposed.confidence,
+          minConfidence,
+        },
+      },
+    );
+  }
 
   if (settings.mode !== "auto" && !ctx.explicitApproval && !ctx.practiceMode)
     return deny("وضعك الحالي توصيات فقط، لا تنفيذ.");

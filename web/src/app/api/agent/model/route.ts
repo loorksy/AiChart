@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
       const key = getProviderApiKey(p);
       if (key) providerKeys[p] = key;
     }
+    const forexBackend = process.env.FOREX_BACKEND?.trim() || "auto";
     return NextResponse.json({
       provider,
       model,
@@ -26,6 +27,25 @@ export async function GET(req: NextRequest) {
       fallbacks: buildFallbackRefs(ref),
       providerKeys,
       app_url: getPublicAppUrl(),
+      serverVersion: "1.1.0",
+      forex_backend: forexBackend,
+      featureFlags: {
+        confidenceGate: true,
+        minConfidenceDefault: 80,
+        bridgeErrorEnvelope: true,
+        eaGetOhlc: true,
+        eaReconnect: true,
+        inlineChartBase64: true,
+        openTradeIdempotency: true,
+        eaHeartbeatDebounce: true,
+      },
+      eaHeartbeat: {
+        offlineAfterMissed: 3,
+        heartbeatIntervalSec: 30,
+        note_ar:
+          "يُعلَن EA offline بعد 3 heartbeats متتالية فائتة — لا نفترض انقطاعاً فورياً عند miss واحد",
+        note: "EA marked offline only after 3 consecutive missed heartbeats (~90s worst case)",
+      },
       notes: {
         chart_media:
           "POST binance-capture ثم MEDIA:<chart_url_telegram> (توكن مدمج). لا تستخدم localhost ولا ?token= يدوياً.",

@@ -6,7 +6,7 @@ import {
   saveEaCandles,
 } from "@/lib/eaStore";
 import { reconcileEaPositions } from "@/lib/eaPositionSync";
-import { eaKillCloseFlagKey } from "@/lib/eaTradeCommands";
+import { eaKillCloseFlagKey, eaReconnectFlagKey, eaResyncCandlesFlagKey } from "@/lib/eaTradeCommands";
 import { parseEaPositions } from "@/lib/executionEnv";
 import { getFlag, getSettings, setFlag } from "@/lib/store";
 
@@ -85,12 +85,25 @@ export async function POST(req: NextRequest) {
       await setFlag(killCloseKey, "0");
     }
 
+    const reconnectKey = eaReconnectFlagKey(conn.user_id);
+    const resyncKey = eaResyncCandlesFlagKey(conn.user_id);
+    const reconnectPending = (await getFlag(reconnectKey)) === "1";
+    const resyncPending = (await getFlag(resyncKey)) === "1";
+    if (reconnectPending) {
+      await setFlag(reconnectKey, "0");
+    }
+    if (resyncPending) {
+      await setFlag(resyncKey, "0");
+    }
+
     return NextResponse.json({
       ok: true,
       server_time: new Date().toISOString(),
       flags: {
         kill_switch: settings.kill_switch === 1,
         close_open_trades: closeOpenPending,
+        ...(reconnectPending ? { reconnect: true } : {}),
+        ...(resyncPending ? { resync_candles: true } : {}),
       },
       commands: [],
     });

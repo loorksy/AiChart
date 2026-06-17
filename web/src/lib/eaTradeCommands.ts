@@ -60,3 +60,14 @@ export const EA_KILL_CLOSE_FLAG_PREFIX = "ea_kill_close_";
 export function eaKillCloseFlagKey(userId: number): string {
   return `${EA_KILL_CLOSE_FLAG_PREFIX}${userId}`;
 }
+
+export const EA_RECONNECT_FLAG_PREFIX = "ea_reconnect_";
+export const EA_RESYNC_CANDLES_FLAG_PREFIX = "ea_resync_candles_";
+
+export function eaReconnectFlagKey(userId: number): string {
+  return `${EA_RECONNECT_FLAG_PREFIX}${userId}`;
+}
+
+export function eaResyncCandlesFlagKey(userId: number): string {
+  return `${EA_RESYNC_CANDLES_FLAG_PREFIX}${userId}`;
+}

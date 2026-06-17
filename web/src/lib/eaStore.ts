@@ -12,8 +12,18 @@ import type {
 
 /** Heartbeat freshness window. Older than this and the EA is considered offline. */
 export const EA_HEARTBEAT_TIMEOUT_MS = 90_000;
+/** Expected EA heartbeat interval — used for 3-strike debounce. */
+export const EA_HEARTBEAT_INTERVAL_MS = 30_000;
+/** Mark offline only after this many consecutive missed intervals. */
+export const EA_HEARTBEAT_DEBOUNCE_MISSES = 3;
 /** How long an unfetched command stays valid before it expires. */
 export const EA_COMMAND_TTL_MS = 60_000;
+
+interface EaDebounceState {
+  settledOnlineSince: number | null;
+}
+
+const eaDebounceState = new Map<number, EaDebounceState>();
 
 function parseTimestamp(value: string | null): number | null {
   if (!value) return null;
@@ -30,6 +40,70 @@ export function isHeartbeatFresh(
   const ms = parseTimestamp(lastHeartbeatAt);
   if (ms == null) return false;
   return Date.now() - ms <= timeoutMs;
+}
+
+/** Missed heartbeat slots from age (1 per interval after the first interval elapses). */
+export function computeMissedHeartbeats(
+  lastHeartbeatAt: string | null,
+  intervalMs = EA_HEARTBEAT_INTERVAL_MS,
+): number {
+  const ms = parseTimestamp(lastHeartbeatAt);
+  if (ms == null) return EA_HEARTBEAT_DEBOUNCE_MISSES;
+  const age = Date.now() - ms;
+  if (age <= intervalMs) return 0;
+  return Math.min(
+    EA_HEARTBEAT_DEBOUNCE_MISSES,
+    Math.floor(age / intervalMs),
+  );
+}
+
+export interface EaOnlineState {
+  online: boolean;
+  missedHeartbeats: number;
+  settledOnlineSeconds: number;
+}
+
+function touchDebounceState(userId: number, online: boolean): EaDebounceState {
+  let state = eaDebounceState.get(userId);
+  if (!state) {
+    state = { settledOnlineSince: online ? Date.now() : null };
+    eaDebounceState.set(userId, state);
+    return state;
+  }
+  if (online) {
+    if (state.settledOnlineSince === null) {
+      state.settledOnlineSince = Date.now();
+    }
+  } else {
+    state.settledOnlineSince = null;
+  }
+  return state;
+}
+
+/** Debounced online state — offline only after 3 consecutive missed intervals. */
+export function getEaOnlineState(
+  userId: number,
+  lastHeartbeatAt: string | null,
+): EaOnlineState {
+  const missedHeartbeats = computeMissedHeartbeats(lastHeartbeatAt);
+  const online = missedHeartbeats < EA_HEARTBEAT_DEBOUNCE_MISSES;
+  const state = touchDebounceState(userId, online);
+  const settledOnlineSeconds = state.settledOnlineSince
+    ? Math.floor((Date.now() - state.settledOnlineSince) / 1000)
+    : 0;
+  return { online, missedHeartbeats, settledOnlineSeconds };
+}
+
+export function isEaOnlineDebounced(
+  userId: number,
+  lastHeartbeatAt: string | null,
+): boolean {
+  return getEaOnlineState(userId, lastHeartbeatAt).online;
+}
+
+/** Called when a heartbeat is recorded — resets debounce strike count. */
+export function resetEaHeartbeatDebounce(userId: number): void {
+  eaDebounceState.set(userId, { settledOnlineSince: Date.now() });
 }
 
 export async function getEaConnection(
@@ -99,6 +173,7 @@ export async function recordEaHeartbeat(
   userId: number,
   patch: EaHeartbeatPatch,
 ): Promise<void> {
+  resetEaHeartbeatDebounce(userId);
   await execute(
     `UPDATE ea_connections SET
        broker_name = COALESCE(?, broker_name),
@@ -128,8 +203,11 @@ export async function recordEaHeartbeat(
 }
 
 export function toEaConnectionMeta(conn: EaConnection): EaConnectionMeta {
-  const online =
-    conn.status !== "revoked" && isHeartbeatFresh(conn.last_heartbeat_at);
+  const debounced =
+    conn.status !== "revoked"
+      ? getEaOnlineState(conn.user_id, conn.last_heartbeat_at)
+      : { online: false, missedHeartbeats: EA_HEARTBEAT_DEBOUNCE_MISSES, settledOnlineSeconds: 0 };
+  const online = debounced.online;
   return {
     id: conn.id,
     platform: conn.platform,
@@ -143,6 +221,8 @@ export function toEaConnectionMeta(conn: EaConnection): EaConnectionMeta {
     online,
     last_heartbeat_at: conn.last_heartbeat_at,
     account_trade_mode: conn.account_trade_mode ?? null,
+    missedHeartbeats: debounced.missedHeartbeats,
+    settledOnlineSeconds: debounced.settledOnlineSeconds,
   };
 }
 
