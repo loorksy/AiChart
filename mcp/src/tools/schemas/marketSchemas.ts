@@ -52,7 +52,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "scan_market",
     domain: "market",
     description:
-      "متى: «خذ صفقة» — قارن رموزاً. read-only. side-effect: مسح API. مثال: symbols=[BTCUSDT,ETHUSDT].",
+      "scan مسح السوق · قارن عدة رموز · أفضل فرصة دخول · اختر صفقة. متى: «خذ صفقة» أو «شو أفضل عملة». read-only. مثال: symbols=[BTCUSDT,ETHUSDT].",
     inputSchema: {
       symbols: z.array(z.string()).max(30).optional(),
       interval: zInterval,

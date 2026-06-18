@@ -1,6 +1,6 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-06-18T18:52:48.439Z",
+  "exportedAt": "2026-06-18T21:47:06.800Z",
   "toolCount": 56,
   "tools": [
     {
@@ -96,7 +96,7 @@
     {
       "name": "close_trade",
       "domain": "core",
-      "description": "متى: عند طلب المشغّل أو بعد record_exit_decision=close. side-effect: يغلق صفقة/الكل. مثال: trade_id=123.",
+      "description": "إغلاق صفقة · أغلق المركز · خروج · close position · إنهاء الصفقة بالكامل. متى: طلب المشغّل أو بعد record_exit_decision=close. side-effect: يغلق صفقة/الكل. مثال: trade_id=123.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -126,7 +126,7 @@
     {
       "name": "request_approval",
       "domain": "core",
-      "description": "متى: mode=approval. يرسل أزرار تيليجرام. side-effect: intent معلّق. لا تستخدم في direct mode.",
+      "description": "طلب موافقة · اعتماد صفقة · إرسال للموافقة · approval buttons. متى: mode=approval. يرسل أزرار تيليجرام. side-effect: intent معلّق. لا تستخدم في direct mode.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -306,7 +306,7 @@
     {
       "name": "scan_market",
       "domain": "market",
-      "description": "متى: «خذ صفقة» — قارن رموزاً. read-only. side-effect: مسح API. مثال: symbols=[BTCUSDT,ETHUSDT].",
+      "description": "scan مسح السوق · قارن عدة رموز · أفضل فرصة دخول · اختر صفقة. متى: «خذ صفقة» أو «شو أفضل عملة». read-only. مثال: symbols=[BTCUSDT,ETHUSDT].",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -436,7 +436,7 @@
     {
       "name": "connect_mt5",
       "domain": "mt5",
-      "description": "متى: MetaApi/mt5local — لا مع FOREX_BACKEND=ea. side-effect: يحفظ credentials. مثال: platform=mt5&server=...",
+      "description": "ربط حساب MetaTrader · اتصال MT5/MT4 · ربط فوركس · MetaApi login. متى: MetaApi/mt5local — لا مع FOREX_BACKEND=ea. side-effect: يحفظ credentials. مثال: platform=mt5&server=...",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -446,7 +446,7 @@
     {
       "name": "disconnect_mt5",
       "domain": "mt5",
-      "description": "متى: فصل MetaApi/mt5local. side-effect: disconnect.",
+      "description": "فصل حساب MetaTrader · قطع اتصال MT5/MT4 · إلغاء ربط فوركس. متى: فصل MetaApi/mt5local. side-effect: disconnect.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,

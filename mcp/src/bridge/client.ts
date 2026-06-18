@@ -20,18 +20,22 @@ export function bridgeUserSig(serviceToken: string, email: string): string {
 }
 
 /** Upstream request timeout (ms). Prevents a slow EA/exchange from hanging the
- *  whole MCP call until the platform's own timeout. Override via BRIDGE_FETCH_TIMEOUT_MS. */
+ *  whole MCP call until the platform's own timeout. Override via BRIDGE_FETCH_TIMEOUT_MS.
+ *  Default 15s — a single forex EA round trip (queueEaGetOhlc) can take up to 12s. */
 function bridgeFetchTimeoutMs(): number {
   const raw = Number(process.env.BRIDGE_FETCH_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 8000;
+  return Number.isFinite(raw) && raw > 0 ? raw : 15000;
 }
 
-/** fetch with an AbortController deadline; maps a timeout to a 504 BridgeError. */
+/** fetch with an AbortController deadline; maps a timeout to a 504 BridgeError.
+ *  `overrideMs` lets a slow endpoint (e.g. multi-timeframe forex) extend the budget. */
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
+  overrideMs?: number,
 ): Promise<Response> {
-  const timeoutMs = bridgeFetchTimeoutMs();
+  const timeoutMs =
+    overrideMs && overrideMs > 0 ? overrideMs : bridgeFetchTimeoutMs();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -87,7 +91,11 @@ export class BridgeClient {
     return base;
   }
 
-  async get(path: string, query?: Record<string, string | number | undefined>) {
+  async get(
+    path: string,
+    query?: Record<string, string | number | undefined>,
+    timeoutMs?: number,
+  ) {
     const url = new URL(`${this.cfg.apiUrl}${path}`);
     if (query) {
       for (const [k, v] of Object.entries(query)) {
@@ -96,7 +104,7 @@ export class BridgeClient {
         }
       }
     }
-    return this.request(url.toString(), { method: "GET" });
+    return this.request(url.toString(), { method: "GET" }, timeoutMs);
   }
 
   /** GET that preserves status codes and supports binary PNG responses. */
@@ -167,7 +175,11 @@ export class BridgeClient {
     });
   }
 
-  private async request(url: string, init: RequestInit): Promise<unknown> {
+  private async request(
+    url: string,
+    init: RequestInit,
+    timeoutMs?: number,
+  ): Promise<unknown> {
     if (!this.cfg.serviceToken) {
       throw new BridgeError(
         "AICHART_SERVICE_TOKEN غير مُعدّ على MCP Server.",
@@ -182,11 +194,15 @@ export class BridgeClient {
         null,
       );
     }
-    const res = await fetchWithTimeout(url, {
-      ...init,
-      headers: { ...this.headers(), ...(init.headers as object) },
-      cache: "no-store",
-    });
+    const res = await fetchWithTimeout(
+      url,
+      {
+        ...init,
+        headers: { ...this.headers(), ...(init.headers as object) },
+        cache: "no-store",
+      },
+      timeoutMs,
+    );
     const text = await res.text();
     let data: unknown = null;
     if (text) {

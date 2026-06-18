@@ -8,7 +8,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "connect_mt5",
     domain: "mt5",
     description:
-      "متى: MetaApi/mt5local — لا مع FOREX_BACKEND=ea. side-effect: يحفظ credentials. مثال: platform=mt5&server=...",
+      "ربط حساب MetaTrader · اتصال MT5/MT4 · ربط فوركس · MetaApi login. متى: MetaApi/mt5local — لا مع FOREX_BACKEND=ea. side-effect: يحفظ credentials. مثال: platform=mt5&server=...",
     inputSchema: {
       platform: z.enum(["mt4", "mt5"]),
       server: z.string().min(2),
@@ -20,7 +20,8 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "disconnect_mt5",
     domain: "mt5",
-    description: "متى: فصل MetaApi/mt5local. side-effect: disconnect.",
+    description:
+      "فصل حساب MetaTrader · قطع اتصال MT5/MT4 · إلغاء ربط فوركس. متى: فصل MetaApi/mt5local. side-effect: disconnect.",
     inputSchema: {},
     annotations: DESTRUCTIVE,
   },

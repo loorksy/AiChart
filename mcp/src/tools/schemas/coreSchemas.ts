@@ -129,7 +129,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "close_trade",
     domain: "core",
     description:
-      "متى: عند طلب المشغّل أو بعد record_exit_decision=close. side-effect: يغلق صفقة/الكل. مثال: trade_id=123.",
+      "إغلاق صفقة · أغلق المركز · خروج · close position · إنهاء الصفقة بالكامل. متى: طلب المشغّل أو بعد record_exit_decision=close. side-effect: يغلق صفقة/الكل. مثال: trade_id=123.",
     inputSchema: {
       trade_id: zTradeId.optional(),
       all: z.boolean().optional(),
@@ -161,7 +161,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_approval",
     domain: "core",
     description:
-      "متى: mode=approval. يرسل أزرار تيليجرام. side-effect: intent معلّق. لا تستخدم في direct mode.",
+      "طلب موافقة · اعتماد صفقة · إرسال للموافقة · approval buttons. متى: mode=approval. يرسل أزرار تيليجرام. side-effect: intent معلّق. لا تستخدم في direct mode.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
