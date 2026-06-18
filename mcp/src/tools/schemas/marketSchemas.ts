@@ -17,6 +17,22 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: READ_ONLY,
   },
   {
+    name: "get_multi_timeframe_snapshot",
+    domain: "market",
+    description:
+      "متى: تحليل متعدد الأطر لزوج واحد — يجلب كل الأطر بنداء واحد متوازٍ (أسرع من استدعاء get_market_snapshot لكل فريم). read-only. مثال: symbol=EURUSD&intervals=1h,15m,5m.",
+    inputSchema: {
+      symbol: zSymbol.describe("مثل EURUSD أو BTCUSDT"),
+      intervals: z
+        .array(z.string())
+        .max(5)
+        .optional()
+        .describe("قائمة أطر، الافتراضي 1h,15m,5m — حد أقصى 5"),
+      market: zMarket,
+    },
+    annotations: READ_ONLY,
+  },
+  {
     name: "get_market_price",
     domain: "market",
     description:

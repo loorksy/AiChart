@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "مثل EURUSD أو BTCUSDT"
+    },
+    "intervals": {
+      "description": "قائمة أطر، الافتراضي 1h,15m,5m — حد أقصى 5",
+      "maxItems": 5,
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "market": {
+      "type": "string",
+      "enum": [
+        "crypto",
+        "forex"
+      ]
+    }
+  },
+  "required": [
+    "symbol"
+  ],
+  "additionalProperties": false
+}

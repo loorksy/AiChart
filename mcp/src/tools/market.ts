@@ -20,6 +20,25 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
+    "get_multi_timeframe_snapshot",
+    mcpToolConfig("get_multi_timeframe_snapshot"),
+    async (args) => {
+      const { symbol, intervals, market } = args as {
+        symbol: string;
+        intervals?: string[];
+        market?: "crypto" | "forex";
+      };
+      return bridgeCall(() =>
+        bridge.get("/api/agent/market/multi-snapshot", {
+          symbol,
+          intervals: intervals?.length ? intervals.join(",") : undefined,
+          market,
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
     "get_market_price",
     mcpToolConfig("get_market_price"),
     async (args) => {

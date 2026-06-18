@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-06-18T14:44:42.664Z",
-  "toolCount": 55,
+  "exportedAt": "2026-06-18T18:52:48.439Z",
+  "toolCount": 56,
   "tools": [
     {
       "name": "get_account_overview",
@@ -267,6 +267,16 @@
       "name": "get_market_snapshot",
       "domain": "market",
       "description": "متى: تحليل سريع لزوج واحد. RSI/MACD/SMA + اتجاه. read-only. لا تستخدم بدل get_ohlc للمؤشرات الكاملة. مثال: symbol=BTCUSDT&interval=1h.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_multi_timeframe_snapshot",
+      "domain": "market",
+      "description": "متى: تحليل متعدد الأطر لزوج واحد — يجلب كل الأطر بنداء واحد متوازٍ (أسرع من استدعاء get_market_snapshot لكل فريم). read-only. مثال: symbol=EURUSD&intervals=1h,15m,5m.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

@@ -19,6 +19,37 @@ export function bridgeUserSig(serviceToken: string, email: string): string {
     .digest("hex");
 }
 
+/** Upstream request timeout (ms). Prevents a slow EA/exchange from hanging the
+ *  whole MCP call until the platform's own timeout. Override via BRIDGE_FETCH_TIMEOUT_MS. */
+function bridgeFetchTimeoutMs(): number {
+  const raw = Number(process.env.BRIDGE_FETCH_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 8000;
+}
+
+/** fetch with an AbortController deadline; maps a timeout to a 504 BridgeError. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  const timeoutMs = bridgeFetchTimeoutMs();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new BridgeError(
+        `انتهت مهلة الاتصال بالخادم (${timeoutMs}ms). حاول مجدداً.`,
+        504,
+        null,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class BridgeClient {
   constructor(
     private readonly cfg: AppConfig,
@@ -89,7 +120,7 @@ export class BridgeClient {
       );
     }
     const url = `${this.cfg.apiUrl}${path}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "GET",
       headers: this.headers(),
       cache: "no-store",
@@ -151,7 +182,7 @@ export class BridgeClient {
         null,
       );
     }
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       ...init,
       headers: { ...this.headers(), ...(init.headers as object) },
       cache: "no-store",

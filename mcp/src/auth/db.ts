@@ -1,48 +1,51 @@
-import fs from "node:fs";
-import path from "node:path";
-import Database from "better-sqlite3";
+import { Pool } from "pg";
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
-  client_id   TEXT PRIMARY KEY,
-  client_json TEXT NOT NULL,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
+let _pool: Pool | null = null;
 
-CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (
-  token_hash  TEXT PRIMARY KEY,
-  client_id   TEXT NOT NULL,
-  email       TEXT NOT NULL,
-  scopes_json TEXT NOT NULL,
-  expires_at  TEXT NOT NULL,
-  revoked     INTEGER NOT NULL DEFAULT 0,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_mcp_refresh_client
-  ON mcp_oauth_refresh_tokens (client_id, revoked);
-`;
-
-let dbInstance: Database.Database | null = null;
-
-export function resolveDbPath(rawPath: string, repoRoot?: string): string {
-  if (path.isAbsolute(rawPath)) return rawPath;
-  const base = repoRoot ?? path.resolve(process.cwd(), "..");
-  return path.resolve(base, "web", rawPath);
+export function getMcpPgPool(): Pool {
+  if (_pool) return _pool;
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is required for MCP OAuth store.");
+  _pool = new Pool({ connectionString: url });
+  return _pool;
 }
 
-export function getMcpDb(dbPath: string): Database.Database {
-  if (dbInstance) return dbInstance;
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  dbInstance = new Database(dbPath);
-  dbInstance.pragma("journal_mode = WAL");
-  dbInstance.exec(SCHEMA);
-  return dbInstance;
+export async function mcpPgQuery<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  const result = await getMcpPgPool().query(sql, params);
+  return result.rows as T[];
 }
 
-export function closeMcpDb(): void {
-  if (dbInstance) {
-    dbInstance.close();
-    dbInstance = null;
+export async function mcpPgQueryOne<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = [],
+): Promise<T | null> {
+  const rows = await mcpPgQuery<T>(sql, params);
+  return rows[0] ?? null;
+}
+
+export async function mcpPgExecute(
+  sql: string,
+  params: unknown[] = [],
+): Promise<void> {
+  await getMcpPgPool().query(sql, params);
+}
+
+export async function closeMcpDb(): Promise<void> {
+  if (_pool) {
+    await _pool.end();
+    _pool = null;
   }
+}
+
+/** @deprecated — was SQLite-based; now a no-op (PG pool created lazily). */
+export function getMcpDb(_dbPath?: string): null {
+  return null;
+}
+
+/** @deprecated — now uses DATABASE_URL directly. */
+export function resolveDbPath(rawPath: string, _repoRoot?: string): string {
+  return rawPath;
 }
