@@ -169,6 +169,11 @@ export interface EaHeartbeatPatch {
   positions_json?: string | null;
 }
 
+/**
+ * Persists EA heartbeat. `symbol_specs_json` includes bid/ask read by the EA at
+ * send time (~30s cadence) plus contract specs — not the /api/ea/quotes tick stream.
+ * Do not use heartbeat bid/ask for trade execution pricing.
+ */
 export async function recordEaHeartbeat(
   userId: number,
   patch: EaHeartbeatPatch,

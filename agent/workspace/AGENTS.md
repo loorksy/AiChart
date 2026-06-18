@@ -45,7 +45,8 @@
 
 1. `create_recommendation` — `rationale` (2–4 جمل «لماذا **ندخل**») + `confidence` + `chart_drawings` + شارت
    - Binance: `capture_binance_chart` → `chart_url_telegram`
-   - MT5: `capture_mt5_chart` — poll `/api/agent/chart/{id}/mt5` كل 2ث حتى 200
+   - MT5 ad-hoc (بدون entry/SL/TP): **`capture_chart_snapshot`** — أسرع
+   - MT5 مع entry/SL/TP/drawings: **`capture_mt5_chart`** — poll `/api/agent/chart/{id}/mt5` حتى 30s
 2. **لا** `open_trade` حتى: زوج + مبلغ + «نفّذ» / «موافق»
 3. `open_trade`: `approved_by_user: true`, `notional`, `rationale`, `confidence`, `recommendation_id`, `stop_loss`
 4. بعد النجاح: «**دخلنا** … — السبب … — الثقة …% — المبلغ … — SL/TP …»

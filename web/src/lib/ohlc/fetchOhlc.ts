@@ -205,7 +205,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
 
   const cacheKey = ohlcCacheResource(symbol, interval);
   if (!options.skipCache && !options.cursor) {
-    const hit = getCached<FetchOhlcResult>(options.userId, cacheKey);
+    const hit = await getCached<FetchOhlcResult>(options.userId, cacheKey);
     if (hit.fromCache) {
       return {
         ...hit.value,
@@ -261,7 +261,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   };
 
   if (!options.cursor) {
-    setCached(options.userId, cacheKey, result, OHLC_CACHE_TTL_MS);
+    await setCached(options.userId, cacheKey, result, OHLC_CACHE_TTL_MS);
   }
 
   return result;

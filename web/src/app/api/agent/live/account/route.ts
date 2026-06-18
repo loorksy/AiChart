@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       getBinanceCredentials(userId),
     ]);
 
-    const liveQuotes = getEaLiveQuotes(userId);
+    const liveQuotes = await getEaLiveQuotes(userId);
     const heartbeatSpecs = parseEaSymbolSpecs(conn?.symbol_specs_json ?? null);
     const mergedForexQuotes: Record<
       string,
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
     const mt5Positions = parseEaPositions(conn?.positions_json ?? null);
     const events = getEaRecentEvents(userId, 10);
 
-    const eurusd = resolveLiveForexMid(
+    const eurusd = await resolveLiveForexMid(
       userId,
       "EURUSD",
       heartbeatSpecs.find((s) => s.symbol?.toUpperCase() === "EURUSD")?.bid,

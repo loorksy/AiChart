@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string"
+    },
+    "pattern": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "recent": {
+      "description": "آخر الدروس بغض النظر عن الرمز",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

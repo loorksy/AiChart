@@ -25,7 +25,7 @@ export const GET = withBridge(async ({ req, userId }) => {
   const interval = searchParams.get("interval") ?? "1h";
   const cacheKey = indicatorsCacheResource(symbol, interval);
 
-  const hit = getCached<ReturnType<typeof computeForexIndicators>>(userId, cacheKey);
+  const hit = await getCached<ReturnType<typeof computeForexIndicators>>(userId, cacheKey);
   if (hit.fromCache) {
     return {
       ...hit.value,
@@ -57,7 +57,7 @@ export const GET = withBridge(async ({ req, userId }) => {
     ohlc.source,
   );
 
-  setCached(userId, cacheKey, indicators, INDICATORS_CACHE_TTL_MS);
+  await setCached(userId, cacheKey, indicators, INDICATORS_CACHE_TTL_MS);
 
   return {
     ...indicators,

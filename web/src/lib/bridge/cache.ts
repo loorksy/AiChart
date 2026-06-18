@@ -1,3 +1,5 @@
+import { bridgeRedisKey, getBridgeKvStore, isRedisCacheConfigured } from "./store";
+
 export interface BridgeCacheEntry<T> {
   value: T;
   cachedAt: number;
@@ -17,8 +19,6 @@ export interface BridgeCacheMiss {
 
 export type BridgeCacheResult<T> = BridgeCacheHit<T> | BridgeCacheMiss;
 
-const store = new Map<string, BridgeCacheEntry<unknown>>();
-
 function defaultTtlMs(): number {
   const raw = Number(process.env.BRIDGE_CACHE_TTL_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : 5000;
@@ -32,39 +32,44 @@ export function getBridgeCacheTtlMs(overrideMs?: number): number {
   return overrideMs ?? defaultTtlMs();
 }
 
-/** Future hook: when REDIS_URL is set, a Redis adapter can replace the in-memory store. */
-export function isRedisCacheConfigured(): boolean {
-  return Boolean(process.env.REDIS_URL?.trim());
+export { isRedisCacheConfigured };
+
+function redisCacheKey(userId: number, resource: string): string {
+  return bridgeRedisKey("cache", [String(userId), resource]);
 }
 
-export function getCached<T>(
+export async function getCachedAsync<T>(
   userId: number,
   resource: string,
-): BridgeCacheResult<T> {
-  const key = bridgeCacheKey(userId, resource);
-  const entry = store.get(key) as BridgeCacheEntry<T> | undefined;
-  if (!entry) return { fromCache: false };
+): Promise<BridgeCacheResult<T>> {
+  const store = getBridgeKvStore();
+  const raw = await store.get(redisCacheKey(userId, resource));
+  if (!raw) return { fromCache: false };
 
-  const now = Date.now();
-  if (now >= entry.expiresAt) {
-    store.delete(key);
+  try {
+    const entry = JSON.parse(raw) as BridgeCacheEntry<T>;
+    const now = Date.now();
+    if (now >= entry.expiresAt) {
+      await store.del(redisCacheKey(userId, resource));
+      return { fromCache: false };
+    }
+    return {
+      value: entry.value,
+      cachedAt: entry.cachedAt,
+      ageMs: now - entry.cachedAt,
+      fromCache: true,
+    };
+  } catch {
     return { fromCache: false };
   }
-
-  return {
-    value: entry.value,
-    cachedAt: entry.cachedAt,
-    ageMs: now - entry.cachedAt,
-    fromCache: true,
-  };
 }
 
-export function setCached<T>(
+export async function setCachedAsync<T>(
   userId: number,
   resource: string,
   value: T,
   ttlMs?: number,
-): BridgeCacheEntry<T> {
+): Promise<BridgeCacheEntry<T>> {
   const now = Date.now();
   const ttl = getBridgeCacheTtlMs(ttlMs);
   const entry: BridgeCacheEntry<T> = {
@@ -72,15 +77,26 @@ export function setCached<T>(
     cachedAt: now,
     expiresAt: now + ttl,
   };
-  store.set(bridgeCacheKey(userId, resource), entry as BridgeCacheEntry<unknown>);
+  await getBridgeKvStore().set(
+    redisCacheKey(userId, resource),
+    JSON.stringify(entry),
+    ttl,
+  );
   return entry;
 }
 
-export function invalidateCached(userId: number, resource: string): void {
-  store.delete(bridgeCacheKey(userId, resource));
+export async function invalidateCachedAsync(
+  userId: number,
+  resource: string,
+): Promise<void> {
+  await getBridgeKvStore().del(redisCacheKey(userId, resource));
 }
 
-/** Test helper — clears the in-memory cache. */
+/** Aliases for callers migrating from sync API. */
+export const getCached = getCachedAsync;
+export const setCached = setCachedAsync;
+export const invalidateCached = invalidateCachedAsync;
+
 export function clearBridgeCache(): void {
-  store.clear();
+  // use resetBridgeKvStoreForTests in unit tests
 }

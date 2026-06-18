@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "AiChart"
 #property link      "https://aichart.lork.cloud"
-#property version   "4.00"
+#property version   "4.01"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -24,6 +24,7 @@ input int     RetryDelayMs     = 500;                           // Delay between
 input bool    AutoSync         = true;                          // Immediate heartbeat on position change
 input int     MaxSymbols       = 40;                            // Max symbols in Market Watch to report
 input int     QuoteFlushSeconds = 1;                            // Live quote push interval (seconds)
+input int     ChartQuoteThrottleMs = 300;                       // Min ms between chart-symbol quote pushes on OnTick
 input int     QuoteWaitAttempts = 8;                            // Ticks to wait before off-quotes fail
 input int     QuoteWaitDelayMs  = 250;                          // Delay between quote wait attempts (ms)
 
@@ -32,14 +33,16 @@ long    g_last_acked = 0;
 long    g_acked_ids[32];
 int     g_acked_count = 0;
 int     g_hb_failures = 0;
+int     g_quote_failures = 0;
 bool    g_trading_halted = false;
 datetime g_last_sync_hb = 0;
 datetime g_last_hb_time = 0;
 datetime g_last_quote_flush = 0;
+ulong   g_last_chart_quote_ms = 0;
 long    g_last_trade_ticket = 0;
 double  g_last_trade_price = 0;
 string  g_last_trade_error = "";
-const string EA_VERSION = "4.00";
+const string EA_VERSION = "4.01";
 
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
@@ -53,8 +56,8 @@ int OnInit()
       Print("AiChartBridge: EaToken is not set. Open EA properties and paste your token.");
       return(INIT_FAILED);
    }
-   EventSetTimer(30);
-   Print("AiChartBridge MT5 v4.00 started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s");
+   EventSetTimer(1);
+   Print("AiChartBridge MT5 v4.01 started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s chartQuoteMs=", ChartQuoteThrottleMs);
    PreWarmSymbols();
    LogAvailableSymbols();
    // FIX: 1 — immediate heartbeat on attach
@@ -70,7 +73,7 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void ArmKeepaliveTimer()
 {
-   EventSetTimer(30);
+   EventSetTimer(1);
 }
 
 //+------------------------------------------------------------------+
@@ -113,6 +116,7 @@ void ProcessBridgeTick()
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   FlushChartSymbolQuote();
    ProcessBridgeTick();
 }
 // FIX: 1 — OnTradeTransaction triggers debounced sync heartbeat
@@ -522,6 +526,8 @@ void LogTradeRequest(string context, string sym, string side, double lots, doubl
    Print(msg);
 }
 
+// Heartbeat symbols: live bid/ask from MT5 at SendHeartbeat() time (~30s snapshot)
+// plus contract specs. NOT the tick stream — use FlushLiveQuotes for trade pricing.
 string BuildSymbols()
 {
    string arr = "[";
@@ -1347,6 +1353,45 @@ void GetOhlc(long id, string payload, string root)
    AckCommandEx(id, "acked", inner, "");
 }
 
+// v4.01 — immediate chart-symbol quote (tick stream for attached symbol)
+void FlushChartSymbolQuote()
+{
+   ulong nowMs = GetTickCount64();
+   if(g_last_chart_quote_ms > 0 &&
+      nowMs - g_last_chart_quote_ms < (ulong)MathMax(100, ChartQuoteThrottleMs))
+      return;
+
+   string sym = Symbol();
+   if(sym == "") return;
+
+   double bid = SymbolInfoDouble(sym, SYMBOL_BID);
+   double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
+   if(bid <= 0 && ask <= 0) return;
+
+   datetime tickTime = (datetime)SymbolInfoInteger(sym, SYMBOL_TIME);
+   string body = "{\"quotes\":[{";
+   body += "\"symbol\":" + JsonStr(sym) + ",";
+   body += "\"bid\":" + DoubleToString(bid, 8) + ",";
+   body += "\"ask\":" + DoubleToString(ask, 8) + ",";
+   body += "\"tick_time\":" + (string)(long)tickTime;
+   body += "}]}";
+
+   string resp = "";
+   if(!HttpPost("/api/ea/quotes", body, resp))
+   {
+      g_quote_failures++;
+      if(g_quote_failures == 1 || g_quote_failures % 10 == 0)
+         Print("AiChartBridge: chart quote push failed (", g_quote_failures, ").");
+      return;
+   }
+   if(g_quote_failures > 0)
+   {
+      Print("AiChartBridge: chart quote push restored after ", g_quote_failures, " failure(s).");
+      g_quote_failures = 0;
+   }
+   g_last_chart_quote_ms = nowMs;
+}
+
 // v3 — push live quotes to server
 void FlushLiveQuotes()
 {
@@ -1376,7 +1421,18 @@ void FlushLiveQuotes()
 
    string body = "{\"quotes\":" + arr + "}";
    string resp = "";
-   HttpPost("/api/ea/quotes", body, resp);
+   if(!HttpPost("/api/ea/quotes", body, resp))
+   {
+      g_quote_failures++;
+      if(g_quote_failures == 1 || g_quote_failures % 10 == 0)
+         Print("AiChartBridge: batch quote push failed (", g_quote_failures, ").");
+      return;
+   }
+   if(g_quote_failures > 0)
+   {
+      Print("AiChartBridge: batch quote push restored after ", g_quote_failures, " failure(s).");
+      g_quote_failures = 0;
+   }
 }
 
 // v3 — immediate trade event push

@@ -1,6 +1,6 @@
 /** Lightweight tool metadata constants — avoids rewriting all 48 registerTool calls. */
 
-export const MCP_SERVER_VERSION = "1.1.0";
+export const MCP_SERVER_VERSION = "1.1.1";
 
 export interface ToolAnnotations {
   readOnlyHint?: boolean;
@@ -29,4 +29,17 @@ export const IDEMPOTENT_WRITE: ToolAnnotations = {
 /** Spread into registerTool config alongside description + inputSchema. */
 export function withAnnotations(annotations: ToolAnnotations) {
   return { annotations };
+}
+
+/** Build registerTool config from catalog entry. */
+export function toolConfig(def: {
+  description: string;
+  inputSchema: import("zod").ZodRawShape;
+  annotations: ToolAnnotations;
+}) {
+  return {
+    description: def.description,
+    inputSchema: def.inputSchema,
+    ...withAnnotations(def.annotations),
+  };
 }

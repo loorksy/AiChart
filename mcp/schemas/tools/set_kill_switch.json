@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "on": {
+      "type": "boolean"
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "user",
+        "master"
+      ]
+    },
+    "close_open_trades": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "on"
+  ],
+  "additionalProperties": false
+}

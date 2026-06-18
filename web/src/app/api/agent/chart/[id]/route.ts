@@ -42,7 +42,15 @@ export async function GET(
 
     if (!buffer) {
       return NextResponse.json(
-        { error: "تعذّر توليد صورة الشارت." },
+        {
+          error: "تعذّر توليد صورة الشارت.",
+          reason: "chart_render_failed",
+          detail: "لا تتوفر شموع كافية أو فشل التصيير.",
+          recommendation_id: recId,
+          chart_image_url: rec.chart_image_url ?? null,
+          hint:
+            "توصية قديمة بدون صورة محفوظة — استخدم capture_chart_snapshot بالرمز الحالي.",
+        },
         { status: 503 },
       );
     }

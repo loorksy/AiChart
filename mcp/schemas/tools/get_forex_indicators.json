@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string"
+    },
+    "interval": {
+      "type": "string"
+    },
+    "market": {
+      "type": "string",
+      "enum": [
+        "crypto",
+        "forex"
+      ]
+    }
+  },
+  "required": [
+    "symbol"
+  ],
+  "additionalProperties": false
+}

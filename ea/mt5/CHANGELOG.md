@@ -1,5 +1,26 @@
 # AiChartBridge MT5 — Changelog
 
+## Heartbeat payload (all versions)
+
+`POST /api/ea/heartbeat` → `symbols[]` stored as `symbol_specs_json` on the server.
+
+Each symbol entry includes **live** `bid`/`ask` read via `SymbolInfoDouble` at **`SendHeartbeat()` time** (not cached from a prior heartbeat), plus contract specs (`digits`, `point`, `contract_size`, `stops_level`, …).
+
+**Important:** this is a **~30s snapshot** (plus trade-sync / chart-change triggers), **not** the tick stream. Trade pricing must use `POST /api/ea/quotes` (`FlushLiveQuotes`), not heartbeat bid/ask.
+
+## v4.01 (2026-06-17) — Quote flush cadence fix
+
+### Quote push
+- `EventSetTimer(1)` — `ProcessBridgeTick` runs every second even when the chart symbol is quiet (was 30s).
+- `FlushChartSymbolQuote()` on every `OnTick` for the chart symbol (throttle `ChartQuoteThrottleMs`, default 300ms).
+- `FlushLiveQuotes()` batch unchanged (`QuoteFlushSeconds`, default 1s).
+- Quote POST failures logged (`g_quote_failures`, parallel to heartbeat).
+
+### Deploy
+1. Compile in MetaEditor; reattach on EURUSDm chart.
+2. Confirm `ea_version: "4.01"` in logs.
+3. Run `infra/tmp-test-quote-freshness.py` on VPS (≥2 min) — p95 `quoteAgeMs` ≤ 3000ms.
+
 ## v4.00 (2026-06-17) — get_ohlc + reconnect flags
 
 ### New command

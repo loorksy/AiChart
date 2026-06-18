@@ -1,10 +1,5 @@
 import { BridgeErrorCode, bridgeError, type BridgeFailure } from "./errors";
-
-interface WindowEntry {
-  timestamps: number[];
-}
-
-const windows = new Map<string, WindowEntry>();
+import { bridgeRedisKey, getBridgeKvStore } from "./store";
 
 const WINDOW_MS = 60_000;
 
@@ -17,45 +12,48 @@ export function rateLimitKey(userId: number, route: string): string {
   return `${userId}:${route}`;
 }
 
-export function checkWriteRateLimit(
+export async function checkWriteRateLimitAsync(
   userId: number,
   route: string,
   now = Date.now(),
-): { allowed: true } | { allowed: false; failure: BridgeFailure; retryAfterMs: number } {
+): Promise<
+  | { allowed: true }
+  | { allowed: false; failure: BridgeFailure; retryAfterMs: number }
+> {
   const limit = writeLimitPerMinute();
-  const key = rateLimitKey(userId, route);
-  const entry = windows.get(key) ?? { timestamps: [] };
+  const key = bridgeRedisKey("rl", [String(userId), route]);
+  const result = await getBridgeKvStore().checkSlidingWindow(
+    key,
+    WINDOW_MS,
+    limit,
+    now,
+  );
 
-  const cutoff = now - WINDOW_MS;
-  entry.timestamps = entry.timestamps.filter((t) => t > cutoff);
-
-  if (entry.timestamps.length >= limit) {
-    const oldest = entry.timestamps[0] ?? now;
-    const retryAfterMs = Math.max(0, oldest + WINDOW_MS - now);
-    windows.set(key, entry);
+  if (!result.allowed) {
     return {
       allowed: false,
-      retryAfterMs,
+      retryAfterMs: result.retryAfterMs,
       failure: bridgeError(
         BridgeErrorCode.RATE_LIMITED,
-        `Write rate limit exceeded (${limit}/min). Retry later.`,
-        `تجاوزت حد الطلبات (${limit}/دقيقة). حاول لاحقاً.`,
-        { limit, windowMs: WINDOW_MS, route },
-        { retriable: true, retryAfterMs },
+        "Write rate limit exceeded for this route.",
+        "تجاوزت حد طلبات الكتابة — انتظر ثم أعد المحاولة.",
+        { retryAfterMs: result.retryAfterMs, limit, windowMs: WINDOW_MS },
+        { retryAfterMs: result.retryAfterMs },
       ),
     };
   }
 
-  entry.timestamps.push(now);
-  windows.set(key, entry);
   return { allowed: true };
 }
+
+export const checkWriteRateLimit = checkWriteRateLimitAsync;
 
 export function isWriteMethod(method: string): boolean {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 }
 
-/** Test helper — clears sliding-window state. */
-export function clearRateLimits(): void {
-  windows.clear();
-}
+/** @deprecated writes recorded atomically in checkWriteRateLimitAsync */
+export function recordWriteRateLimit(_userId: number, _route: string): void {}
+
+/** @deprecated no-op — rate state lives in BridgeKvStore */
+export function clearRateLimits(): void {}

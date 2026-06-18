@@ -122,7 +122,7 @@
       "method": "POST",
       "path": "/api/ea/quotes",
       "interval_seconds": 1,
-      "note": "EA v3 live bid/ask push for Market Watch symbols."
+      "note": "EA v4.01: batch FlushLiveQuotes every QuoteFlushSeconds (1s) when ProcessBridgeTick runs; OnTimer(1s) ensures flush during quiet chart ticks; FlushChartSymbolQuote on every chart OnTick (throttled). Heartbeat bid/ask is NOT this stream."
     },
     "event": {
       "method": "POST",

@@ -1,16 +1,16 @@
-# Graph Report - AiChart  (2026-06-17)
+# Graph Report - AiChart  (2026-06-18)
 
 ## Corpus Check
-- 569 files · ~204,366 words
+- 649 files · ~214,613 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3148 nodes · 9204 edges · 233 communities (185 shown, 48 thin omitted)
-- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 344 edges (avg confidence: 0.8)
+- 4022 nodes · 10212 edges · 317 communities (268 shown, 49 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 344 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `40eb0ccf`
+- Built from commit: `3d94eb11`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -156,10 +156,13 @@
 - [[_COMMUNITY_Community 142|Community 142]]
 - [[_COMMUNITY_Community 143|Community 143]]
 - [[_COMMUNITY_Community 144|Community 144]]
+- [[_COMMUNITY_Community 145|Community 145]]
+- [[_COMMUNITY_Community 146|Community 146]]
 - [[_COMMUNITY_Community 147|Community 147]]
 - [[_COMMUNITY_Community 148|Community 148]]
 - [[_COMMUNITY_Community 149|Community 149]]
 - [[_COMMUNITY_Community 150|Community 150]]
+- [[_COMMUNITY_Community 151|Community 151]]
 - [[_COMMUNITY_Community 152|Community 152]]
 - [[_COMMUNITY_Community 153|Community 153]]
 - [[_COMMUNITY_Community 154|Community 154]]
@@ -179,23 +182,49 @@
 - [[_COMMUNITY_Community 168|Community 168]]
 - [[_COMMUNITY_Community 169|Community 169]]
 - [[_COMMUNITY_Community 170|Community 170]]
+- [[_COMMUNITY_Community 171|Community 171]]
 - [[_COMMUNITY_Community 172|Community 172]]
 - [[_COMMUNITY_Community 173|Community 173]]
+- [[_COMMUNITY_Community 174|Community 174]]
 - [[_COMMUNITY_Community 175|Community 175]]
 - [[_COMMUNITY_Community 176|Community 176]]
 - [[_COMMUNITY_Community 177|Community 177]]
 - [[_COMMUNITY_Community 178|Community 178]]
 - [[_COMMUNITY_Community 179|Community 179]]
 - [[_COMMUNITY_Community 180|Community 180]]
+- [[_COMMUNITY_Community 181|Community 181]]
+- [[_COMMUNITY_Community 182|Community 182]]
 - [[_COMMUNITY_Community 183|Community 183]]
+- [[_COMMUNITY_Community 184|Community 184]]
+- [[_COMMUNITY_Community 185|Community 185]]
+- [[_COMMUNITY_Community 186|Community 186]]
+- [[_COMMUNITY_Community 187|Community 187]]
+- [[_COMMUNITY_Community 188|Community 188]]
+- [[_COMMUNITY_Community 189|Community 189]]
 - [[_COMMUNITY_Community 190|Community 190]]
 - [[_COMMUNITY_Community 191|Community 191]]
+- [[_COMMUNITY_Community 192|Community 192]]
+- [[_COMMUNITY_Community 193|Community 193]]
+- [[_COMMUNITY_Community 194|Community 194]]
 - [[_COMMUNITY_Community 195|Community 195]]
+- [[_COMMUNITY_Community 196|Community 196]]
 - [[_COMMUNITY_Community 197|Community 197]]
+- [[_COMMUNITY_Community 198|Community 198]]
+- [[_COMMUNITY_Community 199|Community 199]]
+- [[_COMMUNITY_Community 200|Community 200]]
+- [[_COMMUNITY_Community 201|Community 201]]
+- [[_COMMUNITY_Community 202|Community 202]]
 - [[_COMMUNITY_Community 203|Community 203]]
 - [[_COMMUNITY_Community 204|Community 204]]
+- [[_COMMUNITY_Community 205|Community 205]]
+- [[_COMMUNITY_Community 206|Community 206]]
 - [[_COMMUNITY_Community 207|Community 207]]
+- [[_COMMUNITY_Community 208|Community 208]]
+- [[_COMMUNITY_Community 209|Community 209]]
+- [[_COMMUNITY_Community 210|Community 210]]
+- [[_COMMUNITY_Community 211|Community 211]]
 - [[_COMMUNITY_Community 212|Community 212]]
+- [[_COMMUNITY_Community 213|Community 213]]
 - [[_COMMUNITY_Community 214|Community 214]]
 - [[_COMMUNITY_Community 215|Community 215]]
 - [[_COMMUNITY_Community 216|Community 216]]
@@ -206,18 +235,73 @@
 - [[_COMMUNITY_Community 232|Community 232]]
 - [[_COMMUNITY_Community 233|Community 233]]
 - [[_COMMUNITY_Community 234|Community 234]]
+- [[_COMMUNITY_Community 236|Community 236]]
+- [[_COMMUNITY_Community 243|Community 243]]
+- [[_COMMUNITY_Community 244|Community 244]]
 - [[_COMMUNITY_Community 245|Community 245]]
 - [[_COMMUNITY_Community 246|Community 246]]
 - [[_COMMUNITY_Community 247|Community 247]]
+- [[_COMMUNITY_Community 248|Community 248]]
+- [[_COMMUNITY_Community 249|Community 249]]
 - [[_COMMUNITY_Community 250|Community 250]]
 - [[_COMMUNITY_Community 251|Community 251]]
+- [[_COMMUNITY_Community 252|Community 252]]
 - [[_COMMUNITY_Community 253|Community 253]]
+- [[_COMMUNITY_Community 254|Community 254]]
+- [[_COMMUNITY_Community 255|Community 255]]
 - [[_COMMUNITY_Community 256|Community 256]]
 - [[_COMMUNITY_Community 257|Community 257]]
+- [[_COMMUNITY_Community 258|Community 258]]
 - [[_COMMUNITY_Community 259|Community 259]]
+- [[_COMMUNITY_Community 261|Community 261]]
+- [[_COMMUNITY_Community 262|Community 262]]
+- [[_COMMUNITY_Community 263|Community 263]]
+- [[_COMMUNITY_Community 264|Community 264]]
+- [[_COMMUNITY_Community 265|Community 265]]
+- [[_COMMUNITY_Community 266|Community 266]]
+- [[_COMMUNITY_Community 267|Community 267]]
 - [[_COMMUNITY_Community 268|Community 268]]
 - [[_COMMUNITY_Community 269|Community 269]]
 - [[_COMMUNITY_Community 273|Community 273]]
+- [[_COMMUNITY_Community 274|Community 274]]
+- [[_COMMUNITY_Community 279|Community 279]]
+- [[_COMMUNITY_Community 280|Community 280]]
+- [[_COMMUNITY_Community 281|Community 281]]
+- [[_COMMUNITY_Community 282|Community 282]]
+- [[_COMMUNITY_Community 283|Community 283]]
+- [[_COMMUNITY_Community 284|Community 284]]
+- [[_COMMUNITY_Community 285|Community 285]]
+- [[_COMMUNITY_Community 286|Community 286]]
+- [[_COMMUNITY_Community 287|Community 287]]
+- [[_COMMUNITY_Community 288|Community 288]]
+- [[_COMMUNITY_Community 289|Community 289]]
+- [[_COMMUNITY_Community 290|Community 290]]
+- [[_COMMUNITY_Community 291|Community 291]]
+- [[_COMMUNITY_Community 292|Community 292]]
+- [[_COMMUNITY_Community 293|Community 293]]
+- [[_COMMUNITY_Community 294|Community 294]]
+- [[_COMMUNITY_Community 295|Community 295]]
+- [[_COMMUNITY_Community 296|Community 296]]
+- [[_COMMUNITY_Community 297|Community 297]]
+- [[_COMMUNITY_Community 298|Community 298]]
+- [[_COMMUNITY_Community 299|Community 299]]
+- [[_COMMUNITY_Community 300|Community 300]]
+- [[_COMMUNITY_Community 301|Community 301]]
+- [[_COMMUNITY_Community 302|Community 302]]
+- [[_COMMUNITY_Community 303|Community 303]]
+- [[_COMMUNITY_Community 304|Community 304]]
+- [[_COMMUNITY_Community 305|Community 305]]
+- [[_COMMUNITY_Community 306|Community 306]]
+- [[_COMMUNITY_Community 307|Community 307]]
+- [[_COMMUNITY_Community 308|Community 308]]
+- [[_COMMUNITY_Community 309|Community 309]]
+- [[_COMMUNITY_Community 310|Community 310]]
+- [[_COMMUNITY_Community 311|Community 311]]
+- [[_COMMUNITY_Community 312|Community 312]]
+- [[_COMMUNITY_Community 313|Community 313]]
+- [[_COMMUNITY_Community 314|Community 314]]
+- [[_COMMUNITY_Community 315|Community 315]]
+- [[_COMMUNITY_Community 316|Community 316]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `handleError()` - 235 edges
@@ -234,187 +318,187 @@
 ## Surprising Connections (you probably didn't know these)
 - `evaluateTrade()` --calls--> `DENY`  [INFERRED]
   web/src/lib/riskGuard.ts → web/src/lib/binanceCli.ts
-- `AdminUsersRedirect()` --calls--> `isSingleUserMode()`  [EXTRACTED]
-  web/src/app/admin/users/page.tsx → web/src/lib/agentAuth.ts
 - `AgentConsoleRedirect()` --calls--> `getCurrentUser()`  [INFERRED]
   web/src/app/agent/console/page.tsx → web/src/lib/auth.ts
 - `GET()` --calls--> `handleError()`  [INFERRED]
   web/src/app/api/admin/binance-capture/route.ts → web/src/lib/api.ts
 - `GET()` --calls--> `requireAdmin()`  [INFERRED]
   web/src/app/api/admin/binance-capture/route.ts → web/src/lib/api.ts
+- `POST()` --calls--> `handleError()`  [INFERRED]
+  web/src/app/api/admin/binance-capture/route.ts → web/src/lib/api.ts
 
 ## Import Cycles
-- None detected.
+- 2-file cycle: `web/src/lib/market.ts -> web/src/lib/markets/forexSnapshot.ts -> web/src/lib/market.ts`
 
-## Communities (233 total, 48 thin omitted)
+## Communities (317 total, 49 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.14
-Nodes (21): GET(), patchSchema, PUT(), requireAdmin(), audioFormatFromMime(), audioMimeFromFormat(), geminiApiKey(), isGeminiChatModelId() (+13 more)
+Cohesion: 0.27
+Nodes (13): GET(), patchSchema, PUT(), audioFormatFromMime(), audioMimeFromFormat(), geminiApiKey(), isGeminiChatModelId(), isGeminiStudioApiKey() (+5 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.21
-Nodes (16): POST(), schema, POST(), rawSchema, schema, SL_LABEL, STYLE_LABEL, isAnthropicConfigured() (+8 more)
+Cohesion: 0.11
+Nodes (42): POST(), schema, POST(), POST(), rawSchema, schema, SL_LABEL, STYLE_LABEL (+34 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.13
-Nodes (32): bootstrapCache, ensureDb(), getDbBackend(), getDbInfo(), insertReturningId(), isPostgresReady(), loadPlatformConfigRows(), query() (+24 more)
+Cohesion: 0.26
+Nodes (14): bootstrapCache, getSqliteDb(), initDb(), initSqlite(), migrate(), seedAdminSqlite(), sqliteExecute(), sqliteLoadBootstrapKeys() (+6 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.18
-Nodes (15): AgentContext, AgentResult, CHART_ANALYZE_TOOL_NAMES, CHART_ANALYZE_TOOLS, RunAgentOptions, TOOLS, ActivityListener, DeliveryResult (+7 more)
+Cohesion: 0.15
+Nodes (17): BuildTradeReadinessInput, withBridge(), GET, GET, ApiError, ApprovalRequestInput, parseChartDrawingsJson(), ChartOverlayType (+9 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.17
-Nodes (19): OpportunityScanCard(), WaitingRoom(), isSymbolAllowed(), INTERVAL_GROUPS, INTERVAL_SET, MARKET_INTERVALS, MarketInterval, normalizeInterval() (+11 more)
+Cohesion: 0.18
+Nodes (14): bridgeError(), BridgeErrorBody, BridgeErrorCode, BridgeFailure, bridgeSuccess, DEFAULT_RETRIABLE, HTTP_STATUS, lowConfidenceFailure() (+6 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.19
-Nodes (11): ChatImagePayload, ChatInputBar(), ChatInputBarProps, QUICK_ACTIONS, Textarea, TextareaProps, AiChatAction, DEFAULT_ACTIONS (+3 more)
+Cohesion: 0.05
+Nodes (39): enum, type, additionalProperties, items, type, maximum, minimum, type (+31 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.10
-Nodes (28): DEFAULT_SYMBOL, Instrument, MarketClient(), OVERLAY_LABELS, PriceChart, PriceChartHandle, Props, SignalsWizardClient() (+20 more)
+Cohesion: 0.07
+Nodes (34): DEFAULT_SYMBOL, Instrument, MarketClient(), OVERLAY_LABELS, PriceChart, PriceChartHandle, Props, CAPITAL_OPTIONS (+26 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.11
-Nodes (27): arcPath(), AssetDistributionChart(), polarToCartesian(), SLICE_COLORS, InteractivePerformanceChart(), PeriodSelector(), ReportsClient(), DashboardAnalytics() (+19 more)
+Nodes (28): arcPath(), AssetDistributionChart(), polarToCartesian(), SLICE_COLORS, InteractivePerformanceChart(), PeriodSelector(), ReportsClient(), DashboardAnalytics() (+20 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.12
-Nodes (27): deliveryReasonAr(), AnalysisProfile, AnalysisTier, buildProfilePromptHints(), INTRADAY, POSITION, SWING, overlaysFromAnalysis() (+19 more)
+Cohesion: 0.13
+Nodes (27): deliveryReasonAr(), buildProfilePromptHints(), overlaysFromAnalysis(), bufferToChatImage(), ALLOWED_IMAGE_TYPES, buildUserMessageContent(), ChatImageMediaType, fileToChatImage() (+19 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.14
-Nodes (28): TradingCard(), GET(), TickerRow, cleanList(), FOREX_SCAN_FALLBACK, isOpenAssetsPolicy(), listIsOpen(), MarketAssets (+20 more)
+Nodes (26): TradingCard(), GET(), TickerRow, cleanList(), FOREX_SCAN_FALLBACK, isOpenAssetsPolicy(), isSymbolAllowed(), listIsOpen() (+18 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.18
-Nodes (13): GET(), AgentModelStatus, buildFallbackRefs(), CROSS_FALLBACK_CANDIDATES, FALLBACK_PROVIDER_ORDER, getAgentModelStatus(), isAllowedModelRef(), PROVIDER_BASE_URL (+5 more)
+Cohesion: 0.16
+Nodes (19): GET(), AgentModelStatus, buildFallbackRefs(), CROSS_FALLBACK_CANDIDATES, FALLBACK_PROVIDER_ORDER, getAgentModelStatus(), isAllowedModelRef(), modelRefFromPlatform() (+11 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.14
-Nodes (19): initialCountry(), LABELS, PhoneInput(), PRIORITY, TelegramLoginButton(), GET(), isSingleUserMode(), countryFromAcceptLanguage() (+11 more)
+Cohesion: 0.13
+Nodes (36): deliverSignal(), DeliveryGateResult, DeliveryReason, dispatchAlert(), DispatchAlertOptions, evaluateDelivery(), isTradeAlert(), REASON_AR (+28 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.19
 Nodes (11): LandingAccess(), LANDING, LandingCta(), LandingFaq(), LandingFeatures(), LandingFooter(), LandingHero(), LandingHowItWorks() (+3 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.10
-Nodes (17): BEGINNER_STEPS, EXPERT_STEPS, CAPITAL_OPTIONS, Instrument, STEP_LABELS, AppHeader(), ChatGptSidebar(), isTabActive() (+9 more)
+Cohesion: 0.06
+Nodes (35): ForexBackendMode, AppShell(), DashboardClient(), STATUS_LABEL, BEGINNER_STEPS, EXPERT_STEPS, ALERT_TYPE_LABEL, AlertsCard() (+27 more)
 
 ### Community 14 - "Community 14"
-Cohesion: 0.09
-Nodes (50): POST(), schema, DELETE(), GET(), PATCH(), patchSchema, createSchema, GET() (+42 more)
+Cohesion: 0.08
+Nodes (56): POST(), schema, DELETE(), GET(), PATCH(), patchSchema, createSchema, GET() (+48 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.08
-Nodes (45): BridgeCacheEntry, BridgeCacheHit, bridgeCacheKey(), BridgeCacheMiss, BridgeCacheResult, clearBridgeCache(), defaultTtlMs(), getBridgeCacheTtlMs() (+37 more)
+Cohesion: 0.21
+Nodes (14): BridgeEnvelope, expiresAtIso(), IdempotencyRecord, storeIdempotencyResult(), ttlHours(), checkWriteRateLimit, clearRateLimits(), isWriteMethod() (+6 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.13
-Nodes (14): AdminLayout(), AgentRedirect(), ChatRedirect(), CommandRedirect(), AgentConsoleRedirect(), clearSession(), createSessionToken(), getCurrentUser() (+6 more)
+Cohesion: 0.17
+Nodes (16): Home(), AwaitingApprovalPage(), CompleteProfilePage(), AwaitingApprovalClient(), COPY, CompleteProfileClient(), ConsoleLayout(), metadata (+8 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.11
 Nodes (28): applyChartDrawings(), ApplyDrawingsResult, collectDrawingMarkers(), FIB_RATIOS, fibLevels(), markerShape(), numMeta(), pointArrMeta() (+20 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.17
-Nodes (13): ConsoleAccountPage(), displayNameForUser(), DEFAULT_COUNTRY, formatWhatsAppDisplay(), formatAccessExpiryLabel(), formatAccessRemaining(), CopyField(), LtrValue() (+5 more)
+Cohesion: 0.15
+Nodes (19): formatExpiry(), formatExpiryCell(), TableMode, displayNameForUser(), DEFAULT_COUNTRY, formatWhatsAppDisplay(), accessDaysRemaining(), formatAccessExpiryLabel() (+11 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.10
-Nodes (38): BridgeErrorCode, checkForexTradePreflight(), evaluateForexQuoteGate(), ForexQuoteSnapshot, defaultMaxSpreadPips(), defaultStaleThresholdMs(), freshnessMeta, FreshnessSource (+30 more)
+Cohesion: 0.13
+Nodes (23): ForexQuoteSnapshot, heartbeatQuoteAgeMs(), resolveForexQuoteSnapshot(), defaultMaxSpreadPips(), defaultStaleThresholdMs(), freshnessMeta, FreshnessSource, getMaxSpreadPips() (+15 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.22
 Nodes (11): AgentPlanMode, ANALYSIS_PLAN_TEMPLATE, applyProgress(), cloneTasks(), flattenSubtaskKeys(), getPlanTemplate(), PlanStatus, PlanSubtask (+3 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.07
-Nodes (36): ChatClient(), ChatMessage, MessageBubble(), RecCard(), ChatSquareClient(), STATUS_AR, STATUS_CLASS, TradesClient() (+28 more)
+Cohesion: 0.09
+Nodes (31): ChatClient(), ChatMessage, ChatSquareClient(), STATUS_AR, STATUS_CLASS, TradesClient(), useAgentActivities(), ActivityStatus (+23 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.06
-Nodes (75): binanceFuturesAdapter, dispatchAlert(), AccountSummary, BASE_URLS, BinanceBalance, Candle, getOcoOrderList(), getSymbolFilters() (+67 more)
+Nodes (70): AccountSummary, BASE_URLS, BinanceBalance, Candle, getOcoOrderList(), getSymbolFilters(), OcoOrderListStatus, PlacedOcoOrder (+62 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.12
-Nodes (18): AppShell(), DashboardClient(), STATUS_LABEL, MeData, QuotaInfo, useMe(), imageDataUrl(), displayNameFromEmail() (+10 more)
+Cohesion: 0.13
+Nodes (28): BINANCE_TOOL_BY_NAME, BINANCE_TOOL_DEFINITIONS, CORE_TOOL_BY_NAME, CORE_TOOL_DEFINITIONS, getToolDef(), TOOL_BY_NAME, TOOL_CATALOG, MARKET_TOOL_BY_NAME (+20 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.17
-Nodes (16): Home(), AwaitingApprovalPage(), BridgeOverviewClient(), AwaitingApprovalClient(), COPY, ConsoleOverviewPage(), setSession(), AccessBlockReason (+8 more)
+Nodes (23): HeartbeatBody, POST(), createEaCommand(), recordEaHeartbeat(), eaKillCloseFlagKey(), eaReconnectFlagKey(), eaResyncCandlesFlagKey(), queueEaCloseAllPositions() (+15 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.60
-Nodes (3): Window, telegramDisplayEmail(), TelegramLoginPayload
+Cohesion: 0.06
+Nodes (32): additionalProperties, maximum, minimum, type, type, enum, type, exclusiveMinimum (+24 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.08
-Nodes (16): ADMIN_ACTION_LABELS, ADMIN_NAV, AdminSecurityPanel(), AuditRow, AdminSystemPanel(), HealthPayload, StatusPill(), AdminUsagePanel() (+8 more)
+Cohesion: 0.18
+Nodes (10): AdminUsersTable(), ConsoleConnectPage(), loadConsoleSettingsProps(), listUsersForAdmin(), ConsolePlatformPage(), ConsoleRiskPage(), ConnectSection(), Props (+2 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.08
-Nodes (59): GET(), htmlPage(), GET(), getIdempotencyResult(), readIdempotencyKey(), buildTradeReadiness(), getBrokerAdapter(), accountTypeAr() (+51 more)
+Cohesion: 0.13
+Nodes (20): initialCountry(), LABELS, PhoneInput(), PRIORITY, TelegramLoginButton(), GET(), isSingleUserMode(), countryFromAcceptLanguage() (+12 more)
 
 ### Community 28 - "Community 28"
 Cohesion: 0.08
-Nodes (59): GET(), schema, drawingSchema, POST(), schema, POST(), schema, schema (+51 more)
+Nodes (63): GET(), schema, POST(), schema, drawingSchema, POST(), schema, POST() (+55 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.21
-Nodes (18): GET(), BinanceCaptureConfig, BinanceCaptureMarket, binanceChartUrl(), cacheKey(), getBinanceCaptureConfig(), BinanceCaptureInput, BinanceCaptureStatus (+10 more)
+Cohesion: 0.23
+Nodes (16): GET(), BinanceCaptureConfig, BinanceCaptureMarket, binanceChartUrl(), cacheKey(), getBinanceCaptureConfig(), BinanceCaptureInput, BinanceCaptureStatus (+8 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.17
-Nodes (15): POST(), schema, POST(), schema, queueEaCommandAndWait(), sleep(), waitForEaCommandAck(), createEaCommand() (+7 more)
+Cohesion: 0.07
+Nodes (28): additionalProperties, type, items, type, type, type, additionalProperties, propertyNames (+20 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.10
-Nodes (38): runAgent(), AnthropicModelInfo, AnthropicResponse, buildSystemBlocks(), CacheControl, cachedMessages(), cachedTools(), callAnthropic() (+30 more)
+Cohesion: 0.11
+Nodes (37): AnthropicModelInfo, AnthropicResponse, buildSystemBlocks(), CacheControl, cachedMessages(), cachedTools(), callAnthropic(), callAnthropicStream() (+29 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.10
-Nodes (32): BuildTradeReadinessInput, withBridge(), GET, AccountProfile, ApprovalRequestInput, BinanceEnv, queueEaGetOhlc(), getEaCandles() (+24 more)
+Cohesion: 0.17
+Nodes (19): queueEaGetOhlc(), normalizeInterval(), changePct(), computeForex24hRange(), Forex24hRange, highLowFromWindow(), HighLowWindow, buildForexSnapshot() (+11 more)
 
 ### Community 36 - "Community 36"
-Cohesion: 0.23
-Nodes (15): POST(), schema, initDb(), verifyPassword(), getAccessBlockReason(), PublicUser, UserRow, isSyntheticTelegramEmail() (+7 more)
+Cohesion: 0.08
+Nodes (25): additionalProperties, exclusiveMinimum, type, enum, type, exclusiveMinimum, type, properties (+17 more)
 
 ### Community 37 - "Community 37"
 Cohesion: 0.06
 Nodes (35): 10. الهيكل المجلدي المقترح (Folder Structure), 11. خطة التنفيذ المرحلية (Roadmap), 12. المخاطر والتحذيرات (Risks), 13. مسائل مفتوحة (Open Questions), 1. الرؤية (Vision), 2. القرارات المتفق عليها (Decisions Log), 3.1 فصل الطبقتين (مفتاح التحكّم في التكلفة), 3.2 طبقة الوكيل (Claude MCP) (+27 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.13
-Nodes (24): POST(), schema, GET(), POST(), schema, HeartbeatBody, POST(), extractBearer() (+16 more)
+Cohesion: 0.09
+Nodes (36): POST(), schema, GET(), GET(), POST(), schema, extractBearer(), hashEaToken() (+28 more)
 
 ### Community 39 - "Community 39"
-Cohesion: 0.19
-Nodes (24): GET(), executeTool(), ApiRestrictions, getAccountSummary(), getApiRestrictions(), signedGet(), BinanceAccountSummaryLike, BinancePermissionCheck (+16 more)
+Cohesion: 0.16
+Nodes (28): GET(), ApiRestrictions, getAccountSummary(), getApiRestrictions(), BinanceAccountSummaryLike, BinancePermissionCheck, BinancePermissionReport, buildBinancePermissionReport() (+20 more)
 
 ### Community 40 - "Community 40"
 Cohesion: 0.06
 Nodes (33): #10 — دورة حياة الصفقة (إغلاق + PnL), #11 — أوامر OCO لوقف الخسارة والهدف, #12 — Kill Switch يغلق المراكز المفتوحة, #13 — حوار المبتدئ الكامل, #14 — إشعارات داخل الموقع, #1 — تفعيل حد الخسارة الشهري, 1. مصدر هذا المستند, #2 — توحيد بيئة Binance عند التنفيذ (+25 more)
 
 ### Community 41 - "Community 41"
-Cohesion: 0.21
-Nodes (14): GET(), eaKillCloseFlagKey(), queueEaCloseAllPositions(), completeOnboarding(), setFlag(), updateSettings(), POST(), schema (+6 more)
+Cohesion: 0.25
+Nodes (16): forexBrokerKind(), getForexBackend(), GET(), ALLOWED, Candle, GET(), mapInterval(), metaApiForexCandles() (+8 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.12
-Nodes (32): imageSchema, POST(), schema, Params, patchSchema, ContentBlock, ALLOWED_IMAGE_TYPES, buildUserMessageContent() (+24 more)
+Cohesion: 0.09
+Nodes (22): additionalProperties, description, maximum, minimum, type, type, maximum, minimum (+14 more)
 
 ### Community 43 - "Community 43"
-Cohesion: 0.17
-Nodes (22): binanceAdapter, eaAdapter, finalizeAck(), isRetriableEaFailure(), sideQuotePrice(), computeForexLots(), LotSizingResult, roundToStep() (+14 more)
+Cohesion: 0.16
+Nodes (24): binanceAdapter, binanceFuturesAdapter, eaAdapter, finalizeAck(), isRetriableEaFailure(), sideQuotePrice(), computeForexLots(), LotSizingResult (+16 more)
 
 ### Community 44 - "Community 44"
-Cohesion: 0.18
-Nodes (21): get24hStats(), ema(), macd(), MacdResult, rsi(), sma(), buildForexSnapshot(), buildSnapshot() (+13 more)
+Cohesion: 0.22
+Nodes (17): get24hStats(), getKlines(), ema(), macd(), MacdResult, rsi(), sma(), buildSnapshot() (+9 more)
 
 ### Community 45 - "Community 45"
 Cohesion: 0.16
@@ -422,67 +506,67 @@ Nodes (19): BaseHTTPRequestHandler, account_dict(), auto_reconnect(), _bridge_to
 
 ### Community 46 - "Community 46"
 Cohesion: 0.07
-Nodes (27): dependencies, bcryptjs, better-sqlite3, @binance/binance-cli, class-variance-authority, clsx, date-fns, framer-motion (+19 more)
+Nodes (28): dependencies, bcryptjs, better-sqlite3, @binance/binance-cli, class-variance-authority, clsx, date-fns, framer-motion (+20 more)
 
 ### Community 47 - "Community 47"
 Cohesion: 0.11
-Nodes (13): AdminOverview(), MasterKillCard(), ActiveTradesTable(), ConnectionStatus, StatusChip(), StatusChipTone, TONE, AgentStatus (+5 more)
+Nodes (15): AdminOverview(), MasterKillCard(), ActiveTradesTable(), BridgeOverviewClient(), ConnectionStatus, StatusChip(), StatusChipTone, TONE (+7 more)
 
 ### Community 48 - "Community 48"
-Cohesion: 0.17
-Nodes (15): GET(), GET(), profileForInterval(), agentChartUrls(), bridgeServiceToken(), chartCaptureUrls(), normalizeToken(), publicAgentChartUrl() (+7 more)
+Cohesion: 0.29
+Nodes (8): GET(), GET(), requireAdmin(), listAuditLogs(), listClaudeUsageForAdmin(), GET(), POST(), schema
 
 ### Community 49 - "Community 49"
-Cohesion: 0.22
-Nodes (21): GET(), modelRefFromPlatform(), getAnthropicModel(), listAnthropicModels(), getPublicAppUrl(), getActiveModel(), getActiveProvider(), getProviderApiKey() (+13 more)
+Cohesion: 0.34
+Nodes (13): getAnthropicModel(), listAnthropicModels(), getProviderApiKey(), providerKeyField(), listOpenAIChatModels(), getPlatformValue(), bodySchema, fetchModels() (+5 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.21
-Nodes (10): CompleteProfilePage(), CompleteProfileClient(), ConsoleLayout(), metadata, countPendingIntents(), countUnreadAlerts(), needsMcpCredentials(), ConsoleMcpPage() (+2 more)
+Cohesion: 0.09
+Nodes (21): additionalProperties, items, type, type, type, additionalProperties, propertyNames, type (+13 more)
 
 ### Community 51 - "Community 51"
-Cohesion: 0.12
-Nodes (37): deliverSignal(), DeliveryGateResult, DeliveryReason, DispatchAlertOptions, evaluateDelivery(), isTradeAlert(), REASON_AR, getKlines() (+29 more)
+Cohesion: 0.25
+Nodes (14): buildChartImageUrl(), ChartOverlay, buildChartJson(), buildChartSnapshotBuffer(), buildChartSnapshotBufferForMarket(), buildChartSnapshotUrl(), ChartSnapshotInput, fetchCandleSeries() (+6 more)
 
 ### Community 52 - "Community 52"
-Cohesion: 0.06
-Nodes (54): POST(), requireActiveUser(), debugSessionLog(), createLinkCode(), getTelegramChatId(), botCommands, menuActions, crypto (+46 more)
+Cohesion: 0.19
+Nodes (22): imageSchema, POST(), schema, Params, patchSchema, appendChatMessage(), archiveConversation(), autoTitleFromMessage() (+14 more)
 
 ### Community 53 - "Community 53"
-Cohesion: 0.17
-Nodes (26): POST(), validateChartDrawings(), committeeSummaryTelegram(), canUseMt5ChartCapture(), captureKeyForRecommendation(), dataRoot(), eaChartPngPath(), getPendingChartCapture() (+18 more)
+Cohesion: 0.10
+Nodes (35): GET(), GET(), livePrice(), GET(), AnalysisProfile, AnalysisTier, INTRADAY, POSITION (+27 more)
 
 ### Community 54 - "Community 54"
 Cohesion: 0.10
 Nodes (19): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+11 more)
 
 ### Community 55 - "Community 55"
-Cohesion: 0.14
-Nodes (12): cairo, fraunces, inter, jetbrainsMono, metadata, getSystemTheme(), ResolvedTheme, resolveTheme() (+4 more)
+Cohesion: 0.09
+Nodes (21): additionalProperties, items, type, type, additionalProperties, propertyNames, type, enum (+13 more)
 
 ### Community 56 - "Community 56"
-Cohesion: 0.08
-Nodes (30): ForexBackendMode, ALERT_TYPE_LABEL, AlertsCard(), SettingsClient(), TabId, TABS, useTheme(), ForexConnectionView (+22 more)
+Cohesion: 0.09
+Nodes (29): ConsoleOverviewPage(), AgentContext, BinanceEnv, binanceEnvToExecution(), executionEnvLabelAr(), ExecutionEnvSnapshot, executionToBinanceEnv(), getExecutionEnvSnapshot() (+21 more)
 
 ### Community 57 - "Community 57"
 Cohesion: 1.00
 Nodes (3): load_env(), main(), pg_query()
 
 ### Community 58 - "Community 58"
-Cohesion: 0.08
-Nodes (24): dependencies, better-sqlite3, cookie-parser, express, jose, @modelcontextprotocol/sdk, zod, description (+16 more)
+Cohesion: 0.07
+Nodes (27): dependencies, better-sqlite3, cookie-parser, express, jose, @modelcontextprotocol/sdk, zod, description (+19 more)
 
 ### Community 59 - "Community 59"
-Cohesion: 0.24
-Nodes (11): getBootstrapFromCache(), getSqliteDb(), initDb(), initSqlite(), migrate(), seedAdminSqlite(), sqliteLoadBootstrapKeys(), sqliteQueryOne() (+3 more)
+Cohesion: 0.20
+Nodes (17): decryptSecret(), encryptSecret(), getKey(), maskKey(), cache, clearPlatformConfigCache(), ConfigFieldMeta, ConfigStatusItem (+9 more)
 
 ### Community 60 - "Community 60"
 Cohesion: 0.12
 Nodes (15): AGENTS.md — قواعد وكيل AiChart (MCP محادثة), أوضاع التشغيل, إدارة صفقة مفتوحة (عند طلب المشغّل), التوصية والتنفيذ, الذاكرة, القناة الأساسية: MCP, بداية جلسة التداول, بعد خسارة — تعويض (لا revenge) (+7 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.07
-Nodes (63): forexBrokerKind(), getForexBackend(), ConsoleConnectPage(), GET(), eaForexInstruments(), GET(), Instrument, metaApiForexInstruments() (+55 more)
+Cohesion: 0.19
+Nodes (26): connectMtAccount(), disconnectMtAccount(), formatMtConnectError(), MtConnectInput, mtConnectSchema, getPlatformValueAsync(), deleteMtAccount(), getMtAccount() (+18 more)
 
 ### Community 62 - "Community 62"
 Cohesion: 0.12
@@ -493,8 +577,8 @@ Cohesion: 0.11
 Nodes (17): APIs (curl — صيانة فقط), APIs أساسية, Futures (Binance USDT-M), أخطاء, أزرار تحت كل بطاقة, أزرار تيليجرام → أوامر الوكيل, إدارة صفقة مفتوحة, القناة الأساسية: MCP (Claude Connectors) (+9 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.27
-Nodes (12): queryOne(), hashPassword(), normalizeWhatsApp(), getPublicUser(), getUserByTelegramId(), uniqueTelegramEmail(), updateUserProfile(), upsertTelegramUser() (+4 more)
+Cohesion: 0.21
+Nodes (17): initDb(), insertReturningId(), queryOne(), pgInsertReturningId(), pgQueryOne(), hashPassword(), normalizeWhatsApp(), ensureUserDefaults() (+9 more)
 
 ### Community 65 - "Community 65"
 Cohesion: 0.12
@@ -517,8 +601,8 @@ Cohesion: 0.09
 Nodes (13): CHAINS, COMMANDS, UA, CHAINS, COMMANDS, UA, CallFn, CHAINS (+5 more)
 
 ### Community 71 - "Community 71"
-Cohesion: 0.26
-Nodes (11): MarketSnapshot, OpportunityCandidate, ProximityHit, ProximityKind, scanForexSymbol(), scanSymbol(), scoreOpportunity(), thresholdForStyle() (+3 more)
+Cohesion: 0.06
+Nodes (29): botCommands, menuActions, crypto, demo, forex, iadadat, live, qaima (+21 more)
 
 ### Community 72 - "Community 72"
 Cohesion: 0.15
@@ -529,16 +613,16 @@ Cohesion: 0.15
 Nodes (12): 12. الأزواج المفتوحة (تحديث تلقائي), 13. قاعدة البيانات — الجداول الرئيسية (`pg.ts`), 14. النشر, 15. مخطط تدفق شامل (مختصر), 16. مراجع ملفات سريعة, 17. القدرات الذكية (Intelligence Suite), 1. ما هو AiChart؟, 3. هيكل المجلدات (+4 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.13
-Nodes (11): CommitteeFeed(), HeatmapCell, HeatmapGrid(), MacroTicker(), MemoryHighlights(), FlowSignal, WhaleBubbles(), MarketContext (+3 more)
+Cohesion: 0.07
+Nodes (27): CommitteeFeed(), HeatmapCell, HeatmapGrid(), MacroTicker(), MemoryHighlights(), FlowSignal, WhaleBubbles(), MarketContext (+19 more)
 
 ### Community 75 - "Community 75"
-Cohesion: 0.18
-Nodes (18): decryptSecret(), encryptSecret(), getKey(), maskKey(), cache, clearPlatformConfigCache(), ConfigFieldMeta, ConfigStatusItem (+10 more)
+Cohesion: 0.16
+Nodes (22): BridgeCacheEntry, BridgeCacheHit, bridgeCacheKey(), BridgeCacheMiss, BridgeCacheResult, clearBridgeCache(), defaultTtlMs(), getBridgeCacheTtlMs() (+14 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.39
-Nodes (7): clusterLevels(), DetectedLevel, detectStructureLevels(), inferStructure(), isSwingHigh(), isSwingLow(), StructureAnalysis
+Cohesion: 0.23
+Nodes (16): POST(), captureKeyForRecommendation(), dataRoot(), eaChartPngPath(), getPendingChartCapture(), isEaChartFileReady(), isEaOnline(), Mt5ChartCaptureResult (+8 more)
 
 ### Community 77 - "Community 77"
 Cohesion: 0.22
@@ -553,12 +637,12 @@ Cohesion: 0.14
 Nodes (14): balance, broker, currency, equity, login, trade_mode, bars, interval (+6 more)
 
 ### Community 80 - "Community 80"
-Cohesion: 0.31
-Nodes (13): accountFooterLines(), formatSpreadAr(), analysisCard(), approvalCard(), balanceCard(), cancelledTradeCard(), envLine(), formatAmount() (+5 more)
+Cohesion: 0.11
+Nodes (43): accountFooterLines(), AccountProfile, accountTypeAr(), buildAccountProfile(), platformLabel(), appBaseUrl(), ApprovalKind, buildApprovalButtonsForIntent() (+35 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.18
-Nodes (17): BinanceLiveQuote, ensureBinanceLiveQuotes(), getBinanceLivePrice(), parseAllowedAssets(), quotesByUser, refreshInFlight, refreshQuotes(), getEaLiveQuote() (+9 more)
+Cohesion: 0.10
+Nodes (19): 1. Envelope parsing, 2. MCP `isError` flag, 3. Live quotes freshness, 4. EA offline debounce, AiChart MCP Migration Guide (1.0 → 1.1), Breaking changes for agents, Confidence gate, `detect_levels` (+11 more)
 
 ### Community 82 - "Community 82"
 Cohesion: 0.17
@@ -605,8 +689,8 @@ Cohesion: 0.14
 Nodes (13): 10026 مع quotes حية (Instant Execution), AutoTrading disabled by server (retcode 10026), crypto vs forex, Exness / suffix case (`EURUSDm`), off quotes رغم تداول يدوي ناجح, تشخيص MetaTrader EA — لا تخمّن, تغيير الإطار الزمني / الرمز (AutoTrading), جدول retcode (MT5) (+5 more)
 
 ### Community 93 - "Community 93"
-Cohesion: 0.15
-Nodes (22): POST(), POST(), AgentWakeEvent, EVENT_INSTRUCTIONS, WakeAgentOptions, wakeAgentViaTelegram(), wakeAuditAction(), wasRecentlyWoken() (+14 more)
+Cohesion: 0.23
+Nodes (12): POST(), AgentWakeEvent, EVENT_INSTRUCTIONS, WakeAgentOptions, wakeAgentViaTelegram(), wakeAuditAction(), wasRecentlyWoken(), isAgentWakeEnabled() (+4 more)
 
 ### Community 94 - "Community 94"
 Cohesion: 0.25
@@ -638,7 +722,7 @@ Nodes (17): 1) تجهيز VPS, 2) ربط Claude, 3) أمثلة prompts, 4) تع�
 
 ### Community 101 - "Community 101"
 Cohesion: 0.19
-Nodes (10): createAiChartMcpServer(), AuthMode, loadConfig(), required(), app, bridgeForRequest(), cfg, issuerUrl (+2 more)
+Nodes (9): AuthMode, loadConfig(), required(), app, bridgeForRequest(), cfg, issuerUrl, mcpPostHandler() (+1 more)
 
 ### Community 102 - "Community 102"
 Cohesion: 0.29
@@ -677,32 +761,32 @@ Cohesion: 0.33
 Nodes (5): SOUL.md — شخصية الخبير, المحادثة, بطاقات تيليجرام (إلزامي), صفاتك, مبادئ لا تُكسر
 
 ### Community 111 - "Community 111"
-Cohesion: 0.13
-Nodes (29): execute(), computeAccessExpiresAt(), ADMIN_LIMIT_FIELDS, clearAlerts(), clearTelegramChatId(), consumeLinkCode(), deleteBinanceAccount(), deleteUser() (+21 more)
+Cohesion: 0.19
+Nodes (15): execute(), setConversationSummary(), setEaStatus(), computeAccessExpiresAt(), consumeLinkCode(), deleteUser(), setUserAccess(), setUserStatus() (+7 more)
 
 ### Community 112 - "Community 112"
-Cohesion: 0.17
-Nodes (20): createEmbedding(), isEmbeddingConfigured(), openAiKey(), synthesizeSpeech(), getPlatformValueAsync(), getRecommendation(), cosineSimilarity(), filterBySymbolFallback() (+12 more)
+Cohesion: 0.36
+Nodes (8): cosineSimilarity(), filterBySymbolFallback(), InsertTradeLessonInput, parseEmbedding(), searchSimilarLessons(), SearchSimilarLessonsQuery, vectorLiteral(), TradeLessonOutcome
 
 ### Community 113 - "Community 113"
-Cohesion: 0.36
-Nodes (7): allowedAssetsLabel(), buildSystemPrompt(), chartAnalyzeSystemSuffix(), SystemPromptParts, listTrades(), buildUserContext(), ConsoleTradesPage()
+Cohesion: 0.15
+Nodes (13): ConsoleAccountPage(), AdminLayout(), AgentRedirect(), ChatRedirect(), CommandRedirect(), AgentConsoleRedirect(), clearSession(), createSessionToken() (+5 more)
 
 ### Community 114 - "Community 114"
-Cohesion: 0.08
-Nodes (47): heartbeatQuoteAgeMs(), resolveForexQuoteSnapshot(), GET(), GET(), livePrice(), getPrice(), EaPositionSyncResult, reconcileEaPositions() (+39 more)
+Cohesion: 0.19
+Nodes (16): BinanceLiveQuote, ensureBinanceLiveQuotes(), getBinanceLivePrice(), getBinanceLiveQuotes(), parseAllowedAssets(), quotesByUser, refreshInFlight, refreshQuotes() (+8 more)
 
 ### Community 115 - "Community 115"
 Cohesion: 0.18
 Nodes (10): AiChartBridge MT5 — EA Commands v4, Backward compatibility, Command: `get_ohlc`, Compile & deploy, Heartbeat debounce (web-side), MT status fix, Reconnect behavior, Troubleshooting (+2 more)
 
 ### Community 116 - "Community 116"
-Cohesion: 0.20
-Nodes (9): AiChartBridge MT5 — Changelog, Critical fix, Deploy, Deploy, Symbol case (EURUSDm not EURUSDM), v1.01, v1.03, v3.06 (2026-06-16) — ResolveBrokerSymbol (Exness case fix) (+1 more)
+Cohesion: 0.25
+Nodes (7): AiChartBridge MT5 — Changelog, Critical fix, Deploy, Heartbeat payload (all versions), v1.01, v1.03, v3.08 (2026-06-16) — Fix AutoTrading disabled on chart draw
 
 ### Community 117 - "Community 117"
-Cohesion: 0.38
-Nodes (6): drawingPriceBounds(), CheckInput, intentAgeMinutes(), OpportunityCheck, OpportunityVerdict, validateOpportunity()
+Cohesion: 0.23
+Nodes (13): POST(), schema, setSession(), verifyPassword(), UserRow, isSyntheticTelegramEmail(), userRowToPublicUser(), POST() (+5 more)
 
 ### Community 118 - "Community 118"
 Cohesion: 0.60
@@ -717,16 +801,16 @@ Cohesion: 0.60
 Nodes (4): vps-mt5-deploy.sh script, log(), MT5_BRIDGE_TOKEN, upsert_env()
 
 ### Community 122 - "Community 122"
-Cohesion: 0.22
-Nodes (9): ChartSetSymbolPeriod, Deploy, Deploy, Keepalive, New command, Reconnect, v3.10 (2026-06-16) — Keepalive timer + offline fix, v4.00 (2026-06-17) — get_ohlc + reconnect flags (+1 more)
+Cohesion: 0.40
+Nodes (5): Deploy, New command, Reconnect, v4.00 (2026-06-17) — get_ohlc + reconnect flags, Web (paired deploy)
 
 ### Community 123 - "Community 123"
 Cohesion: 0.70
 Nodes (4): vps-switch-forex-ea.sh script, comment_env(), log(), upsert_env()
 
 ### Community 124 - "Community 124"
-Cohesion: 0.38
-Nodes (5): escapeHtml(), loginPage(), mountLoginRoutes(), McpAccessReason, mcpLoginErrorMessage()
+Cohesion: 0.10
+Nodes (19): additionalProperties, minLength, type, minLength, type, enum, type, type (+11 more)
 
 ### Community 125 - "Community 125"
 Cohesion: 0.40
@@ -741,8 +825,8 @@ Cohesion: 0.40
 Nodes (4): أمان الروابط, التدفق, جسر callback (اختياري), موافقة الصفقات بأزرار تيليجرام
 
 ### Community 128 - "Community 128"
-Cohesion: 0.16
-Nodes (10): AdminUsersTable(), formatExpiry(), formatExpiryCell(), TableMode, accessDaysRemaining(), AdminUserView, ConsoleRiskPage(), Props (+2 more)
+Cohesion: 0.10
+Nodes (19): additionalProperties, enum, type, exclusiveMinimum, type, properties, decision, new_stop_loss (+11 more)
 
 ### Community 129 - "Community 129"
 Cohesion: 0.40
@@ -777,12 +861,12 @@ Cohesion: 0.67
 Nodes (3): vps-deploy-v20.sh script, log(), MT5_BRIDGE_TOKEN
 
 ### Community 141 - "Community 141"
-Cohesion: 0.40
-Nodes (5): CliResult, DENY, isBinanceCliEnabled(), READ_GROUPS, runBinanceCli()
+Cohesion: 0.09
+Nodes (37): AgentResult, CHART_ANALYZE_TOOL_NAMES, CHART_ANALYZE_TOOLS, executeTool(), runAgent(), RunAgentOptions, TOOLS, ActivityListener (+29 more)
 
 ### Community 142 - "Community 142"
-Cohesion: 0.25
-Nodes (8): Bridge (web), Deploy, Deploy, Order execution (fixes retcode 10026 on Instant Execution brokers e.g. Liirat), Remote diagnostics, Symbol handling (fixes Exness `EURUSDm` vs `EURUSDM`), v3.01 (2026-06-16) — Instant Execution + Filling Mode, v3.05 (2026-06-15) — Exness Case-Sensitive Symbols + Diagnostics
+Cohesion: 0.29
+Nodes (7): Deploy, Deploy, Order execution (fixes retcode 10026 on Instant Execution brokers e.g. Liirat), Quote push, Remote diagnostics, v3.01 (2026-06-16) — Instant Execution + Filling Mode, v4.01 (2026-06-17) — Quote flush cadence fix
 
 ### Community 143 - "Community 143"
 Cohesion: 0.50
@@ -792,9 +876,17 @@ Nodes (3): vps-verify-only.sh script, AICHART_API_URL, AICHART_SERVICE_TOKEN
 Cohesion: 0.50
 Nodes (4): 2. لغات البرمجة والتقنيات, إطار العمل والمكتبات الرئيسية (`web/package.json`), اختيار قاعدة البيانات (`web/src/lib/db/index.ts`), لغات البرمجة (من امتدادات الملفات و`package.json`)
 
-### Community 147 - "Community 147"
+### Community 145 - "Community 145"
+Cohesion: 0.19
+Nodes (14): eaForexInstruments(), GET(), Instrument, metaApiForexInstruments(), BinanceInstrument, BinanceSymbolRow, getBinanceUsdtSpotSymbols(), getTopUsdtSpotSymbolsByVolume() (+6 more)
+
+### Community 146 - "Community 146"
 Cohesion: 0.10
-Nodes (20): AdminKeysPanel(), ConfigField, GROUPS, StatusBadge(), ClaudeModelOption, ClaudeModelPicker(), BRIDGE_NAV_MORE, BRIDGE_NAV_PRIMARY (+12 more)
+Nodes (41): GET(), htmlPage(), GET(), evaluateForexQuoteGate(), blocker(), buildTradeReadiness(), CollectBlockersInput, collectTradeReadinessBlockers() (+33 more)
+
+### Community 147 - "Community 147"
+Cohesion: 0.06
+Nodes (38): AdminKeysPanel(), ConfigField, GROUPS, StatusBadge(), ClaudeModelOption, ClaudeModelPicker(), BRIDGE_NAV_MORE, BRIDGE_NAV_PRIMARY (+30 more)
 
 ### Community 148 - "Community 148"
 Cohesion: 0.29
@@ -807,6 +899,10 @@ Nodes (3): name, private, version
 ### Community 150 - "Community 150"
 Cohesion: 0.50
 Nodes (3): Deploy on Vercel, Getting Started, Learn More
+
+### Community 151 - "Community 151"
+Cohesion: 0.14
+Nodes (12): cairo, fraunces, inter, jetbrainsMono, metadata, getSystemTheme(), ResolvedTheme, resolveTheme() (+4 more)
 
 ### Community 153 - "Community 153"
 Cohesion: 0.40
@@ -828,33 +924,173 @@ Nodes (5): method, note, path, poll_interval_ms, commands
 Cohesion: 0.40
 Nodes (5): get_ohlc_ack, candles, count, symbol, timeframe
 
+### Community 168 - "Community 168"
+Cohesion: 0.11
+Nodes (17): additionalProperties, minLength, type, minLength, type, enum, type, properties (+9 more)
+
+### Community 171 - "Community 171"
+Cohesion: 0.11
+Nodes (17): additionalProperties, description, maximum, minimum, type, enum, type, type (+9 more)
+
 ### Community 173 - "Community 173"
 Cohesion: 0.67
 Nodes (3): 4. أقسام التطبيق والتنقل, التبويبات الرئيسية (`web/src/components/AppShell.tsx`), روابط إضافية
 
+### Community 174 - "Community 174"
+Cohesion: 0.08
+Nodes (16): ADMIN_ACTION_LABELS, ADMIN_NAV, AdminSecurityPanel(), AuditRow, AdminSystemPanel(), HealthPayload, StatusPill(), AdminUsagePanel() (+8 more)
+
+### Community 181 - "Community 181"
+Cohesion: 0.12
+Nodes (16): additionalProperties, type, maximum, minimum, type, enum, type, properties (+8 more)
+
+### Community 182 - "Community 182"
+Cohesion: 0.12
+Nodes (16): additionalProperties, minLength, type, minLength, type, enum, type, type (+8 more)
+
+### Community 184 - "Community 184"
+Cohesion: 0.12
+Nodes (15): additionalProperties, maximum, minimum, type, type, properties, limit, pattern (+7 more)
+
+### Community 185 - "Community 185"
+Cohesion: 0.12
+Nodes (15): additionalProperties, properties, stop_loss, take_profit, ticket, required, $schema, exclusiveMinimum (+7 more)
+
+### Community 186 - "Community 186"
+Cohesion: 0.13
+Nodes (14): additionalProperties, type, type, enum, type, properties, interval, market (+6 more)
+
+### Community 187 - "Community 187"
+Cohesion: 0.14
+Nodes (13): additionalProperties, type, exclusiveMinimum, maximum, type, properties, all, order_id (+5 more)
+
+### Community 188 - "Community 188"
+Cohesion: 0.14
+Nodes (13): additionalProperties, type, enum, type, properties, interval, market, symbol (+5 more)
+
+### Community 189 - "Community 189"
+Cohesion: 0.23
+Nodes (4): BridgeKvStore, getRedisClient(), MemoryKvStore, RedisKvStore
+
+### Community 192 - "Community 192"
+Cohesion: 0.15
+Nodes (12): additionalProperties, exclusiveMinimum, type, properties, lots, ticket, required, $schema (+4 more)
+
+### Community 193 - "Community 193"
+Cohesion: 0.15
+Nodes (12): additionalProperties, type, enum, type, properties, interval, market, symbol (+4 more)
+
+### Community 194 - "Community 194"
+Cohesion: 0.15
+Nodes (13): type, type, type, properties, approved_by_user, entry, practice, stop_loss (+5 more)
+
+### Community 196 - "Community 196"
+Cohesion: 0.15
+Nodes (12): enum, type, additionalProperties, exclusiveMinimum, maximum, type, properties, action (+4 more)
+
+### Community 198 - "Community 198"
+Cohesion: 0.15
+Nodes (12): additionalProperties, type, type, properties, close_open_trades, on, scope, required (+4 more)
+
+### Community 199 - "Community 199"
+Cohesion: 0.17
+Nodes (11): 1.0.0, 1.1.0 — MCP Capability Upgrade (2026-06), 1.1.1 — Tool polish (2026-06), AiChart MCP Changelog, Breaking / behavioral changes, Confidence gate (enforced), EA v4 (operator), Enhanced tools (+3 more)
+
+### Community 200 - "Community 200"
+Cohesion: 0.17
+Nodes (11): additionalProperties, properties, stop_loss, symbol, take_profit, required, $schema, anyOf (+3 more)
+
+### Community 201 - "Community 201"
+Cohesion: 0.17
+Nodes (11): additionalProperties, maximum, minimum, type, type, properties, default_leverage, futures_enabled (+3 more)
+
+### Community 202 - "Community 202"
+Cohesion: 0.18
+Nodes (10): additionalProperties, type, properties, all, trade_id, $schema, exclusiveMinimum, maximum (+2 more)
+
+### Community 205 - "Community 205"
+Cohesion: 0.18
+Nodes (10): additionalProperties, enum, type, properties, market, symbol, required, $schema (+2 more)
+
+### Community 206 - "Community 206"
+Cohesion: 0.20
+Nodes (9): additionalProperties, properties, ticket, required, $schema, exclusiveMinimum, maximum, type (+1 more)
+
+### Community 208 - "Community 208"
+Cohesion: 0.20
+Nodes (9): additionalProperties, properties, trade_id, required, $schema, exclusiveMinimum, maximum, type (+1 more)
+
+### Community 209 - "Community 209"
+Cohesion: 0.20
+Nodes (9): additionalProperties, type, properties, interval, symbol, required, $schema, type (+1 more)
+
+### Community 210 - "Community 210"
+Cohesion: 0.20
+Nodes (9): additionalProperties, properties, recommendation_id, exclusiveMinimum, maximum, type, required, $schema (+1 more)
+
+### Community 211 - "Community 211"
+Cohesion: 0.17
+Nodes (25): EaPositionSyncResult, reconcileEaPositions(), getEaConnection(), getEaSymbolSpec(), parseEaSymbolSpecs(), EaBrokerPosition, forexLivePrice(), checkSlTpProximity() (+17 more)
+
+### Community 213 - "Community 213"
+Cohesion: 0.22
+Nodes (8): enum, type, additionalProperties, properties, active_market, required, $schema, type
+
 ### Community 234 - "Community 234"
 Cohesion: 0.50
 Nodes (3): HEARTBEAT — مُهمَل (MCP محادثة), ما يبقى تلقائياً (كود فقط), مراجعة الصفقات
+
+### Community 236 - "Community 236"
+Cohesion: 0.22
+Nodes (8): additionalProperties, enum, type, properties, preference, required, $schema, type
+
+### Community 243 - "Community 243"
+Cohesion: 0.22
+Nodes (8): additionalProperties, enum, type, properties, mode, required, $schema, type
+
+### Community 244 - "Community 244"
+Cohesion: 0.23
+Nodes (10): imageDataUrl(), ChatMessageRow, Conversation, isTabActive(), MAIN_TABS, MobileDrawer(), ChatSidebar(), ChatSidebarProps (+2 more)
 
 ### Community 245 - "Community 245"
 Cohesion: 0.12
 Nodes (11): SqliteClientsStore, getMcpDb(), resolveDbPath(), AccessTokenClaims, hashRefreshToken(), mintAccessToken(), secretKey(), verifyAccessTokenJwt() (+3 more)
 
 ### Community 246 - "Community 246"
-Cohesion: 0.19
-Nodes (3): accessTtlDays(), PlatformVerifyResult, AiChartOAuthProvider
+Cohesion: 0.13
+Nodes (8): escapeHtml(), loginPage(), mountLoginRoutes(), accessTtlDays(), McpAccessReason, mcpLoginErrorMessage(), PlatformVerifyResult, AiChartOAuthProvider
 
 ### Community 247 - "Community 247"
 Cohesion: 0.17
 Nodes (11): compilerOptions, declaration, esModuleInterop, module, moduleResolution, outDir, rootDir, skipLibCheck (+3 more)
 
-### Community 250 - "Community 250"
+### Community 248 - "Community 248"
+Cohesion: 0.25
+Nodes (7): additionalProperties, enum, type, properties, env, $schema, type
+
+### Community 249 - "Community 249"
 Cohesion: 0.23
-Nodes (17): formatBridgeError(), formatBridgeResult(), registerBinanceTools(), chartInlineContent(), ChartInlineResponse, chartTimeoutContent(), McpContentBlock, mt5ChartPollId() (+9 more)
+Nodes (11): clearEaQuoteTickMetrics(), emptyHistogram(), gapToBucket(), getOrCreateSymbolMetrics(), metricsByUser, recordEaQuoteTickGap(), SymbolTickMetrics, TICK_GAP_BUCKETS (+3 more)
+
+### Community 250 - "Community 250"
+Cohesion: 0.19
+Nodes (23): BridgeError, formatBridgeError(), formatBridgeResult(), isBridgeFailureEnvelope(), mcpToolConfig(), createAiChartMcpServer(), registerBinanceTools(), chartInlineContent() (+15 more)
+
+### Community 252 - "Community 252"
+Cohesion: 0.27
+Nodes (11): getPool(), initPg(), mapRows(), migratePg(), pgExecute(), pgLoadBootstrapKeys(), pgLoadPlatformConfig(), pgQuery() (+3 more)
 
 ### Community 253 - "Community 253"
 Cohesion: 0.22
 Nodes (9): ea_inputs_v2, AllowNoSL, ApiBase, AutoSync, EaToken, HeartbeatSeconds, MaxRetries, PollIntervalMs (+1 more)
+
+### Community 254 - "Community 254"
+Cohesion: 0.29
+Nodes (6): additionalProperties, type, properties, futuresRequired, $schema, type
+
+### Community 255 - "Community 255"
+Cohesion: 0.29
+Nodes (6): additionalProperties, properties, symbol, $schema, type, type
 
 ### Community 256 - "Community 256"
 Cohesion: 0.28
@@ -864,24 +1100,204 @@ Nodes (3): BridgeClient, bridgeUserSig(), AppConfig
 Cohesion: 0.29
 Nodes (6): aichart-mcp.sh script, MCP_ACCESS_TOKEN_TTL_DAYS, MCP_AUTH_MODE, MCP_PORT, MCP_REFRESH_TOKEN_TTL_DAYS, NODE_ENV
 
-### Community 259 - "Community 259"
+### Community 258 - "Community 258"
 Cohesion: 0.29
-Nodes (6): AiChart MCP Server, Claude Connectors, VPS, الأدوات, تشغيل محلي, متغيرات البيئة
+Nodes (6): additionalProperties, properties, symbol, $schema, type, type
+
+### Community 259 - "Community 259"
+Cohesion: 0.25
+Nodes (7): AiChart MCP Server, Bridge-related (on **web** `.env`, affects MCP tool responses), Claude Connectors, VPS, الأدوات (1.1 highlights), تشغيل محلي, متغيرات البيئة
+
+### Community 261 - "Community 261"
+Cohesion: 0.29
+Nodes (6): additionalProperties, properties, symbol, $schema, type, type
+
+### Community 262 - "Community 262"
+Cohesion: 0.29
+Nodes (6): additionalProperties, properties, symbol, $schema, type, type
+
+### Community 263 - "Community 263"
+Cohesion: 0.29
+Nodes (6): additionalProperties, properties, resync_candles, type, $schema, type
+
+### Community 264 - "Community 264"
+Cohesion: 0.70
+Nodes (4): get(), load_env(), main(), user_sig()
+
+### Community 265 - "Community 265"
+Cohesion: 0.70
+Nodes (4): get(), load_env(), main(), user_sig()
+
+### Community 266 - "Community 266"
+Cohesion: 0.40
+Nodes (4): exportedAt, mcpServerVersion, toolCount, tools
+
+### Community 267 - "Community 267"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 274 - "Community 274"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 279 - "Community 279"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 280 - "Community 280"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 281 - "Community 281"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 282 - "Community 282"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 283 - "Community 283"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 284 - "Community 284"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 285 - "Community 285"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 286 - "Community 286"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 287 - "Community 287"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 288 - "Community 288"
+Cohesion: 0.40
+Nodes (4): additionalProperties, required, $schema, type
+
+### Community 289 - "Community 289"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 290 - "Community 290"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 291 - "Community 291"
+Cohesion: 0.40
+Nodes (4): additionalProperties, properties, $schema, type
+
+### Community 292 - "Community 292"
+Cohesion: 0.50
+Nodes (4): maximum, minimum, type, confidence
+
+### Community 293 - "Community 293"
+Cohesion: 0.50
+Nodes (4): description, maxLength, type, idempotencyKey
+
+### Community 294 - "Community 294"
+Cohesion: 0.50
+Nodes (4): maximum, minimum, type, leverage
+
+### Community 295 - "Community 295"
+Cohesion: 0.33
+Nodes (7): Window, isTelegramConfiguredAsync(), telegramDisplayEmail(), TelegramLoginPayload, verifyTelegramLogin(), POST(), schema
+
+### Community 296 - "Community 296"
+Cohesion: 0.67
+Nodes (3): exclusiveMinimum, type, limit_price
+
+### Community 297 - "Community 297"
+Cohesion: 0.67
+Nodes (3): enum, type, market
+
+### Community 298 - "Community 298"
+Cohesion: 0.67
+Nodes (3): enum, type, market_type
+
+### Community 299 - "Community 299"
+Cohesion: 0.67
+Nodes (3): exclusiveMinimum, type, notional
+
+### Community 300 - "Community 300"
+Cohesion: 0.67
+Nodes (3): enum, type, order_type
+
+### Community 301 - "Community 301"
+Cohesion: 0.67
+Nodes (3): rationale, minLength, type
+
+### Community 302 - "Community 302"
+Cohesion: 0.67
+Nodes (3): side, enum, type
+
+### Community 305 - "Community 305"
+Cohesion: 0.28
+Nodes (12): httpStatusForEnvelope(), toBridgeResponse(), checkForexTradePreflight(), getIdempotencyResult(), readIdempotencyKey(), futuresPermissionBlockReason(), bridgeEnvelopeForExecutionDenial(), hasRecentTradeOpenFailure() (+4 more)
+
+### Community 306 - "Community 306"
+Cohesion: 0.23
+Nodes (12): ensureDb(), getDbBackend(), getDbInfo(), isPostgresReady(), loadPlatformConfigRows(), query(), setBootstrapCache(), transaction() (+4 more)
+
+### Community 307 - "Community 307"
+Cohesion: 0.26
+Nodes (10): call(), getMt5BridgeUrl(), headers(), Mt5Account, Mt5Bar, mt5Close(), mt5Order(), Mt5Position (+2 more)
+
+### Community 308 - "Community 308"
+Cohesion: 0.25
+Nodes (10): getPrice(), ChartDrawing, drawingPriceBounds(), Mt5ChartCaptureInput, CheckInput, intentAgeMinutes(), OpportunityCheck, OpportunityVerdict (+2 more)
+
+### Community 309 - "Community 309"
+Cohesion: 0.60
+Nodes (5): get(), load_env(), main(), percentile(), user_sig()
+
+### Community 310 - "Community 310"
+Cohesion: 0.50
+Nodes (4): Bridge (web), Deploy, Symbol handling (fixes Exness `EURUSDm` vs `EURUSDM`), v3.05 (2026-06-15) — Exness Case-Sensitive Symbols + Diagnostics
+
+### Community 311 - "Community 311"
+Cohesion: 0.50
+Nodes (4): ChartSetSymbolPeriod, Deploy, Keepalive, v3.10 (2026-06-16) — Keepalive timer + offline fix
+
+### Community 312 - "Community 312"
+Cohesion: 0.67
+Nodes (3): Deploy, Symbol case (EURUSDm not EURUSDM), v3.06 (2026-06-16) — ResolveBrokerSymbol (Exness case fix)
+
+### Community 313 - "Community 313"
+Cohesion: 0.38
+Nodes (7): POST(), schema, sleep(), waitForEaCommandAck(), queueEaModifySlTp(), POST(), schema
+
+### Community 314 - "Community 314"
+Cohesion: 0.31
+Nodes (7): clusterLevels(), DetectedLevel, detectStructureLevels(), inferStructure(), isSwingHigh(), isSwingLow(), StructureAnalysis
+
+### Community 315 - "Community 315"
+Cohesion: 0.53
+Nodes (4): getBootstrapFromCache(), getAppSecret(), getEncryptionKey(), readBootstrapKey()
+
+### Community 316 - "Community 316"
+Cohesion: 0.60
+Nodes (5): agentChartUrls(), bridgeServiceToken(), chartCaptureUrls(), normalizeToken(), publicAgentChartUrl()
 
 ## Knowledge Gaps
-- **940 isolated node(s):** `telegram-cmd-bridge.sh script`, `MAP`, `name`, `version`, `scheme` (+935 more)
+- **1456 isolated node(s):** `telegram-cmd-bridge.sh script`, `MAP`, `name`, `version`, `scheme` (+1451 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **48 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **49 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
+- **Why does `AiChartOAuthProvider` connect `Community 246` to `Community 101`, `Community 245`?**
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
 - **Why does `timingSafeEqual()` connect `Community 28` to `Community 246`?**
-  _High betweenness centrality (0.074) - this node is a cross-community bridge._
-- **Why does `AiChartOAuthProvider` connect `Community 246` to `Community 101`, `Community 124`, `Community 245`?**
-  _High betweenness centrality (0.071) - this node is a cross-community bridge._
-- **Why does `handleError()` connect `Community 14` to `Community 0`, `Community 1`, `Community 4`, `Community 9`, `Community 10`, `Community 24`, `Community 27`, `Community 28`, `Community 32`, `Community 33`, `Community 36`, `Community 38`, `Community 39`, `Community 41`, `Community 42`, `Community 48`, `Community 49`, `Community 51`, `Community 52`, `Community 53`, `Community 61`, `Community 64`, `Community 71`, `Community 111`, `Community 114`?**
-  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
+- **Why does `handleError()` connect `Community 14` to `Community 0`, `Community 1`, `Community 3`, `Community 9`, `Community 10`, `Community 11`, `Community 146`, `Community 22`, `Community 24`, `Community 28`, `Community 32`, `Community 38`, `Community 39`, `Community 295`, `Community 41`, `Community 48`, `Community 49`, `Community 305`, `Community 52`, `Community 53`, `Community 56`, `Community 313`, `Community 61`, `Community 64`, `Community 76`, `Community 111`, `Community 117`?**
+  _High betweenness centrality (0.021) - this node is a cross-community bridge._
 - **Are the 42 inferred relationships involving `handleError()` (e.g. with `GET()` and `GET()`) actually correct?**
   _`handleError()` has 42 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 14 inferred relationships involving `getSettings()` (e.g. with `ConsoleOverviewPage()` and `POST()`) actually correct?**

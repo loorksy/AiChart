@@ -53,7 +53,7 @@ export function withBridge<T>(
       const userId = await resolveBridgeUserId(req);
 
       if (rateLimitEnabled && isWriteMethod(req.method)) {
-        const rl = checkWriteRateLimit(userId, route);
+        const rl = await checkWriteRateLimit(userId, route);
         if (!rl.allowed) {
           return toBridgeResponse(rl.failure, {
             requestId,

@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
       fallbacks: buildFallbackRefs(ref),
       providerKeys,
       app_url: getPublicAppUrl(),
-      serverVersion: "1.1.0",
+      serverVersion: "1.1.1",
       forex_backend: forexBackend,
       featureFlags: {
         confidenceGate: true,
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
         inlineChartBase64: true,
         openTradeIdempotency: true,
         eaHeartbeatDebounce: true,
+        redisCache: Boolean(process.env.REDIS_URL?.trim()),
       },
       eaHeartbeat: {
         offlineAfterMissed: 3,

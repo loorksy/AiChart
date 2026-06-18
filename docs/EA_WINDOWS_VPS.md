@@ -101,6 +101,29 @@ Risk Guard → `ea_commands` → EA → MT5 → الوسيط.
 
 راجع [`docs/EA_BRIDGE.md`](EA_BRIDGE.md) و [`ea/README.md`](../ea/README.md).
 
+## 10) تعدد المستخدمين + EA
+
+كل مستخدم AiChart يربط **حساب MT5 الخاص به** على **جهازه** بتوكن معزول:
+
+| القاعدة | التفاصيل |
+|---------|----------|
+| توken EA | **لكل مستخدم** — Console → EA → «توليد رمز» (`POST /api/ea/token`) |
+| جسر واحد لكل حساب AiChart | `ea_connections.user_id` فريد — تدوير التوken يلغي القديم فوراً |
+| MCP multi-user | `AICHART_SINGLE_USER=0` إلزامي في الإنتاج |
+| Redis (اختياري) | `REDIS_URL` يشارك cache الأسعار الحية بين instances PM2 |
+
+**Onboarding:**
+
+1. `/signup` → موافقة admin من `/console/platform?tab=users`
+2. تسجيل دخول → الإعدادات → توليد EA token
+3. MT5 على Windows → لصق `EaToken` في خصائص EA
+4. تحقق: `bash infra/tmp-vps-bridge-test.sh` و `bash infra/tmp-vps-ea-isolation-test.sh` على VPS
+
+**Smoke scripts:**
+
+- `infra/tmp-test-bridge-isolation.py` — عزل MCP (email + HMAC)
+- `infra/tmp-test-ea-isolation.py` — عزل EA (user A online vs user B)
+
 ## استكشاف الأخطاء
 
 | العرض | الحل |

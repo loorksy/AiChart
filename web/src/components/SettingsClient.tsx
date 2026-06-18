@@ -887,6 +887,7 @@ function TradingCard({
           kill_switch: Boolean(s.kill_switch),
           futures_enabled: Boolean(s.futures_enabled),
           default_leverage: Number(s.default_leverage ?? 3),
+          min_confidence: Number(s.min_confidence ?? 80),
         }),
       });
       const data = await res.json();
@@ -1108,6 +1109,21 @@ function TradingCard({
             disabled={!s.futures_enabled}
           />
         </div>
+
+        <Field label={`الحد الأدنى لثقة التنفيذ · ${s.min_confidence ?? 80}%`}>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={s.min_confidence ?? 80}
+            onChange={(e) => set("min_confidence", Number(e.target.value))}
+            className="w-full accent-primary"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            تُنفذ الصفقات تلقائياً فقط إذا تجاوزت ثقة الوكيل هذه النسبة (في البيئة الحقيقية).
+          </p>
+        </Field>
 
         <Field label="إطار المسح الافتراضي">
           <select

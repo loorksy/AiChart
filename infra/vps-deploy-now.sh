@@ -20,7 +20,10 @@ fi
 
 cd /opt/aichart/web
 log "npm ci"
-npm ci
+if ! npm ci; then
+  log "WARN: npm ci failed — falling back to npm install"
+  npm install
+fi
 log "npm run build"
 npm run build
 

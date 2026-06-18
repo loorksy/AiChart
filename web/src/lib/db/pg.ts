@@ -581,6 +581,24 @@ async function migratePg(client: PoolClient) {
     CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires
       ON idempotency_keys (expires_at)
   `).catch(() => {});
+
+  const dupTokens = await client.query<{ token_hash: string }>(
+    `SELECT token_hash FROM ea_connections
+     GROUP BY token_hash HAVING COUNT(*) > 1 LIMIT 1`,
+  ).catch(() => ({ rows: [] as { token_hash: string }[] }));
+
+  if (dupTokens.rows.length === 0) {
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ea_connections_token_unique
+        ON ea_connections (token_hash)
+    `).catch((err) => {
+      console.warn("[db] ea_connections token_hash unique index:", err);
+    });
+  } else {
+    console.warn(
+      "[db] duplicate ea_connections.token_hash — skipping unique index",
+    );
+  }
 }
 
 async function seedAdminPg(client: PoolClient) {

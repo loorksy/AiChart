@@ -42,7 +42,7 @@ export async function resolveForexQuoteSnapshot(
   const mt5Symbol = await resolveMt5Symbol(userId, symbol);
   if (!mt5Symbol) return null;
 
-  const live = getEaLiveQuote(userId, mt5Symbol);
+  const live = await getEaLiveQuote(userId, mt5Symbol);
   if (live && live.bid > 0 && live.ask > 0) {
     const fresh = isQuoteFresh(live.quoteAgeMs);
     return {
@@ -73,13 +73,14 @@ export async function resolveForexQuoteSnapshot(
   };
 }
 
-/** Pure pre-flight evaluation — used by checkForexTradePreflight and tests. */
+/** Pre-flight gate for forex — rejects before broker execution. */
 export function evaluateForexQuoteGate(
   heartbeatFresh: boolean,
   quote: ForexQuoteSnapshot | null,
   symbol: string,
   thresholdMs = getStaleQuoteThresholdMs(),
   maxSpreadPips = getMaxSpreadPips(),
+  lastQuoteGapMs?: number | null,
 ): BridgeFailure | null {
   if (!heartbeatFresh) {
     return bridgeError(
@@ -109,6 +110,7 @@ export function evaluateForexQuoteGate(
         quoteAgeMs: quote.quoteAgeMs,
         staleThresholdMs: thresholdMs,
         source: quote.source,
+        ...(lastQuoteGapMs != null ? { lastQuoteGapMs } : {}),
       },
       { retryAfterMs: 2000 },
     );

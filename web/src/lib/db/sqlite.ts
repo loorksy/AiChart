@@ -692,6 +692,24 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires
       ON idempotency_keys (expires_at);
   `);
+
+  const dupToken = db
+    .prepare(
+      `SELECT token_hash FROM ea_connections
+       GROUP BY token_hash HAVING COUNT(*) > 1 LIMIT 1`,
+    )
+    .get() as { token_hash: string } | undefined;
+
+  if (!dupToken) {
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ea_connections_token_unique
+        ON ea_connections (token_hash);
+    `);
+  } else {
+    console.warn(
+      "[db] duplicate ea_connections.token_hash — skipping unique index",
+    );
+  }
 }
 
 export function seedAdminSqlite(db: Database.Database) {

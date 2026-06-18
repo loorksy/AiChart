@@ -1,40 +1,14 @@
 import { buildSnapshot, buildForexSnapshot } from "../market";
 import { getPrice } from "../binance";
-import { getEaConnection, parseEaSymbolSpecs } from "../eaStore";
-import { getForexBackend } from "../brokers/forexBackend";
-import { resolveLiveForexMid } from "../eaLiveState";
 import { getBinanceLivePrice, ensureBinanceLiveQuotes, getBinanceLiveQuotes } from "../binanceLiveState";
-import { mt5Price } from "../mt5local/client";
+import { getForexLiveMid } from "./forexPrice";
 import { resolveSymbol, marketLabel } from "./resolve";
 import type { MarketType, ResolvedSymbol, UnifiedSnapshot } from "./types";
+import type { ForexMarketSnapshot } from "./forexSnapshot";
 
 export { resolveSymbol, marketLabel };
 export { getBinanceLiveQuotes, ensureBinanceLiveQuotes, getBinanceLivePrice };
 export type { ResolvedSymbol, UnifiedSnapshot };
-
-async function forexPrice(userId: number, symbol: string): Promise<number> {
-  if (getForexBackend() === "mt5local") {
-    try {
-      const { bid, ask } = await mt5Price(symbol);
-      if (bid && ask) return (bid + ask) / 2;
-      return bid || ask || 0;
-    } catch {
-      return 0;
-    }
-  }
-  const conn = await getEaConnection(userId);
-  if (!conn) return 0;
-  const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(
-    (s) => s.symbol?.toUpperCase() === symbol.toUpperCase(),
-  );
-  const resolved = resolveLiveForexMid(
-    userId,
-    symbol,
-    spec?.bid,
-    spec?.ask,
-  );
-  return resolved.price;
-}
 
 export async function getUnifiedPrice(
   query: string,
@@ -43,7 +17,7 @@ export async function getUnifiedPrice(
 ): Promise<{ resolved: ResolvedSymbol; price: number }> {
   const resolved = resolveSymbol(query, market);
   if (market === "forex") {
-    const price = userId ? await forexPrice(userId, resolved.symbol) : 0;
+    const price = userId ? await getForexLiveMid(userId, resolved.symbol) : 0;
     return { resolved, price };
   }
   if (userId) {
@@ -68,6 +42,10 @@ export async function getUnifiedSnapshot(
     market === "forex" && userId
       ? await buildForexSnapshot(userId, resolved.symbol, interval)
       : await buildSnapshot(resolved.symbol, interval, "prod");
+
+  const forexMeta =
+    market === "forex" ? (snap as ForexMarketSnapshot) : undefined;
+
   return {
     symbol: snap.symbol,
     market,
@@ -83,6 +61,18 @@ export async function getUnifiedSnapshot(
       macd: snap.macd,
       trend: snap.trend,
       interval: snap.interval,
+      ...(forexMeta?.ohlcSource != null
+        ? { ohlcSource: forexMeta.ohlcSource }
+        : {}),
+      ...(forexMeta?.ohlcWarning
+        ? { ohlcWarning: forexMeta.ohlcWarning }
+        : {}),
+      ...(forexMeta?.candleCount != null
+        ? { candleCount: forexMeta.candleCount }
+        : {}),
+      ...(forexMeta?.highLow24hApproximate != null
+        ? { highLow24hApproximate: forexMeta.highLow24hApproximate }
+        : {}),
     },
   };
 }

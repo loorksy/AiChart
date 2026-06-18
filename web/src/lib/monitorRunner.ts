@@ -8,6 +8,7 @@ import {
   isHeartbeatFresh,
   parseEaSymbolSpecs,
 } from "./eaStore";
+import { forexCanonicalKey, resolveMt5Symbol } from "./mt5SymbolMap";
 import {
   scanForexSymbol,
   scanSymbol,
@@ -49,8 +50,12 @@ async function forexScanReady(
   if (!isHeartbeatFresh(conn.last_heartbeat_at)) {
     return { ok: false, reason: "EA offline" };
   }
+  const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
+  const canonical = forexCanonicalKey(symbol);
   const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(
-    (s) => s.symbol?.toUpperCase() === symbol.toUpperCase(),
+    (s) =>
+      s.symbol?.toUpperCase() === resolved.toUpperCase() ||
+      forexCanonicalKey(s.symbol ?? "") === canonical,
   );
   if (!spec) return { ok: false, reason: `الرمز ${symbol} غير في heartbeat` };
   const bid = Number(spec.bid) || 0;

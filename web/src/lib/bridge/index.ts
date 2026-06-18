@@ -16,9 +16,11 @@ export {
   clearBridgeCache,
   getBridgeCacheTtlMs,
   getCached,
+  getCachedAsync,
   invalidateCached,
   isRedisCacheConfigured,
   setCached,
+  setCachedAsync,
   type BridgeCacheEntry,
   type BridgeCacheHit,
   type BridgeCacheMiss,
@@ -26,7 +28,15 @@ export {
 } from "./cache";
 
 export {
+  bridgeRedisKey,
+  getBridgeKvStore,
+  resetBridgeKvStoreForTests,
+  type BridgeKvStore,
+} from "./store";
+
+export {
   checkWriteRateLimit,
+  checkWriteRateLimitAsync,
   clearRateLimits,
   isWriteMethod,
   rateLimitKey,

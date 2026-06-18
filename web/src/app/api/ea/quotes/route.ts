@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   try {
     const conn = await requireEaConnection(req);
     const body = schema.parse(await req.json());
-    updateEaLiveQuotes(conn.user_id, body.quotes);
+    await updateEaLiveQuotes(conn.user_id, body.quotes);
     return NextResponse.json({ ok: true, count: body.quotes.length });
   } catch (e) {
     if (e instanceof z.ZodError) {

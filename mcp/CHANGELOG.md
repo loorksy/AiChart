@@ -1,5 +1,14 @@
 # AiChart MCP Changelog
 
+## 1.1.1 — Tool polish (2026-06)
+
+### Improvements
+
+- **All ~55 tools** — Arabic §0.11 descriptions (متى/لا/أثر/مثال) + MCP `annotations` on every tool
+- **`TOOL_CATALOG`** — single source in `mcp/src/tools/schemas/` for names, schemas, descriptions
+- **JSON Schema snapshots** — `mcp/schemas/` + `npm run schemas:check` for CI drift detection
+- **Bridge Redis cache** — `REDIS_URL` enables shared OHLC cache + write rate limits (web)
+
 ## 1.1.0 — MCP Capability Upgrade (2026-06)
 
 ### New tools

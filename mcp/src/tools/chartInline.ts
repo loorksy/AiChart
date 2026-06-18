@@ -2,6 +2,7 @@ import type { BridgeClient } from "../bridge/client.js";
 
 const DEFAULT_MAX_MS = 8000;
 const DEFAULT_INTERVAL_MS = 500;
+const DRAW_CAPTURE_MAX_MS = 30_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -105,3 +106,59 @@ export function chartTimeoutContent(
     isError: true,
   };
 }
+
+export type ChartSnapshotBridgeResult = {
+  ok?: boolean;
+  status?: string;
+  chart_url?: string;
+  image_base64?: string;
+  mt5_symbol?: string;
+};
+
+/** Handles JSON from POST /api/agent/chart/snapshot (QuickChart or MT5 poll). */
+export async function resolveChartSnapshotResponse(
+  bridge: BridgeClient,
+  res: ChartSnapshotBridgeResult,
+  pollMaxMs = DEFAULT_MAX_MS,
+): Promise<ChartInlineResponse> {
+  if (res.status === "pending" && res.chart_url) {
+    const chartId = mt5ChartPollId(res.chart_url);
+    if (chartId) {
+      const polled = await pollBridgeMt5ChartPng(bridge, chartId, {
+        maxMs: pollMaxMs,
+      });
+      if ("timeout" in polled) {
+        return chartTimeoutContent(
+          { chartUrl: res.chart_url, mt5Symbol: res.mt5_symbol },
+          polled.retryAfterMs,
+        );
+      }
+      return chartInlineContent(
+        {
+          ok: true,
+          status: "ready",
+          chartUrl: res.chart_url,
+          mt5Symbol: res.mt5_symbol,
+        },
+        polled.base64,
+      );
+    }
+  }
+
+  if (res.image_base64) {
+    return chartInlineContent(
+      {
+        ok: true,
+        status: "ready",
+        content_type: "image/png",
+      },
+      res.image_base64,
+    );
+  }
+
+  return {
+    content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
+  };
+}
+
+export { DRAW_CAPTURE_MAX_MS };

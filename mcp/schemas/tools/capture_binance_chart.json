@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string"
+    },
+    "interval": {
+      "type": "string"
+    },
+    "market_type": {
+      "type": "string",
+      "enum": [
+        "spot",
+        "futures"
+      ]
+    },
+    "full_page": {
+      "type": "boolean"
+    },
+    "chart_drawings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      }
+    }
+  },
+  "required": [
+    "symbol"
+  ],
+  "additionalProperties": false
+}

@@ -15,6 +15,8 @@ import {
   getEaOnlineState,
   isEaOnlineDebounced,
 } from "@/lib/eaStore";
+import { getEaQuoteTickMetrics } from "@/lib/eaQuoteMetrics";
+import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import {
   getResolvedExecutionEnv,
   type ExecutionEnv,
@@ -466,6 +468,16 @@ export async function buildTradeReadiness(
     confidenceGate,
   };
 
+  let lastQuoteGapMs: number | null = null;
+  if (symbol && forexApplies) {
+    const mt5Sym = await resolveMt5Symbol(userId, symbol);
+    if (mt5Sym) {
+      const m = getEaQuoteTickMetrics(userId, mt5Sym);
+      lastQuoteGapMs =
+        m && !Array.isArray(m) ? m.lastTickGapMs : null;
+    }
+  }
+
   const blockers = collectTradeReadinessBlockers({
     checks,
     forexApplies,
@@ -480,6 +492,7 @@ export async function buildTradeReadiness(
             symbol,
             staleThresholdMs,
             maxSpreadPips,
+            lastQuoteGapMs,
           )
         : null,
     openCount,

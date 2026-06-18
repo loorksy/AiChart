@@ -7,9 +7,11 @@ import {
   isQuoteFresh,
   type FreshnessSource,
 } from "./bridge/freshness";
+import { bridgeRedisKey, getBridgeKvStore } from "./bridge/store";
 import { spreadFromBidAsk } from "./spread";
+import { recordEaQuoteTickGap } from "./eaQuoteMetrics";
 
-/** In-memory live quote cache pushed by EA v3 (single VPS process). */
+/** Live quote cache pushed by EA v3 — memory L1, Redis L2 when REDIS_URL is set. */
 
 export interface EaLiveQuote {
   symbol: string;
@@ -46,8 +48,83 @@ export interface EaLiveEvent {
 const quotesByUser = new Map<number, Map<string, EaLiveQuote>>();
 const eventsByUser = new Map<number, EaLiveEvent[]>();
 const MAX_EVENTS = 50;
+const EA_QUOTES_REDIS_TTL_MS = 120_000;
 
-export function updateEaLiveQuotes(
+function quotesRedisKey(userId: number): string {
+  return bridgeRedisKey("cache", ["ea-quotes", String(userId)]);
+}
+
+function getOrCreateUserMap(userId: number): Map<string, EaLiveQuote> {
+  let map = quotesByUser.get(userId);
+  if (!map) {
+    map = new Map();
+    quotesByUser.set(userId, map);
+  }
+  return map;
+}
+
+function serializeUserQuotes(map: Map<string, EaLiveQuote>): string {
+  const out: Record<string, EaLiveQuote> = {};
+  for (const [key, q] of map) {
+    out[key] = q;
+  }
+  return JSON.stringify(out);
+}
+
+function parseStoredQuotes(raw: string): Map<string, EaLiveQuote> | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, EaLiveQuote>;
+    if (!parsed || typeof parsed !== "object") return null;
+    const map = new Map<string, EaLiveQuote>();
+    for (const [key, q] of Object.entries(parsed)) {
+      if (!q || typeof q !== "object") continue;
+      map.set(key.toUpperCase(), {
+        symbol: String(q.symbol ?? key),
+        bid: Number(q.bid) || 0,
+        ask: Number(q.ask) || 0,
+        tickTime: q.tickTime,
+        updatedAt: Number(q.updatedAt) || Date.now(),
+      });
+    }
+    return map;
+  } catch {
+    return null;
+  }
+}
+
+async function persistQuotesToRedis(
+  userId: number,
+  map: Map<string, EaLiveQuote>,
+): Promise<void> {
+  if (map.size === 0) return;
+  const store = getBridgeKvStore();
+  await store.set(
+    quotesRedisKey(userId),
+    serializeUserQuotes(map),
+    EA_QUOTES_REDIS_TTL_MS,
+  );
+}
+
+async function hydrateQuotesFromRedis(userId: number): Promise<void> {
+  const local = quotesByUser.get(userId);
+  if (local && local.size > 0) return;
+
+  const store = getBridgeKvStore();
+  const raw = await store.get(quotesRedisKey(userId));
+  if (!raw) return;
+
+  const parsed = parseStoredQuotes(raw);
+  if (!parsed || parsed.size === 0) return;
+
+  const map = getOrCreateUserMap(userId);
+  for (const [key, q] of parsed) {
+    if (!map.has(key)) {
+      map.set(key, q);
+    }
+  }
+}
+
+export async function updateEaLiveQuotes(
   userId: number,
   quotes: Array<{
     symbol: string;
@@ -55,17 +132,16 @@ export function updateEaLiveQuotes(
     ask: number;
     tick_time?: number;
   }>,
-): void {
-  let map = quotesByUser.get(userId);
-  if (!map) {
-    map = new Map();
-    quotesByUser.set(userId, map);
-  }
+): Promise<void> {
+  const map = getOrCreateUserMap(userId);
   const now = Date.now();
   for (const q of quotes) {
     const sym = q.symbol?.trim();
     if (!sym) continue;
-    map.set(sym.toUpperCase(), {
+    const key = sym.toUpperCase();
+    const prev = map.get(key);
+    recordEaQuoteTickGap(userId, sym, prev?.updatedAt, now);
+    map.set(key, {
       symbol: sym,
       bid: Number(q.bid) || 0,
       ask: Number(q.ask) || 0,
@@ -73,12 +149,14 @@ export function updateEaLiveQuotes(
       updatedAt: now,
     });
   }
+  await persistQuotesToRedis(userId, map);
 }
 
-export function getEaLiveQuote(
+export async function getEaLiveQuote(
   userId: number,
   symbol: string,
-): (EaLiveQuote & { quoteAgeMs: number }) | null {
+): Promise<(EaLiveQuote & { quoteAgeMs: number }) | null> {
+  await hydrateQuotesFromRedis(userId);
   const map = quotesByUser.get(userId);
   if (!map) return null;
   const q = map.get(symbol.toUpperCase());
@@ -86,9 +164,10 @@ export function getEaLiveQuote(
   return { ...q, quoteAgeMs: Date.now() - q.updatedAt };
 }
 
-export function getEaLiveQuotes(
+export async function getEaLiveQuotes(
   userId: number,
-): Record<string, EaLiveQuote & { quoteAgeMs: number }> {
+): Promise<Record<string, EaLiveQuote & { quoteAgeMs: number }>> {
+  await hydrateQuotesFromRedis(userId);
   const map = quotesByUser.get(userId);
   const out: Record<string, EaLiveQuote & { quoteAgeMs: number }> = {};
   if (!map) return out;
@@ -97,6 +176,15 @@ export function getEaLiveQuotes(
     out[key] = { ...q, quoteAgeMs: now - q.updatedAt };
   }
   return out;
+}
+
+/** Test helper — clears in-memory quotes for a user. */
+export function clearEaLiveQuotesForTests(userId?: number): void {
+  if (userId === undefined) {
+    quotesByUser.clear();
+    return;
+  }
+  quotesByUser.delete(userId);
 }
 
 export function pushEaEvent(
@@ -144,7 +232,7 @@ export async function buildEaLiveQuotesSummary(
   userId: number,
 ): Promise<EaLiveQuotesSummary> {
   const thresholdMs = getStaleQuoteThresholdMs();
-  const liveMap = getEaLiveQuotes(userId);
+  const liveMap = await getEaLiveQuotes(userId);
   const conn = await getEaConnection(userId);
   const heartbeatSpecs = parseEaSymbolSpecs(conn?.symbol_specs_json ?? null);
   const hbAgeMs = heartbeatQuoteAgeMs(conn?.last_heartbeat_at ?? null);
@@ -190,13 +278,13 @@ export async function buildEaLiveQuotesSummary(
 }
 
 /** Prefer live push; fall back to heartbeat spec bid/ask. */
-export function resolveLiveForexMid(
+export async function resolveLiveForexMid(
   userId: number,
   symbol: string,
   fallbackBid?: number,
   fallbackAsk?: number,
-): { price: number; quoteAgeMs: number; source: "live" | "heartbeat" } {
-  const live = getEaLiveQuote(userId, symbol);
+): Promise<{ price: number; quoteAgeMs: number; source: "live" | "heartbeat" }> {
+  const live = await getEaLiveQuote(userId, symbol);
   if (live && live.bid > 0 && live.ask > 0) {
     return {
       price: (live.bid + live.ask) / 2,

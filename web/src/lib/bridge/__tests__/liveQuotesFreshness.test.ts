@@ -2,20 +2,22 @@ import assert from "node:assert/strict";
 import { describe, it, mock } from "node:test";
 import {
   buildEaLiveQuotesSummary,
+  clearEaLiveQuotesForTests,
   updateEaLiveQuotes,
 } from "@/lib/eaLiveState";
 
 describe("ea live quotes freshness", () => {
   it("sorts fresh symbols first and exposes spread metadata", async () => {
     const userId = 99_003;
+    clearEaLiveQuotesForTests(userId);
     const t0 = 1_700_000_000_000;
     mock.timers.enable({ apis: ["Date"], now: t0 });
 
-    updateEaLiveQuotes(userId, [
+    await updateEaLiveQuotes(userId, [
       { symbol: "EURUSD", bid: 1.08, ask: 1.0802 },
     ]);
     mock.timers.setTime(t0 + 10_000);
-    updateEaLiveQuotes(userId, [
+    await updateEaLiveQuotes(userId, [
       { symbol: "GBPUSD", bid: 1.26, ask: 1.2603 },
     ]);
 
@@ -37,5 +39,6 @@ describe("ea live quotes freshness", () => {
     assert.ok(stale.spreadPips != null && stale.spreadPips > 0);
 
     mock.timers.reset();
+    clearEaLiveQuotesForTests(userId);
   });
 });

@@ -1,70 +1,48 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 import type { BridgeClient } from "../bridge/client.js";
 import { formatBridgeError } from "../bridge/client.js";
 import { bridgeCall, bridgeWrap } from "./helpers.js";
-import { DESTRUCTIVE, READ_ONLY, withAnnotations } from "./registry.js";
+import { mcpToolConfig } from "./schemas/index.js";
 import {
   chartInlineContent,
   chartTimeoutContent,
+  DRAW_CAPTURE_MAX_MS,
   mt5ChartPollId,
   pollBridgeMt5ChartPng,
+  resolveChartSnapshotResponse,
+  type ChartSnapshotBridgeResult,
 } from "./chartInline.js";
 
 export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "connect_mt5",
-    {
-      description:
-        "ربط MetaTrader (MetaApi/mt5local): platform + server + login + password. لا يعمل مع FOREX_BACKEND=ea.",
-      inputSchema: {
-        platform: z.enum(["mt4", "mt5"]),
-        server: z.string().min(2),
-        login: z.string().min(1),
-        password: z.string().min(1),
-      },
-    },
+    mcpToolConfig("connect_mt5"),
     async (body) =>
       bridgeCall(() => bridge.post("/api/agent/mt/connect", body)),
   );
 
   server.registerTool(
     "disconnect_mt5",
-    {
-      description: "فصل حساب MetaTrader (MetaApi/mt5local).",
-      inputSchema: {},
-    },
+    mcpToolConfig("disconnect_mt5"),
     bridgeWrap(bridge, () => bridge.delete("/api/agent/mt/connect")),
   );
 
   server.registerTool(
     "get_mt5_status",
-    {
-      description: "حالة اتصال MetaApi/mt5local: online، balance، server.",
-      inputSchema: {},
-    },
+    mcpToolConfig("get_mt5_status"),
     bridgeWrap(bridge, () => bridge.get("/api/agent/mt/status")),
   );
 
   server.registerTool(
     "get_live_account",
-    {
-      description:
-        "بث مباشر موحّد: MT5 quotes + مراكز + Binance futures + quoteAgeMs. استدعِه قبل أي صفقة أو تحليل.",
-      inputSchema: {},
-    },
+    mcpToolConfig("get_live_account"),
     bridgeWrap(bridge, () => bridge.get("/api/agent/live/account")),
   );
 
   server.registerTool(
     "get_ea_diagnostics",
-    {
-      description: "تشخيص EA: رموز heartbeat، quotesOk، spread، retcode legend.",
-      inputSchema: {
-        symbol: z.string().optional(),
-      },
-    },
-    async ({ symbol }) =>
+    mcpToolConfig("get_ea_diagnostics"),
+    async ({ symbol }: { symbol?: string }) =>
       bridgeCall(() =>
         bridge.get("/api/agent/ea/diagnostics", symbol ? { symbol } : {}),
       ),
@@ -72,15 +50,8 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
 
   server.registerTool(
     "get_ea_live_quotes",
-    {
-      description:
-        "أسعار MT5 live من EA مع quoteAgeMs و spreadPips و isFresh و source (live|stale|heartbeat). يعيد freshCount و freshSymbols[] — رتّب fresh أولاً. read-only.",
-      inputSchema: {
-        symbol: z.string().optional(),
-      },
-      ...withAnnotations(READ_ONLY),
-    },
-    async ({ symbol }) =>
+    mcpToolConfig("get_ea_live_quotes"),
+    async ({ symbol }: { symbol?: string }) =>
       bridgeCall(() =>
         bridge.get("/api/agent/ea/live-quotes", symbol ? { symbol } : {}),
       ),
@@ -88,21 +59,40 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
 
   server.registerTool(
     "capture_mt5_chart",
-    {
-      description:
-        "رسم على شارت MT5 + screenshot (draw_and_capture). يتطلب EA v3. يعيد صورة PNG inline (base64) + chartUrl.",
-      inputSchema: {
-        symbol: z.string(),
-        interval: z.string().optional(),
-        recommendation_id: z.number().int().positive().optional(),
-        capture_key: z.string().optional(),
-        entry: z.number().optional(),
-        stop_loss: z.number().optional(),
-        take_profit: z.number().optional(),
-        drawings: z.array(z.record(z.string(), z.unknown())).optional(),
-      },
-    },
+    mcpToolConfig("capture_mt5_chart"),
     async (body) => {
+      const input = body as {
+        symbol: string;
+        interval?: string;
+        recommendation_id?: number;
+        capture_key?: string;
+        entry?: number;
+        stop_loss?: number;
+        take_profit?: number;
+        drawings?: Record<string, unknown>[];
+      };
+
+      const hasAnnotations =
+        input.entry != null ||
+        input.stop_loss != null ||
+        input.take_profit != null ||
+        (Array.isArray(input.drawings) && input.drawings.length > 0) ||
+        input.recommendation_id != null;
+
+      if (!hasAnnotations) {
+        try {
+          const snapRes = (await bridge.post("/api/agent/chart/snapshot", {
+            symbol: input.symbol,
+            interval: input.interval ?? "1h",
+            market: "forex",
+            response_format: "json",
+          })) as ChartSnapshotBridgeResult;
+          return resolveChartSnapshotResponse(bridge, snapRes);
+        } catch (e) {
+          return formatBridgeError(e);
+        }
+      }
+
       try {
         const queued = (await bridge.post(
           "/api/agent/ea/chart-capture",
@@ -124,8 +114,8 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
 
         const chartId = mt5ChartPollId(
           queued.chartUrl,
-          queued.captureKey ?? body.capture_key,
-          body.recommendation_id,
+          queued.captureKey ?? input.capture_key,
+          input.recommendation_id,
         );
         if (!chartId) {
           return {
@@ -146,7 +136,10 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
           };
         }
 
-        const polled = await pollBridgeMt5ChartPng(bridge, chartId);
+        const polled = await pollBridgeMt5ChartPng(bridge, chartId, {
+          maxMs: DRAW_CAPTURE_MAX_MS,
+          intervalMs: 500,
+        });
         if ("timeout" in polled) {
           return chartTimeoutContent(
             { chartUrl: queued.chartUrl, captureKey: chartId },
@@ -172,80 +165,41 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
 
   server.registerTool(
     "modify_sl_tp",
-    {
-      description: "تعديل وقف خسارة/جني ربح على مركز MT5 مفتوح (EA).",
-      inputSchema: {
-        ticket: z.number().int().positive(),
-        stop_loss: z.number().positive(),
-        take_profit: z.number().positive().optional(),
-      },
-    },
+    mcpToolConfig("modify_sl_tp"),
     async (body) =>
       bridgeCall(() => bridge.post("/api/agent/ea/modify-sl-tp", body)),
   );
 
   server.registerTool(
     "open_pending_order",
-    {
-      description: "أمر معلّق MT5: limit | stop | stop_limit (EA v3).",
-      inputSchema: {
-        symbol: z.string(),
-        side: z.enum(["buy", "sell"]),
-        order_type: z.enum(["limit", "stop", "stop_limit"]),
-        lots: z.number().positive(),
-        price: z.number().positive(),
-        stop_loss: z.number().positive().optional(),
-        take_profit: z.number().positive().optional(),
-      },
-    },
+    mcpToolConfig("open_pending_order"),
     async (body) =>
       bridgeCall(() => bridge.post("/api/agent/ea/pending-order", body)),
   );
 
   server.registerTool(
     "cancel_mt5_order",
-    {
-      description: "إلغاء أمر معلّق MT5 بالتذكرة (EA).",
-      inputSchema: {
-        ticket: z.number().int().positive(),
-      },
-    },
+    mcpToolConfig("cancel_mt5_order"),
     async (body) =>
       bridgeCall(() => bridge.post("/api/agent/ea/cancel-order", body)),
   );
 
   server.registerTool(
     "close_partial",
-    {
-      description: "إغلاق جزئي لمركز MT5 (EA).",
-      inputSchema: {
-        ticket: z.number().int().positive(),
-        lots: z.number().positive(),
-      },
-    },
+    mcpToolConfig("close_partial"),
     async (body) =>
       bridgeCall(() => bridge.post("/api/agent/ea/close-partial", body)),
   );
 
   server.registerTool(
     "query_mt5_terminal",
-    {
-      description: "لقطة MT5: margin، أوامر معلّقة، equity (EA).",
-      inputSchema: {},
-    },
+    mcpToolConfig("query_mt5_terminal"),
     bridgeWrap(bridge, () => bridge.get("/api/agent/ea/query-terminal")),
   );
 
   server.registerTool(
     "request_ea_reconnect",
-    {
-      description:
-        "يطلب إعادة اتصال EA عند heartbeat التالي (~30ث). متى: quotes قديمة أو EA متقطع — لا تكرّر أكثر من مرة/دقيقة. resync_candles لإعادة مزامنة الشموع. side-effect: يضبط flags في DB.",
-      inputSchema: {
-        resync_candles: z.boolean().optional(),
-      },
-      ...withAnnotations(DESTRUCTIVE),
-    },
+    mcpToolConfig("request_ea_reconnect"),
     async (body) =>
       bridgeCall(() => bridge.post("/api/agent/ea/reconnect", body)),
   );
