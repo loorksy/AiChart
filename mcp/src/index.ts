@@ -13,6 +13,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { BridgeClient } from "./bridge/client.js";
 import { AiChartOAuthProvider } from "./auth/provider.js";
+import { ensureMcpAuthTables } from "./auth/db.js";
 import { mountLoginRoutes } from "./auth/login.js";
 import { loadConfig } from "./config.js";
 import { createAiChartMcpServer } from "./server/mcpServer.js";
@@ -227,6 +228,13 @@ app.listen(cfg.port, () => {
   console.log(
     `[aichart-mcp] listening on :${cfg.port} auth=${cfg.authMode} public=${mcpServerUrl.href}`,
   );
+  if (cfg.authMode === "oauth") {
+    ensureMcpAuthTables()
+      .then(() => console.log("[aichart-mcp] OAuth tables ready (Postgres)."))
+      .catch((e) =>
+        console.error("[aichart-mcp] ensureMcpAuthTables failed:", e),
+      );
+  }
 });
 
 process.on("SIGINT", async () => {

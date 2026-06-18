@@ -7,8 +7,7 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { InvalidRequestError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type { AppConfig } from "../config.js";
-import { SqliteClientsStore } from "./clientStore.js";
-import { getMcpDb, resolveDbPath } from "./db.js";
+import { PgClientsStore } from "./clientStore.js";
 import { mintAccessToken, verifyAccessTokenJwt } from "./jwt.js";
 import { RefreshTokenStore } from "./refreshStore.js";
 import {
@@ -33,7 +32,7 @@ interface PendingAuth {
 }
 
 export class AiChartOAuthProvider implements OAuthServerProvider {
-  readonly clientsStore: SqliteClientsStore;
+  readonly clientsStore: PgClientsStore;
   private readonly refreshStore: RefreshTokenStore;
   private codes = new Map<
     string,
@@ -47,10 +46,8 @@ export class AiChartOAuthProvider implements OAuthServerProvider {
   readonly pending = new Map<string, PendingAuth>();
 
   constructor(private readonly cfg: AppConfig) {
-    const dbPath = resolveDbPath(cfg.dbPath);
-    const db = getMcpDb(dbPath);
-    this.clientsStore = new SqliteClientsStore(db);
-    this.refreshStore = new RefreshTokenStore(db, cfg.refreshTokenTtlDays);
+    this.clientsStore = new PgClientsStore();
+    this.refreshStore = new RefreshTokenStore(cfg.refreshTokenTtlDays);
   }
 
   private async issueTokenPair(
@@ -74,7 +71,7 @@ export class AiChartOAuthProvider implements OAuthServerProvider {
       },
       ttlDays,
     );
-    const refresh = this.refreshStore.issue(clientId, email, scopes);
+    const refresh = await this.refreshStore.issue(clientId, email, scopes);
     return {
       access_token: token,
       token_type: "Bearer",
@@ -298,7 +295,7 @@ export class AiChartOAuthProvider implements OAuthServerProvider {
     scopes?: string[],
     resource?: URL,
   ): Promise<OAuthTokens> {
-    const record = this.refreshStore.consume(refreshToken);
+    const record = await this.refreshStore.consume(refreshToken);
     if (!record) throw new Error("Invalid or expired refresh token");
     if (record.clientId !== client.client_id) {
       throw new Error("Refresh token was not issued to this client");
