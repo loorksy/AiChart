@@ -19,16 +19,16 @@ describe("confidenceGateCheck", () => {
       { resolvedEnv: "live" },
     );
     assert.equal(gate.passes, true);
-    assert.equal(gate.minConfidence, 80);
+    assert.equal(gate.minConfidence, 0);
   });
 
-  it("fails when confidence below min on live", () => {
+  it("passes when confidence is below 80 on live since gate is eliminated", () => {
     const gate = confidenceGateCheck(
       { min_confidence: 80 } as TradingSettings,
       { resolvedEnv: "live" },
       75,
     );
-    assert.equal(gate.passes, false);
+    assert.equal(gate.passes, true);
   });
 });
 
@@ -45,7 +45,7 @@ describe("isForexSessionOpen", () => {
 });
 
 describe("collectTradeReadinessBlockers", () => {
-  it("blocks low confidence when supplied", () => {
+  it("does not block low confidence when supplied", () => {
     const confidenceGate = confidenceGateCheck(
       baseSettings as TradingSettings,
       { resolvedEnv: "live" },
@@ -88,10 +88,10 @@ describe("collectTradeReadinessBlockers", () => {
       monthlyLossLimitPct: 15,
     });
 
-    assert.ok(
+    assert.equal(
       blockers.some((b) => b.code === BridgeErrorCode.LOW_CONFIDENCE),
+      false,
     );
-    assert.match(blockers[0]!.message_ar, /75%/);
   });
 
   it("adds stale quote blocker for forex", () => {

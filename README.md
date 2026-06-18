@@ -27,7 +27,7 @@
 cd web
 npm install
 cp .env.example .env   # ثم املأ القيم
-npm run dev            # http://localhost:3000
+npm run dev            # http://localhost:3010
 ```
 
 ### متغيرات البيئة المطلوبة

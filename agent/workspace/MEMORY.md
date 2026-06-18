@@ -1,16 +1,22 @@
-# MEMORY.md — الذاكرة الدائمة
+# MEMORY.md — Persistent Agent Memory
 
-<!-- يكتب الوكيل هنا الحقائق الدائمة فقط. اليوميات في memory/ -->
+<!-- The Agent records long-term facts and structural lessons here. Chat history resides in the database. -->
 
-## عن المشغّل
+---
 
-(يُملأ تلقائياً مع الوقت)
+## 1. Operator Profile & Behavioral Insights
 
-## دروس مستفادة من السوق
+*(To be populated dynamically by the Agent over time)*
 
-(يُملأ تلقائياً — أنماط نجحت/فشلت، أخطاء لا تُكرر)
+---
 
-## أطروحات الصفقات المفتوحة
+## 2. Market Lessons Learned (Confluences & Anti-Patterns)
 
-<!-- لكل صفقة مفتوحة: الرمز، سبب الدخول، شرط الإلغاء، الهدف/الوقف -->
-(لا صفقات مسجلة بعد)
+*(To be populated dynamically by the Agent — successful setup confluences, recurring execution errors, and adjustments)*
+
+---
+
+## 3. Active Trade Theses
+
+<!-- For each open trade: Symbol, entry setup code, invalidation trigger, targets, and exit plan -->
+*(No active trade theses registered)*

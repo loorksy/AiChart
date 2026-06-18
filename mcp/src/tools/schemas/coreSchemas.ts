@@ -33,11 +33,11 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_readiness",
     domain: "core",
     description:
-      "متى: قبل open_trade فوركس أو quoteAgeMs>5000. confidence اختياري لبوابة ≥80%. لا تنفّذ إذا ready=false. read-only. مثال: symbol=EURUSD&confidence=85&market=forex.",
+      "متى: قبل open_trade فوركس أو quoteAgeMs>5000. لا تنفّذ إذا ready=false. read-only. مثال: symbol=EURUSD&confidence=85&market=forex.",
     inputSchema: {
       symbol: z.string().optional().describe("رمز الزوج — لفحص quote/spread"),
       market: zMarket,
-      confidence: zOptionalConfidence.describe("ثقة مقترحة — يُقارَن بـ min_confidence"),
+      confidence: zOptionalConfidence.describe("ثقة مقترحة — تقديرية وإرشادية للوكيل"),
       practice: z.boolean().optional(),
     },
     annotations: READ_ONLY,
@@ -103,7 +103,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_trade",
     domain: "core",
     description:
-      "متى: بعد موافقة صريحة + notional. يرفض confidence<80 و quote قديم. idempotencyKey اختياري. side-effect: ينفّذ عبر Risk Guard. مثال: notional=50&approved_by_user=true.",
+      "متى: بعد موافقة صريحة + notional. يرفض إذا كان الـ quote قديماً. يتم تقييم القرار بناءً على التحليل الفني والأساسي للوكيل. idempotencyKey اختياري. side-effect: ينفّذ عبر Risk Guard. مثال: notional=50&approved_by_user=true.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,

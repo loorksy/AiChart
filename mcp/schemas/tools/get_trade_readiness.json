@@ -14,7 +14,7 @@
       ]
     },
     "confidence": {
-      "description": "ثقة مقترحة — يُقارَن بـ min_confidence",
+      "description": "ثقة مقترحة — تقديرية وإرشادية للوكيل",
       "type": "number",
       "minimum": 0,
       "maximum": 100

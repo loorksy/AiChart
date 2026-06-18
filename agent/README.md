@@ -1,41 +1,56 @@
-# AiChart Agent — Claude MCP
+# AiChart Agent — Claude MCP Bridge
 
-التداول والتحليل عبر **Claude.ai Connectors** + MCP Server في [`mcp/`](../mcp/README.md).
+Trading and technical analysis execution using **Claude.ai Connectors** and the MCP Server implemented in [`mcp/`](../mcp/README.md).
 
-## البنية
+---
+
+## 1. System Architecture
 
 ```
-أنت ←→ Claude (Connectors)
-         ↓ MCP
-    aichart-mcp → /api/agent/* → Risk Guard → Binance / MT5
+User ←→ Claude (Connectors Interface)
+          ↓ (Model Context Protocol)
+     aichart-mcp → /api/agent/* → Risk Guard → Binance / MT5 (Exness)
 ```
 
-- **قواعد الوكيل:** [`workspace/AGENTS.md`](workspace/AGENTS.md) (يُقرأ كـ resource `aichart://trading-rules`)
-- **مهارة Bridge:** [`workspace/skills/aichart-trading/SKILL.md`](workspace/skills/aichart-trading/SKILL.md)
-- **دليل الربط:** [`docs/MCP_CLAUDE_SETUP.md`](../docs/MCP_CLAUDE_SETUP.md)
+*   **Agent Rules**: [`workspace/AGENTS.md`](workspace/AGENTS.md) (served as resource `aichart://trading-rules`).
+*   **Trading Lexicon**: [`workspace/skills/trading-lexicon/SKILL.md`](workspace/skills/trading-lexicon/SKILL.md) (served as resource `aichart://trading-lexicon`).
+*   **Trading Strategies Matrix**: [`workspace/skills/trading-strategies/SKILL.md`](workspace/skills/trading-strategies/SKILL.md) (served as resource `aichart://trading-strategies`).
+*   **Connector Setup Guide**: [`docs/MCP_CLAUDE_SETUP.md`](../docs/MCP_CLAUDE_SETUP.md).
 
-## متغيرات أساسية (`web/.env`)
+---
 
-| المتغير | الغرض |
-|---------|--------|
-| `AICHART_SERVICE_TOKEN` | جسر `/api/agent/*` (MCP يستخدمه) |
-| `MCP_AUTH_SECRET` | OAuth MCP + web |
-| `MCP_PUBLIC_URL` | عنوان Claude Connector |
+## 2. Core Environment Variables (`web/.env` & `mcp/.env`)
 
-## Telegram
+| Variable | Purpose |
+|----------|---------|
+| `AICHART_SERVICE_TOKEN` | Auth token securing `/api/agent/*` calls made by the MCP server. |
+| `MCP_AUTH_SECRET` | OAuth signature key shared between the web application and MCP processes. |
+| `MCP_PUBLIC_URL` | Public endpoint domain representing the Claude Connector. |
 
-المنصة ترسل **إشعارات outbound** فقط (تنفيذ، موافقات، ملخص). المحادثة التداولية في **Claude MCP** (بعد موافقة الأدmin).
+---
 
-## المستخدمون
+## 3. Telegram Notifications & Alerts
 
-- `AICHART_SINGLE_USER=0` — تسجيل مفتوح؛ الأدmin يوافق من `/console/platform?tab=users`.
-- صلاحية افتراضية **30 يوم** (قابلة للتعديل عند الموافقة أو التجديد).
+The platform sends outbound notifications (fills, closures, admin approvals, daily summaries). Interactive trading sessions are held inside the Claude MCP interface.
 
-## VPS
+---
 
+## 4. User Registration & Approvals
+
+*   When `AICHART_SINGLE_USER=0` (multi-user mode), newly registered users default to `pending` status. Access to the console and MCP endpoints remains blocked until approved by the administrator via `/console/platform?tab=users`.
+*   Default authorization duration is **30 days** (renewable upon approval).
+
+---
+
+## 5. VPS Deployment & Commands
+
+To deploy modifications onto a VPS:
 ```bash
+# Execute deployment script
 bash infra/vps-mcp-deploy.sh
+
+# Restart PM2 processes
 pm2 restart aichart-web aichart-mcp
 ```
 
-Cron يبقي صيانة OCO فقط — لا استيقاظ وكيل تلقائي (`AGENT_WAKE_ENABLED` معطّل افتراضياً).
+*   OCO tracking is kept alive via server cron triggers. The agent wake loop (`AGENT_WAKE_ENABLED`) is disabled by default.

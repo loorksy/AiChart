@@ -57,7 +57,7 @@ const openCtx = {
 };
 
 describe("riskGuard confidence gate", () => {
-  it("rejects confidence 79 when min_confidence=80 on live", () => {
+  it("allows confidence 79 when min_confidence=80 on live (confidence gate eliminated)", () => {
     const decision = evaluateTrade(
       baseSettings(),
       limits,
@@ -69,13 +69,7 @@ describe("riskGuard confidence gate", () => {
       },
       openCtx,
     );
-    assert.equal(decision.ok, false);
-    assert.equal(decision.denyCode, BridgeErrorCode.LOW_CONFIDENCE);
-    assert.deepEqual(decision.denyDetails, {
-      confidence: 79,
-      minConfidence: 80,
-    });
-    assert.match(decision.reason, /79%/);
+    assert.equal(decision.ok, true);
   });
 
   it("allows confidence 80 when min_confidence=80 on live", () => {

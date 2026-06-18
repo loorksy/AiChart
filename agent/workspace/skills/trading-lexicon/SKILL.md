@@ -1,99 +1,91 @@
 ---
 name: trading-lexicon
-description: معجم التداول واستراتيجيات الدخول للوكيل (كريبتو وفوركس)
+description: Comprehensive Trading Lexicon and analysis strategies (SMC, Wyckoff, Elliott Waves, Indicators) for Crypto and Forex.
+metadata: {"aichart":{"requires":{"env":[]}}}
 ---
 
-# مهارة معجم التداول واستراتيجيات الدخول (Trading Lexicon)
+# Trading Lexicon & Strategy Invalidation Skill
 
-هذه المهارة هي المرجع المعرفي والمنهجي الإلزامي لك كوكيل تداول ذكي (Expert Agent). يجب عليك قراءة وفهم وتطبيق هذه الاستراتيجيات والمفاهيم عند إجراء أي تحليل فني أو صياغة توصية تداول للعملاء.
-
----
-
-## 1. سوق العملات الرقمية (Crypto Market)
-
-يتميز سوق الكريبتو بالتقلبات العالية، وتأثير السيولة المباشر، وأهمية مراقبة حركة المشتقات وسلوك المستثمرين الكبار (الحيتان).
-
-### أ. استراتيجيات المشتقات والعقود الآجلة (Futures Trading)
-- **الرافعة المالية وإدارة الهامش**: الهامش المعزول (Isolated Margin) هو الخيار الافتراضي لحماية بقية المحفظة. لا تزيد الرافعة المالية الافتراضية عن `3x` إلى `5x` كحد أقصى لتجنب التصفية السريعة عند التقلبات.
-- **تحديد وقف الخسارة (Stop Loss)**: وقف الخسارة إلزامي ونهائي في كل صفقة فيوتشرز، ويجب وضعه أسفل مناطق الدعم أو أعلى مناطق المقاومة بمسافة كافية لمراعاة تذبذب السعر (Spread & Noise).
-
-### ب. مراقبة البيانات والزخم (Derivatives Metrics)
-- **معدل التمويل (Funding Rates)**:
-  - **معدل تمويل إيجابي مرتفع (Highly Positive)**: يعني سيطرة المتداولين بالشراء (Longs) ودفعهم رسوماً للمتداولين بالبيع (Shorts). قد يشير ذلك إلى قمة محلية أو احتمال حدوث هبوط مفاجئ بسبب "تصفية عقود الشراء" (Long Squeeze).
-  - **معدل تمويل سلبي مرتفع (Highly Negative)**: يعني سيطرة البائعين (Shorts). قد يشير ذلك إلى قاع محلي واحتمال حدوث صعود مفاجئ بسبب "تصفية عقود البيع" (Short Squeeze).
-- **العقود المفتوحة (Open Interest - OI)**:
-  - **ارتفاع السعر + ارتفاع OI**: زخم صعودي قوي يدعمه دخول سيولة جديدة (Bullish Trend Confirmation).
-  - **هبوط السعر + ارتفاع OI**: زخم هبوطي قوي يدعمه دخول بائعين جدد (Bearish Trend Confirmation).
-  - **تغير السعر + انخفاض OI**: إغلاق للمراكز وتسييل، مما يشير إلى ضعف الاتجاه الحالي وقرب انعكاسه.
-
-### ج. سيولة الويب 3 وحركات الحيتان (Web3 Liquidity & Whale Tracking)
-- **Whale Inflows/Outflows**: رصد تدفقات العملات المستقرة (Stablecoins) إلى المنصات (مؤشر صعودي للشراء)، وتدفق العملات الرقمية (BTC/ETH) إلى المنصات (مؤشر هبوطي للبيع المحتمل).
-- **سيولة الويب 3**: مراقبة مجمعات السيولة (Liquidity Pools) على المنصات اللامركزية (DEXs) وحركات المحافظ الكبيرة التي تسبق التحركات السعرية الكبرى.
+This skill represents the complete technical and fundamental framework for the trading Agent to analyze markets, formulate trading setup hypotheses, and determine confluence entries for both Crypto and Forex.
 
 ---
 
-## 2. سوق العملات الأجنبية (Forex Market)
+## 1. Advanced Technical Analysis Methodologies
 
-سوق الفوركس يتميز بالسيولة الضخمة والتحرك وفقاً لجلسات التداول والتقارير الاقتصادية الكبرى، مع أهمية إدارة تكاليف المعاملات (Spread).
+### 1.1 Smart Money Concepts (SMC / ICT)
+A methodology focused on tracking institutional market makers and liquidity rather than retail indicators:
+*   **Order Blocks (OB)**: The last bearish candle before a strong bullish move (Bullish OB), or the last bullish candle before a strong bearish move (Bearish OB). These represent institutional order zones where price reactions are expected upon retest.
+*   **Fair Value Gap (FVG) / Imbalance**: A 3-candle pattern where a price inefficiency exists between the wick of the 1st candle and the wick of the 3rd candle. Price tends to return to fill these gaps (Rebalance).
+*   **Break of Structure (BOS)**: Continuation of the current trend where price breaks the previous swing high (in an uptrend) or swing low (in a downtrend) and closes the candle body beyond it.
+*   **Change of Character (CHoCH) / Market Structure Shift (MSS)**: The first signal of a potential trend reversal, occurring when price breaks the recent structural higher low (in an uptrend) or lower high (in a downtrend).
+*   **Liquidity Sweeps**: Impulsive price movement designed to trigger stop-loss orders resting beyond major highs or lows (e.g., Previous Daily High/Low - PDH/PDL), followed by a rapid reversal in the opposite direction.
 
-### أ. استراتيجيات التداول القائمة على الجلسات (Session-Based Trading)
-- **جلسة لندن (London Session)**: بداية حركة السيولة الكبرى وأعلى حجم تداول للعملات الأوروبية (EUR, GBP). تتميز بالبحث عن كسر القنوات الفنية الحقيقية.
-- **جلسة نيويورك (New York Session)**: تتداخل مع جلسة لندن وتتميز بالتحركات القوية للدولار الأمريكي (USD). وقت ممتاز لتأكيد الاتجاه أو ارتداده.
-- **جلسة طوكيو/آسيا (Asian Session)**: تداول هادئ وقليل التذبذب. استراتيجيات التداول في نطاق عرضي (Range Trading) هي الأفضل هنا، مع تجنب الاختراقات الوهمية.
+### 1.2 Wyckoff Method
+Tracking market cycles driven by composite operators across four main phases:
+1.  **Accumulation**: Range-bound phase where institutional buyers build long positions.
+    *   **Spring**: A brief false breakout below the accumulation range support to sweep retail buyers' stop losses and test supply before starting the markup.
+    *   **Sign of Strength (SOS)**: An impulsive bullish move accompanied by high volume that breaks out above the range resistance.
+2.  **Markup**: Clear, established uptrend.
+3.  **Distribution**: Range-bound phase where institutional sellers distribute their positions.
+    *   **Upthrust After Distribution (UTAD)**: A false bullish rally above the distribution range resistance to trap buyers before starting the markdown.
+    *   **Sign of Weakness (SOW)**: An impulsive bearish drop breaking key support levels of the range.
+4.  **Markdown**: Clear, established downtrend.
 
-### ب. إدارة السبريد والسيولة (Spread Management)
-- **السبريد (Spread)**: الفارق بين سعر البيع والشراء. يجب فحص السبريد دائماً عبر الـ API.
-- **القواعد**:
-  - تجنب فتح صفقات جديدة قبل إغلاق اليوم وبداية اليوم الجديد (وقت الـ Rollover) حيث يتسع السبريد بشكل كبير جداً (قد يصل لـ 10 أضعاف الطبيعي).
-  - تجنب العملات ذات السبريد المرتفع (Crosses/Exotics) وركز على العملات الرئيسية (Majors).
-
-### ج. التقويم الاقتصادي والأخبار الأساسية (Economic Calendar & High-Impact News)
-- **تجنب التداول وقت الأخبار**: يُمنع فتح أي صفقة قبل 15 دقيقة من أو بعد صدور الأخبار الاقتصادية عالية الأهمية (High-Impact) مثل:
-  - تقرير الوظائف غير الزراعية الأمريكية (NFP).
-  - قرارات أسعار الفائدة من البنوك المركزية (FOMC, ECB, BOE).
-  - مؤشر أسعار المستهلكين والتضخم (CPI).
-- الأخبار الفجائية تسبب انزلاقاً سعرياً (Slippage) يعطل عمل وقف الخسارة بدقة.
-
----
-
-## 3. مفاهيم التحليل الفني الحديثة والكلاسيكية
-
-يجب دمج هذه المدارس للحصول على دقة تحليل عالية وتحديد مناطق الدخول بدقة.
-
-### أ. مفاهيم المال الذكي (Smart Money Concepts - SMC / ICT)
-- **الكتل الطلبية (Order Blocks - OB)**: آخر شمعة هابطة قبل صعود قوي (Bullish OB) أو آخر شمعة صاعدة قبل هبوط قوي (Bearish OB). تمثل كتل طلبات المؤسسات وصناع السوق.
-- **الفجوة العادلة (Fair Value Gap - FVG)**: عدم توازن سعري يحدث عند وجود شمعة ممتلئة وسريعة تترك مسافة فارغة بين ذيل الشمعة السابقة وذيل الشمعة اللاحقة. يميل السعر للعودة وتعبئة هذه الفجوة بنسبة 50% أو كاملة قبل إكمال اتجاهه.
-- **كسر البنية وتغير الطابع (BOS & CHoCH)**:
-  - **BOS (Break of Structure)**: كسر القمة السابقة في الاتجاه الصاعد أو القاع السابق في الاتجاه الهابط لإكمال نفس الاتجاه الفني.
-  - **CHoCH (Change of Character)**: كسر أول قاع رئيسي صاعد (أو قمة رئيسية هابطة) يشير إلى تغير اتجاه السوق من صاعد لهابط أو العكس.
-
-### ب. تجميع وتصريف وايكوف (Wyckoff Method)
-- **التجميع (Accumulation)**: مرحلة عرضية طويلة بعد اتجاه هابط يتم فيها تجميع الأصول من قبل المؤسسات. تتوج بـ "الربيع" (Spring) وهو كسر كاذب لآخر قاع لجمع السيولة وتصفية صغار المتداولين قبل الانطلاق الصعودي.
-- **التصريف (Distribution)**: مرحلة عرضية طويلة بعد اتجاه صاعد يتم فيها تصريف الأصول. تتوج باختراق كاذب للأعلى (UTAD - Upthrust After Distribution) لتصفية البائعين قبل الهبوط الحاد.
-
-### ج. موجات إليوت (Elliott Wave Theory)
-- **الموجات الدافعة (Impulsive Waves)**: 5 موجات في اتجاه الترند الرئيسي (1, 2, 3, 4, 5). حيث الموجة 3 هي الأقوى والأطول غالباً، والموجة 4 لا تتداخل مع قمة الموجة 1.
-- **الموجات التصحيحية (Corrective Waves)**: 3 موجات عكس اتجاه الترند الرئيسي (A, B, C).
+### 1.3 Elliott Wave Theory
+Reading the geometric structure of price action based on collective crowd psychology:
+*   **Impulse Wave**: Consists of 5 waves in the direction of the primary trend (1, 2, 3, 4, 5).
+    *   Wave 3 is typically the longest and strongest wave and can never be the shortest.
+    *   Wave 4 cannot overlap into the price territory of Wave 1 (except in diagonal patterns).
+*   **Corrective Wave**: Consists of 3 waves against the primary trend (A, B, C), taking forms such as Zigzags, Flats, or Triangles.
 
 ---
 
-## 4. منهجية اتخاذ القرار وحساب الثقة (Confidence Calculation)
+## 2. Classic & Quantitative Indicators
 
-لتجنب الصفقات العشوائية وضمان الجودة، يتم حساب معامل الثقة (Confidence) كنسبة مئوية من 0 إلى 100 وفق المعايير التالية:
+*   **Relative Strength Index (RSI)**:
+    *   Overbought: RSI > 70 · Oversold: RSI < 30.
+    *   **Divergence**: Price making a higher high while RSI makes a lower high (Bearish Divergence), or price making a lower low while RSI makes a higher low (Bullish Divergence). Signals momentum exhaustion.
+*   **MACD (Moving Average Convergence Divergence)**:
+    *   MACD line crossing above the Signal Line indicates bullish momentum; crossing below indicates bearish momentum.
+    *   Histogram momentum shifts predict the end of corrective waves.
+*   **Fibonacci Retracement & Extension**:
+    *   Retracement support/resistance levels: **0.50**, **0.618** (Golden Pocket), and **0.786**.
+    *   Extensions for profit targets: **1.272** and **1.618**.
 
-1. **التوافق الفني (Technical Confluence)**:
-   - اتجاه رئيسي واضح (الترند صديقك) = +20%
-   - ارتداد من منطقة دعم/مقاومة قوية أو Order Block نشط = +20%
-   - وجود نموذج إيجابي أو سلبي مؤكد (مثل نموذج Wyckoff أو موجات إليوت) = +20%
-   - تأكيد من المؤشرات الفنية (RSI تشبع، تقاطع MACD، أو فجوة FVG تعبأ حالياً) = +10%
+---
 
-2. **توافق الأخبار ومزاج السوق (Economic & Sentiment Alignment)**:
-   - توافق اتجاه الصفقة الفني مع الأخبار الأساسية للعملة = +15%
-   - توافق التوصية مع مؤشر الخوف والطمع (Fear & Greed Index) = +15%
+## 3. Crypto Market Trading Rules
+When analyzing crypto assets on Binance (Spot & Futures), the Agent must apply these rules:
+*   **Funding Rates**:
+    *   High Positive Funding: Longs pay Shorts. Bullish bias overextended, increasing risk of a sudden crash to sweep leverage (Long Squeeze).
+    *   High Negative Funding: Shorts pay Longs. Bearish bias overextended, increasing risk of a sudden surge to liquidate shorts (Short Squeeze).
+*   **Open Interest (OI)**:
+    *   Price Increase + OI Increase = New buying volume entering (Strong Bullish signal).
+    *   Price Decrease + OI Increase = New selling volume entering (Strong Bearish signal).
+    *   Sideways Price + OI Sharp Decrease = Position liquidations / mass closures.
+*   **Smart Money Flow & Web3 Signals**:
+    *   Use `smart_money_signals` to track on-chain institutional movement.
+    *   Use `crypto_market_rank` to align social-hype and smart money flows for altcoins.
 
-3. **عوامل الخصم (Risk Penalties)**:
-   - تذبذب عالٍ غير مبرر أو سبريد مرتفع = خصم -15%
-   - قرب صدور أخبار اقتصادية هامة (أقل من ساعة) = خصم -25%
-   - عدم وضوح الهيكل الفني أو وجود إشارات فنية متضاربة = خصم -20%
+---
 
-*ملاحظة*: الصفقات ذات الثقة التي تقل عن النسبة المحددة من قبل المستخدم (`min_confidence`) في الإعدادات سيتم حظر تنفيذها تلقائياً بواسطة Risk Guard. احرص على أن تكون التوصية دقيقة ومدعومة بـ 3 عوامل على الأقل برقم فعلي.
+## 4. Forex Market Trading Rules
+When analyzing currency pairs and gold on MetaTrader 5, the Agent must adhere to these rules:
+*   **Global Trading Sessions**:
+    *   **London Session**: Volatility and liquidity begin to surge. Opens at 07:00 UTC.
+    *   **New York Session**: Opens at 13:00 UTC. Overlaps with London session, representing peak daily liquidity and volatility.
+    *   **Tokyo/Asian Session**: Quiet consolidation and narrow ranges. Best for mean-reversion or waiting for false breakouts at the London Open (Judas Swing).
+*   **Economic Calendar & Macro News**:
+    *   **High-Impact News (Red Folder)**: Interest rates, CPI, NFP (Non-Farm Payroll), Retail Sales.
+    *   **Execution Rule**: Avoid recommending entry 30 minutes before and after high-impact news releases due to wide spreads, slippage, and random volatility.
+*   **MT5 Leverage & Spread Management**:
+    *   Check `spreadPips` via `get_live_account` or `get_ea_diagnostics`. Postpone entries if spreads are abnormally high.
+
+---
+
+## 5. Confluence Checklist
+The Agent must cross-reference multiple parameters before recommending a `buy` or `sell`:
+1.  **Structure Confluence**: H4/H1 trend alignment + M15 Order Block / FVG reaction.
+2.  **Indicator Confluence**: RSI oversold/overbought + MACD signal line crossover.
+3.  **Fundamental Confluence**: Live news sentiment + Fear & Greed index confirmation.
+4.  **Confidence Assessment**: Dynamically calculate the confidence rating (0-100) based on the number of matching confluences (e.g., 4 factors matching = 85% confidence, 2 factors matching = 60% confidence).

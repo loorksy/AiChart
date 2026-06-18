@@ -76,7 +76,7 @@ export default function AuthForm({
     <div className="flex min-h-dvh">
       <div className="flex w-full flex-col justify-center bg-background px-6 py-10 sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">
         <Link href="/" className="mb-10 flex items-center gap-2 text-lg font-semibold">
-          <Sparkles className="h-5 w-5" />
+          <img src="/logo.png" alt="AiChart" className="h-5 w-5 shrink-0 object-contain rounded-md" />
           AiChart
         </Link>
 

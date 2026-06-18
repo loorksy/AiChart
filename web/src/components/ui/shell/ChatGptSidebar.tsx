@@ -93,7 +93,7 @@ export function ChatGptSidebar({
             href="/chat"
             className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 transition hover:bg-sidebar-accent"
           >
-            <Sparkles className="h-5 w-5 shrink-0 text-foreground" />
+            <img src="/logo.png" alt="AiChart" className="h-5 w-5 shrink-0 object-contain rounded-md" />
             <span className="truncate text-sm font-semibold">AiChart</span>
           </Link>
         )}

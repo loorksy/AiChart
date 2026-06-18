@@ -1,116 +1,108 @@
-# تشخيص MetaTrader EA — لا تخمّن
+# MetaTrader EA Diagnostics & Troubleshooting Guide
 
-اقرأ هذا الملف قبل أي تشخيص لفشل فوركس أو EA.
+Read this document before diagnosing any Forex or Expert Advisor (EA) execution failures.
 
-## قبل أي تشخيص
+---
 
+## 1. Pre-Diagnostic Checklist
+Run these endpoints to gather facts before reporting any issue to the operator:
 ```bash
-GET /api/agent/live/account           # بث موحّد MT5+Binance + quoteAgeMs
-GET /api/agent/risk/status          # activeMarket: crypto | forex
-GET /api/agent/portfolio            # forex.ea.online, account_login
-GET /api/agent/ea/diagnostics?symbol=EURUSD   # الرموز من heartbeat
-GET /api/agent/ea/live-quotes?symbol=EURUSD   # أسعار live من EA v3
+GET /api/agent/live/account           # Unified live data for MT5/Binance + quoteAgeMs
+GET /api/agent/risk/status          # Checks activeMarket (crypto | forex)
+GET /api/agent/portfolio            # Checks if forex.ea.online is true and account_login
+GET /api/agent/ea/diagnostics?symbol=EURUSD   # Lists symbols received in heartbeat
+GET /api/agent/ea/live-quotes?symbol=EURUSD   # Fetches live prices streamed by EA v3
 ```
 
-## ممنوعات (لا تقلها للمشغّل)
+---
 
-- «Bridge API غير مكتمل» — الجسر يعمل إن كان EA **online**.
-- «المنفذ 3010» — EA يتصل بـ `https://aichart.lork.cloud` فقط.
-- «لا مرشحين في المسح = EA لا يرى فوركس» — المسح فحص **فني** على `allowed_assets`؛ لا علاقة له بheartbeat.
-- «EA لا يقبل أي صيغة» — إن وُجد `retcode` فالرمز وُجد؛ الرفض من **MT5/الوسيط**.
+## 2. Forbidden Statements (Do Not Tell the Operator)
+*   **Do not say**: "Bridge API is incomplete" — The bridge functions correctly as long as the EA status is **online**.
+*   **Do not say**: "Check port 3010" — The EA connects directly to `https://aichart.lork.cloud` (or the configured web server domain) over port 443.
+*   **Do not say**: "No candidates in scan means EA cannot see Forex" — The market scanner is a **technical indicator check** on `allowed_assets`; it is independent of the EA connection status.
+*   **Do not say**: "EA does not support symbol format" — If a `retcode` is returned, the symbol was found; the rejection came from the **broker/MT5 server**.
 
-## جدول retcode (MT5)
+---
 
-| retcode | المعنى | ماذا تقول |
-|---------|--------|-----------|
-| 10016 | INVALID_STOPS — SL/TP غير مقبول | وقف خسارة/جني ربح مرفوض؛ جرّب يدوياً **بدون SL/TP** |
-| 10026 | OFF_QUOTES — لا tick حي أو سعر غير مقبول لحظ الإرسال | **لا تفترض إغلاق السوق**؛ تحقق Market Watch و`quoteAgeMs`؛ إن quotes حية → Instant Execution / filling (EA v3.01+) |
-| 10019 | NO_MONEY — هامش غير كافٍ | رصيد/رافعة/حجم لوت — هنا فقط تُذكر الرافعة |
-| 10014 | INVALID_VOLUME | حجم لوت خاطئ |
-| 10015 | INVALID_PRICE | سعر غير صالح |
+## 3. MT5 Retcode Table
 
-إن ظهر `symbol not found` (ليس retcode) → اسم الرمز لا يطابق MT5 **حرفياً** (حالة الأحرف مهمة).
+| retcode | Constant / Meaning | Direct Action & Message to Operator |
+|---------|--------------------|------------------------------------|
+| **10016** | `TRADE_RETCODE_INVALID_STOPS` — Invalidation | Stop Loss or Take Profit levels are invalid. Try opening the trade manually **without SL/TP**. |
+| **10026** | `TRADE_RETCODE_OFF_QUOTES` — Stale price | **Do not assume the market is closed**. Check Market Watch and `quoteAgeMs`. If quotes are active, verify if Instant Execution / filling mode is supported (EA v3.01+). |
+| **10019** | `TRADE_RETCODE_NO_MONEY` — Insufficient funds | Leverage or balance limit reached. Specify the margin requirements in the reply. |
+| **10014** | `TRADE_RETCODE_INVALID_VOLUME` | Lot size is invalid. Adjust contract size. |
+| **10015** | `TRADE_RETCODE_INVALID_PRICE` | The price passed in the request is invalid. |
 
-## Exness / suffix case (`EURUSDm`)
+*   If the response contains `symbol not found` (not a retcode), it means the symbol name does not match the MT5 terminal **literally** (names are case-sensitive).
 
-بعض الوسطاء (Exness، Pepperstone، …) يستخدمون لاحقات **حساسة لحالة الأحرف**:
-- صحيح: `EURUSDm`, `GBPUSDm`, `XAUUSDm`
-- خطأ: `EURUSDM`, `GBPUSDM` — MT5 يرفض `SymbolSelect`
+---
 
-**الجسر (web):** `resolveMt5Symbol` يرجع الاسم **كما في heartbeat**؛ `EURUSD` من الوكيل يُطابق `EURUSDm` تلقائياً.
+## 4. Exness / Suffix Case (`EURUSDm`)
+Certain brokers (e.g., Exness, Pepperstone) append case-sensitive suffixes to currency symbols:
+*   **Valid**: `EURUSDm`, `GBPUSDm`, `XAUUSDm`
+*   **Invalid**: `EURUSDM`, `GBPUSDM` (MT5 will reject `SymbolSelect`)
 
-**تشخيص:**
-```bash
-GET /api/agent/ea/diagnostics?symbol=EURUSDm   # hasSymbol, quotesOk
-GET /api/agent/ea/query-terminal               # ea_version >= 3.05
-```
+*   **Bridge Layer (Web)**: `resolveMt5Symbol` automatically resolves symbol names to match the active heartbeat. A request for `EURUSD` will match `EURUSDm` dynamically.
+*   **Diagnostic Tools**:
+    ```bash
+    GET /api/agent/ea/diagnostics?symbol=EURUSDm   # Verifies hasSymbol, quotesOk
+    GET /api/agent/ea/query-terminal               # Checks if ea_version >= 3.05
+    ```
+*   **EA v3.06+**: Implements `ResolveBrokerSymbol()`. If the bridge requests `EURUSDM`, it is automatically matched to `EURUSDm` using the Market Watch list.
 
-**Experts tab (v3.05+):** `Market Watch symbols: EURUSDm, GBPUSDm, …` عند attach.
+---
 
-**EA v3.06+:** `ResolveBrokerSymbol()` — إن وصل الجسر `EURUSDM` يُحوَّل تلقائياً إلى `EURUSDm` من Market Watch (بدون `StringToUpper`).
+## 5. Modifying Chart Periods / Symbols (AutoTrading Disable)
+In MetaTrader 5, manually changing the timeframe (e.g., H1 to M15) or switching the chart symbol automatically disables the **AutoTrading** switch:
+*   **Warning message**: `Automated Trading disabled because chart symbol or period has been changed`
+*   **EA v3.09+ behavior**: The EA stays online; heartbeat signals and drawing captures (`draw_and_capture`) continue to work.
+*   **Trade Execution**: Trading operations require manually re-enabling the AutoTrading button in the MT5 terminal.
+*   **Experts Tab**: Check for `AiChartBridge: chart symbol/period changed — re-enable AutoTrading if disabled.`
 
-إن ack يحتوي `symbol not found: EURUSDM` → deploy web + reattach EA v3.06+.
+---
 
-## تغيير الإطار الزمني / الرمز (AutoTrading)
+## 6. AutoTrading Disabled by Server (retcode 10026)
+Some demo/live accounts block automated trading server-side, even if the local AutoTrading button is green.
+*   **Experts tab**: `AutoTrading disabled by server`
+*   **Solution**: Switch brokers, try a different account, or request algorithmic trading activation from Exness/broker support (this is not an AiChart bug).
 
-عند تغيير H1→M15 أو رمز الشارت يدوياً، MT5 يعطّل **AutoTrading** تلقائياً:
-- رسالة: `Automated Trading disabled because chart symbol or period has been changed`
-- **EA v3.09+** يبقى حياً: heartbeat + أوامر الرسم (`draw_and_capture`) تعمل
-- **الصفقات** تحتاج إعادة تفعيل زر AutoTrading يدوياً في MT5
-- Experts tab: `AiChartBridge: chart symbol/period changed — re-enable AutoTrading if disabled.`
-- **EA v3.10+:** `EventSetTimer(30)` keepalive — يُعاد تفعيله بعد تغيير الشارت؛ poll/heartbeat على `OnTick` أيضاً
-- **لا** يستدعي EA `ChartSetSymbolPeriod` — إحداثيات الرسم عبر `iTime(sym, tf, offset)` فقط
+---
 
-## AutoTrading disabled by server (retcode 10026)
+## 7. Asset Routing: Crypto vs Forex
 
-بعض حسابات demo/live تمنع EA من السير-side رغم زر AutoTrading الأخضر محلياً.
-- Experts: `AutoTrading disabled by server`
-- الحل: حساب/وسيط آخر، أو تفعيل algo trading من Liirat/Exness support — ليس bug في AiChart.
+| Symbol | activeMarket=crypto | activeMarket=forex |
+|--------|---------------------|---------------------|
+| `TRXUSDT`, `BTCUSDT` | Routed to **Binance** | Do not route to MT5 unless `BTCUSD` is explicitly active in diagnostics |
+| `EURUSD`, `GBPUSD` | Ignored | Routed to **MT5 EA** (verified via `diagnostics.symbols`) |
 
-## crypto vs forex
+*   If the system returns "Symbol specifications not available from MetaTrader", the symbol is missing from the last heartbeat or the EA is offline. Do not poll indefinitely; run diagnostics.
 
-| الرمز | activeMarket=crypto | activeMarket=forex |
-|-------|---------------------|---------------------|
-| TRXUSDT, BTCUSDT | **Binance** | لا تستخدم MT5 إلا إن وُجد BTCUSD في diagnostics |
-| EURUSD, GBPUSD | لا تُنفَّذ على MT5 | **MT5 EA** — الرمز في `diagnostics.symbols` |
+---
 
-رسالة «مواصفات الرمز غير متاحة بعد من MetaTrader» تعني: الرمز **غير موجود** في آخر heartbeat أو EA offline — لا تنتظر 30–60ث أكثر من مرة؛ تحقق من diagnostics.
+## 8. Handling Forex Trade Failures
 
-## عند فشل صفقة فوركس
+1.  Extract the `reason` from the API response and output it **literally**.
+2.  Ask the operator: "Have you opened a manual trade on this symbol in MT5?"
+3.  If `retcode 10016` occurred, but manual trades with the same stops succeeded, check the stop level formulas.
+4.  If manual trades fail as well, the issue lies with the broker/account parameters.
 
-1. انقل `reason` من API **حرفياً**.
-2. اسأل: «هل فتحت صفقة يدوية على نفس الرمز في MT5؟»
-3. إن retcode 10016 ونجح اليدوي بدون SL/TP → المشكلة من مستويات التوصية (ليس الاتصال).
-4. إن فشل اليدوي أيضاً → Liirat/الحساب/السوق — ليس AiChart.
+---
 
-## off quotes رغم تداول يدوي ناجح
+## 9. 10026 with Active Quotes (Instant Execution)
+This occurs when:
+*   The broker uses **Instant Execution** (not Market Execution).
+*   The EA passes `price=0` or an unsupported filling mode.
 
-- EA v3 يبث أسعار live كل 1–2ث عبر `POST /api/ea/quotes`.
-- التحليل قد يقرأ **cache heartbeat** بينما التنفيذ يتحقق **لحظياً**.
-- إن `quotesOk: true` في diagnostics **واليدوي ينجح** → **ممنوع** قول «السوق مغلق».
-- الحل: تأكد EA **v3.01+**، الرمز في Market Watch، `quoteAgeMs < 5000` في `get_live_account`.
+*   **Diagnostic Tools**:
+    ```bash
+    GET /api/agent/ea/diagnostics?symbol=EURUSD   # Checks trade_execution, filling_mode
+    POST query_mt5_terminal                       # Verifies reference_symbol
+    ```
+*   **Resolution**: Ensure EA version is **v3.01+**, recompile `ea/mt5/AiChartBridge.mq5`, and attach it to the chart.
 
-## 10026 مع quotes حية (Instant Execution)
+---
 
-يحدث غالباً على وسطاء مثل Liirat عندما:
-- `trade_execution` = **instant** (ليس market)
-- الـ EA يمرّر `price=0` أو filling غير مدعوم
-
-**تشخيص MCP:**
-```bash
-GET /api/agent/ea/diagnostics?symbol=EURUSD   # trade_execution, filling_mode في symbol spec
-POST query_mt5_terminal                       # reference_symbol + trade_execution
-```
-
-**Experts tab (بعد v3.01):** سطر `AiChartBridge: ORDER market ... price=... filling=... execution=instant`
-
-**إصلاح:** Compile EA v3.01 من `ea/mt5/AiChartBridge.mq5` → Reattach على الشارت.
-
-## نموذج رد صحيح
-
-> EA متصل (Liirat 116921). فشل التنفيذ: retcode **10016** = وقف خسارة/جني ربح غير مقبول عند الوسيط.
-> الخطوة: افتح EURUSD يدوياً في MT5 **بدون SL/TP**. إن نجحت نضبط التوصية. إن فشلت تواصل مع Liirat.
-
-## مسح الفرص (scan)
-
-`POST /api/agent/market/scan` بدون مرشحين = **لا إشارة فنية كافية** → `HEARTBEAT_OK` فقط. لا تربط ذلك بـ EA.
+## 10. Example of Correct Diagnostic Response
+> EA is online (Exness account 116921). Execution failed: retcode **10016** = Invalid stop loss / take profit levels.
+> Action: Open a EURUSD position manually in MT5 **without SL/TP**. If successful, we will adjust the recommendation parameters. If it fails, contact Exness support.
