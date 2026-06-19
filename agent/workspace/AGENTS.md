@@ -76,6 +76,35 @@ Call `stop_scalp_session` when: operator says stop, cap reached, kill switch det
 
 ---
 
+## 3c. Strategy Matrix & Indicators — your analytical toolkit
+
+You have a reference library. **Use it for every setup** — don't trade from a single indicator or a gut feeling.
+
+### The 10,000-strategy matrix (`aichart://trading-strategies`)
+Read this MCP resource and build each setup from its 4 dimensions, then state the config code:
+*   **A — Trend & Structure** (HTF bias): SMC/market structure, EMA stacking, Wyckoff, DXY/BTC correlation, sessions, volume profile, MACD HTF, ATR/Supertrend.
+*   **B — Entry Zone / POI**: order blocks, FVG/imbalance, Fibonacci golden pocket, S/R flips, pivots, VWAP bands, liquidity pools.
+*   **C — Trigger & Confirmation**: candle patterns, RSI/Stochastic, MACD cross, BOS/CHoCH, volume spike.
+*   **D — Risk & Exit Profile**: ATR-based stops, R:R targets, partials, trailing.
+
+Pick one option per dimension → state `الاستراتيجية: [A2-B4-C3-D5]` on every recommendation/execution card (SOUL.md §3.4). The `aichart://trading-lexicon` resource explains any term.
+
+### Use the real indicators (don't guess values)
+Pull live indicators from the tools and map them to the dimensions:
+*   `get_multi_timeframe_snapshot` — RSI/MACD/SMA across several frames in one call (best for confluence).
+*   `get_market_snapshot` — quick single-frame read (crypto).
+*   `get_forex_indicators` — RSI, MACD, Bollinger, ATR, Stochastic, EMA, SMA (forex).
+*   `detect_levels` — support/resistance + structure for dimension B and for placing SL/TP.
+
+**Adapt to conditions** — no single strategy fits all:
+*   Trending market → trend-following config (A2/A9 + C MACD/EMA pullback).
+*   Ranging market → mean-reversion config (A8 Bollinger squeeze + B5 S/R + C RSI extremes).
+*   Always size the stop from ATR (dimension D), never a fixed guess.
+
+Match the indicator to the question: trend → EMA/MACD; momentum/exhaustion → RSI/Stochastic; volatility & stop distance → ATR/Bollinger; entry precision → detect_levels/Fibonacci.
+
+---
+
 ## 4. Execution Flow — No Direct Entries on "Open Trade" Command
 
 When the operator says "Open a trade" or "Buy BTC":
@@ -83,7 +112,7 @@ When the operator says "Open a trade" or "Buy BTC":
 2.  Call `scan_market` + `get_market_snapshot` to **compare alternatives** (e.g., BTC vs ETH, or major FX pairs).
 3.  Call `get_trade_lessons` for the symbol with `recent:true` to check recent mistakes.
 4.  Call `get_market_context` for macro sentiment.
-5.  **Formulate Setup**: Propose "We suggest entering..." or "We do not enter..." + specify the strategy code from the English strategies matrix (e.g., `[A1-B3-C1-D2]`) + confidence percentage + 2-4 sentence rationale.
+5.  **Formulate Setup** (per §3c): read `aichart://trading-strategies`, evaluate the 4 dimensions with real indicators (`get_multi_timeframe_snapshot`, `get_forex_indicators`, `detect_levels`), then propose as a recommendation card (SOUL.md §3.4) with the config code `[A?-B?-C?-D?]`, a plain-Arabic rationale, and entry/TP/SL/R:R. No fixed confidence threshold (§5.3).
 
 ---
 
