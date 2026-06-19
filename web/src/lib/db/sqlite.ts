@@ -59,6 +59,20 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS scalp_sessions (
+    user_id        INTEGER PRIMARY KEY,
+    active          INTEGER NOT NULL DEFAULT 0,
+    symbol          TEXT NOT NULL DEFAULT '',
+    market          TEXT NOT NULL DEFAULT 'crypto',
+    interval        TEXT NOT NULL DEFAULT '1m',
+    max_trades      INTEGER NOT NULL DEFAULT 0,
+    executed_count  INTEGER NOT NULL DEFAULT 0,
+    notional        REAL NOT NULL DEFAULT 0,
+    started_at      TEXT,
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY,
     can_execute         INTEGER NOT NULL DEFAULT 0,

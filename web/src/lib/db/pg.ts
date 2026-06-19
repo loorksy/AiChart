@@ -56,6 +56,19 @@ const SCHEMA = `
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
+  CREATE TABLE IF NOT EXISTS scalp_sessions (
+    user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    active         BOOLEAN NOT NULL DEFAULT FALSE,
+    symbol         TEXT NOT NULL DEFAULT '',
+    market         TEXT NOT NULL DEFAULT 'crypto',
+    interval       TEXT NOT NULL DEFAULT '1m',
+    max_trades     INTEGER NOT NULL DEFAULT 0,
+    executed_count INTEGER NOT NULL DEFAULT 0,
+    notional       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    started_at     TIMESTAMPTZ,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     can_execute         BOOLEAN NOT NULL DEFAULT FALSE,

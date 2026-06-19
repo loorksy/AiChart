@@ -18,6 +18,7 @@ import type {
   PublicUser,
   Recommendation,
   RecommendationSource,
+  ScalpSession,
   Trade,
   TradeIntent,
   TradingSettings,
@@ -124,6 +125,73 @@ export async function updateSettings(
   await execute(
     `UPDATE trading_settings SET ${assignments}, updated_at = datetime('now') WHERE user_id = ?`,
     params,
+  );
+}
+
+// ── Scalp sessions ──────────────────────────────────────────────────────────
+
+export async function getScalpSession(
+  userId: number,
+): Promise<ScalpSession | null> {
+  return queryOne<ScalpSession>(
+    "SELECT * FROM scalp_sessions WHERE user_id = ?",
+    [userId],
+  );
+}
+
+export async function startScalpSession(
+  userId: number,
+  opts: {
+    symbol: string;
+    market: MarketType;
+    interval: string;
+    maxTrades: number;
+    notional: number;
+  },
+): Promise<void> {
+  await execute(
+    `INSERT INTO scalp_sessions
+       (user_id, active, symbol, market, interval, max_trades, executed_count, notional, started_at, updated_at)
+     VALUES (?, 1, ?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET
+       active = 1,
+       symbol = excluded.symbol,
+       market = excluded.market,
+       interval = excluded.interval,
+       max_trades = excluded.max_trades,
+       executed_count = 0,
+       notional = excluded.notional,
+       started_at = datetime('now'),
+       updated_at = datetime('now')`,
+    [
+      userId,
+      opts.symbol,
+      opts.market,
+      opts.interval,
+      opts.maxTrades,
+      opts.notional,
+    ],
+  );
+}
+
+export async function stopScalpSession(userId: number): Promise<void> {
+  await execute(
+    "UPDATE scalp_sessions SET active = 0, updated_at = datetime('now') WHERE user_id = ?",
+    [userId],
+  );
+}
+
+export async function incrementScalpExecuted(userId: number): Promise<void> {
+  await execute(
+    "UPDATE scalp_sessions SET executed_count = executed_count + 1, updated_at = datetime('now') WHERE user_id = ?",
+    [userId],
+  );
+}
+
+export async function listActiveScalpSessions(): Promise<ScalpSession[]> {
+  return query<ScalpSession>(
+    "SELECT * FROM scalp_sessions WHERE active = 1",
+    [],
   );
 }
 

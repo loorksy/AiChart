@@ -71,6 +71,23 @@ export const STYLE_DEFAULT_INTERVAL: Record<TradingStyle, string> = {
   position: "1d",
 };
 
+/** Active scalp session state (consumed by the scalp worker). */
+export interface ScalpSession {
+  user_id: number;
+  /** 1 = running, 0 = stopped. */
+  active: number;
+  symbol: string;
+  market: MarketType;
+  interval: string;
+  /** Cap on executed entries this session (0 = fall back to max_open_trades). */
+  max_trades: number;
+  executed_count: number;
+  /** Per-trade notional for entries. */
+  notional: number;
+  started_at: string | null;
+  updated_at: string;
+}
+
 export interface TradingSettings {
   user_id: number;
   mode: TradingMode;

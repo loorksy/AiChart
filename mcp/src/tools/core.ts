@@ -261,6 +261,43 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
+    "get_scalp_status",
+    mcpToolConfig("get_scalp_status"),
+    async () => bridgeCall(() => bridge.get("/api/agent/scalp")),
+  );
+
+  server.registerTool(
+    "start_scalp_session",
+    mcpToolConfig("start_scalp_session"),
+    async (args) => {
+      const { symbol, max_trades, market, interval, notional } = args as {
+        symbol: string;
+        max_trades: number;
+        market?: "crypto" | "forex";
+        interval?: string;
+        notional?: number;
+      };
+      return bridgeCall(() =>
+        bridge.post("/api/agent/scalp", {
+          action: "start",
+          symbol,
+          max_trades,
+          market,
+          interval,
+          notional,
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "stop_scalp_session",
+    mcpToolConfig("stop_scalp_session"),
+    async () =>
+      bridgeCall(() => bridge.post("/api/agent/scalp", { action: "stop" })),
+  );
+
+  server.registerTool(
     "set_futures_enabled",
     mcpToolConfig("set_futures_enabled"),
     async (args) => {

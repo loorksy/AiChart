@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string"
+    },
+    "max_trades": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "سقف الصفقات — إلزامي"
+    },
+    "market": {
+      "type": "string",
+      "enum": [
+        "crypto",
+        "forex"
+      ]
+    },
+    "interval": {
+      "description": "افتراضي 1m",
+      "type": "string"
+    },
+    "notional": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  },
+  "required": [
+    "symbol",
+    "max_trades"
+  ],
+  "additionalProperties": false
+}
