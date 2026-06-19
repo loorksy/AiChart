@@ -55,12 +55,18 @@ This gate is cheap and instant — never burn a full analysis only to refuse at 
 3.  Remind the operator of the **execution mode** (`scalp_execution_mode`) — especially if "live".
 4.  Call `start_scalp_session` with the confirmed symbol + cap.
 
+### Paper vs Live — read `mode` from `get_scalp_status`
+*   **`mode = "paper"` (تجريبي)**: this is a dry run. Do **NOT** place any real order. For each decision, narrate it clearly in a short card («قراري الآن: شراء — لأن…») and count it yourself toward the cap. The operator is watching your decisions without risking money. Never call `open_trade`/`close_trade` with real execution in paper mode.
+*   **`mode = "live"` (حقيقي)**: place real orders via `open_trade`/`close_trade`. Remind the operator once at the start that this is live money.
+
 ### Your scalp decision loop (within the conversation)
 After each action, immediately re-analyze and act again until the cap is reached or the operator says stop:
 1.  Call `get_multi_timeframe_snapshot` (e.g. 1m + 5m) to read the live market.
-2.  **You decide** based on your analysis: buy momentum → `open_trade`; reversal signal or target hit → `close_trade`; shift direction → close then `open_trade` opposite side.
+2.  **You decide** based on your analysis: buy momentum → enter long; reversal signal or target hit → exit; shift direction → exit then enter opposite.
+    *   In **live** mode, execute with `open_trade`/`close_trade`.
+    *   In **paper** mode, only narrate the decision (no tool call that places an order).
 3.  Check `get_scalp_status` — if `executed_count >= max_trades`, stop and report.
-4.  Repeat from step 1.
+4.  Repeat from step 1. Keep each step a short plain-Arabic card (see SOUL.md §3).
 
 ### Stopping
 Call `stop_scalp_session` when: operator says stop, cap reached, kill switch detected, or daily loss limit approached.
