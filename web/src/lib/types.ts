@@ -98,6 +98,10 @@ export interface TradingSettings {
   trading_style: TradingStyle;
   /** Max concurrent trades for scalp sessions (0 = use max_open_trades). */
   scalp_max_trades: number;
+  /** 1 = agent is allowed to use scalp mode in conversations. */
+  scalp_enabled: number;
+  /** Execution mode for scalp: paper = log only, live = real orders. */
+  scalp_execution_mode: "paper" | "live";
   max_capital: number;
   per_trade_pct: number;
   max_open_trades: number;

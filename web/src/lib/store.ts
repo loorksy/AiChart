@@ -67,6 +67,8 @@ export async function getSettings(userId: number): Promise<TradingSettings> {
   ) {
     row.scalp_max_trades = 0;
   }
+  if (row.scalp_enabled == null) row.scalp_enabled = 0;
+  if (row.scalp_execution_mode !== "live") row.scalp_execution_mode = "paper";
   return row;
 }
 
@@ -110,6 +112,8 @@ const SETTABLE_FIELDS = [
   "default_leverage",
   "trading_style",
   "scalp_max_trades",
+  "scalp_enabled",
+  "scalp_execution_mode",
 ] as const;
 
 export async function updateSettings(

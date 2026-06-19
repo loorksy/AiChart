@@ -34,6 +34,8 @@ function baseSettings(
     min_confidence: 80,
     trading_style: "day",
     scalp_max_trades: 0,
+    scalp_enabled: 0,
+    scalp_execution_mode: "paper",
     updated_at: new Date().toISOString(),
     ...overrides,
   };

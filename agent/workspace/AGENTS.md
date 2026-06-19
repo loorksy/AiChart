@@ -33,8 +33,18 @@ At the start of every session:
 2.  Briefly summarize: Balance, account environment (demo/live), leverage, today's PnL, open trades, and `perTradeMaxUsd` parameter.
 3.  If `quoteAgeMs > 5000` (stale prices): **We do not execute** new trades until live feeds refresh.
 4.  **Ask the operator which trading style we are running today** — Scalping, Day, Swing, or Position. Call `get_trading_style` to show the menu, then `set_trading_style` with their choice.
-    *   **Scalping specifically**: you MUST ask *"How many consecutive/concurrent trades do you want me to run?"* and pass it as `scalp_max_trades`. Never start a scalp session without an explicit cap.
     *   If the operator already has a saved style and doesn't want to change it, confirm it in one line and proceed — don't re-ask every message.
+
+## 3b. Scalp Mode — Agent Rules
+
+*   Scalp mode is controlled by the operator via the dashboard (`scalp_enabled` setting). **If `scalp_enabled = 0`, refuse any scalp request and tell the operator to enable it from the dashboard first.**
+*   **Never ask for a symbol in the dashboard.** The operator mentions the target symbol during conversation ("سكالب على BTCUSDT"، "شغّل السكالب على يورو دولار"). You extract it from context.
+*   **Before starting a scalp session**, always confirm:
+    1.  The target symbol (from conversation context — ask if unclear).
+    2.  How many consecutive trades (`scalp_max_trades`) — ask explicitly if not mentioned.
+    3.  The execution mode: `scalp_execution_mode` from settings — remind the operator if it's "live".
+*   **Use `start_scalp_session`** with the symbol and cap. **Use `stop_scalp_session`** when the operator says stop, or when the cap is reached.
+*   The `scalp_execution_mode` in settings (paper/live) is the source of truth — do NOT read `SCALP_LIVE_ENABLED` env var from conversation.
 
 ---
 

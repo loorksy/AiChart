@@ -55,6 +55,8 @@ const SCHEMA = `
     min_confidence           INTEGER NOT NULL DEFAULT 80,
     trading_style            TEXT NOT NULL DEFAULT 'day',
     scalp_max_trades         INTEGER NOT NULL DEFAULT 0,
+    scalp_enabled            INTEGER NOT NULL DEFAULT 0,
+    scalp_execution_mode     TEXT NOT NULL DEFAULT 'paper',
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
@@ -467,6 +469,16 @@ function migrate(db: Database.Database) {
   if (!settingsCols.some((c) => c.name === "scalp_max_trades")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN scalp_max_trades INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "scalp_enabled")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN scalp_enabled INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "scalp_execution_mode")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN scalp_execution_mode TEXT NOT NULL DEFAULT 'paper'",
     );
   }
 

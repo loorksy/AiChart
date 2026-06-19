@@ -58,6 +58,19 @@ export async function POST(req: NextRequest) {
       );
     }
     const settings = await getSettings(userId);
+
+    // Permission check — operator must enable scalp from the dashboard first.
+    if (!settings.scalp_enabled) {
+      return NextResponse.json(
+        {
+          error:
+            "وضع السكالب معطّل. فعّله من لوحة التحكّم ← إعدادات السكالب أولاً.",
+          needs_enable: true,
+        },
+        { status: 403 },
+      );
+    }
+
     const limits = await getLimits(userId);
     const market = (body.market ?? settings.active_market ?? "crypto") as
       MarketType;
@@ -94,7 +107,7 @@ export async function POST(req: NextRequest) {
     await logAudit(
       userId,
       "scalp_start",
-      `symbol=${body.symbol} cap=${maxTrades} tf=${interval} mode=${scalpLiveEnabled() ? "live" : "paper"}`,
+      `symbol=${body.symbol} cap=${maxTrades} tf=${interval} mode=${settings.scalp_execution_mode}`,
     );
 
     return NextResponse.json({

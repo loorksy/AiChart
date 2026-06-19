@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Play, Square } from "lucide-react";
+import { Activity } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
 
-interface ScalpSessionView {
+interface ScalpSettings {
+  scalp_enabled: number;
+  scalp_execution_mode: "paper" | "live";
+}
+
+interface ScalpSession {
   active: number;
   symbol: string;
   market: string;
@@ -14,17 +19,21 @@ interface ScalpSessionView {
 }
 
 interface ScalpStatus {
-  session: ScalpSessionView | null;
-  mode: "paper" | "live";
+  session: ScalpSession | null;
+  scalp_enabled: number;
+  scalp_execution_mode: "paper" | "live";
 }
 
-/** User-facing start/stop control for the scalp loop (calls /api/scalp). */
+/**
+ * User dashboard card — controls the agent's *permission* to use scalp mode.
+ * The agent starts/stops the actual session during conversation (not here).
+ */
 export function ScalpControl() {
   const [status, setStatus] = useState<ScalpStatus | null>(null);
-  const [symbol, setSymbol] = useState("");
-  const [maxTrades, setMaxTrades] = useState(5);
-  const [market, setMarket] = useState<"crypto" | "forex">("crypto");
-  const [interval, setIntervalTf] = useState("1m");
+  const [settings, setSettings] = useState<ScalpSettings>({
+    scalp_enabled: 0,
+    scalp_execution_mode: "paper",
+  });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
     null,
@@ -33,24 +42,29 @@ export function ScalpControl() {
   async function refresh() {
     try {
       const r = await fetch("/api/scalp", { cache: "no-store" });
-      if (r.ok) setStatus(await r.json());
+      if (r.ok) {
+        const d: ScalpStatus = await r.json();
+        setStatus(d);
+        setSettings({
+          scalp_enabled: d.scalp_enabled,
+          scalp_execution_mode: d.scalp_execution_mode,
+        });
+      }
     } catch {
       /* ignore */
     }
   }
 
-  useEffect(() => {
-    void refresh();
-  }, []);
+  useEffect(() => { void refresh(); }, []);
 
-  // Poll while running so executed_count stays fresh.
+  // Poll while agent has an active session to keep executed_count fresh.
   useEffect(() => {
     if (!status?.session?.active) return;
     const id = setInterval(() => void refresh(), 5000);
     return () => clearInterval(id);
   }, [status?.session?.active]);
 
-  async function start() {
+  async function save() {
     setBusy(true);
     setMsg(null);
     try {
@@ -58,18 +72,16 @@ export function ScalpControl() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "start",
-          symbol: symbol.trim().toUpperCase(),
-          market,
-          interval,
-          max_trades: maxTrades,
+          action: "settings",
+          scalp_enabled: settings.scalp_enabled,
+          scalp_execution_mode: settings.scalp_execution_mode,
         }),
       });
       const d = await r.json();
       if (!r.ok) {
-        setMsg({ type: "err", text: d.error ?? "تعذّر بدء الجلسة." });
+        setMsg({ type: "err", text: d.error ?? "تعذّر الحفظ." });
       } else {
-        setMsg({ type: "ok", text: `بدأت جلسة سكالب على ${d.symbol}` });
+        setMsg({ type: "ok", text: "تم الحفظ." });
         await refresh();
       }
     } catch {
@@ -79,26 +91,9 @@ export function ScalpControl() {
     }
   }
 
-  async function stop() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      await fetch("/api/scalp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "stop" }),
-      });
-      setMsg({ type: "ok", text: "أوقفت الجلسة." });
-      await refresh();
-    } catch {
-      setMsg({ type: "err", text: "خطأ في الاتصال." });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const active = Boolean(status?.session?.active);
+  const enabled = Boolean(settings.scalp_enabled);
   const session = status?.session;
+  const agentRunning = Boolean(session?.active);
 
   return (
     <SurfaceCard>
@@ -107,97 +102,85 @@ export function ScalpControl() {
           <Activity className="h-4 w-4" />
           وضع السكالب
         </h2>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs ${
-            status?.mode === "live"
-              ? "bg-red-500/15 text-red-500"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {status?.mode === "live" ? "تنفيذ حقيقي" : "تجريبي (paper)"}
-        </span>
+        {agentRunning && (
+          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-500">
+            الوكيل يعمل
+          </span>
+        )}
       </div>
 
-      {active && session ? (
-        <div className="mt-3 space-y-2">
-          <p className="text-sm">
-            تعمل الآن على{" "}
+      <p className="mt-1 text-sm text-muted-foreground">
+        عند التفعيل يمكن للوكيل استخدام وضع السكالب أثناء المحادثة. هو من يسألك عن الرمز المستهدف.
+      </p>
+
+      <div className="mt-4 space-y-4">
+        {/* Enable / disable toggle */}
+        <label className="flex cursor-pointer items-center justify-between">
+          <span className="text-sm font-medium">
+            {enabled ? "السكالب مفعّل — الوكيل مسموح له باستخدامه" : "السكالب معطّل"}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() =>
+              setSettings((s) => ({ ...s, scalp_enabled: enabled ? 0 : 1 }))
+            }
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              enabled ? "bg-primary" : "bg-muted"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                enabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </label>
+
+        {/* Execution mode dropdown */}
+        <label className="block text-sm">
+          <span className="font-medium">وضع التنفيذ</span>
+          <select
+            value={settings.scalp_execution_mode}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                scalp_execution_mode: e.target.value as "paper" | "live",
+              }))
+            }
+            className="input mt-1 w-full"
+          >
+            <option value="paper">تجريبي (paper) — يسجّل القرارات بلا صفقات حقيقية</option>
+            <option value="live">حقيقي (live) — ينفّذ صفقات فعلية</option>
+          </select>
+          {settings.scalp_execution_mode === "live" && (
+            <p className="mt-1 text-xs text-amber-500">
+              ⚠️ الوضع الحقيقي ينفّذ صفقات بأموال فعلية — تأكّد من الإعدادات.
+            </p>
+          )}
+        </label>
+
+        <button
+          onClick={() => void save()}
+          disabled={busy}
+          className="btn btn-primary text-sm"
+        >
+          {busy ? "جاري الحفظ…" : "حفظ"}
+        </button>
+      </div>
+
+      {/* Agent session status (read-only — agent manages this) */}
+      {agentRunning && session && (
+        <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
+          <p className="text-xs font-medium text-muted-foreground">جلسة الوكيل الحالية</p>
+          <p className="mt-1 text-sm">
             <span className="font-semibold">{session.symbol}</span> ·{" "}
             {session.interval} · {session.market}
           </p>
           <p className="text-sm text-muted-foreground">
-            الصفقات المنفّذة: {session.executed_count} / {session.max_trades}
+            صفقات منفّذة: {session.executed_count} / {session.max_trades}
           </p>
-          <button
-            onClick={() => void stop()}
-            disabled={busy}
-            className="btn btn-danger mt-1 flex items-center gap-2 text-sm"
-          >
-            <Square className="h-4 w-4" />
-            إيقاف السكالب
-          </button>
-        </div>
-      ) : (
-        <div className="mt-3 space-y-3">
-          <p className="text-sm text-muted-foreground">
-            حلقة آلية تفتح وتغلق صفقات سريعة لرمز واحد حتى بلوغ سقف الصفقات.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm">
-              الرمز
-              <input
-                value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
-                placeholder="BTCUSDT"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-sm">
-              سقف الصفقات
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={maxTrades}
-                onChange={(e) => setMaxTrades(Number(e.target.value))}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-sm">
-              السوق
-              <select
-                value={market}
-                onChange={(e) =>
-                  setMarket(e.target.value as "crypto" | "forex")
-                }
-                className="input mt-1 w-full"
-              >
-                <option value="crypto">كريبتو</option>
-                <option value="forex">فوركس</option>
-              </select>
-            </label>
-            <label className="text-sm">
-              الإطار
-              <select
-                value={interval}
-                onChange={(e) => setIntervalTf(e.target.value)}
-                className="input mt-1 w-full"
-              >
-                <option value="1m">1m</option>
-                <option value="3m">3m</option>
-                <option value="5m">5m</option>
-                <option value="15m">15m</option>
-              </select>
-            </label>
-          </div>
-          <button
-            onClick={() => void start()}
-            disabled={busy || !symbol.trim()}
-            className="btn btn-primary flex items-center gap-2 text-sm"
-          >
-            <Play className="h-4 w-4" />
-            تشغيل السكالب
-          </button>
         </div>
       )}
 

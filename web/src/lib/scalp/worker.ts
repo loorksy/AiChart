@@ -21,7 +21,11 @@ import {
 } from "../store";
 import { executeIntent } from "../execution";
 
-/** Live execution is OFF unless explicitly enabled. Otherwise paper (log only). */
+/**
+ * Global fallback: live execution requires SCALP_LIVE_ENABLED=1 OR the user
+ * setting scalp_execution_mode='live'. Per-user mode takes precedence.
+ * Kept for backward-compat — prefer per-user scalp_execution_mode.
+ */
 export function scalpLiveEnabled(): boolean {
   return process.env.SCALP_LIVE_ENABLED === "1";
 }
@@ -50,7 +54,8 @@ function log(msg: string): void {
 export async function runScalpCycle(
   opts?: { live?: boolean },
 ): Promise<ScalpCycleResult> {
-  const live = opts?.live ?? scalpLiveEnabled();
+  // Per-user mode from settings takes precedence over global env flag.
+  const globalLive = opts?.live ?? scalpLiveEnabled();
   const result: ScalpCycleResult = { sessions: 0, events: [], errors: [] };
 
   if (await isMasterKillOn()) {
@@ -65,7 +70,16 @@ export async function runScalpCycle(
     try {
       const settings = await getSettings(s.user_id);
 
+      // Per-user execution mode: setting takes precedence over global flag.
+      const live =
+        settings.scalp_execution_mode === "live" ? true : globalLive;
+
       // Hard stops.
+      if (!settings.scalp_enabled) {
+        log(`user ${s.user_id} — scalp disabled in settings, stopping session`);
+        await stopScalpSession(s.user_id);
+        continue;
+      }
       if (settings.kill_switch === 1) {
         await stopScalpSession(s.user_id);
         continue;
