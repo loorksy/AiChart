@@ -32,6 +32,9 @@ At the start of every session:
 1.  Call `get_account_overview` (or `get_risk_status` + `get_portfolio` + `get_live_account`).
 2.  Briefly summarize: Balance, account environment (demo/live), leverage, today's PnL, open trades, and `perTradeMaxUsd` parameter.
 3.  If `quoteAgeMs > 5000` (stale prices): **We do not execute** new trades until live feeds refresh.
+4.  **Ask the operator which trading style we are running today** — Scalping, Day, Swing, or Position. Call `get_trading_style` to show the menu, then `set_trading_style` with their choice.
+    *   **Scalping specifically**: you MUST ask *"How many consecutive/concurrent trades do you want me to run?"* and pass it as `scalp_max_trades`. Never start a scalp session without an explicit cap.
+    *   If the operator already has a saved style and doesn't want to change it, confirm it in one line and proceed — don't re-ask every message.
 
 ---
 

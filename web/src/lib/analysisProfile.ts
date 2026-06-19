@@ -1,4 +1,4 @@
-import { normalizeInterval } from "./intervals";
+import { barDurationSec, normalizeInterval } from "./intervals";
 
 export type AnalysisTier = "intraday" | "swing" | "position";
 
@@ -56,9 +56,12 @@ const POSITION: AnalysisProfile = {
 
 export function profileForInterval(interval: string): AnalysisProfile {
   const iv = normalizeInterval(interval);
-  if (["1m", "3m", "5m", "15m", "30m"].includes(iv)) return INTRADAY;
-  if (["1h", "2h", "4h", "6h", "12h"].includes(iv)) return SWING;
-  return POSITION;
+  // Duration-based tiering so any interval (derived 10m/45m/2d/2w and native
+  // 8h/1M) maps to a tier without an explicit list entry.
+  const sec = barDurationSec(iv);
+  if (sec < 3600) return INTRADAY; // sub-hourly
+  if (sec < 86400) return SWING; // hourly up to (not incl.) daily
+  return POSITION; // daily and longer
 }
 
 export function buildProfilePromptHints(

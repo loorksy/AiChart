@@ -215,6 +215,31 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
+    "get_trading_style",
+    mcpToolConfig("get_trading_style"),
+    async () => bridgeCall(() => bridge.get("/api/agent/style")),
+  );
+
+  server.registerTool(
+    "set_trading_style",
+    mcpToolConfig("set_trading_style"),
+    async (args) => {
+      const { trading_style, scalp_max_trades, sync_interval } = args as {
+        trading_style: string;
+        scalp_max_trades?: number;
+        sync_interval?: boolean;
+      };
+      return bridgeCall(() =>
+        bridge.post("/api/agent/style", {
+          trading_style,
+          scalp_max_trades,
+          sync_interval,
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
     "set_futures_enabled",
     mcpToolConfig("set_futures_enabled"),
     async (args) => {

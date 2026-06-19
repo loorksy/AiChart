@@ -51,6 +51,8 @@ const SCHEMA = `
     alert_signals            BOOLEAN NOT NULL DEFAULT TRUE,
     alert_min_confidence     INTEGER NOT NULL DEFAULT 0,
     min_confidence           INTEGER NOT NULL DEFAULT 80,
+    trading_style            TEXT NOT NULL DEFAULT 'day',
+    scalp_max_trades         INTEGER NOT NULL DEFAULT 0,
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -357,6 +359,12 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS active_market TEXT NOT NULL DEFAULT 'crypto'
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS trading_style    TEXT NOT NULL DEFAULT 'day',
+      ADD COLUMN IF NOT EXISTS scalp_max_trades INTEGER NOT NULL DEFAULT 0
   `).catch(() => {});
 
   await client.query(`

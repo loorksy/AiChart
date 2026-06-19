@@ -46,12 +46,41 @@ export function normalizeTradingMode(raw: string | null | undefined): TradingMod
     : "approval";
 }
 
+/**
+ * Trading styles — the *cadence* of trading (distinct from `mode`, which is
+ * execution authority). Each style bundles a default timeframe, loop speed,
+ * trade cap, and TP/SL width. Used by the interactive MCP style selector and
+ * the scalp worker.
+ */
+export const TRADING_STYLES = ["scalp", "day", "swing", "position"] as const;
+export type TradingStyle = (typeof TRADING_STYLES)[number];
+
+export function normalizeTradingStyle(
+  raw: string | null | undefined,
+): TradingStyle {
+  return (TRADING_STYLES as readonly string[]).includes(raw ?? "")
+    ? (raw as TradingStyle)
+    : "day";
+}
+
+/** Default analysis interval per trading style. */
+export const STYLE_DEFAULT_INTERVAL: Record<TradingStyle, string> = {
+  scalp: "1m",
+  day: "15m",
+  swing: "4h",
+  position: "1d",
+};
+
 export interface TradingSettings {
   user_id: number;
   mode: TradingMode;
   approval: "manual" | "delegate";
   experience: "expert" | "beginner";
   style: "conservative" | "balanced" | "aggressive";
+  /** Trading cadence (scalp/day/swing/position). Distinct from `mode`. */
+  trading_style: TradingStyle;
+  /** Max concurrent trades for scalp sessions (0 = use max_open_trades). */
+  scalp_max_trades: number;
   max_capital: number;
   per_trade_pct: number;
   max_open_trades: number;

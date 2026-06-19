@@ -32,6 +32,8 @@ function baseSettings(
     alert_signals: 1,
     alert_min_confidence: 0,
     min_confidence: 80,
+    trading_style: "day",
+    scalp_max_trades: 0,
     updated_at: new Date().toISOString(),
     ...overrides,
   };

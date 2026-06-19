@@ -24,7 +24,7 @@ import type {
   UserRow,
   UserStatus,
 } from "./types";
-import { normalizeTradingMode } from "./types";
+import { normalizeTradingMode, normalizeTradingStyle } from "./types";
 import { PUBLIC_USER_COLUMNS } from "./userSelect";
 import {
   computeAccessExpiresAt,
@@ -58,6 +58,13 @@ export async function getSettings(userId: number): Promise<TradingSettings> {
   }
   if (row.min_confidence == null || Number.isNaN(Number(row.min_confidence))) {
     row.min_confidence = 80;
+  }
+  row.trading_style = normalizeTradingStyle(row.trading_style);
+  if (
+    row.scalp_max_trades == null ||
+    Number.isNaN(Number(row.scalp_max_trades))
+  ) {
+    row.scalp_max_trades = 0;
   }
   return row;
 }
@@ -100,6 +107,8 @@ const SETTABLE_FIELDS = [
   "execution_env_preference",
   "futures_enabled",
   "default_leverage",
+  "trading_style",
+  "scalp_max_trades",
 ] as const;
 
 export async function updateSettings(

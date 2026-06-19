@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "trading_style": {
+      "type": "string",
+      "enum": [
+        "scalp",
+        "day",
+        "swing",
+        "position"
+      ]
+    },
+    "scalp_max_trades": {
+      "description": "سقف الصفقات المتزامنة — مطلوب في scalp",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "sync_interval": {
+      "description": "ضبط الإطار الزمني تلقائياً حسب الأسلوب",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "trading_style"
+  ],
+  "additionalProperties": false
+}

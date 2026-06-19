@@ -295,6 +295,35 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: { recommendation_id: zTradeId },
     annotations: READ_ONLY,
   },
+  {
+    name: "get_trading_style",
+    domain: "core",
+    description:
+      "أسلوب التداول الحالي + قائمة الأساليب (scalp/day/swing/position). متى: بداية الجلسة لعرض الخيارات على المستخدم. read-only.",
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  {
+    name: "set_trading_style",
+    domain: "core",
+    description:
+      "اختيار أسلوب التداول · scalp/day/swing/position. متى: بعد سؤال المستخدم. في scalp مرّر scalp_max_trades (سقف الصفقات). side-effect: يحدّث الإعدادات. مثال: trading_style=scalp&scalp_max_trades=5.",
+    inputSchema: {
+      trading_style: z.enum(["scalp", "day", "swing", "position"]),
+      scalp_max_trades: z
+        .number()
+        .int()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("سقف الصفقات المتزامنة — مطلوب في scalp"),
+      sync_interval: z
+        .boolean()
+        .optional()
+        .describe("ضبط الإطار الزمني تلقائياً حسب الأسلوب"),
+    },
+    annotations: DESTRUCTIVE,
+  },
 ];
 
 export const CORE_TOOL_BY_NAME = Object.fromEntries(

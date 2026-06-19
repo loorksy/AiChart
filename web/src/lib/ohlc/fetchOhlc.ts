@@ -3,7 +3,12 @@ import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { queueEaGetOhlc } from "@/lib/eaAgentCommands";
 import { getEaCandles } from "@/lib/eaStore";
 import { executionToBinanceEnv } from "@/lib/executionEnv";
-import { normalizeInterval } from "@/lib/intervals";
+import {
+  intervalPlan,
+  mt5IntervalPlan,
+  normalizeInterval,
+  resampleOhlc,
+} from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { mt5Rates } from "@/lib/mt5local/client";
@@ -104,25 +109,32 @@ async function fetchForexOhlcLive(
   }
 
   const mt5Symbol = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
+  // The EA only supports M1/M5/M15/M30/H1/H4/D1/W1/MN1. For anything else,
+  // request a supported base interval and resample — otherwise the EA silently
+  // returns the chart's own period.
+  const { base: eaInterval, factor } = mt5IntervalPlan(interval);
+  const baseCount = Math.min(limit * factor, OHLC_MAX_LIMIT);
   const ack = await queueEaGetOhlc(
     userId,
-    { symbol: mt5Symbol, timeframe: interval, count: limit },
+    { symbol: mt5Symbol, timeframe: eaInterval, count: baseCount },
     12_000,
   );
 
   if (ack.ok && ack.result) {
     const result = ack.result as unknown as EaGetOhlcResult;
-    const candles = normalizeEaCandles(result.candles ?? []);
-    if (candles.length > 0) {
+    const baseCandles = normalizeEaCandles(result.candles ?? []);
+    if (baseCandles.length > 0) {
+      const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
       return { candles, source: "mt5_ohlc" };
     }
   }
 
-  const cached = await getEaCandles(userId, mt5Symbol, interval);
+  const cached = await getEaCandles(userId, mt5Symbol, eaInterval);
   if (cached) {
     try {
-      const candles = normalizeEaCandles(JSON.parse(cached.candles_json) as unknown[]);
-      if (candles.length > 0) {
+      const baseCandles = normalizeEaCandles(JSON.parse(cached.candles_json) as unknown[]);
+      if (baseCandles.length > 0) {
+        const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
         return {
           candles: candles.slice(-limit),
           source: "heartbeat_cache",
@@ -155,19 +167,22 @@ async function fetchCryptoOhlc(
   );
 
   const sym = symbol.toUpperCase();
-  const tf = normalizeInterval(interval);
+  // Derived intervals (e.g. 2w, 10m) aren't native on Binance — fetch the base
+  // interval and aggregate. factor=1 is the native passthrough.
+  const { base: tf, factor } = intervalPlan(interval);
+  const baseLimit = Math.min(limit * factor, OHLC_MAX_LIMIT);
 
   if (cursor && Number.isFinite(cursor)) {
     const base = env === "testnet"
       ? "https://testnet.binance.vision"
       : "https://api.binance.com";
-    const url = `${base}/api/v3/klines?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(tf)}&limit=${limit}&endTime=${cursor - 1}`;
+    const url = `${base}/api/v3/klines?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(tf)}&limit=${baseLimit}&endTime=${cursor - 1}`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) {
       throw new Error(`Binance klines failed for ${sym}`);
     }
     const rows = (await res.json()) as unknown[][];
-    const candles = rows.map((r) => ({
+    const baseCandles = rows.map((r) => ({
       time: Number(r[0]),
       open: Number(r[1]),
       high: Number(r[2]),
@@ -175,12 +190,13 @@ async function fetchCryptoOhlc(
       close: Number(r[4]),
       volume: Number(r[5]),
     }));
-    const nextCursor = candles.length > 0 ? candles[0]!.time : null;
+    const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
+    const nextCursor = baseCandles.length > 0 ? baseCandles[0]!.time : null;
     return { candles, nextCursor };
   }
 
-  const rows = await getKlines(sym, tf, limit, env);
-  const candles = rows.map((r) => ({
+  const rows = await getKlines(sym, tf, baseLimit, env);
+  const baseCandles = rows.map((r) => ({
     time: r.openTime,
     open: r.open,
     high: r.high,
@@ -188,7 +204,8 @@ async function fetchCryptoOhlc(
     close: r.close,
     volume: r.volume,
   }));
-  const nextCursor = candles.length > 0 ? candles[0]!.time : null;
+  const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
+  const nextCursor = baseCandles.length > 0 ? baseCandles[0]!.time : null;
   return { candles, nextCursor };
 }
 
