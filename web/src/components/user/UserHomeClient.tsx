@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Download, ExternalLink, Plug, Link2 } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
 import { CopyField } from "@/components/ui/CopyField";
+import { ScalpControl } from "@/components/scalp/ScalpControl";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import { formatAccessExpiryLabel } from "@/lib/platformAccess";
 import type { PublicUser } from "@/lib/types";
@@ -74,6 +75,8 @@ export function UserHomeClient({
           <span>{formatAccessExpiryLabel(user.access_expires_at)}</span>
         </p>
       </SurfaceCard>
+
+      <ScalpControl />
 
       <SurfaceCard className="space-y-3">
         <div className="flex items-center gap-2">

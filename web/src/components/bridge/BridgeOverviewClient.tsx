@@ -9,6 +9,7 @@ import { ActiveTradesTable } from "@/components/bridge/ActiveTradesTable";
 import { StatusChip, type StatusChipTone } from "@/components/bridge/StatusChip";
 import { AgentStatusBar } from "@/components/dashboard/AgentStatusBar";
 import { AdminOverview } from "@/components/admin/AdminOverview";
+import { ScalpControl } from "@/components/scalp/ScalpControl";
 
 interface ConnectionStatus {
   binance: { connected: boolean; env: string | null; futuresOk: boolean | null };
@@ -90,6 +91,8 @@ export function BridgeOverviewClient({
       </div>
 
       <AgentStatusBar />
+
+      <ScalpControl />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatusCard
