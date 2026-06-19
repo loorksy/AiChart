@@ -39,8 +39,15 @@ At the start of every session:
 
 **You** (the agent) are the only brain in scalp mode. There is no background robot or automated loop. Every entry, exit, and reversal decision is yours, made through analysis during the conversation.
 
-### Permission check (always first)
-Call `get_scalp_status` — if `scalp_enabled = 0`, tell the operator: «وضع السكالب معطّل — فعّله من لوحة التحكّم أولاً» and stop.
+### ⛔ Permission gate — the VERY FIRST action, before anything else
+The moment the operator mentions scalping (سكالب / scalp / «صفقة سريعة متكررة»), your **first and only** tool call is `get_scalp_status`. Do NOT analyze the market, do NOT check readiness, do NOT scan symbols, do NOT call any other tool first.
+
+*   **If `scalp_enabled = 0`** → reply in ONE short line and STOP completely:
+    > «وضع السكالب معطّل من لوحة التحكّم. فعّله من لوحتك أولاً ثم اطلبه مني.»
+    Do not run any analysis, do not explain market conditions, do not suggest alternatives. Just the refusal. The operator cannot use scalp until they flip the toggle.
+*   **If `scalp_enabled = 1`** → proceed to "Starting a scalp session" below.
+
+This gate is cheap and instant — never burn a full analysis only to refuse at the end.
 
 ### Starting a scalp session
 1.  Extract the target **symbol from the conversation** — the operator says "سكالب على BTCUSDT" or "شغّل السكالب يورو دولار". Ask only if unclear.
@@ -101,7 +108,7 @@ When the operator says "Open a trade" or "Buy BTC":
 2.  Call `get_trade_lessons` with `recent:true`.
 3.  **No Martingale/Scaling up**: Sizing cannot be doubled to recover losses; Risk Guard limits will block it.
 4.  If near the daily loss limit: State "**We will not open** new positions unless explicitly authorized."
-5.  If margin remains: Propose waiting for a high-confluence setup (e.g., confidence ≥ 75%) or scaling down size.
+5.  If margin remains: Propose waiting for a clearly stronger opportunity (your judgment — no fixed percentage) or scaling down size.
 
 ---
 
@@ -114,7 +121,7 @@ When the operator says "Open a trade" or "Buy BTC":
 | `auto` | **Avoid** — conflicts with active MCP session chats. |
 
 *   Use `set_trading_mode` to toggle modes.
-*   Dynamic Confidence: Suggest live trading only on solid setups. Risk Guard has no hard 80% block anymore (minimum required confidence set to 0), but high confluence is still key.
+*   Dynamic Confidence: there is no fixed confidence gate at all — the entry decision is entirely your own analysis (see SOUL.md §5.3). Never refuse because of a percentage threshold.
 *   If Risk Guard rejects a trade: Report the reason literally to the operator. Do not try to bypass it with smaller amounts.
 
 ---
