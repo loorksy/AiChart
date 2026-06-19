@@ -10,19 +10,21 @@ import {
   startScalpSession,
   stopScalpSession,
 } from "@/lib/store";
-import { scalpLiveEnabled } from "@/lib/scalp/worker";
 import { STYLE_DEFAULT_INTERVAL } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 
-/** Bridge: scalp session status. */
+/** Bridge: scalp session status + user permission settings. */
 export async function GET(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
-    const session = await getScalpSession(userId);
+    const [session, settings] = await Promise.all([
+      getScalpSession(userId),
+      getSettings(userId),
+    ]);
     return NextResponse.json({
       session: session ?? null,
-      live_enabled: scalpLiveEnabled(),
-      mode: scalpLiveEnabled() ? "live" : "paper",
+      scalp_enabled: settings.scalp_enabled,
+      mode: settings.scalp_execution_mode,
     });
   } catch (e) {
     return handleError(e);
@@ -118,7 +120,7 @@ export async function POST(req: NextRequest) {
       interval,
       max_trades: maxTrades,
       notional,
-      mode: scalpLiveEnabled() ? "live" : "paper",
+      mode: settings.scalp_execution_mode,
     });
   } catch (e) {
     return handleError(e);

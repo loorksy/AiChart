@@ -21,15 +21,5 @@ module.exports = {
       autorestart: true,
       max_memory_restart: "256M",
     },
-    {
-      // Scalp worker — paper mode by default (set SCALP_LIVE_ENABLED=1 in
-      // web/.env to execute live). Continuous buy/close/sell loop.
-      name: "aichart-scalper",
-      script: "./infra/aichart-scalper.sh",
-      interpreter: "bash",
-      instances: 1,
-      autorestart: true,
-      max_memory_restart: "256M",
-    },
   ],
 };

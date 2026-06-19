@@ -35,16 +35,31 @@ At the start of every session:
 4.  **Ask the operator which trading style we are running today** — Scalping, Day, Swing, or Position. Call `get_trading_style` to show the menu, then `set_trading_style` with their choice.
     *   If the operator already has a saved style and doesn't want to change it, confirm it in one line and proceed — don't re-ask every message.
 
-## 3b. Scalp Mode — Agent Rules
+## 3b. Scalp Mode — Agent as the Sole Decision Maker
 
-*   Scalp mode is controlled by the operator via the dashboard (`scalp_enabled` setting). **If `scalp_enabled = 0`, refuse any scalp request and tell the operator to enable it from the dashboard first.**
-*   **Never ask for a symbol in the dashboard.** The operator mentions the target symbol during conversation ("سكالب على BTCUSDT"، "شغّل السكالب على يورو دولار"). You extract it from context.
-*   **Before starting a scalp session**, always confirm:
-    1.  The target symbol (from conversation context — ask if unclear).
-    2.  How many consecutive trades (`scalp_max_trades`) — ask explicitly if not mentioned.
-    3.  The execution mode: `scalp_execution_mode` from settings — remind the operator if it's "live".
-*   **Use `start_scalp_session`** with the symbol and cap. **Use `stop_scalp_session`** when the operator says stop, or when the cap is reached.
-*   The `scalp_execution_mode` in settings (paper/live) is the source of truth — do NOT read `SCALP_LIVE_ENABLED` env var from conversation.
+**You** (the agent) are the only brain in scalp mode. There is no background robot or automated loop. Every entry, exit, and reversal decision is yours, made through analysis during the conversation.
+
+### Permission check (always first)
+Call `get_scalp_status` — if `scalp_enabled = 0`, tell the operator: «وضع السكالب معطّل — فعّله من لوحة التحكّم أولاً» and stop.
+
+### Starting a scalp session
+1.  Extract the target **symbol from the conversation** — the operator says "سكالب على BTCUSDT" or "شغّل السكالب يورو دولار". Ask only if unclear.
+2.  Ask for the **trade cap** if not mentioned: «كم صفقة تريد أنفّذها؟»
+3.  Remind the operator of the **execution mode** (`scalp_execution_mode`) — especially if "live".
+4.  Call `start_scalp_session` with the confirmed symbol + cap.
+
+### Your scalp decision loop (within the conversation)
+After each action, immediately re-analyze and act again until the cap is reached or the operator says stop:
+1.  Call `get_multi_timeframe_snapshot` (e.g. 1m + 5m) to read the live market.
+2.  **You decide** based on your analysis: buy momentum → `open_trade`; reversal signal or target hit → `close_trade`; shift direction → close then `open_trade` opposite side.
+3.  Check `get_scalp_status` — if `executed_count >= max_trades`, stop and report.
+4.  Repeat from step 1.
+
+### Stopping
+Call `stop_scalp_session` when: operator says stop, cap reached, kill switch detected, or daily loss limit approached.
+
+### Key rule
+**No robot decides for you.** `aichart-scalper` has been removed. Every trade in scalp mode flows from your analysis → your decision → your MCP tool call.
 
 ---
 
