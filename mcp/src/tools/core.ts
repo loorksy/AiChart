@@ -16,15 +16,36 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "get_account_overview",
     mcpToolConfig("get_account_overview"),
-    async () =>
-      bridgeCall(async () => {
-        const [risk, portfolio, live] = await Promise.all([
+    async (args) => {
+      const { include_live = true } = (args ?? {}) as {
+        include_live?: boolean;
+      };
+      return bridgeCall(async () => {
+        // allSettled so a slow/failing live account never sinks the whole
+        // overview — risk + portfolio still return. live gets a bounded 10s.
+        const settled = await Promise.allSettled([
           bridge.get("/api/agent/risk/status"),
           bridge.get("/api/agent/portfolio"),
-          bridge.get("/api/agent/live/account"),
+          include_live
+            ? bridge.get("/api/agent/live/account", undefined, 10000)
+            : Promise.resolve({ skipped: true }),
         ]);
-        return { risk, portfolio, live };
-      }),
+        const val = (r: PromiseSettledResult<unknown>) =>
+          r.status === "fulfilled"
+            ? r.value
+            : {
+                error:
+                  r.reason instanceof Error
+                    ? r.reason.message
+                    : String(r.reason),
+              };
+        return {
+          risk: val(settled[0]),
+          portfolio: val(settled[1]),
+          live: include_live ? val(settled[2]) : { skipped: true },
+        };
+      });
+    },
   );
 
   server.registerTool(

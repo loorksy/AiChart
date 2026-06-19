@@ -1,6 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "properties": {},
+  "properties": {
+    "include_live": {
+      "description": "تضمين الحساب الحي (الأبطأ) — false لملخّص أسرع",
+      "type": "boolean"
+    }
+  },
   "additionalProperties": false
 }

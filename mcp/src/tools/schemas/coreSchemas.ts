@@ -17,8 +17,13 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_account_overview",
     domain: "core",
     description:
-      "متى: بداية جلسة التداول قبل أي قرار. يجمع risk + portfolio + live في طلب واحد. لا تستخدم بدل get_trade_readiness قبل تنفيذ فوركس. read-only. مثال: بدون معاملات.",
-    inputSchema: {},
+      "متى: بداية جلسة التداول قبل أي قرار. يجمع risk + portfolio + live. مرن: لو فشل الجزء الحي (live) يرجع الباقي. include_live=false لملخّص سريع بلا الحساب الحي. read-only.",
+    inputSchema: {
+      include_live: z
+        .boolean()
+        .optional()
+        .describe("تضمين الحساب الحي (الأبطأ) — false لملخّص أسرع"),
+    },
     annotations: READ_ONLY,
   },
   {

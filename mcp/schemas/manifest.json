@@ -1,12 +1,12 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-06-19T00:18:45.320Z",
+  "exportedAt": "2026-06-19T00:26:46.981Z",
   "toolCount": 58,
   "tools": [
     {
       "name": "get_account_overview",
       "domain": "core",
-      "description": "متى: بداية جلسة التداول قبل أي قرار. يجمع risk + portfolio + live في طلب واحد. لا تستخدم بدل get_trade_readiness قبل تنفيذ فوركس. read-only. مثال: بدون معاملات.",
+      "description": "متى: بداية جلسة التداول قبل أي قرار. يجمع risk + portfolio + live. مرن: لو فشل الجزء الحي (live) يرجع الباقي. include_live=false لملخّص سريع بلا الحساب الحي. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
