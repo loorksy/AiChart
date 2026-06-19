@@ -58,7 +58,7 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS scalp_sessions (
     user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    active         BOOLEAN NOT NULL DEFAULT FALSE,
+    active         INTEGER NOT NULL DEFAULT 0,
     symbol         TEXT NOT NULL DEFAULT '',
     market         TEXT NOT NULL DEFAULT 'crypto',
     interval       TEXT NOT NULL DEFAULT '1m',
