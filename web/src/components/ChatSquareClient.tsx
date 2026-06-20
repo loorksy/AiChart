@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { LineChart, X } from "lucide-react";
 import { ChatWelcome } from "@/components/chat/square/chat-welcome";
+import {
+  ChatStartScreen,
+  type ChatStartSelections,
+} from "@/components/chat/ChatStartScreen";
 import { ChatConversation } from "@/components/chat/square/chat-conversation";
 import { ChatInputBar } from "@/components/chat/square/chat-input-bar";
 import { ChartPreviewPanel } from "@/components/ui/chart-preview-panel";
@@ -52,6 +56,9 @@ export default function ChatSquareClient({
   const [executingIntentId, setExecutingIntentId] = useState<number | null>(
     null,
   );
+  // Chat start-screen selections (applied on the first message of a session).
+  const [startSel, setStartSel] = useState<ChatStartSelections | null>(null);
+  const [startDone, setStartDone] = useState(false);
 
   const { data: me, refresh: refreshMe } = useMe();
 
@@ -235,6 +242,15 @@ export default function ChatSquareClient({
             : undefined,
           conversationId: convId,
           stream: true,
+          start_context: startSel
+            ? {
+                trading_style: startSel.trading_style,
+                mode: startSel.mode,
+                active_market: startSel.market,
+                response_mode: startSel.response_mode,
+                symbol: startSel.symbol || undefined,
+              }
+            : undefined,
         }),
       });
 
@@ -296,6 +312,7 @@ export default function ChatSquareClient({
     } finally {
       setBusy(false);
       setShowActivity(false);
+      setStartSel(null); // start-screen context applies to the first message only
     }
   }
 
@@ -307,7 +324,8 @@ export default function ChatSquareClient({
     ? "تابع المحادثة…"
     : "اسأل الخبير عن السوق أو حسابك…";
 
-  const showWelcome = !hasConversation && !busy;
+  const showStart = !hasConversation && !busy && !startDone;
+  const showWelcome = !hasConversation && !busy && startDone;
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -340,7 +358,18 @@ export default function ChatSquareClient({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {showWelcome ? (
+          {showStart ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <ChatStartScreen
+                displayName={displayName}
+                onStart={(s) => {
+                  setStartSel(s);
+                  setStartDone(true);
+                  if (s.symbol) setPreviewSymbol(s.symbol.toUpperCase());
+                }}
+              />
+            </div>
+          ) : showWelcome ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <ChatWelcome model={model} creditsRemaining={creditsRemaining} />
               <ChatInputBar

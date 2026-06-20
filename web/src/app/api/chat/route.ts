@@ -42,6 +42,16 @@ const schema = z.object({
   image: imageSchema.optional(),
   conversationId: z.number().int().positive().optional(),
   stream: z.boolean().optional(),
+  /** Selections from the chat start screen (applied on the first message). */
+  start_context: z
+    .object({
+      trading_style: z.enum(["scalp", "day", "swing", "position"]).optional(),
+      mode: z.enum(["auto", "approval", "direct"]).optional(),
+      active_market: z.enum(["crypto", "forex"]).optional(),
+      response_mode: z.enum(["fast", "expert", "vision"]).optional(),
+      symbol: z.string().max(20).optional(),
+    })
+    .optional(),
 });
 
 
@@ -93,6 +103,21 @@ export async function POST(req: NextRequest) {
     }
 
 
+
+    // Apply chat start-screen selections (style/mode/market) in-process before
+    // loading settings, so this turn already reflects them.
+    const startCtx = body.start_context;
+    if (startCtx) {
+      const patch: Record<string, unknown> = {};
+      if (startCtx.trading_style) patch.trading_style = startCtx.trading_style;
+      if (startCtx.mode) patch.mode = startCtx.mode;
+      if (startCtx.active_market) patch.active_market = startCtx.active_market;
+      if (Object.keys(patch).length) {
+        const { updateSettings } = await import("@/lib/store");
+        await updateSettings(user.id, patch);
+      }
+    }
+    const responseMode = startCtx?.response_mode;
 
     const settings = await getSettings(user.id);
 
@@ -172,6 +197,8 @@ export async function POST(req: NextRequest) {
     const runOpts = {
 
       conversationSummary,
+
+      responseMode,
 
       onActivity: undefined as ((a: import("@/lib/agentActivity").AgentActivity) => void) | undefined,
 
@@ -309,7 +336,7 @@ export async function POST(req: NextRequest) {
 
       history,
 
-      { conversationSummary },
+      { conversationSummary, responseMode },
 
     );
 

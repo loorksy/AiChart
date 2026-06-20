@@ -453,6 +453,8 @@ export interface RunAgentOptions {
   onDelta?: (text: string) => void;
   conversationSummary?: string | null;
   mode?: "default" | "chart_analyze";
+  /** Response depth chosen on the chat start screen. */
+  responseMode?: "fast" | "expert" | "vision";
 }
 
 interface AgentContext {
@@ -828,16 +830,31 @@ export async function runAgent(
     ctx.userId,
     options?.conversationSummary,
   );
+  const responseHint =
+    options?.responseMode === "fast"
+      ? "\n\n# نمط الرد: سريع\n- موجز ومباشر. قلّل استدعاء الأدوات لأقل ما يلزم للقرار. بطاقة قصيرة."
+      : options?.responseMode === "vision"
+        ? "\n\n# نمط الرد: رؤية\n- ركّز على الشارت: التقط لقطة (capture_chart_snapshot) وحلّل الأنماط والمستويات بصرياً قبل الحكم."
+        : options?.responseMode === "expert"
+          ? "\n\n# نمط الرد: خبير\n- تحليل أعمق متعدد الأطر: استخدم get_multi_timeframe_snapshot + المؤشرات + كود الاستراتيجية. وازن بين الأطر."
+          : "";
   const system =
     options?.mode === "chart_analyze"
       ? {
           static: systemBase.static + chartAnalyzeSystemSuffix(),
           dynamic: systemBase.dynamic,
         }
-      : systemBase;
+      : { static: systemBase.static + responseHint, dynamic: systemBase.dynamic };
   const activeTools =
     options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;
-  const maxSteps = options?.mode === "chart_analyze" ? 2 : 10;
+  const maxSteps =
+    options?.mode === "chart_analyze"
+      ? 2
+      : options?.responseMode === "fast"
+        ? 6
+        : options?.responseMode === "expert"
+          ? 14
+          : 10;
   const messages: Message[] = [...history];
   const recorded: Recommendation[] = [];
   const signalDeliveries: DeliveryResult[] = [];
