@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Zap, Gem, Eye, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PairPicker } from "@/components/market/PairPicker";
 
 export interface ChatStartSelections {
   trading_style: "scalp" | "day" | "swing" | "position";
@@ -78,12 +79,16 @@ export function ChatStartScreen({
         : "تحليل خبير متعدد الأطر الزمنية";
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-8">
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-5 rounded-2xl border border-border bg-card/60 p-5 shadow-sm backdrop-blur-sm sm:p-7">
       <div className="flex flex-col items-center gap-3 text-center">
-        <Image src="/logo.png" alt="AiChart" width={48} height={48} className="rounded-xl" />
+        <div className="rounded-2xl bg-gradient-to-tr from-primary/20 to-primary/5 p-2.5 ring-1 ring-primary/20">
+          <Image src="/logo.png" alt="AiChart" width={40} height={40} className="rounded-xl" />
+        </div>
         <div>
           <h1 className="text-xl font-bold">مرحباً {displayName} 👋</h1>
-          <p className="text-sm text-muted-foreground">اختر إعدادات الجلسة قبل أن نبدأ</p>
+          <p className="text-sm text-muted-foreground">
+            اضبط جلستك ثم ابدأ التداول بالمحادثة
+          </p>
         </div>
       </div>
 
@@ -131,28 +136,30 @@ export function ChatStartScreen({
         />
       </div>
 
-      {/* Market + symbol */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">المنصة</label>
-          <Segmented
-            value={sel.market}
-            onChange={(v) => set("market", v)}
-            options={[
-              { value: "crypto", label: "كريبتو" },
-              { value: "forex", label: "فوركس" },
-            ]}
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">الرمز (اختياري)</label>
-          <input
-            value={sel.symbol}
-            onChange={(e) => set("symbol", e.target.value)}
-            placeholder={sel.market === "forex" ? "EURUSD" : "BTCUSDT"}
-            className="input w-full"
-          />
-        </div>
+      {/* Market */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">المنصة</label>
+        <Segmented
+          value={sel.market}
+          onChange={(v) => {
+            set("market", v);
+            set("symbol", ""); // reset symbol when market changes
+          }}
+          options={[
+            { value: "crypto", label: "كريبتو" },
+            { value: "forex", label: "فوركس" },
+          ]}
+        />
+      </div>
+
+      {/* Symbol — pair picker popup */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">الزوج (اختياري)</label>
+        <PairPicker
+          market={sel.market}
+          value={sel.symbol}
+          onChange={(s) => set("symbol", s)}
+        />
       </div>
 
       <button
