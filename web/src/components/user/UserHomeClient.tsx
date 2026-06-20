@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AlertTriangle, Download, ExternalLink, Plug, Link2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Download,
+  ExternalLink,
+  Plug,
+  Link2,
+  MessageSquare,
+} from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
 import { CopyField } from "@/components/ui/CopyField";
 import { ScalpControl } from "@/components/scalp/ScalpControl";
@@ -50,6 +57,22 @@ export function UserHomeClient({
         <h1 className="text-2xl font-bold">مرحباً، {displayNameForUser(user)}</h1>
         <p className="text-sm text-muted-foreground">لوحة AiChart — Claude MCP</p>
       </div>
+
+      <Link
+        href="/chat"
+        className="flex items-center justify-between rounded-xl border border-primary/30 bg-primary/5 p-4 transition hover:bg-primary/10"
+      >
+        <div className="flex items-center gap-3">
+          <MessageSquare className="h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-semibold">دردشة مع الوكيل</h2>
+            <p className="text-sm text-muted-foreground">
+              حلّل، خذ صفقات، وأدِر حسابك من المنصة مباشرة.
+            </p>
+          </div>
+        </div>
+        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+      </Link>
 
       {needsCredentials && (
         <SurfaceCard className="border-amber-500/30 bg-amber-500/5">
