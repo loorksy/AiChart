@@ -10,6 +10,7 @@ import {
   Link2,
   MessageSquare,
 } from "lucide-react";
+import { FadeIn } from "@/components/ui/fade-in";
 import { SurfaceCard } from "@/components/ui/shell";
 import { CopyField } from "@/components/ui/CopyField";
 import { ScalpControl } from "@/components/scalp/ScalpControl";
@@ -52,6 +53,7 @@ export function UserHomeClient({
   const needsProfile = !user.whatsapp_e164 && user.telegram_id;
 
   return (
+    <FadeIn>
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">مرحباً، {displayNameForUser(user)}</h1>
@@ -170,5 +172,6 @@ export function UserHomeClient({
         </p>
       )}
     </div>
+    </FadeIn>
   );
 }

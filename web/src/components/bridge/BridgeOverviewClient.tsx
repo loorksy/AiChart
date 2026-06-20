@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { TradeIntent, TradingSettings } from "@/lib/types";
 import type { AdminPlatformStats } from "@/lib/store";
 import { SurfaceCard } from "@/components/ui/shell";
+import { FadeIn } from "@/components/ui/fade-in";
 import { ActiveTradesTable } from "@/components/bridge/ActiveTradesTable";
 import { StatusChip, type StatusChipTone } from "@/components/bridge/StatusChip";
 import { AgentStatusBar } from "@/components/dashboard/AgentStatusBar";
@@ -82,6 +83,7 @@ export function BridgeOverviewClient({
     (settings.active_market === "forex" ? "فوركس" : "كريبتو");
 
   return (
+    <FadeIn>
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold">نظرة عامة</h2>
@@ -179,5 +181,6 @@ export function BridgeOverviewClient({
         />
       )}
     </div>
+    </FadeIn>
   );
 }

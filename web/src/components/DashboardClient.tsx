@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FadeIn } from "@/components/ui/fade-in";
 import Link from "next/link";
 import {
   ArrowLeftRight,
@@ -76,6 +77,7 @@ export default function DashboardClient({
   }
 
   return (
+    <FadeIn>
     <PageLayout
       title="حسابي"
       subtitle="لوحة الحساب والرصيد"
@@ -269,5 +271,6 @@ export default function DashboardClient({
         </SurfaceCard>
       )}
     </PageLayout>
+    </FadeIn>
   );
 }
