@@ -42,6 +42,35 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
       input.action === "buy" ? "شراء" : input.action === "sell" ? "بيع" : "انتظار";
     return `تسجيل توصية ${action}${symbol ? ` · ${symbol}` : ""} + لقطة شارت`;
   },
+  get_account_overview: () => "نظرة شاملة على الحساب والمخاطر",
+  get_risk_status: () => "فحص حالة المخاطر والحدود",
+  get_open_trades: () => "قراءة الصفقات المفتوحة",
+  get_multi_timeframe_snapshot: (input) =>
+    `تحليل عدة أطر · ${String(input.symbol ?? "الرمز")}`,
+  scan_market: () => "مسح ومقارنة الفرص",
+  get_trade_readiness: (input) =>
+    `فحص الجاهزية للدخول · ${String(input.symbol ?? "")}`,
+  open_trade: (input) => {
+    const side = input.side === "buy" ? "شراء" : "بيع";
+    return `فتح صفقة ${side} · ${String(input.symbol ?? "")}`;
+  },
+  close_trade: (input) =>
+    input.all ? "إغلاق كل الصفقات" : `إغلاق الصفقة #${String(input.trade_id ?? "")}`,
+  modify_sl_tp: (input) =>
+    `تعديل وقف/هدف الصفقة #${String(input.trade_id ?? "")}`,
+  request_approval: (input) => {
+    const side = input.side === "buy" ? "شراء" : "بيع";
+    return `طلب موافقة على ${side} · ${String(input.symbol ?? "")}`;
+  },
+  set_trading_mode: (input) => `تبديل وضع التنفيذ · ${String(input.mode ?? "")}`,
+  set_active_market: (input) =>
+    `تبديل السوق · ${input.active_market === "forex" ? "فوركس" : "كريبتو"}`,
+  set_trading_style: (input) =>
+    `ضبط أسلوب التداول · ${String(input.trading_style ?? "")}`,
+  get_scalp_status: () => "فحص إذن وحالة السكالب",
+  start_scalp_session: (input) =>
+    `بدء جلسة سكالب · ${String(input.symbol ?? "")}`,
+  stop_scalp_session: () => "إيقاف جلسة السكالب",
 };
 
 export function describeToolUse(

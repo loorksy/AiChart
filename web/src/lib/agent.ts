@@ -14,6 +14,7 @@ import {
 } from "./markets";
 import { getBinanceCredentials, saveRecommendation, getPublicUser, listTrades, listIntents, listRecommendations, countOpenTrades, getBinanceAccountMeta, getSettings, updateRecommendationIntelligence } from "./store";
 import { attachChartToRecommendation } from "./recommendationChart";
+import { internalBridgeForUser } from "./agentBridge";
 import type { DeliveryResult } from "./alerts";
 import { profileForInterval } from "./analysisProfile";
 import {
@@ -228,6 +229,205 @@ const TOOLS: ToolDef[] = [
       required: ["symbol", "action", "confidence", "rationale", "factors"],
     },
   },
+  // ── Execution & control tools (parity with MCP) — routed through the
+  //    internal bridge to the same /api/agent/* routes (Risk Guard enforced).
+  {
+    name: "get_account_overview",
+    description:
+      "نظرة شاملة: المخاطر + المحفظة + الحساب الحي في طلب واحد. استخدمها بداية الجلسة قبل أي قرار.",
+    input_schema: {
+      type: "object",
+      properties: { include_live: { type: "boolean" } },
+    },
+  },
+  {
+    name: "get_risk_status",
+    description:
+      "حالة المخاطر: مفتاح الإيقاف، الحدود، الوضع، بيئة التنفيذ. read-only.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_open_trades",
+    description: "قائمة الصفقات المفتوحة الحالية للمستخدم. read-only.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_multi_timeframe_snapshot",
+    description:
+      "تحليل عدة أطر زمنية لزوج واحد بنداء واحد (أسرع). مثل intervals=[1h,15m,5m].",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        intervals: { type: "array", items: { type: "string" } },
+        market: { type: "string", enum: ["crypto", "forex"] },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "scan_market",
+    description:
+      "مسح ومقارنة عدة رموز لاختيار أفضل فرصة. مثل symbols=[BTCUSDT,ETHUSDT].",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbols: { type: "array", items: { type: "string" } },
+        interval: { type: "string" },
+        market: { type: "string", enum: ["crypto", "forex"] },
+      },
+    },
+  },
+  {
+    name: "get_trade_readiness",
+    description:
+      "فحص الجاهزية قبل فتح صفقة (خصوصاً فوركس): حداثة السعر، السبريد. لا تفتح إذا ready=false.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        market: { type: "string", enum: ["crypto", "forex"] },
+        confidence: { type: "number" },
+      },
+    },
+  },
+  {
+    name: "open_trade",
+    description:
+      "يفتح صفقة. في وضع الموافقة يُنشئ نية معلّقة (تظهر بطاقة موافقة)؛ في التلقائي أو بأمر صريح ينفّذ. يمرّ عبر Risk Guard دائماً. مرّر notional وrationale وconfidence.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        side: { type: "string", enum: ["buy", "sell"] },
+        notional: { type: "number", description: "حجم الصفقة (USDT/هامش)" },
+        market: { type: "string", enum: ["crypto", "forex"] },
+        market_type: { type: "string", enum: ["spot", "futures"] },
+        leverage: { type: "number" },
+        order_type: { type: "string", enum: ["market", "limit"] },
+        entry: { type: "number" },
+        stop_loss: { type: "number" },
+        take_profit: { type: "number" },
+        confidence: { type: "number" },
+        rationale: { type: "string" },
+        recommendation_id: { type: "number" },
+        approved_by_user: {
+          type: "boolean",
+          description: "true عندما يأمر المستخدم صراحةً بالتنفيذ",
+        },
+      },
+      required: ["symbol", "side"],
+    },
+  },
+  {
+    name: "close_trade",
+    description:
+      "يغلق صفقة مفتوحة (trade_id) أو كل الصفقات (all=true). يبلّغ الربح/الخسارة.",
+    input_schema: {
+      type: "object",
+      properties: {
+        trade_id: { type: "number" },
+        all: { type: "boolean" },
+      },
+    },
+  },
+  {
+    name: "modify_sl_tp",
+    description: "يعدّل وقف الخسارة/الهدف لصفقة مفتوحة.",
+    input_schema: {
+      type: "object",
+      properties: {
+        trade_id: { type: "number" },
+        stop_loss: { type: "number" },
+        take_profit: { type: "number" },
+      },
+      required: ["trade_id"],
+    },
+  },
+  {
+    name: "request_approval",
+    description:
+      "يرسل بطاقة موافقة للمستخدم لصفقة مقترحة (وضع الموافقة). side-effect: نية معلّقة.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        side: { type: "string", enum: ["buy", "sell"] },
+        notional: { type: "number" },
+        market: { type: "string", enum: ["crypto", "forex"] },
+        entry: { type: "number" },
+        stop_loss: { type: "number" },
+        take_profit: { type: "number" },
+        confidence: { type: "number" },
+        rationale: { type: "string" },
+      },
+      required: ["symbol", "side"],
+    },
+  },
+  {
+    name: "set_trading_mode",
+    description: "يبدّل وضع التنفيذ: auto / approval / direct.",
+    input_schema: {
+      type: "object",
+      properties: { mode: { type: "string", enum: ["auto", "approval", "direct"] } },
+      required: ["mode"],
+    },
+  },
+  {
+    name: "set_active_market",
+    description: "يبدّل السوق النشط: crypto / forex.",
+    input_schema: {
+      type: "object",
+      properties: {
+        active_market: { type: "string", enum: ["crypto", "forex"] },
+      },
+      required: ["active_market"],
+    },
+  },
+  {
+    name: "set_trading_style",
+    description:
+      "يضبط أسلوب التداول: scalp/day/swing/position. في scalp مرّر scalp_max_trades.",
+    input_schema: {
+      type: "object",
+      properties: {
+        trading_style: {
+          type: "string",
+          enum: ["scalp", "day", "swing", "position"],
+        },
+        scalp_max_trades: { type: "number" },
+        sync_interval: { type: "boolean" },
+      },
+      required: ["trading_style"],
+    },
+  },
+  {
+    name: "get_scalp_status",
+    description:
+      "حالة جلسة السكالب + هل السكالب مسموح (scalp_enabled) ووضع التنفيذ. read-only. استدعها أولاً عند أي طلب سكالب.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "start_scalp_session",
+    description:
+      "يبدأ جلسة سكالب (بعد التحقق أن scalp_enabled=1). مرّر symbol وmax_trades.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string" },
+        market: { type: "string", enum: ["crypto", "forex"] },
+        interval: { type: "string" },
+        max_trades: { type: "number" },
+        notional: { type: "number" },
+      },
+      required: ["symbol", "max_trades"],
+    },
+  },
+  {
+    name: "stop_scalp_session",
+    description: "يوقف جلسة السكالب الحالية.",
+    input_schema: { type: "object", properties: {} },
+  },
 ];
 
 const CHART_ANALYZE_TOOL_NAMES = new Set([
@@ -262,6 +462,109 @@ interface AgentContext {
   telegramSession?: boolean;
 }
 
+/** Tools that forward to the internal /api/agent/* bridge (parity with MCP). */
+const BRIDGE_TOOL_NAMES = new Set([
+  "get_account_overview",
+  "get_risk_status",
+  "get_open_trades",
+  "get_multi_timeframe_snapshot",
+  "scan_market",
+  "get_trade_readiness",
+  "open_trade",
+  "close_trade",
+  "modify_sl_tp",
+  "request_approval",
+  "set_trading_mode",
+  "set_active_market",
+  "set_trading_style",
+  "get_scalp_status",
+  "start_scalp_session",
+  "stop_scalp_session",
+]);
+
+/** Routes a bridge tool to its /api/agent/* endpoint via the internal bridge. */
+async function forwardBridge(
+  userId: number,
+  name: string,
+  input: Record<string, unknown>,
+): Promise<{ content: string; isError?: boolean }> {
+  const bridge = await internalBridgeForUser(userId);
+  const ok = (data: unknown) => ({ content: JSON.stringify(data) });
+
+  switch (name) {
+    case "get_account_overview": {
+      const includeLive = input.include_live !== false;
+      const settled = await Promise.allSettled([
+        bridge.get("/api/agent/risk/status"),
+        bridge.get("/api/agent/portfolio"),
+        includeLive
+          ? bridge.get("/api/agent/live/account")
+          : Promise.resolve({ skipped: true }),
+      ]);
+      const val = (r: PromiseSettledResult<unknown>) =>
+        r.status === "fulfilled"
+          ? r.value
+          : { error: r.reason instanceof Error ? r.reason.message : String(r.reason) };
+      return ok({
+        risk: val(settled[0]),
+        portfolio: val(settled[1]),
+        live: includeLive ? val(settled[2]) : { skipped: true },
+      });
+    }
+    case "get_risk_status":
+      return ok(await bridge.get("/api/agent/risk/status"));
+    case "get_open_trades":
+      return ok(await bridge.get("/api/agent/trades/open"));
+    case "get_multi_timeframe_snapshot":
+      return ok(
+        await bridge.get("/api/agent/market/multi-snapshot", {
+          symbol: String(input.symbol ?? ""),
+          intervals:
+            Array.isArray(input.intervals) && input.intervals.length
+              ? input.intervals.map((i) => String(i)).join(",")
+              : undefined,
+          market: input.market as string | undefined,
+        }),
+      );
+    case "scan_market":
+      return ok(await bridge.post("/api/agent/market/scan", input));
+    case "get_trade_readiness":
+      return ok(
+        await bridge.get("/api/agent/trade/readiness", {
+          symbol: input.symbol as string | undefined,
+          market: input.market as string | undefined,
+          confidence: input.confidence as number | undefined,
+        }),
+      );
+    case "open_trade":
+      return ok(await bridge.post("/api/agent/trade/open", input));
+    case "close_trade":
+      return ok(await bridge.post("/api/agent/trade/close", input));
+    case "modify_sl_tp":
+      return ok(await bridge.post("/api/agent/ea/modify-sl-tp", input));
+    case "request_approval":
+      return ok(await bridge.post("/api/agent/approval/request", input));
+    case "set_trading_mode":
+      return ok(await bridge.post("/api/agent/mode", { mode: input.mode }));
+    case "set_active_market":
+      return ok(
+        await bridge.patch("/api/agent/settings", {
+          active_market: input.active_market,
+        }),
+      );
+    case "set_trading_style":
+      return ok(await bridge.post("/api/agent/style", input));
+    case "get_scalp_status":
+      return ok(await bridge.get("/api/agent/scalp"));
+    case "start_scalp_session":
+      return ok(await bridge.post("/api/agent/scalp", { action: "start", ...input }));
+    case "stop_scalp_session":
+      return ok(await bridge.post("/api/agent/scalp", { action: "stop" }));
+    default:
+      return { content: `أداة جسر غير معروفة: ${name}`, isError: true };
+  }
+}
+
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
@@ -270,6 +573,9 @@ async function executeTool(
   signalDeliveries: DeliveryResult[],
 ): Promise<{ content: string; isError?: boolean }> {
   try {
+    if (BRIDGE_TOOL_NAMES.has(name)) {
+      return await forwardBridge(ctx.userId, name, input);
+    }
     switch (name) {
       case "resolve_symbol": {
         const resolved = resolveSymbol(
