@@ -348,17 +348,17 @@ export default function ChatSquareClient({
   const isEmpty = messages.length === 0 && !busy;
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background lg:h-full">
       {/* Header: history + new chat + chart toggle */}
-      <div className="z-10 flex shrink-0 items-center justify-between px-3 py-1.5 pt-14 md:px-4 lg:pt-1.5">
-        <div className="flex items-center gap-1">
+      <div className="z-10 flex shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 py-2 pt-16 md:px-4 lg:pt-2">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setHistoryOpen(true)}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary/80"
+            className="flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary/80 hover:text-foreground"
             title="سجل المحادثات"
           >
-            <MessagesSquare className="h-4 w-4" />
+            <MessagesSquare className="h-3.5 w-3.5" />
             المحادثات
           </button>
           <button
@@ -367,10 +367,10 @@ export default function ChatSquareClient({
               resetSelection();
               setSel(DEFAULT_SELECTIONS);
             }}
-            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary/80"
+            className="flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary/80 hover:text-foreground"
             title="محادثة جديدة"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             جديدة
           </button>
         </div>
@@ -378,13 +378,13 @@ export default function ChatSquareClient({
           type="button"
           onClick={() => setPreviewOpen((o) => !o)}
           className={cn(
-            "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition",
+            "flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition",
             previewOpen
-              ? "bg-secondary text-foreground"
-              : "text-muted-foreground hover:bg-secondary/80",
+              ? "border-primary/30 bg-primary/15 text-primary"
+              : "border-border bg-card/60 text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
           )}
         >
-          <LineChart className="h-4 w-4" />
+          <LineChart className="h-3.5 w-3.5" />
           الشارت
         </button>
       </div>
