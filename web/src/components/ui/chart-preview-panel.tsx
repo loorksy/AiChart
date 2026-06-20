@@ -3,6 +3,7 @@
 import { X, Maximize2, Minimize2 } from "lucide-react";
 import PriceChart from "@/components/PriceChart";
 import { IntervalPicker } from "@/components/market/IntervalPicker";
+import { PairPicker } from "@/components/market/PairPicker";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +11,8 @@ export function ChartPreviewPanel({
   symbol,
   interval,
   onIntervalChange,
+  onSymbolChange,
+  market = "crypto",
   recommendations,
   onClose,
   expanded,
@@ -19,6 +22,8 @@ export function ChartPreviewPanel({
   symbol: string;
   interval: string;
   onIntervalChange: (iv: string) => void;
+  onSymbolChange?: (symbol: string) => void;
+  market?: "crypto" | "forex";
   recommendations: Recommendation[];
   onClose?: () => void;
   expanded?: boolean;
@@ -33,14 +38,19 @@ export function ChartPreviewPanel({
       )}
     >
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">معاينة</span>
-          <span
-            className="rounded-md bg-secondary px-2 py-0.5 font-mono text-sm font-semibold text-foreground"
-            dir="ltr"
-          >
-            {symbol}
-          </span>
+        <div className="flex min-w-0 items-center gap-2">
+          {onSymbolChange ? (
+            <div className="w-40">
+              <PairPicker market={market} value={symbol} onChange={onSymbolChange} />
+            </div>
+          ) : (
+            <span
+              className="rounded-md bg-secondary px-2 py-0.5 font-mono text-sm font-semibold text-foreground"
+              dir="ltr"
+            >
+              {symbol}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <IntervalPicker value={interval} onChange={onIntervalChange} />

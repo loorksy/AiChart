@@ -48,11 +48,13 @@ export function PairPicker({
   value,
   onChange,
   className,
+  placement = "down",
 }: {
   market: Market;
   value: string;
   onChange: (symbol: string) => void;
   className?: string;
+  placement?: "up" | "down";
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -148,9 +150,14 @@ export function PairPicker({
         />
       </button>
 
-      {/* Popover (opens upward — sits above the chat input) */}
+      {/* Popover */}
       {open && (
-        <div className="absolute bottom-full z-50 mb-2 w-full min-w-[16rem] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+        <div
+          className={cn(
+            "absolute z-50 w-full min-w-[16rem] overflow-hidden rounded-xl border border-border bg-card shadow-xl",
+            placement === "up" ? "bottom-full mb-2" : "top-full mt-2",
+          )}
+        >
           <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
             <Search className="h-4 w-4 text-muted-foreground" />
             <input

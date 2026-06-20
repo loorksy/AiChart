@@ -2,7 +2,6 @@ import {
   KeyRound,
   LayoutDashboard,
   Link2,
-  LineChart,
   MessageSquare,
   Plug,
   Settings,
@@ -27,10 +26,9 @@ export interface NavItem {
  * USER_NAV / BRIDGE_NAV / ChatGptSidebar tabs. Filtered by role at render time.
  */
 export const APP_NAV: NavItem[] = [
-  { href: "/console", label: "نظرة", icon: LayoutDashboard, exact: true },
   { href: "/chat", label: "المحادثة", icon: MessageSquare },
+  { href: "/console", label: "نظرة", icon: LayoutDashboard, exact: true },
   { href: "/console/trades", label: "الصفقات", icon: TrendingUp },
-  { href: "/market", label: "السوق", icon: LineChart },
   { href: "/console/connect", label: "الاتصالات", icon: Link2 },
   { href: "/console/settings", label: "الإعدادات", icon: Settings },
   { href: "/console/mcp", label: "Claude MCP", icon: Plug },

@@ -177,6 +177,7 @@ export function ChatModeBar({
           <PairPicker
             market={sel.market}
             value={sel.symbol}
+            placement="up"
             onChange={(s) => set("symbol", s)}
           />
         </div>

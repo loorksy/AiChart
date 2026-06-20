@@ -54,6 +54,25 @@ export default function ChatSquareClient({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSymbol, setPreviewSymbol] = useState("BTCUSDT");
   const [previewInterval, setPreviewInterval] = useState("1h");
+  const [previewWidth, setPreviewWidth] = useState(440);
+
+  // Drag-to-resize the chart panel (RTL: panel on the left; dragging the
+  // handle leftward widens it).
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = previewWidth;
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(760, Math.max(300, startW + (startX - ev.clientX)));
+      setPreviewWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
   const [busyIntentId, setBusyIntentId] = useState<number | null>(null);
   const [executingIntentId, setExecutingIntentId] = useState<number | null>(
     null,
@@ -331,7 +350,7 @@ export default function ChatSquareClient({
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Header: history + new chat + chart toggle */}
-      <div className="z-10 flex shrink-0 items-center justify-between px-3 py-1.5 md:px-4">
+      <div className="z-10 flex shrink-0 items-center justify-between px-3 py-1.5 pt-14 md:px-4 lg:pt-1.5">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -428,7 +447,25 @@ export default function ChatSquareClient({
           )}
 
           {/* Inline session-mode bar — only before the first message. */}
-          {isEmpty && <ChatModeBar sel={sel} onChange={setSel} />}
+          {isEmpty && (
+            <ChatModeBar
+              sel={sel}
+              onChange={(s) => {
+                if (s.symbol && s.symbol !== sel.symbol) {
+                  setPreviewSymbol(s.symbol.toUpperCase());
+                  setPreviewInterval(
+                    s.trading_style === "scalp"
+                      ? "5m"
+                      : s.trading_style === "position"
+                        ? "1d"
+                        : "1h",
+                  );
+                  setPreviewOpen(true);
+                }
+                setSel(s);
+              }}
+            />
+          )}
 
           <ChatInputBar
             value={input}
@@ -446,16 +483,30 @@ export default function ChatSquareClient({
         </div>
 
         {previewOpen && (
-          <aside className="hidden h-full min-h-0 w-[min(42%,26rem)] shrink-0 flex-col overflow-hidden border-s border-border bg-card md:flex">
-            <ChartPreviewPanel
-              symbol={previewSymbol}
-              interval={previewInterval}
-              onIntervalChange={setPreviewInterval}
-              recommendations={allRecommendations}
-              onClose={() => setPreviewOpen(false)}
-              className="h-full min-h-0 border-0"
+          <>
+            {/* Drag handle to resize the chart */}
+            <div
+              onMouseDown={startResize}
+              className="hidden w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 md:block"
+              role="separator"
+              aria-label="تغيير حجم الشارت"
             />
-          </aside>
+            <aside
+              style={{ width: previewWidth }}
+              className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-s border-border bg-card md:flex"
+            >
+              <ChartPreviewPanel
+                symbol={previewSymbol}
+                interval={previewInterval}
+                onIntervalChange={setPreviewInterval}
+                onSymbolChange={(s) => setPreviewSymbol(s.toUpperCase())}
+                market={sel.market}
+                recommendations={allRecommendations}
+                onClose={() => setPreviewOpen(false)}
+                className="h-full min-h-0 border-0"
+              />
+            </aside>
+          </>
         )}
       </div>
 
@@ -477,6 +528,8 @@ export default function ChatSquareClient({
               symbol={previewSymbol}
               interval={previewInterval}
               onIntervalChange={setPreviewInterval}
+              onSymbolChange={(s) => setPreviewSymbol(s.toUpperCase())}
+              market={sel.market}
               recommendations={allRecommendations}
               className="h-full border-0"
             />
