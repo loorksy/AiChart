@@ -115,6 +115,79 @@ export function PairPicker({
   const selected = value?.trim().toUpperCase();
   const selTicker = selected ? tickers[selected] : undefined;
 
+  const panelBody = (
+    <>
+      <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2.5">
+        <Search className="h-4 w-4 text-muted-foreground" />
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={market === "forex" ? "ابحث (EURUSD…)" : "ابحث (BTC…)"}
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          dir="ltr"
+        />
+        {query && (
+          <button type="button" onClick={() => setQuery("")}>
+            <X className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        )}
+      </div>
+      <div className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto p-2">
+        {list.length === 0 && (
+          <p className="col-span-2 py-6 text-center text-xs text-muted-foreground">
+            لا نتائج
+          </p>
+        )}
+        {list.map((p) => {
+          const isSel = p.symbol === selected;
+          const up = p.changePct >= 0;
+          return (
+            <button
+              key={p.symbol}
+              type="button"
+              onClick={() => {
+                onChange(p.symbol);
+                setOpen(false);
+                setQuery("");
+              }}
+              className={cn(
+                "flex flex-col gap-1 rounded-lg border p-2.5 text-right transition",
+                isSel
+                  ? "border-primary/50 bg-primary/10"
+                  : "border-border/60 bg-background/40 hover:border-primary/30 hover:bg-secondary/40",
+              )}
+            >
+              <span className="font-mono text-xs font-semibold text-foreground" dir="ltr">
+                {prettyPair(p.symbol, market)}
+              </span>
+              {market === "crypto" && (
+                <span className="flex items-center justify-between gap-1">
+                  <span
+                    className={cn(
+                      "flex items-center gap-0.5 text-[10px] font-medium",
+                      up ? "text-emerald-500" : "text-rose-500",
+                    )}
+                  >
+                    {up ? (
+                      <TrendingUp className="h-2.5 w-2.5" />
+                    ) : (
+                      <TrendingDown className="h-2.5 w-2.5" />
+                    )}
+                    {p.changePct ? `${up ? "+" : ""}${p.changePct.toFixed(1)}%` : ""}
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground" dir="ltr">
+                    {fmtPrice(p.price)}
+                  </span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+
   return (
     <div ref={ref} className={cn("relative", className)}>
       {/* Trigger */}
@@ -150,86 +223,31 @@ export function PairPicker({
         />
       </button>
 
-      {/* Popover */}
       {open && (
-        <div
-          className={cn(
-            "absolute z-50 w-full min-w-[16rem] overflow-hidden rounded-xl border border-border bg-card shadow-xl",
-            placement === "up" ? "bottom-full mb-2" : "top-full mt-2",
-          )}
-        >
-          <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={market === "forex" ? "ابحث (EURUSD…)" : "ابحث (BTC…)"}
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              dir="ltr"
+        <>
+          {/* Mobile: centered modal */}
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:hidden">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/60"
+              aria-label="إغلاق"
+              onClick={() => setOpen(false)}
             />
-            {query && (
-              <button type="button" onClick={() => setQuery("")}>
-                <X className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            )}
+            <div className="relative flex max-h-[70vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+              {panelBody}
+            </div>
           </div>
-          <div className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto p-2">
-            {list.length === 0 && (
-              <p className="col-span-2 py-6 text-center text-xs text-muted-foreground">
-                لا نتائج
-              </p>
+
+          {/* Desktop: popover */}
+          <div
+            className={cn(
+              "absolute z-50 hidden w-full min-w-[16rem] overflow-hidden rounded-xl border border-border bg-card shadow-xl md:block",
+              placement === "up" ? "bottom-full mb-2" : "top-full mt-2",
             )}
-            {list.map((p) => {
-              const isSel = p.symbol === selected;
-              const up = p.changePct >= 0;
-              return (
-                <button
-                  key={p.symbol}
-                  type="button"
-                  onClick={() => {
-                    onChange(p.symbol);
-                    setOpen(false);
-                    setQuery("");
-                  }}
-                  className={cn(
-                    "flex flex-col gap-1 rounded-lg border p-2.5 text-right transition",
-                    isSel
-                      ? "border-primary/50 bg-primary/10"
-                      : "border-border/60 bg-background/40 hover:border-primary/30 hover:bg-secondary/40",
-                  )}
-                >
-                  <span
-                    className="font-mono text-xs font-semibold text-foreground"
-                    dir="ltr"
-                  >
-                    {prettyPair(p.symbol, market)}
-                  </span>
-                  {market === "crypto" && (
-                    <span className="flex items-center justify-between gap-1">
-                      <span
-                        className={cn(
-                          "flex items-center gap-0.5 text-[10px] font-medium",
-                          up ? "text-emerald-500" : "text-rose-500",
-                        )}
-                      >
-                        {up ? (
-                          <TrendingUp className="h-2.5 w-2.5" />
-                        ) : (
-                          <TrendingDown className="h-2.5 w-2.5" />
-                        )}
-                        {p.changePct ? `${up ? "+" : ""}${p.changePct.toFixed(1)}%` : ""}
-                      </span>
-                      <span className="font-mono text-[10px] text-muted-foreground" dir="ltr">
-                        {fmtPrice(p.price)}
-                      </span>
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          >
+            {panelBody}
           </div>
-        </div>
+        </>
       )}
     </div>
   );
