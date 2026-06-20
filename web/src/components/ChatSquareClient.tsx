@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { LineChart, X, MessagesSquare, Plus } from "lucide-react";
+import { LineChart, X } from "lucide-react";
 import {
   ChatModeBar,
   DEFAULT_SELECTIONS,
@@ -348,46 +348,7 @@ export default function ChatSquareClient({
   const isEmpty = messages.length === 0 && !busy;
 
   return (
-    <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background lg:h-full">
-      {/* Header: history + new chat + chart toggle */}
-      <div className="z-10 flex shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 py-2 pt-16 md:px-4 lg:pt-2">
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setHistoryOpen(true)}
-            className="flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary/80 hover:text-foreground"
-            title="سجل المحادثات"
-          >
-            <MessagesSquare className="h-3.5 w-3.5" />
-            المحادثات
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              resetSelection();
-              setSel(DEFAULT_SELECTIONS);
-            }}
-            className="flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary/80 hover:text-foreground"
-            title="محادثة جديدة"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            جديدة
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={() => setPreviewOpen((o) => !o)}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition",
-            previewOpen
-              ? "border-primary/30 bg-primary/15 text-primary"
-              : "border-border bg-card/60 text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
-          )}
-        >
-          <LineChart className="h-3.5 w-3.5" />
-          الشارت
-        </button>
-      </div>
+    <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background pt-12 lg:h-full lg:pt-0">
 
       {!agentReady && (
         <p className="shrink-0 border-b border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground">

@@ -126,7 +126,7 @@ export function AppConsoleShell({
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed end-3 top-3 z-30 rounded-full border border-border bg-card/90 p-2 text-foreground shadow-lg backdrop-blur-md lg:hidden"
+        className="fixed start-3 top-3 z-30 rounded-full border border-border bg-card/90 p-2.5 text-foreground shadow-lg backdrop-blur-md lg:hidden"
         aria-label="القائمة"
       >
         <Menu className="h-5 w-5" />
@@ -141,7 +141,7 @@ export function AppConsoleShell({
             aria-label="إغلاق"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 end-0 flex w-[min(80%,18rem)] flex-col border-s border-border bg-sidebar shadow-xl">
+          <aside className="absolute inset-y-0 start-0 flex w-[min(80%,18rem)] flex-col border-e border-border bg-sidebar shadow-xl">
             <div className="flex h-16 items-center justify-between border-b border-border/70 px-4">
               <Link href="/chat" className="flex items-center gap-2">
                 <Image src="/logo.png" alt="AiChart" width={26} height={26} className="rounded-lg" />
@@ -177,7 +177,7 @@ export function AppConsoleShell({
         <main
           className={cn(
             "flex-1",
-            noPadding ? "min-h-0" : "px-4 pb-4 pt-16 sm:px-6 sm:pb-6 lg:pt-6",
+            noPadding ? "min-h-0" : "px-4 pb-4 pt-14 sm:px-6 sm:pb-6 lg:pt-6",
           )}
         >
           {children}

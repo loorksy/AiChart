@@ -9,9 +9,11 @@ import {
   ShieldCheck,
   Coins,
   ChevronDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import { PairPicker } from "@/components/market/PairPicker";
 import { cn } from "@/lib/utils";
+// cn is used for the collapse chevron rotation
 
 export interface ChatStartSelections {
   trading_style: "scalp" | "day" | "swing" | "position";
@@ -113,6 +115,7 @@ export function ChatModeBar({
   sel: ChatStartSelections;
   onChange: (s: ChatStartSelections) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const set = <K extends keyof ChatStartSelections>(
     k: K,
     v: ChatStartSelections[K],
@@ -120,7 +123,28 @@ export function ChatModeBar({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 pb-2">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Toggle row */}
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center justify-between rounded-xl border border-border/50 bg-card/40 px-3 py-2 text-xs text-muted-foreground transition hover:bg-card/70 hover:text-foreground"
+      >
+        <span className="flex items-center gap-1.5">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          إعدادات الجلسة · {sel.trading_style} · {sel.mode} · {sel.market}
+          {sel.symbol && ` · ${sel.symbol}`}
+        </span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 transition-transform",
+            expanded && "rotate-180",
+          )}
+        />
+      </button>
+
+      {/* Collapsible options */}
+      {expanded && (
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <IconSelect
           icon={
             sel.response_mode === "fast" ? (
@@ -182,6 +206,7 @@ export function ChatModeBar({
           />
         </div>
       </div>
+      )}
     </div>
   );
 }
