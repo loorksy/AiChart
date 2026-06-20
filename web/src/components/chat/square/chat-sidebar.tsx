@@ -13,11 +13,12 @@ import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 
 interface ChatSidebarProps {
-  mobileOpen?: boolean;
-  onMobileClose?: () => void;
+  /** Drawer open state (collapsed by default). */
+  open?: boolean;
+  onClose?: () => void;
 }
 
-export function ChatSidebar({ mobileOpen, onMobileClose }: ChatSidebarProps) {
+export function ChatSidebar({ open, onClose }: ChatSidebarProps) {
   const {
     conversations,
     selectedId,
@@ -30,13 +31,13 @@ export function ChatSidebar({ mobileOpen, onMobileClose }: ChatSidebarProps) {
 
   async function handleSelect(id: number) {
     await selectConversation(id);
-    onMobileClose?.();
+    onClose?.();
   }
 
   async function handleNew() {
     resetSelection();
     await createNew();
-    onMobileClose?.();
+    onClose?.();
   }
 
   const list = (
@@ -52,11 +53,11 @@ export function ChatSidebar({ mobileOpen, onMobileClose }: ChatSidebarProps) {
           >
             <MessageSquarePlus className="h-4 w-4" />
           </button>
-          {onMobileClose && (
+          {onClose && (
             <button
               type="button"
-              onClick={onMobileClose}
-              className="rounded-md p-1.5 text-muted-foreground md:hidden"
+              onClick={onClose}
+              className="rounded-md p-1.5 text-muted-foreground"
               aria-label="إغلاق"
             >
               <X className="h-4 w-4" />
@@ -123,27 +124,19 @@ export function ChatSidebar({ mobileOpen, onMobileClose }: ChatSidebarProps) {
     </>
   );
 
+  // Collapsed-by-default slide-in drawer (all screen sizes).
+  if (!open) return null;
   return (
-    <>
-      {/* Desktop sidebar */}
-      <aside className="hidden h-full w-56 shrink-0 flex-col border-e border-border bg-card/40 lg:w-64 md:flex">
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/60"
+        aria-label="إغلاق"
+        onClick={onClose}
+      />
+      <aside className="absolute inset-y-0 end-0 flex w-[min(100%,20rem)] flex-col border-s border-border bg-card shadow-xl">
         {list}
       </aside>
-
-      {/* Mobile drawer */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/60"
-            aria-label="إغلاق"
-            onClick={onMobileClose}
-          />
-          <aside className="absolute inset-y-0 end-0 flex w-[min(100%,20rem)] flex-col border-s border-border bg-card shadow-xl">
-            {list}
-          </aside>
-        </div>
-      )}
-    </>
+    </div>
   );
 }

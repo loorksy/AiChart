@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LineChart, X } from "lucide-react";
-import { ChatWelcome } from "@/components/chat/square/chat-welcome";
+import Image from "next/image";
+import { LineChart, X, MessagesSquare, Plus } from "lucide-react";
 import {
-  ChatStartScreen,
+  ChatModeBar,
+  DEFAULT_SELECTIONS,
   type ChatStartSelections,
-} from "@/components/chat/ChatStartScreen";
+} from "@/components/chat/ChatModeBar";
+import { ChatSidebar } from "@/components/chat/square/chat-sidebar";
 import { ChatConversation } from "@/components/chat/square/chat-conversation";
 import { ChatInputBar } from "@/components/chat/square/chat-input-bar";
 import { ChartPreviewPanel } from "@/components/ui/chart-preview-panel";
@@ -56,9 +58,9 @@ export default function ChatSquareClient({
   const [executingIntentId, setExecutingIntentId] = useState<number | null>(
     null,
   );
-  // Chat start-screen selections (applied on the first message of a session).
-  const [startSel, setStartSel] = useState<ChatStartSelections | null>(null);
-  const [startDone, setStartDone] = useState(false);
+  // Session-mode selections (applied on the first message of a session).
+  const [sel, setSel] = useState<ChatStartSelections>(DEFAULT_SELECTIONS);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { data: me, refresh: refreshMe } = useMe();
 
@@ -83,7 +85,6 @@ export default function ChatSquareClient({
 
   const hasConversation = messages.length > 0 || selectedId !== null;
   const displayName = me?.displayName ?? "متداول";
-  const creditsRemaining = me?.quota.remaining;
 
   useEffect(() => {
     void fetchConversations();
@@ -196,6 +197,7 @@ export default function ChatSquareClient({
     const attach = image ?? pendingImage;
     if ((!content && !attach) || busy) return;
     setError(null);
+    const isFirstMessage = messages.length === 0;
 
     const sym = extractSymbol(content);
     if (sym) {
@@ -242,13 +244,13 @@ export default function ChatSquareClient({
             : undefined,
           conversationId: convId,
           stream: true,
-          start_context: startSel
+          start_context: isFirstMessage
             ? {
-                trading_style: startSel.trading_style,
-                mode: startSel.mode,
-                active_market: startSel.market,
-                response_mode: startSel.response_mode,
-                symbol: startSel.symbol || undefined,
+                trading_style: sel.trading_style,
+                mode: sel.mode,
+                active_market: sel.market,
+                response_mode: sel.response_mode,
+                symbol: sel.symbol || undefined,
               }
             : undefined,
         }),
@@ -312,7 +314,6 @@ export default function ChatSquareClient({
     } finally {
       setBusy(false);
       setShowActivity(false);
-      setStartSel(null); // start-screen context applies to the first message only
     }
   }
 
@@ -324,12 +325,36 @@ export default function ChatSquareClient({
     ? "تابع المحادثة…"
     : "اسأل الخبير عن السوق أو حسابك…";
 
-  const showStart = !hasConversation && !busy && !startDone;
-  const showWelcome = !hasConversation && !busy && startDone;
+  // Fresh chat (no messages yet) → show the inline mode bar + greeting.
+  const isEmpty = messages.length === 0 && !busy;
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      <div className="z-10 flex shrink-0 items-center justify-end px-3 py-1.5 md:px-4">
+      {/* Header: history + new chat + chart toggle */}
+      <div className="z-10 flex shrink-0 items-center justify-between px-3 py-1.5 md:px-4">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary/80"
+            title="سجل المحادثات"
+          >
+            <MessagesSquare className="h-4 w-4" />
+            المحادثات
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              resetSelection();
+              setSel(DEFAULT_SELECTIONS);
+            }}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-secondary/80"
+            title="محادثة جديدة"
+          >
+            <Plus className="h-4 w-4" />
+            جديدة
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => setPreviewOpen((o) => !o)}
@@ -358,34 +383,17 @@ export default function ChatSquareClient({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {showStart ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <ChatStartScreen
-                displayName={displayName}
-                onStart={(s) => {
-                  setStartSel(s);
-                  setStartDone(true);
-                  if (s.symbol) setPreviewSymbol(s.symbol.toUpperCase());
-                }}
-              />
-            </div>
-          ) : showWelcome ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <ChatWelcome model={model} creditsRemaining={creditsRemaining} />
-              <ChatInputBar
-                value={input}
-                onChange={setInput}
-                onSend={() => void send(input, pendingImage)}
-                onPickPrompt={(p) => setInput(p)}
-                pendingImage={pendingImage}
-                pendingImagePreview={pendingImagePreview}
-                onImageSelect={(file) => void handleImageSelect(file)}
-                onImageClear={clearPendingImage}
-                imageError={imageError}
-                disabled={busy}
-                placeholder="اسأل عن أي شيء…"
-                centered
-              />
+          {isEmpty ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+              <div className="rounded-2xl bg-gradient-to-tr from-primary/20 to-primary/5 p-3 ring-1 ring-primary/20">
+                <Image src="/logo.png" alt="AiChart" width={44} height={44} className="rounded-xl" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">مرحباً {displayName} 👋</h1>
+                <p className="text-sm text-muted-foreground">
+                  اختر إعدادات الجلسة بالأسفل ثم اكتب رسالتك لتبدأ
+                </p>
+              </div>
             </div>
           ) : (
             <ChatConversation
@@ -419,21 +427,22 @@ export default function ChatSquareClient({
             </div>
           )}
 
-          {!showWelcome && (
-            <ChatInputBar
-              value={input}
-              onChange={setInput}
-              onSend={() => void send(input, pendingImage)}
-              onPickPrompt={(p) => void send(p)}
-              pendingImage={pendingImage}
-              pendingImagePreview={pendingImagePreview}
-              onImageSelect={(file) => void handleImageSelect(file)}
-              onImageClear={clearPendingImage}
-              imageError={imageError}
-              disabled={busy}
-              placeholder={inputPlaceholder}
-            />
-          )}
+          {/* Inline session-mode bar — only before the first message. */}
+          {isEmpty && <ChatModeBar sel={sel} onChange={setSel} />}
+
+          <ChatInputBar
+            value={input}
+            onChange={setInput}
+            onSend={() => void send(input, pendingImage)}
+            onPickPrompt={(p) => void send(p)}
+            pendingImage={pendingImage}
+            pendingImagePreview={pendingImagePreview}
+            onImageSelect={(file) => void handleImageSelect(file)}
+            onImageClear={clearPendingImage}
+            imageError={imageError}
+            disabled={busy}
+            placeholder={inputPlaceholder}
+          />
         </div>
 
         {previewOpen && (
@@ -474,6 +483,9 @@ export default function ChatSquareClient({
           </div>
         </div>
       )}
+
+      {/* Conversation history drawer — collapsed by default */}
+      <ChatSidebar open={historyOpen} onClose={() => setHistoryOpen(false)} />
     </div>
   );
 }
