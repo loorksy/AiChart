@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPlatformAccess } from "@/lib/platformAccess";
 import { needsMcpCredentials } from "@/lib/userCredentials";
-import BridgeShell from "@/components/bridge/BridgeShell";
-import UserShell from "@/components/user/UserShell";
+import { displayNameForUser } from "@/lib/displayName";
+import { AppConsoleShell } from "@/components/shell/AppConsoleShell";
 
 export const metadata: Metadata = {
   title: "AiChart — لوحة التحكم",
@@ -23,13 +23,12 @@ export default async function ConsoleLayout({
     redirect("/awaiting-approval");
   }
 
-  if (user.role === "admin") {
-    return (
-      <BridgeShell email={user.email} role={user.role}>
-        {children}
-      </BridgeShell>
-    );
-  }
-
-  return <UserShell user={user}>{children}</UserShell>;
+  return (
+    <AppConsoleShell
+      role={user.role === "admin" ? "admin" : "user"}
+      displayName={displayNameForUser(user)}
+    >
+      {children}
+    </AppConsoleShell>
+  );
 }
