@@ -49,6 +49,8 @@ interface Props {
   className?: string;
   fill?: boolean;
   ambient?: boolean;
+  /** When > 0, re-fetch candles on this interval (ms) for a live preview. */
+  refreshMs?: number;
 }
 
 export type PriceChartHandle = {
@@ -102,6 +104,7 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
     className,
     fill = false,
     ambient = false,
+    refreshMs = 0,
   },
   ref,
 ) {
@@ -252,10 +255,17 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
       }
     };
     void load();
+    // Live preview: poll for fresh candles so the chart updates as the agent
+    // trades. Skipped for ambient/background charts.
+    const poll =
+      !ambient && refreshMs > 0
+        ? setInterval(() => void load(), refreshMs)
+        : null;
     return () => {
       cancelled = true;
+      if (poll) clearInterval(poll);
     };
-  }, [symbol, interval, ambient, market]);
+  }, [symbol, interval, ambient, market, refreshMs]);
 
   useEffect(() => {
     if (ambient || !livePrice || livePrice <= 0) return;

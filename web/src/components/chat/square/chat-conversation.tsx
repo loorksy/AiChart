@@ -2,10 +2,8 @@
 
 import { useRef, useEffect } from "react";
 import { ChatMessage } from "./chat-message";
-import {
-  AgentActivityFeed,
-  AgentLoadingDots,
-} from "@/components/ui/agent-activity-feed";
+import { AgentLoadingDots } from "@/components/ui/agent-activity-feed";
+import { AgentThinkingTimeline } from "@/components/chat/AgentThinkingTimeline";
 import type { AgentActivity } from "@/lib/agentActivity";
 import type { UiMessage } from "@/stores/chat-store";
 
@@ -18,6 +16,7 @@ interface ChatConversationProps {
   busyIntentId?: number | null;
   onIntentApprove?: (id: number) => void;
   onIntentReject?: (id: number) => void;
+  onPreview?: () => void;
 }
 
 export function ChatConversation({
@@ -29,6 +28,7 @@ export function ChatConversation({
   busyIntentId,
   onIntentApprove,
   onIntentReject,
+  onPreview,
 }: ChatConversationProps) {
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +62,7 @@ export function ChatConversation({
         <div className="px-3 py-2 sm:px-4">
           {showActivity && activities.length > 0 ? (
             <div className={hideActivityOnMobile ? "hidden md:block" : undefined}>
-              <AgentActivityFeed activities={activities} />
+              <AgentThinkingTimeline activities={activities} onPreview={onPreview} />
             </div>
           ) : null}
           {(!showActivity || activities.length === 0 || hideActivityOnMobile) && (

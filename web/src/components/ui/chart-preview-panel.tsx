@@ -75,6 +75,7 @@ export function ChartPreviewPanel({
           symbol={symbol}
           interval={interval}
           recommendations={recommendations}
+          refreshMs={5000}
           className="h-full min-h-0 flex-1"
         />
       </div>

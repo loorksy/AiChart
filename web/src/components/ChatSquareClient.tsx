@@ -394,6 +394,7 @@ export default function ChatSquareClient({
               showActivity={showActivity}
               activities={activities}
               hideActivityOnMobile
+              onPreview={() => setPreviewOpen(true)}
               busyIntentId={busyIntentId}
               onIntentApprove={(id) => {
                 const msg = messages.find((m) =>
