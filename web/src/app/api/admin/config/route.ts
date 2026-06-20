@@ -43,7 +43,8 @@ export async function PUT(req: NextRequest) {
 
     if (patch.AI_PROVIDER !== undefined) {
       const p = String(patch.AI_PROVIDER).toLowerCase();
-      if (p === "openrouter" || p === "gemini") patch.AI_PROVIDER = "google";
+      // gemini → google (alias). openrouter is now first-class.
+      if (p === "gemini") patch.AI_PROVIDER = "google";
     }
 
     const nextProvider =

@@ -76,6 +76,15 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "AIza… من Google AI Studio",
   },
   {
+    key: "OPENROUTER_API_KEY",
+    label: "مفتاح OpenRouter",
+    labelEn: "OPENROUTER_API_KEY",
+    group: "claude",
+    secret: true,
+    plainStorage: false,
+    placeholder: "sk-or-… من openrouter.ai/keys",
+  },
+  {
     key: "ANTHROPIC_MODEL",
     label: "نموذج Claude (قديم — استخدم AI_MODEL)",
     labelEn: "ANTHROPIC_MODEL",

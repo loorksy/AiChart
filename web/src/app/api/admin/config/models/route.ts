@@ -4,6 +4,7 @@ import { requireAdmin, handleError } from "@/lib/api";
 import { listAnthropicModels } from "@/lib/anthropic";
 import { listOpenAIChatModels } from "@/lib/openaiCompat";
 import { listGeminiChatModels } from "@/lib/gemini";
+import { listOpenRouterModels } from "@/lib/openrouterModels";
 import {
   getActiveModel,
   getProviderApiKey,
@@ -11,7 +12,7 @@ import {
   type LLMProvider,
 } from "@/lib/llm";
 
-const providerSchema = z.enum(["anthropic", "openai", "google"]);
+const providerSchema = z.enum(["anthropic", "openai", "google", "openrouter"]);
 
 const bodySchema = z.object({
   provider: providerSchema.optional(),
@@ -32,6 +33,7 @@ async function fetchModels(
     return models.map((m) => ({ id: m.id, display_name: m.display_name }));
   }
   if (provider === "google") return listGeminiChatModels(key);
+  if (provider === "openrouter") return listOpenRouterModels(key);
   return listOpenAIChatModels(key);
 }
 

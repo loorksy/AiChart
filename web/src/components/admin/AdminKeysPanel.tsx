@@ -108,20 +108,19 @@ export function AdminKeysPanel() {
     { id: "anthropic", label: "Anthropic (Claude)", keyField: "ANTHROPIC_API_KEY" },
     { id: "openai", label: "OpenAI", keyField: "OPENAI_API_KEY" },
     { id: "google", label: "Google (Gemini)", keyField: "GEMINI_API_KEY" },
+    { id: "openrouter", label: "OpenRouter", keyField: "OPENROUTER_API_KEY" },
   ] as const;
   type ProviderId = (typeof AI_PROVIDERS)[number]["id"];
 
+  const aliasProvider = (raw: string): ProviderId =>
+    (raw === "gemini" ? "google" : raw) as ProviderId;
   const providerField = fields.find((f) => f.key === "AI_PROVIDER");
   const rawSaved = (providerField?.value || "anthropic").toLowerCase();
-  const savedProvider = (
-    rawSaved === "openrouter" || rawSaved === "gemini" ? "google" : rawSaved
-  ) as ProviderId;
+  const savedProvider = aliasProvider(rawSaved);
   const draftProvider = draft.AI_PROVIDER?.toLowerCase();
-  const selectedProvider = (
-    draftProvider === "openrouter" || draftProvider === "gemini"
-      ? "google"
-      : draftProvider || savedProvider
-  ) as ProviderId;
+  const selectedProvider = draftProvider
+    ? aliasProvider(draftProvider)
+    : savedProvider;
   const providerMeta =
     AI_PROVIDERS.find((p) => p.id === selectedProvider) ?? AI_PROVIDERS[0];
 
