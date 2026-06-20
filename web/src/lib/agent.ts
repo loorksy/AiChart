@@ -861,20 +861,11 @@ export async function runAgent(
   let usageTokens = 0;
   let finalText = "";
 
-  push({
-    id: "plan",
-    label: "قراءة السياق والتخطيط للخطوة التالية",
-    status: "running",
-  });
-
+  // No scripted "planning/thinking" steps — activities reflect ONLY the agent's
+  // real tool calls below. If the agent answers directly (no tools), nothing is
+  // shown. The agent itself decides when work is needed.
   const MAX_STEPS = maxSteps;
   for (let step = 0; step < MAX_STEPS; step++) {
-    push({
-      id: `think-${step}`,
-      label: step === 0 ? "تحليل سؤالك" : "متابعة التحليل مع Claude",
-      status: "running",
-    });
-
     const useStream = Boolean(onDelta);
     const res = useStream
       ? await callLLMStream(
@@ -883,9 +874,6 @@ export async function runAgent(
         )
       : await callLLM({ system, messages, tools: activeTools });
     usageTokens += res.usage.input_tokens + res.usage.output_tokens;
-
-    push({ id: `think-${step}`, label: step === 0 ? "تحليل سؤالك" : "متابعة التحليل مع Claude", status: "done" });
-    push({ id: "plan", label: "قراءة السياق والتخطيط للخطوة التالية", status: "done" });
 
     const textParts = res.content
       .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
@@ -929,23 +917,11 @@ export async function runAgent(
     messages.push({ role: "user", content: results });
   }
 
-  push({
-    id: "reply",
-    label: "صياغة الرد النهائي",
-    status: "running",
-  });
-
   if (!finalText) {
     finalText = recorded.length
       ? "سجّلت توصيتي بالأعلى."
       : "لم أتمكّن من صياغة رد. حاول مجدداً.";
   }
-
-  push({
-    id: "reply",
-    label: "صياغة الرد النهائي",
-    status: "done",
-  });
 
   return {
     reply: finalText,

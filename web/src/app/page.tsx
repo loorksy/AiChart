@@ -9,7 +9,8 @@ export default async function Home() {
     if (user.role !== "admin" && !hasPlatformAccess(user)) {
       redirect("/awaiting-approval");
     }
-    redirect("/console");
+    // The agent chat is the primary interface.
+    redirect("/chat");
   }
 
   return <LandingPage />;

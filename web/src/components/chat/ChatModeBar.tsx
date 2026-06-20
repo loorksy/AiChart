@@ -1,6 +1,15 @@
 "use client";
 
-import { Zap, Gem, Eye } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Zap,
+  Gem,
+  Eye,
+  Gauge,
+  ShieldCheck,
+  Coins,
+  ChevronDown,
+} from "lucide-react";
 import { PairPicker } from "@/components/market/PairPicker";
 import { cn } from "@/lib/utils";
 
@@ -20,46 +29,82 @@ export const DEFAULT_SELECTIONS: ChatStartSelections = {
   symbol: "",
 };
 
-function Chips<T extends string>({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
+interface Opt<T> {
   value: T;
+  label: string;
+}
+
+/** A compact icon button that opens a small popover of options. */
+function IconSelect<T extends string>({
+  icon,
+  title,
+  value,
+  options,
+  onChange,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  value: T;
+  options: Opt<T>[];
   onChange: (v: T) => void;
-  options: { value: T; label: string; icon?: React.ReactNode }[];
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const current = options.find((o) => o.value === value);
+
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="shrink-0 text-[11px] text-muted-foreground">{label}</span>
-      <div className="flex gap-1 rounded-lg bg-muted/40 p-0.5">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            className={cn(
-              "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-              value === o.value
-                ? "bg-primary/15 text-primary"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {o.icon}
-            {o.label}
-          </button>
-        ))}
-      </div>
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title={title}
+        className="flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1.5 text-xs text-foreground transition hover:border-primary/40"
+      >
+        <span className="text-muted-foreground">{icon}</span>
+        <span className="font-medium">{current?.label}</span>
+        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+      </button>
+      {open && (
+        <div className="absolute bottom-full z-50 mb-1 min-w-[10rem] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-xl">
+          <p className="px-2 py-1 text-[10px] text-muted-foreground">{title}</p>
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-right text-xs transition",
+                o.value === value
+                  ? "bg-primary/15 text-primary"
+                  : "text-foreground hover:bg-secondary/60",
+              )}
+            >
+              {o.label}
+              {o.value === value && <span className="text-primary">●</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * Compact inline session-mode bar shown ABOVE the chat input while a chat is
- * empty. Selecting modes then sending the first message starts the session —
- * no separate start screen / start button; the bar hides once chatting begins.
+ * Compact icon-based session-mode bar shown above the chat input while a chat
+ * is empty. Each setting is a small icon chip that opens a popover; the pair is
+ * a dedicated popover. Selecting + sending the first message starts the session.
  */
 export function ChatModeBar({
   sel,
@@ -75,19 +120,29 @@ export function ChatModeBar({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 pb-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-card/60 px-3 py-2 backdrop-blur-sm">
-        <Chips
-          label="الرد"
+      <div className="flex flex-wrap items-center gap-2">
+        <IconSelect
+          icon={
+            sel.response_mode === "fast" ? (
+              <Zap className="h-3.5 w-3.5" />
+            ) : sel.response_mode === "vision" ? (
+              <Eye className="h-3.5 w-3.5" />
+            ) : (
+              <Gem className="h-3.5 w-3.5" />
+            )
+          }
+          title="نوع الرد"
           value={sel.response_mode}
           onChange={(v) => set("response_mode", v)}
           options={[
-            { value: "fast", label: "سريع", icon: <Zap className="h-3 w-3" /> },
-            { value: "expert", label: "خبير", icon: <Gem className="h-3 w-3" /> },
-            { value: "vision", label: "رؤية", icon: <Eye className="h-3 w-3" /> },
+            { value: "fast", label: "سريع" },
+            { value: "expert", label: "خبير" },
+            { value: "vision", label: "رؤية" },
           ]}
         />
-        <Chips
-          label="الأسلوب"
+        <IconSelect
+          icon={<Gauge className="h-3.5 w-3.5" />}
+          title="أسلوب التداول"
           value={sel.trading_style}
           onChange={(v) => set("trading_style", v)}
           options={[
@@ -97,8 +152,9 @@ export function ChatModeBar({
             { value: "position", label: "طويل" },
           ]}
         />
-        <Chips
-          label="التنفيذ"
+        <IconSelect
+          icon={<ShieldCheck className="h-3.5 w-3.5" />}
+          title="صلاحية التنفيذ"
           value={sel.mode}
           onChange={(v) => set("mode", v)}
           options={[
@@ -107,8 +163,9 @@ export function ChatModeBar({
             { value: "auto", label: "تلقائي" },
           ]}
         />
-        <Chips
-          label="السوق"
+        <IconSelect
+          icon={<Coins className="h-3.5 w-3.5" />}
+          title="السوق"
           value={sel.market}
           onChange={(v) => onChange({ ...sel, market: v, symbol: "" })}
           options={[

@@ -8,11 +8,11 @@ import {
   Loader2,
   AlertTriangle,
   ChevronDown,
-  ChevronLeft,
   LineChart,
   BrainCircuit,
 } from "lucide-react";
 import type { AgentActivity, ActivityStatus } from "@/lib/agentActivity";
+import { ShiningText } from "@/components/ui/shining-text";
 import { cn } from "@/lib/utils";
 
 function statusRing(status: ActivityStatus): string {
@@ -40,11 +40,15 @@ export function AgentThinkingTimeline({
   activities: AgentActivity[];
   onPreview?: () => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   if (activities.length === 0) return null;
 
   const running = activities.some((a) => a.status === "running");
   const allDone = activities.every((a) => a.status === "done");
+  // The agent's real current step (last running, else last) — drives the shimmer.
+  const current =
+    [...activities].reverse().find((a) => a.status === "running") ??
+    activities[activities.length - 1];
 
   return (
     <motion.div
@@ -61,18 +65,24 @@ export function AgentThinkingTimeline({
           open ? "border-b border-border/60 bg-secondary/30" : "hover:bg-secondary/30",
         )}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Image src="/logo.png" alt="AiChart" width={18} height={18} className="rounded" />
           {running ? (
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
           ) : allDone ? (
-            <Check className="h-4 w-4 text-emerald-500" />
+            <Check className="h-4 w-4 shrink-0 text-emerald-500" />
           ) : (
-            <BrainCircuit className="h-4 w-4 text-muted-foreground" />
+            <BrainCircuit className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
-          <span className="text-sm font-semibold text-foreground/90">
-            {running ? "الوكيل يحلّل ويتصرّف…" : "خطوات الوكيل"}
-          </span>
+          {running ? (
+            <span className="truncate">
+              <ShiningText text={`${current?.label ?? "يفكّر"}…`} />
+            </span>
+          ) : (
+            <span className="text-sm font-semibold text-foreground/90">
+              {allDone ? "اكتمل التحليل" : "خطوات الوكيل"}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           {running && onPreview && (
