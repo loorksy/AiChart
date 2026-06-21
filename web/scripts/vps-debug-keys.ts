@@ -5,55 +5,54 @@ async function main() {
   await initDb();
   
   const openaiKey = await getPlatformValueAsync("OPENAI_API_KEY");
-  const openrouterKey = await getPlatformValueAsync("OPENROUTER_API_KEY");
-  const geminiKey = await getPlatformValueAsync("GEMINI_API_KEY");
-  const anthropicKey = await getPlatformValueAsync("ANTHROPIC_API_KEY");
-
-  console.log("=== API Keys Status ===");
-  
-  if (openaiKey) {
-    console.log(`OPENAI_API_KEY: length=${openaiKey.length}, start=${openaiKey.slice(0, 10)}...${openaiKey.slice(-5)}`);
-  } else {
-    console.log("OPENAI_API_KEY: NOT SET");
+  if (!openaiKey) {
+    console.error("OPENAI_API_KEY is not set in the database.");
+    return;
   }
 
-  if (openrouterKey) {
-    console.log(`OPENROUTER_API_KEY: length=${openrouterKey.length}, start=${openrouterKey.slice(0, 10)}...${openrouterKey.slice(-5)}`);
-  } else {
-    console.log("OPENROUTER_API_KEY: NOT SET");
-  }
+  console.log("=== Direct OpenAI API Vision Test ===");
+  console.log(`OPENAI_API_KEY starts with: ${openaiKey.slice(0, 15)}...`);
 
-  if (geminiKey) {
-    console.log(`GEMINI_API_KEY: length=${geminiKey.length}, start=${geminiKey.slice(0, 10)}...${geminiKey.slice(-5)}`);
-  } else {
-    console.log("GEMINI_API_KEY: NOT SET");
-  }
+  // 1x1 black pixel PNG image base64
+  const mockImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-  if (anthropicKey) {
-    console.log(`ANTHROPIC_API_KEY: length=${anthropicKey.length}, start=${anthropicKey.slice(0, 10)}...${anthropicKey.slice(-5)}`);
-  } else {
-    console.log("ANTHROPIC_API_KEY: NOT SET");
-  }
+  try {
+    console.log("Sending chat/completions request with image and model 'gpt-4o'...");
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${openaiKey}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/png;base64,${mockImageBase64}`
+                }
+              },
+              {
+                type: "text",
+                text: "Analyze this image and describe what color it is."
+              }
+            ]
+          }
+        ]
+      })
+    });
 
-  // If OPENAI_API_KEY is set, let's query the models
-  if (openaiKey) {
-    try {
-      console.log("\n--- Testing OPENAI_API_KEY against api.openai.com/v1/models ---");
-      const res = await fetch("https://api.openai.com/v1/models", {
-        headers: { Authorization: `Bearer ${openaiKey}` }
-      });
-      console.log("Status Code:", res.status);
-      if (res.ok) {
-        const data = await res.json() as { data?: { id: string }[] };
-        const modelIds = (data.data ?? []).map(m => m.id);
-        console.log("Available Models (first 15):", modelIds.slice(0, 15));
-      } else {
-        const text = await res.text();
-        console.error("Error Response:", text);
-      }
-    } catch (e: any) {
-      console.error("Request Failed:", e.message);
-    }
+    console.log("HTTP Response Status:", res.status);
+    const bodyText = await res.text();
+    console.log("Raw Response Body:");
+    console.log(bodyText);
+
+  } catch (e: any) {
+    console.error("Fetch request failed:", e.message || e);
   }
 }
 
