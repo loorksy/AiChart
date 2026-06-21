@@ -1,7 +1,9 @@
 import { callLLM } from "../src/lib/llm";
 import { getPlatformValue } from "../src/lib/platformConfig";
+import { initDb } from "../src/lib/db";
 
 async function test() {
+  await initDb();
   console.log("Active Provider:", getPlatformValue("AI_PROVIDER"));
   console.log("Active Model:", getPlatformValue("AI_MODEL"));
 
