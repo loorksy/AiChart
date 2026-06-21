@@ -160,8 +160,13 @@ async function readError(res: Response, label: string): Promise<string> {
     error?: { message?: string } | string;
   };
   const err = body?.error;
-  const apiMsg =
+  let apiMsg =
     typeof err === "string" ? err : err?.message ? err.message : undefined;
+
+  if (apiMsg && apiMsg.toLowerCase().includes("image_url")) {
+    return "النموذج النشط حالياً لا يدعم تحليل صور الشارت. يرجى تعديل خيارات نموذج الذكاء الاصطناعي في لوحة التحكم الإدارية (المفاتيح) وتفعيل نموذج يدعم الرؤية (مثل GPT-4o أو Claude 3.5 Sonnet).";
+  }
+
   return apiMsg || `خطأ من ${label} (HTTP ${res.status})`;
 }
 
