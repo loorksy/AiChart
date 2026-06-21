@@ -238,6 +238,8 @@ export function isForexSymbol(symbol: string): boolean {
   const cryptoRoots = [
     "BTC", "ETH", "XBT", "LTC", "XRP", "BCH", "ADA", "BNB",
     "SOL", "DOT", "LINK", "UNI", "DOGE", "AVAX", "MATIC", "TRX", "EOS",
+    "BAT", "XLM", "XTZ", "DASH", "ZEC", "ETC", "NEO", "ATOM", "FIL",
+    "AAVE", "ALGO", "COMP", "MKR", "SUSHI", "YFI", "SHIB", "PEPE",
   ];
   for (const root of cryptoRoots) {
     if (s.startsWith(root)) return false;

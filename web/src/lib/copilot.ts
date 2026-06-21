@@ -245,7 +245,9 @@ export async function runCopilot(
   await logCopilotEvent(userId, conversationId, "intent_classified", { message: activeMsg, intent });
 
   // 5. Parameter Validation Gating for Trades & Analysis
-  if (intent === "Trade Execution" || intent === "Market Analysis") {
+  const hasImage = options?.hasImage || history.some(m => Array.isArray(m.content) && m.content.some(b => b.type === "image"));
+
+  if (!hasImage && (intent === "Trade Execution" || intent === "Market Analysis")) {
     // Parse message for timeframe or strategy keywords first to fill context
     const msgLower = activeMsg.toLowerCase();
     
@@ -265,57 +267,14 @@ export async function runCopilot(
       else if (msgLower.includes("position") || msgLower.includes("استثمار")) workflowContext.trading_style = "position";
     }
 
-    // Gate 1: Check timeframe
-    if (!workflowContext.timeframe) {
-      const replyText = "قبل البدء، الرجاء تحديد الإطار الزمني (Timeframe) المفضل للتحليل أو الصفقة:";
-      await updateConversationWorkflow(conversationId, userId, "awaiting_timeframe_selection", {
-        ...workflowContext,
-        initial_request: activeMsg
-      });
-      await logCopilotEvent(userId, conversationId, "workflow_started", { intent, required_parameter: "timeframe" });
-      return {
-        reply: replyText,
-        recommendations: [],
-        usageTokens: 0,
-        activities: [],
-        question: {
-          type: "timeframe",
-          text: replyText,
-          options: [
-            { label: "15 دقيقة (15m)", value: "15m" },
-            { label: "ساعة واحدة (1h)", value: "1h" },
-            { label: "4 ساعات (4h)", value: "4h" },
-            { label: "يومي (1d)", value: "1d" }
-          ]
-        }
-      };
-    }
-
-    // Gate 2: Check strategy
-    if (!workflowContext.trading_style) {
-      const replyText = "ممتاز. الآن الرجاء تحديد نمط التداول (Strategy Style) المطلوب:";
-      await updateConversationWorkflow(conversationId, userId, "awaiting_strategy_selection", {
-        ...workflowContext,
-        initial_request: activeMsg
-      });
-      await logCopilotEvent(userId, conversationId, "workflow_started", { intent, required_parameter: "trading_style" });
-      return {
-        reply: replyText,
-        recommendations: [],
-        usageTokens: 0,
-        activities: [],
-        question: {
-          type: "trading_style",
-          text: replyText,
-          options: [
-            { label: "مضاربة لحظية (Scalp)", value: "scalp" },
-            { label: "تداول يومي (Day)", value: "day" },
-            { label: "تأرجحي (Swing)", value: "swing" },
-            { label: "استثماري طويل المدى (Position)", value: "position" }
-          ]
-        }
-      };
-    }
+    // No robotic re-asking: the agent is the decision maker. Resolve timeframe
+    // and style from the user's already-chosen settings (welcome screen / message)
+    // with sensible defaults, then let the agent proceed. If it genuinely needs a
+    // missing detail it asks naturally in conversation — not via a forced selector.
+    workflowContext.timeframe =
+      workflowContext.timeframe || settings.analysis_interval || "1h";
+    workflowContext.trading_style =
+      workflowContext.trading_style || settings.trading_style || "day";
   }
 
   // Clear workflow state now that all parameters are resolved
@@ -324,66 +283,12 @@ export async function runCopilot(
     await logCopilotEvent(userId, conversationId, "workflow_completed", { context: workflowContext });
   }
 
-  // 6. Tool restrictions mapping
-  let allowedTools: string[] | undefined = undefined;
-  if (intent === "General Analysis") {
-    allowedTools = [
-      "resolve_symbol",
-      "get_market_snapshot",
-      "get_price",
-      "get_user_profile",
-      "get_trades_summary",
-      "get_recommendations_history",
-      "get_account_balances",
-      "smart_money_signals",
-      "crypto_market_rank",
-      "binance_cli",
-      "get_market_context",
-      "search_trade_memory",
-      "get_scalp_status"
-    ];
-  } else if (intent === "Market Analysis") {
-    allowedTools = [
-      "resolve_symbol",
-      "get_market_snapshot",
-      "get_price",
-      "get_user_profile",
-      "get_trades_summary",
-      "get_recommendations_history",
-      "get_account_balances",
-      "smart_money_signals",
-      "crypto_market_rank",
-      "binance_cli",
-      "get_market_context",
-      "search_trade_memory",
-      "get_scalp_status",
-      "record_recommendation",
-      "get_risk_status",
-      "get_open_trades",
-      "get_multi_timeframe_snapshot",
-      "scan_market",
-      "get_trade_readiness"
-    ];
-  } else if (intent === "Portfolio Review") {
-    allowedTools = [
-      "resolve_symbol",
-      "get_market_snapshot",
-      "get_price",
-      "get_user_profile",
-      "get_trades_summary",
-      "get_recommendations_history",
-      "get_account_balances",
-      "smart_money_signals",
-      "crypto_market_rank",
-      "binance_cli",
-      "get_market_context",
-      "search_trade_memory",
-      "get_scalp_status",
-      "get_account_overview",
-      "get_risk_status",
-      "get_open_trades"
-    ];
-  }
+  // 6. Full agent capability (MCP parity).
+  // The platform agent must be a complete agent with the SAME tools as the MCP
+  // server (and more) — no intent-based whitelist crippling it. The agent itself
+  // decides which tools fit the conversation. Execution stays fully gated by
+  // Risk Guard / executeIntent, so full tool access does not bypass any safety.
+  const allowedTools: string[] | undefined = undefined;
 
   // 7. Execute Reasoning (runAgent)
   const agentCtx = { userId, settings };
