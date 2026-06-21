@@ -14,10 +14,10 @@ export async function GET(req: NextRequest) {
     const provider = getActiveProvider();
     const model = getActiveModel();
     const ref = modelRefFromPlatform(model);
-    const providerKeys: Record<string, string> = {};
-    for (const p of ["openai", "google"] as const) {
-      const key = getProviderApiKey(p);
-      if (key) providerKeys[p] = key;
+    // SECURITY: never expose key values — only report whether each key is configured.
+    const providerConfigured: Record<string, { configured: boolean }> = {};
+    for (const p of ["openai", "google", "openrouter"] as const) {
+      providerConfigured[p] = { configured: Boolean(getProviderApiKey(p)) };
     }
     const forexBackend = process.env.FOREX_BACKEND?.trim() || "auto";
     return NextResponse.json({
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
       model,
       ref,
       fallbacks: buildFallbackRefs(ref),
-      providerKeys,
+      providerConfigured,
       app_url: getPublicAppUrl(),
       serverVersion: "1.1.1",
       forex_backend: forexBackend,

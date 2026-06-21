@@ -80,7 +80,21 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("get_agent_capabilities"),
     async () => {
       try {
-        const model = await bridge.get("/api/agent/model");
+        const raw = await bridge.get("/api/agent/model");
+        // Defence-in-depth: strip any field whose value looks like an API key,
+        // even if the bridge endpoint already sanitised it.
+        const sanitize = (obj: unknown): unknown => {
+          if (typeof obj !== "object" || obj === null) return obj;
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+            // Drop legacy providerKeys or any field carrying a raw key value.
+            if (k === "providerKeys") continue;
+            if (typeof v === "string" && /^(sk-|AIza|sk-ant-|sk-or-)/.test(v)) continue;
+            out[k] = typeof v === "object" ? sanitize(v) : v;
+          }
+          return out;
+        };
+        const model = sanitize(raw);
         return {
           content: [
             {
