@@ -1,23 +1,36 @@
-import { initDb } from "../src/lib/db";
+import { initDb, queryOne } from "../src/lib/db";
 import { getPlatformValueAsync } from "../src/lib/platformConfig";
+import { parseImageFromMetadata } from "../src/lib/chatImage";
 
 async function main() {
   await initDb();
   
-  const openaiKey = await getPlatformValueAsync("OPENAI_API_KEY");
-  if (!openaiKey) {
-    console.error("OPENAI_API_KEY is not set in the database.");
+  // Find the last user message with an image
+  const row = await queryOne<{ metadata_json: string }>(
+    "SELECT metadata_json FROM chat_messages WHERE role = 'user' AND metadata_json LIKE '%image%' ORDER BY id DESC LIMIT 1"
+  );
+  
+  if (!row) {
+    console.error("No chat message with image found in database.");
     return;
   }
-
-  console.log("=== Direct OpenAI API Vision Test ===");
-  console.log(`OPENAI_API_KEY starts with: ${openaiKey.slice(0, 15)}...`);
-
-  // 1x1 black pixel PNG image base64
-  const mockImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-
+  
+  const image = parseImageFromMetadata(row.metadata_json);
+  if (!image) {
+    console.error("Failed to parse image from metadata_json.");
+    return;
+  }
+  
+  console.log(`Found image. Media type: ${image.media_type}, length: ${image.data.length}`);
+  
+  const openaiKey = await getPlatformValueAsync("OPENAI_API_KEY");
+  if (!openaiKey) {
+    console.error("OPENAI_API_KEY is not set.");
+    return;
+  }
+  
+  console.log("Sending user's actual image to OpenAI API gpt-4o...");
   try {
-    console.log("Sending chat/completions request with image and model 'gpt-4o'...");
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -33,24 +46,23 @@ async function main() {
               {
                 type: "image_url",
                 image_url: {
-                  url: `data:image/png;base64,${mockImageBase64}`
+                  url: `data:${image.media_type};base64,${image.data}`
                 }
               },
               {
                 type: "text",
-                text: "Analyze this image and describe what color it is."
+                text: "Tell me what you see in this chart."
               }
             ]
           }
         ]
       })
     });
-
+    
     console.log("HTTP Response Status:", res.status);
     const bodyText = await res.text();
-    console.log("Raw Response Body:");
+    console.log("Response Body:");
     console.log(bodyText);
-
   } catch (e: any) {
     console.error("Fetch request failed:", e.message || e);
   }
