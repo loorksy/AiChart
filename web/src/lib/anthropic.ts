@@ -19,8 +19,8 @@ export interface ToolDef {
 
 type CacheControl = { cache_control: { type: "ephemeral" } };
 
-export const DEFAULT_MAX_TOKENS = 8192;
-export const ROUTINE_MAX_TOKENS = 16384;
+export const DEFAULT_MAX_TOKENS = 4096;
+export const ROUTINE_MAX_TOKENS = 4096;
 
 export type SystemPromptInput =
   | string

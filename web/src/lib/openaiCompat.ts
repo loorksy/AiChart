@@ -185,7 +185,7 @@ export async function callOpenAICompat(
     },
     body: JSON.stringify({
       model: target.model,
-      max_tokens: params.maxTokens ?? 8192,
+      max_tokens: Math.min(params.maxTokens ?? 4096, 4096),
       messages: toOAMessages(params.system, params.messages),
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),
     }),
@@ -234,7 +234,7 @@ export async function callOpenAICompatStream(
     },
     body: JSON.stringify({
       model: target.model,
-      max_tokens: params.maxTokens ?? 8192,
+      max_tokens: Math.min(params.maxTokens ?? 4096, 4096),
       messages: toOAMessages(params.system, params.messages),
       stream: true,
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),

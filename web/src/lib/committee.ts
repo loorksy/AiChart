@@ -111,7 +111,7 @@ export async function evaluateCommittee(
     const res = await callLLM({
       system,
       messages: [{ role: "user", content: userMsg }],
-      maxTokens: 8192,
+      maxTokens: 4096,
     });
     const parsed = parseCommitteeJson(extractText(res.content));
     const veto = parsed.riskOfficer.vote === "reject";
