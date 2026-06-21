@@ -59,7 +59,7 @@ test();
 `;
 
 // Run using tsx on VPS
-const remoteCmd = `cd /opt/aichart/web && npx tsx scripts/vps-test-inline.ts`;
+const remoteCmd = `cd /opt/aichart && git pull && cd /opt/aichart/web && npx tsx scripts/vps-test-agent-image.ts`;
 
 function run() {
   return new Promise((resolve, reject) => {
