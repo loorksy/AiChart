@@ -58,14 +58,17 @@ export default function ChatSquareClient({
   const [previewInterval, setPreviewInterval] = useState("1h");
   const [previewWidth, setPreviewWidth] = useState(440);
 
-  // Drag-to-resize the chart panel (RTL: panel on the left; dragging the
-  // handle leftward widens it).
+  // Drag-to-resize the chart panel. Direction-aware (RTL/LTR) with expanded limits.
   function startResize(e: React.MouseEvent) {
     e.preventDefault();
     const startX = e.clientX;
     const startW = previewWidth;
+    const isRtl = document.documentElement.dir === "rtl" || locale === "ar";
     const onMove = (ev: MouseEvent) => {
-      const next = Math.min(760, Math.max(300, startW + (startX - ev.clientX)));
+      const deltaX = isRtl ? (ev.clientX - startX) : (startX - ev.clientX);
+      const maxW = Math.min(1200, Math.floor(window.innerWidth * 0.75));
+      const minW = 280;
+      const next = Math.min(maxW, Math.max(minW, startW + deltaX));
       setPreviewWidth(next);
     };
     const onUp = () => {
