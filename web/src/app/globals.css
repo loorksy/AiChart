@@ -316,18 +316,20 @@ label {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* ChatGPT-style chat shell */
 .chat-gpt-input {
-  background: var(--chat-input, var(--card));
-  border: 1px solid var(--border);
-  border-radius: 1.75rem;
-  box-shadow: 0 0 0 0 transparent;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: rgba(12, 12, 14, 0.45) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1.25rem;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .chat-gpt-input:focus-within {
-  border-color: var(--border);
-  box-shadow: 0 0 0 0 transparent;
+  border-color: rgba(34, 197, 94, 0.35); /* Green theme accent */
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1), 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+  background: rgba(12, 12, 14, 0.65) !important;
 }
 
 .sidebar-nav-item {

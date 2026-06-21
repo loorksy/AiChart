@@ -95,7 +95,7 @@ export function ChatInputBar({
           <p className="px-1 text-xs text-destructive">{imageError}</p>
         )}
 
-        <div className="chat-gpt-input flex items-end gap-1 p-2">
+        <div className="chat-gpt-input flex items-end gap-1.5 p-2.5">
           <input
             ref={fileRef}
             type="file"
@@ -111,7 +111,7 @@ export function ChatInputBar({
             type="button"
             disabled={disabled}
             onClick={() => fileRef.current?.click()}
-            className="shrink-0 rounded-full p-2.5 text-muted-foreground transition hover:bg-secondary/80 hover:text-foreground disabled:opacity-50"
+            className="shrink-0 rounded-xl p-2.5 text-zinc-400 transition-all hover:bg-white/[0.06] hover:text-zinc-100 disabled:opacity-50"
             aria-label="إرفاق صورة شارت"
             title="إرفاق صورة"
           >
@@ -126,7 +126,7 @@ export function ChatInputBar({
             }
             disabled={disabled}
             rows={1}
-            className="min-h-[44px] max-h-32 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 text-base leading-relaxed focus-visible:ring-0 focus-visible:outline-none"
+            className="min-h-[44px] max-h-32 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 text-base leading-relaxed focus-visible:ring-0 focus-visible:outline-none text-zinc-100 placeholder:text-zinc-500"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -140,10 +140,10 @@ export function ChatInputBar({
             disabled={disabled || !canSend}
             onClick={onSend}
             className={cn(
-              "mb-0.5 shrink-0 rounded-full p-2 transition disabled:opacity-40",
+              "mb-0.5 shrink-0 rounded-xl p-2.5 transition-all duration-200 disabled:opacity-30 active:scale-95",
               canSend
-                ? "bg-foreground text-background hover:opacity-90"
-                : "bg-secondary text-muted-foreground",
+                ? "bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/20"
+                : "bg-zinc-800 text-zinc-500",
             )}
             aria-label="إرسال"
           >

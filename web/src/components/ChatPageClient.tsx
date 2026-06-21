@@ -23,7 +23,7 @@ export default function ChatPageClient({
 
   return (
     <AppConsoleShell role={role} displayName={nameFromEmail(email)} noPadding>
-      <div className="flex h-[calc(100dvh-3.25rem)] flex-col lg:h-dvh">
+      <div className="flex h-dvh flex-col">
         <ChatSquareClient
           agentReady={agentReady}
           onCreditsUsed={() => setCreditsKey((k) => k + 1)}
