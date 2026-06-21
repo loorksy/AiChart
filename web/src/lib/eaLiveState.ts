@@ -24,6 +24,10 @@ export interface EaLiveQuote {
 export interface EnrichedEaLiveQuote extends EaLiveQuote {
   quoteAgeMs: number;
   spreadPips: number | null;
+  /** Raw spread in price units (e.g. 15.0 USD for BCHUSDm). */
+  spreadPrice: number | null;
+  /** Spread as % of mid — reliable for all instruments. */
+  spreadPct: number | null;
   isFresh: boolean;
   source: FreshnessSource;
   /** Age of last MT5 tick in ms (undefined when tickTime not provided by EA). */
@@ -257,6 +261,12 @@ function enrichQuote(
 ): EnrichedEaLiveQuote {
   const spread = spreadFromBidAsk(quote.bid, quote.ask, quote.symbol);
 
+  // For crypto CFDs the raw spreadPips number is meaningless (150 000 for BCH).
+  // Only expose spreadPips when spreadPipsReliable=true; always expose spreadPrice + spreadPct.
+  const spreadPips = spread?.spreadPipsReliable !== false ? (spread ? Math.round(spread.spreadPips * 10) / 10 : null) : null;
+  const spreadPrice = spread ? Math.round(spread.spreadRaw * 1e6) / 1e6 : null;
+  const spreadPct = spread ? Math.round(spread.spreadPct * 1000) / 1000 : null;
+
   // Tick-staleness: only applies to forex instruments (not crypto CFDs).
   let tickAgeMs: number | undefined;
   let tickStale: boolean | undefined;
@@ -271,7 +281,9 @@ function enrichQuote(
 
   return {
     ...quote,
-    spreadPips: spread ? Math.round(spread.spreadPips * 10) / 10 : null,
+    spreadPips,
+    spreadPrice,
+    spreadPct,
     isFresh: isQuoteFresh(quote.quoteAgeMs, thresholdMs),
     source,
     ...(tickAgeMs !== undefined ? { tickAgeMs, tickStale } : {}),
