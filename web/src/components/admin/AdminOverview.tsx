@@ -6,44 +6,71 @@ import {
   Cpu,
   Link2,
   Users,
+  TrendingUp,
 } from "lucide-react";
 import type { AdminPlatformStats } from "@/lib/store";
 import { MasterKillCard } from "@/components/admin/MasterKillCard";
 import { cn } from "@/lib/utils";
 
+/* ─── Bento stat tile ─── */
 function StatTile({
   label,
   value,
   icon: Icon,
   hint,
   accent = false,
+  trend,
 }: {
   label: string;
   value: number | string;
   icon: typeof Users;
   hint?: string;
   accent?: boolean;
+  trend?: "up" | "down" | "neutral";
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card/45 backdrop-blur-md flex items-start gap-3 p-4">
-      <span
-        className={
-          accent
-            ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-            : "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/5 text-muted-foreground"
-        }
-      >
-        <Icon className="h-5 w-5" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="mt-0.5 text-2xl font-bold">{value}</p>
-        {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
+    <div className="bento-card group flex flex-col gap-4 p-5">
+      <div className="flex items-start justify-between">
+        <span
+          className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 transition-all",
+            accent
+              ? "bg-green-500/10 ring-green-500/20 group-hover:ring-green-500/40"
+              : "bg-white/[0.04] ring-white/[0.06] group-hover:ring-white/[0.10]",
+          )}
+        >
+          <Icon
+            className={cn(
+              "h-5 w-5",
+              accent ? "text-green-400" : "text-zinc-500",
+            )}
+          />
+        </span>
+        {trend && (
+          <TrendingUp
+            className={cn(
+              "h-4 w-4",
+              trend === "up"
+                ? "text-green-400"
+                : trend === "down"
+                  ? "text-red-400 rotate-180"
+                  : "text-zinc-600",
+            )}
+          />
+        )}
+      </div>
+      <div>
+        <p className="console-stat-value">{value}</p>
+        <p className="mt-1.5 text-xs font-medium text-zinc-500">{label}</p>
+        {hint && (
+          <p className="mt-0.5 text-[10px] text-zinc-700">{hint}</p>
+        )}
       </div>
     </div>
   );
 }
 
+/* ─── Section container ─── */
 function Section({
   title,
   children,
@@ -53,9 +80,7 @@ function Section({
 }) {
   return (
     <div className="space-y-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        {title}
-      </h3>
+      <p className="console-section-label">{title}</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
     </div>
   );
@@ -78,8 +103,8 @@ export function AdminOverview({
     <div className={cn("space-y-6", !embedded && "mx-auto max-w-6xl")}>
       {!embedded && (
         <div>
-          <h2 className="text-xl font-bold">نظرة عامة</h2>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">نظرة عامة</h1>
+          <p className="mt-1 text-sm text-zinc-500">
             إحصائيات المنصة والتحكّم الطارئ
           </p>
         </div>
@@ -93,12 +118,14 @@ export function AdminOverview({
           value={stats.users_total}
           icon={Users}
           accent
+          trend="up"
         />
         <StatTile
           label="مفعّلون"
           value={stats.users_active}
           icon={CheckCircle2}
           hint={`${activeRate}% من الإجمالي`}
+          accent
         />
         <StatTile
           label="بانتظار الموافقة"
@@ -118,6 +145,7 @@ export function AdminOverview({
           value={stats.trades_total}
           icon={BarChart3}
           accent
+          trend="up"
         />
         <StatTile
           label="صفقات مفتوحة"
@@ -143,6 +171,7 @@ export function AdminOverview({
           icon={Cpu}
           hint="على مستوى المنصة"
           accent
+          trend="up"
         />
         <StatTile
           label="موقوفون"

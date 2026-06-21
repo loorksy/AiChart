@@ -4,13 +4,22 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { TradeIntent, TradingSettings } from "@/lib/types";
 import type { AdminPlatformStats } from "@/lib/store";
-import { SurfaceCard } from "@/components/ui/shell";
 import { FadeIn } from "@/components/ui/fade-in";
 import { ActiveTradesTable } from "@/components/bridge/ActiveTradesTable";
 import { StatusChip, type StatusChipTone } from "@/components/bridge/StatusChip";
 import { AgentStatusBar } from "@/components/dashboard/AgentStatusBar";
 import { AdminOverview } from "@/components/admin/AdminOverview";
 import { ScalpControl } from "@/components/scalp/ScalpControl";
+import {
+  Wifi,
+  WifiOff,
+  Zap,
+  AlertTriangle,
+  MessageSquare,
+  TrendingUp,
+  Clock,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ConnectionStatus {
   binance: { connected: boolean; env: string | null; futuresOk: boolean | null };
@@ -19,29 +28,48 @@ interface ConnectionStatus {
   executionEnv: { label: string; mismatch: boolean };
 }
 
-function StatusCard({
+/* ─── Connection status card (Bento-style) ─── */
+function ConnBentoCard({
   title,
   chip,
   detail,
   href,
+  icon: Icon,
 }: {
   title: string;
   chip: { label: string; tone: StatusChipTone };
   detail?: string;
   href?: string;
+  icon: React.ElementType;
 }) {
+  const dotClass =
+    chip.tone === "ok"
+      ? "status-dot status-dot-ok"
+      : chip.tone === "error"
+        ? "status-dot status-dot-error"
+        : chip.tone === "warn"
+          ? "status-dot status-dot-warn"
+          : "status-dot status-dot-neutral";
+
   const inner = (
-    <SurfaceCard padding="sm" className="h-full space-y-2 transition hover:border-primary/30">
-      <p className="text-xs text-muted-foreground">{title}</p>
-      <StatusChip label={chip.label} tone={chip.tone} />
-      {detail && (
-        <p className="text-[11px] text-muted-foreground">{detail}</p>
-      )}
-    </SurfaceCard>
+    <div className="bento-card group h-full cursor-pointer p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] ring-1 ring-white/[0.06]">
+          <Icon className="h-4.5 w-4.5 text-zinc-400" />
+        </span>
+        <span className={dotClass} />
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <p className="text-[11px] text-zinc-600 font-medium uppercase tracking-wide">{title}</p>
+        <StatusChip label={chip.label} tone={chip.tone} />
+        {detail && <p className="text-[10px] text-zinc-600 mt-0.5">{detail}</p>}
+      </div>
+    </div>
   );
+
   if (href) {
     return (
-      <Link href={href} className="block">
+      <Link href={href} className="block h-full">
         {inner}
       </Link>
     );
@@ -84,103 +112,137 @@ export function BridgeOverviewClient({
 
   return (
     <FadeIn>
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold">نظرة عامة</h2>
-        <p className="text-sm text-muted-foreground">
-          جسر MCP — اتصالات، مخاطر، وصفقات حية.
-        </p>
-      </div>
+      <div className="space-y-8 max-w-7xl mx-auto">
 
-      <AgentStatusBar />
-
-      <ScalpControl />
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <StatusCard
-          title="Claude MCP"
-          chip={{ label: "محادثة", tone: "ok" }}
-          detail="التداول عبر Connectors"
-          href={isAdmin ? "/console/platform?tab=system" : "/console/risk"}
-        />
-        <StatusCard
-          title="Binance"
-          chip={{
-            label: hasBinance
-              ? conn?.binance.env === "prod"
-                ? "حقيقي"
-                : "تجريبي"
-              : "غير مرتبط",
-            tone: hasBinance
-              ? conn?.binance.futuresOk === false
-                ? "warn"
-                : conn?.binance.futuresOk === true
-                  ? "ok"
-                  : "neutral"
-              : "neutral",
-          }}
-          detail={
-            hasBinance && conn?.binance.futuresOk === false
-              ? "Futures غير مفعّل"
-              : undefined
-          }
-          href="/console/connect"
-        />
-        <StatusCard
-          title="MT5 / EA"
-          chip={{
-            label: !eaConnected
-              ? "غير مرتبط"
-              : eaOnline
-                ? "متصل"
-                : "غير متصل",
-            tone: eaConnected ? (eaOnline ? "ok" : "error") : "neutral",
-          }}
-          href="/console/connect"
-        />
-        <StatusCard
-          title="Telegram"
-          chip={{
-            label: tgLinked ? "مرتبط" : "غير مرتبط",
-            tone: tgLinked ? "ok" : "neutral",
-          }}
-          href="/console/connect"
-        />
-        <StatusCard
-          title="بيئة التنفيذ"
-          chip={{
-            label: execLabel,
-            tone: conn?.executionEnv.mismatch ? "warn" : "ok",
-          }}
-          href="/console/risk"
-        />
-      </div>
-
-      {pendingIntents.length > 0 && (
-        <Link href="/console/trades" className="block">
-          <SurfaceCard className="border-chart-1/40 bg-chart-1/5 transition hover:bg-chart-1/10">
-            <p className="font-semibold">
-              {pendingIntents.length === 1
-                ? "صفقة واحدة بانتظار الموافقة"
-                : `${pendingIntents.length} صفقات بانتظار الموافقة`}
+        {/* ─── Page header ─── */}
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">نظرة عامة</h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              جسر MCP — اتصالات، مخاطر، وصفقات حية.
             </p>
-            <p className="text-xs text-muted-foreground">
-              Claude MCP أو Telegram — راجع الموافقة.
-            </p>
-          </SurfaceCard>
-        </Link>
-      )}
+          </div>
+          {/* Live indicator */}
+          <div className="flex items-center gap-2 rounded-full border border-green-500/20 bg-green-500/5 px-3 py-1.5">
+            <span className="status-dot status-dot-ok" />
+            <span className="text-xs font-medium text-green-400">مباشر</span>
+          </div>
+        </div>
 
-      <ActiveTradesTable />
+        {/* ─── Agent status bar ─── */}
+        <AgentStatusBar />
 
-      {isAdmin && adminStats && (
-        <AdminOverview
-          stats={adminStats}
-          masterKill={masterKill ?? false}
-          embedded
-        />
-      )}
-    </div>
+        {/* ─── ScalpControl ─── */}
+        <ScalpControl />
+
+        {/* ─── Connection status — Bento grid ─── */}
+        <div>
+          <p className="console-section-label mb-3">حالة الاتصالات</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <ConnBentoCard
+              title="Claude MCP"
+              chip={{ label: "محادثة", tone: "ok" }}
+              detail="التداول عبر Connectors"
+              href={isAdmin ? "/console/platform?tab=system" : "/console/mcp"}
+              icon={MessageSquare}
+            />
+            <ConnBentoCard
+              title="Binance"
+              chip={{
+                label: hasBinance
+                  ? conn?.binance.env === "prod"
+                    ? "حقيقي"
+                    : "تجريبي"
+                  : "غير مرتبط",
+                tone: hasBinance
+                  ? conn?.binance.futuresOk === false
+                    ? "warn"
+                    : conn?.binance.futuresOk === true
+                      ? "ok"
+                      : "neutral"
+                  : "neutral",
+              }}
+              detail={
+                hasBinance && conn?.binance.futuresOk === false
+                  ? "Futures غير مفعّل"
+                  : undefined
+              }
+              href="/console/connect"
+              icon={TrendingUp}
+            />
+            <ConnBentoCard
+              title="MT5 / EA"
+              chip={{
+                label: !eaConnected
+                  ? "غير مرتبط"
+                  : eaOnline
+                    ? "متصل"
+                    : "غير متصل",
+                tone: eaConnected ? (eaOnline ? "ok" : "error") : "neutral",
+              }}
+              href="/console/connect"
+              icon={eaOnline ? Wifi : WifiOff}
+            />
+            <ConnBentoCard
+              title="Telegram"
+              chip={{
+                label: tgLinked ? "مرتبط" : "غير مرتبط",
+                tone: tgLinked ? "ok" : "neutral",
+              }}
+              href="/console/connect"
+              icon={Zap}
+            />
+            <ConnBentoCard
+              title="بيئة التنفيذ"
+              chip={{
+                label: execLabel,
+                tone: conn?.executionEnv.mismatch ? "warn" : "ok",
+              }}
+              href="/console/risk"
+              icon={conn?.executionEnv.mismatch ? AlertTriangle : Zap}
+            />
+          </div>
+        </div>
+
+        {/* ─── Pending intents banner ─── */}
+        {pendingIntents.length > 0 && (
+          <Link href="/console/trades" className="block">
+            <div className="bento-card flex items-center gap-4 p-4 border-amber-500/30 bg-amber-500/5 cursor-pointer">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+                <Clock className="h-5 w-5 text-amber-400" />
+              </span>
+              <div>
+                <p className="font-semibold text-amber-300">
+                  {pendingIntents.length === 1
+                    ? "صفقة واحدة بانتظار الموافقة"
+                    : `${pendingIntents.length} صفقات بانتظار الموافقة`}
+                </p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Claude MCP أو Telegram — راجع الموافقة.
+                </p>
+              </div>
+            </div>
+          </Link>
+        )}
+
+        {/* ─── Active trades table ─── */}
+        <div>
+          <p className="console-section-label mb-3">الصفقات المفتوحة</p>
+          <ActiveTradesTable />
+        </div>
+
+        {/* ─── Admin stats (admin only) ─── */}
+        {isAdmin && adminStats && (
+          <div>
+            <p className="console-section-label mb-3">إحصائيات المنصة</p>
+            <AdminOverview
+              stats={adminStats}
+              masterKill={masterKill ?? false}
+              embedded
+            />
+          </div>
+        )}
+      </div>
     </FadeIn>
   );
 }
