@@ -10,6 +10,7 @@ import {
   parseEaSymbolSpecs,
   toEaConnectionMeta,
 } from "@/lib/eaStore";
+import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 
 /** Bridge: EA connection diagnostics — symbols from heartbeat, quotes, retcode legend. */
 export async function GET(req: NextRequest) {
@@ -36,14 +37,20 @@ export async function GET(req: NextRequest) {
     const specs = parseEaSymbolSpecs(conn.symbol_specs_json);
     const symbols = specs.map((s) => s.symbol).filter(Boolean);
 
-    const targetSpec = symbolQ
-      ? specs.find((s) => s.symbol?.toUpperCase() === symbolQ) ?? null
+    // P3 — normalise the user-supplied symbol to the broker's actual name
+    // (e.g. "EURUSD" → "EURUSDm") using the same helper as get_trade_readiness.
+    const resolvedSymbol = symbolQ
+      ? ((await resolveMt5Symbol(userId, symbolQ)) ?? symbolQ).toUpperCase()
+      : symbolQ;
+
+    const targetSpec = resolvedSymbol
+      ? specs.find((s) => s.symbol?.toUpperCase() === resolvedSymbol) ?? null
       : null;
     const hasSymbol = symbolQ ? Boolean(targetSpec) : undefined;
     const bid = Number(targetSpec?.bid) || 0;
     const ask = Number(targetSpec?.ask) || 0;
     const quotesOk = symbolQ ? bid > 0 && ask > 0 : undefined;
-    const spread = symbolQ && quotesOk ? spreadFromBidAsk(bid, ask, symbolQ) : null;
+    const spread = resolvedSymbol && quotesOk ? spreadFromBidAsk(bid, ask, resolvedSymbol) : null;
 
     return NextResponse.json({
       online: meta.online,
