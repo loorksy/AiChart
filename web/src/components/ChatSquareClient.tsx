@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { LineChart, X, Search, Sparkles } from "lucide-react";
+import { LineChart, X, Search, Sparkles, History } from "lucide-react";
 import {
   ChatModeBar,
   DEFAULT_SELECTIONS,
@@ -86,6 +86,7 @@ export default function ChatSquareClient({
   const { data: me, refresh: refreshMe } = useMe();
 
   const {
+    conversations,
     selectedId,
     messages,
     fetchConversations,
@@ -380,7 +381,64 @@ export default function ChatSquareClient({
   ];
 
   return (
-    <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background pt-12 lg:h-full lg:pt-0">
+    <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background lg:h-full">
+      {/* Sleek Top Header Bar */}
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0c0c0e]/60 px-4 backdrop-blur-md ps-16 lg:ps-6">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+          <h2 className="text-sm font-semibold truncate text-zinc-200">
+            {selectedId
+              ? (conversations.find((c) => c.id === selectedId)?.title ?? (locale === "ar" ? "وكيل التداول" : "Trading Agent"))
+              : (locale === "ar" ? "محادثة جديدة" : "New Chat")}
+          </h2>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {/* New Chat Button */}
+          <button
+            type="button"
+            onClick={() => {
+              resetSelection();
+              void createNew();
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-zinc-900/60 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800 hover:text-foreground active:scale-95 duration-100 cursor-pointer"
+            title={locale === "ar" ? "محادثة جديدة" : "New Chat"}
+          >
+            <span className="hidden sm:inline">{locale === "ar" ? "محادثة جديدة" : "New Chat"}</span>
+            <span className="sm:hidden">{locale === "ar" ? "جديد" : "New"}</span>
+          </button>
+
+          {/* Chat History Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className={cn(
+              "rounded-lg border p-1.5 text-zinc-400 transition active:scale-95 duration-100 cursor-pointer",
+              historyOpen
+                ? "border-green-500/30 bg-green-500/10 text-green-400"
+                : "border-white/[0.06] bg-zinc-900/60 hover:bg-zinc-800 hover:text-foreground",
+            )}
+            title={locale === "ar" ? "سجل المحادثات" : "Conversation History"}
+          >
+            <History className="h-4 w-4" />
+          </button>
+
+          {/* Chart Preview Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setPreviewOpen((p) => !p)}
+            className={cn(
+              "rounded-lg border p-1.5 text-zinc-400 transition active:scale-95 duration-100 cursor-pointer",
+              previewOpen
+                ? "border-green-500/30 bg-green-500/10 text-green-400"
+                : "border-white/[0.06] bg-zinc-900/60 hover:bg-zinc-800 hover:text-foreground",
+            )}
+            title={locale === "ar" ? "معاينة الشارت" : "Chart Preview"}
+          >
+            <LineChart className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
 
       {!agentReady && (
         <p className="shrink-0 border-b border-border bg-card/85 px-4 py-2 text-xs text-muted-foreground transition duration-200">
