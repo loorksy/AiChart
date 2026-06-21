@@ -54,10 +54,25 @@ export async function GET(req: NextRequest) {
     }
 
     const lastImageMessage = history[lastImageMessageIndex];
-    // Create a history slice up to and including the last image message (excluding any subsequent turns)
+    
+    // Test 1: Full history up to last image message
     const historyUpToImage = history.slice(0, lastImageMessageIndex + 1);
 
-    console.log(`Running test 1: History up to the image (length ${historyUpToImage.length})`);
+    // Test 3: Collapsed history (removes duplicate consecutive user messages)
+    const collapsedHistory: typeof history = [];
+    for (let i = 0; i < historyUpToImage.length; i++) {
+      const current = historyUpToImage[i];
+      const next = historyUpToImage[i + 1];
+      
+      // If current is user and next is user, skip current (effectively keeping the last one)
+      if (current.role === "user" && next && next.role === "user") {
+        console.log(`Collapsing consecutive user message at index ${i}`);
+        continue;
+      }
+      collapsedHistory.push(current);
+    }
+
+    console.log(`Running Test 1: Full History up to image (length ${historyUpToImage.length})`);
     const start1 = Date.now();
     const resultFull = await runAgent(
       { userId, settings },
@@ -66,7 +81,16 @@ export async function GET(req: NextRequest) {
     );
     const timeFull = Date.now() - start1;
 
-    console.log("Running test 2: Single Message with Image");
+    console.log(`Running Test 3: Collapsed History (length ${collapsedHistory.length})`);
+    const start3 = Date.now();
+    const resultCollapsed = await runAgent(
+      { userId, settings },
+      collapsedHistory,
+      { responseMode: "vision" }
+    );
+    const timeCollapsed = Date.now() - start3;
+
+    console.log("Running Test 2: Single Message with Image");
     const start2 = Date.now();
     const resultSingle = await runAgent(
       { userId, settings },
@@ -81,16 +105,18 @@ export async function GET(req: NextRequest) {
       userId,
       historyLength: history.length,
       imageMessageIndex: lastImageMessageIndex,
-      imageMessageText: typeof lastImageMessage.content === "string" ? lastImageMessage.content : lastImageMessage.content.find(b => b.type === "text")?.text,
+      collapsedHistoryLength: collapsedHistory.length,
       historyUpToImageTest: {
         timeMs: timeFull,
         reply: resultFull.reply,
-        recommendations: resultFull.recommendations,
+      },
+      collapsedHistoryTest: {
+        timeMs: timeCollapsed,
+        reply: resultCollapsed.reply,
       },
       singleImageMessageTest: {
         timeMs: timeSingle,
         reply: resultSingle.reply,
-        recommendations: resultSingle.recommendations,
       }
     });
   } catch (err: any) {
