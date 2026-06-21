@@ -7,12 +7,15 @@ import { cn } from "@/lib/utils";
 import type { Recommendation } from "@/lib/types";
 import type { UiMessage } from "@/stores/chat-store";
 import { ChatIntentCard } from "./chat-intent-card";
+import { UILayoutRenderer, validateUISchema } from "@/components/chat/widgets";
 
 interface ChatMessageProps {
   message: UiMessage;
   busyIntentId?: number | null;
   onIntentApprove?: (id: number) => void;
   onIntentReject?: (id: number) => void;
+  onQuestionSelect?: (value: string) => void;
+  onWidgetAction?: (action: string, payload: any) => void;
 }
 
 export function ChatMessage({
@@ -20,6 +23,8 @@ export function ChatMessage({
   busyIntentId,
   onIntentApprove,
   onIntentReject,
+  onQuestionSelect,
+  onWidgetAction,
 }: ChatMessageProps) {
   const isUser = message.role === "user";
 
@@ -88,6 +93,22 @@ export function ChatMessage({
                 onReject={onIntentReject}
               />
             ))}
+            {message.ui_schema && onWidgetAction && (() => {
+              const validated = validateUISchema(message.ui_schema);
+              if (!validated) return null;
+              return (
+                <UILayoutRenderer
+                  layout={validated.layout}
+                  onAction={onWidgetAction}
+                />
+              );
+            })()}
+            {message.question && onQuestionSelect && (
+              <ChatQuestionCard
+                question={message.question}
+                onSelect={onQuestionSelect}
+              />
+            )}
           </>
         )}
       </div>
@@ -123,6 +144,39 @@ function RecommendationSnippet({ rec }: { rec: Recommendation }) {
           loading="lazy"
         />
       )}
+    </div>
+  );
+}
+
+function ChatQuestionCard({
+  question,
+  onSelect,
+}: {
+  question: NonNullable<UiMessage["question"]>;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-card/65 backdrop-blur-md p-4 shadow-lg transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <p className="mb-3 text-sm font-semibold text-foreground leading-snug">
+        {question.text}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {question.options.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onSelect(opt.value)}
+            className="inline-flex items-center justify-center rounded-lg bg-primary/10 px-3.5 py-2 text-xs font-medium text-primary border border-primary/20 hover:bg-primary/20 hover:border-primary/35 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+          >
+            {opt.label}
+          </button>
+        ))}
+        <button
+          onClick={() => onSelect("إلغاء")}
+          className="inline-flex items-center justify-center rounded-lg bg-destructive/10 px-3.5 py-2 text-xs font-medium text-destructive border border-destructive/20 hover:bg-destructive/20 hover:border-destructive/35 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+        >
+          تراجع / إلغاء الأمر
+        </button>
+      </div>
     </div>
   );
 }

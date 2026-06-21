@@ -17,6 +17,8 @@ interface ChatConversationProps {
   onIntentApprove?: (id: number) => void;
   onIntentReject?: (id: number) => void;
   onPreview?: () => void;
+  onQuestionSelect?: (value: string) => void;
+  onWidgetAction?: (action: string, payload: any) => void;
 }
 
 export function ChatConversation({
@@ -29,6 +31,8 @@ export function ChatConversation({
   onIntentApprove,
   onIntentReject,
   onPreview,
+  onQuestionSelect,
+  onWidgetAction,
 }: ChatConversationProps) {
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -55,6 +59,8 @@ export function ChatConversation({
             busyIntentId={busyIntentId}
             onIntentApprove={onIntentApprove}
             onIntentReject={onIntentReject}
+            onQuestionSelect={onQuestionSelect}
+            onWidgetAction={onWidgetAction}
           />
         );
       })}

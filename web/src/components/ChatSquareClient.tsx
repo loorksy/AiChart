@@ -10,7 +10,7 @@ import {
 } from "@/components/chat/ChatModeBar";
 import { ChatSidebar } from "@/components/chat/square/chat-sidebar";
 import { ChatConversation } from "@/components/chat/square/chat-conversation";
-import { ChatInputBar } from "@/components/chat/square/chat-input-bar";
+import { ChatInputBar, type Attachment } from "@/components/chat/square/chat-input-bar";
 import { ChartPreviewPanel } from "@/components/ui/chart-preview-panel";
 import { useChatStore } from "@/stores/chat-store";
 import { useAgentActivities } from "@/hooks/useAgentActivities";
@@ -82,6 +82,51 @@ export default function ChatSquareClient({
   const [executingIntentId, setExecutingIntentId] = useState<number | null>(
     null,
   );
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+
+  const handleAddAttachment = async (file: File) => {
+    if (file.size > 5 * 1024 * 1024) {
+      setError(locale === "ar" ? "حجم الملف يتجاوز الحد الأقصى (5 ميجابايت)." : "File size exceeds limit (5MB).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setAttachments((prev) => [
+        ...prev,
+        {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          content: content || "",
+        },
+      ]);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleWidgetAction = (actionType: string, payload: any) => {
+    if (actionType === "execute_trade") {
+      const id = Number(payload.intentId);
+      const msg = messages.find((m) => m.intents?.some((i) => i.id === id));
+      if (msg) void actOnIntent(msg.id, id, "approve");
+    } else if (actionType === "reject_trade") {
+      const id = Number(payload.intentId);
+      const msg = messages.find((m) => m.intents?.some((i) => i.id === id));
+      if (msg) void actOnIntent(msg.id, id, "reject");
+    } else if (actionType === "submit_prompt") {
+      const text = String(payload.text);
+      void send(text);
+    } else if (actionType === "inject_input") {
+      const text = String(payload.text);
+      setInput(text);
+    }
+  };
+
   // Session-mode selections (applied on the first message of a session).
   const [sel, setSel] = useState<ChatStartSelections>(DEFAULT_SELECTIONS);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -232,7 +277,7 @@ export default function ChatSquareClient({
   async function send(text: string, image?: ChatImagePayload | null) {
     const content = text.trim();
     const attach = image ?? pendingImage;
-    if ((!content && !attach) || busy) return;
+    if ((!content && !attach && attachments.length === 0) || busy) return;
     setError(null);
     const isFirstMessage = messages.length === 0;
 
@@ -256,6 +301,10 @@ export default function ChatSquareClient({
     });
     setInput("");
     clearPendingImage();
+    
+    // Clear and save files
+    const currentAttachments = [...attachments];
+    setAttachments([]);
 
     const assistantId = `a-${Date.now()}`;
     appendMessage({
@@ -279,6 +328,11 @@ export default function ChatSquareClient({
           image: attach
             ? { media_type: attach.media_type, data: attach.data }
             : undefined,
+          attachments: currentAttachments.map((att) => ({
+            name: att.name,
+            type: att.type,
+            content: att.content,
+          })),
           conversationId: convId,
           stream: true,
           start_context: isFirstMessage
@@ -309,6 +363,8 @@ export default function ChatSquareClient({
         reply: string;
         recommendations?: Recommendation[];
         intents?: ProcessedIntent[];
+        question?: any;
+        ui_schema?: any;
       }>(res, {
         onActivity: upsertActivity,
         onDelta: (t) => {
@@ -341,6 +397,8 @@ export default function ChatSquareClient({
         streaming: false,
         recommendations: recs,
         intents: pendingIntents.length ? pendingIntents : undefined,
+        question: data.question || null,
+        ui_schema: data.ui_schema || null,
       });
 
       void fetchConversations();
@@ -518,6 +576,10 @@ export default function ChatSquareClient({
                 );
                 if (msg) void actOnIntent(msg.id, id, "reject");
               }}
+              onQuestionSelect={(val) => {
+                void send(val);
+              }}
+              onWidgetAction={handleWidgetAction}
             />
           )}
 
@@ -541,6 +603,9 @@ export default function ChatSquareClient({
             onImageSelect={(file) => void handleImageSelect(file)}
             onImageClear={clearPendingImage}
             imageError={imageError}
+            attachments={attachments}
+            onAddAttachment={handleAddAttachment}
+            onRemoveAttachment={handleRemoveAttachment}
             disabled={busy}
             placeholder={inputPlaceholder}
             centered={false}

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getSettings, getLimits, getTodayUsage, incrementUsage, logAudit, isDailyQuotaEnforced } from "@/lib/store";
-import { runAgent } from "@/lib/agent";
+import { runCopilot } from "@/lib/copilot";
 import { isLLMConfigured } from "@/lib/llm";
 import { validateChatImage } from "@/lib/chatImage";
 import { sanitizeUserInput } from "@/lib/security";
 import { processRecommendations } from "@/lib/tradeFlow";
 import { sseEncode } from "@/lib/sse";
+import { extractUISchema } from "@/lib/uiSchema";
 import {
   getConversation,
   createConversation,
@@ -17,6 +18,7 @@ import {
   autoTitleFromMessage,
   updateConversationTitle,
   getConversationSummary,
+  setConversationSummary,
   countChatMessages,
 } from "@/lib/conversations";
 
@@ -42,6 +44,15 @@ const schema = z.object({
   image: imageSchema.optional(),
   conversationId: z.number().int().positive().optional(),
   stream: z.boolean().optional(),
+  attachments: z
+    .array(
+      z.object({
+        name: z.string(),
+        type: z.string(),
+        content: z.string(),
+      })
+    )
+    .optional(),
   /** Selections from the chat start screen (applied on the first message). */
   start_context: z
     .object({
@@ -142,28 +153,8 @@ export async function POST(req: NextRequest) {
       chatImage = validated.image;
     }
 
-    if (!userText && !chatImage) {
+    if (!userText && !chatImage && (!body.attachments || body.attachments.length === 0)) {
       return NextResponse.json({ error: "رسالة فارغة." }, { status: 400 });
-    }
-
-
-
-    if (conversationId) {
-
-      const conv = await getConversation(conversationId, user.id);
-
-      if (!conv) {
-
-        return NextResponse.json({ error: "المحادثة غير موجودة." }, { status: 404 });
-
-      }
-
-    } else {
-
-      const conv = await createConversation(user.id, autoTitleFromMessage(userText));
-
-      conversationId = conv.id;
-
     }
 
 
@@ -175,9 +166,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "تم رفض الرسالة لأسباب أمنية." }, { status: 400 });
     }
 
-    const storedText =
+    let storedText =
       sanitized.text ||
       (chatImage ? "حلّل الشارت المرفق وأعطني توصية." : "");
+
+    if (body.attachments && body.attachments.length > 0) {
+      const attachmentsText = body.attachments
+        .map((att) => `[Attachment: ${att.name} (${att.type})]\n${att.content}`)
+        .join("\n\n");
+      storedText = storedText ? `${storedText}\n\n${attachmentsText}` : attachmentsText;
+    }
+
+    if (conversationId) {
+      const conv = await getConversation(conversationId, user.id);
+      if (!conv) {
+        return NextResponse.json({ error: "المحادثة غير موجودة." }, { status: 404 });
+      }
+    } else {
+      const conv = await createConversation(user.id, autoTitleFromMessage(storedText));
+      conversationId = conv.id;
+    }
 
     await appendChatMessage(conversationId, "user", storedText, {
       ...(chatImage ? { image: chatImage } : {}),
@@ -230,70 +238,59 @@ export async function POST(req: NextRequest) {
 
 
 
-            const result = await runAgent(
-
-              { userId: user.id, settings },
-
+            const result = await runCopilot(
+              user.id,
+              conversationId!,
+              storedText,
               history,
-
               runOpts,
-
             );
 
+            const { cleanText, uiSchema } = extractUISchema(result.reply);
 
+            await appendChatMessage(
+              conversationId!,
+              "assistant",
+              cleanText,
+              {
+                recommendations: result.recommendations,
+                question: result.question || null,
+                ui_schema: uiSchema,
+              },
+              result.reasoningSummary,
+              result.toolCallsJson,
+            );
 
-            await appendChatMessage(conversationId!, "assistant", result.reply, {
-
-              recommendations: result.recommendations,
-
-            });
-
-
+            setTimeout(() => {
+              triggerMemoryLifecycle(user.id, conversationId!);
+            }, 0);
 
             if ((await countChatMessages(conversationId!)) <= 2) {
-
               await updateConversationTitle(
-
                 conversationId!,
-
                 user.id,
-
                 autoTitleFromMessage(storedText),
-
               );
-
             }
 
-
-
             await incrementUsage(user.id, 1);
-
             await logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
 
             const intents = await processRecommendations(
-
               user.id,
-
               result.recommendations,
-
               { allowAdvisoryApproval: true },
-
             );
 
             send("done", {
-
-              reply: result.reply,
-
+              reply: cleanText,
               conversationId,
-
               recommendations: result.recommendations,
-
               intents,
-
               activities: result.activities,
-
               quota: { used: used + 1, limit: limits.claude_quota },
-
+              question: result.question || null,
+              ui_schema: uiSchema,
             });
 
           } catch (err) {
@@ -330,50 +327,49 @@ export async function POST(req: NextRequest) {
 
 
 
-    const result = await runAgent(
-
-      { userId: user.id, settings },
-
+    const result = await runCopilot(
+      user.id,
+      conversationId,
+      storedText,
       history,
-
       { conversationSummary, responseMode },
-
     );
 
+    const { cleanText, uiSchema } = extractUISchema(result.reply);
 
+    await appendChatMessage(
+      conversationId,
+      "assistant",
+      cleanText,
+      {
+        recommendations: result.recommendations,
+        question: result.question || null,
+        ui_schema: uiSchema,
+      },
+      result.reasoningSummary,
+      result.toolCallsJson,
+    );
 
-    await appendChatMessage(conversationId, "assistant", result.reply, {
-
-      recommendations: result.recommendations,
-
-    });
-
-
+    setTimeout(() => {
+      triggerMemoryLifecycle(user.id, conversationId);
+    }, 0);
 
     await incrementUsage(user.id, 1);
-
     await logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
 
     const intents = await processRecommendations(user.id, result.recommendations, {
       allowAdvisoryApproval: true,
     });
 
-
-
     return NextResponse.json({
-
-      reply: result.reply,
-
+      reply: cleanText,
       conversationId,
-
       recommendations: result.recommendations,
-
       intents,
-
       activities: result.activities,
-
       quota: { used: used + 1, limit: limits.claude_quota },
-
+      question: result.question || null,
+      ui_schema: uiSchema,
     });
 
   } catch (err) {
@@ -400,6 +396,81 @@ export async function POST(req: NextRequest) {
 
   }
 
+}
+
+async function triggerMemoryLifecycle(userId: number, conversationId: number): Promise<void> {
+  try {
+    const messages = await loadChatMessages(conversationId);
+    if (messages.length < 6) return;
+
+    // Trigger summarization when messages count is a multiple of 6
+    const messagesCount = messages.length;
+    if (messagesCount % 6 !== 0) return;
+
+    // 1. Generate summary using LLM
+    const { callLLM } = await import("@/lib/llm");
+    const system = "أنت مساعد متخصص في تلخيص محادثات التداول المالي. لخص هذه المحادثة الجارية بين المستخدم والمساعد الذكي في 2-4 جمل واضحة ومكثفة باللغة العربية، تركز على أهداف المستخدم، الصفقات التي تمت مناقشتها، المخاطر، والتفضيلات المحددة. لا تذكر عبارات مثل 'في هذه المحادثة'.";
+    
+    const chatHistoryText = messages
+      .map((m) => `${m.role === "user" ? "المستخدم" : "المساعد"}: ${m.content}`)
+      .join("\n");
+
+    const res = await callLLM({
+      system,
+      messages: [{ role: "user", content: chatHistoryText }],
+      maxTokens: 500,
+    });
+
+    const summaryText = res.content
+      .filter((b) => b.type === "text")
+      .map((b) => (b as { text: string }).text)
+      .join("\n")
+      .trim();
+
+    if (summaryText) {
+      // Update standard conversations summary column
+      await setConversationSummary(conversationId, summaryText);
+
+      const { insertSemanticMemory, searchSemanticMemories, archiveSemanticMemory } = await import("@/lib/semanticMemory");
+
+      // 2. Index this summary in Layer 2 (Semantic Memory)
+      await insertSemanticMemory({
+        userId,
+        category: "conversation_summary",
+        content: `ملخص محادثة (معرف: ${conversationId}): ${summaryText}`,
+        conversationId,
+      });
+
+      // 3. Optionally index full important conversation text (under category 'conversation_full')
+      // Triggered at specific milestones (e.g. 12 or 24 messages) to preserve full context embeddings
+      if (messagesCount === 12 || messagesCount === 24) {
+        const fullTextContent = `نص المحادثة الكاملة (معرف: ${conversationId}):\n` + chatHistoryText.slice(0, 4000);
+        await insertSemanticMemory({
+          userId,
+          category: "conversation_full",
+          content: fullTextContent,
+          conversationId,
+        });
+      }
+
+      // 4. Memory Retention / Archiving strategy: soft-archive summaries that are redundant
+      // Fetch all semantic memories for this user of category 'conversation_summary'
+      const existingMemories = await searchSemanticMemories(userId, summaryText, "conversation_summary", 50, 0.1).catch(() => []);
+      
+      // If the user has more than 15 active conversation summaries, soft-archive the older ones
+      if (existingMemories.length > 15) {
+        const sorted = [...existingMemories].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        const toArchive = sorted.slice(0, sorted.length - 15);
+        for (const mem of toArchive) {
+          await archiveSemanticMemory(mem.id).catch(() => {});
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[triggerMemoryLifecycle] Failed to run memory lifecycle:", err);
+  }
 }
 
 

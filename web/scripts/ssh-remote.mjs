@@ -1,8 +1,17 @@
 import { Client } from "ssh2";
+import fs from "fs";
+import path from "path";
 
+const keyPath = path.join(
+  process.env.USERPROFILE || process.env.HOME || "",
+  ".ssh",
+  "id_ed25519_aichart",
+);
+const privateKey = fs.existsSync(keyPath) ? fs.readFileSync(keyPath) : null;
 const password = process.env.SSH_PASS;
-if (!password) {
-  console.error("SSH_PASS required");
+
+if (!password && !privateKey) {
+  console.error("SSH_PASS or id_ed25519_aichart required");
   process.exit(1);
 }
 
@@ -34,6 +43,6 @@ conn
     host: "72.60.83.140",
     port: 22,
     username: "root",
-    password,
+    ...(privateKey ? { privateKey } : { password }),
     readyTimeout: 30000,
   });

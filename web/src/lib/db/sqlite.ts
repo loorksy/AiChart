@@ -269,10 +269,25 @@ const SCHEMA = `
     title      TEXT NOT NULL DEFAULT 'محادثة جديدة',
     summary    TEXT,
     archived   INTEGER NOT NULL DEFAULT 0,
+    workflow_state TEXT,
+    workflow_context TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS copilot_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    conversation_id INTEGER,
+    event_type      TEXT NOT NULL,
+    payload_json    TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type);
 
   CREATE TABLE IF NOT EXISTS chat_messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,9 +295,28 @@ const SCHEMA = `
     role            TEXT NOT NULL,
     content         TEXT NOT NULL,
     metadata_json   TEXT,
+    reasoning_summary TEXT,
+    tool_calls_json TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS semantic_memories (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    conversation_id INTEGER,
+    category        TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    embedding_json  TEXT,
+    archived        INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_semantic_memories_user ON semantic_memories (user_id, category);
+  CREATE INDEX IF NOT EXISTS idx_semantic_memories_archive ON semantic_memories (archived);
 
   CREATE INDEX IF NOT EXISTS idx_conversations_user
     ON conversations (user_id, updated_at DESC);
@@ -833,6 +867,60 @@ function migrate(db: Database.Database) {
       "[db] duplicate ea_connections.token_hash — skipping unique index",
     );
   }
+
+  // AI Agent Memory Architecture migrations
+  const chatCols = db
+    .prepare("PRAGMA table_info(chat_messages)")
+    .all() as { name: string }[];
+  if (!chatCols.some((c) => c.name === "reasoning_summary")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN reasoning_summary TEXT");
+  }
+  if (!chatCols.some((c) => c.name === "tool_calls_json")) {
+    db.exec("ALTER TABLE chat_messages ADD COLUMN tool_calls_json TEXT");
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS semantic_memories (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL,
+      conversation_id INTEGER,
+      category        TEXT NOT NULL,
+      content         TEXT NOT NULL,
+      embedding_json  TEXT,
+      archived        INTEGER NOT NULL DEFAULT 0,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_semantic_memories_user ON semantic_memories (user_id, category);
+    CREATE INDEX IF NOT EXISTS idx_semantic_memories_archive ON semantic_memories (archived);
+  `);
+
+  // AI Copilot state & events migrations
+  const convCols = db
+    .prepare("PRAGMA table_info(conversations)")
+    .all() as { name: string }[];
+  if (!convCols.some((c) => c.name === "workflow_state")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN workflow_state TEXT");
+  }
+  if (!convCols.some((c) => c.name === "workflow_context")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN workflow_context TEXT");
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS copilot_events (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         INTEGER NOT NULL,
+      conversation_id INTEGER,
+      event_type      TEXT NOT NULL,
+      payload_json    TEXT,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type);
+  `);
 }
 
 export function seedAdminSqlite(db: Database.Database) {

@@ -35,7 +35,10 @@ import { runBinanceCli, isBinanceCliEnabled } from "./binanceCli";
 import {
   searchSimilarLessons,
   formatLessonsForPrompt,
+  buildTradeHistorySummary,
 } from "./tradeMemory";
+import { searchSemanticMemories } from "./semanticMemory";
+import { buildUserProfileSummary } from "./userProfileMemory";
 import { evaluateCommittee } from "./committee";
 import type { Recommendation, TradingSettings } from "./types";
 import {
@@ -446,6 +449,8 @@ export interface AgentResult {
   usageTokens: number;
   activities: AgentActivity[];
   signalDeliveries?: DeliveryResult[];
+  reasoningSummary?: string | null;
+  toolCallsJson?: string | null;
 }
 
 export interface RunAgentOptions {
@@ -455,6 +460,7 @@ export interface RunAgentOptions {
   mode?: "default" | "chart_analyze";
   /** Response depth chosen on the chat start screen. */
   responseMode?: "fast" | "expert" | "vision";
+  allowedTools?: string[];
 }
 
 interface AgentContext {
@@ -825,10 +831,71 @@ export async function runAgent(
     emitActivity(onActivity, activity);
   };
 
+  // Find the latest user query text from history to query semantic memory
+  const lastUserMsg = [...history].reverse().find((m) => m.role === "user");
+  const queryText = typeof lastUserMsg?.content === "string"
+    ? lastUserMsg.content
+    : (Array.isArray(lastUserMsg?.content)
+        ? lastUserMsg.content
+            .filter((b) => b.type === "text")
+            .map((b) => (b as { text: string }).text)
+            .join(" ")
+        : "");
+
+  // Layer 2: Semantic Memory retrieval (dynamically matching dimension in Postgres pgvector / SQLite cosine fallback)
+  const semanticMatches = queryText.trim()
+    ? await searchSemanticMemories(ctx.userId, queryText, undefined, 3).catch((err) => {
+        console.error("[agent] searchSemanticMemories failed:", err);
+        return [];
+      })
+    : [];
+
+  const semanticBlock = semanticMatches.length > 0
+    ? [
+        "## الطبقة 2: الذكريات الدلالية ذات الصلة (مسترجعة ببحث المتجهات)",
+        ...semanticMatches.map(
+          (m) => `- [الفئة: ${m.category}] ${m.content} (درجة التطابق: ${Math.round(m.score * 100)}%)`,
+        ),
+      ].join("\n")
+    : "## الطبقة 2: الذكريات الدلالية ذات الصلة (مسترجعة ببحث المتجهات)\n- لا توجد ذكريات دلالية سابقة مسجلة ذات صلة حالياً.";
+
+  // Layer 3: User Profile Memory summary
+  const profileBlock = await buildUserProfileSummary(ctx.userId).catch((err) => {
+    console.error("[agent] buildUserProfileSummary failed:", err);
+    return "## الطبقة 3: تفضيلات ملف المستخدم المستمدة من السجلات الرسمية\n- تعذر تحميل تفضيلات ملف المستخدم حالياً.";
+  });
+
+  // Layer 4: Trade Memory summary
+  const tradeHistoryBlock = await buildTradeHistorySummary(ctx.userId).catch((err) => {
+    console.error("[agent] buildTradeHistorySummary failed:", err);
+    return "## الطبقة 4: ملخص الأداء التاريخي وسجل التداول\n- تعذر تحميل سجل تداولات المستخدم حالياً.";
+  });
+
+  // Memory safety guidelines to force retrieval and prevent hallucinations
+  const safetyBlock = [
+    "## إرشادات أمان الذاكرة واستخدام الحقائق (Memory Safety Rules)",
+    "- نظام الذاكرة هذا مخصص للاسترجاع وتلخيص الحقائق الفعلية فقط.",
+    "- يمنع منعاً باتاً اختراع ذكريات أو تفضيلات أو افتراضات غير مسجلة.",
+    "- يمنع تعديل تفضيلات أو ذكريات المستخدم بشكل تلقائي دون أمر صريح.",
+    "- يجب أن تكون جميع الحقائق والتفضيلات المذكورة أعلاه موثقة بالكامل وراجعة للمصادر والجدول المحدد بجانب كل حقيقة.",
+  ].join("\n");
+
+  const memoryContextBlock = [
+    "# الذاكرة المسترجعة للعميل (AI System Persistent Memory Block)",
+    options?.conversationSummary ? `## الطبقة 1: ملخص الجلسة السابقة\n${options.conversationSummary}` : "",
+    profileBlock,
+    tradeHistoryBlock,
+    semanticBlock,
+    safetyBlock,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   const systemBase = await buildSystemPrompt(
     ctx.settings,
     ctx.userId,
     options?.conversationSummary,
+    memoryContextBlock,
   );
   const responseHint =
     options?.responseMode === "fast"
@@ -853,8 +920,11 @@ export async function runAgent(
           dynamic: systemBase.dynamic,
         }
       : { static: systemBase.static + responseHint + extraHint, dynamic: systemBase.dynamic };
-  const activeTools =
-    options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;
+  const allowedToolsSet = options?.allowedTools ? new Set(options.allowedTools) : null;
+  const baseTools = options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;
+  const activeTools = allowedToolsSet
+    ? baseTools.filter((t) => allowedToolsSet.has(t.name))
+    : baseTools;
   const maxSteps =
     options?.mode === "chart_analyze"
       ? 2
@@ -868,6 +938,7 @@ export async function runAgent(
   const signalDeliveries: DeliveryResult[] = [];
   let usageTokens = 0;
   let finalText = "";
+  const executedToolsList: { name: string; input: unknown; status: string }[] = [];
 
   // No scripted "planning/thinking" steps — activities reflect ONLY the agent's
   // real tool calls below. If the agent answers directly (no tools), nothing is
@@ -908,6 +979,11 @@ export async function runAgent(
         tool: tu.name,
       });
       const out = await executeTool(tu.name, tu.input, ctx, recorded, signalDeliveries);
+      executedToolsList.push({
+        name: tu.name,
+        input: tu.input,
+        status: out.isError ? "error" : "done",
+      });
       push({
         id: tu.id,
         label,
@@ -931,11 +1007,21 @@ export async function runAgent(
       : "لم أتمكّن من صياغة رد. حاول مجدداً.";
   }
 
+  const reasoningSummary = executedToolsList.length > 0
+    ? `تم اتخاذ القرارات بناءً على الخطوات التالية:\n` + executedToolsList.map(t => `- تشغيل الأداة [${t.name}] بالمدخلات (${JSON.stringify(t.input)}) والنتيجة [${t.status}]`).join("\n")
+    : "تم الرد مباشرة دون الحاجة لاستدعاء أدوات خارجية.";
+
+  const toolCallsJson = executedToolsList.length > 0
+    ? JSON.stringify(executedToolsList)
+    : null;
+
   return {
     reply: finalText,
     recommendations: recorded,
     usageTokens,
     activities,
     signalDeliveries: signalDeliveries.length ? signalDeliveries : undefined,
+    reasoningSummary,
+    toolCallsJson,
   };
 }

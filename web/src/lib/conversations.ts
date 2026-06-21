@@ -124,15 +124,19 @@ export async function appendChatMessage(
   role: "user" | "assistant",
   content: string,
   metadata?: Record<string, unknown>,
+  reasoningSummary?: string | null,
+  toolCallsJson?: string | null,
 ): Promise<ChatMessageRow> {
   const id = await insertReturningId(
-    `INSERT INTO chat_messages (conversation_id, role, content, metadata_json)
-     VALUES (?, ?, ?, ?)`,
+    `INSERT INTO chat_messages (conversation_id, role, content, metadata_json, reasoning_summary, tool_calls_json)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     [
       conversationId,
       role,
       content,
       metadata ? JSON.stringify(metadata) : null,
+      reasoningSummary ?? null,
+      toolCallsJson ?? null,
     ],
   );
   await execute(

@@ -11,6 +11,12 @@ export interface UiMessage {
   streaming?: boolean;
   recommendations?: unknown[];
   intents?: ProcessedIntent[];
+  question?: {
+    type: string;
+    text: string;
+    options: { label: string; value: string }[];
+  } | null;
+  ui_schema?: any;
 }
 
 interface ChatState {
@@ -64,11 +70,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: (data.messages ?? []).map((m) => {
         const image = parseImageFromMetadata(m.metadata_json);
         let recommendations: unknown[] | undefined;
+        let question: any = null;
+        let ui_schema: any = null;
         if (m.metadata_json) {
           try {
-            recommendations = (
-              JSON.parse(m.metadata_json) as { recommendations?: unknown[] }
-            ).recommendations;
+            const parsedMeta = JSON.parse(m.metadata_json) as { recommendations?: unknown[]; question?: any; ui_schema?: any };
+            recommendations = parsedMeta.recommendations;
+            question = parsedMeta.question || null;
+            ui_schema = parsedMeta.ui_schema || null;
           } catch {
             recommendations = undefined;
           }
@@ -79,6 +88,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: m.content,
           imageUrl: image ? imageDataUrl(image) : undefined,
           recommendations,
+          question,
+          ui_schema,
         };
       }),
       loading: false,

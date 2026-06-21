@@ -59,7 +59,7 @@ test();
 `;
 
 // Run using tsx on VPS
-const remoteCmd = `cd /opt/aichart && git pull && cd /opt/aichart/web && npx tsx scripts/vps-test-agent-image.ts`;
+const remoteCmd = `curl -s http://127.0.0.1:3010/api/admin/test-agent-vision`;
 
 function run() {
   return new Promise((resolve, reject) => {

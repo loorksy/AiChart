@@ -255,9 +255,22 @@ const SCHEMA = `
     title      TEXT NOT NULL DEFAULT 'محادثة جديدة',
     summary    TEXT,
     archived   BOOLEAN NOT NULL DEFAULT FALSE,
+    workflow_state TEXT,
+    workflow_context TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  CREATE TABLE IF NOT EXISTS copilot_events (
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
+    event_type      TEXT NOT NULL,
+    payload_json    TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type);
 
   CREATE TABLE IF NOT EXISTS chat_messages (
     id              SERIAL PRIMARY KEY,
@@ -265,8 +278,25 @@ const SCHEMA = `
     role            TEXT NOT NULL,
     content         TEXT NOT NULL,
     metadata_json   TEXT,
+    reasoning_summary TEXT,
+    tool_calls_json TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  CREATE TABLE IF NOT EXISTS semantic_memories (
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
+    category        TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    embedding       vector,
+    archived        BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_semantic_memories_user ON semantic_memories (user_id, category);
+  CREATE INDEX IF NOT EXISTS idx_semantic_memories_archive ON semantic_memories (archived);
 
   CREATE INDEX IF NOT EXISTS idx_conversations_user
     ON conversations (user_id, updated_at DESC);
@@ -710,6 +740,57 @@ async function migratePg(client: PoolClient) {
       "[db] duplicate ea_connections.token_hash — skipping unique index",
     );
   }
+
+  // AI Agent Memory Architecture migrations
+  await client.query(`
+    ALTER TABLE chat_messages
+      ADD COLUMN IF NOT EXISTS reasoning_summary TEXT,
+      ADD COLUMN IF NOT EXISTS tool_calls_json TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS semantic_memories (
+      id              SERIAL PRIMARY KEY,
+      user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
+      category        TEXT NOT NULL,
+      content         TEXT NOT NULL,
+      embedding       vector,
+      archived        BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_semantic_memories_user ON semantic_memories (user_id, category)
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_semantic_memories_archive ON semantic_memories (archived)
+  `).catch(() => {});
+
+  // AI Copilot state & events migrations
+  await client.query(`
+    ALTER TABLE conversations
+      ADD COLUMN IF NOT EXISTS workflow_state TEXT,
+      ADD COLUMN IF NOT EXISTS workflow_context TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS copilot_events (
+      id              SERIAL PRIMARY KEY,
+      user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
+      event_type      TEXT NOT NULL,
+      payload_json    TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type)
+  `).catch(() => {});
 }
 
 async function seedAdminPg(client: PoolClient) {

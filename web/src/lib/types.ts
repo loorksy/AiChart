@@ -278,6 +278,8 @@ export interface Conversation {
   title: string;
   summary: string | null;
   archived: number;
+  workflow_state?: string | null;
+  workflow_context?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -288,7 +290,22 @@ export interface ChatMessageRow {
   role: "user" | "assistant";
   content: string;
   metadata_json: string | null;
+  reasoning_summary?: string | null;
+  tool_calls_json?: string | null;
   created_at: string;
+}
+
+export interface SemanticMemory {
+  id: number;
+  user_id: number;
+  conversation_id: number | null;
+  category: string;
+  content: string;
+  embedding?: string | null;
+  embedding_json?: string | null;
+  archived: number | boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Trade {

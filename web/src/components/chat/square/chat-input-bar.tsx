@@ -31,6 +31,13 @@ const QUICK_ACTIONS = [
   },
 ] as const;
 
+export interface Attachment {
+  name: string;
+  size: number;
+  type: string;
+  content: string;
+}
+
 interface ChatInputBarProps {
   value: string;
   onChange: (v: string) => void;
@@ -41,6 +48,9 @@ interface ChatInputBarProps {
   onImageSelect?: (file: File) => void;
   onImageClear?: () => void;
   imageError?: string | null;
+  attachments?: Attachment[];
+  onAddAttachment?: (file: File) => void;
+  onRemoveAttachment?: (index: number) => void;
   disabled?: boolean;
   placeholder?: string;
   centered?: boolean;
@@ -56,12 +66,50 @@ export function ChatInputBar({
   onImageSelect,
   onImageClear,
   imageError,
+  attachments = [],
+  onAddAttachment,
+  onRemoveAttachment,
   disabled,
   placeholder = "اسأل عن أي شيء…",
   centered = false,
 }: ChatInputBarProps) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const canSend = Boolean(value.trim() || pendingImage);
+  const canSend = Boolean(value.trim() || pendingImage || attachments.length > 0);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.indexOf("image") !== -1 && onImageSelect) {
+          onImageSelect(file);
+        } else if (onAddAttachment) {
+          onAddAttachment(file);
+        }
+      }
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf("image") !== -1) {
+        const file = item.getAsFile();
+        if (file && onImageSelect) {
+          onImageSelect(file);
+        }
+      } else if (item.kind === "file" && onAddAttachment) {
+        const file = item.getAsFile();
+        if (file) onAddAttachment(file);
+      }
+    }
+  };
 
   return (
     <div
@@ -71,6 +119,8 @@ export function ChatInputBar({
           ? "bg-transparent"
           : "border-t border-border/60 bg-background/80 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md",
       )}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
       <div className="mx-auto w-full max-w-3xl space-y-3">
         {pendingImagePreview && (
@@ -91,6 +141,27 @@ export function ChatInputBar({
             </button>
           </div>
         )}
+
+        {attachments && attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-1">
+            {attachments.map((att, idx) => (
+              <div key={idx} className="relative flex items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/60 p-2.5 text-xs text-zinc-300">
+                <span className="font-semibold truncate max-w-[12rem]">{att.name}</span>
+                <span className="text-[10px] text-muted-foreground">({(att.size / 1024).toFixed(1)} KB)</span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveAttachment?.(idx)}
+                  disabled={disabled}
+                  className="rounded-full hover:bg-white/10 p-0.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                  aria-label="إزالة الملف"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {imageError && (
           <p className="px-1 text-xs text-destructive">{imageError}</p>
         )}
@@ -121,6 +192,7 @@ export function ChatInputBar({
           <Textarea
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onPaste={handlePaste}
             placeholder={
               pendingImage ? "أضف سؤالاً عن الشارت (اختياري)…" : placeholder
             }
