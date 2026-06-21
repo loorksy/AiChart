@@ -39,22 +39,38 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Loaded history is empty." });
     }
 
-    const lastUserMessage = history[history.length - 1];
+    // Find the last message that has an image block
+    let lastImageMessageIndex = -1;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const msg = history[i];
+      if (Array.isArray(msg.content) && msg.content.some(block => block.type === "image")) {
+        lastImageMessageIndex = i;
+        break;
+      }
+    }
 
-    console.log("Running test 1: Full History");
+    if (lastImageMessageIndex === -1) {
+      return NextResponse.json({ error: "Could not find any message with an image in history." });
+    }
+
+    const lastImageMessage = history[lastImageMessageIndex];
+    // Create a history slice up to and including the last image message (excluding any subsequent turns)
+    const historyUpToImage = history.slice(0, lastImageMessageIndex + 1);
+
+    console.log(`Running test 1: History up to the image (length ${historyUpToImage.length})`);
     const start1 = Date.now();
     const resultFull = await runAgent(
       { userId, settings },
-      history,
+      historyUpToImage,
       { responseMode: "vision" }
     );
     const timeFull = Date.now() - start1;
 
-    console.log("Running test 2: Single Message (Clean History)");
+    console.log("Running test 2: Single Message with Image");
     const start2 = Date.now();
     const resultSingle = await runAgent(
       { userId, settings },
-      [lastUserMessage],
+      [lastImageMessage],
       { responseMode: "vision" }
     );
     const timeSingle = Date.now() - start2;
@@ -64,13 +80,14 @@ export async function GET(req: NextRequest) {
       conversationId,
       userId,
       historyLength: history.length,
-      lastMessageText: typeof lastUserMessage.content === "string" ? lastUserMessage.content : lastUserMessage.content.find(b => b.type === "text")?.text,
-      fullHistoryTest: {
+      imageMessageIndex: lastImageMessageIndex,
+      imageMessageText: typeof lastImageMessage.content === "string" ? lastImageMessage.content : lastImageMessage.content.find(b => b.type === "text")?.text,
+      historyUpToImageTest: {
         timeMs: timeFull,
         reply: resultFull.reply,
         recommendations: resultFull.recommendations,
       },
-      singleMessageTest: {
+      singleImageMessageTest: {
         timeMs: timeSingle,
         reply: resultSingle.reply,
         recommendations: resultSingle.recommendations,
