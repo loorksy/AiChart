@@ -202,10 +202,14 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+const DEFAULT_LOCALE_CTX: LocaleContextValue = {
+  locale: "ar",
+  setLocale: () => {},
+  t: (key: string) => MESSAGES.ar[key] ?? key,
+};
+
 export function useLocale() {
   const ctx = useContext(LocaleContext);
-  if (!ctx) {
-    throw new Error("useLocale must be used within LocaleProvider");
-  }
-  return ctx;
+  // Return a safe default instead of throwing during SSR edge cases (Next.js 16 Turbopack)
+  return ctx ?? DEFAULT_LOCALE_CTX;
 }
