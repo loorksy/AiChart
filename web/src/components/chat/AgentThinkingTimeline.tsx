@@ -131,7 +131,7 @@ export function AgentThinkingTimeline({
                   >
                     {/* connecting line */}
                     {!isLast && (
-                      <span className="absolute right-[11px] top-7 bottom-[-6px] w-px bg-border/60" />
+                      <span className="absolute start-[11.5px] top-7 bottom-[-6px] w-px bg-border/60" />
                     )}
                     {/* icon node */}
                     <span

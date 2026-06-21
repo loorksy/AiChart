@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cairo, Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { LocaleProvider } from "@/components/LocaleProvider";
 import "./globals.css";
 
 const cairo = Cairo({
@@ -43,8 +44,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background">
-        <ThemeProvider>{children}</ThemeProvider>
+        <LocaleProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </LocaleProvider>
       </body>
     </html>
   );
 }
+

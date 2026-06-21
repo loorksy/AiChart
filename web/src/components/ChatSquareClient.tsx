@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { LineChart, X } from "lucide-react";
+import { LineChart, X, Search, Sparkles } from "lucide-react";
 import {
   ChatModeBar,
   DEFAULT_SELECTIONS,
@@ -26,6 +26,7 @@ import type { ProcessedIntent } from "@/lib/tradeFlow";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
+import { useLocale } from "@/components/LocaleProvider";
 
 function extractSymbol(text: string): string | null {
   const crypto = text.match(/\b([A-Z]{2,10}USDT)\b/i);
@@ -40,6 +41,7 @@ export default function ChatSquareClient({
   agentReady: boolean;
   onCreditsUsed?: () => void;
 }) {
+  const { t, locale } = useLocale();
   const [agentReady, setAgentReady] = useState(agentReadyInitial);
   const [model, setModel] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -103,7 +105,7 @@ export default function ChatSquareClient({
     useAgentActivities();
 
   const hasConversation = messages.length > 0 || selectedId !== null;
-  const displayName = me?.displayName ?? "متداول";
+  const displayName = me?.displayName ?? (locale === "ar" ? "متداول" : "Trader");
 
   useEffect(() => {
     void fetchConversations();
@@ -123,6 +125,15 @@ export default function ChatSquareClient({
     void send(pending);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Phase B: Automatically open the chart preview panel when a conversation exists
+  useEffect(() => {
+    if (hasConversation) {
+      setPreviewOpen(true);
+    } else {
+      setPreviewOpen(false);
+    }
+  }, [hasConversation]);
 
   async function handleImageSelect(file: File) {
     setImageError(null);
@@ -181,7 +192,10 @@ export default function ChatSquareClient({
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setError(
-            `لم تُنفّذ: ${(data as { reason?: string; error?: string }).reason ?? (data as { error?: string }).error ?? "سبب غير معروف"}`,
+            (locale === "ar" ? "لم تُنفّذ: " : "Failed exit: ") +
+              ((data as { reason?: string; error?: string }).reason ??
+                (data as { error?: string }).error ??
+                "Unknown reason"),
           );
         } else {
           const data = await consumeSse<{ ok: boolean; reason?: string }>(res, {
@@ -189,7 +203,7 @@ export default function ChatSquareClient({
             onError: (msg) => setError(msg),
           });
           if (data && !data.ok) {
-            setError(`لم تُنفّذ: ${data.reason ?? "سبب غير معروف"}`);
+            setError((locale === "ar" ? "لم تُنفّذ: " : "Failed exit: ") + (data.reason ?? "Unknown reason"));
           }
           patchMessageIntents(messageId, intentId, {
             status: data?.ok ? "executed" : "failed",
@@ -198,12 +212,12 @@ export default function ChatSquareClient({
         }
       } else if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error ?? "تعذّر رفض الطلب.");
+        setError((data as { error?: string }).error ?? (locale === "ar" ? "تعذّر رفض الطلب." : "Could not reject request."));
       } else {
         patchMessageIntents(messageId, intentId, { status: "rejected" });
       }
     } catch {
-      setError("تعذّر معالجة الطلب.");
+      setError(locale === "ar" ? "تعذّر معالجة الطلب." : "Could not process request.");
     } finally {
       setBusyIntentId(null);
       setExecutingIntentId(null);
@@ -228,7 +242,7 @@ export default function ChatSquareClient({
     if (!convId) convId = await createNew();
 
     const displayText =
-      content || (attach ? "حلّل الشارت المرفق وأعطني توصية." : "");
+      content || (attach ? (locale === "ar" ? "حلّل الشارت المرفق وأعطني توصية." : "Analyze the attached chart and recommend.") : "");
 
     appendMessage({
       id: `u-${Date.now()}`,
@@ -277,7 +291,7 @@ export default function ChatSquareClient({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError((data as { error?: string }).error ?? "حدث خطأ.");
+        setError((data as { error?: string }).error ?? (locale === "ar" ? "حدث خطأ." : "An error occurred."));
         setMessages(
           useChatStore.getState().messages.filter((m) => m.id !== assistantId),
         );
@@ -304,7 +318,7 @@ export default function ChatSquareClient({
       });
 
       if (!data) {
-        if (!streamError) setError("لم يصل رد من الوكيل.");
+        if (!streamError) setError(locale === "ar" ? "لم يصل رد من الوكيل." : "No response from agent.");
         updateLastAssistant({ streaming: false });
         return;
       }
@@ -329,7 +343,7 @@ export default function ChatSquareClient({
       void refreshMe();
       onCreditsUsed?.();
     } catch {
-      setError("تعذّر الاتصال بالخادم.");
+      setError(locale === "ar" ? "تعذّر الاتصال بالخادم." : "Failed to connect to server.");
     } finally {
       setBusy(false);
       setShowActivity(false);
@@ -341,41 +355,88 @@ export default function ChatSquareClient({
   );
 
   const inputPlaceholder = hasConversation
-    ? "تابع المحادثة…"
-    : "اسأل الخبير عن السوق أو حسابك…";
+    ? t("chat.placeholder_followup")
+    : t("chat.placeholder");
 
-  // Fresh chat (no messages yet) → show the inline mode bar + greeting.
+  // Fresh chat (no messages yet) → Phase A (Welcoming State).
   const isEmpty = messages.length === 0 && !busy;
+
+  const getQuickActions = () => [
+    {
+      label: locale === "ar" ? "حلّل BTCUSDT" : "Analyze BTCUSDT",
+      icon: LineChart,
+      prompt: locale === "ar" ? "حلّل BTCUSDT" : "Analyze BTCUSDT",
+    },
+    {
+      label: locale === "ar" ? "نظرة على السوق" : "Market Overview",
+      icon: Search,
+      prompt: locale === "ar" ? "نظرة على السوق اليوم" : "Market Overview Today",
+    },
+    {
+      label: locale === "ar" ? "فحص مخاطر حسابي" : "Check Account Risk",
+      icon: Sparkles,
+      prompt: locale === "ar" ? "فحص مخاطر حسابي" : "Check account risk",
+    },
+  ];
 
   return (
     <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background pt-12 lg:h-full lg:pt-0">
 
       {!agentReady && (
-        <p className="shrink-0 border-b border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground">
-          وكيل Claude غير مُفعّل — أضِف ANTHROPIC_API_KEY من لوحة الإدارة.
+        <p className="shrink-0 border-b border-border bg-card/85 px-4 py-2 text-xs text-muted-foreground transition duration-200">
+          {t("chat.no_agent_key")}
         </p>
       )}
       {error && (
-        <p className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-3 py-1.5 text-sm text-destructive">
+        <p className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive font-medium transition duration-200">
           {error}
         </p>
       )}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          
+          {/* Two-State Condition */}
           {isEmpty ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-              <div className="rounded-2xl bg-gradient-to-tr from-primary/20 to-primary/5 p-3 ring-1 ring-primary/20">
-                <Image src="/logo.png" alt="AiChart" width={44} height={44} className="rounded-xl" />
+            /* Phase A: Welcoming Mode (Initial State) */
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center max-w-2xl mx-auto w-full px-4 gap-6 text-center animate-in fade-in duration-300">
+              <div className="rounded-2xl bg-gradient-to-tr from-primary/20 to-primary/5 p-3.5 ring-1 ring-primary/20 shadow-md">
+                <Image src="/logo.png" alt="AiChart" width={48} height={48} className="rounded-xl object-contain" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold">مرحباً {displayName} 👋</h1>
-                <p className="text-sm text-muted-foreground">
-                  اختر إعدادات الجلسة بالأسفل ثم اكتب رسالتك لتبدأ
+              <div className="space-y-1.5">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                  {t("welcome.title", { name: displayName })}
+                </h1>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+                  {t("welcome.subtitle")}
                 </p>
+              </div>
+
+              {/* Redesigned flat config settings bar */}
+              <div className="w-full">
+                <ChatModeBar sel={sel} onChange={setSel} />
+              </div>
+
+              {/* Dynamic Sugestion Pills */}
+              <div className="flex flex-wrap items-center justify-center gap-2 max-w-lg mt-1">
+                {getQuickActions().map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <button
+                      key={action.label}
+                      type="button"
+                      onClick={() => void send(action.prompt)}
+                      className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-secondary hover:border-primary/30 active:scale-95 duration-100 shadow-sm"
+                    >
+                      <Icon className="h-3.5 w-3.5 text-primary" />
+                      <span>{action.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ) : (
+            /* Phase B: Operational Mode (Active State) */
             <ChatConversation
               messages={messages}
               busy={busy}
@@ -398,36 +459,17 @@ export default function ChatSquareClient({
               }}
             />
           )}
+
           {executingIntentId !== null && intentActivities.length > 0 && (
-            <div className="shrink-0 border-t border-border px-3 py-2">
+            <div className="shrink-0 border-t border-border px-3 py-2 bg-card/40">
               <AgentActivityFeed
                 activities={intentActivities}
-                title="تنفيذ الصفقة"
+                title={locale === "ar" ? "تنفيذ الصفقة" : "Executing Transaction"}
               />
             </div>
           )}
 
-          {/* Inline session-mode bar — only before the first message. */}
-          {isEmpty && (
-            <ChatModeBar
-              sel={sel}
-              onChange={(s) => {
-                if (s.symbol && s.symbol !== sel.symbol) {
-                  setPreviewSymbol(s.symbol.toUpperCase());
-                  setPreviewInterval(
-                    s.trading_style === "scalp"
-                      ? "5m"
-                      : s.trading_style === "position"
-                        ? "1d"
-                        : "1h",
-                  );
-                  setPreviewOpen(true);
-                }
-                setSel(s);
-              }}
-            />
-          )}
-
+          {/* Chat Input Bar */}
           <ChatInputBar
             value={input}
             onChange={setInput}
@@ -440,9 +482,11 @@ export default function ChatSquareClient({
             imageError={imageError}
             disabled={busy}
             placeholder={inputPlaceholder}
+            centered={false}
           />
         </div>
 
+        {/* Phase B: Live Chart Slide-out Sidebar Panel */}
         {previewOpen && (
           <>
             {/* Drag handle to resize the chart */}
@@ -450,11 +494,11 @@ export default function ChatSquareClient({
               onMouseDown={startResize}
               className="hidden w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 md:block"
               role="separator"
-              aria-label="تغيير حجم الشارت"
+              aria-label={t("chat.resize_chart")}
             />
             <aside
               style={{ width: previewWidth }}
-              className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-s border-border bg-card md:flex"
+              className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-s border-border bg-card md:flex shadow-lg"
             >
               <ChartPreviewPanel
                 symbol={previewSymbol}
@@ -471,15 +515,16 @@ export default function ChatSquareClient({
         )}
       </div>
 
+      {/* Mobile view full-screen chart panel override */}
       {previewOpen && (
         <div className="fixed inset-0 z-50 flex flex-col bg-background md:hidden">
-          <div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-3 py-2">
-            <span className="text-sm font-medium">معاينة الشارت</span>
+          <div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-4 py-3">
+            <span className="text-sm font-semibold">{t("chat.chart_preview")}</span>
             <button
               type="button"
               onClick={() => setPreviewOpen(false)}
-              className="rounded-lg p-2 text-muted-foreground hover:bg-secondary"
-              aria-label="إغلاق الشارت"
+              className="rounded-lg p-2 text-muted-foreground hover:bg-secondary transition"
+              aria-label={t("chat.close_chart")}
             >
               <X className="h-5 w-5" />
             </button>

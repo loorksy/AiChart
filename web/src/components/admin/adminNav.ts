@@ -6,11 +6,13 @@ import {
   Server,
   Shield,
   Users,
+  FileText,
 } from "lucide-react";
 
 export const ADMIN_NAV = [
   { href: "/admin", label: "نظرة عامة", icon: LayoutDashboard, exact: true },
   { href: "/admin/users", label: "المستخدمون", icon: Users },
+  { href: "/admin/pages", label: "إدارة الصفحات", icon: FileText },
   { href: "/admin/usage", label: "استهلاك Claude", icon: Cpu },
   { href: "/admin/limits", label: "حدود التداول", icon: Shield },
   { href: "/admin/keys", label: "المفاتيح", icon: KeyRound },

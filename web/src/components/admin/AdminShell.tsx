@@ -63,7 +63,7 @@ export default function AdminShell({
 
   return (
     <div className="admin-console flex min-h-dvh bg-[#050505] text-foreground">
-      <aside className="hidden w-56 shrink-0 flex-col border-l border-white/8 bg-[#0a0a0a] md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col border-e border-white/8 bg-[#0a0a0a] md:flex">
         <div className="border-b border-white/8 p-4">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20">
@@ -140,7 +140,7 @@ export default function AdminShell({
             onClick={() => setMobileOpen(false)}
             aria-label="إغلاق"
           />
-          <aside className="absolute right-0 top-0 flex h-full w-64 flex-col bg-[#0a0a0a] shadow-xl">
+          <aside className="absolute start-0 top-0 flex h-full w-64 flex-col bg-[#0a0a0a] shadow-xl">
             <div className="flex items-center justify-between border-b border-white/8 p-4">
               <span className="font-bold">Admin</span>
               <button type="button" onClick={() => setMobileOpen(false)}>
