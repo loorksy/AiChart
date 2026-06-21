@@ -26,6 +26,14 @@ export interface EnrichedEaLiveQuote extends EaLiveQuote {
   spreadPips: number | null;
   isFresh: boolean;
   source: FreshnessSource;
+  /** Age of last MT5 tick in ms (undefined when tickTime not provided by EA). */
+  tickAgeMs?: number;
+  /**
+   * True when tickAgeMs exceeds the per-market threshold.
+   * Forex pairs: stale after FOREX_TICK_STALE_MS (default 120 s).
+   * Crypto CFDs (symbol ends in 'M' like BTCUSDm): 24/7 market, not flagged.
+   */
+  tickStale?: boolean;
 }
 
 export interface EaLiveQuotesSummary {
@@ -204,6 +212,35 @@ export function getEaRecentEvents(userId: number, limit = 10): EaLiveEvent[] {
   return (eventsByUser.get(userId) ?? []).slice(0, limit);
 }
 
+/**
+ * Default threshold for forex tick staleness: 120 s (2 min between ticks on an
+ * open market is already suspicious). Configurable via FOREX_TICK_STALE_MS.
+ */
+function getForexTickStaleMs(): number {
+  const raw = Number(process.env.FOREX_TICK_STALE_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 120_000;
+}
+
+/**
+ * True for instruments that trade on a weekday session schedule (forex majors,
+ * metals, indices). Crypto CFDs (XBTUSDm, BTCUSDm, ETHUSDm…) trade 24/7 on
+ * Exness and should NOT be penalised for quiet weekends.
+ * Heuristic: if the root symbol starts with well-known crypto tickers or the
+ * symbol matches common crypto CFD patterns, it's 24/7.
+ */
+export function isForexSymbol(symbol: string): boolean {
+  const s = symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // Crypto-derived CFDs traded on MT5 brokers — 24/7, no tick staleness gate.
+  const cryptoRoots = [
+    "BTC", "ETH", "XBT", "LTC", "XRP", "BCH", "ADA", "BNB",
+    "SOL", "DOT", "LINK", "UNI", "DOGE", "AVAX", "MATIC", "TRX", "EOS",
+  ];
+  for (const root of cryptoRoots) {
+    if (s.startsWith(root)) return false;
+  }
+  return true;
+}
+
 function heartbeatQuoteAgeMs(lastHeartbeatAt: string | null): number {
   if (!lastHeartbeatAt) return 60_000;
   const iso = lastHeartbeatAt.includes("T")
@@ -219,11 +256,25 @@ function enrichQuote(
   thresholdMs: number,
 ): EnrichedEaLiveQuote {
   const spread = spreadFromBidAsk(quote.bid, quote.ask, quote.symbol);
+
+  // Tick-staleness: only applies to forex instruments (not crypto CFDs).
+  let tickAgeMs: number | undefined;
+  let tickStale: boolean | undefined;
+  if (quote.tickTime && quote.tickTime > 0) {
+    tickAgeMs = Date.now() - quote.tickTime * 1000;
+    if (isForexSymbol(quote.symbol)) {
+      tickStale = tickAgeMs > getForexTickStaleMs();
+    } else {
+      tickStale = false; // crypto CFD — 24/7, never stale by tick age
+    }
+  }
+
   return {
     ...quote,
     spreadPips: spread ? Math.round(spread.spreadPips * 10) / 10 : null,
     isFresh: isQuoteFresh(quote.quoteAgeMs, thresholdMs),
     source,
+    ...(tickAgeMs !== undefined ? { tickAgeMs, tickStale } : {}),
   };
 }
 

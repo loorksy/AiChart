@@ -36,6 +36,7 @@ import {
   evaluateForexQuoteGate,
   resolveForexQuoteSnapshot,
 } from "./forexPreflight";
+import { isForexSymbol } from "@/lib/eaLiveState";
 
 export interface ConfidenceGateCheck {
   minConfidence: number;
@@ -87,6 +88,7 @@ export interface TradeReadinessChecks {
     spreadPips: number | null;
     maxSpreadPips: number;
     staleThresholdMs: number;
+    tickStale: boolean;
     applies: boolean;
   };
   killSwitch: {
@@ -309,6 +311,17 @@ export function collectTradeReadinessBlockers(
       );
     }
 
+    // P1 — tick-staleness: forex market closed / price frozen.
+    if (symbol && heartbeatFresh && checks.quote.tickStale) {
+      blockers.push(
+        blocker(
+          BridgeErrorCode.MARKET_CLOSED,
+          "forex_market_closed_or_tick_stale: last MT5 tick is too old — market is likely closed or price is frozen.",
+          "سوق الفوركس مغلق أو السعر مجمّد (آخر tick قديم جداً) — لا تنفيذ.",
+        ),
+      );
+    }
+
     if (symbol && heartbeatFresh && forexQuoteGateFailure) {
       blockers.push(
         blocker(
@@ -382,6 +395,7 @@ export async function buildTradeReadiness(
   let quoteAgeMs: number | null = null;
   let quoteSource: FreshnessSource | null = null;
   let spreadPips: number | null = null;
+  let tickStale = false;
   let forexQuote: Awaited<ReturnType<typeof resolveForexQuoteSnapshot>> = null;
   const staleThresholdMs = getStaleQuoteThresholdMs();
   const maxSpreadPips = getMaxSpreadPips();
@@ -408,6 +422,20 @@ export async function buildTradeReadiness(
           symbol,
         );
         spreadPips = spread?.spreadPips ?? null;
+
+        // P1 — tick-staleness gate: if the EA sent a tickTime and the last
+        // real MT5 tick is too old, the market is closed/frozen. Only applies
+        // to forex instruments; crypto CFDs are 24/7 and not gated here.
+        if (forexQuote.tickTime && forexQuote.tickTime > 0 && symbol && isForexSymbol(symbol)) {
+          const forexTickStaleMs = Number(process.env.FOREX_TICK_STALE_MS) > 0
+            ? Number(process.env.FOREX_TICK_STALE_MS)
+            : 120_000;
+          const tickAgeMs = Date.now() - forexQuote.tickTime * 1000;
+          if (tickAgeMs > forexTickStaleMs) {
+            tickStale = true;
+            quoteFresh = false; // treat frozen tick as stale quote too
+          }
+        }
       } else {
         quoteFresh = false;
         quoteSource = null;
@@ -434,6 +462,7 @@ export async function buildTradeReadiness(
       spreadPips,
       maxSpreadPips,
       staleThresholdMs,
+      tickStale,
       applies: forexApplies && Boolean(symbol),
     },
     killSwitch: {

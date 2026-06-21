@@ -23,6 +23,8 @@ export interface ForexQuoteSnapshot {
   ask: number;
   quoteAgeMs: number;
   source: FreshnessSource;
+  /** Unix seconds of last real MT5 tick (from EA v3+). May be absent for older EAs. */
+  tickTime?: number;
 }
 
 function heartbeatQuoteAgeMs(lastHeartbeatAt: string | null): number {
@@ -50,6 +52,7 @@ export async function resolveForexQuoteSnapshot(
       ask: live.ask,
       quoteAgeMs: live.quoteAgeMs,
       source: fresh ? "live" : "stale",
+      tickTime: live.tickTime, // propagate for tick-staleness check
     };
   }
 
