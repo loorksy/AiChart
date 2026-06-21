@@ -838,13 +838,21 @@ export async function runAgent(
         : options?.responseMode === "expert"
           ? "\n\n# نمط الرد: خبير\n- تحليل أعمق متعدد الأطر: استخدم get_multi_timeframe_snapshot + المؤشرات + كود الاستراتيجية. وازن بين الأطر."
           : "";
+  const hasUserUploadedImage = history.some(
+    (m) => Array.isArray(m.content) && m.content.some((b) => b.type === "image")
+  );
+  let extraHint = "";
+  if (hasUserUploadedImage) {
+    extraHint = "\n\n# تحليل الصورة المرفقة (رؤية الشارت)\n- لقد أرفق المستخدم صورة شارت في رسالته. لديك قدرة كاملة على الرؤية وتحليل الصور (Vision) بدقة عالية. يجب عليك تحليل الشارت المرفق بصرياً فوراً وتحديد الاتجاه والمستويات والمؤشرات.\n- لا تقل أبداً 'لا أستطيع تحليل الصور مباشرة' أو 'لا أملك القدرة على رؤية الصور'. وتجاهل أي اعتذار أو رفض سابق لرؤية الصور في محادثتك السابقة، فقد تم تفعيل قدرة الرؤية (Vision) لديك بالكامل الآن. قدّم تحليلك مباشرة بكل ثقة.";
+  }
+
   const system =
     options?.mode === "chart_analyze"
       ? {
-          static: systemBase.static + chartAnalyzeSystemSuffix(),
+          static: systemBase.static + chartAnalyzeSystemSuffix() + extraHint,
           dynamic: systemBase.dynamic,
         }
-      : { static: systemBase.static + responseHint, dynamic: systemBase.dynamic };
+      : { static: systemBase.static + responseHint + extraHint, dynamic: systemBase.dynamic };
   const activeTools =
     options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;
   const maxSteps =
