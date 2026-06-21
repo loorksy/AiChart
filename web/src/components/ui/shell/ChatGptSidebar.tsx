@@ -295,7 +295,7 @@ export function ChatGptSidebar({
               </Link>
               {role === "admin" && (
                 <Link
-                  href="/admin"
+                  href="/console"
                   onClick={() => setProfileMenuOpen(false)}
                   className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
                 >

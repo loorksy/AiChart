@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogOut, PanelLeftClose, PanelLeft, Menu, X } from "lucide-react";
 import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
@@ -28,6 +28,8 @@ export function AppConsoleShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const items = navForRole(role);
@@ -46,7 +48,7 @@ export function AppConsoleShell({
   const navList = (onNavigate?: () => void) => (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
       {items.map((item) => {
-        const active = activeNav(pathname, item);
+        const active = activeNav(pathname, item, currentTab);
         const Icon = item.icon;
         return (
           <Link

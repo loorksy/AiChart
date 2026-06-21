@@ -5,63 +5,116 @@ import { useRouter } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
 import { VercelV0Chat } from "@/components/ui/v0-ai-chat";
 import { useLocale } from "@/components/LocaleProvider";
+import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 
 export function LandingHero() {
   const router = useRouter();
   const { locale } = useLocale();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   function handleSend(text: string) {
     sessionStorage.setItem("aichart_pending_prompt", text);
     router.push("/signup");
   }
 
-  const tagline = locale === "ar"
+  const isRtl = locale === "ar";
+
+  const tagline = isRtl
     ? "منصة تداول ذكية — Claude MCP · Binance · MT5"
     : "AI-Powered Trading Assistant — Claude MCP · Binance · MT5";
 
-  const title = locale === "ar"
-    ? "تداول بذكاء عبر Claude MCP"
-    : "Trade Smartly with Claude MCP";
+  const titlePre = isRtl ? "تداول بذكاء عبر " : "Trade Smartly with ";
+  const titleGlow = "Claude MCP";
+  const titlePost = isRtl ? "" : "";
 
-  const subtitle = locale === "ar"
+  const subtitle = isRtl
     ? "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر Binance وMetaTrader — مع Risk Guard وموافقة إدارية."
     : "Connect Claude Connectors, monitor markets, and execute trades on Binance & MetaTrader 5 — backed by Risk Guard and admin controls.";
 
-  const ctaPrimary = locale === "ar" ? "ابدأ مجاناً" : "Start Free";
-  const ctaSecondary = locale === "ar" ? "تسجيل الدخول" : "Sign In";
-  const chatTitle = locale === "ar" ? "ماذا ستتداول اليوم؟" : "What are we trading today?";
-  const chatSubtitle = locale === "ar"
+  const ctaPrimary = isRtl ? "ابدأ مجاناً" : "Start Free";
+  const ctaSecondary = isRtl ? "تسجيل الدخول" : "Sign In";
+  const chatTitle = isRtl ? "ماذا ستتداول اليوم؟" : "What are we trading today?";
+  const chatSubtitle = isRtl
     ? "جرب سؤالاً — سجّل لربط Claude MCP والتداول الحقيقي."
     : "Try a prompt — register to link Claude MCP and begin real trading.";
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-      <div className="grid items-center gap-12 lg:grid-cols-2">
-        <div className="space-y-6 text-center ltr:lg:text-left rtl:lg:text-right">
-          <p className="text-sm font-semibold text-primary tracking-wide uppercase">{tagline}</p>
-          <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl lg:text-5xl text-foreground">
-            {title}
+    <section className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28 overflow-hidden">
+      
+      {/* Top background radial lighting */}
+      <div className="absolute inset-x-0 top-0 -z-10 flex justify-center">
+        <div className="h-[350px] w-[600px] rounded-full bg-violet-600/10 blur-[100px]" />
+      </div>
+
+      <div className="grid items-center gap-12 lg:grid-cols-12">
+        
+        {/* Left/Right Text Content (7 columns on desktop) */}
+        <motion.div
+          initial={{ opacity: 0, x: isRtl ? 40 : -40 }}
+          animate={mounted ? { opacity: 1, x: 0 } : {}}
+          transition={{ duration: 0.6 }}
+          className="lg:col-span-7 space-y-6 text-center ltr:lg:text-left rtl:lg:text-right"
+        >
+          {/* Glowing Badge */}
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/5 px-3.5 py-1 text-xs font-semibold text-violet-400 tracking-wide uppercase">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
+            </span>
+            {tagline}
+          </div>
+
+          {/* Headline */}
+          <h1 className="text-4xl font-extrabold leading-[1.15] sm:text-5xl lg:text-6xl text-white tracking-tight">
+            {titlePre}
+            <span className="bg-gradient-to-r from-violet-400 via-indigo-400 to-violet-500 bg-clip-text text-transparent drop-shadow-[0_0_15px_rgba(124,58,237,0.15)]">
+              {titleGlow}
+            </span>
+            {titlePost}
           </h1>
-          <p className="text-base text-muted-foreground sm:text-lg leading-relaxed">
+
+          {/* Subtitle */}
+          <p className="text-sm text-white/50 sm:text-base leading-relaxed max-w-xl mx-auto lg:mx-0">
             {subtitle}
           </p>
-          <div className="flex flex-wrap justify-center gap-3 ltr:lg:justify-start rtl:lg:justify-end">
-            <Link href="/signup" className="btn btn-primary inline-flex gap-1">
+
+          {/* Buttons */}
+          <div className="flex flex-wrap justify-center gap-3.5 ltr:lg:justify-start rtl:lg:justify-end">
+            <Link
+              href="/signup"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-white px-5 py-3 text-xs font-semibold text-black hover:bg-white/90 transition-all duration-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+            >
               {ctaPrimary}
               <ArrowUpRight className="h-4 w-4" />
             </Link>
-            <Link href="/login" className="btn btn-secondary">
+            <Link
+              href="/login"
+              className="rounded-xl border border-white/5 bg-white/5 px-5 py-3 text-xs font-semibold text-white/90 hover:text-white hover:border-white/10 hover:bg-white/10 transition-all duration-200"
+            >
               {ctaSecondary}
             </Link>
           </div>
-        </div>
-        <div className="rounded-2xl border border-border bg-card/50 p-2 backdrop-blur-sm shadow-xl">
+        </motion.div>
+
+        {/* Right Chat Sandbox (5 columns on desktop) */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={mounted ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="lg:col-span-5 rounded-2xl border border-white/5 bg-[#09090b]/40 p-2 backdrop-blur-md shadow-2xl shadow-violet-500/5 hover:border-white/10 transition-all duration-300"
+        >
           <VercelV0Chat
             title={chatTitle}
             subtitle={chatSubtitle}
             onSend={handleSend}
           />
-        </div>
+        </motion.div>
+
       </div>
     </section>
   );

@@ -67,30 +67,30 @@ export function ActiveTradesTable({ className }: { className?: string }) {
         </button>
       </div>
 
-      <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
+      <div className="hidden overflow-x-auto rounded-xl border border-border/65 bg-card/35 backdrop-blur-sm shadow-md md:block">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
-            <tr className="border-b border-border bg-secondary/50 text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-start font-medium">الرمز</th>
-              <th className="px-3 py-2 text-start font-medium">المنصة</th>
-              <th className="px-3 py-2 text-start font-medium">الاتجاه</th>
-              <th className="px-3 py-2 text-start font-medium">الرافعة</th>
-              <th className="px-3 py-2 text-start font-medium">الهامش</th>
-              <th className="px-3 py-2 text-start font-medium">PnL</th>
-              <th className="px-3 py-2 text-start font-medium">SL/TP</th>
-              <th className="px-3 py-2 text-start font-medium">Env</th>
+            <tr className="border-b border-border bg-muted/20 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <th className="px-4 py-3 text-start">الرمز</th>
+              <th className="px-4 py-3 text-start">المنصة</th>
+              <th className="px-4 py-3 text-start">الاتجاه</th>
+              <th className="px-4 py-3 text-start">الرافعة</th>
+              <th className="px-4 py-3 text-start">الهامش</th>
+              <th className="px-4 py-3 text-start">PnL</th>
+              <th className="px-4 py-3 text-start">SL/TP</th>
+              <th className="px-4 py-3 text-start">Env</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-border/40">
             {rows.map((r) => (
-              <tr key={r.id} className="border-b border-border/60 last:border-0">
-                <td className="px-3 py-2.5 font-medium" dir="ltr">
+              <tr key={r.id} className="transition-colors hover:bg-muted/15">
+                <td className="px-4 py-3 font-medium" dir="ltr">
                   {r.symbol}
                   {r.status === "pending_entry" && (
-                    <span className="ms-1 text-[10px] text-chart-1">limit</span>
+                    <span className="ms-1 text-[10px] text-chart-1 font-semibold">limit</span>
                   )}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-4 py-3">
                   <StatusChip
                     label={r.platform}
                     tone={
@@ -102,16 +102,16 @@ export function ActiveTradesTable({ className }: { className?: string }) {
                     }
                   />
                 </td>
-                <td className="px-3 py-2.5">{r.side}</td>
-                <td className="px-3 py-2.5" dir="ltr">
+                <td className="px-4 py-3 font-medium">{r.side}</td>
+                <td className="px-4 py-3" dir="ltr">
                   {r.leverage != null ? `${r.leverage}x` : "—"}
                 </td>
-                <td className="px-3 py-2.5" dir="ltr">
+                <td className="px-4 py-3" dir="ltr">
                   {fmtNum(r.margin)}
                 </td>
                 <td
                   className={cn(
-                    "px-3 py-2.5 font-medium",
+                    "px-4 py-3 font-semibold",
                     r.unrealizedPnl != null &&
                       (r.unrealizedPnl > 0
                         ? "text-chart-1"
@@ -123,10 +123,10 @@ export function ActiveTradesTable({ className }: { className?: string }) {
                 >
                   {fmtPnl(r.unrealizedPnl)}
                 </td>
-                <td className="px-3 py-2.5 text-xs text-muted-foreground" dir="ltr">
+                <td className="px-4 py-3 text-xs text-muted-foreground" dir="ltr">
                   {fmtNum(r.sl)} / {fmtNum(r.tp)}
                 </td>
-                <td className="px-3 py-2.5 text-xs">{r.env}</td>
+                <td className="px-4 py-3 text-xs font-mono">{r.env}</td>
               </tr>
             ))}
           </tbody>

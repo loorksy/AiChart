@@ -295,7 +295,7 @@ export function MobileDrawer({
                 </Link>
                 {role === "admin" && (
                   <Link
-                    href="/admin"
+                    href="/console"
                     onClick={() => {
                       setProfileMenuOpen(false);
                       onClose();

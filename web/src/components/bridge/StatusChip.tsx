@@ -29,15 +29,24 @@ export function StatusChip({
       )}
     >
       {dot && (
-        <span
-          className={cn(
-            "h-1.5 w-1.5 rounded-full",
+        <span className="relative flex h-1.5 w-1.5 shrink-0">
+          <span className={cn(
+            "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
             tone === "ok" && "bg-chart-1",
             tone === "warn" && "bg-amber-500",
             tone === "error" && "bg-destructive",
             tone === "neutral" && "bg-muted-foreground",
-          )}
-        />
+          )} />
+          <span
+            className={cn(
+              "relative inline-flex rounded-full h-1.5 w-1.5",
+              tone === "ok" && "bg-chart-1",
+              tone === "warn" && "bg-amber-500",
+              tone === "error" && "bg-destructive",
+              tone === "neutral" && "bg-muted-foreground",
+            )}
+          />
+        </span>
       )}
       {label}
     </span>

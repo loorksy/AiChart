@@ -49,6 +49,7 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     "term.swing_trading": "سوينج",
     "term.margin": "مارجن / فري مارجن",
     "term.equity": "إيكويتي",
+    "settings.position": "بوزيشن",
     
     // Response Modes
     "response.fast": "سريع",
@@ -122,6 +123,7 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     "term.swing_trading": "Swing Trading",
     "term.margin": "Margin / Free Margin",
     "term.equity": "Equity",
+    "settings.position": "Position",
     
     // Response Modes
     "response.fast": "Fast",
@@ -191,13 +193,11 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
     return text;
   };
 
-  if (!mounted) {
-    return <div className="invisible">{children}</div>;
-  }
-
   return (
     <LocaleContext.Provider value={{ locale, setLocale, t }}>
-      {children}
+      <div className={!mounted ? "invisible" : ""}>
+        {children}
+      </div>
     </LocaleContext.Provider>
   );
 }

@@ -6,7 +6,6 @@ import {
   Plus,
   Edit2,
   Trash2,
-  Globe,
   Eye,
   EyeOff,
   Save,
@@ -28,7 +27,7 @@ interface DynamicPage {
   updated_at: string;
 }
 
-export default function AdminPagesPage() {
+export default function PagesCmsClient() {
   const [pages, setPages] = useState<DynamicPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -325,10 +324,10 @@ export default function AdminPagesPage() {
                       <td className="p-3">
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                            page.is_published
-                              ? "bg-emerald-500/10 text-emerald-500"
-                              : "bg-amber-500/10 text-amber-500",
+                             "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                             page.is_published
+                               ? "bg-emerald-500/10 text-emerald-500"
+                               : "bg-amber-500/10 text-amber-500",
                           )}
                         >
                           {page.is_published ? (

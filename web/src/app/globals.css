@@ -2,67 +2,66 @@
 
 :root {
   --card: #ffffff;
-  --ring: #2563EB;
-  --input: #E5E5E5;
-  --muted: #F4F4F4;
-  --accent: #F4F4F4;
-  --accent-gold: #2563EB;
-  --border: #E5E5E5;
-  --radius: 1.25rem;
-  --chart-1: #2563EB;
-  --chart-2: #4F46E5;
-  --chart-3: #0EA5E9;
+  --ring: #09090b;
+  --input: #f4f4f5;
+  --muted: #f4f4f5;
+  --accent: #f4f4f5;
+  --accent-gold: #f59e0b;
+  --border: #e4e4e7;
+  --radius: 0.5rem;
+  --chart-1: #3b82f6;
+  --chart-2: #4f46e5;
+  --chart-3: #0ea5e9;
   --popover: #ffffff;
-  --primary: #2563EB;
-  --sidebar: #F9F9F9;
-  --secondary: #F4F4F4;
+  --primary: #09090b;
+  --sidebar: #fafafa;
+  --secondary: #f4f4f5;
   --background: #ffffff;
-  --foreground: #0D0D0D;
-  --destructive: #DC2626;
-  --sidebar-border: #E5E5E5;
-  --sidebar-accent: #ECECEC;
-  --card-foreground: #0D0D0D;
-  --muted-foreground: #5D5D5D;
-  --accent-foreground: #2563EB;
+  --foreground: #09090b;
+  --destructive: #ef4444;
+  --sidebar-border: #e4e4e7;
+  --sidebar-accent: #f4f4f5;
+  --card-foreground: #09090b;
+  --muted-foreground: #71717a;
+  --accent-foreground: #09090b;
   --primary-foreground: #ffffff;
-  --sidebar-foreground: #0D0D0D;
-  --secondary-foreground: #2D2D2D;
+  --sidebar-foreground: #09090b;
+  --secondary-foreground: #09090b;
   --destructive-foreground: #ffffff;
-  --sidebar-accent-foreground: #0D0D0D;
+  --sidebar-accent-foreground: #09090b;
   --surface-elevated: #ffffff;
 }
 
 .dark {
-  /* ChatGPT-inspired dark palette */
-  --card: #2f2f2f;
-  --ring: #3b82f6;
-  --input: #3a3a3a;
-  --muted: #2a2a2a;
-  --accent: #424242;
-  --accent-gold: #6ca8ff;
-  --border: rgba(255, 255, 255, 0.1);
-  --chart-1: #6ca8ff;
+  --card: #09090b;
+  --ring: #fafafa;
+  --input: #18181b;
+  --muted: #18181b;
+  --accent: #18181b;
+  --accent-gold: #f59e0b;
+  --border: rgba(255, 255, 255, 0.07);
+  --chart-1: #3b82f6;
   --chart-2: #818cf8;
   --chart-3: #38bdf8;
-  --popover: #2f2f2f;
-  --primary: #0a84ff;
-  --sidebar: #171717;
-  --secondary: #2f2f2f;
-  --background: #000000;
-  --foreground: #ececec;
+  --popover: #09090b;
+  --primary: #ffffff;
+  --sidebar: #09090b;
+  --secondary: #18181b;
+  --background: #030303;
+  --foreground: #f4f4f5;
   --destructive: #ef4444;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-accent: rgba(255, 255, 255, 0.08);
-  --card-foreground: #ececec;
-  --muted-foreground: #b4b4b4;
-  --accent-foreground: #ececec;
-  --primary-foreground: #ffffff;
-  --sidebar-foreground: #ececec;
-  --secondary-foreground: #ececec;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-accent: rgba(255, 255, 255, 0.05);
+  --card-foreground: #f4f4f5;
+  --muted-foreground: #a1a1aa;
+  --accent-foreground: #fafafa;
+  --primary-foreground: #09090b;
+  --sidebar-foreground: #f4f4f5;
+  --secondary-foreground: #f4f4f5;
   --destructive-foreground: #ffffff;
-  --sidebar-accent-foreground: #ececec;
-  --surface-elevated: #2f2f2f;
-  --chat-input: #2f2f2f;
+  --sidebar-accent-foreground: #fafafa;
+  --surface-elevated: #09090b;
+  --chat-input: #09090b;
 }
 
 @theme inline {
@@ -122,19 +121,24 @@ body,
   font-family: var(--font-fraunces), "Playfair Display", Georgia, serif;
 }
 
-/* Admin console */
-.admin-console .admin-card {
+/* Admin/Console shared card and input styles */
+.admin-card {
   border-radius: var(--radius);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #2F2F2F;
+  border: 1px solid var(--border);
+  background: var(--card);
 }
 
-.admin-console .admin-input {
-  border-radius: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #212121;
+.admin-input {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--input);
   color: var(--foreground);
-  padding: 0.375rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+}
+.admin-input:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring) 15%, transparent);
 }
 
 .chart-bg-canvas {
@@ -149,10 +153,16 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .dark .surface-card {
   box-shadow: none;
+}
+
+.dark .surface-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
 .surface-prompt {
@@ -222,9 +232,9 @@ body,
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 9999px;
-  padding: 0.625rem 1.25rem;
-  font-weight: 600;
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  font-weight: 500;
   font-size: 0.875rem;
   transition: all 0.15s ease;
   cursor: pointer;
@@ -255,17 +265,17 @@ body,
 
 .input {
   width: 100%;
-  background: var(--card);
+  background: var(--input);
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  min-height: 44px;
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  min-height: 38px;
   color: var(--foreground);
   outline: none;
 }
 .input:focus {
   border-color: var(--ring);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 25%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring) 15%, transparent);
 }
 
 label {

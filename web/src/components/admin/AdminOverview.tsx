@@ -25,12 +25,12 @@ function StatTile({
   accent?: boolean;
 }) {
   return (
-    <div className="admin-card flex items-start gap-3 p-4">
+    <div className="rounded-xl border border-border bg-card/45 backdrop-blur-md flex items-start gap-3 p-4">
       <span
         className={
           accent
-            ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary"
-            : "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-muted-foreground"
+            ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+            : "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/5 text-muted-foreground"
         }
       >
         <Icon className="h-5 w-5" />
