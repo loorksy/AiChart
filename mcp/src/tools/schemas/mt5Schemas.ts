@@ -58,6 +58,18 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: READ_ONLY,
   },
   {
+    name: "get_account_symbols",
+    domain: "mt5",
+    description:
+      "كل أزواج/رموز الوسيط في حساب MetaTrader (Market Watch كاملة) مع bid/ask/spread — لرؤية كل الأزواج المتاحة والتقليب بينها، لا قائمة مختصرة. مرشّحات: q، market=forex|crypto. read-only. مثال: market=forex.",
+    inputSchema: {
+      q: z.string().optional(),
+      market: z.enum(["forex", "crypto"]).optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    },
+    annotations: READ_ONLY,
+  },
+  {
     name: "capture_mt5_chart",
     domain: "mt5",
     description:

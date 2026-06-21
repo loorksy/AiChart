@@ -58,6 +58,21 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
+    "get_account_symbols",
+    mcpToolConfig("get_account_symbols"),
+    async (args) => {
+      const { q, market, limit } = args as {
+        q?: string;
+        market?: string;
+        limit?: number;
+      };
+      return bridgeCall(() =>
+        bridge.get("/api/agent/ea/symbols", { q, market, limit }),
+      );
+    },
+  );
+
+  server.registerTool(
     "capture_mt5_chart",
     mcpToolConfig("capture_mt5_chart"),
     async (body) => {

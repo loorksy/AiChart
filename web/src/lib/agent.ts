@@ -255,6 +255,19 @@ const TOOLS: ToolDef[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "get_account_symbols",
+    description:
+      "كل الأزواج/الرموز التي يوفّرها الوسيط في حساب MetaTrader (Market Watch كاملة) مع bid/ask/spread — وليس قائمة مختصرة. استخدمها ليرى المستخدم/أنت كل الأزواج المتاحة وتقلّب بينها. مرشّحات اختيارية: q (بحث)، market (forex/crypto). read-only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        q: { type: "string", description: "بحث نصّي في اسم الرمز" },
+        market: { type: "string", enum: ["forex", "crypto"] },
+        limit: { type: "number" },
+      },
+    },
+  },
+  {
     name: "get_multi_timeframe_snapshot",
     description:
       "تحليل عدة أطر زمنية لزوج واحد بنداء واحد (أسرع). مثل intervals=[1h,15m,5m].",
@@ -461,6 +474,7 @@ export interface RunAgentOptions {
   /** Response depth chosen on the chat start screen. */
   responseMode?: "fast" | "expert" | "vision";
   allowedTools?: string[];
+  hasImage?: boolean;
 }
 
 interface AgentContext {
@@ -475,6 +489,7 @@ const BRIDGE_TOOL_NAMES = new Set([
   "get_account_overview",
   "get_risk_status",
   "get_open_trades",
+  "get_account_symbols",
   "get_multi_timeframe_snapshot",
   "scan_market",
   "get_trade_readiness",
@@ -523,6 +538,14 @@ async function forwardBridge(
       return ok(await bridge.get("/api/agent/risk/status"));
     case "get_open_trades":
       return ok(await bridge.get("/api/agent/trades/open"));
+    case "get_account_symbols":
+      return ok(
+        await bridge.get("/api/agent/ea/symbols", {
+          q: input.q as string | undefined,
+          market: input.market as string | undefined,
+          limit: input.limit as number | undefined,
+        }),
+      );
     case "get_multi_timeframe_snapshot":
       return ok(
         await bridge.get("/api/agent/market/multi-snapshot", {

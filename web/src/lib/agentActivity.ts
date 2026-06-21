@@ -45,6 +45,8 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   get_account_overview: () => "نظرة شاملة على الحساب والمخاطر",
   get_risk_status: () => "فحص حالة المخاطر والحدود",
   get_open_trades: () => "قراءة الصفقات المفتوحة",
+  get_account_symbols: (input) =>
+    `قراءة أزواج الحساب${input.market ? ` · ${input.market}` : ""}`,
   get_multi_timeframe_snapshot: (input) =>
     `تحليل عدة أطر · ${String(input.symbol ?? "الرمز")}`,
   scan_market: () => "مسح ومقارنة الفرص",

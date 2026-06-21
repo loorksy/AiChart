@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-06-19T00:54:57.872Z",
-  "toolCount": 61,
+  "exportedAt": "2026-06-21T22:01:15.304Z",
+  "toolCount": 62,
   "tools": [
     {
       "name": "get_account_overview",
@@ -537,6 +537,16 @@
       "name": "get_ea_live_quotes",
       "domain": "mt5",
       "description": "متى: قبل open_trade فوركس. isFresh، spreadPips، freshCount. read-only. لا تنفّذ إذا stale.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_account_symbols",
+      "domain": "mt5",
+      "description": "كل أزواج/رموز الوسيط في حساب MetaTrader (Market Watch كاملة) مع bid/ask/spread — لرؤية كل الأزواج المتاحة والتقليب بينها، لا قائمة مختصرة. مرشّحات: q، market=forex|crypto. read-only. مثال: market=forex.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
