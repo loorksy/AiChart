@@ -8,6 +8,13 @@ import { cn } from "@/lib/utils";
 import { ChatIntentCard } from "../square/chat-intent-card";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
 import AnalysisWidget from "./AnalysisWidget";
+import { TRADE_WIDGETS } from "./cards/trade";
+import { ANALYSIS_WIDGETS } from "./cards/analysis";
+import { MARKET_WIDGETS } from "./cards/market";
+import { ACCOUNT_WIDGETS } from "./cards/account";
+import { VIZ_WIDGETS } from "./cards/viz";
+import { CONTROL_WIDGETS } from "./cards/controls";
+import { CHART_WIDGETS_EXT } from "./cards/charts";
 
 // Heavy widgets are lazy loaded with suspense fallbacks to minimize bundle footprints
 const LazyChartWidget = dynamic(() => import("./ChartWidget"), {
@@ -60,6 +67,14 @@ export const WIDGET_REGISTRY: Record<string, React.ComponentType<any>> = {
   grid: GridWidget,
   stack: StackWidget,
   analysis: AnalysisWidget,
+  // Interactive mini-form card library (50+ widgets the agent composes).
+  ...TRADE_WIDGETS,
+  ...ANALYSIS_WIDGETS,
+  ...MARKET_WIDGETS,
+  ...ACCOUNT_WIDGETS,
+  ...VIZ_WIDGETS,
+  ...CONTROL_WIDGETS,
+  ...CHART_WIDGETS_EXT,
 };
 
 // 1. Text Widget
