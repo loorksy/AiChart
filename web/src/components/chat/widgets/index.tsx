@@ -7,6 +7,7 @@ import { TrendingUp, TrendingDown, AlertTriangle, Info, CheckCircle2, AlertOctag
 import { cn } from "@/lib/utils";
 import { ChatIntentCard } from "../square/chat-intent-card";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
+import AnalysisWidget from "./AnalysisWidget";
 
 // Heavy widgets are lazy loaded with suspense fallbacks to minimize bundle footprints
 const LazyChartWidget = dynamic(() => import("./ChartWidget"), {
@@ -58,6 +59,7 @@ export const WIDGET_REGISTRY: Record<string, React.ComponentType<any>> = {
   container: ContainerWidget,
   grid: GridWidget,
   stack: StackWidget,
+  analysis: AnalysisWidget,
 };
 
 // 1. Text Widget

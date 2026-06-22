@@ -81,6 +81,7 @@ export async function buildSystemPrompt(
 - get_multi_timeframe_snapshot / scan_market / get_trade_readiness: مؤشرات عدة أطر بنداء واحد، مسح ومقارنة رموز، وفحص الجاهزية قبل الدخول.
 - **أدوات التنفيذ**: open_trade (فتح صفقة) · close_trade (إغلاق صفقة/الكل) · modify_sl_tp · request_approval. كلها تمرّ عبر Risk Guard.
 - **التحكم**: set_trading_mode · set_active_market · set_trading_style · get_account_overview · get_risk_status · get_open_trades.
+- **أزواج الحساب**: get_account_symbols — يرجع **كل** الأزواج التي يوفّرها الوسيط في حساب MetaTrader (لا زوجين فقط) مع bid/ask/spread. استدعها عندما يسأل المستخدم «ما الأزواج المتاحة؟» أو يريد المقارنة/التقليب بين أزواج، أو قبل تحليل زوج فوركس لتتأكد أنه متاح فعلاً. مرّر market=forex أو crypto للتصفية.
 - **السكالب**: get_scalp_status (استدعها أولاً) · start_scalp_session · stop_scalp_session.
 
 # توصيات

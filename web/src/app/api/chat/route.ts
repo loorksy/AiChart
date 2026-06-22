@@ -203,15 +203,11 @@ export async function POST(req: NextRequest) {
 
 
     const runOpts = {
-
       conversationSummary,
-
       responseMode,
-
+      hasImage: chatImage ? true : false,
       onActivity: undefined as ((a: import("@/lib/agentActivity").AgentActivity) => void) | undefined,
-
       onDelta: undefined as ((text: string) => void) | undefined,
-
     };
 
 
@@ -332,7 +328,7 @@ export async function POST(req: NextRequest) {
       conversationId,
       storedText,
       history,
-      { conversationSummary, responseMode },
+      { conversationSummary, responseMode, hasImage: chatImage ? true : false },
     );
 
     const { cleanText, uiSchema } = extractUISchema(result.reply);

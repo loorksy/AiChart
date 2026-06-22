@@ -5,6 +5,7 @@ import {
   query,
   queryOne,
   transaction,
+  getDbBackend,
 } from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
@@ -69,6 +70,9 @@ export async function getSettings(userId: number): Promise<TradingSettings> {
   }
   if (row.scalp_enabled == null) row.scalp_enabled = 0;
   if (row.scalp_execution_mode !== "live") row.scalp_execution_mode = "paper";
+  if (!row.analysis_interval) {
+    row.analysis_interval = "1h";
+  }
   return row;
 }
 
@@ -124,7 +128,26 @@ export async function updateSettings(
   const fields = SETTABLE_FIELDS.filter((f) => f in patch);
   if (fields.length === 0) return;
   const assignments = fields.map((f) => `${f} = ?`).join(", ");
-  const params: unknown[] = fields.map((f) => patch[f]);
+  const params: unknown[] = fields.map((f) => {
+    const val = patch[f];
+    if (getDbBackend() === "postgres") {
+      if (
+        f === "kill_switch" ||
+        f === "onboarding_done" ||
+        f === "alerts_enabled" ||
+        f === "alert_trades" ||
+        f === "alert_signals" ||
+        f === "futures_enabled" ||
+        f === "send_screenshot"
+      ) {
+        if (val === 1 || val === "1") return true;
+        if (val === 0 || val === "0") return false;
+        if (typeof val === "string") return val.toLowerCase() === "true";
+        return Boolean(val);
+      }
+    }
+    return val;
+  });
   params.push(userId);
   await execute(
     `UPDATE trading_settings SET ${assignments}, updated_at = datetime('now') WHERE user_id = ?`,
@@ -614,7 +637,18 @@ export async function updateAdminLimits(
   const fields = ADMIN_LIMIT_FIELDS.filter((f) => f in patch);
   if (fields.length === 0) return;
   const assignments = fields.map((f) => `${f} = ?`).join(", ");
-  const params: unknown[] = fields.map((f) => patch[f]);
+  const params: unknown[] = fields.map((f) => {
+    const val = patch[f];
+    if (getDbBackend() === "postgres") {
+      if (f === "can_execute") {
+        if (val === 1 || val === "1") return true;
+        if (val === 0 || val === "0") return false;
+        if (typeof val === "string") return val.toLowerCase() === "true";
+        return Boolean(val);
+      }
+    }
+    return val;
+  });
   params.push(userId);
   await execute(
     `UPDATE admin_limits SET ${assignments}, updated_at = datetime('now') WHERE user_id = ?`,
