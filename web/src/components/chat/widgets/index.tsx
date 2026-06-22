@@ -383,7 +383,12 @@ export function UIElementRenderer({
 
 // Strict schema validation layer
 export function validateUISchema(schema: any): UISchema | null {
-  if (!schema || typeof schema !== "object" || schema.version !== "1.0" || !Array.isArray(schema.layout)) {
+  // Accept any key order and a missing version (default "1.0") — the agent's
+  // emitted block may omit version; requiring it silently dropped every card.
+  if (!schema || typeof schema !== "object" || !Array.isArray(schema.layout)) {
+    return null;
+  }
+  if (schema.version !== undefined && schema.version !== "1.0") {
     return null;
   }
   
