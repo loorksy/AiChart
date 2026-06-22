@@ -533,6 +533,90 @@ const BRIDGE_TOOL_NAMES = new Set([
   "stop_scalp_session",
 ]);
 
+/** Data tools whose output we can turn into a card without the model's help. */
+const CARD_DERIVE_TOOLS = new Set([
+  "get_account_symbols",
+  "get_market_snapshot",
+  "get_open_trades",
+  "get_account_overview",
+]);
+
+/** Unwrap a bridge envelope ({ok,data}) or return the value as-is. */
+function unwrap(v: unknown): any {
+  if (v && typeof v === "object" && "data" in (v as any) && (v as any).data) {
+    return (v as any).data;
+  }
+  return v;
+}
+
+/**
+ * Deterministically build a UI card from captured data-tool outputs when the
+ * model didn't call render_cards. The agent reliably fetches data; this makes
+ * the card render regardless of how disciplined the model is about render_cards.
+ */
+function deriveCardsFromToolData(
+  tools: { name: string; data: unknown }[],
+): { version: string; layout: any[] } | null {
+  if (!tools.length) return null;
+  const last = (n: string): any => {
+    for (let k = tools.length - 1; k >= 0; k--) {
+      if (tools[k].name === n) return unwrap(tools[k].data);
+    }
+    return null;
+  };
+  const layout: any[] = [];
+  let i = 0;
+  const add = (component: string, props: any) =>
+    layout.push({ id: `auto${i++}`, component, props });
+
+  const snap = last("get_market_snapshot");
+  if (snap && snap.symbol) {
+    add("analysis", {
+      symbol: snap.symbol,
+      price: snap.price,
+      trend: snap.extra?.trend ?? snap.trend ?? "neutral",
+      rsi: snap.extra?.rsi14 ?? snap.rsi,
+      macd: snap.extra?.macd ?? snap.macd,
+      support: snap.low24h,
+      resistance: snap.high24h,
+      summary: snap.summary ?? "",
+    });
+  }
+
+  const syms = last("get_account_symbols");
+  if (syms && Array.isArray(syms.symbols) && syms.symbols.length) {
+    add("pair_browser", { symbols: syms.symbols });
+  }
+
+  const open = last("get_open_trades");
+  const openTrades = open?.aichartTrades;
+  if (Array.isArray(openTrades) && openTrades.length) {
+    add("positions_table", {
+      positions: openTrades.map((t: any) => ({
+        symbol: t.symbol,
+        side: t.side,
+        size: t.notional ?? t.size ?? t.quantity,
+        pnl: t.pnl ?? t.unrealized_pnl ?? t.profit,
+        tradeId: t.id,
+      })),
+    });
+  }
+
+  const acc = last("get_account_overview");
+  const accData = acc?.account ?? acc;
+  if (accData && (accData.balance != null || accData.equity != null)) {
+    add("account_overview", {
+      balance: accData.balance,
+      equity: accData.equity,
+      margin: accData.margin ?? accData.usedMargin,
+      freeMargin: accData.freeMargin ?? accData.free_margin,
+      marginLevel: accData.marginLevel ?? accData.margin_level,
+    });
+  }
+
+  return layout.length ? { version: "1.0", layout } : null;
+}
+
 /** Routes a bridge tool to its /api/agent/* endpoint via the internal bridge. */
 async function forwardBridge(
   userId: number,
@@ -1003,6 +1087,9 @@ export async function runAgent(
   const recorded: Recommendation[] = [];
   const signalDeliveries: DeliveryResult[] = [];
   const uiCollector: { schema: unknown | null } = { schema: null };
+  // Captured outputs of card-deriving data tools — used to build a card
+  // deterministically when the model doesn't call render_cards itself.
+  const cardToolData: { name: string; data: unknown }[] = [];
   let usageTokens = 0;
   let finalText = "";
   const executedToolsList: { name: string; input: unknown; status: string }[] = [];
@@ -1046,6 +1133,13 @@ export async function runAgent(
         tool: tu.name,
       });
       const out = await executeTool(tu.name, tu.input, ctx, recorded, signalDeliveries, uiCollector);
+      if (!out.isError && CARD_DERIVE_TOOLS.has(tu.name)) {
+        try {
+          cardToolData.push({ name: tu.name, data: JSON.parse(out.content) });
+        } catch {
+          /* non-JSON output — skip */
+        }
+      }
       executedToolsList.push({
         name: tu.name,
         input: tu.input,
@@ -1090,6 +1184,9 @@ export async function runAgent(
     signalDeliveries: signalDeliveries.length ? signalDeliveries : undefined,
     reasoningSummary,
     toolCallsJson,
-    uiSchema: uiCollector.schema,
+    // Prefer the model's curated render_cards output; otherwise derive a card
+    // deterministically from the data tools it called (the model is flaky at
+    // calling render_cards, but reliably fetches data).
+    uiSchema: uiCollector.schema ?? deriveCardsFromToolData(cardToolData),
   };
 }
