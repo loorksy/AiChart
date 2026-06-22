@@ -26,6 +26,11 @@ import {
 import { getEaConnection, isHeartbeatFresh } from "./eaStore";
 import { resolveScanAssetsForMarket } from "./allowedAssets";
 import { scanForexSymbol, scanSymbol, type OpportunityCandidate } from "./monitor";
+import {
+  evaluateScalpAdvisors,
+  scalpConfidenceThreshold,
+  shouldEnter,
+} from "./scalpAdvisors";
 import type { MarketType } from "./markets/types";
 import type { ScalpSession, TradingSettings } from "./types";
 
@@ -202,10 +207,22 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         continue;
       }
 
-      // 3) Build intent. (Dynamic sizing + adaptive SL/TP arrive in phase S4;
+      // 3) Multi-agent advisory + confidence gate (orchestrator decides).
+      const advisory = await evaluateScalpAdvisors(candidate, side, settings);
+      const threshold = scalpConfidenceThreshold(settings.style);
+      if (!shouldEnter(advisory, threshold)) {
+        result.events.push({
+          userId,
+          action: "skipped",
+          detail: `${candidate.symbol}: ${advisory.decision} ثقة ${advisory.confidence}% < ${threshold}% — استمرار المسح`,
+        });
+        continue;
+      }
+
+      // 4) Build intent. (Dynamic sizing + adaptive SL/TP arrive in phase S4;
       // for now use the session notional and leave stops to the broker layer.)
       const market = (session.market ?? settings.active_market ?? "crypto") as MarketType;
-      const confidence = Math.min(100, candidate.score * 20);
+      const confidence = advisory.confidence;
       const practiceMode =
         session.execution_mode !== "live" || !scalpLiveEnabled();
 
@@ -215,12 +232,12 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         notional: session.notional,
         market,
         confidence,
-        rationale: `سكالب ذاتي: ${candidate.signals.join("، ")}`,
+        rationale: `سكالب ذاتي (ثقة ${confidence}%): ${advisory.rationale_ar} · إشارات: ${candidate.signals.join("، ")}`,
         status: "approved",
         practice: practiceMode,
       });
 
-      // 4) Execute — Risk Guard is the authority; session = standing approval.
+      // 5) Execute — Risk Guard is the authority; session = standing approval.
       const exec = await executeIntent(userId, intent.id, {
         explicitApproval: true,
         practiceMode,
