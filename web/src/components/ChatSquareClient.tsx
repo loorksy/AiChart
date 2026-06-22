@@ -139,6 +139,7 @@ export default function ChatSquareClient({
     messages,
     fetchConversations,
     createNew,
+    selectConversation,
     appendMessage,
     updateLastAssistant,
     setMessages,
@@ -166,6 +167,26 @@ export default function ChatSquareClient({
       })
       .catch(() => undefined);
   }, [fetchConversations]);
+
+  // Restore the conversation from the URL (?c=<id>) on first load so each chat
+  // is a shareable, refresh-safe route backed by the server.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const c = new URLSearchParams(window.location.search).get("c");
+    const id = c ? Number(c) : NaN;
+    if (Number.isInteger(id) && id > 0) void selectConversation(id);
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the URL in sync with the selected conversation (no history spam).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const target = selectedId ? `/chat?c=${selectedId}` : "/chat";
+    if (window.location.pathname + window.location.search !== target) {
+      window.history.replaceState(null, "", target);
+    }
+  }, [selectedId]);
 
   useEffect(() => {
     const pending = sessionStorage.getItem("aichart_pending_prompt");
