@@ -54,7 +54,7 @@ async function sessionStopReason(
   session: ScalpSession,
   settings: TradingSettings,
 ): Promise<string | null> {
-  const market = (session.market ?? settings.active_market ?? "crypto") as MarketType;
+  const market = (settings.active_market ?? session.market ?? "crypto") as MarketType;
 
   const limitPct = settings.daily_loss_limit_pct ?? 0;
   let todayPnlPct = 0;
@@ -86,7 +86,7 @@ async function sessionStopReason(
 
 /** The market-context prompt that wakes the agent for one autonomous tick. */
 function scalpTickPrompt(session: ScalpSession, settings: TradingSettings): string {
-  const market = session.market ?? settings.active_market ?? "crypto";
+  const market = settings.active_market ?? session.market ?? "crypto";
   const scope = session.symbol
     ? `الرمز المستهدف: ${session.symbol}`
     : `كل أزواج الحساب المسموحة (استخدم get_account_symbols/scan_market لاستكشافها)`;
@@ -151,7 +151,7 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
 
       // 3) Carry the AGENT's decision to Risk Guard. SL/TP/size come from the
       // agent's reasoning; fall back to adaptive derivation only if it omitted.
-      const market = (session.market ?? settings.active_market ?? "crypto") as MarketType;
+      const market = (settings.active_market ?? session.market ?? "crypto") as MarketType;
       const side = decision.side;
       const confidence = Math.max(0, Math.min(100, decision.confidence ?? 60));
       const practiceMode = resolvePracticeMode(

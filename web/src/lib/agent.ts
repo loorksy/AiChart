@@ -512,27 +512,29 @@ const CHART_ANALYZE_TOOLS = TOOLS.filter((t) =>
   CHART_ANALYZE_TOOL_NAMES.has(t.name),
 );
 
-// Autonomous scalp turn: observation tools + the single decision tool. No
-// direct execution/card tools — the agent submits a decision, the engine
-// carries it through Risk Guard.
-const SCALP_TOOL_NAMES = new Set([
-  "resolve_symbol",
-  "get_market_snapshot",
-  "get_multi_timeframe_snapshot",
-  "get_price",
-  "get_market_context",
-  "get_account_symbols",
-  "get_account_overview",
-  "get_open_trades",
-  "get_risk_status",
-  "get_trade_readiness",
-  "scan_market",
-  "get_recommendations_history",
-  "search_trade_memory",
-  "submit_scalp_decision",
+// Autonomous scalp turn uses the SAME agent as chat (same persona, memory and
+// full analytical toolset). We only DENY tools that don't belong in an
+// autonomous tick — direct execution, chat-UI, and settings mutation — because
+// the agent acts via submit_scalp_decision, which the engine routes through the
+// scalp double-gate + Risk Guard.
+const SCALP_TOOL_DENY = new Set([
+  "open_trade",
+  "close_trade",
+  "modify_sl_tp",
+  "request_approval",
+  "record_recommendation",
+  "render_cards",
+  "get_cards_guide",
+  "set_trading_mode",
+  "set_active_market",
+  "set_trading_style",
+  "start_scalp_session",
+  "stop_scalp_session",
 ]);
 
-const SCALP_TOOLS = TOOLS.filter((t) => SCALP_TOOL_NAMES.has(t.name));
+const SCALP_TOOLS = [
+  ...TOOLS.filter((t) => !SCALP_TOOL_DENY.has(t.name)),
+];
 
 export interface AgentResult {
   reply: string;
