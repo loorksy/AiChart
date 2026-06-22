@@ -33,6 +33,7 @@ import {
   DEFAULT_ACCESS_DAYS,
 } from "./platformAccess";
 import type { BinanceEnv } from "./binance";
+import { type BinanceRegion, isBinanceRegion } from "./binanceRegions";
 import type { BrokerKind, MarketType, MtPlatform } from "./markets/types";
 import { brokerForMarket } from "./markets/types";
 
@@ -228,16 +229,18 @@ export async function saveBinanceAccount(
   apiSecret: string,
   env: BinanceEnv,
   label?: string,
+  region: BinanceRegion = "global",
 ) {
   await execute(
-    `INSERT INTO binance_accounts (user_id, api_key_enc, api_secret_enc, env, label, updated_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `INSERT INTO binance_accounts (user_id, api_key_enc, api_secret_enc, env, region, label, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(user_id, env) DO UPDATE SET
        api_key_enc = excluded.api_key_enc,
        api_secret_enc = excluded.api_secret_enc,
+       region = excluded.region,
        label = excluded.label,
        updated_at = datetime('now')`,
-    [userId, encryptSecret(apiKey), encryptSecret(apiSecret), env, label ?? null],
+    [userId, encryptSecret(apiKey), encryptSecret(apiSecret), env, region, label ?? null],
   );
 }
 
@@ -245,7 +248,7 @@ export async function listBinanceAccountMetas(
   userId: number,
 ): Promise<BinanceAccountMeta[]> {
   return query<BinanceAccountMeta>(
-    "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ? ORDER BY env",
+    "SELECT user_id, env, region, label, updated_at FROM binance_accounts WHERE user_id = ? ORDER BY env",
     [userId],
   );
 }
@@ -256,7 +259,7 @@ export async function getBinanceAccountMeta(
 ): Promise<BinanceAccountMeta | null> {
   if (env) {
     return queryOne<BinanceAccountMeta>(
-      "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ? AND env = ?",
+      "SELECT user_id, env, region, label, updated_at FROM binance_accounts WHERE user_id = ? AND env = ?",
       [userId, env],
     );
   }
@@ -265,11 +268,11 @@ export async function getBinanceAccountMeta(
     settings.execution_env_preference === "live" ? "prod" : "testnet";
   return (
     (await queryOne<BinanceAccountMeta>(
-      "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ? AND env = ?",
+      "SELECT user_id, env, region, label, updated_at FROM binance_accounts WHERE user_id = ? AND env = ?",
       [userId, pref],
     )) ??
     (await queryOne<BinanceAccountMeta>(
-      "SELECT user_id, env, label, updated_at FROM binance_accounts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+      "SELECT user_id, env, region, label, updated_at FROM binance_accounts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
       [userId],
     ))
   );
@@ -278,7 +281,12 @@ export async function getBinanceAccountMeta(
 export async function getBinanceCredentials(
   userId: number,
   env?: BinanceEnv,
-): Promise<{ apiKey: string; apiSecret: string; env: BinanceEnv } | null> {
+): Promise<{
+  apiKey: string;
+  apiSecret: string;
+  env: BinanceEnv;
+  region: BinanceRegion;
+} | null> {
   let target = env;
   if (!target) {
     const settings = await getSettings(userId);
@@ -288,8 +296,9 @@ export async function getBinanceCredentials(
     api_key_enc: string;
     api_secret_enc: string;
     env: BinanceEnv;
+    region?: string;
   }>(
-    "SELECT api_key_enc, api_secret_enc, env FROM binance_accounts WHERE user_id = ? AND env = ?",
+    "SELECT api_key_enc, api_secret_enc, env, region FROM binance_accounts WHERE user_id = ? AND env = ?",
     [userId, target],
   );
   if (!row) return null;
@@ -297,6 +306,7 @@ export async function getBinanceCredentials(
     apiKey: decryptSecret(row.api_key_enc),
     apiSecret: decryptSecret(row.api_secret_enc),
     env: row.env,
+    region: isBinanceRegion(row.region) ? row.region : "global",
   };
 }
 

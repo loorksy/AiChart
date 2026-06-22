@@ -26,9 +26,11 @@ export async function GET(req: NextRequest) {
           creds.apiKey,
           creds.apiSecret,
           creds.env,
+          creds.region,
         );
         binance = {
           env: creds.env,
+          region: creds.region,
           canTrade: summary.canTrade,
           balances: summary.balances.slice(0, 20),
         };

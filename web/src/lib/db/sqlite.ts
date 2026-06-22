@@ -23,6 +23,7 @@ const SCHEMA = `
     api_key_enc    TEXT NOT NULL,
     api_secret_enc TEXT NOT NULL,
     env            TEXT NOT NULL DEFAULT 'testnet',
+    region         TEXT NOT NULL DEFAULT 'global',
     label          TEXT,
     updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -470,6 +471,15 @@ function migrate(db: Database.Database) {
       INSERT OR IGNORE INTO dynamic_pages (slug, title_ar, title_en, content_ar, content_en, is_published, metadata_json)
       VALUES (?, ?, ?, ?, ?, 1, '{}')
     `).run(page.slug, page.title_ar, page.title_en, page.content_ar, page.content_en);
+  }
+
+  const binCols = db
+    .prepare("PRAGMA table_info(binance_accounts)")
+    .all() as { name: string }[];
+  if (!binCols.some((c) => c.name === "region")) {
+    db.exec(
+      "ALTER TABLE binance_accounts ADD COLUMN region TEXT NOT NULL DEFAULT 'global'",
+    );
   }
 
   const recCols = db

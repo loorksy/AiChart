@@ -1,4 +1,9 @@
 import crypto from "crypto";
+import {
+  type BinanceRegion,
+  regionConfig,
+  signedBaseFor,
+} from "./binanceRegions";
 
 export type BinanceEnv = "testnet" | "prod";
 
@@ -37,8 +42,9 @@ async function signedGet(
   apiKey: string,
   apiSecret: string,
   env: BinanceEnv,
+  region: BinanceRegion = "global",
 ): Promise<unknown> {
-  const base = BASE_URLS[env];
+  const base = signedBaseFor(region, env);
   const timestamp = Date.now();
   const query = `timestamp=${timestamp}&recvWindow=10000`;
   const signature = sign(query, apiSecret);
@@ -50,23 +56,27 @@ async function signedGet(
     cache: "no-store",
   });
 
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const b = body as { msg?: string; code?: number };
-    const rawMsg = b?.msg || `HTTP ${res.status}`;
-    const code = typeof b?.code === "number" ? b.code : undefined;
-    // Surface the exact Binance code + the env actually used + the server's
-    // outbound IP, so IP/permission/region/env-mismatch causes are obvious.
+  const body = (await res.json().catch(() => ({}))) as {
+    msg?: string;
+    code?: number;
+  };
+  // Binance Cloud (Open API, e.g. TR) returns HTTP 200 with { code != 0 } on
+  // error; standard API uses non-2xx. Treat both as failures.
+  const cloudError =
+    typeof body?.code === "number" && body.code !== 0 && body.code !== 200;
+  if (!res.ok || cloudError) {
+    const rawMsg = body?.msg || `HTTP ${res.status}`;
+    const code = typeof body?.code === "number" ? body.code : undefined;
     const hint =
       code === -2015
-        ? " — السبب: قيد IP (أضف 72.60.83.140) أو الصلاحيات أو أن الحساب على نطاق مختلف (Binance.US/.TR لا يعمل على api.binance.com)"
+        ? " — السبب: قيد IP (أضف 72.60.83.140) أو الصلاحيات أو أن النطاق المختار لا يطابق منصّة المفتاح (Global/US/TR)"
         : code === -2014 || code === -1022
           ? " — مفتاح/توقيع غير صالح (تحقّق من نسخ المفتاح والسر كاملين)"
           : code === -1021
             ? " — ساعة الخادم غير متزامنة"
             : "";
     throw new Error(
-      `Binance رفض${code != null ? ` (code ${code})` : ""}: ${rawMsg} [البيئة=${env}، endpoint=${base}، الخادم يتصل من IPv4 72.60.83.140]${hint}`,
+      `Binance رفض${code != null ? ` (code ${code})` : ""}: ${rawMsg} [النطاق=${region}، البيئة=${env}، endpoint=${base}، الخادم يتصل من IPv4 72.60.83.140]${hint}`,
     );
   }
   return body;
@@ -80,12 +90,45 @@ export async function getAccountSummary(
   apiKey: string,
   apiSecret: string,
   env: BinanceEnv,
+  region: BinanceRegion = "global",
 ): Promise<AccountSummary> {
+  const dialect = regionConfig(region).dialect;
+
+  if (dialect === "cloud-openv1") {
+    // Binance.TR Open API: GET /open/v1/account/spot → { code, msg, data }.
+    const raw = (await signedGet(
+      "/open/v1/account/spot",
+      apiKey,
+      apiSecret,
+      env,
+      region,
+    )) as Record<string, any>;
+    const d = raw?.data ?? raw;
+    // Balances live under one of these depending on the Cloud API version.
+    const rawBalances: any[] =
+      d?.accountAssets ?? d?.balances ?? d?.assets ?? [];
+    const balances: BinanceBalance[] = rawBalances
+      .map((b) => ({
+        asset: String(b.asset ?? b.coin ?? ""),
+        free: String(b.free ?? b.available ?? "0"),
+        locked: String(b.locked ?? b.frozen ?? b.freeze ?? "0"),
+      }))
+      .filter((b) => b.asset && (Number(b.free) > 0 || Number(b.locked) > 0));
+    // A successful signed account read implies the key can read; the Open API
+    // doesn't return canTrade, so infer from a successful authenticated call.
+    return {
+      canTrade: true,
+      canWithdraw: Boolean(d?.canWithdraw),
+      balances,
+    };
+  }
+
   const data = (await signedGet(
     "/api/v3/account",
     apiKey,
     apiSecret,
     env,
+    region,
   )) as {
     canTrade: boolean;
     canWithdraw: boolean;
@@ -118,14 +161,18 @@ export async function getApiRestrictions(
   apiKey: string,
   apiSecret: string,
   env: BinanceEnv,
+  region: BinanceRegion = "global",
 ): Promise<ApiRestrictions | null> {
   if (env !== "prod") return null;
+  // Only the standard Spot API exposes /sapi; Binance Cloud (TR) has no /sapi.
+  if (regionConfig(region).dialect !== "standard") return null;
   try {
     const data = (await signedGet(
       "/sapi/v1/account/apiRestrictions",
       apiKey,
       apiSecret,
       env,
+      region,
     )) as Record<string, boolean>;
     return {
       enableSpotAndMarginTrading: Boolean(data.enableSpotAndMarginTrading),

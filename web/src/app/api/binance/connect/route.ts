@@ -9,16 +9,17 @@ const schema = z.object({
   apiKey: z.string().min(10, "مفتاح API غير صالح."),
   apiSecret: z.string().min(10, "السر غير صالح."),
   env: z.enum(["testnet", "prod"]).default("testnet"),
+  region: z.enum(["global", "us", "tr"]).default("global"),
   label: z.string().max(60).optional(),
 });
 
 export async function POST(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
-    const { apiKey, apiSecret, env, label } = schema.parse(await req.json());
+    const { apiKey, apiSecret, env, region, label } = schema.parse(await req.json());
 
     // Verify the credentials work before persisting them.
-    const summary = await getAccountSummary(apiKey, apiSecret, env);
+    const summary = await getAccountSummary(apiKey, apiSecret, env, region);
     if (!summary.canTrade) {
       return NextResponse.json(
         { error: "هذا المفتاح لا يملك صلاحية التداول. فعّل التداول في إعدادات Binance." },
@@ -26,9 +27,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await saveBinanceAccount(user.id, apiKey, apiSecret, env, label);
+    await saveBinanceAccount(user.id, apiKey, apiSecret, env, label, region);
 
-    const restrictions = await getApiRestrictions(apiKey, apiSecret, env);
+    const restrictions = await getApiRestrictions(apiKey, apiSecret, env, region);
     const permissionReport = buildBinancePermissionReport(
       summary,
       restrictions,
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       env,
+      region,
       canTrade: summary.canTrade,
       canWithdraw: summary.canWithdraw,
       restrictions,

@@ -10,6 +10,7 @@ const schema = z.object({
   apiKey: z.string().min(10).optional(),
   apiSecret: z.string().min(10).optional(),
   env: z.enum(["testnet", "prod"]).optional(),
+  region: z.enum(["global", "us", "tr"]).optional(),
   label: z.string().max(60).optional(),
   futuresRequired: z.boolean().optional(),
   /** When true, check permissions only — do not save keys. */
@@ -37,11 +38,13 @@ export async function GET(req: NextRequest) {
       creds.apiKey,
       creds.apiSecret,
       creds.env,
+      creds.region,
     );
     const restrictions = await getApiRestrictions(
       creds.apiKey,
       creds.apiSecret,
       creds.env,
+      creds.region,
     );
     const permissionReport = buildBinancePermissionReport(
       summary,
@@ -53,6 +56,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: permissionReport.ok,
       env: creds.env,
+      region: creds.region,
       canTrade: summary.canTrade,
       canWithdraw: summary.canWithdraw,
       restrictions,
@@ -70,6 +74,7 @@ export async function POST(req: NextRequest) {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
     const env = body.env ?? "testnet";
+    const region = body.region ?? "global";
     const futuresRequired = body.futuresRequired ?? false;
 
     if (body.verify_only) {
@@ -79,11 +84,12 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
-      const summary = await getAccountSummary(body.apiKey, body.apiSecret, env);
+      const summary = await getAccountSummary(body.apiKey, body.apiSecret, env, region);
       const restrictions = await getApiRestrictions(
         body.apiKey,
         body.apiSecret,
         env,
+        region,
       );
       const permissionReport = buildBinancePermissionReport(
         summary,
@@ -109,7 +115,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const summary = await getAccountSummary(body.apiKey, body.apiSecret, env);
+    const summary = await getAccountSummary(body.apiKey, body.apiSecret, env, region);
     if (!summary.canTrade) {
       return NextResponse.json(
         { ok: false, error: "المفتاح لا يملك صلاحية التداول." },
@@ -117,13 +123,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await saveBinanceAccount(userId, body.apiKey, body.apiSecret, env, body.label);
-    await logAudit(userId, "agent_binance_connect", env);
+    await saveBinanceAccount(userId, body.apiKey, body.apiSecret, env, body.label, region);
+    await logAudit(userId, "agent_binance_connect", `${env}/${region}`);
 
     const restrictions = await getApiRestrictions(
       body.apiKey,
       body.apiSecret,
       env,
+      region,
     );
     const permissionReport = buildBinancePermissionReport(
       summary,

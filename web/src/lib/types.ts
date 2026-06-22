@@ -148,6 +148,7 @@ export interface AdminLimits {
 export interface BinanceAccountMeta {
   user_id: number;
   env: "testnet" | "prod";
+  region?: "global" | "us" | "tr";
   label: string | null;
   updated_at: string;
 }

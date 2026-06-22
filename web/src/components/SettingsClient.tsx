@@ -310,6 +310,9 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
   const [env, setEnv] = useState<"testnet" | "prod">(
     (binance?.env as "testnet" | "prod") ?? "testnet",
   );
+  const [region, setRegion] = useState<"global" | "us" | "tr">(
+    (binance?.region as "global" | "us" | "tr") ?? "global",
+  );
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
     null,
   );
@@ -355,7 +358,7 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
       const res = await fetch("/api/binance/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, apiSecret, env }),
+        body: JSON.stringify({ apiKey, apiSecret, env, region }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -460,13 +463,37 @@ function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
       )}
 
       <form onSubmit={connect} className="space-y-4">
+        <Field label="منصّة Binance (حسب دولتك)">
+          <select
+            className="input"
+            value={region}
+            onChange={(e) => {
+              const r = e.target.value as "global" | "us" | "tr";
+              setRegion(r);
+              if (r !== "global") setEnv("prod"); // US/TR لا تدعمان Testnet
+            }}
+          >
+            <option value="global">عالمي — binance.com</option>
+            <option value="tr">تركيا — Binance.TR (binance.tr)</option>
+            <option value="us">أمريكا — Binance.US (binance.us)</option>
+          </select>
+          {region !== "global" && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              استخدم مفتاحاً مولّداً من نفس المنصّة. القراءة فقط مدعومة الآن لـ
+              {region === "tr" ? " Binance.TR" : " Binance.US"}.
+            </p>
+          )}
+        </Field>
         <Field label="البيئة">
           <select
             className="input"
             value={env}
             onChange={(e) => setEnv(e.target.value as "testnet" | "prod")}
+            disabled={region !== "global"}
           >
-            <option value="testnet">تجريبية (Testnet)</option>
+            {region === "global" && (
+              <option value="testnet">تجريبية (Testnet)</option>
+            )}
             <option value="prod">حقيقية (Mainnet)</option>
           </select>
         </Field>

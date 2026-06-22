@@ -22,6 +22,7 @@ const SCHEMA = `
     api_key_enc    TEXT NOT NULL,
     api_secret_enc TEXT NOT NULL,
     env            TEXT NOT NULL DEFAULT 'testnet',
+    region         TEXT NOT NULL DEFAULT 'global',
     label          TEXT,
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -468,6 +469,14 @@ async function migratePg(client: PoolClient) {
       )
   `).catch(() => {
     /* table may be empty on first boot */
+  });
+
+  // Multi-region Binance support.
+  await client.query(`
+    ALTER TABLE binance_accounts
+      ADD COLUMN IF NOT EXISTS region TEXT NOT NULL DEFAULT 'global'
+  `).catch(() => {
+    /* column may already exist */
   });
 
   // Advanced alert preferences on trading_settings.
