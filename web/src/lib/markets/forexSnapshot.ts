@@ -1,6 +1,7 @@
 import { normalizeInterval } from "@/lib/intervals";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { computeForexIndicators } from "@/lib/ohlc/indicators";
+import { atr } from "@/lib/indicators";
 import type { MarketSnapshot } from "../market";
 import { computeForex24hRange } from "./forex24h";
 import { getForexLiveMid } from "./forexPrice";
@@ -31,6 +32,7 @@ function emptyForexSnapshot(
     sma50: null,
     ema20: null,
     macd: null,
+    atr14: null,
     trend: "sideways",
     summary: message,
     candleCount: 0,
@@ -125,6 +127,7 @@ export async function buildForexSnapshot(
     sma50: indicators.sma50,
     ema20: indicators.ema20,
     macd: indicators.macd,
+    atr14: atr(ohlc.candles, 14),
     trend: indicators.trend,
     summary: parts.join(" · "),
     ohlcSource: ohlc.source,

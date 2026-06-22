@@ -1,5 +1,5 @@
 import { getKlines, get24hStats, getPrice, type BinanceEnv } from "./binance";
-import { rsi, sma, ema, macd } from "./indicators";
+import { rsi, sma, ema, macd, atr } from "./indicators";
 import { normalizeInterval } from "./intervals";
 
 export { buildForexSnapshot } from "./markets/forexSnapshot";
@@ -16,6 +16,8 @@ export interface MarketSnapshot {
   sma50: number | null;
   ema20: number | null;
   macd: { macd: number; signal: number; histogram: number } | null;
+  /** Average True Range (volatility) — for adaptive stops/sizing. */
+  atr14: number | null;
   trend: "uptrend" | "downtrend" | "sideways";
   summary: string;
 }
@@ -47,6 +49,7 @@ export async function buildSnapshot(
   const sma50 = sma(closes, 50);
   const ema20 = ema(closes, 20);
   const macdRes = macd(closes);
+  const atr14 = atr(candles, 14);
 
   let trend: MarketSnapshot["trend"] = "sideways";
   if (sma20 !== null && sma50 !== null) {
@@ -78,6 +81,7 @@ export async function buildSnapshot(
     sma50,
     ema20,
     macd: macdRes,
+    atr14,
     trend,
     summary: parts.join(" · "),
   };

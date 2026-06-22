@@ -10,6 +10,32 @@ export function sma(values: number[], period: number): number | null {
   return slice.reduce((a, b) => a + b, 0) / period;
 }
 
+/**
+ * Average True Range — volatility measure for adaptive stops/sizing.
+ * TR = max(high-low, |high-prevClose|, |low-prevClose|); ATR = mean(TR, period).
+ */
+export function atr(
+  candles: { high: number; low: number; close: number }[],
+  period = 14,
+): number | null {
+  if (candles.length < period + 1) return null;
+  const trs: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const c = candles[i]!;
+    const prevClose = candles[i - 1]!.close;
+    trs.push(
+      Math.max(
+        c.high - c.low,
+        Math.abs(c.high - prevClose),
+        Math.abs(c.low - prevClose),
+      ),
+    );
+  }
+  const slice = trs.slice(-period);
+  if (slice.length === 0) return null;
+  return slice.reduce((a, b) => a + b, 0) / slice.length;
+}
+
 export function ema(values: number[], period: number): number | null {
   if (values.length < period) return null;
   const k = 2 / (period + 1);

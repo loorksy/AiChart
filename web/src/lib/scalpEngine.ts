@@ -31,6 +31,8 @@ import {
   scalpConfidenceThreshold,
   shouldEnter,
 } from "./scalpAdvisors";
+import { deriveDynamicStops } from "./dynamicStops";
+import { deriveDynamicNotional } from "./dynamicSizing";
 import type { MarketType } from "./markets/types";
 import type { ScalpSession, TradingSettings } from "./types";
 
@@ -219,20 +221,43 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         continue;
       }
 
-      // 4) Build intent. (Dynamic sizing + adaptive SL/TP arrive in phase S4;
-      // for now use the session notional and leave stops to the broker layer.)
+      // 4) Adaptive SL/TP + position sizing (no fixed templates).
       const market = (session.market ?? settings.active_market ?? "crypto") as MarketType;
       const confidence = advisory.confidence;
       const practiceMode =
         session.execution_mode !== "live" || !scalpLiveEnabled();
 
+      const snap = candidate.snapshot;
+      const entry = snap.price;
+      const rangePct =
+        snap.high24h > 0 && snap.low24h > 0 && entry > 0
+          ? (snap.high24h - snap.low24h) / entry
+          : 0;
+      const stops = deriveDynamicStops({
+        entry,
+        side,
+        style: settings.style,
+        confidence,
+        atr: snap.atr14,
+        rangePct,
+      });
+      const notional = deriveDynamicNotional({
+        baseNotional: session.notional,
+        confidence,
+        riskFraction: stops?.riskFraction ?? 0.01,
+        maxNotional: session.notional * 1.5,
+      });
+
       const intent = await createIntent(userId, {
         symbol: candidate.symbol,
         side,
-        notional: session.notional,
+        notional,
         market,
+        entry,
+        stop_loss: stops?.stopLoss ?? null,
+        take_profit: stops?.takeProfit ?? null,
         confidence,
-        rationale: `سكالب ذاتي (ثقة ${confidence}%): ${advisory.rationale_ar} · إشارات: ${candidate.signals.join("، ")}`,
+        rationale: `سكالب ذاتي (ثقة ${confidence}%، R:R ${stops?.rr ?? "—"}): ${advisory.rationale_ar} · إشارات: ${candidate.signals.join("، ")}`,
         status: "approved",
         practice: practiceMode,
       });

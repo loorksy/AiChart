@@ -50,6 +50,7 @@ function emptySnap(symbol: string, interval: string, price = 0): MarketSnapshot 
     sma50: null,
     ema20: null,
     macd: null,
+    atr14: null,
     trend: "sideways",
     summary: "",
   };
