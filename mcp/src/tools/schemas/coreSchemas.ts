@@ -113,6 +113,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       symbol: zSymbol,
       side: zSide,
       notional: z.number().positive(),
+      lots: z.number().positive().max(100).optional().describe("forex: explicit lot size (overrides notional)"),
       market: zMarket,
       entry: z.number().optional(),
       stop_loss: z.number().optional(),

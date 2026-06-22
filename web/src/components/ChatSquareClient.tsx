@@ -628,6 +628,7 @@ export default function ChatSquareClient({
             onAddAttachment={handleAddAttachment}
             onRemoveAttachment={handleRemoveAttachment}
             disabled={busy}
+            busy={busy}
             placeholder={inputPlaceholder}
             centered={false}
           />

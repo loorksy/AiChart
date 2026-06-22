@@ -5,6 +5,7 @@ import {
   ArrowUp,
   BarChart3,
   ImagePlus,
+  Loader2,
   Search,
   Sparkles,
   X,
@@ -52,6 +53,8 @@ interface ChatInputBarProps {
   onAddAttachment?: (file: File) => void;
   onRemoveAttachment?: (index: number) => void;
   disabled?: boolean;
+  /** Agent is actively working — shows a spinner on the send button. */
+  busy?: boolean;
   placeholder?: string;
   centered?: boolean;
 }
@@ -70,6 +73,7 @@ export function ChatInputBar({
   onAddAttachment,
   onRemoveAttachment,
   disabled,
+  busy = false,
   placeholder = "اسأل عن أي شيء…",
   centered = false,
 }: ChatInputBarProps) {
@@ -209,17 +213,24 @@ export function ChatInputBar({
 
           <button
             type="button"
-            disabled={disabled || !canSend}
+            disabled={busy || disabled || !canSend}
             onClick={onSend}
             className={cn(
-              "mb-0.5 shrink-0 rounded-xl p-2.5 transition-all duration-200 disabled:opacity-30 active:scale-95",
-              canSend
-                ? "bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/20"
-                : "bg-zinc-800 text-zinc-500",
+              "mb-0.5 shrink-0 rounded-xl p-2.5 transition-all duration-200 disabled:opacity-40 active:scale-95",
+              busy
+                ? "bg-amber-500/90 text-white shadow-lg shadow-amber-500/20"
+                : canSend
+                  ? "bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/20"
+                  : "bg-zinc-800 text-zinc-500",
             )}
-            aria-label="إرسال"
+            aria-label={busy ? "الوكيل يعمل…" : "إرسال"}
+            title={busy ? "الوكيل يعمل…" : "إرسال"}
           >
-            <ArrowUp className="h-5 w-5" />
+            {busy ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <ArrowUp className="h-5 w-5" />
+            )}
           </button>
         </div>
 

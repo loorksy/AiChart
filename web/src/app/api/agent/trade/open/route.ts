@@ -23,6 +23,7 @@ import {
   type BridgeEnvelope,
 } from "@/lib/bridge";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
+import { getEaSymbolSpec } from "@/lib/eaStore";
 import { futuresPermissionBlockReason } from "@/lib/binanceVerify";
 import type { MarketType } from "@/lib/markets/types";
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
@@ -33,6 +34,8 @@ const schema = z
     side: z.enum(["buy", "sell"]),
     /** Quote amount (USDT) — defaults to per-trade budget from settings. */
     notional: z.number().positive().optional(),
+    /** Forex: explicit lot size — overrides notional-based sizing when set. */
+    lots: z.number().positive().max(100).optional(),
     market: z.enum(["crypto", "forex"]).optional(),
     entry: z.number().nullish(),
     stop_loss: z.number().nullish(),
@@ -217,8 +220,19 @@ export async function POST(req: NextRequest) {
       limits.max_capital_cap > 0
         ? Math.min(settings.max_capital, limits.max_capital_cap)
         : settings.max_capital;
-    const notional =
+    // Explicit forex lot → equivalent notional (lots × contract size × price),
+    // so the agent/MCP can size a trade by lot. Risk Guard still gates it.
+    let notional =
       body.notional ?? (effectiveCapital * settings.per_trade_pct) / 100;
+    if (body.lots && body.lots > 0 && market === "forex") {
+      const spec = await getEaSymbolSpec(
+        userId,
+        normalizeIntentSymbol(body.symbol, market),
+      );
+      const price = Number(spec?.ask) || Number(spec?.bid) || body.entry || 0;
+      const contractSize = Number(spec?.contract_size) || 100000;
+      if (price > 0) notional = body.lots * contractSize * price;
+    }
 
     const leverage =
       marketType === "futures"

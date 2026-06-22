@@ -373,6 +373,7 @@ const TOOLS: ToolDef[] = [
         symbol: { type: "string" },
         side: { type: "string", enum: ["buy", "sell"] },
         notional: { type: "number", description: "حجم الصفقة (USDT/هامش)" },
+        lots: { type: "number", description: "فوركس: حجم اللوت مباشرة (يتجاوز notional). مثال 0.10" },
         market: { type: "string", enum: ["crypto", "forex"] },
         market_type: { type: "string", enum: ["spot", "futures"] },
         leverage: { type: "number" },

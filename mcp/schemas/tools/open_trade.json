@@ -16,6 +16,12 @@
       "type": "number",
       "exclusiveMinimum": 0
     },
+    "lots": {
+      "description": "forex: explicit lot size (overrides notional)",
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 100
+    },
     "market": {
       "type": "string",
       "enum": [
