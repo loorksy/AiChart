@@ -52,11 +52,22 @@ async function signedGet(
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg =
-      (body && typeof body === "object" && "msg" in body
-        ? (body as { msg: string }).msg
-        : null) || `Binance error (HTTP ${res.status})`;
-    throw new Error(msg);
+    const b = body as { msg?: string; code?: number };
+    const rawMsg = b?.msg || `HTTP ${res.status}`;
+    const code = typeof b?.code === "number" ? b.code : undefined;
+    // Surface the exact Binance code + the env actually used + the server's
+    // outbound IP, so IP/permission/region/env-mismatch causes are obvious.
+    const hint =
+      code === -2015
+        ? " — السبب: قيد IP (أضف 72.60.83.140) أو الصلاحيات أو أن الحساب على نطاق مختلف (Binance.US/.TR لا يعمل على api.binance.com)"
+        : code === -2014 || code === -1022
+          ? " — مفتاح/توقيع غير صالح (تحقّق من نسخ المفتاح والسر كاملين)"
+          : code === -1021
+            ? " — ساعة الخادم غير متزامنة"
+            : "";
+    throw new Error(
+      `Binance رفض${code != null ? ` (code ${code})` : ""}: ${rawMsg} [البيئة=${env}، endpoint=${base}، الخادم يتصل من IPv4 72.60.83.140]${hint}`,
+    );
   }
   return body;
 }
