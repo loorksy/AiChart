@@ -545,6 +545,7 @@ const BRIDGE_TOOL_NAMES = new Set([
 const CARD_DERIVE_TOOLS = new Set([
   "get_account_symbols",
   "get_market_snapshot",
+  "get_multi_timeframe_snapshot",
   "get_open_trades",
   "get_account_overview",
 ]);
@@ -577,8 +578,8 @@ function deriveCardsFromToolData(
   const add = (component: string, props: any) =>
     layout.push({ id: `auto${i++}`, component, props });
 
-  const snap = last("get_market_snapshot");
-  if (snap && snap.symbol) {
+  const analysisFromSnap = (snap: any) => {
+    if (!snap || !snap.symbol) return;
     add("analysis", {
       symbol: snap.symbol,
       price: snap.price,
@@ -589,6 +590,28 @@ function deriveCardsFromToolData(
       resistance: snap.high24h,
       summary: snap.summary ?? "",
     });
+  };
+
+  analysisFromSnap(last("get_market_snapshot"));
+
+  // Forex/multi-TF analysis usually goes through get_multi_timeframe_snapshot.
+  const mtf = last("get_multi_timeframe_snapshot");
+  if (mtf && Array.isArray(mtf.snapshots)) {
+    const valid = mtf.snapshots.filter((s: any) => s?.snapshot?.symbol);
+    if (valid.length && !layout.some((e) => e.component === "analysis")) {
+      analysisFromSnap(valid[0].snapshot);
+      add("mtf_grid", {
+        rows: valid.map((s: any) => ({
+          tf: s.interval,
+          signal:
+            s.snapshot.extra?.trend === "bullish"
+              ? "buy"
+              : s.snapshot.extra?.trend === "bearish"
+                ? "sell"
+                : "neutral",
+        })),
+      });
+    }
   }
 
   const syms = last("get_account_symbols");
