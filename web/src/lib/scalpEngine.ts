@@ -1,15 +1,16 @@
 /**
- * Autonomous Scalp Session Engine.
+ * Autonomous Scalp Session Engine — an AI AGENT RUNTIME, not a rule bot.
  *
- * One cron tick = `runScalpCycle()`. For every ACTIVE scalp session it runs:
- *   guards (auto-stop) → manage → scan → decide → size/stops → execute → log.
- * Execution ALWAYS flows through `executeIntent` → Risk Guard. The session is
- * the standing approval (no per-trade confirmation), but no safety is bypassed.
+ * cron only TRIGGERS a tick. For each active session the engine:
+ *   1. enforces SAFETY guards (auto-stop) — limits, never trade decisions;
+ *   2. hands the tick to the AGENT (runAgent) which OBSERVES the market with its
+ *      tools, reasons over advisory lenses, and submits ONE decision;
+ *   3. carries the agent's decision through executeIntent → Risk Guard.
  *
- * Live execution is gated behind SCALP_LIVE_ENABLED (default off) until the
- * paper loop is verified end-to-end (plan phase S6). Until then every entry runs
- * in practiceMode regardless of the session's chosen mode.
+ * Infrastructure never generates buy/sell. The agent is the decision-maker.
+ * Live execution is gated behind SCALP_LIVE_ENABLED (default off) → paper-forced.
  */
+import { runAgent } from "./agent";
 import { executeIntent } from "./execution";
 import {
   countOpenTrades,
@@ -24,17 +25,13 @@ import {
   todayRealizedPnlPct,
 } from "./store";
 import { getEaConnection, isHeartbeatFresh } from "./eaStore";
-import { resolveScanAssetsForMarket } from "./allowedAssets";
-import { scanForexSymbol, scanSymbol, type OpportunityCandidate } from "./monitor";
-import {
-  evaluateScalpAdvisors,
-  scalpConfidenceThreshold,
-  shouldEnter,
-} from "./scalpAdvisors";
 import { deriveDynamicStops } from "./dynamicStops";
 import { deriveDynamicNotional } from "./dynamicSizing";
+import { evalScalpStop } from "./scalpGuards";
 import type { MarketType } from "./markets/types";
 import type { ScalpSession, TradingSettings } from "./types";
+
+export { evalScalpStop } from "./scalpGuards";
 
 /** Live scalp execution stays OFF until the paper loop is verified (phase S6). */
 export function scalpLiveEnabled(): boolean {
@@ -43,7 +40,7 @@ export function scalpLiveEnabled(): boolean {
 
 export interface ScalpCycleEvent {
   userId: number;
-  action: "scanned" | "executed" | "skipped" | "stopped";
+  action: "observed" | "executed" | "skipped" | "stopped";
   detail: string;
 }
 
@@ -53,49 +50,6 @@ export interface ScalpCycleResult {
   errors: string[];
 }
 
-/** Minimum opportunity score to act — quality over count. */
-function scalpScoreThreshold(settings: TradingSettings): number {
-  if (settings.style === "conservative") return 4;
-  if (settings.style === "balanced") return 3;
-  return 2;
-}
-
-/** Direction from snapshot trend; null when no clear bias (→ keep scanning). */
-function sideFromSnapshot(snap: OpportunityCandidate["snapshot"]): "buy" | "sell" | null {
-  const trend = snap.trend;
-  if (trend === "uptrend") return "buy";
-  if (trend === "downtrend") return "sell";
-  return null;
-}
-
-/**
- * PURE auto-stop decision (unit-tested). Returns a stop reason or null.
- * Order = priority: kill switch > cap > daily loss > broker.
- */
-export function evalScalpStop(inputs: {
-  masterKill: boolean;
-  executedCount: number;
-  maxTrades: number;
-  dailyLossLimitPct: number;
-  todayPnlPct: number;
-  market: MarketType;
-  brokerConnected: boolean;
-}): string | null {
-  if (inputs.masterKill) return "master_kill";
-  if (inputs.executedCount >= inputs.maxTrades) return "max_trades_reached";
-  if (
-    inputs.dailyLossLimitPct > 0 &&
-    inputs.todayPnlPct <= -Math.abs(inputs.dailyLossLimitPct)
-  ) {
-    return "daily_loss_limit";
-  }
-  if (inputs.market === "forex" && !inputs.brokerConnected) {
-    return "broker_disconnected";
-  }
-  return null;
-}
-
-/** Gathers live inputs and runs the pure auto-stop decision. */
 async function sessionStopReason(
   session: ScalpSession,
   settings: TradingSettings,
@@ -130,33 +84,22 @@ async function sessionStopReason(
   });
 }
 
-/** Best opportunity for a session across its symbol or allowed assets. */
-async function bestOpportunity(
-  session: ScalpSession,
-  settings: TradingSettings,
-): Promise<OpportunityCandidate | null> {
-  const market = (session.market ?? settings.active_market ?? "crypto") as MarketType;
-  const interval = session.interval || settings.analysis_interval || "1m";
-  const symbols = session.symbol
-    ? [session.symbol]
-    : await resolveScanAssetsForMarket(settings.allowed_assets, market, 25);
-
-  let best: OpportunityCandidate | null = null;
-  for (const symbol of symbols) {
-    try {
-      const c =
-        market === "forex"
-          ? await scanForexSymbol(session.user_id, symbol, settings.style, interval)
-          : await scanSymbol(symbol, settings.style, interval);
-      if (c && (!best || c.score > best.score)) best = c;
-    } catch {
-      /* skip symbol */
-    }
-  }
-  return best;
+/** The market-context prompt that wakes the agent for one autonomous tick. */
+function scalpTickPrompt(session: ScalpSession, settings: TradingSettings): string {
+  const market = session.market ?? settings.active_market ?? "crypto";
+  const scope = session.symbol
+    ? `الرمز المستهدف: ${session.symbol}`
+    : `كل أزواج الحساب المسموحة (استخدم get_account_symbols/scan_market لاستكشافها)`;
+  return [
+    "نبضة جلسة سكالب ذاتية — راقب السوق وقرّر.",
+    `السوق: ${market} · الإطار: ${session.interval} · الأسلوب: ${settings.style}`,
+    scope,
+    `صفقات الجلسة: ${session.executed_count}/${session.max_trades} · الوضع: ${session.execution_mode}`,
+    "لاحظ بأدواتك، فكّر عبر زوايا المستشارين، وقرّر: ادخل بأفضل فرصة عالية الاحتمال (submit_scalp_decision action=enter) أو انتظر (action=wait). الجودة قبل الكمّية.",
+  ].join("\n");
 }
 
-/** Run one autonomous scalp cycle for every active session. */
+/** Run one autonomous scalp tick for every active session. */
 export async function runScalpCycle(): Promise<ScalpCycleResult> {
   const result: ScalpCycleResult = { sessions: 0, events: [], errors: [] };
   const sessions = await listActiveScalpSessions();
@@ -167,7 +110,7 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
     try {
       const settings = await getSettings(userId);
 
-      // 1) Guards — auto-stop on any violation.
+      // 1) SAFETY guards — auto-stop (not a trade decision).
       const stop = await sessionStopReason(session, settings);
       if (stop) {
         await stopScalpSession(userId, stop);
@@ -175,31 +118,6 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         result.events.push({ userId, action: "stopped", detail: stop });
         continue;
       }
-
-      // 2) Scan for the best opportunity (quality over count).
-      const candidate = await bestOpportunity(session, settings);
-      if (!candidate || candidate.score < scalpScoreThreshold(settings)) {
-        result.events.push({
-          userId,
-          action: "scanned",
-          detail: candidate
-            ? `أفضل مرشّح ${candidate.symbol} نقاط ${candidate.score} — دون العتبة`
-            : "لا فرصة مؤهّلة — استمرار المسح",
-        });
-        continue;
-      }
-
-      const side = sideFromSnapshot(candidate.snapshot);
-      if (!side) {
-        result.events.push({
-          userId,
-          action: "skipped",
-          detail: `${candidate.symbol}: اتجاه غير واضح`,
-        });
-        continue;
-      }
-
-      // Avoid stacking beyond account open-trade capacity.
       if ((await countOpenTrades(userId)) >= settings.max_open_trades) {
         result.events.push({
           userId,
@@ -209,70 +127,79 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         continue;
       }
 
-      // 3) Multi-agent advisory + confidence gate (orchestrator decides).
-      const advisory = await evaluateScalpAdvisors(candidate, side, settings);
-      const threshold = scalpConfidenceThreshold(settings.style);
-      if (!shouldEnter(advisory, threshold)) {
+      // 2) AGENT RUNTIME — the agent observes + reasons + decides.
+      const agentRes = await runAgent(
+        { userId, settings },
+        [{ role: "user", content: scalpTickPrompt(session, settings) }],
+        { scalpMode: true },
+      );
+      const decision = agentRes.scalpDecision;
+
+      if (
+        !decision ||
+        decision.action !== "enter" ||
+        !decision.symbol ||
+        (decision.side !== "buy" && decision.side !== "sell")
+      ) {
         result.events.push({
           userId,
-          action: "skipped",
-          detail: `${candidate.symbol}: ${advisory.decision} ثقة ${advisory.confidence}% < ${threshold}% — استمرار المسح`,
+          action: "observed",
+          detail: `قرار الوكيل: انتظار — ${decision?.rationale_ar ?? agentRes.reply.slice(0, 80)}`,
         });
         continue;
       }
 
-      // 4) Adaptive SL/TP + position sizing (no fixed templates).
+      // 3) Carry the AGENT's decision to Risk Guard. SL/TP/size come from the
+      // agent's reasoning; fall back to adaptive derivation only if it omitted.
       const market = (session.market ?? settings.active_market ?? "crypto") as MarketType;
-      const confidence = advisory.confidence;
+      const side = decision.side;
+      const confidence = Math.max(0, Math.min(100, decision.confidence ?? 60));
       const practiceMode =
         session.execution_mode !== "live" || !scalpLiveEnabled();
+      const entry = decision.entry && decision.entry > 0 ? decision.entry : 0;
 
-      const snap = candidate.snapshot;
-      const entry = snap.price;
-      const rangePct =
-        snap.high24h > 0 && snap.low24h > 0 && entry > 0
-          ? (snap.high24h - snap.low24h) / entry
-          : 0;
-      const stops = deriveDynamicStops({
-        entry,
-        side,
-        style: settings.style,
-        confidence,
-        atr: snap.atr14,
-        rangePct,
-      });
-      const notional = deriveDynamicNotional({
-        baseNotional: session.notional,
-        confidence,
-        riskFraction: stops?.riskFraction ?? 0.01,
-        maxNotional: session.notional * 1.5,
-      });
+      let stopLoss = decision.stop_loss ?? null;
+      let takeProfit = decision.take_profit ?? null;
+      let riskFraction = 0.01;
+      if ((stopLoss == null || takeProfit == null) && entry > 0) {
+        const d = deriveDynamicStops({
+          entry,
+          side,
+          style: settings.style,
+          confidence,
+          atr: null,
+        });
+        if (d) {
+          stopLoss = stopLoss ?? d.stopLoss;
+          takeProfit = takeProfit ?? d.takeProfit;
+          riskFraction = d.riskFraction;
+        }
+      }
 
-      // Explainable execution — concise 5-facet summary stored on the intent.
-      const rationale = [
-        `سكالب ذاتي · ثقة ${confidence}% · R:R ${stops?.rr ?? "—"}`,
-        `الدخول: ${advisory.momentum.rationale_ar}`,
-        `الاستراتيجية: ${advisory.strategy.rationale_ar}`,
-        `البنية: ${advisory.structure.rationale_ar}`,
-        `المخاطر: ${advisory.risk.rationale_ar}`,
-        `الخلاصة: ${advisory.rationale_ar}`,
-      ].join(" | ");
+      const notional =
+        decision.notional && decision.notional > 0
+          ? Math.min(decision.notional, session.notional * 1.5)
+          : deriveDynamicNotional({
+              baseNotional: session.notional,
+              confidence,
+              riskFraction,
+              maxNotional: session.notional * 1.5,
+            });
 
       const intent = await createIntent(userId, {
-        symbol: candidate.symbol,
+        symbol: decision.symbol,
         side,
         notional,
         market,
-        entry,
-        stop_loss: stops?.stopLoss ?? null,
-        take_profit: stops?.takeProfit ?? null,
+        entry: entry > 0 ? entry : null,
+        stop_loss: stopLoss,
+        take_profit: takeProfit,
         confidence,
-        rationale,
+        rationale: `سكالب ذاتي (قرار الوكيل، ثقة ${confidence}%): ${decision.rationale_ar ?? ""}`,
         status: "approved",
         practice: practiceMode,
       });
 
-      // 5) Execute — Risk Guard is the authority; session = standing approval.
       const exec = await executeIntent(userId, intent.id, {
         explicitApproval: true,
         practiceMode,
@@ -283,23 +210,23 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         await logAudit(
           userId,
           "scalp_execute",
-          `${candidate.symbol} ${side} ${practiceMode ? "paper" : "live"} score=${candidate.score}`,
+          `${decision.symbol} ${side} ${practiceMode ? "paper" : "live"} conf=${confidence}`,
         );
         result.events.push({
           userId,
           action: "executed",
-          detail: `${candidate.symbol} ${side} (${practiceMode ? "paper" : "live"})`,
+          detail: `${decision.symbol} ${side} (${practiceMode ? "paper" : "live"})`,
         });
       } else {
         await logAudit(
           userId,
           "scalp_execute_denied",
-          `${candidate.symbol} ${side}: ${exec.reason}`,
+          `${decision.symbol} ${side}: ${exec.reason}`,
         );
         result.events.push({
           userId,
           action: "skipped",
-          detail: `${candidate.symbol}: مرفوض (${exec.reason})`,
+          detail: `${decision.symbol}: مرفوض من Risk Guard (${exec.reason})`,
         });
       }
     } catch (e) {
