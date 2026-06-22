@@ -70,12 +70,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: (data.messages ?? []).map((m) => {
         const image = parseImageFromMetadata(m.metadata_json);
         let recommendations: unknown[] | undefined;
+        let intents: any[] | undefined;
         let question: any = null;
         let ui_schema: any = null;
         if (m.metadata_json) {
           try {
-            const parsedMeta = JSON.parse(m.metadata_json) as { recommendations?: unknown[]; question?: any; ui_schema?: any };
+            const parsedMeta = JSON.parse(m.metadata_json) as { recommendations?: unknown[]; intents?: any[]; question?: any; ui_schema?: any };
             recommendations = parsedMeta.recommendations;
+            // Only pending intents still need an action card on reload.
+            intents = parsedMeta.intents?.filter((i) => i?.status === "pending");
             question = parsedMeta.question || null;
             ui_schema = parsedMeta.ui_schema || null;
           } catch {
@@ -88,6 +91,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           content: m.content,
           imageUrl: image ? imageDataUrl(image) : undefined,
           recommendations,
+          intents: intents && intents.length ? intents : undefined,
           question,
           ui_schema,
         };

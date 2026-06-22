@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { getSettings, getLimits, getTodayUsage, incrementUsage, logAudit, isDailyQuotaEnforced } from "@/lib/store";
+import { getSettings, getLimits, getTodayUsage, incrementUsage, logAudit, isDailyQuotaEnforced, listIntents } from "@/lib/store";
 import { runCopilot } from "@/lib/copilot";
 import { isLLMConfigured } from "@/lib/llm";
 import { validateChatImage } from "@/lib/chatImage";
 import { sanitizeUserInput } from "@/lib/security";
-import { processRecommendations } from "@/lib/tradeFlow";
+import { processRecommendations, type ProcessedIntent } from "@/lib/tradeFlow";
+import type { Recommendation } from "@/lib/types";
 import { sseEncode } from "@/lib/sse";
 import { extractUISchema } from "@/lib/uiSchema";
 import {
@@ -23,6 +24,43 @@ import {
 } from "@/lib/conversations";
 
 export const maxDuration = 60;
+
+/** Highest existing intent id for the user — marks the boundary of "this turn". */
+async function latestIntentId(userId: number): Promise<number> {
+  const [last] = await listIntents(userId, undefined, 1);
+  return last?.id ?? 0;
+}
+
+/**
+ * Intents to render as cards in the chat for this turn:
+ * - intents derived from recommendations (record_recommendation), plus
+ * - pending intents the agent created directly via open_trade / request_approval
+ *   (these are NOT in `recommendations`, so without this they'd only reach
+ *   Telegram and never show as a card in the web chat).
+ */
+async function intentsForTurn(
+  userId: number,
+  beforeMaxIntentId: number,
+  recommendations: Recommendation[],
+): Promise<ProcessedIntent[]> {
+  const merged = await processRecommendations(userId, recommendations, {
+    allowAdvisoryApproval: true,
+  });
+  const pending = await listIntents(userId, "pending", 20);
+  for (const i of pending) {
+    if (i.id <= beforeMaxIntentId) continue;
+    if (merged.some((m) => m.id === i.id)) continue;
+    merged.push({
+      id: i.id,
+      symbol: i.symbol,
+      side: i.side,
+      notional: i.notional,
+      status: i.status,
+      reason: i.reason ?? undefined,
+    });
+  }
+  return merged;
+}
 
 const imageSchema = z.object({
   media_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -234,6 +272,8 @@ export async function POST(req: NextRequest) {
 
 
 
+            const beforeMaxIntentId = await latestIntentId(user.id);
+
             const result = await runCopilot(
               user.id,
               conversationId!,
@@ -244,12 +284,19 @@ export async function POST(req: NextRequest) {
 
             const { cleanText, uiSchema } = extractUISchema(result.reply);
 
+            const intents = await intentsForTurn(
+              user.id,
+              beforeMaxIntentId,
+              result.recommendations,
+            );
+
             await appendChatMessage(
               conversationId!,
               "assistant",
               cleanText,
               {
                 recommendations: result.recommendations,
+                intents,
                 question: result.question || null,
                 ui_schema: uiSchema,
               },
@@ -271,12 +318,6 @@ export async function POST(req: NextRequest) {
 
             await incrementUsage(user.id, 1);
             await logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
-
-            const intents = await processRecommendations(
-              user.id,
-              result.recommendations,
-              { allowAdvisoryApproval: true },
-            );
 
             send("done", {
               reply: cleanText,
@@ -323,6 +364,8 @@ export async function POST(req: NextRequest) {
 
 
 
+    const beforeMaxIntentId = await latestIntentId(user.id);
+
     const result = await runCopilot(
       user.id,
       conversationId,
@@ -333,12 +376,19 @@ export async function POST(req: NextRequest) {
 
     const { cleanText, uiSchema } = extractUISchema(result.reply);
 
+    const intents = await intentsForTurn(
+      user.id,
+      beforeMaxIntentId,
+      result.recommendations,
+    );
+
     await appendChatMessage(
       conversationId,
       "assistant",
       cleanText,
       {
         recommendations: result.recommendations,
+        intents,
         question: result.question || null,
         ui_schema: uiSchema,
       },
@@ -352,10 +402,6 @@ export async function POST(req: NextRequest) {
 
     await incrementUsage(user.id, 1);
     await logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
-
-    const intents = await processRecommendations(user.id, result.recommendations, {
-      allowAdvisoryApproval: true,
-    });
 
     return NextResponse.json({
       reply: cleanText,
