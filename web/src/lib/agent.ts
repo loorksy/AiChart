@@ -268,6 +268,32 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "render_cards",
+    description:
+      "اعرض بطاقات تفاعلية (نماذج مصغّرة) للمستخدم. **هذه هي الطريقة الوحيدة لإظهار البطاقات** — لا تكتب JSON في نصّك. استدعها عند تحليل زوج أو اقتراح صفقة أو عرض المحفظة/الأزواج. مرّر layout كمصفوفة عناصر، كل عنصر { id, component, props, children? }. أمثلة component: analysis, order_ticket, risk_reward, rsi_gauge, sr_ladder, pair_browser, account_overview, positions_table, kpi_card, gauge, alert_banner، وغيرها من الكتالوج. اكتب أيضاً نصاً موجزاً بشرياً مع البطاقة.",
+    input_schema: {
+      type: "object",
+      properties: {
+        layout: {
+          type: "array",
+          description:
+            "عناصر البطاقات. كل عنصر { id: string, component: string (مفتاح من الكتالوج), props: object, children?: array }.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              component: { type: "string" },
+              props: { type: "object" },
+              children: { type: "array", items: { type: "object" } },
+            },
+            required: ["id", "component"],
+          },
+        },
+      },
+      required: ["layout"],
+    },
+  },
+  {
     name: "get_multi_timeframe_snapshot",
     description:
       "تحليل عدة أطر زمنية لزوج واحد بنداء واحد (أسرع). مثل intervals=[1h,15m,5m].",
@@ -464,6 +490,8 @@ export interface AgentResult {
   signalDeliveries?: DeliveryResult[];
   reasoningSummary?: string | null;
   toolCallsJson?: string | null;
+  /** UI schema emitted via the render_cards tool (reliable card rendering). */
+  uiSchema?: unknown | null;
 }
 
 export interface RunAgentOptions {
@@ -602,12 +630,27 @@ async function executeTool(
   ctx: AgentContext,
   recorded: Recommendation[],
   signalDeliveries: DeliveryResult[],
+  uiCollector: { schema: unknown | null },
 ): Promise<{ content: string; isError?: boolean }> {
   try {
     if (BRIDGE_TOOL_NAMES.has(name)) {
       return await forwardBridge(ctx.userId, name, input);
     }
     switch (name) {
+      case "render_cards": {
+        const layout = input.layout;
+        if (!Array.isArray(layout) || layout.length === 0) {
+          return {
+            content:
+              "render_cards يتطلّب layout كمصفوفة عناصر بطاقات غير فارغة.",
+            isError: true,
+          };
+        }
+        uiCollector.schema = { version: "1.0", layout };
+        return {
+          content: `تم عرض ${layout.length} بطاقة تفاعلية للمستخدم.`,
+        };
+      }
       case "resolve_symbol": {
         const resolved = resolveSymbol(
           String(input.query ?? ""),
@@ -959,6 +1002,7 @@ export async function runAgent(
   const messages: Message[] = [...history];
   const recorded: Recommendation[] = [];
   const signalDeliveries: DeliveryResult[] = [];
+  const uiCollector: { schema: unknown | null } = { schema: null };
   let usageTokens = 0;
   let finalText = "";
   const executedToolsList: { name: string; input: unknown; status: string }[] = [];
@@ -1001,7 +1045,7 @@ export async function runAgent(
         status: "running",
         tool: tu.name,
       });
-      const out = await executeTool(tu.name, tu.input, ctx, recorded, signalDeliveries);
+      const out = await executeTool(tu.name, tu.input, ctx, recorded, signalDeliveries, uiCollector);
       executedToolsList.push({
         name: tu.name,
         input: tu.input,
@@ -1046,5 +1090,6 @@ export async function runAgent(
     signalDeliveries: signalDeliveries.length ? signalDeliveries : undefined,
     reasoningSummary,
     toolCallsJson,
+    uiSchema: uiCollector.schema,
   };
 }

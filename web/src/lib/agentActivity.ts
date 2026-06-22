@@ -47,6 +47,10 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   get_open_trades: () => "قراءة الصفقات المفتوحة",
   get_account_symbols: (input) =>
     `قراءة أزواج الحساب${input.market ? ` · ${input.market}` : ""}`,
+  render_cards: (input) => {
+    const n = Array.isArray(input.layout) ? input.layout.length : 0;
+    return `عرض ${n} بطاقة تفاعلية`;
+  },
   get_multi_timeframe_snapshot: (input) =>
     `تحليل عدة أطر · ${String(input.symbol ?? "الرمز")}`,
   scan_market: () => "مسح ومقارنة الفرص",

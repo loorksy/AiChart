@@ -282,7 +282,11 @@ export async function POST(req: NextRequest) {
               runOpts,
             );
 
-            const { cleanText, uiSchema } = extractUISchema(result.reply);
+            const extracted = extractUISchema(result.reply);
+            const cleanText = extracted.cleanText;
+            // Prefer the schema emitted via the reliable render_cards tool; fall
+            // back to a fenced block in the reply text if present.
+            const uiSchema = result.uiSchema ?? extracted.uiSchema;
 
             const intents = await intentsForTurn(
               user.id,
@@ -374,7 +378,11 @@ export async function POST(req: NextRequest) {
       { conversationSummary, responseMode, hasImage: chatImage ? true : false },
     );
 
-    const { cleanText, uiSchema } = extractUISchema(result.reply);
+    const extracted = extractUISchema(result.reply);
+    const cleanText = extracted.cleanText;
+    // Prefer the schema emitted via the reliable render_cards tool; fall back to
+    // a fenced block in the reply text if present.
+    const uiSchema = result.uiSchema ?? extracted.uiSchema;
 
     const intents = await intentsForTurn(
       user.id,
