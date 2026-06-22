@@ -248,6 +248,16 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         maxNotional: session.notional * 1.5,
       });
 
+      // Explainable execution — concise 5-facet summary stored on the intent.
+      const rationale = [
+        `سكالب ذاتي · ثقة ${confidence}% · R:R ${stops?.rr ?? "—"}`,
+        `الدخول: ${advisory.momentum.rationale_ar}`,
+        `الاستراتيجية: ${advisory.strategy.rationale_ar}`,
+        `البنية: ${advisory.structure.rationale_ar}`,
+        `المخاطر: ${advisory.risk.rationale_ar}`,
+        `الخلاصة: ${advisory.rationale_ar}`,
+      ].join(" | ");
+
       const intent = await createIntent(userId, {
         symbol: candidate.symbol,
         side,
@@ -257,7 +267,7 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         stop_loss: stops?.stopLoss ?? null,
         take_profit: stops?.takeProfit ?? null,
         confidence,
-        rationale: `سكالب ذاتي (ثقة ${confidence}%، R:R ${stops?.rr ?? "—"}): ${advisory.rationale_ar} · إشارات: ${candidate.signals.join("، ")}`,
+        rationale,
         status: "approved",
         practice: practiceMode,
       });
