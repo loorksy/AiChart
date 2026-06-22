@@ -102,7 +102,9 @@ function toOAMessages(system: string, messages: Message[]): OAMessage[] {
   return out;
 }
 
-function toOATools(tools?: ToolDef[]) {
+// Exported for provider-parity tests: proves any tool (e.g. render_cards)
+// converts to the OpenAI-compatible function shape used by openai/google/openrouter.
+export function toOATools(tools?: ToolDef[]) {
   if (!tools || tools.length === 0) return undefined;
   return tools.map((t) => ({
     type: "function" as const,
@@ -116,7 +118,9 @@ function toOATools(tools?: ToolDef[]) {
 
 // ---------- response conversion ----------
 
-function fromOAChoice(choice: {
+// Exported for provider-parity tests: proves OpenAI-shaped tool_calls are
+// normalized back into the unified tool_use blocks the agent loop consumes.
+export function fromOAChoice(choice: {
   message?: {
     content?: string | null;
     tool_calls?: OAToolCall[];

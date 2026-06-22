@@ -2,6 +2,11 @@
 
 دليلك لكيفية ومتى تعرض **بطاقات تفاعلية** (نماذج مصغّرة) للمستخدم في منصة AiChart بدل النص الجاف.
 
+## البروتوكول (Card Protocol) — مستقل عن الموديل والمزوّد
+البطاقات في AiChart **بروتوكول أصيل في النظام**، لا ميزة خاصة بموديل واحد. تعمل مع **أي موديل من أي شركة** (OpenAI / Anthropic / Google / OpenRouter) لأنها:
+- **بيانات تصريحية لا كود**: تُرسل كـ `ui_schema = { version: "1.0", layout: UIElement[] }`، و`UIElement = { id, component, props, children? }` — قائمة مسطّحة بمراجع ID تُسقطها الواجهة على مكوّنات أصلية. (نفس فلسفة معيارَي **A2UI** من Google و**AG-UI** من CopilotKit.)
+- **طبقتا ضمان**: (1) أنت تستدعي `render_cards` (يمرّ عبر طبقة أدوات موحّدة تعمل مع كل المزوّدات)؛ (2) وإن لم تفعل، **النظام يولّد البطاقة حتمياً** من نواتج أدواتك (مُركِّب server-side مستقل عن الموديل). فالبطاقة تظهر دائماً عند وجود بيانات.
+
 ## القاعدة الذهبية
 - **أي رد يحتوي بيانات** (تحليل زوج، أسعار، أزواج الحساب، المحفظة، الصفقات، اقتراح دخول) → **اعرضه كبطاقة**، ولا تكتفِ بسرده نصاً.
 - **محادثة عامة / تحية / توضيح بسيط** → نص فقط، بلا بطاقة.
@@ -53,6 +58,57 @@
 - «نظرة على حسابي» → بعد get_account_overview + get_open_trades → render_cards [ account_overview, positions_table ].
 - «أريد دخول بيع على BTCUSDm» → render_cards [ order_ticket ] (قابلة للتعديل) أو [ risk_reward ].
 - «شكراً» / «كيف حالك» → نص فقط، بلا بطاقة.
+
+## توقيع `render_cards`
+```
+render_cards({ layout: UIElement[] })
+UIElement = { id: string, component: string, props: object, children?: UIElement[] }
+```
+مثال كامل:
+```
+render_cards({ "layout": [
+  { "id": "a1", "component": "analysis", "props": { "symbol": "EURUSD", "price": 1.165, "trend": "neutral", "rsi": "41 (محايد)", "macd": "زخم ضعيف", "support": 1.158, "resistance": 1.172, "summary": "السوق عرضي — الأفضل الانتظار." } },
+  { "id": "g1", "component": "rsi_gauge", "props": { "value": 41, "symbol": "EURUSD" } }
+] })
+```
+
+## سجل الإجراءات (Actions) — المسموح فقط داخل أزرار البطاقات
+| action | payload | الأثر |
+|---|---|---|
+| `submit_prompt` | `{ text }` | يرسل `text` كرسالة جديدة للوكيل (لتعديل صفقة/طلب تحليل/تبديل وضع…). |
+| `inject_input` | `{ text }` | يملأ حقل الإدخال بـ`text` دون إرسال. |
+| `execute_trade` | `{ intentId }` | يوافق على نية صفقة معلّقة (يمرّ عبر Risk Guard). |
+| `reject_trade` | `{ intentId }` | يرفض نية صفقة معلّقة. |
+
+## مرجع نداءات الوكيل (API & IDs) — كل ما تحتاجه لجلب البيانات ثم عرضها كبطاقة
+أدوات بيانات (read-only) ونقاط النهاية المقابلة عبر الجسر الداخلي:
+| الأداة (tool id) | النداء | المعاملات | الناتج → البطاقة |
+|---|---|---|---|
+| `get_account_symbols` | `GET /api/agent/ea/symbols` | `q?`, `market?` (forex/crypto), `limit?` | `{ symbols[] }` → `pair_browser` |
+| `get_market_snapshot` | محلي (Binance/EA) | `symbol`, `interval?` | لقطة `{symbol,price,extra{trend,rsi14,macd},high24h,low24h,summary}` → `analysis` |
+| `get_multi_timeframe_snapshot` | `GET /api/agent/market/multi-snapshot` | `symbol`, `intervals?`, `market?` | `{ snapshots[] }` → `analysis` + `mtf_grid` |
+| `get_account_overview` | `GET /api/agent/{risk/status, portfolio, live/account}` | `include_live?` | `{ risk, portfolio, live }` → `account_overview` |
+| `get_open_trades` | `GET /api/agent/trades/open` | — | `{ aichartTrades[], brokerPositions }` → `positions_table` |
+| `get_risk_status` | `GET /api/agent/risk/status` | — | حالة المخاطر → `stat_grid`/`alert_banner` |
+| `get_trade_readiness` | `GET /api/agent/trade/readiness` | `symbol?`, `market?`, `confidence?` | `{ ready, blockers[] }` → `alert_banner` |
+| `scan_market` | `POST /api/agent/market/scan` | معايير المسح | فرص → `table`/`heatmap` |
+| `get_scalp_status` | `GET /api/agent/scalp` | — | إذن/حالة السكالب |
+
+أدوات تنفيذ/تحكّم (تمرّ عبر Risk Guard — لا تُكسر):
+| الأداة | النداء | ملاحظة |
+|---|---|---|
+| `open_trade` | `POST /api/agent/trade/open` | في وضع موافقة يُنشئ نية معلّقة → بطاقة موافقة. |
+| `close_trade` | `POST /api/agent/trade/close` | إغلاق صفقة/الكل. |
+| `modify_sl_tp` | `POST /api/agent/ea/modify-sl-tp` | تعديل وقف/هدف. |
+| `request_approval` | `POST /api/agent/approval/request` | يُنشئ نية معلّقة + بطاقة موافقة. |
+| `set_trading_mode` | `POST /api/agent/mode` | تلقائي/موافقة/مباشر. |
+| `set_active_market` | `PATCH /api/agent/settings` | كريبتو/فوركس. |
+| `set_trading_style` | `POST /api/agent/style` | scalp/day/swing/position. |
+| `start_scalp_session` / `stop_scalp_session` | `POST /api/agent/scalp` | بدء/إيقاف جلسة سكالب. |
+| `render_cards` | محلي (عرض) | عرض البطاقات (لا نداء شبكة). |
+| `get_cards_guide` | محلي | يقرأ هذه المهارة. |
+
+> نمط الاستخدام: استدعِ أداة البيانات → استدعِ `render_cards` بالبطاقة المناسبة من نفس الناتج (أو دع المُركِّب الحتمي يفعلها). كل النداءات مُصادَق عليها بهوية المستخدم تلقائياً عبر الجسر — لا تمرّر مفاتيح.
 
 ## القيود الأمنية
 - أزرار البطاقات تستخدم الإجراءات المعتمدة فقط: `submit_prompt` · `inject_input` · `execute_trade` · `reject_trade`. أي تعديل أرقام (حجم/وقف/هدف) يمرّ عبر submit_prompt فيبقى التنفيذ خلف Risk Guard.
