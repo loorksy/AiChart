@@ -80,9 +80,9 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    can_execute         BOOLEAN NOT NULL DEFAULT FALSE,
+    can_execute         BOOLEAN NOT NULL DEFAULT TRUE,
     max_capital_cap     DOUBLE PRECISION NOT NULL DEFAULT 0,
-    max_open_trades_cap INTEGER NOT NULL DEFAULT 1,
+    max_open_trades_cap INTEGER NOT NULL DEFAULT 0,
     claude_quota        INTEGER NOT NULL DEFAULT 1000,
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );

@@ -84,9 +84,9 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY,
-    can_execute         INTEGER NOT NULL DEFAULT 0,
+    can_execute         INTEGER NOT NULL DEFAULT 1,
     max_capital_cap     REAL NOT NULL DEFAULT 0,
-    max_open_trades_cap INTEGER NOT NULL DEFAULT 1,
+    max_open_trades_cap INTEGER NOT NULL DEFAULT 0,
     claude_quota        INTEGER NOT NULL DEFAULT 1000,
     updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

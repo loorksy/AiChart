@@ -73,7 +73,12 @@ export function evaluateTrade(
       ? Math.min(settings.max_capital, limits.max_capital_cap)
       : settings.max_capital;
   const perTradeMax = (effectiveCapital * settings.per_trade_pct) / 100;
-  const maxOpen = Math.min(settings.max_open_trades, limits.max_open_trades_cap);
+  // Admin cap of 0 (or less) = UNLIMITED → the user's own setting governs the
+  // open-trade count. Admins may still set a positive cap to restrict a user.
+  const maxOpen =
+    limits.max_open_trades_cap > 0
+      ? Math.min(settings.max_open_trades, limits.max_open_trades_cap)
+      : settings.max_open_trades;
 
   const deny = (
     reason: string,
@@ -90,7 +95,8 @@ export function evaluateTrade(
     return deny("التداول موقوف على مستوى المنصة (إيقاف طارئ من الإدارة).");
   if (settings.kill_switch === 1)
     return deny("الإيقاف الطارئ مفعّل في حسابك.");
-  if (limits.can_execute !== 1)
+  // Tolerant of SQLite (0/1) and Postgres (boolean) representations.
+  if (!limits.can_execute)
     return deny("التنفيذ التلقائي غير مصرّح به من الإدارة.");
   const relaxed =
     ctx.practiceMode === true || ctx.resolvedEnv === "demo";
