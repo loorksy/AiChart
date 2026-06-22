@@ -27,7 +27,7 @@ import {
 import { getEaConnection, isHeartbeatFresh } from "./eaStore";
 import { deriveDynamicStops } from "./dynamicStops";
 import { deriveDynamicNotional } from "./dynamicSizing";
-import { evalScalpStop } from "./scalpGuards";
+import { evalScalpStop, resolvePracticeMode } from "./scalpGuards";
 import type { MarketType } from "./markets/types";
 import type { ScalpSession, TradingSettings } from "./types";
 
@@ -154,8 +154,10 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
       const market = (session.market ?? settings.active_market ?? "crypto") as MarketType;
       const side = decision.side;
       const confidence = Math.max(0, Math.min(100, decision.confidence ?? 60));
-      const practiceMode =
-        session.execution_mode !== "live" || !scalpLiveEnabled();
+      const practiceMode = resolvePracticeMode(
+        session.execution_mode,
+        scalpLiveEnabled(),
+      );
       const entry = decision.entry && decision.entry > 0 ? decision.entry : 0;
 
       let stopLoss = decision.stop_loss ?? null;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { evalScalpStop } from "@/lib/scalpGuards";
+import { evalScalpStop, resolvePracticeMode } from "@/lib/scalpGuards";
 
 const base = {
   masterKill: false,
@@ -59,5 +59,14 @@ describe("evalScalpStop — autonomous scalp auto-stop guards", () => {
       evalScalpStop({ ...base, dailyLossLimitPct: 0, todayPnlPct: -50 }),
       null,
     );
+  });
+});
+
+describe("resolvePracticeMode — live double-gate (money safety)", () => {
+  it("real execution ONLY when session live AND master switch on", () => {
+    assert.equal(resolvePracticeMode("live", true), false); // real
+    assert.equal(resolvePracticeMode("live", false), true); // paper (master off)
+    assert.equal(resolvePracticeMode("paper", true), true); // paper (session paper)
+    assert.equal(resolvePracticeMode("paper", false), true); // paper
   });
 });

@@ -1052,6 +1052,98 @@ export function TradeConfirm({
 }
 
 /* ============================================================
+   scalp_trade — تصوّر صفقة سكالب منفّذة (دخول/وقف/هدف/اتجاه/حالة)
+   ============================================================ */
+export function ScalpTrade({
+  symbol = "",
+  side = "buy",
+  entry = 0,
+  stop_loss = 0,
+  take_profit = 0,
+  status = "open",
+  confidence,
+  mode = "paper",
+  rationale,
+}: {
+  symbol?: string;
+  side?: string;
+  entry?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  status?: string;
+  confidence?: number;
+  mode?: string;
+  rationale?: string;
+}) {
+  const sell = isSell(side);
+  const e = Number(entry) || 0;
+  const sl = Number(stop_loss) || 0;
+  const tp = Number(take_profit) || 0;
+  // Vertical price ladder: map prices to y within [lo,hi].
+  const vals = [e, sl, tp].filter((v) => v > 0);
+  const hi = vals.length ? Math.max(...vals) : 1;
+  const lo = vals.length ? Math.min(...vals) : 0;
+  const span = hi - lo || 1;
+  const y = (v: number) => 8 + (1 - (v - lo) / span) * 84; // 8..92
+  const statusAr =
+    status === "open" ? "مفتوحة" :
+    status === "executed" ? "نُفّذت" :
+    status === "closed" ? "مغلقة" :
+    status === "failed" ? "فشلت" : status;
+  const accent = sell ? "rose" : "emerald";
+
+  return (
+    <div dir="rtl" className={cn("relative mt-3 overflow-hidden rounded-2xl border bg-card/50 p-4 shadow-lg backdrop-blur-md", sell ? "border-rose-500/25" : "border-emerald-500/25")}>
+      <div className={cn("pointer-events-none absolute -left-16 -top-16 h-32 w-32 rounded-full opacity-[0.12] blur-[60px]", sell ? "bg-rose-500" : "bg-emerald-500")} />
+      <div className="flex items-center justify-between border-b border-border/60 pb-3">
+        <div className="flex items-center gap-2">
+          {sell ? <TrendingDown className="h-4 w-4 text-rose-400" /> : <TrendingUp className="h-4 w-4 text-emerald-400" />}
+          <span className="text-sm font-bold" dir="ltr">{symbol}</span>
+          <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-bold", sell ? "bg-rose-500/15 text-rose-400 border-rose-500/30" : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30")}>
+            {sideLabel(side)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground">{mode === "live" ? "حقيقي" : "تجريبي"}</span>
+          <span className="rounded-md bg-muted px-1.5 py-0.5 text-foreground">{statusAr}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex gap-4">
+        {/* SVG price ladder */}
+        <svg viewBox="0 0 60 100" className="h-28 w-14 shrink-0">
+          <line x1="30" y1="6" x2="30" y2="94" stroke="currentColor" className="text-border" strokeWidth="1" />
+          {tp > 0 && <g><line x1="14" y1={y(tp)} x2="46" y2={y(tp)} stroke="currentColor" className="text-emerald-400" strokeWidth="2" /><circle cx="30" cy={y(tp)} r="2.5" className="fill-emerald-400" /></g>}
+          {e > 0 && <g><line x1="16" y1={y(e)} x2="44" y2={y(e)} stroke="currentColor" className="text-foreground" strokeWidth="2" strokeDasharray="3 2" /><circle cx="30" cy={y(e)} r="2.5" className="fill-foreground" /></g>}
+          {sl > 0 && <g><line x1="14" y1={y(sl)} x2="46" y2={y(sl)} stroke="currentColor" className="text-rose-400" strokeWidth="2" /><circle cx="30" cy={y(sl)} r="2.5" className="fill-rose-400" /></g>}
+        </svg>
+        <div className="flex-1 space-y-1.5 text-xs">
+          <Level icon={<Target className="h-3 w-3" />} label="هدف" value={tp || null} tone="text-emerald-400" />
+          <Level icon={<TrendingUp className="h-3 w-3" />} label="دخول" value={e || null} tone="text-foreground" />
+          <Level icon={<ShieldX className="h-3 w-3" />} label="وقف" value={sl || null} tone="text-rose-400" />
+          {confidence != null && (
+            <div className="pt-1">
+              <div className="mb-0.5 flex justify-between text-[10px] text-muted-foreground"><span>الثقة</span><span className="text-foreground">{confidence}%</span></div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className={cn("h-full rounded-full", `bg-${accent}-500`)} style={{ width: `${Math.max(0, Math.min(100, confidence))}%` }} /></div>
+            </div>
+          )}
+        </div>
+      </div>
+      {rationale && <p className="mt-3 rounded-xl border border-border/50 bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">{rationale}</p>}
+    </div>
+  );
+}
+
+function Level({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: number | null; tone: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/40 px-2 py-1">
+      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">{icon}{label}</span>
+      <span className={cn("text-xs font-bold tabular-nums", tone)} dir="ltr">{value != null ? value : "—"}</span>
+    </div>
+  );
+}
+
+/* ============================================================
    خريطة التصدير
    ============================================================ */
 export const TRADE_WIDGETS = {
@@ -1063,4 +1155,5 @@ export const TRADE_WIDGETS = {
   risk_reward: RiskReward,
   bracket_order: BracketOrder,
   trade_confirm: TradeConfirm,
+  scalp_trade: ScalpTrade,
 };

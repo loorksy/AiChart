@@ -14,6 +14,18 @@ export interface ScalpStopInputs {
   brokerConnected: boolean;
 }
 
+/**
+ * Double-gate for live execution: a scalp entry runs for REAL only when BOTH the
+ * session's chosen mode is "live" AND the platform master switch is enabled.
+ * Anything else → practiceMode (paper). This is the money safety gate.
+ */
+export function resolvePracticeMode(
+  executionMode: string,
+  liveEnabled: boolean,
+): boolean {
+  return executionMode !== "live" || !liveEnabled;
+}
+
 /** Returns an auto-stop reason or null. Priority order matters. */
 export function evalScalpStop(inputs: ScalpStopInputs): string | null {
   if (inputs.masterKill) return "master_kill";
