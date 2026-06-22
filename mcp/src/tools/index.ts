@@ -30,6 +30,13 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
       file: "skills/trading-strategies/SKILL.md",
     },
     {
+      id: "cards",
+      uri: "aichart://cards",
+      title: "AiChart Interactive Cards Skill",
+      description: "متى وكيف تعرض البطاقات التفاعلية (نماذج مصغّرة) وكتالوجها الكامل",
+      file: "skills/cards/SKILL.md",
+    },
+    {
       id: "ea-troubleshooting",
       uri: "aichart://ea-troubleshooting",
       title: "AiChart EA Troubleshooting",

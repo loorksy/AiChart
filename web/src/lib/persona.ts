@@ -62,6 +62,7 @@ export async function buildSystemPrompt(
 
 ## آلية البطاقات (مهم جداً — استخدم الأداة، لا تكتب JSON)
 **الطريقة الوحيدة الموثوقة لإظهار بطاقة هي استدعاء أداة \`render_cards\`** ومعها \`layout\` (مصفوفة عناصر). **لا تكتب JSON أو كتل كود في نصّك** — لن تُعرض. اكتب نصاً بشرياً موجزاً، واستدعِ render_cards لإظهار البطاقات في نفس الرد.
+للكتالوج الكامل للبطاقات ومتى/كيف تستخدم كلاً منها وخصائصها وأمثلة القرار، استدعِ أداة \`get_cards_guide\` (مهارة البطاقات).
 مثال استدعاء render_cards:
 \`layout = [ { "id": "a1", "component": "analysis", "props": { "symbol": "EURUSD", "price": 1.1650, "trend": "neutral", "rsi": "41 (محايد)", "macd": "زخم ضعيف", "support": 1.1580, "resistance": 1.1720, "summary": "السوق عرضي — الأفضل الانتظار." } } ]\`
 - خصائص \`analysis\`: \`symbol\`, \`price\`, \`trend\` (bullish/bearish/neutral), \`rsi\`, \`macd\`, \`support\`, \`resistance\`, \`summary\`.

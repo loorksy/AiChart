@@ -5,6 +5,8 @@ import {
   type Message,
   type ToolDef,
 } from "./llm";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "./persona";
 import { buildUserContext, displayNameFromEmail } from "./userContext";
 import {
@@ -266,6 +268,12 @@ const TOOLS: ToolDef[] = [
         limit: { type: "number" },
       },
     },
+  },
+  {
+    name: "get_cards_guide",
+    description:
+      "اقرأ مهارة البطاقات: متى وكيف تستخدم كل بطاقة + الكتالوج الكامل بالخصائص وأمثلة القرار. استدعها قبل تركيب render_cards إذا احتجت تذكّر المكوّن أو خصائصه. read-only.",
+    input_schema: { type: "object", properties: {} },
   },
   {
     name: "render_cards",
@@ -708,6 +716,28 @@ async function forwardBridge(
   }
 }
 
+let cardsSkillCache: string | null = null;
+/** Reads the interactive-cards skill (single source of truth) for the agent. */
+function readCardsSkill(): string {
+  if (cardsSkillCache) return cardsSkillCache;
+  const candidates = [
+    join(process.cwd(), "..", "agent", "workspace", "skills", "cards", "SKILL.md"),
+    join(process.cwd(), "agent", "workspace", "skills", "cards", "SKILL.md"),
+  ];
+  for (const p of candidates) {
+    try {
+      const text = readFileSync(p, "utf8");
+      if (text) {
+        cardsSkillCache = text;
+        return text;
+      }
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return "مهارة البطاقات غير متاحة حالياً. استخدم render_cards بمكوّنات: analysis, pair_browser, order_ticket, account_overview, positions_table.";
+}
+
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
@@ -721,6 +751,9 @@ async function executeTool(
       return await forwardBridge(ctx.userId, name, input);
     }
     switch (name) {
+      case "get_cards_guide": {
+        return { content: readCardsSkill() };
+      }
       case "render_cards": {
         const layout = input.layout;
         if (!Array.isArray(layout) || layout.length === 0) {

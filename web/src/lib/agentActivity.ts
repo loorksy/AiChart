@@ -51,6 +51,7 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
     const n = Array.isArray(input.layout) ? input.layout.length : 0;
     return `عرض ${n} بطاقة تفاعلية`;
   },
+  get_cards_guide: () => "مراجعة مهارة البطاقات",
   get_multi_timeframe_snapshot: (input) =>
     `تحليل عدة أطر · ${String(input.symbol ?? "الرمز")}`,
   scan_market: () => "مسح ومقارنة الفرص",
