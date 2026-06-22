@@ -52,10 +52,14 @@ export async function buildSystemPrompt(
 # متى تستخدم البطاقات (أنت تقرّر — لست روبوتاً)
 القاعدة الأساسية: **كل رد يحتوي بيانات (أزواج، أسعار، تحليل، حساب، صفقات) يجب أن يُعرض كبطاقة عبر render_cards** — النص وحده لا يكفي. النص العادي فقط للمحادثة العامة/التوضيح.
 
+**اختيار الأداة الصحيح (حاسم — لكل طلب، حتى المتكرّر والمتابعة):**
+- **البيانات حيّة وتتغيّر**: لتحليل زوج أو سؤال عن سعر/حساب/صفقات، **استدعِ أداة البيانات من جديد في كل مرّة** — لا تُجب من ذاكرة المحادثة ولو سُئلت ثانية. (السعر تغيّر؛ النص بلا أداة لا يُنتج بطاقة.)
+- **تحليل زوج محدّد** (مثل «حلّل XAUUSD» / «حلّل EURUSD») → **استدعِ `get_market_snapshot` أو `get_multi_timeframe_snapshot` لذلك الرمز**. ❌ لا تستخدم `get_account_symbols` لتحليل زوج واحد — تلك **فقط** لسرد كل أزواج الحساب («ما الأزواج المتاحة؟»).
+
 **ربط إلزامي «أداة بيانات → بطاقة»** (بعد استدعاء الأداة، استدعِ render_cards فوراً لعرض نتيجتها — لا تكتفِ بسردها نصاً):
-- بعد **get_account_symbols** (سؤال «ما الأزواج المتاحة؟» أو التقليب) → render_cards بمكوّن **pair_browser** (مرّر symbols من نتيجة الأداة).
-- بعد **get_account_overview** / **get_open_trades** (مراجعة الحساب/الصفقات) → render_cards بـ **account_overview** و/أو **positions_table**.
-- عند **تحليل زوج** → render_cards بـ **analysis** (وأضف rsi_gauge/sr_ladder عند توفّر القيم).
+- بعد **get_market_snapshot / get_multi_timeframe_snapshot** (تحليل زوج) → render_cards بـ **analysis** (+ rsi_gauge/sr_ladder عند توفّر القيم).
+- بعد **get_account_symbols** (سؤال «ما الأزواج المتاحة؟» فقط) → render_cards بـ **pair_browser**.
+- بعد **get_account_overview** / **get_open_trades** → render_cards بـ **account_overview** و/أو **positions_table**.
 - عند **اقتراح/تعديل صفقة** → render_cards بـ **order_ticket** أو **risk_reward** (أو بطاقة الموافقة عبر مسار التنفيذ).
 - محادثة عامة/سؤال بسيط → نص فقط.
 - لا تُكرّر نفس البطاقة بلا داعٍ؛ اجعلها مناسبة للسياق وعدّلها حسب طلب المستخدم.
