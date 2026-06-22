@@ -1,4 +1,5 @@
 import { withBridge } from "@/lib/bridge";
+import { resolveMaxOpenTrades } from "@/lib/riskLimits";
 import { buildAccountProfile } from "@/lib/accountProfile";
 import { getExecutionEnvSnapshot } from "@/lib/executionEnv";
 import {
@@ -38,7 +39,7 @@ export const GET = withBridge(async ({ userId }) => {
     capital: {
       effectiveCapital,
       perTradeMaxUsd: (effectiveCapital * settings.per_trade_pct) / 100,
-      maxOpenTrades: Math.min(
+      maxOpenTrades: resolveMaxOpenTrades(
         settings.max_open_trades,
         limits.max_open_trades_cap,
       ),

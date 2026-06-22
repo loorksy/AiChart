@@ -16,7 +16,9 @@ const schema = z.object({
   renew: z.boolean().optional(),
   can_execute: z.boolean().optional(),
   max_capital_cap: z.number().min(0).optional(),
-  max_open_trades_cap: z.number().int().min(1).max(50).optional(),
+  // 0 = UNLIMITED (the user's own max_open_trades governs); a positive value
+  // is a hard ceiling that can only lower the user's setting.
+  max_open_trades_cap: z.number().int().min(0).max(1_000_000).optional(),
   claude_quota: z.number().int().min(0).optional(),
   max_leverage_cap: z.number().min(1).max(125).optional(),
 });

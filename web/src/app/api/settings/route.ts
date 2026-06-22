@@ -8,6 +8,7 @@ import {
   setWatchlist,
 } from "@/lib/allowedAssets";
 import { normalizeInterval } from "@/lib/intervals";
+import { resolveMaxOpenTrades } from "@/lib/riskLimits";
 
 const assetList = z.array(z.string().max(20)).max(200);
 
@@ -19,7 +20,7 @@ const schema = z
     style: z.enum(["conservative", "balanced", "aggressive"]),
     max_capital: z.number().min(0),
     per_trade_pct: z.number().min(0.1).max(100),
-    max_open_trades: z.number().int().min(1).max(50),
+    max_open_trades: z.number().int().min(1).max(1_000_000),
     daily_profit_target_pct: z.number().min(0).max(1000),
     daily_profit_target_usd: z.number().min(0).max(1_000_000),
     daily_loss_limit_pct: z.number().min(0).max(100),
@@ -77,7 +78,9 @@ export async function PUT(req: NextRequest) {
       patch.max_capital = cap > 0 ? Math.min(input.max_capital, cap) : input.max_capital;
     }
     if (typeof input.max_open_trades === "number") {
-      patch.max_open_trades = Math.min(
+      // Clamp to the admin ceiling, but cap=0 means UNLIMITED — keep the user's
+      // value as-is instead of collapsing it to 0 (which blocked all trades).
+      patch.max_open_trades = resolveMaxOpenTrades(
         input.max_open_trades,
         limits.max_open_trades_cap,
       );

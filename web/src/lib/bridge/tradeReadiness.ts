@@ -22,6 +22,7 @@ import {
   type ExecutionEnv,
 } from "@/lib/executionEnv";
 import { spreadFromBidAsk } from "@/lib/spread";
+import { resolveMaxOpenTrades } from "@/lib/riskLimits";
 import type { MarketType } from "@/lib/markets/types";
 import type { TradingSettings } from "@/lib/types";
 import { BridgeErrorCode } from "./errors";
@@ -355,7 +356,10 @@ export async function buildTradeReadiness(
     limits.max_capital_cap > 0
       ? Math.min(settings.max_capital, limits.max_capital_cap)
       : settings.max_capital;
-  const maxOpen = Math.min(settings.max_open_trades, limits.max_open_trades_cap);
+  const maxOpen = resolveMaxOpenTrades(
+    settings.max_open_trades,
+    limits.max_open_trades_cap,
+  );
   const openCount = await countOpenTrades(userId);
   const todayPnlPct = await todayRealizedPnlPct(userId, effectiveCapital);
   const monthPnlPct = await monthRealizedPnlPct(userId, effectiveCapital);

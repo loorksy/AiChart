@@ -1,5 +1,6 @@
 import { isSymbolAllowed } from "./allowedAssets";
 import { BridgeErrorCode } from "./bridge/errors";
+import { resolveMaxOpenTrades } from "./riskLimits";
 import type { ExecutionEnv } from "./executionEnv";
 import type { MarketType } from "./markets/types";
 import type { AdminLimits, TradingSettings } from "./types";
@@ -73,12 +74,10 @@ export function evaluateTrade(
       ? Math.min(settings.max_capital, limits.max_capital_cap)
       : settings.max_capital;
   const perTradeMax = (effectiveCapital * settings.per_trade_pct) / 100;
-  // Admin cap of 0 (or less) = UNLIMITED → the user's own setting governs the
-  // open-trade count. Admins may still set a positive cap to restrict a user.
-  const maxOpen =
-    limits.max_open_trades_cap > 0
-      ? Math.min(settings.max_open_trades, limits.max_open_trades_cap)
-      : settings.max_open_trades;
+  const maxOpen = resolveMaxOpenTrades(
+    settings.max_open_trades,
+    limits.max_open_trades_cap,
+  );
 
   const deny = (
     reason: string,

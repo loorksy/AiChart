@@ -618,7 +618,7 @@ export async function listUsersForAdmin(): Promise<AdminUserView[]> {
               WHERE bx.user_id = u.id ORDER BY bx.updated_at DESC LIMIT 1) AS binance_env,
             COALESCE(a.can_execute, FALSE) AS can_execute,
             COALESCE(a.max_capital_cap, 0) AS max_capital_cap,
-            COALESCE(a.max_open_trades_cap, 1) AS max_open_trades_cap,
+            COALESCE(a.max_open_trades_cap, 0) AS max_open_trades_cap,
             COALESCE(a.claude_quota, 1000) AS claude_quota
      FROM users u
      LEFT JOIN admin_limits a ON a.user_id = u.id
