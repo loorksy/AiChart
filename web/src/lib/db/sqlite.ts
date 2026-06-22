@@ -65,12 +65,18 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS scalp_sessions (
     user_id        INTEGER PRIMARY KEY,
     active          INTEGER NOT NULL DEFAULT 0,
+    status          TEXT NOT NULL DEFAULT 'stopped',
     symbol          TEXT NOT NULL DEFAULT '',
     market          TEXT NOT NULL DEFAULT 'crypto',
     interval        TEXT NOT NULL DEFAULT '1m',
     max_trades      INTEGER NOT NULL DEFAULT 0,
     executed_count  INTEGER NOT NULL DEFAULT 0,
     notional        REAL NOT NULL DEFAULT 0,
+    execution_mode  TEXT NOT NULL DEFAULT 'paper',
+    session_pnl     REAL NOT NULL DEFAULT 0,
+    day_key         TEXT,
+    daily_trade_count INTEGER NOT NULL DEFAULT 0,
+    stop_reason     TEXT,
     started_at      TEXT,
     updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -479,6 +485,27 @@ function migrate(db: Database.Database) {
   if (!binCols.some((c) => c.name === "region")) {
     db.exec(
       "ALTER TABLE binance_accounts ADD COLUMN region TEXT NOT NULL DEFAULT 'global'",
+    );
+  }
+
+  const scalpCols = db
+    .prepare("PRAGMA table_info(scalp_sessions)")
+    .all() as { name: string }[];
+  const addScalpCol = (name: string, ddl: string) => {
+    if (!scalpCols.some((c) => c.name === name)) {
+      db.exec(`ALTER TABLE scalp_sessions ADD COLUMN ${ddl}`);
+    }
+  };
+  addScalpCol("status", "status TEXT NOT NULL DEFAULT 'stopped'");
+  addScalpCol("execution_mode", "execution_mode TEXT NOT NULL DEFAULT 'paper'");
+  addScalpCol("session_pnl", "session_pnl REAL NOT NULL DEFAULT 0");
+  addScalpCol("day_key", "day_key TEXT");
+  addScalpCol("daily_trade_count", "daily_trade_count INTEGER NOT NULL DEFAULT 0");
+  addScalpCol("stop_reason", "stop_reason TEXT");
+  // Backfill status from the legacy `active` flag.
+  if (!scalpCols.some((c) => c.name === "status")) {
+    db.exec(
+      "UPDATE scalp_sessions SET status = CASE WHEN active = 1 THEN 'active' ELSE 'stopped' END",
     );
   }
 

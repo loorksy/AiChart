@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
       interval,
       maxTrades,
       notional,
+      executionMode: settings.scalp_execution_mode === "live" ? "live" : "paper",
     });
     await logAudit(
       userId,

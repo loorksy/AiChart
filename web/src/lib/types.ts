@@ -72,10 +72,14 @@ export const STYLE_DEFAULT_INTERVAL: Record<TradingStyle, string> = {
 };
 
 /** Active scalp session state (consumed by the scalp worker). */
+export type ScalpStatus = "active" | "paused" | "stopped";
+
 export interface ScalpSession {
   user_id: number;
-  /** 1 = running, 0 = stopped. */
+  /** 1 = running, 0 = not running. Kept in sync with status for legacy reads. */
   active: number;
+  /** Lifecycle state for the autonomous session loop. */
+  status: ScalpStatus;
   symbol: string;
   market: MarketType;
   interval: string;
@@ -84,6 +88,16 @@ export interface ScalpSession {
   executed_count: number;
   /** Per-trade notional for entries. */
   notional: number;
+  /** paper = record decisions only; live = real execution via Risk Guard. */
+  execution_mode: "paper" | "live";
+  /** Realized PnL accrued during this session (USD). */
+  session_pnl: number;
+  /** UTC day key (YYYY-MM-DD) for the daily trade counter. */
+  day_key: string | null;
+  /** Entries executed today (for daily caps). */
+  daily_trade_count: number;
+  /** Why the session auto-stopped (master_kill / daily_limit / cap / broker…). */
+  stop_reason: string | null;
   started_at: string | null;
   updated_at: string;
 }

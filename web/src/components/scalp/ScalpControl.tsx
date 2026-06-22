@@ -1,39 +1,40 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity } from "lucide-react";
+import { Activity, Play, Pause, Square, RotateCw } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
 
-interface ScalpSettings {
-  scalp_enabled: number;
-  scalp_execution_mode: "paper" | "live";
-}
+type ScalpStatus = "active" | "paused" | "stopped";
 
 interface ScalpSession {
-  active: number;
+  status: ScalpStatus;
   symbol: string;
   market: string;
   interval: string;
   max_trades: number;
   executed_count: number;
+  execution_mode: "paper" | "live";
+  session_pnl: number;
+  stop_reason: string | null;
 }
 
-interface ScalpStatus {
+interface ScalpStatusResp {
   session: ScalpSession | null;
   scalp_enabled: number;
   scalp_execution_mode: "paper" | "live";
 }
 
 /**
- * User dashboard card — controls the agent's *permission* to use scalp mode.
- * The agent starts/stops the actual session during conversation (not here).
+ * User dashboard — controls the autonomous scalp session:
+ * permission (enable + paper/live) and lifecycle (start/pause/resume/stop).
  */
 export function ScalpControl() {
-  const [status, setStatus] = useState<ScalpStatus | null>(null);
-  const [settings, setSettings] = useState<ScalpSettings>({
+  const [status, setStatus] = useState<ScalpStatusResp | null>(null);
+  const [settings, setSettings] = useState({
     scalp_enabled: 0,
-    scalp_execution_mode: "paper",
+    scalp_execution_mode: "paper" as "paper" | "live",
   });
+  const [maxTrades, setMaxTrades] = useState(5);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
     null,
@@ -43,7 +44,7 @@ export function ScalpControl() {
     try {
       const r = await fetch("/api/scalp", { cache: "no-store" });
       if (r.ok) {
-        const d: ScalpStatus = await r.json();
+        const d: ScalpStatusResp = await r.json();
         setStatus(d);
         setSettings({
           scalp_enabled: d.scalp_enabled,
@@ -57,14 +58,17 @@ export function ScalpControl() {
 
   useEffect(() => { void refresh(); }, []);
 
-  // Poll while agent has an active session to keep executed_count fresh.
+  const session = status?.session ?? null;
+  const sessionStatus: ScalpStatus = session?.status ?? "stopped";
+
+  // Poll while a session is active/paused to keep counts + PnL fresh.
   useEffect(() => {
-    if (!status?.session?.active) return;
+    if (sessionStatus === "stopped") return;
     const id = setInterval(() => void refresh(), 5000);
     return () => clearInterval(id);
-  }, [status?.session?.active]);
+  }, [sessionStatus]);
 
-  async function save() {
+  async function saveSettings() {
     setBusy(true);
     setMsg(null);
     try {
@@ -78,10 +82,36 @@ export function ScalpControl() {
         }),
       });
       const d = await r.json();
+      setMsg(
+        r.ok
+          ? { type: "ok", text: "تم الحفظ." }
+          : { type: "err", text: d.error ?? "تعذّر الحفظ." },
+      );
+      await refresh();
+    } catch {
+      setMsg({ type: "err", text: "خطأ في الاتصال." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sessionAction(
+    action: "start" | "pause" | "resume" | "stop",
+  ) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/scalp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          action === "start" ? { action, max_trades: maxTrades } : { action },
+        ),
+      });
+      const d = await r.json();
       if (!r.ok) {
-        setMsg({ type: "err", text: d.error ?? "تعذّر الحفظ." });
+        setMsg({ type: "err", text: d.error ?? "تعذّر تنفيذ الإجراء." });
       } else {
-        setMsg({ type: "ok", text: "تم الحفظ." });
         await refresh();
       }
     } catch {
@@ -92,32 +122,41 @@ export function ScalpControl() {
   }
 
   const enabled = Boolean(settings.scalp_enabled);
-  const session = status?.session;
-  const agentRunning = Boolean(session?.active);
+  const statusLabel =
+    sessionStatus === "active"
+      ? "نشطة"
+      : sessionStatus === "paused"
+        ? "موقوفة مؤقتاً"
+        : "متوقفة";
+  const statusColor =
+    sessionStatus === "active"
+      ? "bg-emerald-500/15 text-emerald-500"
+      : sessionStatus === "paused"
+        ? "bg-amber-500/15 text-amber-500"
+        : "bg-muted text-muted-foreground";
 
   return (
     <SurfaceCard>
       <div className="flex items-center justify-between">
         <h2 className="flex items-center gap-2 font-semibold">
           <Activity className="h-4 w-4" />
-          وضع السكالب
+          جلسة السكالب الذاتية
         </h2>
-        {agentRunning && (
-          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-500">
-            الوكيل يعمل
-          </span>
-        )}
+        <span className={`rounded-full px-2 py-0.5 text-xs ${statusColor}`}>
+          {statusLabel}
+        </span>
       </div>
 
       <p className="mt-1 text-sm text-muted-foreground">
-        عند التفعيل يمكن للوكيل استخدام وضع السكالب أثناء المحادثة. هو من يسألك عن الرمز المستهدف.
+        عند التشغيل يبحث الوكيل تلقائياً عن الفرص وينفّذ ضمن حدود إدارة المخاطر —
+        دون موافقة لكل صفقة. يتوقّف تلقائياً عند بلوغ الحدود أو انقطاع الوسيط.
       </p>
 
-      <div className="mt-4 space-y-4">
-        {/* Enable / disable toggle */}
+      {/* Permission settings */}
+      <div className="mt-4 space-y-3 border-b border-border pb-4">
         <label className="flex cursor-pointer items-center justify-between">
           <span className="text-sm font-medium">
-            {enabled ? "السكالب مفعّل — الوكيل مسموح له باستخدامه" : "السكالب معطّل"}
+            {enabled ? "السكالب مسموح" : "السكالب معطّل"}
           </span>
           <button
             type="button"
@@ -138,7 +177,6 @@ export function ScalpControl() {
           </button>
         </label>
 
-        {/* Execution mode dropdown */}
         <label className="block text-sm">
           <span className="font-medium">وضع التنفيذ</span>
           <select
@@ -151,38 +189,113 @@ export function ScalpControl() {
             }
             className="input mt-1 w-full"
           >
-            <option value="paper">تجريبي (paper) — يسجّل القرارات بلا صفقات حقيقية</option>
+            <option value="paper">تجريبي (paper) — قرارات بلا صفقات حقيقية</option>
             <option value="live">حقيقي (live) — ينفّذ صفقات فعلية</option>
           </select>
-          {settings.scalp_execution_mode === "live" && (
-            <p className="mt-1 text-xs text-amber-500">
-              ⚠️ الوضع الحقيقي ينفّذ صفقات بأموال فعلية — تأكّد من الإعدادات.
-            </p>
-          )}
         </label>
 
         <button
-          onClick={() => void save()}
+          onClick={() => void saveSettings()}
           disabled={busy}
           className="btn btn-primary text-sm"
         >
-          {busy ? "جاري الحفظ…" : "حفظ"}
+          {busy ? "…" : "حفظ الإعدادات"}
         </button>
       </div>
 
-      {/* Agent session status (read-only — agent manages this) */}
-      {agentRunning && session && (
-        <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
-          <p className="text-xs font-medium text-muted-foreground">جلسة الوكيل الحالية</p>
-          <p className="mt-1 text-sm">
-            <span className="font-semibold">{session.symbol}</span> ·{" "}
-            {session.interval} · {session.market}
+      {/* Session lifecycle controls */}
+      <div className="mt-4 space-y-3">
+        {sessionStatus === "stopped" && (
+          <>
+            <label className="block text-sm">
+              <span className="font-medium">سقف صفقات الجلسة</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={maxTrades}
+                onChange={(e) => setMaxTrades(Number(e.target.value) || 1)}
+                className="input mt-1 w-full"
+              />
+            </label>
+            <button
+              onClick={() => void sessionAction("start")}
+              disabled={busy || !enabled}
+              className="btn btn-primary flex w-full items-center justify-center gap-2 text-sm"
+            >
+              <Play className="h-4 w-4" /> بدء الجلسة
+            </button>
+            {!enabled && (
+              <p className="text-xs text-amber-500">فعّل السكالب أولاً للبدء.</p>
+            )}
+          </>
+        )}
+
+        {sessionStatus !== "stopped" && session && (
+          <>
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">الوضع</span>
+                <span className="font-medium">
+                  {session.execution_mode === "live" ? "حقيقي" : "تجريبي"} ·{" "}
+                  {session.market}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">صفقات منفّذة</span>
+                <span className="font-medium">
+                  {session.executed_count} / {session.max_trades}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ربح/خسارة الجلسة</span>
+                <span
+                  className={`font-semibold ${
+                    session.session_pnl >= 0 ? "text-emerald-500" : "text-rose-500"
+                  }`}
+                  dir="ltr"
+                >
+                  {session.session_pnl >= 0 ? "+" : ""}
+                  {session.session_pnl.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              {sessionStatus === "active" ? (
+                <button
+                  onClick={() => void sessionAction("pause")}
+                  disabled={busy}
+                  className="btn btn-secondary flex flex-1 items-center justify-center gap-2 text-sm"
+                >
+                  <Pause className="h-4 w-4" /> إيقاف مؤقت
+                </button>
+              ) : (
+                <button
+                  onClick={() => void sessionAction("resume")}
+                  disabled={busy}
+                  className="btn btn-primary flex flex-1 items-center justify-center gap-2 text-sm"
+                >
+                  <RotateCw className="h-4 w-4" /> استئناف
+                </button>
+              )}
+              <button
+                onClick={() => void sessionAction("stop")}
+                disabled={busy}
+                className="btn btn-danger flex flex-1 items-center justify-center gap-2 text-sm"
+              >
+                <Square className="h-4 w-4" /> إيقاف
+              </button>
+            </div>
+          </>
+        )}
+
+        {session?.stop_reason && sessionStatus === "stopped" && (
+          <p className="text-xs text-muted-foreground">
+            آخر إيقاف: {session.stop_reason}
           </p>
-          <p className="text-sm text-muted-foreground">
-            صفقات منفّذة: {session.executed_count} / {session.max_trades}
-          </p>
-        </div>
-      )}
+        )}
+      </div>
 
       {msg && (
         <p

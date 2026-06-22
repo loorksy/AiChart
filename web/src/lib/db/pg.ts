@@ -62,12 +62,18 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS scalp_sessions (
     user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     active         INTEGER NOT NULL DEFAULT 0,
+    status         TEXT NOT NULL DEFAULT 'stopped',
     symbol         TEXT NOT NULL DEFAULT '',
     market         TEXT NOT NULL DEFAULT 'crypto',
     interval       TEXT NOT NULL DEFAULT '1m',
     max_trades     INTEGER NOT NULL DEFAULT 0,
     executed_count INTEGER NOT NULL DEFAULT 0,
     notional       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    execution_mode TEXT NOT NULL DEFAULT 'paper',
+    session_pnl    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    day_key        TEXT,
+    daily_trade_count INTEGER NOT NULL DEFAULT 0,
+    stop_reason    TEXT,
     started_at     TIMESTAMPTZ,
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -478,6 +484,22 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {
     /* column may already exist */
   });
+
+  // Autonomous scalp session lifecycle + limits.
+  await client.query(`
+    ALTER TABLE scalp_sessions
+      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'stopped',
+      ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'paper',
+      ADD COLUMN IF NOT EXISTS session_pnl DOUBLE PRECISION NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS day_key TEXT,
+      ADD COLUMN IF NOT EXISTS daily_trade_count INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS stop_reason TEXT
+  `).catch(() => {
+    /* columns may already exist */
+  });
+  await client.query(
+    "UPDATE scalp_sessions SET status = CASE WHEN active = 1 THEN 'active' ELSE 'stopped' END WHERE status IS NULL OR status = ''",
+  ).catch(() => {});
 
   // Advanced alert preferences on trading_settings.
   await client.query(`
