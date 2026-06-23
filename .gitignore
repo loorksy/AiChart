@@ -1,2 +1,6 @@
 .cursor/mcp.json
 graphify-out/
+
+# Python
+__pycache__/
+*.pyc

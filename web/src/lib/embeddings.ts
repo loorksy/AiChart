@@ -1,3 +1,4 @@
+import { fetchWithTimeout, httpTimeoutMs } from "./externalFetch";
 import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
 
 const OPENAI_API = "https://api.openai.com/v1";
@@ -17,18 +18,22 @@ export async function createEmbedding(text: string): Promise<number[]> {
     );
   }
 
-  const res = await fetch(`${OPENAI_API}/embeddings`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
+  const res = await fetchWithTimeout(
+    `${OPENAI_API}/embeddings`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: DEFAULT_EMBED_MODEL,
+        input: text.slice(0, 8000),
+      }),
+      cache: "no-store",
     },
-    body: JSON.stringify({
-      model: DEFAULT_EMBED_MODEL,
-      input: text.slice(0, 8000),
-    }),
-    cache: "no-store",
-  });
+    { timeoutMs: httpTimeoutMs(), label: "OpenAI embeddings" },
+  );
 
   const body = (await res.json().catch(() => ({}))) as {
     data?: { embedding?: number[] }[];
@@ -56,20 +61,24 @@ export async function synthesizeSpeech(
     );
   }
 
-  const res = await fetch(`${OPENAI_API}/audio/speech`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
+  const res = await fetchWithTimeout(
+    `${OPENAI_API}/audio/speech`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: DEFAULT_TTS_MODEL,
+        input: text.slice(0, 4000),
+        voice,
+        response_format: "opus",
+      }),
+      cache: "no-store",
     },
-    body: JSON.stringify({
-      model: DEFAULT_TTS_MODEL,
-      input: text.slice(0, 4000),
-      voice,
-      response_format: "opus",
-    }),
-    cache: "no-store",
-  });
+    { timeoutMs: httpTimeoutMs(), label: "OpenAI TTS" },
+  );
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => "");

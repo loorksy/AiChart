@@ -2,7 +2,7 @@ import {
   getSettings,
   getLimits,
   getIntent,
-  updateIntentStatus,
+  updateIntentDenied,
   countOpenTrades,
   todayRealizedPnlPct,
   todayRealizedPnlUsd,
@@ -18,6 +18,7 @@ import {
 import { evaluateTrade } from "./riskGuard";
 import { brokerForMarket } from "./markets/types";
 import { getBrokerAdapter } from "./brokers";
+import { metrics } from "./metrics";
 import {
   emitActivity,
   type ActivityListener,
@@ -82,7 +83,7 @@ export async function executeIntent(
     emitActivity(onActivity, activity);
   };
 
-  const intent = await getIntent(intentId);
+  const intent = await getIntent(intentId, userId);
   if (!intent || intent.user_id !== userId) {
     return { ok: false, status: "failed", reason: "الطلب غير موجود.", activities };
   }
@@ -150,7 +151,13 @@ export async function executeIntent(
       status: "error",
       detail: decision.reason,
     });
-    await updateIntentStatus(intentId, "failed", decision.reason);
+    await updateIntentDenied(
+      intentId,
+      decision.reason,
+      decision.denyCode ?? null,
+      userId,
+    );
+    metrics.riskDenials.inc({ code: decision.denyCode ?? "UNKNOWN" });
     return {
       ok: false,
       status: "failed",
@@ -180,6 +187,10 @@ export async function executeIntent(
     effectiveCapital,
     push,
   });
+
+  if (result.ok) {
+    metrics.tradesExecuted.inc({ broker, market: intent.market });
+  }
 
   return { ...result, activities };
 }

@@ -3,6 +3,13 @@
  * Uses the platform-wide API key (model option (أ) from the plan).
  */
 
+import {
+  fetchWithTimeout,
+  httpTimeoutMs,
+  IdleWatchdog,
+  llmIdleTimeoutMs,
+  llmTotalTimeoutMs,
+} from "./externalFetch";
 import { getPlatformValue } from "./platformConfig";
 
 export function getAnthropicModel(): string {
@@ -147,13 +154,17 @@ export async function listAnthropicModels(
     url.searchParams.set("limit", "100");
     if (afterId) url.searchParams.set("after_id", afterId);
 
-    const res = await fetch(url.toString(), {
-      headers: {
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
+    const res = await fetchWithTimeout(
+      url.toString(),
+      {
+        headers: {
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+        },
+        cache: "no-store",
       },
-      cache: "no-store",
-    });
+      { timeoutMs: httpTimeoutMs(), label: "Anthropic models" },
+    );
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -199,22 +210,26 @@ export async function callAnthropic(params: {
     );
   }
 
-  const res = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
+  const res = await fetchWithTimeout(
+    API_URL,
+    {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: getAnthropicModel(),
+        max_tokens: clampMaxTokens(params.maxTokens),
+        system: buildSystemBlocks(params.system),
+        messages: cachedMessages(params.messages),
+        ...(params.tools ? { tools: cachedTools(params.tools) } : {}),
+      }),
+      cache: "no-store",
     },
-    body: JSON.stringify({
-      model: getAnthropicModel(),
-      max_tokens: clampMaxTokens(params.maxTokens),
-      system: buildSystemBlocks(params.system),
-      messages: cachedMessages(params.messages),
-      ...(params.tools ? { tools: cachedTools(params.tools) } : {}),
-    }),
-    cache: "no-store",
-  });
+    { timeoutMs: llmTotalTimeoutMs(), label: "Claude" },
+  );
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -256,6 +271,7 @@ export async function callAnthropicStream(
     );
   }
 
+  const watchdog = new IdleWatchdog(llmIdleTimeoutMs(), "Claude");
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -272,9 +288,15 @@ export async function callAnthropicStream(
       ...(params.tools ? { tools: cachedTools(params.tools) } : {}),
     }),
     cache: "no-store",
+    signal: watchdog.start(),
+  }).catch((err) => {
+    watchdog.clear();
+    if (watchdog.timedOut) throw watchdog.error();
+    throw err;
   });
 
   if (!res.ok) {
+    watchdog.clear();
     const body = await res.json().catch(() => ({}));
     const apiMsg =
       body && typeof body === "object" && "error" in body
@@ -290,7 +312,10 @@ export async function callAnthropicStream(
   }
 
   const reader = res.body?.getReader();
-  if (!reader) throw new Error("لا يوجد تدفّق من Claude.");
+  if (!reader) {
+    watchdog.clear();
+    throw new Error("لا يوجد تدفّق من Claude.");
+  }
 
   const decoder = new TextDecoder();
   let buffer = "";
@@ -332,8 +357,10 @@ export async function callAnthropicStream(
     }
   };
 
-  while (true) {
+  try {
+   while (true) {
     const { value, done } = await reader.read();
+    watchdog.kick();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
@@ -390,6 +417,12 @@ export async function callAnthropicStream(
         if (usage?.output_tokens) outputTokens = usage.output_tokens;
       }
     }
+   }
+  } catch (err) {
+    if (watchdog.timedOut) throw watchdog.error();
+    throw err;
+  } finally {
+    watchdog.clear();
   }
 
   finishTextBlock();

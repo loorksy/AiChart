@@ -31,6 +31,7 @@ import type {
 } from "@/lib/types";
 import type { ForexBackendMode } from "@/lib/brokers/forexBackend";
 import { EaConnectCard } from "@/components/settings/EaConnectCard";
+import { ForexMethodSelector } from "@/components/settings/ForexMethodSelector";
 import { MtConnectCard } from "@/components/settings/MtConnectCard";
 import { cn } from "@/lib/utils";
 import { PageLayout, SurfaceCard, PillButton } from "@/components/ui/shell";
@@ -78,6 +79,7 @@ export default function SettingsClient({
   ea,
   mt,
   forexBackend,
+  mt5LocalAvailable = false,
   canDownloadEa = false,
   initialTab,
   embedMode = false,
@@ -90,6 +92,7 @@ export default function SettingsClient({
   ea: EaConnectionMeta | null;
   mt: MtAccountMeta | null;
   forexBackend: ForexBackendMode;
+  mt5LocalAvailable?: boolean;
   canDownloadEa?: boolean;
   initialTab?: TabId;
   /** When true, omit PageLayout — for bridge console sections. */
@@ -107,6 +110,47 @@ export default function SettingsClient({
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const displayName = displayNameForUser(user);
+
+  // Per-user forex connection method: "platform" (server-side, no download) vs
+  // "ea" (bridge installed on the user's own MT5). Initialized from the saved
+  // preference, falling back to the operator's resolved default.
+  const platformAvailable = mt5LocalAvailable || forexBackend === "metaapi";
+  // Derive from the RESOLVED effective backend (loader already applied the
+  // fallback), so the card shown always matches how execution/data actually
+  // route — even when a stored "platform" choice couldn't be honored.
+  const [forexMethod, setForexMethod] = useState<"platform" | "ea">(
+    forexBackend === "ea" ? "ea" : "platform",
+  );
+  const [savingForexMethod, setSavingForexMethod] = useState(false);
+
+  async function chooseForexMethod(method: "platform" | "ea") {
+    if (method === forexMethod || savingForexMethod) return;
+    if (method === "platform" && !platformAvailable) return;
+    setSavingForexMethod(true);
+    // Preserve an existing MetaApi choice instead of silently downgrading it to
+    // mt5local when both server-side backends exist.
+    const value =
+      method === "ea"
+        ? "ea"
+        : forexBackend === "metaapi"
+          ? "metaapi"
+          : mt5LocalAvailable
+            ? "mt5local"
+            : "metaapi";
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forex_backend: value }),
+      });
+      if (res.ok) {
+        setForexMethod(method);
+        router.refresh();
+      }
+    } finally {
+      setSavingForexMethod(false);
+    }
+  }
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -228,7 +272,13 @@ export default function SettingsClient({
           {tab === "integrations" && (
             <div className="space-y-4">
               <BinanceCard binance={binance} />
-              {forexBackend === "metaapi" || forexBackend === "mt5local" ? (
+              <ForexMethodSelector
+                method={forexMethod}
+                platformAvailable={platformAvailable}
+                saving={savingForexMethod}
+                onChoose={chooseForexMethod}
+              />
+              {forexMethod === "platform" ? (
                 <MtConnectCard account={mt} />
               ) : (
                 <EaConnectCard connection={ea} canDownloadEa={canDownloadEa} />

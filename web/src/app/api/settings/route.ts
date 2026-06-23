@@ -36,6 +36,8 @@ const schema = z
       }),
     ]),
     active_market: z.enum(["crypto", "forex"]),
+    // User's forex connection method: EA bridge (on their device) vs server-side.
+    forex_backend: z.enum(["ea", "mt5local", "metaapi"]).nullable(),
     send_screenshot: z.boolean(),
     telegram_chat_id: z.string().max(64).nullable().optional(),
     kill_switch: z.boolean(),

@@ -14,14 +14,27 @@ Endpoints (JSON):
   POST /close {ticket} | {all:true}
 
 Auth: X-Bridge-Token header must match MT5_BRIDGE_TOKEN env when set.
-Credentials are persisted to /data/credentials.json for auto-reconnect.
+
+MULTI-TENANT SAFETY
+-------------------
+A single MetaTrader 5 terminal can only be logged into one account at a time.
+To serve multiple users from one bridge WITHOUT ever executing one user's order
+on another user's account, every authenticated call carries a `login` (account
+key). The bridge keeps a pool of known account credentials (registered on
+/connect, persisted to credentials.json) and, under a global lock, ensures the
+requested account is the ACTIVE login before performing the operation. Trade
+endpoints additionally assert the active login equals the requested login.
+
+This serializes operations (correct, leak-free) on one terminal. For throughput
+at scale, run multiple bridge instances and shard users across them (each user's
+MT5_BRIDGE_URL points to one shard).
 """
 
 import json
 import os
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 def _load_mt5():
@@ -69,8 +82,12 @@ def _timeframe_map():
         "1w": m.TIMEFRAME_W1,
     }
 
-_lock = threading.Lock()
+# Re-entrant: ensure_active() (called inside a held lock) may itself switch the
+# active account via do_connect(), which must not deadlock.
+_lock = threading.RLock()
+# Active terminal session + pool of known account credentials keyed by login.
 _state = {"initialized": False, "login": None, "server": None}
+_accounts = {}  # login(str) -> {"password": str, "server": str}
 
 
 def _last_error():
@@ -81,11 +98,12 @@ def _last_error():
         return "unknown MT5 error"
 
 
-def _save_creds(creds):
+def _save_creds():
+    """Persist the whole account pool so the bridge can switch after a restart."""
     try:
         os.makedirs(os.path.dirname(CREDS_FILE), exist_ok=True)
         with open(CREDS_FILE, "w", encoding="utf-8") as f:
-            json.dump(creds, f)
+            json.dump({"accounts": _accounts}, f)
     except Exception as e:
         print(f"[shim] could not persist credentials: {e}", flush=True)
 
@@ -98,28 +116,54 @@ def _load_creds():
         return None
 
 
+def _register_account(login, password, server):
+    _accounts[str(login)] = {"password": str(password), "server": str(server)}
+    _save_creds()
+
+
 def do_connect(login, password, server):
-    with _lock:
-        mt5.shutdown()
-        ok = mt5.initialize(
-            path=TERMINAL_PATH,
-            login=int(login),
-            password=str(password),
-            server=str(server),
-            timeout=120_000,
-            portable=True,
-        )
-        if not ok:
-            _state["initialized"] = False
-            err = _last_error()
-            print(f"[shim] connect failed: {err}", flush=True)
-            return False, err
-        info = mt5.account_info()
-        if info is None:
-            _state["initialized"] = False
-            return False, _last_error()
-        _state.update(initialized=True, login=int(login), server=str(server))
-        return True, account_dict(info)
+    """Switch the terminal to `login`. Caller MUST hold _lock."""
+    mt5.shutdown()
+    ok = mt5.initialize(
+        path=TERMINAL_PATH,
+        login=int(login),
+        password=str(password),
+        server=str(server),
+        timeout=120_000,
+        portable=True,
+    )
+    if not ok:
+        _state["initialized"] = False
+        err = _last_error()
+        print(f"[shim] connect failed for {login}: {err}", flush=True)
+        return False, err
+    info = mt5.account_info()
+    if info is None:
+        _state["initialized"] = False
+        return False, _last_error()
+    _state.update(initialized=True, login=int(login), server=str(server))
+    return True, account_dict(info)
+
+
+def ensure_active(login):
+    """
+    Guarantee the requested account is the active terminal login. Caller MUST
+    hold _lock. Returns (ok, error). If already active, no-op. Otherwise switches
+    using pooled credentials; fails closed if the account was never registered.
+    """
+    if login is None:
+        # No account specified: only valid if a session is already active.
+        if _state["initialized"]:
+            return True, None
+        return False, "no account specified and none active"
+    key = str(login)
+    if _state["initialized"] and str(_state["login"]) == key:
+        return True, None
+    creds = _accounts.get(key)
+    if not creds:
+        return False, f"account {key} not connected — POST /connect first"
+    ok, result = do_connect(key, creds["password"], creds["server"])
+    return (True, None) if ok else (False, result)
 
 
 def account_dict(info):
@@ -334,62 +378,76 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authed():
             return self._send(401, {"error": "invalid bridge token"})
 
-        if not _state["initialized"] and url.path != "/status":
-            return self._send(503, {"error": "not connected — POST /connect first"})
+        login = qs.get("login")
 
         try:
-            if url.path == "/status":
-                if not _state["initialized"]:
-                    return self._send(200, {"connected": False})
-                info = mt5.account_info()
-                if info is None:
-                    return self._send(200, {"connected": False, "error": _last_error()})
-                return self._send(200, {"connected": True, "account": account_dict(info)})
+            with _lock:
+                # /status without a login reports whatever (if anything) is active;
+                # with a login it ensures and reports THAT account.
+                if url.path == "/status":
+                    if login is not None:
+                        ok, err = ensure_active(login)
+                        if not ok:
+                            return self._send(200, {"connected": False, "error": err})
+                    if not _state["initialized"]:
+                        return self._send(200, {"connected": False})
+                    info = mt5.account_info()
+                    if info is None:
+                        return self._send(200, {"connected": False, "error": _last_error()})
+                    return self._send(200, {"connected": True, "account": account_dict(info)})
 
-            if url.path == "/price":
-                symbol = qs.get("symbol", "").upper()
-                si = ensure_symbol(symbol)
-                tick = mt5.symbol_info_tick(symbol) if si else None
-                if tick is None:
-                    return self._send(404, {"error": f"no quote for {symbol}"})
-                return self._send(
-                    200,
-                    {"symbol": symbol, "bid": tick.bid, "ask": tick.ask, "time": tick.time * 1000},
-                )
+                # All data endpoints must name their account: never serve one
+                # user's quotes/specs/positions from another user's session.
+                if login is None:
+                    return self._send(400, {"error": "login required"})
+                ok, err = ensure_active(login)
+                if not ok:
+                    return self._send(503, {"error": err})
 
-            if url.path == "/spec":
-                spec = spec_dict(qs.get("symbol", "").upper())
-                if spec is None:
-                    return self._send(404, {"error": "symbol not found"})
-                return self._send(200, spec)
+                if url.path == "/price":
+                    symbol = qs.get("symbol", "").upper()
+                    si = ensure_symbol(symbol)
+                    tick = mt5.symbol_info_tick(symbol) if si else None
+                    if tick is None:
+                        return self._send(404, {"error": f"no quote for {symbol}"})
+                    return self._send(
+                        200,
+                        {"symbol": symbol, "bid": tick.bid, "ask": tick.ask, "time": tick.time * 1000},
+                    )
 
-            if url.path == "/rates":
-                symbol = qs.get("symbol", "").upper()
-                tf = _timeframe_map().get(qs.get("timeframe", "1h"))
-                count = min(int(qs.get("count", "120")), 1000)
-                if tf is None:
-                    return self._send(400, {"error": "bad timeframe"})
-                if ensure_symbol(symbol) is None:
-                    return self._send(404, {"error": "symbol not found"})
-                rates = mt5.copy_rates_from_pos(symbol, tf, 0, count)
-                if rates is None:
-                    return self._send(404, {"error": _last_error()})
-                bars = [
-                    {
-                        "time": int(r["time"]) * 1000,
-                        "open": float(r["open"]),
-                        "high": float(r["high"]),
-                        "low": float(r["low"]),
-                        "close": float(r["close"]),
-                    }
-                    for r in rates
-                ]
-                return self._send(200, {"symbol": symbol, "bars": bars})
+                if url.path == "/spec":
+                    spec = spec_dict(qs.get("symbol", "").upper())
+                    if spec is None:
+                        return self._send(404, {"error": "symbol not found"})
+                    return self._send(200, spec)
 
-            if url.path == "/positions":
-                return self._send(200, {"positions": positions_list()})
+                if url.path == "/rates":
+                    symbol = qs.get("symbol", "").upper()
+                    tf = _timeframe_map().get(qs.get("timeframe", "1h"))
+                    count = min(int(qs.get("count", "120")), 1000)
+                    if tf is None:
+                        return self._send(400, {"error": "bad timeframe"})
+                    if ensure_symbol(symbol) is None:
+                        return self._send(404, {"error": "symbol not found"})
+                    rates = mt5.copy_rates_from_pos(symbol, tf, 0, count)
+                    if rates is None:
+                        return self._send(404, {"error": _last_error()})
+                    bars = [
+                        {
+                            "time": int(r["time"]) * 1000,
+                            "open": float(r["open"]),
+                            "high": float(r["high"]),
+                            "low": float(r["low"]),
+                            "close": float(r["close"]),
+                        }
+                        for r in rates
+                    ]
+                    return self._send(200, {"symbol": symbol, "bars": bars})
 
-            return self._send(404, {"error": "not found"})
+                if url.path == "/positions":
+                    return self._send(200, {"positions": positions_list()})
+
+                return self._send(404, {"error": "not found"})
         except Exception as e:
             return self._send(500, {"error": str(e)})
 
@@ -404,23 +462,37 @@ class Handler(BaseHTTPRequestHandler):
                 for field in ("login", "password", "server"):
                     if not body.get(field):
                         return self._send(400, {"error": f"{field} required"})
-                ok, result = do_connect(body["login"], body["password"], body["server"])
-                if not ok:
-                    return self._send(502, {"error": result})
-                _save_creds(
-                    {"login": body["login"], "password": body["password"], "server": body["server"]}
-                )
+                with _lock:
+                    ok, result = do_connect(
+                        body["login"], body["password"], body["server"]
+                    )
+                    if not ok:
+                        return self._send(502, {"error": result})
+                    _register_account(
+                        body["login"], body["password"], body["server"]
+                    )
                 return self._send(200, {"ok": True, "account": result})
 
-            if not _state["initialized"]:
-                return self._send(503, {"error": "not connected — POST /connect first"})
+            login = body.get("login")
 
-            if url.path == "/order":
+            # Trade endpoints MUST name their account — refuse to execute against
+            # "whatever is currently active", which would cross tenants.
+            if url.path in ("/order", "/close"):
+                if login is None:
+                    return self._send(400, {"ok": False, "reason": "login required"})
                 with _lock:
-                    return self._send(200, place_order(body))
-
-            if url.path == "/close":
-                with _lock:
+                    ok, err = ensure_active(login)
+                    if not ok:
+                        return self._send(503, {"error": err})
+                    # Belt-and-suspenders: never trade if the active account is
+                    # not exactly the one the caller asked for.
+                    if str(_state["login"]) != str(login):
+                        return self._send(
+                            409,
+                            {"ok": False, "reason": "account mismatch — refused"},
+                        )
+                    if url.path == "/order":
+                        return self._send(200, place_order(body))
                     return self._send(200, close_positions(body))
 
             return self._send(404, {"error": "not found"})
@@ -429,16 +501,46 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def auto_reconnect():
-    creds = _load_creds()
-    if not creds:
+    """Load the persisted account pool; reconnect the most recent for warm reads."""
+    data = _load_creds()
+    if not data:
         print("[shim] no stored credentials — waiting for /connect", flush=True)
         return
-    print("[shim] auto-reconnecting with stored credentials...", flush=True)
-    ok, result = do_connect(creds["login"], creds["password"], creds["server"])
-    print(f"[shim] auto-reconnect: {'ok' if ok else result}", flush=True)
+    # Back-compat: migrate the old single-account file shape into the pool.
+    if "accounts" in data:
+        _accounts.update(data["accounts"])
+    elif data.get("login"):
+        _accounts[str(data["login"])] = {
+            "password": data["password"],
+            "server": data["server"],
+        }
+        _save_creds()
+    if not _accounts:
+        print("[shim] empty account pool — waiting for /connect", flush=True)
+        return
+    last_login = next(reversed(_accounts))
+    creds = _accounts[last_login]
+    print(
+        f"[shim] account pool loaded ({len(_accounts)}); warming {last_login}...",
+        flush=True,
+    )
+    with _lock:
+        ok, result = do_connect(last_login, creds["password"], creds["server"])
+    print(f"[shim] warm connect: {'ok' if ok else result}", flush=True)
 
 
 if __name__ == "__main__":
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    if not _bridge_token():
+        print(
+            "[shim] WARNING: MT5_BRIDGE_TOKEN is not set — the bridge is "
+            "UNAUTHENTICATED. Set it in production; anyone who can reach this "
+            "port could trade pooled accounts.",
+            flush=True,
+        )
+    try:
+        auto_reconnect()
+    except Exception as e:  # never block startup on a warm-connect failure
+        print(f"[shim] auto_reconnect error: {e}", flush=True)
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"[shim] listening on :{PORT}", flush=True)
     server.serve_forever()

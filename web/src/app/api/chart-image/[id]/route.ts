@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: "معرّف غير صالح." }, { status: 400 });
     }
 
-    const rec = await getRecommendation(recId);
+    const rec = await getRecommendation(recId, user.id);
     if (!rec || rec.user_id !== user.id) {
       return NextResponse.json({ error: "غير موجود." }, { status: 404 });
     }

@@ -21,7 +21,7 @@ export async function POST(
     const intentId = Number(id);
     if (!Number.isInteger(intentId)) throw new ApiError(400, "معرّف غير صالح.");
 
-    const intent = await getIntent(intentId);
+    const intent = await getIntent(intentId, user.id);
     if (!intent || intent.user_id !== user.id) {
       throw new ApiError(404, "الطلب غير موجود.");
     }
@@ -32,11 +32,11 @@ export async function POST(
     const { action, stream } = schema.parse(await req.json());
 
     if (action === "reject") {
-      await updateIntentStatus(intentId, "rejected", "رفضه المستخدم.");
+      await updateIntentStatus(intentId, "rejected", "رفضه المستخدم.", user.id);
       return NextResponse.json({ ok: true, status: "rejected" });
     }
 
-    await updateIntentStatus(intentId, "approved", "وافق المستخدم.");
+    await updateIntentStatus(intentId, "approved", "وافق المستخدم.", user.id);
 
     if (stream) {
       const body = new ReadableStream({

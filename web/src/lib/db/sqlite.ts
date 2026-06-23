@@ -45,6 +45,9 @@ const SCHEMA = `
     auto_take_profit_usd     REAL NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     active_market            TEXT NOT NULL DEFAULT 'crypto',
+    -- User-chosen forex connection: 'ea' (bridge installed on the user's MT5)
+    -- or 'mt5local' (server-side, no download). NULL = operator's global default.
+    forex_backend            TEXT,
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
     kill_switch              INTEGER NOT NULL DEFAULT 0,
@@ -85,6 +88,25 @@ const SCHEMA = `
     updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS bot_sessions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    strategy        TEXT NOT NULL DEFAULT 'grid',
+    symbol          TEXT NOT NULL,
+    market          TEXT NOT NULL DEFAULT 'forex',
+    side            TEXT NOT NULL DEFAULT 'sell',
+    config_json     TEXT NOT NULL DEFAULT '{}',
+    state_json      TEXT NOT NULL DEFAULT '{"levels":[]}',
+    status          TEXT NOT NULL DEFAULT 'active',
+    execution_mode  TEXT NOT NULL DEFAULT 'paper',
+    realized_pnl    REAL NOT NULL DEFAULT 0,
+    stop_reason     TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_bot_sessions_active ON bot_sessions (status, user_id);
 
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY,
@@ -137,6 +159,7 @@ const SCHEMA = `
     rationale         TEXT,
     status            TEXT NOT NULL DEFAULT 'pending',
     reason            TEXT,
+    deny_code         TEXT,
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -239,6 +262,12 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS system_flags (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS locks (
+    name       TEXT PRIMARY KEY,
+    holder     TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
@@ -602,6 +631,9 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN active_market TEXT NOT NULL DEFAULT 'crypto'",
     );
   }
+  if (!settingsCols.some((c) => c.name === "forex_backend")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN forex_backend TEXT");
+  }
   if (!settingsCols.some((c) => c.name === "last_manual_scan_at")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN last_manual_scan_at TEXT");
   }
@@ -695,6 +727,9 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE trade_intents ADD COLUMN market_type TEXT NOT NULL DEFAULT 'spot'",
     );
+  }
+  if (!intentCols.some((c) => c.name === "deny_code")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN deny_code TEXT");
   }
   if (!intentCols.some((c) => c.name === "leverage")) {
     db.exec(

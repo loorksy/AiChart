@@ -30,7 +30,7 @@ export async function GET(
     }
 
     if (isNumeric) {
-      const rec = await getRecommendation(recId);
+      const rec = await getRecommendation(recId, userId);
       if (!rec || rec.user_id !== userId) {
         return NextResponse.json({ error: "غير موجود." }, { status: 404 });
       }

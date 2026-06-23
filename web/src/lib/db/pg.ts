@@ -43,6 +43,8 @@ const SCHEMA = `
     auto_take_profit_usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     active_market            TEXT NOT NULL DEFAULT 'crypto',
+    -- 'ea' | 'mt5local' | NULL (operator's global default).
+    forex_backend            TEXT,
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
     kill_switch              BOOLEAN NOT NULL DEFAULT FALSE,
@@ -80,6 +82,24 @@ const SCHEMA = `
     started_at     TIMESTAMPTZ,
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  CREATE TABLE IF NOT EXISTS bot_sessions (
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    strategy        TEXT NOT NULL DEFAULT 'grid',
+    symbol          TEXT NOT NULL,
+    market          TEXT NOT NULL DEFAULT 'forex',
+    side            TEXT NOT NULL DEFAULT 'sell',
+    config_json     TEXT NOT NULL DEFAULT '{}',
+    state_json      TEXT NOT NULL DEFAULT '{"levels":[]}',
+    status          TEXT NOT NULL DEFAULT 'active',
+    execution_mode  TEXT NOT NULL DEFAULT 'paper',
+    realized_pnl    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    stop_reason     TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_bot_sessions_active ON bot_sessions (status, user_id);
 
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -129,6 +149,7 @@ const SCHEMA = `
     rationale         TEXT,
     status            TEXT NOT NULL DEFAULT 'pending',
     reason            TEXT,
+    deny_code         TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -227,6 +248,12 @@ const SCHEMA = `
     value TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS locks (
+    name       TEXT PRIMARY KEY,
+    holder     TEXT NOT NULL,
+    expires_at BIGINT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
     client_id   TEXT PRIMARY KEY,
     client_json TEXT NOT NULL,
@@ -299,7 +326,7 @@ const SCHEMA = `
     conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
     category        TEXT NOT NULL,
     content         TEXT NOT NULL,
-    embedding       vector,
+    embedding       vector(1536),
     archived        BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -466,6 +493,37 @@ async function migratePg(client: PoolClient) {
     console.warn("[db] pgvector extension unavailable:", err);
   });
 
+  // HNSW requires a fixed dimension. Older deployments created the column as a
+  // dimensionless `vector`; coerce it to vector(1536) (all stored embeddings are
+  // 1536-dim) so the ANN index below can be built.
+  await client
+    .query(
+      `ALTER TABLE semantic_memories ALTER COLUMN embedding TYPE vector(1536)`,
+    )
+    .catch(() => {
+      /* already vector(1536), empty, or extension missing — index step will warn */
+    });
+
+  // ANN indexes for semantic/trade memory similarity. Without these, cosine
+  // search sequentially scans every row in a user's partition, which degrades
+  // as memory grows. HNSW (pgvector >= 0.5) gives sub-linear cosine lookups.
+  await client
+    .query(
+      `CREATE INDEX IF NOT EXISTS idx_semantic_memories_embedding_hnsw
+       ON semantic_memories USING hnsw (embedding vector_cosine_ops)`,
+    )
+    .catch((err) => {
+      console.warn("[db] semantic_memories HNSW index skipped:", err.message);
+    });
+  await client
+    .query(
+      `CREATE INDEX IF NOT EXISTS idx_trade_lessons_embedding_hnsw
+       ON trade_lessons USING hnsw (embedding vector_cosine_ops)`,
+    )
+    .catch((err) => {
+      console.warn("[db] trade_lessons HNSW index skipped:", err.message);
+    });
+
   await client.query(`
     UPDATE platform_config SET plain = TRUE
     WHERE plain = FALSE
@@ -534,6 +592,11 @@ async function migratePg(client: PoolClient) {
 
   await client.query(`
     ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS forex_backend TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS trading_style        TEXT NOT NULL DEFAULT 'day',
       ADD COLUMN IF NOT EXISTS scalp_max_trades     INTEGER NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS scalp_enabled        INTEGER NOT NULL DEFAULT 0,
@@ -561,6 +624,11 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS market_type TEXT NOT NULL DEFAULT 'spot',
       ADD COLUMN IF NOT EXISTS leverage DOUBLE PRECISION NOT NULL DEFAULT 1,
       ADD COLUMN IF NOT EXISTS order_type TEXT NOT NULL DEFAULT 'market'
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trade_intents
+      ADD COLUMN IF NOT EXISTS deny_code TEXT
   `).catch(() => {});
 
   await client.query(`
@@ -876,11 +944,41 @@ async function seedAdminPg(client: PoolClient) {
   );
 }
 
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 function getPool(): Pool {
   if (_pool) return _pool;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required for PostgreSQL");
-  _pool = new Pool({ connectionString: url });
+  // Tuned for many concurrent app/worker instances behind one Postgres (or a
+  // PgBouncer pooler). Cap connections per process so N replicas don't exhaust
+  // server slots; bound waits so a saturated pool fails fast instead of hanging.
+  const sslRequired =
+    process.env.PGSSL === "1" ||
+    process.env.PGSSLMODE === "require" ||
+    /[?&]sslmode=require/.test(url);
+  // Verify the server certificate by default; only skip verification when the
+  // operator explicitly opts in (e.g. self-signed dev DB) via PGSSL_INSECURE=1.
+  const sslConfig = sslRequired
+    ? { ssl: { rejectUnauthorized: process.env.PGSSL_INSECURE !== "1" } }
+    : {};
+  _pool = new Pool({
+    connectionString: url,
+    max: envInt("PGPOOL_MAX", 10),
+    idleTimeoutMillis: envInt("PGPOOL_IDLE_MS", 30_000),
+    connectionTimeoutMillis: envInt("PGPOOL_CONN_TIMEOUT_MS", 10_000),
+    ...sslConfig,
+  });
+  // A pool-level error handler is required: without it, an idle client error
+  // (e.g. server restart) crashes the process with an unhandled 'error' event.
+  _pool.on("error", (err) => {
+    console.error("[db] idle Postgres client error:", err.message);
+  });
   return _pool;
 }
 

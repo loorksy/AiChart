@@ -120,6 +120,9 @@ export { COMMANDS, call, qs, UA, TIMEOUT_MS, CHAINS, validateChainId };
 
 // ---- CLI dispatch (only runs when executed directly, not when imported) ----
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // Wrapped in an async IIFE so there is no top-level await — keeps esbuild/tsx
+  // (CJS transform, used by the worker tier) able to load this module.
+  void (async () => {
   const [cmd, paramsStr] = process.argv.slice(2);
 
   if (!cmd || cmd === '--help' || cmd === '-h') {
@@ -145,4 +148,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (err.body) console.log(JSON.stringify(err.body, null, 2));
     process.exit(err.exitCode || 1);
   }
+  })();
 }

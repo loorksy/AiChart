@@ -126,6 +126,12 @@ export interface TradingSettings {
   auto_take_profit_usd: number;
   allowed_assets: string;
   active_market: MarketType;
+  /**
+   * User-chosen forex execution backend: "ea" (bridge on the user's own MT5)
+   * or "mt5local" (server-side, no download). null/undefined = the operator's
+   * global default (FOREX_BACKEND / MT5_BRIDGE_URL / METAAPI_TOKEN).
+   */
+  forex_backend?: "ea" | "mt5local" | "metaapi" | null;
   send_screenshot: number;
   telegram_chat_id: string | null;
   kill_switch: number;

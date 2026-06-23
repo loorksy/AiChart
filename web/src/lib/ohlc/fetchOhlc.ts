@@ -1,5 +1,4 @@
 import { getKlines, type BinanceEnv } from "@/lib/binance";
-import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { queueEaGetOhlc } from "@/lib/eaAgentCommands";
 import { getEaCandles } from "@/lib/eaStore";
 import { executionToBinanceEnv } from "@/lib/executionEnv";
@@ -12,7 +11,11 @@ import {
 import type { MarketType } from "@/lib/markets/types";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { mt5Rates } from "@/lib/mt5local/client";
-import { getSettings } from "@/lib/store";
+import {
+  getMtAccountMeta,
+  getSettings,
+  resolveForexBackendForUser,
+} from "@/lib/store";
 import type { EaGetOhlcResult } from "@/lib/types";
 import { getCached, setCached } from "@/lib/bridge/cache";
 import { freshnessMeta, type FreshnessMeta } from "@/lib/bridge/freshness";
@@ -92,10 +95,17 @@ async function fetchForexOhlcLive(
   interval: string,
   limit: number,
 ): Promise<{ candles: OhlcCandle[]; source: OhlcSource; warning?: string }> {
-  const backend = getForexBackend();
+  const backend = await resolveForexBackendForUser(userId);
 
   if (backend === "mt5local") {
-    const bars = await mt5Rates(symbol, interval, limit);
+    const acct = await getMtAccountMeta(userId);
+    if (!acct) {
+      return { candles: [], source: "mt5local", warning: "MT5 غير مربوط." };
+    }
+    const bars = await mt5Rates(symbol, interval, limit, {
+      login: acct.login,
+      server: acct.server,
+    });
     return {
       candles: bars.map((b) => ({
         time: b.time,

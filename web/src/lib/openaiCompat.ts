@@ -11,6 +11,13 @@ import type {
   StreamHandlers,
   ToolDef,
 } from "./anthropic";
+import {
+  fetchWithTimeout,
+  httpTimeoutMs,
+  IdleWatchdog,
+  llmIdleTimeoutMs,
+  llmTotalTimeoutMs,
+} from "./externalFetch";
 
 export interface OpenAICompatTarget {
   baseUrl: string;
@@ -185,21 +192,25 @@ export async function callOpenAICompat(
     maxTokens?: number;
   },
 ): Promise<AnthropicResponse> {
-  const res = await fetch(`${target.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${target.apiKey}`,
-      "content-type": "application/json",
-      ...target.headers,
+  const res = await fetchWithTimeout(
+    `${target.baseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${target.apiKey}`,
+        "content-type": "application/json",
+        ...target.headers,
+      },
+      body: JSON.stringify({
+        model: target.model,
+        max_tokens: Math.min(params.maxTokens ?? 4096, 4096),
+        messages: toOAMessages(params.system, params.messages),
+        ...(params.tools ? { tools: toOATools(params.tools) } : {}),
+      }),
+      cache: "no-store",
     },
-    body: JSON.stringify({
-      model: target.model,
-      max_tokens: Math.min(params.maxTokens ?? 4096, 4096),
-      messages: toOAMessages(params.system, params.messages),
-      ...(params.tools ? { tools: toOATools(params.tools) } : {}),
-    }),
-    cache: "no-store",
-  });
+    { timeoutMs: llmTotalTimeoutMs(), label: target.model },
+  );
 
   if (!res.ok) throw new Error(await readError(res, target.model));
 
@@ -234,6 +245,7 @@ export async function callOpenAICompatStream(
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
+  const watchdog = new IdleWatchdog(llmIdleTimeoutMs(), target.model);
   const res = await fetch(`${target.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -249,12 +261,23 @@ export async function callOpenAICompatStream(
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),
     }),
     cache: "no-store",
+    signal: watchdog.start(),
+  }).catch((err) => {
+    watchdog.clear();
+    if (watchdog.timedOut) throw watchdog.error();
+    throw err;
   });
 
-  if (!res.ok) throw new Error(await readError(res, target.model));
+  if (!res.ok) {
+    watchdog.clear();
+    throw new Error(await readError(res, target.model));
+  }
 
   const reader = res.body?.getReader();
-  if (!reader) throw new Error(`لا يوجد تدفّق من ${target.model}`);
+  if (!reader) {
+    watchdog.clear();
+    throw new Error(`لا يوجد تدفّق من ${target.model}`);
+  }
 
   const decoder = new TextDecoder();
   let buffer = "";
@@ -269,8 +292,10 @@ export async function callOpenAICompatStream(
   let inputTokens = 0;
   let outputTokens = 0;
 
-  while (true) {
+  try {
+   while (true) {
     const { value, done } = await reader.read();
+    watchdog.kick();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
@@ -325,6 +350,12 @@ export async function callOpenAICompatStream(
         toolAcc.set(idx, acc);
       }
     }
+   }
+  } catch (err) {
+    if (watchdog.timedOut) throw watchdog.error();
+    throw err;
+  } finally {
+    watchdog.clear();
   }
 
   const content: ContentBlock[] = [];
@@ -365,10 +396,14 @@ export interface CompatModelInfo {
 export async function listOpenAIChatModels(
   apiKey: string,
 ): Promise<CompatModelInfo[]> {
-  const res = await fetch("https://api.openai.com/v1/models", {
-    headers: { authorization: `Bearer ${apiKey}` },
-    cache: "no-store",
-  });
+  const res = await fetchWithTimeout(
+    "https://api.openai.com/v1/models",
+    {
+      headers: { authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    },
+    { timeoutMs: httpTimeoutMs(), label: "OpenAI models" },
+  );
   if (!res.ok) throw new Error(await readError(res, "OpenAI"));
   const data = (await res.json()) as { data?: { id: string }[] };
   // Keep chat-capable families; drop embeddings/audio/image/moderation models.

@@ -2,6 +2,7 @@ import { getKlines } from "./binance";
 import { getEaCandles } from "./eaStore";
 import { getForexBackend } from "./brokers/forexBackend";
 import { mt5Rates } from "./mt5local/client";
+import { getMtAccountMeta, resolveForexBackendForUser } from "./store";
 import { barDurationSec, normalizeInterval } from "./intervals";
 import type { MarketType } from "./markets/types";
 import type { ChartDrawing } from "./chartDrawings";
@@ -82,9 +83,18 @@ async function fetchCandleSeries(
   const tf = normalizeInterval(interval);
 
   if (market === "forex") {
-    if (getForexBackend() === "mt5local") {
+    const backend =
+      userId != null
+        ? await resolveForexBackendForUser(userId)
+        : getForexBackend();
+    if (backend === "mt5local") {
       try {
-        const bars = await mt5Rates(sym, tf, limit);
+        const acct = userId != null ? await getMtAccountMeta(userId) : null;
+        if (!acct) return null; // no connected account → cannot fetch rates
+        const bars = await mt5Rates(sym, tf, limit, {
+          login: acct.login,
+          server: acct.server,
+        });
         return bars.length >= 10
           ? bars.map((b) => ({
               time: b.time,
