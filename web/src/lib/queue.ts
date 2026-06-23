@@ -8,12 +8,17 @@
  * that scales independently. When it is NOT set (local/dev), jobs run inline —
  * exactly the previous fire-and-forget behavior — so nothing breaks.
  */
+import { captureError } from "./errorReporting";
 import { createLogger } from "./logger";
+import { metrics } from "./metrics";
 
 const log = createLogger("queue");
 
 export interface JobPayloads {
   trade_post_mortem: { userId: number; tradeId: number; pnl: number };
+  scalp_tick: { userId: number };
+  opportunity_scan: { userId: number };
+  memory_lifecycle: { userId: number; conversationId: number };
 }
 export type JobName = keyof JobPayloads;
 
@@ -113,12 +118,12 @@ async function runInline<N extends JobName>(
     log.error("no handler registered", { name });
     return;
   }
-  void fn(payload).catch((err) =>
-    log.error("inline job failed", {
-      name,
-      error: err instanceof Error ? err.message : String(err),
-    }),
-  );
+  void fn(payload)
+    .then(() => metrics.jobs.inc({ name, status: "completed" }))
+    .catch((err) => {
+      metrics.jobs.inc({ name, status: "dead" });
+      void captureError(err, { scope: "queue.inline", name });
+    });
 }
 
 // ---- consumer (worker tier) ----
@@ -144,12 +149,34 @@ export async function startWorker(): Promise<void> {
       concurrency: Number(process.env.WORKER_CONCURRENCY || 5),
     },
   );
-  _worker.on("failed", (job, err) =>
-    log.error("job failed", { name: job?.name, id: job?.id, error: err.message }),
-  );
-  _worker.on("completed", (job) =>
-    log.debug("job completed", { name: job.name, id: job.id }),
-  );
+  _worker.on("failed", (job, err) => {
+    const exhausted =
+      !job || job.attemptsMade >= (job.opts.attempts ?? 1);
+    metrics.jobs.inc({
+      name: job?.name ?? "unknown",
+      status: exhausted ? "dead" : "retry",
+    });
+    // A job that exhausted its retries is a dead-letter: surface it loudly.
+    if (exhausted) {
+      void captureError(err, {
+        scope: "queue.dead_letter",
+        name: job?.name,
+        id: job?.id,
+        data: job?.data,
+      });
+    } else {
+      log.warn("job failed; will retry", {
+        name: job?.name,
+        id: job?.id,
+        attempt: job?.attemptsMade,
+        error: err.message,
+      });
+    }
+  });
+  _worker.on("completed", (job) => {
+    metrics.jobs.inc({ name: job.name, status: "completed" });
+    log.debug("job completed", { name: job.name, id: job.id });
+  });
   log.info("worker started", { queue: QUEUE_NAME });
 }
 

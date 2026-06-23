@@ -3,7 +3,10 @@
  * use and by the worker process. Keep handlers thin: resolve inputs and call
  * the existing domain function so logic stays in one place.
  */
+import { runMemoryLifecycle } from "./memoryLifecycle";
+import { runOpportunityScanForUser } from "./opportunityScan";
 import { hasHandler, registerHandler } from "./queue";
+import { runScalpTickForUser } from "./scalpEngine";
 import { runTradePostMortem } from "./tradePostMortem";
 
 // Guarded so an explicitly pre-registered handler (e.g. in tests) is not
@@ -11,5 +14,23 @@ import { runTradePostMortem } from "./tradePostMortem";
 if (!hasHandler("trade_post_mortem")) {
   registerHandler("trade_post_mortem", async ({ userId, tradeId, pnl }) => {
     await runTradePostMortem(userId, tradeId, pnl);
+  });
+}
+
+if (!hasHandler("scalp_tick")) {
+  registerHandler("scalp_tick", async ({ userId }) => {
+    await runScalpTickForUser(userId);
+  });
+}
+
+if (!hasHandler("opportunity_scan")) {
+  registerHandler("opportunity_scan", async ({ userId }) => {
+    await runOpportunityScanForUser(userId);
+  });
+}
+
+if (!hasHandler("memory_lifecycle")) {
+  registerHandler("memory_lifecycle", async ({ userId, conversationId }) => {
+    await runMemoryLifecycle(userId, conversationId);
   });
 }

@@ -7,7 +7,7 @@
  */
 import { initDb } from "./lib/db";
 import { createLogger } from "./lib/logger";
-import { startWorker } from "./lib/queue";
+import { shutdownQueue, startWorker } from "./lib/queue";
 
 const log = createLogger("worker");
 
@@ -15,6 +15,22 @@ async function main(): Promise<void> {
   await initDb();
   await startWorker();
   log.info("worker process ready");
+
+  // Graceful shutdown: stop accepting jobs and drain in-flight ones so an
+  // orchestrator restart/scale-down never kills a job mid-execution.
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log.info("shutting down", { signal });
+    try {
+      await shutdownQueue();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 main().catch((err) => {

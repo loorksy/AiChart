@@ -18,6 +18,7 @@ import {
 import { evaluateTrade } from "./riskGuard";
 import { brokerForMarket } from "./markets/types";
 import { getBrokerAdapter } from "./brokers";
+import { metrics } from "./metrics";
 import {
   emitActivity,
   type ActivityListener,
@@ -156,6 +157,7 @@ export async function executeIntent(
       decision.denyCode ?? null,
       userId,
     );
+    metrics.riskDenials.inc({ code: decision.denyCode ?? "UNKNOWN" });
     return {
       ok: false,
       status: "failed",
@@ -185,6 +187,10 @@ export async function executeIntent(
     effectiveCapital,
     push,
   });
+
+  if (result.ok) {
+    metrics.tradesExecuted.inc({ broker, market: intent.market });
+  }
 
   return { ...result, activities };
 }

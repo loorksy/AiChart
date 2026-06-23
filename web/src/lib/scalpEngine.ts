@@ -17,6 +17,7 @@ import {
   countOpenTrades,
   createIntent,
   getLimits,
+  getScalpSession,
   getSettings,
   incrementScalpExecuted,
   isMasterKillOn,
@@ -25,6 +26,8 @@ import {
   stopScalpSession,
   todayRealizedPnlPct,
 } from "./store";
+import { enqueue } from "./queue";
+import { metrics } from "./metrics";
 import { getEaConnection, isHeartbeatFresh } from "./eaStore";
 import { deriveDynamicStops } from "./dynamicStops";
 import { deriveDynamicNotional } from "./dynamicSizing";
@@ -107,164 +110,206 @@ function scalpTickPrompt(session: ScalpSession, settings: TradingSettings): stri
   ].join("\n");
 }
 
-/** Run one autonomous scalp tick for every active session. */
+/**
+ * Run ONE user's autonomous scalp tick. Self-contained (acquires its own
+ * per-user lock) so it is safe to run either inline in {@link runScalpCycle} or
+ * as an independent `scalp_tick` job on the worker tier. Returns the events it
+ * produced; never throws for normal flow (errors are returned as an event).
+ */
+export async function runScalpTickForUser(
+  userId: number,
+): Promise<ScalpCycleEvent[]> {
+  const session = await getScalpSession(userId);
+  if (!session || session.status !== "active") return [];
+
+  // Per-user re-entrancy guard: if the previous tick is still running (or another
+  // worker grabbed it), skip rather than double-trade.
+  const tickLock = await acquireLock(`scalp:user:${userId}`, SCALP_TICK_LOCK_MS);
+  if (!tickLock) {
+    return [
+      {
+        userId,
+        action: "skipped",
+        detail: "النبضة السابقة ما زالت تعمل — تخطٍّ لمنع التداخل",
+      },
+    ];
+  }
+  // The agent loop can outlast the base lease; renew it so a concurrent tick
+  // can never steal the lock and double-tick the same user.
+  const tickRenew = startLeaseRenewal(tickLock, SCALP_TICK_LOCK_MS);
+  try {
+    const settings = await getSettings(userId);
+
+    // 1) SAFETY guards — auto-stop (not a trade decision).
+    const stop = await sessionStopReason(session, settings);
+    if (stop) {
+      await stopScalpSession(userId, stop);
+      await logAudit(userId, "scalp_auto_stop", stop);
+      return [{ userId, action: "stopped", detail: stop }];
+    }
+    if ((await countOpenTrades(userId)) >= settings.max_open_trades) {
+      return [
+        {
+          userId,
+          action: "skipped",
+          detail: "بلغ سقف الصفقات المفتوحة — انتظار إغلاق",
+        },
+      ];
+    }
+
+    // 2) AGENT RUNTIME — the agent observes + reasons + decides.
+    const agentRes = await runAgent(
+      { userId, settings },
+      [{ role: "user", content: scalpTickPrompt(session, settings) }],
+      { scalpMode: true },
+    );
+    metrics.agentRuns.inc({ mode: "scalp", status: "ok" });
+    // Observability: persist the autonomous tick's tool trace so scalp decisions
+    // are auditable (not only chat-path decisions).
+    if (agentRes.toolCallsJson) {
+      await logAudit(
+        userId,
+        "scalp_agent_trace",
+        agentRes.toolCallsJson.slice(0, 2000),
+      );
+    }
+    const decision = agentRes.scalpDecision;
+
+    if (
+      !decision ||
+      decision.action !== "enter" ||
+      !decision.symbol ||
+      (decision.side !== "buy" && decision.side !== "sell")
+    ) {
+      return [
+        {
+          userId,
+          action: "observed",
+          detail: `قرار الوكيل: انتظار — ${decision?.rationale_ar ?? agentRes.reply.slice(0, 80)}`,
+        },
+      ];
+    }
+
+    // 3) Carry the AGENT's decision to Risk Guard. SL/TP/size come from the
+    // agent's reasoning; fall back to adaptive derivation only if it omitted.
+    const market = (settings.active_market ?? session.market ?? "crypto") as MarketType;
+    const side = decision.side;
+    const confidence = Math.max(0, Math.min(100, decision.confidence ?? 60));
+    const practiceMode = resolvePracticeMode(
+      session.execution_mode,
+      scalpLiveEnabled(),
+    );
+    const entry = decision.entry && decision.entry > 0 ? decision.entry : 0;
+
+    let stopLoss = decision.stop_loss ?? null;
+    let takeProfit = decision.take_profit ?? null;
+    let riskFraction = 0.01;
+    if ((stopLoss == null || takeProfit == null) && entry > 0) {
+      const d = deriveDynamicStops({
+        entry,
+        side,
+        style: settings.style,
+        confidence,
+        atr: null,
+      });
+      if (d) {
+        stopLoss = stopLoss ?? d.stopLoss;
+        takeProfit = takeProfit ?? d.takeProfit;
+        riskFraction = d.riskFraction;
+      }
+    }
+
+    const notional =
+      decision.notional && decision.notional > 0
+        ? Math.min(decision.notional, session.notional * 1.5)
+        : deriveDynamicNotional({
+            baseNotional: session.notional,
+            confidence,
+            riskFraction,
+            maxNotional: session.notional * 1.5,
+          });
+
+    const intent = await createIntent(userId, {
+      symbol: decision.symbol,
+      side,
+      notional,
+      market,
+      entry: entry > 0 ? entry : null,
+      stop_loss: stopLoss,
+      take_profit: takeProfit,
+      confidence,
+      rationale: `سكالب ذاتي (قرار الوكيل، ثقة ${confidence}%): ${decision.rationale_ar ?? ""}`,
+      status: "approved",
+      practice: practiceMode,
+    });
+
+    const exec = await executeIntent(userId, intent.id, {
+      explicitApproval: true,
+      practiceMode,
+    });
+
+    if (exec.ok) {
+      await incrementScalpExecuted(userId);
+      await logAudit(
+        userId,
+        "scalp_execute",
+        `${decision.symbol} ${side} ${practiceMode ? "paper" : "live"} conf=${confidence}`,
+      );
+      return [
+        {
+          userId,
+          action: "executed",
+          detail: `${decision.symbol} ${side} (${practiceMode ? "paper" : "live"})`,
+        },
+      ];
+    }
+    await logAudit(
+      userId,
+      "scalp_execute_denied",
+      `${decision.symbol} ${side}: ${exec.reason}`,
+    );
+    return [
+      {
+        userId,
+        action: "skipped",
+        detail: `${decision.symbol}: مرفوض من Risk Guard (${exec.reason})`,
+      },
+    ];
+  } finally {
+    tickRenew.stop();
+    await releaseLock(tickLock);
+  }
+}
+
+/** Run one autonomous scalp tick for every active session (inline). */
 export async function runScalpCycle(): Promise<ScalpCycleResult> {
   const result: ScalpCycleResult = { sessions: 0, events: [], errors: [] };
   const sessions = await listActiveScalpSessions();
   result.sessions = sessions.length;
 
   for (const session of sessions) {
-    const userId = session.user_id;
-    // Per-user re-entrancy guard: if the previous tick for this user is still
-    // running (or another instance grabbed it), skip rather than double-trade.
-    const tickLock = await acquireLock(
-      `scalp:user:${userId}`,
-      SCALP_TICK_LOCK_MS,
-    );
-    if (!tickLock) {
-      result.events.push({
-        userId,
-        action: "skipped",
-        detail: "النبضة السابقة ما زالت تعمل — تخطٍّ لمنع التداخل",
-      });
-      continue;
-    }
-    // The agent loop can outlast the base lease; renew it so a concurrent cron
-    // can never steal the lock and double-tick the same user.
-    const tickRenew = startLeaseRenewal(tickLock, SCALP_TICK_LOCK_MS);
     try {
-      const settings = await getSettings(userId);
-
-      // 1) SAFETY guards — auto-stop (not a trade decision).
-      const stop = await sessionStopReason(session, settings);
-      if (stop) {
-        await stopScalpSession(userId, stop);
-        await logAudit(userId, "scalp_auto_stop", stop);
-        result.events.push({ userId, action: "stopped", detail: stop });
-        continue;
-      }
-      if ((await countOpenTrades(userId)) >= settings.max_open_trades) {
-        result.events.push({
-          userId,
-          action: "skipped",
-          detail: "بلغ سقف الصفقات المفتوحة — انتظار إغلاق",
-        });
-        continue;
-      }
-
-      // 2) AGENT RUNTIME — the agent observes + reasons + decides.
-      const agentRes = await runAgent(
-        { userId, settings },
-        [{ role: "user", content: scalpTickPrompt(session, settings) }],
-        { scalpMode: true },
-      );
-      const decision = agentRes.scalpDecision;
-
-      if (
-        !decision ||
-        decision.action !== "enter" ||
-        !decision.symbol ||
-        (decision.side !== "buy" && decision.side !== "sell")
-      ) {
-        result.events.push({
-          userId,
-          action: "observed",
-          detail: `قرار الوكيل: انتظار — ${decision?.rationale_ar ?? agentRes.reply.slice(0, 80)}`,
-        });
-        continue;
-      }
-
-      // 3) Carry the AGENT's decision to Risk Guard. SL/TP/size come from the
-      // agent's reasoning; fall back to adaptive derivation only if it omitted.
-      const market = (settings.active_market ?? session.market ?? "crypto") as MarketType;
-      const side = decision.side;
-      const confidence = Math.max(0, Math.min(100, decision.confidence ?? 60));
-      const practiceMode = resolvePracticeMode(
-        session.execution_mode,
-        scalpLiveEnabled(),
-      );
-      const entry = decision.entry && decision.entry > 0 ? decision.entry : 0;
-
-      let stopLoss = decision.stop_loss ?? null;
-      let takeProfit = decision.take_profit ?? null;
-      let riskFraction = 0.01;
-      if ((stopLoss == null || takeProfit == null) && entry > 0) {
-        const d = deriveDynamicStops({
-          entry,
-          side,
-          style: settings.style,
-          confidence,
-          atr: null,
-        });
-        if (d) {
-          stopLoss = stopLoss ?? d.stopLoss;
-          takeProfit = takeProfit ?? d.takeProfit;
-          riskFraction = d.riskFraction;
-        }
-      }
-
-      const notional =
-        decision.notional && decision.notional > 0
-          ? Math.min(decision.notional, session.notional * 1.5)
-          : deriveDynamicNotional({
-              baseNotional: session.notional,
-              confidence,
-              riskFraction,
-              maxNotional: session.notional * 1.5,
-            });
-
-      const intent = await createIntent(userId, {
-        symbol: decision.symbol,
-        side,
-        notional,
-        market,
-        entry: entry > 0 ? entry : null,
-        stop_loss: stopLoss,
-        take_profit: takeProfit,
-        confidence,
-        rationale: `سكالب ذاتي (قرار الوكيل، ثقة ${confidence}%): ${decision.rationale_ar ?? ""}`,
-        status: "approved",
-        practice: practiceMode,
-      });
-
-      const exec = await executeIntent(userId, intent.id, {
-        explicitApproval: true,
-        practiceMode,
-      });
-
-      if (exec.ok) {
-        await incrementScalpExecuted(userId);
-        await logAudit(
-          userId,
-          "scalp_execute",
-          `${decision.symbol} ${side} ${practiceMode ? "paper" : "live"} conf=${confidence}`,
-        );
-        result.events.push({
-          userId,
-          action: "executed",
-          detail: `${decision.symbol} ${side} (${practiceMode ? "paper" : "live"})`,
-        });
-      } else {
-        await logAudit(
-          userId,
-          "scalp_execute_denied",
-          `${decision.symbol} ${side}: ${exec.reason}`,
-        );
-        result.events.push({
-          userId,
-          action: "skipped",
-          detail: `${decision.symbol}: مرفوض من Risk Guard (${exec.reason})`,
-        });
-      }
+      const events = await runScalpTickForUser(session.user_id);
+      result.events.push(...events);
     } catch (e) {
       result.errors.push(
-        `user ${userId}: ${e instanceof Error ? e.message : "error"}`,
+        `user ${session.user_id}: ${e instanceof Error ? e.message : "error"}`,
       );
-    } finally {
-      tickRenew.stop();
-      await releaseLock(tickLock);
     }
   }
 
   return result;
+}
+
+/**
+ * Dispatch the cycle as per-user jobs onto the worker tier (one `scalp_tick`
+ * per active session), so heavy agent work runs off the cron request and scales
+ * horizontally. Falls back to inline execution when no queue is configured.
+ */
+export async function dispatchScalpCycle(): Promise<{ dispatched: number }> {
+  const sessions = await listActiveScalpSessions();
+  for (const s of sessions) {
+    await enqueue("scalp_tick", { userId: s.user_id });
+  }
+  return { dispatched: sessions.length };
 }

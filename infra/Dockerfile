@@ -28,4 +28,7 @@ COPY web/src ./src
 RUN mkdir -p data
 
 EXPOSE 3000
+# Liveness for orchestrators (also used by the web service in compose).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["npm", "start"]

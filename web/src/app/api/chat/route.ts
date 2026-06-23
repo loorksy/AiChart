@@ -19,9 +19,9 @@ import {
   autoTitleFromMessage,
   updateConversationTitle,
   getConversationSummary,
-  setConversationSummary,
   countChatMessages,
 } from "@/lib/conversations";
+import { enqueue } from "@/lib/queue";
 
 export const maxDuration = 60;
 
@@ -308,9 +308,10 @@ export async function POST(req: NextRequest) {
               result.toolCallsJson,
             );
 
-            setTimeout(() => {
-              triggerMemoryLifecycle(user.id, conversationId!);
-            }, 0);
+            void enqueue("memory_lifecycle", {
+              userId: user.id,
+              conversationId: conversationId!,
+            });
 
             if ((await countChatMessages(conversationId!)) <= 2) {
               await updateConversationTitle(
@@ -404,9 +405,10 @@ export async function POST(req: NextRequest) {
       result.toolCallsJson,
     );
 
-    setTimeout(() => {
-      triggerMemoryLifecycle(user.id, conversationId);
-    }, 0);
+    void enqueue("memory_lifecycle", {
+      userId: user.id,
+      conversationId,
+    });
 
     await incrementUsage(user.id, 1);
     await logAudit(user.id, "chat_agent", `recs=${result.recommendations.length}`);
@@ -448,79 +450,7 @@ export async function POST(req: NextRequest) {
 
 }
 
-async function triggerMemoryLifecycle(userId: number, conversationId: number): Promise<void> {
-  try {
-    const messages = await loadChatMessages(conversationId);
-    if (messages.length < 6) return;
-
-    // Trigger summarization when messages count is a multiple of 6
-    const messagesCount = messages.length;
-    if (messagesCount % 6 !== 0) return;
-
-    // 1. Generate summary using LLM
-    const { callLLM } = await import("@/lib/llm");
-    const system = "أنت مساعد متخصص في تلخيص محادثات التداول المالي. لخص هذه المحادثة الجارية بين المستخدم والمساعد الذكي في 2-4 جمل واضحة ومكثفة باللغة العربية، تركز على أهداف المستخدم، الصفقات التي تمت مناقشتها، المخاطر، والتفضيلات المحددة. لا تذكر عبارات مثل 'في هذه المحادثة'.";
-    
-    const chatHistoryText = messages
-      .map((m) => `${m.role === "user" ? "المستخدم" : "المساعد"}: ${m.content}`)
-      .join("\n");
-
-    const res = await callLLM({
-      system,
-      messages: [{ role: "user", content: chatHistoryText }],
-      maxTokens: 500,
-    });
-
-    const summaryText = res.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { text: string }).text)
-      .join("\n")
-      .trim();
-
-    if (summaryText) {
-      // Update standard conversations summary column
-      await setConversationSummary(conversationId, summaryText);
-
-      const { insertSemanticMemory, searchSemanticMemories, archiveSemanticMemory } = await import("@/lib/semanticMemory");
-
-      // 2. Index this summary in Layer 2 (Semantic Memory)
-      await insertSemanticMemory({
-        userId,
-        category: "conversation_summary",
-        content: `ملخص محادثة (معرف: ${conversationId}): ${summaryText}`,
-        conversationId,
-      });
-
-      // 3. Optionally index full important conversation text (under category 'conversation_full')
-      // Triggered at specific milestones (e.g. 12 or 24 messages) to preserve full context embeddings
-      if (messagesCount === 12 || messagesCount === 24) {
-        const fullTextContent = `نص المحادثة الكاملة (معرف: ${conversationId}):\n` + chatHistoryText.slice(0, 4000);
-        await insertSemanticMemory({
-          userId,
-          category: "conversation_full",
-          content: fullTextContent,
-          conversationId,
-        });
-      }
-
-      // 4. Memory Retention / Archiving strategy: soft-archive summaries that are redundant
-      // Fetch all semantic memories for this user of category 'conversation_summary'
-      const existingMemories = await searchSemanticMemories(userId, summaryText, "conversation_summary", 50, 0.1).catch(() => []);
-      
-      // If the user has more than 15 active conversation summaries, soft-archive the older ones
-      if (existingMemories.length > 15) {
-        const sorted = [...existingMemories].sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
-        const toArchive = sorted.slice(0, sorted.length - 15);
-        for (const mem of toArchive) {
-          await archiveSemanticMemory(mem.id).catch(() => {});
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[triggerMemoryLifecycle] Failed to run memory lifecycle:", err);
-  }
-}
+// Memory lifecycle now runs as a background `memory_lifecycle` job (see
+// lib/memoryLifecycle.ts), enqueued above instead of inline on the request.
 
 

@@ -4,6 +4,8 @@ import {
 } from "./allowedAssets";
 import { isLLMConfigured } from "./llm";
 import {
+  getLimits,
+  getSettings,
   getTodayUsage,
   incrementUsage,
   isDailyQuotaEnforced,
@@ -17,6 +19,7 @@ import {
   type OpportunityCandidate,
 } from "./monitor";
 import { runAgent } from "./agent";
+import { metrics } from "./metrics";
 import { processRecommendations, type ProcessedIntent } from "./tradeFlow";
 import { notifyRecommendation } from "./recommendationChart";
 import { dispatchAlert, type DeliveryResult } from "./alerts";
@@ -246,6 +249,14 @@ export async function runOpportunityScan(
         { userId, settings },
         [{ role: "user", content: prompt }],
       );
+      metrics.agentRuns.inc({ mode: "monitor", status: "ok" });
+      if (agentResult.toolCallsJson) {
+        await logAudit(
+          userId,
+          "monitor_agent_trace",
+          agentResult.toolCallsJson.slice(0, 2000),
+        );
+      }
       await incrementUsage(userId, 1);
 
       await logAudit(
@@ -330,4 +341,15 @@ export async function runOpportunityScan(
   };
 
   return result;
+}
+
+/**
+ * Per-user deep scan wrapper for the worker tier: loads the user's settings +
+ * limits and runs a deep opportunity scan. Used by the `opportunity_scan` job so
+ * the monitor cron only enqueues (fast) and workers do the LLM-heavy analysis.
+ */
+export async function runOpportunityScanForUser(userId: number) {
+  const settings = await getSettings(userId);
+  const limits = await getLimits(userId);
+  return runOpportunityScan(userId, settings, limits, { deep: true });
 }
