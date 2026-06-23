@@ -153,7 +153,7 @@ export async function createApprovalRequest(
 
   let photoUrl = input.photoUrl ?? null;
   if (!photoUrl && input.recommendation_id && settings.send_screenshot === 1) {
-    const rec = await getRecommendation(input.recommendation_id);
+    const rec = await getRecommendation(input.recommendation_id, userId);
     if (rec) photoUrl = await resolveChartUrl(rec);
   }
 
@@ -186,7 +186,7 @@ export async function respondToApproval(
   tradeId?: number | null;
   revalidated?: boolean;
 }> {
-  const intent = await getIntent(intentId);
+  const intent = await getIntent(intentId, userId);
   if (!intent || intent.user_id !== userId) {
     return { ok: false, status: "not_found", reason: "الطلب غير موجود." };
   }

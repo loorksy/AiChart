@@ -82,7 +82,7 @@ export async function executeIntent(
     emitActivity(onActivity, activity);
   };
 
-  const intent = await getIntent(intentId);
+  const intent = await getIntent(intentId, userId);
   if (!intent || intent.user_id !== userId) {
     return { ok: false, status: "failed", reason: "الطلب غير موجود.", activities };
   }
@@ -150,7 +150,7 @@ export async function executeIntent(
       status: "error",
       detail: decision.reason,
     });
-    await updateIntentStatus(intentId, "failed", decision.reason);
+    await updateIntentStatus(intentId, "failed", decision.reason, userId);
     return {
       ok: false,
       status: "failed",

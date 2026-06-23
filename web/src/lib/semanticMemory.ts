@@ -91,18 +91,23 @@ export async function insertSemanticMemory(
   ))!;
 }
 
-export async function archiveSemanticMemory(id: number): Promise<boolean> {
+export async function archiveSemanticMemory(
+  id: number,
+  userId?: number,
+): Promise<boolean> {
   const backend = getDbBackend();
+  const userClause = userId != null ? " AND user_id = ?" : "";
+  const params = userId != null ? [id, userId] : [id];
   if (backend === "postgres") {
     const res = await execute(
-      "UPDATE semantic_memories SET archived = TRUE, updated_at = NOW() WHERE id = ?",
-      [id],
+      `UPDATE semantic_memories SET archived = TRUE, updated_at = NOW() WHERE id = ?${userClause}`,
+      params,
     );
     return res.changes > 0;
   }
   const res = await execute(
-    "UPDATE semantic_memories SET archived = 1, updated_at = datetime('now') WHERE id = ?",
-    [id],
+    `UPDATE semantic_memories SET archived = 1, updated_at = datetime('now') WHERE id = ?${userClause}`,
+    params,
   );
   return res.changes > 0;
 }

@@ -911,7 +911,16 @@ export async function createIntent(
   return (await getIntent(id))!;
 }
 
-export async function getIntent(id: number): Promise<TradeIntent | null> {
+export async function getIntent(
+  id: number,
+  userId?: number,
+): Promise<TradeIntent | null> {
+  if (userId != null) {
+    return queryOne<TradeIntent>(
+      "SELECT * FROM trade_intents WHERE id = ? AND user_id = ?",
+      [id, userId],
+    );
+  }
   return queryOne<TradeIntent>(
     "SELECT * FROM trade_intents WHERE id = ?",
     [id],
@@ -939,7 +948,15 @@ export async function updateIntentStatus(
   id: number,
   status: string,
   reason?: string | null,
+  userId?: number,
 ): Promise<void> {
+  if (userId != null) {
+    await execute(
+      "UPDATE trade_intents SET status = ?, reason = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+      [status, reason ?? null, id, userId],
+    );
+    return;
+  }
   await execute(
     "UPDATE trade_intents SET status = ?, reason = ?, updated_at = datetime('now') WHERE id = ?",
     [status, reason ?? null, id],
@@ -958,7 +975,14 @@ export async function updateIntentNotional(
 
 export async function getRecommendation(
   id: number,
+  userId?: number,
 ): Promise<Recommendation | null> {
+  if (userId != null) {
+    return queryOne<Recommendation>(
+      "SELECT * FROM recommendations WHERE id = ? AND user_id = ?",
+      [id, userId],
+    );
+  }
   return queryOne<Recommendation>(
     "SELECT * FROM recommendations WHERE id = ?",
     [id],
@@ -1040,7 +1064,15 @@ export async function getTrade(
 export async function updateTradeClosed(
   tradeId: number,
   pnl: number,
+  userId?: number,
 ): Promise<void> {
+  if (userId != null) {
+    await execute(
+      `UPDATE trades SET status = 'closed', pnl = ?, closed_at = datetime('now') WHERE id = ? AND user_id = ?`,
+      [pnl, tradeId, userId],
+    );
+    return;
+  }
   await execute(
     `UPDATE trades SET status = 'closed', pnl = ?, closed_at = datetime('now') WHERE id = ?`,
     [pnl, tradeId],
