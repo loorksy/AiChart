@@ -90,18 +90,31 @@ export function evaluateTrade(
     ...extras,
   });
 
+  // Master per-user toggle. When OFF (0) the platform runs "full autonomous":
+  // the agent + committee are the sole authority, so riskGuard SKIPS the
+  // risk/permission gates below. It STILL keeps the non-negotiable execution
+  // safety that would otherwise break the order or liquidate the account:
+  // the platform emergency kill, the user's own kill switch, env-preference
+  // sanity, all futures liquidation gates (mandatory SL, leverage cap), and
+  // "can't risk more than you have". Tolerant of 0/1 (sqlite) and any future
+  // boolean representation — only an explicit 0/false disables it.
+  const riskEnforced =
+    settings.risk_guard_enabled !== 0 &&
+    (settings.risk_guard_enabled as unknown) !== false;
+
+  // ── Always enforced (emergency + execution validity) ──────────────────────
   if (ctx.masterKill)
     return deny("التداول موقوف على مستوى المنصة (إيقاف طارئ من الإدارة).");
   if (settings.kill_switch === 1)
     return deny("الإيقاف الطارئ مفعّل في حسابك.");
   // Tolerant of SQLite (0/1) and Postgres (boolean) representations.
-  if (!limits.can_execute)
+  if (riskEnforced && !limits.can_execute)
     return deny("التنفيذ التلقائي غير مصرّح به من الإدارة.");
   const relaxed =
     ctx.practiceMode === true || ctx.resolvedEnv === "demo";
 
   const minConfidence = getEffectiveMinConfidence(settings, ctx);
-  if (proposed.confidence < minConfidence) {
+  if (riskEnforced && proposed.confidence < minConfidence) {
     return deny(
       `الثقة (${proposed.confidence}%) أقل من الحد الأدنى (${minConfidence}%) — لا ننفّذ. ننتظر فرصة أوضح (≥${minConfidence}%).`,
       {
@@ -114,7 +127,12 @@ export function evaluateTrade(
     );
   }
 
-  if (settings.mode !== "auto" && !ctx.explicitApproval && !ctx.practiceMode)
+  if (
+    riskEnforced &&
+    settings.mode !== "auto" &&
+    !ctx.explicitApproval &&
+    !ctx.practiceMode
+  )
     return deny("وضعك الحالي توصيات فقط، لا تنفيذ.");
 
   const preference = ctx.envPreference ?? "demo";
@@ -129,7 +147,10 @@ export function evaluateTrade(
   }
 
   const market: MarketType = proposed.market ?? "crypto";
-  if (!isSymbolAllowed(settings.allowed_assets, proposed.symbol, market)) {
+  if (
+    riskEnforced &&
+    !isSymbolAllowed(settings.allowed_assets, proposed.symbol, market)
+  ) {
     return deny(`الأصل ${proposed.symbol} غير ضمن قائمتك المسموح بها.`);
   }
 
@@ -162,15 +183,17 @@ export function evaluateTrade(
     return deny("لم تُحدّد سقف رأس مال صالحاً.");
   if (proposed.notional > effectiveCapital)
     return deny("حجم الصفقة يتجاوز سقف رأس المال المسموح.");
-  if (proposed.notional > perTradeMax + 1e-8)
+  // ── Risk gates below: skipped entirely in full-autonomous mode ────────────
+  if (riskEnforced && proposed.notional > perTradeMax + 1e-8)
     return deny(
       `حجم الصفقة يتجاوز الحد الأقصى للصفقة الواحدة (${perTradeMax.toFixed(2)}).`,
     );
 
-  if (ctx.openTradesCount >= maxOpen)
+  if (riskEnforced && ctx.openTradesCount >= maxOpen)
     return deny(`بلغت الحد الأقصى للصفقات المفتوحة (${maxOpen}).`);
 
   if (
+    riskEnforced &&
     settings.daily_loss_limit_pct > 0 &&
     ctx.todayRealizedPnlPct <= -settings.daily_loss_limit_pct
   )
@@ -179,6 +202,7 @@ export function evaluateTrade(
     );
 
   if (
+    riskEnforced &&
     settings.monthly_loss_limit_pct > 0 &&
     ctx.monthRealizedPnlPct <= -settings.monthly_loss_limit_pct
   )
@@ -186,7 +210,7 @@ export function evaluateTrade(
       `بلغت حد الخسارة الشهري (−${settings.monthly_loss_limit_pct}%).`,
     );
 
-  if (!relaxed) {
+  if (riskEnforced && !relaxed) {
     if (
       settings.daily_profit_target_pct > 0 &&
       ctx.todayRealizedPnlPct >= settings.daily_profit_target_pct

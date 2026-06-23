@@ -48,6 +48,10 @@ const SCHEMA = `
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
     kill_switch              INTEGER NOT NULL DEFAULT 0,
+    -- 1 = riskGuard enforces all risk/permission gates (safe default);
+    -- 0 = full-autonomous (agent + committee are the sole authority). Stored as
+    -- INTEGER on BOTH backends on purpose, to avoid the pg-BOOLEAN equality trap.
+    risk_guard_enabled       INTEGER NOT NULL DEFAULT 1,
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
     alerts_enabled           INTEGER NOT NULL DEFAULT 1,
     alert_trades             INTEGER NOT NULL DEFAULT 1,
@@ -556,6 +560,11 @@ function migrate(db: Database.Database) {
   if (!settingsCols.some((c) => c.name === "onboarding_done")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "risk_guard_enabled")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN risk_guard_enabled INTEGER NOT NULL DEFAULT 1",
     );
   }
   if (!settingsCols.some((c) => c.name === "alerts_enabled")) {

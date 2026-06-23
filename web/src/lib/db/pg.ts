@@ -46,6 +46,9 @@ const SCHEMA = `
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
     kill_switch              BOOLEAN NOT NULL DEFAULT FALSE,
+    -- INTEGER (not BOOLEAN) on purpose: read as != 0 to dodge the pg-BOOLEAN
+    -- equality trap. 1 = riskGuard enforced (safe default); 0 = full-autonomous.
+    risk_guard_enabled       INTEGER NOT NULL DEFAULT 1,
     onboarding_done          BOOLEAN NOT NULL DEFAULT FALSE,
     alerts_enabled           BOOLEAN NOT NULL DEFAULT TRUE,
     alert_trades             BOOLEAN NOT NULL DEFAULT TRUE,
@@ -516,6 +519,12 @@ async function migratePg(client: PoolClient) {
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS daily_profit_target_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS auto_take_profit_usd    DOUBLE PRECISION NOT NULL DEFAULT 0
+  `).catch(() => {});
+
+  // Master per-user riskGuard toggle (1 = enforced/safe default, 0 = autonomous).
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS risk_guard_enabled INTEGER NOT NULL DEFAULT 1
   `).catch(() => {});
 
   await client.query(`

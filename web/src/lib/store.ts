@@ -103,6 +103,7 @@ const SETTABLE_FIELDS = [
   "send_screenshot",
   "telegram_chat_id",
   "kill_switch",
+  "risk_guard_enabled",
   "onboarding_done",
   "alerts_enabled",
   "alert_trades",

@@ -129,6 +129,8 @@ export interface TradingSettings {
   send_screenshot: number;
   telegram_chat_id: string | null;
   kill_switch: number;
+  /** 1 = riskGuard enforces all risk/permission gates; 0 = full-autonomous. */
+  risk_guard_enabled: number;
   onboarding_done: number;
   alerts_enabled: number;
   alert_trades: number;

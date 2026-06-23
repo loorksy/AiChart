@@ -364,25 +364,33 @@ export async function buildTradeReadiness(
   const todayPnlPct = await todayRealizedPnlPct(userId, effectiveCapital);
   const monthPnlPct = await monthRealizedPnlPct(userId, effectiveCapital);
 
+  // Master per-user riskGuard toggle — mirrors evaluateTrade. When OFF, the
+  // risk/permission blockers below are suppressed (agent + committee decide);
+  // the emergency kill switch and broker/EA checks still apply.
+  const riskEnforced =
+    settings.risk_guard_enabled !== 0 &&
+    (settings.risk_guard_enabled as unknown) !== false;
+
   const masterKill = await isMasterKillOn();
   const userKill = settings.kill_switch === 1;
   const killPasses = !masterKill && !userKill;
 
   const dailyLossPasses =
+    !riskEnforced ||
     settings.daily_loss_limit_pct <= 0 ||
     todayPnlPct > -settings.daily_loss_limit_pct;
   const monthlyLossPasses =
+    !riskEnforced ||
     settings.monthly_loss_limit_pct <= 0 ||
     monthPnlPct > -settings.monthly_loss_limit_pct;
 
-  const openTradesPasses = openCount < maxOpen;
-  const canExecuteAllowed = limits.can_execute === 1;
+  const openTradesPasses = !riskEnforced || openCount < maxOpen;
+  // Tolerant of sqlite (0/1) and pg (boolean); also bypassed when autonomous.
+  const canExecuteAllowed = !riskEnforced || Boolean(limits.can_execute);
 
-  const confidenceGate = confidenceGateCheck(
-    settings,
-    riskCtx,
-    input.confidence,
-  );
+  const confidenceGate = riskEnforced
+    ? confidenceGateCheck(settings, riskCtx, input.confidence)
+    : { minConfidence: 0, passes: true };
 
   const forexApplies = market === "forex";
   const session = isForexSessionOpen();

@@ -32,6 +32,8 @@ export const GET = withBridge(async ({ userId }) => {
     mode: settings.mode,
     style: settings.style,
     activeMarket: settings.active_market ?? "crypto",
+    // 1 = riskGuard enforced (safe default); 0 = full-autonomous (agent decides).
+    riskGuardEnabled: settings.risk_guard_enabled !== 0,
     killSwitch: {
       master: await isMasterKillOn(),
       user: settings.kill_switch === 1,

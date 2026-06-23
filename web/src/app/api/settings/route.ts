@@ -39,6 +39,9 @@ const schema = z
     send_screenshot: z.boolean(),
     telegram_chat_id: z.string().max(64).nullable().optional(),
     kill_switch: z.boolean(),
+    // Master riskGuard toggle (1 = enforced/safe, 0 = full-autonomous). Optional
+    // so existing settings forms that omit it keep the current value untouched.
+    risk_guard_enabled: z.union([z.literal(0), z.literal(1)]).optional(),
     alerts_enabled: z.boolean(),
     alert_trades: z.boolean(),
     alert_signals: z.boolean(),

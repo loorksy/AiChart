@@ -447,6 +447,16 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "set_risk_guard",
+    description:
+      "يفعّل/يطفئ حارس المخاطر (riskGuard) للحساب. enabled=false ⇒ وضع مستقل كامل: الوكيل واللجنة هما السلطة الوحيدة على القرار والحجم وSL/TP، دون حدود مخاطر/أذونات. يبقى الإيقاف الطارئ ووقف الخسارة الإلزامي للعقود الآجلة وعدم تجاوز الرصيد. قابل للعكس فوراً. استخدمه فقط بطلب صريح من صاحب الحساب.",
+    input_schema: {
+      type: "object",
+      properties: { enabled: { type: "boolean" } },
+      required: ["enabled"],
+    },
+  },
+  {
     name: "set_active_market",
     description: "يبدّل السوق النشط: crypto / forex.",
     input_schema: {
@@ -529,6 +539,7 @@ const SCALP_TOOL_DENY = new Set([
   "set_trading_mode",
   "set_active_market",
   "set_trading_style",
+  "set_risk_guard",
   "start_scalp_session",
   "stop_scalp_session",
 ]);
@@ -599,6 +610,7 @@ const BRIDGE_TOOL_NAMES = new Set([
   "modify_sl_tp",
   "request_approval",
   "set_trading_mode",
+  "set_risk_guard",
   "set_active_market",
   "set_trading_style",
   "get_scalp_status",
@@ -678,6 +690,10 @@ async function forwardBridge(
       return ok(await bridge.post("/api/agent/approval/request", input));
     case "set_trading_mode":
       return ok(await bridge.post("/api/agent/mode", { mode: input.mode }));
+    case "set_risk_guard":
+      return ok(
+        await bridge.post("/api/agent/risk-guard", { enabled: input.enabled }),
+      );
     case "set_active_market":
       return ok(
         await bridge.patch("/api/agent/settings", {
