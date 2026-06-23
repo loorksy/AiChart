@@ -3,6 +3,7 @@
  * use and by the worker process. Keep handlers thin: resolve inputs and call
  * the existing domain function so logic stays in one place.
  */
+import { runBotTickForUser } from "./botEngine";
 import { runMemoryLifecycle } from "./memoryLifecycle";
 import { runOpportunityScanForUser } from "./opportunityScan";
 import { hasHandler, registerHandler } from "./queue";
@@ -32,5 +33,11 @@ if (!hasHandler("opportunity_scan")) {
 if (!hasHandler("memory_lifecycle")) {
   registerHandler("memory_lifecycle", async ({ userId, conversationId }) => {
     await runMemoryLifecycle(userId, conversationId);
+  });
+}
+
+if (!hasHandler("bot_tick")) {
+  registerHandler("bot_tick", async ({ userId }) => {
+    await runBotTickForUser(userId);
   });
 }

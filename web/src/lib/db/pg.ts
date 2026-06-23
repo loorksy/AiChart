@@ -83,6 +83,24 @@ const SCHEMA = `
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
+  CREATE TABLE IF NOT EXISTS bot_sessions (
+    id              SERIAL PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    strategy        TEXT NOT NULL DEFAULT 'grid',
+    symbol          TEXT NOT NULL,
+    market          TEXT NOT NULL DEFAULT 'forex',
+    side            TEXT NOT NULL DEFAULT 'sell',
+    config_json     TEXT NOT NULL DEFAULT '{}',
+    state_json      TEXT NOT NULL DEFAULT '{"levels":[]}',
+    status          TEXT NOT NULL DEFAULT 'active',
+    execution_mode  TEXT NOT NULL DEFAULT 'paper',
+    realized_pnl    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    stop_reason     TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_bot_sessions_active ON bot_sessions (status, user_id);
+
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     can_execute         BOOLEAN NOT NULL DEFAULT TRUE,

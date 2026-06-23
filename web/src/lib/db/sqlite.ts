@@ -89,6 +89,25 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS bot_sessions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    strategy        TEXT NOT NULL DEFAULT 'grid',
+    symbol          TEXT NOT NULL,
+    market          TEXT NOT NULL DEFAULT 'forex',
+    side            TEXT NOT NULL DEFAULT 'sell',
+    config_json     TEXT NOT NULL DEFAULT '{}',
+    state_json      TEXT NOT NULL DEFAULT '{"levels":[]}',
+    status          TEXT NOT NULL DEFAULT 'active',
+    execution_mode  TEXT NOT NULL DEFAULT 'paper',
+    realized_pnl    REAL NOT NULL DEFAULT 0,
+    stop_reason     TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_bot_sessions_active ON bot_sessions (status, user_id);
+
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY,
     can_execute         INTEGER NOT NULL DEFAULT 1,

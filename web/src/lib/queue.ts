@@ -19,6 +19,7 @@ export interface JobPayloads {
   scalp_tick: { userId: number };
   opportunity_scan: { userId: number };
   memory_lifecycle: { userId: number; conversationId: number };
+  bot_tick: { userId: number };
 }
 export type JobName = keyof JobPayloads;
 
