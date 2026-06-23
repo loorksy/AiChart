@@ -963,6 +963,30 @@ export async function updateIntentStatus(
   );
 }
 
+/**
+ * Mark an intent failed AND persist the structured Risk Guard deny code, so
+ * "which rule blocked execution?" is queryable across every path (chat, scalp,
+ * monitor) — not only readable from the localized Arabic reason text.
+ */
+export async function updateIntentDenied(
+  id: number,
+  reason: string,
+  denyCode: string | null,
+  userId?: number,
+): Promise<void> {
+  if (userId != null) {
+    await execute(
+      "UPDATE trade_intents SET status = 'failed', reason = ?, deny_code = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+      [reason, denyCode, id, userId],
+    );
+    return;
+  }
+  await execute(
+    "UPDATE trade_intents SET status = 'failed', reason = ?, deny_code = ?, updated_at = datetime('now') WHERE id = ?",
+    [reason, denyCode, id],
+  );
+}
+
 export async function updateIntentNotional(
   id: number,
   notional: number,

@@ -2,7 +2,7 @@ import {
   getSettings,
   getLimits,
   getIntent,
-  updateIntentStatus,
+  updateIntentDenied,
   countOpenTrades,
   todayRealizedPnlPct,
   todayRealizedPnlUsd,
@@ -150,7 +150,12 @@ export async function executeIntent(
       status: "error",
       detail: decision.reason,
     });
-    await updateIntentStatus(intentId, "failed", decision.reason, userId);
+    await updateIntentDenied(
+      intentId,
+      decision.reason,
+      decision.denyCode ?? null,
+      userId,
+    );
     return {
       ok: false,
       status: "failed",

@@ -60,4 +60,25 @@ test("store helpers enforce the optional userId guard", async () => {
     [intentId],
   );
   assert.equal(afterOwner?.status, "approved", "owner write must apply");
+
+  // updateIntentDenied persists the structured Risk Guard code, scoped by user.
+  const denyId = await db.insertReturningId(
+    "INSERT INTO trade_intents (user_id, symbol, side, notional, status) VALUES (?,?,?,?,?)",
+    [owner, "GBPUSD", "sell", 80, "approved"],
+  );
+  await store.updateIntentDenied(denyId, "daily loss limit", "RISK_LIMIT", attacker);
+  const notDenied = await db.queryOne<{ status: string; deny_code: string | null }>(
+    "SELECT status, deny_code FROM trade_intents WHERE id = ?",
+    [denyId],
+  );
+  assert.equal(notDenied?.status, "approved", "wrong tenant cannot deny");
+  assert.equal(notDenied?.deny_code, null);
+
+  await store.updateIntentDenied(denyId, "daily loss limit", "RISK_LIMIT", owner);
+  const denied = await db.queryOne<{ status: string; deny_code: string | null }>(
+    "SELECT status, deny_code FROM trade_intents WHERE id = ?",
+    [denyId],
+  );
+  assert.equal(denied?.status, "failed");
+  assert.equal(denied?.deny_code, "RISK_LIMIT", "deny code is persisted");
 });

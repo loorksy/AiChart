@@ -137,6 +137,7 @@ const SCHEMA = `
     rationale         TEXT,
     status            TEXT NOT NULL DEFAULT 'pending',
     reason            TEXT,
+    deny_code         TEXT,
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -701,6 +702,9 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE trade_intents ADD COLUMN market_type TEXT NOT NULL DEFAULT 'spot'",
     );
+  }
+  if (!intentCols.some((c) => c.name === "deny_code")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN deny_code TEXT");
   }
   if (!intentCols.some((c) => c.name === "leverage")) {
     db.exec(

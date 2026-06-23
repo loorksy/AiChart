@@ -129,6 +129,7 @@ const SCHEMA = `
     rationale         TEXT,
     status            TEXT NOT NULL DEFAULT 'pending',
     reason            TEXT,
+    deny_code         TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -598,6 +599,11 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS market_type TEXT NOT NULL DEFAULT 'spot',
       ADD COLUMN IF NOT EXISTS leverage DOUBLE PRECISION NOT NULL DEFAULT 1,
       ADD COLUMN IF NOT EXISTS order_type TEXT NOT NULL DEFAULT 'market'
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trade_intents
+      ADD COLUMN IF NOT EXISTS deny_code TEXT
   `).catch(() => {});
 
   await client.query(`
