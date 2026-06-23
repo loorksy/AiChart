@@ -12,7 +12,7 @@
     "playwright:deps": "playwright install-deps chromium",
     "playwright:setup": "playwright install-deps chromium && playwright install chromium",
     "playwright:test-capture": "node scripts/test-binance-capture.mjs",
-    "test:bridge": "tsx --test src/lib/bridge/__tests__/**/*.test.ts src/lib/ohlc/__tests__/**/*.test.ts src/lib/markets/__tests__/**/*.test.ts src/lib/__tests__/eaQuoteMetrics.test.ts src/lib/__tests__/eaLiveStateRedis.test.ts src/lib/__tests__/cardComposer.test.ts src/lib/__tests__/llmToolParity.test.ts src/lib/__tests__/scalpEngine.test.ts src/lib/__tests__/dynamicTrade.test.ts src/lib/__tests__/riskLimits.test.ts src/lib/__tests__/externalFetch.test.ts src/lib/__tests__/dbUserScope.test.ts src/lib/__tests__/scalpLock.test.ts src/lib/__tests__/mt5Account.test.ts"
+    "test:bridge": "tsx --test src/lib/bridge/__tests__/**/*.test.ts src/lib/ohlc/__tests__/**/*.test.ts src/lib/markets/__tests__/**/*.test.ts src/lib/__tests__/eaQuoteMetrics.test.ts src/lib/__tests__/eaLiveStateRedis.test.ts src/lib/__tests__/cardComposer.test.ts src/lib/__tests__/llmToolParity.test.ts src/lib/__tests__/scalpEngine.test.ts src/lib/__tests__/dynamicTrade.test.ts src/lib/__tests__/riskLimits.test.ts src/lib/__tests__/externalFetch.test.ts src/lib/__tests__/dbUserScope.test.ts src/lib/__tests__/scalpLock.test.ts src/lib/__tests__/mt5Account.test.ts src/lib/__tests__/logger.test.ts"
   },
   "dependencies": {
     "@binance/binance-cli": "^1.3.0",
