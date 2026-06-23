@@ -34,7 +34,7 @@ import { waitForEaCommandAck } from "./eaCommandWait";
 import { getEaConnection, isHeartbeatFresh } from "./eaStore";
 import { queueEaClosePosition } from "./eaTradeCommands";
 import { mt5Close } from "./mt5local/client";
-import { runTradePostMortem } from "./tradePostMortem";
+import { enqueue } from "./queue";
 import type { Trade } from "./types";
 
 export interface CloseTradeResult {
@@ -60,8 +60,10 @@ function computePnl(
 }
 
 function afterTradeClosed(userId: number, tradeId: number, pnl: number): void {
-  void runTradePostMortem(userId, tradeId, pnl).catch((err) => {
-    console.error("[tradeClose] post-mortem failed", tradeId, err);
+  // Offload the LLM + embedding post-mortem to the worker tier (or inline when
+  // no queue is configured) so it never delays the close response.
+  void enqueue("trade_post_mortem", { userId, tradeId, pnl }).catch((err) => {
+    console.error("[tradeClose] post-mortem enqueue failed", tradeId, err);
   });
 }
 

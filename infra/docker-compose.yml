@@ -49,6 +49,23 @@ services:
       - web
     restart: unless-stopped
 
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    command: ["npm", "run", "worker"]
+    env_file:
+      - ../web/.env
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - MT5_BRIDGE_URL=http://mt5:18812
+      - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
+    volumes:
+      - aichart-data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     ports:

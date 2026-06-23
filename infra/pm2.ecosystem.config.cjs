@@ -21,5 +21,20 @@ module.exports = {
       autorestart: true,
       max_memory_restart: "256M",
     },
+    {
+      // Background job tier (BullMQ). Only useful when REDIS_URL is set; with it
+      // unset the web process runs jobs inline and this worker idles. Scale by
+      // raising `instances` and/or WORKER_CONCURRENCY.
+      name: "aichart-worker",
+      cwd: "./web",
+      script: "npm",
+      args: "run worker",
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: "512M",
+      env: {
+        NODE_ENV: "production",
+      },
+    },
   ],
 };
