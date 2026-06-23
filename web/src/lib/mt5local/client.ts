@@ -5,6 +5,36 @@
 
 import type { EaSymbolSpec } from "../types";
 
+/**
+ * Identifies WHICH broker account an MT5-bridge call targets. Multi-tenant
+ * safety invariant: every trade-execution call must name its account so the
+ * bridge can ensure that exact account is active before sending the order —
+ * a single shared terminal must never execute User A's order on User B.
+ */
+export interface Mt5AccountRef {
+  login: string | number;
+  server?: string;
+}
+
+function accountParams(account?: Mt5AccountRef): string {
+  if (!account) return "";
+  const p = new URLSearchParams();
+  p.set("login", String(account.login));
+  if (account.server) p.set("server", account.server);
+  return p.toString();
+}
+
+function withAccount<T extends object>(
+  body: T,
+  account: Mt5AccountRef,
+): T & { login: string; server?: string } {
+  return {
+    ...body,
+    login: String(account.login),
+    ...(account.server ? { server: account.server } : {}),
+  };
+}
+
 export function getMt5BridgeUrl(): string | null {
   const url = process.env.MT5_BRIDGE_URL?.trim();
   return url ? url.replace(/\/$/, "") : null;
@@ -73,21 +103,30 @@ export async function mt5Connect(creds: {
   return res.account;
 }
 
-export async function mt5Status(): Promise<{
+export async function mt5Status(account: Mt5AccountRef): Promise<{
   connected: boolean;
   account?: Mt5Account;
 }> {
-  return call("/status");
+  const qs = accountParams(account);
+  return call(`/status${qs ? `?${qs}` : ""}`);
 }
 
 export async function mt5Price(
   symbol: string,
+  account?: Mt5AccountRef,
 ): Promise<{ symbol: string; bid: number; ask: number }> {
-  return call(`/price?symbol=${encodeURIComponent(symbol)}`);
+  const qs = accountParams(account);
+  return call(
+    `/price?symbol=${encodeURIComponent(symbol)}${qs ? `&${qs}` : ""}`,
+  );
 }
 
-export async function mt5Spec(symbol: string): Promise<EaSymbolSpec> {
-  return call(`/spec?symbol=${encodeURIComponent(symbol)}`);
+export async function mt5Spec(
+  symbol: string,
+  account?: Mt5AccountRef,
+): Promise<EaSymbolSpec> {
+  const qs = accountParams(account);
+  return call(`/spec?symbol=${encodeURIComponent(symbol)}${qs ? `&${qs}` : ""}`);
 }
 
 export interface Mt5Bar {
@@ -102,9 +141,11 @@ export async function mt5Rates(
   symbol: string,
   timeframe: string,
   count = 120,
+  account?: Mt5AccountRef,
 ): Promise<Mt5Bar[]> {
+  const qs = accountParams(account);
   const res = await call<{ bars: Mt5Bar[] }>(
-    `/rates?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&count=${count}`,
+    `/rates?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&count=${count}${qs ? `&${qs}` : ""}`,
   );
   return res.bars;
 }
@@ -121,35 +162,46 @@ export interface Mt5Position {
   profit: number;
 }
 
-export async function mt5Positions(): Promise<Mt5Position[]> {
-  const res = await call<{ positions: Mt5Position[] }>("/positions");
+export async function mt5Positions(
+  account: Mt5AccountRef,
+): Promise<Mt5Position[]> {
+  const qs = accountParams(account);
+  const res = await call<{ positions: Mt5Position[] }>(
+    `/positions${qs ? `?${qs}` : ""}`,
+  );
   return res.positions;
 }
 
-export async function mt5Order(order: {
-  symbol: string;
-  side: "buy" | "sell";
-  lots: number;
-  sl?: number | null;
-  tp?: number | null;
-  comment?: string;
-}): Promise<{
+export async function mt5Order(
+  account: Mt5AccountRef,
+  order: {
+    symbol: string;
+    side: "buy" | "sell";
+    lots: number;
+    sl?: number | null;
+    tp?: number | null;
+    comment?: string;
+  },
+): Promise<{
   ok: boolean;
   ticket?: number;
   price?: number;
   lots?: number;
   reason?: string;
 }> {
-  return call("/order", { method: "POST", body: order });
+  return call("/order", { method: "POST", body: withAccount(order, account) });
 }
 
-export async function mt5Close(target: {
-  ticket?: number;
-  all?: boolean;
-}): Promise<{
+export async function mt5Close(
+  account: Mt5AccountRef,
+  target: {
+    ticket?: number;
+    all?: boolean;
+  },
+): Promise<{
   ok: boolean;
   closed: { ticket: number; symbol: string; lots: number; profit: number }[];
   errors: string[];
 }> {
-  return call("/close", { method: "POST", body: target });
+  return call("/close", { method: "POST", body: withAccount(target, account) });
 }

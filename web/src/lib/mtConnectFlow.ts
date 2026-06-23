@@ -187,7 +187,7 @@ export async function getMtConnectionStatus(userId: number) {
       };
     }
     try {
-      const status = await mt5Status();
+      const status = await mt5Status({ login: meta.login, server: meta.server });
       const online = Boolean(status.connected);
       await updateMtAccountStatus(userId, {
         state: online ? "DEPLOYED" : "UNDEPLOYED",

@@ -1,6 +1,7 @@
 import {
   getBinanceCredentials,
   getIntent,
+  getMtAccountMeta,
   getSettings,
   getTrade,
   updateTradeClosed,
@@ -197,7 +198,20 @@ async function closeMt5LocalTrade(
       reason: "لا توجد تذكرة MT5 مسجلة لهذه الصفقة.",
     };
   }
-  const result = await mt5Close({ ticket });
+  const acct = await getMtAccountMeta(trade.user_id);
+  if (!acct) {
+    return {
+      ok: false,
+      tradeId: trade.id,
+      symbol: trade.symbol,
+      pnl: 0,
+      reason: "لا يوجد حساب MT5 مرتبط لإغلاق الصفقة.",
+    };
+  }
+  const result = await mt5Close(
+    { login: acct.login, server: acct.server },
+    { ticket },
+  );
   if (!result.ok || result.closed.length === 0) {
     return {
       ok: false,

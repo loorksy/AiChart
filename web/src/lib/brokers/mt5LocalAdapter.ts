@@ -43,10 +43,14 @@ export const mt5LocalAdapter: BrokerAdapter = {
       status: "done",
     });
 
+    // Multi-tenant safety: pin every bridge call to THIS user's account so the
+    // shared terminal can never place the order on another user's account.
+    const account = { login: meta.login, server: meta.server };
+
     push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "running" });
     let spec;
     try {
-      spec = await mt5Spec(intent.symbol);
+      spec = await mt5Spec(intent.symbol, account);
     } catch (err) {
       const reason = err instanceof Error ? err.message : "تعذّر جلب مواصفات الرمز.";
       push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "error", detail: reason });
@@ -84,7 +88,7 @@ export const mt5LocalAdapter: BrokerAdapter = {
     });
 
     try {
-      const result = await mt5Order({
+      const result = await mt5Order(account, {
         symbol: intent.symbol,
         side: intent.side,
         lots: sizing.lots,
