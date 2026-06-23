@@ -944,12 +944,17 @@ function getPool(): Pool {
     process.env.PGSSL === "1" ||
     process.env.PGSSLMODE === "require" ||
     /[?&]sslmode=require/.test(url);
+  // Verify the server certificate by default; only skip verification when the
+  // operator explicitly opts in (e.g. self-signed dev DB) via PGSSL_INSECURE=1.
+  const sslConfig = sslRequired
+    ? { ssl: { rejectUnauthorized: process.env.PGSSL_INSECURE !== "1" } }
+    : {};
   _pool = new Pool({
     connectionString: url,
     max: envInt("PGPOOL_MAX", 10),
     idleTimeoutMillis: envInt("PGPOOL_IDLE_MS", 30_000),
     connectionTimeoutMillis: envInt("PGPOOL_CONN_TIMEOUT_MS", 10_000),
-    ...(sslRequired ? { ssl: { rejectUnauthorized: false } } : {}),
+    ...sslConfig,
   });
   // A pool-level error handler is required: without it, an idle client error
   // (e.g. server restart) crashes the process with an unhandled 'error' event.

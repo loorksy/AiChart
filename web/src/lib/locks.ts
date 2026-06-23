@@ -78,9 +78,29 @@ export async function withLock<T>(
 ): Promise<WithLockResult<T>> {
   const handle = await acquireLock(name, ttlMs);
   if (!handle) return { ran: false };
+  // Auto-renew at half the TTL so a long-running body (e.g. a cron cycle that
+  // exceeds the lease) is never stolen by another replica mid-flight.
+  const renew = startLeaseRenewal(handle, ttlMs);
   try {
     return { ran: true, result: await fn() };
   } finally {
+    renew.stop();
     await releaseLock(handle);
   }
+}
+
+/**
+ * Keep a held lease alive while long work runs. Returns a stopper. The timer is
+ * unref'd so it never keeps the process alive on its own.
+ */
+export function startLeaseRenewal(
+  handle: LockHandle,
+  ttlMs: number,
+): { stop: () => void } {
+  const interval = Math.max(1_000, Math.floor(ttlMs / 2));
+  const timer = setInterval(() => {
+    void renewLock(handle, ttlMs).catch(() => {});
+  }, interval);
+  if (typeof timer.unref === "function") timer.unref();
+  return { stop: () => clearInterval(timer) };
 }

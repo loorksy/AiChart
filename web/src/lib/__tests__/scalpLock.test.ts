@@ -18,7 +18,9 @@ test("acquireLock/releaseLock/withLock provide mutual exclusion with expiry", as
 
   const db = await import("@/lib/db");
   await db.initDb();
-  const { acquireLock, releaseLock, withLock } = await import("@/lib/locks");
+  const { acquireLock, releaseLock, renewLock, withLock } = await import(
+    "@/lib/locks"
+  );
 
   // First acquirer wins; second is rejected while the lease is held.
   const a = await acquireLock("scalp:user:1", 10_000);
@@ -46,4 +48,18 @@ test("acquireLock/releaseLock/withLock provide mutual exclusion with expiry", as
   const ran = await withLock("cron:scalp", 10_000, async () => "ran");
   assert.equal(ran.ran, true);
   assert.equal(ran.ran ? ran.result : null, "ran");
+
+  // Renewal keeps a held lease alive past its original TTL, so a long cron/scalp
+  // run is never stolen mid-flight.
+  const long = await acquireLock("scalp:user:9", 80);
+  assert.ok(long);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(await renewLock(long!, 80), true, "renew while held");
+  await new Promise((r) => setTimeout(r, 50)); // now past the original 80ms
+  assert.equal(
+    await acquireLock("scalp:user:9", 80),
+    null,
+    "renewed lease must not be stealable",
+  );
+  await releaseLock(long!);
 });

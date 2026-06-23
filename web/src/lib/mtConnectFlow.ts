@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { getForexBackend } from "./brokers/forexBackend";
 import {
   isMetaApiConfigured,
   mapMetaApiError,
@@ -14,6 +13,7 @@ import {
   deleteMtAccount,
   getMtAccount,
   getMtAccountMeta,
+  resolveForexBackendForUser,
   saveMtAccount,
   updateMtAccountStatus,
 } from "./store";
@@ -31,11 +31,13 @@ export type MtConnectInput = z.infer<typeof mtConnectSchema>;
 
 /** Connect MT4/MT5 via MetaApi or self-hosted mt5local bridge. */
 export async function connectMtAccount(userId: number, input: MtConnectInput) {
-  const backend = getForexBackend();
+  // Honor the user's chosen method: if they picked the EA bridge, refuse to
+  // register credentials on the shared server-side bridge pool.
+  const backend = await resolveForexBackendForUser(userId);
 
   if (backend === "ea") {
     throw new Error(
-      "خلفية الفوركس على EA — اربط MetaTrader عبر Expert Advisor من الإعدادات، لا عبر login/password.",
+      "اخترت الربط عبر جسر EA — بدّل الطريقة إلى «عبر المنصة» أولاً، أو اربط MetaTrader عبر Expert Advisor.",
     );
   }
 
@@ -153,7 +155,7 @@ export async function disconnectMtAccount(userId: number) {
 
 /** Live MetaTrader connection status for MetaApi or mt5local. */
 export async function getMtConnectionStatus(userId: number) {
-  const backend = getForexBackend();
+  const backend = await resolveForexBackendForUser(userId);
 
   if (backend === "ea") {
     const meta = await getEaConnectionMeta(userId);

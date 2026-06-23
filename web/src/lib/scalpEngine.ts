@@ -12,7 +12,7 @@
  */
 import { runAgent } from "./agent";
 import { executeIntent } from "./execution";
-import { acquireLock, releaseLock } from "./locks";
+import { acquireLock, releaseLock, startLeaseRenewal } from "./locks";
 import {
   countOpenTrades,
   createIntent,
@@ -129,6 +129,9 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
       });
       continue;
     }
+    // The agent loop can outlast the base lease; renew it so a concurrent cron
+    // can never steal the lock and double-tick the same user.
+    const tickRenew = startLeaseRenewal(tickLock, SCALP_TICK_LOCK_MS);
     try {
       const settings = await getSettings(userId);
 
@@ -258,6 +261,7 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
         `user ${userId}: ${e instanceof Error ? e.message : "error"}`,
       );
     } finally {
+      tickRenew.stop();
       await releaseLock(tickLock);
     }
   }

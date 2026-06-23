@@ -99,12 +99,13 @@ async function fetchForexOhlcLive(
 
   if (backend === "mt5local") {
     const acct = await getMtAccountMeta(userId);
-    const bars = await mt5Rates(
-      symbol,
-      interval,
-      limit,
-      acct ? { login: acct.login, server: acct.server } : undefined,
-    );
+    if (!acct) {
+      return { candles: [], source: "mt5local", warning: "MT5 غير مربوط." };
+    }
+    const bars = await mt5Rates(symbol, interval, limit, {
+      login: acct.login,
+      server: acct.server,
+    });
     return {
       candles: bars.map((b) => ({
         time: b.time,

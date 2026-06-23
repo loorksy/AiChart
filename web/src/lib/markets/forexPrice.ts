@@ -11,12 +11,13 @@ export async function getForexLiveMid(
 ): Promise<number> {
   if ((await resolveForexBackendForUser(userId)) === "mt5local") {
     try {
-      const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
       const acct = await getMtAccountMeta(userId);
-      const { bid, ask } = await mt5Price(
-        resolved,
-        acct ? { login: acct.login, server: acct.server } : undefined,
-      );
+      if (!acct) return 0; // no connected account → nothing to price
+      const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
+      const { bid, ask } = await mt5Price(resolved, {
+        login: acct.login,
+        server: acct.server,
+      });
       if (bid && ask) return (bid + ask) / 2;
       return bid || ask || 0;
     } catch {

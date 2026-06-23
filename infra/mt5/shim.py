@@ -396,7 +396,10 @@ class Handler(BaseHTTPRequestHandler):
                         return self._send(200, {"connected": False, "error": _last_error()})
                     return self._send(200, {"connected": True, "account": account_dict(info)})
 
-                # All data endpoints must operate on the caller's account.
+                # All data endpoints must name their account: never serve one
+                # user's quotes/specs/positions from another user's session.
+                if login is None:
+                    return self._send(400, {"error": "login required"})
                 ok, err = ensure_active(login)
                 if not ok:
                     return self._send(503, {"error": err})
@@ -472,30 +475,24 @@ class Handler(BaseHTTPRequestHandler):
 
             login = body.get("login")
 
-            if url.path == "/order":
+            # Trade endpoints MUST name their account — refuse to execute against
+            # "whatever is currently active", which would cross tenants.
+            if url.path in ("/order", "/close"):
+                if login is None:
+                    return self._send(400, {"ok": False, "reason": "login required"})
                 with _lock:
                     ok, err = ensure_active(login)
                     if not ok:
                         return self._send(503, {"error": err})
                     # Belt-and-suspenders: never trade if the active account is
                     # not exactly the one the caller asked for.
-                    if login is not None and str(_state["login"]) != str(login):
+                    if str(_state["login"]) != str(login):
                         return self._send(
                             409,
                             {"ok": False, "reason": "account mismatch — refused"},
                         )
-                    return self._send(200, place_order(body))
-
-            if url.path == "/close":
-                with _lock:
-                    ok, err = ensure_active(login)
-                    if not ok:
-                        return self._send(503, {"error": err})
-                    if login is not None and str(_state["login"]) != str(login):
-                        return self._send(
-                            409,
-                            {"ok": False, "reason": "account mismatch — refused"},
-                        )
+                    if url.path == "/order":
+                        return self._send(200, place_order(body))
                     return self._send(200, close_positions(body))
 
             return self._send(404, {"error": "not found"})
@@ -533,6 +530,13 @@ def auto_reconnect():
 
 
 if __name__ == "__main__":
+    if not _bridge_token():
+        print(
+            "[shim] WARNING: MT5_BRIDGE_TOKEN is not set — the bridge is "
+            "UNAUTHENTICATED. Set it in production; anyone who can reach this "
+            "port could trade pooled accounts.",
+            flush=True,
+        )
     try:
         auto_reconnect()
     except Exception as e:  # never block startup on a warm-connect failure

@@ -90,12 +90,11 @@ async function fetchCandleSeries(
     if (backend === "mt5local") {
       try {
         const acct = userId != null ? await getMtAccountMeta(userId) : null;
-        const bars = await mt5Rates(
-          sym,
-          tf,
-          limit,
-          acct ? { login: acct.login, server: acct.server } : undefined,
-        );
+        if (!acct) return null; // no connected account → cannot fetch rates
+        const bars = await mt5Rates(sym, tf, limit, {
+          login: acct.login,
+          server: acct.server,
+        });
         return bars.length >= 10
           ? bars.map((b) => ({
               time: b.time,
