@@ -1,18 +1,22 @@
-import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { getEaConnection, parseEaSymbolSpecs } from "@/lib/eaStore";
 import { resolveLiveForexMid } from "@/lib/eaLiveState";
 import { forexCanonicalKey, resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { mt5Price } from "@/lib/mt5local/client";
+import { getMtAccountMeta, resolveForexBackendForUser } from "@/lib/store";
 
 /** Live mid price for a forex symbol (resolves broker suffix via EA heartbeat). */
 export async function getForexLiveMid(
   userId: number,
   symbol: string,
 ): Promise<number> {
-  if (getForexBackend() === "mt5local") {
+  if ((await resolveForexBackendForUser(userId)) === "mt5local") {
     try {
       const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
-      const { bid, ask } = await mt5Price(resolved);
+      const acct = await getMtAccountMeta(userId);
+      const { bid, ask } = await mt5Price(
+        resolved,
+        acct ? { login: acct.login, server: acct.server } : undefined,
+      );
       if (bid && ask) return (bid + ask) / 2;
       return bid || ask || 0;
     } catch {

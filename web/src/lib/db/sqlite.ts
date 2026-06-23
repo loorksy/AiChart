@@ -45,6 +45,9 @@ const SCHEMA = `
     auto_take_profit_usd     REAL NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     active_market            TEXT NOT NULL DEFAULT 'crypto',
+    -- User-chosen forex connection: 'ea' (bridge installed on the user's MT5)
+    -- or 'mt5local' (server-side, no download). NULL = operator's global default.
+    forex_backend            TEXT,
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
     kill_switch              INTEGER NOT NULL DEFAULT 0,
@@ -608,6 +611,9 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN active_market TEXT NOT NULL DEFAULT 'crypto'",
     );
+  }
+  if (!settingsCols.some((c) => c.name === "forex_backend")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN forex_backend TEXT");
   }
   if (!settingsCols.some((c) => c.name === "last_manual_scan_at")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN last_manual_scan_at TEXT");

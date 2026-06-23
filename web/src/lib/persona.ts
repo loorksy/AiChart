@@ -1,7 +1,7 @@
 import type { TradingSettings } from "./types";
 import { allowedAssetsLabel } from "./allowedAssets";
 import { buildUserContext } from "./userContext";
-import { getForexBackend } from "./brokers/forexBackend";
+import { resolveForexBackendFromPref } from "./brokers/forexBackend";
 
 export interface SystemPromptParts {
   /** Fixed instructions — prompt-cached on every call. */
@@ -21,7 +21,7 @@ export async function buildSystemPrompt(
 ): Promise<SystemPromptParts> {
   const activeMarket = settings.active_market ?? "crypto";
   const assetsLabel = allowedAssetsLabel(settings.allowed_assets, activeMarket);
-  const forexMode = getForexBackend();
+  const forexMode = resolveForexBackendFromPref(settings.forex_backend);
   const forexExecLabel =
     forexMode === "metaapi"
       ? "MetaTrader عبر MetaApi (ربط بـ 3 حقول — بدون EA)"

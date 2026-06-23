@@ -35,7 +35,35 @@ import {
 import type { BinanceEnv } from "./binance";
 import { type BinanceRegion, isBinanceRegion } from "./binanceRegions";
 import type { BrokerKind, MarketType, MtPlatform } from "./markets/types";
-import { brokerForMarket } from "./markets/types";
+import {
+  forexModeToBrokerKind,
+  resolveForexBackendFromPref,
+} from "./brokers/forexBackend";
+
+/**
+ * Broker kind for a user honoring their per-user forex backend choice (EA vs
+ * server-side platform), falling back to the global default. Used at the points
+ * that route execution (intent/trade creation) so each user's trades go to the
+ * backend they picked.
+ */
+export async function resolveBrokerForMarket(
+  userId: number,
+  market: MarketType,
+): Promise<BrokerKind> {
+  if (market !== "forex") return "binance";
+  const settings = await getSettings(userId);
+  return forexModeToBrokerKind(
+    resolveForexBackendFromPref(settings.forex_backend),
+  );
+}
+
+/** Effective forex backend mode for a user (per-user choice → global default). */
+export async function resolveForexBackendForUser(
+  userId: number,
+): Promise<"ea" | "metaapi" | "mt5local"> {
+  const settings = await getSettings(userId);
+  return resolveForexBackendFromPref(settings.forex_backend);
+}
 
 export async function ensureUserDefaults(userId: number) {
   await execute(
@@ -100,6 +128,7 @@ const SETTABLE_FIELDS = [
   "auto_take_profit_usd",
   "allowed_assets",
   "active_market",
+  "forex_backend",
   "send_screenshot",
   "telegram_chat_id",
   "kill_switch",
@@ -881,7 +910,8 @@ export async function createIntent(
   },
 ): Promise<TradeIntent> {
   const market: MarketType = intent.market ?? "crypto";
-  const broker: BrokerKind = intent.broker ?? brokerForMarket(market);
+  const broker: BrokerKind =
+    intent.broker ?? (await resolveBrokerForMarket(userId, market));
   const id = await insertReturningId(
     `INSERT INTO trade_intents
       (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
@@ -1034,7 +1064,8 @@ export async function recordTrade(
   },
 ): Promise<Trade> {
   const market: MarketType = trade.market ?? "crypto";
-  const broker: BrokerKind = trade.broker ?? brokerForMarket(market);
+  const broker: BrokerKind =
+    trade.broker ?? (await resolveBrokerForMarket(userId, market));
   const id = await insertReturningId(
     `INSERT INTO trades
       (user_id, intent_id, symbol, side, qty, quote_qty, avg_price, order_id, env, market, broker, status, market_type, leverage, order_type, limit_price)

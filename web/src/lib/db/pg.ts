@@ -43,6 +43,8 @@ const SCHEMA = `
     auto_take_profit_usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     active_market            TEXT NOT NULL DEFAULT 'crypto',
+    -- 'ea' | 'mt5local' | NULL (operator's global default).
+    forex_backend            TEXT,
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
     kill_switch              BOOLEAN NOT NULL DEFAULT FALSE,
@@ -568,6 +570,11 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS active_market TEXT NOT NULL DEFAULT 'crypto'
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS forex_backend TEXT
   `).catch(() => {});
 
   await client.query(`

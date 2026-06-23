@@ -1,6 +1,5 @@
 import { getEaConnectionMeta } from "./eaStore";
-import { getForexBackend } from "./brokers/forexBackend";
-import { getMtAccountMeta } from "./store";
+import { getMtAccountMeta, resolveForexBackendForUser } from "./store";
 import type { EaConnectionMeta, MtAccountMeta } from "./types";
 
 export interface ForexConnectionView {
@@ -15,7 +14,7 @@ export interface ForexConnectionView {
 export async function getForexConnectionView(
   userId: number,
 ): Promise<ForexConnectionView> {
-  const backend = getForexBackend();
+  const backend = await resolveForexBackendForUser(userId);
   if (backend === "metaapi" || backend === "mt5local") {
     const mt = await getMtAccountMeta(userId);
     return {
