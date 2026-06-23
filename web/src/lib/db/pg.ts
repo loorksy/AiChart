@@ -305,7 +305,7 @@ const SCHEMA = `
     conversation_id INTEGER REFERENCES conversations(id) ON DELETE SET NULL,
     category        TEXT NOT NULL,
     content         TEXT NOT NULL,
-    embedding       vector,
+    embedding       vector(1536),
     archived        BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -471,6 +471,37 @@ async function migratePg(client: PoolClient) {
   await client.query(`CREATE EXTENSION IF NOT EXISTS vector`).catch((err) => {
     console.warn("[db] pgvector extension unavailable:", err);
   });
+
+  // HNSW requires a fixed dimension. Older deployments created the column as a
+  // dimensionless `vector`; coerce it to vector(1536) (all stored embeddings are
+  // 1536-dim) so the ANN index below can be built.
+  await client
+    .query(
+      `ALTER TABLE semantic_memories ALTER COLUMN embedding TYPE vector(1536)`,
+    )
+    .catch(() => {
+      /* already vector(1536), empty, or extension missing — index step will warn */
+    });
+
+  // ANN indexes for semantic/trade memory similarity. Without these, cosine
+  // search sequentially scans every row in a user's partition, which degrades
+  // as memory grows. HNSW (pgvector >= 0.5) gives sub-linear cosine lookups.
+  await client
+    .query(
+      `CREATE INDEX IF NOT EXISTS idx_semantic_memories_embedding_hnsw
+       ON semantic_memories USING hnsw (embedding vector_cosine_ops)`,
+    )
+    .catch((err) => {
+      console.warn("[db] semantic_memories HNSW index skipped:", err.message);
+    });
+  await client
+    .query(
+      `CREATE INDEX IF NOT EXISTS idx_trade_lessons_embedding_hnsw
+       ON trade_lessons USING hnsw (embedding vector_cosine_ops)`,
+    )
+    .catch((err) => {
+      console.warn("[db] trade_lessons HNSW index skipped:", err.message);
+    });
 
   await client.query(`
     UPDATE platform_config SET plain = TRUE
@@ -882,11 +913,36 @@ async function seedAdminPg(client: PoolClient) {
   );
 }
 
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 function getPool(): Pool {
   if (_pool) return _pool;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required for PostgreSQL");
-  _pool = new Pool({ connectionString: url });
+  // Tuned for many concurrent app/worker instances behind one Postgres (or a
+  // PgBouncer pooler). Cap connections per process so N replicas don't exhaust
+  // server slots; bound waits so a saturated pool fails fast instead of hanging.
+  const sslRequired =
+    process.env.PGSSL === "1" ||
+    process.env.PGSSLMODE === "require" ||
+    /[?&]sslmode=require/.test(url);
+  _pool = new Pool({
+    connectionString: url,
+    max: envInt("PGPOOL_MAX", 10),
+    idleTimeoutMillis: envInt("PGPOOL_IDLE_MS", 30_000),
+    connectionTimeoutMillis: envInt("PGPOOL_CONN_TIMEOUT_MS", 10_000),
+    ...(sslRequired ? { ssl: { rejectUnauthorized: false } } : {}),
+  });
+  // A pool-level error handler is required: without it, an idle client error
+  // (e.g. server restart) crashes the process with an unhandled 'error' event.
+  _pool.on("error", (err) => {
+    console.error("[db] idle Postgres client error:", err.message);
+  });
   return _pool;
 }
 
