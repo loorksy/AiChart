@@ -1,4 +1,5 @@
 import { bridgeUserSig } from "./agentAuth";
+import { fetchWithTimeout, httpTimeoutMs } from "./externalFetch";
 import { getPublicUser } from "./store";
 
 /**
@@ -71,29 +72,37 @@ export async function internalBridgeForUser(
           }
         }
       }
-      const res = await fetch(url.toString(), {
-        method: "GET",
-        headers: headers(),
-        cache: "no-store",
-      });
+      const res = await fetchWithTimeout(
+        url.toString(),
+        { method: "GET", headers: headers(), cache: "no-store" },
+        { timeoutMs: httpTimeoutMs(), label: "internal bridge" },
+      );
       return parse(res);
     },
     async post(path, body) {
-      const res = await fetch(`${base}${path}`, {
-        method: "POST",
-        headers: headers(),
-        cache: "no-store",
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
+      const res = await fetchWithTimeout(
+        `${base}${path}`,
+        {
+          method: "POST",
+          headers: headers(),
+          cache: "no-store",
+          body: body === undefined ? undefined : JSON.stringify(body),
+        },
+        { timeoutMs: httpTimeoutMs(), label: "internal bridge" },
+      );
       return parse(res);
     },
     async patch(path, body) {
-      const res = await fetch(`${base}${path}`, {
-        method: "PATCH",
-        headers: headers(),
-        cache: "no-store",
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
+      const res = await fetchWithTimeout(
+        `${base}${path}`,
+        {
+          method: "PATCH",
+          headers: headers(),
+          cache: "no-store",
+          body: body === undefined ? undefined : JSON.stringify(body),
+        },
+        { timeoutMs: httpTimeoutMs(), label: "internal bridge" },
+      );
       return parse(res);
     },
   };

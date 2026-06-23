@@ -12,8 +12,13 @@ services:
       - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
       - BINANCE_CAPTURE_ENABLED=${BINANCE_CAPTURE_ENABLED:-1}
       - PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
+      # Shared cache / rate-limit / EA-quote L2 + cross-instance lock backing.
+      # Required once more than one web/worker replica runs.
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     volumes:
       - aichart-data:/app/data
+    depends_on:
+      - redis
     restart: unless-stopped
 
   mt5:
