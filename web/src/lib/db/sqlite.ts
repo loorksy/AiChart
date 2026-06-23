@@ -241,6 +241,12 @@ const SCHEMA = `
     value TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS locks (
+    name       TEXT PRIMARY KEY,
+    holder     TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
     client_id   TEXT PRIMARY KEY,
     client_json TEXT NOT NULL,

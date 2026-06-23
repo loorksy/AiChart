@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/lib/cronAuth";
+import { withLock } from "@/lib/locks";
 import { runScalpCycle } from "@/lib/scalpEngine";
 import { logAudit } from "@/lib/store";
 
 export const maxDuration = 300;
+
+/** Leader lease just under maxDuration so a slow cycle is never double-run. */
+const CRON_LEADER_LOCK_MS = 290_000;
 
 /**
  * Autonomous scalp loop tick. A scheduler hits this frequently (≤1m via system
@@ -15,7 +19,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const cycle = await runScalpCycle();
+  const run = await withLock("cron:scalp", CRON_LEADER_LOCK_MS, runScalpCycle);
+  if (!run.ran) {
+    return NextResponse.json({ ok: true, skipped: "already_running" });
+  }
+  const cycle = run.result;
   await logAudit(
     null,
     "cron_scalp",

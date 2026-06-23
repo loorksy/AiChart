@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/lib/cronAuth";
+import { withLock } from "@/lib/locks";
 import { runCronPostScan } from "@/lib/cronPostScan";
 import { runOpportunityScan } from "@/lib/opportunityScan";
 import { listUsersForMonitor, logAudit } from "@/lib/store";
 
 export const maxDuration = 300;
+
+const CRON_LEADER_LOCK_MS = 290_000;
 
 /** 24/7 monitor cron — cheap scan + optional deep analysis per active user. */
 export async function POST(req: NextRequest) {
@@ -12,6 +15,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const run = await withLock("cron:monitor", CRON_LEADER_LOCK_MS, async () => {
   const users = await listUsersForMonitor();
   const scans: Array<{
     userId: number;
@@ -41,10 +45,11 @@ export async function POST(req: NextRequest) {
   const post = await runCronPostScan();
   await logAudit(null, "cron_monitor", `users=${users.length}`);
 
-  return NextResponse.json({
-    ok: true,
-    users: users.length,
-    scans,
-    post,
+  return { users: users.length, scans, post };
   });
+
+  if (!run.ran) {
+    return NextResponse.json({ ok: true, skipped: "already_running" });
+  }
+  return NextResponse.json({ ok: true, ...run.result });
 }

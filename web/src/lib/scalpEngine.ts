@@ -12,6 +12,7 @@
  */
 import { runAgent } from "./agent";
 import { executeIntent } from "./execution";
+import { acquireLock, releaseLock } from "./locks";
 import {
   countOpenTrades,
   createIntent,
@@ -37,6 +38,13 @@ export { evalScalpStop } from "./scalpGuards";
 export function scalpLiveEnabled(): boolean {
   return process.env.SCALP_LIVE_ENABLED === "1";
 }
+
+/**
+ * Per-user tick lease. Long enough that a legitimately-running tick (one full
+ * agent loop) is never stolen, yet auto-expires if the process dies. Always
+ * released in finally, so the next tick proceeds immediately when this one ends.
+ */
+const SCALP_TICK_LOCK_MS = 180_000;
 
 export interface ScalpCycleEvent {
   userId: number;
@@ -107,6 +115,20 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
 
   for (const session of sessions) {
     const userId = session.user_id;
+    // Per-user re-entrancy guard: if the previous tick for this user is still
+    // running (or another instance grabbed it), skip rather than double-trade.
+    const tickLock = await acquireLock(
+      `scalp:user:${userId}`,
+      SCALP_TICK_LOCK_MS,
+    );
+    if (!tickLock) {
+      result.events.push({
+        userId,
+        action: "skipped",
+        detail: "النبضة السابقة ما زالت تعمل — تخطٍّ لمنع التداخل",
+      });
+      continue;
+    }
     try {
       const settings = await getSettings(userId);
 
@@ -235,6 +257,8 @@ export async function runScalpCycle(): Promise<ScalpCycleResult> {
       result.errors.push(
         `user ${userId}: ${e instanceof Error ? e.message : "error"}`,
       );
+    } finally {
+      await releaseLock(tickLock);
     }
   }
 

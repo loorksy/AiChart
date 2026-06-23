@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/lib/cronAuth";
+import { withLock } from "@/lib/locks";
 import { runMonitorCycle } from "@/lib/monitorRunner";
 import { logAudit } from "@/lib/store";
 
 export const maxDuration = 300;
+
+const CRON_LEADER_LOCK_MS = 290_000;
 
 /** Event-driven monitor — code-only checks; wakes agent on Telegram events only. */
 export async function POST(req: NextRequest) {
@@ -11,7 +14,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const cycle = await runMonitorCycle();
+  const run = await withLock(
+    "cron:event-monitor",
+    CRON_LEADER_LOCK_MS,
+    runMonitorCycle,
+  );
+  if (!run.ran) {
+    return NextResponse.json({ ok: true, skipped: "already_running" });
+  }
+  const cycle = run.result;
   await logAudit(
     null,
     "cron_event_monitor",
