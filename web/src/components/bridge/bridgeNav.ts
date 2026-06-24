@@ -1,4 +1,5 @@
 import {
+  Bot,
   KeyRound,
   LayoutDashboard,
   Link2,
@@ -10,6 +11,7 @@ import {
 export const BRIDGE_NAV_PRIMARY = [
   { href: "/console", label: "نظرة", icon: LayoutDashboard, exact: true },
   { href: "/console/trades", label: "صفقات", icon: TrendingUp },
+  { href: "/console/bots", label: "بوتات", icon: Bot },
   { href: "/console/connect", label: "اتصال", icon: Link2 },
   { href: "/console/risk", label: "مخاطر", icon: Shield },
 ] as const;

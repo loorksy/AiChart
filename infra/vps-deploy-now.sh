@@ -43,6 +43,14 @@ fi
 
 log "pm2 restart"
 pm2 restart aichart-web --update-env
+if pm2 describe aichart-worker >/dev/null 2>&1; then
+  log "pm2 restart worker"
+  pm2 restart aichart-worker --update-env
+else
+  log "starting aichart-worker (first time)"
+  cd /opt/aichart/web
+  pm2 start npm --name aichart-worker -- run worker
+fi
 if [[ -f /opt/aichart/infra/vps-mcp-deploy.sh ]]; then
   log "deploy MCP"
   bash /opt/aichart/infra/vps-mcp-deploy.sh || log "mcp deploy warn"
@@ -54,6 +62,7 @@ test -f src/lib/tradePostMortem.ts && log "tradePostMortem.ts OK"
 test -f src/lib/monitorRunner.ts && log "monitorRunner.ts OK"
 test -f src/app/api/cron/event-monitor/route.ts && log "event-monitor OK"
 grep -q event-monitor /etc/cron.d/aichart 2>/dev/null && log "cron event-monitor OK"
+grep -q cron/bots /etc/cron.d/aichart 2>/dev/null && log "cron bots OK"
 curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://aichart.lork.cloud/ || true
 pm2 list | grep aichart || true
 log "Done"

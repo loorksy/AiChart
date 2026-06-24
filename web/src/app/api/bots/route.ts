@@ -3,6 +3,10 @@ import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { createBotSession, listUserBots } from "@/lib/botStore";
 
+function botsLiveEnabled(): boolean {
+  return process.env.BOTS_LIVE_ENABLED === "1";
+}
+
 export const dynamic = "force-dynamic";
 
 // Strict bounds: Martingale is dangerous, so the server caps depth and
@@ -27,7 +31,10 @@ const schema = z.object({
 export async function GET() {
   try {
     const user = await requirePlatformAccess();
-    return NextResponse.json({ bots: await listUserBots(user.id) });
+    return NextResponse.json({
+      bots: await listUserBots(user.id),
+      meta: { liveEnabled: botsLiveEnabled() },
+    });
   } catch (err) {
     return handleError(err);
   }
