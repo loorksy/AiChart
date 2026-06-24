@@ -11,11 +11,17 @@ import {
   RefreshCw,
   TrendingDown,
   TrendingUp,
+  Wifi,
+  WifiOff,
+  Wallet,
 } from "lucide-react";
 import { FadeIn } from "@/components/ui/fade-in";
 import { SurfaceCard } from "@/components/ui/shell";
+import { StatusChip, type StatusChipTone } from "@/components/bridge/StatusChip";
 import { breakEven } from "@/lib/strategies/gridBot";
 import { cn } from "@/lib/utils";
+import type { BotBrokerSymbol, BotsMetaResponse } from "@/lib/botsMeta";
+import { pickDefaultSymbol } from "@/lib/botsMeta";
 
 type BotSide = "buy" | "sell";
 type BotMarket = "forex" | "crypto";
@@ -55,7 +61,7 @@ interface BotsResponse {
 }
 
 const DEFAULT_FORM = {
-  symbol: "XAUUSD",
+  symbol: "",
   market: "forex" as BotMarket,
   side: "sell" as BotSide,
   executionMode: "live" as ExecutionMode,
@@ -66,6 +72,138 @@ const DEFAULT_FORM = {
   maxLevels: 5,
   maxTotalLot: 0.5,
 };
+
+const META_POLL_MS = 12_000;
+
+function formatMoney(value: number | null, currency: string | null): string {
+  if (value == null) return "—";
+  const cur = currency ?? "";
+  return `${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${cur ? ` ${cur}` : ""}`;
+}
+
+function ConnectionCard({
+  title,
+  chip,
+  detail,
+  icon: Icon,
+}: {
+  title: string;
+  chip: { label: string; tone: StatusChipTone };
+  detail?: string;
+  icon: React.ElementType;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
+          <Icon className="h-4 w-4 text-muted-foreground" />
+        </span>
+        <StatusChip label={chip.label} tone={chip.tone} />
+      </div>
+      <p className="mt-2 text-xs font-medium">{title}</p>
+      {detail && (
+        <p className="mt-0.5 text-[10px] text-muted-foreground" dir="ltr">
+          {detail}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function BrokerStatusPanel({ meta }: { meta: BotsMetaResponse }) {
+  const { forex, binance } = meta;
+
+  const forexChip = !forex.connected
+    ? { label: "غير مرتبط", tone: "neutral" as StatusChipTone }
+    : forex.online
+      ? { label: "متصل", tone: "ok" as StatusChipTone }
+      : { label: "غير متصل", tone: "error" as StatusChipTone };
+
+  const binanceChip = !binance.connected
+    ? { label: "غير مرتبط", tone: "neutral" as StatusChipTone }
+    : binance.online
+      ? binance.accountEnv === "live"
+        ? { label: "حقيقي", tone: "ok" as StatusChipTone }
+        : { label: "تجريبي", tone: "warn" as StatusChipTone }
+      : { label: "غير متاح", tone: "error" as StatusChipTone };
+
+  const forexDetail = forex.connected
+    ? [forex.backendLabel, forex.broker, forex.login ? `#${forex.login}` : null]
+        .filter(Boolean)
+        .join(" · ")
+    : "اربط MT5 من الإعدادات";
+
+  const binanceDetail = binance.connected
+    ? binance.env === "prod"
+      ? "Binance · حساب حقيقي"
+      : "Binance · testnet"
+    : "اربط مفاتيح API";
+
+  return (
+    <SurfaceCard>
+      <h2 className="text-sm font-semibold">حالة الاتصال بالوسيط</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        البوت ينفّذ عبر الوسيط المرتبط — تأكّد أن القناة نشطة قبل التشغيل
+        الحقيقي.
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <ConnectionCard
+          title={`فوركس · ${forex.backendLabel}`}
+          chip={forexChip}
+          detail={forexDetail}
+          icon={forex.online ? Wifi : WifiOff}
+        />
+        <ConnectionCard
+          title="Binance · كريبتو"
+          chip={binanceChip}
+          detail={binanceDetail}
+          icon={TrendingUp}
+        />
+      </div>
+    </SurfaceCard>
+  );
+}
+
+function AccountBalanceBar({
+  meta,
+  market,
+}: {
+  meta: BotsMetaResponse;
+  market: BotMarket;
+}) {
+  const acct = market === "forex" ? meta.forex : meta.binance;
+  const envLabel = acct.accountEnvLabel;
+  const envTone: StatusChipTone =
+    acct.accountEnv === "live"
+      ? "ok"
+      : acct.accountEnv === "demo"
+        ? "warn"
+        : "neutral";
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/10 px-4 py-3">
+      <div className="flex items-center gap-2">
+        <Wallet className="h-4 w-4 text-muted-foreground" />
+        <div>
+          <p className="text-xs text-muted-foreground">
+            رصيد الحساب ({market === "forex" ? "فوركس" : "كريبتو"})
+          </p>
+          <p className="font-semibold" dir="ltr">
+            {formatMoney(acct.balance, acct.currency)}
+            {acct.equity != null &&
+              acct.equity !== acct.balance &&
+              acct.equity > 0 && (
+                <span className="ms-2 text-xs font-normal text-muted-foreground">
+                  equity {formatMoney(acct.equity, acct.currency)}
+                </span>
+              )}
+          </p>
+        </div>
+      </div>
+      <StatusChip label={envLabel} tone={envTone} />
+    </div>
+  );
+}
 
 function totalLot(levels: GridLevel[]): number {
   return levels.reduce((s, l) => s + l.lot, 0);
@@ -216,6 +354,8 @@ function BotCard({
 export function BotsClient() {
   const [bots, setBots] = useState<BotSession[]>([]);
   const [liveEnabled, setLiveEnabled] = useState(false);
+  const [meta, setMeta] = useState<BotsMetaResponse | null>(null);
+  const [symbols, setSymbols] = useState<BotBrokerSymbol[]>([]);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -223,13 +363,29 @@ export function BotsClient() {
     null,
   );
 
+  const refreshMeta = useCallback(async (market: BotMarket) => {
+    try {
+      const r = await fetch(`/api/bots/meta?market=${market}`, {
+        cache: "no-store",
+      });
+      if (!r.ok) return;
+      const d = (await r.json()) as BotsMetaResponse;
+      setMeta(d);
+      setLiveEnabled(Boolean(d.liveEnabled));
+      setSymbols(d.symbols ?? []);
+      return d;
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const r = await fetch("/api/bots", { cache: "no-store" });
       if (!r.ok) return;
       const d: BotsResponse = await r.json();
       setBots(d.bots ?? []);
-      setLiveEnabled(Boolean(d.meta?.liveEnabled));
+      if (d.meta?.liveEnabled != null) setLiveEnabled(Boolean(d.meta.liveEnabled));
     } catch {
       /* ignore */
     }
@@ -237,7 +393,25 @@ export function BotsClient() {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void refreshMeta(form.market);
+  }, [refresh, refreshMeta, form.market]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      void refreshMeta(form.market);
+    }, META_POLL_MS);
+    return () => clearInterval(id);
+  }, [refreshMeta, form.market]);
+
+  useEffect(() => {
+    if (symbols.length === 0) return;
+    setForm((f) => {
+      const current = f.symbol.trim().toUpperCase();
+      const exists = symbols.some((s) => s.symbol.toUpperCase() === current);
+      if (exists && current) return f;
+      return { ...f, symbol: pickDefaultSymbol(f.market, symbols) };
+    });
+  }, [symbols, form.market]);
 
   const hasActive = useMemo(
     () => bots.some((b) => b.status === "active"),
@@ -254,12 +428,17 @@ export function BotsClient() {
     setBusy(true);
     setMsg(null);
     try {
+      const symbol = form.symbol.trim().toUpperCase();
+      if (!symbol) {
+        setMsg({ type: "err", text: "اختر رمزاً من قائمة الوسيط." });
+        return;
+      }
       const r = await fetch("/api/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           strategy: "grid",
-          symbol: form.symbol.trim().toUpperCase(),
+          symbol: symbol,
           market: form.market,
           side: form.side,
           executionMode: form.executionMode,
@@ -337,7 +516,10 @@ export function BotsClient() {
             </div>
             <button
               type="button"
-              onClick={() => void refresh()}
+              onClick={() => {
+                void refresh();
+                void refreshMeta(form.market);
+              }}
               disabled={busy}
               className="btn btn-secondary inline-flex items-center gap-2 text-sm"
             >
@@ -346,6 +528,9 @@ export function BotsClient() {
             </button>
           </div>
         </div>
+
+        {meta && <BrokerStatusPanel meta={meta} />}
+        {meta && <AccountBalanceBar meta={meta} market={form.market} />}
 
         <div className="bento-card flex gap-3 border-amber-500/25 bg-amber-500/5 p-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
@@ -386,28 +571,59 @@ export function BotsClient() {
             <div className="mt-4 space-y-4 border-b border-border pb-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
-                  <span className="font-medium">الرمز</span>
-                  <input
-                    className="input mt-1 w-full"
-                    value={form.symbol}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, symbol: e.target.value }))
-                    }
-                    placeholder="XAUUSD أو BTCUSDT"
-                    dir="ltr"
-                  />
+                  <span className="font-medium">الرمز (من الوسيط)</span>
+                  {symbols.length > 0 ? (
+                    <select
+                      className="input mt-1 w-full font-mono text-sm"
+                      value={form.symbol}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, symbol: e.target.value }))
+                      }
+                      dir="ltr"
+                    >
+                      {symbols.map((s) => (
+                        <option key={s.symbol} value={s.symbol}>
+                          {s.symbol}
+                          {s.tickLabel ? ` · ${s.tickLabel}` : ""}
+                          {s.tradable === false ? " (بدون سعر)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="input mt-1 w-full"
+                      value={form.symbol}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, symbol: e.target.value }))
+                      }
+                      placeholder={
+                        form.market === "forex"
+                          ? "اربط MT5 لعرض الأزواج"
+                          : "اربط Binance لعرض الأزواج"
+                      }
+                      dir="ltr"
+                      disabled
+                    />
+                  )}
+                  <span className="mt-1 block text-[10px] text-muted-foreground">
+                    {symbols.length > 0
+                      ? `${symbols.length} زوج من الوسيط${symbols.some((s) => s.tickLabel) ? " · السبريد بجانب الرمز" : ""}`
+                      : "لا توجد رموز — اربط حسابك أولاً"}
+                  </span>
                 </label>
                 <label className="block text-sm">
                   <span className="font-medium">السوق</span>
                   <select
                     className="input mt-1 w-full"
                     value={form.market}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const market = e.target.value as BotMarket;
                       setForm((f) => ({
                         ...f,
-                        market: e.target.value as BotMarket,
-                      }))
-                    }
+                        market,
+                        symbol: "",
+                      }));
+                    }}
                   >
                     <option value="forex">فوركس / MT5</option>
                     <option value="crypto">كريبتو / Binance</option>
