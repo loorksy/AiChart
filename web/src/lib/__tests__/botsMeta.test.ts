@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildEaBridgeSidecar } from "@/lib/botsMeta";
+import {
+  buildEaBridgeSidecar,
+  forexRowFromSpec,
+  mergeBotSymbolRow,
+} from "@/lib/botsMeta";
 import { pickDefaultSymbol } from "@/lib/botsMetaTypes";
+import type { BotBrokerSymbol } from "@/lib/botsMetaTypes";
 import type { EaConnectionMeta } from "@/lib/types";
 
 function eaMeta(overrides: Partial<EaConnectionMeta> = {}): EaConnectionMeta {
@@ -79,4 +84,44 @@ test("pickDefaultSymbol skips non-tradable when tradable exist", () => {
     { symbol: "EURUSD", market: "forex", spreadPips: 1, spreadPct: null, tradable: true, tickLabel: "1 pips" },
   ]);
   assert.equal(sym, "EURUSD");
+});
+
+test("forexRowFromSpec extracts price and spread from EA heartbeat spec", () => {
+  const row = forexRowFromSpec({
+    symbol: "EURUSDm",
+    bid: 1.085,
+    ask: 1.0852,
+    digits: 5,
+  });
+  assert.ok(row);
+  assert.equal(row?.symbol, "EURUSDm");
+  assert.equal(row?.tradable, true);
+  assert.ok(row?.price != null && row.price > 1.085);
+  assert.ok(row?.spreadPips != null);
+  assert.ok(row?.tickLabel?.includes("pips"));
+});
+
+test("mergeBotSymbolRow prefers row with live quote over static baseline", () => {
+  const map = new Map<string, BotBrokerSymbol>();
+  mergeBotSymbolRow(map, {
+    symbol: "EURUSD",
+    market: "forex",
+    spreadPips: null,
+    spreadPct: null,
+    tradable: true,
+    tickLabel: null,
+  });
+  mergeBotSymbolRow(map, {
+    symbol: "EURUSD",
+    market: "forex",
+    spreadPips: 1.2,
+    spreadPct: null,
+    tradable: true,
+    tickLabel: "1.2 pips",
+    price: 1.0851,
+  });
+  assert.equal(map.size, 1);
+  const merged = map.get("EURUSD");
+  assert.equal(merged?.price, 1.0851);
+  assert.equal(merged?.tickLabel, "1.2 pips");
 });

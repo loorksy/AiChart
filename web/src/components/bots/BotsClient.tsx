@@ -22,6 +22,7 @@ import { breakEven } from "@/lib/strategies/gridBot";
 import { cn } from "@/lib/utils";
 import type { BotBrokerSymbol, BotsMetaResponse } from "@/lib/botsMetaTypes";
 import { pickDefaultSymbol } from "@/lib/botsMetaTypes";
+import { BotSymbolPicker } from "@/components/bots/BotSymbolPicker";
 
 type BotSide = "buy" | "sell";
 type BotMarket = "forex" | "crypto";
@@ -393,7 +394,6 @@ export function BotsClient() {
   const [bots, setBots] = useState<BotSession[]>([]);
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [meta, setMeta] = useState<BotsMetaResponse | null>(null);
-  const [symbols, setSymbols] = useState<BotBrokerSymbol[]>([]);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -410,7 +410,6 @@ export function BotsClient() {
       const d = (await r.json()) as BotsMetaResponse;
       setMeta(d);
       setLiveEnabled(Boolean(d.liveEnabled));
-      setSymbols(d.symbols ?? []);
       return d;
     } catch {
       /* ignore */
@@ -441,15 +440,20 @@ export function BotsClient() {
     return () => clearInterval(id);
   }, [refreshMeta, form.market]);
 
-  useEffect(() => {
-    if (symbols.length === 0) return;
+  const handleSymbolsLoaded = useCallback((list: BotBrokerSymbol[]) => {
+    if (list.length === 0) return;
     setForm((f) => {
       const current = f.symbol.trim().toUpperCase();
-      const exists = symbols.some((s) => s.symbol.toUpperCase() === current);
+      const exists = list.some((s) => s.symbol.toUpperCase() === current);
       if (exists && current) return f;
-      return { ...f, symbol: pickDefaultSymbol(f.market, symbols) };
+      return { ...f, symbol: pickDefaultSymbol(f.market, list) };
     });
-  }, [symbols, form.market]);
+  }, []);
+
+  const brokerConnected =
+    form.market === "forex"
+      ? Boolean(meta?.forex.connected)
+      : Boolean(meta?.binance.connected);
 
   const hasActive = useMemo(
     () => bots.some((b) => b.status === "active"),
@@ -608,47 +612,20 @@ export function BotsClient() {
           {showForm && (
             <div className="mt-4 space-y-4 border-b border-border pb-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm">
+                <div className="block text-sm sm:col-span-2">
                   <span className="font-medium">الرمز (من الوسيط)</span>
-                  {symbols.length > 0 ? (
-                    <select
-                      className="input mt-1 w-full font-mono text-sm"
+                  <div className="mt-2">
+                    <BotSymbolPicker
+                      market={form.market}
                       value={form.symbol}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, symbol: e.target.value }))
+                      onChange={(symbol) =>
+                        setForm((f) => ({ ...f, symbol }))
                       }
-                      dir="ltr"
-                    >
-                      {symbols.map((s) => (
-                        <option key={s.symbol} value={s.symbol}>
-                          {s.symbol}
-                          {s.tickLabel ? ` · ${s.tickLabel}` : ""}
-                          {s.tradable === false ? " (بدون سعر)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      className="input mt-1 w-full"
-                      value={form.symbol}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, symbol: e.target.value }))
-                      }
-                      placeholder={
-                        form.market === "forex"
-                          ? "اربط MT5 لعرض الأزواج"
-                          : "اربط Binance لعرض الأزواج"
-                      }
-                      dir="ltr"
-                      disabled
+                      connected={brokerConnected}
+                      onSymbolsLoaded={handleSymbolsLoaded}
                     />
-                  )}
-                  <span className="mt-1 block text-[10px] text-muted-foreground">
-                    {symbols.length > 0
-                      ? `${symbols.length} زوج من الوسيط${symbols.some((s) => s.tickLabel) ? " · السبريد بجانب الرمز" : ""}`
-                      : "لا توجد رموز — اربط حسابك أولاً"}
-                  </span>
-                </label>
+                  </div>
+                </div>
                 <label className="block text-sm">
                   <span className="font-medium">السوق</span>
                   <select

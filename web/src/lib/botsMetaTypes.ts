@@ -6,6 +6,12 @@ export interface BotBrokerSymbol {
   tradable: boolean;
   /** Short label for dropdown, e.g. "1.2 pips" or "0.04%" */
   tickLabel: string | null;
+  /** Mid or last price when available (EA bid/ask or Binance ticker). */
+  price?: number | null;
+  /** 24h change % (crypto); null for forex when unavailable. */
+  changePct?: number | null;
+  base?: string;
+  quote?: string;
 }
 
 /** EA bridge status when registered separately from the bot execution backend. */
