@@ -8,14 +8,14 @@ import {
   Stochastic,
 } from "technicalindicators";
 import { ema, macd, rsi, sma } from "@/lib/indicators";
-import type { OhlcCandle } from "./fetchOhlc";
+import type { OhlcCandle, OhlcSource } from "./fetchOhlc";
 
 export const INDICATORS_CACHE_TTL_MS = 45_000;
 
 export interface ForexIndicatorsResult {
   symbol: string;
   interval: string;
-  computedFrom: "mt5_ohlc" | "binance" | "heartbeat_cache" | "mt5local";
+  computedFrom: OhlcSource;
   rsi14: number | null;
   macd: { macd: number; signal: number; histogram: number } | null;
   sma20: number | null;
@@ -58,7 +58,7 @@ export function computeForexIndicators(
   symbol: string,
   interval: string,
   candles: OhlcCandle[],
-  computedFrom: ForexIndicatorsResult["computedFrom"],
+  computedFrom: OhlcSource,
 ): ForexIndicatorsResult {
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);

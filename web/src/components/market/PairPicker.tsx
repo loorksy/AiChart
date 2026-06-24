@@ -9,7 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { forexCanonicalKey } from "@/lib/mt5SymbolMap";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 
 type Market = "crypto" | "forex";

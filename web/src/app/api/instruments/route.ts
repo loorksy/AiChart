@@ -7,7 +7,7 @@ import {
   searchForexInstruments,
 } from "@/lib/markets/forexInstruments";
 import { getEaConnection, parseEaSymbolSpecs } from "@/lib/eaStore";
-import { forexCanonicalKey } from "@/lib/mt5SymbolMap";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { getRpcConnection } from "@/lib/metaapi/client";
 import { getMtAccount } from "@/lib/store";
 

@@ -1,5 +1,5 @@
 import { execute, insertReturningId, query, queryOne } from "./db";
-import { forexCanonicalKey } from "./mt5SymbolMap";
+import { forexCanonicalKey } from "./markets/forexCanonical";
 import type { MtPlatform } from "./markets/types";
 import type {
   EaCommand,
