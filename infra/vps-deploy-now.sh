@@ -33,12 +33,14 @@ find /opt/aichart/infra /opt/aichart/agent/scripts -name '*.sh' -type f 2>/dev/n
 done
 
 if [[ -f /opt/aichart/infra/aichart.cron ]] && [[ -f /opt/aichart/web/.env ]]; then
-  log "install event-monitor cron"
-  CRON_SECRET="$(grep '^CRON_SECRET=' /opt/aichart/web/.env | cut -d= -f2-)"
-  sed -e "s|YOUR_DOMAIN|aichart.lork.cloud|g" \
-      -e "s|YOUR_CRON_SECRET|${CRON_SECRET}|g" \
-    /opt/aichart/infra/aichart.cron > /etc/cron.d/aichart
-  chmod 644 /etc/cron.d/aichart
+  log "install cron"
+  bash /opt/aichart/infra/vps-install-cron.sh /opt/aichart || {
+    CRON_SECRET="$(grep '^CRON_SECRET=' /opt/aichart/web/.env | cut -d= -f2-)"
+    sed -e "s|YOUR_DOMAIN|aichart.lork.cloud|g" \
+        -e "s|YOUR_CRON_SECRET|${CRON_SECRET}|g" \
+      /opt/aichart/infra/aichart.cron > /etc/cron.d/aichart
+    chmod 644 /etc/cron.d/aichart
+  }
 fi
 
 ENV_FILE="/opt/aichart/web/.env"

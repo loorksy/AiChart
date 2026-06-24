@@ -49,6 +49,12 @@ fi
 
 pm2 save
 log "Health check..."
+
+if [[ -f "$INSTALL_DIR/infra/aichart.cron" ]] && [[ -f "$INSTALL_DIR/web/.env" ]]; then
+  log "install cron (bots + scalp + event-monitor)"
+  bash "$INSTALL_DIR/infra/vps-install-cron.sh" "$INSTALL_DIR" || log "cron install warn"
+fi
+
 PORT="$(grep '^PORT=' .env 2>/dev/null | cut -d= -f2- || echo 3010)"
 curl -fsS -o /dev/null -w "HTTP / -> %{http_code}\n" "http://127.0.0.1:${PORT}/" || true
 curl -fsS -o /dev/null -w "HTTP /login -> %{http_code}\n" "http://127.0.0.1:${PORT}/login" || true

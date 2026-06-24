@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { createBotSession, listUserBots } from "@/lib/botStore";
+import { runBotTickForUser } from "@/lib/botEngine";
+import { createBotSession, getBotSession, listUserBots } from "@/lib/botStore";
 import { botsLiveEnabled } from "@/lib/botExecution";
 import { GOLD_SYMBOL } from "@/lib/strategies/gold/goldDefaults";
 
@@ -93,7 +94,9 @@ export async function POST(req: NextRequest) {
           ...(input.side ? { side: input.side } : {}),
         },
       });
-      return NextResponse.json({ ok: true, bot });
+      const tickEvents = await runBotTickForUser(user.id);
+      const fresh = (await getBotSession(bot.id, user.id)) ?? bot;
+      return NextResponse.json({ ok: true, bot: fresh, tickEvents });
     }
 
     const bot = await createBotSession(user.id, {
@@ -104,7 +107,9 @@ export async function POST(req: NextRequest) {
       executionMode: input.executionMode,
       config: { side: input.side, ...input.config },
     });
-    return NextResponse.json({ ok: true, bot });
+    const tickEvents = await runBotTickForUser(user.id);
+    const fresh = (await getBotSession(bot.id, user.id)) ?? bot;
+    return NextResponse.json({ ok: true, bot: fresh, tickEvents });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
