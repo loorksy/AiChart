@@ -41,6 +41,14 @@ if [[ -f /opt/aichart/infra/aichart.cron ]] && [[ -f /opt/aichart/web/.env ]]; t
   chmod 644 /etc/cron.d/aichart
 fi
 
+ENV_FILE="/opt/aichart/web/.env"
+FOREX_MODE="$(grep '^FOREX_BACKEND=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+if [[ "${FOREX_MODE,,}" == "ea" || "${FOREX_MODE,,}" == "mt_ea" ]]; then
+  log "FOREX_BACKEND=ea — will not start MT5 Docker (use infra/vps-disable-mt5.sh)"
+  cd /opt/aichart/infra
+  docker compose stop mt5 2>/dev/null || true
+fi
+
 log "pm2 restart"
 pm2 restart aichart-web --update-env
 if pm2 describe aichart-worker >/dev/null 2>&1; then

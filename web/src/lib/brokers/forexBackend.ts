@@ -11,7 +11,8 @@ export function getForexBackend(): ForexBackendMode {
   if (forced === "ea" || forced === "mt_ea") return "ea";
   if (forced === "metaapi") return "metaapi";
   if (forced === "mt5local" || forced === "mt5_local" || forced === "local") {
-    return "mt5local";
+    if (isMt5LocalAvailable()) return "mt5local";
+    return getPlatformValue("METAAPI_TOKEN")?.trim() ? "metaapi" : "ea";
   }
   if (process.env.MT5_BRIDGE_URL?.trim()) return "mt5local";
   return getPlatformValue("METAAPI_TOKEN")?.trim() ? "metaapi" : "ea";

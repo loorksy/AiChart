@@ -24,27 +24,34 @@ sleep 4
 PORT="$(grep '^PORT=' "$ENV_FILE" | cut -d= -f2- || echo 3010)"
 curl -fsS -o /dev/null -w "web: %{http_code}\n" "http://127.0.0.1:${PORT}/"
 
-log "rebuild mt5"
-export MT5_BRIDGE_TOKEN="$(grep '^MT5_BRIDGE_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
-cd "$INSTALL_DIR/infra"
-docker compose stop mt5 2>/dev/null || true
-docker compose rm -f mt5 2>/dev/null || true
-docker compose build --no-cache mt5
-docker compose up -d mt5
+FOREX_MODE="$(grep '^FOREX_BACKEND=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+if [[ "${FOREX_MODE,,}" == "ea" || "${FOREX_MODE,,}" == "mt_ea" ]]; then
+  log "FOREX_BACKEND=ea — skip mt5 container (EA bridge / MetaApi only)"
+  cd "$INSTALL_DIR/infra"
+  docker compose stop mt5 2>/dev/null || true
+else
+  log "rebuild mt5"
+  export MT5_BRIDGE_TOKEN="$(grep '^MT5_BRIDGE_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
+  cd "$INSTALL_DIR/infra"
+  docker compose stop mt5 2>/dev/null || true
+  docker compose rm -f mt5 2>/dev/null || true
+  docker compose build --no-cache mt5
+  docker compose up -d mt5
 
-log "wait for health"
-for i in $(seq 1 24); do
-  if curl -sf -H "X-Bridge-Token: $MT5_BRIDGE_TOKEN" http://127.0.0.1:18812/health >/dev/null 2>&1; then
-    log "mt5 health OK"
-    curl -s -H "X-Bridge-Token: $MT5_BRIDGE_TOKEN" http://127.0.0.1:18812/health
-    echo ""
-    docker compose ps mt5
-    exit 0
-  fi
-  sleep 10
-done
+  log "wait for health"
+  for i in $(seq 1 24); do
+    if curl -sf -H "X-Bridge-Token: $MT5_BRIDGE_TOKEN" http://127.0.0.1:18812/health >/dev/null 2>&1; then
+      log "mt5 health OK"
+      curl -s -H "X-Bridge-Token: $MT5_BRIDGE_TOKEN" http://127.0.0.1:18812/health
+      echo ""
+      docker compose ps mt5
+      exit 0
+    fi
+    sleep 10
+  done
 
-log "mt5 not healthy yet"
-docker compose logs mt5 --tail 30
-docker compose ps mt5
-exit 1
+  log "mt5 not healthy yet"
+  docker compose logs mt5 --tail 30
+  docker compose ps mt5
+  exit 1
+fi
