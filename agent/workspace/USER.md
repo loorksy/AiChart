@@ -17,4 +17,4 @@
     *   Risk Guard execution rejections.
     *   Daily loss limits nearing activation.
 *   **Daily Summaries**: A single summarized performance report in the evening is sufficient. Avoid sending alerts for every minor price tick.
-*   **Execution Safety**: In case of ambiguity or conflicting indicators, ask for clarification before submitting recommendations or orders.
+*   **Execution Safety**: When indicators conflict, **resolve the direction yourself** (pick the higher-probability side from your analysis, or decide NO TRADE) — **do NOT ask me "buy or sell?"**. Deciding long vs short is your job. You may still ask me which symbol to trade and how much to allocate; those are mine to choose. Only escalate to me on genuine non-analytical ambiguity (e.g. which of two symbols I meant), never to ask the trade direction.
