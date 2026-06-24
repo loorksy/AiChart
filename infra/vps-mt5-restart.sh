@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ENV_FILE="/opt/aichart/web/.env"
-export MT5_BRIDGE_TOKEN="$(grep '^MT5_BRIDGE_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
+export MT5_BRIDGE_TOKEN="$(grep -E '^#?MT5_BRIDGE_TOKEN=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
 cd /opt/aichart/infra
 docker compose build --no-cache mt5
 docker compose up -d --force-recreate mt5
