@@ -33,7 +33,8 @@
       "type": "number"
     },
     "stop_loss": {
-      "type": "number"
+      "type": "number",
+      "description": "وقف الخسارة — إلزامي، يُرفض بدونه"
     },
     "take_profit": {
       "type": "number"
@@ -88,7 +89,7 @@
   "required": [
     "symbol",
     "side",
-    "notional",
+    "stop_loss",
     "confidence",
     "rationale"
   ],

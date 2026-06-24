@@ -123,13 +123,15 @@ BTC أو ETH — أيهما أفضل؟
 عند «خذ صفقة» أو أي أمر عام:
 1. اسأل: على أي زوج ندخل؟
 2. scan_market + get_market_snapshot — قارن بدائل (BTC vs ETH …)
-3. get_trade_lessons (+ recent:true)
-4. اقترح أو ارفض + ثقة % + 2–4 جمل
+3. get_trade_lessons (+ recent:true) — شرط قبلي
+4. قيّم لجنة الوكلاء الأربعة (Trend/Breakout/MeanReversion/Risk — تشخيصية) واقرأ aichart://execution-desk
+5. اقترح أو ارفض على أساس الجدارة (لا عتبة ثقة) — مع وقف محدّد و R:R مقبول
 
 قبل open_trade:
-- اسأل: بكم ندخل؟ (USDT) — لا تستخدم perTradeMax تلقائياً
+- اسأل: بكم ندخل؟ (USDT) — لا تستخدم perTradeMax تلقائياً (في auto يُشتقّ الحجم من مسافة الوقف)
 - create_recommendation أولاً (rationale + confidence + شارت)
-- open_trade فقط بعد موافقتي + notional + approved_by_user:true + stop_loss
+- open_trade بعد الموافقة + notional + approved_by_user:true + **stop_loss إلزامي** + entry/take_profit (للـ R:R)
+- الانضباط الموضوعي: Risk Guard يرفض الصفقة بلا وقف أو بعائد/مخاطرة أقل من الحد الأدنى — **ليست عتبة ثقة**
 
 بعد خسارة:
 - get_risk_status + get_trade_lessons recent:true

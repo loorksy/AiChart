@@ -23,6 +23,7 @@ import {
   type BridgeEnvelope,
 } from "@/lib/bridge";
 import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
+import { deriveDynamicNotional } from "@/lib/dynamicSizing";
 import { getEaSymbolSpec } from "@/lib/eaStore";
 import { futuresPermissionBlockReason } from "@/lib/binanceVerify";
 import type { MarketType } from "@/lib/markets/types";
@@ -220,10 +221,25 @@ export async function POST(req: NextRequest) {
       limits.max_capital_cap > 0
         ? Math.min(settings.max_capital, limits.max_capital_cap)
         : settings.max_capital;
+    // Risk-based sizing: when the caller doesn't pin a notional (e.g. auto
+    // mode), size from the STOP DISTANCE — a wider stop yields a smaller
+    // position — scaled by confidence and clamped to the per-trade budget.
+    // Risk Guard remains the final cap.
+    const baseNotional = (effectiveCapital * settings.per_trade_pct) / 100;
+    const riskFraction =
+      body.entry && body.stop_loss && body.entry > 0
+        ? Math.abs(body.entry - body.stop_loss) / body.entry
+        : 0.01;
+    let notional =
+      body.notional ??
+      deriveDynamicNotional({
+        baseNotional,
+        confidence: body.confidence,
+        riskFraction,
+        maxNotional: effectiveCapital,
+      });
     // Explicit forex lot → equivalent notional (lots × contract size × price),
     // so the agent/MCP can size a trade by lot. Risk Guard still gates it.
-    let notional =
-      body.notional ?? (effectiveCapital * settings.per_trade_pct) / 100;
     if (body.lots && body.lots > 0 && market === "forex") {
       const spec = await getEaSymbolSpec(
         userId,

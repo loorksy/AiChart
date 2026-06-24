@@ -49,6 +49,7 @@ const schema = z
     alert_signals: z.boolean(),
     alert_min_confidence: z.number().int().min(0).max(100),
     min_confidence: z.number().int().min(0).max(100),
+    min_rr: z.number().min(0).max(10),
     scan_poll_minutes: z.number().int().min(0).max(120),
     analysis_interval: z.string().min(2).max(4),
     execution_env_preference: z.enum(["demo", "live"]),

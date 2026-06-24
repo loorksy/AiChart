@@ -128,7 +128,9 @@ export async function executeIntent(
       market: intent.market,
       marketType,
       leverage: intent.leverage ?? 1,
+      entry: intent.entry,
       stopLoss: intent.stop_loss,
+      takeProfit: intent.take_profit,
       confidence: intent.confidence ?? 0,
     },
     {

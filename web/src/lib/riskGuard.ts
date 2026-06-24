@@ -7,6 +7,34 @@ import type { AdminLimits, TradingSettings } from "./types";
 
 export const DEFAULT_MIN_CONFIDENCE = 80;
 export const PRACTICE_MIN_CONFIDENCE_FLOOR = 50;
+/**
+ * Default minimum reward:risk ratio. An objective trade-quality gate — a real
+ * desk does not enter a setup that risks more than it can make. This is NOT a
+ * confidence cutoff; it only triggers when entry/SL/TP are all known.
+ */
+export const DEFAULT_MIN_RR = 1;
+
+/** Effective minimum R:R: user override (settings.min_rr) or DEFAULT_MIN_RR. */
+export function getEffectiveMinRr(settings: TradingSettings): number {
+  const v = Number(settings.min_rr);
+  return Number.isFinite(v) && v >= 0 ? v : DEFAULT_MIN_RR;
+}
+
+/**
+ * Reward:risk from entry/SL/TP. Returns null when it cannot be computed
+ * (missing prices or a zero-width stop) so the caller can skip the gate.
+ */
+export function computeRewardRisk(
+  entry: number | null | undefined,
+  stopLoss: number | null | undefined,
+  takeProfit: number | null | undefined,
+): number | null {
+  if (entry == null || stopLoss == null || takeProfit == null) return null;
+  const risk = Math.abs(entry - stopLoss);
+  const reward = Math.abs(takeProfit - entry);
+  if (!(risk > 0) || !(reward >= 0)) return null;
+  return reward / risk;
+}
 
 /** Effective confidence threshold: demo/practice uses 50; live uses settings.min_confidence. (Bypassed by returning 0 to let the agent decide) */
 export function getEffectiveMinConfidence(
@@ -26,9 +54,13 @@ export interface ProposedTrade {
   marketType?: "spot" | "futures";
   /** Leverage multiplier (futures only, 1 = none). */
   leverage?: number;
-  /** Stop-loss price — mandatory for futures. */
+  /** Intended entry price — used with stopLoss/takeProfit for the R:R gate. */
+  entry?: number | null;
+  /** Stop-loss price — mandatory for every trade (liquidation/loss control). */
   stopLoss?: number | null;
-  /** Agent confidence 0–100 — enforced against settings.min_confidence on live. */
+  /** Take-profit price — used with entry/stopLoss for the R:R gate. */
+  takeProfit?: number | null;
+  /** Agent confidence 0–100 — recorded for sizing/audit, NOT a gate. */
   confidence: number;
 }
 
@@ -152,6 +184,28 @@ export function evaluateTrade(
     !isSymbolAllowed(settings.allowed_assets, proposed.symbol, market)
   ) {
     return deny(`الأصل ${proposed.symbol} غير ضمن قائمتك المسموح بها.`);
+  }
+
+  // ── Objective trade-quality gates (discipline, NOT a confidence cutoff) ────
+  // A professional desk never enters without a defined stop, and never takes a
+  // setup whose target is closer than its stop. These check trade QUALITY, not
+  // a magic confidence number. Skipped only in full-autonomous mode.
+  if (riskEnforced && proposed.stopLoss == null)
+    return deny(
+      "وقف الخسارة إلزامي لكل صفقة — حدّد وقفاً واضحاً قبل الدخول (انضباط مخاطر، ليس عتبة ثقة).",
+    );
+
+  const minRr = getEffectiveMinRr(settings);
+  if (riskEnforced && minRr > 0) {
+    const rr = computeRewardRisk(
+      proposed.entry,
+      proposed.stopLoss,
+      proposed.takeProfit,
+    );
+    if (rr != null && rr < minRr)
+      return deny(
+        `العائد/المخاطرة (${rr.toFixed(2)}) أقل من الحد الأدنى (${minRr}) — لا ننفّذ صفقة مكافأتها أقل من خطرها.`,
+      );
   }
 
   // Futures-specific gates (opt-in, leverage cap, mandatory SL).

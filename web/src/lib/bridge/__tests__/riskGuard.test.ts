@@ -71,6 +71,7 @@ describe("riskGuard confidence gate", () => {
         side: "buy",
         notional: 50,
         confidence: 79,
+        stopLoss: 49000,
       },
       openCtx,
     );
@@ -86,6 +87,7 @@ describe("riskGuard confidence gate", () => {
         side: "buy",
         notional: 50,
         confidence: 80,
+        stopLoss: 49000,
       },
       openCtx,
     );
@@ -101,6 +103,7 @@ describe("riskGuard confidence gate", () => {
         side: "buy",
         notional: 50,
         confidence: 55,
+        stopLoss: 49000,
       },
       { ...openCtx, resolvedEnv: "demo", envPreference: "demo" },
     );
@@ -108,8 +111,88 @@ describe("riskGuard confidence gate", () => {
   });
 });
 
+describe("riskGuard objective quality gates (discipline, not confidence)", () => {
+  it("rejects a trade with no stop-loss when enforced", () => {
+    const d = evaluateTrade(
+      baseSettings(),
+      limits,
+      { symbol: "BTCUSDT", side: "buy", notional: 50, confidence: 90 },
+      openCtx,
+    );
+    assert.equal(d.ok, false);
+    assert.match(d.reason, /وقف الخسارة/);
+  });
+
+  it("allows a stopless trade in full-autonomous mode (gate skipped)", () => {
+    const d = evaluateTrade(
+      baseSettings({ risk_guard_enabled: 0 }),
+      limits,
+      { symbol: "BTCUSDT", side: "buy", notional: 50, confidence: 90 },
+      openCtx,
+    );
+    assert.equal(d.ok, true);
+  });
+
+  it("rejects when reward:risk is below min_rr", () => {
+    // entry 100, stop 90 (risk 10), tp 105 (reward 5) → R:R 0.5 < 1
+    const d = evaluateTrade(
+      baseSettings({ min_rr: 1 }),
+      limits,
+      {
+        symbol: "BTCUSDT",
+        side: "buy",
+        notional: 50,
+        confidence: 90,
+        entry: 100,
+        stopLoss: 90,
+        takeProfit: 105,
+      },
+      openCtx,
+    );
+    assert.equal(d.ok, false);
+    assert.match(d.reason, /العائد\/المخاطرة/);
+  });
+
+  it("allows when reward:risk meets min_rr", () => {
+    // entry 100, stop 90 (risk 10), tp 120 (reward 20) → R:R 2.0 ≥ 1
+    const d = evaluateTrade(
+      baseSettings({ min_rr: 1 }),
+      limits,
+      {
+        symbol: "BTCUSDT",
+        side: "buy",
+        notional: 50,
+        confidence: 40,
+        entry: 100,
+        stopLoss: 90,
+        takeProfit: 120,
+      },
+      openCtx,
+    );
+    assert.equal(d.ok, true);
+  });
+
+  it("skips the R:R gate when min_rr=0", () => {
+    const d = evaluateTrade(
+      baseSettings({ min_rr: 0 }),
+      limits,
+      {
+        symbol: "BTCUSDT",
+        side: "buy",
+        notional: 50,
+        confidence: 90,
+        entry: 100,
+        stopLoss: 90,
+        takeProfit: 101,
+      },
+      openCtx,
+    );
+    assert.equal(d.ok, true);
+  });
+});
+
 describe("riskGuard full-autonomous toggle (risk_guard_enabled=0)", () => {
-  const buy = { symbol: "BTCUSDT", side: "buy" as const, notional: 50, confidence: 1 };
+  const buy = { symbol: "BTCUSDT", side: "buy" as const, notional: 50, confidence: 1, stopLoss: 49000 };
 
   it("ENFORCED: blocks at max open trades", () => {
     const d = evaluateTrade(

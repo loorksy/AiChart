@@ -90,6 +90,9 @@ export async function getSettings(userId: number): Promise<TradingSettings> {
   if (row.min_confidence == null || Number.isNaN(Number(row.min_confidence))) {
     row.min_confidence = 80;
   }
+  if (row.min_rr == null || Number.isNaN(Number(row.min_rr))) {
+    row.min_rr = 1;
+  }
   row.trading_style = normalizeTradingStyle(row.trading_style);
   if (
     row.scalp_max_trades == null ||
@@ -139,6 +142,7 @@ const SETTABLE_FIELDS = [
   "alert_signals",
   "alert_min_confidence",
   "min_confidence",
+  "min_rr",
   "last_manual_scan_at",
   "scan_poll_minutes",
   "analysis_interval",
