@@ -1,9 +1,11 @@
 /**
  * Live grid-bot broker execution — routes opens/closes through Risk Guard +
- * the user's configured forex/crypto backend (MT5 bridge, EA, Binance).
+ * the user's configured forex/crypto backend (MT5 bridge, EA, MetaApi, Binance).
  */
+import { resolveForexQuoteSnapshot } from "./bridge/forexPreflight";
 import { executeIntent } from "./execution";
 import { getResolvedExecutionEnv } from "./executionEnv";
+import { getBrokerAdapter } from "./brokers";
 import { lotsToNotional } from "./brokers/lotSizing";
 import { closeOpenTrade } from "./tradeClose";
 import { deriveDynamicStops } from "./dynamicStops";
@@ -11,8 +13,10 @@ import {
   countOpenTrades,
   createIntent,
   getLimits,
+  getMtAccount,
   getMtAccountMeta,
   getSettings,
+  getTrade,
   isMasterKillOn,
   monthRealizedPnlPct,
   recordTrade,
@@ -46,6 +50,14 @@ export function botComment(botId: number): string {
   return `AiChartBot#${botId}`;
 }
 
+/** Parses MT5 ticket from trades.order_id (EA / MetaApi / mt5local). */
+export function ticketFromOrderId(
+  orderId: string | null | undefined,
+): number | undefined {
+  const n = Number(orderId);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 async function forexQuote(userId: number, symbol: string): Promise<GridQuote | null> {
   const backend = await resolveForexBackendForUser(userId);
   if (backend === "mt5local") {
@@ -58,6 +70,26 @@ async function forexQuote(userId: number, symbol: string): Promise<GridQuote | n
     });
     if (bid > 0 && ask > 0) return { bid, ask };
     return null;
+  }
+  if (backend === "metaapi") {
+    try {
+      const account = await getMtAccount(userId);
+      if (!account) return null;
+      const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
+      const { getRpcConnection } = await import("./metaapi/client");
+      const conn = await getRpcConnection(userId, account.metaapi_account_id);
+      const px = await conn.getSymbolPrice(resolved, false);
+      const bid = Number(px.bid);
+      const ask = Number(px.ask);
+      if (bid > 0 && ask > 0) return { bid, ask };
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  const snap = await resolveForexQuoteSnapshot(userId, symbol);
+  if (snap && snap.bid > 0 && snap.ask > 0) {
+    return { bid: snap.bid, ask: snap.ask };
   }
   const spec = await getEaSymbolSpec(userId, symbol);
   if (!spec) return null;
@@ -72,12 +104,24 @@ async function contractSizeForForex(
   symbol: string,
 ): Promise<number> {
   const backend = await resolveForexBackendForUser(userId);
+  const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
   if (backend === "mt5local") {
     const acct = await getMtAccountMeta(userId);
     if (!acct) return 0;
-    const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
     const spec = await mt5Spec(resolved, { login: acct.login, server: acct.server });
     return Number(spec.contract_size) || 0;
+  }
+  if (backend === "metaapi") {
+    try {
+      const account = await getMtAccount(userId);
+      if (!account) return 0;
+      const { getRpcConnection } = await import("./metaapi/client");
+      const conn = await getRpcConnection(userId, account.metaapi_account_id);
+      const rawSpec = await conn.getSymbolSpecification(resolved);
+      return Number(rawSpec.contractSize ?? rawSpec.contract_size) || 100_000;
+    } catch {
+      return 0;
+    }
   }
   const spec = await getEaSymbolSpec(userId, symbol);
   return Number(spec?.contract_size) || 0;
@@ -156,6 +200,78 @@ async function assertRisk(
   return { ok: true, notional };
 }
 
+/** EA / MetaApi — same Risk Guard + adapter path as agent trades and scalp. */
+async function executeForexViaIntent(
+  session: BotSession,
+  lot: number,
+  price: number,
+  notional: number,
+): Promise<
+  | { ok: true; level: GridLevel }
+  | { ok: false; reason: string; deny?: boolean }
+> {
+  const broker = await resolveBrokerForMarket(session.userId, "forex");
+  const adapter = getBrokerAdapter(broker);
+  if (!(await adapter.isConnected(session.userId))) {
+    return { ok: false, reason: adapter.notConnectedReason() };
+  }
+
+  const sl =
+    deriveDynamicStops({
+      entry: price,
+      side: session.side,
+      style: (await getSettings(session.userId)).style,
+      confidence: 80,
+      atr: session.config.gridStep,
+    })?.stopLoss ??
+    emergencyStopLoss(
+      session.side,
+      price,
+      session.config.gridStep,
+      session.config.maxLevels,
+    );
+
+  const intent = await createIntent(session.userId, {
+    symbol: session.symbol,
+    side: session.side,
+    notional,
+    market: "forex",
+    broker,
+    entry: price,
+    stop_loss: sl,
+    take_profit: null,
+    confidence: 100,
+    rationale: `بوت شبكة #${session.id} · ${botComment(session.id)}`,
+    status: "approved",
+    practice: false,
+  });
+
+  const exec = await executeIntent(session.userId, intent.id, {
+    explicitApproval: true,
+    practiceMode: false,
+  });
+  if (!exec.ok) {
+    await updateIntentStatus(intent.id, "failed", exec.reason);
+    return { ok: false, reason: exec.reason, deny: Boolean(exec.denyCode) };
+  }
+
+  let ticket: number | undefined;
+  if (exec.tradeId) {
+    const trade = await getTrade(session.userId, exec.tradeId);
+    ticket = ticketFromOrderId(trade?.order_id);
+  }
+
+  return {
+    ok: true,
+    level: {
+      price: exec.trade?.avg_price ?? price,
+      lot: exec.trade?.qty ?? lot,
+      ticket,
+      tradeId: exec.tradeId,
+    },
+  };
+}
+
 export async function executeBotOpen(
   session: BotSession,
   lot: number,
@@ -214,53 +330,7 @@ export async function executeBotOpen(
       };
     }
 
-    const sl =
-      deriveDynamicStops({
-        entry: price,
-        side: session.side,
-        style: (await getSettings(session.userId)).style,
-        confidence: 80,
-        atr: session.config.gridStep,
-      })?.stopLoss ??
-      emergencyStopLoss(
-        session.side,
-        price,
-        session.config.gridStep,
-        session.config.maxLevels,
-      );
-
-    const intent = await createIntent(session.userId, {
-      symbol: session.symbol,
-      side: session.side,
-      notional: risk.notional,
-      market: "forex",
-      broker: await resolveBrokerForMarket(session.userId, "forex"),
-      entry: price,
-      stop_loss: sl,
-      take_profit: null,
-      confidence: 100,
-      rationale: `بوت شبكة #${session.id} · ${botComment(session.id)}`,
-      status: "approved",
-      practice: false,
-    });
-
-    const exec = await executeIntent(session.userId, intent.id, {
-      explicitApproval: true,
-      practiceMode: false,
-    });
-    if (!exec.ok) {
-      await updateIntentStatus(intent.id, "failed", exec.reason);
-      return { ok: false, reason: exec.reason, deny: Boolean(exec.denyCode) };
-    }
-
-    return {
-      ok: true,
-      level: {
-        price: exec.trade?.avg_price ?? price,
-        lot: exec.trade?.qty ?? lot,
-        tradeId: exec.tradeId,
-      },
-    };
+    return executeForexViaIntent(session, lot, price, risk.notional);
   }
 
   const intent = await createIntent(session.userId, {
