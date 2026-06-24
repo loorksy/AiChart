@@ -1,9 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { X, Maximize2, Minimize2 } from "lucide-react";
 import PriceChart from "@/components/PriceChart";
 import { IntervalPicker } from "@/components/market/IntervalPicker";
 import { PairPicker } from "@/components/market/PairPicker";
+import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
+import { useEaLivePrice } from "@/hooks/useEaLivePrice";
+import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +34,14 @@ export function ChartPreviewPanel({
   onToggleExpand?: () => void;
   className?: string;
 }) {
+  const cryptoLive = useBinanceLivePrice(market === "crypto" ? symbol : "");
+  const forexLive = useEaLivePrice(symbol, market === "forex");
+  const live = market === "forex" ? forexLive : cryptoLive;
+
+  useEffect(() => {
+    prefetchKlines(symbol, interval, market);
+  }, [symbol, interval, market]);
+
   return (
     <div
       className={cn(
@@ -41,7 +53,12 @@ export function ChartPreviewPanel({
         <div className="flex min-w-0 items-center gap-2">
           {onSymbolChange ? (
             <div className="w-40">
-              <PairPicker market={market} value={symbol} onChange={onSymbolChange} interval={interval} />
+              <PairPicker
+                market={market}
+                value={symbol}
+                onChange={onSymbolChange}
+                interval={interval}
+              />
             </div>
           ) : (
             <span
@@ -49,6 +66,21 @@ export function ChartPreviewPanel({
               dir="ltr"
             >
               {symbol}
+            </span>
+          )}
+          {live.price > 0 && (
+            <span
+              className={cn(
+                "hidden font-mono text-xs tabular-nums sm:inline",
+                live.direction === "up" && "text-emerald-500",
+                live.direction === "down" && "text-rose-500",
+                !live.direction && "text-muted-foreground",
+              )}
+              dir="ltr"
+            >
+              {live.price.toLocaleString(undefined, {
+                maximumFractionDigits: market === "forex" ? 5 : 2,
+              })}
             </span>
           )}
         </div>
@@ -86,7 +118,9 @@ export function ChartPreviewPanel({
           interval={interval}
           recommendations={recommendations}
           market={market}
-          refreshMs={30_000}
+          livePrice={live.price > 0 ? live.price : undefined}
+          liveTick={live}
+          refreshMs={market === "forex" ? 60_000 : 0}
           fill
           className="h-full min-h-0 flex-1"
         />

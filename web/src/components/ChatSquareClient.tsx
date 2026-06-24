@@ -207,6 +207,15 @@ export default function ChatSquareClient({
     }
   }, [hasConversation]);
 
+  // Keep chat chart symbol aligned with composer market/symbol selection.
+  useEffect(() => {
+    if (sel.symbol) {
+      setPreviewSymbol(sel.symbol.toUpperCase());
+      return;
+    }
+    setPreviewSymbol(sel.market === "forex" ? "EURUSD" : "BTCUSDT");
+  }, [sel.market, sel.symbol]);
+
   async function handleImageSelect(file: File) {
     setImageError(null);
     const result = await fileToChatImage(file);
@@ -651,7 +660,11 @@ export default function ChatSquareClient({
                 symbol={previewSymbol}
                 interval={previewInterval}
                 onIntervalChange={setPreviewInterval}
-                onSymbolChange={(s) => setPreviewSymbol(s.toUpperCase())}
+                onSymbolChange={(s) => {
+                  const sym = s.toUpperCase();
+                  setPreviewSymbol(sym);
+                  setSel((prev) => ({ ...prev, symbol: sym }));
+                }}
                 market={sel.market}
                 recommendations={allRecommendations}
                 onClose={() => setPreviewOpen(false)}
@@ -681,7 +694,11 @@ export default function ChatSquareClient({
               symbol={previewSymbol}
               interval={previewInterval}
               onIntervalChange={setPreviewInterval}
-              onSymbolChange={(s) => setPreviewSymbol(s.toUpperCase())}
+              onSymbolChange={(s) => {
+                const sym = s.toUpperCase();
+                setPreviewSymbol(sym);
+                setSel((prev) => ({ ...prev, symbol: sym }));
+              }}
               market={sel.market}
               recommendations={allRecommendations}
               className="h-full border-0"
