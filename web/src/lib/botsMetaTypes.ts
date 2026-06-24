@@ -8,6 +8,15 @@ export interface BotBrokerSymbol {
   tickLabel: string | null;
 }
 
+/** EA bridge status when registered separately from the bot execution backend. */
+export interface BotsMetaEaBridge {
+  connected: boolean;
+  online: boolean;
+  broker: string | null;
+  login: string | null;
+  platform: string | null;
+}
+
 export interface BotsMetaResponse {
   at: string;
   liveEnabled: boolean;
@@ -23,6 +32,10 @@ export interface BotsMetaResponse {
     currency: string | null;
     broker: string | null;
     login: string | null;
+    /** Present when EA is registered but bot executes via another backend. */
+    eaBridge: BotsMetaEaBridge | null;
+    /** Arabic hint when execution backend differs from a live EA bridge. */
+    channelNote: string | null;
   };
   binance: {
     connected: boolean;

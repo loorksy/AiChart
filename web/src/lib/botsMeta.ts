@@ -19,13 +19,42 @@ import { isForexSymbol } from "@/lib/eaLiveState";
 import { getMtConnectionStatus } from "@/lib/mtConnectFlow";
 import { getRpcConnection } from "@/lib/metaapi/client";
 import { spreadFromBidAsk } from "@/lib/spread";
-import type { BotBrokerSymbol, BotsMetaResponse } from "@/lib/botsMetaTypes";
+import type {
+  BotBrokerSymbol,
+  BotsMetaEaBridge,
+  BotsMetaResponse,
+} from "@/lib/botsMetaTypes";
+import type { EaConnectionMeta } from "@/lib/types";
 
 const BACKEND_LABEL: Record<"ea" | "metaapi" | "mt5local", string> = {
   ea: "جسر EA",
   metaapi: "MetaApi",
   mt5local: "MT5 محلي",
 };
+
+/** EA bridge sidecar when bot execution backend ≠ EA but EA token exists. */
+export function buildEaBridgeSidecar(
+  executionBackend: "ea" | "metaapi" | "mt5local",
+  eaMeta: EaConnectionMeta | null,
+): { eaBridge: BotsMetaEaBridge | null; channelNote: string | null } {
+  if (!eaMeta || eaMeta.status === "revoked" || executionBackend === "ea") {
+    return { eaBridge: null, channelNote: null };
+  }
+
+  const eaBridge: BotsMetaEaBridge = {
+    connected: true,
+    online: eaMeta.online,
+    broker: eaMeta.broker_name,
+    login: eaMeta.account_login,
+    platform: eaMeta.platform,
+  };
+
+  const channelNote = eaMeta.online
+    ? `البوت يستخدم ${BACKEND_LABEL[executionBackend]} — غيّر الطريقة إلى EA للتنفيذ عبر الجسر`
+    : null;
+
+  return { eaBridge, channelNote };
+}
 
 function formatTickLabel(spreadPips: number | null, spreadPct: number | null): string | null {
   if (spreadPips != null && spreadPips > 0 && spreadPips < 10_000) {
@@ -139,7 +168,14 @@ async function loadBrokerSymbols(
 ): Promise<BotBrokerSymbol[]> {
   if (market === "crypto") return loadCryptoSymbols();
   const backend = await resolveForexBackendForUser(userId);
-  return loadForexSymbols(userId, backend);
+  let rows = await loadForexSymbols(userId, backend);
+  if (rows.length === 0 && backend !== "ea") {
+    const eaMeta = await getEaConnectionMeta(userId);
+    if (eaMeta?.online) {
+      rows = await loadForexSymbols(userId, "ea");
+    }
+  }
+  return rows;
 }
 
 function usdtBalance(balances: Array<{ asset: string; free: string; locked: string }>): number | null {
@@ -154,17 +190,22 @@ export async function loadBotsMeta(
   userId: number,
   market: "forex" | "crypto" = "forex",
 ): Promise<BotsMetaResponse> {
-  const [forexStatus, binanceMeta, symbols] = await Promise.all([
+  const [forexStatus, eaMeta, binanceMeta, symbols] = await Promise.all([
     getMtConnectionStatus(userId),
+    getEaConnectionMeta(userId),
     getBinanceAccountMeta(userId),
     loadBrokerSymbols(userId, market),
   ]);
 
+  const { eaBridge, channelNote } = buildEaBridgeSidecar(
+    forexStatus.backend,
+    eaMeta,
+  );
+
   let forexAccountEnv: ExecutionEnv | null = null;
-  if (forexStatus.backend === "ea" && forexStatus.connected) {
-    const eaMeta = await getEaConnectionMeta(userId);
+  if (forexStatus.backend === "ea" && forexStatus.connected && eaMeta) {
     forexAccountEnv = mtModeToExecution(
-      normalizeMtTradeMode(eaMeta?.account_trade_mode ?? null),
+      normalizeMtTradeMode(eaMeta.account_trade_mode ?? null),
     );
   } else if (
     (forexStatus.backend === "metaapi" || forexStatus.backend === "mt5local") &&
@@ -225,6 +266,8 @@ export async function loadBotsMeta(
       currency: typeof fs.currency === "string" ? fs.currency : null,
       broker: typeof fs.broker === "string" ? fs.broker : null,
       login: typeof fs.login === "string" ? fs.login : null,
+      eaBridge,
+      channelNote,
     },
     binance: {
       connected: binanceConnected,

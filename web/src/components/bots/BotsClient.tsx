@@ -112,10 +112,17 @@ function ConnectionCard({
 
 function BrokerStatusPanel({ meta }: { meta: BotsMetaResponse }) {
   const { forex, binance } = meta;
+  const eaBridge = forex.eaBridge;
 
   const forexChip = !forex.connected
     ? { label: "غير مرتبط", tone: "neutral" as StatusChipTone }
     : forex.online
+      ? { label: "متصل", tone: "ok" as StatusChipTone }
+      : { label: "غير متصل", tone: "error" as StatusChipTone };
+
+  const eaChip = !eaBridge?.connected
+    ? { label: "غير مربوط", tone: "neutral" as StatusChipTone }
+    : eaBridge.online
       ? { label: "متصل", tone: "ok" as StatusChipTone }
       : { label: "غير متصل", tone: "error" as StatusChipTone };
 
@@ -131,7 +138,17 @@ function BrokerStatusPanel({ meta }: { meta: BotsMetaResponse }) {
     ? [forex.backendLabel, forex.broker, forex.login ? `#${forex.login}` : null]
         .filter(Boolean)
         .join(" · ")
-    : "اربط MT5 من الإعدادات";
+    : "قناة تنفيذ البوت — اربط من الإعدادات";
+
+  const eaDetail = eaBridge
+    ? [
+        eaBridge.platform?.toUpperCase(),
+        eaBridge.broker,
+        eaBridge.login ? `#${eaBridge.login}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
 
   const binanceDetail = binance.connected
     ? binance.env === "prod"
@@ -146,13 +163,34 @@ function BrokerStatusPanel({ meta }: { meta: BotsMetaResponse }) {
         البوت ينفّذ عبر الوسيط المرتبط — تأكّد أن القناة نشطة قبل التشغيل
         الحقيقي.
       </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      {forex.channelNote && (
+        <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
+          {forex.channelNote}{" "}
+          <Link href="/console/connect" className="underline hover:text-amber-100">
+            تغيير طريقة الربط
+          </Link>
+        </p>
+      )}
+      <div
+        className={cn(
+          "mt-3 grid gap-3",
+          eaBridge ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2",
+        )}
+      >
         <ConnectionCard
-          title={`فوركس · ${forex.backendLabel}`}
+          title={`تنفيذ البوت · ${forex.backendLabel}`}
           chip={forexChip}
           detail={forexDetail}
           icon={forex.online ? Wifi : WifiOff}
         />
+        {eaBridge && (
+          <ConnectionCard
+            title="جسر EA · MetaTrader"
+            chip={eaChip}
+            detail={eaDetail}
+            icon={eaBridge.online ? Wifi : WifiOff}
+          />
+        )}
         <ConnectionCard
           title="Binance · كريبتو"
           chip={binanceChip}
