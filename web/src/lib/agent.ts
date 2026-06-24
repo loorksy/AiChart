@@ -366,7 +366,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "open_trade",
     description:
-      "يفتح صفقة. في وضع الموافقة يُنشئ نية معلّقة (تظهر بطاقة موافقة)؛ في التلقائي أو بأمر صريح ينفّذ. يمرّ عبر Risk Guard دائماً. مرّر notional وrationale وconfidence.",
+      "يفتح صفقة. في وضع الموافقة يُنشئ نية معلّقة (تظهر بطاقة موافقة)؛ في التلقائي أو بأمر صريح ينفّذ. يمرّ عبر Risk Guard دائماً. **stop_loss إلزامي** (يُرفض بلا وقف)، ومرّر entry وtake_profit ليُحسب العائد/المخاطرة (يُرفض إن كان أقل من الحد الأدنى). notional اختياري — إن غاب يُشتقّ الحجم من مسافة الوقف. confidence للتسجيل والتحجيم فقط — **ليس بوابة**.",
     input_schema: {
       type: "object",
       properties: {
@@ -378,10 +378,10 @@ const TOOLS: ToolDef[] = [
         market_type: { type: "string", enum: ["spot", "futures"] },
         leverage: { type: "number" },
         order_type: { type: "string", enum: ["market", "limit"] },
-        entry: { type: "number" },
-        stop_loss: { type: "number" },
-        take_profit: { type: "number" },
-        confidence: { type: "number" },
+        entry: { type: "number", description: "سعر الدخول المقصود (للـ R:R)" },
+        stop_loss: { type: "number", description: "وقف الخسارة — إلزامي، يُرفض بدونه" },
+        take_profit: { type: "number", description: "الهدف (مع entry/stop_loss لحساب R:R)" },
+        confidence: { type: "number", description: "ثقة 0-100 — للتسجيل والتحجيم فقط، ليست بوابة" },
         rationale: { type: "string" },
         recommendation_id: { type: "number" },
         approved_by_user: {

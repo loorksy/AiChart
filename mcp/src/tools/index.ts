@@ -30,6 +30,14 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
       file: "skills/trading-strategies/SKILL.md",
     },
     {
+      id: "execution-desk",
+      uri: "aichart://execution-desk",
+      title: "AiChart Execution Desk v3 (Disciplined)",
+      description:
+        "إطار مكتب التنفيذ المؤسسي: لجنة الوكلاء الأربعة (درجات تشخيصية) + بوابات الجودة الموضوعية + قرار EXECUTE/NO TRADE",
+      file: "EXECUTION_DESK_V3.md",
+    },
+    {
       id: "cards",
       uri: "aichart://cards",
       title: "AiChart Interactive Cards Skill",

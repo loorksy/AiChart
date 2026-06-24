@@ -18,12 +18,14 @@ metadata: {"aichart":{"requires":{"env":["AICHART_SERVICE_TOKEN"]}}}
 | Market Analysis | `get_market_snapshot` · `get_market_context` · `scan_market` |
 | Lessons History | `get_trade_lessons` (+ `recent:true`) |
 | Recommendation | `create_recommendation` |
-| Execution | `open_trade` (notional + rationale are mandatory) |
+| Execution | `open_trade` (rationale + **mandatory `stop_loss`** + `entry`/`take_profit` for R:R; notional optional — auto-sized from stop distance) |
 | Position Closure | `close_trade` · `evaluate_trade` |
 
 **Rule:** Use "We enter" or "We open" (Agent identity). Always ask the user for the symbol and allocation amount. Never execute a trade immediately upon receiving a simple "open a trade" request.
 
-Resource: `aichart://trading-rules` (reads `AGENTS.md`).
+**Objective discipline (not a confidence gate):** every entry MUST carry a defined stop-loss and a reward:risk ≥ `min_rr` (default 1). Risk Guard rejects a stopless order or one whose target is closer than its stop. Confidence is for sizing/audit, never a threshold.
+
+Resources: `aichart://trading-rules` (reads `AGENTS.md`) · `aichart://execution-desk` (4-agent committee + discipline framework).
 
 ---
 

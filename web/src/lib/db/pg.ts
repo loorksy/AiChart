@@ -57,6 +57,7 @@ const SCHEMA = `
     alert_signals            BOOLEAN NOT NULL DEFAULT TRUE,
     alert_min_confidence     INTEGER NOT NULL DEFAULT 0,
     min_confidence           INTEGER NOT NULL DEFAULT 80,
+    min_rr                   DOUBLE PRECISION NOT NULL DEFAULT 1,
     trading_style            TEXT NOT NULL DEFAULT 'day',
     scalp_max_trades         INTEGER NOT NULL DEFAULT 0,
     scalp_enabled            INTEGER NOT NULL DEFAULT 0,
@@ -749,6 +750,11 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS min_confidence INTEGER NOT NULL DEFAULT 80
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS min_rr DOUBLE PRECISION NOT NULL DEFAULT 1
   `).catch(() => {});
 
   await client.query(`

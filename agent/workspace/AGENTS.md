@@ -112,7 +112,8 @@ When the operator says "Open a trade" or "Buy BTC":
 2.  Call `scan_market` + `get_market_snapshot` to **compare alternatives** (e.g., BTC vs ETH, or major FX pairs).
 3.  Call `get_trade_lessons` for the symbol with `recent:true` to check recent mistakes.
 4.  Call `get_market_context` for macro sentiment.
-5.  **Formulate Setup** (per §3c): read `aichart://trading-strategies`, evaluate the 4 dimensions with real indicators (`get_multi_timeframe_snapshot`, `get_forex_indicators`, `detect_levels`), then propose as a recommendation card (SOUL.md §3.4) with the config code `[A?-B?-C?-D?]`, a plain-Arabic rationale, and entry/TP/SL/R:R. No fixed confidence threshold (§5.3).
+5.  **Formulate Setup** (per §3c + Execution Desk): read `aichart://trading-strategies` and `aichart://execution-desk`, evaluate the 4 dimensions with real indicators (`get_multi_timeframe_snapshot`, `get_forex_indicators`, `detect_levels`). Weigh the **4-agent committee** (Trend 30% · Breakout 30% · Mean-Reversion 20% · Risk 20%) — these scores are **diagnostic inputs, not gates**. Then propose as a recommendation card (SOUL.md §3.4) with the config code `[A?-B?-C?-D?]`, plain-Arabic rationale, and entry/TP/SL/R:R.
+    *   **Objective discipline (not a confidence gate)**: every setup MUST carry a defined **stop-loss** and a **reward:risk ≥ `min_rr`** (default 1). Size SL/TP from structure/ATR. A setup that risks more than it can make is a NO TRADE on merit — never enter stopless. No fixed confidence threshold (§5.3).
 
 ---
 
@@ -132,7 +133,7 @@ When the operator says "Open a trade" or "Buy BTC":
     *   **MT5 Ad-hoc (no active drawings)**: Call `capture_chart_snapshot` (faster).
     *   **MT5 with levels/drawings**: Call `capture_mt5_chart` (poll `/api/agent/chart/{id}/mt5` up to 30s).
 2.  **Wait**: Do not call `open_trade` until the user states "execute", "go", "approved", or hits the approval button.
-3.  Call `open_trade` passing `approved_by_user: true`, `notional`, `rationale`, `confidence`, `recommendation_id`, and a defined `stop_loss`.
+3.  Call `open_trade` passing `approved_by_user: true`, `notional`, `rationale`, `confidence`, `recommendation_id`, `entry`, `take_profit`, and a **mandatory** `stop_loss`. Risk Guard rejects any order without a stop, and any whose reward:risk is below `min_rr`. `confidence` is recorded for sizing/audit — it is NOT a gate.
 4.  **Confirm Execution**: "**We have entered**... Reason... Confidence... Allocation... SL/TP..."
 
 ---
@@ -156,7 +157,7 @@ When the operator says "Open a trade" or "Buy BTC":
 | `auto` | **Avoid** — conflicts with active MCP session chats. |
 
 *   Use `set_trading_mode` to toggle modes.
-*   Dynamic Confidence: there is no fixed confidence gate at all — the entry decision is entirely your own analysis (see SOUL.md §5.3). Never refuse because of a percentage threshold.
+*   Dynamic Confidence: there is no fixed confidence gate at all — the entry decision is entirely your own analysis (see SOUL.md §5.3). Never refuse because of a percentage threshold. But objective quality discipline still applies in code: a **mandatory stop-loss** and a **minimum reward:risk** (`min_rr`) gate every entry — these are trade-quality controls, not confidence cutoffs.
 *   If Risk Guard rejects a trade: Report the reason literally to the operator. Do not try to bypass it with smaller amounts.
 
 ---
@@ -180,12 +181,15 @@ Refer to **`EA_TROUBLESHOOTING.md`**.
 
 ---
 
-## 11. Open Position Management (On-Demand)
+## 11. Open Position Management — Active, Not Fire-and-Forget
 
-1.  Call `get_open_trades` → `evaluate_trade`.
-2.  Record rationale via `record_exit_decision` then call `close_trade` if closing is justified.
-3.  MT5: `modify_sl_tp` · Futures: `modify_futures_sl_tp`.
-4.  Call `run_trade_maintenance` for mechanical OCO adjustments.
+A professional desk manages every open position; it does not open and walk away.
+
+1.  Call `get_open_trades` → `evaluate_trade` to read the live state of each position.
+2.  **Move stop to break-even after +1R** (once price has moved one risk-unit in favor), via `modify_sl_tp` / `modify_futures_sl_tp`.
+3.  **Scale out** at intermediate targets when justified (`close_partial`), and **trail** the stop along structure/ATR — no fixed template.
+4.  Record rationale via `record_exit_decision` then call `close_trade` when the thesis is invalidated or the target is met.
+5.  MT5: `modify_sl_tp` · Futures: `modify_futures_sl_tp`. Call `run_trade_maintenance` for mechanical OCO adjustments.
 
 ---
 
@@ -198,7 +202,7 @@ Refer to **`EA_TROUBLESHOOTING.md`**.
 
 ## 13. System Boundaries & Memory
 
-*   Call `get_trade_lessons` before starting any analysis.
+*   **Mandatory precondition**: call `get_trade_lessons` (with `recent:true`) before every `create_recommendation` / `open_trade` — do not repeat a past mistake. A desk that ignores its own history is not disciplined.
 *   Do not repeat the exact same asset recommendation within 4 hours.
 *   **Safety Limits**: Risk Guard boundaries cannot be bypassed by the agent.
 *   **Presentation**: Structure outputs cleanly using Markdown, using the operator's preferred language (defined in `USER.md`).

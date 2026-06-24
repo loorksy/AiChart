@@ -61,6 +61,7 @@ const SCHEMA = `
     alert_signals            INTEGER NOT NULL DEFAULT 1,
     alert_min_confidence     INTEGER NOT NULL DEFAULT 0,
     min_confidence           INTEGER NOT NULL DEFAULT 80,
+    min_rr                   REAL NOT NULL DEFAULT 1,
     trading_style            TEXT NOT NULL DEFAULT 'day',
     scalp_max_trades         INTEGER NOT NULL DEFAULT 0,
     scalp_enabled            INTEGER NOT NULL DEFAULT 0,
@@ -657,6 +658,12 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN min_confidence INTEGER NOT NULL DEFAULT 80",
     );
     db.exec("UPDATE trading_settings SET min_confidence = 80 WHERE min_confidence IS NULL");
+  }
+  if (!settingsCols.some((c) => c.name === "min_rr")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN min_rr REAL NOT NULL DEFAULT 1",
+    );
+    db.exec("UPDATE trading_settings SET min_rr = 1 WHERE min_rr IS NULL");
   }
   if (!settingsCols.some((c) => c.name === "trading_style")) {
     db.exec(

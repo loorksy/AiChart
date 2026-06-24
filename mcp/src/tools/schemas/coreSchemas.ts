@@ -108,15 +108,15 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_trade",
     domain: "core",
     description:
-      "متى: بعد موافقة صريحة + notional. يرفض إذا كان الـ quote قديماً. يتم تقييم القرار بناءً على التحليل الفني والأساسي للوكيل. idempotencyKey اختياري. side-effect: ينفّذ عبر Risk Guard. مثال: notional=50&approved_by_user=true.",
+      "متى: بعد موافقة صريحة. stop_loss إلزامي (Risk Guard يرفض بدونه)، ومرّر entry/take_profit ليُحسب العائد/المخاطرة (يُرفض إن قلّ عن الحد الأدنى). notional اختياري — إن غاب يُشتقّ الحجم من مسافة الوقف. يرفض إذا كان الـ quote قديماً. القرار من تحليل الوكيل (لا عتبة ثقة — confidence للتسجيل/التحجيم فقط). idempotencyKey اختياري. side-effect: ينفّذ عبر Risk Guard. مثال: stop_loss=64000&take_profit=68000&approved_by_user=true.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
-      notional: z.number().positive(),
+      notional: z.number().positive().optional(),
       lots: z.number().positive().max(100).optional().describe("forex: explicit lot size (overrides notional)"),
       market: zMarket,
       entry: z.number().optional(),
-      stop_loss: z.number().optional(),
+      stop_loss: z.number().describe("وقف الخسارة — إلزامي، يُرفض بدونه"),
       take_profit: z.number().optional(),
       confidence: zConfidence,
       rationale: z.string().min(10),

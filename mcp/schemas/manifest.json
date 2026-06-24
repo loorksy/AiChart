@@ -1,6 +1,6 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-06-22T21:00:48.607Z",
+  "exportedAt": "2026-06-24T18:32:49.654Z",
   "toolCount": 62,
   "tools": [
     {
@@ -86,7 +86,7 @@
     {
       "name": "open_trade",
       "domain": "core",
-      "description": "متى: بعد موافقة صريحة + notional. يرفض إذا كان الـ quote قديماً. يتم تقييم القرار بناءً على التحليل الفني والأساسي للوكيل. idempotencyKey اختياري. side-effect: ينفّذ عبر Risk Guard. مثال: notional=50&approved_by_user=true.",
+      "description": "متى: بعد موافقة صريحة. stop_loss إلزامي (Risk Guard يرفض بدونه)، ومرّر entry/take_profit ليُحسب العائد/المخاطرة (يُرفض إن قلّ عن الحد الأدنى). notional اختياري — إن غاب يُشتقّ الحجم من مسافة الوقف. يرفض إذا كان الـ quote قديماً. القرار من تحليل الوكيل (لا عتبة ثقة — confidence للتسجيل/التحجيم فقط). idempotencyKey اختياري. side-effect: ينفّذ عبر Risk Guard. مثال: stop_loss=64000&take_profit=68000&approved_by_user=true.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,

@@ -965,6 +965,7 @@ function TradingCard({
           futures_enabled: Boolean(s.futures_enabled),
           default_leverage: Number(s.default_leverage ?? 3),
           min_confidence: Number(s.min_confidence ?? 80),
+          min_rr: Number(s.min_rr ?? 1),
         }),
       });
       const data = await res.json();
@@ -1198,7 +1199,22 @@ function TradingCard({
             className="w-full accent-primary"
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            تُنفذ الصفقات تلقائياً فقط إذا تجاوزت ثقة الوكيل هذه النسبة (في البيئة الحقيقية).
+            ملاحظة: لم تعد عتبة الثقة بوابة تنفيذ — القرار من تحليل الوكيل. تُستخدم للتحجيم والتنبيهات.
+          </p>
+        </Field>
+
+        <Field label={`الحد الأدنى للعائد/المخاطرة (R:R) · ${s.min_rr ?? 1}`}>
+          <input
+            type="number"
+            min={0}
+            max={10}
+            step={0.1}
+            className="input"
+            value={s.min_rr ?? 1}
+            onChange={(e) => set("min_rr", Number(e.target.value))}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            انضباط موضوعي: يرفض Risk Guard أي صفقة هدفها أقرب من وقفها بهذه النسبة. 0 = معطّل. (ليست عتبة ثقة)
           </p>
         </Field>
 

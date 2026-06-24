@@ -144,6 +144,13 @@ export interface TradingSettings {
   alert_min_confidence: number;
   /** Minimum trade confidence (0–100) enforced by Risk Guard on live execution. */
   min_confidence: number;
+  /**
+   * Minimum reward:risk ratio enforced as an objective quality gate (e.g. 1 =
+   * reject any setup whose target is closer than its stop). This is NOT a
+   * confidence threshold — it is trade-quality discipline. Skipped when
+   * risk_guard_enabled=0 or when entry/SL/TP are not all known.
+   */
+  min_rr?: number;
   last_manual_scan_at?: string | null;
   scan_poll_minutes?: number;
   analysis_interval?: string;
