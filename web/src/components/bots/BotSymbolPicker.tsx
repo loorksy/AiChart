@@ -46,6 +46,7 @@ export function BotSymbolPicker({
   const [symbols, setSymbols] = useState<BotBrokerSymbol[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [emptyNote, setEmptyNote] = useState<string | null>(null);
 
   const fetchSymbols = useCallback(
     async (q: string) => {
@@ -60,17 +61,21 @@ export function BotSymbolPicker({
         if (!r.ok) {
           setSymbols([]);
           setTotal(0);
+          setEmptyNote(null);
           return;
         }
         const d = (await r.json()) as {
           symbols?: BotBrokerSymbol[];
           total?: number;
+          note_ar?: string | null;
         };
         setSymbols(d.symbols ?? []);
         setTotal(d.total ?? d.symbols?.length ?? 0);
+        setEmptyNote(d.note_ar ?? null);
       } catch {
         setSymbols([]);
         setTotal(0);
+        setEmptyNote(null);
       } finally {
         setLoading(false);
       }
@@ -97,6 +102,12 @@ export function BotSymbolPicker({
   const liveTicks = useBinanceLivePrices(liveSymbols);
 
   const selected = value.trim().toUpperCase();
+
+  const forexEmptyMessage =
+    emptyNote ??
+    (connected === false
+      ? "اربط حساب MetaTrader وفعّل EA لعرض أزواج Market Watch."
+      : "أضف أزواج الفوركس إلى Market Watch في MT5 وتأكد أن EA متصل.");
 
   return (
     <div className="space-y-2">
@@ -130,10 +141,12 @@ export function BotSymbolPicker({
         {loading
           ? "جارٍ تحميل الأزواج…"
           : total > 0
-            ? `${total} زوج${total !== 1 ? "" : ""} · اختر من الشبكة`
-            : connected === false
-              ? "اربط حسابك لعرض الأزواج"
-              : "لا توجد رموز — اربط حسابك أولاً"}
+            ? `${total} زوج · من Market Watch (الوسيط)`
+            : market === "forex"
+              ? forexEmptyMessage
+              : connected === false
+                ? "اربط حساب Binance لعرض الأزواج"
+                : "لا توجد رموز"}
       </p>
 
       {loading && symbols.length === 0 ? (
@@ -142,8 +155,10 @@ export function BotSymbolPicker({
           جارٍ التحميل…
         </div>
       ) : symbols.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border py-8 text-center text-xs text-muted-foreground">
-          لا توجد أزواج مطابقة
+        <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-xs leading-relaxed text-muted-foreground">
+          {market === "forex" && total === 0
+            ? forexEmptyMessage
+            : "لا توجد أزواج مطابقة للبحث"}
         </p>
       ) : (
         <div className="grid max-h-[min(50dvh,20rem)] grid-cols-2 gap-2 overflow-y-auto pe-0.5">

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildEaBridgeSidecar,
   forexRowFromSpec,
+  forexSymbolsFromEaSpecs,
   mergeBotSymbolRow,
 } from "@/lib/botsMeta";
 import { pickDefaultSymbol } from "@/lib/botsMetaTypes";
@@ -101,7 +102,7 @@ test("forexRowFromSpec extracts price and spread from EA heartbeat spec", () => 
   assert.ok(row?.tickLabel?.includes("pips"));
 });
 
-test("mergeBotSymbolRow prefers row with live quote over static baseline", () => {
+test("mergeBotSymbolRow prefers row with live quote over name-only row", () => {
   const map = new Map<string, BotBrokerSymbol>();
   mergeBotSymbolRow(map, {
     symbol: "EURUSD",
@@ -124,4 +125,23 @@ test("mergeBotSymbolRow prefers row with live quote over static baseline", () =>
   const merged = map.get("EURUSD");
   assert.equal(merged?.price, 1.0851);
   assert.equal(merged?.tickLabel, "1.2 pips");
+});
+
+test("forexSymbolsFromEaSpecs returns only Market Watch forex rows", () => {
+  const rows = forexSymbolsFromEaSpecs([
+    { symbol: "EURUSDm", bid: 1.085, ask: 1.0852, digits: 5 },
+    { symbol: "BTCUSD", bid: 65000, ask: 65010, digits: 2 },
+    { symbol: "", bid: 0, ask: 0, digits: 0 },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.symbol, "EURUSDm");
+  assert.equal(rows[0]?.market, "forex");
+});
+
+test("forexSymbolsFromEaSpecs returns empty when no valid forex specs", () => {
+  assert.deepEqual(forexSymbolsFromEaSpecs([]), []);
+  assert.deepEqual(
+    forexSymbolsFromEaSpecs([{ symbol: "BTCUSD", bid: 1, ask: 2, digits: 2 }]),
+    [],
+  );
 });

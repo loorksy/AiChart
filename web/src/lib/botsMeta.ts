@@ -1,7 +1,7 @@
 import { getAccountSummary } from "@/lib/binance";
 import { searchBinanceInstruments } from "@/lib/binanceSymbols";
 import { botsLiveEnabled } from "@/lib/botExecution";
-import { getBinanceAccountMeta, getBinanceCredentials, getMtAccount } from "@/lib/store";
+import { getBinanceAccountMeta, getBinanceCredentials } from "@/lib/store";
 import {
   binanceEnvToExecution,
   executionEnvLabelAr,
@@ -17,11 +17,7 @@ import {
 } from "@/lib/eaStore";
 import { isForexSymbol } from "@/lib/eaLiveState";
 import { getMtConnectionStatus } from "@/lib/mtConnectFlow";
-import { getRpcConnection } from "@/lib/metaapi/client";
-import {
-  forexBaseQuote,
-  searchForexInstruments,
-} from "@/lib/markets/forexInstruments";
+import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { spreadFromBidAsk } from "@/lib/spread";
 import type {
   BotBrokerSymbol,
@@ -120,72 +116,44 @@ function mergeSymbolRow(
   }
 }
 
-async function mergeMetaApiForexSymbols(
-  userId: number,
-  map: Map<string, BotBrokerSymbol>,
-): Promise<void> {
-  const row = await getMtAccount(userId);
-  if (!row?.metaapi_account_id || row.metaapi_account_id === "mt5local") return;
-  try {
-    const conn = await getRpcConnection(userId, row.metaapi_account_id);
-    const symbols = await conn.getSymbols();
-    for (const sym of symbols) {
-      const raw = sym.trim();
-      if (!raw || !isForexSymbol(raw)) continue;
-      const { base, quote } = forexBaseQuote(raw);
-      mergeSymbolRow(map, {
-        symbol: raw,
-        market: "forex",
-        spreadPips: null,
-        spreadPct: null,
-        tradable: true,
-        tickLabel: null,
-        price: null,
-        changePct: null,
-        base,
-        quote,
-      });
-    }
-  } catch {
-    /* fall through */
-  }
-}
+const FOREX_EA_OFFLINE_NOTE_AR =
+  "EA غير متصل — تأكد أن Expert Advisor يعمل على MT5 وأن AutoTrading مفعّل.";
+const FOREX_MARKET_WATCH_EMPTY_NOTE_AR =
+  "Market Watch فارغ — أضف أزواج الفوركس إلى Market Watch في MT5 ثم انتظر نبض EA (~30 ث).";
 
-/**
- * Forex symbols for bots UI: MetaApi full broker list + EA heartbeat quotes +
- * static baseline. EA heartbeat alone only covers Market Watch (~few pairs).
- */
-async function loadForexSymbols(userId: number): Promise<BotBrokerSymbol[]> {
+/** Build forex rows from EA heartbeat Market Watch specs only. */
+export function forexSymbolsFromEaSpecs(
+  specs: EaSymbolSpec[],
+): BotBrokerSymbol[] {
   const map = new Map<string, BotBrokerSymbol>();
-
-  for (const inst of searchForexInstruments("")) {
-    mergeSymbolRow(map, {
-      symbol: inst.symbol,
-      market: "forex",
-      spreadPips: null,
-      spreadPct: null,
-      tradable: true,
-      tickLabel: null,
-      price: null,
-      changePct: null,
-      base: inst.base,
-      quote: inst.quote,
-    });
+  for (const spec of specs) {
+    const row = forexRowFromSpec(spec);
+    if (row) mergeSymbolRow(map, row);
   }
-
-  await mergeMetaApiForexSymbols(userId, map);
-
-  const conn = await getEaConnection(userId);
-  if (conn) {
-    for (const spec of parseEaSymbolSpecs(conn.symbol_specs_json)) {
-      const row = forexRowFromSpec(spec);
-      if (row) mergeSymbolRow(map, row);
-    }
-  }
-
   return Array.from(map.values()).sort((a, b) =>
     a.symbol.localeCompare(b.symbol),
   );
+}
+
+/**
+ * Forex symbols for bots UI: EA heartbeat Market Watch only (SymbolsTotal(true)).
+ * No static pair list and no MetaApi full broker catalog.
+ */
+async function loadForexSymbols(
+  userId: number,
+): Promise<{ symbols: BotBrokerSymbol[]; note_ar: string | null }> {
+  const conn = await getEaConnection(userId);
+  if (!conn || !isHeartbeatFresh(conn.last_heartbeat_at)) {
+    return { symbols: [], note_ar: FOREX_EA_OFFLINE_NOTE_AR };
+  }
+
+  const symbols = forexSymbolsFromEaSpecs(
+    parseEaSymbolSpecs(conn.symbol_specs_json),
+  );
+  if (symbols.length === 0) {
+    return { symbols: [], note_ar: FOREX_MARKET_WATCH_EMPTY_NOTE_AR };
+  }
+  return { symbols, note_ar: null };
 }
 
 async function enrichCryptoWithTickers(
@@ -265,7 +233,7 @@ export async function searchBotSymbols(
   market: "forex" | "crypto",
   q = "",
   limit = DEFAULT_SYMBOL_LIMIT,
-): Promise<{ symbols: BotBrokerSymbol[]; total: number }> {
+): Promise<{ symbols: BotBrokerSymbol[]; total: number; note_ar?: string | null }> {
   const capped = Math.min(Math.max(limit, 1), DEFAULT_SYMBOL_LIMIT);
   if (market === "crypto") {
     const { instruments, total } = await searchBinanceInstruments(q, capped);
@@ -285,9 +253,9 @@ export async function searchBotSymbols(
     return { symbols: enriched, total };
   }
 
-  const all = await loadForexSymbols(userId);
+  const { symbols: all, note_ar } = await loadForexSymbols(userId);
   const filtered = filterSymbolRows(all, q, capped);
-  return { symbols: filtered, total: all.length };
+  return { symbols: filtered, total: all.length, note_ar };
 }
 
 function usdtBalance(balances: Array<{ asset: string; free: string; locked: string }>): number | null {

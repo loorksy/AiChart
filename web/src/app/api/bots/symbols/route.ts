@@ -16,14 +16,14 @@ export async function GET(req: NextRequest) {
       500,
     );
 
-    const { symbols, total } = await searchBotSymbols(
+    const { symbols, total, note_ar } = await searchBotSymbols(
       user.id,
       market,
       q,
       limit,
     );
 
-    return NextResponse.json({ symbols, total, market });
+    return NextResponse.json({ symbols, total, market, note_ar: note_ar ?? null });
   } catch (err) {
     return handleError(err);
   }
