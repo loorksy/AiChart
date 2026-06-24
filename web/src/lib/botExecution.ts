@@ -28,7 +28,7 @@ import {
 } from "./store";
 import { evaluateTrade } from "./riskGuard";
 import { getEaConnection, getEaSymbolSpec } from "./eaStore";
-import { resolveMt5Symbol } from "./mt5SymbolMap";
+import { resolveMt5Symbol, forexCanonicalKey } from "./mt5SymbolMap";
 import {
   isMt5LocalConfigured,
   mt5Close,
@@ -166,7 +166,13 @@ async function contractSizeForForex(
     }
   }
   const spec = await getEaSymbolSpec(userId, symbol);
-  return Number(spec?.contract_size) || 0;
+  let cs = Number(spec?.contract_size) || 0;
+  if (cs <= 0) {
+    const key = forexCanonicalKey(symbol);
+    if (key === "XAUUSD") cs = 100;
+    else if (key.length === 6) cs = 100_000;
+  }
+  return cs;
 }
 
 function gridStepForSession(session: BotSession, price: number): number {
