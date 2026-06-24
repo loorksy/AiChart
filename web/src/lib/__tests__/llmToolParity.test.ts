@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { toOATools, fromOAChoice } from "@/lib/openaiCompat";
+import { toOATools, fromOAChoice, openAICompatTokenLimitField } from "@/lib/openaiCompat";
 import type { ToolDef } from "@/lib/anthropic";
 
 /**
@@ -62,5 +62,20 @@ describe("LLM tool parity — provider-agnostic card tool", () => {
     });
     const toolUse = res.content.find((b: any) => b.type === "tool_use") as any;
     assert.deepEqual(toolUse.input, {});
+  });
+});
+
+describe("openAICompatTokenLimitField", () => {
+  it("uses max_completion_tokens for gpt-4.1 and o-series", () => {
+    assert.equal(openAICompatTokenLimitField("gpt-4.1"), "max_completion_tokens");
+    assert.equal(openAICompatTokenLimitField("openai/gpt-4.1"), "max_completion_tokens");
+    assert.equal(openAICompatTokenLimitField("o3-mini"), "max_completion_tokens");
+    assert.equal(openAICompatTokenLimitField("gpt-5"), "max_completion_tokens");
+  });
+
+  it("keeps max_tokens for gpt-4o and gemini", () => {
+    assert.equal(openAICompatTokenLimitField("gpt-4o"), "max_tokens");
+    assert.equal(openAICompatTokenLimitField("gemini-2.5-flash"), "max_tokens");
+    assert.equal(openAICompatTokenLimitField("anthropic/claude-3.5-sonnet"), "max_tokens");
   });
 });

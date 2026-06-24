@@ -109,6 +109,37 @@ function toOAMessages(system: string, messages: Message[]): OAMessage[] {
   return out;
 }
 
+/** Model id without OpenRouter vendor prefix (e.g. openai/gpt-4.1 → gpt-4.1). */
+function bareModelId(model: string): string {
+  const trimmed = model.trim().toLowerCase();
+  const slash = trimmed.lastIndexOf("/");
+  return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
+}
+
+/**
+ * Newer OpenAI chat models reject `max_tokens` and require `max_completion_tokens`.
+ * Gemini / Claude-via-OpenRouter keep using `max_tokens`.
+ */
+export function openAICompatTokenLimitField(
+  model: string,
+): "max_tokens" | "max_completion_tokens" {
+  const id = bareModelId(model);
+  if (id.startsWith("gemini-")) return "max_tokens";
+  if (/^o\d/.test(id)) return "max_completion_tokens";
+  if (/^gpt-5/.test(id)) return "max_completion_tokens";
+  if (/^gpt-4\.1/.test(id)) return "max_completion_tokens";
+  return "max_tokens";
+}
+
+function tokenLimitBody(
+  model: string,
+  maxTokens?: number,
+): Record<string, number> {
+  const limit = Math.min(maxTokens ?? 4096, 4096);
+  const field = openAICompatTokenLimitField(model);
+  return { [field]: limit };
+}
+
 // Exported for provider-parity tests: proves any tool (e.g. render_cards)
 // converts to the OpenAI-compatible function shape used by openai/google/openrouter.
 export function toOATools(tools?: ToolDef[]) {
@@ -203,7 +234,7 @@ export async function callOpenAICompat(
       },
       body: JSON.stringify({
         model: target.model,
-        max_tokens: Math.min(params.maxTokens ?? 4096, 4096),
+        ...tokenLimitBody(target.model, params.maxTokens),
         messages: toOAMessages(params.system, params.messages),
         ...(params.tools ? { tools: toOATools(params.tools) } : {}),
       }),
@@ -255,7 +286,7 @@ export async function callOpenAICompatStream(
     },
     body: JSON.stringify({
       model: target.model,
-      max_tokens: Math.min(params.maxTokens ?? 4096, 4096),
+      ...tokenLimitBody(target.model, params.maxTokens),
       messages: toOAMessages(params.system, params.messages),
       stream: true,
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),
