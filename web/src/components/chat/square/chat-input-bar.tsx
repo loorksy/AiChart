@@ -11,6 +11,11 @@ import {
   X,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  SessionSettingsPopover,
+  MarketPairControl,
+  type ChatStartSelections,
+} from "@/components/chat/ChatModeBar";
 import type { ChatImagePayload } from "@/lib/chatImage";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +62,9 @@ interface ChatInputBarProps {
   busy?: boolean;
   placeholder?: string;
   centered?: boolean;
+  /** Session selections (market/style/mode/response) shown inside the composer. */
+  selections?: ChatStartSelections;
+  onSelectionsChange?: (s: ChatStartSelections) => void;
 }
 
 export function ChatInputBar({
@@ -76,6 +84,8 @@ export function ChatInputBar({
   busy = false,
   placeholder = "اسأل عن أي شيء…",
   centered = false,
+  selections,
+  onSelectionsChange,
 }: ChatInputBarProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const canSend = Boolean(value.trim() || pendingImage || attachments.length > 0);
@@ -170,7 +180,7 @@ export function ChatInputBar({
           <p className="px-1 text-xs text-destructive">{imageError}</p>
         )}
 
-        <div className="chat-gpt-input flex items-end gap-1.5 p-2.5">
+        <div className="chat-gpt-input flex flex-col gap-1 p-2.5">
           <input
             ref={fileRef}
             type="file"
@@ -182,16 +192,6 @@ export function ChatInputBar({
               e.target.value = "";
             }}
           />
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => fileRef.current?.click()}
-            className="shrink-0 rounded-xl p-2.5 text-zinc-400 transition-all hover:bg-white/[0.06] hover:text-zinc-100 disabled:opacity-50"
-            aria-label="إرفاق صورة شارت"
-            title="إرفاق صورة"
-          >
-            <ImagePlus className="h-5 w-5" />
-          </button>
 
           <Textarea
             value={value}
@@ -202,7 +202,7 @@ export function ChatInputBar({
             }
             disabled={disabled}
             rows={1}
-            className="min-h-[44px] max-h-32 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 text-base leading-relaxed focus-visible:ring-0 focus-visible:outline-none text-zinc-100 placeholder:text-zinc-500"
+            className="min-h-[44px] max-h-32 w-full resize-none border-0 bg-transparent px-2 py-2 text-base leading-relaxed focus-visible:ring-0 focus-visible:outline-none text-zinc-100 placeholder:text-zinc-500"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -211,27 +211,57 @@ export function ChatInputBar({
             }}
           />
 
-          <button
-            type="button"
-            disabled={busy || disabled || !canSend}
-            onClick={onSend}
-            className={cn(
-              "mb-0.5 shrink-0 rounded-xl p-2.5 transition-all duration-200 disabled:opacity-40 active:scale-95",
-              busy
-                ? "bg-amber-500/90 text-white shadow-lg shadow-amber-500/20"
-                : canSend
-                  ? "bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/20"
-                  : "bg-zinc-800 text-zinc-500",
+          {/* Bottom toolbar — attach + session settings + market on the start,
+              send on the end. Controls live in the box, never stealing chat space. */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => fileRef.current?.click()}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-all hover:bg-white/[0.06] hover:text-zinc-100 disabled:opacity-50"
+              aria-label="إرفاق صورة شارت"
+              title="إرفاق صورة"
+            >
+              <ImagePlus className="h-5 w-5" />
+            </button>
+
+            {selections && onSelectionsChange && (
+              <>
+                <SessionSettingsPopover
+                  sel={selections}
+                  onChange={onSelectionsChange}
+                  disabled={disabled}
+                />
+                <MarketPairControl
+                  sel={selections}
+                  onChange={onSelectionsChange}
+                  disabled={disabled}
+                />
+              </>
             )}
-            aria-label={busy ? "الوكيل يعمل…" : "إرسال"}
-            title={busy ? "الوكيل يعمل…" : "إرسال"}
-          >
-            {busy ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <ArrowUp className="h-5 w-5" />
-            )}
-          </button>
+
+            <button
+              type="button"
+              disabled={busy || disabled || !canSend}
+              onClick={onSend}
+              className={cn(
+                "ms-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-200 disabled:opacity-40 active:scale-95",
+                busy
+                  ? "bg-amber-500/90 text-white shadow-lg shadow-amber-500/20"
+                  : canSend
+                    ? "bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/20"
+                    : "bg-zinc-800 text-zinc-500",
+              )}
+              aria-label={busy ? "الوكيل يعمل…" : "إرسال"}
+              title={busy ? "الوكيل يعمل…" : "إرسال"}
+            >
+              {busy ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <ArrowUp className="h-5 w-5" />
+              )}
+            </button>
+          </div>
         </div>
 
         {centered && (

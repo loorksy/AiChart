@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { LineChart, X, Search, Sparkles, History } from "lucide-react";
 import {
-  ChatModeBar,
   DEFAULT_SELECTIONS,
   type ChatStartSelections,
 } from "@/components/chat/ChatModeBar";
@@ -552,11 +551,6 @@ export default function ChatSquareClient({
                 </p>
               </div>
 
-              {/* Redesigned flat config settings bar */}
-              <div className="w-full">
-                <ChatModeBar sel={sel} onChange={setSel} />
-              </div>
-
               {/* Dynamic Sugestion Pills */}
               <div className="flex flex-wrap items-center justify-center gap-2 max-w-lg mt-1">
                 {getQuickActions().map((action) => {
@@ -631,6 +625,8 @@ export default function ChatSquareClient({
             busy={busy}
             placeholder={inputPlaceholder}
             centered={false}
+            selections={sel}
+            onSelectionsChange={setSel}
           />
         </div>
 
