@@ -1,8 +1,8 @@
 import {
   isMt5LocalAvailable,
-  isMt5BridgeConnectCapable,
   resolveForexBackendFromPref,
 } from "@/lib/brokers/forexBackend";
+import { isMt5BridgeConnectCapable } from "@/lib/mt5local/client";
 import {
   getSettings,
   getLimits,
