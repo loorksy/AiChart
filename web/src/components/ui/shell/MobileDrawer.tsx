@@ -107,8 +107,8 @@ export function MobileDrawer({
     onClose();
   }
 
-  async function handleSelect(id: number) {
-    await selectConversation(id);
+  async function handleSelect(slug: string) {
+    await selectConversation(slug);
     onClose();
   }
 
@@ -230,7 +230,7 @@ export function MobileDrawer({
                 <div key={c.id} className="group flex items-center rounded-lg hover:bg-sidebar-accent/50 transition">
                   <Link
                     href="/chat"
-                    onClick={() => void handleSelect(c.id)}
+                    onClick={() => void handleSelect(c.public_id)}
                     data-active={active}
                     className={cn(
                       "sidebar-conv-item min-w-0 flex-1 truncate text-xs px-3 py-2 text-right transition font-medium",
@@ -241,7 +241,7 @@ export function MobileDrawer({
                   </Link>
                   <button
                     type="button"
-                    onClick={() => void deleteConversation(c.id)}
+                    onClick={() => void deleteConversation(c.public_id)}
                     className="me-2 shrink-0 rounded-md p-1.5 text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
                     title={t("sidebar.delete")}
                     aria-label={t("sidebar.delete")}

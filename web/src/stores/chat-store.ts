@@ -22,14 +22,18 @@ export interface UiMessage {
 interface ChatState {
   conversations: Conversation[];
   archived: Conversation[];
+  /** Numeric id — used internally (e.g. POST /api/chat). Not exposed in URLs. */
   selectedId: number | null;
+  /** Opaque slug — what appears in the URL (?c=<slug>). */
+  selectedSlug: string | null;
   messages: UiMessage[];
   loading: boolean;
   fetchConversations: () => Promise<void>;
-  selectConversation: (id: number) => Promise<void>;
+  /** Select by opaque slug (from the sidebar or the URL). */
+  selectConversation: (slug: string) => Promise<void>;
   createNew: () => Promise<number>;
-  deleteConversation: (id: number) => Promise<void>;
-  archiveConversation: (id: number) => Promise<void>;
+  deleteConversation: (slug: string) => Promise<void>;
+  archiveConversation: (slug: string) => Promise<void>;
   setMessages: (messages: UiMessage[]) => void;
   appendMessage: (msg: UiMessage) => void;
   updateLastAssistant: (patch: Partial<UiMessage>) => void;
@@ -40,6 +44,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   archived: [],
   selectedId: null,
+  selectedSlug: null,
   messages: [],
   loading: false,
 
@@ -56,16 +61,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
-  selectConversation: async (id) => {
-    set({ loading: true, selectedId: id });
-    const res = await fetch(`/api/conversations/${id}`);
+  selectConversation: async (slug) => {
+    set({ loading: true, selectedSlug: slug });
+    const res = await fetch(`/api/conversations/${encodeURIComponent(slug)}`);
     if (!res.ok) {
       set({ loading: false });
       return;
     }
     const data = (await res.json()) as {
+      conversation?: Conversation;
       messages: ChatMessageRow[];
     };
+    if (data.conversation) {
+      set({
+        selectedId: data.conversation.id,
+        selectedSlug: data.conversation.public_id,
+      });
+    }
     set({
       messages: (data.messages ?? []).map((m) => {
         const image = parseImageFromMetadata(m.metadata_json);
@@ -109,28 +121,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const data = (await res.json()) as Conversation | { conversation: Conversation };
     const conv: Conversation =
       "conversation" in data ? data.conversation : data;
-    const id = conv.id;
-    set({ selectedId: id, messages: [] });
+    set({ selectedId: conv.id, selectedSlug: conv.public_id, messages: [] });
     await get().fetchConversations();
-    return id;
+    return conv.id;
   },
 
-  deleteConversation: async (id) => {
-    await fetch(`/api/conversations/${id}`, { method: "DELETE" });
-    if (get().selectedId === id) {
-      set({ selectedId: null, messages: [] });
+  deleteConversation: async (slug) => {
+    await fetch(`/api/conversations/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+    });
+    if (get().selectedSlug === slug) {
+      set({ selectedId: null, selectedSlug: null, messages: [] });
     }
     await get().fetchConversations();
   },
 
-  archiveConversation: async (id) => {
-    await fetch(`/api/conversations/${id}`, {
+  archiveConversation: async (slug) => {
+    await fetch(`/api/conversations/${encodeURIComponent(slug)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ archived: true }),
     });
-    if (get().selectedId === id) {
-      set({ selectedId: null, messages: [] });
+    if (get().selectedSlug === slug) {
+      set({ selectedId: null, selectedSlug: null, messages: [] });
     }
     await get().fetchConversations();
   },
@@ -149,5 +162,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       return { messages: msgs };
     }),
-  resetSelection: () => set({ selectedId: null, messages: [] }),
+  resetSelection: () =>
+    set({ selectedId: null, selectedSlug: null, messages: [] }),
 }));

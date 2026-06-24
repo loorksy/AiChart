@@ -70,8 +70,8 @@ export function ChatGptSidebar({
   conversations: Conversation[];
   selectedId: number | null;
   onChatPage: boolean;
-  onSelectConversation: (id: number) => void;
-  onDeleteConversation: (id: number) => void;
+  onSelectConversation: (slug: string) => void;
+  onDeleteConversation: (slug: string) => void;
   displayName: string;
   email: string;
   initials: string;
@@ -226,7 +226,7 @@ export function ChatGptSidebar({
                   >
                     <Link
                       href="/chat"
-                      onClick={() => void onSelectConversation(c.id)}
+                      onClick={() => void onSelectConversation(c.public_id)}
                       title={collapsed ? c.title : undefined}
                       className={cn(
                         "min-w-0 flex-1 truncate text-xs px-3 py-2 text-right transition font-medium",
@@ -245,7 +245,7 @@ export function ChatGptSidebar({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          void onDeleteConversation(c.id);
+                          void onDeleteConversation(c.public_id);
                         }}
                         className="me-2 shrink-0 rounded-md p-1 text-muted-foreground/60 opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
                         title={t("sidebar.delete")}

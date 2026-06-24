@@ -29,8 +29,8 @@ export function ChatSidebar({ open, onClose }: ChatSidebarProps) {
     resetSelection,
   } = useChatStore();
 
-  async function handleSelect(id: number) {
-    await selectConversation(id);
+  async function handleSelect(slug: string) {
+    await selectConversation(slug);
     onClose?.();
   }
 
@@ -84,7 +84,7 @@ export function ChatSidebar({ open, onClose }: ChatSidebarProps) {
               >
                 <button
                   type="button"
-                  onClick={() => void handleSelect(c.id)}
+                  onClick={() => void handleSelect(c.public_id)}
                   className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2.5 text-start"
                 >
                   <MessagesSquare className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -101,7 +101,7 @@ export function ChatSidebar({ open, onClose }: ChatSidebarProps) {
                 <div className="flex shrink-0 opacity-100 md:opacity-0 md:transition md:group-hover:opacity-100">
                   <button
                     type="button"
-                    onClick={() => void archiveConversation(c.id)}
+                    onClick={() => void archiveConversation(c.public_id)}
                     className="rounded p-1.5 text-muted-foreground hover:text-foreground"
                     title="أرشفة"
                   >
@@ -109,7 +109,7 @@ export function ChatSidebar({ open, onClose }: ChatSidebarProps) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void deleteConversation(c.id)}
+                    onClick={() => void deleteConversation(c.public_id)}
                     className="rounded p-1.5 text-muted-foreground hover:text-destructive"
                     title="حذف"
                   >

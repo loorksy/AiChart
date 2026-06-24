@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { DB_PATH } from "../env";
@@ -307,6 +308,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS conversations (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,
+    public_id  TEXT,
     title      TEXT NOT NULL DEFAULT 'محادثة جديدة',
     summary    TEXT,
     archived   INTEGER NOT NULL DEFAULT 0,
@@ -995,6 +997,21 @@ function migrate(db: Database.Database) {
   if (!convCols.some((c) => c.name === "workflow_context")) {
     db.exec("ALTER TABLE conversations ADD COLUMN workflow_context TEXT");
   }
+  // Opaque public id (slug) for non-enumerable conversation URLs.
+  if (!convCols.some((c) => c.name === "public_id")) {
+    db.exec("ALTER TABLE conversations ADD COLUMN public_id TEXT");
+    // Backfill existing rows with a random 14-char hex slug.
+    const rows = db
+      .prepare("SELECT id FROM conversations WHERE public_id IS NULL")
+      .all() as { id: number }[];
+    const upd = db.prepare("UPDATE conversations SET public_id = ? WHERE id = ?");
+    for (const r of rows) {
+      upd.run(crypto.randomBytes(7).toString("hex"), r.id);
+    }
+  }
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_public_id ON conversations (public_id)",
+  );
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS copilot_events (
