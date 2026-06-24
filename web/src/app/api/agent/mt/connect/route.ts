@@ -10,6 +10,8 @@ import {
   mtConnectSchema,
 } from "@/lib/mtConnectFlow";
 
+export const maxDuration = 180;
+
 /** Bridge: connect MetaTrader via MetaApi or mt5local (server + login + password). */
 export async function POST(req: NextRequest) {
   try {

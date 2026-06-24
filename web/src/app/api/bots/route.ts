@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { createBotSession, listUserBots } from "@/lib/botStore";
-
-function botsLiveEnabled(): boolean {
-  return process.env.BOTS_LIVE_ENABLED === "1";
-}
+import { botsLiveEnabled } from "@/lib/botExecution";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +13,7 @@ const schema = z.object({
   symbol: z.string().min(2).max(20),
   market: z.enum(["crypto", "forex"]).default("forex"),
   side: z.enum(["buy", "sell"]),
-  executionMode: z.enum(["paper", "live"]).default("paper"),
+  executionMode: z.enum(["paper", "live"]).default("live"),
   config: z.object({
     initialLot: z.number().positive().max(100),
     gridStep: z.number().positive(),

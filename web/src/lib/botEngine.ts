@@ -2,13 +2,8 @@
  * Strategy bot runtime — runs deterministic rule engines (grid/martingale) on
  * the worker tier, independent of the LLM agent. Each tick: resolve a quote,
  * ask the PURE engine for ONE decision, then apply it (paper: simulate fills;
- * live: route through executeIntent → Risk Guard).
- *
- * Live execution is gated behind BOTS_LIVE_ENABLED and per-broker lot
- * calibration; until then ticks run in paper mode so the state machine and
- * safety rails are exercised without risking funds.
+ * live: route through Risk Guard + broker adapters).
  */
-import { getKlines } from "./binance";
 import { acquireLock, releaseLock, startLeaseRenewal } from "./locks";
 import { createLogger } from "./logger";
 import { getForexLiveMid } from "./markets/forexPrice";
@@ -24,6 +19,12 @@ import {
   updateBotState,
   type BotSession,
 } from "./botStore";
+import {
+  botsLiveEnabled,
+  executeBotCloseAll,
+  executeBotOpen,
+  resolveBotQuote,
+} from "./botExecution";
 import { enqueue } from "./queue";
 import { isMasterKillOn, logAudit } from "./store";
 
@@ -31,9 +32,7 @@ const log = createLogger("bot");
 
 const BOT_TICK_LOCK_MS = 120_000;
 
-export function botsLiveEnabled(): boolean {
-  return process.env.BOTS_LIVE_ENABLED === "1";
-}
+export { botsLiveEnabled };
 
 export interface BotTickEvent {
   botId: number;
@@ -41,14 +40,18 @@ export interface BotTickEvent {
   detail: string;
 }
 
-/** Resolve a {bid,ask} quote for the bot's market. Paper uses the mid for both. */
-async function resolveQuote(session: BotSession): Promise<GridQuote | null> {
+/** Paper quote — mid for both sides. Live uses resolveBotQuote (bid/ask). */
+async function resolveQuote(
+  session: BotSession,
+  live: boolean,
+): Promise<GridQuote | null> {
   try {
+    if (live) return resolveBotQuote(session);
     if (session.market === "forex") {
       const mid = await getForexLiveMid(session.userId, session.symbol);
       return mid > 0 ? { bid: mid, ask: mid } : null;
     }
-    // crypto: last 1m close as a paper price reference
+    const { getKlines } = await import("./binance");
     const candles = await getKlines(session.symbol, "1m", 1, "prod");
     const close = candles.at(-1)?.close;
     return close && close > 0 ? { bid: close, ask: close } : null;
@@ -80,13 +83,13 @@ export async function runBotTick(
     return [{ botId: session.id, action: "stopped", detail: "master_kill" }];
   }
 
-  const quote = quoteOverride ?? (await resolveQuote(session));
+  const live = session.executionMode === "live" && botsLiveEnabled();
+  const quote = quoteOverride ?? (await resolveQuote(session, live));
   if (!quote) {
     return [{ botId: session.id, action: "skipped", detail: "no_quote" }];
   }
 
   const decision = evaluateGrid(session.config, session.state.levels, quote);
-  const live = session.executionMode === "live" && botsLiveEnabled();
 
   if (decision.action === "hold") {
     return [
@@ -95,20 +98,50 @@ export async function runBotTick(
   }
 
   if (decision.action === "open" && decision.lot) {
-    const fillPrice = session.side === "sell" ? quote.bid : quote.ask;
     if (live) {
-      // Live wiring goes through the same safe execution path. Disabled by
-      // default until per-broker lot↔notional calibration is validated.
-      log.warn("live bot execution requested but not yet calibrated; paper-forcing", {
-        botId: session.id,
-      });
+      const exec = await executeBotOpen(session, decision.lot, quote);
+      if (!exec.ok) {
+        log.warn("live bot open failed", {
+          botId: session.id,
+          reason: exec.reason,
+        });
+        if (exec.deny) {
+          await stopBotSession(session.id, `risk_deny: ${exec.reason}`);
+          return [
+            {
+              botId: session.id,
+              action: "stopped",
+              detail: exec.reason,
+            },
+          ];
+        }
+        return [
+          { botId: session.id, action: "skipped", detail: exec.reason },
+        ];
+      }
+      const levels = [...session.state.levels, exec.level];
+      await updateBotState(session.id, { ...session.state, levels });
+      await logAudit(
+        session.userId,
+        "bot_grid_open",
+        `bot#${session.id} LIVE ${session.side} ${exec.level.lot}@${exec.level.price} (${decision.reason})`,
+      );
+      return [
+        {
+          botId: session.id,
+          action: "open",
+          detail: `live ${decision.reason} lot=${exec.level.lot} @${exec.level.price}`,
+        },
+      ];
     }
+
+    const fillPrice = session.side === "sell" ? quote.bid : quote.ask;
     const levels = [...session.state.levels, { price: fillPrice, lot: decision.lot }];
     await updateBotState(session.id, { ...session.state, levels });
     await logAudit(
       session.userId,
       "bot_grid_open",
-      `bot#${session.id} ${session.side} ${decision.lot}@${fillPrice} (${decision.reason})`,
+      `bot#${session.id} paper ${session.side} ${decision.lot}@${fillPrice} (${decision.reason})`,
     );
     return [
       {
@@ -120,12 +153,28 @@ export async function runBotTick(
   }
 
   if (decision.action === "close_all") {
-    const realized = realizedOnClose(session.side, session.state.levels, quote);
+    let realized: number;
+    if (live) {
+      const closed = await executeBotCloseAll(session);
+      if (!closed.ok) {
+        return [
+          {
+            botId: session.id,
+            action: "error",
+            detail: closed.reason ?? "close_failed",
+          },
+        ];
+      }
+      realized = closed.realized;
+    } else {
+      realized = realizedOnClose(session.side, session.state.levels, quote);
+    }
+    const levelCount = session.state.levels.length;
     await updateBotState(session.id, { ...session.state, levels: [] }, realized);
     await logAudit(
       session.userId,
       "bot_grid_close",
-      `bot#${session.id} closed ${session.state.levels.length} levels pnl≈${realized.toFixed(5)}`,
+      `bot#${session.id} closed ${levelCount} levels pnl≈${realized.toFixed(5)}${live ? " LIVE" : ""}`,
     );
     return [
       {

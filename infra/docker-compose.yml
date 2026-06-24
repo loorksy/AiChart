@@ -28,6 +28,7 @@ services:
       - "127.0.0.1:18812:18812"
     environment:
       - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
+      - MT5_CONNECT_CAPABLE=${MT5_CONNECT_CAPABLE:-0}
     volumes:
       - mt5-data:/data
     restart: unless-stopped

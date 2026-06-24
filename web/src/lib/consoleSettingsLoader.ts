@@ -1,5 +1,6 @@
 import {
   isMt5LocalAvailable,
+  isMt5BridgeConnectCapable,
   resolveForexBackendFromPref,
 } from "@/lib/brokers/forexBackend";
 import {
@@ -25,9 +26,10 @@ export async function loadConsoleSettingsProps(user: PublicUser) {
     ea: await getEaConnectionMeta(user.id),
     mt: usesMtAccount ? await getMtAccountMeta(user.id) : null,
     forexBackend,
-    // Whether the operator configured the self-hosted MT5 bridge — gates the
-    // "connect through the platform" option in the UI.
-    mt5LocalAvailable: isMt5LocalAvailable(),
+    // Whether the operator configured a working self-hosted MT5 bridge — gates
+    // the "connect through the platform" option in the UI.
+    mt5LocalAvailable:
+      isMt5LocalAvailable() && (await isMt5BridgeConnectCapable()),
     canDownloadEa: hasPlatformAccess(user),
   };
 }

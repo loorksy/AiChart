@@ -38,6 +38,10 @@ export interface GridConfig {
 export interface GridLevel {
   price: number;
   lot: number;
+  /** MT5 ticket (live). */
+  ticket?: number;
+  /** AiChart trades.id (live). */
+  tradeId?: number;
 }
 
 export interface GridQuote {

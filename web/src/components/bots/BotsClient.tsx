@@ -58,7 +58,7 @@ const DEFAULT_FORM = {
   symbol: "XAUUSD",
   market: "forex" as BotMarket,
   side: "sell" as BotSide,
-  executionMode: "paper" as ExecutionMode,
+  executionMode: "live" as ExecutionMode,
   initialLot: 0.01,
   gridStep: 2,
   multiplier: 2,
@@ -352,10 +352,14 @@ export function BotsClient() {
           <div className="text-sm text-zinc-400">
             <p className="font-medium text-amber-300">تنبيه مخاطر Martingale</p>
             <p className="mt-1 leading-relaxed">
-              الشبكة المضاعفة قد تستهلك الهامش بسرعة. ابدأ دائماً بوضع{" "}
-              <strong className="text-zinc-300">تجريبي (paper)</strong>. التنفيذ
-              الحقيقي {liveEnabled ? "مفعّل على السيرفر" : "معطّل حالياً"} —
-              حتى مع اختيار live يُطبَّق paper لحين المعايرة.
+              الشبكة المضاعفة قد تستهلك الهامش بسرعة. الوضع الافتراضي{" "}
+              <strong className="text-zinc-300">حقيقي (live)</strong> — يُنفَّذ
+              على حسابك عبر MT5 أو Binance بعد فحص Risk Guard. للتجربة بدون
+              مخاطرة اختر{" "}
+              <strong className="text-zinc-300">تجريبي (paper)</strong>.
+              {liveEnabled
+                ? " التنفيذ الحقيقي مفعّل على السيرفر."
+                : " التنفيذ الحقيقي معطّل من الإدارة (BOTS_LIVE_ENABLED=0)."}
             </p>
           </div>
         </div>

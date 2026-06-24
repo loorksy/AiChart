@@ -44,6 +44,9 @@ export function isMt5LocalConfigured(): boolean {
   return getMt5BridgeUrl() !== null;
 }
 
+/** Must stay below nginx proxy_read_timeout for /api/ (180s). */
+const BRIDGE_FETCH_TIMEOUT_MS = 150_000;
+
 function headers(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   const token = process.env.MT5_BRIDGE_TOKEN?.trim();
@@ -53,7 +56,7 @@ function headers(): Record<string, string> {
 
 async function call<T>(
   path: string,
-  init?: { method?: "GET" | "POST"; body?: unknown },
+  init?: { method?: "GET" | "POST"; body?: unknown; timeoutMs?: number },
 ): Promise<T> {
   const base = getMt5BridgeUrl();
   if (!base) {
@@ -66,8 +69,14 @@ async function call<T>(
       headers: headers(),
       ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
       cache: "no-store",
+      signal: AbortSignal.timeout(init?.timeoutMs ?? BRIDGE_FETCH_TIMEOUT_MS),
     });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new Error(
+        "انتهت مهلة الاتصال بجسر MT5 — قد يكون تسجيل الدخول بطيئاً أو الجسر متوقف.",
+      );
+    }
     throw new Error(
       "تعذّر الوصول لحاوية MT5 — تأكد أن خدمة mt5 تعمل (docker compose ps).",
     );
@@ -91,14 +100,42 @@ export interface Mt5Account {
   name: string;
 }
 
+export interface Mt5BridgeHealth {
+  ok: boolean;
+  initialized: boolean;
+  connect_capable?: boolean;
+}
+
+export async function mt5BridgeHealth(): Promise<Mt5BridgeHealth> {
+  return call<Mt5BridgeHealth>("/health", { timeoutMs: 8_000 });
+}
+
+/** True when the bridge env is set AND /health reports login is supported. */
+export async function isMt5BridgeConnectCapable(): Promise<boolean> {
+  if (!isMt5LocalConfigured()) return false;
+  try {
+    const health = await mt5BridgeHealth();
+    return health.ok !== false && health.connect_capable !== false;
+  } catch {
+    return false;
+  }
+}
+
 export async function mt5Connect(creds: {
   login: string;
   password: string;
   server: string;
 }): Promise<Mt5Account> {
+  const health = await mt5BridgeHealth().catch(() => null);
+  if (health?.connect_capable === false) {
+    throw new Error(
+      "جسر MT5 على هذا الخادم لا يدعم تسجيل الدخول (Wine/Linux). اختر «جسر EA» من الإعدادات أو فعّل MetaApi.",
+    );
+  }
   const res = await call<{ ok: boolean; account: Mt5Account }>("/connect", {
     method: "POST",
     body: creds,
+    timeoutMs: BRIDGE_FETCH_TIMEOUT_MS,
   });
   return res.account;
 }

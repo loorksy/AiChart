@@ -115,11 +115,8 @@ export default function SettingsClient({
   // "ea" (bridge installed on the user's own MT5). Initialized from the saved
   // preference, falling back to the operator's resolved default.
   const platformAvailable = mt5LocalAvailable || forexBackend === "metaapi";
-  // Derive from the RESOLVED effective backend (loader already applied the
-  // fallback), so the card shown always matches how execution/data actually
-  // route — even when a stored "platform" choice couldn't be honored.
   const [forexMethod, setForexMethod] = useState<"platform" | "ea">(
-    forexBackend === "ea" ? "ea" : "platform",
+    forexBackend === "ea" || !platformAvailable ? "ea" : "platform",
   );
   const [savingForexMethod, setSavingForexMethod] = useState(false);
 
