@@ -57,6 +57,16 @@ interface BotSession {
     levels: GridLevel[];
     entrySide?: BotSide;
     detectedPattern?: GoldEntryPattern;
+    regime?: string;
+    regimeProbabilities?: Record<string, number>;
+    advisorVotes?: { advisor: string; vote: string; confidence: number; reason: string }[];
+    confidence?: number;
+    tradeQuality?: number;
+    tradeScore?: number;
+    dangerLevel?: string;
+    survivalMode?: boolean;
+    performance?: { winRate: number; profitFactor: number; totalTrades: number };
+    lastCycleSummary?: string;
   };
   status: BotStatus;
   executionMode: ExecutionMode;
@@ -254,11 +264,12 @@ function BotCard({
 }) {
   const isGold = bot.strategy === "gold";
   const levels = bot.state.levels;
-  const be = levels.length ? breakEven(levels) : 0;
+  const be = levels.length && !isGold ? breakEven(levels) : 0;
   const lotSum = totalLot(levels);
   const active = bot.status === "active";
   const side = bot.state.entrySide ?? bot.side;
   const pattern = bot.state.detectedPattern;
+  const probs = bot.state.regimeProbabilities;
 
   return (
     <div
@@ -285,7 +296,7 @@ function BotCard({
                   : "bg-blue-500/15 text-blue-400",
               )}
             >
-              {isGold ? "ذهب" : "شبكة"}
+              {isGold ? "Agent X" : "شبكة"}
             </span>
             <span
               className={cn(
@@ -304,9 +315,23 @@ function BotCard({
             )}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {isGold ? "ذهب · price action" : "شبكة"} ·{" "}
+            {isGold ? "Gold Agent X · ذكاء محلي" : "شبكة"} ·{" "}
             {bot.executionMode === "live" ? "حقيقي" : "تجريبي"} · #{bot.id}
           </p>
+          {isGold && bot.state.lastCycleSummary && (
+            <p className="mt-1 text-xs text-yellow-400/80">{bot.state.lastCycleSummary}</p>
+          )}
+          {isGold && bot.state.regime && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              نظام: <span dir="ltr">{bot.state.regime}</span>
+              {bot.state.dangerLevel && (
+                <span className="ms-2 text-amber-400">· {bot.state.dangerLevel}</span>
+              )}
+              {bot.state.survivalMode && (
+                <span className="ms-2 text-rose-400">· SURVIVAL</span>
+              )}
+            </p>
+          )}
           {isGold && pattern && (
             <p className="mt-1 text-xs text-yellow-400/90">
               نمط الدخول: {PATTERN_LABELS[pattern] ?? pattern}
@@ -326,43 +351,127 @@ function BotCard({
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-        <div>
-          <p className="text-xs text-muted-foreground">مستويات</p>
-          <p className="font-medium">
-            {levels.length} /{" "}
-            {typeof bot.config.maxLevels === "number"
-              ? bot.config.maxLevels
-              : "—"}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">إجمالي اللوت</p>
-          <p className="font-medium" dir="ltr">
-            {lotSum.toFixed(2)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">تعادل</p>
-          <p className="font-medium" dir="ltr">
-            {be > 0 ? be.toFixed(2) : "—"}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">ربح محقّق</p>
-          <p
-            className={cn(
-              "font-semibold",
-              bot.realizedPnl >= 0 ? "text-emerald-500" : "text-rose-500",
-            )}
-            dir="ltr"
-          >
-            {bot.realizedPnl >= 0 ? "+" : ""}
-            {bot.realizedPnl.toFixed(2)}
-          </p>
-        </div>
+        {isGold ? (
+          <>
+            <div>
+              <p className="text-xs text-muted-foreground">ثقة / جودة / score</p>
+              <p className="font-medium" dir="ltr">
+                {bot.state.confidence ?? "—"} / {bot.state.tradeQuality ?? "—"} /{" "}
+                {bot.state.tradeScore ?? "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">صفقة</p>
+              <p className="font-medium">
+                {levels.length > 0 ? `${levels.length} مفتوحة` : "لا يوجد"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Win rate</p>
+              <p className="font-medium" dir="ltr">
+                {bot.state.performance?.totalTrades
+                  ? `${bot.state.performance.winRate.toFixed(0)}% (${bot.state.performance.totalTrades})`
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">ربح محقّق</p>
+              <p
+                className={cn(
+                  "font-semibold",
+                  bot.realizedPnl >= 0 ? "text-emerald-500" : "text-rose-500",
+                )}
+                dir="ltr"
+              >
+                {bot.realizedPnl >= 0 ? "+" : ""}
+                {bot.realizedPnl.toFixed(2)}
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <p className="text-xs text-muted-foreground">مستويات</p>
+              <p className="font-medium">
+                {levels.length} /{" "}
+                {typeof bot.config.maxLevels === "number"
+                  ? bot.config.maxLevels
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">إجمالي اللوت</p>
+              <p className="font-medium" dir="ltr">
+                {lotSum.toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">تعادل</p>
+              <p className="font-medium" dir="ltr">
+                {be > 0 ? be.toFixed(2) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">ربح محقّق</p>
+              <p
+                className={cn(
+                  "font-semibold",
+                  bot.realizedPnl >= 0 ? "text-emerald-500" : "text-rose-500",
+                )}
+                dir="ltr"
+              >
+                {bot.realizedPnl >= 0 ? "+" : ""}
+                {bot.realizedPnl.toFixed(2)}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
-      {levels.length > 0 && (
+      {isGold && probs && (
+        <div className="mt-3 flex flex-wrap gap-1">
+          {Object.entries(probs)
+            .filter(([, v]) => v >= 5)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4)
+            .map(([k, v]) => (
+              <span
+                key={k}
+                className="rounded bg-muted/40 px-1.5 py-0.5 text-[10px]"
+                dir="ltr"
+              >
+                {k} {v}%
+              </span>
+            ))}
+        </div>
+      )}
+
+      {isGold && bot.state.advisorVotes && bot.state.advisorVotes.length > 0 && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[280px] text-xs">
+            <thead>
+              <tr className="text-muted-foreground">
+                <th className="pb-1 text-start font-medium">مستشار</th>
+                <th className="pb-1 text-start font-medium">تصويت</th>
+                <th className="pb-1 text-start font-medium">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bot.state.advisorVotes.map((v) => (
+                <tr key={v.advisor} className="border-t border-border/50">
+                  <td className="py-1">{v.advisor}</td>
+                  <td className="py-1">{v.vote}</td>
+                  <td className="py-1" dir="ltr">
+                    {v.confidence}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {levels.length > 0 && !isGold && (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[240px] text-xs">
             <thead>
@@ -548,14 +657,25 @@ export function BotsClient() {
           executionMode: goldForm.executionMode,
           config: {
             initialLot: goldForm.initialLot,
-            gridStepPips: goldForm.gridStepPips,
-            takeProfitPips: goldForm.takeProfitPips,
-            multiplier: goldForm.multiplier,
-            maxLevels: goldForm.maxLevels,
-            maxTotalLot: goldForm.maxTotalLot,
-            maxLotCap: goldForm.maxLotCap,
-            candleTimeframe: goldForm.candleTimeframe,
+            maxLot: goldForm.maxLot,
+            minConfidence: goldForm.minConfidence,
             maxEquityDrawdownPct: goldForm.maxEquityDrawdownPct,
+            drawdownTightenPct: goldForm.drawdownTightenPct,
+            survivalDrawdownPct: goldForm.survivalDrawdownPct,
+            stopLossAtrMult: goldForm.stopLossAtrMult,
+            stopLossPips: goldForm.stopLossPips,
+            entryTimeframe: goldForm.entryTimeframe,
+            correlationSymbols: {
+              dxy: goldForm.correlationDxy
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+              us10y: goldForm.correlationUs10y
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+            },
+            optimizerIntervalTrades: goldForm.optimizerTradeInterval,
           },
         }),
       });
@@ -564,7 +684,7 @@ export function BotsClient() {
         setMsg({ type: "err", text: d.error ?? "تعذّر إنشاء البوت." });
         return;
       }
-      setMsg({ type: "ok", text: "تم تشغيل بوت الذهب — دخول تلقائي من الشموع." });
+      setMsg({ type: "ok", text: "تم تشغيل Gold Agent X — محرك ذكاء محلي 24/7." });
       setShowForm(false);
       setGoldForm(DEFAULT_GOLD_FORM);
       await refresh();
@@ -618,7 +738,7 @@ export function BotsClient() {
                 بوتات التداول
               </h1>
               <p className="mt-1 text-sm text-zinc-500">
-                شبكة فوركس/كريبتو أو بوت ذهب XAUUSD — يعمل على السيرفر 24/7
+                شبكة فوركس/كريبتو أو Gold Agent X على XAUUSD — يعمل على السيرفر 24/7
               </p>
             </div>
             <button
@@ -704,9 +824,9 @@ export function BotsClient() {
                   )}
                 >
                   <Sparkles className="mb-2 h-5 w-5 text-yellow-400" />
-                  <p className="font-medium">بوت ذهب</p>
+                  <p className="font-medium">Gold Agent X</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    XAUUSD فقط — شموع + شبكة مضاعفة
+                    XAUUSD · 10 مستشارين · بدون LLM
                   </p>
                 </button>
               </div>

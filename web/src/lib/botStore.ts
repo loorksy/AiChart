@@ -4,7 +4,10 @@
  */
 import { execute, insertReturningId, query, queryOne } from "./db";
 import type { GridConfig, GridLevel, GridSide } from "./strategies/gridBot";
-import type { GoldBotConfig, GoldBotState } from "./strategies/gold/goldTypes";
+import type { GoldAgentXConfig, GoldAgentXState } from "./strategies/gold/goldTypes";
+import { parseGoldAgentState, migrateGoldConfig } from "./strategies/gold/goldTypes";
+import { defaultAdaptiveWeights } from "./strategies/gold/agentX/adaptiveWeights";
+import { emptyPerformance } from "./strategies/gold/agentX/performanceEngine";
 
 export type BotStrategy = "grid" | "gold";
 
@@ -30,7 +33,7 @@ export interface GridBotState {
   lastActionAt?: string;
 }
 
-export type BotState = GridBotState | GoldBotState;
+export type BotState = GridBotState | GoldAgentXState;
 
 export interface BotSession {
   id: number;
@@ -39,7 +42,7 @@ export interface BotSession {
   symbol: string;
   market: string;
   side: GridSide;
-  config: GridConfig | GoldBotConfig;
+  config: GridConfig | GoldAgentXConfig;
   state: BotState;
   status: "active" | "stopped";
   executionMode: "paper" | "live";
@@ -47,24 +50,16 @@ export interface BotSession {
   stopReason: string | null;
 }
 
-function parseConfig(strategy: string, raw: string): GridConfig | GoldBotConfig {
-  const parsed = JSON.parse(raw) as GridConfig | GoldBotConfig;
-  if (strategy === "gold") return parsed as GoldBotConfig;
+function parseConfig(strategy: string, raw: string): GridConfig | GoldAgentXConfig {
+  const parsed = JSON.parse(raw) as GridConfig | GoldAgentXConfig | Record<string, unknown>;
+  if (strategy === "gold") return migrateGoldConfig(parsed as Record<string, unknown>);
   return parsed as GridConfig;
 }
 
 function parseState(strategy: string, raw: string): BotState {
   const parsed = JSON.parse(raw) as Record<string, unknown>;
   if (strategy === "gold") {
-    return {
-      levels: (parsed.levels as GoldBotState["levels"]) ?? [],
-      entrySide: parsed.entrySide as GoldBotState["entrySide"],
-      detectedPattern: parsed.detectedPattern as GoldBotState["detectedPattern"],
-      startEquity:
-        typeof parsed.startEquity === "number" ? parsed.startEquity : undefined,
-      lastActionAt:
-        typeof parsed.lastActionAt === "string" ? parsed.lastActionAt : undefined,
-    } satisfies GoldBotState;
+    return parseGoldAgentState(parsed);
   }
   return {
     levels: (parsed.levels as GridLevel[]) ?? [],
@@ -97,7 +92,7 @@ export async function createBotSession(
     symbol: string;
     market: string;
     side: GridSide;
-    config: GridConfig | GoldBotConfig;
+    config: GridConfig | GoldAgentXConfig;
     executionMode: "paper" | "live";
   },
 ): Promise<BotSession> {
@@ -113,7 +108,7 @@ export async function createBotSession(
       input.market,
       input.side,
       JSON.stringify(input.config),
-      JSON.stringify({ levels: [] }),
+      JSON.stringify({ levels: [], adaptiveWeights: defaultAdaptiveWeights() }),
       input.executionMode,
     ],
   );

@@ -8,7 +8,7 @@ import {
   type BotSession,
 } from "./botStore";
 import { runGridBotTick } from "./botEngines/gridBotEngine";
-import { runGoldBotTick } from "./botEngines/goldBotEngine";
+import { runGoldBotTick } from "./botEngines/goldAgentEngine";
 import { enqueue } from "./queue";
 import { botsLiveEnabled } from "./botExecution";
 import type { GridQuote } from "./strategies/gridBot";

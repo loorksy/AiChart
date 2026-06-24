@@ -108,6 +108,36 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_bot_sessions_active ON bot_sessions (status, user_id);
 
+  CREATE TABLE IF NOT EXISTS gold_agent_journal (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id          INTEGER NOT NULL,
+    user_id         INTEGER NOT NULL,
+    payload_json    TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (bot_id) REFERENCES bot_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_gold_agent_journal_bot ON gold_agent_journal (bot_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS gold_agent_performance (
+    bot_id          INTEGER PRIMARY KEY,
+    user_id         INTEGER NOT NULL,
+    stats_json      TEXT NOT NULL DEFAULT '{}',
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (bot_id) REFERENCES bot_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS gold_agent_setups (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id          INTEGER NOT NULL,
+    fingerprint     TEXT NOT NULL,
+    stats_json      TEXT NOT NULL DEFAULT '{}',
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (bot_id) REFERENCES bot_sessions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_gold_agent_setups_fp ON gold_agent_setups (bot_id, fingerprint);
+
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY,
     can_execute         INTEGER NOT NULL DEFAULT 1,
@@ -1001,6 +1031,54 @@ function migrate(db: Database.Database) {
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
     );
     CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS gold_agent_journal (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id           INTEGER NOT NULL,
+      bot_id            INTEGER NOT NULL,
+      side              TEXT NOT NULL,
+      entry_price       REAL NOT NULL,
+      exit_price        REAL NOT NULL,
+      lot               REAL NOT NULL,
+      pnl               REAL NOT NULL,
+      regime            TEXT NOT NULL,
+      session           TEXT NOT NULL,
+      confidence        REAL NOT NULL,
+      trade_quality     REAL NOT NULL,
+      trade_score       REAL NOT NULL,
+      danger_level      TEXT NOT NULL,
+      advisor_votes_json TEXT NOT NULL,
+      weights_json      TEXT NOT NULL,
+      exit_reason       TEXT NOT NULL,
+      duration_ms       INTEGER NOT NULL,
+      fingerprint       TEXT NOT NULL,
+      created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_gold_agent_journal_bot ON gold_agent_journal (user_id, bot_id);
+
+    CREATE TABLE IF NOT EXISTS gold_agent_performance (
+      user_id     INTEGER NOT NULL,
+      bot_id      INTEGER NOT NULL,
+      stats_json  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, bot_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS gold_agent_setups (
+      user_id       INTEGER NOT NULL,
+      bot_id        INTEGER NOT NULL,
+      fingerprint   TEXT NOT NULL,
+      win_rate      REAL NOT NULL DEFAULT 0,
+      profit_factor REAL NOT NULL DEFAULT 1,
+      samples       INTEGER NOT NULL DEFAULT 0,
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, bot_id, fingerprint),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 }
 

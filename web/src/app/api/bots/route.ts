@@ -4,7 +4,7 @@ import { requirePlatformAccess, handleError } from "@/lib/api";
 import { runBotTickForUser } from "@/lib/botEngine";
 import { createBotSession, getBotSession, listUserBots } from "@/lib/botStore";
 import { botsLiveEnabled } from "@/lib/botExecution";
-import { GOLD_SYMBOL } from "@/lib/strategies/gold/goldDefaults";
+import { DEFAULT_GOLD_AGENTX_CONFIG, GOLD_SYMBOL } from "@/lib/strategies/gold/goldDefaults";
 
 export const dynamic = "force-dynamic";
 
@@ -22,16 +22,35 @@ const gridConfigSchema = z.object({
 
 const goldConfigSchema = z.object({
   initialLot: z.number().positive().max(100),
-  gridStepPips: z.number().positive().max(5000),
-  takeProfitPips: z.number().positive().max(5000),
-  multiplier: z.number().min(1).max(3),
-  maxLevels: z.number().int().min(1).max(20),
-  maxTotalLot: z.number().positive().max(1000),
-  maxLotCap: z.number().positive().max(100),
-  candleTimeframe: z.enum(["M5", "M15", "H1"]),
+  maxLot: z.number().positive().max(100).default(DEFAULT_GOLD_AGENTX_CONFIG.maxLot),
+  minConfidence: z.number().min(50).max(95).default(60),
   maxEquityDrawdownPct: z.number().min(1).max(50).default(20),
+  drawdownTightenPct: z.number().min(5).max(40).default(15),
+  survivalDrawdownPct: z.number().min(10).max(50).default(20),
+  stopLossAtrMult: z.number().min(0.5).max(5).default(2),
+  stopLossPips: z.number().positive().max(5000).default(200),
+  entryTimeframe: z.enum(["M5", "M15", "H1"]).default("M15"),
+  correlationSymbols: z
+    .object({
+      dxy: z.array(z.string()).optional(),
+      us10y: z.array(z.string()).optional(),
+      vix: z.array(z.string()).optional(),
+    })
+    .optional(),
+  optimizerIntervalTrades: z.number().int().min(20).max(200).default(75),
   lotStep: z.number().positive().optional(),
-});
+}).transform((cfg) => ({
+  ...DEFAULT_GOLD_AGENTX_CONFIG,
+  ...cfg,
+  baseLot: cfg.initialLot,
+  optimizerTradeInterval: cfg.optimizerIntervalTrades,
+  correlationSymbols: {
+    dxy: cfg.correlationSymbols?.dxy ?? DEFAULT_GOLD_AGENTX_CONFIG.correlationSymbols.dxy,
+    us10y: cfg.correlationSymbols?.us10y ?? DEFAULT_GOLD_AGENTX_CONFIG.correlationSymbols.us10y,
+    vix: cfg.correlationSymbols?.vix ?? DEFAULT_GOLD_AGENTX_CONFIG.correlationSymbols.vix,
+  },
+  institutionalWeights: DEFAULT_GOLD_AGENTX_CONFIG.institutionalWeights,
+}));
 
 const gridSchema = z.object({
   strategy: z.literal("grid").default("grid"),
@@ -89,10 +108,7 @@ export async function POST(req: NextRequest) {
         market: "forex",
         side,
         executionMode: input.executionMode,
-        config: {
-          ...input.config,
-          ...(input.side ? { side: input.side } : {}),
-        },
+        config: input.config,
       });
       const tickEvents = await runBotTickForUser(user.id);
       const fresh = (await getBotSession(bot.id, user.id)) ?? bot;

@@ -37,8 +37,8 @@ import {
   mt5Spec,
 } from "./mt5local/client";
 import type { BotSession } from "./botStore";
-import type { GoldBotConfig } from "./strategies/gold/goldTypes";
-import { pipsToPrice } from "./strategies/gold/goldGridBot";
+import type { GoldAgentXConfig } from "./strategies/gold/goldTypes";
+import { pipsToPrice } from "./strategies/gold/agentX/sizing";
 import type { GridConfig, GridLevel, GridQuote, GridSide } from "./strategies/gridBot";
 import { createLogger } from "./logger";
 
@@ -177,14 +177,15 @@ async function contractSizeForForex(
 
 function gridStepForSession(session: BotSession, price: number): number {
   if (session.strategy === "gold") {
-    const cfg = session.config as GoldBotConfig;
-    return pipsToPrice(cfg.gridStepPips, price);
+    const cfg = session.config as GoldAgentXConfig;
+    return pipsToPrice(cfg.stopLossPips ?? 200, price);
   }
   return (session.config as GridConfig).gridStep;
 }
 
 function maxLevelsForSession(session: BotSession): number {
-  return session.config.maxLevels;
+  if (session.strategy === "gold") return 1;
+  return (session.config as GridConfig).maxLevels;
 }
 
 function fillPrice(side: GridSide, quote: GridQuote): number {
