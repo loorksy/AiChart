@@ -1,4 +1,5 @@
 import {
+  Bot,
   KeyRound,
   LayoutDashboard,
   Link2,
@@ -34,6 +35,7 @@ export const APP_NAV: NavItem[] = [
   { href: "/chat", label: "المحادثة", icon: MessageSquare },
   { href: "/console", label: "نظرة", icon: LayoutDashboard, exact: true },
   { href: "/console/trades", label: "الصفقات", icon: TrendingUp },
+  { href: "/console/bots", label: "البوتات", icon: Bot },
   { href: "/console/connect", label: "الاتصالات", icon: Link2 },
   { href: "/console/settings", label: "الإعدادات", icon: Settings },
   { href: "/console/mcp", label: "Claude MCP", icon: Plug },

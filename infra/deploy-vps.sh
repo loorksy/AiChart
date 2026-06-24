@@ -152,6 +152,18 @@ module.exports = {
         PORT: ${PORT},
       },
     },
+    {
+      name: "aichart-worker",
+      cwd: "${INSTALL_DIR}/web",
+      script: "npm",
+      args: "run worker",
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: "512M",
+      env: {
+        NODE_ENV: "production",
+      },
+    },
   ],
 };
 EOF

@@ -5,6 +5,7 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/aichart}"
 BRANCH="${BRANCH:-main}"
 APP_WEB="${APP_WEB:-aichart-web}"
 APP_AGENT="${APP_AGENT:-aichart-agent}"
+APP_WORKER="${APP_WORKER:-aichart-worker}"
 
 log() { echo "[vps-pull] $*"; }
 
@@ -26,6 +27,14 @@ if pm2 describe "$APP_WEB" >/dev/null 2>&1; then
   pm2 restart "$APP_WEB" --update-env
 else
   log "WARN: $APP_WEB not in PM2 — skipping web restart"
+fi
+
+if pm2 describe "$APP_WORKER" >/dev/null 2>&1; then
+  log "Restarting $APP_WORKER..."
+  pm2 restart "$APP_WORKER" --update-env
+else
+  log "Starting $APP_WORKER (first deploy)..."
+  pm2 start npm --name "$APP_WORKER" --cwd "$INSTALL_DIR/web" -- run worker
 fi
 
 if [ -x "$INSTALL_DIR/agent/scripts/sync-workspace.sh" ]; then
