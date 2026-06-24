@@ -34,6 +34,8 @@ export function useBinanceKlineStream(
       return;
     }
 
+    setBar(null);
+
     const { base, factor } = intervalPlan(interval);
     if (factor !== 1) {
       setBar(null);

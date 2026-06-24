@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { normalizeCandlesForChart } from "@/lib/ohlc/chartTime";
+import {
+  normalizeCandlesForChart,
+  sanitizeCandlesForMarket,
+  toChartSeconds,
+} from "@/lib/ohlc/chartTime";
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
 import { normalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
@@ -24,8 +28,11 @@ export async function GET(req: NextRequest) {
     const market = (req.nextUrl.searchParams.get("market") === "forex"
       ? "forex"
       : "crypto") as MarketType;
-
     const fresh = req.nextUrl.searchParams.get("fresh") === "1";
+    const fast = req.nextUrl.searchParams.get("fast") === "1";
+    const cursorRaw = req.nextUrl.searchParams.get("cursor");
+    const cursor =
+      cursorRaw != null && cursorRaw !== "" ? Number(cursorRaw) : undefined;
 
     try {
       const result = await fetchOhlc({
@@ -34,10 +41,22 @@ export async function GET(req: NextRequest) {
         interval,
         market,
         limit,
-        skipCache: fresh,
+        skipCache: fresh || cursor != null,
+        preferCache: fast && !cursor,
+        cursor: Number.isFinite(cursor) ? cursor : undefined,
       });
 
-      const candles = normalizeCandlesForChart(result.candles).slice(-limit);
+      const candles = sanitizeCandlesForMarket(
+        normalizeCandlesForChart(result.candles),
+        market,
+      ).slice(-limit);
+
+      const nextCursor =
+        market === "crypto" && result.nextCursor
+          ? result.nextCursor
+          : candles.length > 0
+            ? toChartSeconds(candles[0]!.time) * 1000
+            : null;
 
       const res = NextResponse.json({
         symbol: result.symbol,
@@ -48,6 +67,7 @@ export async function GET(req: NextRequest) {
         source: result.source,
         fromCache: result.fromCache,
         warning: result.warning,
+        nextCursor,
       });
       res.headers.set(
         "Cache-Control",

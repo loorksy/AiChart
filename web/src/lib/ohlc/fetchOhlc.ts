@@ -64,6 +64,8 @@ export interface FetchOhlcOptions {
   /** Millisecond open time — fetch candles strictly before this (crypto pagination). */
   cursor?: number;
   skipCache?: boolean;
+  /** Forex: return EA heartbeat cache immediately without blocking on get_ohlc. */
+  preferCache?: boolean;
 }
 
 export function ohlcCacheResource(symbol: string, interval: string): string {
@@ -135,11 +137,35 @@ async function fetchMetaApiForexCandles(
   return resampleOhlc(baseCandles, factor) as OhlcCandle[];
 }
 
+async function fetchForexOhlcFromEaCache(
+  userId: number,
+  symbol: string,
+  interval: string,
+  limit: number,
+): Promise<{ candles: OhlcCandle[]; source: OhlcSource } | null> {
+  const mt5Symbol = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
+  const { base: eaInterval, factor } = mt5IntervalPlan(interval);
+  const cached = await getEaCandlesResolved(userId, mt5Symbol, eaInterval);
+  if (!cached) return null;
+  try {
+    const baseCandles = normalizeEaCandles(JSON.parse(cached.candles_json) as unknown[]);
+    if (baseCandles.length === 0) return null;
+    const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
+    return {
+      candles: candles.slice(-limit),
+      source: "heartbeat_cache",
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchForexOhlcLive(
   userId: number,
   symbol: string,
   interval: string,
   limit: number,
+  preferCache = false,
 ): Promise<{ candles: OhlcCandle[]; source: OhlcSource; warning?: string }> {
   const backend = await resolveForexBackendForUser(userId);
 
@@ -177,15 +203,23 @@ async function fetchForexOhlcLive(
   }
 
   const mt5Symbol = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
-  // The EA only supports M1/M5/M15/M30/H1/H4/D1/W1/MN1. For anything else,
-  // request a supported base interval and resample — otherwise the EA silently
-  // returns the chart's own period.
   const { base: eaInterval, factor } = mt5IntervalPlan(interval);
+
+  if (preferCache) {
+    const hit = await fetchForexOhlcFromEaCache(userId, symbol, interval, limit);
+    if (hit && hit.candles.length > 0) {
+      return {
+        ...hit,
+        warning: "عرض سريع من كاش EA — جاري تحديث الشموع…",
+      };
+    }
+  }
+
   const baseCount = Math.min(limit * factor, OHLC_MAX_LIMIT);
   const ack = await queueEaGetOhlc(
     userId,
     { symbol: mt5Symbol, timeframe: eaInterval, count: baseCount },
-    12_000,
+    preferCache ? 4_000 : 12_000,
   );
 
   if (ack.ok && ack.result) {
@@ -312,6 +346,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
       symbol,
       interval,
       limit,
+      Boolean(options.preferCache),
     );
     candles = live.candles.slice(-limit);
     source = live.source;
