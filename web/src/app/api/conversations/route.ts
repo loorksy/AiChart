@@ -7,6 +7,9 @@ import {
   listArchivedConversations,
 } from "@/lib/conversations";
 
+// Per-user list — never cacheable by a shared/intermediary layer.
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
@@ -14,7 +17,9 @@ export async function GET(req: NextRequest) {
     const conversations = archived
       ? await listArchivedConversations(user.id)
       : await listConversations(user.id);
-    return NextResponse.json(conversations);
+    return NextResponse.json(conversations, {
+      headers: { "Cache-Control": "private, no-store, max-age=0, must-revalidate" },
+    });
   } catch (err) {
     return handleError(err);
   }
