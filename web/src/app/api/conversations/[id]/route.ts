@@ -12,16 +12,30 @@ import {
 
 type Params = { params: Promise<{ id: string }> };
 
+// Per-user private data — never let a CDN/proxy reuse one user's response.
+export const dynamic = "force-dynamic";
+
+/** Headers that forbid any shared/intermediary cache from storing the response. */
+const PRIVATE_NO_STORE = {
+  "Cache-Control": "private, no-store, max-age=0, must-revalidate",
+} as const;
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const user = await requirePlatformAccess();
     const id = Number((await params).id);
     const conv = await getConversation(id, user.id);
     if (!conv) {
-      return NextResponse.json({ error: "المحادثة غير موجودة." }, { status: 404 });
+      return NextResponse.json(
+        { error: "المحادثة غير موجودة." },
+        { status: 404, headers: PRIVATE_NO_STORE },
+      );
     }
     const messages = await loadChatMessages(id);
-    return NextResponse.json({ conversation: conv, messages });
+    return NextResponse.json(
+      { conversation: conv, messages },
+      { headers: PRIVATE_NO_STORE },
+    );
   } catch (err) {
     return handleError(err);
   }
