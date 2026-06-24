@@ -21,7 +21,7 @@ metadata: {"aichart":{"requires":{"env":["AICHART_SERVICE_TOKEN"]}}}
 | Execution | `open_trade` (rationale + **mandatory `stop_loss`** + `entry`/`take_profit` for R:R; notional optional — auto-sized from stop distance) |
 | Position Closure | `close_trade` · `evaluate_trade` |
 
-**Rule:** Use "We enter" or "We open" (Agent identity). Always ask the user for the symbol and allocation amount. Never execute a trade immediately upon receiving a simple "open a trade" request.
+**Rule:** Use "We enter" or "We open" (Agent identity). Ask the user for the **symbol** and the **allocation amount** when not given — but **never ask for the direction**: you decide buy/sell yourself from analysis. Never execute a trade immediately upon receiving a simple "open a trade" request.
 
 **Objective discipline (not a confidence gate):** every entry MUST carry a defined stop-loss and a reward:risk ≥ `min_rr` (default 1). Risk Guard rejects a stopless order or one whose target is closer than its stop. Confidence is for sizing/audit, never a threshold.
 
