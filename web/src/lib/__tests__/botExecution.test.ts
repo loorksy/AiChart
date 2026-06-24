@@ -10,8 +10,10 @@ test("ticketFromOrderId parses MT5 ticket strings", async () => {
 });
 
 test("botComment tags orders for grid bot tracing", async () => {
-  const { botComment } = await import("@/lib/botExecution");
+  const { botComment, goldBotComment } = await import("@/lib/botExecution");
   assert.equal(botComment(7), "AiChartBot#7");
+  assert.equal(botComment(7, "gold"), "AiChartGoldBot#7");
+  assert.equal(goldBotComment(7), "AiChartGoldBot#7");
 });
 
 test("botsLiveEnabled respects admin gate", async () => {

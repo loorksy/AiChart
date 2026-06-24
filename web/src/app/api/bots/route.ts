@@ -3,27 +3,54 @@ import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { createBotSession, listUserBots } from "@/lib/botStore";
 import { botsLiveEnabled } from "@/lib/botExecution";
+import { GOLD_SYMBOL } from "@/lib/strategies/gold/goldDefaults";
 
 export const dynamic = "force-dynamic";
 
-// Strict bounds: Martingale is dangerous, so the server caps depth and
-// multiplier regardless of what the client requests.
-const schema = z.object({
+const GOLD_SYMBOL_RE = /^XAUUSD(M)?$/i;
+
+const gridConfigSchema = z.object({
+  initialLot: z.number().positive().max(100),
+  gridStep: z.number().positive(),
+  multiplier: z.number().min(1).max(3),
+  takeProfit: z.number().positive(),
+  maxLevels: z.number().int().min(1).max(20),
+  maxTotalLot: z.number().positive().max(1000),
+  lotStep: z.number().positive().optional(),
+});
+
+const goldConfigSchema = z.object({
+  initialLot: z.number().positive().max(100),
+  gridStepPips: z.number().positive().max(5000),
+  takeProfitPips: z.number().positive().max(5000),
+  multiplier: z.number().min(1).max(3),
+  maxLevels: z.number().int().min(1).max(20),
+  maxTotalLot: z.number().positive().max(1000),
+  maxLotCap: z.number().positive().max(100),
+  candleTimeframe: z.enum(["M5", "M15", "H1"]),
+  maxEquityDrawdownPct: z.number().min(1).max(50).default(20),
+  lotStep: z.number().positive().optional(),
+});
+
+const gridSchema = z.object({
   strategy: z.literal("grid").default("grid"),
   symbol: z.string().min(2).max(20),
   market: z.enum(["crypto", "forex"]).default("forex"),
   side: z.enum(["buy", "sell"]),
   executionMode: z.enum(["paper", "live"]).default("live"),
-  config: z.object({
-    initialLot: z.number().positive().max(100),
-    gridStep: z.number().positive(),
-    multiplier: z.number().min(1).max(3),
-    takeProfit: z.number().positive(),
-    maxLevels: z.number().int().min(1).max(20),
-    maxTotalLot: z.number().positive().max(1000),
-    lotStep: z.number().positive().optional(),
-  }),
+  config: gridConfigSchema,
 });
+
+const goldSchema = z.object({
+  strategy: z.literal("gold"),
+  symbol: z.string().min(2).max(20).optional(),
+  market: z.literal("forex").default("forex"),
+  side: z.enum(["buy", "sell"]).optional(),
+  executionMode: z.enum(["paper", "live"]).default("live"),
+  config: goldConfigSchema,
+});
+
+const schema = z.discriminatedUnion("strategy", [gridSchema, goldSchema]);
 
 export async function GET() {
   try {
@@ -40,9 +67,37 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
-    const input = schema.parse(await req.json());
+    const raw = await req.json();
+    const input = schema.parse({
+      strategy: "grid",
+      ...(typeof raw === "object" && raw !== null ? raw : {}),
+    });
+
+    if (input.strategy === "gold") {
+      const sym = (input.symbol ?? GOLD_SYMBOL).toUpperCase();
+      if (!GOLD_SYMBOL_RE.test(sym)) {
+        return NextResponse.json(
+          { error: "بوت الذهب يعمل على XAUUSD فقط." },
+          { status: 400 },
+        );
+      }
+      const side = input.side ?? "buy";
+      const bot = await createBotSession(user.id, {
+        strategy: "gold",
+        symbol: GOLD_SYMBOL,
+        market: "forex",
+        side,
+        executionMode: input.executionMode,
+        config: {
+          ...input.config,
+          ...(input.side ? { side: input.side } : {}),
+        },
+      });
+      return NextResponse.json({ ok: true, bot });
+    }
+
     const bot = await createBotSession(user.id, {
-      strategy: input.strategy,
+      strategy: "grid",
       symbol: input.symbol.toUpperCase(),
       market: input.market,
       side: input.side,

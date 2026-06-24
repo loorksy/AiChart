@@ -27,7 +27,7 @@ import {
   updateIntentStatus,
 } from "./store";
 import { evaluateTrade } from "./riskGuard";
-import { getEaSymbolSpec } from "./eaStore";
+import { getEaConnection, getEaSymbolSpec } from "./eaStore";
 import { resolveMt5Symbol } from "./mt5SymbolMap";
 import {
   isMt5LocalConfigured,
@@ -37,7 +37,9 @@ import {
   mt5Spec,
 } from "./mt5local/client";
 import type { BotSession } from "./botStore";
-import type { GridLevel, GridQuote, GridSide } from "./strategies/gridBot";
+import type { GoldBotConfig } from "./strategies/gold/goldTypes";
+import { pipsToPrice } from "./strategies/gold/goldGridBot";
+import type { GridConfig, GridLevel, GridQuote, GridSide } from "./strategies/gridBot";
 import { createLogger } from "./logger";
 
 const log = createLogger("bot.exec");
@@ -46,8 +48,48 @@ export function botsLiveEnabled(): boolean {
   return process.env.BOTS_LIVE_ENABLED !== "0";
 }
 
-export function botComment(botId: number): string {
+export function botComment(botId: number, strategy?: string): string {
+  if (strategy === "gold") return `AiChartGoldBot#${botId}`;
   return `AiChartBot#${botId}`;
+}
+
+export function goldBotComment(botId: number): string {
+  return botComment(botId, "gold");
+}
+
+/** Account equity for bot risk checks (forex MT5 / EA; crypto balance fallback). */
+export async function resolveBotAccountEquity(
+  session: BotSession,
+): Promise<number | null> {
+  if (session.market === "forex") {
+    const meta = await getMtAccountMeta(session.userId);
+    if (meta?.equity != null && meta.equity > 0) return meta.equity;
+    const ea = await getEaConnection(session.userId);
+    if (ea?.equity != null && ea.equity > 0) return ea.equity;
+    if (meta?.balance != null && meta.balance > 0) return meta.balance;
+    if (ea?.balance != null && ea.balance > 0) return ea.balance;
+    return null;
+  }
+  try {
+    const { getBinanceCredentials } = await import("./store");
+    const { getAccountSummary } = await import("./binance");
+    const creds = await getBinanceCredentials(session.userId);
+    if (!creds) return null;
+    const summary = await getAccountSummary(
+      creds.apiKey,
+      creds.apiSecret,
+      creds.env,
+      creds.region,
+    );
+    const usdt = summary.balances.find((b) => b.asset === "USDT");
+    if (usdt) {
+      const bal = Number(usdt.free) + Number(usdt.locked);
+      return bal > 0 ? bal : null;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 /** Parses MT5 ticket from trades.order_id (EA / MetaApi / mt5local). */
@@ -125,6 +167,18 @@ async function contractSizeForForex(
   }
   const spec = await getEaSymbolSpec(userId, symbol);
   return Number(spec?.contract_size) || 0;
+}
+
+function gridStepForSession(session: BotSession, price: number): number {
+  if (session.strategy === "gold") {
+    const cfg = session.config as GoldBotConfig;
+    return pipsToPrice(cfg.gridStepPips, price);
+  }
+  return (session.config as GridConfig).gridStep;
+}
+
+function maxLevelsForSession(session: BotSession): number {
+  return session.config.maxLevels;
 }
 
 function fillPrice(side: GridSide, quote: GridQuote): number {
@@ -216,19 +270,20 @@ async function executeForexViaIntent(
     return { ok: false, reason: adapter.notConnectedReason() };
   }
 
+  const step = gridStepForSession(session, price);
   const sl =
     deriveDynamicStops({
       entry: price,
       side: session.side,
       style: (await getSettings(session.userId)).style,
       confidence: 80,
-      atr: session.config.gridStep,
+      atr: step,
     })?.stopLoss ??
     emergencyStopLoss(
       session.side,
       price,
-      session.config.gridStep,
-      session.config.maxLevels,
+      step,
+      maxLevelsForSession(session),
     );
 
   const intent = await createIntent(session.userId, {
@@ -241,7 +296,7 @@ async function executeForexViaIntent(
     stop_loss: sl,
     take_profit: null,
     confidence: 100,
-    rationale: `بوت شبكة #${session.id} · ${botComment(session.id)}`,
+    rationale: `بوت شبكة #${session.id} · ${botComment(session.id, session.strategy)}`,
     status: "approved",
     practice: false,
   });
@@ -300,7 +355,7 @@ export async function executeBotOpen(
         symbol: resolved,
         side: session.side,
         lots: lot,
-        comment: botComment(session.id),
+        comment: botComment(session.id, session.strategy),
       });
       if (!result.ok) {
         return { ok: false, reason: result.reason ?? "رفض MT5 الأمر." };

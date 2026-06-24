@@ -9,25 +9,37 @@ import {
   Square,
   AlertTriangle,
   RefreshCw,
-  TrendingDown,
   TrendingUp,
   Wifi,
   WifiOff,
   Wallet,
+  Sparkles,
 } from "lucide-react";
 import { FadeIn } from "@/components/ui/fade-in";
 import { SurfaceCard } from "@/components/ui/shell";
 import { StatusChip, type StatusChipTone } from "@/components/bridge/StatusChip";
 import { breakEven } from "@/lib/strategies/gridBot";
+import { PATTERN_LABELS } from "@/lib/strategies/gold/candlePatterns";
+import type { GoldEntryPattern } from "@/lib/strategies/gold/goldTypes";
 import { cn } from "@/lib/utils";
 import type { BotBrokerSymbol, BotsMetaResponse } from "@/lib/botsMetaTypes";
 import { pickDefaultSymbol } from "@/lib/botsMetaTypes";
-import { BotSymbolPicker } from "@/components/bots/BotSymbolPicker";
+import {
+  DEFAULT_GRID_FORM,
+  GridBotForm,
+  type BotMarket,
+  type BotSide,
+  type ExecutionMode,
+  type GridFormState,
+} from "@/components/bots/GridBotForm";
+import {
+  DEFAULT_GOLD_FORM,
+  GoldBotForm,
+  type GoldFormState,
+} from "@/components/bots/GoldBotForm";
 
-type BotSide = "buy" | "sell";
-type BotMarket = "forex" | "crypto";
-type ExecutionMode = "paper" | "live";
 type BotStatus = "active" | "stopped";
+type BotType = "grid" | "gold";
 
 interface GridLevel {
   price: number;
@@ -40,16 +52,12 @@ interface BotSession {
   symbol: string;
   market: string;
   side: BotSide;
-  config: {
-    side: BotSide;
-    initialLot: number;
-    gridStep: number;
-    multiplier: number;
-    takeProfit: number;
-    maxLevels: number;
-    maxTotalLot: number;
+  config: Record<string, unknown>;
+  state: {
+    levels: GridLevel[];
+    entrySide?: BotSide;
+    detectedPattern?: GoldEntryPattern;
   };
-  state: { levels: GridLevel[] };
   status: BotStatus;
   executionMode: ExecutionMode;
   realizedPnl: number;
@@ -60,19 +68,6 @@ interface BotsResponse {
   bots: BotSession[];
   meta?: { liveEnabled: boolean };
 }
-
-const DEFAULT_FORM = {
-  symbol: "",
-  market: "forex" as BotMarket,
-  side: "sell" as BotSide,
-  executionMode: "live" as ExecutionMode,
-  initialLot: 0.01,
-  gridStep: 2,
-  multiplier: 2,
-  takeProfit: 1,
-  maxLevels: 5,
-  maxTotalLot: 0.5,
-};
 
 const META_POLL_MS = 12_000;
 
@@ -133,7 +128,7 @@ function BrokerStatusPanel({ meta }: { meta: BotsMetaResponse }) {
       ? binance.accountEnv === "live"
         ? { label: "حقيقي", tone: "ok" as StatusChipTone }
         : { label: "تجريبي", tone: "warn" as StatusChipTone }
-      : { label: "غير متاح", tone: "error" as StatusChipTone };
+      : { label: "غير متصل", tone: "error" as StatusChipTone };
 
   const forexDetail = forex.connected
     ? [forex.backendLabel, forex.broker, forex.login ? `#${forex.login}` : null]
@@ -257,44 +252,66 @@ function BotCard({
   busy: boolean;
   onStop: (id: number) => void;
 }) {
+  const isGold = bot.strategy === "gold";
   const levels = bot.state.levels;
   const be = levels.length ? breakEven(levels) : 0;
   const lotSum = totalLot(levels);
   const active = bot.status === "active";
+  const side = bot.state.entrySide ?? bot.side;
+  const pattern = bot.state.detectedPattern;
 
   return (
     <div
       className={cn(
         "rounded-xl border p-4 transition-colors",
         active
-          ? "border-emerald-500/25 bg-emerald-500/5"
+          ? isGold
+            ? "border-yellow-500/25 bg-yellow-500/5"
+            : "border-emerald-500/25 bg-emerald-500/5"
           : "border-border bg-muted/20",
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold" dir="ltr">
               {bot.symbol}
             </span>
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-xs",
-                bot.side === "sell"
+                isGold
+                  ? "bg-yellow-500/15 text-yellow-400"
+                  : "bg-blue-500/15 text-blue-400",
+              )}
+            >
+              {isGold ? "ذهب" : "شبكة"}
+            </span>
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-xs",
+                side === "sell"
                   ? "bg-rose-500/15 text-rose-400"
                   : "bg-emerald-500/15 text-emerald-400",
               )}
             >
-              {bot.side === "sell" ? "بيع" : "شراء"}
+              {side === "sell" ? "بيع" : "شراء"}
             </span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              {bot.market === "forex" ? "فوركس" : "كريبتو"}
-            </span>
+            {!isGold && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                {bot.market === "forex" ? "فوركس" : "كريبتو"}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            شبكة · {bot.executionMode === "live" ? "حقيقي" : "تجريبي"} · #
-            {bot.id}
+            {isGold ? "ذهب · price action" : "شبكة"} ·{" "}
+            {bot.executionMode === "live" ? "حقيقي" : "تجريبي"} · #{bot.id}
           </p>
+          {isGold && pattern && (
+            <p className="mt-1 text-xs text-yellow-400/90">
+              نمط الدخول: {PATTERN_LABELS[pattern] ?? pattern}
+            </p>
+          )}
         </div>
         <span
           className={cn(
@@ -312,7 +329,10 @@ function BotCard({
         <div>
           <p className="text-xs text-muted-foreground">مستويات</p>
           <p className="font-medium">
-            {levels.length} / {bot.config.maxLevels}
+            {levels.length} /{" "}
+            {typeof bot.config.maxLevels === "number"
+              ? bot.config.maxLevels
+              : "—"}
           </p>
         </div>
         <div>
@@ -394,12 +414,17 @@ export function BotsClient() {
   const [bots, setBots] = useState<BotSession[]>([]);
   const [liveEnabled, setLiveEnabled] = useState(false);
   const [meta, setMeta] = useState<BotsMetaResponse | null>(null);
-  const [form, setForm] = useState(DEFAULT_FORM);
+  const [gridForm, setGridForm] = useState<GridFormState>(DEFAULT_GRID_FORM);
+  const [goldForm, setGoldForm] = useState<GoldFormState>(DEFAULT_GOLD_FORM);
+  const [botType, setBotType] = useState<BotType>("grid");
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
     null,
   );
+
+  const formMarket: BotMarket =
+    botType === "gold" ? "forex" : gridForm.market;
 
   const refreshMeta = useCallback(async (market: BotMarket) => {
     try {
@@ -430,19 +455,19 @@ export function BotsClient() {
 
   useEffect(() => {
     void refresh();
-    void refreshMeta(form.market);
-  }, [refresh, refreshMeta, form.market]);
+    void refreshMeta(formMarket);
+  }, [refresh, refreshMeta, formMarket]);
 
   useEffect(() => {
     const id = setInterval(() => {
-      void refreshMeta(form.market);
+      void refreshMeta(formMarket);
     }, META_POLL_MS);
     return () => clearInterval(id);
-  }, [refreshMeta, form.market]);
+  }, [refreshMeta, formMarket]);
 
   const handleSymbolsLoaded = useCallback((list: BotBrokerSymbol[]) => {
     if (list.length === 0) return;
-    setForm((f) => {
+    setGridForm((f) => {
       const current = f.symbol.trim().toUpperCase();
       const exists = list.some((s) => s.symbol.toUpperCase() === current);
       if (exists && current) return f;
@@ -451,7 +476,7 @@ export function BotsClient() {
   }, []);
 
   const brokerConnected =
-    form.market === "forex"
+    formMarket === "forex"
       ? Boolean(meta?.forex.connected)
       : Boolean(meta?.binance.connected);
 
@@ -466,11 +491,11 @@ export function BotsClient() {
     return () => clearInterval(id);
   }, [hasActive, refresh]);
 
-  async function createBot() {
+  async function createGridBot() {
     setBusy(true);
     setMsg(null);
     try {
-      const symbol = form.symbol.trim().toUpperCase();
+      const symbol = gridForm.symbol.trim().toUpperCase();
       if (!symbol) {
         setMsg({ type: "err", text: "اختر رمزاً من قائمة الوسيط." });
         return;
@@ -480,17 +505,17 @@ export function BotsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           strategy: "grid",
-          symbol: symbol,
-          market: form.market,
-          side: form.side,
-          executionMode: form.executionMode,
+          symbol,
+          market: gridForm.market,
+          side: gridForm.side,
+          executionMode: gridForm.executionMode,
           config: {
-            initialLot: form.initialLot,
-            gridStep: form.gridStep,
-            multiplier: form.multiplier,
-            takeProfit: form.takeProfit,
-            maxLevels: form.maxLevels,
-            maxTotalLot: form.maxTotalLot,
+            initialLot: gridForm.initialLot,
+            gridStep: gridForm.gridStep,
+            multiplier: gridForm.multiplier,
+            takeProfit: gridForm.takeProfit,
+            maxLevels: gridForm.maxLevels,
+            maxTotalLot: gridForm.maxTotalLot,
           },
         }),
       });
@@ -499,9 +524,49 @@ export function BotsClient() {
         setMsg({ type: "err", text: d.error ?? "تعذّر إنشاء البوت." });
         return;
       }
-      setMsg({ type: "ok", text: "تم تشغيل البوت — يعمل على السيرفر 24/7." });
+      setMsg({ type: "ok", text: "تم تشغيل بوت الشبكة — يعمل على السيرفر 24/7." });
       setShowForm(false);
-      setForm(DEFAULT_FORM);
+      setGridForm(DEFAULT_GRID_FORM);
+      await refresh();
+    } catch {
+      setMsg({ type: "err", text: "خطأ في الاتصال." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createGoldBot() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          strategy: "gold",
+          market: "forex",
+          executionMode: goldForm.executionMode,
+          config: {
+            initialLot: goldForm.initialLot,
+            gridStepPips: goldForm.gridStepPips,
+            takeProfitPips: goldForm.takeProfitPips,
+            multiplier: goldForm.multiplier,
+            maxLevels: goldForm.maxLevels,
+            maxTotalLot: goldForm.maxTotalLot,
+            maxLotCap: goldForm.maxLotCap,
+            candleTimeframe: goldForm.candleTimeframe,
+            maxEquityDrawdownPct: goldForm.maxEquityDrawdownPct,
+          },
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        setMsg({ type: "err", text: d.error ?? "تعذّر إنشاء البوت." });
+        return;
+      }
+      setMsg({ type: "ok", text: "تم تشغيل بوت الذهب — دخول تلقائي من الشموع." });
+      setShowForm(false);
+      setGoldForm(DEFAULT_GOLD_FORM);
       await refresh();
     } catch {
       setMsg({ type: "err", text: "خطأ في الاتصال." });
@@ -550,17 +615,17 @@ export function BotsClient() {
               </p>
               <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
                 <Bot className="h-6 w-6 text-blue-400" />
-                بوت الشبكة
+                بوتات التداول
               </h1>
               <p className="mt-1 text-sm text-zinc-500">
-                يعمل على السيرفر — لا يحتاج EA ولا MT5 مفتوح على جهازك
+                شبكة فوركس/كريبتو أو بوت ذهب XAUUSD — يعمل على السيرفر 24/7
               </p>
             </div>
             <button
               type="button"
               onClick={() => {
                 void refresh();
-                void refreshMeta(form.market);
+                void refreshMeta(formMarket);
               }}
               disabled={busy}
               className="btn btn-secondary inline-flex items-center gap-2 text-sm"
@@ -572,7 +637,7 @@ export function BotsClient() {
         </div>
 
         {meta && <BrokerStatusPanel meta={meta} />}
-        {meta && <AccountBalanceBar meta={meta} market={form.market} />}
+        {meta && <AccountBalanceBar meta={meta} market={formMarket} />}
 
         <div className="bento-card flex gap-3 border-amber-500/25 bg-amber-500/5 p-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
@@ -610,209 +675,64 @@ export function BotsClient() {
           </div>
 
           {showForm && (
-            <div className="mt-4 space-y-4 border-b border-border pb-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="block text-sm sm:col-span-2">
-                  <span className="font-medium">الرمز (من الوسيط)</span>
-                  <div className="mt-2">
-                    <BotSymbolPicker
-                      market={form.market}
-                      value={form.symbol}
-                      onChange={(symbol) =>
-                        setForm((f) => ({ ...f, symbol }))
-                      }
-                      connected={brokerConnected}
-                      onSymbolsLoaded={handleSymbolsLoaded}
-                    />
-                  </div>
-                </div>
-                <label className="block text-sm">
-                  <span className="font-medium">السوق</span>
-                  <select
-                    className="input mt-1 w-full"
-                    value={form.market}
-                    onChange={(e) => {
-                      const market = e.target.value as BotMarket;
-                      setForm((f) => ({
-                        ...f,
-                        market,
-                        symbol: "",
-                      }));
-                    }}
-                  >
-                    <option value="forex">فوركس / MT5</option>
-                    <option value="crypto">كريبتو / Binance</option>
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">الاتجاه</span>
-                  <select
-                    className="input mt-1 w-full"
-                    value={form.side}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        side: e.target.value as BotSide,
-                      }))
-                    }
-                  >
-                    <option value="sell">بيع (شبكة هبوطية)</option>
-                    <option value="buy">شراء (شبكة صعودية)</option>
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">وضع التنفيذ</span>
-                  <select
-                    className="input mt-1 w-full"
-                    value={form.executionMode}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        executionMode: e.target.value as ExecutionMode,
-                      }))
-                    }
-                  >
-                    <option value="paper">تجريبي — محاكاة على السيرفر</option>
-                    <option value="live">حقيقي — صفقات فعلية</option>
-                  </select>
-                </label>
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                المسافات بالوحدات السعرية (مثلاً XAUUSD: gridStep=2 ≈ $2 بين
-                المستويات). للذهب 20 نقطة ≈ 2.0 حسب الوسيط.
-              </p>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="block text-sm">
-                  <span className="font-medium">لوت أول صفقة</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    className="input mt-1 w-full"
-                    value={form.initialLot}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        initialLot: Number(e.target.value) || 0.01,
-                      }))
-                    }
-                    dir="ltr"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">خطوة الشبكة</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.01"
-                    className="input mt-1 w-full"
-                    value={form.gridStep}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        gridStep: Number(e.target.value) || 1,
-                      }))
-                    }
-                    dir="ltr"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">المضاعف</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="1"
-                    max="3"
-                    className="input mt-1 w-full"
-                    value={form.multiplier}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        multiplier: Number(e.target.value) || 1,
-                      }))
-                    }
-                    dir="ltr"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">هدف الربح (سعر)</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.01"
-                    className="input mt-1 w-full"
-                    value={form.takeProfit}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        takeProfit: Number(e.target.value) || 0.1,
-                      }))
-                    }
-                    dir="ltr"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">أقصى مستويات</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    className="input mt-1 w-full"
-                    value={form.maxLevels}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        maxLevels: Number(e.target.value) || 1,
-                      }))
-                    }
-                    dir="ltr"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">أقصى لوت إجمالي</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    className="input mt-1 w-full"
-                    value={form.maxTotalLot}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        maxTotalLot: Number(e.target.value) || 0.01,
-                      }))
-                    }
-                    dir="ltr"
-                  />
-                </label>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => void createBot()}
-                  disabled={busy}
-                  className="btn btn-primary inline-flex items-center gap-2 text-sm"
-                >
-                  {form.side === "sell" ? (
-                    <TrendingDown className="h-4 w-4" />
-                  ) : (
-                    <TrendingUp className="h-4 w-4" />
+                  onClick={() => setBotType("grid")}
+                  className={cn(
+                    "rounded-xl border p-4 text-start transition-colors",
+                    botType === "grid"
+                      ? "border-blue-500/40 bg-blue-500/10"
+                      : "border-border bg-muted/10 hover:bg-muted/20",
                   )}
-                  تشغيل البوت
+                >
+                  <Grid3X3 className="mb-2 h-5 w-5 text-blue-400" />
+                  <p className="font-medium">بوت شبكة</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    فوركس أو كريبتو — أي رمز، اتجاه يدوي
+                  </p>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
-                  disabled={busy}
-                  className="btn btn-secondary text-sm"
+                  onClick={() => setBotType("gold")}
+                  className={cn(
+                    "rounded-xl border p-4 text-start transition-colors",
+                    botType === "gold"
+                      ? "border-yellow-500/40 bg-yellow-500/10"
+                      : "border-border bg-muted/10 hover:bg-muted/20",
+                  )}
                 >
-                  إلغاء
+                  <Sparkles className="mb-2 h-5 w-5 text-yellow-400" />
+                  <p className="font-medium">بوت ذهب</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    XAUUSD فقط — شموع + شبكة مضاعفة
+                  </p>
                 </button>
               </div>
-            </div>
+
+              {botType === "grid" ? (
+                <GridBotForm
+                  form={gridForm}
+                  setForm={setGridForm}
+                  meta={meta}
+                  brokerConnected={brokerConnected}
+                  busy={busy}
+                  onSubmit={() => void createGridBot()}
+                  onCancel={() => setShowForm(false)}
+                  onSymbolsLoaded={handleSymbolsLoaded}
+                />
+              ) : (
+                <GoldBotForm
+                  form={goldForm}
+                  setForm={setGoldForm}
+                  meta={meta}
+                  busy={busy}
+                  onSubmit={() => void createGoldBot()}
+                  onCancel={() => setShowForm(false)}
+                />
+              )}
+            </>
           )}
 
           {msg && (
@@ -866,7 +786,7 @@ export function BotsClient() {
                 onClick={() => setShowForm(true)}
                 className="text-primary hover:underline"
               >
-                أنشئ أول بوت شبكة
+                أنشئ أول بوت
               </button>
             </p>
           )}
