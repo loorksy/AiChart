@@ -290,6 +290,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS conversations (
     id         SERIAL PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    public_id  TEXT,
     title      TEXT NOT NULL DEFAULT 'محادثة جديدة',
     summary    TEXT,
     archived   BOOLEAN NOT NULL DEFAULT FALSE,
@@ -889,6 +890,22 @@ async function migratePg(client: PoolClient) {
     ALTER TABLE conversations
       ADD COLUMN IF NOT EXISTS workflow_state TEXT,
       ADD COLUMN IF NOT EXISTS workflow_context TEXT
+  `).catch(() => {});
+
+  // Opaque public id (slug) for non-enumerable conversation URLs.
+  await client.query(`
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS public_id TEXT
+  `).catch(() => {});
+  // Backfill existing rows lacking a slug (14-char hex). Uses md5 of random +
+  // id so it needs no pgcrypto extension; id keeps it collision-free.
+  await client.query(`
+    UPDATE conversations
+    SET public_id = substr(md5(random()::text || '-' || id::text), 1, 14)
+    WHERE public_id IS NULL
+  `).catch(() => {});
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_public_id
+      ON conversations (public_id)
   `).catch(() => {});
 
   await client.query(`

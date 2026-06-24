@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import type { Message } from "./anthropic";
 import {
   buildUserMessageContent,
@@ -9,6 +10,11 @@ import type { ChatMessageRow, Conversation } from "./types";
 const MAX_MESSAGES_LOAD = 80;
 
 const TELEGRAM_TITLE = "📱 تليجرام";
+
+/** Opaque 14-char hex slug for non-enumerable conversation URLs. */
+function newPublicId(): string {
+  return crypto.randomBytes(7).toString("hex");
+}
 
 export async function getOrCreateTelegramConversation(
   userId: number,
@@ -25,11 +31,19 @@ export async function createConversation(
   userId: number,
   title = "محادثة جديدة",
 ): Promise<Conversation> {
-  const id = await insertReturningId(
-    `INSERT INTO conversations (user_id, title) VALUES (?, ?)`,
-    [userId, title],
-  );
-  return (await getConversation(id, userId))!;
+  // Retry on the (astronomically rare) slug collision against the UNIQUE index.
+  let id: number | null = null;
+  for (let attempt = 0; attempt < 5 && id == null; attempt++) {
+    try {
+      id = await insertReturningId(
+        `INSERT INTO conversations (user_id, public_id, title) VALUES (?, ?, ?)`,
+        [userId, newPublicId(), title],
+      );
+    } catch (err) {
+      if (attempt === 4) throw err;
+    }
+  }
+  return (await getConversation(id!, userId))!;
 }
 
 export async function getConversation(
@@ -39,6 +53,17 @@ export async function getConversation(
   return queryOne<Conversation>(
     "SELECT * FROM conversations WHERE id = ? AND user_id = ?",
     [id, userId],
+  );
+}
+
+/** Resolve a conversation by its opaque public slug, scoped to the user. */
+export async function getConversationByPublicId(
+  publicId: string,
+  userId: number,
+): Promise<Conversation | null> {
+  return queryOne<Conversation>(
+    "SELECT * FROM conversations WHERE public_id = ? AND user_id = ?",
+    [publicId, userId],
   );
 }
 

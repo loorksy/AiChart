@@ -305,6 +305,8 @@ export interface TradeIntent {
 export interface Conversation {
   id: number;
   user_id: number;
+  /** Opaque, non-enumerable slug used in URLs instead of the sequential id. */
+  public_id: string;
   title: string;
   summary: string | null;
   archived: number;

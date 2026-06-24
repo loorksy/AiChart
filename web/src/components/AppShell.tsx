@@ -72,8 +72,8 @@ export default function AppShell({
         conversations={conversations}
         selectedId={selectedId}
         onChatPage={onChatPage}
-        onSelectConversation={(id) => void selectConversation(id)}
-        onDeleteConversation={(id) => void deleteConversation(id)}
+        onSelectConversation={(slug) => void selectConversation(slug)}
+        onDeleteConversation={(slug) => void deleteConversation(slug)}
         displayName={displayName}
         email={email}
         initials={initials}

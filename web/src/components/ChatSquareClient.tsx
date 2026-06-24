@@ -136,6 +136,7 @@ export default function ChatSquareClient({
   const {
     conversations,
     selectedId,
+    selectedSlug,
     messages,
     fetchConversations,
     createNew,
@@ -168,13 +169,13 @@ export default function ChatSquareClient({
       .catch(() => undefined);
   }, [fetchConversations]);
 
-  // Restore the conversation from the URL (?c=<id>) on first load so each chat
-  // is a shareable, refresh-safe route backed by the server.
+  // Restore the conversation from the URL (?c=<slug>) on first load so each chat
+  // is a shareable, refresh-safe route backed by the server. The id is an opaque
+  // slug (not enumerable); a legacy numeric id still resolves server-side.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const c = new URLSearchParams(window.location.search).get("c");
-    const id = c ? Number(c) : NaN;
-    if (Number.isInteger(id) && id > 0) void selectConversation(id);
+    if (c && c.trim()) void selectConversation(c.trim());
     // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -182,11 +183,13 @@ export default function ChatSquareClient({
   // Keep the URL in sync with the selected conversation (no history spam).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const target = selectedId ? `/chat?c=${selectedId}` : "/chat";
+    const target = selectedSlug
+      ? `/chat?c=${encodeURIComponent(selectedSlug)}`
+      : "/chat";
     if (window.location.pathname + window.location.search !== target) {
       window.history.replaceState(null, "", target);
     }
-  }, [selectedId]);
+  }, [selectedSlug]);
 
   useEffect(() => {
     const pending = sessionStorage.getItem("aichart_pending_prompt");
