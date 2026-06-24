@@ -20,8 +20,8 @@ import { SurfaceCard } from "@/components/ui/shell";
 import { StatusChip, type StatusChipTone } from "@/components/bridge/StatusChip";
 import { breakEven } from "@/lib/strategies/gridBot";
 import { cn } from "@/lib/utils";
-import type { BotBrokerSymbol, BotsMetaResponse } from "@/lib/botsMeta";
-import { pickDefaultSymbol } from "@/lib/botsMeta";
+import type { BotBrokerSymbol, BotsMetaResponse } from "@/lib/botsMetaTypes";
+import { pickDefaultSymbol } from "@/lib/botsMetaTypes";
 
 type BotSide = "buy" | "sell";
 type BotMarket = "forex" | "crypto";

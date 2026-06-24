@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pickDefaultSymbol } from "@/lib/botsMeta";
+import { pickDefaultSymbol } from "@/lib/botsMetaTypes";
 
 test("pickDefaultSymbol prefers XAUUSD for forex when available", () => {
   const sym = pickDefaultSymbol("forex", [
