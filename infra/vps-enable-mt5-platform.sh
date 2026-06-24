@@ -38,7 +38,7 @@ upsert_env "MT5_BRIDGE_URL" "http://127.0.0.1:18812"
 log "start mt5 container"
 cd "$INSTALL_DIR/infra"
 export MT5_BRIDGE_TOKEN="$TOKEN"
-export MT5_CONNECT_CAPABLE="${MT5_CONNECT_CAPABLE:-1}"
+export MT5_CONNECT_CAPABLE="${MT5_CONNECT_CAPABLE:-0}"
 docker compose up -d --build mt5
 
 log "wait for shim"

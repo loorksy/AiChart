@@ -45,7 +45,8 @@ export function isMt5LocalConfigured(): boolean {
 }
 
 /** Must stay below nginx proxy_read_timeout for /api/ (180s). */
-const BRIDGE_FETCH_TIMEOUT_MS = 150_000;
+const BRIDGE_FETCH_TIMEOUT_MS = 120_000;
+const CONNECT_FETCH_TIMEOUT_MS = 45_000;
 
 function headers(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -135,7 +136,7 @@ export async function mt5Connect(creds: {
   const res = await call<{ ok: boolean; account: Mt5Account }>("/connect", {
     method: "POST",
     body: creds,
-    timeoutMs: BRIDGE_FETCH_TIMEOUT_MS,
+    timeoutMs: CONNECT_FETCH_TIMEOUT_MS,
   });
   return res.account;
 }

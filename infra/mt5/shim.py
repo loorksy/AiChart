@@ -70,8 +70,8 @@ TERMINAL_PATH = os.environ.get(
 CREDS_FILE = os.environ.get("MT5_CREDS_FILE", r"Z:\data\credentials.json")
 # Wine on Linux cannot complete MT5 IPC — set MT5_CONNECT_CAPABLE=0 in compose.
 CONNECT_CAPABLE = os.environ.get("MT5_CONNECT_CAPABLE", "1").strip() != "0"
-# Keep below nginx proxy_read_timeout (180s) so the web app can relay errors.
-INIT_TIMEOUT_MS = int(os.environ.get("MT5_INIT_TIMEOUT_MS", "90000"))
+# Fail fast on Wine IPC hangs; keep below nginx proxy_read_timeout (180s).
+INIT_TIMEOUT_MS = int(os.environ.get("MT5_INIT_TIMEOUT_MS", "25000"))
 
 def _timeframe_map():
     m = _load_mt5()

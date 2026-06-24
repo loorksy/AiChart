@@ -3,6 +3,7 @@ import {
   resolveForexBackendFromPref,
 } from "@/lib/brokers/forexBackend";
 import { isMt5BridgeConnectCapable } from "@/lib/mt5local/client";
+import { isMetaApiConfiguredAsync } from "@/lib/metaapi/client";
 import {
   getSettings,
   getLimits,
@@ -18,6 +19,9 @@ export async function loadConsoleSettingsProps(user: PublicUser) {
   // Per-user choice (EA vs server-side platform) → resolved effective backend.
   const forexBackend = resolveForexBackendFromPref(settings.forex_backend);
   const usesMtAccount = forexBackend === "metaapi" || forexBackend === "mt5local";
+  const mt5BridgeConnect =
+    isMt5LocalAvailable() && (await isMt5BridgeConnectCapable());
+  const metaApiAvailable = await isMetaApiConfiguredAsync();
   return {
     user,
     settings,
@@ -26,10 +30,10 @@ export async function loadConsoleSettingsProps(user: PublicUser) {
     ea: await getEaConnectionMeta(user.id),
     mt: usesMtAccount ? await getMtAccountMeta(user.id) : null,
     forexBackend,
-    // Whether the operator configured a working self-hosted MT5 bridge — gates
-    // the "connect through the platform" option in the UI.
-    mt5LocalAvailable:
-      isMt5LocalAvailable() && (await isMt5BridgeConnectCapable()),
+    mt5LocalAvailable: mt5BridgeConnect,
+    metaApiAvailable,
+    /** Server-side login without EA: MetaApi cloud and/or native MT5 bridge. */
+    platformConnectAvailable: metaApiAvailable || mt5BridgeConnect,
     canDownloadEa: hasPlatformAccess(user),
   };
 }
