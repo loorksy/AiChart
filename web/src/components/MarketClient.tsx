@@ -26,6 +26,7 @@ import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 import { useEaLivePrice } from "@/hooks/useEaLivePrice";
 import { normalizeInterval } from "@/lib/intervals";
+import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 
 const LS_SYMBOL = "aichart_last_symbol";
 const LS_INTERVAL = "aichart_last_interval";
@@ -141,9 +142,13 @@ export default function MarketClient({
         const res = await fetch(`/api/instruments${params}`);
         const data = await res.json();
         if (res.ok) {
-          setInstruments(
-            Array.isArray(data) ? data : (data.instruments ?? []),
-          );
+          const list = Array.isArray(data)
+            ? data
+            : (data.instruments ?? []);
+          setInstruments(list);
+          for (const inst of list.slice(0, 12)) {
+            prefetchKlines(inst.symbol, interval, market, 120);
+          }
         }
       } catch {
         setInstruments([]);
@@ -151,7 +156,7 @@ export default function MarketClient({
         setLoadingInstruments(false);
       }
     },
-    [market],
+    [market, interval],
   );
 
   const handlePickerOpen = useCallback(() => {
@@ -185,6 +190,7 @@ export default function MarketClient({
     } catch {
       /* ignore */
     }
+    prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
   // When the market switches, reset to that market's default symbol + state.
@@ -469,6 +475,7 @@ export default function MarketClient({
               drawings={drawings}
               livePrice={live.price > 0 ? live.price : undefined}
               liveTick={live}
+              refreshMs={market === "forex" ? 60_000 : 0}
               fill
               className="h-full min-h-0 p-0"
             />

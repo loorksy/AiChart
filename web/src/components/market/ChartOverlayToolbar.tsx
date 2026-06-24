@@ -113,6 +113,7 @@ export function ChartOverlayToolbar({
         loading={loadingInstruments}
         onOpen={onPickerOpen}
         market={market}
+        interval={interval}
       />
 
       {hasLive && live && (

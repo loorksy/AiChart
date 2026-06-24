@@ -7,6 +7,7 @@ import { formatTickerPrice } from "@/components/market/formatLevel";
 import { useBinanceLivePrices } from "@/hooks/useBinanceLivePrice";
 import type { MarketType } from "@/lib/markets/types";
 import { cn } from "@/lib/utils";
+import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 
 const CTRL =
   "inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-border/50 bg-background/80 text-xs font-medium text-foreground backdrop-blur-md transition hover:bg-background/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -27,6 +28,7 @@ export function SymbolPicker({
   loading,
   onOpen,
   market = "crypto",
+  interval = "1h",
 }: {
   value: string;
   onChange: (symbol: string) => void;
@@ -37,6 +39,7 @@ export function SymbolPicker({
   loading?: boolean;
   onOpen?: () => void;
   market?: MarketType;
+  interval?: string;
 }) {
   const isForex = market === "forex";
   const [open, setOpen] = useState(false);
@@ -154,6 +157,9 @@ export function SymbolPicker({
                 <button
                   key={inst.symbol}
                   type="button"
+                  onMouseEnter={() =>
+                    prefetchKlines(inst.symbol, interval, market, 120)
+                  }
                   onClick={() => pick(inst.symbol)}
                   className={cn(
                     "rounded-lg border px-2 py-2 text-start transition",

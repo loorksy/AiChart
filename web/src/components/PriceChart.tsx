@@ -30,6 +30,16 @@ import type { LegendItem } from "@/lib/chartDrawingLabels";
 import { ChartDrawingLegend } from "@/components/market/ChartDrawingLegend";
 import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
 import type { LivePriceTick } from "@/hooks/useBinanceLivePrice";
+import {
+  useBinanceKlineStream,
+  useThrottledLivePrice,
+} from "@/hooks/useBinanceKlineStream";
+import {
+  getKlinesClientCache,
+  klinesClientKey,
+  setKlinesClientCache,
+} from "@/lib/ohlc/klinesClientCache";
+import { intervalPlan } from "@/lib/intervals";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -118,6 +128,19 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
   const stableBarTimeRef = useRef(0);
   const loadingRef = useRef(loading);
   const errorRef = useRef(error);
+  const initialLoadRef = useRef(true);
+  const dataKey = `${symbol}|${interval}|${market}`;
+
+  const klineNative = market === "crypto" && intervalPlan(interval).factor === 1;
+  const liveKline = useBinanceKlineStream(symbol, interval, klineNative && !ambient);
+  const throttledLivePrice = useThrottledLivePrice(
+    klineNative ? undefined : livePrice,
+    100,
+  );
+
+  useEffect(() => {
+    initialLoadRef.current = true;
+  }, [dataKey]);
 
   useEffect(() => {
     loadingRef.current = loading;
@@ -207,7 +230,6 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
 
     const ro = new ResizeObserver(() => {
       chart.resize(el.clientWidth, el.clientHeight);
-      chart.timeScale().fitContent();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -215,51 +237,81 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
 
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      if (!ambient) {
+    const cacheKey = klinesClientKey(symbol, interval, market);
+    let hadCache = false;
+
+    if (!ambient) {
+      const cached = getKlinesClientCache(cacheKey);
+      const series = seriesRef.current;
+      if (cached?.length && series) {
+        series.setData(cached as CandlestickData<UTCTimestamp>[]);
+        const last = cached[cached.length - 1];
+        if (last) {
+          const t = last.time;
+          setLastBarTime(t);
+          stableBarTimeRef.current = t;
+        }
+        setLoading(false);
+        hadCache = true;
+        initialLoadRef.current = false;
+      }
+    }
+
+    const load = async (silent = false) => {
+      const showSpinner = !ambient && !silent && initialLoadRef.current;
+      if (showSpinner) {
         setLoading(true);
         setError(null);
       }
       try {
+        const freshQ = silent ? "&fresh=1" : "";
         const res = await fetch(
-          `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&market=${market}&limit=${ambient ? 120 : 300}`,
+          `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&market=${market}&limit=${ambient ? 120 : 300}${freshQ}`,
         );
         const data = await res.json();
         if (cancelled) return;
-        if (data.error) {
-          if (!ambient) setError(data.error);
+        if (data.error && !data.candles?.length) {
+          if (!ambient && !hadCache) setError(data.error);
           return;
         }
         const series = seriesRef.current;
         if (!series) return;
         const candles = (data.candles ?? []) as CandlestickData<UTCTimestamp>[];
-        series.setData(candles);
+        if (candles.length > 0) {
+          series.setData(candles);
+          setKlinesClientCache(cacheKey, candles);
+        }
         const last = candles[candles.length - 1];
         if (last) {
           const t = Number(last.time);
           setLastBarTime(t);
           stableBarTimeRef.current = t;
         }
-        chartRef.current?.timeScale().fitContent();
+        if (!silent && initialLoadRef.current) {
+          chartRef.current?.timeScale().fitContent();
+        }
+        initialLoadRef.current = false;
         if (!ambient && candles.length === 0 && data.pending) {
           setError(
             market === "forex"
               ? "بانتظار بيانات MetaTrader — ربط EA من الإعدادات → التكاملات"
               : "لا توجد بيانات شارت لهذا الرمز.",
           );
+        } else if (!ambient && candles.length > 0) {
+          setError(null);
         }
       } catch {
-        if (!cancelled && !ambient) setError("تعذّر تحميل بيانات الشارت.");
+        if (!cancelled && !ambient && !silent && !hadCache) {
+          setError("تعذّر تحميل بيانات الشارت.");
+        }
       } finally {
-        if (!cancelled && !ambient) setLoading(false);
+        if (!cancelled && showSpinner) setLoading(false);
       }
     };
-    void load();
-    // Live preview: poll for fresh candles so the chart updates as the agent
-    // trades. Skipped for ambient/background charts.
+    void load(hadCache);
     const poll =
       !ambient && refreshMs > 0
-        ? setInterval(() => void load(), refreshMs)
+        ? setInterval(() => void load(true), refreshMs)
         : null;
     return () => {
       cancelled = true;
@@ -268,7 +320,24 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
   }, [symbol, interval, ambient, market, refreshMs]);
 
   useEffect(() => {
-    if (ambient || !livePrice || livePrice <= 0) return;
+    if (ambient || !liveKline) return;
+    const series = seriesRef.current;
+    if (!series) return;
+    series.update({
+      time: liveKline.time as UTCTimestamp,
+      open: liveKline.open,
+      high: liveKline.high,
+      low: liveKline.low,
+      close: liveKline.close,
+    });
+    if (liveKline.closed) {
+      setLastBarTime(liveKline.time);
+      stableBarTimeRef.current = liveKline.time;
+    }
+  }, [liveKline, ambient]);
+
+  useEffect(() => {
+    if (ambient || klineNative || !throttledLivePrice || throttledLivePrice <= 0) return;
     const series = seriesRef.current;
     if (!series) return;
     const data = series.data();
@@ -277,11 +346,11 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
     if (!("close" in last)) return;
     series.update({
       ...last,
-      close: livePrice,
-      high: Math.max(last.high, livePrice),
-      low: Math.min(last.low, livePrice),
+      close: throttledLivePrice,
+      high: Math.max(last.high, throttledLivePrice),
+      low: Math.min(last.low, throttledLivePrice),
     });
-  }, [livePrice, ambient]);
+  }, [throttledLivePrice, ambient, klineNative]);
 
   useEffect(() => {
     if (ambient) return;

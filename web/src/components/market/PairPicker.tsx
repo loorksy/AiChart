@@ -9,6 +9,8 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { forexCanonicalKey } from "@/lib/mt5SymbolMap";
+import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 
 type Market = "crypto" | "forex";
 interface Ticker {
@@ -49,16 +51,19 @@ export function PairPicker({
   onChange,
   className,
   placement = "down",
+  interval = "1h",
 }: {
   market: Market;
   value: string;
   onChange: (symbol: string) => void;
   className?: string;
   placement?: "up" | "down";
+  interval?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tickers, setTickers] = useState<Record<string, Ticker>>({});
+  const [forexSymbols, setForexSymbols] = useState<string[]>(FOREX_MAJORS);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on outside click.
@@ -80,14 +85,37 @@ export function PairPicker({
       .catch(() => {});
   }, [open, market, tickers]);
 
+  // Load broker forex symbols when the popover opens.
+  useEffect(() => {
+    if (!open || market !== "forex") return;
+    void fetch("/api/instruments?market=forex&wrapped=1", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const rows = (d?.instruments ?? []) as Array<{ symbol: string }>;
+        if (rows.length) {
+          setForexSymbols(rows.map((r) => r.symbol.toUpperCase()));
+        }
+      })
+      .catch(() => {});
+  }, [open, market]);
+
   const list = useMemo(() => {
     const q = query.trim().toUpperCase().replace("/", "");
     if (market === "forex") {
-      return FOREX_MAJORS.filter((s) => !q || s.includes(q)).map((s) => ({
-        symbol: s,
-        price: 0,
-        changePct: 0,
-      }));
+      const canonicalQ = q ? forexCanonicalKey(q) : "";
+      return forexSymbols
+        .filter(
+          (s) =>
+            !q ||
+            s.includes(q) ||
+            (canonicalQ && forexCanonicalKey(s) === canonicalQ),
+        )
+        .slice(0, 80)
+        .map((s) => ({
+          symbol: s,
+          price: 0,
+          changePct: 0,
+        }));
     }
     const all = Object.keys(tickers);
     const base = all.length ? all : POPULAR_CRYPTO;
@@ -110,7 +138,7 @@ export function PairPicker({
       price: tickers[s]?.price ?? 0,
       changePct: tickers[s]?.changePct ?? 0,
     }));
-  }, [market, query, tickers]);
+  }, [market, query, tickers, forexSymbols]);
 
   const selected = value?.trim().toUpperCase();
   const selTicker = selected ? tickers[selected] : undefined;
@@ -146,6 +174,9 @@ export function PairPicker({
             <button
               key={p.symbol}
               type="button"
+              onMouseEnter={() =>
+                prefetchKlines(p.symbol, interval, market, 120)
+              }
               onClick={() => {
                 onChange(p.symbol);
                 setOpen(false);

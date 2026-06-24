@@ -7,6 +7,7 @@ import {
   searchForexInstruments,
 } from "@/lib/markets/forexInstruments";
 import { getEaConnection, parseEaSymbolSpecs } from "@/lib/eaStore";
+import { forexCanonicalKey } from "@/lib/mt5SymbolMap";
 import { getRpcConnection } from "@/lib/metaapi/client";
 import { getMtAccount } from "@/lib/store";
 
@@ -14,6 +15,13 @@ interface Instrument {
   symbol: string;
   base: string;
   quote: string;
+}
+
+function symbolMatchesQuery(symbol: string, query: string): boolean {
+  if (!query) return true;
+  const upper = symbol.toUpperCase();
+  if (upper.includes(query)) return true;
+  return forexCanonicalKey(symbol) === forexCanonicalKey(query);
 }
 
 async function metaApiForexInstruments(
@@ -33,7 +41,7 @@ async function metaApiForexInstruments(
       const query = q.trim().toUpperCase();
       for (const sym of symbols) {
         const symbol = sym.toUpperCase();
-        if (query && !symbol.includes(query)) continue;
+        if (!symbolMatchesQuery(symbol, query)) continue;
         if (!map.has(symbol)) {
           const { base, quote } = forexBaseQuote(symbol);
           map.set(symbol, { symbol, base, quote });
@@ -63,7 +71,7 @@ async function eaForexInstruments(
     for (const spec of parseEaSymbolSpecs(conn.symbol_specs_json)) {
       const symbol = (spec.symbol || "").toUpperCase();
       if (!symbol) continue;
-      if (query && !symbol.includes(query)) continue;
+      if (!symbolMatchesQuery(symbol, query)) continue;
       if (!map.has(symbol)) {
         const { base, quote } = forexBaseQuote(symbol);
         map.set(symbol, { symbol, base, quote });

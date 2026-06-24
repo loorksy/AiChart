@@ -41,7 +41,7 @@ export function ChartPreviewPanel({
         <div className="flex min-w-0 items-center gap-2">
           {onSymbolChange ? (
             <div className="w-40">
-              <PairPicker market={market} value={symbol} onChange={onSymbolChange} />
+              <PairPicker market={market} value={symbol} onChange={onSymbolChange} interval={interval} />
             </div>
           ) : (
             <span
@@ -85,7 +85,8 @@ export function ChartPreviewPanel({
           symbol={symbol}
           interval={interval}
           recommendations={recommendations}
-          refreshMs={5000}
+          market={market}
+          refreshMs={30_000}
           fill
           className="h-full min-h-0 flex-1"
         />

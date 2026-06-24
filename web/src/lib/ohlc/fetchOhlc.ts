@@ -1,6 +1,6 @@
 import { getKlines, type BinanceEnv } from "@/lib/binance";
 import { queueEaGetOhlc } from "@/lib/eaAgentCommands";
-import { getEaCandles } from "@/lib/eaStore";
+import { getEaCandles, getEaCandlesResolved } from "@/lib/eaStore";
 import { executionToBinanceEnv } from "@/lib/executionEnv";
 import {
   intervalPlan,
@@ -12,6 +12,7 @@ import type { MarketType } from "@/lib/markets/types";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { mt5Rates } from "@/lib/mt5local/client";
 import {
+  getMtAccount,
   getMtAccountMeta,
   getSettings,
   resolveForexBackendForUser,
@@ -19,6 +20,7 @@ import {
 import type { EaGetOhlcResult } from "@/lib/types";
 import { getCached, setCached } from "@/lib/bridge/cache";
 import { freshnessMeta, type FreshnessMeta } from "@/lib/bridge/freshness";
+import { getMetaApi } from "@/lib/metaapi/client";
 
 export const OHLC_CACHE_TTL_MS = 45_000;
 export const OHLC_MAX_LIMIT = 500;
@@ -36,7 +38,8 @@ export type OhlcSource =
   | "mt5_ohlc"
   | "binance"
   | "heartbeat_cache"
-  | "mt5local";
+  | "mt5local"
+  | "metaapi";
 
 export interface FetchOhlcResult {
   symbol: string;
@@ -89,6 +92,49 @@ function normalizeEaCandles(raw: unknown[]): OhlcCandle[] {
     .filter(Boolean) as OhlcCandle[];
 }
 
+async function fetchMetaApiForexCandles(
+  userId: number,
+  symbol: string,
+  interval: string,
+  limit: number,
+): Promise<OhlcCandle[]> {
+  const row = await getMtAccount(userId);
+  if (!row?.metaapi_account_id) return [];
+
+  const api = await getMetaApi();
+  const account = await api.metatraderAccountApi.getAccount(row.metaapi_account_id);
+  if (account.state !== "DEPLOYED") return [];
+
+  const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
+  const { base: tf, factor } = mt5IntervalPlan(interval);
+  const baseLimit = Math.min(limit * factor, OHLC_MAX_LIMIT);
+  const raw = (await account.getHistoricalCandles(
+    resolved,
+    tf,
+    undefined,
+    baseLimit,
+  )) as Array<{
+    time: string | Date;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  }>;
+
+  const baseCandles = raw
+    .map((c) => ({
+      time: Math.floor(new Date(c.time as string | Date).getTime() / 1000),
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close),
+    }))
+    .filter((b) => Number.isFinite(b.time) && b.time > 0)
+    .sort((a, b) => a.time - b.time);
+
+  return resampleOhlc(baseCandles, factor) as OhlcCandle[];
+}
+
 async function fetchForexOhlcLive(
   userId: number,
   symbol: string,
@@ -96,6 +142,18 @@ async function fetchForexOhlcLive(
   limit: number,
 ): Promise<{ candles: OhlcCandle[]; source: OhlcSource; warning?: string }> {
   const backend = await resolveForexBackendForUser(userId);
+
+  if (backend === "metaapi") {
+    const candles = await fetchMetaApiForexCandles(userId, symbol, interval, limit);
+    if (candles.length > 0) {
+      return { candles: candles.slice(-limit), source: "metaapi" };
+    }
+    return {
+      candles: [],
+      source: "metaapi",
+      warning: "MetaApi: no candles — verify account is deployed and symbol exists.",
+    };
+  }
 
   if (backend === "mt5local") {
     const acct = await getMtAccountMeta(userId);
@@ -139,7 +197,7 @@ async function fetchForexOhlcLive(
     }
   }
 
-  const cached = await getEaCandles(userId, mt5Symbol, eaInterval);
+  const cached = await getEaCandlesResolved(userId, mt5Symbol, eaInterval);
   if (cached) {
     try {
       const baseCandles = normalizeEaCandles(JSON.parse(cached.candles_json) as unknown[]);

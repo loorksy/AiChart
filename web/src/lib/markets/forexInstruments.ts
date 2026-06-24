@@ -58,14 +58,16 @@ export function forexBaseQuote(symbol: string): { base: string; quote: string } 
   return { base: clean, quote: "" };
 }
 
-/** Filters the baseline list by a free-text query. */
+/** Filters the baseline list by a free-text query (includes canonical match). */
 export function searchForexInstruments(q: string): ForexInstrument[] {
   const query = q.trim().toUpperCase();
   if (!query) return FOREX_INSTRUMENTS;
+  const canonical = query.length >= 3 ? query.slice(0, 6) : query;
   return FOREX_INSTRUMENTS.filter(
     (i) =>
       i.symbol.includes(query) ||
       i.base.includes(query) ||
-      i.quote.includes(query),
+      i.quote.includes(query) ||
+      i.symbol.startsWith(canonical),
   );
 }

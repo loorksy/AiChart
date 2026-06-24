@@ -1,4 +1,5 @@
 import { execute, insertReturningId, query, queryOne } from "./db";
+import { forexCanonicalKey } from "./mt5SymbolMap";
 import type { MtPlatform } from "./markets/types";
 import type {
   EaCommand,
@@ -377,5 +378,29 @@ export async function getEaCandles(
   return queryOne<EaCandleRow>(
     "SELECT candles_json, updated_at FROM ea_market_cache WHERE user_id = ? AND symbol = ? AND interval = ?",
     [userId, symbol.toUpperCase(), interval],
+  );
+}
+
+/**
+ * Like getEaCandles but falls back to a broker-suffix symbol with the same
+ * forex canonical key (EURUSD → EURUSDm).
+ */
+export async function getEaCandlesResolved(
+  userId: number,
+  symbol: string,
+  interval: string,
+): Promise<EaCandleRow | null> {
+  const exact = await getEaCandles(userId, symbol, interval);
+  if (exact) return exact;
+
+  const key = forexCanonicalKey(symbol);
+  if (!key) return null;
+
+  const rows = await query<{ symbol: string; candles_json: string; updated_at: string }>(
+    "SELECT symbol, candles_json, updated_at FROM ea_market_cache WHERE user_id = ? AND interval = ?",
+    [userId, interval],
+  );
+  return (
+    rows.find((r) => forexCanonicalKey(r.symbol) === key) ?? null
   );
 }

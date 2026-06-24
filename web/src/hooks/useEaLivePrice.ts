@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { LivePriceTick } from "./useBinanceLivePrice";
 
-const POLL_MS = 2000;
+const POLL_MS = 1000;
 
 /**
  * Live forex price for a symbol, polled from the EA bridge cache

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getForexBackend } from "@/lib/brokers/forexBackend";
-import { getEaConnection, isHeartbeatFresh, parseEaSymbolSpecs } from "@/lib/eaStore";
+import { getEaConnection, isHeartbeatFresh } from "@/lib/eaStore";
+import { getForexLiveMid } from "@/lib/markets/forexPrice";
+import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { getRpcConnection } from "@/lib/metaapi/client";
 import { getMtAccount, getMtAccountMeta } from "@/lib/store";
 
-/** Live forex price — MetaApi or EA heartbeat depending on backend. */
+/** Live forex price — MetaApi or EA/mt5local (resolveMt5Symbol + canonical match). */
 export async function GET(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
@@ -44,8 +46,10 @@ export async function GET(req: NextRequest) {
       }
 
       try {
+        const resolved =
+          (await resolveMt5Symbol(user.id, symbol)) ?? symbol;
         const conn = await getRpcConnection(user.id, row.metaapi_account_id);
-        const px = await conn.getSymbolPrice(symbol, false);
+        const px = await conn.getSymbolPrice(resolved, false);
         const bid = Number(px.bid);
         const ask = Number(px.ask);
         const price =
@@ -77,21 +81,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ connected: false, online: false, symbol, price: null });
     }
     const online = isHeartbeatFresh(conn.last_heartbeat_at);
-    const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(
-      (s) => s.symbol?.toUpperCase() === symbol,
-    );
-    const bid = spec?.bid ?? null;
-    const ask = spec?.ask ?? null;
-    const price =
-      bid != null && ask != null ? (Number(bid) + Number(ask)) / 2 : (bid ?? ask ?? null);
+    const price = await getForexLiveMid(user.id, symbol);
 
     return NextResponse.json({
       connected: true,
       online,
       symbol,
-      price,
-      bid,
-      ask,
+      price: price > 0 ? price : null,
       updated_at: conn.last_heartbeat_at,
     });
   } catch (err) {
