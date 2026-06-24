@@ -1,10 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import {
-  SlidersHorizontal,
-  ChevronDown,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { SlidersHorizontal, Globe } from "lucide-react";
 import { PairPicker } from "@/components/market/PairPicker";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/LocaleProvider";
@@ -25,208 +22,280 @@ export const DEFAULT_SELECTIONS: ChatStartSelections = {
   symbol: "",
 };
 
-export function ChatModeBar({
+type Setter = <K extends keyof ChatStartSelections>(
+  k: K,
+  v: ChatStartSelections[K],
+) => void;
+
+/** Shared label resolvers (kept in one place so popover + summaries match). */
+function useSelectionLabels() {
+  const { t } = useLocale();
+  return {
+    tradingStyle: (style: string) =>
+      style === "scalp"
+        ? t("term.scalping")
+        : style === "day"
+          ? t("term.day_trading")
+          : style === "swing"
+            ? t("term.swing_trading")
+            : style === "position"
+              ? t("settings.position")
+              : style,
+    mode: (mode: string) =>
+      mode === "approval"
+        ? t("mode.approval")
+        : mode === "direct"
+          ? t("mode.direct")
+          : mode === "auto"
+            ? t("mode.auto")
+            : mode,
+    responseMode: (rm: string) =>
+      rm === "fast"
+        ? t("response.fast")
+        : rm === "expert"
+          ? t("response.expert")
+          : rm === "vision"
+            ? t("response.vision")
+            : rm,
+    market: (m: string) =>
+      m === "crypto"
+        ? t("market.crypto")
+        : m === "forex"
+          ? t("market.forex")
+          : m,
+  };
+}
+
+/** A labelled segmented control row used inside the settings popover. */
+function SegmentedRow<K extends keyof ChatStartSelections>({
+  label,
+  field,
+  options,
+  current,
+  set,
+  render,
+}: {
+  label: string;
+  field: K;
+  options: readonly ChatStartSelections[K][];
+  current: ChatStartSelections[K];
+  set: Setter;
+  render: (v: ChatStartSelections[K]) => string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[11px] font-semibold text-muted-foreground">
+        {label}
+      </label>
+      <div className="flex flex-wrap gap-0.5 rounded-lg border border-border/40 bg-muted p-0.5">
+        {options.map((v) => (
+          <button
+            key={String(v)}
+            type="button"
+            onClick={() => set(field, v)}
+            className={cn(
+              "flex-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all whitespace-nowrap",
+              current === v
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {render(v)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Gear icon that opens a compact popover holding the non-market session
+ * controls (response type, trading style, execution mode). Lives INSIDE the
+ * input bar so it never steals chat space or breaks the composer layout.
+ */
+export function SessionSettingsPopover({
   sel,
   onChange,
+  disabled,
 }: {
   sel: ChatStartSelections;
   onChange: (s: ChatStartSelections) => void;
+  disabled?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const { t } = useLocale();
+  const labels = useSelectionLabels();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-  const set = <K extends keyof ChatStartSelections>(
-    k: K,
-    v: ChatStartSelections[K],
-  ) => onChange({ ...sel, [k]: v });
+  const set: Setter = (k, v) => onChange({ ...sel, [k]: v });
 
-  // Map values to translations
-  const getTradingStyleLabel = (style: string) => {
-    switch (style) {
-      case "scalp":
-        return t("term.scalping"); // "سكالبينج"
-      case "day":
-        return t("term.day_trading"); // "تداول يومي"
-      case "swing":
-        return t("term.swing_trading"); // "سوينج"
-      case "position":
-        return t("settings.position"); // "طويل"
-      default:
-        return style;
-    }
-  };
-
-  const getModeLabel = (mode: string) => {
-    switch (mode) {
-      case "approval":
-        return t("mode.approval");
-      case "direct":
-        return t("mode.direct");
-      case "auto":
-        return t("mode.auto");
-      default:
-        return mode;
-    }
-  };
-
-  const getResponseModeLabel = (rm: string) => {
-    switch (rm) {
-      case "fast":
-        return t("response.fast");
-      case "expert":
-        return t("response.expert");
-      case "vision":
-        return t("response.vision");
-      default:
-        return rm;
-    }
-  };
-
-  const getMarketLabel = (m: string) => {
-    switch (m) {
-      case "crypto":
-        return t("market.crypto");
-      case "forex":
-        return t("market.forex");
-      default:
-        return m;
-    }
-  };
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-2">
-      {/* Collapsed Toggle Summary Bar */}
+    <div ref={ref} className="relative shrink-0">
       <button
         type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center justify-between rounded-xl border border-border bg-card/60 px-4 py-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-secondary/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors disabled:opacity-50",
+          open
+            ? "bg-white/10 text-zinc-100"
+            : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100",
+        )}
+        aria-label={t("welcome.session_settings")}
+        title={t("welcome.session_settings")}
       >
-        <span className="flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-primary" />
-          <span className="font-semibold">{t("welcome.session_settings")} ·</span>
-          <span className="text-muted-foreground">
-            {getResponseModeLabel(sel.response_mode)} · {getTradingStyleLabel(sel.trading_style)} · {getModeLabel(sel.mode)} · {getMarketLabel(sel.market)}
-            {sel.symbol && ` · ${sel.symbol}`}
-          </span>
-        </span>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform duration-200",
-            expanded && "rotate-180",
-          )}
-        />
+        <SlidersHorizontal className="h-4 w-4" />
+        <span className="hidden sm:inline">{t("welcome.session_settings")}</span>
       </button>
 
-      {/* Flat Expanded Controls */}
-      {expanded && (
-        <div className="mt-3 grid grid-cols-1 gap-4 rounded-xl border border-border/80 bg-card p-4 shadow-md sm:grid-cols-2">
-          
-          {/* Response Mode Segmented Control */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">
-              {t("welcome.response_mode")}
-            </label>
-            <div className="flex rounded-lg bg-muted p-0.5 border border-border/40 w-full sm:w-fit">
-              {(["fast", "expert", "vision"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => set("response_mode", v)}
-                  className={cn(
-                    "flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
-                    sel.response_mode === v
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {getResponseModeLabel(v)}
-                </button>
-              ))}
-            </div>
+      {open && (
+        <div
+          dir="rtl"
+          className="absolute bottom-full z-50 mb-2 w-[18rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-popover p-3 shadow-2xl animate-in fade-in-0 zoom-in-95"
+          style={{ insetInlineStart: 0 }}
+        >
+          <div className="flex flex-col gap-3">
+            <SegmentedRow
+              label={t("welcome.response_mode")}
+              field="response_mode"
+              options={["fast", "expert", "vision"] as const}
+              current={sel.response_mode}
+              set={set}
+              render={labels.responseMode}
+            />
+            <SegmentedRow
+              label={t("welcome.trading_style")}
+              field="trading_style"
+              options={["scalp", "day", "swing", "position"] as const}
+              current={sel.trading_style}
+              set={set}
+              render={labels.tradingStyle}
+            />
+            <SegmentedRow
+              label={t("welcome.execution_mode")}
+              field="mode"
+              options={["approval", "direct", "auto"] as const}
+              current={sel.mode}
+              set={set}
+              render={labels.mode}
+            />
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-          {/* Trading Style Segmented Control */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">
-              {t("welcome.trading_style")}
-            </label>
-            <div className="flex flex-wrap rounded-lg bg-muted p-0.5 border border-border/40 w-full sm:w-fit">
-              {(["scalp", "day", "swing", "position"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => set("trading_style", v)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
-                    sel.trading_style === v
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {getTradingStyleLabel(v)}
-                </button>
-              ))}
-            </div>
-          </div>
+/**
+ * Compact market control kept visible in the composer: a crypto/forex toggle
+ * plus the pair picker. The market is the only selection shown inline; the rest
+ * live behind the gear icon.
+ */
+export function MarketPairControl({
+  sel,
+  onChange,
+  disabled,
+}: {
+  sel: ChatStartSelections;
+  onChange: (s: ChatStartSelections) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useLocale();
+  const labels = useSelectionLabels();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-          {/* Execution Mode Segmented Control */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">
-              {t("welcome.execution_mode")}
-            </label>
-            <div className="flex rounded-lg bg-muted p-0.5 border border-border/40 w-full sm:w-fit">
-              {(["approval", "direct", "auto"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => set("mode", v)}
-                  className={cn(
-                    "flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
-                    sel.mode === v
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {getModeLabel(v)}
-                </button>
-              ))}
-            </div>
-          </div>
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
-          {/* Market & Pair Picker Group */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-muted-foreground">
+  const summary = sel.symbol
+    ? sel.symbol
+    : labels.market(sel.market);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex h-8 max-w-[10rem] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors disabled:opacity-50",
+          open
+            ? "bg-white/10 text-zinc-100"
+            : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100",
+        )}
+        aria-label={t("welcome.market")}
+        title={t("welcome.market")}
+      >
+        <Globe className="h-4 w-4 shrink-0" />
+        <span className="truncate" dir="ltr">
+          {summary}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          dir="rtl"
+          className="absolute bottom-full z-50 mb-2 w-[18rem] max-w-[calc(100vw-2rem)] overflow-visible rounded-2xl border border-border bg-popover p-3 shadow-2xl animate-in fade-in-0 zoom-in-95"
+          style={{ insetInlineStart: 0 }}
+        >
+          <div className="flex flex-col gap-2.5">
+            <label className="text-[11px] font-semibold text-muted-foreground">
               {t("welcome.market")}
             </label>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="flex rounded-lg bg-muted p-0.5 border border-border/40 w-full sm:w-fit shrink-0">
-                {(["crypto", "forex"] as const).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => onChange({ ...sel, market: v, symbol: "" })}
-                    className={cn(
-                      "flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-all",
-                      sel.market === v
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {getMarketLabel(v)}
-                  </button>
-                ))}
-              </div>
-              <div className="min-w-[140px] flex-1">
-                <PairPicker
-                  market={sel.market}
-                  value={sel.symbol}
-                  placement="up"
-                  onChange={(s) => set("symbol", s)}
-                />
-              </div>
+            <div className="flex rounded-lg border border-border/40 bg-muted p-0.5">
+              {(["crypto", "forex"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => onChange({ ...sel, market: v, symbol: "" })}
+                  className={cn(
+                    "flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                    sel.market === v
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {labels.market(v)}
+                </button>
+              ))}
             </div>
+            <PairPicker
+              market={sel.market}
+              value={sel.symbol}
+              placement="up"
+              onChange={(s) => onChange({ ...sel, symbol: s })}
+            />
           </div>
-
         </div>
       )}
     </div>
