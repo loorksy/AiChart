@@ -159,6 +159,28 @@ export default function ChatSquareClient({
 
   useEffect(() => {
     void fetchConversations();
+    void fetch("/api/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { settings?: { mode?: string; active_market?: string; trading_style?: string } } | null) => {
+        const s = data?.settings;
+        if (!s) return;
+        setSel((prev) => ({
+          ...prev,
+          ...(s.mode === "auto" || s.mode === "approval" || s.mode === "direct"
+            ? { mode: s.mode }
+            : {}),
+          ...(s.active_market === "crypto" || s.active_market === "forex"
+            ? { market: s.active_market }
+            : {}),
+          ...(s.trading_style === "scalp" ||
+          s.trading_style === "day" ||
+          s.trading_style === "swing" ||
+          s.trading_style === "position"
+            ? { trading_style: s.trading_style }
+            : {}),
+        }));
+      })
+      .catch(() => undefined);
     void fetch("/api/chat/status")
       .then((r) => r.json())
       .then((d: { ready?: boolean; model?: string | null }) => {
@@ -311,7 +333,6 @@ export default function ChatSquareClient({
     const attach = image ?? pendingImage;
     if ((!content && !attach && attachments.length === 0) || busy) return;
     setError(null);
-    const isFirstMessage = messages.length === 0;
 
     const sym = extractSymbol(content);
     if (sym) {
@@ -367,15 +388,13 @@ export default function ChatSquareClient({
           })),
           conversationId: convId,
           stream: true,
-          start_context: isFirstMessage
-            ? {
-                trading_style: sel.trading_style,
-                mode: sel.mode,
-                active_market: sel.market,
-                response_mode: sel.response_mode,
-                symbol: sel.symbol || undefined,
-              }
-            : undefined,
+          session_context: {
+            trading_style: sel.trading_style,
+            mode: sel.mode,
+            active_market: sel.market,
+            response_mode: sel.response_mode,
+            symbol: sel.symbol || undefined,
+          },
         }),
       });
 
@@ -589,6 +608,7 @@ export default function ChatSquareClient({
               showActivity={showActivity}
               activities={activities}
               hideActivityOnMobile
+              executionMode={sel.mode}
               onPreview={() => setPreviewOpen(true)}
               busyIntentId={busyIntentId}
               onIntentApprove={(id) => {
@@ -633,7 +653,7 @@ export default function ChatSquareClient({
             attachments={attachments}
             onAddAttachment={handleAddAttachment}
             onRemoveAttachment={handleRemoveAttachment}
-            disabled={busy}
+            disabled={busy || busyIntentId != null}
             busy={busy}
             placeholder={inputPlaceholder}
             centered={false}

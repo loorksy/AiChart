@@ -11,6 +11,10 @@ import type { Recommendation } from "@/lib/types";
 import { sseEncode } from "@/lib/sse";
 import { extractUISchema } from "@/lib/uiSchema";
 import {
+  applyChatSessionContext,
+  type ChatSessionContext,
+} from "@/lib/chatSessionContext";
+import {
   getConversation,
   createConversation,
   appendChatMessage,
@@ -91,7 +95,17 @@ const schema = z.object({
       })
     )
     .optional(),
-  /** Selections from the chat start screen (applied on the first message). */
+  /** Selections from the chat composer — applied every message while not busy. */
+  session_context: z
+    .object({
+      trading_style: z.enum(["scalp", "day", "swing", "position"]).optional(),
+      mode: z.enum(["auto", "approval", "direct"]).optional(),
+      active_market: z.enum(["crypto", "forex"]).optional(),
+      response_mode: z.enum(["fast", "expert", "vision"]).optional(),
+      symbol: z.string().max(20).optional(),
+    })
+    .optional(),
+  /** @deprecated use session_context — kept for first-message compat */
   start_context: z
     .object({
       trading_style: z.enum(["scalp", "day", "swing", "position"]).optional(),
@@ -153,20 +167,15 @@ export async function POST(req: NextRequest) {
 
 
 
-    // Apply chat start-screen selections (style/mode/market) in-process before
-    // loading settings, so this turn already reflects them.
-    const startCtx = body.start_context;
-    if (startCtx) {
-      const patch: Record<string, unknown> = {};
-      if (startCtx.trading_style) patch.trading_style = startCtx.trading_style;
-      if (startCtx.mode) patch.mode = startCtx.mode;
-      if (startCtx.active_market) patch.active_market = startCtx.active_market;
-      if (Object.keys(patch).length) {
-        const { updateSettings } = await import("@/lib/store");
-        await updateSettings(user.id, patch);
-      }
+    // Apply chat composer session selections before this turn.
+    const sessionCtx: ChatSessionContext | undefined =
+      body.session_context ?? body.start_context;
+    let sessionChanges: import("@/lib/chatSessionContext").SessionChange[] = [];
+    if (sessionCtx) {
+      const applied = await applyChatSessionContext(user.id, sessionCtx);
+      sessionChanges = applied.changes;
     }
-    const responseMode = startCtx?.response_mode;
+    const responseMode = sessionCtx?.response_mode;
 
     const settings = await getSettings(user.id);
 
@@ -244,6 +253,8 @@ export async function POST(req: NextRequest) {
       conversationSummary,
       responseMode,
       hasImage: chatImage ? true : false,
+      sessionContext: sessionCtx,
+      sessionChanges,
       onActivity: undefined as ((a: import("@/lib/agentActivity").AgentActivity) => void) | undefined,
       onDelta: undefined as ((text: string) => void) | undefined,
     };

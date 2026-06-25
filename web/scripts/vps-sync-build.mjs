@@ -24,6 +24,9 @@ execSync(`tar -czf "${tarball}" -C "${webDir}" src`, { stdio: "inherit" });
 
 const remoteCmd = `set -e
 cd /opt/aichart/web
+echo "==> Stop web before build"
+pm2 stop aichart-web 2>/dev/null || true
+rm -rf .next
 echo "==> Extract src"
 tar -xzf /tmp/aichart-deploy-src.tgz
 echo "==> Build"
@@ -43,7 +46,7 @@ if [ -n "$CRON_SECRET" ]; then
   if [ ! -f "$CRON_FILE" ] || ! grep -q cron/bots "$CRON_FILE" 2>/dev/null; then
     if [ -f /opt/aichart/infra/aichart.cron ]; then
       sed -e "s|YOUR_DOMAIN|aichart.lork.cloud|g" \
-          -e "s|YOUR_CRON_SECRET|${CRON_SECRET}|g" \
+          -e "s|YOUR_CRON_SECRET|\${CRON_SECRET}|g" \
         /opt/aichart/infra/aichart.cron > "$CRON_FILE"
     else
       cat > "$CRON_FILE" <<CRON

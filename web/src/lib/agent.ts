@@ -14,6 +14,11 @@ import {
   buildCardContext,
   shouldSkipAutoCompose,
 } from "./cardPolicy";
+import {
+  buildSessionPromptBlock,
+  type ChatSessionContext,
+  type SessionChange,
+} from "./chatSessionContext";
 import { buildUserContext, displayNameFromEmail } from "./userContext";
 import {
   getUnifiedSnapshot,
@@ -592,6 +597,9 @@ export interface RunAgentOptions {
   hasImage?: boolean;
   /** Autonomous scalp session tick — the agent decides via submit_scalp_decision. */
   scalpMode?: boolean;
+  /** Live UI session selections from the chat composer. */
+  sessionContext?: ChatSessionContext;
+  sessionChanges?: SessionChange[];
 }
 
 interface AgentContext {
@@ -691,8 +699,17 @@ async function forwardBridge(
       return ok(await bridge.post("/api/agent/trade/close", input));
     case "modify_sl_tp":
       return ok(await bridge.post("/api/agent/ea/modify-sl-tp", input));
-    case "request_approval":
+    case "request_approval": {
+      const settings = await getSettings(userId);
+      if (settings.mode === "direct") {
+        return {
+          content:
+            "وضع التنفيذ «مباشر» — لا حاجة لطلب موافقة. سجّل record_recommendation ثم open_trade عند أمر صريح من المستخدم.",
+          isError: true,
+        };
+      }
       return ok(await bridge.post("/api/agent/approval/request", input));
+    }
     case "set_trading_mode":
       return ok(await bridge.post("/api/agent/mode", { mode: input.mode }));
     case "set_risk_guard":
@@ -992,7 +1009,7 @@ async function executeTool(
         }
         const notifyAdvisory =
           (rec.action === "buy" || rec.action === "sell") &&
-          ctx.settings.mode !== "auto" &&
+          ctx.settings.mode === "approval" &&
           !ctx.telegramSession;
         const { rec: enriched, delivery } = await attachChartToRecommendation(ctx.userId, rec, {
           notify: notifyAdvisory,
@@ -1098,11 +1115,18 @@ export async function runAgent(
     .filter(Boolean)
     .join("\n\n");
 
+  const sessionBlock = buildSessionPromptBlock(
+    options?.sessionContext,
+    ctx.settings,
+    options?.sessionChanges ?? [],
+  );
+
   const systemBase = await buildSystemPrompt(
     ctx.settings,
     ctx.userId,
     options?.conversationSummary,
     memoryContextBlock,
+    sessionBlock,
   );
   const responseHint =
     options?.responseMode === "fast"
@@ -1245,7 +1269,7 @@ export async function runAgent(
     : null;
 
   const toolNames = executedToolsList.map((t) => t.name);
-  const cardCtx = buildCardContext(toolNames, recorded);
+  const cardCtx = buildCardContext(toolNames, recorded, false, ctx.settings.mode);
   const rawSchema = uiCollector.schema
     ? (uiCollector.schema as import("./cardComposer").ComposedUISchema)
     : shouldSkipAutoCompose(cardCtx, Boolean(uiCollector.schema))

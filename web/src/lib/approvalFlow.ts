@@ -112,6 +112,11 @@ export async function createApprovalRequest(
   input: ApprovalRequestInput,
 ): Promise<{ intentId: number; telegramDelivered: boolean; reasonAr?: string }> {
   const settings = await getSettings(userId);
+  if (settings.mode === "direct") {
+    throw new Error(
+      "وضع التنفيذ «مباشر» — لا بطاقات موافقة. نفّذ بأمر صريح من المستخدم.",
+    );
+  }
   const limits = await getLimits(userId);
   const market = input.market ?? settings.active_market ?? "crypto";
   const effectiveCapital =

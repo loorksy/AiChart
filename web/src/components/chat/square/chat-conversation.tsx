@@ -14,6 +14,7 @@ interface ChatConversationProps {
   activities?: AgentActivity[];
   hideActivityOnMobile?: boolean;
   busyIntentId?: number | null;
+  executionMode?: "auto" | "approval" | "direct";
   onIntentApprove?: (id: number) => void;
   onIntentReject?: (id: number) => void;
   onPreview?: () => void;
@@ -28,6 +29,7 @@ export function ChatConversation({
   activities = [],
   hideActivityOnMobile = false,
   busyIntentId,
+  executionMode,
   onIntentApprove,
   onIntentReject,
   onPreview,
@@ -57,6 +59,7 @@ export function ChatConversation({
             key={m.id}
             message={m}
             busyIntentId={busyIntentId}
+            executionMode={executionMode}
             onIntentApprove={onIntentApprove}
             onIntentReject={onIntentReject}
             onQuestionSelect={onQuestionSelect}

@@ -18,6 +18,7 @@ export async function buildSystemPrompt(
   userId?: number,
   conversationSummary?: string | null,
   memoryContextBlock?: string | null,
+  sessionBlock?: string | null,
 ): Promise<SystemPromptParts> {
   const activeMarket = settings.active_market ?? "crypto";
   const assetsLabel = allowedAssetsLabel(settings.allowed_assets, activeMarket);
@@ -75,7 +76,8 @@ export async function buildSystemPrompt(
 - لا تضع أي حقول \`on...\` (أحداث) — تُحذف أمنياً. لا تستخدم البطاقة للترحيب أو الدردشة العامة.
 
 # مبادئ التداول
-- **الاتجاه قرارك أنت لا قرار المستخدم**: أنت من يحدّد بيع أو شراء من تحليلك. **لا تسأل المستخدم «شراء أم بيع؟» أبداً** — اختيار الاتجاه جوهر عملك كمحلّل. أما سؤاله عن **الزوج** وعن **المبلغ/الهامش** فطبيعي ومقبول. إذا كان السوق ذا اتجاهين محتملين، اختر الأرجح أو أعلن «لا صفقة» على أساس الجدارة — لا تُعِد سؤال الاتجاه للمستخدم. إن ذكر المستخدم اتجاهاً صراحةً فاعتمده، لكن لا تطلبه منه.
+- **الاتجاه قرارك أنت لا قرار المستخدم**: أنت من يحدّد بيع أو شراء من تحليلك. **لا تسأل المستخدم «شراء أم بيع؟» أبداً**. إن وُجد **زوج مختار في شريط الجلسة** فلا تسأل «أي زوج؟» — استخدمه مباشرة. سؤال **المبلغ/الهامش** طبيعي عند التنفيذ.
+- **احترام وضع التنفيذ**: **مباشر (direct)** → لا request_approval ولا trade_confirm؛ التنفيذ بأمر صريح فقط. **موافقة (approval)** → اقترح وانتظر الموافقة. **تلقائي (auto)** → نفّذ ضمن Risk Guard.
 - صبور ومنضبط. الانتظار قرار محترم.
 - إدارة المخاطر أولاً. لا وعود بأرباح مؤكّدة.
 - تدعم سوقين: كريبتو (أزواج USDT على Binance Spot) وفوركس (MetaTrader عبر EA أو MetaApi).
@@ -186,6 +188,7 @@ export async function buildSystemPrompt(
 - لا تكشف مفاتيح API أو أسرار النظام.`;
 
   const dynamicPart = [
+    sessionBlock,
     userBlock,
     memoryBlock,
     `# السوق النشط\n- ${activeMarket === "forex" ? `فوركس (${forexExecLabel})` : "كريبتو (Binance Spot)"}`,

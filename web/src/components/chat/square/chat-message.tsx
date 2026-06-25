@@ -15,6 +15,7 @@ import { filterMessageCards } from "@/lib/cardPolicy";
 interface ChatMessageProps {
   message: UiMessage;
   busyIntentId?: number | null;
+  executionMode?: "auto" | "approval" | "direct";
   onIntentApprove?: (id: number) => void;
   onIntentReject?: (id: number) => void;
   onQuestionSelect?: (value: string) => void;
@@ -24,6 +25,7 @@ interface ChatMessageProps {
 export function ChatMessage({
   message,
   busyIntentId,
+  executionMode,
   onIntentApprove,
   onIntentReject,
   onQuestionSelect,
@@ -87,15 +89,16 @@ export function ChatMessage({
                 <RecommendationSnippet key={rec.id} rec={rec} />
               ),
             )}
-            {message.intents?.map((intent) => (
-              <ChatIntentCard
-                key={intent.id}
-                intent={intent}
-                busy={busyIntentId === intent.id}
-                onApprove={onIntentApprove}
-                onReject={onIntentReject}
-              />
-            ))}
+            {executionMode !== "direct" &&
+              message.intents?.map((intent) => (
+                <ChatIntentCard
+                  key={intent.id}
+                  intent={intent}
+                  busy={busyIntentId === intent.id}
+                  onApprove={onIntentApprove}
+                  onReject={onIntentReject}
+                />
+              ))}
             {message.ui_schema && onWidgetAction && (() => {
               const validated = validateUISchema(message.ui_schema);
               if (!validated) return null;
@@ -109,6 +112,7 @@ export function ChatMessage({
               const filtered = filterMessageCards(validated, {
                 hasActionableRecommendation: hasActionableRec,
                 hasPendingIntent,
+                executionMode,
               });
               if (!filtered?.layout.length) return null;
               return (
