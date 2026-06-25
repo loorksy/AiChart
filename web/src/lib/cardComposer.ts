@@ -51,9 +51,6 @@ function analysisProps(snap: any): Record<string, unknown> {
   };
 }
 
-const trendToSignal = (trend: unknown): "buy" | "sell" | "neutral" =>
-  trend === "bullish" ? "buy" : trend === "bearish" ? "sell" : "neutral";
-
 /** True when an object looks like a unified single-symbol snapshot. */
 function isSnapshot(o: any): boolean {
   return (
@@ -132,20 +129,9 @@ const DETECTORS: {
     match: isMultiSnapshot,
     build: (o, mkId) => {
       const valid = o.snapshots.filter((s: any) => s?.snapshot?.symbol);
-      const out: UIElement[] = [
+      return [
         { id: mkId(), component: "analysis", props: analysisProps(valid[0].snapshot) },
       ];
-      out.push({
-        id: mkId(),
-        component: "mtf_grid",
-        props: {
-          rows: valid.map((s: any) => ({
-            tf: s.interval,
-            signal: trendToSignal(s.snapshot.extra?.trend),
-          })),
-        },
-      });
-      return out;
     },
   },
   {
@@ -229,9 +215,14 @@ const DETECTORS: {
  */
 export function composeCardSchema(
   toolData: ToolDatum[],
-  _recommendations?: unknown[],
+  recommendations?: { action?: string }[],
 ): ComposedUISchema | null {
   if (!Array.isArray(toolData) || toolData.length === 0) return null;
+
+  const hasActionableRec = (recommendations ?? []).some(
+    (r) => r.action === "buy" || r.action === "sell",
+  );
+  if (hasActionableRec) return null;
 
   const unwrapped = toolData.map((t) => unwrap(t.data));
   const layout: UIElement[] = [];

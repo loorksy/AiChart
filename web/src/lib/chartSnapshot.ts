@@ -1,5 +1,6 @@
 import { getKlines } from "./binance";
-import { getEaCandles } from "./eaStore";
+import { getEaCandlesResolved } from "./eaStore";
+import { fetchOhlc } from "./ohlc/fetchOhlc";
 import { getForexBackend } from "./brokers/forexBackend";
 import { mt5Rates } from "./mt5local/client";
 import { getMtAccountMeta, resolveForexBackendForUser } from "./store";
@@ -109,9 +110,32 @@ async function fetchCandleSeries(
       }
     }
     if (!userId) return null;
-    const cached = await getEaCandles(userId, sym, tf);
-    if (!cached) return null;
-    return parseEaCandleRows(cached.candles_json, tf, limit);
+    const cached = await getEaCandlesResolved(userId, sym, tf);
+    if (cached) {
+      const parsed = parseEaCandleRows(cached.candles_json, tf, limit);
+      if (parsed) return parsed;
+    }
+    try {
+      const ohlc = await fetchOhlc({
+        userId,
+        symbol: sym,
+        interval: tf,
+        market: "forex",
+        limit,
+      });
+      if (ohlc.candles.length >= 10) {
+        return ohlc.candles.slice(-limit).map((c) => ({
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+        }));
+      }
+    } catch {
+      /* fall through */
+    }
+    return null;
   }
 
   const candles = await getKlines(sym, tf, limit, "prod");
@@ -533,5 +557,10 @@ export function bufferToChatImage(buffer: Buffer): ChatImagePayload | null {
 }
 
 export function chartImagePathForRecommendation(recId: number): string {
-  return `/api/chart-image/${recId}`;
+  return `/api/agent/chart/${recId}`;
+}
+
+/** @deprecated alias — use chartImagePathForRecommendation */
+export function agentChartPathForRecommendation(recId: number): string {
+  return chartImagePathForRecommendation(recId);
 }

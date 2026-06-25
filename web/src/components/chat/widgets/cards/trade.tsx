@@ -83,7 +83,7 @@ export function OrderTicket({
   return (
     <div
       dir="rtl"
-      className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-lg backdrop-blur-md transition-all"
+      className="relative overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-lg backdrop-blur-md transition-all"
     >
       <div
         className={cn(
@@ -1032,7 +1032,7 @@ export function TradeConfirm({
           type="button"
           disabled={busy !== "none"}
           onClick={approve}
-          className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-emerald-500/20 transition-all hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.98] disabled:opacity-50"
+          className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-2 text-xs font-bold text-white shadow-md shadow-emerald-500/20 transition-all hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.98] disabled:opacity-50"
         >
           <ShieldCheck className="h-4 w-4" />
           {busy === "approve" ? "جارٍ التنفيذ..." : "موافقة وتنفيذ"}
@@ -1041,7 +1041,7 @@ export function TradeConfirm({
           type="button"
           disabled={busy !== "none"}
           onClick={reject}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background py-2.5 text-xs font-bold text-muted-foreground transition hover:bg-muted active:scale-[0.98] disabled:opacity-50"
+          className="flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background py-2 text-xs font-bold text-muted-foreground transition hover:bg-muted active:scale-[0.98] disabled:opacity-50"
         >
           <XCircle className="h-4 w-4" />
           {busy === "reject" ? "جارٍ الرفض..." : "رفض"}

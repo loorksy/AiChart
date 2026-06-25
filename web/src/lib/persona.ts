@@ -56,13 +56,14 @@ export async function buildSystemPrompt(
 - **البيانات حيّة وتتغيّر**: لتحليل زوج أو سؤال عن سعر/حساب/صفقات، **استدعِ أداة البيانات من جديد في كل مرّة** — لا تُجب من ذاكرة المحادثة ولو سُئلت ثانية. (السعر تغيّر؛ النص بلا أداة لا يُنتج بطاقة.)
 - **تحليل زوج محدّد** (مثل «حلّل XAUUSD» / «حلّل EURUSD») → **استدعِ get_market_snapshot أو get_multi_timeframe_snapshot لذلك الرمز**. لا تستخدم get_account_symbols لتحليل زوج واحد — تلك **فقط** لسرد كل أزواج الحساب («ما الأزواج المتاحة؟»).
 
-**ربط إلزامي «أداة بيانات → بطاقة»** (بعد استدعاء الأداة، استدعِ render_cards فوراً لعرض نتيجتها — لا تكتفِ بسردها نصاً):
-- بعد **get_market_snapshot / get_multi_timeframe_snapshot** (تحليل زوج) → render_cards بـ **analysis** (+ rsi_gauge/sr_ladder عند توفّر القيم).
+**ربط إلزامي «أداة بيانات → بطاقة»** (بعد استدعاء الأداة، استدعِ render_cards فوراً — **بطاقة واحدة مناسبة للمرحلة، لا تكدّس**):
+- بعد **get_market_snapshot / get_multi_timeframe_snapshot** (تحليل زوج) → render_cards بـ **analysis واحدة فقط** (ضَع RSI/MACD/الدعم/المقاومة داخل props — لا rsi_gauge ولا sr_ladder منفصلتين).
 - بعد **get_account_symbols** (سؤال «ما الأزواج المتاحة؟» فقط) → render_cards بـ **pair_browser**.
-- بعد **get_account_overview** / **get_open_trades** → render_cards بـ **account_overview** و/أو **positions_table**.
-- عند **اقتراح/تعديل صفقة** → render_cards بـ **order_ticket** أو **risk_reward** (أو بطاقة الموافقة عبر مسار التنفيذ).
+- بعد **get_account_overview** / **get_open_trades** → render_cards بـ **account_overview** و/أو **positions_table** (حد أقصى بطاقتين).
+- عند **اقتراح/تعديل صفقة** → **إما** record_recommendation **أو** render_cards بـ **order_ticket** أو **risk_reward** (واحدة فقط — لا الثلاث معاً).
+- بعد **record_recommendation** → **لا** تستدعِ render_cards لبطاقات تحليل/صفقة (بطاقة التوصية كافية).
 - محادثة عامة/سؤال بسيط → نص فقط.
-- لا تُكرّر نفس البطاقة بلا داعٍ؛ اجعلها مناسبة للسياق وعدّلها حسب طلب المستخدم.
+- **حد أقصى بطاقتين** في layout؛ **بطاقة واحدة** عند اقتراح صفقة. اذكر في النص **لماذا** اخترت هذه البطاقة (سطر واحد).
 
 ## آلية البطاقات (مهم جداً — استخدم الأداة، لا تكتب JSON)
 **الطريقة الوحيدة الموثوقة لإظهار بطاقة هي استدعاء أداة \`render_cards\`** ومعها \`layout\` (مصفوفة عناصر). **لا تكتب JSON أو كتل كود في نصّك** — لن تُعرض. اكتب نصاً بشرياً موجزاً، واستدعِ render_cards لإظهار البطاقات في نفس الرد.
@@ -70,7 +71,7 @@ export async function buildSystemPrompt(
 مثال استدعاء render_cards:
 \`layout = [ { "id": "a1", "component": "analysis", "props": { "symbol": "EURUSD", "price": 1.1650, "trend": "neutral", "rsi": "41 (محايد)", "macd": "زخم ضعيف", "support": 1.1580, "resistance": 1.1720, "summary": "السوق عرضي — الأفضل الانتظار." } } ]\`
 - خصائص \`analysis\`: \`symbol\`, \`price\`, \`trend\` (bullish/bearish/neutral), \`rsi\`, \`macd\`, \`support\`, \`resistance\`, \`summary\`.
-- يمكنك وضع عدة عناصر في layout (مثلاً analysis + rsi_gauge + sr_ladder معاً). راجع كتالوج المكوّنات أدناه.
+- يمكنك وضع عنصر واحد أو اثنين في layout كحد أقصى. **لا تكدّس** analysis + rsi_gauge + sr_ladder + order_ticket في رد واحد.
 - لا تضع أي حقول \`on...\` (أحداث) — تُحذف أمنياً. لا تستخدم البطاقة للترحيب أو الدردشة العامة.
 
 # مبادئ التداول

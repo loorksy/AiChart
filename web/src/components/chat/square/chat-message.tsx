@@ -8,7 +8,9 @@ import { cn } from "@/lib/utils";
 import type { Recommendation } from "@/lib/types";
 import type { UiMessage } from "@/stores/chat-store";
 import { ChatIntentCard } from "./chat-intent-card";
+import { RecommendationChartImage } from "./recommendation-chart-image";
 import { UILayoutRenderer, validateUISchema } from "@/components/chat/widgets";
+import { filterMessageCards } from "@/lib/cardPolicy";
 
 interface ChatMessageProps {
   message: UiMessage;
@@ -97,9 +99,21 @@ export function ChatMessage({
             {message.ui_schema && onWidgetAction && (() => {
               const validated = validateUISchema(message.ui_schema);
               if (!validated) return null;
+              const recs = message.recommendations as Recommendation[] | undefined;
+              const hasActionableRec = recs?.some(
+                (r) => r.action === "buy" || r.action === "sell",
+              );
+              const hasPendingIntent = message.intents?.some(
+                (i) => i.status === "pending",
+              );
+              const filtered = filterMessageCards(validated, {
+                hasActionableRecommendation: hasActionableRec,
+                hasPendingIntent,
+              });
+              if (!filtered?.layout.length) return null;
               return (
                 <UILayoutRenderer
-                  layout={validated.layout}
+                  layout={filtered.layout}
                   onAction={onWidgetAction}
                 />
               );
@@ -144,14 +158,14 @@ function RecommendationSnippet({ rec }: { rec: Recommendation }) {
     <div
       dir="rtl"
       className={cn(
-        "relative mt-3 overflow-hidden rounded-2xl border bg-card/50 p-4 shadow-lg backdrop-blur-md transition-all duration-300 hover:shadow-xl",
+        "relative mt-2 overflow-hidden rounded-xl border bg-card/50 p-3 shadow-sm backdrop-blur-md",
         accent.ring,
       )}
     >
       <div className={cn("pointer-events-none absolute -left-16 -top-16 h-32 w-32 rounded-full opacity-[0.12] blur-[60px]", accent.glow)} />
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-3">
+      <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold tracking-tight" dir="ltr">{rec.symbol}</span>
@@ -170,7 +184,7 @@ function RecommendationSnippet({ rec }: { rec: Recommendation }) {
       </div>
 
       {/* Confidence bar */}
-      <div className="mt-3">
+      <div className="mt-2">
         <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
           <span>الثقة</span>
           <span className="font-semibold text-foreground">{conf}%</span>
@@ -182,7 +196,7 @@ function RecommendationSnippet({ rec }: { rec: Recommendation }) {
 
       {/* Levels */}
       {(rec.entry != null || rec.stop_loss != null || rec.take_profit != null) && (
-        <div className="mt-3 grid grid-cols-3 gap-2">
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
           <Level icon={<LogIn className="h-3 w-3" />} label="دخول" value={rec.entry} tone="text-foreground" />
           <Level icon={<ShieldAlert className="h-3 w-3" />} label="وقف" value={rec.stop_loss} tone="text-rose-400" />
           <Level icon={<Target className="h-3 w-3" />} label="هدف" value={rec.take_profit} tone="text-emerald-400" />
@@ -191,14 +205,14 @@ function RecommendationSnippet({ rec }: { rec: Recommendation }) {
 
       {/* Rationale */}
       {rec.rationale && (
-        <p className="mt-3 rounded-xl border border-border/50 bg-background/40 p-2.5 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-2 line-clamp-4 rounded-lg border border-border/50 bg-background/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
           {rec.rationale}
         </p>
       )}
 
       {/* Factors */}
       {factors.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap gap-1">
           {factors.map((f, i) => (
             <span key={i} className="rounded-full border border-border/60 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
               {f}
@@ -208,11 +222,10 @@ function RecommendationSnippet({ rec }: { rec: Recommendation }) {
       )}
 
       {rec.chart_image_url && (
-        <img
+        <RecommendationChartImage
           src={rec.chart_image_url}
-          alt={`شارت ${rec.symbol}`}
-          className="mt-3 w-full rounded-xl border border-border"
-          loading="lazy"
+          recId={rec.id}
+          symbol={rec.symbol}
         />
       )}
     </div>
@@ -231,7 +244,7 @@ function Level({
   tone: string;
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-background/40 p-2 text-center">
+    <div className="rounded-lg border border-border/50 bg-background/40 p-1.5 text-center">
       <span className="flex items-center justify-center gap-1 text-[9px] text-muted-foreground">
         {icon}
         {label}

@@ -1,5 +1,5 @@
 import {
-  buildChartSnapshotUrl,
+  buildChartSnapshotBufferForMarket,
   chartImagePathForRecommendation,
 } from "./chartSnapshot";
 import { overlaysFromRecommendation } from "./chartOverlays";
@@ -8,10 +8,10 @@ import { parseChartDrawingsJson } from "./chartDrawings";
 import { getSettings, updateRecommendationChartUrl } from "./store";
 import { buildAccountProfile } from "./accountProfile";
 import { recommendationCard } from "./telegramCards";
-import { postAnalysisButtons } from "./telegramCommands";
 import { dispatchAlert, type DeliveryResult } from "./alerts";
 import type { Recommendation } from "./types";
 import type { InlineButton } from "./telegram";
+import type { MarketType } from "./markets/types";
 
 export interface AttachChartOptions {
   /** Send Telegram + web alert after attaching chart. */
@@ -27,6 +27,7 @@ export interface NotifyRecommendationOptions {
 
 /**
  * Builds chart image, persists URL on recommendation, optionally notifies user.
+ * Only sets chart_image_url when PNG generation succeeds (avoids broken img tags).
  */
 export async function attachChartToRecommendation(
   userId: number,
@@ -35,11 +36,25 @@ export async function attachChartToRecommendation(
 ): Promise<{ rec: Recommendation; delivery?: DeliveryResult }> {
   if (rec.action === "wait") return { rec };
 
+  const settings = await getSettings(userId);
+  const market = (rec.market ?? settings.active_market ?? "crypto") as MarketType;
   const overlays = overlaysFromRecommendation(rec);
   const drawings =
     options.drawings ?? parseChartDrawingsJson(rec.chart_drawings_json);
 
-  const imagePath = chartImagePathForRecommendation(rec.id);
+  const buffer = await buildChartSnapshotBufferForMarket(
+    userId,
+    rec.symbol,
+    rec.timeframe ?? "1h",
+    market,
+    {
+      overlays,
+      drawings,
+      patternName: rec.pattern_name,
+    },
+  );
+
+  const imagePath = buffer ? chartImagePathForRecommendation(rec.id) : null;
   await updateRecommendationChartUrl(rec.id, imagePath);
   const enriched: Recommendation = { ...rec, chart_image_url: imagePath };
 
@@ -79,10 +94,7 @@ export async function notifyRecommendation(
     style: settings.style,
   });
 
-  let imageUrl = rec.chart_image_url ?? chartImagePathForRecommendation(rec.id);
-  if (!rec.chart_image_url) {
-    await updateRecommendationChartUrl(rec.id, imageUrl);
-  }
+  const imageUrl = rec.chart_image_url;
 
   return dispatchAlert(userId, {
     type: "signal",
@@ -112,12 +124,5 @@ export async function resolveChartUrl(
 ): Promise<string | null> {
   if (rec.chart_image_url) return rec.chart_image_url;
   if (rec.id) return chartImagePathForRecommendation(rec.id);
-  const { parseChartDrawingsJson: parseDrawings } = await import("./chartDrawings");
-  return buildChartSnapshotUrl({
-    symbol: rec.symbol,
-    interval: rec.timeframe ?? "1h",
-    overlays: overlaysFromRecommendation(rec as Recommendation),
-    drawings: parseDrawings(rec.chart_drawings_json),
-    patternName: rec.pattern_name,
-  });
+  return null;
 }

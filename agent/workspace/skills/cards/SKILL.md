@@ -8,13 +8,23 @@
 - **طبقتا ضمان**: (1) أنت تستدعي `render_cards` (يمرّ عبر طبقة أدوات موحّدة تعمل مع كل المزوّدات)؛ (2) وإن لم تفعل، **النظام يولّد البطاقة حتمياً** من نواتج أدواتك (مُركِّب server-side مستقل عن الموديل). فالبطاقة تظهر دائماً عند وجود بيانات.
 
 ## القاعدة الذهبية
-- **أي رد يحتوي بيانات** (تحليل زوج، أسعار، أزواج الحساب، المحفظة، الصفقات، اقتراح دخول) → **اعرضه كبطاقة**، ولا تكتفِ بسرده نصاً.
+- **أي رد يحتوي بيانات** (تحليل زوج، أسعار، أزواج الحساب، المحفظة، الصفقات، اقتراح دخول) → **اعرضه كبطاقة واحدة مناسبة للمرحلة**، ولا تكتفِ بسرده نصاً.
 - **محادثة عامة / تحية / توضيح بسيط** → نص فقط، بلا بطاقة.
 - اكتب دائماً جملة أو جملتين بشريّتين موجزتين مع البطاقة (البطاقة تكمّل النص لا تلغيه).
-- لا تكرّر نفس البطاقة بلا داعٍ؛ اختر الأنسب للسياق وعدّلها حسب طلب المستخدم.
+- **كل بطاقة في وقته**: تحليل → analysis فقط؛ صفقة → order_ticket أو risk_reward أو record_recommendation (واحدة)؛ موافقة → trade_confirm/intent فقط.
+- **حد أقصى بطاقتين** في render_cards.layout؛ **بطاقة واحدة** عند اقتراح صفقة. اذكر لماذا اخترت هذه البطاقة.
+
+## مصفوفة المرحلة → البطاقة
+| المرحلة | البطاقة | ممنوع في نفس الرد |
+|---|---|---|
+| تحليل زوج | `analysis` واحدة (RSI/SR في props) | order_ticket, risk_reward, rsi_gauge, sr_ladder |
+| اقتراح صفقة | record_recommendation **أو** order_ticket **أو** risk_reward | analysis + gauges معاً |
+| بعد record_recommendation | لا render_cards إضافية | أي تكرار لمستويات SL/TP |
+| موافقة معلّقة | trade_confirm / intent | order_ticket + analysis |
+| حساب/صفقات | account_overview, positions_table | بطاقات تحليل/صفقة |
 
 ## كيف تعرض بطاقة (مهم)
-**استدعِ أداة `render_cards`** ومعها `layout` (مصفوفة عناصر). **لا تكتب JSON أو كتل كود في نصّك** — لن يُعرض. كل عنصر: `{ "id": "x1", "component": "<مفتاح>", "props": { ... } }`. يمكن وضع عدة عناصر معاً (مثلاً analysis + rsi_gauge + sr_ladder).
+**استدعِ أداة `render_cards`** ومعها `layout` (مصفوفة عناصر — **1–2 كحد أقصى**). **لا تكتب JSON أو كتل كود في نصّك** — لن يُعرض.
 
 > ملاحظة: حتى إن نسيت استدعاء render_cards، يحاول الخادم توليد بطاقة من بيانات الأدوات التي استدعيتها — لكن **الأفضل أن تستدعيها بنفسك** لتختار البطاقة الأغنى والأنسب.
 
@@ -22,10 +32,10 @@
 | بعد استدعاء | اعرض البطاقة |
 |---|---|
 | get_account_symbols | `pair_browser` (مرّر symbols) |
-| get_market_snapshot / تحليل زوج | `analysis` (+ `rsi_gauge` / `sr_ladder` عند توفّر القيم) |
+| get_market_snapshot / تحليل زوج | `analysis` **واحدة** (RSI/SR في props) |
 | get_account_overview | `account_overview` |
 | get_open_trades | `positions_table` |
-| اقتراح/تعديل صفقة | `order_ticket` أو `risk_reward` |
+| اقتراح/تعديل صفقة | record_recommendation **أو** `order_ticket` **أو** `risk_reward` — **واحدة فقط** |
 | مقارنة عدة أزواج | `change_grid` أو `heatmap` أو `table` |
 
 ## كتالوج المكوّنات
@@ -53,10 +63,10 @@
 - `candles_mini` (candles:[{o,h,l,c}]) · `area_spark` (points[]) · `compare_chart` · `range_slider_chart`
 
 ## أمثلة قرار
-- «حلّل EURUSD» → نص موجز + render_cards [ analysis, rsi_gauge, sr_ladder ].
+- «حلّل EURUSD» → نص موجز + render_cards [ analysis ] فقط.
 - «ما الأزواج المتاحة؟» → بعد get_account_symbols → render_cards [ pair_browser ].
 - «نظرة على حسابي» → بعد get_account_overview + get_open_trades → render_cards [ account_overview, positions_table ].
-- «أريد دخول بيع على BTCUSDm» → render_cards [ order_ticket ] (قابلة للتعديل) أو [ risk_reward ].
+- «أريد دخول بيع على XAUUSD» → record_recommendation **أو** render_cards [ order_ticket ] — لا analysis + order_ticket معاً.
 - «شكراً» / «كيف حالك» → نص فقط، بلا بطاقة.
 
 ## توقيع `render_cards`
@@ -67,8 +77,7 @@ UIElement = { id: string, component: string, props: object, children?: UIElement
 مثال كامل:
 ```
 render_cards({ "layout": [
-  { "id": "a1", "component": "analysis", "props": { "symbol": "EURUSD", "price": 1.165, "trend": "neutral", "rsi": "41 (محايد)", "macd": "زخم ضعيف", "support": 1.158, "resistance": 1.172, "summary": "السوق عرضي — الأفضل الانتظار." } },
-  { "id": "g1", "component": "rsi_gauge", "props": { "value": 41, "symbol": "EURUSD" } }
+  { "id": "a1", "component": "analysis", "props": { "symbol": "EURUSD", "price": 1.165, "trend": "neutral", "rsi": "41 (محايد)", "macd": "زخم ضعيف", "support": 1.158, "resistance": 1.172, "summary": "السوق عرضي — الأفضل الانتظار." } }
 ] })
 ```
 

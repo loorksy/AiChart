@@ -76,7 +76,7 @@ export function RsiGauge({
       </div>
 
       <div className="flex justify-center">
-        <svg viewBox="0 0 220 130" className="w-full max-w-[260px]">
+        <svg viewBox="0 0 220 130" className="w-full max-w-[180px]">
           <path d={arc(0, 30)} className="stroke-emerald-500/70" strokeWidth={14} fill="none" strokeLinecap="round" />
           <path d={arc(30, 70)} className="stroke-amber-500/70" strokeWidth={14} fill="none" />
           <path d={arc(70, 100)} className="stroke-rose-500/70" strokeWidth={14} fill="none" strokeLinecap="round" />
@@ -298,7 +298,7 @@ export function TrendMeter({
       </div>
 
       <div className="flex justify-center">
-        <svg viewBox="0 0 220 130" className="w-full max-w-[260px]">
+        <svg viewBox="0 0 220 130" className="w-full max-w-[180px]">
           <path d={arc(-100, -33)} className="stroke-rose-500/70" strokeWidth={14} fill="none" strokeLinecap="round" />
           <path d={arc(-33, 33)} className="stroke-amber-500/70" strokeWidth={14} fill="none" />
           <path d={arc(33, 100)} className="stroke-emerald-500/70" strokeWidth={14} fill="none" strokeLinecap="round" />

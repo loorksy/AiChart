@@ -811,7 +811,7 @@ export async function listRecommendations(
 
 export async function updateRecommendationChartUrl(
   id: number,
-  chartImageUrl: string,
+  chartImageUrl: string | null,
 ): Promise<void> {
   await execute("UPDATE recommendations SET chart_image_url = ? WHERE id = ?", [
     chartImageUrl,

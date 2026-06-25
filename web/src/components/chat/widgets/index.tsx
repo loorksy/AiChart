@@ -361,7 +361,7 @@ export function UILayoutRenderer({
   onAction: (actionType: string, payload: any) => void;
 }) {
   return (
-    <div className="space-y-3.5 my-3 animate-in fade-in duration-300">
+    <div className="chat-cards-compact space-y-2 my-2 animate-in fade-in duration-300 [&_.rounded-2xl]:rounded-xl [&_.p-5]:p-3 [&_.shadow-lg]:shadow-sm [&_.max-w-sm]:max-w-full">
       {layout.map((element) => (
         <UIElementRenderer key={element.id} element={element} onAction={onAction} />
       ))}

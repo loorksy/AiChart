@@ -9,6 +9,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildSystemPrompt, chartAnalyzeSystemSuffix, scalpSessionSuffix } from "./persona";
 import { composeCardSchema } from "./cardComposer";
+import {
+  applyCardPolicy,
+  buildCardContext,
+  shouldSkipAutoCompose,
+} from "./cardPolicy";
 import { buildUserContext, displayNameFromEmail } from "./userContext";
 import {
   getUnifiedSnapshot,
@@ -1239,6 +1244,15 @@ export async function runAgent(
     ? JSON.stringify(executedToolsList)
     : null;
 
+  const toolNames = executedToolsList.map((t) => t.name);
+  const cardCtx = buildCardContext(toolNames, recorded);
+  const rawSchema = uiCollector.schema
+    ? (uiCollector.schema as import("./cardComposer").ComposedUISchema)
+    : shouldSkipAutoCompose(cardCtx, Boolean(uiCollector.schema))
+      ? null
+      : composeCardSchema(cardToolData, recorded);
+  const uiSchema = applyCardPolicy(rawSchema, cardCtx);
+
   return {
     reply: finalText,
     recommendations: recorded,
@@ -1247,10 +1261,7 @@ export async function runAgent(
     signalDeliveries: signalDeliveries.length ? signalDeliveries : undefined,
     reasoningSummary,
     toolCallsJson,
-    // Prefer the model's curated render_cards output; otherwise compose a card
-    // deterministically from the data tools it called. The composer is
-    // model-independent (works with any provider), so cards render reliably.
-    uiSchema: uiCollector.schema ?? composeCardSchema(cardToolData, recorded),
+    uiSchema,
     scalpDecision: scalpCollector.decision,
   };
 }

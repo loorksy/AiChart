@@ -11,6 +11,15 @@ interface ChartWidgetProps {
   title?: string;
 }
 
+function isValidChartSrc(src: string): boolean {
+  return (
+    src.startsWith("http://") ||
+    src.startsWith("https://") ||
+    src.startsWith("/api/") ||
+    src.startsWith("data:image/")
+  );
+}
+
 export default function ChartWidget({
   src,
   symbol = "BTCUSDT",
@@ -18,13 +27,24 @@ export default function ChartWidget({
   title,
 }: ChartWidgetProps) {
   const [showLightbox, setShowLightbox] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
 
-  if (!src) {
+  if (!src || !isValidChartSrc(src)) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 p-6 text-center">
-        <LineChart className="h-8 w-8 text-muted-foreground animate-pulse mb-2" />
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 p-4 text-center">
+        <LineChart className="h-6 w-6 text-muted-foreground animate-pulse mb-1" />
         <p className="text-xs font-medium text-foreground">{symbol} ({interval})</p>
-        <p className="text-[10px] text-muted-foreground mt-1">بانتظار توليد الشارت التفاعلي...</p>
+        <p className="text-[10px] text-muted-foreground mt-1">بانتظار توليد الشارت...</p>
+      </div>
+    );
+  }
+
+  if (imgFailed) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 p-4 text-center">
+        <LineChart className="h-6 w-6 text-muted-foreground mb-1" />
+        <p className="text-xs font-medium text-foreground">{symbol} ({interval})</p>
+        <p className="text-[10px] text-muted-foreground mt-1">تعذّر تحميل الشارت</p>
       </div>
     );
   }
@@ -49,7 +69,8 @@ export default function ChartWidget({
           src={src}
           alt={title || `شارت ${symbol}`}
           onClick={() => setShowLightbox(true)}
-          className="w-full h-auto max-h-56 object-cover cursor-zoom-in group-hover:scale-[1.01] transition-transform duration-300"
+          onError={() => setImgFailed(true)}
+          className="w-full h-auto max-h-40 object-cover cursor-zoom-in group-hover:scale-[1.01] transition-transform duration-300"
           loading="lazy"
         />
       </div>
