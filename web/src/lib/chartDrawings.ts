@@ -187,12 +187,17 @@ export function pointsToLineData(
   interval: string,
 ): { time: number; value: number }[] {
   const step = barDurationSec(interval);
-  return points
-    .map((p) => ({
-      time: (p.time ??
-        lastBarTimeSec + (p.barsAhead ?? p.time_offset ?? 0) * step) as number,
-      value: p.price,
-    }))
+  const byTime = new Map<number, number>();
+  for (const p of points) {
+    if (!Number.isFinite(p.price) || p.price <= 0) continue;
+    const rawTime =
+      p.time ?? lastBarTimeSec + (p.barsAhead ?? p.time_offset ?? 0) * step;
+    const time = Math.floor(Number(rawTime));
+    if (!Number.isFinite(time) || time <= 0) continue;
+    byTime.set(time, p.price);
+  }
+  return Array.from(byTime.entries())
+    .map(([time, value]) => ({ time, value }))
     .sort((a, b) => a.time - b.time);
 }
 

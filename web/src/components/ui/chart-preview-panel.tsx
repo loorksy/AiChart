@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { EyeOff, Loader2, Maximize2, Minimize2, Radio, Sparkles, X } from "lucide-react";
 import PriceChart, { type PriceChartHandle } from "@/components/PriceChart";
+import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
 import { IntervalPicker } from "@/components/market/IntervalPicker";
 import { PairPicker } from "@/components/market/PairPicker";
@@ -238,20 +239,22 @@ export function ChartPreviewPanel({
       )}
 
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-2">
-        <PriceChart
-          ref={chartRef}
-          symbol={symbol}
-          interval={interval}
-          recommendations={recommendations}
-          market={market}
-          overlays={overlays}
-          drawings={drawings}
-          livePrice={live.price > 0 ? live.price : undefined}
-          liveTick={live}
-          refreshMs={market === "forex" ? forexRefreshMs : 0}
-          fill
-          className="h-full min-h-0 flex-1"
-        />
+        <ChartErrorBoundary key={`${symbol}|${interval}|${drawings.length}`}>
+          <PriceChart
+            ref={chartRef}
+            symbol={symbol}
+            interval={interval}
+            recommendations={recommendations}
+            market={market}
+            overlays={overlays}
+            drawings={drawings}
+            livePrice={live.price > 0 ? live.price : undefined}
+            liveTick={live}
+            refreshMs={market === "forex" ? forexRefreshMs : 0}
+            fill
+            className="h-full min-h-0 flex-1"
+          />
+        </ChartErrorBoundary>
 
         <ChartTradeOverlay
           recommendation={recommendation}

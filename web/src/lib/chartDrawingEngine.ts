@@ -94,6 +94,8 @@ export function collectDrawingMarkers(
   return markers;
 }
 
+const MAX_DRAWINGS = 40;
+
 /**
  * Applies all ChartDrawing types to a lightweight-charts instance.
  */
@@ -115,11 +117,12 @@ export function applyChartDrawings(
     return { cleanup: () => {}, legendItems: [], drawingMarkers: [] };
   }
 
-  for (const d of drawings) {
-    const style = styleForConfidence(d.confidence, d.type);
-    const color = d.color ?? style.color;
+  for (const d of drawings.slice(0, MAX_DRAWINGS)) {
+    try {
+      const style = styleForConfidence(d.confidence, d.type);
+      const color = d.color ?? style.color;
 
-    switch (d.type) {
+      switch (d.type) {
       case "price_line": {
         const p = d.points[0];
         if (!p) break;
@@ -188,14 +191,19 @@ export function applyChartDrawings(
       }
 
       case "zone": {
+        const prices = d.points
+          .map((p) => p.price)
+          .filter((v) => Number.isFinite(v) && v > 0);
+        if (prices.length === 0 && !numMeta(d.meta, "top")) break;
         const top =
           numMeta(d.meta, "top") ??
           d.points[0]?.price ??
-          Math.max(...d.points.map((p) => p.price));
+          (prices.length ? Math.max(...prices) : null);
         const bottom =
           numMeta(d.meta, "bottom") ??
           d.points[1]?.price ??
-          Math.min(...d.points.map((p) => p.price));
+          (prices.length ? Math.min(...prices) : null);
+        if (top == null || bottom == null || top <= bottom) break;
         const zonePoints =
           d.points.length >= 2
             ? d.points
@@ -326,6 +334,9 @@ export function applyChartDrawings(
       default:
         break;
     }
+    } catch {
+      /* skip corrupt drawing — must not crash the chart page */
+    }
   }
 
   if (drawings.some((d) => d.type === "forecast_path" || d.type === "channel")) {
@@ -336,11 +347,18 @@ export function applyChartDrawings(
     legendItems: legendFromDrawings(drawings),
     drawingMarkers,
     cleanup: () => {
-      for (const pl of priceLines) candleSeries.removePriceLine(pl);
-      for (const s of lineSeries) chart.removeSeries(s);
-      for (const s of areaSeries) chart.removeSeries(s);
-      for (const s of baselineSeries) chart.removeSeries(s);
-      for (const s of histogramSeries) chart.removeSeries(s);
+      const safe = (fn: () => void) => {
+        try {
+          fn();
+        } catch {
+          /* chart may already be destroyed */
+        }
+      };
+      for (const pl of priceLines) safe(() => candleSeries.removePriceLine(pl));
+      for (const s of lineSeries) safe(() => chart.removeSeries(s));
+      for (const s of areaSeries) safe(() => chart.removeSeries(s));
+      for (const s of baselineSeries) safe(() => chart.removeSeries(s));
+      for (const s of histogramSeries) safe(() => chart.removeSeries(s));
     },
   };
 }

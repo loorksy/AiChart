@@ -174,6 +174,12 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
 
   const effectiveOverlays = overlays?.length ? overlays : recLayers.overlays;
   const effectiveDrawings = drawings?.length ? drawings : recLayers.drawings;
+  const drawingsKey = useMemo(
+    () => JSON.stringify(effectiveDrawings),
+    [effectiveDrawings],
+  );
+  const barTimeReady =
+    (stableBarTimeRef.current || lastBarTime) > 0;
   const nextCursorRef = useRef<number | null>(null);
   const dataKey = `${symbol}|${interval}|${market}`;
   const chartLimit = ambient ? 120 : 500;
@@ -567,30 +573,37 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
   }, [effectiveOverlays, ambient]);
 
   useEffect(() => {
-    if (ambient) return;
+    if (ambient || !barTimeReady) return;
     const chart = chartRef.current;
     const candleSeries = seriesRef.current;
     if (!chart || !candleSeries) return;
 
-    const result = applyChartDrawings(
-      chart,
-      candleSeries,
-      effectiveDrawings,
-      stableBarTimeRef.current || lastBarTime,
-      interval,
-    );
-    setLegendItems(result.legendItems);
+    const barTime = stableBarTimeRef.current || lastBarTime;
+    let result: ReturnType<typeof applyChartDrawings> | null = null;
+    try {
+      result = applyChartDrawings(
+        chart,
+        candleSeries,
+        effectiveDrawings,
+        barTime,
+        interval,
+      );
+      setLegendItems(result.legendItems);
+    } catch {
+      setLegendItems([]);
+    }
 
     return () => {
-      result.cleanup();
-      setLegendItems([]);
+      result?.cleanup();
     };
-  }, [effectiveDrawings, interval, lastBarTime, ambient]);
+  }, [drawingsKey, interval, barTimeReady, ambient, lastBarTime]);
 
   useEffect(() => {
-    if (ambient) return;
+    if (ambient || !barTimeReady) return;
     const series = seriesRef.current;
     if (!series) return;
+
+    const barTime = stableBarTimeRef.current || lastBarTime;
 
     const recMarkers = recommendations
       .filter((r) => r.symbol === symbol.toUpperCase() && r.action !== "wait")
@@ -600,19 +613,30 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
         color: r.action === "buy" ? "#22c55e" : "#ef4444",
         shape: r.action === "buy" ? "arrowUp" : "arrowDown",
         text: `${r.action === "buy" ? "شراء" : "بيع"} ${r.confidence}%`,
-      }));
+      }))
+      .filter((m) => Number(m.time) > 0);
 
-    const drawingMarkers =
-      lastBarTime > 0
-        ? collectDrawingMarkers(effectiveDrawings, lastBarTime, interval)
-        : [];
+    const drawingMarkers = collectDrawingMarkers(
+      effectiveDrawings,
+      barTime,
+      interval,
+    );
 
-    const merged = [...recMarkers, ...drawingMarkers].sort(
+    const byTime = new Map<number, SeriesMarker<Time>>();
+    for (const m of [...recMarkers, ...drawingMarkers]) {
+      byTime.set(Number(m.time), m);
+    }
+    const merged = Array.from(byTime.values()).sort(
       (a, b) => Number(a.time) - Number(b.time),
     );
-    const markers = createSeriesMarkers(series, merged);
-    return () => markers.detach();
-  }, [recommendations, symbol, effectiveDrawings, interval, lastBarTime, ambient]);
+
+    try {
+      const markerPlugin = createSeriesMarkers(series, merged);
+      return () => markerPlugin.detach();
+    } catch {
+      return;
+    }
+  }, [recommendations, symbol, drawingsKey, interval, barTimeReady, ambient, lastBarTime]);
 
   return (
     <div className={cn("relative isolate z-0 w-full", fill && "h-full", className)}>
