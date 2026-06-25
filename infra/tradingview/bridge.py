@@ -67,7 +67,7 @@ def fetch_ta(exchange: str, symbol: str, interval: str) -> dict[str, Any]:
         return cached
 
     try:
-        from tradingview_ta import TA_Handler, Interval, Exchange
+        from tradingview_ta import TA_Handler, Interval
     except ImportError:
         return {"ok": False, "error": "tradingview_ta not installed"}
 
@@ -83,19 +83,13 @@ def fetch_ta(exchange: str, symbol: str, interval: str) -> dict[str, Any]:
         "1w": Interval.INTERVAL_1_WEEK,
     }
     tv_interval = interval_map.get(interval, Interval.INTERVAL_1_HOUR)
-
-    exchange_map = {
-        "BINANCE": Exchange.BINANCE,
-        "OANDA": Exchange.OANDA,
-        "FX": Exchange.FX_IDC,
-    }
-    tv_exchange = exchange_map.get(exchange, Exchange.BINANCE)
+    screener = "crypto" if exchange == "BINANCE" else "forex"
 
     try:
         handler = TA_Handler(
             symbol=symbol,
-            exchange=tv_exchange,
-            screener="crypto" if exchange == "BINANCE" else "forex",
+            exchange=exchange,
+            screener=screener,
             interval=tv_interval,
             timeout=10,
         )
