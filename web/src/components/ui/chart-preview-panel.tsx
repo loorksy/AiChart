@@ -103,6 +103,9 @@ export function ChartPreviewPanel({
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
+  const forexRefreshMs =
+    interval === "1m" ? 15_000 : interval === "5m" ? 30_000 : 60_000;
+
   async function handleAnalyze() {
     await analyze();
   }
@@ -245,7 +248,7 @@ export function ChartPreviewPanel({
           drawings={drawings}
           livePrice={live.price > 0 ? live.price : undefined}
           liveTick={live}
-          refreshMs={market === "forex" ? 60_000 : 0}
+          refreshMs={market === "forex" ? forexRefreshMs : 0}
           fill
           className="h-full min-h-0 flex-1"
         />

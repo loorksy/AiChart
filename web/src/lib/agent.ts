@@ -527,6 +527,8 @@ const CHART_ANALYZE_TOOL_NAMES = new Set([
   "record_recommendation",
   "get_market_context",
   "get_price",
+  "get_multi_timeframe_snapshot",
+  "search_trade_memory",
 ]);
 
 const CHART_ANALYZE_TOOLS = TOOLS.filter((t) =>
@@ -1184,9 +1186,12 @@ export async function runAgent(
   let finalText = "";
   const executedToolsList: { name: string; input: unknown; status: string }[] = [];
 
-  // No scripted "planning/thinking" steps — activities reflect ONLY the agent's
-  // real tool calls below. If the agent answers directly (no tools), nothing is
-  // shown. The agent itself decides when work is needed.
+  push({
+    id: "agent-thinking",
+    label: "يفكّر ويحلّل",
+    status: "running",
+  });
+
   const MAX_STEPS = maxSteps;
   for (let step = 0; step < MAX_STEPS; step++) {
     const useStream = Boolean(onDelta);
@@ -1253,6 +1258,12 @@ export async function runAgent(
     }
     messages.push({ role: "user", content: results });
   }
+
+  push({
+    id: "agent-thinking",
+    label: executedToolsList.length ? "اكتمل التحليل" : "يفكّر ويحلّل",
+    status: "done",
+  });
 
   if (!finalText) {
     if (recorded.length) {

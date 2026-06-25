@@ -7,6 +7,7 @@ import {
 } from "@/lib/ohlc/chartTime";
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
 import { normalizeInterval } from "@/lib/intervals";
+import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import type { MarketType } from "@/lib/markets/types";
 
 /**
@@ -16,7 +17,7 @@ import type { MarketType } from "@/lib/markets/types";
 export async function GET(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
-    const symbol = (req.nextUrl.searchParams.get("symbol") || "BTCUSDT")
+    let symbol = (req.nextUrl.searchParams.get("symbol") || "BTCUSDT")
       .toUpperCase()
       .replace(/[^A-Z0-9.]/g, "");
     const intervalRaw = req.nextUrl.searchParams.get("interval") || "1h";
@@ -28,6 +29,10 @@ export async function GET(req: NextRequest) {
     const market = (req.nextUrl.searchParams.get("market") === "forex"
       ? "forex"
       : "crypto") as MarketType;
+    if (market === "forex") {
+      const resolved = await resolveMt5Symbol(user.id, symbol);
+      if (resolved) symbol = resolved;
+    }
     const fresh = req.nextUrl.searchParams.get("fresh") === "1";
     const fast = req.nextUrl.searchParams.get("fast") === "1";
     const cursorRaw = req.nextUrl.searchParams.get("cursor");

@@ -38,11 +38,24 @@ export function ChatConversation({
 }: ChatConversationProps) {
   const endRef = useRef<HTMLDivElement>(null);
 
-  const lastAssistant = [...messages]
+  const pendingAssistant = [...messages]
     .reverse()
-    .find((m) => m.role === "assistant");
+    .find((m) => m.role === "assistant" && m.streaming);
+  const awaitingResponse = busy && Boolean(pendingAssistant);
   const awaitingFirstToken =
-    busy && !lastAssistant?.content?.trim();
+    awaitingResponse && !pendingAssistant?.content?.trim();
+  const displayActivities =
+    showActivity && activities.length > 0
+      ? activities
+      : awaitingResponse && showActivity
+        ? [
+            {
+              id: "pending-thinking",
+              label: "يفكّر ويحلّل",
+              status: "running" as const,
+            },
+          ]
+        : [];
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,16 +80,25 @@ export function ChatConversation({
           />
         );
       })}
-      {awaitingFirstToken && (
+      {awaitingResponse && (
         <div className="px-3 py-2 sm:px-4">
-          {showActivity && activities.length > 0 ? (
+          {displayActivities.length > 0 ? (
             <div className={hideActivityOnMobile ? "hidden md:block" : undefined}>
-              <AgentThinkingTimeline activities={activities} onPreview={onPreview} />
+              <AgentThinkingTimeline
+                activities={displayActivities}
+                onPreview={onPreview}
+              />
             </div>
           ) : null}
-          {(!showActivity || activities.length === 0 || hideActivityOnMobile) && (
-            <div className={hideActivityOnMobile && showActivity && activities.length > 0 ? "md:hidden" : undefined}>
-              <AgentLoadingDots />
+          {(displayActivities.length === 0 || hideActivityOnMobile) && (
+            <div
+              className={
+                hideActivityOnMobile && displayActivities.length > 0
+                  ? "md:hidden"
+                  : undefined
+              }
+            >
+              {awaitingFirstToken ? <AgentLoadingDots /> : null}
             </div>
           )}
         </div>

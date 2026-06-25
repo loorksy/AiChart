@@ -306,6 +306,8 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
       }
       if (opts.fit) {
         chartRef.current?.timeScale().fitContent();
+      } else if (!opts.merge && merged.length > 0) {
+        chartRef.current?.timeScale().scrollToRealTime();
       }
       return true;
     };
@@ -372,7 +374,10 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
 
     void (async () => {
       if (!hadCache && !ambient) {
-        await load(false, true);
+        // Forex EA cache can lag on 1m — skip fast stale path.
+        if (market !== "forex") {
+          await load(false, true);
+        }
       }
       await load(hadCache, false);
     })();

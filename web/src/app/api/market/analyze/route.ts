@@ -18,6 +18,7 @@ import { profileForInterval } from "@/lib/analysisProfile";
 import { sseEncode } from "@/lib/sse";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { validateChatImage } from "@/lib/chatImage";
+import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import {
   appendChatMessage,
   getConversation,
@@ -71,9 +72,13 @@ export async function POST(req: NextRequest) {
     }
 
     const settings = await getSettings(user.id);
-    const symbol = body.symbol.toUpperCase().trim();
+    let symbol = body.symbol.toUpperCase().trim();
     const interval = body.interval;
     const market = body.market ?? settings.active_market ?? "crypto";
+    if (market === "forex") {
+      const resolved = await resolveMt5Symbol(user.id, symbol);
+      if (resolved) symbol = resolved;
+    }
     const profile = profileForInterval(interval);
     const stream = body.stream !== false;
     const persistToChat =

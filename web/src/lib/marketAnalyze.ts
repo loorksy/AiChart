@@ -41,7 +41,8 @@ import type { ContentBlock } from "./anthropic";
 
 import type { ChartVisionSource } from "./marketAnalyzeLabels";
 import { fetchOhlc } from "./ohlc/fetchOhlc";
-import { detectStructureLevels } from "./ohlc/structure";
+import { detectStructureLevels, type StructureAnalysis } from "./ohlc/structure";
+import { resolveMt5Symbol } from "./mt5SymbolMap";
 import {
   formatStructureForPrompt,
   mergeSeedAndAgentDrawings,
@@ -54,6 +55,40 @@ import {
 } from "./tradingview/client";
 
 export const MARKET_ANALYZE_COST = 4;
+
+const EMPTY_AGENT_REPLY = "لم أتمكّن من صياغة رد. حاول مجدداً.";
+
+function buildAnalyzeFallbackReply(
+  sym: string,
+  interval: string,
+  snap: MarketSnapshot,
+  structure: StructureAnalysis | null,
+): string {
+  const trend =
+    snap.trend === "uptrend"
+      ? "صاعد"
+      : snap.trend === "downtrend"
+        ? "هابط"
+        : "عرضي";
+  const lines = [
+    `**تحليل ${sym} · ${interval}**`,
+    snap.summary || `السعر ${snap.price}`,
+    `الاتجاه: ${trend}`,
+  ];
+  if (snap.rsi14 != null) lines.push(`RSI(14): ${snap.rsi14.toFixed(1)}`);
+  if (snap.sma20 != null) lines.push(`SMA20: ${snap.sma20.toFixed(2)}`);
+  if (structure?.summary) lines.push(structure.summary);
+  if (structure?.nearestSupport != null) {
+    lines.push(`أقرب دعم: ${structure.nearestSupport.toFixed(2)}`);
+  }
+  if (structure?.nearestResistance != null) {
+    lines.push(`أقرب مقاومة: ${structure.nearestResistance.toFixed(2)}`);
+  }
+  lines.push(
+    "لم يُسجَّل قرار تنفيذي من الوكيل — راجع المستويات على الشارت أو أعد المحاولة.",
+  );
+  return lines.join("\n");
+}
 
 export type { ChartVisionSource } from "./marketAnalyzeLabels";
 export { chartVisionLabelAr } from "./marketAnalyzeLabels";
@@ -203,8 +238,12 @@ export async function runMarketAnalyze(
     chartImage?: ChatImagePayload | null;
   },
 ): Promise<MarketAnalyzeResult> {
-  const sym = symbol.toUpperCase().trim();
   const market: MarketType = opts?.market ?? "crypto";
+  let sym = symbol.toUpperCase().trim();
+  if (market === "forex") {
+    const resolved = await resolveMt5Symbol(userId, sym);
+    if (resolved) sym = resolved;
+  }
   const profile = profileForInterval(interval);
 
   let snap: MarketSnapshot;
@@ -311,9 +350,15 @@ export async function runMarketAnalyze(
     {
       onActivity: opts?.onActivity,
       onDelta: opts?.onDelta,
-      mode: useVision ? "chart_analyze" : "default",
+      mode: "chart_analyze",
+      hasImage: useVision,
     },
   );
+
+  let reply = result.reply.trim();
+  if (!reply || reply === EMPTY_AGENT_REPLY) {
+    reply = buildAnalyzeFallbackReply(sym, interval, snap, structure);
+  }
 
   const intents = await processRecommendations(userId, result.recommendations, {
     allowAdvisoryApproval: true,
@@ -384,7 +429,7 @@ export async function runMarketAnalyze(
   ];
 
   return {
-    reply: result.reply,
+    reply,
     overlays: overlaysFromAnalysis(rec ?? undefined, snap),
     drawings,
     recommendation: rec,
