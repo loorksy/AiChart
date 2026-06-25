@@ -68,6 +68,10 @@ TERMINAL_PATH = os.environ.get(
     r"C:\Program Files\MetaTrader 5\terminal64.exe",
 )
 CREDS_FILE = os.environ.get("MT5_CREDS_FILE", r"Z:\data\credentials.json")
+# Wine on Linux cannot complete MT5 IPC — set MT5_CONNECT_CAPABLE=0 in compose.
+CONNECT_CAPABLE = os.environ.get("MT5_CONNECT_CAPABLE", "1").strip() != "0"
+# Fail fast on Wine IPC hangs; keep below nginx proxy_read_timeout (180s).
+INIT_TIMEOUT_MS = int(os.environ.get("MT5_INIT_TIMEOUT_MS", "25000"))
 
 def _timeframe_map():
     m = _load_mt5()
@@ -129,7 +133,7 @@ def do_connect(login, password, server):
         login=int(login),
         password=str(password),
         server=str(server),
-        timeout=120_000,
+        timeout=INIT_TIMEOUT_MS,
         portable=True,
     )
     if not ok:
@@ -373,7 +377,14 @@ class Handler(BaseHTTPRequestHandler):
         qs = {k: v[0] for k, v in parse_qs(url.query).items()}
 
         if url.path == "/health":
-            return self._send(200, {"ok": True, "initialized": _state["initialized"]})
+            return self._send(
+                200,
+                {
+                    "ok": True,
+                    "initialized": _state["initialized"],
+                    "connect_capable": CONNECT_CAPABLE,
+                },
+            )
 
         if not self._authed():
             return self._send(401, {"error": "invalid bridge token"})
@@ -459,6 +470,16 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             if url.path == "/connect":
+                if not CONNECT_CAPABLE:
+                    return self._send(
+                        503,
+                        {
+                            "error": (
+                                "MT5 IPC unavailable on this host (Wine/Linux). "
+                                "Use EA bridge or MetaApi."
+                            )
+                        },
+                    )
                 for field in ("login", "password", "server"):
                     if not body.get(field):
                         return self._send(400, {"error": f"{field} required"})

@@ -8,6 +8,9 @@ import {
   mtConnectSchema,
 } from "@/lib/mtConnectFlow";
 
+/** MT5 login via bridge can take up to ~90s; nginx /api/ timeout is 180s. */
+export const maxDuration = 180;
+
 /**
  * Connect user's MT account (login + password + server) — via MetaApi cloud
  * or the self-hosted MT5 bridge container, per the configured backend.

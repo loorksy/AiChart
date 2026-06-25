@@ -7,6 +7,9 @@
  * is set, jobs are enqueued to BullMQ and processed by a separate worker tier
  * that scales independently. When it is NOT set (local/dev), jobs run inline —
  * exactly the previous fire-and-forget behavior — so nothing breaks.
+ *
+ * Strategy bots (/api/cron/bots) always run inline on the web tier for reliable
+ * EA/MetaApi execution env — see cron/bots/route.ts.
  */
 import { captureError } from "./errorReporting";
 import { createLogger } from "./logger";

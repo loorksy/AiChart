@@ -80,6 +80,8 @@ export default function SettingsClient({
   mt,
   forexBackend,
   mt5LocalAvailable = false,
+  metaApiAvailable = false,
+  platformConnectAvailable = false,
   canDownloadEa = false,
   initialTab,
   embedMode = false,
@@ -93,6 +95,8 @@ export default function SettingsClient({
   mt: MtAccountMeta | null;
   forexBackend: ForexBackendMode;
   mt5LocalAvailable?: boolean;
+  metaApiAvailable?: boolean;
+  platformConnectAvailable?: boolean;
   canDownloadEa?: boolean;
   initialTab?: TabId;
   /** When true, omit PageLayout — for bridge console sections. */
@@ -114,12 +118,13 @@ export default function SettingsClient({
   // Per-user forex connection method: "platform" (server-side, no download) vs
   // "ea" (bridge installed on the user's own MT5). Initialized from the saved
   // preference, falling back to the operator's resolved default.
-  const platformAvailable = mt5LocalAvailable || forexBackend === "metaapi";
-  // Derive from the RESOLVED effective backend (loader already applied the
-  // fallback), so the card shown always matches how execution/data actually
-  // route — even when a stored "platform" choice couldn't be honored.
+  const platformAvailable =
+    platformConnectAvailable ||
+    metaApiAvailable ||
+    mt5LocalAvailable ||
+    forexBackend === "metaapi";
   const [forexMethod, setForexMethod] = useState<"platform" | "ea">(
-    forexBackend === "ea" ? "ea" : "platform",
+    forexBackend === "ea" || !platformAvailable ? "ea" : "platform",
   );
   const [savingForexMethod, setSavingForexMethod] = useState(false);
 
@@ -132,7 +137,7 @@ export default function SettingsClient({
     const value =
       method === "ea"
         ? "ea"
-        : forexBackend === "metaapi"
+        : forexBackend === "metaapi" || metaApiAvailable
           ? "metaapi"
           : mt5LocalAvailable
             ? "mt5local"
@@ -275,6 +280,15 @@ export default function SettingsClient({
               <ForexMethodSelector
                 method={forexMethod}
                 platformAvailable={platformAvailable}
+                platformHint={
+                  !platformAvailable
+                    ? metaApiAvailable
+                      ? undefined
+                      : "يتطلب METAAPI_TOKEN في لوحة المنصّة (Linux لا يدعم MT5 IPC) أو جسr EA."
+                    : metaApiAvailable && !mt5LocalAvailable
+                      ? "الربط السحابي عبر MetaApi — بدون EA."
+                      : undefined
+                }
                 saving={savingForexMethod}
                 onChoose={chooseForexMethod}
               />

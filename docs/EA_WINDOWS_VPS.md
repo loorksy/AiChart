@@ -30,7 +30,7 @@ VPS Linux (AiChart)  <── HTTPS heartbeat كل 1ث ──  VPS Windows (MT5 +
 
 ```bash
 cd /opt/aichart
-bash infra/vps-switch-forex-ea.sh
+bash infra/vps-disable-mt5.sh   # or: bash infra/vps-switch-forex-ea.sh
 ```
 
 أو يدوياً في `web/.env`:

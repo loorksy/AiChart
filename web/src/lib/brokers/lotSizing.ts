@@ -65,3 +65,13 @@ export function computeForexLots(
   }
   return { ok: true, lots };
 }
+
+/** Inverse of computeForexLots — notional exposure for a target lot size. */
+export function lotsToNotional(
+  lot: number,
+  price: number,
+  contractSize: number,
+): number {
+  if (lot <= 0 || price <= 0 || contractSize <= 0) return 0;
+  return lot * price * contractSize;
+}

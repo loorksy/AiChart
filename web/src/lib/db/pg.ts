@@ -311,6 +311,49 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type);
 
+  CREATE TABLE IF NOT EXISTS gold_agent_journal (
+    id                SERIAL PRIMARY KEY,
+    user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bot_id            INTEGER NOT NULL,
+    side              TEXT NOT NULL,
+    entry_price       DOUBLE PRECISION NOT NULL,
+    exit_price        DOUBLE PRECISION NOT NULL,
+    lot               DOUBLE PRECISION NOT NULL,
+    pnl               DOUBLE PRECISION NOT NULL,
+    regime            TEXT NOT NULL,
+    session           TEXT NOT NULL,
+    confidence        DOUBLE PRECISION NOT NULL,
+    trade_quality     DOUBLE PRECISION NOT NULL,
+    trade_score       DOUBLE PRECISION NOT NULL,
+    danger_level      TEXT NOT NULL,
+    advisor_votes_json TEXT NOT NULL,
+    weights_json      TEXT NOT NULL,
+    exit_reason       TEXT NOT NULL,
+    duration_ms       INTEGER NOT NULL,
+    fingerprint       TEXT NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_gold_agent_journal_bot ON gold_agent_journal (user_id, bot_id);
+
+  CREATE TABLE IF NOT EXISTS gold_agent_performance (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bot_id      INTEGER NOT NULL,
+    stats_json  TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, bot_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS gold_agent_setups (
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bot_id        INTEGER NOT NULL,
+    fingerprint   TEXT NOT NULL,
+    win_rate      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    profit_factor DOUBLE PRECISION NOT NULL DEFAULT 1,
+    samples       INTEGER NOT NULL DEFAULT 0,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, bot_id, fingerprint)
+  );
+
   CREATE TABLE IF NOT EXISTS chat_messages (
     id              SERIAL PRIMARY KEY,
     conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -921,6 +964,58 @@ async function migratePg(client: PoolClient) {
 
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type)
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS gold_agent_journal (
+      id                SERIAL PRIMARY KEY,
+      user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      bot_id            INTEGER NOT NULL,
+      side              TEXT NOT NULL,
+      entry_price       DOUBLE PRECISION NOT NULL,
+      exit_price        DOUBLE PRECISION NOT NULL,
+      lot               DOUBLE PRECISION NOT NULL,
+      pnl               DOUBLE PRECISION NOT NULL,
+      regime            TEXT NOT NULL,
+      session           TEXT NOT NULL,
+      confidence        DOUBLE PRECISION NOT NULL,
+      trade_quality     DOUBLE PRECISION NOT NULL,
+      trade_score       DOUBLE PRECISION NOT NULL,
+      danger_level      TEXT NOT NULL,
+      advisor_votes_json TEXT NOT NULL,
+      weights_json      TEXT NOT NULL,
+      exit_reason       TEXT NOT NULL,
+      duration_ms       INTEGER NOT NULL,
+      fingerprint       TEXT NOT NULL,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_gold_agent_journal_bot ON gold_agent_journal (user_id, bot_id)
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS gold_agent_performance (
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      bot_id      INTEGER NOT NULL,
+      stats_json  TEXT NOT NULL,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, bot_id)
+    )
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS gold_agent_setups (
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      bot_id        INTEGER NOT NULL,
+      fingerprint   TEXT NOT NULL,
+      win_rate      DOUBLE PRECISION NOT NULL DEFAULT 0,
+      profit_factor DOUBLE PRECISION NOT NULL DEFAULT 1,
+      samples       INTEGER NOT NULL DEFAULT 0,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, bot_id, fingerprint)
+    )
   `).catch(() => {});
 }
 

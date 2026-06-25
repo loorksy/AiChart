@@ -31,6 +31,22 @@ test("no preference uses the operator's global default", async () => {
   assert.equal(resolveForexBackendFromPref(undefined), "mt5local");
 });
 
+test("getForexBackend falls back when mt5local forced but bridge unset", async () => {
+  process.env.FOREX_BACKEND = "mt5local";
+  delete process.env.MT5_BRIDGE_URL;
+  delete process.env.METAAPI_TOKEN;
+  const { getForexBackend } = await import("../brokers/forexBackend");
+  assert.equal(getForexBackend(), "ea");
+});
+
+test("getForexBackend falls back to metaapi when mt5local forced but bridge unset and token set", async () => {
+  process.env.FOREX_BACKEND = "mt5local";
+  delete process.env.MT5_BRIDGE_URL;
+  process.env.METAAPI_TOKEN = "tok";
+  const { getForexBackend } = await import("../brokers/forexBackend");
+  assert.equal(getForexBackend(), "metaapi");
+});
+
 test("EA is always selectable even without any server infra", async () => {
   delete process.env.MT5_BRIDGE_URL;
   process.env.FOREX_BACKEND = "mt5local"; // global wants mt5local…

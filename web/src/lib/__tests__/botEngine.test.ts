@@ -28,6 +28,7 @@ test("grid bot paper lifecycle: open → grid_add → take_profit", async () => 
   );
 
   let bot = await createBotSession(userId, {
+    strategy: "grid",
     symbol: "XAUUSD",
     market: "forex",
     side: "sell",
@@ -84,6 +85,7 @@ test("master kill stops the bot before any action", async () => {
     ["bot2@test.com", "x", "user", "active"],
   );
   const bot = await createBotSession(userId, {
+    strategy: "grid",
     symbol: "XAUUSD",
     market: "forex",
     side: "sell",

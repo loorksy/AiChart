@@ -12,11 +12,13 @@ import { cn } from "@/lib/utils";
 export function ForexMethodSelector({
   method,
   platformAvailable,
+  platformHint,
   saving,
   onChoose,
 }: {
   method: "platform" | "ea";
   platformAvailable: boolean;
+  platformHint?: string;
   saving: boolean;
   onChoose: (method: "platform" | "ea") => void;
 }) {
@@ -62,7 +64,8 @@ export function ForexMethodSelector({
           </span>
           {!platformAvailable && (
             <span className="mt-1 text-[11px] font-medium text-amber-500">
-              غير مفعّل حالياً من الإدارة.
+              {platformHint ??
+                "غير مفعّل حالياً — أضِف METAAPI_TOKEN من لوحة المنصّة أو استخدم جسر EA."}
             </span>
           )}
         </button>

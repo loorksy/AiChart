@@ -250,6 +250,11 @@ export function parseEaSymbolSpecs(json: string | null): EaSymbolSpec[] {
   return [];
 }
 
+function eaForexCanonicalKey(symbol: string): string {
+  const alnum = symbol.replace(/[^A-Za-z0-9]/g, "");
+  return alnum.length >= 6 ? alnum.slice(0, 6).toUpperCase() : alnum.toUpperCase();
+}
+
 export async function getEaSymbolSpec(
   userId: number,
   symbol: string,
@@ -257,10 +262,12 @@ export async function getEaSymbolSpec(
   const conn = await getEaConnection(userId);
   if (!conn) return null;
   const specs = parseEaSymbolSpecs(conn.symbol_specs_json);
-  const target = symbol.toUpperCase();
-  return (
-    specs.find((s) => s.symbol?.toUpperCase() === target) ?? null
-  );
+  if (specs.length === 0) return null;
+  const target = symbol.trim().toUpperCase();
+  const exact = specs.find((s) => s.symbol?.toUpperCase() === target);
+  if (exact) return exact;
+  const key = eaForexCanonicalKey(symbol);
+  return specs.find((s) => eaForexCanonicalKey(s.symbol ?? "") === key) ?? null;
 }
 
 // ---------------------------------------------------------------------------

@@ -37,8 +37,10 @@ log "stop mt5 container (free ~1.5GB RAM)"
 cd "$INSTALL_DIR/infra"
 docker compose stop mt5 2>/dev/null || true
 
-log "restart aichart-web"
+log "restart aichart-web + aichart-worker"
 pm2 restart aichart-web --update-env
+pm2 restart aichart-worker --update-env 2>/dev/null || true
+pm2 save 2>/dev/null || true
 sleep 4
 PORT="$(grep '^PORT=' "$ENV_FILE" | cut -d= -f2- || echo 3010)"
 curl -fsS -o /dev/null -w "web: %{http_code}\n" "http://127.0.0.1:${PORT}/"

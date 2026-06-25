@@ -11,6 +11,9 @@ if [ -n "${MT5_BRIDGE_TOKEN:-}" ]; then
   printf '%s' "$MT5_BRIDGE_TOKEN" > /data/bridge_token
 fi
 
+# MetaTrader5 Python IPC fails under Wine on Linux (error -10005).
+export MT5_CONNECT_CAPABLE="${MT5_CONNECT_CAPABLE:-0}"
+
 MT5_DIR='C:\Program Files\MetaTrader 5'
 CONFIG_WIN="${MT5_DIR}\\Config"
 CONFIG_LINUX="/opt/mt5/drive_c/Program Files/MetaTrader 5/Config"

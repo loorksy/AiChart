@@ -37,7 +37,18 @@ export function MtConnectCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platform, server, login, password }),
       });
-      const data = await res.json();
+      let data: { error?: string; online?: boolean } = {};
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        if (res.status === 504) {
+          setMsg({
+            type: "err",
+            text: "انتهت مهلة الاتصال — قد يكون جسر MT5 بطيئاً أو متوقفاً. جرّب «جسر EA» من الإعدادات.",
+          });
+          return;
+        }
+      }
       if (!res.ok) {
         setMsg({ type: "err", text: data.error ?? "تعذّر ربط الحساب." });
         return;
@@ -51,7 +62,10 @@ export function MtConnectCard({
       });
       router.refresh();
     } catch {
-      setMsg({ type: "err", text: "تعذّر الاتصال بالخادم." });
+      setMsg({
+        type: "err",
+        text: "تعذّر الاتصال بالخادم — تحقق من الشبكة أو جرّب لاحقاً.",
+      });
     } finally {
       setBusy(false);
     }
@@ -110,7 +124,13 @@ export function MtConnectCard({
         </div>
       )}
 
-      <div className="space-y-4">
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void connect();
+        }}
+      >
         <div>
           <label className="text-sm font-medium">المنصّة</label>
           <select
@@ -180,8 +200,7 @@ export function MtConnectCard({
         )}
 
         <button
-          type="button"
-          onClick={() => void connect()}
+          type="submit"
           disabled={busy}
           className="btn btn-primary w-full gap-2 sm:w-auto"
         >
@@ -199,7 +218,7 @@ export function MtConnectCard({
           <li>أدخل كلمة مرور التداول (Master) — نفس التي تسجّل دخولك بها.</li>
           <li>اضغط «ربط الحساب» — لا حاجة لتثبيت أي شيء آخر.</li>
         </ol>
-      </div>
+      </form>
     </SurfaceCard>
   );
 }
