@@ -11,7 +11,7 @@ import {
   type ChartVisionSource,
 } from "@/lib/marketAnalyzeLabels";
 import { consumeSse } from "@/lib/sse";
-import { computeRewardRisk } from "@/lib/riskGuard";
+import { computeRewardRisk } from "@/lib/rewardRisk";
 import type { Recommendation } from "@/lib/types";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
 import type { MarketType } from "@/lib/markets/types";

@@ -4,36 +4,17 @@ import { resolveMaxOpenTrades } from "./riskLimits";
 import type { ExecutionEnv } from "./executionEnv";
 import type { MarketType } from "./markets/types";
 import type { AdminLimits, TradingSettings } from "./types";
+import { computeRewardRisk } from "./rewardRisk";
+
+export { computeRewardRisk } from "./rewardRisk";
 
 export const DEFAULT_MIN_CONFIDENCE = 80;
 export const PRACTICE_MIN_CONFIDENCE_FLOOR = 50;
-/**
- * Default minimum reward:risk ratio. An objective trade-quality gate — a real
- * desk does not enter a setup that risks more than it can make. This is NOT a
- * confidence cutoff; it only triggers when entry/SL/TP are all known.
- */
 export const DEFAULT_MIN_RR = 1;
 
-/** Effective minimum R:R: user override (settings.min_rr) or DEFAULT_MIN_RR. */
 export function getEffectiveMinRr(settings: TradingSettings): number {
   const v = Number(settings.min_rr);
   return Number.isFinite(v) && v >= 0 ? v : DEFAULT_MIN_RR;
-}
-
-/**
- * Reward:risk from entry/SL/TP. Returns null when it cannot be computed
- * (missing prices or a zero-width stop) so the caller can skip the gate.
- */
-export function computeRewardRisk(
-  entry: number | null | undefined,
-  stopLoss: number | null | undefined,
-  takeProfit: number | null | undefined,
-): number | null {
-  if (entry == null || stopLoss == null || takeProfit == null) return null;
-  const risk = Math.abs(entry - stopLoss);
-  const reward = Math.abs(takeProfit - entry);
-  if (!(risk > 0) || !(reward >= 0)) return null;
-  return reward / risk;
 }
 
 /** Effective confidence threshold: demo/practice uses 50; live uses settings.min_confidence. (Bypassed by returning 0 to let the agent decide) */
