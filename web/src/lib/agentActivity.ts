@@ -78,6 +78,13 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
   start_scalp_session: (input) =>
     `بدء جلسة سكالب · ${String(input.symbol ?? "")}`,
   stop_scalp_session: () => "إيقاف جلسة السكالب",
+  search_trade_memory: (input) =>
+    `بحث في ذاكرة الصفقات${input.symbol ? ` · ${String(input.symbol)}` : ""}`,
+  submit_scalp_decision: (input) =>
+    input.action === "enter"
+      ? `قرار سكالب · ${input.side === "buy" ? "دخول شراء" : "دخول بيع"}`
+      : "قرار سكالب · انتظار",
+  set_risk_guard: () => "ضبط حارس المخاطر",
 };
 
 export function describeToolUse(
