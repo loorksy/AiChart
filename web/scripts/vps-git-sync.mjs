@@ -27,13 +27,17 @@ git reset --hard origin/main
 echo "HEAD now: $(git rev-parse --short HEAD)"
 git log -1 --oneline
 
+echo "==> Stop web before build (avoid ChunkLoadError)"
+pm2 stop aichart-web 2>/dev/null || true
+
 echo "==> npm install + build"
 cd /opt/aichart/web
+rm -rf .next
 npm install
 npm run build
 
-echo "==> Restart PM2"
-pm2 restart aichart-web --update-env || (
+echo "==> Start PM2"
+pm2 start aichart-web --update-env || (
   PORT=3010 NODE_ENV=production pm2 start npm --name aichart-web --cwd /opt/aichart/web --update-env -- start
 )
 pm2 save

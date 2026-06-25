@@ -19,6 +19,10 @@ if command -v psql >/dev/null 2>&1; then
 fi
 
 cd /opt/aichart/web
+log "stop web before build"
+pm2 stop aichart-web 2>/dev/null || true
+log "clean .next"
+rm -rf .next
 log "npm ci"
 if ! npm ci; then
   log "WARN: npm ci failed — falling back to npm install"
@@ -51,8 +55,11 @@ if [[ "${FOREX_MODE,,}" == "ea" || "${FOREX_MODE,,}" == "mt_ea" ]]; then
   docker compose stop mt5 2>/dev/null || true
 fi
 
-log "pm2 restart"
-pm2 restart aichart-web --update-env
+log "pm2 start"
+pm2 start aichart-web --update-env 2>/dev/null || (
+  cd /opt/aichart/web
+  PORT=3010 NODE_ENV=production pm2 start npm --name aichart-web --cwd /opt/aichart/web --update-env -- start
+)
 if pm2 describe aichart-worker >/dev/null 2>&1; then
   log "pm2 restart worker"
   pm2 restart aichart-worker --update-env
