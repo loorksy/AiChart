@@ -1166,7 +1166,7 @@ export async function runAgent(
     : baseTools;
   const maxSteps =
     options?.mode === "chart_analyze"
-      ? 2
+      ? 8
       : options?.responseMode === "fast"
         ? 6
         : options?.responseMode === "expert"
@@ -1255,9 +1255,16 @@ export async function runAgent(
   }
 
   if (!finalText) {
-    finalText = recorded.length
-      ? "سجّلت توصيتي بالأعلى."
-      : "لم أتمكّن من صياغة رد. حاول مجدداً.";
+    if (recorded.length) {
+      const rec = recorded[0]!;
+      const actionAr =
+        rec.action === "buy" ? "شراء" : rec.action === "sell" ? "بيع" : "انتظار";
+      finalText =
+        rec.rationale?.trim() ||
+        `توصية ${actionAr} على ${rec.symbol}${rec.confidence ? ` — ثقة ${rec.confidence}%` : ""}.`;
+    } else {
+      finalText = "لم أتمكّن من صياغة رد. حاول مجدداً.";
+    }
   }
 
   const reasoningSummary = executedToolsList.length > 0

@@ -342,9 +342,12 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
         }
         const candles = (data.candles ?? []) as CandlestickData<UTCTimestamp>[];
         if (candles.length > 0) {
-          applyCandles(candles, {
+          const applied = applyCandles(candles, {
             fit: !silent && initialLoadRef.current,
           });
+          if (!applied && !ambient && !silent) {
+            setError("بيانات الشارت غير متوافقة مع الرمز");
+          }
           nextCursorRef.current =
             typeof data.nextCursor === "number" ? data.nextCursor : null;
         }

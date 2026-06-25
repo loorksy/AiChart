@@ -50,6 +50,7 @@ export default function ChatSquareClient({
   );
   const [imageError, setImageError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [chartAnalyzing, setChartAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showActivity, setShowActivity] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -332,7 +333,7 @@ export default function ChatSquareClient({
   async function send(text: string, image?: ChatImagePayload | null) {
     const content = text.trim();
     const attach = image ?? pendingImage;
-    if ((!content && !attach && attachments.length === 0) || busy) return;
+    if ((!content && !attach && attachments.length === 0) || busy || chartAnalyzing) return;
     setError(null);
 
     const sym = extractSymbol(content);
@@ -474,6 +475,10 @@ export default function ChatSquareClient({
 
   const handleChartAnalyzeStart = useCallback(async () => {
     chartStreamRef.current = "";
+    setError(null);
+    setShowActivity(true);
+    resetActivities();
+    setChartAnalyzing(true);
     let convId = selectedId;
     if (!convId) convId = await createNew();
     appendMessage({
@@ -493,6 +498,7 @@ export default function ChatSquareClient({
     previewInterval,
     createNew,
     appendMessage,
+    resetActivities,
   ]);
 
   const handleChartStreamDelta = useCallback(
@@ -525,6 +531,8 @@ export default function ChatSquareClient({
         setPreviewSymbol(payload.recommendation.symbol);
         setPreviewOpen(true);
       }
+      setChartAnalyzing(false);
+      setShowActivity(false);
       void fetchConversations();
       void refreshMe();
       onCreditsUsed?.();
@@ -535,6 +543,18 @@ export default function ChatSquareClient({
       refreshMe,
       onCreditsUsed,
     ],
+  );
+
+  const handleChartAnalyzeError = useCallback(
+    (message: string) => {
+      updateLastAssistant({
+        content: message || (locale === "ar" ? "تعذّر إكمال التحليل." : "Analysis failed."),
+        streaming: false,
+      });
+      setChartAnalyzing(false);
+      setShowActivity(false);
+    },
+    [updateLastAssistant, locale],
   );
 
   const handleRequestChatMessage = useCallback(
@@ -561,15 +581,19 @@ export default function ChatSquareClient({
     onAnalyzeStart: () => void handleChartAnalyzeStart(),
     onStreamDelta: handleChartStreamDelta,
     onAnalyzeDone: handleChartAnalyzeDone,
+    onAnalyzeError: handleChartAnalyzeError,
+    onActivity: upsertActivity,
     onRequestChatMessage: handleRequestChatMessage,
   };
+
+  const conversationBusy = busy || chartAnalyzing;
 
   const inputPlaceholder = hasConversation
     ? t("chat.placeholder_followup")
     : t("chat.placeholder");
 
   // Fresh chat (no messages yet) → Phase A (Welcoming State).
-  const isEmpty = messages.length === 0 && !busy;
+  const isEmpty = messages.length === 0 && !conversationBusy;
 
   const getQuickActions = () => [
     {
@@ -701,7 +725,7 @@ export default function ChatSquareClient({
             /* Phase B: Operational Mode (Active State) */
             <ChatConversation
               messages={messages}
-              busy={busy}
+              busy={conversationBusy}
               showActivity={showActivity}
               activities={activities}
               hideActivityOnMobile
@@ -750,8 +774,8 @@ export default function ChatSquareClient({
             attachments={attachments}
             onAddAttachment={handleAddAttachment}
             onRemoveAttachment={handleRemoveAttachment}
-            disabled={busy || busyIntentId != null}
-            busy={busy}
+            disabled={conversationBusy || busyIntentId != null}
+            busy={conversationBusy}
             placeholder={inputPlaceholder}
             centered={false}
             selections={sel}

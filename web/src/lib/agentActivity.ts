@@ -88,53 +88,9 @@ export function describeToolUse(
   return fn ? fn(input) : `تشغيل ${name}`;
 }
 
-/** يظهر سجل النشاط فقط لأسئلة تحليل/تداول وليس للمحادثة العادية */
-export function needsAgentActivity(message: string): boolean {
-  const text = message.trim();
-  if (!text) return false;
-  if (/\b[A-Z]{2,12}USDT\b/i.test(text)) return true;
-
-  const lower = text.toLowerCase();
-  const keywords = [
-    "تحليل",
-    "حلل",
-    "حلّل",
-    "رأيك",
-    "رأي",
-    "توصية",
-    "توصي",
-    "شراء",
-    "بيع",
-    "صفقة",
-    "سوق",
-    "فرصة",
-    "مخاطر",
-    "rsi",
-    "macd",
-    "شارت",
-    "دعم",
-    "مقاومة",
-    "btc",
-    "eth",
-    "bnb",
-    "sol",
-    "analyze",
-    "analysis",
-    "trade",
-    "market",
-    "recommend",
-    "buy",
-    "sell",
-    "chart",
-    "price",
-    "سعر",
-    "عملة",
-    "عملات",
-    "تداول",
-    "مراقب",
-    "monitor",
-  ];
-  return keywords.some((k) => lower.includes(k));
+/** يظهر سجل نشاط الوكيل لكل طلب يمرّ عبر الوكيل (دردشة + زر تحليل). */
+export function needsAgentActivity(_message: string): boolean {
+  return true;
 }
 
 export function emitActivity(

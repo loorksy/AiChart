@@ -107,12 +107,15 @@ export async function POST(req: NextRequest) {
       if (!conv) return;
 
       const source = body.source ?? "market";
-      await appendChatMessage(
-        conv.id,
-        "user",
-        `تحليل ${symbol} · ${interval}`,
-        { analysis_source: source, symbol, interval, market, type: "chart_analyze" },
-      );
+      // chat_chart: الواجهة أضافت رسالة المستخدم بالفعل — نخزّن ردّ المساعد فقط.
+      if (source !== "chat_chart") {
+        await appendChatMessage(
+          conv.id,
+          "user",
+          `تحليل ${symbol} · ${interval}`,
+          { analysis_source: source, symbol, interval, market, type: "chart_analyze" },
+        );
+      }
       await appendChatMessage(conv.id, "assistant", result.reply, {
         analysis_source: source,
         symbol,

@@ -46,10 +46,21 @@ export async function GET(req: NextRequest) {
         cursor: Number.isFinite(cursor) ? cursor : undefined,
       });
 
-      const candles = sanitizeCandlesForMarket(
-        normalizeCandlesForChart(result.candles),
-        market,
-      ).slice(-limit);
+      const normalized = normalizeCandlesForChart(result.candles);
+      const candles = sanitizeCandlesForMarket(normalized, market).slice(-limit);
+
+      if (normalized.length > 0 && candles.length === 0) {
+        return NextResponse.json({
+          symbol: result.symbol,
+          interval: result.interval,
+          market: result.market,
+          candles: [],
+          pending: false,
+          error: "بيانات الشارت غير متوافقة مع الرمز",
+          source: result.source,
+          fromCache: result.fromCache,
+        });
+      }
 
       const nextCursor =
         market === "crypto" && result.nextCursor

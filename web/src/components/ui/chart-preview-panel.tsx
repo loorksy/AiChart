@@ -10,6 +10,7 @@ import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
 import { useEaLivePrice } from "@/hooks/useEaLivePrice";
 import { useChartAnalysis } from "@/hooks/useChartAnalysis";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
+import type { AgentActivity } from "@/lib/agentActivity";
 import type { Recommendation } from "@/lib/types";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,8 @@ export function ChartPreviewPanel({
   onAnalyzeStart,
   onStreamDelta,
   onAnalyzeDone,
+  onAnalyzeError,
+  onActivity,
   onRequestChatMessage,
 }: {
   symbol: string;
@@ -54,6 +57,8 @@ export function ChartPreviewPanel({
     recommendation?: Recommendation | null;
     intents?: ProcessedIntent[];
   }) => void;
+  onAnalyzeError?: (message: string) => void;
+  onActivity?: (activity: AgentActivity) => void;
   onRequestChatMessage?: (text: string) => void;
 }) {
   const chartRef = useRef<PriceChartHandle>(null);
@@ -83,6 +88,8 @@ export function ChartPreviewPanel({
     onCreditsUsed,
     onAnalyzeStart,
     onStreamDelta,
+    onAnalyzeError,
+    onActivity,
     onAnalyzeDone: (payload) => {
       onAnalyzeDone?.({
         reply: payload.reply,

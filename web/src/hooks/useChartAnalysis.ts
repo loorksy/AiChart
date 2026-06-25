@@ -47,6 +47,10 @@ export interface UseChartAnalysisOptions {
   onAnalyzeDone?: (payload: ChartAnalyzeDonePayload) => void;
   /** Called when analysis starts (before fetch). */
   onAnalyzeStart?: () => void;
+  /** Real agent tool/activity events during analysis (for chat timeline). */
+  onActivity?: (activity: AgentActivity) => void;
+  /** Called when analysis fails (stream or HTTP error). */
+  onAnalyzeError?: (message: string) => void;
 }
 
 const LIVE_DEBOUNCE_MS = 1500;
@@ -62,6 +66,8 @@ export function useChartAnalysis({
   onStreamDelta,
   onAnalyzeDone,
   onAnalyzeStart,
+  onActivity,
+  onAnalyzeError,
 }: UseChartAnalysisOptions) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisText, setAnalysisText] = useState("");
@@ -192,9 +198,10 @@ export function useChartAnalysis({
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          setAnalyzeError(
-            (data as { error?: string }).error ?? "تعذّر بدء التحليل.",
-          );
+          const msg =
+            (data as { error?: string }).error ?? "تعذّر بدء التحليل.";
+          setAnalyzeError(msg);
+          onAnalyzeError?.(msg);
           return;
         }
 
@@ -212,6 +219,7 @@ export function useChartAnalysis({
               }
               return [...prev, a];
             });
+            onActivity?.(a);
           },
           onDelta: (t) => {
             streamed += t;
@@ -221,13 +229,18 @@ export function useChartAnalysis({
           onError: (msg) => {
             streamError = msg;
             setAnalyzeError(msg);
+            onAnalyzeError?.(msg);
           },
         });
 
         if (controller.signal.aborted) return;
 
         if (!data) {
-          if (!streamError) setAnalyzeError("لم يصل تحليل من الوكيل.");
+          if (!streamError) {
+            const msg = "لم يصل تحليل من الوكيل.";
+            setAnalyzeError(msg);
+            onAnalyzeError?.(msg);
+          }
           return;
         }
 
@@ -240,7 +253,9 @@ export function useChartAnalysis({
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setAnalyzeError("حدث خطأ أثناء التحليل.");
+        const msg = "حدث خطأ أثناء التحليل.";
+        setAnalyzeError(msg);
+        onAnalyzeError?.(msg);
       } finally {
         analyzingRef.current = false;
         if (abortRef.current === controller) {
@@ -259,6 +274,8 @@ export function useChartAnalysis({
       onAnalyzeStart,
       onStreamDelta,
       onAnalyzeDone,
+      onAnalyzeError,
+      onActivity,
       onCreditsUsed,
       applyDonePayload,
     ],
