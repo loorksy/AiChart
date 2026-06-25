@@ -4,6 +4,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -21,12 +22,17 @@ import {
   type Time,
 } from "lightweight-charts";
 import type { ChartOverlay } from "@/lib/chartOverlays";
-import { OVERLAY_COLORS } from "@/lib/chartOverlays";
+import { OVERLAY_COLORS, overlaysFromRecommendation } from "@/lib/chartOverlays";
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import {
+  parseChartDrawingsJson,
+  validateChartDrawings,
+} from "@/lib/chartDrawings";
 import {
   applyChartDrawings,
   collectDrawingMarkers,
 } from "@/lib/chartDrawingEngine";
+import { profileForInterval } from "@/lib/analysisProfile";
 import type { LegendItem } from "@/lib/chartDrawingLabels";
 import { ChartDrawingLegend } from "@/components/market/ChartDrawingLegend";
 import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
@@ -137,6 +143,37 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
   const initialLoadRef = useRef(true);
   const loadingHistoryRef = useRef(false);
   const candlesRef = useRef<CandlestickData<UTCTimestamp>[]>([]);
+
+  // Derive overlays + drawings from the latest actionable recommendation for this
+  // symbol. This makes a recommendation requested in chat (which has no explicit
+  // `drawings`/`overlays` props) render its levels and zones on the chart exactly
+  // like the analyze button does — for every pair and market. Explicit props from
+  // the analyze flow always take precedence.
+  const recLayers = useMemo(() => {
+    const rec = [...recommendations]
+      .reverse()
+      .find(
+        (r) =>
+          r.symbol?.toUpperCase() === symbol.toUpperCase() &&
+          (r.action === "buy" || r.action === "sell"),
+      );
+    if (!rec) {
+      return { overlays: [] as ChartOverlay[], drawings: [] as ChartDrawing[] };
+    }
+    const raw = parseChartDrawingsJson(rec.chart_drawings_json);
+    const validated = raw.length
+      ? validateChartDrawings(
+          raw,
+          rec.action,
+          rec.confidence ?? 60,
+          profileForInterval(interval),
+        )
+      : [];
+    return { overlays: overlaysFromRecommendation(rec), drawings: validated };
+  }, [recommendations, symbol, interval]);
+
+  const effectiveOverlays = overlays?.length ? overlays : recLayers.overlays;
+  const effectiveDrawings = drawings?.length ? drawings : recLayers.drawings;
   const nextCursorRef = useRef<number | null>(null);
   const dataKey = `${symbol}|${interval}|${market}`;
   const chartLimit = ambient ? 120 : 500;
@@ -514,7 +551,7 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
     if (ambient) return;
     const series = seriesRef.current;
     if (!series) return;
-    const priceLines = (overlays ?? []).map((o) =>
+    const priceLines = effectiveOverlays.map((o) =>
       series.createPriceLine({
         price: o.price,
         color: OVERLAY_COLORS[o.type],
@@ -527,7 +564,7 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
     return () => {
       for (const line of priceLines) series.removePriceLine(line);
     };
-  }, [overlays, ambient]);
+  }, [effectiveOverlays, ambient]);
 
   useEffect(() => {
     if (ambient) return;
@@ -538,7 +575,7 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
     const result = applyChartDrawings(
       chart,
       candleSeries,
-      drawings ?? [],
+      effectiveDrawings,
       stableBarTimeRef.current || lastBarTime,
       interval,
     );
@@ -548,7 +585,7 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
       result.cleanup();
       setLegendItems([]);
     };
-  }, [drawings, interval, lastBarTime, ambient]);
+  }, [effectiveDrawings, interval, lastBarTime, ambient]);
 
   useEffect(() => {
     if (ambient) return;
@@ -567,7 +604,7 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
 
     const drawingMarkers =
       lastBarTime > 0
-        ? collectDrawingMarkers(drawings ?? [], lastBarTime, interval)
+        ? collectDrawingMarkers(effectiveDrawings, lastBarTime, interval)
         : [];
 
     const merged = [...recMarkers, ...drawingMarkers].sort(
@@ -575,7 +612,7 @@ const PriceChart = forwardRef<PriceChartHandle, Props>(function PriceChart(
     );
     const markers = createSeriesMarkers(series, merged);
     return () => markers.detach();
-  }, [recommendations, symbol, drawings, interval, lastBarTime, ambient]);
+  }, [recommendations, symbol, effectiveDrawings, interval, lastBarTime, ambient]);
 
   return (
     <div className={cn("relative isolate z-0 w-full", fill && "h-full", className)}>

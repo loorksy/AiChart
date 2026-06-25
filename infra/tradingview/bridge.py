@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from typing import Any
@@ -30,19 +31,55 @@ def _set_cache(key: str, data: dict[str, Any]) -> None:
     _CACHE[key] = (time.time(), data)
 
 
-def map_symbol(market: str, symbol: str) -> tuple[str, str]:
-    sym = symbol.upper().strip()
-    if market == "forex":
-        if sym.endswith("USD") and len(sym) == 6:
-            return "OANDA", sym
-        if sym == "XAUUSD":
-            return "OANDA", "XAUUSD"
-        return "FX", sym
-    # crypto
-    base = sym.replace("USDT", "").replace("USD", "")
-    if sym.endswith("USDT"):
-        return "BINANCE", sym
+# Precious-metal ISO bases — quoted in USD and routed to OANDA on TradingView.
+# (The only special case: metals aren't currencies and need a different exchange.)
+_METAL_BASES = {"XAU", "XAG", "XPT", "XPD"}
+# Broker word-aliases some platforms use instead of the ISO pair.
+_METAL_WORDS = {"GOLD": "XAUUSD", "SILVER": "XAGUSD", "SILV": "XAGUSD"}
+
+
+def _clean(sym: str) -> str:
+    """Uppercase and drop broker separators/suffix punctuation (. _ - space)."""
+    return re.sub(r"[^A-Z0-9]", "", sym.upper())
+
+
+def _map_forex(sym: str) -> tuple[str, str]:
+    s = _clean(sym)
+    # Broker word-aliases for metals (GOLD, SILVER) before the ISO-pair rule.
+    for word, tv in _METAL_WORDS.items():
+        if s.startswith(word):
+            return "OANDA", tv
+    # Universal convention: every forex/metal symbol begins with a 6-char ISO pair
+    # (3-letter BASE + 3-letter QUOTE); any trailing chars are a broker suffix.
+    # No currency whitelist — this resolves ALL pairs: majors, minors and exotics
+    # (EURTRY, USDMXN, EURPLN, USDZAR, ...).
+    if len(s) >= 6 and s[:6].isalpha():
+        pair = s[:6]
+        base, quote = pair[:3], pair[3:]
+        if base in _METAL_BASES:
+            return "OANDA", pair
+        # USD-quoted majors resolve best on OANDA; route the rest to FX (broad coverage).
+        return ("OANDA" if quote == "USD" else "FX"), pair
+    return "FX", s
+
+
+def _map_crypto(sym: str) -> tuple[str, str]:
+    s = _clean(sym)
+    if s.endswith("USDT"):
+        return "BINANCE", s
+    base = s.replace("USDT", "").replace("USD", "") or s
     return "BINANCE", f"{base}USDT"
+
+
+def map_symbol(market: str, symbol: str) -> tuple[str, str]:
+    """Normalize an account/broker symbol to a TradingView (exchange, ticker) pair.
+
+    Works for every market and pair: strips broker suffixes (XAUUSDm, EURUSD.r,
+    GBPJPY_i) so the symbol resolves on TradingView regardless of the broker.
+    """
+    if market == "forex":
+        return _map_forex(symbol)
+    return _map_crypto(symbol)
 
 
 def map_interval(interval: str) -> str:

@@ -245,10 +245,13 @@ export async function runMarketAnalyze(
     if (resolved) sym = resolved;
   }
   const profile = profileForInterval(interval);
+  const emit = (a: import("./agentActivity").AgentActivity) =>
+    opts?.onActivity?.(a);
 
   let snap: MarketSnapshot;
   let ctx: Awaited<ReturnType<typeof fetchMarketContext>> | null = null;
 
+  emit({ id: "mkt-data", label: "جلب لقطة السوق والشموع", status: "running" });
   const [snapResult, ohlcResult, tvContext] = await Promise.all([
     market === "forex"
       ? buildForexSnapshot(userId, sym, interval)
@@ -258,6 +261,15 @@ export async function runMarketAnalyze(
     ),
     fetchTradingViewContext(sym, interval, market),
   ]);
+  emit({ id: "mkt-data", label: "جلب لقطة السوق والشموع", status: "done" });
+  if (tvContext?.ok) {
+    emit({
+      id: "tv-context",
+      label: "مؤشرات TradingView متعددة الأطر",
+      status: "done",
+      tool: "tradingview",
+    });
+  }
 
   snap = snapResult;
   if (market !== "forex") {
@@ -273,6 +285,13 @@ export async function runMarketAnalyze(
         )
       : null;
 
+  if (structure) {
+    emit({
+      id: "structure",
+      label: "تحليل البنية: الدعم والمقاومة والسيولة",
+      status: "done",
+    });
+  }
   const seedDrawings = structure ? structureToSeedDrawings(structure) : [];
 
   const extraBlocks: string[] = [];
@@ -284,10 +303,18 @@ export async function runMarketAnalyze(
     ? formatContextForPrompt(ctx)
     : "سوق فوركس عبر MetaTrader — لا يتوفر سياق Web3/أخبار. اعتمد على التحليل الفني.";
 
+  emit({ id: "memory", label: "مطابقة دروس صفقات سابقة", status: "running" });
   const similarLessons = await searchSimilarLessons(userId, {
     symbol: sym,
     snapshot: { rsi: snap.rsi14, trend: snap.trend },
     limit: 3,
+  });
+  emit({
+    id: "memory",
+    label: similarLessons.length
+      ? `دروس مشابهة: ${similarLessons.length}`
+      : "لا دروس مشابهة سابقة",
+    status: "done",
   });
   const memoryBlock = formatLessonsForPrompt(similarLessons);
 
@@ -386,11 +413,22 @@ export async function runMarketAnalyze(
   }
 
   if (rec && (rec.action === "buy" || rec.action === "sell")) {
+    emit({
+      id: "committee",
+      label: "تصويت لجنة المخاطر (3 شخصيات)",
+      status: "running",
+    });
     const committee = await evaluateCommittee(userId, rec, similarLessons);
     await updateRecommendationIntelligence(rec.id, {
       committee_json: JSON.stringify(committee),
     });
     rec = { ...rec, committee_json: JSON.stringify(committee) };
+    emit({
+      id: "committee",
+      label: committee.veto ? "لجنة المخاطر: تحفّظ (نقض)" : "تقييم لجنة المخاطر",
+      status: "done",
+      detail: committee.summary_ar?.slice(0, 80),
+    });
   }
 
   const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : [];
