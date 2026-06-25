@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { LineChart, X, Search, Sparkles, History } from "lucide-react";
 import {
@@ -56,6 +56,7 @@ export default function ChatSquareClient({
   const [previewSymbol, setPreviewSymbol] = useState("BTCUSDT");
   const [previewInterval, setPreviewInterval] = useState("1h");
   const [previewWidth, setPreviewWidth] = useState(440);
+  const chartStreamRef = useRef("");
 
   // Drag-to-resize the chart panel. Direction-aware (RTL/LTR) with expanded limits.
   function startResize(e: React.MouseEvent) {
@@ -467,6 +468,102 @@ export default function ChatSquareClient({
     (m) => (m.recommendations as Recommendation[] | undefined) ?? [],
   );
 
+  useEffect(() => {
+    if (sel.symbol) setPreviewSymbol(sel.symbol.toUpperCase());
+  }, [sel.symbol]);
+
+  const handleChartAnalyzeStart = useCallback(async () => {
+    chartStreamRef.current = "";
+    let convId = selectedId;
+    if (!convId) convId = await createNew();
+    appendMessage({
+      id: crypto.randomUUID(),
+      role: "user",
+      content: `تحليل ${previewSymbol} · ${previewInterval}`,
+    });
+    appendMessage({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+      streaming: true,
+    });
+  }, [
+    selectedId,
+    previewSymbol,
+    previewInterval,
+    createNew,
+    appendMessage,
+  ]);
+
+  const handleChartStreamDelta = useCallback(
+    (text: string) => {
+      chartStreamRef.current += text;
+      updateLastAssistant({
+        content: chartStreamRef.current,
+        streaming: true,
+      });
+    },
+    [updateLastAssistant],
+  );
+
+  const handleChartAnalyzeDone = useCallback(
+    (payload: {
+      reply: string;
+      recommendation?: Recommendation | null;
+      intents?: ProcessedIntent[];
+    }) => {
+      const recs = payload.recommendation ? [payload.recommendation] : undefined;
+      const pendingIntents =
+        payload.intents?.filter((i) => i.status === "pending") ?? [];
+      updateLastAssistant({
+        content: payload.reply,
+        streaming: false,
+        recommendations: recs,
+        intents: pendingIntents.length ? pendingIntents : undefined,
+      });
+      if (payload.recommendation) {
+        setPreviewSymbol(payload.recommendation.symbol);
+        setPreviewOpen(true);
+      }
+      void fetchConversations();
+      void refreshMe();
+      onCreditsUsed?.();
+    },
+    [
+      updateLastAssistant,
+      fetchConversations,
+      refreshMe,
+      onCreditsUsed,
+    ],
+  );
+
+  const handleRequestChatMessage = useCallback(
+    (text: string) => {
+      void send(text);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [busy, selectedId],
+  );
+
+  const chartPanelProps = {
+    symbol: previewSymbol,
+    interval: previewInterval,
+    onIntervalChange: setPreviewInterval,
+    onSymbolChange: (s: string) => {
+      const sym = s.toUpperCase();
+      setPreviewSymbol(sym);
+      setSel((prev) => ({ ...prev, symbol: sym }));
+    },
+    market: sel.market as "crypto" | "forex",
+    recommendations: allRecommendations,
+    conversationId: selectedId,
+    onCreditsUsed,
+    onAnalyzeStart: () => void handleChartAnalyzeStart(),
+    onStreamDelta: handleChartStreamDelta,
+    onAnalyzeDone: handleChartAnalyzeDone,
+    onRequestChatMessage: handleRequestChatMessage,
+  };
+
   const inputPlaceholder = hasConversation
     ? t("chat.placeholder_followup")
     : t("chat.placeholder");
@@ -677,16 +774,7 @@ export default function ChatSquareClient({
               className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-s border-border bg-card md:flex shadow-lg"
             >
               <ChartPreviewPanel
-                symbol={previewSymbol}
-                interval={previewInterval}
-                onIntervalChange={setPreviewInterval}
-                onSymbolChange={(s) => {
-                  const sym = s.toUpperCase();
-                  setPreviewSymbol(sym);
-                  setSel((prev) => ({ ...prev, symbol: sym }));
-                }}
-                market={sel.market}
-                recommendations={allRecommendations}
+                {...chartPanelProps}
                 onClose={() => setPreviewOpen(false)}
                 className="h-full min-h-0 border-0"
               />
@@ -711,16 +799,7 @@ export default function ChatSquareClient({
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <ChartPreviewPanel
-              symbol={previewSymbol}
-              interval={previewInterval}
-              onIntervalChange={setPreviewInterval}
-              onSymbolChange={(s) => {
-                const sym = s.toUpperCase();
-                setPreviewSymbol(sym);
-                setSel((prev) => ({ ...prev, symbol: sym }));
-              }}
-              market={sel.market}
-              recommendations={allRecommendations}
+              {...chartPanelProps}
               className="h-full border-0"
             />
           </div>

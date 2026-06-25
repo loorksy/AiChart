@@ -47,6 +47,8 @@ export function ChartOverlayToolbar({
   onToggleFullscreen,
   hasChartLayers,
   onClearLayers,
+  liveAnalysis,
+  onStopLiveAnalysis,
   live,
 }: {
   market: MarketType;
@@ -71,6 +73,8 @@ export function ChartOverlayToolbar({
   onToggleFullscreen: () => void;
   hasChartLayers?: boolean;
   onClearLayers?: () => void;
+  liveAnalysis?: boolean;
+  onStopLiveAnalysis?: () => void;
   live?: LivePriceTick;
 }) {
   const hasLive = (live?.price ?? 0) > 0;
@@ -198,8 +202,10 @@ export function ChartOverlayToolbar({
           CTRL,
           "pointer-events-auto px-2 text-primary",
           isAnalyzing && "opacity-60",
+          liveAnalysis && "ring-1 ring-primary/50",
         )}
         aria-label="تحليل بالذكاء الاصطناعي"
+        title={liveAnalysis ? "تحليل حي — يُحدَّث تلقائياً" : "تحليل بالذكاء الاصطناعي"}
       >
         {isAnalyzing ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />

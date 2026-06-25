@@ -4,24 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SectionTitle, SurfaceCard } from "@/components/ui/shell";
 import { ChartOverlayToolbar } from "@/components/market/ChartOverlayToolbar";
 import { MarketRecPanel } from "@/components/market/MarketRecPanel";
+import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
 import { formatLevel } from "@/components/market/formatLevel";
 import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
+import { useChartAnalysis } from "@/hooks/useChartAnalysis";
 import { cn } from "@/lib/utils";
 import PriceChart, { type PriceChartHandle } from "./PriceChart";
-import type { ChartOverlay } from "@/lib/chartOverlays";
 import {
   overlaysFromAnalysis,
   overlaysFromRecommendation,
 } from "@/lib/chartOverlays";
-import type { ChartDrawing } from "@/lib/chartDrawings";
 import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 import type { MarketSnapshot } from "@/lib/market";
-import { consumeSse } from "@/lib/sse";
-import type { AgentActivity } from "@/lib/agentActivity";
-import {
-  chartVisionLabelAr,
-  type ChartVisionSource,
-} from "@/lib/marketAnalyzeLabels";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 import { useEaLivePrice } from "@/hooks/useEaLivePrice";
@@ -110,19 +104,9 @@ export default function MarketClient({
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [loadingInstruments, setLoadingInstruments] = useState(false);
 
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const [analysisText, setAnalysisText] = useState("");
+  const [scanToast, setScanToast] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
-  const [overlays, setOverlays] = useState<ChartOverlay[]>([]);
-  const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
-  const [profileLabel, setProfileLabel] = useState<string | null>(null);
-  const [contextSummary, setContextSummary] = useState<string[]>([]);
-  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [analyzeActivities, setAnalyzeActivities] = useState<AgentActivity[]>([]);
-  const [chartVisionLabel, setChartVisionLabel] = useState<string | null>(null);
-
   const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null);
   const [recDetailOpen, setRecDetailOpen] = useState(false);
 
@@ -132,6 +116,36 @@ export default function MarketClient({
   const cryptoLive = useBinanceLivePrice(market === "crypto" ? symbol : "");
   const forexLive = useEaLivePrice(symbol, market === "forex");
   const live = market === "forex" ? forexLive : cryptoLive;
+
+  const {
+    isAnalyzing,
+    analysisText,
+    overlays,
+    drawings,
+    recommendation,
+    profileLabel,
+    contextSummary,
+    analyzeError,
+    toast,
+    analyzeActivities,
+    chartVisionLabel,
+    liveAnalysis,
+    riskReward,
+    highlightDrawingIndex,
+    setHighlightDrawingIndex,
+    analyze,
+    clearLayers,
+    stopLiveAnalysis,
+    setOverlays,
+    setDrawings,
+    setRecommendation,
+  } = useChartAnalysis({
+    symbol,
+    interval,
+    market,
+    chartRef,
+    source: "market",
+  });
 
   const fetchInstruments = useCallback(
     async (q: string) => {
@@ -193,7 +207,6 @@ export default function MarketClient({
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
-  // When the market switches, reset to that market's default symbol + state.
   const handleMarketChange = useCallback(
     (next: MarketType) => {
       if (next === market) return;
@@ -205,7 +218,6 @@ export default function MarketClient({
       setSymbol(
         nextOpen ? DEFAULT_SYMBOL[next] : nextAllowed[0] ?? DEFAULT_SYMBOL[next],
       );
-      // Persist the active market preference (best-effort).
       void fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -215,27 +227,16 @@ export default function MarketClient({
     [market, forexOpen, cryptoOpen, forexAllowed, cryptoAllowed],
   );
 
-  function clearChartLayers() {
-    setOverlays([]);
-    setDrawings([]);
-    setSelectedRec(null);
-    setProfileLabel(null);
-    setContextSummary([]);
-  }
-
   useEffect(() => {
-    clearChartLayers();
-    setAnalysisText("");
-    setAnalysisOpen(false);
-    setAnalyzeError(null);
-    setRecDetailOpen(false);
-  }, [symbol, interval]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4500);
+    if (!scanToast) return;
+    const t = setTimeout(() => setScanToast(null), 4500);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [scanToast]);
+
+  useEffect(() => {
+    setRecDetailOpen(false);
+    if (!liveAnalysis) setAnalysisOpen(false);
+  }, [symbol, interval, liveAnalysis]);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -282,6 +283,7 @@ export default function MarketClient({
     setSelectedRec(rec);
     setRecDetailOpen(true);
     setAnalysisOpen(false);
+    setRecommendation(rec);
     const recOverlays = overlaysFromRecommendation(rec);
     setOverlays(
       recOverlays.length > 0
@@ -297,7 +299,6 @@ export default function MarketClient({
   async function handleQuickScan() {
     if (isScanning) return;
     setIsScanning(true);
-    setAnalyzeError(null);
     try {
       const res = await fetch("/api/opportunities/scan", {
         method: "POST",
@@ -313,129 +314,37 @@ export default function MarketClient({
       });
       const data = await res.json();
       if (!res.ok) {
-        setAnalyzeError(
+        setScanToast(
           (data as { error?: string }).error ?? "تعذّر المسح.",
         );
         return;
       }
       const count = (data as { candidates?: unknown[] }).candidates?.length ?? 0;
-      setToast(
+      setScanToast(
         count > 0
           ? `وُجدت ${count} فرصة على ${symbol} · ${interval}`
           : `لا فرص واضحة على ${symbol} · ${interval}`,
       );
     } catch {
-      setAnalyzeError("تعذّر الاتصال أثناء المسح.");
+      setScanToast("تعذّر الاتصال أثناء المسح.");
     } finally {
       setIsScanning(false);
     }
   }
 
   async function handleAnalyze() {
-    if (isAnalyzing) return;
-    setIsAnalyzing(true);
-    setAnalyzeError(null);
-    setAnalysisText("");
-    setAnalyzeActivities([]);
-    setChartVisionLabel(null);
     setRecDetailOpen(false);
     setAnalysisOpen(true);
-
-    try {
-      const chartImage = await chartRef.current?.capturePng().catch(() => null);
-
-      const res = await fetch("/api/market/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          symbol,
-          interval,
-          market,
-          stream: true,
-          ...(chartImage ? { image: chartImage } : {}),
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setAnalyzeError(
-          (data as { error?: string }).error ?? "تعذّر بدء التحليل.",
-        );
-        return;
-      }
-
-      let streamError: string | null = null;
-      let streamed = "";
-
-      const data = await consumeSse<{
-        reply: string;
-        overlays?: ChartOverlay[];
-        drawings?: ChartDrawing[];
-        profileLabel?: string;
-        contextSummary?: string[];
-        telegramSent?: boolean;
-        telegramReasonAr?: string;
-        chartVisionSource?: ChartVisionSource;
-        activities?: AgentActivity[];
-      }>(res, {
-        onActivity: (a) => {
-          setAnalyzeActivities((prev) => {
-            const idx = prev.findIndex((x) => x.id === a.id);
-            if (idx >= 0) {
-              const next = [...prev];
-              next[idx] = a;
-              return next;
-            }
-            return [...prev, a];
-          });
-        },
-        onDelta: (t) => {
-          streamed += t;
-          setAnalysisText(streamed);
-        },
-        onError: (msg) => {
-          streamError = msg;
-          setAnalyzeError(msg);
-        },
-      });
-
-      if (!data) {
-        if (!streamError) setAnalyzeError("لم يصل تحليل من الوكيل.");
-        return;
-      }
-
-      setAnalysisText(data.reply || streamed);
-      if (data.overlays?.length) setOverlays(data.overlays);
-      else setOverlays([]);
-      if (data.drawings?.length) setDrawings(data.drawings);
-      else setDrawings([]);
-      if (data.profileLabel) setProfileLabel(data.profileLabel);
-      if (data.contextSummary?.length) setContextSummary(data.contextSummary);
-      if (data.activities?.length) setAnalyzeActivities(data.activities);
-      if (data.chartVisionSource) {
-        setChartVisionLabel(chartVisionLabelAr(data.chartVisionSource));
-      }
-      if (data.telegramSent) {
-        setToast("أُرسلت التوصية إلى تليجرام — اختر المبلغ بعد الموافقة");
-      } else if (
-        data.telegramReasonAr &&
-        data.telegramReasonAr !== "لا إشارة تنفيذية"
-      ) {
-        setToast(`لم يُرسل إلى تليجرام — ${data.telegramReasonAr}`);
-      } else if (data.chartVisionSource === "text") {
-        setToast("تعذّر التقاط الشارت — تم التحليل النصي");
-      } else if (
-        data.chartVisionSource === "client" ||
-        data.chartVisionSource === "server"
-      ) {
-        setToast("تم التحليل من الشارت");
-      }
-    } catch {
-      setAnalyzeError("حدث خطأ أثناء التحليل.");
-    } finally {
-      setIsAnalyzing(false);
-    }
+    await analyze();
   }
+
+  function handleClearLayers() {
+    clearLayers();
+    setSelectedRec(null);
+    stopLiveAnalysis();
+  }
+
+  const activeRec = selectedRec ?? recommendation;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -447,6 +356,11 @@ export default function MarketClient({
       {toast && (
         <p className="shrink-0 border-b border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary">
           {toast}
+        </p>
+      )}
+      {scanToast && (
+        <p className="shrink-0 border-b border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primary">
+          {scanToast}
         </p>
       )}
 
@@ -480,6 +394,16 @@ export default function MarketClient({
               className="h-full min-h-0 p-0"
             />
 
+            <ChartTradeOverlay
+              recommendation={activeRec}
+              riskReward={riskReward}
+              isAnalyzing={isAnalyzing}
+              liveAnalysis={liveAnalysis}
+              drawings={drawings}
+              onHighlightDrawing={setHighlightDrawingIndex}
+              onStopLive={stopLiveAnalysis}
+            />
+
             <ChartOverlayToolbar
               market={market}
               onMarketChange={handleMarketChange}
@@ -502,7 +426,9 @@ export default function MarketClient({
               isFullscreen={isFullscreen}
               onToggleFullscreen={() => void toggleFullscreen()}
               hasChartLayers={overlays.length > 0 || drawings.length > 0}
-              onClearLayers={clearChartLayers}
+              onClearLayers={handleClearLayers}
+              liveAnalysis={liveAnalysis}
+              onStopLiveAnalysis={stopLiveAnalysis}
               live={live}
             />
           </div>
@@ -513,7 +439,7 @@ export default function MarketClient({
             open={panelOpen}
             onClose={closePanel}
             kind={panelKind}
-            rec={selectedRec}
+            rec={selectedRec ?? recommendation ?? undefined}
             analysisText={analysisText}
             isAnalyzing={isAnalyzing}
             profileLabel={profileLabel}

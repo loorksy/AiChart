@@ -12,8 +12,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
 ENV BINANCE_CAPTURE_ENABLED=1
+ENV TRADINGVIEW_MCP_ENABLED=1
 
-RUN apt-get update && apt-get install -y python3 make g++ \
+RUN apt-get update && apt-get install -y python3 python3-pip make g++ \
+    && pip3 install --break-system-packages tradingview-ta \
     && rm -rf /var/lib/apt/lists/*
 
 COPY web/package.json web/package-lock.json ./
@@ -25,6 +27,7 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./
 COPY web/src ./src
+COPY infra/tradingview ./infra/tradingview
 RUN mkdir -p data
 
 EXPOSE 3000

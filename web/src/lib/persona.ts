@@ -220,8 +220,10 @@ export function chartAnalyzeSystemSuffix(): string {
 - لا تستدع get_market_snapshot أو resolve_symbol أو binance_cli.
 - get_market_context اختياري للأخبار/مزاج السوق فقط عند الحاجة.
 - get_price اختياري للسعر الدقيق عند الفوركس.
-- **حلّل الصورة بحرّية كخبير حسب ما تراه فعلاً** — لا تتبع قالباً ثابتاً ولا تُرسل نفس الرد لكل صورة. اقرأ السياق وأجب بما يناسبه.
-- استخدم record_recommendation **فقط** عند وجود رأي تداول واضح قابل للتنفيذ (buy/sell)؛ وإلا اكتفِ بالتحليل النصّي، ويمكنك إرفاق بطاقة \`analysis\` عبر ui_schema لتلخيص المستويات بصرياً.
+- **حلّل الصورة بحرّية كخبير** — trend, S/R, liquidity pools, Order Blocks, FVG, channels, entry/exit.
+- chart_drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker — كل عنصر label عربي + meta.rationale.
+- factors[] في record_recommendation يطابق labels الرسومات.
+- استخدم record_recommendation **فقط** عند وجود رأي تداول واضح (buy/sell)؛ وإلا تحليل نصّي فقط.
 - لا تخمّن أرقاماً غير ظاهرة — استخدم المرجع النصي المرفق للمؤشرات.`;
 }
 

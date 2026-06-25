@@ -40,6 +40,18 @@ import {
 import type { ContentBlock } from "./anthropic";
 
 import type { ChartVisionSource } from "./marketAnalyzeLabels";
+import { fetchOhlc } from "./ohlc/fetchOhlc";
+import { detectStructureLevels } from "./ohlc/structure";
+import {
+  formatStructureForPrompt,
+  mergeSeedAndAgentDrawings,
+  smcPromptBlock,
+  structureToSeedDrawings,
+} from "./chartStructureAnalysis";
+import {
+  fetchTradingViewContext,
+  formatTradingViewForPrompt,
+} from "./tradingview/client";
 
 export const MARKET_ANALYZE_COST = 4;
 
@@ -53,6 +65,7 @@ function buildAnalyzePrompt(
   contextBlock: string,
   profile: AnalysisProfile,
   memoryBlock = "",
+  extraBlocks: string[] = [],
 ): string {
   return [
     `حلّل ${symbol} على إطار ${interval} بالعربية.`,
@@ -63,16 +76,18 @@ function buildAnalyzePrompt(
     snap.sma20 != null ? `SMA20: ${snap.sma20.toFixed(2)}` : "",
     snap.sma50 != null ? `SMA50: ${snap.sma50.toFixed(2)}` : "",
     `الاتجاه: ${snap.trend === "uptrend" ? "صاعد" : snap.trend === "downtrend" ? "هابط" : "عرضي"}`,
+    ...extraBlocks,
     ``,
     `سياق السوق:\n${contextBlock}`,
     memoryBlock ? `\n${memoryBlock}` : "",
     ``,
+    smcPromptBlock(),
     "المطلوب: تحليل مفصّل مع مستويات دخول ووقف خسارة وجني أرباح.",
     memoryBlock
       ? "إن وُجد درس مشابه أعلاه — اذكره صراحةً في rationale."
       : "",
     "سجّل التوصية عبر record_recommendation مع timeframe و chart_drawings و pattern_name.",
-    "chart_drawings: استخدم الأنواع المناسبة كلها — price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker, histogram_band — كل عنصر له confidence و points.",
+    "chart_drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker — confidence + meta.rationale.",
     "مرّر timeframe نفس إطار التحليل.",
   ]
     .filter(Boolean)
@@ -86,6 +101,7 @@ function buildVisionAnalyzePrompt(
   contextBlock: string,
   profile: AnalysisProfile,
   memoryBlock = "",
+  extraBlocks: string[] = [],
 ): string {
   const trend =
     snap.trend === "uptrend"
@@ -97,12 +113,14 @@ function buildVisionAnalyzePrompt(
     `حلّل الشارت المرفق لـ ${symbol} على إطار ${interval} بالعربية.`,
     ...buildProfilePromptHints(symbol, interval, profile),
     `مرجع سريع: RSI ${snap.rsi14?.toFixed(1) ?? "—"} · اتجاه ${trend} · ${snap.summary}`,
+    ...extraBlocks,
     contextBlock ? `سياق:\n${contextBlock}` : "",
     memoryBlock ? memoryBlock : "",
-    "المطلوب: تحليل مرئي من الصورة — أنماط، دعم/مقاومة، مستويات دخول/SL/TP.",
+    smcPromptBlock(),
+    "المطلوب: تحليل مرئي — أنماط، دعم/مقاومة، OB/FVG، مستويات دخول/SL/TP.",
     memoryBlock ? "اذكر أي درس مشابه من الذاكرة في rationale." : "",
     "سجّل عبر record_recommendation مع timeframe و chart_drawings و pattern_name.",
-    "chart_drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker, histogram_band.",
+    "chart_drawings: كل عنصر label عربي + meta.rationale.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -191,14 +209,38 @@ export async function runMarketAnalyze(
 
   let snap: MarketSnapshot;
   let ctx: Awaited<ReturnType<typeof fetchMarketContext>> | null = null;
-  if (market === "forex") {
-    snap = await buildForexSnapshot(userId, sym, interval);
-  } else {
-    [snap, ctx] = await Promise.all([
-      buildSnapshot(sym, interval),
-      fetchMarketContext(sym, profile),
-    ]);
+
+  const [snapResult, ohlcResult, tvContext] = await Promise.all([
+    market === "forex"
+      ? buildForexSnapshot(userId, sym, interval)
+      : buildSnapshot(sym, interval),
+    fetchOhlc({ userId, symbol: sym, interval, market, limit: 120 }).catch(
+      () => null,
+    ),
+    fetchTradingViewContext(sym, interval, market),
+  ]);
+
+  snap = snapResult;
+  if (market !== "forex") {
+    ctx = await fetchMarketContext(sym, profile).catch(() => null);
   }
+
+  const structure =
+    ohlcResult && ohlcResult.candles.length >= 10
+      ? detectStructureLevels(
+          ohlcResult.symbol,
+          ohlcResult.interval,
+          ohlcResult.candles,
+        )
+      : null;
+
+  const seedDrawings = structure ? structureToSeedDrawings(structure) : [];
+
+  const extraBlocks: string[] = [];
+  if (structure) extraBlocks.push(formatStructureForPrompt(structure));
+  const tvBlock = formatTradingViewForPrompt(tvContext);
+  if (tvBlock) extraBlocks.push(tvBlock);
+
   const contextBlock = ctx
     ? formatContextForPrompt(ctx)
     : "سوق فوركس عبر MetaTrader — لا يتوفر سياق Web3/أخبار. اعتمد على التحليل الفني.";
@@ -240,8 +282,24 @@ export async function runMarketAnalyze(
     });
   }
   const prompt = useVision
-    ? buildVisionAnalyzePrompt(sym, interval, snap, contextBlock, profile, memoryBlock)
-    : buildAnalyzePrompt(sym, interval, snap, contextBlock, profile, memoryBlock);
+    ? buildVisionAnalyzePrompt(
+        sym,
+        interval,
+        snap,
+        contextBlock,
+        profile,
+        memoryBlock,
+        extraBlocks,
+      )
+    : buildAnalyzePrompt(
+        sym,
+        interval,
+        snap,
+        contextBlock,
+        profile,
+        memoryBlock,
+        extraBlocks,
+      );
 
   const userContent: string | ContentBlock[] = useVision
     ? buildUserMessageContent(prompt, chartImage, false)
@@ -291,15 +349,15 @@ export async function runMarketAnalyze(
   }
 
   const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : [];
-  const drawings =
-    rec && rawDrawings.length
-      ? validateChartDrawings(
-          rawDrawings,
-          rec.action,
-          rec.confidence,
-          profile,
-        )
-      : [];
+  const agentDrawings = rawDrawings.length
+    ? validateChartDrawings(
+        rawDrawings,
+        rec?.action ?? "wait",
+        rec?.confidence ?? 60,
+        profile,
+      )
+    : [];
+  const drawings = mergeSeedAndAgentDrawings(seedDrawings, agentDrawings);
 
   if (rec && (rec.action === "buy" || rec.action === "sell")) {
     const attached = await attachChartToRecommendation(userId, rec, {

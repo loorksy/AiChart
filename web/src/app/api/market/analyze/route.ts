@@ -18,6 +18,10 @@ import { profileForInterval } from "@/lib/analysisProfile";
 import { sseEncode } from "@/lib/sse";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { validateChatImage } from "@/lib/chatImage";
+import {
+  appendChatMessage,
+  getConversation,
+} from "@/lib/conversations";
 
 export const maxDuration = 60;
 
@@ -31,6 +35,9 @@ const schema = z.object({
     .refine((v) => INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
   market: z.enum(["crypto", "forex"]).optional(),
   stream: z.boolean().optional(),
+  conversationId: z.number().int().positive().optional(),
+  persistToChat: z.boolean().optional(),
+  source: z.enum(["market", "chat_chart"]).optional(),
   image: z
     .object({
       media_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -69,6 +76,8 @@ export async function POST(req: NextRequest) {
     const market = body.market ?? settings.active_market ?? "crypto";
     const profile = profileForInterval(interval);
     const stream = body.stream !== false;
+    const persistToChat =
+      body.persistToChat !== false && body.conversationId != null;
 
     let chartImage: { media_type: "image/jpeg" | "image/png" | "image/webp"; data: string } | null =
       null;
@@ -89,6 +98,31 @@ export async function POST(req: NextRequest) {
       market,
       chartImage,
     };
+
+    async function persistAnalysisResult(
+      result: Awaited<ReturnType<typeof runMarketAnalyze>>,
+    ) {
+      if (!persistToChat || !body.conversationId) return;
+      const conv = await getConversation(body.conversationId, user.id);
+      if (!conv) return;
+
+      const source = body.source ?? "market";
+      await appendChatMessage(
+        conv.id,
+        "user",
+        `تحليل ${symbol} · ${interval}`,
+        { analysis_source: source, symbol, interval, market, type: "chart_analyze" },
+      );
+      await appendChatMessage(conv.id, "assistant", result.reply, {
+        analysis_source: source,
+        symbol,
+        interval,
+        market,
+        drawings: result.drawings,
+        recommendation_id: result.recommendation?.id ?? null,
+        chart_vision: result.chartVisionSource,
+      });
+    }
 
     if (stream) {
       const bodyStream = new ReadableStream({
@@ -123,6 +157,8 @@ export async function POST(req: NextRequest) {
               "market_analyze",
               `${symbol}@${interval} recs=${result.recommendation ? 1 : 0}`,
             );
+
+            await persistAnalysisResult(result);
 
             send("done", {
               reply: result.reply,
@@ -179,6 +215,8 @@ export async function POST(req: NextRequest) {
       "market_analyze",
       `${symbol}@${interval} recs=${result.recommendation ? 1 : 0}`,
     );
+
+    await persistAnalysisResult(result);
 
     return NextResponse.json({
       reply: result.reply,
