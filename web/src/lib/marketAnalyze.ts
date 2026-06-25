@@ -23,9 +23,6 @@ import {
   searchSimilarLessons,
   formatLessonsForPrompt,
 } from "./tradeMemory";
-import {
-  evaluateCommittee,
-} from "./committee";
 import type { DeliveryResult } from "./alerts";
 import { deliveryReasonAr } from "./alerts";
 import {
@@ -412,24 +409,8 @@ export async function runMarketAnalyze(
     };
   }
 
-  if (rec && (rec.action === "buy" || rec.action === "sell")) {
-    emit({
-      id: "committee",
-      label: "تصويت لجنة المخاطر (3 شخصيات)",
-      status: "running",
-    });
-    const committee = await evaluateCommittee(userId, rec, similarLessons);
-    await updateRecommendationIntelligence(rec.id, {
-      committee_json: JSON.stringify(committee),
-    });
-    rec = { ...rec, committee_json: JSON.stringify(committee) };
-    emit({
-      id: "committee",
-      label: committee.veto ? "لجنة المخاطر: تحفّظ (نقض)" : "تقييم لجنة المخاطر",
-      status: "done",
-      detail: committee.summary_ar?.slice(0, 80),
-    });
-  }
+  // The risk committee is evaluated inside record_recommendation (sync in auto mode
+  // for the execution gate, async/background in advisory modes) — no second pass here.
 
   const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : [];
   const agentDrawings = rawDrawings.length

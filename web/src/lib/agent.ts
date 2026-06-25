@@ -994,20 +994,36 @@ async function executeTool(
           limit: 3,
         });
         if (lessons.length || action === "buy" || action === "sell") {
-          const committee = await evaluateCommittee(ctx.userId, rec, lessons);
-          await updateRecommendationIntelligence(rec.id, {
-            committee_json: JSON.stringify(committee),
-            memory_refs_json: lessons.length
-              ? JSON.stringify(lessons.map((l) => l.id))
-              : null,
-          });
-          rec = {
-            ...rec,
-            committee_json: JSON.stringify(committee),
-            memory_refs_json: lessons.length
-              ? JSON.stringify(lessons.map((l) => l.id))
-              : null,
-          };
+          const memoryRefs = lessons.length
+            ? JSON.stringify(lessons.map((l) => l.id))
+            : null;
+          if (memoryRefs) {
+            await updateRecommendationIntelligence(rec.id, {
+              memory_refs_json: memoryRefs,
+            });
+            rec = { ...rec, memory_refs_json: memoryRefs };
+          }
+          if (ctx.settings.mode === "auto") {
+            // Auto mode: the committee gates auto-execution (committeeBlocksAuto),
+            // so it must be ready before processRecommendations — keep it sync.
+            const committee = await evaluateCommittee(ctx.userId, rec, lessons);
+            await updateRecommendationIntelligence(rec.id, {
+              committee_json: JSON.stringify(committee),
+            });
+            rec = { ...rec, committee_json: JSON.stringify(committee) };
+          } else {
+            // Advisory modes (approval/direct): the committee is informational and
+            // never blocks here — evaluate it in the background and persist when
+            // ready so the reply is not delayed by an extra LLM round-trip.
+            const recId = rec.id;
+            void evaluateCommittee(ctx.userId, rec, lessons)
+              .then((committee) =>
+                updateRecommendationIntelligence(recId, {
+                  committee_json: JSON.stringify(committee),
+                }),
+              )
+              .catch((e) => console.error("[committee] async eval failed", e));
+          }
         }
         const notifyAdvisory =
           (rec.action === "buy" || rec.action === "sell") &&
