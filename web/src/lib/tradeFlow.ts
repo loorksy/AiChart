@@ -3,6 +3,7 @@ import {
   getLimits,
   createIntent,
 } from "./store";
+import { planOrderFromRecommendation } from "./orderPlan";
 import { executeIntent } from "./execution";
 import { buildAccountProfile } from "./accountProfile";
 import { buildApprovalButtonsForIntent } from "./approvalFlow";
@@ -21,6 +22,9 @@ export interface ProcessedIntent {
   notional: number;
   status: string;
   reason?: string;
+  entry?: number | null;
+  order_type?: "market" | "limit";
+  limit_price?: number | null;
   telegramDelivered?: boolean;
   telegramReasonAr?: string;
 }
@@ -90,18 +94,22 @@ export async function processRecommendations(
       continue;
     }
 
+    const orderPlan = planOrderFromRecommendation(rec);
+
     const intent = await createIntent(userId, {
       recommendation_id: rec.id,
       symbol: rec.symbol,
       side: rec.action,
       notional: perTrade,
       market,
-      entry: rec.entry,
+      entry: orderPlan.entry ?? rec.entry,
       stop_loss: rec.stop_loss,
       take_profit: rec.take_profit,
       confidence: rec.confidence,
       rationale: richRationale(rec) || rec.rationale,
       status: autoExecute ? "approved" : "pending",
+      order_type: orderPlan.order_type,
+      limit_price: orderPlan.limit_price,
     });
 
     if (autoExecute) {
@@ -113,6 +121,9 @@ export async function processRecommendations(
         notional: intent.notional,
         status: exec.status,
         reason: exec.reason,
+        entry: intent.entry,
+        order_type: intent.order_type,
+        limit_price: intent.limit_price,
       });
 
       await notifyTradeResult(
@@ -152,6 +163,9 @@ export async function processRecommendations(
         side: intent.side,
         notional: intent.notional,
         status: "pending",
+        entry: intent.entry,
+        order_type: intent.order_type,
+        limit_price: intent.limit_price,
         telegramDelivered: delivery.delivered,
         telegramReasonAr: delivery.reasonAr,
       });

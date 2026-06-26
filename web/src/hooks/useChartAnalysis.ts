@@ -32,6 +32,12 @@ export interface ChartAnalyzeDonePayload {
   activities?: AgentActivity[];
 }
 
+export interface ChartHydrateSnapshot {
+  drawings?: ChartDrawing[];
+  overlays?: ChartOverlay[];
+  recommendation?: Recommendation | null;
+}
+
 export interface UseChartAnalysisOptions {
   symbol: string;
   interval: string;
@@ -40,6 +46,8 @@ export interface UseChartAnalysisOptions {
   /** When set, analysis is persisted and synced to chat. */
   conversationId?: number | null;
   source?: ChartAnalyzeSource;
+  /** Restore persisted analysis layers without re-running API. */
+  hydrateSnapshot?: ChartHydrateSnapshot | null;
   onCreditsUsed?: () => void;
   /** Called when streaming text deltas arrive (for chat injection). */
   onStreamDelta?: (text: string) => void;
@@ -68,6 +76,7 @@ export function useChartAnalysis({
   onAnalyzeStart,
   onActivity,
   onAnalyzeError,
+  hydrateSnapshot,
 }: UseChartAnalysisOptions) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisText, setAnalysisText] = useState("");
@@ -156,6 +165,19 @@ export function useChartAnalysis({
       setToast("تم التحليل من الشارت");
     }
   }, []);
+
+  const hydrateFromSnapshot = useCallback((snap: ChartHydrateSnapshot) => {
+    if (snap.drawings?.length) setDrawings(snap.drawings);
+    if (snap.overlays?.length) setOverlays(snap.overlays);
+    if (snap.recommendation !== undefined) {
+      setRecommendation(snap.recommendation);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrateSnapshot) return;
+    hydrateFromSnapshot(hydrateSnapshot);
+  }, [hydrateSnapshot, hydrateFromSnapshot]);
 
   const analyze = useCallback(
     async (opts?: { enableLive?: boolean }) => {
@@ -352,6 +374,7 @@ export function useChartAnalysis({
     analyze,
     clearLayers,
     stopLiveAnalysis,
+    hydrateFromSnapshot,
     setOverlays,
     setDrawings,
     setRecommendation,

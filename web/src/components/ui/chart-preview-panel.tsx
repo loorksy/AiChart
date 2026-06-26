@@ -14,6 +14,7 @@ import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 import type { AgentActivity } from "@/lib/agentActivity";
 import type { Recommendation } from "@/lib/types";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
+import type { ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { cn } from "@/lib/utils";
 
 const CTRL =
@@ -38,6 +39,7 @@ export function ChartPreviewPanel({
   onAnalyzeError,
   onActivity,
   onRequestChatMessage,
+  hydrateSnapshot,
 }: {
   symbol: string;
   interval: string;
@@ -61,6 +63,7 @@ export function ChartPreviewPanel({
   onAnalyzeError?: (message: string) => void;
   onActivity?: (activity: AgentActivity) => void;
   onRequestChatMessage?: (text: string) => void;
+  hydrateSnapshot?: ChartHydrateSnapshot | null;
 }) {
   const chartRef = useRef<PriceChartHandle>(null);
   const cryptoLive = useBinanceLivePrice(market === "crypto" ? symbol : "");
@@ -91,6 +94,7 @@ export function ChartPreviewPanel({
     onStreamDelta,
     onAnalyzeError,
     onActivity,
+    hydrateSnapshot,
     onAnalyzeDone: (payload) => {
       onAnalyzeDone?.({
         reply: payload.reply,

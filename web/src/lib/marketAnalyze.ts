@@ -39,6 +39,8 @@ import type { ContentBlock } from "./anthropic";
 import type { ChartVisionSource } from "./marketAnalyzeLabels";
 import { fetchOhlc } from "./ohlc/fetchOhlc";
 import { detectStructureLevels, type StructureAnalysis } from "./ohlc/structure";
+import { enrichRecommendationAfterRecord } from "./recommendationLevels";
+import { emitAgentLlm } from "./agentActivityPipeline";
 import { resolveMt5Symbol } from "./mt5SymbolMap";
 import {
   formatStructureForPrompt,
@@ -115,6 +117,8 @@ function buildAnalyzePrompt(
     ``,
     smcPromptBlock(),
     "المطلوب: تحليل مفصّل مع مستويات دخول ووقف خسارة وجني أرباح.",
+    "SL يجب أن يكون تحت/فوق مستوى هيكلي مذكور في rationale — لا تضع SL و TP قريبين من بعض.",
+    "TP على مسافة R:R ≥ الحد الأدنى — لا تُفضّل البيع تلقائياً؛ اختر buy/sell/wait حسب البنية والاتجاه HTF.",
     memoryBlock
       ? "إن وُجد درس مشابه أعلاه — اذكره صراحةً في rationale."
       : "",
@@ -368,6 +372,8 @@ export async function runMarketAnalyze(
     ? buildUserMessageContent(prompt, chartImage, false)
     : prompt;
 
+  emit({ id: "agent-llm", label: "تحليل Claude · توصية", status: "running", tool: "claude" });
+
   const result = await runAgent(
     { userId, settings, telegramSession: opts?.telegramSession ?? false },
     [{ role: "user", content: userContent }],
@@ -378,6 +384,8 @@ export async function runMarketAnalyze(
       hasImage: useVision,
     },
   );
+
+  emit({ id: "agent-llm", label: "تحليل Claude · توصية", status: "done", tool: "claude" });
 
   let reply = result.reply.trim();
   if (!reply || reply === EMPTY_AGENT_REPLY) {
@@ -411,6 +419,10 @@ export async function runMarketAnalyze(
 
   // The risk committee is evaluated inside record_recommendation (sync in auto mode
   // for the execution gate, async/background in advisory modes) — no second pass here.
+
+  if (rec && (rec.action === "buy" || rec.action === "sell")) {
+    rec = await enrichRecommendationAfterRecord(userId, rec, settings, market);
+  }
 
   const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : [];
   const agentDrawings = rawDrawings.length

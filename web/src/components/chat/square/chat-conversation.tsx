@@ -2,8 +2,8 @@
 
 import { useRef, useEffect } from "react";
 import { ChatMessage } from "./chat-message";
-import { AgentLoadingDots } from "@/components/ui/agent-activity-feed";
 import { AgentThinkingTimeline } from "@/components/chat/AgentThinkingTimeline";
+import { SSE_CONNECT_ACTIVITY } from "@/lib/agentActivityPipeline";
 import type { AgentActivity } from "@/lib/agentActivity";
 import type { UiMessage } from "@/stores/chat-store";
 
@@ -12,7 +12,6 @@ interface ChatConversationProps {
   busy?: boolean;
   showActivity?: boolean;
   activities?: AgentActivity[];
-  hideActivityOnMobile?: boolean;
   busyIntentId?: number | null;
   executionMode?: "auto" | "approval" | "direct";
   onIntentApprove?: (id: number) => void;
@@ -27,7 +26,6 @@ export function ChatConversation({
   busy,
   showActivity,
   activities = [],
-  hideActivityOnMobile = false,
   busyIntentId,
   executionMode,
   onIntentApprove,
@@ -42,19 +40,14 @@ export function ChatConversation({
     .reverse()
     .find((m) => m.role === "assistant" && m.streaming);
   const awaitingResponse = busy && Boolean(pendingAssistant);
-  const awaitingFirstToken =
-    awaitingResponse && !pendingAssistant?.content?.trim();
-  const displayActivities =
-    showActivity && activities.length > 0
-      ? activities
-      : awaitingResponse && showActivity
-        ? [
-            {
-              id: "pending-thinking",
-              label: "يفكّر ويحلّل",
-              status: "running" as const,
-            },
-          ]
+
+  const displayActivities: AgentActivity[] =
+    showActivity && awaitingResponse
+      ? activities.length > 0
+        ? activities
+        : [SSE_CONNECT_ACTIVITY]
+      : showActivity && activities.length > 0
+        ? activities
         : [];
 
   useEffect(() => {
@@ -80,27 +73,12 @@ export function ChatConversation({
           />
         );
       })}
-      {awaitingResponse && (
+      {displayActivities.length > 0 && (
         <div className="px-3 py-2 sm:px-4">
-          {displayActivities.length > 0 ? (
-            <div className={hideActivityOnMobile ? "hidden md:block" : undefined}>
-              <AgentThinkingTimeline
-                activities={displayActivities}
-                onPreview={onPreview}
-              />
-            </div>
-          ) : null}
-          {(displayActivities.length === 0 || hideActivityOnMobile) && (
-            <div
-              className={
-                hideActivityOnMobile && displayActivities.length > 0
-                  ? "md:hidden"
-                  : undefined
-              }
-            >
-              {awaitingFirstToken ? <AgentLoadingDots /> : null}
-            </div>
-          )}
+          <AgentThinkingTimeline
+            activities={displayActivities}
+            onPreview={onPreview}
+          />
         </div>
       )}
       <div ref={endRef} className="h-1" />

@@ -35,6 +35,7 @@ export function ChatMessage({
 
   return (
     <div
+      id={`chat-msg-${message.id}`}
       className={cn(
         "flex gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3",
         isUser ? "flex-row-reverse" : "flex-row",

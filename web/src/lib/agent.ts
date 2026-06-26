@@ -26,6 +26,7 @@ import {
   resolveSymbol,
 } from "./markets";
 import { getBinanceCredentials, saveRecommendation, getPublicUser, listTrades, listIntents, listRecommendations, countOpenTrades, getBinanceAccountMeta, getSettings, updateRecommendationIntelligence } from "./store";
+import { enrichRecommendationAfterRecord } from "./recommendationLevels";
 import { attachChartToRecommendation } from "./recommendationChart";
 import { internalBridgeForUser } from "./agentBridge";
 import type { DeliveryResult } from "./alerts";
@@ -60,6 +61,7 @@ import {
   type ActivityListener,
   type AgentActivity,
 } from "./agentActivity";
+import { emitAgentLlm, emitCompose } from "./agentActivityPipeline";
 
 const TOOLS: ToolDef[] = [
   {
@@ -1025,6 +1027,14 @@ async function executeTool(
               .catch((e) => console.error("[committee] async eval failed", e));
           }
         }
+        if (rec.action === "buy" || rec.action === "sell") {
+          rec = await enrichRecommendationAfterRecord(
+            ctx.userId,
+            rec,
+            ctx.settings,
+            ctx.settings.active_market ?? undefined,
+          );
+        }
         const notifyAdvisory =
           (rec.action === "buy" || rec.action === "sell") &&
           ctx.settings.mode === "approval" &&
@@ -1203,12 +1213,14 @@ export async function runAgent(
   const executedToolsList: { name: string; input: unknown; status: string }[] = [];
 
   push({
-    id: "agent-thinking",
-    label: "يفكّر ويحلّل",
+    id: "agent-llm",
+    label: "تحليل Claude",
     status: "running",
+    tool: "claude",
   });
 
   const MAX_STEPS = maxSteps;
+  let llmStep = 1;
   for (let step = 0; step < MAX_STEPS; step++) {
     const useStream = Boolean(onDelta);
     const res = useStream
@@ -1230,7 +1242,15 @@ export async function runAgent(
     );
 
     if (res.stop_reason !== "tool_use" || toolUses.length === 0) {
+      emitAgentLlm(onActivity, llmStep, "done");
+      emitCompose(onActivity, "running");
       break;
+    }
+
+    emitAgentLlm(onActivity, llmStep, "done");
+    llmStep += 1;
+    if (step + 1 < MAX_STEPS) {
+      emitAgentLlm(onActivity, llmStep, "running");
     }
 
     messages.push({ role: "assistant", content: res.content });
@@ -1275,11 +1295,7 @@ export async function runAgent(
     messages.push({ role: "user", content: results });
   }
 
-  push({
-    id: "agent-thinking",
-    label: executedToolsList.length ? "اكتمل التحليل" : "يفكّر ويحلّل",
-    status: "done",
-  });
+  emitCompose(onActivity, "done");
 
   if (!finalText) {
     if (recorded.length) {

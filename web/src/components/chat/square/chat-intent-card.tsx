@@ -45,6 +45,18 @@ export function ChatIntentCard({
       <p className="text-muted-foreground">
         الحجم: <span dir="ltr">{intent.notional.toFixed(2)} USDT</span>
       </p>
+      {intent.order_type === "limit" &&
+        (intent.limit_price ?? intent.entry) != null &&
+        (intent.limit_price ?? intent.entry)! > 0 && (
+          <p className="mt-1 text-amber-600 dark:text-amber-400">
+            تنفيذ كأمر معلّق @{" "}
+            <span dir="ltr">
+              {(intent.limit_price ?? intent.entry)!.toLocaleString(undefined, {
+                maximumFractionDigits: 5,
+              })}
+            </span>
+          </p>
+        )}
       {!pending && (
         <p className="mt-1 font-medium text-foreground">
           {STATUS_AR[intent.status] ?? intent.status}
@@ -64,7 +76,7 @@ export function ChatIntentCard({
                 <MessageLoading />
               </span>
             ) : (
-              "موافقة وتنفيذ"
+              intent.order_type === "limit" ? "موافقة — أمر معلّق" : "موافقة وتنفيذ"
             )}
           </button>
           <button

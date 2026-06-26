@@ -38,8 +38,10 @@ function isValidStop(
 }
 
 /**
- * Normalizes SL/TP for MT5 market orders. Invalid levels are dropped (null) so
+ * Normalizes SL/TP for MT5 orders. Invalid levels are dropped (null) so
  * the EA opens without stops rather than failing with retcode 10016.
+ *
+ * For pending/limit orders pass the limit price as refPrice (not live bid/ask).
  */
 export function normalizeMt5Stops(
   side: "buy" | "sell",
@@ -47,6 +49,7 @@ export function normalizeMt5Stops(
   stopLoss: number | null | undefined,
   takeProfit: number | null | undefined,
   spec: EaSymbolSpec | null,
+  _opts?: { referencePrice?: "entry" | "market" },
 ): NormalizedMt5Stops {
   const digits = Number(spec?.digits) || 5;
   const price = roundPrice(refPrice, digits);

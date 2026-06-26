@@ -9,6 +9,7 @@ import { sanitizeUserInput } from "@/lib/security";
 import { processRecommendations, type ProcessedIntent } from "@/lib/tradeFlow";
 import type { Recommendation } from "@/lib/types";
 import { sseEncode } from "@/lib/sse";
+import { SSE_CONNECT_ACTIVITY } from "@/lib/agentActivityPipeline";
 import { extractUISchema } from "@/lib/uiSchema";
 import {
   applyChatSessionContext,
@@ -274,6 +275,7 @@ export async function POST(req: NextRequest) {
           };
 
           send("meta", { conversationId });
+          send("activity", SSE_CONNECT_ACTIVITY);
 
           try {
 

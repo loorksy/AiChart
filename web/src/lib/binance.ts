@@ -415,6 +415,33 @@ export async function placeMarketOrder(
   )) as PlacedOrder;
 }
 
+/** Places a LIMIT order on the spot account (GTC). */
+export async function placeLimitOrder(
+  apiKey: string,
+  apiSecret: string,
+  env: BinanceEnv,
+  symbol: string,
+  side: "BUY" | "SELL",
+  quantity: number,
+  price: number,
+): Promise<PlacedOrder> {
+  return (await signedRequest(
+    "POST",
+    "/api/v3/order",
+    {
+      symbol,
+      side,
+      type: "LIMIT",
+      timeInForce: "GTC",
+      quantity,
+      price,
+    },
+    apiKey,
+    apiSecret,
+    env,
+  )) as PlacedOrder;
+}
+
 /** 24h ticker stats (price change %, high, low, volume). */
 export async function get24hStats(
   symbol: string,

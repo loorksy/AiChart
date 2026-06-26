@@ -829,6 +829,46 @@ export async function updateRecommendationContext(
   ]);
 }
 
+export async function updateRecommendationLevels(
+  id: number,
+  patch: {
+    action?: string;
+    entry?: number | null;
+    stop_loss?: number | null;
+    take_profit?: number | null;
+    rationale?: string | null;
+  },
+): Promise<void> {
+  const fields: string[] = [];
+  const params: unknown[] = [];
+  if ("action" in patch) {
+    fields.push("action = ?");
+    params.push(patch.action ?? "wait");
+  }
+  if ("entry" in patch) {
+    fields.push("entry = ?");
+    params.push(patch.entry ?? null);
+  }
+  if ("stop_loss" in patch) {
+    fields.push("stop_loss = ?");
+    params.push(patch.stop_loss ?? null);
+  }
+  if ("take_profit" in patch) {
+    fields.push("take_profit = ?");
+    params.push(patch.take_profit ?? null);
+  }
+  if ("rationale" in patch) {
+    fields.push("rationale = ?");
+    params.push(patch.rationale ?? null);
+  }
+  if (fields.length === 0) return;
+  params.push(id);
+  await execute(
+    `UPDATE recommendations SET ${fields.join(", ")} WHERE id = ?`,
+    params,
+  );
+}
+
 export async function updateRecommendationIntelligence(
   id: number,
   patch: {

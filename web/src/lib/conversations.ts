@@ -174,6 +174,58 @@ export async function appendChatMessage(
   ))!;
 }
 
+export interface ChartAnalysisLogEntry {
+  messageId: number;
+  symbol: string;
+  interval: string;
+  market?: string;
+  created_at: string;
+  excerpt: string;
+  drawings?: unknown[];
+  overlays?: unknown[];
+  recommendation_id?: number | null;
+  recommendation?: Record<string, unknown> | null;
+}
+
+/** Assistant messages persisted from chart analyze (for history drawer + hydrate). */
+export async function loadChartAnalyses(
+  conversationId: number,
+): Promise<ChartAnalysisLogEntry[]> {
+  const rows = await loadChatMessages(conversationId, MAX_MESSAGES_LOAD);
+  const entries: ChartAnalysisLogEntry[] = [];
+
+  for (const r of rows) {
+    if (r.role !== "assistant" || !r.metadata_json) continue;
+    try {
+      const meta = JSON.parse(r.metadata_json) as Record<string, unknown>;
+      const isAnalyze =
+        meta.type === "chart_analyze" ||
+        meta.analysis_source != null;
+      if (!isAnalyze || !meta.symbol) continue;
+      entries.push({
+        messageId: r.id,
+        symbol: String(meta.symbol),
+        interval: String(meta.interval ?? "1h"),
+        market: meta.market != null ? String(meta.market) : undefined,
+        created_at: r.created_at,
+        excerpt: r.content.slice(0, 120),
+        drawings: Array.isArray(meta.drawings) ? meta.drawings : undefined,
+        overlays: Array.isArray(meta.overlays) ? meta.overlays : undefined,
+        recommendation_id:
+          meta.recommendation_id != null ? Number(meta.recommendation_id) : null,
+        recommendation:
+          meta.recommendation && typeof meta.recommendation === "object"
+            ? (meta.recommendation as Record<string, unknown>)
+            : null,
+      });
+    } catch {
+      /* skip malformed metadata */
+    }
+  }
+
+  return entries.reverse();
+}
+
 export async function loadChatMessages(
   conversationId: number,
   limit = MAX_MESSAGES_LOAD,

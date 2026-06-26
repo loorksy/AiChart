@@ -1,20 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { LineChart, X, Search, Sparkles, History } from "lucide-react";
+import { LineChart, X, Search, Sparkles, History, BarChart2 } from "lucide-react";
 import {
   DEFAULT_SELECTIONS,
   type ChatStartSelections,
 } from "@/components/chat/ChatModeBar";
 import { ChatSidebar } from "@/components/chat/square/chat-sidebar";
+import { AnalysisLogDrawer } from "@/components/chat/square/analysis-log-drawer";
 import { ChatConversation } from "@/components/chat/square/chat-conversation";
 import { ChatInputBar, type Attachment } from "@/components/chat/square/chat-input-bar";
 import { ChartPreviewPanel } from "@/components/ui/chart-preview-panel";
 import { useChatStore } from "@/stores/chat-store";
 import { useAgentActivities } from "@/hooks/useAgentActivities";
+import type { ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { useMe } from "@/hooks/useMe";
 import { needsAgentActivity } from "@/lib/agentActivity";
+import { emitSseConnect, markSseConnected } from "@/lib/agentActivityPipeline";
+import { overlaysFromRecommendation } from "@/lib/chartOverlays";
+import type { ChartAnalysisLogEntry } from "@/lib/conversations";
 import {
   fileToChatImage,
   imageDataUrl,
@@ -24,7 +29,6 @@ import { consumeSse } from "@/lib/sse";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
 import { useLocale } from "@/components/LocaleProvider";
 
 function extractSymbol(text: string): string | null {
@@ -131,6 +135,11 @@ export default function ChatSquareClient({
   // Session-mode selections (applied on the first message of a session).
   const [sel, setSel] = useState<ChatStartSelections>(DEFAULT_SELECTIONS);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [analysesOpen, setAnalysesOpen] = useState(false);
+  const [analysesLog, setAnalysesLog] = useState<ChartAnalysisLogEntry[]>([]);
+  const [analysesLoading, setAnalysesLoading] = useState(false);
+  const [chartHydrateOverride, setChartHydrateOverride] =
+    useState<ChartHydrateSnapshot | null>(null);
 
   const { data: me, refresh: refreshMe } = useMe();
 
@@ -148,16 +157,78 @@ export default function ChatSquareClient({
     resetSelection,
   } = useChatStore();
 
-  const {
-    activities: intentActivities,
-    reset: resetIntentActivities,
-    upsert: upsertIntentActivity,
-  } = useAgentActivities();
-  const { activities, reset: resetActivities, upsert: upsertActivity } =
+  const { activities, reset: resetActivities, upsert: upsertActivityRaw } =
     useAgentActivities();
+
+  const upsertActivity = useCallback(
+    (activity: Parameters<typeof upsertActivityRaw>[0]) => {
+      if (activity.id !== "sse-connect") {
+        markSseConnected(upsertActivityRaw);
+      }
+      upsertActivityRaw(activity);
+    },
+    [upsertActivityRaw],
+  );
 
   const hasConversation = messages.length > 0 || selectedId !== null;
   const displayName = me?.displayName ?? (locale === "ar" ? "متداول" : "Trader");
+
+  const chartHydrateFromMessages = useMemo((): ChartHydrateSnapshot | null => {
+    if (chartAnalyzing || busy) return null;
+    const withDrawings = messages.filter(
+      (m) => (m.chartAnalyze?.drawings?.length ?? 0) > 0,
+    );
+    const match =
+      [...withDrawings]
+        .reverse()
+        .find(
+          (m) =>
+            m.chartAnalyze?.symbol?.toUpperCase() === previewSymbol.toUpperCase() &&
+            (m.chartAnalyze?.interval ?? "1h") === previewInterval,
+        ) ?? [...withDrawings].reverse()[0];
+    if (!match?.chartAnalyze) return null;
+    const meta = match.chartAnalyze;
+    const rec = meta.recommendation as Recommendation | null | undefined;
+    return {
+      drawings: meta.drawings,
+      overlays:
+        meta.overlays && meta.overlays.length > 0
+          ? meta.overlays
+          : rec
+            ? overlaysFromRecommendation(rec)
+            : undefined,
+      recommendation: rec ?? null,
+    };
+  }, [messages, previewSymbol, previewInterval, chartAnalyzing, busy]);
+
+  const chartHydrate = chartHydrateOverride ?? chartHydrateFromMessages;
+
+  useEffect(() => {
+    if (!analysesOpen || !selectedSlug) return;
+    setAnalysesLoading(true);
+    void fetch(`/api/conversations/${encodeURIComponent(selectedSlug)}/analyses`)
+      .then((r) => r.json())
+      .then((d) => setAnalysesLog((d as { analyses?: ChartAnalysisLogEntry[] }).analyses ?? []))
+      .catch(() => setAnalysesLog([]))
+      .finally(() => setAnalysesLoading(false));
+  }, [analysesOpen, selectedSlug]);
+
+  function loadAnalysisFromLog(entry: ChartAnalysisLogEntry) {
+    setPreviewSymbol(entry.symbol.toUpperCase());
+    setPreviewInterval(entry.interval);
+    setPreviewOpen(true);
+    setChartHydrateOverride({
+      drawings: entry.drawings as ChartHydrateSnapshot["drawings"],
+      overlays: entry.overlays as ChartHydrateSnapshot["overlays"],
+      recommendation: (entry.recommendation as Recommendation | null) ?? null,
+    });
+    setAnalysesOpen(false);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`chat-msg-${entry.messageId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
 
   useEffect(() => {
     void fetchConversations();
@@ -284,7 +355,9 @@ export default function ChatSquareClient({
     const isApprove = action === "approve";
     if (isApprove) {
       setExecutingIntentId(intentId);
-      resetIntentActivities();
+      setShowActivity(true);
+      resetActivities();
+      emitSseConnect(upsertActivityRaw);
     }
     try {
       const res = await fetch(`/api/trades/intents/${intentId}`, {
@@ -304,7 +377,7 @@ export default function ChatSquareClient({
           );
         } else {
           const data = await consumeSse<{ ok: boolean; reason?: string }>(res, {
-            onActivity: upsertIntentActivity,
+            onActivity: upsertActivity,
             onError: (msg) => setError(msg),
           });
           if (data && !data.ok) {
@@ -326,7 +399,7 @@ export default function ChatSquareClient({
     } finally {
       setBusyIntentId(null);
       setExecutingIntentId(null);
-      resetIntentActivities();
+      setShowActivity(false);
     }
   }
 
@@ -372,6 +445,7 @@ export default function ChatSquareClient({
     const trackActivity = needsAgentActivity(content || displayText);
     setShowActivity(trackActivity);
     resetActivities();
+    if (trackActivity) emitSseConnect(upsertActivityRaw);
     setBusy(true);
 
     try {
@@ -476,8 +550,10 @@ export default function ChatSquareClient({
   const handleChartAnalyzeStart = useCallback(async () => {
     chartStreamRef.current = "";
     setError(null);
+    setChartHydrateOverride(null);
     setShowActivity(true);
     resetActivities();
+    emitSseConnect(upsertActivityRaw);
     setChartAnalyzing(true);
     let convId = selectedId;
     if (!convId) convId = await createNew();
@@ -499,6 +575,7 @@ export default function ChatSquareClient({
     createNew,
     appendMessage,
     resetActivities,
+    upsertActivityRaw,
   ]);
 
   const handleChartStreamDelta = useCallback(
@@ -584,6 +661,7 @@ export default function ChatSquareClient({
     onAnalyzeError: handleChartAnalyzeError,
     onActivity: upsertActivity,
     onRequestChatMessage: handleRequestChatMessage,
+    hydrateSnapshot: chartHydrate,
   };
 
   const conversationBusy = busy || chartAnalyzing;
@@ -639,6 +717,21 @@ export default function ChatSquareClient({
           >
             <span className="hidden sm:inline">{locale === "ar" ? "محادثة جديدة" : "New Chat"}</span>
             <span className="sm:hidden">{locale === "ar" ? "جديد" : "New"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAnalysesOpen(true)}
+            disabled={!selectedSlug}
+            className={cn(
+              "rounded-lg border p-1.5 text-zinc-400 transition active:scale-95 duration-100 cursor-pointer disabled:opacity-40",
+              analysesOpen
+                ? "border-green-500/30 bg-green-500/10 text-green-400"
+                : "border-white/[0.06] bg-zinc-900/60 hover:bg-zinc-800 hover:text-foreground",
+            )}
+            title={locale === "ar" ? "سجل التحليلات" : "Analysis log"}
+          >
+            <BarChart2 className="h-4 w-4" />
           </button>
 
           {/* Chat History Toggle Button */}
@@ -726,9 +819,8 @@ export default function ChatSquareClient({
             <ChatConversation
               messages={messages}
               busy={conversationBusy}
-              showActivity={showActivity}
+              showActivity={showActivity || executingIntentId !== null}
               activities={activities}
-              hideActivityOnMobile
               executionMode={sel.mode}
               onPreview={() => setPreviewOpen(true)}
               busyIntentId={busyIntentId}
@@ -749,15 +841,6 @@ export default function ChatSquareClient({
               }}
               onWidgetAction={handleWidgetAction}
             />
-          )}
-
-          {executingIntentId !== null && intentActivities.length > 0 && (
-            <div className="shrink-0 border-t border-border px-3 py-2 bg-card/40">
-              <AgentActivityFeed
-                activities={intentActivities}
-                title={locale === "ar" ? "تنفيذ الصفقة" : "Executing Transaction"}
-              />
-            </div>
           )}
 
           {/* Chat Input Bar */}
@@ -832,6 +915,13 @@ export default function ChatSquareClient({
 
       {/* Conversation history drawer — collapsed by default */}
       <ChatSidebar open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <AnalysisLogDrawer
+        open={analysesOpen}
+        onClose={() => setAnalysesOpen(false)}
+        analyses={analysesLog}
+        loading={analysesLoading}
+        onSelect={loadAnalysisFromLog}
+      />
     </div>
   );
 }

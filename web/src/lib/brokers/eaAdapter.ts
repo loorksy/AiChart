@@ -87,12 +87,17 @@ export const eaAdapter: BrokerAdapter = {
     }> => {
       push({ id: "quote", label: `حساب حجم اللوت · ${mt5Symbol}`, status: "running" });
       const spec = await getEaSymbolSpec(userId, mt5Symbol);
-      const refPrice =
-        (intent.entry ?? 0) ||
-        sideQuotePrice(intent.side, spec) ||
-        Number(spec?.ask) ||
-        Number(spec?.bid) ||
-        0;
+      const isLimit =
+        intent.order_type === "limit" &&
+        intent.limit_price != null &&
+        intent.limit_price > 0;
+      const refPrice = isLimit
+        ? intent.limit_price!
+        : (intent.entry ?? 0) ||
+          sideQuotePrice(intent.side, spec) ||
+          Number(spec?.ask) ||
+          Number(spec?.bid) ||
+          0;
       const sizing = computeForexLots(intent.notional, refPrice, spec);
       if (!sizing.ok) {
         const reason = sizing.reason ?? "تعذّر حساب اللوت.";
@@ -116,6 +121,7 @@ export const eaAdapter: BrokerAdapter = {
         intent.stop_loss,
         intent.take_profit,
         spec,
+        { referencePrice: isLimit ? "entry" : "market" },
       );
       if (stops.note) {
         push({
@@ -142,21 +148,34 @@ export const eaAdapter: BrokerAdapter = {
       }
 
       const sideLabel = intent.side === "buy" ? "شراء" : "بيع";
+      const orderLabel = isLimit
+        ? `إرسال أمر معلّق ${sideLabel} @ ${refPrice} · ${sizing.lots} لوت`
+        : `إرسال أمر ${sideLabel} · ${sizing.lots} لوت ${intent.symbol}`;
       push({
         id: "order",
-        label: `إرسال أمر ${sideLabel} · ${sizing.lots} لوت ${intent.symbol}`,
+        label: orderLabel,
         status: "running",
       });
       const command = await createEaCommand(userId, {
         intent_id: intent.id,
-        command_type: "open_market",
-        payload: {
-          symbol: mt5Symbol,
-          side: intent.side,
-          lots: sizing.lots,
-          stop_loss: stops.stop_loss,
-          take_profit: stops.take_profit,
-        },
+        command_type: isLimit ? "open_pending" : "open_market",
+        payload: isLimit
+          ? {
+              symbol: mt5Symbol,
+              side: intent.side,
+              order_type: "limit",
+              lots: sizing.lots,
+              price: refPrice,
+              stop_loss: stops.stop_loss,
+              take_profit: stops.take_profit,
+            }
+          : {
+              symbol: mt5Symbol,
+              side: intent.side,
+              lots: sizing.lots,
+              stop_loss: stops.stop_loss,
+              take_profit: stops.take_profit,
+            },
         ttlMs: ACK_TIMEOUT_MS,
       });
 
@@ -211,6 +230,10 @@ async function finalizeAck(
   sideLabel: string,
 ): Promise<OrderResult> {
   const result = ack.result;
+  const isLimit =
+    intent.order_type === "limit" &&
+    intent.limit_price != null &&
+    intent.limit_price > 0;
 
   if (!ack.ok) {
     const reason = ack.reason ?? "رفض MetaTrader الأمر.";
@@ -244,16 +267,30 @@ async function finalizeAck(
 
   push({
     id: "order",
-    label: `تنفيذ ${sideLabel} · ${filledLots} لوت ${intent.symbol}`,
+    label: isLimit
+      ? `أمر معلّق ${sideLabel} @ ${Number(intent.limit_price ?? refPrice)}`
+      : `تنفيذ ${sideLabel} · ${filledLots} لوت ${intent.symbol}`,
     status: "done",
-    detail: ticket ? `تذكرة #${ticket}` : "نُفّذت",
+    detail: ticket
+      ? isLimit
+        ? `أمر معلّق #${ticket}`
+        : `تذكرة #${ticket}`
+      : isLimit
+        ? "أُرسل كأمر معلّق"
+        : "نُفّذت",
   });
   push({ id: "record", label: "تسجيل الصفقة وإرسال الإشعار", status: "done" });
 
   await updateIntentStatus(
     intent.id,
     "executed",
-    ticket ? `نُفّذت (تذكرة #${ticket}).` : "نُفّذت عبر MetaTrader.",
+    isLimit
+      ? ticket
+        ? `أمر معلّق @ ${Number(intent.limit_price ?? refPrice)} (تذكرة #${ticket}).`
+        : `أمر معلّق @ ${Number(intent.limit_price ?? refPrice)}.`
+      : ticket
+        ? `نُفّذت (تذكرة #${ticket}).`
+        : "نُفّذت عبر MetaTrader.",
   );
   return {
     ok: true,

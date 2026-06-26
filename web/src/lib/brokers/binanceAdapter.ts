@@ -8,7 +8,9 @@ import {
   getPrice,
   getSymbolFilters,
   roundToStep,
+  roundToTick,
   placeMarketOrder,
+  placeLimitOrder,
   placeOcoOrder,
 } from "../binance";
 import type { BrokerAdapter, OrderResult, PlaceOrderContext } from "./types";
@@ -53,43 +55,64 @@ export const binanceAdapter: BrokerAdapter = {
         getPrice(intent.symbol, creds.env),
         getSymbolFilters(intent.symbol, creds.env),
       ]);
+      const isLimit =
+        intent.order_type === "limit" &&
+        intent.limit_price != null &&
+        intent.limit_price > 0;
+      const entryPrice = isLimit ? intent.limit_price! : price;
       push({
         id: "quote",
         label: `جلب السعر ومرشحات ${intent.symbol}`,
         status: "done",
-        detail: `السعر ${price}`,
+        detail: isLimit
+          ? `أمر معلّق @ ${entryPrice}`
+          : `السعر ${price}`,
       });
-      const qty = roundToStep(intent.notional / price, filters.stepSize);
+      const qty = roundToStep(intent.notional / entryPrice, filters.stepSize);
 
       if (qty < filters.minQty || qty <= 0) {
         const reason = `الكمية أقل من الحد الأدنى للرمز (${filters.minQty}).`;
         await updateIntentStatus(intent.id, "failed", reason);
         return { ok: false, status: "failed", reason };
       }
-      if (filters.minNotional > 0 && qty * price < filters.minNotional) {
+      if (filters.minNotional > 0 && qty * entryPrice < filters.minNotional) {
         const reason = `قيمة الصفقة أقل من الحد الأدنى (${filters.minNotional}).`;
         await updateIntentStatus(intent.id, "failed", reason);
         return { ok: false, status: "failed", reason };
       }
 
       const sideLabel = intent.side === "buy" ? "شراء" : "بيع";
+      const orderLabel = isLimit
+        ? `أمر معلّق ${sideLabel} @ ${entryPrice} · ${qty}`
+        : `إرسال أمر ${sideLabel} · ${qty} ${intent.symbol}`;
       push({
         id: "order",
-        label: `إرسال أمر ${sideLabel} · ${qty} ${intent.symbol}`,
+        label: orderLabel,
         status: "running",
       });
-      const order = await placeMarketOrder(
-        creds.apiKey,
-        creds.apiSecret,
-        creds.env,
-        intent.symbol,
-        intent.side === "buy" ? "BUY" : "SELL",
-        qty,
-      );
+      const order = isLimit
+        ? await placeLimitOrder(
+            creds.apiKey,
+            creds.apiSecret,
+            creds.env,
+            intent.symbol,
+            intent.side === "buy" ? "BUY" : "SELL",
+            qty,
+            roundToTick(entryPrice, filters.tickSize),
+          )
+        : await placeMarketOrder(
+            creds.apiKey,
+            creds.apiSecret,
+            creds.env,
+            intent.symbol,
+            intent.side === "buy" ? "BUY" : "SELL",
+            qty,
+          );
 
       const executedQty = Number(order.executedQty) || qty;
-      const quoteQty = Number(order.cummulativeQuoteQty) || qty * price;
-      const avgPrice = executedQty > 0 ? quoteQty / executedQty : price;
+      const quoteQty =
+        Number(order.cummulativeQuoteQty) || qty * entryPrice;
+      const avgPrice = executedQty > 0 ? quoteQty / executedQty : entryPrice;
 
       const trade = await recordTrade(userId, {
         intent_id: intent.id,

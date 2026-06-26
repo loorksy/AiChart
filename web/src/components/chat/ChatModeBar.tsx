@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SlidersHorizontal, Globe } from "lucide-react";
+import { ShieldCheck, Globe } from "lucide-react";
 import { PairPicker } from "@/components/market/PairPicker";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/LocaleProvider";
@@ -16,7 +16,7 @@ export interface ChatStartSelections {
 
 export const DEFAULT_SELECTIONS: ChatStartSelections = {
   trading_style: "day",
-  mode: "approval",
+  mode: "auto",
   response_mode: "expert",
   market: "crypto",
   symbol: "",
@@ -108,11 +108,7 @@ function SegmentedRow<K extends keyof ChatStartSelections>({
   );
 }
 
-/**
- * Gear icon that opens a compact popover holding the non-market session
- * controls (response type, trading style, execution mode). Lives INSIDE the
- * input bar so it never steals chat space or breaks the composer layout.
- */
+/** Execution-mode picker — button shows the active mode label (default: auto). */
 export function SessionSettingsPopover({
   sel,
   onChange,
@@ -124,6 +120,7 @@ export function SessionSettingsPopover({
 }) {
   const { t } = useLocale();
   const labels = useSelectionLabels();
+  const modeLabel = labels.mode(sel.mode);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -157,56 +154,34 @@ export function SessionSettingsPopover({
             ? "bg-white/10 text-zinc-100"
             : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100",
         )}
-        aria-label={t("welcome.session_settings")}
-        title={t("welcome.session_settings")}
+        aria-label={modeLabel}
+        title={modeLabel}
       >
-        <SlidersHorizontal className="h-4 w-4" />
-        <span className="hidden sm:inline">{t("welcome.session_settings")}</span>
+        <ShieldCheck className="h-4 w-4 shrink-0" />
+        <span>{modeLabel}</span>
       </button>
 
       {open && (
         <div
           dir="rtl"
-          className="absolute bottom-full z-50 mb-2 w-[18rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-popover p-3 shadow-2xl animate-in fade-in-0 zoom-in-95"
+          className="absolute bottom-full z-50 mb-2 w-[16rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-popover p-3 shadow-2xl animate-in fade-in-0 zoom-in-95"
           style={{ insetInlineStart: 0 }}
         >
-          <div className="flex flex-col gap-3">
-            <SegmentedRow
-              label={t("welcome.response_mode")}
-              field="response_mode"
-              options={["fast", "expert", "vision"] as const}
-              current={sel.response_mode}
-              set={set}
-              render={labels.responseMode}
-            />
-            <SegmentedRow
-              label={t("welcome.trading_style")}
-              field="trading_style"
-              options={["scalp", "day", "swing", "position"] as const}
-              current={sel.trading_style}
-              set={set}
-              render={labels.tradingStyle}
-            />
-            <SegmentedRow
-              label={t("welcome.execution_mode")}
-              field="mode"
-              options={["approval", "direct", "auto"] as const}
-              current={sel.mode}
-              set={set}
-              render={labels.mode}
-            />
-          </div>
+          <SegmentedRow
+            label={t("welcome.execution_mode")}
+            field="mode"
+            options={["auto", "approval", "direct"] as const}
+            current={sel.mode}
+            set={set}
+            render={labels.mode}
+          />
         </div>
       )}
     </div>
   );
 }
 
-/**
- * Compact market control kept visible in the composer: a crypto/forex toggle
- * plus the pair picker. The market is the only selection shown inline; the rest
- * live behind the gear icon.
- */
+/** Crypto/forex toggle + pair picker in the composer toolbar. */
 export function MarketPairControl({
   sel,
   onChange,

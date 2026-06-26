@@ -1,7 +1,21 @@
 import { create } from "zustand";
 import { imageDataUrl, parseImageFromMetadata } from "@/lib/chatImage";
-import type { Conversation, ChatMessageRow } from "@/lib/types";
+import type { ChartDrawing } from "@/lib/chartDrawings";
+import type { ChartOverlay } from "@/lib/chartOverlays";
+import type { Conversation, ChatMessageRow, Recommendation } from "@/lib/types";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
+
+export interface ChartAnalyzeMeta {
+  symbol?: string;
+  interval?: string;
+  market?: string;
+  type?: string;
+  analysis_source?: string;
+  drawings?: ChartDrawing[];
+  overlays?: ChartOverlay[];
+  recommendation_id?: number | null;
+  recommendation?: Partial<Recommendation> | null;
+}
 
 export interface UiMessage {
   id: string;
@@ -17,6 +31,7 @@ export interface UiMessage {
     options: { label: string; value: string }[];
   } | null;
   ui_schema?: any;
+  chartAnalyze?: ChartAnalyzeMeta;
 }
 
 interface ChatState {
@@ -85,14 +100,45 @@ export const useChatStore = create<ChatState>((set, get) => ({
         let intents: any[] | undefined;
         let question: any = null;
         let ui_schema: any = null;
+        let chartAnalyze: ChartAnalyzeMeta | undefined;
         if (m.metadata_json) {
           try {
-            const parsedMeta = JSON.parse(m.metadata_json) as { recommendations?: unknown[]; intents?: any[]; question?: any; ui_schema?: any };
+            const parsedMeta = JSON.parse(m.metadata_json) as {
+              recommendations?: unknown[];
+              intents?: any[];
+              question?: any;
+              ui_schema?: any;
+              type?: string;
+              analysis_source?: string;
+              symbol?: string;
+              interval?: string;
+              market?: string;
+              drawings?: ChartDrawing[];
+              overlays?: ChartOverlay[];
+              recommendation_id?: number | null;
+              recommendation?: Partial<Recommendation> | null;
+            };
             recommendations = parsedMeta.recommendations;
-            // Only pending intents still need an action card on reload.
             intents = parsedMeta.intents?.filter((i) => i?.status === "pending");
             question = parsedMeta.question || null;
             ui_schema = parsedMeta.ui_schema || null;
+            if (
+              parsedMeta.type === "chart_analyze" ||
+              parsedMeta.analysis_source != null ||
+              parsedMeta.drawings
+            ) {
+              chartAnalyze = {
+                symbol: parsedMeta.symbol,
+                interval: parsedMeta.interval,
+                market: parsedMeta.market,
+                type: parsedMeta.type,
+                analysis_source: parsedMeta.analysis_source,
+                drawings: parsedMeta.drawings,
+                overlays: parsedMeta.overlays,
+                recommendation_id: parsedMeta.recommendation_id,
+                recommendation: parsedMeta.recommendation ?? null,
+              };
+            }
           } catch {
             recommendations = undefined;
           }
@@ -106,6 +152,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           intents: intents && intents.length ? intents : undefined,
           question,
           ui_schema,
+          chartAnalyze,
         };
       }),
       loading: false,

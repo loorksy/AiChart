@@ -122,12 +122,27 @@ export async function POST(req: NextRequest) {
         );
       }
       await appendChatMessage(conv.id, "assistant", result.reply, {
+        type: "chart_analyze",
         analysis_source: source,
         symbol,
         interval,
         market,
         drawings: result.drawings,
+        overlays: result.overlays,
         recommendation_id: result.recommendation?.id ?? null,
+        recommendation: result.recommendation
+          ? {
+              id: result.recommendation.id,
+              symbol: result.recommendation.symbol,
+              action: result.recommendation.action,
+              confidence: result.recommendation.confidence,
+              entry: result.recommendation.entry,
+              stop_loss: result.recommendation.stop_loss,
+              take_profit: result.recommendation.take_profit,
+              rationale: result.recommendation.rationale,
+              timeframe: result.recommendation.timeframe,
+            }
+          : null,
         chart_vision: result.chartVisionSource,
       });
     }

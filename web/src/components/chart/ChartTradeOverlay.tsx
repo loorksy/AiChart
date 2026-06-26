@@ -106,6 +106,12 @@ export function ChartTradeOverlay({
                 )}
               </div>
 
+              {recommendation!.entry != null && recommendation!.entry > 0 && (
+                <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                  تنفيذ كأمر معلّق @ {formatLevel(recommendation!.entry)}
+                </p>
+              )}
+
               <div className="grid grid-cols-3 gap-1.5 text-center">
                 <div className="rounded-lg bg-secondary/60 px-1 py-1.5">
                   <p className="text-[9px] text-muted-foreground">دخول</p>

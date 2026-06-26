@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -29,9 +29,7 @@ function statusRing(status: ActivityStatus): string {
 }
 
 /**
- * Professional, trading-flavoured "agent thinking" timeline — driven by real
- * SSE activity events. Collapsible, with status icons, tool tags, the platform
- * logo, and a small live-Preview button while the agent works.
+ * Agent thinking timeline — real SSE stages. Stays expanded while running.
  */
 export function AgentThinkingTimeline({
   activities,
@@ -40,15 +38,21 @@ export function AgentThinkingTimeline({
   activities: AgentActivity[];
   onPreview?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  if (activities.length === 0) return null;
-
   const running = activities.some((a) => a.status === "running");
   const allDone = activities.every((a) => a.status === "done");
-  // The agent's real current step (last running, else last) — drives the shimmer.
+  const [open, setOpen] = useState(running);
+
+  useEffect(() => {
+    if (running) setOpen(true);
+  }, [running]);
+
+  if (activities.length === 0) return null;
+
   const current =
     [...activities].reverse().find((a) => a.status === "running") ??
     activities[activities.length - 1];
+
+  const showList = open || running;
 
   return (
     <motion.div
@@ -57,12 +61,11 @@ export function AgentThinkingTimeline({
       transition={{ duration: 0.2 }}
       className="mx-auto w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-sm"
     >
-      {/* Header */}
       <div
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "flex cursor-pointer select-none items-center justify-between px-3 py-2.5 transition-colors",
-          open ? "border-b border-border/60 bg-secondary/30" : "hover:bg-secondary/30",
+          showList ? "border-b border-border/60 bg-secondary/30" : "hover:bg-secondary/30",
         )}
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -76,13 +79,16 @@ export function AgentThinkingTimeline({
           )}
           {running ? (
             <span className="truncate">
-              <ShiningText text={`${current?.label ?? "يفكّر"}…`} />
+              <ShiningText text={current?.label ?? "جاري العمل"} />
             </span>
           ) : (
             <span className="text-sm font-semibold text-foreground/90">
               {allDone ? "اكتمل التحليل" : "خطوات الوكيل"}
             </span>
           )}
+          <span className="hidden text-[10px] text-muted-foreground sm:inline">
+            · {activities.length} {activities.length === 1 ? "خطوة" : "خطوات"}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           {running && onPreview && (
@@ -101,15 +107,14 @@ export function AgentThinkingTimeline({
           <ChevronDown
             className={cn(
               "h-4 w-4 text-muted-foreground transition-transform",
-              !open && "-rotate-90",
+              !showList && "-rotate-90",
             )}
           />
         </div>
       </div>
 
-      {/* Timeline */}
       <AnimatePresence initial={false}>
-        {open && (
+        {showList && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -129,11 +134,9 @@ export function AgentThinkingTimeline({
                       a.status === "pending" && "opacity-60",
                     )}
                   >
-                    {/* connecting line */}
                     {!isLast && (
                       <span className="absolute start-[11.5px] top-7 bottom-[-6px] w-px bg-border/60" />
                     )}
-                    {/* icon node */}
                     <span
                       className={cn(
                         "relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ring-4 ring-card",
@@ -150,7 +153,6 @@ export function AgentThinkingTimeline({
                         <span className="h-1.5 w-1.5 rounded-full bg-current" />
                       )}
                     </span>
-                    {/* content */}
                     <div className="min-w-0 flex-1 pb-4">
                       <div className="flex items-center justify-between gap-2">
                         <span

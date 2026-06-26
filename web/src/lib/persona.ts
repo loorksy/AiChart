@@ -223,6 +223,7 @@ export function chartAnalyzeSystemSuffix(): string {
 - **حلّل الصورة بحرّية كخبير** — trend, S/R, liquidity pools, Order Blocks, FVG, channels, entry/exit.
 - chart_drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker — كل عنصر label عربي + meta.rationale.
 - factors[] في record_recommendation يطابق labels الرسومات.
+- SL تحت/فوق مستوى هيكلي؛ TP بمسافة R:R ≥ min_rr. لا sell-only في uptrend بدون reversal.
 - استخدم record_recommendation **فقط** عند وجود رأي تداول واضح (buy/sell)؛ وإلا تحليل نصّي فقط.
 - لا تخمّن أرقاماً غير ظاهرة — استخدم المرجع النصي المرفق للمؤشرات.`;
 }
@@ -240,7 +241,8 @@ export function scalpSessionSuffix(): string {
 - **لاحظ السوق بنفسك عبر الأدوات** (scan_market، get_market_snapshot، get_multi_timeframe_snapshot، get_account_symbols، get_trade_readiness، get_open_trades، get_market_context). لا تفترض — اجمع البيانات الحيّة.
 - **فكّر كمنسّق فوق 5 زوايا**: الزخم، بنية السوق (دعم/مقاومة)، التقلّب، المخاطر، توافق الاستراتيجية. المؤشرات/الإشارات/الأداء التاريخي = **مدخلات تفكير**، لا قواعد ثابتة.
 - **القرار لك وحدك**: اختر أفضل رمز واتجاه (buy/sell)، أو انتظر. **الجودة قبل الكمّية** — لا تفرض صفقة؛ إن لا أفضلية واضحة عالية الاحتمال، انتظر.
-- **SL/TP من البنية والتقلّب** (ATR/atr14، أقرب swing) — لا نسبة قالبية ثابتة. الحجم بحسب الثقة والتقلّب.
+- **SL/TP من البنية والتقلّب** (ATR/atr14، أقرب swing) — لا نسبة قالبية ثابتة. SL **يجب** أن يكون تحت/فوق مستوى هيكلي مذكور في rationale؛ TP على مسافة R:R ≥ min_rr — لا تضع SL و TP قريبين من بعض.
+- **لا تُفضّل البيع تلقائياً** — اختر buy/sell/wait حسب البنية والاتجاه HTF؛ في uptrend لا sell إلا reversal واضح.
 - **آلية الفعل الوحيدة**: استدعِ أداة \`submit_scalp_decision\` **مرة واحدة** في نهاية تحليلك:
   - للدخول: { action: "enter", symbol, side: buy|sell, entry, stop_loss, take_profit, notional, confidence: 0-100, advisors: {momentum, structure, volatility, risk, strategy}, rationale_ar }.
   - للانتظار: { action: "wait", rationale_ar }.
