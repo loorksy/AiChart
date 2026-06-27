@@ -4,7 +4,7 @@ import { emitActivity } from "./agentActivity";
 /** Initial SSE connection phase — shown until the first server activity arrives. */
 export const SSE_CONNECT_ACTIVITY: AgentActivity = {
   id: "sse-connect",
-  label: "جاري الاتصال…",
+  label: "فتح قناة البث…",
   status: "running",
 };
 
@@ -22,7 +22,7 @@ export function emitSseConnect(listener: ActivityListener | undefined) {
 export function markSseConnected(listener: ActivityListener | undefined) {
   emitActivity(listener, {
     id: "sse-connect",
-    label: "متصل بالخادم",
+    label: "قناة البث متصلة",
     status: "done",
   });
 }
@@ -34,7 +34,7 @@ export function emitAgentLlm(
 ) {
   emitActivity(listener, {
     id: "agent-llm",
-    label: step > 1 ? `تحليل Claude · خطوة ${step}` : "تحليل Claude",
+    label: step > 1 ? `انتظار رد النموذج · دورة ${step}` : "انتظار رد النموذج",
     status,
     tool: "claude",
   });
@@ -46,7 +46,7 @@ export function emitCompose(
 ) {
   emitActivity(listener, {
     id: "compose",
-    label: "صياغة الرد",
+    label: "تجهيز الرد النهائي",
     status,
   });
 }

@@ -62,6 +62,8 @@ export default function ChatSquareClient({
   const [previewInterval, setPreviewInterval] = useState("1h");
   const [previewWidth, setPreviewWidth] = useState(440);
   const chartStreamRef = useRef("");
+  const streamBufferRef = useRef("");
+  const streamFlushTimerRef = useRef<number | null>(null);
 
   // Drag-to-resize the chart panel. Direction-aware (RTL/LTR) with expanded limits.
   function startResize(e: React.MouseEvent) {
@@ -296,11 +298,12 @@ export default function ChatSquareClient({
   // Phase B: Automatically open the chart preview panel when a conversation exists
   useEffect(() => {
     if (hasConversation) {
-      setPreviewOpen(true);
+      const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+      if (!isMobile && !busy && !chartAnalyzing) setPreviewOpen(true);
     } else {
       setPreviewOpen(false);
     }
-  }, [hasConversation]);
+  }, [hasConversation, busy, chartAnalyzing]);
 
   // Keep chat chart symbol aligned with composer market/symbol selection.
   useEffect(() => {
@@ -485,6 +488,15 @@ export default function ChatSquareClient({
 
       let streamError: string | null = null;
       let streamed = "";
+      const flushStream = (force = false) => {
+        if (!force && streamFlushTimerRef.current != null) return;
+        const run = () => {
+          streamFlushTimerRef.current = null;
+          updateLastAssistant({ content: streamBufferRef.current, streaming: true });
+        };
+        if (force) run();
+        else streamFlushTimerRef.current = window.setTimeout(run, 80);
+      };
 
       const data = await consumeSse<{
         reply: string;
@@ -496,13 +508,15 @@ export default function ChatSquareClient({
         onActivity: upsertActivity,
         onDelta: (t) => {
           streamed += t;
-          updateLastAssistant({ content: streamed, streaming: true });
+          streamBufferRef.current = streamed;
+          flushStream();
         },
         onError: (msg) => {
           streamError = msg;
           setError(msg);
         },
       });
+      flushStream(true);
 
       if (!data) {
         if (!streamError) setError(locale === "ar" ? "لم يصل رد من الوكيل." : "No response from agent.");
@@ -534,6 +548,11 @@ export default function ChatSquareClient({
     } catch {
       setError(locale === "ar" ? "تعذّر الاتصال بالخادم." : "Failed to connect to server.");
     } finally {
+      if (streamFlushTimerRef.current != null) {
+        window.clearTimeout(streamFlushTimerRef.current);
+        streamFlushTimerRef.current = null;
+      }
+      streamBufferRef.current = "";
       setBusy(false);
       setShowActivity(false);
     }

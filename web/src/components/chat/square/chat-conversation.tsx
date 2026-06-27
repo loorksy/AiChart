@@ -51,7 +51,10 @@ export function ChatConversation({
         : [];
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const id = window.setTimeout(() => {
+      endRef.current?.scrollIntoView({ behavior: busy ? "auto" : "smooth" });
+    }, busy ? 80 : 0);
+    return () => window.clearTimeout(id);
   }, [messages, busy, activities]);
 
   return (

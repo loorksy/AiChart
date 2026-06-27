@@ -80,7 +80,11 @@ export function ChatMessage({
         ) : (
           <>
             <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0">
-              <ReactMarkdown>{message.content || " "}</ReactMarkdown>
+              {message.streaming ? (
+                <p className="whitespace-pre-wrap">{message.content || " "}</p>
+              ) : (
+                <ReactMarkdown>{message.content || " "}</ReactMarkdown>
+              )}
               {message.streaming && (
                 <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-accent-gold align-middle" />
               )}
@@ -100,7 +104,7 @@ export function ChatMessage({
                   onReject={onIntentReject}
                 />
               ))}
-            {message.ui_schema && onWidgetAction && (() => {
+            {!message.streaming && message.ui_schema && onWidgetAction && (() => {
               const validated = validateUISchema(message.ui_schema);
               if (!validated) return null;
               const recs = message.recommendations as Recommendation[] | undefined;

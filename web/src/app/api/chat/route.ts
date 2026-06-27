@@ -267,12 +267,29 @@ export async function POST(req: NextRequest) {
       const bodyStream = new ReadableStream({
 
         async start(controller) {
-
-          const send = (event: string, data: unknown) => {
-
-            controller.enqueue(sseEncode(event, data));
-
+          let closed = false;
+          const close = () => {
+            if (closed) return;
+            closed = true;
+            try {
+              controller.close();
+            } catch {
+              // Client already disconnected.
+            }
           };
+          const send = (event: string, data: unknown) => {
+            if (closed || req.signal.aborted) return;
+            try {
+              controller.enqueue(sseEncode(event, data));
+            } catch {
+              closed = true;
+            }
+          };
+          const heartbeat = setInterval(() => send("ping", { ts: Date.now() }), 15_000);
+          req.signal.addEventListener("abort", () => {
+            clearInterval(heartbeat);
+            close();
+          }, { once: true });
 
           send("meta", { conversationId });
           send("activity", SSE_CONNECT_ACTIVITY);
@@ -356,9 +373,10 @@ export async function POST(req: NextRequest) {
 
             send("error", { error: message });
 
+          } finally {
+            clearInterval(heartbeat);
           }
-
-          controller.close();
+          close();
 
         },
 
@@ -373,6 +391,8 @@ export async function POST(req: NextRequest) {
           "Cache-Control": "no-cache, no-transform",
 
           Connection: "keep-alive",
+
+          "X-Accel-Buffering": "no",
 
         },
 
@@ -465,5 +485,4 @@ export async function POST(req: NextRequest) {
 
 // Memory lifecycle now runs as a background `memory_lifecycle` job (see
 // lib/memoryLifecycle.ts), enqueued above instead of inline on the request.
-
 
