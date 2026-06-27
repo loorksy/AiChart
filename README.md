@@ -7,6 +7,7 @@
 > **أرشيف خطط منفّذة (2026-06):** [`docs/plans/README.md`](docs/plans/README.md).  
 > دليل شامل بالعربية (صفحات، وكيل، تليجرام، إعدادات): [`docs/PROJECT_AR.md`](docs/PROJECT_AR.md).  
 > اقتراحات قابلة للتنفيذ (فجوات الكود مقابل الخطة): [`docs/SUGGESTIONS_FEASIBLE.md`](docs/SUGGESTIONS_FEASIBLE.md).
+> دليل تشغيل وتوسّع إنتاجي: [`docs/PRODUCTION_SCALING.md`](docs/PRODUCTION_SCALING.md).
 
 ## الحالة الحالية: المراحل 1–6 مكتملة
 

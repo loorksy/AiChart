@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AppConsoleShell } from "@/components/shell/AppConsoleShell";
 import ChatSquareClient from "@/components/ChatSquareClient";
+import { ChatErrorBoundary } from "@/components/chat/ChatErrorBoundary";
 
 /** Local, dependency-free display name (avoids importing server-only userContext). */
 function nameFromEmail(email: string): string {
@@ -24,10 +25,12 @@ export default function ChatPageClient({
   return (
     <AppConsoleShell role={role} displayName={nameFromEmail(email)} noPadding>
       <div className="flex h-dvh flex-col">
-        <ChatSquareClient
-          agentReady={agentReady}
-          onCreditsUsed={() => setCreditsKey((k) => k + 1)}
-        />
+        <ChatErrorBoundary>
+          <ChatSquareClient
+            agentReady={agentReady}
+            onCreditsUsed={() => setCreditsKey((k) => k + 1)}
+          />
+        </ChatErrorBoundary>
       </div>
     </AppConsoleShell>
   );

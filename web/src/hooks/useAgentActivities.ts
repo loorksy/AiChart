@@ -3,6 +3,8 @@
 import { useCallback, useState } from "react";
 import type { AgentActivity } from "@/lib/agentActivity";
 
+const MAX_VISIBLE_ACTIVITIES = 24;
+
 export function useAgentActivities() {
   const [activities, setActivities] = useState<AgentActivity[]>([]);
 
@@ -16,7 +18,7 @@ export function useAgentActivities() {
         next[idx] = activity;
         return next;
       }
-      return [...prev, activity];
+      return [...prev, activity].slice(-MAX_VISIBLE_ACTIVITIES);
     });
   }, []);
 

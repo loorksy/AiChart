@@ -11,6 +11,7 @@ export interface SseHandlers<TDone = unknown> {
   onMeta?: (payload: unknown) => void;
   onDone?: (payload: TDone) => void;
   onError?: (message: string) => void;
+  signal?: AbortSignal;
 }
 
 /** Parse an SSE response body from fetch (client-side). */
@@ -34,7 +35,13 @@ export async function consumeSse<TDone = unknown>(
       else if (line.startsWith("data:")) data += line.slice(5).trim();
     }
     if (!data) return;
-    const parsed = JSON.parse(data) as unknown;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data) as unknown;
+    } catch {
+      handlers.onError?.("وصل حدث غير صالح من الخادم، وتم تجاهله.");
+      return;
+    }
     if (event === "activity") handlers.onActivity?.(parsed as AgentActivity);
     else if (event === "meta") handlers.onMeta?.(parsed);
     else if (event === "delta") {
@@ -56,6 +63,10 @@ export async function consumeSse<TDone = unknown>(
   };
 
   while (true) {
+    if (handlers.signal?.aborted) {
+      await reader.cancel().catch(() => undefined);
+      break;
+    }
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });

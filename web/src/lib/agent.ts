@@ -1214,7 +1214,7 @@ export async function runAgent(
 
   push({
     id: "agent-llm",
-    label: "تحليل Claude",
+    label: "انتظار رد النموذج",
     status: "running",
     tool: "claude",
   });
