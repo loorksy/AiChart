@@ -214,7 +214,7 @@ export function BridgeOverviewClient({
                 label: execLabel,
                 tone: conn?.executionEnv.mismatch ? "warn" : "ok",
               }}
-              href="/console/risk"
+              href="/console/connect"
               icon={conn?.executionEnv.mismatch ? AlertTriangle : Zap}
             />
           </div>
