@@ -607,11 +607,7 @@ export default function ChatSquareClient({
   );
 
   const handleChartAnalyzeDone = useCallback(
-    (payload: {
-      reply: string;
-      recommendation?: Recommendation | null;
-      intents?: ProcessedIntent[];
-    }) => {
+    (payload: import("@/hooks/useChartAnalysis").ChartAnalyzeDonePayload) => {
       const recs = payload.recommendation ? [payload.recommendation] : undefined;
       const pendingIntents =
         payload.intents?.filter((i) => i.status === "pending") ?? [];
@@ -620,6 +616,17 @@ export default function ChatSquareClient({
         streaming: false,
         recommendations: recs,
         intents: pendingIntents.length ? pendingIntents : undefined,
+        chartAnalyze: {
+          symbol: previewSymbol,
+          interval: previewInterval,
+          market: "forex",
+          type: "chart_analyze",
+          analysis_source: "chat_chart",
+          drawings: payload.drawings,
+          overlays: payload.overlays,
+          recommendation_id: payload.recommendation?.id ?? null,
+          recommendation: payload.recommendation ?? null,
+        },
       });
       if (payload.recommendation) {
         setPreviewSymbol(payload.recommendation.symbol);
@@ -633,6 +640,8 @@ export default function ChatSquareClient({
     },
     [
       updateLastAssistant,
+      previewSymbol,
+      previewInterval,
       fetchConversations,
       refreshMe,
       onCreditsUsed,

@@ -54,11 +54,7 @@ export function ChartPreviewPanel({
   onCreditsUsed?: () => void;
   onAnalyzeStart?: () => void;
   onStreamDelta?: (text: string) => void;
-  onAnalyzeDone?: (payload: {
-    reply: string;
-    recommendation?: Recommendation | null;
-    intents?: ProcessedIntent[];
-  }) => void;
+  onAnalyzeDone?: (payload: import("@/hooks/useChartAnalysis").ChartAnalyzeDonePayload) => void;
   onAnalyzeError?: (message: string) => void;
   onActivity?: (activity: AgentActivity) => void;
   onRequestChatMessage?: (text: string) => void;
@@ -94,11 +90,7 @@ export function ChartPreviewPanel({
     onActivity,
     hydrateSnapshot,
     onAnalyzeDone: (payload) => {
-      onAnalyzeDone?.({
-        reply: payload.reply,
-        recommendation: payload.recommendation,
-        intents: payload.intents,
-      });
+      onAnalyzeDone?.(payload);
     },
   });
 

@@ -90,6 +90,32 @@ test("polyline_pattern maps to polylinePattern overlay with time anchor", () => 
   assert.equal(spec.points[2]!.dataIndex, 4);
 });
 
+test("enrichDrawingsWithTime backfills null time on price-only LLM points", () => {
+  const raw: ChartDrawing[] = [
+    {
+      type: "price_line",
+      confidence: 70,
+      label: "مقاومة",
+      points: [{ price: 1.143, time: null as unknown as number }],
+    },
+    {
+      type: "range_box",
+      confidence: 75,
+      label: "نطاق",
+      points: [
+        { price: 1.144, time: null as unknown as number },
+        { price: 1.138, time: null as unknown as number },
+      ],
+    },
+  ];
+  const candles = CANDLES.map((c) => ({ time: c.timestamp }));
+  const out = enrichDrawingsWithTime(raw, candles);
+  assert.ok(out[0]!.points[0]!.time && out[0]!.points[0]!.time > 0);
+  assert.ok(out[1]!.points.every((p) => p.time != null && p.time > 0));
+  const spec = drawingToOverlay(out[0]!, CANDLES, "hline")!;
+  assert.equal(spec.name, "priceLine");
+});
+
 test("same drawing reprojects to same price across candle sets", () => {
   const d: ChartDrawing = {
     type: "range_box",

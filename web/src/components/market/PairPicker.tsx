@@ -23,10 +23,6 @@ const POPULAR_CRYPTO = [
   "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
   "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT", "TRXUSDT", "LTCUSDT",
 ];
-const FOREX_MAJORS = [
-  "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF",
-  "NZDUSD", "EURGBP", "EURJPY", "GBPJPY", "XAUUSD", "XAGUSD",
-];
 
 function fmtPrice(p: number): string {
   if (!p) return "—";
@@ -63,7 +59,8 @@ export function PairPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [tickers, setTickers] = useState<Record<string, Ticker>>({});
-  const [forexSymbols, setForexSymbols] = useState<string[]>(FOREX_MAJORS);
+  const [forexSymbols, setForexSymbols] = useState<string[]>([]);
+  const [forexLoading, setForexLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on outside click.
@@ -85,18 +82,18 @@ export function PairPicker({
       .catch(() => {});
   }, [open, market, tickers]);
 
-  // Load broker forex symbols when the popover opens.
+  // Load broker forex symbols when the popover opens (EA bridge only — no static list).
   useEffect(() => {
     if (!open || market !== "forex") return;
+    setForexLoading(true);
     void fetch("/api/instruments?market=forex&wrapped=1", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const rows = (d?.instruments ?? []) as Array<{ symbol: string }>;
-        if (rows.length) {
-          setForexSymbols(rows.map((r) => r.symbol.toUpperCase()));
-        }
+        setForexSymbols(rows.map((r) => r.symbol.toUpperCase()));
       })
-      .catch(() => {});
+      .catch(() => setForexSymbols([]))
+      .finally(() => setForexLoading(false));
   }, [open, market]);
 
   const list = useMemo(() => {
@@ -164,7 +161,11 @@ export function PairPicker({
       <div className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto p-2">
         {list.length === 0 && (
           <p className="col-span-2 py-6 text-center text-xs text-muted-foreground">
-            لا نتائج
+            {market === "forex" && forexLoading
+              ? "جاري تحميل أزواج الوسيط…"
+              : market === "forex"
+                ? "لا أزواج من الوسيط — تأكد من اتصال AiChartBridge على MT5"
+                : "لا نتائج"}
           </p>
         )}
         {list.map((p) => {

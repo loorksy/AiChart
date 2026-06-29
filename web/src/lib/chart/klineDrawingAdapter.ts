@@ -3,6 +3,8 @@ import { isArrowDrawing, isZoneDrawing } from "@/lib/chartDrawings";
 import {
   drawingPointsToKLine,
   isDrawingVisible,
+  toCandleLike,
+  type AnyCandle,
   type CandleLike,
 } from "@/lib/chart/chartTimeAnchor";
 
@@ -144,13 +146,14 @@ function buildExtendData(d: ChartDrawing): Record<string, unknown> {
 /** One ChartDrawing → one KLineCharts overlay spec (or null when un-renderable). */
 export function drawingToOverlay(
   d: ChartDrawing,
-  candles: CandleLike[],
+  candles: AnyCandle[],
   id: string,
 ): KLineOverlaySpec | null {
-  if (!isDrawingVisible(d, candles)) return null;
+  const like = toCandleLike(candles);
+  if (!isDrawingVisible(d, like)) return null;
 
   let name = overlayNameFor(d);
-  let points = drawingPointsToKLine(d, candles);
+  let points = drawingPointsToKLine(d, like);
   if (!points || points.length === 0) return null;
 
   if (name === "priceChannelLine") {
@@ -212,7 +215,7 @@ export function drawingId(d: ChartDrawing, index: number): string {
 /** Map ChartDrawing[] to KLineCharts overlay specs using time+price anchoring. */
 export function drawingsToOverlays(
   drawings: ChartDrawing[],
-  candles: CandleLike[],
+  candles: AnyCandle[],
 ): KLineOverlaySpec[] {
   const out: KLineOverlaySpec[] = [];
   drawings.forEach((d, i) => {

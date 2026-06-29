@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformAccess } from "@/lib/api";
 import { getForexBackend } from "@/lib/brokers/forexBackend";
 import { searchBinanceInstruments } from "@/lib/binanceSymbols";
-import {
-  forexBaseQuote,
-  searchForexInstruments,
-} from "@/lib/markets/forexInstruments";
+import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { getEaConnection, parseEaSymbolSpecs } from "@/lib/eaStore";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { getRpcConnection } from "@/lib/metaapi/client";
@@ -29,10 +26,6 @@ async function metaApiForexInstruments(
   q: string,
 ): Promise<{ instruments: Instrument[]; total: number }> {
   const map = new Map<string, Instrument>();
-  for (const i of searchForexInstruments(q)) {
-    map.set(i.symbol, { symbol: i.symbol, base: i.base, quote: i.quote });
-  }
-
   const row = await getMtAccount(userId);
   if (row?.metaapi_account_id) {
     try {
@@ -48,11 +41,13 @@ async function metaApiForexInstruments(
         }
       }
     } catch {
-      /* fall back to static list */
+      /* no broker symbols */
     }
   }
 
-  const instruments = Array.from(map.values());
+  const instruments = Array.from(map.values()).sort((a, b) =>
+    a.symbol.localeCompare(b.symbol),
+  );
   return { instruments, total: instruments.length };
 }
 
@@ -61,16 +56,13 @@ async function eaForexInstruments(
   q: string,
 ): Promise<{ instruments: Instrument[]; total: number }> {
   const map = new Map<string, Instrument>();
-  for (const i of searchForexInstruments(q)) {
-    map.set(i.symbol, { symbol: i.symbol, base: i.base, quote: i.quote });
-  }
-
   const conn = await getEaConnection(userId);
   if (conn) {
     const query = q.trim().toUpperCase();
     for (const spec of parseEaSymbolSpecs(conn.symbol_specs_json)) {
       const symbol = (spec.symbol || "").toUpperCase();
       if (!symbol) continue;
+      if (!(Number(spec.bid) > 0 && Number(spec.ask) > 0)) continue;
       if (!symbolMatchesQuery(symbol, query)) continue;
       if (!map.has(symbol)) {
         const { base, quote } = forexBaseQuote(symbol);
@@ -79,7 +71,9 @@ async function eaForexInstruments(
     }
   }
 
-  const instruments = Array.from(map.values());
+  const instruments = Array.from(map.values()).sort((a, b) =>
+    a.symbol.localeCompare(b.symbol),
+  );
   return { instruments, total: instruments.length };
 }
 
