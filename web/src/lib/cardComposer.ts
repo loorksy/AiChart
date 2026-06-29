@@ -62,6 +62,13 @@ function isSnapshot(o: any): boolean {
   );
 }
 
+/** Map a timeframe trend to a trade signal for the multi-timeframe grid. */
+function trendToSignal(trend: unknown): "buy" | "sell" | "neutral" {
+  if (trend === "bullish" || trend === "uptrend") return "buy";
+  if (trend === "bearish" || trend === "downtrend") return "sell";
+  return "neutral";
+}
+
 /** True when an object looks like the multi-timeframe snapshot response. */
 function isMultiSnapshot(o: any): boolean {
   return (
@@ -129,8 +136,13 @@ const DETECTORS: {
     match: isMultiSnapshot,
     build: (o, mkId) => {
       const valid = o.snapshots.filter((s: any) => s?.snapshot?.symbol);
+      const rows = valid.map((s: any) => ({
+        tf: s.interval,
+        signal: trendToSignal(s.snapshot?.extra?.trend),
+      }));
       return [
         { id: mkId(), component: "analysis", props: analysisProps(valid[0].snapshot) },
+        { id: mkId(), component: "mtf_grid", props: { symbol: o.symbol, rows } },
       ];
     },
   },
