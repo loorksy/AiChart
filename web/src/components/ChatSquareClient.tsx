@@ -28,6 +28,8 @@ import {
 import { consumeSse } from "@/lib/sse";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
 import type { Recommendation } from "@/lib/types";
+import { buildTradingCards } from "@/lib/cards/buildTradingCards";
+import { CARD_ACTIONS } from "@/lib/cards/cardActions";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/LocaleProvider";
 
@@ -131,6 +133,50 @@ export default function ChatSquareClient({
     } else if (actionType === "inject_input") {
       const text = String(payload.text);
       setInput(text);
+    } else if (actionType === CARD_ACTIONS.confirmOrder) {
+      const id = Number(payload.intentId);
+      const msg = messages.find((m) => m.intents?.some((i) => i.id === id));
+      if (msg) void actOnIntent(msg.id, id, "approve");
+    } else if (actionType === CARD_ACTIONS.cancelOrder) {
+      const id = Number(payload.intentId);
+      const msg = messages.find((m) => m.intents?.some((i) => i.id === id));
+      if (msg) void actOnIntent(msg.id, id, "reject");
+    } else if (
+      actionType === CARD_ACTIONS.sendDrawingToMt5 ||
+      actionType === CARD_ACTIONS.sendTradePlanToMt5
+    ) {
+      const msg = messages.find((m) => m.id === payload.messageId);
+      const drawings = msg?.chartAnalyze?.drawings ?? [];
+      const symbol = String(payload.symbol ?? msg?.chartAnalyze?.symbol ?? previewSymbol);
+      const timeframe = String(payload.timeframe ?? msg?.chartAnalyze?.interval ?? previewInterval);
+      if (!drawings.length) {
+        setError(locale === "ar" ? "لا توجد رسومات قابلة للإرسال إلى MT5." : "No drawings to send to MT5.");
+        return;
+      }
+      void fetch("/api/agent/ea/drawings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "apply", symbol, timeframe, drawings }),
+      })
+        .then((r) => r.json())
+        .then((data: { ok?: boolean; reason?: string }) => {
+          if (!data.ok) {
+            setError(data.reason ?? (locale === "ar" ? "تعذّر إرسال الرسومات إلى MT5." : "Could not send drawings to MT5."));
+          }
+        })
+        .catch(() => setError(locale === "ar" ? "تعذّر إرسال الرسومات إلى MT5." : "Could not send drawings to MT5."));
+    } else if (actionType === CARD_ACTIONS.clearDrawings) {
+      const symbol = String(payload.symbol ?? previewSymbol);
+      const timeframe = String(payload.timeframe ?? previewInterval);
+      void fetch("/api/agent/ea/drawings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear", symbol, timeframe }),
+      }).catch(() => setError(locale === "ar" ? "تعذّر مسح رسومات MT5." : "Could not clear MT5 drawings."));
+    } else if (actionType === CARD_ACTIONS.openChart || actionType === CARD_ACTIONS.showDrawing) {
+      if (payload.symbol) setPreviewSymbol(String(payload.symbol).toUpperCase());
+      if (payload.timeframe) setPreviewInterval(String(payload.timeframe));
+      setPreviewOpen(true);
     }
   };
 
@@ -200,6 +246,7 @@ export default function ChatSquareClient({
             ? overlaysFromRecommendation(rec)
             : undefined,
       recommendation: rec ?? null,
+      liveReasoningLog: meta.liveReasoningLog,
     };
   }, [messages, previewSymbol, previewInterval, chartAnalyzing, busy]);
 
@@ -223,6 +270,8 @@ export default function ChatSquareClient({
       drawings: entry.drawings as ChartHydrateSnapshot["drawings"],
       overlays: entry.overlays as ChartHydrateSnapshot["overlays"],
       recommendation: (entry.recommendation as Recommendation | null) ?? null,
+      liveReasoningLog:
+        entry.liveReasoningLog as ChartHydrateSnapshot["liveReasoningLog"],
     });
     setAnalysesOpen(false);
     requestAnimationFrame(() => {
@@ -502,6 +551,7 @@ export default function ChatSquareClient({
         intents?: ProcessedIntent[];
         question?: any;
         ui_schema?: any;
+        trading_cards?: import("@/lib/cards/cardTypes").TradingCardPayload[];
       }>(res, {
         onActivity: upsertActivity,
         onDelta: (t) => {
@@ -538,6 +588,7 @@ export default function ChatSquareClient({
         intents: pendingIntents.length ? pendingIntents : undefined,
         question: data.question || null,
         ui_schema: data.ui_schema || null,
+        trading_cards: data.trading_cards,
       });
 
       void fetchConversations();
@@ -626,7 +677,18 @@ export default function ChatSquareClient({
           overlays: payload.overlays,
           recommendation_id: payload.recommendation?.id ?? null,
           recommendation: payload.recommendation ?? null,
+          liveReasoningLog: payload.liveReasoningLog,
         },
+        trading_cards: buildTradingCards({
+          symbol: payload.recommendation?.symbol ?? previewSymbol,
+          timeframe: payload.recommendation?.timeframe ?? previewInterval,
+          summary: payload.reply,
+          recommendations: recs,
+          intents: pendingIntents,
+          drawings: payload.drawings,
+          overlays: payload.overlays,
+          liveReasoningLog: payload.liveReasoningLog,
+        }),
       });
       if (payload.recommendation) {
         setPreviewSymbol(payload.recommendation.symbol);

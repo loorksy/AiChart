@@ -185,6 +185,7 @@ export interface ChartAnalysisLogEntry {
   overlays?: unknown[];
   recommendation_id?: number | null;
   recommendation?: Record<string, unknown> | null;
+  liveReasoningLog?: unknown[];
 }
 
 /** Assistant messages persisted from chart analyze (for history drawer + hydrate). */
@@ -217,6 +218,9 @@ export async function loadChartAnalyses(
           meta.recommendation && typeof meta.recommendation === "object"
             ? (meta.recommendation as Record<string, unknown>)
             : null,
+        liveReasoningLog: Array.isArray(meta.liveReasoningLog)
+          ? meta.liveReasoningLog
+          : undefined,
       });
     } catch {
       /* skip malformed metadata */

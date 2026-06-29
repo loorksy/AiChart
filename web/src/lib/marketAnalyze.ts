@@ -58,6 +58,7 @@ import {
   formatCandlesForPrompt,
   processAgentDrawings,
 } from "./chart/processDrawings";
+import { tradePlanToDrawings } from "./chart/tradePlanToDrawings";
 import { evaluateCommittee } from "./committee";
 import {
   fetchTradingViewContext,
@@ -450,7 +451,18 @@ export async function runMarketAnalyze(
     processedAgent,
   );
 
-  const agentDrawings = processAgentDrawings(mergedRaw, {
+  const tradePlanDrawings = tradePlanToDrawings({
+    symbol: sym,
+    market,
+    timeframe: interval,
+    side: action,
+    entry: llmOut.entry,
+    stopLoss: llmOut.stop_loss,
+    takeProfits: llmOut.targets,
+    startTime: candles[candles.length - 1]?.time,
+  });
+
+  const agentDrawings = processAgentDrawings([...mergedRaw, ...tradePlanDrawings], {
     candles,
     decision: action,
     confidence: llmOut.confidence,

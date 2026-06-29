@@ -433,6 +433,11 @@ export type EaCommandType =
   | "close_position"
   | "modify_sl_tp"
   | "draw_and_capture"
+  | "create_drawing"
+  | "update_drawing"
+  | "delete_drawing"
+  | "clear_aichart_drawings"
+  | "apply_trade_plan_drawings"
   | "clear_chart"
   | "open_pending"
   | "cancel_order"
@@ -473,6 +478,34 @@ export interface EaDrawAndCapturePayload {
   stop_loss?: number | null;
   take_profit?: number | null;
   drawings: ChartDrawing[];
+}
+
+export interface EaDrawingCommandPoint {
+  time: number;
+  price: number;
+}
+
+export interface EaDrawingObjectPayload {
+  drawing_id: string;
+  symbol: string;
+  timeframe: string;
+  object_type: string;
+  points: EaDrawingCommandPoint[];
+  style?: {
+    color?: string;
+    width?: number;
+    lineStyle?: "solid" | "dash" | "dot";
+    fillColor?: string;
+  };
+  label?: string | null;
+  source?: "aichart";
+  parent_drawing_id?: string;
+}
+
+export interface EaDrawingCommandPayload {
+  symbol: string;
+  timeframe: string;
+  drawings: EaDrawingObjectPayload[];
 }
 
 /** Payload queued for EA `clear_chart` commands. */
