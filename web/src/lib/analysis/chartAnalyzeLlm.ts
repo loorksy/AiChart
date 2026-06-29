@@ -41,11 +41,11 @@ export interface ChartAnalyzeLlmResult {
 const POINT_SCHEMA = {
   type: "object",
   properties: {
-    time: { type: "number" },
+    time: { type: ["number", "null"] },
     price: { type: "number" },
-    barsAhead: { type: "number" },
+    barsAhead: { type: ["number", "null"] },
   },
-  required: ["price"],
+  required: ["time", "price", "barsAhead"],
   additionalProperties: false,
 };
 
@@ -53,15 +53,15 @@ const DRAWING_SCHEMA = {
   type: "object",
   properties: {
     type: { type: "string" },
-    label: { type: "string" },
+    label: { type: ["string", "null"] },
     confidence: { type: "number" },
-    color: { type: "string" },
-    semanticRole: { type: "string" },
-    patternType: { type: "string" },
+    color: { type: ["string", "null"] },
+    semanticRole: { type: ["string", "null"] },
+    patternType: { type: ["string", "null"] },
     points: { type: "array", items: POINT_SCHEMA },
   },
-  required: ["type", "confidence", "points"],
-  additionalProperties: true,
+  required: ["type", "label", "confidence", "color", "semanticRole", "patternType", "points"],
+  additionalProperties: false,
 };
 
 const CHART_ANALYZE_SCHEMA = {
@@ -88,10 +88,13 @@ const CHART_ANALYZE_SCHEMA = {
             enum: ["observation", "structure", "pattern", "risk", "decision", "drawing"],
           },
           text: { type: "string" },
-          confidence: { type: "string", enum: ["low", "medium", "high"] },
-          relatedDrawingIndex: { type: "number" },
+          confidence: {
+            type: ["string", "null"],
+            enum: ["low", "medium", "high", null],
+          },
+          relatedDrawingIndex: { type: ["number", "null"] },
         },
-        required: ["type", "text"],
+        required: ["type", "text", "confidence", "relatedDrawingIndex"],
         additionalProperties: false,
       },
     },
@@ -142,8 +145,10 @@ export function sanitizeLiveReasoningLog(
     out.push({
       type,
       text,
-      confidence: e.confidence,
-      relatedDrawingIndex: e.relatedDrawingIndex,
+      ...(e.confidence ? { confidence: e.confidence } : {}),
+      ...(e.relatedDrawingIndex != null && e.relatedDrawingIndex >= 0
+        ? { relatedDrawingIndex: e.relatedDrawingIndex }
+        : {}),
     });
     if (out.length >= 7) break;
   }
