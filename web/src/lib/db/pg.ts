@@ -65,43 +65,6 @@ const SCHEMA = `
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
-  CREATE TABLE IF NOT EXISTS scalp_sessions (
-    user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    active         INTEGER NOT NULL DEFAULT 0,
-    status         TEXT NOT NULL DEFAULT 'stopped',
-    symbol         TEXT NOT NULL DEFAULT '',
-    market         TEXT NOT NULL DEFAULT 'crypto',
-    interval       TEXT NOT NULL DEFAULT '1m',
-    max_trades     INTEGER NOT NULL DEFAULT 0,
-    executed_count INTEGER NOT NULL DEFAULT 0,
-    notional       DOUBLE PRECISION NOT NULL DEFAULT 0,
-    execution_mode TEXT NOT NULL DEFAULT 'paper',
-    session_pnl    DOUBLE PRECISION NOT NULL DEFAULT 0,
-    day_key        TEXT,
-    daily_trade_count INTEGER NOT NULL DEFAULT 0,
-    stop_reason    TEXT,
-    started_at     TIMESTAMPTZ,
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-
-  CREATE TABLE IF NOT EXISTS bot_sessions (
-    id              SERIAL PRIMARY KEY,
-    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    strategy        TEXT NOT NULL DEFAULT 'grid',
-    symbol          TEXT NOT NULL,
-    market          TEXT NOT NULL DEFAULT 'forex',
-    side            TEXT NOT NULL DEFAULT 'sell',
-    config_json     TEXT NOT NULL DEFAULT '{}',
-    state_json      TEXT NOT NULL DEFAULT '{"levels":[]}',
-    status          TEXT NOT NULL DEFAULT 'active',
-    execution_mode  TEXT NOT NULL DEFAULT 'paper',
-    realized_pnl    DOUBLE PRECISION NOT NULL DEFAULT 0,
-    stop_reason     TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-  CREATE INDEX IF NOT EXISTS idx_bot_sessions_active ON bot_sessions (status, user_id);
-
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     can_execute         BOOLEAN NOT NULL DEFAULT TRUE,
@@ -459,6 +422,14 @@ const SCHEMA = `
   );
 `;
 
+async function dropLegacyBotAndScalpTablesPg(client: PoolClient): Promise<void> {
+  await client.query(`DROP TABLE IF EXISTS bot_sessions CASCADE`).catch(() => {});
+  await client.query(`DROP TABLE IF EXISTS scalp_sessions CASCADE`).catch(() => {});
+  // Orphan composite types can remain after a partial drop and block CREATE TABLE.
+  await client.query(`DROP TYPE IF EXISTS bot_sessions CASCADE`).catch(() => {});
+  await client.query(`DROP TYPE IF EXISTS scalp_sessions CASCADE`).catch(() => {});
+}
+
 async function migratePg(client: PoolClient) {
   await client.query(`
     CREATE TABLE IF NOT EXISTS dynamic_pages (
@@ -590,22 +561,6 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {
     /* column may already exist */
   });
-
-  // Autonomous scalp session lifecycle + limits.
-  await client.query(`
-    ALTER TABLE scalp_sessions
-      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'stopped',
-      ADD COLUMN IF NOT EXISTS execution_mode TEXT NOT NULL DEFAULT 'paper',
-      ADD COLUMN IF NOT EXISTS session_pnl DOUBLE PRECISION NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS day_key TEXT,
-      ADD COLUMN IF NOT EXISTS daily_trade_count INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS stop_reason TEXT
-  `).catch(() => {
-    /* columns may already exist */
-  });
-  await client.query(
-    "UPDATE scalp_sessions SET status = CASE WHEN active = 1 THEN 'active' ELSE 'stopped' END WHERE status IS NULL OR status = ''",
-  ).catch(() => {});
 
   // Advanced alert preferences on trading_settings.
   await client.query(`
@@ -1018,8 +973,7 @@ async function migratePg(client: PoolClient) {
     )
   `).catch(() => {});
 
-  await client.query(`DROP TABLE IF EXISTS bot_sessions CASCADE`).catch(() => {});
-  await client.query(`DROP TABLE IF EXISTS scalp_sessions CASCADE`).catch(() => {});
+  await dropLegacyBotAndScalpTablesPg(client);
 }
 
 async function seedAdminPg(client: PoolClient) {
@@ -1106,6 +1060,7 @@ function getPool(): Pool {
 export async function initPg(): Promise<void> {
   const client = await getPool().connect();
   try {
+    await dropLegacyBotAndScalpTablesPg(client);
     await client.query(SCHEMA);
     await migratePg(client);
     await seedAdminPg(client);
