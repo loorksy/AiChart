@@ -10,7 +10,6 @@ import {
   getLimits,
   getRecommendation,
   getSettings,
-  isMasterKillOn,
   todayRealizedPnlPct,
 } from "./store";
 import type { TradeIntent } from "./types";
@@ -182,7 +181,6 @@ export async function revalidatePendingIntent(
       confidence: intent.confidence ?? 0,
     },
     {
-      masterKill: await isMasterKillOn(),
       openTradesCount: await countOpenTrades(userId),
       todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
       todayRealizedPnlUsd: 0,

@@ -18,7 +18,6 @@ export function AdminSecurityPanel({
 }) {
   const securityActions = new Set([
     "injection_blocked",
-    "kill_switch",
     "trade_execute",
   ]);
 

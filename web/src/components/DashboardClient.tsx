@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { FadeIn } from "@/components/ui/fade-in";
 import Link from "next/link";
 import {
@@ -9,7 +8,6 @@ import {
   CreditCard,
   FileText,
   LineChart,
-  Power,
   Send,
   Shield,
 } from "lucide-react";
@@ -51,30 +49,12 @@ export default function DashboardClient({
   trades?: Trade[];
 }) {
   const { data: me } = useMe();
-  const [killOn, setKillOn] = useState(settings.kill_switch === 1);
-  const [killBusy, setKillBusy] = useState(false);
 
   const used = me?.quota.used ?? 0;
   const remaining = me?.quota.remaining ?? Math.max(0, limits.claude_quota - used);
   const limit = me?.quota.limit ?? limits.claude_quota;
   const displayName = displayNameFromEmail(user.email);
   const tgLinked = Boolean(settings.telegram_chat_id);
-
-  async function toggleKill() {
-    const next = !killOn;
-    setKillBusy(true);
-    try {
-      const res = await fetch("/api/kill-switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ on: next }),
-      });
-      const data = await res.json();
-      if (res.ok) setKillOn(data.kill_switch === 1);
-    } finally {
-      setKillBusy(false);
-    }
-  }
 
   return (
     <FadeIn>
@@ -234,32 +214,6 @@ export default function DashboardClient({
           </SurfaceCard>
         </Link>
 
-        <SurfaceCard
-          className={`flex items-center justify-between gap-3 ${
-            killOn ? "border-destructive/30" : ""
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Power
-              className={`h-5 w-5 ${killOn ? "text-destructive" : "text-accent-gold"}`}
-            />
-            <div>
-              <p className="font-medium">الإيقاف الطارئ</p>
-              <p className="text-xs text-muted-foreground">
-                {killOn
-                  ? "التداول موقوف"
-                  : "التداول مفعّل — الإيقاف يغلق الصفقات المفتوحة"}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => void toggleKill()}
-            disabled={killBusy}
-            className={`btn text-xs ${killOn ? "btn-secondary" : "btn-danger"}`}
-          >
-            {killBusy ? "…" : killOn ? "تفعيل" : "إيقاف"}
-          </button>
-        </SurfaceCard>
       </div>
 
       {limits.can_execute === 0 && (

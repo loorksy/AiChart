@@ -96,7 +96,7 @@ export interface ScalpSession {
   day_key: string | null;
   /** Entries executed today (for daily caps). */
   daily_trade_count: number;
-  /** Why the session auto-stopped (master_kill / daily_limit / cap / broker…). */
+  /** Why the session auto-stopped (daily_limit / cap / broker…). */
   stop_reason: string | null;
   started_at: string | null;
   updated_at: string;
@@ -134,7 +134,6 @@ export interface TradingSettings {
   forex_backend?: "ea" | "mt5local" | "metaapi" | null;
   send_screenshot: number;
   telegram_chat_id: string | null;
-  kill_switch: number;
   /** 1 = riskGuard enforces all risk/permission gates; 0 = full-autonomous. */
   risk_guard_enabled: number;
   onboarding_done: number;

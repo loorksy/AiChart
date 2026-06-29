@@ -100,7 +100,6 @@ export async function POST(req: NextRequest) {
       ok: true,
       server_time: new Date().toISOString(),
       flags: {
-        kill_switch: settings.kill_switch === 1,
         close_open_trades: closeOpenPending,
         ...(reconnectPending ? { reconnect: true } : {}),
         ...(resyncPending ? { resync_candles: true } : {}),

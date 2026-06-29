@@ -74,10 +74,6 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
     `تبديل السوق · ${input.active_market === "forex" ? "فوركس" : "كريبتو"}`,
   set_trading_style: (input) =>
     `ضبط أسلوب التداول · ${String(input.trading_style ?? "")}`,
-  get_scalp_status: () => "فحص إذن وحالة السكالب",
-  start_scalp_session: (input) =>
-    `بدء جلسة سكالب · ${String(input.symbol ?? "")}`,
-  stop_scalp_session: () => "إيقاف جلسة السكالب",
   search_trade_memory: (input) =>
     `بحث في ذاكرة الصفقات${input.symbol ? ` · ${String(input.symbol)}` : ""}`,
   submit_scalp_decision: (input) =>

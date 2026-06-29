@@ -7,7 +7,6 @@ import {
   countPendingIntents,
   getLimits,
   getSettings,
-  isMasterKillOn,
   monthRealizedPnlPct,
   todayRealizedPnlPct,
   todayRealizedPnlUsd,
@@ -34,10 +33,6 @@ export const GET = withBridge(async ({ userId }) => {
     activeMarket: settings.active_market ?? "crypto",
     // 1 = riskGuard enforced (safe default); 0 = full-autonomous (agent decides).
     riskGuardEnabled: settings.risk_guard_enabled !== 0,
-    killSwitch: {
-      master: await isMasterKillOn(),
-      user: settings.kill_switch === 1,
-    },
     capital: {
       effectiveCapital,
       perTradeMaxUsd: (effectiveCapital * settings.per_trade_pct) / 100,

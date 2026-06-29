@@ -6,7 +6,6 @@ import {
   countOpenTrades,
   getLimits,
   getSettings,
-  isMasterKillOn,
   monthRealizedPnlPct,
   todayRealizedPnlPct,
 } from "@/lib/store";
@@ -91,11 +90,6 @@ export interface TradeReadinessChecks {
     staleThresholdMs: number;
     tickStale: boolean;
     applies: boolean;
-  };
-  killSwitch: {
-    master: boolean;
-    user: boolean;
-    passes: boolean;
   };
   canExecute: {
     allowed: boolean;
@@ -215,24 +209,6 @@ export function collectTradeReadinessBlockers(
   } = input;
   const blockers: TradeReadinessBlocker[] = [];
 
-  if (checks.killSwitch.master) {
-    blockers.push(
-      blocker(
-        BridgeErrorCode.RISK_LIMIT_EXCEEDED,
-        "Platform master kill switch is active.",
-        "التداول موقوف على مستوى المنصة (إيقاف طارئ).",
-      ),
-    );
-  }
-  if (checks.killSwitch.user) {
-    blockers.push(
-      blocker(
-        BridgeErrorCode.RISK_LIMIT_EXCEEDED,
-        "Account kill switch is enabled.",
-        "الإيقاف الطارئ مفعّل في حسابك.",
-      ),
-    );
-  }
   if (!checks.canExecute.allowed) {
     blockers.push(
       blocker(
@@ -371,10 +347,6 @@ export async function buildTradeReadiness(
     settings.risk_guard_enabled !== 0 &&
     (settings.risk_guard_enabled as unknown) !== false;
 
-  const masterKill = await isMasterKillOn();
-  const userKill = settings.kill_switch === 1;
-  const killPasses = !masterKill && !userKill;
-
   const dailyLossPasses =
     !riskEnforced ||
     settings.daily_loss_limit_pct <= 0 ||
@@ -476,11 +448,6 @@ export async function buildTradeReadiness(
       staleThresholdMs,
       tickStale,
       applies: forexApplies && Boolean(symbol),
-    },
-    killSwitch: {
-      master: masterKill,
-      user: userKill,
-      passes: killPasses,
     },
     canExecute: {
       allowed: canExecuteAllowed,

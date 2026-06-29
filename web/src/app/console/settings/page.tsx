@@ -4,7 +4,6 @@ import {
   User,
   Link2,
   Bell,
-  Shield,
   BrainCircuit,
   ChevronLeft,
 } from "lucide-react";
@@ -36,13 +35,6 @@ const CARDS: SettingsCard[] = [
     title: "التنبيهات",
     desc: "تفضيلات الإشعارات وسجلّها",
     icon: Bell,
-  },
-  {
-    href: "/console/risk",
-    title: "المخاطر والحدود",
-    desc: "حدود رأس المال، الخسارة اليومية، أوضاع التنفيذ",
-    icon: Shield,
-    adminOnly: true,
   },
   {
     href: "/console/platform?tab=keys",

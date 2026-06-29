@@ -25,7 +25,6 @@ export const ADMIN_ACTION_LABELS: Record<string, string> = {
   chat_agent: "محادثة وكيل",
   monitor_agent: "مراقبة تلقائية",
   trade_execute: "تنفيذ صفقة",
-  kill_switch: "Kill Switch",
   settings_update: "تحديث إعدادات",
   telegram_register: "تسجيل عبر تليجرام",
   telegram_login: "دخول عبر تليجرام",

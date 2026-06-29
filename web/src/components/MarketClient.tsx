@@ -9,7 +9,7 @@ import { formatLevel } from "@/components/market/formatLevel";
 import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
 import { useChartAnalysis } from "@/hooks/useChartAnalysis";
 import { cn } from "@/lib/utils";
-import PriceChart, { type PriceChartHandle } from "./PriceChart";
+import KLineChart, { type KLineChartHandle } from "./chart/KLineChart";
 import {
   overlaysFromAnalysis,
   overlaysFromRecommendation,
@@ -111,7 +111,7 @@ export default function MarketClient({
   const [recDetailOpen, setRecDetailOpen] = useState(false);
 
   const chartFrameRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<PriceChartHandle>(null);
+  const chartRef = useRef<KLineChartHandle>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const cryptoLive = useBinanceLivePrice(market === "crypto" ? symbol : "");
   const forexLive = useEaLivePrice(symbol, market === "forex");
@@ -379,7 +379,7 @@ export default function MarketClient({
               isFullscreen && "min-h-dvh",
             )}
           >
-            <PriceChart
+            <KLineChart
               ref={chartRef}
               symbol={symbol}
               interval={interval}
@@ -388,9 +388,7 @@ export default function MarketClient({
               overlays={overlays}
               drawings={drawings}
               livePrice={live.price > 0 ? live.price : undefined}
-              liveTick={live}
-              refreshMs={market === "forex" ? 60_000 : 0}
-              fill
+              refreshMs={market === "forex" ? 60_000 : 30_000}
               className="h-full min-h-0 p-0"
             />
 

@@ -46,7 +46,6 @@ export interface ProposedTrade {
 }
 
 export interface RiskContext {
-  masterKill: boolean;
   openTradesCount: number;
   todayRealizedPnlPct: number; // negative = net loss today
   todayRealizedPnlUsd: number;
@@ -115,11 +114,7 @@ export function evaluateTrade(
     settings.risk_guard_enabled !== 0 &&
     (settings.risk_guard_enabled as unknown) !== false;
 
-  // ── Always enforced (emergency + execution validity) ──────────────────────
-  if (ctx.masterKill)
-    return deny("التداول موقوف على مستوى المنصة (إيقاف طارئ من الإدارة).");
-  if (settings.kill_switch === 1)
-    return deny("الإيقاف الطارئ مفعّل في حسابك.");
+  // ── Always enforced (execution validity) ──────────────────────────────────
   // Tolerant of SQLite (0/1) and Postgres (boolean) representations.
   if (riskEnforced && !limits.can_execute)
     return deny("التنفيذ التلقائي غير مصرّح به من الإدارة.");

@@ -252,18 +252,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: DESTRUCTIVE,
   },
   {
-    name: "set_kill_switch",
-    domain: "core",
-    description:
-      "متى: طوارئ. side-effect: يوقف التنفيذ؛ close_open_trades يغلق الصفقات.",
-    inputSchema: {
-      on: z.boolean(),
-      scope: z.enum(["user", "master"]).optional(),
-      close_open_trades: z.boolean().optional(),
-    },
-    annotations: DESTRUCTIVE,
-  },
-  {
     name: "run_trade_maintenance",
     domain: "core",
     description:
@@ -328,41 +316,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         .optional()
         .describe("ضبط الإطار الزمني تلقائياً حسب الأسلوب"),
     },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "get_scalp_status",
-    domain: "core",
-    description:
-      "حالة جلسة السكالب · هل تعمل + عدد الصفقات المنفّذة/السقف + وضع paper/live. read-only.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-  },
-  {
-    name: "start_scalp_session",
-    domain: "core",
-    description:
-      "بدء حلقة سكالب مستمرة (buy/close/sell تلقائي) لرمز واحد. متى: بعد set_trading_style=scalp وموافقة المستخدم على السقف. يتطلب symbol + max_trades. side-effect: يشغّل الحلقة (تحترم Risk Guard + kill switch). مثال: symbol=BTCUSDT&max_trades=5&interval=1m.",
-    inputSchema: {
-      symbol: zSymbol,
-      max_trades: z
-        .number()
-        .int()
-        .min(1)
-        .max(100)
-        .describe("سقف الصفقات — إلزامي"),
-      market: zMarket,
-      interval: z.string().optional().describe("افتراضي 1m"),
-      notional: z.number().positive().optional(),
-    },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "stop_scalp_session",
-    domain: "core",
-    description:
-      "إيقاف حلقة السكالب فوراً. متى: طلب المستخدم أو بلوغ الهدف. side-effect: يوقف الحلقة (لا يغلق الصفقات المفتوحة — استخدم close_trade لذلك).",
-    inputSchema: {},
     annotations: DESTRUCTIVE,
   },
 ];

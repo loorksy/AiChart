@@ -1,19 +1,15 @@
 import {
-  Bot,
   KeyRound,
   LayoutDashboard,
   Link2,
   MoreHorizontal,
-  Shield,
   TrendingUp,
 } from "lucide-react";
 
 export const BRIDGE_NAV_PRIMARY = [
   { href: "/console", label: "نظرة", icon: LayoutDashboard, exact: true },
   { href: "/console/trades", label: "صفقات", icon: TrendingUp },
-  { href: "/console/bots", label: "بوتات", icon: Bot },
   { href: "/console/connect", label: "اتصال", icon: Link2 },
-  { href: "/console/risk", label: "مخاطر", icon: Shield },
 ] as const;
 
 export const BRIDGE_NAV_MORE = [
@@ -21,7 +17,6 @@ export const BRIDGE_NAV_MORE = [
 ] as const;
 
 export const BRIDGE_NAV_SECONDARY = [
-  { href: "/console/risk#kill", label: "Kill Switch", icon: Shield },
   { href: "/console/platform?tab=system", label: "MCP", icon: KeyRound },
   { href: "/console/platform?tab=security", label: "سجل التدقيق", icon: KeyRound },
 ] as const;

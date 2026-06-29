@@ -39,6 +39,10 @@ import type { ContentBlock } from "./anthropic";
 import type { ChartVisionSource } from "./marketAnalyzeLabels";
 import { fetchOhlc } from "./ohlc/fetchOhlc";
 import { detectStructureLevels, type StructureAnalysis } from "./ohlc/structure";
+import {
+  runAnalysisEngine,
+  formatAnalysisForPrompt,
+} from "./analysis/analysisEngine";
 import { enrichRecommendationAfterRecord } from "./recommendationLevels";
 import { emitAgentLlm } from "./agentActivityPipeline";
 import { resolveMt5Symbol } from "./mt5SymbolMap";
@@ -293,9 +297,26 @@ export async function runMarketAnalyze(
       status: "done",
     });
   }
+  // Precompute the full technical analysis in TypeScript (indicators, levels,
+  // patterns, fib, channels, confluence, suggestion) so the model reasons on a
+  // finished analysis in a single pass instead of discovering via many tools.
+  const engine =
+    ohlcResult && ohlcResult.candles.length >= 20
+      ? runAnalysisEngine(ohlcResult.symbol, ohlcResult.interval, ohlcResult.candles)
+      : null;
+  if (engine) {
+    emit({
+      id: "analysis-engine",
+      label: "محرّك التحليل: أنماط ومستويات وثقة",
+      status: "done",
+    });
+  }
+
   const seedDrawings = structure ? structureToSeedDrawings(structure) : [];
+  const engineDrawings = engine?.drawings ?? [];
 
   const extraBlocks: string[] = [];
+  if (engine) extraBlocks.push(formatAnalysisForPrompt(engine.analysis));
   if (structure) extraBlocks.push(formatStructureForPrompt(structure));
   const tvBlock = formatTradingViewForPrompt(tvContext);
   if (tvBlock) extraBlocks.push(tvBlock);
@@ -433,7 +454,10 @@ export async function runMarketAnalyze(
         profile,
       )
     : [];
-  const drawings = mergeSeedAndAgentDrawings(seedDrawings, agentDrawings);
+  const drawings = mergeSeedAndAgentDrawings(
+    [...seedDrawings, ...engineDrawings],
+    agentDrawings,
+  );
 
   if (rec && (rec.action === "buy" || rec.action === "sell")) {
     const attached = await attachChartToRecommendation(userId, rec, {

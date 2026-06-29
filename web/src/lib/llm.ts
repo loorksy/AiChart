@@ -1,19 +1,16 @@
 /**
- * Unified LLM layer: routes chat calls to the provider selected in the admin
- * panel (AI_PROVIDER): anthropic | openai | google (Gemini).
+ * Unified LLM layer. The platform standardizes on OpenAI: every chat/analysis
+ * call routes through the OpenAI-compatible client (openaiCompat.ts). AI_MODEL
+ * stays configurable, but only within OpenAI.
  */
 
 import {
-  callAnthropic,
-  callAnthropicStream,
-  getAnthropicModel,
   type AnthropicResponse,
   type Message,
   type StreamHandlers,
   type SystemPromptInput,
   type ToolDef,
 } from "./anthropic";
-import { GEMINI_OPENAI_BASE_URL, normalizeGeminiChatModel } from "./gemini";
 import {
   callOpenAICompat,
   callOpenAICompatStream,
@@ -21,96 +18,55 @@ import {
 } from "./openaiCompat";
 import { getPlatformValue } from "./platformConfig";
 
-export type LLMProvider = "anthropic" | "openai" | "google" | "openrouter";
+/** OpenAI is the only supported provider. Kept as a named type for callers. */
+export type LLMProvider = "openai";
 
 export const LLM_PROVIDERS: { id: LLMProvider; label: string }[] = [
-  { id: "anthropic", label: "Anthropic (Claude)" },
   { id: "openai", label: "OpenAI" },
-  { id: "google", label: "Google (Gemini)" },
-  { id: "openrouter", label: "OpenRouter" },
 ];
 
 const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
-  anthropic: "ANTHROPIC_API_KEY",
   openai: "OPENAI_API_KEY",
-  google: "GEMINI_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
 };
 
-const DEFAULT_MODEL: Record<LLMProvider, string> = {
-  anthropic: "claude-sonnet-4-6",
-  openai: "gpt-4.1",
-  google: "gemini-2.5-flash",
-  openrouter: "anthropic/claude-3.5-sonnet",
-};
+const DEFAULT_MODEL = "gpt-4.1";
 
 export function getActiveProvider(): LLMProvider {
-  const raw = (getPlatformValue("AI_PROVIDER") || "anthropic").toLowerCase();
-  if (raw === "openrouter") return "openrouter";
-  if (raw === "google" || raw === "gemini") return "google";
-  if (raw === "openai") return "openai";
-  return "anthropic";
+  return "openai";
 }
 
-/** Active model for the active provider (AI_MODEL, with legacy fallback). */
+/** Active OpenAI model (AI_MODEL, with a safe default). */
 export function getActiveModel(): string {
-  const provider = getActiveProvider();
-  const model = getPlatformValue("AI_MODEL");
-  if (model) {
-    if (provider === "google") return normalizeGeminiChatModel(model);
-    return model;
-  }
-  if (provider === "anthropic") return getAnthropicModel();
-  return DEFAULT_MODEL[provider];
+  return getPlatformValue("AI_MODEL")?.trim() || DEFAULT_MODEL;
 }
 
-export function providerKeyField(provider: LLMProvider): string {
+export function providerKeyField(provider: LLMProvider = "openai"): string {
   return PROVIDER_KEY_FIELD[provider];
 }
 
-export function getProviderApiKey(provider: LLMProvider): string | undefined {
+export function getProviderApiKey(provider: LLMProvider = "openai"): string | undefined {
   return getPlatformValue(PROVIDER_KEY_FIELD[provider]);
 }
 
 export function isLLMConfigured(): boolean {
-  return Boolean(getProviderApiKey(getActiveProvider()));
+  return Boolean(getProviderApiKey("openai"));
 }
 
-type CompatProvider = "openai" | "google" | "openrouter";
-
-function compatModelId(provider: CompatProvider, model: string): string {
-  // OpenRouter model ids keep their vendor prefix (e.g. anthropic/claude-3.5).
-  if (provider === "openrouter") return model;
-  const prefix = `${provider}/`;
-  return model.startsWith(prefix) ? model.slice(prefix.length) : model;
+function compatModelId(model: string): string {
+  // Tolerate a legacy "openai/" prefix on stored model ids.
+  return model.startsWith("openai/") ? model.slice("openai/".length) : model;
 }
 
-function compatTarget(provider: CompatProvider): OpenAICompatTarget {
-  const apiKey = getProviderApiKey(provider);
+function compatTarget(): OpenAICompatTarget {
+  const apiKey = getProviderApiKey("openai");
   if (!apiKey) {
-    const msg: Record<CompatProvider, string> = {
-      openai: "مفتاح OpenAI غير مُعدّ. أضِفه من لوحة المفاتيح.",
-      google: "مفتاح Gemini غير مُعدّ. أضِف GEMINI_API_KEY من لوحة المفاتيح.",
-      openrouter: "مفتاح OpenRouter غير مُعدّ. أضِف OPENROUTER_API_KEY من لوحة المفاتيح.",
-    };
-    throw new Error(msg[provider]);
+    throw new Error("مفتاح OpenAI غير مُعدّ. أضِفه من لوحة المفاتيح.");
   }
-  const model = compatModelId(provider, getActiveModel());
-  if (provider === "google") {
-    return { baseUrl: GEMINI_OPENAI_BASE_URL, apiKey, model };
-  }
-  if (provider === "openrouter") {
-    return {
-      baseUrl: "https://openrouter.ai/api/v1",
-      apiKey,
-      model,
-      headers: {
-        "HTTP-Referer": "https://aichart.lork.cloud",
-        "X-Title": "AiChart",
-      },
-    };
-  }
-  return { baseUrl: "https://api.openai.com/v1", apiKey, model };
+  return {
+    baseUrl: "https://api.openai.com/v1",
+    apiKey,
+    model: compatModelId(getActiveModel()),
+  };
 }
 
 export interface LLMCallParams {
@@ -128,9 +84,7 @@ function flattenSystem(system: SystemPromptInput): string {
 }
 
 export async function callLLM(params: LLMCallParams): Promise<AnthropicResponse> {
-  const provider = getActiveProvider();
-  if (provider === "anthropic") return callAnthropic(params);
-  return callOpenAICompat(compatTarget(provider as CompatProvider), {
+  return callOpenAICompat(compatTarget(), {
     ...params,
     system: flattenSystem(params.system),
   });
@@ -140,10 +94,8 @@ export async function callLLMStream(
   params: LLMCallParams,
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
-  const provider = getActiveProvider();
-  if (provider === "anthropic") return callAnthropicStream(params, handlers);
   return callOpenAICompatStream(
-    compatTarget(provider as CompatProvider),
+    compatTarget(),
     { ...params, system: flattenSystem(params.system) },
     handlers,
   );

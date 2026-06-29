@@ -134,7 +134,6 @@ const SETTABLE_FIELDS = [
   "forex_backend",
   "send_screenshot",
   "telegram_chat_id",
-  "kill_switch",
   "risk_guard_enabled",
   "onboarding_done",
   "alerts_enabled",
@@ -167,7 +166,6 @@ export async function updateSettings(
     const val = patch[f];
     if (getDbBackend() === "postgres") {
       if (
-        f === "kill_switch" ||
         f === "onboarding_done" ||
         f === "alerts_enabled" ||
         f === "alert_trades" ||
@@ -1292,10 +1290,6 @@ export async function setFlag(key: string, value: string): Promise<void> {
   );
 }
 
-export async function isMasterKillOn(): Promise<boolean> {
-  return (await getFlag("master_kill")) === "1";
-}
-
 export async function createLinkCode(userId: number): Promise<string> {
   await execute("DELETE FROM telegram_link_codes WHERE user_id = ?", [userId]);
   const code = crypto.randomBytes(6).toString("hex");
@@ -1454,7 +1448,7 @@ export async function listUsersForTradeMaintenance(
      JOIN admin_limits a ON a.user_id = u.id
      JOIN binance_accounts b ON b.user_id = u.id
      WHERE u.status = 'active' AND u.role IN ('user', 'admin')
-       AND a.can_execute = 1 AND s.kill_switch = 0 AND s.onboarding_done = 1
+       AND a.can_execute = 1 AND s.onboarding_done = 1
        AND (s.mode = 'auto' OR s.auto_take_profit_usd > 0)
      ORDER BY u.id ASC
      LIMIT ?`,
@@ -1524,7 +1518,7 @@ export async function listUsersForMonitor(): Promise<MonitorUser[]> {
      FROM users u
      JOIN trading_settings s ON s.user_id = u.id
      WHERE u.status = 'active' AND u.role IN ('user', 'admin')
-       AND s.kill_switch = 0 AND s.onboarding_done = 1`,
+       AND s.onboarding_done = 1`,
   );
 
   const out: MonitorUser[] = [];

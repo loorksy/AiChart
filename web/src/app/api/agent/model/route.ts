@@ -14,11 +14,10 @@ export async function GET(req: NextRequest) {
     const provider = getActiveProvider();
     const model = getActiveModel();
     const ref = modelRefFromPlatform(model);
-    // SECURITY: never expose key values — only report whether each key is configured.
-    const providerConfigured: Record<string, { configured: boolean }> = {};
-    for (const p of ["openai", "google", "openrouter"] as const) {
-      providerConfigured[p] = { configured: Boolean(getProviderApiKey(p)) };
-    }
+    // SECURITY: never expose key values — only report whether the key is configured.
+    const providerConfigured: Record<string, { configured: boolean }> = {
+      openai: { configured: Boolean(getProviderApiKey("openai")) },
+    };
     const forexBackend = process.env.FOREX_BACKEND?.trim() || "auto";
     return NextResponse.json({
       provider,

@@ -6,7 +6,7 @@ import {
   isSymbolAllowed,
   resolveScanAssetsForMarket,
 } from "@/lib/allowedAssets";
-import { getSettings, isMasterKillOn } from "@/lib/store";
+import { getSettings } from "@/lib/store";
 import { scanForexSymbol, scanSymbol } from "@/lib/monitor";
 import type { MarketType } from "@/lib/markets/types";
 
@@ -25,14 +25,6 @@ export async function POST(req: NextRequest) {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json().catch(() => ({})));
 
-    if (await isMasterKillOn()) {
-      return NextResponse.json({
-        killSwitch: true,
-        scanned: [],
-        candidates: [],
-      });
-    }
-
     const settings = await getSettings(userId);
     const market: MarketType =
       body.market ?? settings.active_market ?? "crypto";
@@ -41,7 +33,7 @@ export async function POST(req: NextRequest) {
     const symbols =
       body.symbols && body.symbols.length > 0
         ? body.symbols.map((s) => s.toUpperCase())
-        : await resolveScanAssetsForMarket(settings.allowed_assets, market);
+        : await resolveScanAssetsForMarket(settings.allowed_assets, market, userId);
 
     const candidates = [];
     const errors: string[] = [];
@@ -70,7 +62,6 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      killSwitch: false,
       market,
       scanned: symbols,
       candidates,

@@ -19,7 +19,6 @@ import {
   watchDailyLossProximity,
 } from "./tradeWatch";
 import {
-  isMasterKillOn,
   isOnCooldown,
   listUsersForMonitor,
   touchScanCooldown,
@@ -73,6 +72,7 @@ async function scanMarketForUser(
   const symbols = await resolveScanAssetsForMarket(
     settings.allowed_assets,
     market,
+    settings.user_id,
     40,
   );
 
@@ -114,11 +114,6 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
     events: [],
     errors: [],
   };
-
-  if (await isMasterKillOn()) {
-    result.errors.push("master kill switch — تخطّي المسح");
-    return result;
-  }
 
   if (!isAgentWakeEnabled()) {
     return result;

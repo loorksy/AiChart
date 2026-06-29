@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, handleError } from "@/lib/api";
-import {
-  isMasterKillOn,
-  listAuditLogs,
-  listUsersForAdmin,
-} from "@/lib/store";
+import { listAuditLogs, listUsersForAdmin } from "@/lib/store";
 import { getActiveProvider, isLLMConfigured } from "@/lib/llm";
 import { isTelegramConfigured } from "@/lib/telegram";
 import { getPlatformValue } from "@/lib/platformConfig";
@@ -19,7 +15,6 @@ export async function GET() {
     return NextResponse.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      master_kill: await isMasterKillOn(),
       anthropic: isLLMConfigured(),
       llm: isLLMConfigured(),
       ai_provider: getActiveProvider(),
