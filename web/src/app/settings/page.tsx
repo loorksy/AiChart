@@ -6,7 +6,6 @@ const TAB_MAP: Record<string, string> = {
   appearance: "/console/settings/profile",
   integrations: "/console/connect",
   alerts: "/console/settings/alerts",
-  trading: "/console/risk",
 };
 
 export default async function SettingsRedirect({

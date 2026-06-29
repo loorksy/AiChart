@@ -6,7 +6,6 @@ import {
   getFlag,
   getLimits,
   getSettings,
-  isMasterKillOn,
   logAudit,
   todayRealizedPnlUsd,
   updateSettings,
@@ -26,10 +25,6 @@ export async function GET() {
       lastSeen: await getFlag(AGENT_LAST_SEEN_FLAG),
       mode: settings.mode,
       canAuto: limits.can_execute === 1,
-      killSwitch: {
-        master: await isMasterKillOn(),
-        user: settings.kill_switch === 1,
-      },
       openTrades: await countOpenTrades(user.id),
       todayPnlUsd: await todayRealizedPnlUsd(user.id),
     });

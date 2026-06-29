@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { PriceChartHandle } from "@/components/PriceChart";
+import type { KLineChartHandle } from "@/components/chart/KLineChart";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { AgentActivity } from "@/lib/agentActivity";
@@ -42,7 +42,7 @@ export interface UseChartAnalysisOptions {
   symbol: string;
   interval: string;
   market: MarketType;
-  chartRef: RefObject<PriceChartHandle | null>;
+  chartRef: RefObject<KLineChartHandle | null>;
   /** When set, analysis is persisted and synced to chat. */
   conversationId?: number | null;
   source?: ChartAnalyzeSource;

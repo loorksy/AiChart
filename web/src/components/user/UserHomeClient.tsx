@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
-  Bot,
   Download,
   ExternalLink,
   Plug,
@@ -17,7 +16,6 @@ import {
 } from "lucide-react";
 import { FadeIn } from "@/components/ui/fade-in";
 import { CopyField } from "@/components/ui/CopyField";
-import { ScalpControl } from "@/components/scalp/ScalpControl";
 import { formatWhatsAppDisplay } from "@/lib/phone";
 import { formatAccessExpiryLabel } from "@/lib/platformAccess";
 import type { PublicUser } from "@/lib/types";
@@ -191,26 +189,6 @@ export function UserHomeClient({
             </p>
           </div>
         </div>
-
-        {/* ─── Grid bot quick link ─── */}
-        <Link
-          href="/console/bots"
-          className="bento-card group flex items-center gap-4 p-5 cursor-pointer"
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 ring-1 ring-blue-500/20 group-hover:ring-blue-500/40 transition-all">
-            <Bot className="h-5 w-5 text-blue-400" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-semibold text-sm">بوت الشبكة</h2>
-            <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
-              استراتيجية Grid/Martingale على السيرفر — بدون EA
-            </p>
-          </div>
-          <ExternalLink className="h-3.5 w-3.5 shrink-0 text-zinc-600 group-hover:text-blue-400 transition-colors" />
-        </Link>
-
-        {/* ─── Scalp control ─── */}
-        <ScalpControl />
 
         {/* ─── Connection status panel ─── */}
         <div className="bento-card p-5 space-y-3">

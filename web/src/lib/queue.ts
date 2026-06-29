@@ -1,15 +1,12 @@
 /**
  * Background job queue with a safe inline fallback.
  *
- * Heavy async work (embeddings, post-mortems, and — over time — agent/scalp
- * runs) should not execute inside the request/cron handler where it competes
- * with user-facing latency and dies if the invocation is frozen. When REDIS_URL
- * is set, jobs are enqueued to BullMQ and processed by a separate worker tier
- * that scales independently. When it is NOT set (local/dev), jobs run inline —
- * exactly the previous fire-and-forget behavior — so nothing breaks.
- *
- * Strategy bots (/api/cron/bots) always run inline on the web tier for reliable
- * EA/MetaApi execution env — see cron/bots/route.ts.
+ * Heavy async work (embeddings, post-mortems) should not execute inside the
+ * request/cron handler where it competes with user-facing latency and dies if
+ * the invocation is frozen. When REDIS_URL is set, jobs are enqueued to BullMQ
+ * and processed by a separate worker tier that scales independently. When it is
+ * NOT set (local/dev), jobs run inline — exactly the previous fire-and-forget
+ * behavior — so nothing breaks.
  */
 import { captureError } from "./errorReporting";
 import { createLogger } from "./logger";
@@ -19,10 +16,8 @@ const log = createLogger("queue");
 
 export interface JobPayloads {
   trade_post_mortem: { userId: number; tradeId: number; pnl: number };
-  scalp_tick: { userId: number };
   opportunity_scan: { userId: number };
   memory_lifecycle: { userId: number; conversationId: number };
-  bot_tick: { userId: number };
 }
 export type JobName = keyof JobPayloads;
 

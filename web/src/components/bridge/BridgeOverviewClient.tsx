@@ -9,9 +9,7 @@ import { ActiveTradesTable } from "@/components/bridge/ActiveTradesTable";
 import { StatusChip, type StatusChipTone } from "@/components/bridge/StatusChip";
 import { AgentStatusBar } from "@/components/dashboard/AgentStatusBar";
 import { AdminOverview } from "@/components/admin/AdminOverview";
-import { ScalpControl } from "@/components/scalp/ScalpControl";
 import {
-  Bot,
   Wifi,
   WifiOff,
   Zap,
@@ -86,7 +84,6 @@ export function BridgeOverviewClient({
   pendingIntents,
   isAdmin,
   adminStats,
-  masterKill,
 }: {
   settings: TradingSettings;
   hasBinance: boolean;
@@ -95,7 +92,6 @@ export function BridgeOverviewClient({
   pendingIntents: TradeIntent[];
   isAdmin: boolean;
   adminStats?: AdminPlatformStats;
-  masterKill?: boolean;
 }) {
   const [conn, setConn] = useState<ConnectionStatus | null>(null);
 
@@ -132,24 +128,6 @@ export function BridgeOverviewClient({
 
         {/* ─── Agent status bar ─── */}
         <AgentStatusBar />
-
-        {/* ─── ScalpControl ─── */}
-        <ScalpControl />
-
-        <Link
-          href="/console/bots"
-          className="bento-card group flex items-center gap-4 p-5"
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 ring-1 ring-blue-500/20">
-            <Bot className="h-5 w-5 text-blue-400" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-semibold text-sm">بوت الشبكة</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
-              Grid/Martingale على السيرفر — إدارة وتشغيل
-            </p>
-          </div>
-        </Link>
 
         {/* ─── Connection status — Bento grid ─── */}
         <div>
@@ -214,7 +192,7 @@ export function BridgeOverviewClient({
                 label: execLabel,
                 tone: conn?.executionEnv.mismatch ? "warn" : "ok",
               }}
-              href="/console/risk"
+              href="/console/connect"
               icon={conn?.executionEnv.mismatch ? AlertTriangle : Zap}
             />
           </div>
@@ -251,11 +229,7 @@ export function BridgeOverviewClient({
         {isAdmin && adminStats && (
           <div>
             <p className="console-section-label mb-3">إحصائيات المنصة</p>
-            <AdminOverview
-              stats={adminStats}
-              masterKill={masterKill ?? false}
-              embedded
-            />
+            <AdminOverview stats={adminStats} embedded />
           </div>
         )}
       </div>

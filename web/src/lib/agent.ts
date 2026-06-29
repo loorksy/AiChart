@@ -496,33 +496,6 @@ const TOOLS: ToolDef[] = [
       required: ["trading_style"],
     },
   },
-  {
-    name: "get_scalp_status",
-    description:
-      "حالة جلسة السكالب + هل السكالب مسموح (scalp_enabled) ووضع التنفيذ. read-only. استدعها أولاً عند أي طلب سكالب.",
-    input_schema: { type: "object", properties: {} },
-  },
-  {
-    name: "start_scalp_session",
-    description:
-      "يبدأ جلسة سكالب (بعد التحقق أن scalp_enabled=1). مرّر symbol وmax_trades.",
-    input_schema: {
-      type: "object",
-      properties: {
-        symbol: { type: "string" },
-        market: { type: "string", enum: ["crypto", "forex"] },
-        interval: { type: "string" },
-        max_trades: { type: "number" },
-        notional: { type: "number" },
-      },
-      required: ["symbol", "max_trades"],
-    },
-  },
-  {
-    name: "stop_scalp_session",
-    description: "يوقف جلسة السكالب الحالية.",
-    input_schema: { type: "object", properties: {} },
-  },
 ];
 
 const CHART_ANALYZE_TOOL_NAMES = new Set([
@@ -554,8 +527,6 @@ const SCALP_TOOL_DENY = new Set([
   "set_active_market",
   "set_trading_style",
   "set_risk_guard",
-  "start_scalp_session",
-  "stop_scalp_session",
 ]);
 
 const SCALP_TOOLS = [
@@ -630,9 +601,6 @@ const BRIDGE_TOOL_NAMES = new Set([
   "set_risk_guard",
   "set_active_market",
   "set_trading_style",
-  "get_scalp_status",
-  "start_scalp_session",
-  "stop_scalp_session",
 ]);
 
 /** Routes a bridge tool to its /api/agent/* endpoint via the internal bridge. */
@@ -728,12 +696,6 @@ async function forwardBridge(
       );
     case "set_trading_style":
       return ok(await bridge.post("/api/agent/style", input));
-    case "get_scalp_status":
-      return ok(await bridge.get("/api/agent/scalp"));
-    case "start_scalp_session":
-      return ok(await bridge.post("/api/agent/scalp", { action: "start", ...input }));
-    case "stop_scalp_session":
-      return ok(await bridge.post("/api/agent/scalp", { action: "stop" }));
     default:
       return { content: `أداة جسر غير معروفة: ${name}`, isError: true };
   }
@@ -1005,18 +967,12 @@ async function executeTool(
             });
             rec = { ...rec, memory_refs_json: memoryRefs };
           }
-          if (ctx.settings.mode === "auto") {
-            // Auto mode: the committee gates auto-execution (committeeBlocksAuto),
-            // so it must be ready before processRecommendations — keep it sync.
-            const committee = await evaluateCommittee(ctx.userId, rec, lessons);
-            await updateRecommendationIntelligence(rec.id, {
-              committee_json: JSON.stringify(committee),
-            });
-            rec = { ...rec, committee_json: JSON.stringify(committee) };
-          } else {
-            // Advisory modes (approval/direct): the committee is informational and
-            // never blocks here — evaluate it in the background and persist when
-            // ready so the reply is not delayed by an extra LLM round-trip.
+          // The committee is a background second opinion only — never a blocking
+          // call on the interactive path, in any mode. It never gates execution
+          // (riskGuard enforces the execution-time safety gate); it is evaluated
+          // async and persisted when ready so the reply is never delayed by an
+          // extra LLM round-trip.
+          {
             const recId = rec.id;
             void evaluateCommittee(ctx.userId, rec, lessons)
               .then((committee) =>
@@ -1194,9 +1150,12 @@ export async function runAgent(
     : baseTools;
   const maxSteps =
     options?.mode === "chart_analyze"
-      ? 8
+      ? // Single-pass: the analysis is precomputed in TypeScript and injected
+        // into the prompt, so the model only needs to record the recommendation
+        // and finalize — not "discover" via many tool rounds.
+        3
       : options?.responseMode === "fast"
-        ? 6
+        ? 4
         : options?.responseMode === "expert"
           ? 14
           : 10;

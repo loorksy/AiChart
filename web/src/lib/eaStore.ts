@@ -270,6 +270,32 @@ export async function getEaSymbolSpec(
   return specs.find((s) => eaForexCanonicalKey(s.symbol ?? "") === key) ?? null;
 }
 
+/**
+ * The broker's live tradable symbol universe from the EA Market Watch heartbeat,
+ * optionally filtered to forex. This is the ONLY source of the symbol universe —
+ * there are no static/fabricated pair lists. Returns [] when no EA is linked or
+ * no specs have arrived yet (callers must surface that, never invent pairs).
+ */
+export async function listBrokerSymbols(
+  userId: number,
+  opts: { forexOnly?: boolean } = {},
+): Promise<string[]> {
+  const { isForexSymbol } = await import("./eaLiveState");
+  const conn = await getEaConnection(userId);
+  if (!conn) return [];
+  const specs = parseEaSymbolSpecs(conn.symbol_specs_json);
+  const out = new Set<string>();
+  for (const s of specs) {
+    const sym = s.symbol?.toUpperCase();
+    if (!sym) continue;
+    // Only symbols the broker is actually quoting (tradable).
+    if (!(Number(s.bid) > 0 && Number(s.ask) > 0)) continue;
+    if (opts.forexOnly && !isForexSymbol(sym)) continue;
+    out.add(sym);
+  }
+  return [...out].sort();
+}
+
 // ---------------------------------------------------------------------------
 // EA commands queue
 // ---------------------------------------------------------------------------

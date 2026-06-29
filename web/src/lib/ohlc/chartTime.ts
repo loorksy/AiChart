@@ -7,17 +7,19 @@ export function toChartSeconds(time: number): number {
 
 export type ChartMarket = "crypto" | "forex";
 
-function median(values: number[]): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1]! + sorted[mid]!) / 2
-    : sorted[mid]!;
+/** Order of magnitude of a positive price (e.g. 1.135→0, 1615→3). */
+function magnitudeBucket(price: number): number {
+  return Math.floor(Math.log10(price));
 }
 
 /**
  * Drops corrupt / cross-market bars (e.g. ETH ~1600 leaking onto EUR/USD ~1.14).
+ *
+ * For forex we can't rely on the median as an anchor: when a large share of the
+ * feed is corrupt the median lands between the two scales and the wrong bars
+ * survive. Instead we cluster bars by price order-of-magnitude and keep the
+ * dominant cluster (ties favour the smaller magnitude, since stray crypto/index
+ * intruders are the larger values).
  */
 export function sanitizeCandlesForMarket<
   T extends { time: number; open: number; high: number; low: number; close: number },
@@ -25,26 +27,40 @@ export function sanitizeCandlesForMarket<
   const normalized = normalizeCandlesForChart(candles);
   if (normalized.length === 0) return [];
 
-  const closes = normalized.map((c) => c.close).filter((v) => v > 0);
-  const med = median(closes);
-
-  return normalized.filter((c) => {
+  // Structurally valid, positive bars (both markets).
+  const structurallyValid = normalized.filter((c) => {
     const ohlc = [c.open, c.high, c.low, c.close];
     if (ohlc.some((p) => !Number.isFinite(p) || p <= 0)) return false;
-    if (market === "forex") {
-      if (ohlc.some((p) => p > 1_000_000 || p < 0.000_01)) return false;
-      if (med > 0 && med < 10_000) {
-        const max = med * 25;
-        const min = med / 25;
-        if (ohlc.some((p) => p < min || p > max)) return false;
-      }
-    }
     if (c.high < c.low) return false;
     if (c.high < Math.max(c.open, c.close) || c.low > Math.min(c.open, c.close)) {
       return false;
     }
     return true;
   });
+
+  if (market !== "forex" || structurallyValid.length === 0) return structurallyValid;
+
+  // Forex: hard sanity bounds, then keep only the dominant magnitude cluster.
+  const inBounds = structurallyValid.filter(
+    (c) => ![c.open, c.high, c.low, c.close].some((p) => p > 1_000_000 || p < 0.000_01),
+  );
+  if (inBounds.length === 0) return [];
+
+  const counts = new Map<number, number>();
+  for (const c of inBounds) {
+    const b = magnitudeBucket(c.close);
+    counts.set(b, (counts.get(b) ?? 0) + 1);
+  }
+  let dominant = Infinity;
+  let best = -1;
+  for (const [bucket, count] of counts) {
+    if (count > best || (count === best && bucket < dominant)) {
+      best = count;
+      dominant = bucket;
+    }
+  }
+
+  return inBounds.filter((c) => magnitudeBucket(c.close) === dominant);
 }
 
 /** Reject live ticks that would corrupt the last bar (wrong market / stale feed). */

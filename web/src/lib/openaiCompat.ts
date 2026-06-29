@@ -12,11 +12,13 @@ import type {
   ToolDef,
 } from "./anthropic";
 import {
+  ExternalTimeoutError,
   fetchWithTimeout,
   httpTimeoutMs,
   IdleWatchdog,
   llmIdleTimeoutMs,
   llmTotalTimeoutMs,
+  llmTtftTimeoutMs,
 } from "./externalFetch";
 
 export interface OpenAICompatTarget {
@@ -140,6 +142,17 @@ function tokenLimitBody(
   return { [field]: limit };
 }
 
+/**
+ * Reasoning-family models (o-series, gpt-5) "think" before answering. Pin the
+ * effort low on the interactive path so first-byte latency stays well under the
+ * TTFT budget instead of stalling for tens of seconds.
+ */
+function reasoningBody(model: string): Record<string, unknown> {
+  const id = bareModelId(model);
+  if (/^o\d/.test(id) || /^gpt-5/.test(id)) return { reasoning_effort: "low" };
+  return {};
+}
+
 // Exported for provider-parity tests: proves any tool (e.g. render_cards)
 // converts to the OpenAI-compatible function shape used by openai/google/openrouter.
 export function toOATools(tools?: ToolDef[]) {
@@ -235,6 +248,7 @@ export async function callOpenAICompat(
       body: JSON.stringify({
         model: target.model,
         ...tokenLimitBody(target.model, params.maxTokens),
+        ...reasoningBody(target.model),
         messages: toOAMessages(params.system, params.messages),
         ...(params.tools ? { tools: toOATools(params.tools) } : {}),
       }),
@@ -276,7 +290,44 @@ export async function callOpenAICompatStream(
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
-  const watchdog = new IdleWatchdog(llmIdleTimeoutMs(), target.model);
+  // One gentle retry, but only when the first attempt stalled BEFORE delivering
+  // any bytes — retrying after partial text would duplicate it on the client.
+  let delivered = false;
+  const guardedHandlers: StreamHandlers | undefined = handlers
+    ? {
+        ...handlers,
+        onTextDelta: (t: string) => {
+          delivered = true;
+          handlers.onTextDelta?.(t);
+        },
+      }
+    : undefined;
+
+  try {
+    return await streamOnce(target, params, guardedHandlers);
+  } catch (err) {
+    if (err instanceof ExternalTimeoutError && !delivered) {
+      return await streamOnce(target, params, guardedHandlers);
+    }
+    throw err;
+  }
+}
+
+async function streamOnce(
+  target: OpenAICompatTarget,
+  params: {
+    system: string;
+    messages: Message[];
+    tools?: ToolDef[];
+    maxTokens?: number;
+  },
+  handlers?: StreamHandlers,
+): Promise<AnthropicResponse> {
+  const watchdog = new IdleWatchdog(
+    llmIdleTimeoutMs(),
+    target.model,
+    llmTtftTimeoutMs(),
+  );
   const res = await fetch(`${target.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -287,6 +338,7 @@ export async function callOpenAICompatStream(
     body: JSON.stringify({
       model: target.model,
       ...tokenLimitBody(target.model, params.maxTokens),
+      ...reasoningBody(target.model),
       messages: toOAMessages(params.system, params.messages),
       stream: true,
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),
