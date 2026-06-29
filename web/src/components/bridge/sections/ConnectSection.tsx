@@ -14,7 +14,7 @@ export function ConnectSection(props: Props) {
       <div>
         <h2 className="text-xl font-bold">الاتصالات</h2>
         <p className="text-sm text-muted-foreground">
-          Binance · MT5 · Telegram
+          MetaTrader · Telegram
         </p>
       </div>
       <SettingsClient

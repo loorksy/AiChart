@@ -93,33 +93,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     type: "url",
     placeholder: "https://your-domain.com",
   },
-  {
-    key: "ENABLE_BINANCE_CLI",
-    label: "تفعيل Binance CLI (قراءة فقط)",
-    labelEn: "ENABLE_BINANCE_CLI",
-    group: "ops",
-    secret: false,
-    plainStorage: false,
-    type: "toggle",
-  },
-  {
-    key: "METAAPI_TOKEN",
-    label: "رمز MetaApi (فوركس)",
-    labelEn: "METAAPI_TOKEN",
-    group: "ops",
-    secret: true,
-    plainStorage: false,
-    placeholder: "من app.metaapi.cloud/token",
-  },
-  {
-    key: "METAAPI_REGION",
-    label: "منطقة MetaApi (اختياري)",
-    labelEn: "METAAPI_REGION",
-    group: "ops",
-    secret: false,
-    plainStorage: false,
-    placeholder: "new-york",
-  },
 ];
 
 const cache = new Map<string, string>();

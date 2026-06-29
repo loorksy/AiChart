@@ -89,8 +89,8 @@ export function EaConnectCard({
     <SurfaceCard>
       <h2 className="mb-1 text-xl font-semibold">ربط MetaTrader (فوركس)</h2>
       <p className="mb-4 text-sm text-muted-foreground">
-        بديل MetaApi — يعمل عبر Expert Advisor على جهازك أو VPS. مناسب حيث لا
-        تتوفر الخدمات السحابية.
+        ربط MetaTrader 5 عبر Expert Advisor على جهازك أو VPS — التنفيذ والأسعار
+        مباشرة من منصتك.
       </p>
 
       {connection && (

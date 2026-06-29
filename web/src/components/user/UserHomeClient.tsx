@@ -163,7 +163,7 @@ export function UserHomeClient({
             <div>
               <h2 className="font-semibold text-sm">الاتصالات</h2>
               <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
-                Binance · MT5 · Telegram
+                MetaTrader · Telegram
               </p>
             </div>
             <ExternalLink className="h-3.5 w-3.5 text-zinc-600 group-hover:text-zinc-300 transition-colors" />
@@ -194,7 +194,7 @@ export function UserHomeClient({
         <div className="bento-card p-5 space-y-3">
           <div className="flex items-center gap-2 mb-4">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04]">
-              {conn?.binance || conn?.mt5Online ? (
+              {conn?.mt5Online ? (
                 <Wifi className="h-4 w-4 text-green-400" />
               ) : (
                 <WifiOff className="h-4 w-4 text-zinc-600" />
@@ -209,7 +209,6 @@ export function UserHomeClient({
               <ExternalLink className="h-3 w-3" />
             </Link>
           </div>
-          <ConnPill label="Binance" connected={conn?.binance ?? null} />
           <ConnPill label="MT5" connected={conn?.mt5Online ?? null} />
           <ConnPill label="Telegram" connected={conn?.telegram ?? null} />
         </div>

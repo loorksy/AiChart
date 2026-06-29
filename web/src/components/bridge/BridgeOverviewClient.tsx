@@ -15,7 +15,6 @@ import {
   Zap,
   AlertTriangle,
   MessageSquare,
-  TrendingUp,
   Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -78,7 +77,7 @@ function ConnBentoCard({
 
 export function BridgeOverviewClient({
   settings,
-  hasBinance,
+  hasBinance: _hasBinance,
   eaConnected,
   eaOnline,
   pendingIntents,
@@ -139,30 +138,6 @@ export function BridgeOverviewClient({
               detail="التداول عبر Connectors"
               href={isAdmin ? "/console/platform?tab=system" : "/console/mcp"}
               icon={MessageSquare}
-            />
-            <ConnBentoCard
-              title="Binance"
-              chip={{
-                label: hasBinance
-                  ? conn?.binance.env === "prod"
-                    ? "حقيقي"
-                    : "تجريبي"
-                  : "غير مرتبط",
-                tone: hasBinance
-                  ? conn?.binance.futuresOk === false
-                    ? "warn"
-                    : conn?.binance.futuresOk === true
-                      ? "ok"
-                      : "neutral"
-                  : "neutral",
-              }}
-              detail={
-                hasBinance && conn?.binance.futuresOk === false
-                  ? "Futures غير مفعّل"
-                  : undefined
-              }
-              href="/console/connect"
-              icon={TrendingUp}
             />
             <ConnBentoCard
               title="MT5 / EA"

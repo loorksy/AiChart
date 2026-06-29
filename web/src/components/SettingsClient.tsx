@@ -18,26 +18,19 @@ import {
 import {
   isOpenAssetsPolicy,
   parseAllowedAssets,
-  parseWatchlist,
 } from "@/lib/allowedAssets";
 import type {
   AdminLimits,
   AlertLog,
-  BinanceAccountMeta,
   EaConnectionMeta,
-  MtAccountMeta,
   PublicUser,
   TradingSettings,
 } from "@/lib/types";
-import type { ForexBackendMode } from "@/lib/brokers/forexBackend";
 import { EaConnectCard } from "@/components/settings/EaConnectCard";
-import { ForexMethodSelector } from "@/components/settings/ForexMethodSelector";
-import { MtConnectCard } from "@/components/settings/MtConnectCard";
 import { cn } from "@/lib/utils";
 import { PageLayout, SurfaceCard, PillButton } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { displayNameForUser } from "@/lib/displayName";
-import { InfoTip, LabelWithTip } from "@/components/ui/InfoTip";
 
 function Field({
   label,
@@ -66,7 +59,7 @@ const TABS: { id: TabId; label: string; icon: typeof User; desc: string }[] = [
   { id: "profile", label: "الملف الشخصي", icon: User, desc: "بيانات حسابك" },
   { id: "subscription", label: "الاشتراك", icon: CreditCard, desc: "الرصيد والخطة" },
   { id: "appearance", label: "المظهر", icon: Sun, desc: "السمة والعرض" },
-  { id: "integrations", label: "الربط والتكامل", icon: Send, desc: "Binance وMetaTrader وتليجرام" },
+  { id: "integrations", label: "الربط والتكامل", icon: Send, desc: "MetaTrader وتليجرام" },
   { id: "alerts", label: "التنبيهات", icon: Bell, desc: "إشعارات تليجرام والسجل" },
   { id: "trading", label: "التداول والمخاطر", icon: SlidersHorizontal, desc: "الحدود والإعدادات" },
 ];
@@ -75,13 +68,13 @@ export default function SettingsClient({
   user,
   settings: initialSettings,
   limits,
-  binance,
+  binance: _binance,
   ea,
-  mt,
-  forexBackend,
-  mt5LocalAvailable = false,
-  metaApiAvailable = false,
-  platformConnectAvailable = false,
+  mt: _mt,
+  forexBackend: _forexBackend,
+  mt5LocalAvailable: _mt5LocalAvailable = false,
+  metaApiAvailable: _metaApiAvailable = false,
+  platformConnectAvailable: _platformConnectAvailable = false,
   canDownloadEa = false,
   initialTab,
   embedMode = false,
@@ -90,10 +83,10 @@ export default function SettingsClient({
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
-  binance: BinanceAccountMeta | null;
+  binance?: unknown;
   ea: EaConnectionMeta | null;
-  mt: MtAccountMeta | null;
-  forexBackend: ForexBackendMode;
+  mt?: unknown;
+  forexBackend?: unknown;
   mt5LocalAvailable?: boolean;
   metaApiAvailable?: boolean;
   platformConnectAvailable?: boolean;
@@ -114,48 +107,6 @@ export default function SettingsClient({
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const displayName = displayNameForUser(user);
-
-  // Per-user forex connection method: "platform" (server-side, no download) vs
-  // "ea" (bridge installed on the user's own MT5). Initialized from the saved
-  // preference, falling back to the operator's resolved default.
-  const platformAvailable =
-    platformConnectAvailable ||
-    metaApiAvailable ||
-    mt5LocalAvailable ||
-    forexBackend === "metaapi";
-  const [forexMethod, setForexMethod] = useState<"platform" | "ea">(
-    forexBackend === "ea" || !platformAvailable ? "ea" : "platform",
-  );
-  const [savingForexMethod, setSavingForexMethod] = useState(false);
-
-  async function chooseForexMethod(method: "platform" | "ea") {
-    if (method === forexMethod || savingForexMethod) return;
-    if (method === "platform" && !platformAvailable) return;
-    setSavingForexMethod(true);
-    // Preserve an existing MetaApi choice instead of silently downgrading it to
-    // mt5local when both server-side backends exist.
-    const value =
-      method === "ea"
-        ? "ea"
-        : forexBackend === "metaapi" || metaApiAvailable
-          ? "metaapi"
-          : mt5LocalAvailable
-            ? "mt5local"
-            : "metaapi";
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ forex_backend: value }),
-      });
-      if (res.ok) {
-        setForexMethod(method);
-        router.refresh();
-      }
-    } finally {
-      setSavingForexMethod(false);
-    }
-  }
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -276,27 +227,7 @@ export default function SettingsClient({
 
           {tab === "integrations" && (
             <div className="space-y-4">
-              <BinanceCard binance={binance} />
-              <ForexMethodSelector
-                method={forexMethod}
-                platformAvailable={platformAvailable}
-                platformHint={
-                  !platformAvailable
-                    ? metaApiAvailable
-                      ? undefined
-                      : "يتطلب METAAPI_TOKEN في لوحة المنصّة (Linux لا يدعم MT5 IPC) أو جسr EA."
-                    : metaApiAvailable && !mt5LocalAvailable
-                      ? "الربط السحابي عبر MetaApi — بدون EA."
-                      : undefined
-                }
-                saving={savingForexMethod}
-                onChoose={chooseForexMethod}
-              />
-              {forexMethod === "platform" ? (
-                <MtConnectCard account={mt} />
-              ) : (
-                <EaConnectCard connection={ea} canDownloadEa={canDownloadEa} />
-              )}
+              <EaConnectCard connection={ea} canDownloadEa={canDownloadEa} />
               <TelegramCard linked={Boolean(initialSettings.telegram_chat_id)} />
             </div>
           )}
@@ -364,240 +295,6 @@ export default function SettingsClient({
     <PageLayout title="الإعدادات" subtitle="إدارة حسابك وتفضيلاتك" maxWidth="6xl">
       {body}
     </PageLayout>
-  );
-}
-
-function BinanceCard({ binance }: { binance: BinanceAccountMeta | null }) {
-  const router = useRouter();
-  const [apiKey, setApiKey] = useState("");
-  const [apiSecret, setApiSecret] = useState("");
-  const [env, setEnv] = useState<"testnet" | "prod">(
-    (binance?.env as "testnet" | "prod") ?? "testnet",
-  );
-  const [region, setRegion] = useState<"global" | "us" | "tr">(
-    (binance?.region as "global" | "us" | "tr") ?? "global",
-  );
-  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
-    null,
-  );
-  const [busy, setBusy] = useState(false);
-  const [permBusy, setPermBusy] = useState(false);
-  const [permissionReport, setPermissionReport] = useState<{
-    checks: {
-      label: string;
-      ok: boolean;
-      severity: string;
-      detail?: string;
-    }[];
-    withdrawWarning: string | null;
-    ipRestrictionAdvice: string | null;
-  } | null>(null);
-
-  async function refreshPermissions() {
-    if (!binance) return;
-    setPermBusy(true);
-    try {
-      const res = await fetch("/api/binance/status?futuresRequired=1");
-      const data = await res.json();
-      if (data.connected && data.permissionReport) {
-        setPermissionReport(data.permissionReport);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setPermBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    if (binance) void refreshPermissions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [binance?.env, binance?.updated_at]);
-
-  async function connect(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/binance/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, apiSecret, env, region }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setMsg({ type: "err", text: data.error ?? "فشل الربط." });
-        return;
-      }
-      setApiKey("");
-      setApiSecret("");
-      setMsg({
-        type: "ok",
-        text: data.withdrawWarning
-          ? `تم الربط بنجاح. ${data.withdrawWarning}`
-          : "تم الربط والتحقق بنجاح.",
-      });
-      if (data.permissionReport) setPermissionReport(data.permissionReport);
-      router.refresh();
-    } catch {
-      setMsg({ type: "err", text: "تعذّر الاتصال بالخادم." });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function disconnect() {
-    if (!confirm("هل تريد فصل حساب Binance؟")) return;
-    await fetch("/api/binance", { method: "DELETE" });
-    router.refresh();
-  }
-
-  return (
-    <SurfaceCard>
-      <div className="mb-4 flex items-center gap-2">
-        <h2 className="text-xl font-semibold">ربط Binance</h2>
-        <InfoTip label="أمان المفتاح">
-          فعّل التداول فقط وعطّل السحب. على Mainnet فعّل Futures إن احتجت شورت/رافعة.
-        </InfoTip>
-      </div>
-
-      {binance && (
-        <div className="mb-4 space-y-3">
-          <div className="flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
-            <div className="text-sm">
-              <span className="text-accent-gold">● مرتبط</span> —{" "}
-              {binance.env === "testnet" ? "تجريبية" : "حقيقية"}
-            </div>
-            <button onClick={disconnect} className="btn btn-danger py-1.5 text-sm">
-              فصل
-            </button>
-          </div>
-
-          {permissionReport && (
-            <div className="rounded-xl border border-border/60 p-3 text-sm">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="font-medium">صلاحيات المفتاح</p>
-                <button
-                  type="button"
-                  onClick={() => void refreshPermissions()}
-                  disabled={permBusy}
-                  className="text-xs text-link"
-                >
-                  {permBusy ? "جارٍ الفحص…" : "إعادة فحص"}
-                </button>
-              </div>
-              <ul className="space-y-1.5">
-                {permissionReport.checks.map((c) => (
-                  <li key={c.label} className="flex items-start gap-2">
-                    <span
-                      className={
-                        c.ok
-                          ? "text-accent-gold"
-                          : c.severity === "error"
-                            ? "text-destructive"
-                            : "text-amber-500"
-                      }
-                    >
-                      {c.ok ? "✓" : "✗"}
-                    </span>
-                    <span>
-                      {c.label}
-                      {c.detail ? (
-                        <span className="block text-xs text-muted-foreground">
-                          {c.detail}
-                        </span>
-                      ) : null}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {permissionReport.withdrawWarning && (
-                <p className="mt-2 text-xs text-destructive">
-                  {permissionReport.withdrawWarning}
-                </p>
-              )}
-              {permissionReport.ipRestrictionAdvice && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {permissionReport.ipRestrictionAdvice}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      <form onSubmit={connect} className="space-y-4">
-        <Field label="منصّة Binance (حسب دولتك)">
-          <select
-            className="input"
-            value={region}
-            onChange={(e) => {
-              const r = e.target.value as "global" | "us" | "tr";
-              setRegion(r);
-              if (r !== "global") setEnv("prod"); // US/TR لا تدعمان Testnet
-            }}
-          >
-            <option value="global">عالمي — binance.com</option>
-            <option value="tr">تركيا — Binance.TR (binance.tr)</option>
-            <option value="us">أمريكا — Binance.US (binance.us)</option>
-          </select>
-          {region !== "global" && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              استخدم مفتاحاً مولّداً من نفس المنصّة. القراءة فقط مدعومة الآن لـ
-              {region === "tr" ? " Binance.TR" : " Binance.US"}.
-            </p>
-          )}
-        </Field>
-        <Field label="البيئة">
-          <select
-            className="input"
-            value={env}
-            onChange={(e) => setEnv(e.target.value as "testnet" | "prod")}
-            disabled={region !== "global"}
-          >
-            {region === "global" && (
-              <option value="testnet">تجريبية (Testnet)</option>
-            )}
-            <option value="prod">حقيقية (Mainnet)</option>
-          </select>
-        </Field>
-        <Field label="API Key">
-          <input
-            className="input"
-            dir="ltr"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="مفتاح API"
-          />
-        </Field>
-        <Field label="API Secret">
-          <input
-            type="password"
-            className="input"
-            dir="ltr"
-            value={apiSecret}
-            onChange={(e) => setApiSecret(e.target.value)}
-            placeholder="السر"
-          />
-        </Field>
-
-        {msg && (
-          <p
-            className={`rounded-lg px-3 py-2 text-sm ${
-              msg.type === "ok"
-                ? "bg-secondary text-foreground"
-                : "bg-destructive/10 text-destructive"
-            }`}
-          >
-            {msg.text}
-          </p>
-        )}
-
-        <button className="btn btn-primary" disabled={busy}>
-          {busy ? "جارٍ التحقق…" : binance ? "تحديث المفاتيح" : "ربط وتحقق"}
-        </button>
-      </form>
-    </SurfaceCard>
   );
 }
 
@@ -910,20 +607,11 @@ function TradingCard({
 }) {
   const router = useRouter();
   const [s, setS] = useState(settings);
-  const [openAssets, setOpenAssets] = useState(
-    isOpenAssetsPolicy(settings.allowed_assets, "crypto"),
-  );
-  const [assets, setAssets] = useState(
-    parseAllowedAssets(settings.allowed_assets, "crypto").join(", "),
-  );
   const [forexOpen, setForexOpen] = useState(
     isOpenAssetsPolicy(settings.allowed_assets, "forex"),
   );
   const [forexAssets, setForexAssets] = useState(
     parseAllowedAssets(settings.allowed_assets, "forex").join(", "),
-  );
-  const [watchlist, setWatchlist] = useState(
-    parseWatchlist(settings.allowed_assets).join(", "),
   );
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(
     null,
@@ -965,9 +653,9 @@ function TradingCard({
           monthly_loss_limit_pct: Number(s.monthly_loss_limit_pct),
           auto_take_profit_usd: Number(s.auto_take_profit_usd ?? 0),
           allowed_assets: {
-            crypto: openAssets ? [] : parseCsv(assets),
+            crypto: [],
             forex: forexOpen ? [] : parseCsv(forexAssets),
-            watchlist: parseCsv(watchlist),
+            watchlist: [],
           },
           send_screenshot: Boolean(s.send_screenshot),
           scan_poll_minutes: Number(s.scan_poll_minutes ?? 0),
@@ -975,7 +663,7 @@ function TradingCard({
           execution_env_preference:
             s.execution_env_preference === "live" ? "live" : "demo",
           telegram_chat_id: s.telegram_chat_id || null,
-          futures_enabled: Boolean(s.futures_enabled),
+          futures_enabled: false,
           default_leverage: Number(s.default_leverage ?? 3),
           min_confidence: Number(s.min_confidence ?? 80),
           min_rr: Number(s.min_rr ?? 1),
@@ -1167,40 +855,6 @@ function TradingCard({
           </p>
         </Field>
 
-        <div>
-          <LabelWithTip
-            label="Futures"
-            tip="Binance USDT-M: شورت + رافعة. هامش معزول ووقف خسارة إلزامي — الخسارة القصوى = هامش الصفقة."
-          />
-          <select
-            className="input mt-1"
-            value={s.futures_enabled ? "on" : "off"}
-            onChange={(e) =>
-              set("futures_enabled", e.target.value === "on" ? 1 : 0)
-            }
-          >
-            <option value="off">معطّل</option>
-            <option value="on">مفعّل</option>
-          </select>
-        </div>
-
-        <div>
-          <LabelWithTip
-            label="الرافعة"
-            tip={`الافتراضي للصفقات الجديدة. سقف الأدمن: ${limits.max_leverage_cap && limits.max_leverage_cap > 0 ? limits.max_leverage_cap : 10}x`}
-          />
-          <input
-            type="number"
-            min={1}
-            max={limits.max_leverage_cap && limits.max_leverage_cap > 0 ? limits.max_leverage_cap : 10}
-            step={1}
-            className="input mt-1"
-            value={s.default_leverage ?? 3}
-            onChange={(e) => set("default_leverage", Number(e.target.value))}
-            disabled={!s.futures_enabled}
-          />
-        </div>
-
         <Field label={`الحد الأدنى لثقة التنفيذ · ${s.min_confidence ?? 80}%`}>
           <input
             type="range"
@@ -1278,41 +932,6 @@ function TradingCard({
         </div>
 
         <div className="sm:col-span-2 space-y-4">
-          <div className="space-y-2 rounded-xl border border-border/60 p-3">
-            <p className="text-sm font-medium">الأصول المسموحة · كريبتو (Binance)</p>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={openAssets}
-                onChange={(e) => setOpenAssets(e.target.checked)}
-                className="rounded border-border"
-              />
-              <span>
-                جميع أزواج USDT على Binance (تحديث تلقائي عند إدراج أزواج جديدة)
-              </span>
-            </label>
-            {!openAssets && (
-              <Field label="قائمة مخصّصة (اختياري)">
-                <input
-                  className="input"
-                  dir="ltr"
-                  value={assets}
-                  onChange={(e) => setAssets(e.target.value)}
-                  placeholder="BTCUSDT, ETHUSDT, SOLUSDT"
-                />
-              </Field>
-            )}
-            <Field label="قائمة المسح (watchlist) — 5–20 زوج للبحث عن صفقة">
-              <input
-                className="input"
-                dir="ltr"
-                value={watchlist}
-                onChange={(e) => setWatchlist(e.target.value)}
-                placeholder="BTCUSDT, ETHUSDT, SOLUSDT (فارغ = أفضل الأزواج حسب الحجم)"
-              />
-            </Field>
-          </div>
-
           <div className="space-y-2 rounded-xl border border-border/60 p-3">
             <p className="text-sm font-medium">الأصول المسموحة · فوركس (MetaTrader)</p>
             <label className="flex cursor-pointer items-center gap-2 text-sm">
