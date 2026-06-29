@@ -4,7 +4,9 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
+  useState,
 } from "react";
 import {
   init,
@@ -13,13 +15,19 @@ import {
   type Chart,
   type KLineData,
 } from "klinecharts";
-import type { OhlcCandle } from "@/lib/ohlc/fetchOhlc";
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import {
+  parseChartDrawingsJson,
+  validateChartDrawings,
+} from "@/lib/chartDrawings";
+import type { ChartOverlay } from "@/lib/chartOverlays";
+import { profileForInterval } from "@/lib/analysisProfile";
 import {
   drawingsToOverlays,
   type KLineOverlaySpec,
 } from "@/lib/chart/klineDrawingAdapter";
 import type { ChatImagePayload } from "@/lib/chatImage";
+import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export type KLineChartHandle = {
@@ -28,16 +36,27 @@ export type KLineChartHandle = {
 
 interface Props {
   symbol: string;
-  /** Live candles from the user's broker via EA (no Binance, no synthetic). */
-  candles: OhlcCandle[];
-  /** Latest price tick to push via updateData() for a live last bar. */
-  livePrice?: number;
+  interval: string;
+  market?: "crypto" | "forex";
+  recommendations?: Recommendation[];
+  overlays?: ChartOverlay[];
   drawings?: ChartDrawing[];
+  livePrice?: number;
+  /** Re-fetch candles on this interval (ms) for a live preview (0 = off). */
+  refreshMs?: number;
   className?: string;
 }
 
+interface RawCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
 let rectRegistered = false;
-/** Register a minimal filled-rectangle overlay for supply/demand & liquidity zones. */
 function ensureRectOverlay(): void {
   if (rectRegistered) return;
   rectRegistered = true;
@@ -68,13 +87,14 @@ function ensureRectOverlay(): void {
       },
     });
   } catch {
-    /* already registered or unsupported — overlays just skip rect */
+    /* already registered or unsupported */
   }
 }
 
-function toKLineData(candles: OhlcCandle[]): KLineData[] {
-  return candles.map((c) => ({
-    timestamp: c.time,
+/** klines endpoint returns time in SECONDS; KLineCharts wants ms timestamps. */
+function toKLineData(rows: RawCandle[]): KLineData[] {
+  return rows.map((c) => ({
+    timestamp: c.time > 1e12 ? c.time : c.time * 1000,
     open: c.open,
     high: c.high,
     low: c.low,
@@ -102,18 +122,30 @@ function compositeCanvases(container: HTMLElement): string | null {
 }
 
 /**
- * Web-native KLineCharts chart. Consumes broker (EA) candles directly, applies
- * them via applyNewData/updateData, and renders the existing ChartDrawing schema
- * as live overlays through klineDrawingAdapter (stable ids → migrate, not stack).
+ * Web-native KLineCharts chart. Fetches broker (forex→EA) candles via
+ * /api/market/klines, applies them with applyNewData/updateData, and renders the
+ * existing ChartDrawing schema as live overlays through klineDrawingAdapter
+ * (stable ids → migrate, not stack). No Binance stream, no synthetic data.
  */
 const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
-  { symbol, candles, livePrice, drawings, className },
+  {
+    symbol,
+    interval,
+    market = "forex",
+    recommendations = [],
+    overlays,
+    drawings,
+    livePrice,
+    refreshMs = 0,
+    className,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
   const overlayIdsRef = useRef<Set<string>>(new Set());
-  const lastTsRef = useRef<number>(0);
+  const [candleCount, setCandleCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     capturePng: async () => {
@@ -124,63 +156,121 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
     },
   }));
 
+  // Overlays (entry/stop/target/level price lines) → horizontal price_line drawings.
+  const overlayDrawings = useMemo<ChartDrawing[]>(() => {
+    const colorFor: Record<string, string> = {
+      entry: "#3b82f6",
+      stop_loss: "#ef4444",
+      take_profit: "#22c55e",
+      support: "#22c55e",
+      resistance: "#ef4444",
+    };
+    return (overlays ?? [])
+      .filter((o) => o.price > 0)
+      .map((o) => ({
+        type: "price_line" as const,
+        confidence: 80,
+        label: o.label,
+        color: colorFor[o.type] ?? "#94a3b8",
+        points: [{ barsAhead: 0, price: o.price }],
+        price: o.price,
+      }));
+  }, [overlays]);
+
+  // Fall back to the latest actionable recommendation's drawings when the
+  // analyze flow hasn't supplied explicit ones (mirrors the old PriceChart).
+  const effectiveDrawings = useMemo<ChartDrawing[]>(() => {
+    const base = drawings?.length
+      ? drawings
+      : (() => {
+          const rec = [...recommendations]
+            .reverse()
+            .find(
+              (r) =>
+                r.symbol?.toUpperCase() === symbol.toUpperCase() &&
+                (r.action === "buy" || r.action === "sell"),
+            );
+          if (!rec) return [] as ChartDrawing[];
+          const raw = parseChartDrawingsJson(rec.chart_drawings_json);
+          return raw.length
+            ? validateChartDrawings(raw, rec.action, rec.confidence ?? 60, profileForInterval(interval))
+            : [];
+        })();
+    return [...overlayDrawings, ...base];
+  }, [drawings, recommendations, symbol, interval, overlayDrawings]);
+
   // init / dispose
   useEffect(() => {
     ensureRectOverlay();
     const el = containerRef.current;
     if (!el) return;
-    const chart = init(el, {
-      styles: { grid: { show: true } },
-    });
+    const chart = init(el, { styles: { grid: { show: true } } });
     chartRef.current = chart ?? null;
     return () => {
       if (el) dispose(el);
       chartRef.current = null;
       overlayIdsRef.current.clear();
-      lastTsRef.current = 0;
     };
   }, []);
 
-  // candle data: full reset when the series changes, incremental updateData on
-  // a new/again last bar.
+  // candle data load + optional live refresh
   useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart || candles.length === 0) return;
-    const last = candles[candles.length - 1]!;
-    const data = toKLineData(candles);
-    if (lastTsRef.current === 0 || candles.length < 2) {
-      chart.applyNewData(data);
-    } else if (last.time >= lastTsRef.current) {
-      chart.updateData(data[data.length - 1]!);
-    } else {
-      chart.applyNewData(data);
-    }
-    lastTsRef.current = last.time;
-  }, [candles]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
 
-  // live price → mutate just the last bar's close/high/low
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&market=${market}&limit=300`,
+          { cache: "no-store" },
+        );
+        const data = (await res.json()) as { candles?: RawCandle[]; error?: string };
+        if (cancelled) return;
+        const rows = data.candles ?? [];
+        if (rows.length === 0) {
+          setError(data.error ?? "لا تتوفر شموع من الوسيط — تأكد من اتصال EA.");
+          return;
+        }
+        setError(null);
+        const chart = chartRef.current;
+        if (!chart) return;
+        chart.applyNewData(toKLineData(rows));
+        setCandleCount(rows.length);
+      } catch {
+        if (!cancelled) setError("تعذّر جلب الشموع.");
+      }
+    };
+
+    void load();
+    if (refreshMs > 0) timer = setInterval(load, refreshMs);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [symbol, interval, market, refreshMs]);
+
+  // live price → mutate the last bar
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !livePrice || candles.length === 0) return;
-    const last = candles[candles.length - 1]!;
+    if (!chart || !livePrice || candleCount === 0) return;
+    const list = chart.getDataList();
+    const last = list[list.length - 1];
+    if (!last) return;
     chart.updateData({
-      timestamp: last.time,
+      timestamp: last.timestamp,
       open: last.open,
       high: Math.max(last.high, livePrice),
       low: Math.min(last.low, livePrice),
       close: livePrice,
       volume: last.volume ?? 0,
     });
-  }, [livePrice, candles]);
+  }, [livePrice, candleCount]);
 
   // drawings → overlays (remove stale, create/migrate by stable id)
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    const specs: KLineOverlaySpec[] = drawingsToOverlays(
-      drawings ?? [],
-      candles.length,
-    );
+    const specs: KLineOverlaySpec[] = drawingsToOverlays(effectiveDrawings, candleCount);
     const nextIds = new Set(specs.map((s) => s.id));
 
     for (const id of overlayIdsRef.current) {
@@ -192,10 +282,8 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
         }
       }
     }
-
     for (const spec of specs) {
       try {
-        // Re-create by id: KLineCharts replaces an overlay with the same id.
         chart.removeOverlay({ id: spec.id });
         chart.createOverlay({
           id: spec.id,
@@ -210,14 +298,17 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
       }
     }
     overlayIdsRef.current = nextIds;
-  }, [drawings, candles.length]);
+  }, [effectiveDrawings, candleCount]);
 
   return (
-    <div
-      ref={containerRef}
-      data-symbol={symbol}
-      className={cn("h-full w-full", className)}
-    />
+    <div className={cn("relative h-full w-full", className)}>
+      <div ref={containerRef} data-symbol={symbol} className="h-full w-full" />
+      {error && (
+        <div className="pointer-events-none absolute inset-x-0 top-2 mx-auto w-fit rounded-md bg-destructive/10 px-3 py-1 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+    </div>
   );
 });
 
