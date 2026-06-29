@@ -17,9 +17,22 @@ export function llmTotalTimeoutMs(): number {
   return envInt("LLM_TIMEOUT_MS", 120_000);
 }
 
-/** Idle budget for streaming: aborts only after this long with NO new bytes. */
+/**
+ * Time-to-first-byte budget for streaming generations. Reasoning-style models
+ * "think" for a while before emitting any token, so the first-byte wait must be
+ * far more generous than the steady-state inter-chunk gap. This is what the old
+ * single 60s idle watcher tripped on.
+ */
+export function llmTtftTimeoutMs(): number {
+  return envInt("LLM_TTFT_TIMEOUT_MS", 100_000);
+}
+
+/**
+ * Inter-chunk idle budget for streaming AFTER the first byte: once tokens flow
+ * they arrive frequently, so a much shorter gap reliably means a hung socket.
+ */
 export function llmIdleTimeoutMs(): number {
-  return envInt("LLM_IDLE_TIMEOUT_MS", 60_000);
+  return envInt("LLM_IDLE_TIMEOUT_MS", 45_000);
 }
 
 /** Default budget for short request/response HTTP (model listing, embeddings, broker). */
@@ -67,33 +80,44 @@ export async function fetchWithTimeout(
 /**
  * Inactivity watchdog for streaming reads. Start it, pass `.signal` to fetch,
  * call `.kick()` after every successful chunk, and `.clear()` when finished.
- * Aborts the stream only after `idleMs` elapse with no progress, so healthy
- * long generations are never cut off while truly hung sockets are released.
+ *
+ * Two budgets: a generous time-to-first-byte window (reasoning models think
+ * before emitting anything) and a shorter inter-chunk idle window once tokens
+ * are flowing. Healthy long generations are never cut off; truly hung sockets
+ * are released quickly.
  */
 export class IdleWatchdog {
   readonly controller = new AbortController();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private aborted = false;
+  private sawFirstByte = false;
 
   constructor(
     private readonly idleMs: number,
     private readonly label = "البث",
+    private readonly firstByteMs: number = idleMs,
   ) {}
 
-  /** Begin watching and return the signal to hand to fetch(). */
+  /** Begin watching (using the TTFT budget) and return the signal for fetch(). */
   start(): AbortSignal {
-    this.kick();
+    this.arm(this.firstByteMs);
     return this.controller.signal;
   }
 
   /** Reset the idle timer — call after each chunk of progress. */
   kick(): void {
     if (this.aborted) return;
+    this.sawFirstByte = true;
+    this.arm(this.idleMs);
+  }
+
+  private arm(ms: number): void {
+    if (this.aborted) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.aborted = true;
       this.controller.abort();
-    }, this.idleMs);
+    }, ms);
   }
 
   clear(): void {
