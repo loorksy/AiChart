@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import {
-  isSymbolAllowed,
-  resolveScanAssetsForMarket,
-} from "@/lib/allowedAssets";
+import { isSymbolAllowed } from "@/lib/allowedAssets";
+import { resolveScanAssetsForMarket } from "@/lib/allowedAssets.server";
 import { getSettings } from "@/lib/store";
 import { scanForexSymbol, scanSymbol } from "@/lib/monitor";
 import type { MarketType } from "@/lib/markets/types";

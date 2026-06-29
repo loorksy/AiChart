@@ -1,4 +1,4 @@
-import { resolveScanAssetsForMarket } from "./allowedAssets";
+import { resolveScanAssetsForMarket } from "./allowedAssets.server";
 import { buildAccountProfile } from "./accountProfile";
 import { wakeAgentViaTelegram } from "./agentWake";
 import { isAgentWakeEnabled } from "./agentWakeConfig";

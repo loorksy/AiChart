@@ -1,7 +1,5 @@
-import {
-  resolveScanAssetsForMarket,
-  isSymbolAllowed,
-} from "./allowedAssets";
+import { isSymbolAllowed } from "./allowedAssets";
+import { resolveScanAssetsForMarket } from "./allowedAssets.server";
 import { isLLMConfigured } from "./llm";
 import {
   getLimits,

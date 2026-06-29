@@ -149,35 +149,11 @@ export async function resolveScanAssets(
   return resolveMonitorAssets(raw, topLimit);
 }
 
-/**
- * Scan symbol list for a market. Forex pulls EXCLUSIVELY from the user's live
- * broker universe (EA Market Watch) — there is no static fallback list. When the
- * policy is open we enumerate the broker's tradable forex symbols; when the
- * broker is not linked or no symbols have arrived, we return [] so the caller
- * surfaces an explicit "connect your broker" state instead of inventing pairs.
- */
-export async function resolveScanAssetsForMarket(
-  raw: string,
-  market: MarketType,
-  userId: number,
-  topLimit = MONITOR_TOP_SYMBOL_LIMIT,
-): Promise<string[]> {
-  if (market === "forex") {
-    const watchlist = parseWatchlist(raw);
-    if (watchlist.length > 0) {
-      return watchlist.slice(0, topLimit);
-    }
-    if (isOpenAssetsPolicy(raw, "forex")) {
-      const allowed = parseAllowedAssets(raw, "forex");
-      if (allowed.length > 0) return allowed.slice(0, topLimit);
-      const { listBrokerSymbols } = await import("./eaStore");
-      const broker = await listBrokerSymbols(userId, { forexOnly: true });
-      return broker.slice(0, topLimit);
-    }
-    return parseAllowedAssets(raw, "forex").slice(0, topLimit);
-  }
-  return resolveScanAssets(raw, topLimit);
-}
+// NOTE: the market-aware scan resolver lives in `allowedAssets.server.ts` —
+// it pulls the broker (EA) symbol universe, which imports server-only Node
+// modules (pg/sqlite/ioredis). Keeping it out of this module ensures client
+// components can import the pure parse helpers above without dragging those
+// modules into the browser bundle.
 
 export function allowedAssetsLabel(raw: string, market: MarketType = "crypto"): string {
   if (isOpenAssetsPolicy(raw, market)) {
