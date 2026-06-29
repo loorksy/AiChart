@@ -1,61 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError } from "@/lib/api";
-import { listAnthropicModels } from "@/lib/anthropic";
 import { listOpenAIChatModels } from "@/lib/openaiCompat";
-import { listGeminiChatModels } from "@/lib/gemini";
-import { listOpenRouterModels } from "@/lib/openrouterModels";
-import {
-  getActiveModel,
-  getProviderApiKey,
-  providerKeyField,
-  type LLMProvider,
-} from "@/lib/llm";
-
-const providerSchema = z.enum(["anthropic", "openai", "google", "openrouter"]);
+import { getActiveModel, getProviderApiKey, providerKeyField } from "@/lib/llm";
 
 const bodySchema = z.object({
-  provider: providerSchema.optional(),
   apiKey: z.string().min(10).optional(),
 });
 
-interface NormalizedModel {
-  id: string;
-  display_name: string;
+function missingKeyError(): string {
+  return `أدخل مفتاح ${providerKeyField("openai")} أو احفظه أولاً.`;
 }
 
-async function fetchModels(
-  provider: LLMProvider,
-  key: string,
-): Promise<NormalizedModel[]> {
-  if (provider === "anthropic") {
-    const models = await listAnthropicModels(key);
-    return models.map((m) => ({ id: m.id, display_name: m.display_name }));
-  }
-  if (provider === "google") return listGeminiChatModels(key);
-  if (provider === "openrouter") return listOpenRouterModels(key);
-  return listOpenAIChatModels(key);
-}
-
-function missingKeyError(provider: LLMProvider): string {
-  return `أدخل مفتاح ${providerKeyField(provider)} أو احفظه أولاً.`;
-}
-
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     await requireAdmin();
-    const raw = req.nextUrl.searchParams.get("provider") ?? "anthropic";
-    const provider = providerSchema.catch("anthropic").parse(raw);
-    const key = getProviderApiKey(provider);
+    const key = getProviderApiKey("openai");
     if (!key) {
-      return NextResponse.json(
-        { error: missingKeyError(provider) },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: missingKeyError() }, { status: 400 });
     }
-    const models = await fetchModels(provider, key);
+    const models = await listOpenAIChatModels(key);
     return NextResponse.json({
-      provider,
+      provider: "openai",
       models,
       defaultModel: getActiveModel(),
     });
@@ -71,19 +37,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await requireAdmin();
-    const { provider = "anthropic", apiKey } = bodySchema.parse(
-      await req.json().catch(() => ({})),
-    );
-    const key = apiKey ?? getProviderApiKey(provider);
+    const { apiKey } = bodySchema.parse(await req.json().catch(() => ({})));
+    const key = apiKey ?? getProviderApiKey("openai");
     if (!key) {
-      return NextResponse.json(
-        { error: missingKeyError(provider) },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: missingKeyError() }, { status: 400 });
     }
-    const models = await fetchModels(provider, key);
+    const models = await listOpenAIChatModels(key);
     return NextResponse.json({
-      provider,
+      provider: "openai",
       models,
       defaultModel: getActiveModel(),
     });
