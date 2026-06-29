@@ -31,7 +31,7 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     
     // Welcoming Phase
     "welcome.title": "مرحباً {name} 👋",
-    "welcome.subtitle": "اختر إعدادات الجلسة بالأسفل ثم اكتب رسالتك لتبدأ",
+    "welcome.subtitle": "اكتب رسالتك لتبدأ — فوركس عبر MetaTrader.",
     "welcome.session_settings": "إعدادات الجلسة",
     "welcome.response_mode": "نوع الرد",
     "welcome.trading_style": "أسلوب التداول",
@@ -105,7 +105,7 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     
     // Welcoming Phase
     "welcome.title": "Welcome, {name} 👋",
-    "welcome.subtitle": "Configure your session settings below, then type your message to begin",
+    "welcome.subtitle": "Type your message to begin — forex via MetaTrader.",
     "welcome.session_settings": "Session Settings",
     "welcome.response_mode": "Response Type",
     "welcome.trading_style": "Trading Style",

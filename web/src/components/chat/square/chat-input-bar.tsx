@@ -3,39 +3,17 @@
 import { useRef } from "react";
 import {
   ArrowUp,
-  BarChart3,
   ImagePlus,
   Loader2,
-  Search,
-  Sparkles,
   X,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import {
   SessionSettingsPopover,
-  MarketPairControl,
   type ChatStartSelections,
 } from "@/components/chat/ChatModeBar";
 import type { ChatImagePayload } from "@/lib/chatImage";
 import { cn } from "@/lib/utils";
-
-const QUICK_ACTIONS = [
-  {
-    label: "حلّل BTCUSDT",
-    icon: BarChart3,
-    prompt: "حلّل BTCUSDT",
-  },
-  {
-    label: "نظرة على السوق",
-    icon: Search,
-    prompt: "نظرة على السوق اليوم",
-  },
-  {
-    label: "فحص مخاطر حسابي",
-    icon: Sparkles,
-    prompt: "فحص مخاطر حسابي",
-  },
-] as const;
 
 export interface Attachment {
   name: string;
@@ -62,7 +40,7 @@ interface ChatInputBarProps {
   busy?: boolean;
   placeholder?: string;
   centered?: boolean;
-  /** Session selections (market/style/mode/response) shown inside the composer. */
+  /** Session selections (mode) shown inside the composer. */
   selections?: ChatStartSelections;
   onSelectionsChange?: (s: ChatStartSelections) => void;
 }
@@ -71,7 +49,6 @@ export function ChatInputBar({
   value,
   onChange,
   onSend,
-  onPickPrompt,
   pendingImage,
   pendingImagePreview,
   onImageSelect,
@@ -211,8 +188,6 @@ export function ChatInputBar({
             }}
           />
 
-          {/* Bottom toolbar — attach + session settings + market on the start,
-              send on the end. Controls live in the box, never stealing chat space. */}
           <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -226,18 +201,11 @@ export function ChatInputBar({
             </button>
 
             {selections && onSelectionsChange && (
-              <>
-                <SessionSettingsPopover
-                  sel={selections}
-                  onChange={onSelectionsChange}
-                  disabled={disabled}
-                />
-                <MarketPairControl
-                  sel={selections}
-                  onChange={onSelectionsChange}
-                  disabled={disabled}
-                />
-              </>
+              <SessionSettingsPopover
+                sel={selections}
+                onChange={onSelectionsChange}
+                disabled={disabled}
+              />
             )}
 
             <button
@@ -263,26 +231,6 @@ export function ChatInputBar({
             </button>
           </div>
         </div>
-
-        {centered && (
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {QUICK_ACTIONS.map((action) => {
-              const Icon = action.icon;
-              return (
-                <button
-                  key={action.label}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onPickPrompt?.(action.prompt)}
-                  className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-sm text-foreground transition hover:bg-secondary/80 disabled:opacity-50"
-                >
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  {action.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
     </div>
   );

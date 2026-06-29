@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { LineChart, X, Search, Sparkles, History, BarChart2 } from "lucide-react";
+import { LineChart, X, History, BarChart2 } from "lucide-react";
 import {
   DEFAULT_SELECTIONS,
   type ChatStartSelections,
@@ -244,9 +244,7 @@ export default function ChatSquareClient({
           ...(s.mode === "auto" || s.mode === "approval" || s.mode === "direct"
             ? { mode: s.mode }
             : {}),
-          ...(s.active_market === "crypto" || s.active_market === "forex"
-            ? { market: s.active_market }
-            : {}),
+          market: "forex",
           ...(s.trading_style === "scalp" ||
           s.trading_style === "day" ||
           s.trading_style === "swing" ||
@@ -311,8 +309,8 @@ export default function ChatSquareClient({
       setPreviewSymbol(sel.symbol.toUpperCase());
       return;
     }
-    setPreviewSymbol(sel.market === "forex" ? "EURUSD" : "BTCUSDT");
-  }, [sel.market, sel.symbol]);
+    setPreviewSymbol("EURUSD");
+  }, [sel.symbol]);
 
   async function handleImageSelect(file: File) {
     setImageError(null);
@@ -470,7 +468,7 @@ export default function ChatSquareClient({
           session_context: {
             trading_style: sel.trading_style,
             mode: sel.mode,
-            active_market: sel.market,
+            active_market: "forex",
             response_mode: sel.response_mode,
             symbol: sel.symbol || undefined,
           },
@@ -670,7 +668,7 @@ export default function ChatSquareClient({
       setPreviewSymbol(sym);
       setSel((prev) => ({ ...prev, symbol: sym }));
     },
-    market: sel.market as "crypto" | "forex",
+    market: "forex" as const,
     recommendations: allRecommendations,
     conversationId: selectedId,
     onCreditsUsed,
@@ -691,24 +689,6 @@ export default function ChatSquareClient({
 
   // Fresh chat (no messages yet) → Phase A (Welcoming State).
   const isEmpty = messages.length === 0 && !conversationBusy;
-
-  const getQuickActions = () => [
-    {
-      label: locale === "ar" ? "حلّل BTCUSDT" : "Analyze BTCUSDT",
-      icon: LineChart,
-      prompt: locale === "ar" ? "حلّل BTCUSDT" : "Analyze BTCUSDT",
-    },
-    {
-      label: locale === "ar" ? "نظرة على السوق" : "Market Overview",
-      icon: Search,
-      prompt: locale === "ar" ? "نظرة على السوق اليوم" : "Market Overview Today",
-    },
-    {
-      label: locale === "ar" ? "فحص مخاطر حسابي" : "Check Account Risk",
-      icon: Sparkles,
-      prompt: locale === "ar" ? "فحص مخاطر حسابي" : "Check account risk",
-    },
-  ];
 
   return (
     <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-background lg:h-full">
@@ -814,24 +794,6 @@ export default function ChatSquareClient({
                   {t("welcome.subtitle")}
                 </p>
               </div>
-
-              {/* Dynamic Sugestion Pills */}
-              <div className="flex flex-wrap items-center justify-center gap-2 max-w-lg mt-1">
-                {getQuickActions().map((action) => {
-                  const Icon = action.icon;
-                  return (
-                    <button
-                      key={action.label}
-                      type="button"
-                      onClick={() => void send(action.prompt)}
-                      className="flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-xs font-semibold text-foreground transition hover:bg-secondary hover:border-primary/30 active:scale-95 duration-100 shadow-sm"
-                    >
-                      <Icon className="h-3.5 w-3.5 text-primary" />
-                      <span>{action.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
             </div>
           ) : (
             /* Phase B: Operational Mode (Active State) */
@@ -867,7 +829,6 @@ export default function ChatSquareClient({
             value={input}
             onChange={setInput}
             onSend={() => void send(input, pendingImage)}
-            onPickPrompt={(p) => void send(p)}
             pendingImage={pendingImage}
             pendingImagePreview={pendingImagePreview}
             onImageSelect={(file) => void handleImageSelect(file)}

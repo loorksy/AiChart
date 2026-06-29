@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, Globe } from "lucide-react";
-import { PairPicker } from "@/components/market/PairPicker";
+import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/LocaleProvider";
 
@@ -10,7 +9,8 @@ export interface ChatStartSelections {
   trading_style: "scalp" | "day" | "swing" | "position";
   mode: "auto" | "approval" | "direct";
   response_mode: "fast" | "expert" | "vision";
-  market: "crypto" | "forex";
+  /** Forex-only platform — kept for API payloads. */
+  market: "forex";
   symbol: string;
 }
 
@@ -18,7 +18,7 @@ export const DEFAULT_SELECTIONS: ChatStartSelections = {
   trading_style: "day",
   mode: "auto",
   response_mode: "expert",
-  market: "crypto",
+  market: "forex",
   symbol: "",
 };
 
@@ -57,12 +57,6 @@ function useSelectionLabels() {
           : rm === "vision"
             ? t("response.vision")
             : rm,
-    market: (m: string) =>
-      m === "crypto"
-        ? t("market.crypto")
-        : m === "forex"
-          ? t("market.forex")
-          : m,
   };
 }
 
@@ -175,102 +169,6 @@ export function SessionSettingsPopover({
             set={set}
             render={labels.mode}
           />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Crypto/forex toggle + pair picker in the composer toolbar. */
-export function MarketPairControl({
-  sel,
-  onChange,
-  disabled,
-}: {
-  sel: ChatStartSelections;
-  onChange: (s: ChatStartSelections) => void;
-  disabled?: boolean;
-}) {
-  const { t } = useLocale();
-  const labels = useSelectionLabels();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const summary = sel.symbol
-    ? sel.symbol
-    : labels.market(sel.market);
-
-  return (
-    <div ref={ref} className="relative shrink-0">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((o) => !o)}
-        className={cn(
-          "flex h-8 max-w-[10rem] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors disabled:opacity-50",
-          open
-            ? "bg-white/10 text-zinc-100"
-            : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100",
-        )}
-        aria-label={t("welcome.market")}
-        title={t("welcome.market")}
-      >
-        <Globe className="h-4 w-4 shrink-0" />
-        <span className="truncate" dir="ltr">
-          {summary}
-        </span>
-      </button>
-
-      {open && (
-        <div
-          dir="rtl"
-          className="absolute bottom-full z-50 mb-2 w-[18rem] max-w-[calc(100vw-2rem)] overflow-visible rounded-2xl border border-border bg-popover p-3 shadow-2xl animate-in fade-in-0 zoom-in-95"
-          style={{ insetInlineStart: 0 }}
-        >
-          <div className="flex flex-col gap-2.5">
-            <label className="text-[11px] font-semibold text-muted-foreground">
-              {t("welcome.market")}
-            </label>
-            <div className="flex rounded-lg border border-border/40 bg-muted p-0.5">
-              {(["crypto", "forex"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => onChange({ ...sel, market: v, symbol: "" })}
-                  className={cn(
-                    "flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
-                    sel.market === v
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {labels.market(v)}
-                </button>
-              ))}
-            </div>
-            <PairPicker
-              market={sel.market}
-              value={sel.symbol}
-              placement="up"
-              onChange={(s) => onChange({ ...sel, symbol: s })}
-            />
-          </div>
         </div>
       )}
     </div>
