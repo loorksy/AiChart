@@ -149,12 +149,17 @@ export async function resolveScanAssets(
   return resolveMonitorAssets(raw, topLimit);
 }
 
-const FOREX_SCAN_FALLBACK = ["EURUSD", "XAUUSD", "GBPUSD"];
-
-/** Scan symbol list for a market (crypto uses watchlist/top volume; forex uses allowed list). */
+/**
+ * Scan symbol list for a market. Forex pulls EXCLUSIVELY from the user's live
+ * broker universe (EA Market Watch) — there is no static fallback list. When the
+ * policy is open we enumerate the broker's tradable forex symbols; when the
+ * broker is not linked or no symbols have arrived, we return [] so the caller
+ * surfaces an explicit "connect your broker" state instead of inventing pairs.
+ */
 export async function resolveScanAssetsForMarket(
   raw: string,
   market: MarketType,
+  userId: number,
   topLimit = MONITOR_TOP_SYMBOL_LIMIT,
 ): Promise<string[]> {
   if (market === "forex") {
@@ -164,7 +169,10 @@ export async function resolveScanAssetsForMarket(
     }
     if (isOpenAssetsPolicy(raw, "forex")) {
       const allowed = parseAllowedAssets(raw, "forex");
-      return allowed.length > 0 ? allowed.slice(0, topLimit) : FOREX_SCAN_FALLBACK;
+      if (allowed.length > 0) return allowed.slice(0, topLimit);
+      const { listBrokerSymbols } = await import("./eaStore");
+      const broker = await listBrokerSymbols(userId, { forexOnly: true });
+      return broker.slice(0, topLimit);
     }
     return parseAllowedAssets(raw, "forex").slice(0, topLimit);
   }

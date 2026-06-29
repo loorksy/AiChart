@@ -72,6 +72,7 @@ async function scanMarketForUser(
   const symbols = await resolveScanAssetsForMarket(
     settings.allowed_assets,
     market,
+    settings.user_id,
     40,
   );
 

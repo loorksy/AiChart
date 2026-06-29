@@ -98,6 +98,7 @@ async function buildSymbolList(
   const base = await resolveScanAssetsForMarket(
     settings.allowed_assets,
     market,
+    settings.user_id,
     max,
   );
 

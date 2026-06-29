@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const symbols =
       body.symbols && body.symbols.length > 0
         ? body.symbols.map((s) => s.toUpperCase())
-        : await resolveScanAssetsForMarket(settings.allowed_assets, market);
+        : await resolveScanAssetsForMarket(settings.allowed_assets, market, userId);
 
     const candidates = [];
     const errors: string[] = [];
