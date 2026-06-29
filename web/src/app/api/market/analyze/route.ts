@@ -24,7 +24,7 @@ import {
   getConversation,
 } from "@/lib/conversations";
 
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 const schema = z.object({
   symbol: z.string().min(3).max(20),

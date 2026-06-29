@@ -1,6 +1,7 @@
 import type { Message, ContentBlock } from "@/lib/anthropic";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import { getActiveModel, getProviderApiKey } from "@/lib/llm";
+import { getPlatformValueAsync } from "@/lib/platformConfig";
 import { callOpenAICompatStructured } from "@/lib/openaiCompat";
 import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "@/lib/persona";
 import { isGenericLogPhrase } from "@/lib/chart/chartTerminology";
@@ -88,13 +89,8 @@ const CHART_ANALYZE_SCHEMA = {
             enum: ["observation", "structure", "pattern", "risk", "decision", "drawing"],
           },
           text: { type: "string" },
-          confidence: {
-            type: ["string", "null"],
-            enum: ["low", "medium", "high", null],
-          },
-          relatedDrawingIndex: { type: ["number", "null"] },
         },
-        required: ["type", "text", "confidence", "relatedDrawingIndex"],
+        required: ["type", "text"],
         additionalProperties: false,
       },
     },
@@ -155,8 +151,7 @@ export function sanitizeLiveReasoningLog(
   return out;
 }
 
-function compatTarget() {
-  const apiKey = getProviderApiKey("openai");
+function compatTarget(apiKey: string) {
   if (!apiKey) throw new Error("مفتاح OpenAI غير مُعدّ.");
   const model = getActiveModel();
   return {
@@ -192,8 +187,13 @@ export async function runChartAnalyzeLlm(opts: {
     },
   ];
 
+  const apiKey =
+    getProviderApiKey("openai") ??
+    (await getPlatformValueAsync("OPENAI_API_KEY"));
+  if (!apiKey) throw new Error("مفتاح OpenAI غير مُعدّ.");
+
   const { data, usage } = await callOpenAICompatStructured<Record<string, unknown>>(
-    compatTarget(),
+    compatTarget(apiKey),
     {
       system,
       messages,

@@ -284,7 +284,10 @@ export function useChartAnalysis({
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        const msg = "حدث خطأ أثناء التحليل.";
+        const msg =
+          err instanceof Error && err.message.trim()
+            ? err.message
+            : "حدث خطأ أثناء التحليل.";
         setAnalyzeError(msg);
         onAnalyzeError?.(msg);
       } finally {
