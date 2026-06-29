@@ -22,7 +22,7 @@ import {
 } from "./intentRevalidate";
 import { approvalCard, cancelledTradeCard } from "./telegramCards";
 
-export type ApprovalKind = "trade" | "practice" | "env_switch" | "kill_switch" | "mode_change";
+export type ApprovalKind = "trade" | "practice" | "env_switch" | "mode_change";
 
 const ACTION_TTL_MS = 30 * 60 * 1000;
 

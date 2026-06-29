@@ -11,7 +11,6 @@ interface AgentStatus {
   lastSeen: string | null;
   mode: TradingMode;
   canAuto: boolean;
-  killSwitch: { master: boolean; user: boolean };
   openTrades: number;
   todayPnlUsd: number;
 }
@@ -87,7 +86,6 @@ export function AgentStatusBar({ className }: { className?: string }) {
   }
 
   const pulse = pulseState(status);
-  const killOn = Boolean(status?.killSwitch.master || status?.killSwitch.user);
   const pnl = status?.todayPnlUsd ?? 0;
 
   return (
@@ -135,11 +133,6 @@ export function AgentStatusBar({ className }: { className?: string }) {
       </div>
 
       <div className="ms-auto flex items-center gap-4 text-xs">
-        {killOn && (
-          <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-semibold text-destructive">
-            Kill Switch مفعّل
-          </span>
-        )}
         <span className="text-muted-foreground">
           صفقات مفتوحة:{" "}
           <b className="text-foreground">{status?.openTrades ?? "—"}</b>

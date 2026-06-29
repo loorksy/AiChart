@@ -9,7 +9,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import type { AdminPlatformStats } from "@/lib/store";
-import { MasterKillCard } from "@/components/admin/MasterKillCard";
 import { cn } from "@/lib/utils";
 
 /* ─── Bento stat tile ─── */
@@ -88,11 +87,9 @@ function Section({
 
 export function AdminOverview({
   stats,
-  masterKill,
   embedded = false,
 }: {
   stats: AdminPlatformStats;
-  masterKill: boolean;
   embedded?: boolean;
 }) {
   const activeRate = stats.users_total
@@ -109,8 +106,6 @@ export function AdminOverview({
           </p>
         </div>
       )}
-
-      <MasterKillCard initialOn={masterKill} />
 
       <Section title="المستخدمون">
         <StatTile

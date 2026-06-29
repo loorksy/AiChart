@@ -40,7 +40,6 @@ const schema = z
     forex_backend: z.enum(["ea", "mt5local", "metaapi"]).nullable(),
     send_screenshot: z.boolean(),
     telegram_chat_id: z.string().max(64).nullable().optional(),
-    kill_switch: z.boolean(),
     // Master riskGuard toggle (1 = enforced/safe, 0 = full-autonomous). Optional
     // so existing settings forms that omit it keep the current value untouched.
     risk_guard_enabled: z.union([z.literal(0), z.literal(1)]).optional(),
@@ -117,9 +116,6 @@ export async function PUT(req: NextRequest) {
     }
     if (typeof input.send_screenshot === "boolean") {
       patch.send_screenshot = input.send_screenshot ? 1 : 0;
-    }
-    if (typeof input.kill_switch === "boolean") {
-      patch.kill_switch = input.kill_switch ? 1 : 0;
     }
     if (typeof input.alerts_enabled === "boolean") {
       patch.alerts_enabled = input.alerts_enabled ? 1 : 0;

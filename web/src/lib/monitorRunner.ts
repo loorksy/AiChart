@@ -19,7 +19,6 @@ import {
   watchDailyLossProximity,
 } from "./tradeWatch";
 import {
-  isMasterKillOn,
   isOnCooldown,
   listUsersForMonitor,
   touchScanCooldown,
@@ -114,11 +113,6 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
     events: [],
     errors: [],
   };
-
-  if (await isMasterKillOn()) {
-    result.errors.push("master kill switch — تخطّي المسح");
-    return result;
-  }
 
   if (!isAgentWakeEnabled()) {
     return result;

@@ -496,33 +496,6 @@ const TOOLS: ToolDef[] = [
       required: ["trading_style"],
     },
   },
-  {
-    name: "get_scalp_status",
-    description:
-      "حالة جلسة السكالب + هل السكالب مسموح (scalp_enabled) ووضع التنفيذ. read-only. استدعها أولاً عند أي طلب سكالب.",
-    input_schema: { type: "object", properties: {} },
-  },
-  {
-    name: "start_scalp_session",
-    description:
-      "يبدأ جلسة سكالب (بعد التحقق أن scalp_enabled=1). مرّر symbol وmax_trades.",
-    input_schema: {
-      type: "object",
-      properties: {
-        symbol: { type: "string" },
-        market: { type: "string", enum: ["crypto", "forex"] },
-        interval: { type: "string" },
-        max_trades: { type: "number" },
-        notional: { type: "number" },
-      },
-      required: ["symbol", "max_trades"],
-    },
-  },
-  {
-    name: "stop_scalp_session",
-    description: "يوقف جلسة السكالب الحالية.",
-    input_schema: { type: "object", properties: {} },
-  },
 ];
 
 const CHART_ANALYZE_TOOL_NAMES = new Set([
@@ -554,8 +527,6 @@ const SCALP_TOOL_DENY = new Set([
   "set_active_market",
   "set_trading_style",
   "set_risk_guard",
-  "start_scalp_session",
-  "stop_scalp_session",
 ]);
 
 const SCALP_TOOLS = [
@@ -630,9 +601,6 @@ const BRIDGE_TOOL_NAMES = new Set([
   "set_risk_guard",
   "set_active_market",
   "set_trading_style",
-  "get_scalp_status",
-  "start_scalp_session",
-  "stop_scalp_session",
 ]);
 
 /** Routes a bridge tool to its /api/agent/* endpoint via the internal bridge. */
@@ -728,12 +696,6 @@ async function forwardBridge(
       );
     case "set_trading_style":
       return ok(await bridge.post("/api/agent/style", input));
-    case "get_scalp_status":
-      return ok(await bridge.get("/api/agent/scalp"));
-    case "start_scalp_session":
-      return ok(await bridge.post("/api/agent/scalp", { action: "start", ...input }));
-    case "stop_scalp_session":
-      return ok(await bridge.post("/api/agent/scalp", { action: "stop" }));
     default:
       return { content: `أداة جسر غير معروفة: ${name}`, isError: true };
   }

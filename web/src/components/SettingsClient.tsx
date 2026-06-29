@@ -975,7 +975,6 @@ function TradingCard({
           execution_env_preference:
             s.execution_env_preference === "live" ? "live" : "demo",
           telegram_chat_id: s.telegram_chat_id || null,
-          kill_switch: Boolean(s.kill_switch),
           futures_enabled: Boolean(s.futures_enabled),
           default_leverage: Number(s.default_leverage ?? 3),
           min_confidence: Number(s.min_confidence ?? 80),

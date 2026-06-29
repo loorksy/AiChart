@@ -7,7 +7,6 @@ import {
   todayRealizedPnlPct,
   todayRealizedPnlUsd,
   monthRealizedPnlPct,
-  isMasterKillOn,
 } from "./store";
 import { getResolvedExecutionEnv } from "./executionEnv";
 import {
@@ -134,7 +133,6 @@ export async function executeIntent(
       confidence: intent.confidence ?? 0,
     },
     {
-      masterKill: await isMasterKillOn(),
       openTradesCount: await countOpenTrades(userId),
       todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
       todayRealizedPnlUsd: await todayRealizedPnlUsd(userId),

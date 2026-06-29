@@ -20,7 +20,7 @@ const schema = z.object({
   recommendation_id: z.number().nullish(),
   practice: z.boolean().default(false),
   kind: z
-    .enum(["trade", "practice", "env_switch", "kill_switch", "mode_change"])
+    .enum(["trade", "practice", "env_switch", "mode_change"])
     .optional(),
   photo_url: z.string().nullish(),
 });

@@ -25,7 +25,6 @@ function baseSettings(
     active_market: "crypto",
     send_screenshot: 1,
     telegram_chat_id: null,
-    kill_switch: 0,
     risk_guard_enabled: 1,
     onboarding_done: 1,
     alerts_enabled: 1,
@@ -52,7 +51,6 @@ const limits: AdminLimits = {
 };
 
 const openCtx = {
-  masterKill: false,
   openTradesCount: 0,
   todayRealizedPnlPct: 0,
   todayRealizedPnlUsd: 0,
@@ -220,25 +218,6 @@ describe("riskGuard full-autonomous toggle (risk_guard_enabled=0)", () => {
     assert.equal(d.ok, true);
   });
 
-  it("AUTONOMOUS: platform emergency kill STILL blocks", () => {
-    const d = evaluateTrade(
-      baseSettings({ risk_guard_enabled: 0 }),
-      limits,
-      buy,
-      { ...openCtx, masterKill: true },
-    );
-    assert.equal(d.ok, false);
-  });
-
-  it("AUTONOMOUS: user kill switch STILL blocks", () => {
-    const d = evaluateTrade(
-      baseSettings({ risk_guard_enabled: 0, kill_switch: 1 }),
-      limits,
-      buy,
-      openCtx,
-    );
-    assert.equal(d.ok, false);
-  });
 
   it("AUTONOMOUS: can't risk more than capital (broker reality) STILL blocks", () => {
     const d = evaluateTrade(

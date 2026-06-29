@@ -4,7 +4,6 @@ import {
   getAdminPlatformStats,
   getBinanceAccountMeta,
   getSettings,
-  isMasterKillOn,
   listIntents,
 } from "@/lib/store";
 import { getForexConnectionView } from "@/lib/forexConnection";
@@ -42,7 +41,6 @@ export default async function ConsoleOverviewPage() {
       pendingIntents={pendingIntents}
       isAdmin
       adminStats={await getAdminPlatformStats()}
-      masterKill={await isMasterKillOn()}
     />
   );
 }
