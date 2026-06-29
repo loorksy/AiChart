@@ -7,9 +7,8 @@ import {
   contextSummary,
   snapshotSummaryLines,
 } from "./marketContext";
-import { runAgent } from "./agent";
 import { processRecommendations } from "./tradeFlow";
-import type { TradingSettings } from "./types";
+import type { TradingSettings, Recommendation } from "./types";
 import type { MarketType } from "./markets/types";
 import { overlaysFromAnalysis } from "./chartOverlays";
 import {
@@ -17,7 +16,7 @@ import {
   validateChartDrawings,
 } from "./chartDrawings";
 import type { ProcessedIntent } from "./tradeFlow";
-import { updateRecommendationContext, updateRecommendationIntelligence } from "./store";
+import { updateRecommendationContext, updateRecommendationIntelligence, saveRecommendation } from "./store";
 import { attachChartToRecommendation, notifyRecommendation } from "./recommendationChart";
 import {
   searchSimilarLessons,
@@ -30,11 +29,9 @@ import {
   bufferToChatImage,
 } from "./chartSnapshot";
 import {
-  buildUserMessageContent,
   validateChatImage,
   type ChatImagePayload,
 } from "./chatImage";
-import type { ContentBlock } from "./anthropic";
 
 import type { ChartVisionSource } from "./marketAnalyzeLabels";
 import { fetchOhlc } from "./ohlc/fetchOhlc";
@@ -44,7 +41,7 @@ import {
   formatAnalysisForPrompt,
 } from "./analysis/analysisEngine";
 import { enrichRecommendationAfterRecord } from "./recommendationLevels";
-import { emitAgentLlm } from "./agentActivityPipeline";
+import type { AgentActivity } from "./agentActivity";
 import { resolveMt5Symbol } from "./mt5SymbolMap";
 import {
   formatStructureForPrompt,
@@ -52,6 +49,11 @@ import {
   smcPromptBlock,
   structureToSeedDrawings,
 } from "./chartStructureAnalysis";
+import {
+  runChartAnalyzeLlm,
+  buildChartAnalyzeUserContent,
+} from "./analysis/chartAnalyzeLlm";
+import { evaluateCommittee } from "./committee";
 import {
   fetchTradingViewContext,
   formatTradingViewForPrompt,
@@ -126,9 +128,7 @@ function buildAnalyzePrompt(
     memoryBlock
       ? "إن وُجد درس مشابه أعلاه — اذكره صراحةً في rationale."
       : "",
-    "سجّل التوصية عبر record_recommendation مع timeframe و chart_drawings و pattern_name.",
-    "chart_drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker — confidence + meta.rationale.",
-    "مرّر timeframe نفس إطار التحليل.",
+    "سجّل قرارك في JSON: decision (buy/sell/wait) مع entry/stop_loss/targets/reason/narrative/drawings/factors/pattern_name.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -159,8 +159,7 @@ function buildVisionAnalyzePrompt(
     smcPromptBlock(),
     "المطلوب: تحليل مرئي — أنماط، دعم/مقاومة، OB/FVG، مستويات دخول/SL/TP.",
     memoryBlock ? "اذكر أي درس مشابه من الذاكرة في rationale." : "",
-    "سجّل عبر record_recommendation مع timeframe و chart_drawings و pattern_name.",
-    "chart_drawings: كل عنصر label عربي + meta.rationale.",
+    "سجّل في JSON: decision + timeframe + drawings + pattern_name.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -170,8 +169,8 @@ export interface MarketAnalyzeResult {
   reply: string;
   overlays: ReturnType<typeof overlaysFromAnalysis>;
   drawings: ReturnType<typeof validateChartDrawings>;
-  recommendation: Awaited<ReturnType<typeof runAgent>>["recommendations"][0] | null;
-  activities: Awaited<ReturnType<typeof runAgent>>["activities"];
+  recommendation: Recommendation | null;
+  activities: AgentActivity[];
   intents: ProcessedIntent[];
   profileLabel: string;
   analysisTier: string;
@@ -389,74 +388,95 @@ export async function runMarketAnalyze(
         extraBlocks,
       );
 
-  const userContent: string | ContentBlock[] = useVision
-    ? buildUserMessageContent(prompt, chartImage, false)
-    : prompt;
-
-  emit({ id: "agent-llm", label: "تحليل Claude · توصية", status: "running", tool: "claude" });
-
-  const result = await runAgent(
-    { userId, settings, telegramSession: opts?.telegramSession ?? false },
-    [{ role: "user", content: userContent }],
-    {
-      onActivity: opts?.onActivity,
-      onDelta: opts?.onDelta,
-      mode: "chart_analyze",
-      hasImage: useVision,
-    },
+  const userContent = buildChartAnalyzeUserContent(
+    prompt,
+    useVision && chartImage ? chartImage : null,
   );
 
-  emit({ id: "agent-llm", label: "تحليل Claude · توصية", status: "done", tool: "claude" });
+  emit({ id: "agent-llm", label: "تحليل OpenAI · توصية", status: "running", tool: "claude" });
 
-  let reply = result.reply.trim();
+  const { result: llmOut } = await runChartAnalyzeLlm({
+    userId,
+    settings,
+    userPrompt: prompt,
+    userContent,
+    onDelta: opts?.onDelta,
+  });
+
+  emit({ id: "agent-llm", label: "تحليل OpenAI · توصية", status: "done", tool: "claude" });
+
+  let reply = llmOut.narrative.trim() || llmOut.reason.trim();
   if (!reply || reply === EMPTY_AGENT_REPLY) {
     reply = buildAnalyzeFallbackReply(sym, interval, snap, structure);
   }
 
-  const intents = await processRecommendations(userId, result.recommendations, {
+  let rec: Recommendation | null = null;
+  const action =
+    llmOut.decision === "buy" || llmOut.decision === "sell" ? llmOut.decision : "wait";
+  const agentDrawings = validateChartDrawings(
+    llmOut.drawings,
+    action,
+    llmOut.confidence,
+    profile,
+  );
+
+  if (action === "buy" || action === "sell") {
+    rec = await saveRecommendation(userId, {
+      symbol: sym,
+      action,
+      confidence: llmOut.confidence,
+      entry: llmOut.entry,
+      stop_loss: llmOut.stop_loss,
+      take_profit: llmOut.targets[0] ?? null,
+      timeframe: interval,
+      rationale: llmOut.reason || llmOut.narrative,
+      factors: llmOut.factors,
+      pattern_name: llmOut.selected_pattern,
+      chart_drawings_json:
+        agentDrawings.length > 0 ? JSON.stringify(agentDrawings) : null,
+      analysis_tier: profile.tier,
+      market,
+    });
+    if (similarLessons.length) {
+      const memoryRefs = JSON.stringify(similarLessons.map((l) => l.id));
+      await updateRecommendationIntelligence(rec.id, { memory_refs_json: memoryRefs });
+      rec = { ...rec, memory_refs_json: memoryRefs };
+    }
+    void evaluateCommittee(userId, rec, similarLessons)
+      .then((committee) =>
+        updateRecommendationIntelligence(rec!.id, {
+          committee_json: JSON.stringify(committee),
+        }),
+      )
+      .catch((e) => console.error("[committee] async eval failed", e));
+  }
+
+  const intents = await processRecommendations(userId, rec ? [rec] : [], {
     allowAdvisoryApproval: true,
     market,
   });
-
-  let rec =
-    result.recommendations.find((r) => r.symbol === sym) ??
-    result.recommendations[0] ??
-    null;
 
   if (rec && ctx) {
     await updateRecommendationContext(rec.id, JSON.stringify(ctx));
     rec = { ...rec, context_json: JSON.stringify(ctx) };
   }
 
-  if (rec && similarLessons.length) {
-    await updateRecommendationIntelligence(rec.id, {
-      memory_refs_json: JSON.stringify(similarLessons.map((l) => l.id)),
-    });
-    rec = {
-      ...rec,
-      memory_refs_json: JSON.stringify(similarLessons.map((l) => l.id)),
-    };
-  }
-
-  // The risk committee is evaluated inside record_recommendation (sync in auto mode
-  // for the execution gate, async/background in advisory modes) — no second pass here.
-
   if (rec && (rec.action === "buy" || rec.action === "sell")) {
     rec = await enrichRecommendationAfterRecord(userId, rec, settings, market);
   }
 
-  const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : [];
-  const agentDrawings = rawDrawings.length
+  const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : agentDrawings;
+  const validatedDrawings = rawDrawings.length
     ? validateChartDrawings(
         rawDrawings,
-        rec?.action ?? "wait",
-        rec?.confidence ?? 60,
+        rec?.action ?? action,
+        rec?.confidence ?? llmOut.confidence,
         profile,
       )
     : [];
   const drawings = mergeSeedAndAgentDrawings(
     [...seedDrawings, ...engineDrawings],
-    agentDrawings,
+    validatedDrawings,
   );
 
   if (rec && (rec.action === "buy" || rec.action === "sell")) {
@@ -467,7 +487,7 @@ export async function runMarketAnalyze(
     rec = attached.rec;
   }
 
-  let telegram = pickTelegramDelivery(intents, result.signalDeliveries);
+  let telegram = pickTelegramDelivery(intents, undefined);
 
   if (
     !telegram.delivered &&
@@ -488,7 +508,7 @@ export async function runMarketAnalyze(
     overlays: overlaysFromAnalysis(rec ?? undefined, snap),
     drawings,
     recommendation: rec,
-    activities: result.activities,
+    activities: [],
     intents,
     profileLabel: profile.labelAr,
     analysisTier: profile.tier,

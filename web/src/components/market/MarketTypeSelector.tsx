@@ -1,11 +1,10 @@
 "use client";
 
-import { Bitcoin, CandlestickChart } from "lucide-react";
+import { CandlestickChart } from "lucide-react";
 import type { MarketType } from "@/lib/markets/types";
 import { cn } from "@/lib/utils";
 
-const OPTIONS: { id: MarketType; label: string; icon: typeof Bitcoin }[] = [
-  { id: "crypto", label: "كريبتو", icon: Bitcoin },
+const OPTIONS: { id: MarketType; label: string; icon: typeof CandlestickChart }[] = [
   { id: "forex", label: "فوركس", icon: CandlestickChart },
 ];
 

@@ -6,7 +6,7 @@ import { ChartOverlayToolbar } from "@/components/market/ChartOverlayToolbar";
 import { MarketRecPanel } from "@/components/market/MarketRecPanel";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
 import { formatLevel } from "@/components/market/formatLevel";
-import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
+import { useEaLivePrice } from "@/hooks/useEaLivePrice";
 import { useChartAnalysis } from "@/hooks/useChartAnalysis";
 import { cn } from "@/lib/utils";
 import KLineChart, { type KLineChartHandle } from "./chart/KLineChart";
@@ -18,7 +18,6 @@ import { parseChartDrawingsJson } from "@/lib/chartDrawings";
 import type { MarketSnapshot } from "@/lib/market";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
-import { useEaLivePrice } from "@/hooks/useEaLivePrice";
 import { normalizeInterval } from "@/lib/intervals";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 
@@ -51,15 +50,12 @@ function emptySnap(symbol: string, interval: string, price = 0): MarketSnapshot 
   };
 }
 
-const DEFAULT_SYMBOL: Record<MarketType, string> = {
-  crypto: "BTCUSDT",
-  forex: "EURUSD",
-};
+const DEFAULT_SYMBOL = "EURUSD";
 
 export default function MarketClient({
-  initialMarket = "crypto",
-  cryptoOpen,
-  cryptoAllowed,
+  initialMarket = "forex",
+  cryptoOpen: _cryptoOpen,
+  cryptoAllowed: _cryptoAllowed,
   forexOpen,
   forexAllowed,
   eaOnline = false,
@@ -75,13 +71,12 @@ export default function MarketClient({
   eaConnected?: boolean;
   recommendations: Recommendation[];
 }) {
-  const [market, setMarket] = useState<MarketType>(initialMarket);
+  const [market] = useState<MarketType>("forex");
 
-  const openAssets = market === "forex" ? forexOpen : cryptoOpen;
-  const allowedAssets = market === "forex" ? forexAllowed : cryptoAllowed;
+  const openAssets = forexOpen;
+  const allowedAssets = forexAllowed;
 
-  const fallbackSymbols =
-    market === "forex" ? ["EURUSD", "XAUUSD", "GBPUSD"] : ["BTCUSDT", "ETHUSDT"];
+  const fallbackSymbols: string[] = [];
   const symbols = openAssets
     ? []
     : allowedAssets.length
@@ -89,7 +84,7 @@ export default function MarketClient({
       : fallbackSymbols;
 
   const [symbol, setSymbol] = useState(
-    openAssets ? DEFAULT_SYMBOL[initialMarket] : symbols[0] ?? DEFAULT_SYMBOL[initialMarket],
+    openAssets ? DEFAULT_SYMBOL : symbols[0] ?? DEFAULT_SYMBOL,
   );
   const [interval, setMarketInterval] = useState<string>(() => {
     if (typeof window === "undefined") return "1h";
@@ -113,9 +108,7 @@ export default function MarketClient({
   const chartFrameRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<KLineChartHandle>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const cryptoLive = useBinanceLivePrice(market === "crypto" ? symbol : "");
-  const forexLive = useEaLivePrice(symbol, market === "forex");
-  const live = market === "forex" ? forexLive : cryptoLive;
+  const live = useEaLivePrice(symbol, true);
 
   const {
     isAnalyzing,
@@ -207,25 +200,9 @@ export default function MarketClient({
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
-  const handleMarketChange = useCallback(
-    (next: MarketType) => {
-      if (next === market) return;
-      setMarket(next);
-      setSearch("");
-      setInstruments([]);
-      const nextOpen = next === "forex" ? forexOpen : cryptoOpen;
-      const nextAllowed = next === "forex" ? forexAllowed : cryptoAllowed;
-      setSymbol(
-        nextOpen ? DEFAULT_SYMBOL[next] : nextAllowed[0] ?? DEFAULT_SYMBOL[next],
-      );
-      void fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active_market: next }),
-      }).catch(() => {});
-    },
-    [market, forexOpen, cryptoOpen, forexAllowed, cryptoAllowed],
-  );
+  const handleMarketChange = useCallback((_next: MarketType) => {
+    /* forex-only — market switch disabled */
+  }, []);
 
   useEffect(() => {
     if (!scanToast) return;
@@ -259,15 +236,11 @@ export default function MarketClient({
 
   const pickerOptions = openAssets
     ? instruments
-    : symbols.map((s) =>
-        market === "forex"
-          ? {
-              symbol: s,
-              base: /^[A-Z]{6}/.test(s) ? s.slice(0, 3) : s,
-              quote: /^[A-Z]{6}/.test(s) ? s.slice(3, 6) : "",
-            }
-          : { symbol: s, base: s.replace(/USDT$/, ""), quote: "USDT" },
-      );
+    : symbols.map((s) => ({
+        symbol: s,
+        base: /^[A-Z]{6}/.test(s) ? s.slice(0, 3) : s,
+        quote: /^[A-Z]{6}/.test(s) ? s.slice(3, 6) : "",
+      }));
 
   const symbolRecs = recommendations.filter((r) => r.symbol === symbol);
 
@@ -388,7 +361,7 @@ export default function MarketClient({
               overlays={overlays}
               drawings={drawings}
               livePrice={live.price > 0 ? live.price : undefined}
-              refreshMs={market === "forex" ? 60_000 : 30_000}
+              refreshMs={60_000}
               className="h-full min-h-0 p-0"
             />
 

@@ -1104,6 +1104,15 @@ function migrate(db: Database.Database) {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
+
+  dropLegacyBotAndScalpTables(db);
+}
+
+function dropLegacyBotAndScalpTables(db: import("better-sqlite3").Database) {
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("DROP TABLE IF EXISTS scalp_sessions");
+  db.exec("DROP TABLE IF EXISTS bot_sessions");
+  db.exec("PRAGMA foreign_keys = ON");
 }
 
 export function seedAdminSqlite(db: Database.Database) {

@@ -2,12 +2,11 @@
 
 import { useEffect, useRef } from "react";
 import { EyeOff, Loader2, Maximize2, Minimize2, Radio, Sparkles, X } from "lucide-react";
-import PriceChart, { type PriceChartHandle } from "@/components/PriceChart";
+import KLineChart, { type KLineChartHandle } from "@/components/chart/KLineChart";
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
 import { IntervalPicker } from "@/components/market/IntervalPicker";
 import { PairPicker } from "@/components/market/PairPicker";
-import { useBinanceLivePrice } from "@/hooks/useBinanceLivePrice";
 import { useEaLivePrice } from "@/hooks/useEaLivePrice";
 import { useChartAnalysis } from "@/hooks/useChartAnalysis";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
@@ -25,7 +24,7 @@ export function ChartPreviewPanel({
   interval,
   onIntervalChange,
   onSymbolChange,
-  market = "crypto",
+  market = "forex",
   recommendations,
   onClose,
   expanded,
@@ -65,10 +64,8 @@ export function ChartPreviewPanel({
   onRequestChatMessage?: (text: string) => void;
   hydrateSnapshot?: ChartHydrateSnapshot | null;
 }) {
-  const chartRef = useRef<PriceChartHandle>(null);
-  const cryptoLive = useBinanceLivePrice(market === "crypto" ? symbol : "");
-  const forexLive = useEaLivePrice(symbol, market === "forex");
-  const live = market === "forex" ? forexLive : cryptoLive;
+  const chartRef = useRef<KLineChartHandle>(null);
+  const live = useEaLivePrice(symbol, true);
 
   const {
     isAnalyzing,
@@ -244,18 +241,16 @@ export function ChartPreviewPanel({
 
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-2">
         <ChartErrorBoundary key={`${symbol}|${interval}|${drawings.length}`}>
-          <PriceChart
+          <KLineChart
             ref={chartRef}
             symbol={symbol}
             interval={interval}
-            recommendations={recommendations}
             market={market}
+            recommendations={recommendations}
             overlays={overlays}
             drawings={drawings}
             livePrice={live.price > 0 ? live.price : undefined}
-            liveTick={live}
-            refreshMs={market === "forex" ? forexRefreshMs : 0}
-            fill
+            refreshMs={forexRefreshMs}
             className="h-full min-h-0 flex-1"
           />
         </ChartErrorBoundary>

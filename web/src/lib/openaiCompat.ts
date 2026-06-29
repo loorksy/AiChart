@@ -469,6 +469,80 @@ async function streamOnce(
   };
 }
 
+/** Single-pass structured JSON generation (OpenAI Structured Outputs). */
+export async function callOpenAICompatStructured<T extends Record<string, unknown>>(
+  target: OpenAICompatTarget,
+  params: {
+    system: string;
+    messages: Message[];
+    schemaName: string;
+    schema: Record<string, unknown>;
+    maxTokens?: number;
+  },
+  handlers?: Pick<StreamHandlers, "onTextDelta">,
+): Promise<{
+  data: T;
+  usage: { input_tokens: number; output_tokens: number };
+}> {
+  const res = await fetchWithTimeout(
+    `${target.baseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${target.apiKey}`,
+        "content-type": "application/json",
+        ...target.headers,
+      },
+      body: JSON.stringify({
+        model: target.model,
+        ...tokenLimitBody(target.model, params.maxTokens ?? 4096),
+        ...reasoningBody(target.model),
+        messages: toOAMessages(params.system, params.messages),
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: params.schemaName,
+            strict: true,
+            schema: params.schema,
+          },
+        },
+      }),
+      cache: "no-store",
+    },
+    { timeoutMs: llmTotalTimeoutMs(), label: target.model },
+  );
+
+  if (!res.ok) throw new Error(await readError(res, target.model));
+
+  const payload = (await res.json()) as {
+    choices?: { message?: { content?: string | null } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  const raw = payload.choices?.[0]?.message?.content?.trim();
+  if (!raw) throw new Error(`رد JSON فارغ من ${target.model}`);
+
+  let data: T;
+  try {
+    data = JSON.parse(raw) as T;
+  } catch {
+    throw new Error("تعذّر parse رد التحليل المُنظَّم");
+  }
+
+  const narrative =
+    typeof (data as unknown as { narrative?: unknown }).narrative === "string"
+      ? String((data as unknown as { narrative: string }).narrative)
+      : "";
+  if (narrative && handlers?.onTextDelta) handlers.onTextDelta(narrative);
+
+  return {
+    data,
+    usage: {
+      input_tokens: payload.usage?.prompt_tokens ?? 0,
+      output_tokens: payload.usage?.completion_tokens ?? 0,
+    },
+  };
+}
+
 // ---------- model listing ----------
 
 export interface CompatModelInfo {

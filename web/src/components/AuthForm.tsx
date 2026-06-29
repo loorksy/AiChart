@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowUpRight, ChevronDown, Sparkles } from "lucide-react";
-import PriceChart from "@/components/PriceChart";
+import { ChartBackdrop } from "@/components/chart/ChartBackdrop";
 import { TelegramLoginButton } from "@/components/TelegramLoginButton";
 import type { CountryCode } from "libphonenumber-js";
 import { PhoneInput } from "@/components/PhoneInput";
@@ -216,14 +216,7 @@ export default function AuthForm({
       <div className="relative hidden flex-1 lg:block">
         <div className="absolute inset-0 overflow-hidden">
           <div className="chart-bg-canvas absolute -inset-[15%]">
-            <PriceChart
-              symbol="BTCUSDT"
-              interval="1h"
-              recommendations={[]}
-              ambient
-              fill
-              className="h-full"
-            />
+            <ChartBackdrop className="h-full" />
           </div>
           <div className="absolute inset-0 bg-background/92" />
         </div>
@@ -231,9 +224,9 @@ export default function AuthForm({
           <div className="surface-card w-full max-w-2xl overflow-hidden">
             <div className="border-b border-border px-4 py-3">
               <p className="text-sm font-semibold text-foreground">AiChart</p>
-              <p className="text-xs text-muted-foreground">Claude MCP · Binance · MT5</p>
+              <p className="text-xs text-muted-foreground">Claude MCP · MT5 · تحليل فني</p>
             </div>
-            <PriceChart symbol="BTCUSDT" interval="1h" recommendations={[]} className="h-[360px]" />
+            <ChartBackdrop className="h-[360px]" />
           </div>
         </div>
       </div>

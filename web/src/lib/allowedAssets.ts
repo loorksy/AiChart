@@ -1,7 +1,3 @@
-import {
-  getBinanceUsdtSpotSymbols,
-  getTopUsdtSpotSymbolsByVolume,
-} from "./binanceSymbols";
 import type { MarketType } from "./markets/types";
 
 /** Max symbols scanned per monitor cycle when policy is open. */
@@ -116,24 +112,19 @@ export function isSymbolAllowed(
   return allowed.includes(symbol.toUpperCase());
 }
 
-/** Resolves the effective crypto symbol list (Binance live list when open). */
+/** Resolves the effective crypto symbol list — crypto scanning is out of scope. */
 export async function resolveAllowedAssets(raw: string): Promise<string[]> {
-  if (isOpenAssetsPolicy(raw, "crypto")) return getBinanceUsdtSpotSymbols();
   return parseAllowedAssets(raw, "crypto");
 }
 
-/** Bounded crypto list for 24/7 monitor — top volume when policy is open. */
+/** Bounded crypto list for monitor — crypto path disabled; returns explicit whitelist only. */
 export async function resolveMonitorAssets(
   raw: string,
   topLimit = MONITOR_TOP_SYMBOL_LIMIT,
 ): Promise<string[]> {
   const watchlist = parseWatchlist(raw);
   if (watchlist.length > 0) return watchlist.slice(0, topLimit);
-
-  if (isOpenAssetsPolicy(raw, "crypto")) {
-    return getTopUsdtSpotSymbolsByVolume(topLimit);
-  }
-  return parseAllowedAssets(raw, "crypto");
+  return parseAllowedAssets(raw, "crypto").slice(0, topLimit);
 }
 
 /** Explicit watchlist from structured allowed_assets (empty if unset). */
@@ -159,7 +150,7 @@ export function allowedAssetsLabel(raw: string, market: MarketType = "crypto"): 
   if (isOpenAssetsPolicy(raw, market)) {
     return market === "forex"
       ? "كل أزواج الفوركس المتاحة لدى الوسيط"
-      : "جميع أزواج USDT على Binance Spot (تحديث تلقائي)";
+      : "غير متاح — المنصة مخصّصة للفوركس عبر الوسيط";
   }
   const list = parseAllowedAssets(raw, market);
   return list.length ? list.join("، ") : "غير محددة";

@@ -76,10 +76,6 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
     `ضبط أسلوب التداول · ${String(input.trading_style ?? "")}`,
   search_trade_memory: (input) =>
     `بحث في ذاكرة الصفقات${input.symbol ? ` · ${String(input.symbol)}` : ""}`,
-  submit_scalp_decision: (input) =>
-    input.action === "enter"
-      ? `قرار سكالب · ${input.side === "buy" ? "دخول شراء" : "دخول بيع"}`
-      : "قرار سكالب · انتظار",
   set_risk_guard: () => "ضبط حارس المخاطر",
 };
 

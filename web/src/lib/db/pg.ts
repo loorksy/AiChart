@@ -1017,6 +1017,9 @@ async function migratePg(client: PoolClient) {
       PRIMARY KEY (user_id, bot_id, fingerprint)
     )
   `).catch(() => {});
+
+  await client.query(`DROP TABLE IF EXISTS bot_sessions CASCADE`).catch(() => {});
+  await client.query(`DROP TABLE IF EXISTS scalp_sessions CASCADE`).catch(() => {});
 }
 
 async function seedAdminPg(client: PoolClient) {

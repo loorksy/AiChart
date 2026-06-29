@@ -7,7 +7,7 @@ import {
 } from "./llm";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildSystemPrompt, chartAnalyzeSystemSuffix, scalpSessionSuffix } from "./persona";
+import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "./persona";
 import { composeCardSchema } from "./cardComposer";
 import {
   applyCardPolicy,
@@ -289,27 +289,6 @@ const TOOLS: ToolDef[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
-    name: "submit_scalp_decision",
-    description:
-      "وضع جلسة السكالب فقط: قدّم قرارك النهائي بعد المراقبة والتحليل. action=enter للدخول (مع symbol, side, entry, stop_loss, take_profit, notional, confidence, advisors, rationale_ar) أو action=wait للانتظار (مع rationale_ar). التنفيذ يمرّ عبر Risk Guard. استدعها مرة واحدة.",
-    input_schema: {
-      type: "object",
-      properties: {
-        action: { type: "string", enum: ["enter", "wait"] },
-        symbol: { type: "string" },
-        side: { type: "string", enum: ["buy", "sell"] },
-        entry: { type: "number" },
-        stop_loss: { type: "number" },
-        take_profit: { type: "number" },
-        notional: { type: "number" },
-        confidence: { type: "number" },
-        advisors: { type: "object" },
-        rationale_ar: { type: "string" },
-      },
-      required: ["action"],
-    },
-  },
-  {
     name: "render_cards",
     description:
       "اعرض بطاقات تفاعلية (نماذج مصغّرة) للمستخدم. **هذه هي الطريقة الوحيدة لإظهار البطاقات** — لا تكتب JSON في نصّك. استدعها عند تحليل زوج أو اقتراح صفقة أو عرض المحفظة/الأزواج. مرّر layout كمصفوفة عناصر، كل عنصر { id, component, props, children? }. أمثلة component: analysis, order_ticket, risk_reward, rsi_gauge, sr_ladder, pair_browser, account_overview, positions_table, kpi_card, gauge, alert_banner، وغيرها من الكتالوج. اكتب أيضاً نصاً موجزاً بشرياً مع البطاقة.",
@@ -510,29 +489,6 @@ const CHART_ANALYZE_TOOLS = TOOLS.filter((t) =>
   CHART_ANALYZE_TOOL_NAMES.has(t.name),
 );
 
-// Autonomous scalp turn uses the SAME agent as chat (same persona, memory and
-// full analytical toolset). We only DENY tools that don't belong in an
-// autonomous tick — direct execution, chat-UI, and settings mutation — because
-// the agent acts via submit_scalp_decision, which the engine routes through the
-// scalp double-gate + Risk Guard.
-const SCALP_TOOL_DENY = new Set([
-  "open_trade",
-  "close_trade",
-  "modify_sl_tp",
-  "request_approval",
-  "record_recommendation",
-  "render_cards",
-  "get_cards_guide",
-  "set_trading_mode",
-  "set_active_market",
-  "set_trading_style",
-  "set_risk_guard",
-]);
-
-const SCALP_TOOLS = [
-  ...TOOLS.filter((t) => !SCALP_TOOL_DENY.has(t.name)),
-];
-
 export interface AgentResult {
   reply: string;
   recommendations: Recommendation[];
@@ -543,22 +499,6 @@ export interface AgentResult {
   toolCallsJson?: string | null;
   /** UI schema emitted via the render_cards tool (reliable card rendering). */
   uiSchema?: unknown | null;
-  /** Decision submitted via submit_scalp_decision (autonomous scalp turn). */
-  scalpDecision?: ScalpDecisionPayload | null;
-}
-
-/** The agent's autonomous scalp decision (the agent is the decision-maker). */
-export interface ScalpDecisionPayload {
-  action: "enter" | "wait";
-  symbol?: string;
-  side?: "buy" | "sell";
-  entry?: number;
-  stop_loss?: number;
-  take_profit?: number;
-  notional?: number;
-  confidence?: number;
-  advisors?: Record<string, unknown>;
-  rationale_ar?: string;
 }
 
 export interface RunAgentOptions {
@@ -570,8 +510,6 @@ export interface RunAgentOptions {
   responseMode?: "fast" | "expert" | "vision";
   allowedTools?: string[];
   hasImage?: boolean;
-  /** Autonomous scalp session tick — the agent decides via submit_scalp_decision. */
-  scalpMode?: boolean;
   /** Live UI session selections from the chat composer. */
   sessionContext?: ChatSessionContext;
   sessionChanges?: SessionChange[];
@@ -730,34 +668,12 @@ async function executeTool(
   recorded: Recommendation[],
   signalDeliveries: DeliveryResult[],
   uiCollector: { schema: unknown | null },
-  scalpCollector: { decision: ScalpDecisionPayload | null },
 ): Promise<{ content: string; isError?: boolean }> {
   try {
     if (BRIDGE_TOOL_NAMES.has(name)) {
       return await forwardBridge(ctx.userId, name, input);
     }
     switch (name) {
-      case "submit_scalp_decision": {
-        const action = input.action === "enter" ? "enter" : "wait";
-        scalpCollector.decision = {
-          action,
-          symbol: input.symbol as string | undefined,
-          side: input.side as "buy" | "sell" | undefined,
-          entry: input.entry as number | undefined,
-          stop_loss: input.stop_loss as number | undefined,
-          take_profit: input.take_profit as number | undefined,
-          notional: input.notional as number | undefined,
-          confidence: input.confidence as number | undefined,
-          advisors: input.advisors as Record<string, unknown> | undefined,
-          rationale_ar: input.rationale_ar as string | undefined,
-        };
-        return {
-          content:
-            action === "enter"
-              ? `سُجّل قرار الدخول: ${input.symbol} ${input.side}. سيُمرَّر عبر Risk Guard.`
-              : "سُجّل قرار الانتظار.",
-        };
-      }
       case "get_cards_guide": {
         return { content: readCardsSkill() };
       }
@@ -1128,23 +1044,16 @@ export async function runAgent(
     extraHint = "\n\n# تحليل الصورة المرفقة (رؤية الشارت)\n- لقد أرفق المستخدم صورة شارت في رسالته. لديك قدرة كاملة على الرؤية وتحليل الصور (Vision) بدقة عالية. يجب عليك تحليل الشارت المرفق بصرياً فوراً وتحديد الاتجاه والمستويات والمؤشرات.\n- لا تقل أبداً 'لا أستطيع تحليل الصور مباشرة' أو 'لا أملك القدرة على رؤية الصور'. وتجاهل أي اعتذار أو رفض سابق لرؤية الصور في محادثتك السابقة، فقد تم تفعيل قدرة الرؤية (Vision) لديك بالكامل الآن. قدّم تحليلك مباشرة بكل ثقة.";
   }
 
-  const system = options?.scalpMode
-    ? {
-        static: systemBase.static + scalpSessionSuffix(),
-        dynamic: systemBase.dynamic,
-      }
-    : options?.mode === "chart_analyze"
+  const system =
+    options?.mode === "chart_analyze"
       ? {
           static: systemBase.static + chartAnalyzeSystemSuffix() + extraHint,
           dynamic: systemBase.dynamic,
         }
       : { static: systemBase.static + responseHint + extraHint, dynamic: systemBase.dynamic };
   const allowedToolsSet = options?.allowedTools ? new Set(options.allowedTools) : null;
-  const baseTools = options?.scalpMode
-    ? SCALP_TOOLS
-    : options?.mode === "chart_analyze"
-      ? CHART_ANALYZE_TOOLS
-      : TOOLS;
+  const baseTools =
+    options?.mode === "chart_analyze" ? CHART_ANALYZE_TOOLS : TOOLS;
   const activeTools = allowedToolsSet
     ? baseTools.filter((t) => allowedToolsSet.has(t.name))
     : baseTools;
@@ -1163,7 +1072,6 @@ export async function runAgent(
   const recorded: Recommendation[] = [];
   const signalDeliveries: DeliveryResult[] = [];
   const uiCollector: { schema: unknown | null } = { schema: null };
-  const scalpCollector: { decision: ScalpDecisionPayload | null } = { decision: null };
   // Captured outputs of card-deriving data tools — used to build a card
   // deterministically when the model doesn't call render_cards itself.
   const cardToolData: { name: string; data: unknown }[] = [];
@@ -1222,7 +1130,7 @@ export async function runAgent(
         status: "running",
         tool: tu.name,
       });
-      const out = await executeTool(tu.name, tu.input, ctx, recorded, signalDeliveries, uiCollector, scalpCollector);
+      const out = await executeTool(tu.name, tu.input, ctx, recorded, signalDeliveries, uiCollector);
       // Capture EVERY non-error tool output (shape-driven composer decides what
       // is renderable) — no per-tool whitelist.
       if (!out.isError) {
@@ -1295,6 +1203,5 @@ export async function runAgent(
     reasoningSummary,
     toolCallsJson,
     uiSchema,
-    scalpDecision: scalpCollector.decision,
   };
 }

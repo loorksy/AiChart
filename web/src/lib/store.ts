@@ -19,7 +19,6 @@ import type {
   PublicUser,
   Recommendation,
   RecommendationSource,
-  ScalpSession,
   Trade,
   TradeIntent,
   TradingSettings,
@@ -185,122 +184,6 @@ export async function updateSettings(
   await execute(
     `UPDATE trading_settings SET ${assignments}, updated_at = datetime('now') WHERE user_id = ?`,
     params,
-  );
-}
-
-// ── Scalp sessions ──────────────────────────────────────────────────────────
-
-export async function getScalpSession(
-  userId: number,
-): Promise<ScalpSession | null> {
-  return queryOne<ScalpSession>(
-    "SELECT * FROM scalp_sessions WHERE user_id = ?",
-    [userId],
-  );
-}
-
-function utcDayKey(): string {
-  // YYYY-MM-DD in UTC (no Date.now in tests — store layer only).
-  return new Date().toISOString().slice(0, 10);
-}
-
-export async function startScalpSession(
-  userId: number,
-  opts: {
-    symbol: string;
-    market: MarketType;
-    interval: string;
-    maxTrades: number;
-    notional: number;
-    executionMode: "paper" | "live";
-  },
-): Promise<void> {
-  await execute(
-    `INSERT INTO scalp_sessions
-       (user_id, active, status, symbol, market, interval, max_trades, executed_count,
-        notional, execution_mode, session_pnl, day_key, daily_trade_count, stop_reason,
-        started_at, updated_at)
-     VALUES (?, 1, 'active', ?, ?, ?, ?, 0, ?, ?, 0, ?, 0, NULL, datetime('now'), datetime('now'))
-     ON CONFLICT(user_id) DO UPDATE SET
-       active = 1,
-       status = 'active',
-       symbol = excluded.symbol,
-       market = excluded.market,
-       interval = excluded.interval,
-       max_trades = excluded.max_trades,
-       executed_count = 0,
-       notional = excluded.notional,
-       execution_mode = excluded.execution_mode,
-       session_pnl = 0,
-       day_key = excluded.day_key,
-       daily_trade_count = 0,
-       stop_reason = NULL,
-       started_at = datetime('now'),
-       updated_at = datetime('now')`,
-    [
-      userId,
-      opts.symbol,
-      opts.market,
-      opts.interval,
-      opts.maxTrades,
-      opts.notional,
-      opts.executionMode,
-      utcDayKey(),
-    ],
-  );
-}
-
-export async function pauseScalpSession(userId: number): Promise<void> {
-  await execute(
-    "UPDATE scalp_sessions SET status = 'paused', active = 0, updated_at = datetime('now') WHERE user_id = ? AND status = 'active'",
-    [userId],
-  );
-}
-
-export async function resumeScalpSession(userId: number): Promise<void> {
-  await execute(
-    "UPDATE scalp_sessions SET status = 'active', active = 1, stop_reason = NULL, updated_at = datetime('now') WHERE user_id = ? AND status = 'paused'",
-    [userId],
-  );
-}
-
-export async function stopScalpSession(
-  userId: number,
-  reason?: string,
-): Promise<void> {
-  await execute(
-    "UPDATE scalp_sessions SET status = 'stopped', active = 0, stop_reason = ?, updated_at = datetime('now') WHERE user_id = ?",
-    [reason ?? null, userId],
-  );
-}
-
-export async function incrementScalpExecuted(userId: number): Promise<void> {
-  // Reset the daily counter when the UTC day rolls over.
-  await execute(
-    `UPDATE scalp_sessions SET
-       executed_count = executed_count + 1,
-       daily_trade_count = CASE WHEN day_key = ? THEN daily_trade_count + 1 ELSE 1 END,
-       day_key = ?,
-       updated_at = datetime('now')
-     WHERE user_id = ?`,
-    [utcDayKey(), utcDayKey(), userId],
-  );
-}
-
-export async function addScalpSessionPnl(
-  userId: number,
-  pnl: number,
-): Promise<void> {
-  await execute(
-    "UPDATE scalp_sessions SET session_pnl = session_pnl + ?, updated_at = datetime('now') WHERE user_id = ?",
-    [pnl, userId],
-  );
-}
-
-export async function listActiveScalpSessions(): Promise<ScalpSession[]> {
-  return query<ScalpSession>(
-    "SELECT * FROM scalp_sessions WHERE status = 'active'",
-    [],
   );
 }
 

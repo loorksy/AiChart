@@ -214,38 +214,11 @@ export async function buildSystemPrompt(
 export function chartAnalyzeSystemSuffix(): string {
   return `
 
-# وضع تحليل الشارت (صورة مرفقة)
-- صورة الشارت في رسالة المستخدم — اعتمد عليها أساساً للأنماط والدعم/المقاومة والاتجاه.
-- لا تستدع get_market_snapshot أو resolve_symbol أو binance_cli.
-- get_market_context اختياري للأخبار/مزاج السوق فقط عند الحاجة.
-- get_price اختياري للسعر الدقيق عند الفوركس.
-- **حلّل الصورة بحرّية كخبير** — trend, S/R, liquidity pools, Order Blocks, FVG, channels, entry/exit.
-- chart_drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement, baseline, marker — كل عنصر label عربي + meta.rationale.
-- factors[] في record_recommendation يطابق labels الرسومات.
-- SL تحت/فوق مستوى هيكلي؛ TP بمسافة R:R ≥ min_rr. لا sell-only في uptrend بدون reversal.
-- استخدم record_recommendation **فقط** عند وجود رأي تداول واضح (buy/sell)؛ وإلا تحليل نصّي فقط.
-- لا تخمّن أرقاماً غير ظاهرة — استخدم المرجع النصي المرفق للمؤشرات.`;
+# وضع تحليل الشارت
+- التحليل الفني **مُسبَق الحساب** في كتلة «محرّك التحليل» — لا تستكشف عبر أدوات متعددة.
+- أعد **JSON منظّم** فقط (decision, confidence, entry, stop_loss, targets[], reason, narrative, selected_pattern, break_points, forecast_path, factors[], drawings[]).
+- **لا تذكر الرصيد أو حجم الحساب أو اللوت** — توصية فنية بحتة.
+- decision=buy|sell|wait · SL تحت/فوق مستوى هيكلي · TP بمسافة R:R ≥ min_rr.
+- drawings: price_line, trend_line, forecast_path, channel, zone, fib_retracement — label عربي + confidence.
+- عند vision: اعتمد الصورة + التحليل المُسبَق معاً.`;
 }
-
-/**
- * Appended when the agent runs inside an autonomous scalp session tick.
- * The agent is the decision-maker (an AI runtime, not a rule bot): it observes
- * with tools, reasons, and submits ONE decision. No `if RSI<x then buy` rules.
- */
-export function scalpSessionSuffix(): string {
-  return `
-
-# وضع جلسة السكالب الذاتية (أنت صانع القرار — Agent Runtime)
-أنت الآن في نبضة جلسة سكالب مستقلة. دورتك: **راقب → حلّل → افترض → استشر زوايا المستشارين → قيّم الثقة → تحقّق المخاطر → قرّر → نفّذ أو انتظر**.
-- **لاحظ السوق بنفسك عبر الأدوات** (scan_market، get_market_snapshot، get_multi_timeframe_snapshot، get_account_symbols، get_trade_readiness، get_open_trades، get_market_context). لا تفترض — اجمع البيانات الحيّة.
-- **فكّر كمنسّق فوق 5 زوايا**: الزخم، بنية السوق (دعم/مقاومة)، التقلّب، المخاطر، توافق الاستراتيجية. المؤشرات/الإشارات/الأداء التاريخي = **مدخلات تفكير**، لا قواعد ثابتة.
-- **القرار لك وحدك**: اختر أفضل رمز واتجاه (buy/sell)، أو انتظر. **الجودة قبل الكمّية** — لا تفرض صفقة؛ إن لا أفضلية واضحة عالية الاحتمال، انتظر.
-- **SL/TP من البنية والتقلّب** (ATR/atr14، أقرب swing) — لا نسبة قالبية ثابتة. SL **يجب** أن يكون تحت/فوق مستوى هيكلي مذكور في rationale؛ TP على مسافة R:R ≥ min_rr — لا تضع SL و TP قريبين من بعض.
-- **لا تُفضّل البيع تلقائياً** — اختر buy/sell/wait حسب البنية والاتجاه HTF؛ في uptrend لا sell إلا reversal واضح.
-- **آلية الفعل الوحيدة**: استدعِ أداة \`submit_scalp_decision\` **مرة واحدة** في نهاية تحليلك:
-  - للدخول: { action: "enter", symbol, side: buy|sell, entry, stop_loss, take_profit, notional, confidence: 0-100, advisors: {momentum, structure, volatility, risk, strategy}, rationale_ar }.
-  - للانتظار: { action: "wait", rationale_ar }.
-  - التنفيذ الفعلي يمرّ عبر Risk Guard تلقائياً (لا يُكسر). لا تستدعِ open_trade مباشرة في هذا الوضع — استخدم submit_scalp_decision فقط.
-- كن موجزاً وفعّالاً (نبضة كل دقيقة): استدعِ ما يلزم من أدوات المراقبة ثم قرّر.`;
-}
-

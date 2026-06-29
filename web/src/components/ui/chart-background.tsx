@@ -1,13 +1,13 @@
 "use client";
 
-import PriceChart from "@/components/PriceChart";
+import { ChartBackdrop } from "@/components/chart/ChartBackdrop";
 import { cn } from "@/lib/utils";
 
 /**
  * Decorative live chart backdrop — blurred & muted so foreground UI stays readable.
  */
 export function ChartBackground({
-  symbol = "BTCUSDT",
+  symbol = "EURUSD",
   interval = "1h",
   className,
   children,
@@ -24,14 +24,7 @@ export function ChartBackground({
         aria-hidden
       >
         <div className="chart-bg-canvas absolute -inset-[15%]">
-          <PriceChart
-            symbol={symbol}
-            interval={interval}
-            recommendations={[]}
-            ambient
-            fill
-            className="h-full w-full"
-          />
+          <ChartBackdrop className="h-full w-full" />
         </div>
         <div className="absolute inset-0 bg-background/94" />
       </div>
