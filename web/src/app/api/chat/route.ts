@@ -11,7 +11,6 @@ import type { Recommendation } from "@/lib/types";
 import { sseEncode } from "@/lib/sse";
 import { SSE_CONNECT_ACTIVITY } from "@/lib/agentActivityPipeline";
 import { extractUISchema } from "@/lib/uiSchema";
-import { buildTradingCards } from "@/lib/cards/buildTradingCards";
 import {
   applyChatSessionContext,
   type ChatSessionContext,
@@ -324,11 +323,6 @@ export async function POST(req: NextRequest) {
               beforeMaxIntentId,
               result.recommendations,
             );
-            const tradingCards = buildTradingCards({
-              summary: cleanText,
-              recommendations: result.recommendations,
-              intents,
-            });
 
             await appendChatMessage(
               conversationId!,
@@ -339,7 +333,6 @@ export async function POST(req: NextRequest) {
                 intents,
                 question: result.question || null,
                 ui_schema: uiSchema,
-                trading_cards: tradingCards,
               },
               result.reasoningSummary,
               result.toolCallsJson,
@@ -370,7 +363,6 @@ export async function POST(req: NextRequest) {
               quota: { used: used + 1, limit: limits.claude_quota },
               question: result.question || null,
               ui_schema: uiSchema,
-              trading_cards: tradingCards,
             });
 
           } catch (err) {
@@ -431,11 +423,6 @@ export async function POST(req: NextRequest) {
       beforeMaxIntentId,
       result.recommendations,
     );
-    const tradingCards = buildTradingCards({
-      summary: cleanText,
-      recommendations: result.recommendations,
-      intents,
-    });
 
     await appendChatMessage(
       conversationId,
@@ -446,7 +433,6 @@ export async function POST(req: NextRequest) {
         intents,
         question: result.question || null,
         ui_schema: uiSchema,
-        trading_cards: tradingCards,
       },
       result.reasoningSummary,
       result.toolCallsJson,
@@ -469,7 +455,6 @@ export async function POST(req: NextRequest) {
       quota: { used: used + 1, limit: limits.claude_quota },
       question: result.question || null,
       ui_schema: uiSchema,
-      trading_cards: tradingCards,
     });
 
   } catch (err) {
@@ -500,3 +485,4 @@ export async function POST(req: NextRequest) {
 
 // Memory lifecycle now runs as a background `memory_lifecycle` job (see
 // lib/memoryLifecycle.ts), enqueued above instead of inline on the request.
+

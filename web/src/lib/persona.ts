@@ -228,10 +228,7 @@ export function chartAnalyzeSystemSuffix(): string {
 ## liveReasoningLog
 - 3–7 عناصر — استنتاجات مهنية مرتبطة بما على الشارت.
 - لا جمل محفوظة («تم التحليل بنجاح»، «الرؤية العامة»، …).
-- types: observation | structure | pattern | risk | decision | drawing.
-- لكل عنصر أرسل confidence: low | medium | high | null.
-- إذا كان العنصر يشرح رسماً محدداً فأرسل relatedDrawingIndex، وإلا null.
-- لا تعرض chain-of-thought؛ اكتب ملاحظة مهنية قصيرة قابلة للعرض للمستخدم.
+- types: observation | structure | pattern | risk | decision | drawing
 
 ## JSON
 decision, confidence, entry, stop_loss, targets[], reason, narrative, selected_pattern,

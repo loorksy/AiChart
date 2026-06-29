@@ -4,8 +4,6 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { Conversation, ChatMessageRow, Recommendation } from "@/lib/types";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
-import type { LiveReasoningEntry } from "@/lib/analysis/chartAnalyzeLlm";
-import type { TradingCardPayload } from "@/lib/cards/cardTypes";
 
 export interface ChartAnalyzeMeta {
   symbol?: string;
@@ -17,7 +15,6 @@ export interface ChartAnalyzeMeta {
   overlays?: ChartOverlay[];
   recommendation_id?: number | null;
   recommendation?: Partial<Recommendation> | null;
-  liveReasoningLog?: LiveReasoningEntry[];
 }
 
 export interface UiMessage {
@@ -34,7 +31,6 @@ export interface UiMessage {
     options: { label: string; value: string }[];
   } | null;
   ui_schema?: any;
-  trading_cards?: TradingCardPayload[];
   chartAnalyze?: ChartAnalyzeMeta;
 }
 
@@ -104,7 +100,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         let intents: any[] | undefined;
         let question: any = null;
         let ui_schema: any = null;
-        let trading_cards: TradingCardPayload[] | undefined;
         let chartAnalyze: ChartAnalyzeMeta | undefined;
         if (m.metadata_json) {
           try {
@@ -122,14 +117,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
               overlays?: ChartOverlay[];
               recommendation_id?: number | null;
               recommendation?: Partial<Recommendation> | null;
-              liveReasoningLog?: LiveReasoningEntry[];
-              trading_cards?: TradingCardPayload[];
             };
             recommendations = parsedMeta.recommendations;
             intents = parsedMeta.intents?.filter((i) => i?.status === "pending");
             question = parsedMeta.question || null;
             ui_schema = parsedMeta.ui_schema || null;
-            trading_cards = parsedMeta.trading_cards;
             if (
               parsedMeta.type === "chart_analyze" ||
               parsedMeta.analysis_source != null ||
@@ -145,7 +137,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 overlays: parsedMeta.overlays,
                 recommendation_id: parsedMeta.recommendation_id,
                 recommendation: parsedMeta.recommendation ?? null,
-                liveReasoningLog: parsedMeta.liveReasoningLog,
               };
             }
           } catch {
@@ -161,7 +152,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
           intents: intents && intents.length ? intents : undefined,
           question,
           ui_schema,
-          trading_cards,
           chartAnalyze,
         };
       }),

@@ -10,9 +10,7 @@ import type { UiMessage } from "@/stores/chat-store";
 import { ChatIntentCard } from "./chat-intent-card";
 import { RecommendationChartImage } from "./recommendation-chart-image";
 import { UILayoutRenderer, validateUISchema } from "@/components/chat/widgets";
-import { TradingCardRenderer } from "@/components/chat/cards";
 import { filterMessageCards } from "@/lib/cardPolicy";
-import { buildTradingCards } from "@/lib/cards/buildTradingCards";
 
 interface ChatMessageProps {
   message: UiMessage;
@@ -106,36 +104,6 @@ export function ChatMessage({
                   onReject={onIntentReject}
                 />
               ))}
-            {!message.streaming && onWidgetAction && (() => {
-              const cards =
-                message.trading_cards?.length
-                  ? message.trading_cards
-                  : buildTradingCards({
-                      symbol: message.chartAnalyze?.symbol,
-                      timeframe: message.chartAnalyze?.interval,
-                      market: message.chartAnalyze?.market,
-                      summary: message.content,
-                      recommendations: message.recommendations as Recommendation[] | undefined,
-                      intents: message.intents,
-                      drawings: message.chartAnalyze?.drawings,
-                      overlays: message.chartAnalyze?.overlays,
-                      liveReasoningLog: message.chartAnalyze?.liveReasoningLog,
-                    });
-              if (!cards.length) return null;
-              return (
-                <div className="mt-2 space-y-2">
-                  {cards.map((card) => (
-                    <TradingCardRenderer
-                      key={card.id}
-                      card={card}
-                      onAction={(action, payload) =>
-                        onWidgetAction(action, { ...payload, messageId: message.id })
-                      }
-                    />
-                  ))}
-                </div>
-              );
-            })()}
             {!message.streaming && message.ui_schema && onWidgetAction && (() => {
               const validated = validateUISchema(message.ui_schema);
               if (!validated) return null;
