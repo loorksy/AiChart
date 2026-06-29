@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
 
           error:
 
-            "وكيل Claude غير مُفعّل على الخادم بعد. يحتاج المالك إلى ضبط مفتاح ANTHROPIC_API_KEY.",
+            "الذكاء الاصطناعي غير مُفعّل على الخادم بعد. يحتاج المالك إلى ضبط مفتاح OPENAI_API_KEY.",
 
         },
 

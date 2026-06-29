@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const user = await requirePlatformAccess();
     if (!isLLMConfigured()) {
       return NextResponse.json(
-        { error: "وكيل Claude غير مُفعّل." },
+        { error: "الذكاء الاصطناعي غير مُفعّل — أضِف OPENAI_API_KEY." },
         { status: 503 },
       );
     }

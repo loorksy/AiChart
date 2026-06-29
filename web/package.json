@@ -33,7 +33,6 @@
     "jose": "^6.2.3",
     "klinecharts": "^9.8.12",
     "libphonenumber-js": "^1.13.6",
-    "lightweight-charts": "^5.2.0",
     "lucide-react": "^1.17.0",
     "metaapi.cloud-sdk": "^29.3.3",
     "next": "16.2.7",

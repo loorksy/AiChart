@@ -168,7 +168,7 @@ export default function ChatClient({
       {!agentReady && (
         <div className="mx-auto w-full max-w-3xl px-4 pt-3">
           <p className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-            وكيل Claude غير مُفعّل (ينقص ANTHROPIC_API_KEY).
+            الذكاء الاصطناعي غير مُفعّل (ينقص OPENAI_API_KEY).
           </p>
         </div>
       )}

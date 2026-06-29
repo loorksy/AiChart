@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     if (!isLLMConfigured()) {
       return NextResponse.json(
-        { error: "وكيل Claude غير مُفعّل على الخادم." },
+        { error: "الذكاء الاصطناعي غير مُفعّل على الخادم — أضِف OPENAI_API_KEY." },
         { status: 503 },
       );
     }

@@ -178,7 +178,7 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
   }, [overlays]);
 
   // Fall back to the latest actionable recommendation's drawings when the
-  // analyze flow hasn't supplied explicit ones (mirrors the old PriceChart).
+  // analyze flow hasn't supplied explicit ones.
   const effectiveDrawings = useMemo<ChartDrawing[]>(() => {
     const base = drawings?.length
       ? drawings

@@ -5,7 +5,7 @@ export interface ConfigFieldMeta {
   key: string;
   label: string;
   labelEn: string;
-  group: "core" | "claude" | "telegram" | "ops";
+  group: "core" | "ai" | "telegram" | "ops";
   secret: boolean;
   /** Store plaintext in DB (bootstrap keys used to encrypt others) */
   plainStorage: boolean;
@@ -33,65 +33,21 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "سلسلة عشوائية طويلة",
   },
   {
-    key: "AI_PROVIDER",
-    label: "مزود الذكاء الاصطناعي",
-    labelEn: "AI_PROVIDER",
-    group: "claude",
-    secret: false,
-    plainStorage: false,
-    placeholder: "anthropic | openai | google",
-  },
-  {
     key: "AI_MODEL",
-    label: "نموذج الذكاء الاصطناعي",
+    label: "نموذج OpenAI",
     labelEn: "AI_MODEL",
-    group: "claude",
+    group: "ai",
     secret: false,
     plainStorage: false,
-    placeholder: "حسب المزود المختار",
-  },
-  {
-    key: "ANTHROPIC_API_KEY",
-    label: "مفتاح Claude (Anthropic)",
-    labelEn: "ANTHROPIC_API_KEY",
-    group: "claude",
-    secret: true,
-    plainStorage: false,
+    placeholder: "gpt-4.1",
   },
   {
     key: "OPENAI_API_KEY",
     label: "مفتاح OpenAI",
     labelEn: "OPENAI_API_KEY",
-    group: "claude",
+    group: "ai",
     secret: true,
     plainStorage: false,
-  },
-  {
-    key: "GEMINI_API_KEY",
-    label: "مفتاح Google Gemini",
-    labelEn: "GEMINI_API_KEY",
-    group: "claude",
-    secret: true,
-    plainStorage: false,
-    placeholder: "AIza… من Google AI Studio",
-  },
-  {
-    key: "OPENROUTER_API_KEY",
-    label: "مفتاح OpenRouter",
-    labelEn: "OPENROUTER_API_KEY",
-    group: "claude",
-    secret: true,
-    plainStorage: false,
-    placeholder: "sk-or-… من openrouter.ai/keys",
-  },
-  {
-    key: "ANTHROPIC_MODEL",
-    label: "نموذج Claude (قديم — استخدم AI_MODEL)",
-    labelEn: "ANTHROPIC_MODEL",
-    group: "claude",
-    secret: false,
-    plainStorage: false,
-    placeholder: "claude-3-5-sonnet-latest",
   },
   {
     key: "VOICE_RESPONSES_ENABLED",

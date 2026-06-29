@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
-import { ClaudeModelPicker } from "@/components/admin/ClaudeModelPicker";
+import { OpenAIModelPicker } from "@/components/admin/OpenAIModelPicker";
 import { cn } from "@/lib/utils";
 
 type ConfigField = {
   key: string;
   label: string;
   labelEn: string;
-  group: "core" | "claude" | "telegram" | "ops";
+  group: "core" | "ai" | "telegram" | "ops";
   type?: "text" | "url" | "toggle";
   placeholder?: string;
   configured: boolean;
@@ -21,7 +21,7 @@ type ConfigField = {
 
 const GROUPS: { id: ConfigField["group"]; title: string }[] = [
   { id: "core", title: "الأساس والأمان" },
-  { id: "claude", title: "الذكاء الاصطناعي — المزود والنموذج" },
+  { id: "ai", title: "OpenAI — المفتاح والنموذج" },
   { id: "telegram", title: "تليجرام" },
   { id: "ops", title: "التشغيل والمراقبة" },
 ];
@@ -71,8 +71,8 @@ export function AdminKeysPanel() {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
-  async function save(patchOverride?: Record<string, string>) {
-    const patch: Record<string, string> = { ...patchOverride };
+  async function save() {
+    const patch: Record<string, string> = {};
     for (const [key, value] of Object.entries(draft)) {
       if (value.trim()) patch[key] = value.trim();
     }
@@ -96,7 +96,10 @@ export function AdminKeysPanel() {
       setFields(data.fields);
       setDraft({});
       await loadAgentModelStatus();
-      setMsg({ type: "ok", text: "تم حفظ المفاتيح — Claude MCP يستخدم النموذج من لوحة المنصة." });
+      setMsg({
+        type: "ok",
+        text: "تم حفظ المفاتيح — المنصة و Claude MCP يستخدمان نموذج OpenAI من هنا.",
+      });
     } finally {
       setSaving(false);
     }
@@ -104,44 +107,15 @@ export function AdminKeysPanel() {
 
   const configuredCount = fields.filter((f) => f.configured).length;
 
-  const AI_PROVIDERS = [
-    { id: "anthropic", label: "Anthropic (Claude)", keyField: "ANTHROPIC_API_KEY" },
-    { id: "openai", label: "OpenAI", keyField: "OPENAI_API_KEY" },
-    { id: "google", label: "Google (Gemini)", keyField: "GEMINI_API_KEY" },
-    { id: "openrouter", label: "OpenRouter", keyField: "OPENROUTER_API_KEY" },
-  ] as const;
-  type ProviderId = (typeof AI_PROVIDERS)[number]["id"];
-
-  const aliasProvider = (raw: string): ProviderId =>
-    (raw === "gemini" ? "google" : raw) as ProviderId;
-  const providerField = fields.find((f) => f.key === "AI_PROVIDER");
-  const rawSaved = (providerField?.value || "anthropic").toLowerCase();
-  const savedProvider = aliasProvider(rawSaved);
-  const draftProvider = draft.AI_PROVIDER?.toLowerCase();
-  const selectedProvider = draftProvider
-    ? aliasProvider(draftProvider)
-    : savedProvider;
-  const providerMeta =
-    AI_PROVIDERS.find((p) => p.id === selectedProvider) ?? AI_PROVIDERS[0];
-
-  const apiKeyField = fields.find((f) => f.key === providerMeta.keyField);
+  const apiKeyField = fields.find((f) => f.key === "OPENAI_API_KEY");
   const aiModelField = fields.find((f) => f.key === "AI_MODEL");
-  const legacyModelField = fields.find((f) => f.key === "ANTHROPIC_MODEL");
-  const currentAiModel =
-    aiModelField?.value ||
-    (selectedProvider === "anthropic"
-      ? legacyModelField?.value ?? "claude-3-5-sonnet-latest"
-      : "");
+  const currentAiModel = aiModelField?.value ?? "gpt-4.1";
 
-  const claudeFields = fields.filter(
+  const aiExtraFields = fields.filter(
     (f) =>
-      f.group === "claude" &&
-      f.key !== "AI_PROVIDER" &&
-      f.key !== "AI_MODEL" &&
-      f.key !== "ANTHROPIC_MODEL" &&
-      f.key !== "ANTHROPIC_API_KEY" &&
+      f.group === "ai" &&
       f.key !== "OPENAI_API_KEY" &&
-      f.key !== "GEMINI_API_KEY",
+      f.key !== "AI_MODEL",
   );
 
   return (
@@ -153,7 +127,7 @@ export function AdminKeysPanel() {
             المفاتيح والإعدادات
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            ضع مفاتيح API والأسرار من لوحة الإدارة — تُخزَّن مشفّرة في قاعدة
+            ضع مفتاح OpenAI والنموذج من لوحة الإدارة — تُخزَّن مشفّرة في قاعدة
             البيانات. القيم من <code dir="ltr">.env</code> تبقى احتياطاً.
           </p>
         </div>
@@ -176,63 +150,30 @@ export function AdminKeysPanel() {
 
       {GROUPS.map((group) => {
         const groupFields =
-          group.id === "claude"
-            ? claudeFields
+          group.id === "ai"
+            ? aiExtraFields
             : fields.filter((f) => f.group === group.id);
-        if (!groupFields.length && group.id !== "claude") return null;
-        if (group.id === "claude" && !apiKeyField) return null;
+        if (!groupFields.length && group.id !== "ai") return null;
+        if (group.id === "ai" && !apiKeyField) return null;
         return (
           <section key={group.id} className="admin-card p-4">
             <h3 className="mb-4 font-bold text-foreground">{group.title}</h3>
             <div className="space-y-4">
-              {group.id === "claude" && apiKeyField && (
+              {group.id === "ai" && apiKeyField && (
                 <>
-                  <div>
-                    <p className="mb-1.5 text-sm font-medium">
-                      المزود
-                      <span
-                        className="mr-2 text-[10px] text-muted-foreground"
-                        dir="ltr"
-                      >
-                        AI_PROVIDER
-                      </span>
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {AI_PROVIDERS.map((p) => {
-                        const active = selectedProvider === p.id;
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setDraftValue("AI_PROVIDER", p.id)}
-                            className={cn(
-                              "rounded-lg border px-3 py-1.5 text-xs font-medium transition",
-                              active
-                                ? "border-primary/50 bg-primary/10 text-primary"
-                                : "border-white/10 text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            {p.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
                   <ConfigFieldRow
                     f={apiKeyField}
                     draft={draft}
                     setDraftValue={setDraftValue}
                   />
-                  <ClaudeModelPicker
-                    provider={selectedProvider}
-                    providerLabel={providerMeta.label}
-                    apiKeyDraft={draft[providerMeta.keyField] ?? ""}
+                  <OpenAIModelPicker
+                    apiKeyDraft={draft.OPENAI_API_KEY ?? ""}
                     apiKeyConfigured={apiKeyField.configured}
                     currentModel={currentAiModel}
                     draftModel={draft.AI_MODEL ?? ""}
                     onSelectModel={(id) => setDraftValue("AI_MODEL", id)}
                   />
-                                    {agentModel && (
+                  {agentModel && (
                     <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">
                       نموذج المنصة (MCP):{" "}
                       <code dir="ltr">{agentModel.platformRef}</code>

@@ -207,7 +207,7 @@ export async function runOpportunityScan(
   if (!opts?.deep || candidates.length === 0) return result;
 
   if (!isLLMConfigured()) {
-    result.errors.push("وكيل Claude غير مُفعّل — المسح السريع فقط.");
+    result.errors.push("OpenAI غير مُفعّل — المسح السريع فقط.");
     return result;
   }
 

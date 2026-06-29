@@ -15,7 +15,6 @@ export async function GET() {
     return NextResponse.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      anthropic: isLLMConfigured(),
       llm: isLLMConfigured(),
       ai_provider: getActiveProvider(),
       telegram: isTelegramConfigured(),

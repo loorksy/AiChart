@@ -4,31 +4,27 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export interface ClaudeModelOption {
+export interface OpenAIModelOption {
   id: string;
   display_name: string;
   created_at?: string;
   max_input_tokens?: number;
 }
 
-export function ClaudeModelPicker({
+export function OpenAIModelPicker({
   apiKeyDraft,
   apiKeyConfigured,
   currentModel,
   draftModel,
   onSelectModel,
-  provider = "anthropic",
-  providerLabel = "Anthropic",
 }: {
   apiKeyDraft: string;
   apiKeyConfigured: boolean;
   currentModel: string;
   draftModel: string;
   onSelectModel: (modelId: string) => void;
-  provider?: "anthropic" | "openai" | "google" | "openrouter";
-  providerLabel?: string;
 }) {
-  const [models, setModels] = useState<ClaudeModelOption[]>([]);
+  const [models, setModels] = useState<OpenAIModelOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetched, setFetched] = useState(false);
@@ -45,7 +41,6 @@ export function ClaudeModelPicker({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider,
           ...(apiKeyDraft.trim() ? { apiKey: apiKeyDraft.trim() } : {}),
         }),
       });
@@ -58,7 +53,11 @@ export function ClaudeModelPicker({
       setModels(data.models ?? []);
       setFetched(true);
       const hasDefault = data.defaultModel || currentModel;
-      if (!draftModel && hasDefault && data.models?.some((m: ClaudeModelOption) => m.id === hasDefault)) {
+      if (
+        !draftModel &&
+        hasDefault &&
+        data.models?.some((m: OpenAIModelOption) => m.id === hasDefault)
+      ) {
         onSelectModel(hasDefault);
       } else if (!draftModel && data.models?.[0]?.id) {
         onSelectModel(data.models[0].id);
@@ -68,14 +67,7 @@ export function ClaudeModelPicker({
     } finally {
       setLoading(false);
     }
-  }, [apiKeyDraft, canFetch, currentModel, draftModel, onSelectModel, provider]);
-
-  // Refetch when the provider changes.
-  useEffect(() => {
-    setFetched(false);
-    setModels([]);
-    setError(null);
-  }, [provider]);
+  }, [apiKeyDraft, canFetch, currentModel, draftModel, onSelectModel]);
 
   useEffect(() => {
     if (apiKeyConfigured && !fetched && !apiKeyDraft.trim()) {
@@ -93,7 +85,7 @@ export function ClaudeModelPicker({
   if (!canFetch) {
     return (
       <p className="text-xs text-muted-foreground">
-        أدخل مفتاح {providerLabel} أعلاه لعرض النماذج المتاحة.
+        أدخل مفتاح OpenAI أعلاه لعرض النماذج المتاحة.
       </p>
     );
   }
@@ -124,13 +116,14 @@ export function ClaudeModelPicker({
 
       {selected && (
         <p className="text-xs text-muted-foreground">
-          المختار: <span className="text-primary" dir="ltr">{selected}</span>
+          المختار:{" "}
+          <span className="text-primary" dir="ltr">
+            {selected}
+          </span>
         </p>
       )}
 
-      {error && (
-        <p className="text-xs text-destructive">{error}</p>
-      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
 
       {!fetched && !loading && apiKeyDraft.trim() && (
         <button
@@ -144,7 +137,7 @@ export function ClaudeModelPicker({
 
       {loading && models.length === 0 && (
         <p className="py-4 text-center text-xs text-muted-foreground">
-          جارٍ جلب النماذج من {providerLabel}…
+          جارٍ جلب النماذج من OpenAI…
         </p>
       )}
 
@@ -178,7 +171,10 @@ export function ClaudeModelPicker({
                     <span className="block text-sm font-medium text-foreground">
                       {m.display_name}
                     </span>
-                    <span className="block text-[10px] text-muted-foreground" dir="ltr">
+                    <span
+                      className="block text-[10px] text-muted-foreground"
+                      dir="ltr"
+                    >
                       {m.id}
                       {m.max_input_tokens
                         ? ` · ${(m.max_input_tokens / 1000).toFixed(0)}k tokens`

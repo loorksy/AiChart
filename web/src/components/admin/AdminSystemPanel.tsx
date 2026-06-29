@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 interface HealthPayload {
   status: string;
   timestamp: string;
-  anthropic: boolean;
+  llm: boolean;
+  ai_provider?: string;
   telegram: boolean;
   cron_secret_set: boolean;
   binance_capture?: {
@@ -78,7 +79,7 @@ export function AdminSystemPanel() {
         <>
           <div className="grid gap-3 sm:grid-cols-2">
             <StatusPill ok={health.status === "ok"} label="الخادم يعمل" />
-            <StatusPill ok={health.anthropic} label="Claude (Anthropic)" />
+            <StatusPill ok={health.llm} label="OpenAI" />
             <StatusPill ok={health.telegram} label="بوت تليجرام" />
             <StatusPill ok={health.cron_secret_set} label="Cron / المراقبة 24/7" />
             {health.binance_capture && (

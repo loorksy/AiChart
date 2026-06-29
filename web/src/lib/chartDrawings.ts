@@ -1,5 +1,3 @@
-import type { LineWidth, LineStyle } from "lightweight-charts";
-import { barDurationSec } from "./intervals";
 import type { AnalysisProfile } from "./analysisProfile";
 
 /** Semantic types used by the agent + optional MT5-native types for advanced EA drawing. */
@@ -77,54 +75,6 @@ export interface ChartDrawing {
   meta?: Record<string, unknown>;
 }
 
-export interface DrawingStyle {
-  lineWidth: LineWidth;
-  lineStyle: LineStyle;
-  color: string;
-  opacity: number;
-}
-
-const SEMANTIC_DEFAULT_COLORS: Record<SemanticDrawingType, string> = {
-  price_line: "#22c55e",
-  trend_line: "#a78bfa",
-  forecast_path: "#f59e0b",
-  channel: "#38bdf8",
-  zone: "#6366f1",
-  fib_retracement: "#ec4899",
-  baseline: "#14b8a6",
-  marker: "#eab308",
-  histogram_band: "#f97316",
-};
-
-const SEMANTIC_TYPES = new Set<string>([
-  "price_line",
-  "trend_line",
-  "forecast_path",
-  "channel",
-  "zone",
-  "fib_retracement",
-  "baseline",
-  "marker",
-  "histogram_band",
-]);
-
-export function styleForConfidence(conf: number, type: DrawingType): DrawingStyle {
-  const base =
-    (SEMANTIC_TYPES.has(type)
-      ? SEMANTIC_DEFAULT_COLORS[type as SemanticDrawingType]
-      : undefined) ?? "#94a3b8";
-  if (conf >= 85) {
-    return { lineWidth: 3, lineStyle: 0, color: base, opacity: 1 };
-  }
-  if (conf >= 70) {
-    return { lineWidth: 2, lineStyle: 0, color: base, opacity: 0.95 };
-  }
-  if (conf >= 55) {
-    return { lineWidth: 2, lineStyle: 2, color: base, opacity: 0.75 };
-  }
-  return { lineWidth: 1, lineStyle: 1, color: base, opacity: 0.45 };
-}
-
 function isChartDrawing(d: unknown): d is ChartDrawing {
   if (typeof d !== "object" || d == null) return false;
   const o = d as ChartDrawing;
@@ -178,27 +128,6 @@ export function validateChartDrawings(
     out.push({ ...d, confidence: conf });
   }
   return out;
-}
-
-/** Map forecast points to unix timestamps from last candle time. */
-export function pointsToLineData(
-  points: ChartPoint[],
-  lastBarTimeSec: number,
-  interval: string,
-): { time: number; value: number }[] {
-  const step = barDurationSec(interval);
-  const byTime = new Map<number, number>();
-  for (const p of points) {
-    if (!Number.isFinite(p.price) || p.price <= 0) continue;
-    const rawTime =
-      p.time ?? lastBarTimeSec + (p.barsAhead ?? p.time_offset ?? 0) * step;
-    const time = Math.floor(Number(rawTime));
-    if (!Number.isFinite(time) || time <= 0) continue;
-    byTime.set(time, p.price);
-  }
-  return Array.from(byTime.entries())
-    .map(([time, value]) => ({ time, value }))
-    .sort((a, b) => a.time - b.time);
 }
 
 export function drawingPriceBounds(drawings: ChartDrawing[]): {
