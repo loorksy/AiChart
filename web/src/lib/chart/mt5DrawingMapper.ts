@@ -113,7 +113,7 @@ export function mapChartDrawingToMt5Objects(
     const entry = d.meta?.entry ?? d.price ?? points[0]?.price;
     const stop = d.meta?.stopLoss ?? d.price2 ?? points[1]?.price;
     const target = d.meta?.takeProfit ?? d.price3 ?? points[2]?.price;
-    const startTime = points[0]?.time ?? seconds(undefined);
+    const startTime = points[0]?.time ?? seconds();
     const endTime = points[points.length - 1]?.time ?? startTime;
     if (!entry || !stop || !target) return [];
     const mk = (name: string, price: number, color: string, suffix: string) => ({
