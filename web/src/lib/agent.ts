@@ -967,18 +967,12 @@ async function executeTool(
             });
             rec = { ...rec, memory_refs_json: memoryRefs };
           }
-          if (ctx.settings.mode === "auto") {
-            // Auto mode: the committee gates auto-execution (committeeBlocksAuto),
-            // so it must be ready before processRecommendations — keep it sync.
-            const committee = await evaluateCommittee(ctx.userId, rec, lessons);
-            await updateRecommendationIntelligence(rec.id, {
-              committee_json: JSON.stringify(committee),
-            });
-            rec = { ...rec, committee_json: JSON.stringify(committee) };
-          } else {
-            // Advisory modes (approval/direct): the committee is informational and
-            // never blocks here — evaluate it in the background and persist when
-            // ready so the reply is not delayed by an extra LLM round-trip.
+          // The committee is a background second opinion only — never a blocking
+          // call on the interactive path, in any mode. It never gates execution
+          // (riskGuard enforces the execution-time safety gate); it is evaluated
+          // async and persisted when ready so the reply is never delayed by an
+          // extra LLM round-trip.
+          {
             const recId = rec.id;
             void evaluateCommittee(ctx.userId, rec, lessons)
               .then((committee) =>
@@ -1156,9 +1150,12 @@ export async function runAgent(
     : baseTools;
   const maxSteps =
     options?.mode === "chart_analyze"
-      ? 8
+      ? // Single-pass: the analysis is precomputed in TypeScript and injected
+        // into the prompt, so the model only needs to record the recommendation
+        // and finalize — not "discover" via many tool rounds.
+        3
       : options?.responseMode === "fast"
-        ? 6
+        ? 4
         : options?.responseMode === "expert"
           ? 14
           : 10;

@@ -292,3 +292,44 @@ export function runAnalysisEngine(
 export function analysisToPrompt(a: MarketAnalysis): string {
   return JSON.stringify(a);
 }
+
+function fmt(n: number | null | undefined): string {
+  return n == null ? "—" : Number(n).toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+/**
+ * Readable Arabic block of the precomputed analysis, injected into the prompt so
+ * the model validates/ranks and writes the trade plan instead of discovering via
+ * many tool calls. It is the finished analysis, not raw data.
+ */
+export function formatAnalysisForPrompt(a: MarketAnalysis): string {
+  const s = a.suggestion;
+  const lines: string[] = [
+    `— تحليل فني مُسبق (محسوب في TypeScript، اعتمد عليه ولا تُعِد اكتشافه) —`,
+    `الاتجاه: ${a.trend} · البنية: ${a.structure} · ${a.indicators.summary}`,
+    `RSI ${fmt(a.indicators.rsi14)} · MACD-hist ${fmt(a.indicators.macdHistogram)} · ATR ${fmt(a.indicators.atr14)}`,
+    `أقرب دعم ${fmt(a.levels.nearestSupport)} · أقرب مقاومة ${fmt(a.levels.nearestResistance)}`,
+  ];
+  if (a.levels.breaks.length) {
+    lines.push(
+      `كسر هيكلي: ${a.levels.breaks.map((b) => `${b.kind} ${b.direction} @${fmt(b.price)}`).join(" · ")}`,
+    );
+  }
+  if (a.selectedPattern) {
+    const p = a.patterns[0]!;
+    lines.push(
+      `النمط المرشّح: ${p.label} (${p.bias}, ثقة ${p.confidence}%) كسر@${fmt(p.breakLevel)} هدف@${fmt(p.target)}`,
+    );
+  }
+  if (a.channel.present) lines.push(`قناة: ${a.channel.direction}`);
+  if (a.fib.nearest) {
+    lines.push(`أقرب فيبوناتشي: ${a.fib.nearest.ratio} @${fmt(a.fib.nearest.price)}`);
+  }
+  lines.push(
+    `confluence: ${a.confluence.bias} (ثقة ${a.confluence.confidence}%) — ${a.confluence.reasons.join("، ")}`,
+  );
+  lines.push(
+    `اقتراح آلي (راجِعه، لا تلتزم به حرفياً): ${s.decision} · دخول ${fmt(s.entry)} · وقف ${fmt(s.stop)} · أهداف ${s.targets.map(fmt).join("، ") || "—"} · R:R ${s.rr ?? "—"}`,
+  );
+  return lines.join("\n");
+}
