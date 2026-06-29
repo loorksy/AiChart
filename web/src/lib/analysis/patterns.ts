@@ -1,6 +1,11 @@
 import type { OhlcCandle } from "@/lib/ohlc/fetchOhlc";
 import type { ChartDrawing } from "@/lib/chartDrawings";
-import { priceLineDrawing, segmentFromPivots } from "./drawings";
+import {
+  polylineFromPivots,
+  necklineDrawing,
+  segmentFromPivots,
+  triangleDrawing,
+} from "./drawings";
 import { extractPivots, lastHighs, lastLows, near, type Pivot } from "./pivots";
 
 export type PatternType =
@@ -18,9 +23,7 @@ export interface PatternResult {
   type: PatternType;
   bias: "bullish" | "bearish";
   pivots: Pivot[];
-  /** Neckline / breakout level that confirms the pattern. */
   breakLevel: number;
-  /** Measured-move target once the break level gives way. */
   target: number;
   confidence: number;
   drawings: ChartDrawing[];
@@ -69,8 +72,8 @@ function detectDoubleTop(candles: OhlcCandle[], pivots: Pivot[]): PatternResult 
     target: neckline - height,
     confidence,
     drawings: [
-      segmentFromPivots(h1, h2, candles.length, confidence, "قمتان"),
-      priceLineDrawing(neckline, confidence, "خط العنق", "#ef4444"),
+      polylineFromPivots([h1, trough, h2], candles, confidence, "قمة مزدوجة", "m_pattern"),
+      necklineDrawing(h1, h2, candles, neckline, confidence),
     ],
   };
 }
@@ -98,8 +101,8 @@ function detectDoubleBottom(candles: OhlcCandle[], pivots: Pivot[]): PatternResu
     target: neckline + height,
     confidence,
     drawings: [
-      segmentFromPivots(l1, l2, candles.length, confidence, "قاعان"),
-      priceLineDrawing(neckline, confidence, "خط العنق", "#22c55e"),
+      polylineFromPivots([l1, peak, l2], candles, confidence, "قاع مزدوج", "w_pattern"),
+      necklineDrawing(l1, l2, candles, neckline, confidence),
     ],
   };
 }
@@ -123,6 +126,8 @@ function detectHeadAndShoulders(
   const confidence = Math.round(
     60 + (1 - Math.abs(ls.price - rs.price) / ((ls.price + rs.price) / 2)) * 30,
   );
+  const leftTrough = troughs[0]!;
+  const rightTrough = troughs[troughs.length - 1]!;
   return {
     type: "head_and_shoulders",
     bias: "bearish",
@@ -130,7 +135,10 @@ function detectHeadAndShoulders(
     breakLevel: neckline,
     target: neckline - height,
     confidence,
-    drawings: [priceLineDrawing(neckline, confidence, "خط العنق", "#ef4444")],
+    drawings: [
+      polylineFromPivots([ls, leftTrough, head, rightTrough, rs], candles, confidence, "رأس وكتفين", "head_and_shoulders"),
+      necklineDrawing(leftTrough, rightTrough, candles, neckline, confidence),
+    ],
   };
 }
 
@@ -153,6 +161,8 @@ function detectInverseHeadAndShoulders(
   const confidence = Math.round(
     60 + (1 - Math.abs(ls.price - rs.price) / ((ls.price + rs.price) / 2)) * 30,
   );
+  const leftPeak = peaks[0]!;
+  const rightPeak = peaks[peaks.length - 1]!;
   return {
     type: "inverse_head_and_shoulders",
     bias: "bullish",
@@ -160,7 +170,10 @@ function detectInverseHeadAndShoulders(
     breakLevel: neckline,
     target: neckline + height,
     confidence,
-    drawings: [priceLineDrawing(neckline, confidence, "خط العنق", "#22c55e")],
+    drawings: [
+      polylineFromPivots([ls, leftPeak, head, rightPeak, rs], candles, confidence, "رأس وكتفين معكوس", "inverse_head_and_shoulders"),
+      necklineDrawing(leftPeak, rightPeak, candles, neckline, confidence),
+    ],
   };
 }
 
@@ -184,25 +197,19 @@ function detectTriangleOrWedge(
   const height = resLevel - supLevel;
   if (height <= 0) return null;
 
-  // Ascending triangle — flat highs, rising lows.
   if (highsEqual && lSlope > flatTol) {
     return triangle("ascending_triangle", "bullish", highs, lows, resLevel, resLevel + height, 70, candles);
   }
-  // Descending triangle — flat lows, falling highs.
   if (lowsEqual && hSlope < -flatTol) {
     return triangle("descending_triangle", "bearish", highs, lows, supLevel, supLevel - height, 70, candles);
   }
-  // Wedges — both slopes same sign and converging.
   const converging = Math.abs(hSlope - lSlope) > flatTol;
   if (hSlope < -flatTol && lSlope < -flatTol && converging && hSlope > lSlope) {
-    // Falling wedge (bullish): both down, support falls faster.
     return triangle("falling_wedge", "bullish", highs, lows, resLevel, resLevel + height, 64, candles);
   }
   if (hSlope > flatTol && lSlope > flatTol && converging && lSlope > hSlope) {
-    // Rising wedge (bearish): both up, resistance rises slower.
     return triangle("rising_wedge", "bearish", highs, lows, supLevel, supLevel - height, 64, candles);
   }
-  // Symmetrical triangle — falling highs, rising lows.
   if (hSlope < -flatTol && lSlope > flatTol) {
     const bias = close >= (resLevel + supLevel) / 2 ? "bullish" : "bearish";
     const breakLevel = bias === "bullish" ? resLevel : supLevel;
@@ -222,6 +229,14 @@ function triangle(
   confidence: number,
   candles: OhlcCandle[],
 ): PatternResult {
+  const h0 = highs[0]!;
+  const h1 = highs[highs.length - 1]!;
+  const l0 = lows[0]!;
+  const l1 = lows[lows.length - 1]!;
+  const apexIndex = Math.max(h1.index, l1.index);
+  const apexPrice = (h1.price + l1.price) / 2;
+  const apex: Pivot = { index: apexIndex, price: apexPrice, kind: "high" };
+
   return {
     type,
     bias,
@@ -230,14 +245,13 @@ function triangle(
     target,
     confidence,
     drawings: [
-      segmentFromPivots(highs[0]!, highs[highs.length - 1]!, candles.length, confidence, "حدّ علوي"),
-      segmentFromPivots(lows[0]!, lows[lows.length - 1]!, candles.length, confidence, "حدّ سفلي"),
-      priceLineDrawing(breakLevel, confidence, "مستوى الكسر", bias === "bullish" ? "#22c55e" : "#ef4444"),
+      triangleDrawing(h0, apex, l0, candles, confidence, patternLabel(type), type as import("@/lib/chartDrawings").PatternTypeName),
+      segmentFromPivots(h0, h1, candles, confidence, "حدّ علوي", "trend_line"),
+      segmentFromPivots(l0, l1, candles, confidence, "حدّ سفلي", "trend_line"),
     ],
   };
 }
 
-/** Runs all geometric detectors and returns them ranked by confidence. */
 export function detectPatterns(candles: OhlcCandle[]): PatternResult[] {
   const pivots = extractPivots(candles);
   if (pivots.length < 3) return [];

@@ -46,7 +46,7 @@ export function analyzeTrendlines(candles: OhlcCandle[]): TrendlineAnalysis {
       segmentFromPivots(
         resistance.from,
         resistance.to,
-        candles.length,
+        candles,
         62,
         "خط اتجاه علوي",
       ),
@@ -57,7 +57,7 @@ export function analyzeTrendlines(candles: OhlcCandle[]): TrendlineAnalysis {
       segmentFromPivots(
         support.from,
         support.to,
-        candles.length,
+        candles,
         62,
         "خط اتجاه سفلي",
       ),

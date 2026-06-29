@@ -52,7 +52,12 @@ import {
 import {
   runChartAnalyzeLlm,
   buildChartAnalyzeUserContent,
+  type LiveReasoningEntry,
 } from "./analysis/chartAnalyzeLlm";
+import {
+  formatCandlesForPrompt,
+  processAgentDrawings,
+} from "./chart/processDrawings";
 import { evaluateCommittee } from "./committee";
 import {
   fetchTradingViewContext,
@@ -180,6 +185,7 @@ export interface MarketAnalyzeResult {
   telegramSent: boolean;
   telegramReasonAr?: string;
   chartVisionSource: ChartVisionSource;
+  liveReasoningLog: LiveReasoningEntry[];
 }
 
 function pickTelegramDelivery(
@@ -242,7 +248,7 @@ export async function runMarketAnalyze(
     chartImage?: ChatImagePayload | null;
   },
 ): Promise<MarketAnalyzeResult> {
-  const market: MarketType = opts?.market ?? "crypto";
+  const market: MarketType = opts?.market ?? "forex";
   let sym = symbol.toUpperCase().trim();
   if (market === "forex") {
     const resolved = await resolveMt5Symbol(userId, sym);
@@ -311,12 +317,18 @@ export async function runMarketAnalyze(
     });
   }
 
-  const seedDrawings = structure ? structureToSeedDrawings(structure) : [];
+  const seedDrawings =
+    structure && ohlcResult?.candles.length
+      ? structureToSeedDrawings(structure, ohlcResult.candles)
+      : [];
   const engineDrawings = engine?.drawings ?? [];
 
   const extraBlocks: string[] = [];
   if (engine) extraBlocks.push(formatAnalysisForPrompt(engine.analysis));
   if (structure) extraBlocks.push(formatStructureForPrompt(structure));
+  if (ohlcResult?.candles.length) {
+    extraBlocks.push(formatCandlesForPrompt(ohlcResult.candles));
+  }
   const tvBlock = formatTradingViewForPrompt(tvContext);
   if (tvBlock) extraBlocks.push(tvBlock);
 
@@ -413,12 +425,42 @@ export async function runMarketAnalyze(
   let rec: Recommendation | null = null;
   const action =
     llmOut.decision === "buy" || llmOut.decision === "sell" ? llmOut.decision : "wait";
-  const agentDrawings = validateChartDrawings(
-    llmOut.drawings,
-    action,
-    llmOut.confidence,
+
+  const candles = ohlcResult?.candles ?? [];
+  const processedAgent = processAgentDrawings(llmOut.drawings, {
+    candles,
+    decision: action,
+    confidence: llmOut.confidence,
     profile,
+    symbol: sym,
+    market,
+    sourceTimeframe: interval,
+  });
+
+  const mergedRaw = mergeSeedAndAgentDrawings(
+    processAgentDrawings([...seedDrawings, ...engineDrawings], {
+      candles,
+      decision: action,
+      confidence: llmOut.confidence,
+      profile,
+      symbol: sym,
+      market,
+      sourceTimeframe: interval,
+    }),
+    processedAgent,
   );
+
+  const agentDrawings = processAgentDrawings(mergedRaw, {
+    candles,
+    decision: action,
+    confidence: llmOut.confidence,
+    profile,
+    symbol: sym,
+    market,
+    sourceTimeframe: interval,
+  });
+
+  const liveReasoningLog = llmOut.liveReasoningLog ?? [];
 
   if (action === "buy" || action === "sell") {
     rec = await saveRecommendation(userId, {
@@ -467,17 +509,17 @@ export async function runMarketAnalyze(
 
   const rawDrawings = rec ? parseChartDrawingsJson(rec.chart_drawings_json) : agentDrawings;
   const validatedDrawings = rawDrawings.length
-    ? validateChartDrawings(
-        rawDrawings,
-        rec?.action ?? action,
-        rec?.confidence ?? llmOut.confidence,
+    ? processAgentDrawings(rawDrawings, {
+        candles,
+        decision: rec?.action ?? action,
+        confidence: rec?.confidence ?? llmOut.confidence,
         profile,
-      )
-    : [];
-  const drawings = mergeSeedAndAgentDrawings(
-    [...seedDrawings, ...engineDrawings],
-    validatedDrawings,
-  );
+        symbol: sym,
+        market,
+        sourceTimeframe: interval,
+      })
+    : agentDrawings;
+  const drawings = validatedDrawings;
 
   if (rec && (rec.action === "buy" || rec.action === "sell")) {
     const attached = await attachChartToRecommendation(userId, rec, {
@@ -518,5 +560,6 @@ export async function runMarketAnalyze(
     telegramSent: telegram.delivered,
     telegramReasonAr: telegram.reasonAr,
     chartVisionSource,
+    liveReasoningLog,
   };
 }

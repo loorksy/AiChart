@@ -1,7 +1,7 @@
 import type { OhlcCandle } from "@/lib/ohlc/fetchOhlc";
 import { detectStructureLevels } from "@/lib/ohlc/structure";
 import type { ChartDrawing } from "@/lib/chartDrawings";
-import { priceLineDrawing, zoneDrawing } from "./drawings";
+import { zoneDrawing } from "./drawings";
 import { extractPivots, near, type Pivot } from "./pivots";
 
 export interface SupplyDemandZone {
@@ -146,36 +146,19 @@ export function analyzeLevels(
   const breaks = detectBreaks(candles, pivots);
 
   const drawings: ChartDrawing[] = [];
-  if (structure.nearestSupport != null) {
-    drawings.push(
-      priceLineDrawing(structure.nearestSupport, 70, "دعم", "#22c55e"),
-    );
-  }
-  if (structure.nearestResistance != null) {
-    drawings.push(
-      priceLineDrawing(structure.nearestResistance, 70, "مقاومة", "#ef4444"),
-    );
-  }
-  for (const z of zones) {
+  for (const z of zones.slice(-2)) {
+    const toIndex = Math.min(candles.length - 1, z.fromIndex + 20);
     drawings.push(
       zoneDrawing(
         z.top,
         z.bottom,
         z.fromIndex,
-        candles.length,
+        toIndex,
+        candles,
         55 + Math.round(z.strength * 35),
         z.kind === "supply" ? "منطقة عرض" : "منطقة طلب",
         z.kind === "supply" ? "#ef4444" : "#22c55e",
-      ),
-    );
-  }
-  for (const pool of liquidity) {
-    drawings.push(
-      priceLineDrawing(
-        pool.price,
-        60,
-        pool.kind === "equal_highs" ? "سيولة فوق" : "سيولة تحت",
-        "#a78bfa",
+        z.kind === "supply" ? "supply_zone" : "demand_zone",
       ),
     );
   }

@@ -38,7 +38,7 @@ export function analyzeChannels(candles: OhlcCandle[]): ChannelAnalysis {
     channelDrawing(
       [resistance.from, resistance.to],
       [support.from, support.to],
-      candles.length,
+      candles,
       66,
       direction === "up" ? "قناة صاعدة" : direction === "down" ? "قناة هابطة" : "قناة عرضية",
     ),

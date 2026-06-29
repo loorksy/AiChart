@@ -10,7 +10,18 @@ export type SemanticDrawingType =
   | "fib_retracement"
   | "baseline"
   | "marker"
-  | "histogram_band";
+  | "histogram_band"
+  | "polyline_pattern"
+  | "risk_reward_box"
+  | "neckline"
+  | "breakout_arrow"
+  | "retest_zone"
+  | "pattern_label"
+  | "range_box"
+  | "supply_zone"
+  | "demand_zone"
+  | "decision_zone"
+  | "labeled_arrow";
 
 export type Mt5NativeDrawingType =
   | "hline"
@@ -43,12 +54,57 @@ export type Mt5NativeDrawingType =
 
 export type DrawingType = SemanticDrawingType | Mt5NativeDrawingType;
 
+export type SemanticRole =
+  | "support"
+  | "resistance"
+  | "demand_zone"
+  | "supply_zone"
+  | "range"
+  | "trendline"
+  | "channel"
+  | "neckline"
+  | "breakout"
+  | "retest"
+  | "entry"
+  | "stop_loss"
+  | "take_profit"
+  | "risk_reward"
+  | "pattern"
+  | "forecast"
+  | "liquidity_sweep"
+  | "decision_zone";
+
+export type PatternTypeName =
+  | "double_bottom"
+  | "double_top"
+  | "w_pattern"
+  | "m_pattern"
+  | "head_and_shoulders"
+  | "inverse_head_and_shoulders"
+  | "ascending_triangle"
+  | "descending_triangle"
+  | "symmetrical_triangle"
+  | "cup_and_handle"
+  | "flag"
+  | "pennant"
+  | "wedge"
+  | "channel"
+  | "range";
+
 export interface ChartPoint {
-  barsAhead: number;
-  /** Alias for EA flat format */
-  time_offset?: number;
   price: number;
+  /** Unix timestamp (sec or ms) — PRIMARY anchor for historical points. */
   time?: number;
+  /** ONLY for forecast_path future points. */
+  barsAhead?: number;
+  /** @deprecated use time */
+  time_offset?: number;
+}
+
+export interface DrawingScope {
+  symbol: string;
+  market: string;
+  anchorMode: "time_price";
 }
 
 export interface ChartDrawing {
@@ -57,6 +113,10 @@ export interface ChartDrawing {
   label?: string;
   color?: string;
   points: ChartPoint[];
+  anchorMode?: "time_price";
+  semanticRole?: SemanticRole;
+  patternType?: PatternTypeName;
+  drawingPurpose?: string;
   /** Optional flat coords (EA v3.07+) — used when points[] is empty */
   price?: number;
   price2?: number;
@@ -70,9 +130,46 @@ export interface ChartDrawing {
   fill_color?: string;
   font_size?: number;
   arrow_code?: number;
+  /** UI-only — never used for chart technical drawings */
   x?: number;
   y?: number;
-  meta?: Record<string, unknown>;
+  meta?: Record<string, unknown> & {
+    drawing_scope?: DrawingScope;
+    sourceTimeframe?: string;
+    riskReward?: number;
+    entry?: number;
+    stopLoss?: number;
+    takeProfit?: number;
+  };
+}
+
+const ZONE_TYPES = new Set<string>([
+  "zone",
+  "range_box",
+  "supply_zone",
+  "demand_zone",
+  "decision_zone",
+  "retest_zone",
+  "histogram_band",
+  "rectangle",
+]);
+
+const ARROW_TYPES = new Set<string>([
+  "breakout_arrow",
+  "labeled_arrow",
+  "arrow",
+  "arrow_up",
+  "arrow_down",
+  "arrow_buy",
+  "arrow_sell",
+]);
+
+export function isZoneDrawing(type: string): boolean {
+  return ZONE_TYPES.has(type);
+}
+
+export function isArrowDrawing(type: string): boolean {
+  return ARROW_TYPES.has(type);
 }
 
 function isChartDrawing(d: unknown): d is ChartDrawing {
@@ -119,10 +216,11 @@ export function validateChartDrawings(
     const conf = Math.min(100, Math.max(0, d.confidence ?? 0));
     if (d.type === "forecast_path") {
       if (confidence < 55 || action === "wait") continue;
-    const pts = d.points ?? [];
+      const pts = d.points ?? [];
       if (pts.length < profile.forecastBarsMin) continue;
       if (isFlatPath(pts)) continue;
     }
+    if (d.type === "risk_reward_box" && action === "wait") continue;
     if (d.type === "channel" && confidence < 75) continue;
     if (d.type === "fib_retracement" && confidence < 80) continue;
     out.push({ ...d, confidence: conf });

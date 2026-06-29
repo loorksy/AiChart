@@ -144,6 +144,7 @@ export async function POST(req: NextRequest) {
             }
           : null,
         chart_vision: result.chartVisionSource,
+        liveReasoningLog: result.liveReasoningLog,
       });
     }
 
@@ -196,6 +197,7 @@ export async function POST(req: NextRequest) {
               contextSummary: result.contextSummary,
               profileLabel: result.profileLabel,
               analysisTier: result.analysisTier,
+              liveReasoningLog: result.liveReasoningLog,
               quota: {
                 used: used + MARKET_ANALYZE_COST,
                 limit: limits.claude_quota,
@@ -254,6 +256,7 @@ export async function POST(req: NextRequest) {
       contextSummary: result.contextSummary,
       profileLabel: result.profileLabel,
       analysisTier: result.analysisTier,
+      liveReasoningLog: result.liveReasoningLog,
       quota: {
         used: used + MARKET_ANALYZE_COST,
         limit: limits.claude_quota,

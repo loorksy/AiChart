@@ -1,5 +1,7 @@
 import type { StructureAnalysis } from "./ohlc/structure";
 import type { ChartDrawing } from "./chartDrawings";
+import { rangeBoxDrawing } from "./analysis/drawings";
+import type { OhlcCandle } from "./ohlc/fetchOhlc";
 
 export function formatStructureForPrompt(structure: StructureAnalysis): string {
   const lines = [
@@ -22,65 +24,47 @@ export function formatStructureForPrompt(structure: StructureAnalysis): string {
   return lines.join("\n");
 }
 
+/**
+ * Minimal seed drawings — range box only, no horizontal line spam.
+ * Requires candles for time+price anchoring.
+ */
 export function structureToSeedDrawings(
   structure: StructureAnalysis,
+  candles: OhlcCandle[],
 ): ChartDrawing[] {
-  const drawings: ChartDrawing[] = [];
-  const lastBar = 0;
+  if (candles.length < 10) return [];
 
-  for (const s of structure.supports.slice(0, 3)) {
-    drawings.push({
-      type: "price_line",
-      confidence: Math.min(75, 58 + s.touches * 4),
-      label: "دعم",
-      points: [{ barsAhead: lastBar, price: s.price }],
-      meta: { rationale: `دعم swing — ${s.touches} لمسات`, source: "structure" },
-    });
-  }
-  for (const r of structure.resistances.slice(0, 3)) {
-    drawings.push({
-      type: "price_line",
-      confidence: Math.min(75, 58 + r.touches * 4),
-      label: "مقاومة",
-      points: [{ barsAhead: lastBar, price: r.price }],
-      meta: { rationale: `مقاومة swing — ${r.touches} لمسات`, source: "structure" },
-    });
-  }
+  const drawings: ChartDrawing[] = [];
+  const fromIndex = Math.max(0, candles.length - 60);
+  const toIndex = candles.length - 1;
 
   if (
     structure.nearestSupport != null &&
     structure.nearestResistance != null &&
     structure.nearestResistance > structure.nearestSupport
   ) {
-    const mid =
-      (structure.nearestSupport + structure.nearestResistance) / 2;
-    const height = structure.nearestResistance - structure.nearestSupport;
-    drawings.push({
-      type: "zone",
-      confidence: 62,
-      label: "منطقة سيولة",
-      points: [
-        { barsAhead: -20, price: structure.nearestSupport },
-        { barsAhead: 5, price: structure.nearestResistance },
-      ],
-      meta: {
-        rationale: "منطقة بين أقرب دعم ومقاومة",
-        source: "structure",
-      },
-    });
-    void mid;
-    void height;
+    drawings.push(
+      rangeBoxDrawing(
+        fromIndex,
+        toIndex,
+        structure.nearestResistance,
+        structure.nearestSupport,
+        candles,
+        62,
+        "نطاق سعري",
+        "range",
+      ),
+    );
   }
 
   return drawings;
 }
 
 const SMC_PROMPT_LINES = [
-  "ارسم Order Blocks و Fair Value Gaps كـ type: zone مع label عربي و confidence.",
-  "ارسم خطوط الاتجاه والقنوات كـ trend_line أو channel.",
-  "علّم BOS/CHoCH ونقاط السيولة كـ marker.",
-  "كل عنصر في chart_drawings يحمل label عربي و meta.rationale يشرح سبب الرسم.",
-  "factors[] في record_recommendation يجب أن يطابق labels الرسومات.",
+  "ارسم Order Blocks و Fair Value Gaps كـ zone/range_box مع time+price.",
+  "ارسم النماذج كـ polyline_pattern + neckline — لا price_line لكل قمة.",
+  "كل نقطة تاريخية: time (Unix) + price من جدول الشموع.",
+  "liveReasoningLog: 3–7 استنتاجات مرتبطة بما يُرسم.",
 ];
 
 export function smcPromptBlock(): string {
@@ -102,6 +86,7 @@ export function mergeSeedAndAgentDrawings(
   );
 
   const filteredSeed = seed.filter((s) => {
+    if (s.type === "range_box" && agent.some((a) => a.type === "range_box")) return false;
     const prices =
       s.points?.map((p) => p.price) ?? (s.price != null ? [s.price] : []);
     return !prices.some((p) =>

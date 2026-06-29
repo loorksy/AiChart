@@ -75,6 +75,7 @@ export function ChartPreviewPanel({
     riskReward,
     liveAnalysis,
     analyzeError,
+    liveReasoningLog,
     analyze,
     clearLayers,
     stopLiveAnalysis,
@@ -258,6 +259,7 @@ export function ChartPreviewPanel({
         <ChartTradeOverlay
           recommendation={recommendation}
           riskReward={riskReward}
+          liveReasoningLog={liveReasoningLog}
           isAnalyzing={isAnalyzing}
           liveAnalysis={liveAnalysis}
           drawings={drawings}

@@ -91,7 +91,8 @@ export function buildProfilePromptHints(
     );
   }
   lines.push(
-    "استخدم chart_drawings بأنواع متعددة (price_line, trend_line, forecast_path, marker…) حسب ثقة كل عنصر.",
+    "ارسم النماذج بصرياً: polyline_pattern, range_box, triangle, channel, neckline — كل نقطة time+price.",
+    "حد أقصى 7 رسومات · 3 price_line · liveReasoningLog 3–7 عناصر.",
     "سيناريو تنبؤي تعليمي — ليس ضماناً.",
   );
   return lines;

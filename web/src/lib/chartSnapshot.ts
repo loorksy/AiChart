@@ -162,6 +162,13 @@ function buildChartJson(
   const last = candles[n - 1]!;
   const barMs = barDurationSec(input.interval) * 1000;
   const xAt = (barsAhead: number) => last.time + barsAhead * barMs;
+  const xForPoint = (p: { time?: number; barsAhead?: number }) => {
+    if (p.time != null && p.time > 0) {
+      return p.time < 1e12 ? p.time * 1000 : p.time;
+    }
+    if (p.barsAhead != null) return xAt(p.barsAhead);
+    return last.time;
+  };
 
   const datasets: Record<string, unknown>[] = [
     {
@@ -235,12 +242,12 @@ function buildChartJson(
     dash: number[] | undefined,
   ) => {
     const points = drawing.points.map((p) => ({
-      x: xAt(p.barsAhead),
+      x: xForPoint(p),
       y: p.price,
     }));
     if (points.length === 0) return;
     // Anchor future-only paths to the current close so the line connects.
-    if (drawing.points.every((p) => p.barsAhead > 0)) {
+    if (drawing.points.every((p) => (p.barsAhead ?? 0) > 0 && !p.time)) {
       points.unshift({ x: last.time, y: last.close });
     }
     const maxX = Math.max(...points.map((p) => p.x));
@@ -352,7 +359,7 @@ function buildChartJson(
           type: "bar",
           label: d.label ?? "زخم",
           data: d.points.map((p) => ({
-            x: xAt(Math.min(p.barsAhead, 0)),
+            x: xForPoint({ ...p, barsAhead: Math.min(p.barsAhead ?? 0, 0) }),
             y: Math.abs(p.price),
           })),
           backgroundColor: `${color}66`,
@@ -364,7 +371,7 @@ function buildChartJson(
         for (const p of d.points) {
           annotations[`m${annIdx++}`] = {
             type: "point",
-            xValue: xAt(p.barsAhead),
+            xValue: xForPoint(p),
             yValue: p.price,
             backgroundColor: color,
             borderColor: "#0a0e17",

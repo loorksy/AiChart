@@ -80,7 +80,7 @@ export function analyzeFib(candles: OhlcCandle[]): FibAnalysis {
       low.price,
       high.index,
       low.index,
-      candles.length,
+      candles,
       65,
       levels,
     ),

@@ -14,6 +14,7 @@ import { consumeSse } from "@/lib/sse";
 import { computeRewardRisk } from "@/lib/rewardRisk";
 import type { Recommendation } from "@/lib/types";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
+import type { LiveReasoningEntry } from "@/lib/analysis/chartAnalyzeLlm";
 import type { MarketType } from "@/lib/markets/types";
 
 export type ChartAnalyzeSource = "market" | "chat_chart";
@@ -30,12 +31,14 @@ export interface ChartAnalyzeDonePayload {
   telegramReasonAr?: string;
   chartVisionSource?: ChartVisionSource;
   activities?: AgentActivity[];
+  liveReasoningLog?: LiveReasoningEntry[];
 }
 
 export interface ChartHydrateSnapshot {
   drawings?: ChartDrawing[];
   overlays?: ChartOverlay[];
   recommendation?: Recommendation | null;
+  liveReasoningLog?: LiveReasoningEntry[];
 }
 
 export interface UseChartAnalysisOptions {
@@ -102,7 +105,9 @@ export function useChartAnalysis({
   const abortRef = useRef<AbortController | null>(null);
   const analyzingRef = useRef(false);
   const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const contextKeyRef = useRef(`${symbol}|${interval}|${market}`);
+  const [liveReasoningLog, setLiveReasoningLog] = useState<LiveReasoningEntry[]>([]);
+  const drawingContextRef = useRef(`${symbol}|${market}`);
+  const analysisContextRef = useRef(`${symbol}|${interval}|${market}`);
   const skipLiveOnceRef = useRef(false);
 
   const riskReward = useMemo(() => {
@@ -133,6 +138,7 @@ export function useChartAnalysis({
     setHighlightDrawingIndex(null);
     setAnalysisText("");
     setAnalyzeActivities([]);
+    setLiveReasoningLog([]);
     setChartVisionLabel(null);
   }, []);
 
@@ -145,6 +151,7 @@ export function useChartAnalysis({
     if (data.profileLabel) setProfileLabel(data.profileLabel);
     if (data.contextSummary?.length) setContextSummary(data.contextSummary);
     if (data.activities?.length) setAnalyzeActivities(data.activities);
+    if (data.liveReasoningLog?.length) setLiveReasoningLog(data.liveReasoningLog);
     if (data.chartVisionSource) {
       setChartVisionLabel(chartVisionLabelAr(data.chartVisionSource));
     }
@@ -169,6 +176,7 @@ export function useChartAnalysis({
   const hydrateFromSnapshot = useCallback((snap: ChartHydrateSnapshot) => {
     if (snap.drawings?.length) setDrawings(snap.drawings);
     if (snap.overlays?.length) setOverlays(snap.overlays);
+    if (snap.liveReasoningLog?.length) setLiveReasoningLog(snap.liveReasoningLog);
     if (snap.recommendation !== undefined) {
       setRecommendation(snap.recommendation);
     }
@@ -193,6 +201,7 @@ export function useChartAnalysis({
       setAnalysisText("");
       setAnalyzeActivities([]);
       setChartVisionLabel(null);
+      setLiveReasoningLog([]);
       onAnalyzeStart?.();
 
       try {
@@ -311,11 +320,18 @@ export function useChartAnalysis({
     }
   }, []);
 
-  // Context change: clear or re-analyze in live mode
+  // Symbol/market change clears drawings; interval change keeps them (time+price reproject).
   useEffect(() => {
-    const key = `${symbol}|${interval}|${market}`;
-    if (key === contextKeyRef.current) return;
-    contextKeyRef.current = key;
+    const drawingKey = `${symbol}|${market}`;
+    const analysisKey = `${symbol}|${interval}|${market}`;
+
+    const symbolChanged = drawingKey !== drawingContextRef.current;
+    const intervalChanged = analysisKey !== analysisContextRef.current;
+
+    if (!symbolChanged && !intervalChanged) return;
+
+    drawingContextRef.current = drawingKey;
+    analysisContextRef.current = analysisKey;
 
     if (skipLiveOnceRef.current) {
       skipLiveOnceRef.current = false;
@@ -323,17 +339,24 @@ export function useChartAnalysis({
     }
 
     abortRef.current?.abort();
-    setOverlays([]);
-    setDrawings([]);
-    setRecommendation(null);
-    setIntents([]);
-    setProfileLabel(null);
-    setContextSummary([]);
-    setHighlightDrawingIndex(null);
-    setAnalysisText("");
-    setAnalyzeError(null);
 
-    if (!liveAnalysis) return;
+    if (symbolChanged) {
+      setOverlays([]);
+      setDrawings([]);
+      setLiveReasoningLog([]);
+      setRecommendation(null);
+      setIntents([]);
+      setProfileLabel(null);
+      setContextSummary([]);
+      setHighlightDrawingIndex(null);
+      setAnalysisText("");
+      setAnalyzeError(null);
+    } else if (intervalChanged) {
+      setAnalysisText("");
+      setAnalyzeError(null);
+    }
+
+    if (!liveAnalysis || !symbolChanged) return;
 
     if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
     liveTimerRef.current = setTimeout(() => {
@@ -369,6 +392,7 @@ export function useChartAnalysis({
     chartVisionLabel,
     liveAnalysis,
     riskReward,
+    liveReasoningLog,
     highlightDrawingIndex,
     setHighlightDrawingIndex,
     analyze,

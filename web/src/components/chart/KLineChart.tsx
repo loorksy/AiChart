@@ -11,7 +11,6 @@ import {
 import {
   init,
   dispose,
-  registerOverlay,
   type Chart,
   type KLineData,
 } from "klinecharts";
@@ -22,10 +21,12 @@ import {
 } from "@/lib/chartDrawings";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import { profileForInterval } from "@/lib/analysisProfile";
+import { normalizeTimestamp } from "@/lib/chart/chartTimeAnchor";
 import {
   drawingsToOverlays,
   type KLineOverlaySpec,
 } from "@/lib/chart/klineDrawingAdapter";
+import { ensureCustomOverlays } from "@/lib/chart/klineCustomOverlays";
 import type { ChatImagePayload } from "@/lib/chatImage";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,6 @@ interface Props {
   overlays?: ChartOverlay[];
   drawings?: ChartDrawing[];
   livePrice?: number;
-  /** Re-fetch candles on this interval (ms) for a live preview (0 = off). */
   refreshMs?: number;
   className?: string;
 }
@@ -56,45 +56,9 @@ interface RawCandle {
   volume?: number;
 }
 
-let rectRegistered = false;
-function ensureRectOverlay(): void {
-  if (rectRegistered) return;
-  rectRegistered = true;
-  try {
-    registerOverlay({
-      name: "rect",
-      totalStep: 3,
-      needDefaultPointFigure: true,
-      needDefaultXAxisFigure: true,
-      needDefaultYAxisFigure: true,
-      createPointFigures: ({ coordinates }) => {
-        if (coordinates.length < 2) return [];
-        const [a, b] = coordinates;
-        return [
-          {
-            type: "polygon",
-            attrs: {
-              coordinates: [
-                { x: a!.x, y: a!.y },
-                { x: b!.x, y: a!.y },
-                { x: b!.x, y: b!.y },
-                { x: a!.x, y: b!.y },
-              ],
-            },
-            styles: { style: "stroke_fill" },
-          },
-        ];
-      },
-    });
-  } catch {
-    /* already registered or unsupported */
-  }
-}
-
-/** klines endpoint returns time in SECONDS; KLineCharts wants ms timestamps. */
 function toKLineData(rows: RawCandle[]): KLineData[] {
   return rows.map((c) => ({
-    timestamp: c.time > 1e12 ? c.time : c.time * 1000,
+    timestamp: normalizeTimestamp(c.time),
     open: c.open,
     high: c.high,
     low: c.low,
@@ -121,12 +85,6 @@ function compositeCanvases(container: HTMLElement): string | null {
   return base64 ?? null;
 }
 
-/**
- * Web-native KLineCharts chart. Fetches broker (forex→EA) candles via
- * /api/market/klines, applies them with applyNewData/updateData, and renders the
- * existing ChartDrawing schema as live overlays through klineDrawingAdapter
- * (stable ids → migrate, not stack). No Binance stream, no synthetic data.
- */
 const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
   {
     symbol,
@@ -144,7 +102,7 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
   const overlayIdsRef = useRef<Set<string>>(new Set());
-  const [candleCount, setCandleCount] = useState(0);
+  const [candles, setCandles] = useState<KLineData[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
@@ -156,8 +114,8 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
     },
   }));
 
-  // Overlays (entry/stop/target/level price lines) → horizontal price_line drawings.
   const overlayDrawings = useMemo<ChartDrawing[]>(() => {
+    const lastTs = candles[candles.length - 1]?.timestamp;
     const colorFor: Record<string, string> = {
       entry: "#3b82f6",
       stop_loss: "#ef4444",
@@ -172,13 +130,12 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
         confidence: 80,
         label: o.label,
         color: colorFor[o.type] ?? "#94a3b8",
-        points: [{ barsAhead: 0, price: o.price }],
+        anchorMode: "time_price" as const,
+        points: [{ time: lastTs ?? 0, price: o.price }],
         price: o.price,
       }));
-  }, [overlays]);
+  }, [overlays, candles]);
 
-  // Fall back to the latest actionable recommendation's drawings when the
-  // analyze flow hasn't supplied explicit ones.
   const effectiveDrawings = useMemo<ChartDrawing[]>(() => {
     const base = drawings?.length
       ? drawings
@@ -193,15 +150,19 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
           if (!rec) return [] as ChartDrawing[];
           const raw = parseChartDrawingsJson(rec.chart_drawings_json);
           return raw.length
-            ? validateChartDrawings(raw, rec.action, rec.confidence ?? 60, profileForInterval(interval))
+            ? validateChartDrawings(
+                raw,
+                rec.action,
+                rec.confidence ?? 60,
+                profileForInterval(interval),
+              )
             : [];
         })();
     return [...overlayDrawings, ...base];
   }, [drawings, recommendations, symbol, interval, overlayDrawings]);
 
-  // init / dispose
   useEffect(() => {
-    ensureRectOverlay();
+    ensureCustomOverlays();
     const el = containerRef.current;
     if (!el) return;
     const chart = init(el, { styles: { grid: { show: true } } });
@@ -213,7 +174,6 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
     };
   }, []);
 
-  // candle data load + optional live refresh
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -232,10 +192,11 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
           return;
         }
         setError(null);
+        const klines = toKLineData(rows);
         const chart = chartRef.current;
         if (!chart) return;
-        chart.applyNewData(toKLineData(rows));
-        setCandleCount(rows.length);
+        chart.applyNewData(klines);
+        setCandles(klines);
       } catch {
         if (!cancelled) setError("تعذّر جلب الشموع.");
       }
@@ -249,12 +210,10 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
     };
   }, [symbol, interval, market, refreshMs]);
 
-  // live price → mutate the last bar
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !livePrice || candleCount === 0) return;
-    const list = chart.getDataList();
-    const last = list[list.length - 1];
+    if (!chart || !livePrice || candles.length === 0) return;
+    const last = candles[candles.length - 1];
     if (!last) return;
     chart.updateData({
       timestamp: last.timestamp,
@@ -264,13 +223,13 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
       close: livePrice,
       volume: last.volume ?? 0,
     });
-  }, [livePrice, candleCount]);
+  }, [livePrice, candles]);
 
-  // drawings → overlays (remove stale, create/migrate by stable id)
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart) return;
-    const specs: KLineOverlaySpec[] = drawingsToOverlays(effectiveDrawings, candleCount);
+    if (!chart || candles.length === 0) return;
+
+    const specs: KLineOverlaySpec[] = drawingsToOverlays(effectiveDrawings, candles);
     const nextIds = new Set(specs.map((s) => s.id));
 
     for (const id of overlayIdsRef.current) {
@@ -294,11 +253,11 @@ const KLineChart = forwardRef<KLineChartHandle, Props>(function KLineChart(
           extendData: spec.extendData,
         });
       } catch {
-        /* unknown overlay name — skip rather than crash the chart */
+        /* skip unsupported overlay */
       }
     }
     overlayIdsRef.current = nextIds;
-  }, [effectiveDrawings, candleCount]);
+  }, [effectiveDrawings, candles, interval]);
 
   return (
     <div className={cn("relative h-full w-full", className)}>

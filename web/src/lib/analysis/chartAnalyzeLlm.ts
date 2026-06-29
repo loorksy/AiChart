@@ -3,8 +3,24 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import { getActiveModel, getProviderApiKey } from "@/lib/llm";
 import { callOpenAICompatStructured } from "@/lib/openaiCompat";
 import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "@/lib/persona";
+import { isGenericLogPhrase } from "@/lib/chart/chartTerminology";
 import type { TradingSettings } from "@/lib/types";
 import { buildUserMessageContent, type ChatImagePayload } from "@/lib/chatImage";
+
+export type LiveReasoningType =
+  | "observation"
+  | "structure"
+  | "pattern"
+  | "risk"
+  | "decision"
+  | "drawing";
+
+export interface LiveReasoningEntry {
+  type: LiveReasoningType;
+  text: string;
+  confidence?: "low" | "medium" | "high";
+  relatedDrawingIndex?: number;
+}
 
 export interface ChartAnalyzeLlmResult {
   decision: "buy" | "sell" | "wait";
@@ -19,7 +35,34 @@ export interface ChartAnalyzeLlmResult {
   narrative: string;
   factors: string[];
   drawings: ChartDrawing[];
+  liveReasoningLog: LiveReasoningEntry[];
 }
+
+const POINT_SCHEMA = {
+  type: "object",
+  properties: {
+    time: { type: "number" },
+    price: { type: "number" },
+    barsAhead: { type: "number" },
+  },
+  required: ["price"],
+  additionalProperties: false,
+};
+
+const DRAWING_SCHEMA = {
+  type: "object",
+  properties: {
+    type: { type: "string" },
+    label: { type: "string" },
+    confidence: { type: "number" },
+    color: { type: "string" },
+    semanticRole: { type: "string" },
+    patternType: { type: "string" },
+    points: { type: "array", items: POINT_SCHEMA },
+  },
+  required: ["type", "confidence", "points"],
+  additionalProperties: true,
+};
 
 const CHART_ANALYZE_SCHEMA = {
   type: "object",
@@ -35,33 +78,24 @@ const CHART_ANALYZE_SCHEMA = {
     forecast_path: { type: "array", items: { type: "number" } },
     narrative: { type: "string" },
     factors: { type: "array", items: { type: "string" } },
-    drawings: {
+    liveReasoningLog: {
       type: "array",
       items: {
         type: "object",
         properties: {
-          type: { type: "string" },
-          label: { type: "string" },
-          confidence: { type: "number" },
-          color: { type: "string" },
-          price: { type: "number" },
-          points: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                barsAhead: { type: "number" },
-                price: { type: "number" },
-              },
-              required: ["barsAhead", "price"],
-              additionalProperties: false,
-            },
+          type: {
+            type: "string",
+            enum: ["observation", "structure", "pattern", "risk", "decision", "drawing"],
           },
+          text: { type: "string" },
+          confidence: { type: "string", enum: ["low", "medium", "high"] },
+          relatedDrawingIndex: { type: "number" },
         },
-        required: ["type", "confidence", "points"],
+        required: ["type", "text"],
         additionalProperties: false,
       },
     },
+    drawings: { type: "array", items: DRAWING_SCHEMA },
   },
   required: [
     "decision",
@@ -75,10 +109,46 @@ const CHART_ANALYZE_SCHEMA = {
     "forecast_path",
     "narrative",
     "factors",
+    "liveReasoningLog",
     "drawings",
   ],
   additionalProperties: false,
 } as const;
+
+const LOG_TYPES = new Set<LiveReasoningType>([
+  "observation",
+  "structure",
+  "pattern",
+  "risk",
+  "decision",
+  "drawing",
+]);
+
+export function sanitizeLiveReasoningLog(
+  entries: LiveReasoningEntry[] | undefined,
+): LiveReasoningEntry[] {
+  if (!Array.isArray(entries)) return [];
+  const seen = new Set<string>();
+  const out: LiveReasoningEntry[] = [];
+  for (const e of entries) {
+    const text = String(e.text ?? "").trim();
+    if (!text || text.length < 8) continue;
+    if (isGenericLogPhrase(text)) continue;
+    if (seen.has(text)) continue;
+    seen.add(text);
+    const type = LOG_TYPES.has(e.type as LiveReasoningType)
+      ? (e.type as LiveReasoningType)
+      : "observation";
+    out.push({
+      type,
+      text,
+      confidence: e.confidence,
+      relatedDrawingIndex: e.relatedDrawingIndex,
+    });
+    if (out.length >= 7) break;
+  }
+  return out;
+}
 
 function compatTarget() {
   const apiKey = getProviderApiKey("openai");
@@ -97,7 +167,6 @@ function flattenSystem(input: Awaited<ReturnType<typeof buildSystemPrompt>>): st
     : input.static;
 }
 
-/** Single structured OpenAI call — precomputed analysis is injected in the user prompt. */
 export async function runChartAnalyzeLlm(opts: {
   userId: number;
   settings: TradingSettings;
@@ -109,7 +178,7 @@ export async function runChartAnalyzeLlm(opts: {
   const system =
     flattenSystem(systemBase) +
     chartAnalyzeSystemSuffix() +
-    "\n\nأعد JSON فقط حسب المخطط — decision/confidence/entry/stop_loss/targets/reason/narrative/drawings/factors.";
+    "\n\nأعد JSON فقط حسب المخطط — decision/liveReasoningLog/drawings مع time+price.";
 
   const messages: Message[] = [
     {
@@ -131,6 +200,13 @@ export async function runChartAnalyzeLlm(opts: {
   );
 
   const parsed = data as unknown as ChartAnalyzeLlmResult;
+  const liveLog = sanitizeLiveReasoningLog(parsed.liveReasoningLog);
+  const factors =
+    liveLog.length >= 3
+      ? liveLog.map((e) => e.text)
+      : Array.isArray(parsed.factors)
+        ? parsed.factors.map(String)
+        : [];
 
   return {
     result: {
@@ -150,7 +226,8 @@ export async function runChartAnalyzeLlm(opts: {
         ? parsed.forecast_path.map(Number)
         : [],
       narrative: String(parsed.narrative ?? parsed.reason ?? ""),
-      factors: Array.isArray(parsed.factors) ? parsed.factors.map(String) : [],
+      factors,
+      liveReasoningLog: liveLog,
       drawings: Array.isArray(parsed.drawings) ? (parsed.drawings as ChartDrawing[]) : [],
     },
     usageTokens: usage.input_tokens + usage.output_tokens,

@@ -221,19 +221,38 @@ export function runAnalysisEngine(
       : null;
 
   const drawings: ChartDrawing[] = [
-    priceLineDrawing(currentPrice, 50, "السعر الحالي", "#94a3b8"),
     ...levels.drawings,
     ...fib.drawings,
     ...channel.drawings,
     ...trendlines.drawings,
     ...(bestPattern?.drawings ?? []),
   ];
-  if (suggestion.stop != null) {
-    drawings.push(priceLineDrawing(suggestion.stop, suggestion.confidence, "وقف الخسارة", "#ef4444"));
+  if (suggestion.stop != null && suggestion.decision !== "hold") {
+    drawings.push(
+      priceLineDrawing(
+        suggestion.stop,
+        suggestion.confidence,
+        "وقف الخسارة",
+        candles,
+        "#ef4444",
+        "stop_loss",
+      ),
+    );
   }
-  suggestion.targets.forEach((t, i) =>
-    drawings.push(priceLineDrawing(t, suggestion.confidence, `هدف ${i + 1}`, "#22c55e")),
-  );
+  if (suggestion.decision !== "hold") {
+    suggestion.targets.forEach((t, i) =>
+      drawings.push(
+        priceLineDrawing(
+          t,
+          suggestion.confidence,
+          `الهدف ${i + 1}`,
+          candles,
+          "#22c55e",
+          "take_profit",
+        ),
+      ),
+    );
+  }
 
   const analysis: MarketAnalysis = {
     symbol: symbol.toUpperCase(),
