@@ -60,6 +60,7 @@ export function nearestCandleIndex(candles: CandleLike[], timeMs: number): numbe
 export interface PointToKLineOptions {
   allowBarsAhead?: boolean;
   fallbackLastIndex?: number;
+  allowPriceOnly?: boolean;
 }
 
 /**
@@ -71,7 +72,7 @@ export function pointToKLinePoint(
   candles: CandleLike[],
   opts: PointToKLineOptions = {},
 ): KLinePoint | null {
-  const { allowBarsAhead = false, fallbackLastIndex } = opts;
+  const { allowBarsAhead = false, fallbackLastIndex, allowPriceOnly = true } = opts;
   const lastIndex = fallbackLastIndex ?? Math.max(0, candles.length - 1);
 
   if (point.time != null && point.time > 0) {
@@ -98,6 +99,7 @@ export function pointToKLinePoint(
     typeof point.price === "number" &&
     point.price > 0 &&
     candles.length > 0 &&
+    allowPriceOnly &&
     point.barsAhead == null &&
     (point.time == null || point.time <= 0)
   ) {
@@ -110,6 +112,10 @@ export function pointToKLinePoint(
 /** Whether a drawing type may use barsAhead on future points. */
 export function allowsBarsAhead(type: string): boolean {
   return type === "forecast_path";
+}
+
+export function allowsPriceOnlyAnchor(type: string): boolean {
+  return type === "price_line" || type === "hline" || type === "baseline";
 }
 
 function expandLegacyPriceFields(d: ChartDrawing, candles: AnyCandle[]): ChartDrawing {
@@ -138,6 +144,7 @@ export function drawingPointsToKLine(
     for (const p of d.points) {
       const kp = pointToKLinePoint(p, candles, {
         allowBarsAhead: allowBars,
+        allowPriceOnly: allowsPriceOnlyAnchor(d.type),
         fallbackLastIndex: lastIndex,
       });
       if (!kp) return null;
@@ -160,7 +167,11 @@ export function drawingPointsToKLine(
         barsAhead: d.time_offset != null && i === 0 ? d.time_offset : undefined,
       },
       candles,
-      { allowBarsAhead: allowBars, fallbackLastIndex: lastIndex },
+      {
+        allowBarsAhead: allowBars,
+        allowPriceOnly: allowsPriceOnlyAnchor(d.type),
+        fallbackLastIndex: lastIndex,
+      },
     );
     if (!kp) return null;
     flat.push(kp);

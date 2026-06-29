@@ -124,6 +124,7 @@ export default function MarketClient({
     chartVisionLabel,
     liveAnalysis,
     riskReward,
+    liveReasoningLog,
     highlightDrawingIndex,
     setHighlightDrawingIndex,
     analyze,
@@ -370,6 +371,7 @@ export default function MarketClient({
               riskReward={riskReward}
               isAnalyzing={isAnalyzing}
               liveAnalysis={liveAnalysis}
+              liveReasoningLog={liveReasoningLog}
               drawings={drawings}
               onHighlightDrawing={setHighlightDrawingIndex}
               onStopLive={stopLiveAnalysis}
