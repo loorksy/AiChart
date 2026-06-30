@@ -21,6 +21,7 @@ import type { EaGetOhlcResult } from "@/lib/types";
 import { getCached, setCached } from "@/lib/bridge/cache";
 import { freshnessMeta, type FreshnessMeta } from "@/lib/bridge/freshness";
 import { getMetaApi } from "@/lib/metaapi/client";
+import { fetchOandaCandles, oandaConfigured } from "@/lib/markets/oanda";
 
 export const OHLC_CACHE_TTL_MS = 45_000;
 export const OHLC_MAX_LIMIT = 500;
@@ -39,7 +40,8 @@ export type OhlcSource =
   | "binance"
   | "heartbeat_cache"
   | "mt5local"
-  | "metaapi";
+  | "metaapi"
+  | "oanda";
 
 export interface FetchOhlcResult {
   symbol: string;
@@ -167,6 +169,20 @@ async function fetchForexOhlcLive(
   limit: number,
   preferCache = false,
 ): Promise<{ candles: OhlcCandle[]; source: OhlcSource; warning?: string }> {
+  // Owner decision: forex MARKET DATA comes from OANDA when configured (real
+  // demo/live market data). Execution still runs on the user's EA/MT5. Falls
+  // back to the EA candle path when OANDA is unset or returns nothing.
+  if (oandaConfigured()) {
+    try {
+      const candles = await fetchOandaCandles(symbol, interval, limit);
+      if (candles.length > 0) {
+        return { candles: candles.slice(-limit), source: "oanda" };
+      }
+    } catch (e) {
+      console.error("[oanda] candles failed, falling back to EA", e);
+    }
+  }
+
   const backend = await resolveForexBackendForUser(userId);
 
   if (backend === "metaapi") {
