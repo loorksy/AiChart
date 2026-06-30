@@ -131,3 +131,86 @@ export async function fetchOandaCandles(
   }
   return out;
 }
+
+export interface OandaQuote {
+  symbol: string;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  tradeable: boolean;
+}
+
+interface OandaPriceRow {
+  instrument: string;
+  bids?: { price: string }[];
+  asks?: { price: string }[];
+  tradeable?: boolean;
+}
+
+/**
+ * Live bid/ask/mid for one or more symbols from OANDA. Requires OANDA_ACCOUNT_ID.
+ * Returns [] when not configured or on failure so callers fall back to EA.
+ */
+export async function fetchOandaPricing(symbols: string[]): Promise<OandaQuote[]> {
+  const accountId = oandaAccountId();
+  if (!oandaConfigured() || !accountId) return [];
+  const instruments = symbols
+    .map((s) => toOandaInstrument(s))
+    .filter((i): i is string => i != null);
+  if (instruments.length === 0) return [];
+
+  const url = `${oandaBaseUrl()}/v3/accounts/${accountId}/pricing?instruments=${instruments.join("%2C")}`;
+  const res = await fetchWithTimeout(
+    url,
+    { headers: authHeaders(), cache: "no-store" },
+    { timeoutMs: httpTimeoutMs(), label: "OANDA pricing" },
+  );
+  if (!res.ok) throw new Error(`OANDA pricing HTTP ${res.status}`);
+  const data = (await res.json()) as { prices?: OandaPriceRow[] };
+  return (data.prices ?? []).map((p) => {
+    const bid = p.bids?.[0] ? Number(p.bids[0].price) : null;
+    const ask = p.asks?.[0] ? Number(p.asks[0].price) : null;
+    const mid = bid != null && ask != null ? (bid + ask) / 2 : (bid ?? ask);
+    return {
+      symbol: fromOandaInstrument(p.instrument),
+      bid: bid != null && Number.isFinite(bid) ? bid : null,
+      ask: ask != null && Number.isFinite(ask) ? ask : null,
+      mid: mid != null && Number.isFinite(mid) ? mid : null,
+      tradeable: p.tradeable !== false,
+    };
+  });
+}
+
+export interface OandaInstrument {
+  symbol: string;
+  displayName: string;
+  type: string;
+}
+
+interface OandaInstrumentRow {
+  name: string;
+  displayName?: string;
+  type?: string;
+}
+
+/**
+ * The OANDA account's tradable instrument universe (forex + metals + CFDs).
+ * Requires OANDA_ACCOUNT_ID. Returns [] when not configured or on failure.
+ */
+export async function fetchOandaInstruments(): Promise<OandaInstrument[]> {
+  const accountId = oandaAccountId();
+  if (!oandaConfigured() || !accountId) return [];
+  const url = `${oandaBaseUrl()}/v3/accounts/${accountId}/instruments`;
+  const res = await fetchWithTimeout(
+    url,
+    { headers: authHeaders(), cache: "no-store" },
+    { timeoutMs: httpTimeoutMs(), label: "OANDA instruments" },
+  );
+  if (!res.ok) throw new Error(`OANDA instruments HTTP ${res.status}`);
+  const data = (await res.json()) as { instruments?: OandaInstrumentRow[] };
+  return (data.instruments ?? []).map((i) => ({
+    symbol: fromOandaInstrument(i.name),
+    displayName: i.displayName ?? i.name,
+    type: i.type ?? "CURRENCY",
+  }));
+}
