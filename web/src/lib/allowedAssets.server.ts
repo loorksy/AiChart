@@ -1,5 +1,6 @@
 import type { MarketType } from "./markets/types";
 import { listBrokerSymbols } from "./eaStore";
+import { fetchOandaInstruments, oandaConfigured } from "./markets/oanda";
 import {
   MONITOR_TOP_SYMBOL_LIMIT,
   isOpenAssetsPolicy,
@@ -33,6 +34,18 @@ export async function resolveScanAssetsForMarket(
     if (isOpenAssetsPolicy(raw, "forex")) {
       const allowed = parseAllowedAssets(raw, "forex");
       if (allowed.length > 0) return allowed.slice(0, topLimit);
+      // Owner decision: market-data universe from OANDA when configured.
+      if (oandaConfigured()) {
+        try {
+          const oanda = await fetchOandaInstruments();
+          const fx = oanda
+            .filter((i) => i.type === "CURRENCY" || i.type === "METAL")
+            .map((i) => i.symbol);
+          if (fx.length > 0) return fx.slice(0, topLimit);
+        } catch {
+          /* fall through to EA universe */
+        }
+      }
       const broker = await listBrokerSymbols(userId, { forexOnly: true });
       return broker.slice(0, topLimit);
     }

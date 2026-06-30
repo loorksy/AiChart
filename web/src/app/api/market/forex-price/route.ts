@@ -6,14 +6,39 @@ import { getForexLiveMid } from "@/lib/markets/forexPrice";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { getRpcConnection } from "@/lib/metaapi/client";
 import { getMtAccount, getMtAccountMeta } from "@/lib/store";
+import {
+  fetchOandaPricing,
+  oandaAccountId,
+  oandaConfigured,
+} from "@/lib/markets/oanda";
 
-/** Live forex price — MetaApi or EA/mt5local (resolveMt5Symbol + canonical match). */
+/** Live forex price — OANDA (when configured) → MetaApi or EA/mt5local. */
 export async function GET(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
     const symbol = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
       .toUpperCase()
       .replace(/[^A-Z0-9.]/g, "");
+
+    // Owner decision: market data (incl. live price) from OANDA when configured.
+    if (oandaConfigured() && oandaAccountId()) {
+      try {
+        const [q] = await fetchOandaPricing([symbol]);
+        if (q && q.mid != null) {
+          return NextResponse.json({
+            connected: true,
+            online: q.tradeable,
+            symbol,
+            price: q.mid,
+            bid: q.bid,
+            ask: q.ask,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch {
+        /* fall through to MetaApi / EA */
+      }
+    }
 
     if (getForexBackend() === "metaapi") {
       const meta = await getMtAccountMeta(user.id);
