@@ -1,30 +1,22 @@
 import { getKlines, type BinanceEnv } from "@/lib/binance";
-import { queueEaGetOhlc } from "@/lib/eaAgentCommands";
-import { getEaCandles, getEaCandlesResolved } from "@/lib/eaStore";
 import { executionToBinanceEnv } from "@/lib/executionEnv";
 import {
   intervalPlan,
-  mt5IntervalPlan,
   normalizeInterval,
   resampleOhlc,
 } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
-import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
-import { mt5Rates } from "@/lib/mt5local/client";
-import {
-  getMtAccount,
-  getMtAccountMeta,
-  getSettings,
-  resolveForexBackendForUser,
-} from "@/lib/store";
-import type { EaGetOhlcResult } from "@/lib/types";
+import { getSettings } from "@/lib/store";
 import { getCached, setCached } from "@/lib/bridge/cache";
 import { freshnessMeta, type FreshnessMeta } from "@/lib/bridge/freshness";
-import { getMetaApi } from "@/lib/metaapi/client";
-import { fetchOandaCandles, oandaConfigured } from "@/lib/markets/oanda";
+import {
+  fetchOandaCandles,
+  oandaAccountId,
+  oandaConfigured,
+} from "@/lib/markets/oanda";
 
 export const OHLC_CACHE_TTL_MS = 45_000;
-export const OHLC_MAX_LIMIT = 500;
+export const OHLC_MAX_LIMIT = 5000;
 
 export interface OhlcCandle {
   time: number;
@@ -35,13 +27,7 @@ export interface OhlcCandle {
   volume?: number;
 }
 
-export type OhlcSource =
-  | "mt5_ohlc"
-  | "binance"
-  | "heartbeat_cache"
-  | "mt5local"
-  | "metaapi"
-  | "oanda";
+export type OhlcSource = "binance" | "oanda";
 
 export interface FetchOhlcResult {
   symbol: string;
@@ -55,6 +41,7 @@ export interface FetchOhlcResult {
   warning?: string;
   nextCursor?: number | null;
   freshness?: FreshnessMeta;
+  hasMore?: boolean;
 }
 
 export interface FetchOhlcOptions {
@@ -66,210 +53,50 @@ export interface FetchOhlcOptions {
   /** Millisecond open time — fetch candles strictly before this (crypto pagination). */
   cursor?: number;
   skipCache?: boolean;
-  /** Forex: return EA heartbeat cache immediately without blocking on get_ohlc. */
-  preferCache?: boolean;
+  /** Millisecond open time — fetch forex candles strictly before this (OANDA pagination). */
+  beforeMs?: number;
+  /** Inclusive range for Pro datafeed (milliseconds). */
+  fromMs?: number;
+  toMs?: number;
 }
 
 export function ohlcCacheResource(symbol: string, interval: string): string {
   return `ohlc:${symbol.toUpperCase()}:${normalizeInterval(interval)}`;
 }
 
-function normalizeEaCandles(raw: unknown[]): OhlcCandle[] {
-  return raw
-    .map((row) => {
-      const c = row as Record<string, unknown>;
-      const time = Number(c.time ?? c.openTime ?? c.t ?? 0);
-      const open = Number(c.open ?? c.o ?? 0);
-      const high = Number(c.high ?? c.h ?? 0);
-      const low = Number(c.low ?? c.l ?? 0);
-      const close = Number(c.close ?? c.c ?? 0);
-      if (!time || !open) return null;
-      return {
-        time,
-        open,
-        high,
-        low,
-        close,
-        volume: c.volume != null ? Number(c.volume) : undefined,
-      };
-    })
-    .filter(Boolean) as OhlcCandle[];
-}
-
-async function fetchMetaApiForexCandles(
-  userId: number,
-  symbol: string,
-  interval: string,
-  limit: number,
-): Promise<OhlcCandle[]> {
-  const row = await getMtAccount(userId);
-  if (!row?.metaapi_account_id) return [];
-
-  const api = await getMetaApi();
-  const account = await api.metatraderAccountApi.getAccount(row.metaapi_account_id);
-  if (account.state !== "DEPLOYED") return [];
-
-  const resolved = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
-  const { base: tf, factor } = mt5IntervalPlan(interval);
-  const baseLimit = Math.min(limit * factor, OHLC_MAX_LIMIT);
-  const raw = (await account.getHistoricalCandles(
-    resolved,
-    tf,
-    undefined,
-    baseLimit,
-  )) as Array<{
-    time: string | Date;
-    open: number;
-    high: number;
-    low: number;
-    close: number;
-  }>;
-
-  const baseCandles = raw
-    .map((c) => ({
-      time: Math.floor(new Date(c.time as string | Date).getTime() / 1000),
-      open: Number(c.open),
-      high: Number(c.high),
-      low: Number(c.low),
-      close: Number(c.close),
-    }))
-    .filter((b) => Number.isFinite(b.time) && b.time > 0)
-    .sort((a, b) => a.time - b.time);
-
-  return resampleOhlc(baseCandles, factor) as OhlcCandle[];
-}
-
-async function fetchForexOhlcFromEaCache(
-  userId: number,
-  symbol: string,
-  interval: string,
-  limit: number,
-): Promise<{ candles: OhlcCandle[]; source: OhlcSource } | null> {
-  const mt5Symbol = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
-  const { base: eaInterval, factor } = mt5IntervalPlan(interval);
-  const cached = await getEaCandlesResolved(userId, mt5Symbol, eaInterval);
-  if (!cached) return null;
-  try {
-    const baseCandles = normalizeEaCandles(JSON.parse(cached.candles_json) as unknown[]);
-    if (baseCandles.length === 0) return null;
-    const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
-    return {
-      candles: candles.slice(-limit),
-      source: "heartbeat_cache",
-    };
-  } catch {
-    return null;
-  }
-}
-
 async function fetchForexOhlcLive(
-  userId: number,
   symbol: string,
   interval: string,
   limit: number,
-  preferCache = false,
-): Promise<{ candles: OhlcCandle[]; source: OhlcSource; warning?: string }> {
-  // Owner decision: forex MARKET DATA comes from OANDA when configured (real
-  // demo/live market data). Execution still runs on the user's EA/MT5. Falls
-  // back to the EA candle path when OANDA is unset or returns nothing.
-  if (oandaConfigured()) {
-    try {
-      const candles = await fetchOandaCandles(symbol, interval, limit);
-      if (candles.length > 0) {
-        return { candles: candles.slice(-limit), source: "oanda" };
-      }
-    } catch (e) {
-      console.error("[oanda] candles failed, falling back to EA", e);
-    }
+  opts?: { beforeMs?: number; fromMs?: number; toMs?: number },
+): Promise<{ candles: OhlcCandle[]; source: OhlcSource; warning?: string; hasMore?: boolean }> {
+  if (!oandaConfigured() || !oandaAccountId()) {
+    return {
+      candles: [],
+      source: "oanda",
+      warning: "OANDA غير مُعدّ — أضف OANDA_API_TOKEN و OANDA_ACCOUNT_ID.",
+      hasMore: false,
+    };
   }
-
-  const backend = await resolveForexBackendForUser(userId);
-
-  if (backend === "metaapi") {
-    const candles = await fetchMetaApiForexCandles(userId, symbol, interval, limit);
+  try {
+    const { candles, hasMore } = await fetchOandaCandles(symbol, interval, limit, opts);
     if (candles.length > 0) {
-      return { candles: candles.slice(-limit), source: "metaapi" };
+      return {
+        candles: opts?.fromMs != null ? candles : candles.slice(-limit),
+        source: "oanda",
+        hasMore,
+      };
     }
     return {
       candles: [],
-      source: "metaapi",
-      warning: "MetaApi: no candles — verify account is deployed and symbol exists.",
+      source: "oanda",
+      warning: "OANDA: لا شموع لهذا الرمز أو الفاصل الزمني.",
+      hasMore: false,
     };
+  } catch (e) {
+    console.error("[oanda] candles failed", e);
+    throw new Error("OANDA candles unavailable for this symbol/interval.");
   }
-
-  if (backend === "mt5local") {
-    const acct = await getMtAccountMeta(userId);
-    if (!acct) {
-      return { candles: [], source: "mt5local", warning: "MT5 غير مربوط." };
-    }
-    const bars = await mt5Rates(symbol, interval, limit, {
-      login: acct.login,
-      server: acct.server,
-    });
-    return {
-      candles: bars.map((b) => ({
-        time: b.time,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        close: b.close,
-      })),
-      source: "mt5local",
-    };
-  }
-
-  const mt5Symbol = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
-  const { base: eaInterval, factor } = mt5IntervalPlan(interval);
-
-  if (preferCache) {
-    const hit = await fetchForexOhlcFromEaCache(userId, symbol, interval, limit);
-    if (hit && hit.candles.length > 0) {
-      return {
-        ...hit,
-        warning: "عرض سريع من كاش EA — جاري تحديث الشموع…",
-      };
-    }
-  }
-
-  const baseCount = Math.min(limit * factor, OHLC_MAX_LIMIT);
-  const ack = await queueEaGetOhlc(
-    userId,
-    { symbol: mt5Symbol, timeframe: eaInterval, count: baseCount },
-    preferCache ? 4_000 : 12_000,
-  );
-
-  if (ack.ok && ack.result) {
-    const result = ack.result as unknown as EaGetOhlcResult;
-    const baseCandles = normalizeEaCandles(result.candles ?? []);
-    if (baseCandles.length > 0) {
-      const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
-      return { candles, source: "mt5_ohlc" };
-    }
-  }
-
-  const cached = await getEaCandlesResolved(userId, mt5Symbol, eaInterval);
-  if (cached) {
-    try {
-      const baseCandles = normalizeEaCandles(JSON.parse(cached.candles_json) as unknown[]);
-      if (baseCandles.length > 0) {
-        const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
-        return {
-          candles: candles.slice(-limit),
-          source: "heartbeat_cache",
-          warning:
-            ack.reason ??
-            "EA get_ohlc unavailable — using heartbeat candle cache until EA v4 is installed.",
-        };
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-
-  throw new Error(
-    ack.reason ??
-      "No OHLC data — install EA v4 with get_ohlc or wait for heartbeat candles.",
-  );
 }
 
 async function fetchCryptoOhlc(
@@ -327,7 +154,7 @@ async function fetchCryptoOhlc(
   return { candles, nextCursor };
 }
 
-/** Fetches OHLC with bridge cache (45s) — forex via EA get_ohlc, crypto via Binance. */
+/** Fetches OHLC with bridge cache (45s) — forex via OANDA, crypto via Binance. */
 export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcResult> {
   const symbol = options.symbol.toUpperCase().trim();
   const interval = normalizeInterval(options.interval ?? "1h");
@@ -339,7 +166,12 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   );
 
   const cacheKey = ohlcCacheResource(symbol, interval);
-  if (!options.skipCache && !options.cursor) {
+  if (
+    !options.skipCache &&
+    !options.cursor &&
+    !options.beforeMs &&
+    options.fromMs == null
+  ) {
     const hit = await getCached<FetchOhlcResult>(options.userId, cacheKey);
     if (hit.fromCache) {
       return {
@@ -352,21 +184,22 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   }
 
   let candles: OhlcCandle[] = [];
-  let source: OhlcSource = market === "forex" ? "mt5_ohlc" : "binance";
+  let source: OhlcSource = market === "forex" ? "oanda" : "binance";
   let warning: string | undefined;
   let nextCursor: number | null = null;
+  let hasMore = false;
 
   if (market === "forex") {
-    const live = await fetchForexOhlcLive(
-      options.userId,
-      symbol,
-      interval,
-      limit,
-      Boolean(options.preferCache),
-    );
-    candles = live.candles.slice(-limit);
+    const live = await fetchForexOhlcLive(symbol, interval, limit, {
+      beforeMs: options.beforeMs,
+      fromMs: options.fromMs,
+      toMs: options.toMs,
+    });
+    candles =
+      options.fromMs != null ? live.candles : live.candles.slice(-limit);
     source = live.source;
     warning = live.warning;
+    hasMore = live.hasMore ?? false;
   } else {
     const crypto = await fetchCryptoOhlc(
       options.userId,
@@ -390,13 +223,11 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
     fromCache: false,
     warning,
     nextCursor,
-    freshness: freshnessMeta(
-      source === "heartbeat_cache" ? "cache" : "live",
-      0,
-    ),
+    hasMore,
+    freshness: freshnessMeta("live", 0),
   };
 
-  if (!options.cursor) {
+  if (!options.cursor && !options.beforeMs && options.fromMs == null) {
     await setCached(options.userId, cacheKey, result, OHLC_CACHE_TTL_MS);
   }
 

@@ -14,15 +14,12 @@ import {
   runMarketAnalyze,
   MARKET_ANALYZE_COST,
 } from "@/lib/marketAnalyze";
-import { profileForInterval } from "@/lib/analysisProfile";
+import { profileForTradingStyle } from "@/lib/analysisProfile";
 import { sseEncode } from "@/lib/sse";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { validateChatImage } from "@/lib/chatImage";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
-import {
-  appendChatMessage,
-  getConversation,
-} from "@/lib/conversations";
+import { normalizeTradingStyle, TRADING_STYLES } from "@/lib/types";
 
 export const maxDuration = 180;
 
@@ -36,9 +33,8 @@ const schema = z.object({
     .refine((v) => INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
   market: z.enum(["crypto", "forex"]).optional(),
   stream: z.boolean().optional(),
-  conversationId: z.number().int().positive().optional(),
-  persistToChat: z.boolean().optional(),
-  source: z.enum(["market", "chat_chart"]).optional(),
+  source: z.enum(["market", "smart_chart"]).optional(),
+  trading_style: z.enum(TRADING_STYLES).optional(),
   image: z
     .object({
       media_type: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -79,10 +75,11 @@ export async function POST(req: NextRequest) {
       const resolved = await resolveMt5Symbol(user.id, symbol);
       if (resolved) symbol = resolved;
     }
-    const profile = profileForInterval(interval);
+    const tradingStyle = normalizeTradingStyle(
+      body.trading_style ?? settings.trading_style,
+    );
+    const profile = profileForTradingStyle(tradingStyle);
     const stream = body.stream !== false;
-    const persistToChat =
-      body.persistToChat !== false && body.conversationId != null;
 
     let chartImage: { media_type: "image/jpeg" | "image/png" | "image/webp"; data: string } | null =
       null;
@@ -102,51 +99,8 @@ export async function POST(req: NextRequest) {
       telegramSession: false,
       market,
       chartImage,
+      tradingStyle,
     };
-
-    async function persistAnalysisResult(
-      result: Awaited<ReturnType<typeof runMarketAnalyze>>,
-    ) {
-      if (!persistToChat || !body.conversationId) return;
-      const conv = await getConversation(body.conversationId, user.id);
-      if (!conv) return;
-
-      const source = body.source ?? "market";
-      // chat_chart: الواجهة أضافت رسالة المستخدم بالفعل — نخزّن ردّ المساعد فقط.
-      if (source !== "chat_chart") {
-        await appendChatMessage(
-          conv.id,
-          "user",
-          `تحليل ${symbol} · ${interval}`,
-          { analysis_source: source, symbol, interval, market, type: "chart_analyze" },
-        );
-      }
-      await appendChatMessage(conv.id, "assistant", result.reply, {
-        type: "chart_analyze",
-        analysis_source: source,
-        symbol,
-        interval,
-        market,
-        drawings: result.drawings,
-        overlays: result.overlays,
-        recommendation_id: result.recommendation?.id ?? null,
-        recommendation: result.recommendation
-          ? {
-              id: result.recommendation.id,
-              symbol: result.recommendation.symbol,
-              action: result.recommendation.action,
-              confidence: result.recommendation.confidence,
-              entry: result.recommendation.entry,
-              stop_loss: result.recommendation.stop_loss,
-              take_profit: result.recommendation.take_profit,
-              rationale: result.recommendation.rationale,
-              timeframe: result.recommendation.timeframe,
-            }
-          : null,
-        chart_vision: result.chartVisionSource,
-        liveReasoningLog: result.liveReasoningLog,
-      });
-    }
 
     if (stream) {
       const bodyStream = new ReadableStream({
@@ -161,6 +115,7 @@ export async function POST(req: NextRequest) {
             cost: MARKET_ANALYZE_COST,
             analysisTier: profile.tier,
             profileLabel: profile.labelAr,
+            trading_style: tradingStyle,
           });
 
           try {
@@ -179,10 +134,8 @@ export async function POST(req: NextRequest) {
             await logAudit(
               user.id,
               "market_analyze",
-              `${symbol}@${interval} recs=${result.recommendation ? 1 : 0}`,
+              `${symbol}@${interval} style=${tradingStyle} recs=${result.recommendation ? 1 : 0}`,
             );
-
-            await persistAnalysisResult(result);
 
             send("done", {
               reply: result.reply,
@@ -198,6 +151,7 @@ export async function POST(req: NextRequest) {
               profileLabel: result.profileLabel,
               analysisTier: result.analysisTier,
               liveReasoningLog: result.liveReasoningLog,
+              targets: result.targets,
               quota: {
                 used: used + MARKET_ANALYZE_COST,
                 limit: limits.claude_quota,
@@ -231,17 +185,15 @@ export async function POST(req: NextRequest) {
       settings,
       symbol,
       interval,
-      { telegramSession: false, market, chartImage },
+      { telegramSession: false, market, chartImage, tradingStyle },
     );
 
     await incrementUsage(user.id, MARKET_ANALYZE_COST);
     await logAudit(
       user.id,
       "market_analyze",
-      `${symbol}@${interval} recs=${result.recommendation ? 1 : 0}`,
+      `${symbol}@${interval} style=${tradingStyle} recs=${result.recommendation ? 1 : 0}`,
     );
-
-    await persistAnalysisResult(result);
 
     return NextResponse.json({
       reply: result.reply,
@@ -257,6 +209,7 @@ export async function POST(req: NextRequest) {
       profileLabel: result.profileLabel,
       analysisTier: result.analysisTier,
       liveReasoningLog: result.liveReasoningLog,
+      targets: result.targets,
       quota: {
         used: used + MARKET_ANALYZE_COST,
         limit: limits.claude_quota,

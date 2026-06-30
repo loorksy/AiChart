@@ -8,7 +8,7 @@ import {
   ExternalLink,
   Plug,
   Link2,
-  MessageSquare,
+  CandlestickChart,
   Wifi,
   WifiOff,
   CheckCircle2,
@@ -109,7 +109,7 @@ export function UserHomeClient({
                 مرحباً، {displayNameForUser(user)}
               </h1>
               <p className="mt-1 text-sm text-zinc-500">
-                Claude MCP — التداول الذكي بالمحادثة
+                Claude MCP — التداول الذكي من الشارت
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-green-500/20 bg-green-500/5 px-3 py-1.5">
@@ -138,16 +138,16 @@ export function UserHomeClient({
         {/* ─── Quick actions row ─── */}
         <div className="grid grid-cols-2 gap-3">
           <Link
-            href="/chat"
+            href="/chart"
             className="bento-card group flex flex-col gap-3 p-5 cursor-pointer"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10 ring-1 ring-green-500/20 group-hover:ring-green-500/40 transition-all">
-              <MessageSquare className="h-5 w-5 text-green-400" />
+              <CandlestickChart className="h-5 w-5 text-green-400" />
             </span>
             <div>
-              <h2 className="font-semibold text-sm">دردشة مع الوكيل</h2>
+              <h2 className="font-semibold text-sm">الشارت الذكي</h2>
               <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
-                حلّل، خذ صفقات، وأدِر حسابك.
+                تحليل AI، SL/TP، وإدارة الصفقات.
               </p>
             </div>
             <ExternalLink className="h-3.5 w-3.5 text-zinc-600 group-hover:text-green-400 transition-colors" />

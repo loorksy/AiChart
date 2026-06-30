@@ -1,8 +1,8 @@
 import {
+  CandlestickChart,
   KeyRound,
   LayoutDashboard,
   Link2,
-  MessageSquare,
   Plug,
   Settings,
   TrendingUp,
@@ -30,7 +30,7 @@ export interface NavItem {
  * USER_NAV / BRIDGE_NAV / ChatGptSidebar tabs. Filtered by role at render time.
  */
 export const APP_NAV: NavItem[] = [
-  { href: "/chat", label: "المحادثة", icon: MessageSquare },
+  { href: "/chart", label: "الشارت", icon: CandlestickChart },
   { href: "/console", label: "نظرة", icon: LayoutDashboard, exact: true },
   { href: "/console/trades", label: "الصفقات", icon: TrendingUp },
   { href: "/console/connect", label: "الاتصالات", icon: Link2 },

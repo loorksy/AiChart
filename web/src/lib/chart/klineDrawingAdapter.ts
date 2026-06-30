@@ -24,8 +24,9 @@ export interface KLineOverlaySpec {
 }
 
 type OverlayName =
+  | "tradeLevelLine"
   | "priceLine"
-  | "segment"
+  | "straightLine"
   | "priceChannelLine"
   | "rect"
   | "rangeBox"
@@ -47,13 +48,13 @@ const KLINE_NAME: Partial<Record<DrawingType, OverlayName>> = {
   hline: "priceLine",
   baseline: "priceLine",
   marker: "priceLine",
-  trend_line: "segment",
-  trend: "segment",
-  trendline: "segment",
-  pitchfork: "segment",
-  gann_line: "segment",
-  gann_fan: "segment",
-  forecast_path: "segment",
+  trend_line: "straightLine",
+  trend: "straightLine",
+  trendline: "straightLine",
+  pitchfork: "straightLine",
+  gann_line: "straightLine",
+  gann_fan: "straightLine",
+  forecast_path: "straightLine",
   channel: "channel",
   zone: "rangeBox",
   range_box: "rangeBox",
@@ -92,8 +93,17 @@ const KLINE_NAME: Partial<Record<DrawingType, OverlayName>> = {
   label: "patternLabel",
 };
 
+const TRADE_LEVEL_ROLES = new Set(["entry", "stop_loss", "take_profit"]);
+
 function overlayNameFor(d: ChartDrawing): OverlayName {
-  return KLINE_NAME[d.type] ?? "segment";
+  if (
+    d.type === "price_line" &&
+    d.semanticRole &&
+    TRADE_LEVEL_ROLES.has(d.semanticRole)
+  ) {
+    return "priceLine";
+  }
+  return KLINE_NAME[d.type] ?? "straightLine";
 }
 
 function styleColor(d: ChartDrawing): string | undefined {
@@ -160,8 +170,8 @@ export function drawingToOverlay(
     if (points.length < 3) {
       name = "channel";
       if (points.length < 4 && points.length >= 2) {
-        /* keep as segment fallback only for 2-point channel hint */
-        name = "segment";
+        /* keep as straightLine fallback only for 2-point channel hint */
+        name = "straightLine";
       } else if (points.length >= 4) {
         name = "channel";
         points = points.slice(0, 4);
@@ -171,7 +181,7 @@ export function drawingToOverlay(
     }
   }
 
-  if (name === "priceLine") points = [points[0]!];
+  if (name === "priceLine" || name === "tradeLevelLine") points = [points[0]!];
 
   if (name === "polylinePattern" && points.length > 8) {
     points = points.slice(0, 8);
@@ -213,6 +223,23 @@ export function drawingId(d: ChartDrawing, index: number): string {
 }
 
 /** Map ChartDrawing[] to KLineCharts overlay specs using time+price anchoring. */
+/** KLineCharts createOverlay expects timestamp + value (not dataIndex alone). */
+export function overlayPointsForChart(
+  points: KLinePoint[],
+  candles: AnyCandle[],
+): Array<{ timestamp: number; value: number }> {
+  const like = toCandleLike(candles);
+  const lastTs = like[like.length - 1]?.timestamp ?? Date.now();
+  return points.map((p) => ({
+    value: p.value,
+    timestamp:
+      p.timestamp ??
+      (p.dataIndex >= 0 && p.dataIndex < like.length
+        ? like[p.dataIndex]!.timestamp
+        : lastTs),
+  }));
+}
+
 export function drawingsToOverlays(
   drawings: ChartDrawing[],
   candles: AnyCandle[],

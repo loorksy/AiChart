@@ -22,43 +22,56 @@ export const OVERLAY_COLORS: Record<ChartOverlayType, string> = {
   resistance: "#9ca3af",
 };
 
+function takeProfitOverlays(
+  targets: number[],
+  fallback: number | null | undefined,
+): ChartOverlay[] {
+  const levels =
+    targets.length > 0
+      ? targets.filter((t) => t > 0)
+      : fallback != null && fallback > 0
+        ? [fallback]
+        : [];
+  return levels.map((price, i) => ({
+    price,
+    type: "take_profit" as const,
+    label: levels.length > 1 ? `هدف ${i + 1}` : "هدف ربح",
+  }));
+}
+
 /** Strategy levels from a stored recommendation (no SMA overlays). */
-export function overlaysFromRecommendation(rec: Recommendation): ChartOverlay[] {
+export function overlaysFromRecommendation(
+  rec: Recommendation,
+  targets?: number[],
+): ChartOverlay[] {
   const overlays: ChartOverlay[] = [];
-  if (rec.entry != null) {
+  if (rec.entry != null && rec.entry > 0) {
     overlays.push({ price: rec.entry, type: "entry", label: "دخول" });
   }
-  if (rec.stop_loss != null) {
+  if (rec.stop_loss != null && rec.stop_loss > 0) {
     overlays.push({
       price: rec.stop_loss,
       type: "stop_loss",
       label: "وقف خسارة",
     });
   }
-  if (rec.take_profit != null) {
-    overlays.push({
-      price: rec.take_profit,
-      type: "take_profit",
-      label: "هدف ربح",
-    });
-  }
+  overlays.push(...takeProfitOverlays(targets ?? [], rec.take_profit));
   return overlays;
 }
 
 export function overlaysFromAnalysis(
   rec: Recommendation | undefined,
   snap: MarketSnapshot,
+  targets?: number[],
 ): ChartOverlay[] {
   const overlays: ChartOverlay[] = [];
-  if (rec?.entry != null) {
+  if (rec?.entry != null && rec.entry > 0) {
     overlays.push({ price: rec.entry, type: "entry", label: "دخول" });
   }
-  if (rec?.stop_loss != null) {
+  if (rec?.stop_loss != null && rec.stop_loss > 0) {
     overlays.push({ price: rec.stop_loss, type: "stop_loss", label: "وقف خسارة" });
   }
-  if (rec?.take_profit != null) {
-    overlays.push({ price: rec.take_profit, type: "take_profit", label: "هدف ربح" });
-  }
+  overlays.push(...takeProfitOverlays(targets ?? [], rec?.take_profit));
   if (snap.sma20 != null) {
     const type = snap.price >= snap.sma20 ? "support" : "resistance";
     overlays.push({ price: snap.sma20, type, label: "SMA20" });

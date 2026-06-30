@@ -227,6 +227,30 @@ export function ensureCustomOverlays(): void {
       },
     ];
   });
+
+  /** Full-width trade level: entry / SL / TP with Arabic label on the chart. */
+  reg("tradeLevelLine", ({ coordinates, bounding, overlay }) => {
+    if (coordinates.length < 1) return [];
+    const y = coordinates[0]!.y;
+    const ext = overlay.extendData as { label?: string };
+    const color =
+      (overlay.styles as { line?: { color?: string } })?.line?.color ?? "#22c55e";
+    const label = ext.label ?? "";
+    return [
+      ...line({ x: 0, y }, { x: bounding.width, y }, { color, size: 2, style: "solid" }),
+      {
+        type: "text" as const,
+        attrs: {
+          x: 6,
+          y,
+          text: label,
+          align: "left",
+          baseline: "bottom",
+        },
+        ignoreEvent: true,
+      },
+    ];
+  });
 }
 
 export { drawLabel };

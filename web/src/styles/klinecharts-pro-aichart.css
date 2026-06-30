@@ -1,0 +1,211 @@
+/** KLineChart Pro + AiChart unified workspace */
+.aichart-pro-root.klinecharts-pro {
+  height: 100% !important;
+  min-height: 0;
+  width: 100%;
+  direction: ltr;
+  --klinecharts-pro-primary-color: #22c55e;
+  --aichart-period-bar-height: 38px;
+  --aichart-drawing-bar-width: 52px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Fixed chrome: period bar + drawing bar never grow/shrink on window resize. */
+.aichart-pro-root .klinecharts-pro-period-bar {
+  flex: 0 0 var(--aichart-period-bar-height) !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch;
+  height: var(--aichart-period-bar-height) !important;
+  min-height: var(--aichart-period-bar-height);
+  max-height: var(--aichart-period-bar-height);
+  width: 100%;
+  padding-inline: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.aichart-pro-root .klinecharts-pro-period-bar .menu-container {
+  flex: 0 0 var(--aichart-drawing-bar-width) !important;
+  width: var(--aichart-drawing-bar-width) !important;
+  min-width: var(--aichart-drawing-bar-width);
+  max-width: var(--aichart-drawing-bar-width);
+}
+
+.aichart-pro-root .klinecharts-pro-period-bar .menu-container,
+.aichart-pro-root .klinecharts-pro-period-bar .symbol,
+.aichart-pro-root .klinecharts-pro-period-bar .period,
+.aichart-pro-root .klinecharts-pro-period-bar .item.tools,
+.aichart-pro-toolbar-slot {
+  flex-shrink: 0;
+}
+
+.aichart-pro-root .klinecharts-pro-period-bar .symbol {
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aichart-pro-root .klinecharts-pro-period-bar .item.tools span {
+  white-space: nowrap;
+}
+
+.aichart-pro-root .klinecharts-pro-content {
+  flex: 1 1 0%;
+  flex-direction: row;
+  min-height: 0;
+  height: calc(100% - var(--aichart-period-bar-height)) !important;
+  width: 100%;
+  overflow: hidden;
+}
+
+.aichart-pro-root .klinecharts-pro-drawing-bar {
+  order: 0;
+  flex: 0 0 var(--aichart-drawing-bar-width) !important;
+  width: var(--aichart-drawing-bar-width) !important;
+  min-width: var(--aichart-drawing-bar-width);
+  max-width: var(--aichart-drawing-bar-width);
+  border-right: solid 1px var(--klinecharts-pro-border-color);
+  border-left: none;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* Only the candlestick canvas area grows when the window expands. */
+.aichart-pro-root .klinecharts-pro-widget {
+  position: relative;
+  order: 1;
+  flex: 1 1 0% !important;
+  width: auto !important;
+  min-width: 0;
+  min-height: 0;
+  height: 100% !important;
+  margin: 0;
+}
+
+.aichart-pro-root .klinecharts-pro-watermark {
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.aichart-pro-root .klinecharts-pro-watermark .logo {
+  width: 100px;
+  height: auto;
+}
+
+/* AiChart controls injected into Pro period bar */
+.aichart-pro-toolbar-slot {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 0;
+  padding-inline: 4px;
+  margin-inline-start: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  border-inline-start: solid 1px var(--klinecharts-pro-border-color);
+}
+
+.aichart-pro-toolbar-inner {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  min-width: min-content;
+}
+
+.aichart-pro-toolbar-slot .aichart-pro-ctrl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 2px;
+  border: none;
+  background: transparent;
+  color: var(--klinecharts-pro-text-color);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.15s;
+}
+
+.aichart-pro-toolbar-slot .aichart-pro-ctrl:hover {
+  background-color: var(--klinecharts-pro-hover-background-color);
+}
+
+.aichart-pro-toolbar-slot .aichart-pro-ctrl:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.aichart-pro-toolbar-slot .aichart-pro-ctrl--primary {
+  color: var(--klinecharts-pro-primary-color);
+}
+
+.aichart-pro-toolbar-slot .aichart-pro-ctrl--online {
+  color: #22c55e;
+}
+
+.aichart-pro-toolbar-slot .aichart-pro-ctrl--offline {
+  color: #f59e0b;
+}
+
+.aichart-pro-toolbar-slot .aichart-pro-badge {
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  font-size: 10px;
+  padding: 0 5px;
+}
+
+@media (max-width: 768px) {
+  .aichart-pro-root {
+    --aichart-drawing-bar-width: 44px;
+  }
+
+  .aichart-pro-root .klinecharts-pro-period-bar .period {
+    font-size: 11px;
+    padding: 2px 4px;
+    margin: 0 2px;
+  }
+
+  .aichart-pro-root .klinecharts-pro-period-bar .symbol {
+    font-size: 14px;
+    padding: 0 8px;
+    max-width: 5rem;
+  }
+
+  .aichart-pro-root .klinecharts-pro-period-bar .item.tools span {
+    display: none;
+  }
+
+  .aichart-pro-toolbar-slot .aichart-pro-ctrl span.hide-sm {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .aichart-pro-toolbar-slot {
+    padding-inline: 2px;
+  }
+
+  .aichart-pro-toolbar-slot .aichart-pro-ctrl {
+    padding: 0 4px;
+    font-size: 10px;
+  }
+}

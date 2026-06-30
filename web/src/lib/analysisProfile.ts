@@ -1,4 +1,5 @@
 import { barDurationSec, normalizeInterval } from "./intervals";
+import type { TradingStyle } from "./types";
 
 export type AnalysisTier = "intraday" | "swing" | "position";
 
@@ -53,6 +54,62 @@ const POSITION: AnalysisProfile = {
   intentTtlMinutes: 1440,
   entrySlippagePct: 1.5,
 };
+
+export function profileForTradingStyle(style: TradingStyle): AnalysisProfile {
+  switch (style) {
+    case "scalp":
+    case "day":
+      return INTRADAY;
+    case "swing":
+      return SWING;
+    case "position":
+      return POSITION;
+    default:
+      return INTRADAY;
+  }
+}
+
+const STYLE_LABELS: Record<TradingStyle, string> = {
+  scalp: "سكالب",
+  day: "يومي",
+  swing: "سوينغ",
+  position: "مركزي (استثمار)",
+};
+
+export function buildTradingStylePromptHints(style: TradingStyle): string[] {
+  const label = STYLE_LABELS[style];
+  const common = [`نوع التداول المختار: ${label}.`];
+  switch (style) {
+    case "scalp":
+      return [
+        ...common,
+        "تحليل سكالب: SL ضيق عند هيكل قريب، أهداف قصيرة (1–2R)، R:R ≥ 1.",
+        "ركّز على زخم 1m–5m — لا توصية swing على هذا النوع.",
+        "chart_drawings: entry + stop_loss + take_profit إلزامية عند buy/sell.",
+      ];
+    case "day":
+      return [
+        ...common,
+        "تحليل يومي: R:R ≥ 1.5، SL عند مستوى هيكلي واضح، هدف واحد أو جزئي.",
+        "اجمع بين اتجاه HTF وسياق الجلسة.",
+        "chart_drawings: entry + stop_loss + take_profit إلزامية عند buy/sell.",
+      ];
+    case "swing":
+      return [
+        ...common,
+        "تحليل سوينغ: أهداف أوسع (2–3R)، SL تحت/فوق swing structure.",
+        "اذكر عوامل سياق 24–48 ساعة في factors.",
+        "chart_drawings: entry + stop_loss + take_profit + forecast_path.",
+      ];
+    case "position":
+      return [
+        ...common,
+        "تحليل مركزي: أفق أيام–أسابيع، SL واسع عند structure رئيسي.",
+        "لا buy/sell من الشارت وحده — اذكر 2+ عوامل سياق/أخبار.",
+        "chart_drawings: entry + stop_loss + take_profit عند ثقة عالية فقط.",
+      ];
+  }
+}
 
 export function profileForInterval(interval: string): AnalysisProfile {
   const iv = normalizeInterval(interval);

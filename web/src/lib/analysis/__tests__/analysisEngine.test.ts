@@ -78,7 +78,7 @@ test("confluence collapses signals into a signed score", () => {
     indicators: {
       symbol: "X",
       interval: "1h",
-      computedFrom: "mt5_ohlc",
+      computedFrom: "oanda",
       rsi14: 25,
       macd: { macd: 1, signal: 0, histogram: 0.5 },
       sma20: 1,

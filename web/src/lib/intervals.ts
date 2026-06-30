@@ -91,6 +91,11 @@ export function barDurationSec(interval: string): number {
   return map[interval] ?? 3600;
 }
 
+/** Milliseconds per candle (for chart history pagination). */
+export function barDurationMs(interval: string): number {
+  return barDurationSec(interval) * 1000;
+}
+
 export interface IntervalPlan {
   /** The interval to actually fetch from the exchange. */
   base: string;

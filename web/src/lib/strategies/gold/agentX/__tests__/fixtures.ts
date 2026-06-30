@@ -22,7 +22,7 @@ export function mockMarketContext(overrides?: Partial<MarketContext>): MarketCon
       M1: {
         symbol: "XAUUSD",
         interval: "M1",
-        computedFrom: "mt5_ohlc",
+        computedFrom: "oanda",
         rsi14: 55,
         macd: { macd: 0.5, signal: 0.3, histogram: 0.2 },
         sma20: 2648,
@@ -37,7 +37,7 @@ export function mockMarketContext(overrides?: Partial<MarketContext>): MarketCon
       M5: {
         symbol: "XAUUSD",
         interval: "M5",
-        computedFrom: "mt5_ohlc",
+        computedFrom: "oanda",
         rsi14: 58,
         macd: { macd: 0.8, signal: 0.4, histogram: 0.4 },
         sma20: 2648,
@@ -52,7 +52,7 @@ export function mockMarketContext(overrides?: Partial<MarketContext>): MarketCon
       M15: {
         symbol: "XAUUSD",
         interval: "M15",
-        computedFrom: "mt5_ohlc",
+        computedFrom: "oanda",
         rsi14: 60,
         macd: { macd: 1, signal: 0.5, histogram: 0.5 },
         sma20: 2647,

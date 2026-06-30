@@ -6,9 +6,7 @@ import type { LivePriceTick } from "./useBinanceLivePrice";
 const POLL_MS = 1000;
 
 /**
- * Live forex price for a symbol, polled from the EA bridge cache
- * (`/api/market/forex-price`). Mirrors the LivePriceTick shape used by the
- * Binance hook so the chart/toolbar can consume either market uniformly.
+ * Live forex price polled from OANDA via `/api/market/forex-price`.
  */
 export function useEaLivePrice(symbol: string, enabled = true): LivePriceTick {
   const [tick, setTick] = useState<LivePriceTick>({

@@ -1,7 +1,6 @@
 "use client";
 
 import { Loader2, Radio, X } from "lucide-react";
-import { formatLevel } from "@/components/market/formatLevel";
 import { LiveAnalysisLog } from "@/components/chart/LiveAnalysisLog";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { LiveReasoningEntry } from "@/lib/analysis/chartAnalyzeLlm";
@@ -10,17 +9,19 @@ import { cn } from "@/lib/utils";
 
 export function ChartTradeOverlay({
   recommendation,
-  riskReward,
   isAnalyzing,
   liveAnalysis,
   liveReasoningLog,
   drawings,
   onHighlightDrawing,
   onStopLive,
-  onRequestRecommendation,
+  onExecute,
+  executing,
+  executeLabel,
   className,
 }: {
   recommendation?: Recommendation | null;
+  targets?: number[];
   riskReward?: number | null;
   isAnalyzing?: boolean;
   liveAnalysis?: boolean;
@@ -28,7 +29,9 @@ export function ChartTradeOverlay({
   drawings?: ChartDrawing[];
   onHighlightDrawing?: (index: number | null) => void;
   onStopLive?: () => void;
-  onRequestRecommendation?: () => void;
+  onExecute?: () => void;
+  executing?: boolean;
+  executeLabel?: string;
   className?: string;
 }) {
   const hasTrade =
@@ -45,7 +48,8 @@ export function ChartTradeOverlay({
     !isAnalyzing &&
     !liveAnalysis &&
     !drawings?.length &&
-    !(liveReasoningLog?.length)
+    !(liveReasoningLog?.length) &&
+    !onExecute
   ) {
     return null;
   }
@@ -53,7 +57,7 @@ export function ChartTradeOverlay({
   return (
     <div
       className={cn(
-        "pointer-events-none absolute inset-x-2 bottom-2 z-20 flex flex-col items-start gap-1.5 sm:inset-x-auto sm:start-2",
+        "pointer-events-none absolute inset-x-2 bottom-2 z-20 flex flex-col items-end gap-1.5 sm:inset-x-auto sm:end-2",
         className,
       )}
     >
@@ -79,7 +83,7 @@ export function ChartTradeOverlay({
         </div>
       )}
 
-      {(liveReasoningLog?.length || isAnalyzing || waitOnly) && (
+      {!hasTrade && (liveReasoningLog?.length || isAnalyzing || waitOnly) && (
         <div className="pointer-events-auto w-full max-w-[300px] sm:w-72">
           <LiveAnalysisLog
             entries={liveReasoningLog}
@@ -94,100 +98,16 @@ export function ChartTradeOverlay({
         </div>
       )}
 
-      {(hasTrade || (isAnalyzing && hasTrade)) && (
-        <div className="pointer-events-auto w-full max-w-[280px] rounded-xl border border-border/60 bg-card/95 p-3 text-xs shadow-lg backdrop-blur-md sm:w-72">
-          {hasTrade ? (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={cn(
-                    "rounded-md px-2 py-0.5 text-[11px] font-semibold",
-                    recommendation!.action === "buy"
-                      ? "bg-green-500/15 text-green-500"
-                      : "bg-red-500/15 text-red-500",
-                  )}
-                >
-                  {recommendation!.action === "buy" ? "شراء" : "بيع"}
-                </span>
-                <span className="text-muted-foreground">
-                  ثقة {recommendation!.confidence}%
-                </span>
-                {recommendation!.pattern_name && (
-                  <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
-                    {recommendation!.pattern_name}
-                  </span>
-                )}
-              </div>
-
-              {recommendation!.entry != null && recommendation!.entry > 0 && (
-                <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                  تنفيذ كأمر معلّق @ {formatLevel(recommendation!.entry)}
-                </p>
-              )}
-
-              <div className="grid grid-cols-3 gap-1.5 text-center">
-                <div className="rounded-lg bg-secondary/60 px-1 py-1.5">
-                  <p className="text-[9px] text-muted-foreground">دخول</p>
-                  <p className="font-semibold tabular-nums" dir="ltr">
-                    {formatLevel(recommendation!.entry)}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-secondary/60 px-1 py-1.5">
-                  <p className="text-[9px] text-muted-foreground">وقف</p>
-                  <p
-                    className="font-semibold tabular-nums text-red-500"
-                    dir="ltr"
-                  >
-                    {formatLevel(recommendation!.stop_loss)}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-secondary/60 px-1 py-1.5">
-                  <p className="text-[9px] text-muted-foreground">هدف</p>
-                  <p
-                    className="font-semibold tabular-nums text-blue-500"
-                    dir="ltr"
-                  >
-                    {formatLevel(recommendation!.take_profit)}
-                  </p>
-                </div>
-              </div>
-
-              {riskReward != null && (
-                <p className="text-[10px] text-muted-foreground">
-                  R:R{" "}
-                  <span className="font-semibold text-foreground" dir="ltr">
-                    1:{riskReward.toFixed(2)}
-                  </span>
-                </p>
-              )}
-
-              {onRequestRecommendation && (
-                <button
-                  type="button"
-                  onClick={onRequestRecommendation}
-                  className="mt-1 w-full rounded-lg border border-primary/40 bg-primary/10 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/20"
-                >
-                  نفّذ من الدردشة
-                </button>
-              )}
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      {!hasTrade && !isAnalyzing && drawings && drawings.length > 0 && (
-        <div className="pointer-events-auto rounded-lg border border-border/50 bg-card/90 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-md">
-          {drawings.length} عنصر مرسوم على الشارت
-          {onRequestRecommendation && (
-            <button
-              type="button"
-              onClick={onRequestRecommendation}
-              className="ms-2 text-primary hover:underline"
-            >
-              اطلب توصية
-            </button>
-          )}
-        </div>
+      {hasTrade && onExecute && (
+        <button
+          type="button"
+          onClick={onExecute}
+          disabled={executing}
+          className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-card/95 px-3 py-1.5 text-[11px] font-medium text-primary shadow-lg backdrop-blur-md hover:bg-primary/10 disabled:opacity-60"
+        >
+          {executing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          {executeLabel ?? "تنفيذ"}
+        </button>
       )}
     </div>
   );

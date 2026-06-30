@@ -145,11 +145,11 @@ export function AppConsoleShell({
   );
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
-      {/* ─── Desktop sidebar ─── */}
+    <div className="flex h-dvh overflow-hidden bg-background lg:flex-row">
+      {/* ─── Desktop sidebar — fixed width; only main content grows on resize ─── */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-dvh shrink-0 flex-col border-e border-white/[0.05] bg-[#080809] transition-[width] duration-200 ease-in-out lg:flex",
+          "hidden h-full shrink-0 flex-col border-e border-white/[0.05] bg-[#080809] transition-[width] duration-200 ease-in-out lg:flex",
           collapsed ? "w-[3.75rem]" : "w-60",
         )}
       >
@@ -216,12 +216,14 @@ export function AppConsoleShell({
         </div>
       )}
 
-      {/* ─── Page content ─── */}
-      <div className="flex min-h-dvh flex-1 flex-col">
+      {/* ─── Page content — fills remaining viewport beside sidebar ─── */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <main
           className={cn(
-            "flex-1",
-            noPadding ? "min-h-0" : "px-4 pb-6 pt-14 sm:px-6 sm:pb-8 lg:pt-6",
+            "flex min-h-0 flex-1 flex-col",
+            noPadding
+              ? "overflow-hidden"
+              : "overflow-y-auto px-4 pb-6 pt-14 sm:px-6 sm:pb-8 lg:pt-6",
           )}
         >
           {children}

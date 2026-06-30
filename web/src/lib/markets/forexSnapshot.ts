@@ -40,7 +40,7 @@ function emptyForexSnapshot(
 }
 
 /**
- * Unified forex snapshot: fetchOhlc (resolveMt5Symbol) + computeForexIndicators
+ * Unified forex snapshot: fetchOhlc (OANDA) + computeForexIndicators
  * + live mid price + timestamp-based 24h high/low.
  */
 export async function buildForexSnapshot(
@@ -65,7 +65,7 @@ export async function buildForexSnapshot(
     const snap = emptyForexSnapshot(
       sym,
       tf,
-      "لا تتوفر بيانات شموع بعد من MetaTrader لهذا الرمز.",
+      "لا تتوفر بيانات شموع من OANDA لهذا الرمز.",
     );
     if (price > 0) {
       snap.price = price;
@@ -79,7 +79,7 @@ export async function buildForexSnapshot(
     const snap = emptyForexSnapshot(
       ohlc.symbol,
       tf,
-      "لا تتوفر بيانات شموع بعد من MetaTrader لهذا الرمز.",
+      "لا تتوفر بيانات شموع من OANDA لهذا الرمز.",
     );
     if (price > 0) snap.price = price;
     return snap;

@@ -1,16 +1,14 @@
 /**
- * OANDA v20 market-data adapter (practice/demo by default).
- *
- * Owner decision (supersedes the earlier "EA-only data" rule): forex MARKET
- * DATA — candles, prices, instrument universe — is sourced from OANDA. Execution
- * still happens on the user's own broker via EA/MT5. OANDA demo data is REAL
- * market data, so the "no synthetic data" rule still holds.
- *
- * Activated only when OANDA_API_TOKEN is configured; otherwise callers fall back
- * to the EA path, so this is safe to ship dark.
+ * OANDA v20 market-data adapter — the official forex data source for AiChart.
+ * Candles, prices, and instrument universe come exclusively from OANDA.
+ * Trade execution remains on the user's EA/MT5 broker.
  */
 import { fetchWithTimeout, httpTimeoutMs } from "@/lib/externalFetch";
+import { barDurationMs } from "@/lib/intervals";
 import { getPlatformValue } from "@/lib/platformConfig";
+
+/** How far back the chart may paginate (10 years). */
+const HISTORY_LOOKBACK_MS = 10 * 365.25 * 24 * 60 * 60 * 1000;
 
 export interface OandaCandle {
   time: number;
@@ -90,22 +88,38 @@ interface OandaCandleRow {
 }
 
 /**
- * Live + historical candles for a forex/metal instrument from OANDA. Returns []
- * when OANDA is not configured, the symbol/interval can't be mapped, or the call
- * fails — so callers cleanly fall back to the EA path.
+ * Live + historical candles for a forex/metal instrument from OANDA.
  */
 export async function fetchOandaCandles(
   symbol: string,
   interval: string,
   count: number,
-): Promise<OandaCandle[]> {
-  if (!oandaConfigured()) return [];
+  opts?: { beforeMs?: number; fromMs?: number; toMs?: number },
+): Promise<{ candles: OandaCandle[]; hasMore: boolean }> {
+  if (!oandaConfigured()) return { candles: [], hasMore: false };
   const instrument = toOandaInstrument(symbol);
   const granularity = toOandaGranularity(interval);
-  if (!instrument || !granularity) return [];
+  if (!instrument || !granularity) return { candles: [], hasMore: false };
 
   const n = Math.min(Math.max(1, count), 5000);
-  const url = `${oandaBaseUrl()}/v3/instruments/${instrument}/candles?granularity=${granularity}&count=${n}&price=M`;
+  const base = `${oandaBaseUrl()}/v3/instruments/${instrument}/candles`;
+  let url: string;
+
+  if (opts?.fromMs != null && opts?.toMs != null && opts.toMs > opts.fromMs) {
+    const fromIso = new Date(opts.fromMs).toISOString();
+    const toIso = new Date(opts.toMs).toISOString();
+    url =
+      `${base}?granularity=${granularity}` +
+      `&from=${encodeURIComponent(fromIso)}` +
+      `&to=${encodeURIComponent(toIso)}` +
+      `&price=M`;
+  } else if (opts?.beforeMs && opts.beforeMs > 0) {
+    // Paginate backward: `count` candles strictly before `to` (exclusive boundary).
+    const toIso = new Date(opts.beforeMs).toISOString();
+    url = `${base}?granularity=${granularity}&count=${n}&to=${encodeURIComponent(toIso)}&price=M`;
+  } else {
+    url = `${base}?granularity=${granularity}&count=${n}&price=M`;
+  }
 
   const res = await fetchWithTimeout(
     url,
@@ -129,7 +143,23 @@ export async function fetchOandaCandles(
     if (!Number.isFinite(t) || ![open, high, low, close].every(Number.isFinite)) continue;
     out.push({ time: t, open, high, low, close, volume: r.volume });
   }
-  return out;
+  out.sort((a, b) => a.time - b.time);
+
+  let hasMore = false;
+  if (opts?.fromMs != null && opts?.toMs != null) {
+    const oldest = out[0]?.time ?? 0;
+    hasMore =
+      out.length > 0 &&
+      oldest > Date.now() - HISTORY_LOOKBACK_MS + barDurationMs(interval);
+  } else if (opts?.beforeMs && opts.beforeMs > 0) {
+    const oldest = out[0]?.time ?? 0;
+    hasMore =
+      out.length > 0 &&
+      oldest > Date.now() - HISTORY_LOOKBACK_MS + barDurationMs(interval);
+  } else {
+    hasMore = out.length >= n;
+  }
+  return { candles: out, hasMore };
 }
 
 export interface OandaQuote {
@@ -149,7 +179,6 @@ interface OandaPriceRow {
 
 /**
  * Live bid/ask/mid for one or more symbols from OANDA. Requires OANDA_ACCOUNT_ID.
- * Returns [] when not configured or on failure so callers fall back to EA.
  */
 export async function fetchOandaPricing(symbols: string[]): Promise<OandaQuote[]> {
   const accountId = oandaAccountId();

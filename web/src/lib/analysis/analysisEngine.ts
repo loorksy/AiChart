@@ -181,7 +181,7 @@ export function runAnalysisEngine(
     return hit.result;
   }
 
-  const indicators = computeForexIndicators(symbol, interval, candles, "mt5_ohlc");
+  const indicators = computeForexIndicators(symbol, interval, candles, "oanda");
   const structure = detectStructureLevels(symbol, interval, candles);
   const levels = analyzeLevels(symbol, interval, candles);
   const fib = analyzeFib(candles);
@@ -191,7 +191,7 @@ export function runAnalysisEngine(
   const bestPattern = patterns[0] ?? null;
 
   const higherTrend = opts.higherCandles
-    ? computeForexIndicators(symbol, opts.higherInterval ?? interval, opts.higherCandles, "mt5_ohlc").trend
+    ? computeForexIndicators(symbol, opts.higherInterval ?? interval, opts.higherCandles, "oanda").trend
     : null;
 
   const confluence = analyzeConfluence({

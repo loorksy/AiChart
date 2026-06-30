@@ -10,20 +10,24 @@ import {
   chartVisionLabelAr,
   type ChartVisionSource,
 } from "@/lib/marketAnalyzeLabels";
+import { compressChartImage } from "@/lib/chartImageCompress";
 import { consumeSse } from "@/lib/sse";
 import { computeRewardRisk } from "@/lib/rewardRisk";
 import type { Recommendation } from "@/lib/types";
 import type { ProcessedIntent } from "@/lib/tradeFlow";
 import type { LiveReasoningEntry } from "@/lib/analysis/chartAnalyzeLlm";
+import type { TradingStyle } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 
-export type ChartAnalyzeSource = "market" | "chat_chart";
+export type ChartAnalyzeSource = "market" | "smart_chart";
 
 export interface ChartAnalyzeDonePayload {
   reply: string;
   overlays?: ChartOverlay[];
   drawings?: ChartDrawing[];
   recommendation?: Recommendation | null;
+  /** All take-profit targets (rec.take_profit is the first). */
+  targets?: number[];
   intents?: ProcessedIntent[];
   profileLabel?: string;
   contextSummary?: string[];
@@ -46,9 +50,9 @@ export interface UseChartAnalysisOptions {
   interval: string;
   market: MarketType;
   chartRef: RefObject<KLineChartHandle | null>;
-  /** When set, analysis is persisted and synced to chat. */
-  conversationId?: number | null;
   source?: ChartAnalyzeSource;
+  /** Trading style drives analyze prompts (scalp/day/swing/position). */
+  tradingStyle?: TradingStyle;
   /** Restore persisted analysis layers without re-running API. */
   hydrateSnapshot?: ChartHydrateSnapshot | null;
   onCreditsUsed?: () => void;
@@ -71,8 +75,8 @@ export function useChartAnalysis({
   interval,
   market,
   chartRef,
-  conversationId,
   source = "market",
+  tradingStyle,
   onCreditsUsed,
   onStreamDelta,
   onAnalyzeDone,
@@ -88,6 +92,7 @@ export function useChartAnalysis({
   const [recommendation, setRecommendation] = useState<Recommendation | null>(
     null,
   );
+  const [targets, setTargets] = useState<number[]>([]);
   const [intents, setIntents] = useState<ProcessedIntent[]>([]);
   const [profileLabel, setProfileLabel] = useState<string | null>(null);
   const [contextSummary, setContextSummary] = useState<string[]>([]);
@@ -132,6 +137,7 @@ export function useChartAnalysis({
     setOverlays([]);
     setDrawings([]);
     setRecommendation(null);
+    setTargets([]);
     setIntents([]);
     setProfileLabel(null);
     setContextSummary([]);
@@ -147,6 +153,13 @@ export function useChartAnalysis({
     setOverlays(data.overlays?.length ? data.overlays : []);
     setDrawings(data.drawings?.length ? data.drawings : []);
     setRecommendation(data.recommendation ?? null);
+    setTargets(
+      data.targets?.length
+        ? data.targets.filter((t) => t > 0)
+        : data.recommendation?.take_profit != null && data.recommendation.take_profit > 0
+          ? [data.recommendation.take_profit]
+          : [],
+    );
     setIntents(data.intents ?? []);
     if (data.profileLabel) setProfileLabel(data.profileLabel);
     if (data.contextSummary?.length) setContextSummary(data.contextSummary);
@@ -205,7 +218,10 @@ export function useChartAnalysis({
       onAnalyzeStart?.();
 
       try {
-        const chartImage = await chartRef.current?.capturePng().catch(() => null);
+        const rawImage = await chartRef.current?.capturePng().catch(() => null);
+        const chartImage = rawImage
+          ? await compressChartImage(rawImage).catch(() => rawImage)
+          : null;
 
         const body: Record<string, unknown> = {
           symbol,
@@ -213,12 +229,9 @@ export function useChartAnalysis({
           market,
           stream: true,
           source,
+          ...(tradingStyle ? { trading_style: tradingStyle } : {}),
           ...(chartImage ? { image: chartImage } : {}),
         };
-        if (conversationId) {
-          body.conversationId = conversationId;
-          body.persistToChat = true;
-        }
 
         const res = await fetch("/api/market/analyze", {
           method: "POST",
@@ -230,7 +243,9 @@ export function useChartAnalysis({
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           const msg =
-            (data as { error?: string }).error ?? "تعذّر بدء التحليل.";
+            res.status === 413
+              ? "حجم طلب التحليل كبير — أُعيد ضغط الصورة؛ إن استمر الخطأ حدّث الصفحة وأعد المحاولة."
+              : (data as { error?: string }).error ?? "تعذّر بدء التحليل.";
           setAnalyzeError(msg);
           onAnalyzeError?.(msg);
           return;
@@ -303,8 +318,8 @@ export function useChartAnalysis({
       interval,
       market,
       chartRef,
-      conversationId,
       source,
+      tradingStyle,
       onAnalyzeStart,
       onStreamDelta,
       onAnalyzeDone,
@@ -348,6 +363,7 @@ export function useChartAnalysis({
       setDrawings([]);
       setLiveReasoningLog([]);
       setRecommendation(null);
+      setTargets([]);
       setIntents([]);
       setProfileLabel(null);
       setContextSummary([]);
@@ -386,6 +402,7 @@ export function useChartAnalysis({
     overlays,
     drawings,
     recommendation,
+    targets,
     intents,
     profileLabel,
     contextSummary,

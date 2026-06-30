@@ -47,7 +47,7 @@ export function AppHeader({
         )}
         {!center && (
           <Link
-            href="/chat"
+            href="/chart"
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold transition hover:bg-secondary md:hidden"
           >
             <img src="/logo.png" alt="AiChart" className="h-5 w-5 shrink-0 object-contain rounded-md" />

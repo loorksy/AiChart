@@ -1,4 +1,4 @@
-/** In-memory client cache for market klines — instant re-display when switching symbols. */
+import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 
 export interface ClientKlineBar {
   time: number;
@@ -39,12 +39,13 @@ export function prefetchKlines(
   symbol: string,
   interval: string,
   market: "crypto" | "forex" = "crypto",
-  limit = 300,
+  limit?: number,
 ): void {
   const key = klinesClientKey(symbol, interval, market);
   if (getKlinesClientCache(key)) return;
+  const n = limit ?? defaultKlineLimit(interval, market);
   void fetch(
-    `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&market=${market}&limit=${limit}`,
+    `/api/market/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&market=${market}&limit=${n}`,
   )
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {

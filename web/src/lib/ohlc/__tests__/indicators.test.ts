@@ -27,11 +27,11 @@ function syntheticCandles(count: number, start = 100): OhlcCandle[] {
 describe("computeForexIndicators", () => {
   it("returns RSI and trend for sufficient candles", () => {
     const candles = syntheticCandles(60);
-    const result = computeForexIndicators("EURUSD", "1h", candles, "mt5_ohlc");
+    const result = computeForexIndicators("EURUSD", "1h", candles, "oanda");
     assert.ok(result.rsi14 !== null);
     assert.ok(result.rsi14! >= 0 && result.rsi14! <= 100);
     assert.ok(["uptrend", "downtrend", "sideways"].includes(result.trend));
-    assert.equal(result.computedFrom, "mt5_ohlc");
+    assert.equal(result.computedFrom, "oanda");
   });
 
   it("aligns local RSI with technicalindicators within tolerance", () => {

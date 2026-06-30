@@ -60,6 +60,7 @@ export function PairPicker({
   const [query, setQuery] = useState("");
   const [tickers, setTickers] = useState<Record<string, Ticker>>({});
   const [forexSymbols, setForexSymbols] = useState<string[]>([]);
+  const [forexPrices, setForexPrices] = useState<Record<string, number>>({});
   const [forexLoading, setForexLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -82,15 +83,34 @@ export function PairPicker({
       .catch(() => {});
   }, [open, market, tickers]);
 
-  // Load broker forex symbols when the popover opens (EA bridge only — no static list).
+  // Load forex symbols + live prices from OANDA (via API) when the popover opens.
   useEffect(() => {
     if (!open || market !== "forex") return;
     setForexLoading(true);
+    setForexPrices({});
     void fetch("/api/instruments?market=forex&wrapped=1", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
+      .then(async (d) => {
         const rows = (d?.instruments ?? []) as Array<{ symbol: string }>;
-        setForexSymbols(rows.map((r) => r.symbol.toUpperCase()));
+        const symbols = rows.map((r) => r.symbol.toUpperCase());
+        setForexSymbols(symbols);
+        if (symbols.length === 0) return;
+        const prices: Record<string, number> = {};
+        for (let i = 0; i < symbols.length; i += 40) {
+          const chunk = symbols.slice(i, i + 40);
+          const qs = encodeURIComponent(chunk.join(","));
+          const pr = await fetch(`/api/market/forex-price?symbols=${qs}`, {
+            cache: "no-store",
+          });
+          if (!pr.ok) continue;
+          const body = (await pr.json()) as {
+            quotes?: Array<{ symbol: string; price: number | null }>;
+          };
+          for (const q of body.quotes ?? []) {
+            if (q.price != null && q.price > 0) prices[q.symbol] = q.price;
+          }
+        }
+        setForexPrices(prices);
       })
       .catch(() => setForexSymbols([]))
       .finally(() => setForexLoading(false));
@@ -110,7 +130,7 @@ export function PairPicker({
         .slice(0, 80)
         .map((s) => ({
           symbol: s,
-          price: 0,
+          price: forexPrices[s] ?? 0,
           changePct: 0,
         }));
     }
@@ -135,10 +155,16 @@ export function PairPicker({
       price: tickers[s]?.price ?? 0,
       changePct: tickers[s]?.changePct ?? 0,
     }));
-  }, [market, query, tickers, forexSymbols]);
+  }, [market, query, tickers, forexSymbols, forexPrices]);
 
   const selected = value?.trim().toUpperCase();
-  const selTicker = selected ? tickers[selected] : undefined;
+  const selTicker = selected
+    ? market === "crypto"
+      ? tickers[selected]
+      : forexPrices[selected]
+        ? { price: forexPrices[selected], changePct: 0 }
+        : undefined
+    : undefined;
 
   const panelBody = (
     <>
@@ -162,9 +188,9 @@ export function PairPicker({
         {list.length === 0 && (
           <p className="col-span-2 py-6 text-center text-xs text-muted-foreground">
             {market === "forex" && forexLoading
-              ? "جاري تحميل أزواج الوسيط…"
+              ? "جاري تحميل أزواج OANDA…"
               : market === "forex"
-                ? "لا أزواج من الوسيط — تأكد من اتصال AiChartBridge على MT5"
+                ? "لا أزواج — تأكد من إعداد OANDA_API_TOKEN و OANDA_ACCOUNT_ID"
                 : "لا نتائج"}
           </p>
         )}
@@ -213,6 +239,11 @@ export function PairPicker({
                   </span>
                 </span>
               )}
+              {market === "forex" && p.price > 0 && (
+                <span className="font-mono text-[10px] text-muted-foreground" dir="ltr">
+                  {fmtPrice(p.price)}
+                </span>
+              )}
             </button>
           );
         })}
@@ -233,7 +264,7 @@ export function PairPicker({
             <span className="font-mono font-semibold text-foreground" dir="ltr">
               {prettyPair(selected, market)}
             </span>
-            {selTicker && (
+            {selTicker && market === "crypto" && (
               <span
                 className={cn(
                   "rounded px-1.5 py-0.5 text-[10px] font-medium",
@@ -244,6 +275,11 @@ export function PairPicker({
               >
                 {selTicker.changePct >= 0 ? "+" : ""}
                 {selTicker.changePct.toFixed(2)}%
+              </span>
+            )}
+            {selTicker && market === "forex" && selTicker.price > 0 && (
+              <span className="font-mono text-[10px] text-muted-foreground" dir="ltr">
+                {fmtPrice(selTicker.price)}
               </span>
             )}
           </span>

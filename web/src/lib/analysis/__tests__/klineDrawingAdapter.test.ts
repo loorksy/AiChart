@@ -36,7 +36,7 @@ test("trend_line uses time-based dataIndex", () => {
     ],
   };
   const spec = drawingToOverlay(d, CANDLES, "x")!;
-  assert.equal(spec.name, "segment");
+  assert.equal(spec.name, "straightLine");
   assert.deepEqual(
     spec.points.map((p) => p.dataIndex),
     [90, 98],

@@ -1,6 +1,7 @@
 import { buildSnapshot, buildForexSnapshot, type MarketSnapshot } from "./market";
-import { profileForInterval, buildProfilePromptHints } from "./analysisProfile";
+import { profileForTradingStyle, buildProfilePromptHints, buildTradingStylePromptHints } from "./analysisProfile";
 import type { AnalysisProfile } from "./analysisProfile";
+import type { TradingStyle } from "./types";
 import {
   fetchMarketContext,
   formatContextForPrompt,
@@ -11,6 +12,7 @@ import { processRecommendations } from "./tradeFlow";
 import type { TradingSettings, Recommendation } from "./types";
 import type { MarketType } from "./markets/types";
 import { overlaysFromAnalysis } from "./chartOverlays";
+import { mergeTradeLevelDrawings } from "./chart/tradeLevelDrawings";
 import {
   parseChartDrawingsJson,
   validateChartDrawings,
@@ -111,9 +113,11 @@ function buildAnalyzePrompt(
   profile: AnalysisProfile,
   memoryBlock = "",
   extraBlocks: string[] = [],
+  styleHints: string[] = [],
 ): string {
   return [
     `حلّل ${symbol} على إطار ${interval} بالعربية.`,
+    ...styleHints,
     ...buildProfilePromptHints(symbol, interval, profile),
     ``,
     `البيانات الفنية: ${snap.summary}`,
@@ -147,6 +151,7 @@ function buildVisionAnalyzePrompt(
   profile: AnalysisProfile,
   memoryBlock = "",
   extraBlocks: string[] = [],
+  styleHints: string[] = [],
 ): string {
   const trend =
     snap.trend === "uptrend"
@@ -156,6 +161,7 @@ function buildVisionAnalyzePrompt(
         : "عرضي";
   return [
     `حلّل الشارت المرفق لـ ${symbol} على إطار ${interval} بالعربية.`,
+    ...styleHints,
     ...buildProfilePromptHints(symbol, interval, profile),
     `مرجع سريع: RSI ${snap.rsi14?.toFixed(1) ?? "—"} · اتجاه ${trend} · ${snap.summary}`,
     ...extraBlocks,
@@ -186,6 +192,8 @@ export interface MarketAnalyzeResult {
   telegramReasonAr?: string;
   chartVisionSource: ChartVisionSource;
   liveReasoningLog: LiveReasoningEntry[];
+  /** All take-profit targets from the LLM (take_profit on rec is targets[0]). */
+  targets: number[];
 }
 
 function pickTelegramDelivery(
@@ -246,6 +254,7 @@ export async function runMarketAnalyze(
     telegramSession?: boolean;
     market?: MarketType;
     chartImage?: ChatImagePayload | null;
+    tradingStyle?: TradingStyle;
   },
 ): Promise<MarketAnalyzeResult> {
   const market: MarketType = opts?.market ?? "forex";
@@ -254,7 +263,9 @@ export async function runMarketAnalyze(
     const resolved = await resolveMt5Symbol(userId, sym);
     if (resolved) sym = resolved;
   }
-  const profile = profileForInterval(interval);
+  const style = opts?.tradingStyle ?? settings.trading_style ?? "day";
+  const profile = profileForTradingStyle(style);
+  const styleHints = buildTradingStylePromptHints(style);
   const emit = (a: import("./agentActivity").AgentActivity) =>
     opts?.onActivity?.(a);
 
@@ -389,6 +400,7 @@ export async function runMarketAnalyze(
         profile,
         memoryBlock,
         extraBlocks,
+        styleHints,
       )
     : buildAnalyzePrompt(
         sym,
@@ -398,6 +410,7 @@ export async function runMarketAnalyze(
         profile,
         memoryBlock,
         extraBlocks,
+        styleHints,
       );
 
   const userContent = buildChartAnalyzeUserContent(
@@ -519,7 +532,19 @@ export async function runMarketAnalyze(
         sourceTimeframe: interval,
       })
     : agentDrawings;
-  const drawings = validatedDrawings;
+
+  const tradeTargets = llmOut.targets.filter((t) => typeof t === "number" && t > 0);
+  const drawings = mergeTradeLevelDrawings(
+    validatedDrawings,
+    {
+      entry: rec?.entry ?? llmOut.entry,
+      stop_loss: rec?.stop_loss ?? llmOut.stop_loss,
+      targets: tradeTargets,
+      confidence: rec?.confidence ?? llmOut.confidence,
+      action,
+    },
+    candles,
+  );
 
   if (rec && (rec.action === "buy" || rec.action === "sell")) {
     const attached = await attachChartToRecommendation(userId, rec, {
@@ -547,9 +572,10 @@ export async function runMarketAnalyze(
 
   return {
     reply,
-    overlays: overlaysFromAnalysis(rec ?? undefined, snap),
+    overlays: overlaysFromAnalysis(rec ?? undefined, snap, tradeTargets),
     drawings,
     recommendation: rec,
+    targets: tradeTargets,
     activities: [],
     intents,
     profileLabel: profile.labelAr,

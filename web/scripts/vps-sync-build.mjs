@@ -20,15 +20,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(__dirname, "..");
 const tarball = path.join(webDir, ".deploy-src.tgz");
 
-execSync(`tar -czf "${tarball}" -C "${webDir}" src`, { stdio: "inherit" });
+execSync(`tar -czf "${tarball}" -C "${webDir}" src package.json package-lock.json next.config.ts`, {
+  stdio: "inherit",
+});
 
 const remoteCmd = `set -e
 cd /opt/aichart/web
 echo "==> Stop web before build"
 pm2 stop aichart-web 2>/dev/null || true
 rm -rf .next
-echo "==> Extract src"
+echo "==> Extract src + package manifests"
 tar -xzf /tmp/aichart-deploy-src.tgz
+echo "==> npm install (sync deps)"
+npm install
 echo "==> Build"
 npm run build
 echo "==> Restart PM2"
