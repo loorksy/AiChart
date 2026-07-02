@@ -2,7 +2,7 @@ import type { Message, ContentBlock } from "@/lib/anthropic";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import { getActiveModel, getProviderApiKey } from "@/lib/llm";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
-import { callOpenAICompatStructured } from "@/lib/openaiCompat";
+import { callOpenAISdkStructured } from "@/lib/openaiSdk";
 import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "@/lib/persona";
 import { isGenericLogPhrase } from "@/lib/chart/chartTerminology";
 import type { TradingSettings } from "@/lib/types";
@@ -57,11 +57,38 @@ const DRAWING_SCHEMA = {
     label: { type: ["string", "null"] },
     confidence: { type: "number" },
     color: { type: ["string", "null"] },
+    width: { type: ["number", "null"] },
+    style: { type: ["string", "null"], enum: ["solid", "dashed", "dotted", null] },
+    fill: { type: ["boolean", "null"] },
+    fill_color: { type: ["string", "null"] },
     semanticRole: { type: ["string", "null"] },
     patternType: { type: ["string", "null"] },
     points: { type: "array", items: POINT_SCHEMA },
+    meta: {
+      type: ["object", "null"],
+      properties: {
+        entry: { type: ["number", "null"] },
+        stopLoss: { type: ["number", "null"] },
+        takeProfit: { type: ["number", "null"] },
+      },
+      required: ["entry", "stopLoss", "takeProfit"],
+      additionalProperties: false,
+    },
   },
-  required: ["type", "label", "confidence", "color", "semanticRole", "patternType", "points"],
+  required: [
+    "type",
+    "label",
+    "confidence",
+    "color",
+    "width",
+    "style",
+    "fill",
+    "fill_color",
+    "semanticRole",
+    "patternType",
+    "points",
+    "meta",
+  ],
   additionalProperties: false,
 };
 
@@ -192,14 +219,14 @@ export async function runChartAnalyzeLlm(opts: {
     (await getPlatformValueAsync("OPENAI_API_KEY"));
   if (!apiKey) throw new Error("مفتاح OpenAI غير مُعدّ.");
 
-  const { data, usage } = await callOpenAICompatStructured<Record<string, unknown>>(
+  const { data, usage } = await callOpenAISdkStructured<Record<string, unknown>>(
     compatTarget(apiKey),
     {
       system,
       messages,
       schemaName: "chart_analysis",
       schema: CHART_ANALYZE_SCHEMA as unknown as Record<string, unknown>,
-      maxTokens: 4096,
+      maxTokens: 8192,
     },
     opts.onDelta ? { onTextDelta: opts.onDelta } : undefined,
   );

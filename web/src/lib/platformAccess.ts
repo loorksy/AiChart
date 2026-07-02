@@ -6,12 +6,12 @@ export type UserWithAccess = PublicUser & {
   access_expires_at?: string | null;
 };
 
+// Public platform: any signed-in account has access — no admin approval gate.
+// Only a manual `suspended` status (abuse) blocks. Tool usage (analyze, etc.)
+// is metered separately by the free-trial / credit quota, not by this gate.
 export function hasPlatformAccess(user: UserWithAccess): boolean {
   if (user.role === "admin") return true;
-  if (user.status === "suspended") return false;
-  if (user.status !== "active") return false;
-  if (!user.access_expires_at) return false;
-  return new Date(user.access_expires_at).getTime() > Date.now();
+  return user.status !== "suspended";
 }
 
 export function getAccessBlockReason(
@@ -19,9 +19,6 @@ export function getAccessBlockReason(
 ): AccessBlockReason | null {
   if (user.role === "admin") return null;
   if (user.status === "suspended") return "suspended";
-  if (user.status !== "active") return "pending";
-  if (!user.access_expires_at) return "pending";
-  if (new Date(user.access_expires_at).getTime() <= Date.now()) return "expired";
   return null;
 }
 

@@ -69,9 +69,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Public platform: new accounts are active immediately (no admin approval).
     const userId = await insertReturningId(
       `INSERT INTO users (email, password_hash, role, status, username, whatsapp_e164)
-       VALUES (?, ?, 'user', 'pending', ?, ?)`,
+       VALUES (?, ?, 'user', 'active', ?, ?)`,
       [email.toLowerCase(), hashPassword(password), uname, phone.e164],
     );
     await ensureUserDefaults(userId);
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
       id: userId,
       email: email.toLowerCase(),
       role: "user" as const,
-      status: "pending" as const,
+      status: "active" as const,
       username: uname,
       whatsapp_e164: phone.e164,
       telegram_id: null,

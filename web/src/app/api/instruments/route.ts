@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePlatformAccess } from "@/lib/api";
+import { getOptionalUser, checkRateLimit, clientKey } from "@/lib/api";
 import { searchBinanceInstruments } from "@/lib/binanceSymbols";
 import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
@@ -46,7 +46,52 @@ async function oandaForexInstruments(
 
 export async function GET(request: NextRequest) {
   try {
-    await requirePlatformAccess();
+    // Public: guests need the instrument list to switch pairs while browsing.
+    const user = await getOptionalUser();
+    if (!user && !checkRateLimit(`instruments:${clientKey(request)}`, 40, 60_000)) {
+      return NextResponse.json(
+        { error: "طلبات كثيرة — سجّل الدخول للمتابعة." },
+        { status: 429 },
+      );
+    }
+
+    // Second data source: the user's ENTIRE broker symbol universe via the EA
+    // bridge (not just MT5 Market Watch).
+    if (request.nextUrl.searchParams.get("source") === "ea") {
+      if (!user) {
+        return NextResponse.json(
+          { error: "أزواج الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },
+          { status: 401 },
+        );
+      }
+      const { getAllBrokerSymbols } = await import("@/lib/markets/eaSymbols");
+      const { symbols, source } = await getAllBrokerSymbols(user.id);
+      const query = (
+        request.nextUrl.searchParams.get("q") ??
+        request.nextUrl.searchParams.get("search") ??
+        ""
+      )
+        .trim()
+        .toUpperCase();
+      const rows = symbols.filter(
+        (s) =>
+          !query ||
+          s.symbol.toUpperCase().includes(query) ||
+          s.description.toUpperCase().includes(query),
+      );
+      return NextResponse.json({
+        instruments: rows.map((s) => ({
+          symbol: s.symbol,
+          base: s.symbol.slice(0, 3),
+          quote: s.symbol.slice(3, 6),
+          digits: s.digits,
+          description: s.description,
+        })),
+        total: rows.length,
+        source,
+      });
+    }
+
     const q = (
       request.nextUrl.searchParams.get("q") ??
       request.nextUrl.searchParams.get("search") ??

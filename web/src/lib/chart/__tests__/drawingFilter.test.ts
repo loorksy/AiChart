@@ -44,8 +44,8 @@ test("filterAndCapDrawings removes risk_reward on wait", () => {
   assert.equal(out.some((d) => d.type === "range_box"), true);
 });
 
-test("filterAndCapDrawings max 7 total", () => {
-  const drawings: ChartDrawing[] = Array.from({ length: 12 }, (_, i) => ({
+test("filterAndCapDrawings max 12 total", () => {
+  const drawings: ChartDrawing[] = Array.from({ length: 20 }, (_, i) => ({
     type: (i % 2 === 0 ? "polyline_pattern" : "range_box") as ChartDrawing["type"],
     confidence: 50 + i,
     points: [
@@ -53,5 +53,5 @@ test("filterAndCapDrawings max 7 total", () => {
       { time: 2000 + i, price: 1.08 },
     ],
   }));
-  assert.equal(filterAndCapDrawings(drawings).length, 7);
+  assert.equal(filterAndCapDrawings(drawings).length, 12);
 });

@@ -121,6 +121,19 @@ export function profileForInterval(interval: string): AnalysisProfile {
   return POSITION; // daily and longer
 }
 
+/**
+ * The AI infers the session type from the selected timeframe — there is no
+ * manual trading-style choice. ≤5m → scalp, ≤1h → day, ≤1D → swing, else
+ * position.
+ */
+export function tradingStyleForInterval(interval: string): TradingStyle {
+  const sec = barDurationSec(normalizeInterval(interval));
+  if (sec <= 300) return "scalp"; // 1m–5m
+  if (sec <= 3600) return "day"; // 15m–1h
+  if (sec <= 86400) return "swing"; // 2h–1D
+  return "position"; // 1W and longer
+}
+
 export function buildProfilePromptHints(
   symbol: string,
   interval: string,

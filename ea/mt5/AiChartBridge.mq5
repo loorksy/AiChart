@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "AiChart"
 #property link      "https://aichart.lork.cloud"
-#property version   "4.01"
+#property version   "4.04"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -42,7 +42,7 @@ ulong   g_last_chart_quote_ms = 0;
 long    g_last_trade_ticket = 0;
 double  g_last_trade_price = 0;
 string  g_last_trade_error = "";
-const string EA_VERSION = "4.01";
+const string EA_VERSION = "4.04";
 
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
@@ -746,6 +746,10 @@ void HandleCommand(string obj)
    {
       GetOhlc(id, payload, obj);
    }
+   else if(type == "list_symbols")
+   {
+      ListSymbols(id, payload, obj);
+   }
    else
    {
       AckCommand(id, "failed", 0, 0, 0, "unsupported command type");
@@ -1308,6 +1312,9 @@ void GetOhlc(long id, string payload, string root)
    int count = (int)PayloadNum(payload, root, "count");
    if(count <= 0) count = 200;
    if(count > 500) count = 500;
+   // v4.02 — history pagination: bar offset back from the most recent bar.
+   int start = (int)PayloadNum(payload, root, "start");
+   if(start < 0) start = 0;
 
    if(sym == "")
    {
@@ -1321,12 +1328,44 @@ void GetOhlc(long id, string payload, string root)
    ENUM_TIMEFRAMES tf = ResolveTimeframe(tfStr);
    MqlRates rates[];
    ArraySetAsSeries(rates, true);
-   int got = CopyRates(sym, tf, 0, count, rates);
+
+   // v4.03 — exact time-range fetch (from/to epoch seconds). Bar offsets drift
+   // across weekend gaps; date-range CopyRates tiles history without holes.
+   long fromSec = (long)PayloadNum(payload, root, "from");
+   long toSec = (long)PayloadNum(payload, root, "to");
+   bool byRange = (fromSec > 0 && toSec > fromSec);
+   int got = 0;
+   // v4.04 — MT5 loads old history LAZILY from the broker server: the first
+   // CopyRates for an old range returns -1 (history not found) while the
+   // download starts. Retry briefly so deep scrollback actually fills.
+   for(int attempt = 0; attempt < 5; attempt++)
+   {
+      if(byRange)
+         got = CopyRates(sym, tf, (datetime)fromSec, (datetime)toSec, rates);
+      else
+         got = CopyRates(sym, tf, start, count, rates);
+      if(got > 0) break;
+      Sleep(400);
+   }
    if(got <= 0)
    {
+      if(byRange)
+      {
+         // Range genuinely has no bars on this broker (weekend gap or beyond
+         // terminal history) — ack SUCCESS with an empty array, not an error.
+         string emptyInner = "\"symbol\":" + JsonStr(sym) + ",";
+         emptyInner += "\"timeframe\":" + JsonStr(tfStr) + ",";
+         emptyInner += "\"count\":0,";
+         emptyInner += "\"candles\":[]";
+         MarkCommandAcked(id);
+         AckCommandEx(id, "acked", emptyInner, "");
+         return;
+      }
       AckCommand(id, "failed", 0, 0, 0, "CopyRates failed for " + sym + " " + tfStr);
       return;
    }
+   // Cap the ack payload; keep the NEWEST bars (index 0 = newest, as-series).
+   if(got > 520) got = 520;
 
    string candles = "[";
    for(int i = got - 1; i >= 0; i--)
@@ -1347,7 +1386,55 @@ void GetOhlc(long id, string payload, string root)
    string inner = "\"symbol\":" + JsonStr(sym) + ",";
    inner += "\"timeframe\":" + JsonStr(interval) + ",";
    inner += "\"count\":" + (string)got + ",";
+   inner += "\"start\":" + (string)start + ",";
    inner += "\"candles\":" + candles;
+
+   MarkCommandAcked(id);
+   AckCommandEx(id, "acked", inner, "");
+}
+
+// v4.02 — enumerate broker symbols. all=true → the ENTIRE broker universe
+// (SymbolsTotal(false)), not just Market Watch. Paginated via offset/limit.
+void ListSymbols(long id, string payload, string root)
+{
+   double allNum = PayloadNum(payload, root, "all");
+   string allStr = PayloadStrVal(payload, root, "all");
+   bool includeAll = (allNum > 0 || allStr == "true" || allStr == "1");
+   // MQL semantics: SymbolsTotal(true)=Market Watch only, false=all symbols.
+   bool selectedOnly = !includeAll;
+
+   int offset = (int)PayloadNum(payload, root, "offset");
+   if(offset < 0) offset = 0;
+   int limit = (int)PayloadNum(payload, root, "limit");
+   if(limit <= 0) limit = 300;
+   if(limit > 500) limit = 500;
+
+   int total = SymbolsTotal(selectedOnly);
+   string items = "[";
+   int emitted = 0;
+   for(int i = offset; i < total && emitted < limit; i++)
+   {
+      string s = SymbolName(i, selectedOnly);
+      if(s == "") continue;
+      string desc = SymbolInfoString(s, SYMBOL_DESCRIPTION);
+      if(StringLen(desc) > 48) desc = StringSubstr(desc, 0, 48);
+      int digits = (int)SymbolInfoInteger(s, SYMBOL_DIGITS);
+
+      if(emitted > 0) items += ",";
+      items += "{";
+      items += "\"s\":" + JsonStr(s) + ",";
+      items += "\"d\":" + (string)digits + ",";
+      items += "\"n\":" + JsonStr(desc);
+      items += "}";
+      emitted++;
+   }
+   items += "]";
+
+   string inner = "\"total\":" + (string)total + ",";
+   inner += "\"offset\":" + (string)offset + ",";
+   inner += "\"count\":" + (string)emitted + ",";
+   inner += "\"all\":" + (includeAll ? "true" : "false") + ",";
+   inner += "\"symbols\":" + items;
 
    MarkCommandAcked(id);
    AckCommandEx(id, "acked", inner, "");

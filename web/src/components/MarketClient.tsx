@@ -9,7 +9,7 @@ import { formatLevel } from "@/components/market/formatLevel";
 import { useEaLivePrice } from "@/hooks/useEaLivePrice";
 import { useChartAnalysis } from "@/hooks/useChartAnalysis";
 import { cn } from "@/lib/utils";
-import KLineChart, { type KLineChartHandle } from "./chart/KLineChart";
+import TvChart, { type TvChartHandle } from "./chart/TvChart";
 import {
   overlaysFromAnalysis,
   overlaysFromRecommendation,
@@ -106,7 +106,7 @@ export default function MarketClient({
   const [recDetailOpen, setRecDetailOpen] = useState(false);
 
   const chartFrameRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<KLineChartHandle>(null);
+  const chartRef = useRef<TvChartHandle>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const live = useEaLivePrice(symbol, true);
 
@@ -352,17 +352,18 @@ export default function MarketClient({
               isFullscreen && "min-h-dvh",
             )}
           >
-            <KLineChart
+            <TvChart
               ref={chartRef}
               symbol={symbol}
               interval={interval}
               market={market}
-              recommendations={recommendations}
+              recommendation={activeRec}
               overlays={overlays}
               drawings={drawings}
-              livePrice={live.price > 0 ? live.price : undefined}
-              refreshMs={60_000}
+              analyzing={isAnalyzing}
               className="h-full min-h-0 p-0"
+              onSymbolChange={setSymbol}
+              onIntervalChange={setMarketInterval}
             />
 
             <ChartTradeOverlay

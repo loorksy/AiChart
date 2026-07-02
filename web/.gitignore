@@ -45,3 +45,7 @@ next-env.d.ts
 /data
 
 testsprite_tests\tmp\config.json
+
+# TradingView Advanced Charting Library (proprietary - never commit)
+/public/charting_library/
+/src/vendor/tradingview/

@@ -79,7 +79,19 @@ async function fetchForexOhlcLive(
     };
   }
   try {
-    const { candles, hasMore } = await fetchOandaCandles(symbol, interval, limit, opts);
+    // Retry once on a transient OANDA failure (burst-load rate limits return a
+    // momentary error) before surfacing it to the caller.
+    let result: { candles: OhlcCandle[]; hasMore: boolean } | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        result = await fetchOandaCandles(symbol, interval, limit, opts);
+        break;
+      } catch (err) {
+        if (attempt >= 1) throw err;
+        await new Promise((r) => setTimeout(r, 350));
+      }
+    }
+    const { candles, hasMore } = result!;
     if (candles.length > 0) {
       return {
         candles: opts?.fromMs != null ? candles : candles.slice(-limit),
@@ -106,9 +118,9 @@ async function fetchCryptoOhlc(
   limit: number,
   cursor?: number,
 ): Promise<{ candles: OhlcCandle[]; nextCursor: number | null }> {
-  const settings = await getSettings(userId);
+  const settings = userId > 0 ? await getSettings(userId) : null;
   const env: BinanceEnv = executionToBinanceEnv(
-    settings.execution_env_preference === "live" ? "live" : "demo",
+    settings?.execution_env_preference === "live" ? "live" : "demo",
   );
 
   const sym = symbol.toUpperCase();
@@ -158,8 +170,10 @@ async function fetchCryptoOhlc(
 export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcResult> {
   const symbol = options.symbol.toUpperCase().trim();
   const interval = normalizeInterval(options.interval ?? "1h");
-  const settings = await getSettings(options.userId);
-  const market = options.market ?? settings.active_market ?? "crypto";
+  // Guests (userId <= 0) have no settings row — never touch getSettings for them
+  // (it upserts a users-FK'd row). Market comes from the explicit option.
+  const settings = options.userId > 0 ? await getSettings(options.userId) : null;
+  const market = options.market ?? settings?.active_market ?? "crypto";
   const limit = Math.min(
     Math.max(1, options.limit ?? 200),
     OHLC_MAX_LIMIT,

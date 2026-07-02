@@ -24,6 +24,53 @@ export async function requireUser(): Promise<PublicUser> {
   return user;
 }
 
+/**
+ * Returns the signed-in user, or null for guests (public browsing).
+ * Suspended accounts are treated as guests (no elevated access).
+ */
+export async function getOptionalUser(): Promise<PublicUser | null> {
+  const user = await getCurrentUser();
+  if (!user || user.status === "suspended") return null;
+  return user;
+}
+
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+/**
+ * Lightweight in-memory rate limit (per server instance) for public/guest
+ * endpoints — enough to blunt casual scraping of the unauthenticated feed.
+ * Returns true when the call is allowed.
+ */
+export function checkRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+): boolean {
+  const now = Date.now();
+  // Opportunistic sweep so the bucket map can't grow without bound under a
+  // flood of distinct clients (each guest IP would otherwise leak an entry).
+  if (rateBuckets.size > 5000) {
+    for (const [k, b] of rateBuckets) {
+      if (now >= b.resetAt) rateBuckets.delete(k);
+    }
+  }
+  const bucket = rateBuckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (bucket.count >= limit) return false;
+  bucket.count += 1;
+  return true;
+}
+
+/** Best-effort client key for rate limiting (first X-Forwarded-For hop). */
+export function clientKey(req: { headers: { get(name: string): string | null } }): string {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0]!.trim();
+  return req.headers.get("x-real-ip") ?? "unknown";
+}
+
 export async function requireActiveUser(): Promise<PublicUser> {
   const user = await requireUser();
   if (user.status !== "active") {

@@ -21,6 +21,10 @@ export const DRAWING_TYPE_LABELS: Record<SemanticDrawingType, string> = {
   demand_zone: "منطقة طلب",
   decision_zone: "منطقة قرار",
   labeled_arrow: "سيناريو متوقع",
+  long_position: "مركز شراء",
+  short_position: "مركز بيع",
+  parallel_channel: "قناة موازية",
+  regression_trend: "اتجاه الانحدار",
 };
 
 export const MT5_DRAWING_TYPE_LABELS: Partial<Record<DrawingType, string>> = {
@@ -61,6 +65,10 @@ export const DRAWING_TYPE_COLORS: Record<SemanticDrawingType, string> = {
   demand_zone: "#22c55e",
   decision_zone: "#a78bfa",
   labeled_arrow: "#22c55e",
+  long_position: "#22c55e",
+  short_position: "#ef4444",
+  parallel_channel: "#38bdf8",
+  regression_trend: "#a78bfa",
 };
 
 export interface LegendItem {

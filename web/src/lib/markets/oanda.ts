@@ -106,8 +106,14 @@ export async function fetchOandaCandles(
   let url: string;
 
   if (opts?.fromMs != null && opts?.toMs != null && opts.toMs > opts.fromMs) {
-    const fromIso = new Date(opts.fromMs).toISOString();
-    const toIso = new Date(opts.toMs).toISOString();
+    // OANDA returns HTTP 400 when `to` is in the future — TradingView requests
+    // slightly past `now` to leave room for the forming candle — and when a
+    // range spans >5000 candles. Clamp both `to` (to now) and `from`.
+    const barMs = barDurationMs(interval) || 60_000;
+    const clampedTo = Math.min(opts.toMs, Date.now() - 1000);
+    const clampedFrom = Math.max(opts.fromMs, clampedTo - 4800 * barMs);
+    const fromIso = new Date(clampedFrom).toISOString();
+    const toIso = new Date(clampedTo).toISOString();
     url =
       `${base}?granularity=${granularity}` +
       `&from=${encodeURIComponent(fromIso)}` +

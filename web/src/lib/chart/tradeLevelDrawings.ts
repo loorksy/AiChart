@@ -12,7 +12,7 @@ export interface TradeSetup {
   action: "buy" | "sell" | "wait";
 }
 
-const MAX_CHART_DRAWINGS = 7;
+const MAX_CHART_DRAWINGS = 12;
 
 /** Horizontal price lines for entry, stop-loss, and take-profit targets. */
 export function buildTradeLevelDrawings(

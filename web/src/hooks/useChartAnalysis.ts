@@ -2,8 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { KLineChartHandle } from "@/components/chart/KLineChart";
+import type { ChatImagePayload } from "@/lib/chatImage";
 import type { ChartOverlay } from "@/lib/chartOverlays";
+
+/** Minimal, engine-agnostic chart handle the analysis flow needs. */
+export type ChartCaptureHandle = {
+  capturePng: () => Promise<ChatImagePayload | null>;
+  currentSymbol: () => string;
+};
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { AgentActivity } from "@/lib/agentActivity";
 import {
@@ -42,6 +48,7 @@ export interface ChartHydrateSnapshot {
   drawings?: ChartDrawing[];
   overlays?: ChartOverlay[];
   recommendation?: Recommendation | null;
+  targets?: number[];
   liveReasoningLog?: LiveReasoningEntry[];
 }
 
@@ -49,12 +56,15 @@ export interface UseChartAnalysisOptions {
   symbol: string;
   interval: string;
   market: MarketType;
-  chartRef: RefObject<KLineChartHandle | null>;
+  chartRef: RefObject<ChartCaptureHandle | null>;
   source?: ChartAnalyzeSource;
   /** Trading style drives analyze prompts (scalp/day/swing/position). */
   tradingStyle?: TradingStyle;
   /** Restore persisted analysis layers without re-running API. */
   hydrateSnapshot?: ChartHydrateSnapshot | null;
+  /** Chart layout id — the server persists the finished analysis into it,
+   *  so closing the tab mid-analysis still yields the result on next open. */
+  layoutId?: string;
   onCreditsUsed?: () => void;
   /** Called when streaming text deltas arrive (for chat injection). */
   onStreamDelta?: (text: string) => void;
@@ -70,6 +80,15 @@ export interface UseChartAnalysisOptions {
 
 const LIVE_DEBOUNCE_MS = 1500;
 
+/** Loose ticker equality across broker suffixes (EURUSD ≈ EURUSD.r ≈ EURUSDm). */
+function symbolsMatch(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const na = a.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const nb = b.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!na || !nb) return false;
+  return na === nb || na.startsWith(nb) || nb.startsWith(na);
+}
+
 export function useChartAnalysis({
   symbol,
   interval,
@@ -84,6 +103,7 @@ export function useChartAnalysis({
   onActivity,
   onAnalyzeError,
   hydrateSnapshot,
+  layoutId,
 }: UseChartAnalysisOptions) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisText, setAnalysisText] = useState("");
@@ -189,6 +209,7 @@ export function useChartAnalysis({
   const hydrateFromSnapshot = useCallback((snap: ChartHydrateSnapshot) => {
     if (snap.drawings?.length) setDrawings(snap.drawings);
     if (snap.overlays?.length) setOverlays(snap.overlays);
+    if (snap.targets?.length) setTargets(snap.targets.filter((t) => t > 0));
     if (snap.liveReasoningLog?.length) setLiveReasoningLog(snap.liveReasoningLog);
     if (snap.recommendation !== undefined) {
       setRecommendation(snap.recommendation);
@@ -218,18 +239,27 @@ export function useChartAnalysis({
       onAnalyzeStart?.();
 
       try {
+        // Analyze the pair the chart ACTUALLY shows (Pro widget is authoritative;
+        // React state can lag a fast symbol switch), so the result never belongs
+        // to a different pair than the one on screen.
+        const reqSymbol = (
+          chartRef.current?.currentSymbol?.() ?? symbol
+        )
+          .toUpperCase()
+          .trim();
+
         const rawImage = await chartRef.current?.capturePng().catch(() => null);
         const chartImage = rawImage
           ? await compressChartImage(rawImage).catch(() => rawImage)
           : null;
 
         const body: Record<string, unknown> = {
-          symbol,
+          symbol: reqSymbol,
           interval,
           market,
           stream: true,
           source,
-          ...(tradingStyle ? { trading_style: tradingStyle } : {}),
+          ...(layoutId ? { layout_id: layoutId } : {}),
           ...(chartImage ? { image: chartImage } : {}),
         };
 
@@ -290,6 +320,13 @@ export function useChartAnalysis({
           return;
         }
 
+        // If the chart moved to another pair while analysis ran, drop the result
+        // rather than paint one pair's analysis onto another.
+        const nowSymbol = (
+          chartRef.current?.currentSymbol?.() ?? symbol
+        ).toUpperCase();
+        if (!symbolsMatch(nowSymbol, reqSymbol)) return;
+
         applyDonePayload(data, streamed);
         onAnalyzeDone?.(data);
         onCreditsUsed?.();
@@ -320,6 +357,7 @@ export function useChartAnalysis({
       chartRef,
       source,
       tradingStyle,
+      layoutId,
       onAnalyzeStart,
       onStreamDelta,
       onAnalyzeDone,

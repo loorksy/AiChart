@@ -16,7 +16,7 @@ import {
   callOpenAICompatStream,
   type OpenAICompatTarget,
 } from "./openaiCompat";
-import { getPlatformValue } from "./platformConfig";
+import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
 
 /** OpenAI is the only supported provider. Kept as a named type for callers. */
 export type LLMProvider = "openai";
@@ -50,6 +50,15 @@ export function getProviderApiKey(provider: LLMProvider = "openai"): string | un
 
 export function isLLMConfigured(): boolean {
   return Boolean(getProviderApiKey("openai"));
+}
+
+/**
+ * Accurate LLM-configured check for server components: `getPlatformValue`
+ * (sync) only sees the cache + env, so a DB-stored `OPENAI_API_KEY` reads as
+ * missing on a cold render. This awaits the DB, avoiding a false "AI off".
+ */
+export async function isLLMConfiguredAsync(): Promise<boolean> {
+  return Boolean(await getPlatformValueAsync(PROVIDER_KEY_FIELD.openai));
 }
 
 function compatModelId(model: string): string {

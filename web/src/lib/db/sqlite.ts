@@ -1103,6 +1103,18 @@ function migrate(db: Database.Database) {
       PRIMARY KEY (user_id, bot_id, fingerprint),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS chart_layouts (
+      id         TEXT PRIMARY KEY,
+      user_id    INTEGER NOT NULL,
+      symbol     TEXT NOT NULL DEFAULT 'EURUSD',
+      interval   TEXT NOT NULL DEFAULT '15m',
+      state_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_chart_layouts_user ON chart_layouts(user_id);
   `);
 
   dropLegacyBotAndScalpTables(db);

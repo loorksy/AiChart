@@ -64,14 +64,94 @@ export async function resolveForexBackendForUser(
   return resolveForexBackendFromPref(settings.forex_backend);
 }
 
+/** Free-tier starting quota for new self-serve accounts: 3 analyses (cost 4 each). */
+export const FREE_TIER_QUOTA = 12;
+
+/* ── Chart layouts (TradingView-style per-user chart URLs + saved state) ── */
+
+export interface ChartLayoutRow {
+  id: string;
+  user_id: number;
+  symbol: string;
+  interval: string;
+  state_json: string | null;
+}
+
+const LAYOUT_ID_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+function newLayoutId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  let out = "";
+  for (const b of bytes) out += LAYOUT_ID_ALPHABET[b % LAYOUT_ID_ALPHABET.length];
+  return out;
+}
+
+export async function getChartLayoutById(
+  id: string,
+  userId: number,
+): Promise<ChartLayoutRow | null> {
+  if (!/^[A-Za-z0-9]{8,16}$/.test(id)) return null;
+  return await queryOne<ChartLayoutRow>(
+    "SELECT id, user_id, symbol, interval, state_json FROM chart_layouts WHERE id = ? AND user_id = ?",
+    [id, userId],
+  );
+}
+
+/** The user's primary layout — created on first visit. */
+export async function getOrCreateChartLayout(
+  userId: number,
+  symbol?: string,
+): Promise<ChartLayoutRow> {
+  const existing = await queryOne<ChartLayoutRow>(
+    "SELECT id, user_id, symbol, interval, state_json FROM chart_layouts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
+    [userId],
+  );
+  if (existing) return existing;
+  const id = newLayoutId();
+  const sym = (symbol ?? "EURUSD").toUpperCase();
+  await execute(
+    "INSERT INTO chart_layouts (id, user_id, symbol) VALUES (?, ?, ?)",
+    [id, userId, sym],
+  );
+  return { id, user_id: userId, symbol: sym, interval: "15m", state_json: null };
+}
+
+export async function saveChartLayout(
+  id: string,
+  userId: number,
+  data: { symbol?: string; interval?: string; state?: unknown },
+): Promise<boolean> {
+  const existing = await getChartLayoutById(id, userId);
+  if (!existing) return false;
+  await execute(
+    `UPDATE chart_layouts
+       SET symbol = ?, interval = ?, state_json = ?, updated_at = ${nowExpr()}
+     WHERE id = ? AND user_id = ?`,
+    [
+      (data.symbol ?? existing.symbol).toUpperCase(),
+      data.interval ?? existing.interval,
+      data.state !== undefined ? JSON.stringify(data.state) : existing.state_json,
+      id,
+      userId,
+    ],
+  );
+  return true;
+}
+
+function nowExpr(): string {
+  return process.env.DATABASE_URL ? "NOW()" : "datetime('now')";
+}
+
 export async function ensureUserDefaults(userId: number) {
   await execute(
     "INSERT INTO trading_settings (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING",
     [userId],
   );
+  // New accounts start on the free tier; existing rows are untouched (DO NOTHING).
   await execute(
-    "INSERT INTO admin_limits (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING",
-    [userId],
+    "INSERT INTO admin_limits (user_id, claude_quota) VALUES (?, ?) ON CONFLICT (user_id) DO NOTHING",
+    [userId, FREE_TIER_QUOTA],
   );
 }
 

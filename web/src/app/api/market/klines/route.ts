@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePlatformAccess, handleError } from "@/lib/api";
+import {
+  getOptionalUser,
+  checkRateLimit,
+  clientKey,
+  handleError,
+} from "@/lib/api";
 import {
   normalizeCandlesForChart,
   sanitizeCandlesForMarket,
   toChartSeconds,
 } from "@/lib/ohlc/chartTime";
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
+import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 import { normalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
@@ -13,7 +19,15 @@ import type { MarketType } from "@/lib/markets/types";
 /** Market UI klines — forex via OANDA, crypto via Binance. */
 export async function GET(req: NextRequest) {
   try {
-    const user = await requirePlatformAccess();
+    // Public: guests may load candles to browse the chart (rate-limited).
+    const user = await getOptionalUser();
+    if (!user && !checkRateLimit(`klines:${clientKey(req)}`, 60, 60_000)) {
+      return NextResponse.json(
+        { error: "طلبات كثيرة — سجّل الدخول للمتابعة." },
+        { status: 429 },
+      );
+    }
+    const userId = user?.id ?? 0;
     const symbol = (req.nextUrl.searchParams.get("symbol") || "BTCUSDT")
       .toUpperCase()
       .replace(/[^A-Z0-9.]/g, "");
@@ -44,9 +58,37 @@ export async function GET(req: NextRequest) {
     const toMs =
       toRaw != null && toRaw !== "" ? Number(toRaw) : undefined;
 
+    // Second data source: the user's own broker via the EA bridge (MT5).
+    if (req.nextUrl.searchParams.get("source") === "ea") {
+      if (!user) {
+        return NextResponse.json(
+          { error: "بيانات الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },
+          { status: 401 },
+        );
+      }
+      const ea = await fetchEaOhlc(user.id, symbol, interval, {
+        fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
+        toMs: Number.isFinite(toMs) ? toMs : undefined,
+        limit,
+      });
+      const normalized = normalizeCandlesForChart(ea.candles);
+      const candles = sanitizeCandlesForMarket(normalized, "forex");
+      return NextResponse.json({
+        symbol,
+        interval,
+        market: "forex",
+        source: "ea",
+        candles,
+        // Empty WITHOUT a warning = genuine market gap (EA acked success) —
+        // don't flag pending, or the client burns retries on every weekend.
+        pending: candles.length === 0 && Boolean(ea.warning),
+        ...(ea.warning ? { error: ea.warning } : {}),
+      });
+    }
+
     try {
       const result = await fetchOhlc({
-        userId: user.id,
+        userId,
         symbol,
         interval,
         market,

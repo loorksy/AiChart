@@ -1,15 +1,12 @@
 "use client";
 
-
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { createPortal } from "react-dom";
-
 import dynamic from "next/dynamic";
-import type { KLineChartHandle } from "@/components/chart/KLineChart";
+import { useRouter } from "next/navigation";
+import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 
-const KLineChart = dynamic(() => import("@/components/chart/KLineChart"), {
+const TvChart = dynamic(() => import("@/components/chart/TvChart"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-muted-foreground">
@@ -19,625 +16,411 @@ const KLineChart = dynamic(() => import("@/components/chart/KLineChart"), {
 });
 
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
-
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
-
 import { OpenTradesDrawer } from "@/components/chart/OpenTradesDrawer";
-
-import { SmartChartToolbar } from "@/components/chart/SmartChartToolbar";
-
-import { useEaLivePrice } from "@/hooks/useEaLivePrice";
-
-import { useChartAnalysis } from "@/hooks/useChartAnalysis";
-
+import { AnalysisResultModal } from "@/components/chart/AnalysisResultModal";
+import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { useAccountCapital } from "@/hooks/useAccountCapital";
-
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
-
 import { normalizeInterval } from "@/lib/intervals";
-
 import type { Recommendation } from "@/lib/types";
-
-import { normalizeTradingStyle, type TradingStyle } from "@/lib/types";
-
 import type { MarketType } from "@/lib/markets/types";
 
-
-
 const LS_SYMBOL = "aichart_last_symbol";
-
 const LS_INTERVAL = "aichart_last_interval";
-
 const DEFAULT_SYMBOL = "EURUSD";
 
-
+/** Persisted layout state (drawings + recommendation) for refresh survival. */
+export interface ChartLayoutState extends ChartHydrateSnapshot {
+  targets?: number[];
+  /** Candle source for the active symbol: OANDA or the user's broker (EA). */
+  dataSource?: "oanda" | "ea";
+}
 
 export function SmartChartWorkspace({
-
   recommendations = [],
-
   agentReady = true,
-
   onCreditsUsed,
-
+  guest = false,
+  initialSymbol,
+  layoutId,
+  initialInterval,
+  initialState,
 }: {
-
   recommendations?: Recommendation[];
-
   agentReady?: boolean;
-
   onCreditsUsed?: () => void;
-
+  /** Guest (not signed in): browse chart only; tools redirect to login. */
+  guest?: boolean;
+  /** Symbol from the URL — takes precedence over last-used. */
+  initialSymbol?: string;
+  /** Per-user chart layout id (TradingView-style /chart/<id> URL). */
+  layoutId?: string;
+  initialInterval?: string;
+  /** Saved drawings/recommendation restored on load (no re-analysis). */
+  initialState?: ChartLayoutState | null;
 }) {
+  const chartRef = useRef<TvChartHandle>(null);
 
-  const chartRef = useRef<KLineChartHandle>(null);
+  const router = useRouter();
 
   const market: MarketType = "forex";
 
-  const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
-
-
-
   const [symbol, setSymbol] = useState(() => {
-
+    if (initialSymbol) return initialSymbol.toUpperCase();
     if (typeof window === "undefined") return DEFAULT_SYMBOL;
-
     return localStorage.getItem(LS_SYMBOL) ?? DEFAULT_SYMBOL;
-
   });
 
   const [interval, setChartInterval] = useState(() => {
-
+    if (initialInterval) return normalizeInterval(initialInterval);
     if (typeof window === "undefined") return "15m";
-
     return localStorage.getItem(LS_INTERVAL) ?? "15m";
-
   });
 
-  const [tradingStyle, setTradingStyle] = useState<TradingStyle>("day");
-
+  const [dataSource, setDataSource] = useState<"oanda" | "ea">(
+    initialState?.dataSource === "ea" && !guest ? "ea" : "oanda",
+  );
   const [tradesOpen, setTradesOpen] = useState(false);
-
+  const [resultOpen, setResultOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
-
-  const [hiddenLayers, setHiddenLayers] = useState<Set<number>>(new Set());
-
   const [executing, setExecuting] = useState(false);
-
-  const [forexConnected, setForexConnected] = useState(false);
-
   const [forexOnline, setForexOnline] = useState(false);
-
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
-
-
-
-  const live = useEaLivePrice(symbol, true);
 
   const capital = useAccountCapital(market);
 
-
+  const hydrateSnapshot = useMemo<ChartHydrateSnapshot | null>(
+    () => (initialState ? initialState : null),
+    [initialState],
+  );
 
   const {
-
     isAnalyzing,
-
+    analysisText,
     overlays,
-
     drawings,
-
     recommendation,
-
     targets,
-
     riskReward,
-
     liveAnalysis,
-
     analyzeError,
-
     liveReasoningLog,
-
     intents,
-
     analyze,
-
     clearLayers,
-
     stopLiveAnalysis,
-
     setHighlightDrawingIndex,
-
   } = useChartAnalysis({
-
     symbol,
-
     interval,
-
     market,
-
     chartRef,
-
     source: "smart_chart",
-
-    tradingStyle,
-
+    hydrateSnapshot,
+    layoutId,
+    onAnalyzeDone: () => setResultOpen(true),
     onCreditsUsed: () => {
-
       onCreditsUsed?.();
-
       void refreshCredits();
-
     },
-
   });
 
-
-
-  const visibleDrawings = useMemo(
-
-    () => drawings.filter((_, i) => !hiddenLayers.has(i)),
-
-    [drawings, hiddenLayers],
-
-  );
-
-
-
   const refreshCredits = useCallback(async () => {
-
     try {
-
       const res = await fetch("/api/me", { cache: "no-store" });
-
       if (!res.ok) return;
-
       const data = (await res.json()) as {
-
         quota?: { remaining?: number; limit?: number };
-
       };
-
       const remaining = data.quota?.remaining;
-
       if (remaining != null) setCreditsRemaining(remaining);
-
     } catch {
-
       /* ignore */
-
     }
-
   }, []);
 
-
-
   useEffect(() => {
-
+    if (guest) return;
     void refreshCredits();
-
-  }, [refreshCredits]);
-
-
+  }, [refreshCredits, guest]);
 
   useEffect(() => {
-
-    void fetch("/api/user/trading-style", { cache: "no-store" })
-
-      .then((r) => (r.ok ? r.json() : null))
-
-      .then((d: { trading_style?: string } | null) => {
-
-        if (d?.trading_style) {
-
-          setTradingStyle(normalizeTradingStyle(d.trading_style));
-
-        }
-
-      })
-
-      .catch(() => {});
-
-  }, []);
-
-
-
-  useEffect(() => {
-
+    if (guest) return;
     void fetch("/api/console/status", { cache: "no-store" })
-
       .then((r) => (r.ok ? r.json() : null))
-
       .then((d) => {
-
         if (!d) return;
-
-        setForexConnected(Boolean(d.mt5?.connected));
-
         setForexOnline(Boolean(d.mt5?.online));
-
       })
-
       .catch(() => {});
-
-  }, []);
-
-
+  }, [guest]);
 
   useEffect(() => {
-
-    void fetch("/api/console/trades-active", { cache: "no-store" })
-
-      .then((r) => (r.ok ? r.json() : null))
-
-      .then((d: { rows?: unknown[] } | null) => {
-
-        setOpenTradesCount(Array.isArray(d?.rows) ? d!.rows!.length : 0);
-
-      })
-
-      .catch(() => {});
-
-    const t = setInterval(() => {
-
+    if (guest) return;
+    const load = () =>
       void fetch("/api/console/trades-active", { cache: "no-store" })
-
         .then((r) => (r.ok ? r.json() : null))
-
         .then((d: { rows?: unknown[] } | null) => {
-
           setOpenTradesCount(Array.isArray(d?.rows) ? d!.rows!.length : 0);
-
         })
-
         .catch(() => {});
-
-    }, 30_000);
-
+    load();
+    const t = setInterval(load, 30_000);
     return () => clearInterval(t);
-
-  }, []);
-
-
+  }, [guest]);
 
   useEffect(() => {
-
     localStorage.setItem(LS_SYMBOL, symbol);
-
   }, [symbol]);
 
-
-
   useEffect(() => {
-
     localStorage.setItem(LS_INTERVAL, interval);
-
   }, [interval]);
 
+  // TradingView-style URLs: /chart/<layoutId>?symbol=X for signed-in users,
+  // /chart/<SYMBOL> for guests. replaceState only — no page reload.
+  useEffect(() => {
+    if (typeof window === "undefined" || !symbol) return;
+    const src = dataSource === "ea" ? "&src=ea" : "";
+    const target = layoutId
+      ? `/chart/${layoutId}?symbol=${encodeURIComponent(symbol)}${src}`
+      : `/chart/${encodeURIComponent(symbol)}`;
+    const current = window.location.pathname + window.location.search;
+    if (current !== target) window.history.replaceState(null, "", target);
+  }, [symbol, layoutId, dataSource]);
 
+  // Autosave the layout (drawings + recommendation) so refresh restores it.
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (guest || !layoutId) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const state: ChartLayoutState = {
+        drawings,
+        overlays,
+        recommendation,
+        targets,
+        liveReasoningLog,
+        dataSource,
+      };
+      void fetch("/api/chart/layout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: layoutId, symbol, interval, state }),
+      }).catch(() => {});
+    }, 1200);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [
+    guest,
+    layoutId,
+    symbol,
+    interval,
+    dataSource,
+    drawings,
+    overlays,
+    recommendation,
+    targets,
+    liveReasoningLog,
+  ]);
 
   useEffect(() => {
-
+    // Prefetch only for the OANDA path — broker (EA) candles are per-user
+    // on-demand via the bridge and must not be warmed anonymously.
+    if (dataSource === "ea") return;
     prefetchKlines(symbol, interval, market);
+  }, [symbol, interval, market, dataSource]);
 
-  }, [symbol, interval, market]);
-
-
-
-  useEffect(() => {
-
-    setHiddenLayers(new Set());
-
-  }, [drawings.length, symbol, interval]);
-
-
-
-  const handleSymbolChange = useCallback((s: string) => {
-
-    setSymbol(s.toUpperCase());
-
-  }, []);
-
-
-
-  const handleIntervalChange = useCallback((iv: string) => {
-
-    setChartInterval(normalizeInterval(iv));
-
-  }, []);
-
-
-
-  const handleStyleChange = useCallback((style: TradingStyle) => {
-
-    setTradingStyle(style);
-
-  }, []);
-
-
-
-  const handleIntervalSuggest = useCallback((iv: string) => {
-
-    setChartInterval(normalizeInterval(iv));
-
-  }, []);
-
-
-
-  const handleToggleLayer = useCallback((index: number) => {
-
-    setHiddenLayers((prev) => {
-
-      const next = new Set(prev);
-
-      if (next.has(index)) next.delete(index);
-
-      else next.add(index);
-
-      return next;
-
-    });
-
-  }, []);
-
-
-
-  const handleToggleAllLayers = useCallback(
-
-    (hide: boolean) => {
-
-      if (!hide) {
-
-        setHiddenLayers(new Set());
-
-        return;
-
-      }
-
-      setHiddenLayers(new Set(drawings.map((_, i) => i)));
-
+  const handleSymbolChange = useCallback(
+    (s: string, source: "oanda" | "ea" = "oanda") => {
+      setSymbol(s.toUpperCase());
+      setDataSource(source);
     },
-
-    [drawings],
-
+    [],
   );
 
-
+  const handleIntervalChange = useCallback((iv: string) => {
+    setChartInterval(normalizeInterval(iv));
+  }, []);
 
   const handleClearLayers = useCallback(() => {
-
     clearLayers();
-
     stopLiveAnalysis();
-
-    setHiddenLayers(new Set());
-
   }, [clearLayers, stopLiveAnalysis]);
 
-
-
   const handleExecute = useCallback(async () => {
-
     const pending = intents.find((i) => i.status === "pending");
-
     if (!pending) return;
-
     setExecuting(true);
-
     try {
-
       const res = await fetch(`/api/trades/intents/${pending.id}`, {
-
         method: "POST",
-
         headers: { "Content-Type": "application/json" },
-
         body: JSON.stringify({ action: "approve" }),
-
       });
-
       if (!res.ok) {
-
         const err = (await res.json().catch(() => null)) as { error?: string } | null;
-
         throw new Error(err?.error ?? "تعذّر التنفيذ");
-
       }
-
     } catch (e) {
-
       console.error(e);
-
     } finally {
-
       setExecuting(false);
-
     }
-
   }, [intents]);
-
-
-
-  const forexRefreshMs =
-
-    interval === "1m" ? 15_000 : interval === "5m" ? 30_000 : 60_000;
-
-
 
   const canExecute = intents.some((i) => i.status === "pending");
 
+  const hasLayers =
+    drawings.length > 0 || overlays.length > 0 || recommendation != null;
 
-
-  const toolbarPortal =
-
-    toolbarSlot &&
-
-    createPortal(
-
-      <SmartChartToolbar
-
-        market={market}
-
-        tradingStyle={tradingStyle}
-
-        onTradingStyleChange={handleStyleChange}
-
-        onIntervalSuggest={handleIntervalSuggest}
-
-        isAnalyzing={isAnalyzing}
-
-        onAnalyze={() => void analyze()}
-
-        creditsRemaining={creditsRemaining}
-
-        capitalLoading={capital.loading}
-
-        capitalConnected={capital.connected}
-
-        capitalAmount={capital.amount}
-
-        capitalCurrency={capital.currency}
-
-        capitalLabel={capital.label}
-
-        forexConnected={forexConnected}
-
-        forexOnline={forexOnline}
-
-        onOpenTrades={() => setTradesOpen(true)}
-
-        openTradesCount={openTradesCount}
-
-        drawings={drawings}
-
-        hiddenLayers={hiddenLayers}
-
-        onToggleLayer={handleToggleLayer}
-
-        onToggleAllLayers={handleToggleAllLayers}
-
-        onClearLayers={handleClearLayers}
-
-      />,
-
-      toolbarSlot,
-
-    );
-
-
+  // Platform buttons INSIDE the TradingView header (item: no separate layer).
+  const headerActions = useMemo<TvHeaderAction[]>(() => {
+    const actions: TvHeaderAction[] = [
+      {
+        id: "analyze",
+        text: guest
+          ? "🔒 دخول للتحليل"
+          : isAnalyzing
+            ? "… يُحلِّل"
+            : creditsRemaining != null
+              ? `✨ تحليل (${creditsRemaining})`
+              : "✨ تحليل",
+        title: guest
+          ? "سجّل الدخول لاستخدام التحليل بالذكاء الاصطناعي"
+          : "تحليل بالذكاء الاصطناعي",
+        color: "#22c55e",
+        onClick: () => {
+          if (guest) router.push("/login?next=/chart");
+          else if (!isAnalyzing) void analyze();
+        },
+      },
+    ];
+    if (!guest) {
+      if (hasLayers) {
+        actions.push({
+          id: "clear",
+          text: "🧹 مسح الرسومات",
+          title: "إزالة رسومات التحليل من الشارت",
+          onClick: handleClearLayers,
+        });
+      }
+      actions.push({
+        id: "trades",
+        text:
+          openTradesCount > 0 ? `💼 صفقات (${openTradesCount})` : "💼 صفقات",
+        title: "الصفقات المفتوحة",
+        onClick: () => setTradesOpen(true),
+      });
+      if (capital.connected && capital.amount != null) {
+        actions.push({
+          id: "capital",
+          text: `$ ${Math.round(capital.amount).toLocaleString()} ${capital.currency ?? ""}`,
+          title: capital.label ?? "رصيد الحساب",
+        });
+      }
+      actions.push({
+        id: "mt",
+        text: forexOnline ? "MT ✅" : "MT ⚠️",
+        title: forexOnline ? "MetaTrader متصل" : "MetaTrader غير متصل — اضغط للإعداد",
+        color: forexOnline ? "#22c55e" : "#f59e0b",
+        onClick: () => router.push("/console/connect"),
+      });
+    }
+    return actions;
+  }, [
+    guest,
+    isAnalyzing,
+    creditsRemaining,
+    hasLayers,
+    openTradesCount,
+    capital.connected,
+    capital.amount,
+    capital.currency,
+    capital.label,
+    forexOnline,
+    router,
+    analyze,
+    handleClearLayers,
+  ]);
 
   return (
-
     <div className="relative flex h-full min-h-0 flex-col">
-
-      {!agentReady && (
-
+      {!guest && !agentReady && (
         <p className="pointer-events-none absolute inset-x-0 top-12 z-40 mx-auto w-fit max-w-[90%] rounded-md border border-amber-500/30 bg-amber-500/90 px-3 py-1 text-xs text-amber-950 shadow">
-
           الذكاء الاصطناعي غير مُفعّل على الخادم — التحليل غير متاح.
-
         </p>
-
       )}
-
-
 
       {analyzeError && (
-
         <p className="pointer-events-none absolute inset-x-0 top-12 z-40 mx-auto w-fit max-w-[90%] rounded-md border border-destructive/30 bg-destructive/90 px-3 py-1 text-xs text-destructive-foreground shadow">
-
           {analyzeError}
-
         </p>
-
       )}
 
-
-
       <div className="relative min-h-0 flex-1 overflow-hidden">
-
-        <ChartErrorBoundary key={`${symbol}|${interval}`}>
-
-          <KLineChart
-
+        {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
+            setResolution) — never remount, so drawings and chart state survive. */}
+        <ChartErrorBoundary key="tv">
+          <TvChart
             ref={chartRef}
-
             symbol={symbol}
-
             interval={interval}
-
             market={market}
-
-            recommendations={recommendations}
-
+            analyzing={isAnalyzing}
             recommendation={recommendation}
-
             targets={targets}
-
             overlays={overlays}
-
-            drawings={visibleDrawings}
-
-            livePrice={live.price > 0 ? live.price : undefined}
-
-            refreshMs={forexRefreshMs}
-
+            drawings={drawings}
+            headerActions={headerActions}
+            eaEnabled={!guest}
+            dataSource={dataSource}
             className="h-full min-h-0 w-full"
-
-            onToolbarSlot={setToolbarSlot}
-
             onSymbolChange={handleSymbolChange}
-
             onIntervalChange={handleIntervalChange}
-
           />
-
         </ChartErrorBoundary>
 
-
-
-        {toolbarPortal}
-
-
-
         <ChartTradeOverlay
-
           recommendation={recommendation}
-
           targets={targets}
-
           riskReward={riskReward}
-
           liveReasoningLog={liveReasoningLog}
-
           isAnalyzing={isAnalyzing}
-
           liveAnalysis={liveAnalysis}
-
-          drawings={visibleDrawings}
-
+          drawings={drawings}
           onHighlightDrawing={setHighlightDrawingIndex}
-
           onStopLive={stopLiveAnalysis}
-
           onExecute={canExecute ? () => void handleExecute() : undefined}
-
           executing={executing}
-
           executeLabel={canExecute ? "موافقة وتنفيذ" : undefined}
-
         />
-
       </div>
-
-
 
       <OpenTradesDrawer open={tradesOpen} onClose={() => setTradesOpen(false)} />
 
+      <AnalysisResultModal
+        open={resultOpen}
+        onClose={() => setResultOpen(false)}
+        symbol={symbol}
+        interval={interval}
+        recommendation={recommendation}
+        targets={targets}
+        riskReward={riskReward}
+        narrative={analysisText}
+        reasoningLog={liveReasoningLog}
+        onExecute={
+          canExecute
+            ? () => {
+                setResultOpen(false);
+                void handleExecute();
+              }
+            : undefined
+        }
+        executing={executing}
+      />
     </div>
-
   );
-
 }
-
-
