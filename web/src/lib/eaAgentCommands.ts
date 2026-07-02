@@ -34,6 +34,31 @@ export async function queueEaGetOhlc(
       symbol: payload.symbol,
       timeframe: payload.timeframe,
       count: payload.count ?? 200,
+      ...(payload.start != null && payload.start > 0
+        ? { start: payload.start }
+        : {}),
+      ...(payload.from != null && payload.to != null
+        ? { from: payload.from, to: payload.to }
+        : {}),
+    },
+    timeoutMs,
+  );
+}
+
+/** EA v4.02+: one page of the broker's symbol universe (all=true → not just Market Watch). */
+export async function queueEaListSymbols(
+  userId: number,
+  opts: { all?: boolean; offset?: number; limit?: number } = {},
+  timeoutMs?: number,
+) {
+  return queueEaCommandAndWait(
+    userId,
+    "list_symbols",
+    {
+      // Numeric flag — the EA payload parser reads numbers, not JSON booleans.
+      all: opts.all !== false ? 1 : 0,
+      offset: opts.offset ?? 0,
+      limit: opts.limit ?? 300,
     },
     timeoutMs,
   );

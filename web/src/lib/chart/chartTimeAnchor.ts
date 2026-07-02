@@ -1,5 +1,11 @@
 import type { ChartDrawing, ChartPoint } from "@/lib/chartDrawings";
-import type { KLinePoint } from "@/lib/chart/klineDrawingAdapter";
+
+/** Chart coordinate for a drawing point (time-anchored). */
+export interface KLinePoint {
+  dataIndex: number;
+  value: number;
+  timestamp?: number;
+}
 
 /** Minimal candle shape for time→index resolution. */
 export interface CandleLike {

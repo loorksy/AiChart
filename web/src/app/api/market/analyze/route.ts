@@ -8,20 +8,38 @@ import {
   incrementUsage,
   logAudit,
   isDailyQuotaEnforced,
+  saveChartLayout,
 } from "@/lib/store";
 import { isLLMConfigured } from "@/lib/llm";
 import {
   runMarketAnalyze,
   MARKET_ANALYZE_COST,
 } from "@/lib/marketAnalyze";
-import { profileForTradingStyle } from "@/lib/analysisProfile";
+import {
+  profileForTradingStyle,
+  tradingStyleForInterval,
+} from "@/lib/analysisProfile";
 import { sseEncode } from "@/lib/sse";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { validateChatImage } from "@/lib/chatImage";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
-import { normalizeTradingStyle, TRADING_STYLES } from "@/lib/types";
+import { TRADING_STYLES } from "@/lib/types";
 
 export const maxDuration = 180;
+
+/**
+ * Burst protection: analysis is the heaviest endpoint (LLM + vision). A flood
+ * of simultaneous clicks must degrade gracefully — never crash the process.
+ * - One in-flight analysis per user (double-clicks / multi-tab).
+ * - A global concurrency ceiling: beyond it, fast 503 with retry hint instead
+ *   of piling up sockets/memory until the event loop starves.
+ */
+const inFlightUsers = new Set<number>();
+let activeAnalyses = 0;
+const MAX_CONCURRENT_ANALYSES = Math.max(
+  4,
+  Number(process.env.ANALYZE_MAX_CONCURRENT || 32),
+);
 
 const schema = z.object({
   symbol: z.string().min(3).max(20),
@@ -41,9 +59,12 @@ const schema = z.object({
       data: z.string().min(1),
     })
     .optional(),
+  /** Chart layout to persist the finished analysis into (survives tab close). */
+  layout_id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
 });
 
 export async function POST(req: NextRequest) {
+  let release: (() => void) | null = null;
   try {
     const user = await requirePlatformAccess();
     const body = schema.parse(await req.json());
@@ -61,10 +82,42 @@ export async function POST(req: NextRequest) {
     if (isDailyQuotaEnforced() && limits.claude_quota > 0 && used + MARKET_ANALYZE_COST > limits.claude_quota) {
       return NextResponse.json(
         {
-          error: `رصيد غير كافٍ. تحتاج ${MARKET_ANALYZE_COST} رصيد، المتبقّي ${Math.max(0, limits.claude_quota - used)}.`,
+          error:
+            "انتهت محاولات التحليل المجانية. اشترِ رصيداً لمواصلة استخدام أدوات المنصة.",
+          code: "credits_required",
+          remaining: Math.max(0, limits.claude_quota - used),
         },
         { status: 429 },
       );
+    }
+
+    // Burst guards (see module header): per-user single-flight + global cap.
+    if (inFlightUsers.has(user.id)) {
+      return NextResponse.json(
+        { error: "لديك تحليل قيد التنفيذ بالفعل — انتظر اكتماله." },
+        { status: 429 },
+      );
+    }
+    if (activeAnalyses >= MAX_CONCURRENT_ANALYSES) {
+      return NextResponse.json(
+        {
+          error: "المنصة تحت ضغط مرتفع حالياً — أعد المحاولة خلال ثوانٍ.",
+          code: "busy",
+        },
+        { status: 503, headers: { "Retry-After": "3" } },
+      );
+    }
+    inFlightUsers.add(user.id);
+    activeAnalyses++;
+    {
+      let released = false;
+      const uid = user.id;
+      release = () => {
+        if (released) return;
+        released = true;
+        inFlightUsers.delete(uid);
+        activeAnalyses = Math.max(0, activeAnalyses - 1);
+      };
     }
 
     const settings = await getSettings(user.id);
@@ -75,9 +128,8 @@ export async function POST(req: NextRequest) {
       const resolved = await resolveMt5Symbol(user.id, symbol);
       if (resolved) symbol = resolved;
     }
-    const tradingStyle = normalizeTradingStyle(
-      body.trading_style ?? settings.trading_style,
-    );
+    // Session type is inferred from the selected timeframe — no manual choice.
+    const tradingStyle = tradingStyleForInterval(interval);
     const profile = profileForTradingStyle(tradingStyle);
     const stream = body.stream !== false;
 
@@ -105,8 +157,14 @@ export async function POST(req: NextRequest) {
     if (stream) {
       const bodyStream = new ReadableStream({
         async start(controller) {
+          // If the client closes the tab mid-analysis, enqueue throws — swallow
+          // it so the analysis FINISHES server-side and gets persisted below.
           const send = (event: string, data: unknown) => {
-            controller.enqueue(sseEncode(event, data));
+            try {
+              controller.enqueue(sseEncode(event, data));
+            } catch {
+              /* client gone — keep working */
+            }
           };
 
           send("meta", {
@@ -137,6 +195,22 @@ export async function POST(req: NextRequest) {
               `${symbol}@${interval} style=${tradingStyle} recs=${result.recommendation ? 1 : 0}`,
             );
 
+            // Durable result: persist into the chart layout server-side so a
+            // closed tab still finds the finished analysis on next open.
+            if (body.layout_id) {
+              await saveChartLayout(body.layout_id, user.id, {
+                symbol,
+                interval,
+                state: {
+                  drawings: result.drawings,
+                  overlays: result.overlays,
+                  recommendation: result.recommendation,
+                  targets: result.targets,
+                  liveReasoningLog: result.liveReasoningLog,
+                },
+              }).catch(() => {});
+            }
+
             send("done", {
               reply: result.reply,
               overlays: result.overlays,
@@ -165,9 +239,15 @@ export async function POST(req: NextRequest) {
             const message =
               err instanceof Error ? err.message : "حدث خطأ غير متوقع.";
             send("error", { error: message });
+          } finally {
+            release?.();
           }
 
-          controller.close();
+          try {
+            controller.close();
+          } catch {
+            /* already closed by client disconnect */
+          }
         },
       });
 
@@ -180,13 +260,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const result = await runMarketAnalyze(
-      user.id,
-      settings,
-      symbol,
-      interval,
-      { telegramSession: false, market, chartImage, tradingStyle },
-    );
+    let result: Awaited<ReturnType<typeof runMarketAnalyze>>;
+    try {
+      result = await runMarketAnalyze(
+        user.id,
+        settings,
+        symbol,
+        interval,
+        { telegramSession: false, market, chartImage, tradingStyle },
+      );
+    } finally {
+      release?.();
+    }
 
     await incrementUsage(user.id, MARKET_ANALYZE_COST);
     await logAudit(
@@ -194,6 +279,20 @@ export async function POST(req: NextRequest) {
       "market_analyze",
       `${symbol}@${interval} style=${tradingStyle} recs=${result.recommendation ? 1 : 0}`,
     );
+
+    if (body.layout_id) {
+      await saveChartLayout(body.layout_id, user.id, {
+        symbol,
+        interval,
+        state: {
+          drawings: result.drawings,
+          overlays: result.overlays,
+          recommendation: result.recommendation,
+          targets: result.targets,
+          liveReasoningLog: result.liveReasoningLog,
+        },
+      }).catch(() => {});
+    }
 
     return NextResponse.json({
       reply: result.reply,
@@ -217,6 +316,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    release?.();
     if (err instanceof z.ZodError) {
       return NextResponse.json(
         { error: err.issues[0]?.message ?? "بيانات غير صالحة." },

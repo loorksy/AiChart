@@ -13,7 +13,7 @@ export class ChartErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[KLineChart]", error, info.componentStack);
+    console.error("[Chart]", error, info.componentStack);
   }
 
   render() {

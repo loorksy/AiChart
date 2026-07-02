@@ -41,6 +41,25 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: READ_ONLY,
   },
   {
+    name: "list_instruments",
+    domain: "market",
+    description:
+      "متى: استعراض/بحث كل الأزواج المتاحة (فوركس عبر OANDA أو كريبتو عبر Binance). read-only. مثال: market=forex&q=EUR.",
+    inputSchema: {
+      market: zMarket,
+      q: z.string().max(20).optional().describe("بحث اختياري مثل EUR أو XAU"),
+    },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "get_chart_link",
+    domain: "market",
+    description:
+      "متى: رابط شارت AiChart المباشر لزوج معيّن لمشاركته مع المستخدم. read-only. مثال: symbol=EURUSD.",
+    inputSchema: { symbol: zSymbol },
+    annotations: READ_ONLY,
+  },
+  {
     name: "get_market_context",
     domain: "market",
     description:

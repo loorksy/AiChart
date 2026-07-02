@@ -439,13 +439,29 @@ export type EaCommandType =
   | "close_partial"
   | "ensure_symbol"
   | "query_terminal"
-  | "get_ohlc";
+  | "get_ohlc"
+  | "list_symbols";
 
 /** Payload queued for EA `get_ohlc` commands (v4+). */
 export interface EaGetOhlcPayload {
   symbol: string;
   timeframe: string;
   count?: number;
+  /** Bar offset back from the most recent bar (history pagination, EA v4.02+). */
+  start?: number;
+  /** Exact range in epoch seconds — gap-safe history tiling (EA v4.03+). */
+  from?: number;
+  to?: number;
+}
+
+/** One broker symbol from EA `list_symbols` (v4.02+). */
+export interface EaBrokerSymbol {
+  /** Broker-exact symbol name (e.g. EURUSDm). */
+  s: string;
+  /** Digits. */
+  d: number;
+  /** Description. */
+  n: string;
 }
 
 /** Result acked by EA for `get_ohlc`. */

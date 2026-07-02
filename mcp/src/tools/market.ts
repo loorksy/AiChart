@@ -59,6 +59,43 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
+    "list_instruments",
+    mcpToolConfig("list_instruments"),
+    async (args) => {
+      const { market, q } = args as {
+        market?: "crypto" | "forex";
+        q?: string;
+      };
+      // Public instruments endpoint (OANDA forex / Binance crypto universe).
+      return bridgeCall(() =>
+        bridge.get("/api/instruments", {
+          market: market ?? "forex",
+          q,
+          wrapped: "1",
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_chart_link",
+    mcpToolConfig("get_chart_link"),
+    async (args) => {
+      const { symbol } = args as { symbol: string };
+      const sym = symbol.toUpperCase().replace(/[^A-Z0-9.]/g, "");
+      const base = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ symbol: sym, url: `${base}/chart/${sym}` }),
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
     "get_market_context",
     mcpToolConfig("get_market_context"),
     async (args) => {

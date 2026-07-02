@@ -33,11 +33,12 @@ export function LandingHero() {
   const titlePost = isRtl ? "" : "";
 
   const subtitle = isRtl
-    ? "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر Binance وMetaTrader — مع Risk Guard وموافقة إدارية."
-    : "Connect Claude Connectors, monitor markets, and execute trades on Binance & MetaTrader 5 — backed by Risk Guard and admin controls.";
+    ? "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر Binance وMetaTrader — مع Risk Guard. استعرض الشارت الآن مجاناً بلا تسجيل."
+    : "Connect Claude Connectors, monitor markets, and execute trades on Binance & MetaTrader 5 — backed by Risk Guard. Browse the live chart free, no sign-up.";
 
   const ctaPrimary = isRtl ? "ابدأ مجاناً" : "Start Free";
   const ctaSecondary = isRtl ? "تسجيل الدخول" : "Sign In";
+  const ctaChart = isRtl ? "استعرض الشارت" : "Open the chart";
   const chatTitle = isRtl ? "ماذا ستتداول اليوم؟" : "What are we trading today?";
   const chatSubtitle = isRtl
     ? "جرب سؤالاً — سجّل لربط Claude MCP والتداول الحقيقي."
@@ -97,6 +98,13 @@ export function LandingHero() {
               className="rounded-xl border border-white/5 bg-white/5 px-5 py-3 text-xs font-semibold text-white/90 hover:text-white hover:border-white/10 hover:bg-white/10 transition-all duration-200"
             >
               {ctaSecondary}
+            </Link>
+            <Link
+              href="/chart"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 px-5 py-3 text-xs font-semibold text-violet-200 hover:bg-violet-500/20 transition-all duration-200"
+            >
+              {ctaChart}
+              <ArrowUpRight className="h-4 w-4" />
             </Link>
           </div>
         </motion.div>

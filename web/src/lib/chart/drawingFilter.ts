@@ -1,9 +1,9 @@
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import { isArrowDrawing, isZoneDrawing } from "@/lib/chartDrawings";
 
-const MAX_TOTAL = 7;
+const MAX_TOTAL = 12;
 const MAX_PRICE_LINE = 3;
-const MAX_ZONES = 3;
+const MAX_ZONES = 4;
 const MAX_ARROWS = 2;
 
 const PRICE_LINE_TYPES = new Set(["price_line", "hline", "baseline"]);
@@ -14,7 +14,11 @@ const PATTERN_TYPES = new Set([
   "neckline",
   "range_box",
   "channel",
+  "parallel_channel",
+  "regression_trend",
 ]);
+
+const POSITION_TYPES = new Set(["long_position", "short_position"]);
 
 function priceLevels(d: ChartDrawing): number[] {
   const out: number[] = [];
@@ -43,6 +47,8 @@ function dedupeLevels(drawings: ChartDrawing[]): ChartDrawing[] {
 }
 
 function scoreDrawing(d: ChartDrawing): number {
+  if (POSITION_TYPES.has(d.type)) return 110 + (d.confidence ?? 0);
+  if (d.type === "forecast_path") return 105 + (d.confidence ?? 0);
   if (PATTERN_TYPES.has(d.type)) return 100 + (d.confidence ?? 0);
   if (d.type === "risk_reward_box") return 90 + (d.confidence ?? 0);
   if (isZoneDrawing(d.type)) return 70 + (d.confidence ?? 0);
@@ -66,6 +72,7 @@ export function filterAndCapDrawings(
     list = list.filter(
       (d) =>
         d.type !== "risk_reward_box" &&
+        !POSITION_TYPES.has(d.type) &&
         d.semanticRole !== "entry" &&
         d.semanticRole !== "stop_loss" &&
         d.semanticRole !== "take_profit" &&

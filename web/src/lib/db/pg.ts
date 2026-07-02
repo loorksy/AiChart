@@ -973,6 +973,22 @@ async function migratePg(client: PoolClient) {
     )
   `).catch(() => {});
 
+  // Per-user chart layouts (TradingView-style /chart/<id> URLs + saved drawings).
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS chart_layouts (
+      id         TEXT PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      symbol     TEXT NOT NULL DEFAULT 'EURUSD',
+      interval   TEXT NOT NULL DEFAULT '15m',
+      state_json TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_chart_layouts_user ON chart_layouts(user_id)",
+  ).catch(() => {});
+
   await dropLegacyBotAndScalpTablesPg(client);
 }
 

@@ -21,7 +21,11 @@ export type SemanticDrawingType =
   | "supply_zone"
   | "demand_zone"
   | "decision_zone"
-  | "labeled_arrow";
+  | "labeled_arrow"
+  | "long_position"
+  | "short_position"
+  | "parallel_channel"
+  | "regression_trend";
 
 export type Mt5NativeDrawingType =
   | "hline"
