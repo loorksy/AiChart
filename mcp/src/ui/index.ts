@@ -1,37 +1,36 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  registerAppResource,
+  RESOURCE_MIME_TYPE,
+  RESOURCE_URI_META_KEY,
+} from "@modelcontextprotocol/ext-apps/server";
 import { createUIResource } from "@mcp-ui/server";
+import { loggedHtmlReadHandler, logResourceRead } from "./resourceLog.js";
+import { skybridgePath, skybridgeUri, widgetUri } from "./uris.js";
 import { WIDGETS } from "./widgets.js";
-
-const VERSIONED_WIDGET_PATHS: Record<string, string> = {
-  "account-overview": "account-overview/v1",
-  analysis: "analysis/v1",
-};
 
 function asUiUri(path: string): `ui://${string}` {
   return `ui://${path}` as `ui://${string}`;
 }
 
-function widgetPath(widget: string): string {
-  return VERSIONED_WIDGET_PATHS[widget] ?? `${widget}.html`;
-}
-
-function skybridgePath(widget: string): string {
-  return VERSIONED_WIDGET_PATHS[widget]
-    ? `${VERSIONED_WIDGET_PATHS[widget]}-gpt`
-    : `${widget}-gpt.html`;
-}
+export {
+  APP_URI_ACCOUNT_OVERVIEW,
+  APP_URI_ANALYSIS,
+  widgetUri,
+  skybridgeUri,
+} from "./uris.js";
+export { getRecentResourceReads, logResourceRead } from "./resourceLog.js";
 
 export function appsUri(widget: string): string {
-  return `ui://aichart/${widgetPath(widget)}`;
+  return widgetUri(widget);
 }
 
-export function skybridgeUri(widget: string): string {
-  return `ui://aichart/${skybridgePath(widget)}`;
-}
-
+/** Tool `_meta` for MCP Apps + ChatGPT (modern + legacy UI URI keys). */
 export function uiMetaFor(widget: string): Record<string, unknown> {
+  const resourceUri = widgetUri(widget);
   return {
-    ui: { resourceUri: appsUri(widget) },
+    ui: { resourceUri },
+    [RESOURCE_URI_META_KEY]: resourceUri,
     "openai/outputTemplate": skybridgeUri(widget),
     "openai/toolInvocation/invoking": "تشغيل Lonora...",
     "openai/toolInvocation/invoked": "اكتمل تحديث Lonora.",
@@ -41,7 +40,7 @@ export function uiMetaFor(widget: string): Record<string, unknown> {
 
 export function registerWidgets(server: McpServer): void {
   for (const [name, html] of Object.entries(WIDGETS)) {
-    const nativeUri = appsUri(name);
+    const nativeUri = widgetUri(name);
     const gptUri = skybridgeUri(name);
     const gptResource = createUIResource({
       uri: asUiUri(skybridgePath(name)),
@@ -50,42 +49,66 @@ export function registerWidgets(server: McpServer): void {
       adapters: { appsSdk: { enabled: true } },
     }).resource;
 
-    server.registerResource(
-      `widget-${name}`,
+    registerAppResource(
+      server,
+      `Lonora ${name} card`,
       nativeUri,
       {
-        title: `Lonora ${name} card`,
         description: `بطاقة Lonora التفاعلية: ${name}`,
-        mimeType: "text/html;profile=mcp-app",
       },
-      async () => ({
-        contents: [
-          {
-            uri: nativeUri,
-            mimeType: "text/html;profile=mcp-app",
-            text: html,
-          },
-        ],
-      }),
+      loggedHtmlReadHandler(nativeUri, html, RESOURCE_MIME_TYPE),
     );
 
-    server.registerResource(
-      `widget-${name}-gpt`,
+    registerAppResource(
+      server,
+      `Lonora ${name} card (ChatGPT)`,
       gptUri,
       {
-        title: `Lonora ${name} card (ChatGPT)`,
         description: `بطاقة Lonora التفاعلية لواجهة ChatGPT: ${name}`,
         mimeType: gptResource.mimeType,
       },
-      async () => ({
-        contents: [
-          {
-            uri: gptUri,
-            mimeType: gptResource.mimeType,
-            text: gptResource.text ?? html,
-          },
-        ],
-      }),
+      loggedHtmlReadHandler(gptUri, gptResource.text ?? html, gptResource.mimeType),
     );
   }
+}
+
+/** Public template lookup for unauthenticated HTTP fallback (static markup only). */
+export function widgetHtmlByPublicPath(path: string): {
+  uri: string;
+  html: string;
+  mimeType: string;
+} | null {
+  const normalized = path.replace(/^\/+/, "");
+  for (const [name, html] of Object.entries(WIDGETS)) {
+    const native = widgetUri(name).replace(/^ui:\/\/aichart\//, "");
+    const gpt = skybridgeUri(name).replace(/^ui:\/\/aichart\//, "");
+    if (normalized === native) {
+      return { uri: widgetUri(name), html, mimeType: RESOURCE_MIME_TYPE };
+    }
+    if (normalized === gpt) {
+      const gptResource = createUIResource({
+        uri: asUiUri(skybridgePath(name)),
+        content: { type: "rawHtml", htmlString: html },
+        encoding: "text",
+        adapters: { appsSdk: { enabled: true } },
+      }).resource;
+      return {
+        uri: skybridgeUri(name),
+        html: gptResource.text ?? html,
+        mimeType: gptResource.mimeType,
+      };
+    }
+  }
+  return null;
+}
+
+export function logPublicWidgetFetch(path: string, hit: boolean, bytes?: number): void {
+  logResourceRead({
+    uri: path,
+    matched: hit,
+    mimeType: hit ? RESOURCE_MIME_TYPE : undefined,
+    bytes,
+    auth: "public",
+    error: hit ? undefined : "not_found",
+  });
 }

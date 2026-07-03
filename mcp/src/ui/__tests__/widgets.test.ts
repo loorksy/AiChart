@@ -5,7 +5,8 @@ import { formatToolTextFallback } from "../../bridge/textFallback.js";
 import { uiMeta } from "../../tools/registry.js";
 import { TOOL_CATALOG } from "../../tools/schemas/index.js";
 import type { ToolDefinition } from "../../tools/schemas/types.js";
-import { appsUri, skybridgeUri, uiMetaFor } from "../index.js";
+import { RESOURCE_URI_META_KEY } from "@modelcontextprotocol/ext-apps/server";
+import { appsUri, skybridgeUri, uiMetaFor, widgetHtmlByPublicPath } from "../index.js";
 import { WIDGETS } from "../widgets.js";
 
 describe("MCP UI resources", () => {
@@ -18,7 +19,9 @@ describe("MCP UI resources", () => {
 
   it("emits MCP Apps and OpenAI compatibility metadata", () => {
     const meta = uiMetaFor("analysis");
-    assert.equal((meta.ui as { resourceUri: string }).resourceUri, appsUri("analysis"));
+    const uri = appsUri("analysis");
+    assert.equal((meta.ui as { resourceUri: string }).resourceUri, uri);
+    assert.equal(meta[RESOURCE_URI_META_KEY], uri);
     assert.equal(meta["openai/outputTemplate"], skybridgeUri("analysis"));
     assert.equal(meta["openai/toolInvocation/invoking"], "تشغيل Lonora...");
     assert.deepEqual(meta["openai/widgetCSP"], {
@@ -29,6 +32,19 @@ describe("MCP UI resources", () => {
 
   it("registry uiMeta matches ui index helper", () => {
     assert.deepEqual(uiMeta("account-overview"), uiMetaFor("account-overview"));
+  });
+
+  it("resolves public HTTP paths for native and skybridge templates", () => {
+    const native = widgetHtmlByPublicPath("portfolio.html");
+    assert.ok(native);
+    assert.equal(native.uri, "ui://aichart/portfolio.html");
+    assert.ok(native.html.length > 1000);
+    assert.equal(native.mimeType, "text/html;profile=mcp-app");
+
+    const gpt = widgetHtmlByPublicPath("portfolio-gpt.html");
+    assert.ok(gpt);
+    assert.equal(gpt.uri, "ui://aichart/portfolio-gpt.html");
+    assert.equal(gpt.mimeType, "text/html+skybridge");
   });
 });
 

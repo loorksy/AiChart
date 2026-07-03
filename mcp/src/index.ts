@@ -16,7 +16,9 @@ import { AiChartOAuthProvider } from "./auth/provider.js";
 import { ensureMcpAuthTables } from "./auth/db.js";
 import { mountLoginRoutes } from "./auth/login.js";
 import { loadConfig } from "./config.js";
+import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { createAiChartMcpServer } from "./server/mcpServer.js";
+import { logPublicWidgetFetch, widgetHtmlByPublicPath } from "./ui/index.js";
 
 const cfg = loadConfig();
 const mcpServerUrl = cfg.publicUrl;
@@ -43,6 +45,20 @@ app.get("/health", (_req, res) => {
     authMode: cfg.authMode,
     mcpUrl: mcpServerUrl.href,
   });
+});
+
+/** Static MCP App templates — no auth; hosts may fetch markup outside the MCP session. */
+app.get("/mcp-ui/{*path}", (req, res) => {
+  const path = String(req.params.path ?? "");
+  const hit = widgetHtmlByPublicPath(path);
+  logPublicWidgetFetch(path, Boolean(hit), hit?.html.length);
+  if (!hit) {
+    res.status(404).json({ error: "Unknown widget template", path });
+    return;
+  }
+  res.setHeader("Content-Type", hit.mimeType || RESOURCE_MIME_TYPE);
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(hit.html);
 });
 
 let authMiddleware: ReturnType<typeof requireBearerAuth> | null = null;

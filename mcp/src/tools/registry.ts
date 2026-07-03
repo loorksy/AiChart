@@ -1,4 +1,4 @@
-import { appsUri, skybridgeUri } from "../ui/index.js";
+import { uiMetaFor } from "../ui/index.js";
 
 /** Lightweight tool metadata constants - avoids rewriting all registerTool calls. */
 export const MCP_SERVER_VERSION = "1.1.1";
@@ -34,13 +34,7 @@ export function withAnnotations(annotations: ToolAnnotations) {
 
 /** Tool `_meta` for MCP Apps plus ChatGPT compatibility. */
 export function uiMeta(widget: string): Record<string, unknown> {
-  return {
-    ui: { resourceUri: appsUri(widget) },
-    "openai/outputTemplate": skybridgeUri(widget),
-    "openai/toolInvocation/invoking": "تشغيل Lonora...",
-    "openai/toolInvocation/invoked": "اكتمل تحديث Lonora.",
-    "openai/widgetCSP": { connect_domains: [], resource_domains: [] },
-  };
+  return uiMetaFor(widget);
 }
 
 /** Build registerTool config from catalog entry. */
