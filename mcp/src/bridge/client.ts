@@ -154,11 +154,15 @@ export class BridgeClient {
     return { status: res.status, contentType, body: data };
   }
 
-  async post(path: string, body?: unknown) {
-    return this.request(`${this.cfg.apiUrl}${path}`, {
-      method: "POST",
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+  async post(path: string, body?: unknown, timeoutMs?: number) {
+    return this.request(
+      `${this.cfg.apiUrl}${path}`,
+      {
+        method: "POST",
+        body: body === undefined ? undefined : JSON.stringify(body),
+      },
+      timeoutMs,
+    );
   }
 
   async delete(path: string, body?: unknown) {
@@ -238,11 +242,25 @@ function isBridgeFailureEnvelope(
   );
 }
 
-export function formatBridgeResult(data: unknown): {
+export function formatBridgeResult(
+  data: unknown,
+  opts?: { structured?: boolean },
+): {
   content: Array<{ type: "text"; text: string }>;
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 } {
   const isError = isBridgeFailureEnvelope(data);
+  // structuredContent feeds the interactive card (MCP Apps / ChatGPT widget);
+  // the text block stays for hosts without UI support.
+  const structured =
+    opts?.structured &&
+    !isError &&
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : undefined;
   return {
     content: [
       {
@@ -250,6 +268,7 @@ export function formatBridgeResult(data: unknown): {
         text: JSON.stringify(data, null, 2),
       },
     ],
+    ...(structured ? { structuredContent: structured } : {}),
     ...(isError ? { isError: true as const } : {}),
   };
 }

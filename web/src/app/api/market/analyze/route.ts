@@ -23,23 +23,10 @@ import { sseEncode } from "@/lib/sse";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { validateChatImage } from "@/lib/chatImage";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
+import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { TRADING_STYLES } from "@/lib/types";
 
 export const maxDuration = 180;
-
-/**
- * Burst protection: analysis is the heaviest endpoint (LLM + vision). A flood
- * of simultaneous clicks must degrade gracefully — never crash the process.
- * - One in-flight analysis per user (double-clicks / multi-tab).
- * - A global concurrency ceiling: beyond it, fast 503 with retry hint instead
- *   of piling up sockets/memory until the event loop starves.
- */
-const inFlightUsers = new Set<number>();
-let activeAnalyses = 0;
-const MAX_CONCURRENT_ANALYSES = Math.max(
-  4,
-  Number(process.env.ANALYZE_MAX_CONCURRENT || 32),
-);
 
 const schema = z.object({
   symbol: z.string().min(3).max(20),
@@ -91,14 +78,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Burst guards (see module header): per-user single-flight + global cap.
-    if (inFlightUsers.has(user.id)) {
-      return NextResponse.json(
-        { error: "لديك تحليل قيد التنفيذ بالفعل — انتظر اكتماله." },
-        { status: 429 },
-      );
-    }
-    if (activeAnalyses >= MAX_CONCURRENT_ANALYSES) {
+    // Burst guards (lib/analyzeGuard): per-user single-flight + global cap.
+    const slot = acquireAnalyzeSlot(user.id);
+    if (!slot.ok) {
+      if (slot.reason === "in_flight") {
+        return NextResponse.json(
+          { error: "لديك تحليل قيد التنفيذ بالفعل — انتظر اكتماله." },
+          { status: 429 },
+        );
+      }
       return NextResponse.json(
         {
           error: "المنصة تحت ضغط مرتفع حالياً — أعد المحاولة خلال ثوانٍ.",
@@ -107,18 +95,7 @@ export async function POST(req: NextRequest) {
         { status: 503, headers: { "Retry-After": "3" } },
       );
     }
-    inFlightUsers.add(user.id);
-    activeAnalyses++;
-    {
-      let released = false;
-      const uid = user.id;
-      release = () => {
-        if (released) return;
-        released = true;
-        inFlightUsers.delete(uid);
-        activeAnalyses = Math.max(0, activeAnalyses - 1);
-      };
-    }
+    release = slot.release;
 
     const settings = await getSettings(user.id);
     let symbol = body.symbol.toUpperCase().trim();

@@ -44,7 +44,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           portfolio: val(settled[1]),
           live: include_live ? val(settled[2]) : { skipped: true },
         };
-      });
+      }, { structured: true });
     },
   );
 
@@ -125,7 +125,10 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "get_open_trades",
     mcpToolConfig("get_open_trades"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/trades/open")),
+    async () =>
+      bridgeCall(() => bridge.get("/api/agent/trades/open"), {
+        structured: true,
+      }),
   );
 
   server.registerTool(

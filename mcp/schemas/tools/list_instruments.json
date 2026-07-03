@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "market": {
+      "type": "string",
+      "enum": [
+        "crypto",
+        "forex"
+      ]
+    },
+    "q": {
+      "description": "بحث اختياري مثل EUR أو XAU",
+      "type": "string",
+      "maxLength": 20
+    },
+    "source": {
+      "description": "ea = كل رموز وسيط المستخدم من MT5",
+      "type": "string",
+      "enum": [
+        "oanda",
+        "ea"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

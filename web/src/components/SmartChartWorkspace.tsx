@@ -111,6 +111,7 @@ export function SmartChartWorkspace({
     clearLayers,
     stopLiveAnalysis,
     setHighlightDrawingIndex,
+    hydrateFromSnapshot,
   } = useChartAnalysis({
     symbol,
     interval,
@@ -192,9 +193,14 @@ export function SmartChartWorkspace({
 
   // Autosave the layout (drawings + recommendation) so refresh restores it.
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // updated_at cursor: lets the live-refresh poll tell "my own save" apart
+  // from a remote (MCP/agent) write. savePendingRef guards the race window.
+  const layoutCursorRef = useRef<string | null>(null);
+  const savePendingRef = useRef(false);
   useEffect(() => {
     if (guest || !layoutId) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    savePendingRef.current = true;
     saveTimerRef.current = setTimeout(() => {
       const state: ChartLayoutState = {
         drawings,
@@ -208,7 +214,15 @@ export function SmartChartWorkspace({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: layoutId, symbol, interval, state }),
-      }).catch(() => {});
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { updated_at?: string | null } | null) => {
+          if (d?.updated_at) layoutCursorRef.current = d.updated_at;
+        })
+        .catch(() => {})
+        .finally(() => {
+          savePendingRef.current = false;
+        });
     }, 1200);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -225,6 +239,60 @@ export function SmartChartWorkspace({
     targets,
     liveReasoningLog,
   ]);
+
+  // Live refresh: an AI assistant (MCP) can draw on this chart server-side —
+  // poll the layout every 4s (visible tab only) and hydrate remote changes so
+  // drawings appear without a reload. Skips while a local save/analysis is
+  // in flight to avoid clobbering fresher local state.
+  useEffect(() => {
+    if (guest || !layoutId) return;
+    let stopped = false;
+
+    const tick = async () => {
+      if (stopped) return;
+      if (document.visibilityState !== "visible") return;
+      if (savePendingRef.current || isAnalyzing) return;
+      try {
+        const res = await fetch(`/api/chart/layout?id=${layoutId}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const d = (await res.json()) as {
+          symbol?: string;
+          interval?: string;
+          updated_at?: string | null;
+          state?: ChartLayoutState | null;
+        };
+        if (stopped || !d.updated_at) return;
+        if (layoutCursorRef.current === null) {
+          layoutCursorRef.current = d.updated_at;
+          return;
+        }
+        if (d.updated_at === layoutCursorRef.current) return;
+        // Remote change (MCP draw / analysis finished elsewhere) — hydrate.
+        layoutCursorRef.current = d.updated_at;
+        if (savePendingRef.current) return;
+        if (d.state) {
+          hydrateFromSnapshot(d.state);
+          if (d.state.dataSource === "ea" || d.state.dataSource === "oanda") {
+            setDataSource(d.state.dataSource === "ea" && !guest ? "ea" : "oanda");
+          }
+        }
+        if (d.symbol && d.symbol !== symbol) setSymbol(d.symbol.toUpperCase());
+        if (d.interval && d.interval !== interval) {
+          setChartInterval(normalizeInterval(d.interval));
+        }
+      } catch {
+        /* transient — next tick */
+      }
+    };
+
+    const t = window.setInterval(() => void tick(), 4000);
+    return () => {
+      stopped = true;
+      window.clearInterval(t);
+    };
+  }, [guest, layoutId, isAnalyzing, symbol, interval, hydrateFromSnapshot]);
 
   useEffect(() => {
     // Prefetch only for the OANDA path — broker (EA) candles are per-user

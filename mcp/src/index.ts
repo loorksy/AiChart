@@ -52,6 +52,25 @@ if (cfg.authMode === "oauth") {
   oauthProvider = new AiChartOAuthProvider(cfg);
   mountLoginRoutes(app, oauthProvider);
 
+  // CORS for OAuth discovery + DCR: ChatGPT/Claude clients fetch metadata and
+  // POST /register (and some flows /token) cross-origin. /mcp itself is spared.
+  app.use((req, res, next) => {
+    const p = req.path;
+    if (p.startsWith("/.well-known/") || p === "/register" || p === "/token") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, mcp-protocol-version",
+      );
+      if (req.method === "OPTIONS") {
+        res.status(204).end();
+        return;
+      }
+    }
+    next();
+  });
+
   app.use(
     mcpAuthRouter({
       provider: oauthProvider,

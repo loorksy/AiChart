@@ -15,6 +15,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       market: zMarket,
     },
     annotations: READ_ONLY,
+    ui: { widget: "market-snapshot" },
   },
   {
     name: "get_multi_timeframe_snapshot",
@@ -44,10 +45,14 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_instruments",
     domain: "market",
     description:
-      "متى: استعراض/بحث كل الأزواج المتاحة (فوركس عبر OANDA أو كريبتو عبر Binance). read-only. مثال: market=forex&q=EUR.",
+      "متى: استعراض/بحث كل الأزواج المتاحة (فوركس عبر OANDA أو كريبتو عبر Binance)، أو source=ea لكامل رموز وسيط المستخدم عبر جسر MT5 (وليس Market Watch فقط). read-only. مثال: market=forex&q=EUR أو source=ea&q=XAU.",
     inputSchema: {
       market: zMarket,
       q: z.string().max(20).optional().describe("بحث اختياري مثل EUR أو XAU"),
+      source: z
+        .enum(["oanda", "ea"])
+        .optional()
+        .describe("ea = كل رموز وسيط المستخدم من MT5"),
     },
     annotations: READ_ONLY,
   },
