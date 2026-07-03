@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Globe, ShieldCheck } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
 import { LonoraLogo } from "@/components/LonoraLogo";
 import { BRAND_NAME } from "@/lib/brand";
