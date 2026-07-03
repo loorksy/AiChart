@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
       id: layout.id,
       symbol: layout.symbol,
       interval: layout.interval,
+      updated_at: layout.updated_at ?? null,
       state,
     });
   } catch (err) {
@@ -58,7 +59,10 @@ export async function POST(req: NextRequest) {
     if (!ok) {
       return NextResponse.json({ error: "layout not found" }, { status: 404 });
     }
-    return NextResponse.json({ ok: true });
+    // Return the fresh cursor so the client's live-refresh poll doesn't treat
+    // its own save as a remote change.
+    const saved = await getChartLayoutById(body.id, user.id);
+    return NextResponse.json({ ok: true, updated_at: saved?.updated_at ?? null });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: "بيانات غير صالحة." }, { status: 400 });

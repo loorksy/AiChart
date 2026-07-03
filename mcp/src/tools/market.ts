@@ -13,8 +13,10 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         interval?: string;
         market?: "crypto" | "forex";
       };
-      return bridgeCall(() =>
-        bridge.get("/api/agent/market/snapshot", { symbol, interval, market }),
+      return bridgeCall(
+        () =>
+          bridge.get("/api/agent/market/snapshot", { symbol, interval, market }),
+        { structured: true },
       );
     },
   );
@@ -62,17 +64,24 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
     "list_instruments",
     mcpToolConfig("list_instruments"),
     async (args) => {
-      const { market, q } = args as {
+      const { market, q, source } = args as {
         market?: "crypto" | "forex";
         q?: string;
+        source?: "oanda" | "ea";
       };
-      // Public instruments endpoint (OANDA forex / Binance crypto universe).
+      // Public instruments endpoint (OANDA forex / Binance crypto universe);
+      // source=ea → the user's FULL broker symbol universe via the MT5 bridge.
       return bridgeCall(() =>
-        bridge.get("/api/instruments", {
-          market: market ?? "forex",
-          q,
-          wrapped: "1",
-        }),
+        bridge.get(
+          "/api/instruments",
+          {
+            market: market ?? "forex",
+            q,
+            wrapped: "1",
+            ...(source === "ea" ? { source: "ea" } : {}),
+          },
+          source === "ea" ? 30000 : undefined,
+        ),
       );
     },
   );

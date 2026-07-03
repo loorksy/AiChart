@@ -75,6 +75,7 @@ export interface ChartLayoutRow {
   symbol: string;
   interval: string;
   state_json: string | null;
+  updated_at?: string;
 }
 
 const LAYOUT_ID_ALPHABET =
@@ -93,8 +94,16 @@ export async function getChartLayoutById(
 ): Promise<ChartLayoutRow | null> {
   if (!/^[A-Za-z0-9]{8,16}$/.test(id)) return null;
   return await queryOne<ChartLayoutRow>(
-    "SELECT id, user_id, symbol, interval, state_json FROM chart_layouts WHERE id = ? AND user_id = ?",
+    "SELECT id, user_id, symbol, interval, state_json, updated_at FROM chart_layouts WHERE id = ? AND user_id = ?",
     [id, userId],
+  );
+}
+
+/** All layouts for a user, newest first (agent/MCP listing). */
+export async function listChartLayouts(userId: number): Promise<ChartLayoutRow[]> {
+  return query<ChartLayoutRow>(
+    "SELECT id, user_id, symbol, interval, state_json, updated_at FROM chart_layouts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20",
+    [userId],
   );
 }
 

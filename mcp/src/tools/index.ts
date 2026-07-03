@@ -5,6 +5,8 @@ import { registerMarketTools } from "./market.js";
 import { registerCoreTools } from "./core.js";
 import { registerBinanceTools } from "./binance.js";
 import { registerMt5Tools } from "./mt5.js";
+import { registerChartsTools } from "./charts.js";
+import { registerWidgets } from "../ui/index.js";
 
 export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
   const resources = [
@@ -113,4 +115,6 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
   registerMarketTools(server, bridge);
   registerBinanceTools(server, bridge);
   registerMt5Tools(server, bridge);
+  registerChartsTools(server, bridge);
+  registerWidgets(server);
 }

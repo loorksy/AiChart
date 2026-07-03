@@ -31,15 +31,26 @@ export function withAnnotations(annotations: ToolAnnotations) {
   return { annotations };
 }
 
+/** Tool `_meta` that lights the interactive card up on BOTH hosts
+ *  (MCP Apps `_meta.ui.resourceUri` + ChatGPT `openai/outputTemplate`). */
+export function uiMeta(widget: string): Record<string, unknown> {
+  return {
+    ui: { resourceUri: `ui://aichart/${widget}.html` },
+    "openai/outputTemplate": `ui://aichart/${widget}-gpt.html`,
+  };
+}
+
 /** Build registerTool config from catalog entry. */
 export function toolConfig(def: {
   description: string;
   inputSchema: import("zod").ZodRawShape;
   annotations: ToolAnnotations;
+  ui?: { widget: string };
 }) {
   return {
     description: def.description,
     inputSchema: def.inputSchema,
     ...withAnnotations(def.annotations),
+    ...(def.ui ? { _meta: uiMeta(def.ui.widget) } : {}),
   };
 }

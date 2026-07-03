@@ -43,9 +43,10 @@ export function bridgeWrap(bridge: BridgeClient, fn: () => Promise<unknown>) {
 
 export async function bridgeCall<T>(
   fn: () => Promise<T>,
+  opts?: { structured?: boolean },
 ): Promise<ReturnType<typeof formatBridgeResult>> {
   try {
-    return formatBridgeResult(await fn());
+    return formatBridgeResult(await fn(), opts);
   } catch (e) {
     return formatBridgeError(e);
   }

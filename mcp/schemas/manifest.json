@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-06-28T23:49:50.177Z",
-  "toolCount": 58,
+  "exportedAt": "2026-07-03T00:52:00.835Z",
+  "toolCount": 65,
   "tools": [
     {
       "name": "get_account_overview",
@@ -304,6 +304,26 @@
       }
     },
     {
+      "name": "list_instruments",
+      "domain": "market",
+      "description": "متى: استعراض/بحث كل الأزواج المتاحة (فوركس عبر OANDA أو كريبتو عبر Binance)، أو source=ea لكامل رموز وسيط المستخدم عبر جسر MT5 (وليس Market Watch فقط). read-only. مثال: market=forex&q=EUR أو source=ea&q=XAU.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_chart_link",
+      "domain": "market",
+      "description": "متى: رابط شارت AiChart المباشر لزوج معيّن لمشاركته مع المستخدم. read-only. مثال: symbol=EURUSD.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
       "name": "get_market_context",
       "domain": "market",
       "description": "متى: سياق أخبار/mood. read-only. لا side-effects. مثال: symbol=BTCUSDT.",
@@ -580,6 +600,56 @@
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "list_chart_layouts",
+      "domain": "charts",
+      "description": "متى: قبل الرسم — اجلب شارتات المستخدم المحفوظة (id + رمز + رابط). read-only.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_chart_state",
+      "domain": "charts",
+      "description": "متى: قراءة حالة شارت المستخدم الحالية (الرمز/الفريم/الرسومات/التوصية) قبل التعديل عليها. read-only. مثال: layout_id اختياري.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "draw_on_chart",
+      "domain": "charts",
+      "description": "متى: الرسم مباشرة على شارت المستخدم الحي (TradingView) — يدعم كل الأدوات: خطوط/قنوات/مناطق/فيبوناتشي/نماذج/مراكز شراء وبيع/توقّع مستقبلي، مع الألوان والسماكة والنمط. الرسومات تظهر على شاشة المستخدم خلال ثوانٍ بلا تحديث. mode=set يستبدل، add يضيف. مرّر recommendation لرسم مركز صفقة كامل (دخول/وقف/أهداف).",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "clear_chart_drawings",
+      "domain": "charts",
+      "description": "متى: مسح كل رسومات وتوصية شارت المستخدم. لا يمس الشموع ولا رسومات المستخدم اليدوية داخل TradingView.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "run_market_analysis",
+      "domain": "charts",
+      "description": "متى: تحليل AI كامل لزوج (نفس زر «تحليل» في المنصة): توصية + رسومات فنية تُرسم تلقائياً على شارت المستخدم عند تمرير layout_id. يستهلك رصيد المستخدم (4). قد يستغرق ≤120 ثانية.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
         "idempotentHint": false
       }
     }

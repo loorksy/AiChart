@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "layout_id": {
+      "description": "معرّف شارت المستخدم (من list_chart_layouts) — الافتراضي شارته الأساسي",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9]{8,16}$"
+    }
+  },
+  "additionalProperties": false
+}

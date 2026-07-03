@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "layout_id": {
+      "description": "معرّف شارت المستخدم (من list_chart_layouts) — الافتراضي شارته الأساسي",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9]{8,16}$"
+    },
+    "symbol": {
+      "description": "تغيير رمز الشارت (اختياري)",
+      "type": "string"
+    },
+    "interval": {
+      "type": "string"
+    },
+    "mode": {
+      "default": "set",
+      "type": "string",
+      "enum": [
+        "set",
+        "add"
+      ]
+    },
+    "drawings": {
+      "maxItems": 24,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "نوع الرسم: price_line | trend_line | ray | channel | parallel_channel | regression_trend | zone | supply_zone | demand_zone | range_box | fib_retracement | forecast_path | polyline_pattern | triangle | neckline | long_position | short_position | labeled_arrow | arrow_up | arrow_down | text | pattern_label"
+          },
+          "confidence": {
+            "default": 70,
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "label": {
+            "description": "تسمية عربية تظهر على الشارت",
+            "type": "string",
+            "maxLength": 64
+          },
+          "color": {
+            "description": "لون hex مثل #22c55e",
+            "type": "string",
+            "maxLength": 24
+          },
+          "width": {
+            "description": "سماكة الخط 1–4",
+            "type": "number",
+            "minimum": 1,
+            "maximum": 4
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "solid",
+              "dashed",
+              "dotted"
+            ]
+          },
+          "fill": {
+            "description": "تعبئة المناطق",
+            "type": "boolean"
+          },
+          "fill_color": {
+            "type": "string",
+            "maxLength": 24
+          },
+          "semanticRole": {
+            "description": "support | resistance | entry | stop_loss | take_profit | trendline | pattern | forecast",
+            "type": "string",
+            "maxLength": 32
+          },
+          "patternType": {
+            "description": "مثل double_bottom | head_and_shoulders | ascending_triangle",
+            "type": "string",
+            "maxLength": 40
+          },
+          "points": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "price": {
+                  "type": "number",
+                  "description": "السعر"
+                },
+                "time": {
+                  "description": "Unix time (ثوانٍ أو ms) — إلزامي للنقاط التاريخية",
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "barsAhead": {
+                  "description": "عدد شموع للأمام — لنقاط forecast_path المستقبلية فقط",
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "price"
+              ],
+              "additionalProperties": false
+            },
+            "description": "نقاط الرسم (time+price). long/short_position: نقطة الدخول + meta"
+          },
+          "meta": {
+            "description": "للمراكز: {entry, stopLoss, takeProfit}",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "type",
+          "confidence",
+          "points"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "recommendation": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "buy",
+                "sell",
+                "wait"
+              ]
+            },
+            "entry": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "stop_loss": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "take_profit": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "targets": {
+      "description": "أهداف ربح إضافية",
+      "maxItems": 6,
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    }
+  },
+  "required": [
+    "mode",
+    "drawings"
+  ],
+  "additionalProperties": false
+}

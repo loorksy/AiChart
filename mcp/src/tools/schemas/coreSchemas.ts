@@ -25,6 +25,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         .describe("تضمين الحساب الحي (الأبطأ) — false لملخّص أسرع"),
     },
     annotations: READ_ONLY,
+    ui: { widget: "account-overview" },
   },
   {
     name: "get_risk_status",
@@ -70,6 +71,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       "متى: قبل evaluate_trade أو إغلاق. صفقات مفتوحة + summary_ar. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
+    ui: { widget: "open-trades" },
   },
   {
     name: "get_trade_lessons",
