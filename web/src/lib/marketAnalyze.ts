@@ -484,7 +484,7 @@ export async function runMarketAnalyze(
   }
 
   let rec: Recommendation | null = null;
-  let action =
+  let action: "buy" | "sell" | "wait" =
     llmOut.decision === "buy" || llmOut.decision === "sell" ? llmOut.decision : "wait";
 
   const candles = ohlcResult?.candles ?? [];
