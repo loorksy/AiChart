@@ -7,6 +7,7 @@ import { ArrowUpRight, ChevronDown, Sparkles } from "lucide-react";
 import { ChartBackdrop } from "@/components/chart/ChartBackdrop";
 import { TelegramLoginButton } from "@/components/TelegramLoginButton";
 import type { CountryCode } from "libphonenumber-js";
+import { PhoneInput } from "@/components/PhoneInput";
 import { LonoraLogo } from "@/components/LonoraLogo";
 import { BRAND_NAME } from "@/lib/brand";
 
