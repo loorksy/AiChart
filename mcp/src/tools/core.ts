@@ -119,7 +119,10 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "get_portfolio",
     mcpToolConfig("get_portfolio"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/portfolio")),
+    async () =>
+      bridgeCall(() => bridge.get("/api/agent/portfolio"), {
+        structured: true,
+      }),
   );
 
   server.registerTool(

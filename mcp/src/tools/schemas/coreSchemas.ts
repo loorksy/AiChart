@@ -63,6 +63,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       "متى: بعد get_account_overview أو لتحديث PnL. رصيد وملخص. read-only. لا تستخدم للتنفيذ.",
     inputSchema: {},
     annotations: READ_ONLY,
+    ui: { widget: "portfolio" },
   },
   {
     name: "get_open_trades",

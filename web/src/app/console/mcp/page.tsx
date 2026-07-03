@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { SurfaceCard } from "@/components/ui/shell";
+import { McpBootstrapPanel } from "@/components/user/McpBootstrapPanel";
 import { McpUrlGuide } from "@/components/user/McpUrlGuide";
+import { getOnboardingBootstrapText } from "@/lib/onboardingBootstrap";
 import { needsMcpCredentials } from "@/lib/userCredentials";
 
 export default async function ConsoleMcpPage() {
@@ -11,6 +13,7 @@ export default async function ConsoleMcpPage() {
 
   const mcpUrl =
     process.env.MCP_PUBLIC_URL?.trim() || "https://aichart.lork.cloud/mcp";
+  const bootstrapText = getOnboardingBootstrapText();
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -20,6 +23,9 @@ export default async function ConsoleMcpPage() {
           mcpUrl={mcpUrl}
           needsCredentials={needsMcpCredentials(user)}
         />
+      </SurfaceCard>
+      <SurfaceCard>
+        <McpBootstrapPanel text={bootstrapText} />
       </SurfaceCard>
     </div>
   );

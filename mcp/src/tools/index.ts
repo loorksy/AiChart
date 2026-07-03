@@ -7,8 +7,28 @@ import { registerBinanceTools } from "./binance.js";
 import { registerMt5Tools } from "./mt5.js";
 import { registerChartsTools } from "./charts.js";
 import { registerWidgets } from "../ui/index.js";
+import { bootstrapText } from "../onboarding/bootstrap.js";
 
 export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
+  // Bootstrap "first message" as an invocable prompt (slash command in hosts
+  // that support prompts). Same canonical text as the copy panel + instructions.
+  server.registerPrompt(
+    "aichart_start",
+    {
+      title: "AiChart — رسالة البدء (تهيئة الوكيل)",
+      description:
+        "الصقها كأول رسالة بعد ربط الـMCP: تُحمّل القواعد، تقرأ المهارات، وتلخّص الحساب.",
+    },
+    () => ({
+      messages: [
+        {
+          role: "user",
+          content: { type: "text", text: bootstrapText() },
+        },
+      ],
+    }),
+  );
+
   const resources = [
     {
       id: "trading-rules",
