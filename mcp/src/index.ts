@@ -48,6 +48,12 @@ app.get("/health", (_req, res) => {
 });
 
 /** Static MCP App templates — no auth; hosts may fetch markup outside the MCP session. */
+app.options("/mcp-ui/{*path}", (_req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.status(204).end();
+});
+
 app.get("/mcp-ui/{*path}", (req, res) => {
   const path = String(req.params.path ?? "");
   const hit = widgetHtmlByPublicPath(path);
@@ -56,8 +62,11 @@ app.get("/mcp-ui/{*path}", (req, res) => {
     res.status(404).json({ error: "Unknown widget template", path });
     return;
   }
-  res.setHeader("Content-Type", hit.mimeType || RESOURCE_MIME_TYPE);
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Cache-Control", "public, max-age=3600");
+  res.setHeader("Content-Type", hit.mimeType || RESOURCE_MIME_TYPE);
+  res.removeHeader("X-Frame-Options");
   res.send(hit.html);
 });
 

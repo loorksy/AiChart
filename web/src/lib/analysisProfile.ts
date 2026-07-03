@@ -83,15 +83,17 @@ export function buildTradingStylePromptHints(style: TradingStyle): string[] {
     case "scalp":
       return [
         ...common,
-        "تحليل سكالب: SL ضيق عند هيكل قريب، أهداف قصيرة (1–2R)، R:R ≥ 1.",
-        "ركّز على زخم 1m–5m — لا توصية swing على هذا النوع.",
-        "chart_drawings: entry + stop_loss + take_profit إلزامية عند buy/sell.",
+        "تحليل سكالب: اعتمد 20+ شمعة كسياق — أنت محلل محترف تختار buy/sell/wait بحرية.",
+        "فضّل الدخول عند POI/خط اتجاه عند اللمس — تجنب مطاردة close إن كان بعيداً عن الهيكل.",
+        "R:R ≥ 1.5 مبدأ توجيهي — قرارك النهائي حسب السياق الكامل.",
+        "chart_drawings: entry + stop_loss + take_profit عند buy/sell (الأخضر أكبر من الأحمر).",
       ];
     case "day":
       return [
         ...common,
         "تحليل يومي: R:R ≥ 1.5، SL عند مستوى هيكلي واضح، هدف واحد أو جزئي.",
-        "اجمع بين اتجاه HTF وسياق الجلسة.",
+        "الدخول من POI/خط اتجاه — لا market chase.",
+        "اجمع بين اتجاه HTF وسياق الجلسة والأخبار.",
         "chart_drawings: entry + stop_loss + take_profit إلزامية عند buy/sell.",
       ];
     case "swing":
@@ -166,4 +168,16 @@ export function buildProfilePromptHints(
     "سيناريو تنبؤي تعليمي — ليس ضماناً.",
   );
   return lines;
+}
+
+/** Condensed strategy matrix — A/B/C/D entry rules for the LLM. */
+export function buildStrategyMatrixHints(minRr: number): string[] {
+  return [
+    "— مصفوفة الاستراتيجيات (A-B-C-D) —",
+    "A اتجاه/بنية: HH/HL صاعد → buy فقط من POI؛ LH/LL هابط → sell فقط من POI؛ range → mean-reversion.",
+    "B منطقة دخول: order block · FVG · فيب 0.618 · S/R flip · خط اتجاه (لمس) · VWAP.",
+    "C تأكيد: BOS/CHoCH · RSI تشبع + رفض · MACD cross · spike حجم · engulfing عند POI.",
+    `D مخاطر: SL تحت/فوق swing أو ATR؛ TP ≥ ${minRr}R مبدأ توجيهي؛ قرارك النهائي كمحلل محترف.`,
+    "استخدم A+B+C+D كإطار تفكير — ليس قواعد آلية: إن رأيت فرصة هيكلية قوية قرر buy/sell، وإلا wait.",
+  ];
 }

@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test:catalog": "tsx --test src/tools/__tests__/catalog.test.ts src/ui/__tests__/widgets.test.ts",
+    "test:catalog": "tsx --test src/tools/__tests__/catalog.test.ts src/ui/__tests__/widgets.test.ts src/ui/__tests__/cardTools.integration.test.ts",
     "schemas:export": "tsx scripts/export-schemas.mts",
     "schemas:check": "tsx scripts/export-schemas.mts --check",
     "test:tools": "tsx scripts/test-all-tools.mts"

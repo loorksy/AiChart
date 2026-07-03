@@ -1,5 +1,5 @@
 import { buildSnapshot, buildForexSnapshot, type MarketSnapshot } from "./market";
-import { profileForTradingStyle, buildProfilePromptHints, buildTradingStylePromptHints } from "./analysisProfile";
+import { profileForTradingStyle, buildProfilePromptHints, buildTradingStylePromptHints, buildStrategyMatrixHints } from "./analysisProfile";
 import type { AnalysisProfile } from "./analysisProfile";
 import type { TradingStyle } from "./types";
 import {
@@ -42,6 +42,8 @@ import {
   runAnalysisEngine,
   formatAnalysisForPrompt,
 } from "./analysis/analysisEngine";
+import { analyzeTrendlines, formatTrendlinesForPrompt } from "./analysis/trendlines";
+import { getEffectiveMinRr } from "./riskGuard";
 import { enrichRecommendationAfterRecord } from "./recommendationLevels";
 import type { AgentActivity } from "./agentActivity";
 import { resolveMt5Symbol } from "./mt5SymbolMap";
@@ -105,6 +107,15 @@ function buildAnalyzeFallbackReply(
 export type { ChartVisionSource } from "./marketAnalyzeLabels";
 export { chartVisionLabelAr } from "./marketAnalyzeLabels";
 
+/** Map MT5 symbols to a news feed symbol (CryptoPanic / fear-greed). */
+function newsContextSymbol(symbol: string): string {
+  const u = symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (u.includes("BTC")) return "BTCUSDT";
+  if (u.includes("ETH")) return "ETHUSDT";
+  if (u.includes("XAU") || u.includes("GOLD")) return "XAUUSDT";
+  return symbol;
+}
+
 function buildAnalyzePrompt(
   symbol: string,
   interval: string,
@@ -114,10 +125,12 @@ function buildAnalyzePrompt(
   memoryBlock = "",
   extraBlocks: string[] = [],
   styleHints: string[] = [],
+  minRr = 1.5,
 ): string {
   return [
     `حلّل ${symbol} على إطار ${interval} بالعربية.`,
     ...styleHints,
+    ...buildStrategyMatrixHints(minRr),
     ...buildProfilePromptHints(symbol, interval, profile),
     ``,
     `البيانات الفنية: ${snap.summary}`,
@@ -132,8 +145,9 @@ function buildAnalyzePrompt(
     ``,
     smcPromptBlock(),
     "المطلوب: تحليل مفصّل مع مستويات دخول ووقف خسارة وجني أرباح.",
-    "SL يجب أن يكون تحت/فوق مستوى هيكلي مذكور في rationale — لا تضع SL و TP قريبين من بعض.",
-    "TP على مسافة R:R ≥ الحد الأدنى — لا تُفضّل البيع تلقائياً؛ اختر buy/sell/wait حسب البنية والاتجاه HTF.",
+    "الدخول من POI (خط اتجاه/دعم/مقاومة) عند اللمس — لا market chase على close الحالي.",
+    `SL تحت/فوق مستوى هيكلي — TP على مسافة ≥ ${minRr}R (منطقة الربح أكبر من الخسارة — ممنوع 1:1).`,
+    "لا تُفضّل البيع تلقائياً؛ اختر buy/sell/wait حسب البنية والاتجاه HTF والأخبار.",
     memoryBlock
       ? "إن وُجد درس مشابه أعلاه — اذكره صراحةً في rationale."
       : "",
@@ -152,6 +166,7 @@ function buildVisionAnalyzePrompt(
   memoryBlock = "",
   extraBlocks: string[] = [],
   styleHints: string[] = [],
+  minRr = 1.5,
 ): string {
   const trend =
     snap.trend === "uptrend"
@@ -162,6 +177,7 @@ function buildVisionAnalyzePrompt(
   return [
     `حلّل الشارت المرفق لـ ${symbol} على إطار ${interval} بالعربية.`,
     ...styleHints,
+    ...buildStrategyMatrixHints(minRr),
     ...buildProfilePromptHints(symbol, interval, profile),
     `مرجع سريع: RSI ${snap.rsi14?.toFixed(1) ?? "—"} · اتجاه ${trend} · ${snap.summary}`,
     ...extraBlocks,
@@ -169,6 +185,8 @@ function buildVisionAnalyzePrompt(
     memoryBlock ? memoryBlock : "",
     smcPromptBlock(),
     "المطلوب: تحليل مرئي — أنماط، دعم/مقاومة، OB/FVG، مستويات دخول/SL/TP.",
+    "الدخول عند لمس خط الاتجاه/POI الظاهر على الشارت — لا chase.",
+    `TP ≥ ${minRr}× المخاطرة (الصندوق الأخضر أكبر من الأحمر).`,
     memoryBlock ? "اذكر أي درس مشابه من الذاكرة في rationale." : "",
     "سجّل في JSON: decision + timeframe + drawings + pattern_name.",
   ]
@@ -313,6 +331,7 @@ export async function runMarketAnalyze(
   }
   const style = opts?.tradingStyle ?? settings.trading_style ?? "day";
   const profile = profileForTradingStyle(style);
+  const minRr = Math.max(getEffectiveMinRr(settings), style === "scalp" || style === "day" ? 1.5 : 1);
   const styleHints = buildTradingStylePromptHints(style);
   const emit = (a: import("./agentActivity").AgentActivity) =>
     opts?.onActivity?.(a);
@@ -341,7 +360,9 @@ export async function runMarketAnalyze(
   }
 
   snap = snapResult;
-  if (market !== "forex") {
+  if (market === "forex") {
+    ctx = await fetchMarketContext(newsContextSymbol(sym), profile).catch(() => null);
+  } else {
     ctx = await fetchMarketContext(sym, profile).catch(() => null);
   }
 
@@ -352,6 +373,11 @@ export async function runMarketAnalyze(
           ohlcResult.interval,
           ohlcResult.candles,
         )
+      : null;
+
+  const trendlines =
+    ohlcResult && ohlcResult.candles.length >= 20
+      ? analyzeTrendlines(ohlcResult.candles)
       : null;
 
   if (structure) {
@@ -385,6 +411,7 @@ export async function runMarketAnalyze(
   const extraBlocks: string[] = [];
   if (engine) extraBlocks.push(formatAnalysisForPrompt(engine.analysis));
   if (structure) extraBlocks.push(formatStructureForPrompt(structure));
+  if (trendlines) extraBlocks.push(formatTrendlinesForPrompt(trendlines));
   if (ohlcResult?.candles.length) {
     extraBlocks.push(formatCandlesForPrompt(ohlcResult.candles));
   }
@@ -393,7 +420,7 @@ export async function runMarketAnalyze(
 
   const contextBlock = ctx
     ? formatContextForPrompt(ctx)
-    : "سوق فوركس عبر MetaTrader — لا يتوفر سياق Web3/أخبار. اعتمد على التحليل الفني.";
+    : "لا سياق أخبار — اعتمد على التحليل الفني مع تنبيه المستخدم.";
 
   emit({ id: "memory", label: "مطابقة دروس صفقات سابقة", status: "running" });
   const similarLessons = await searchSimilarLessons(userId, {
@@ -449,6 +476,7 @@ export async function runMarketAnalyze(
         memoryBlock,
         extraBlocks,
         styleHints,
+        minRr,
       )
     : buildAnalyzePrompt(
         sym,
@@ -459,6 +487,7 @@ export async function runMarketAnalyze(
         memoryBlock,
         extraBlocks,
         styleHints,
+        minRr,
       );
 
   const userContent = buildChartAnalyzeUserContent(

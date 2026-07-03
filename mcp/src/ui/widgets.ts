@@ -52,7 +52,7 @@ const accountOverview = widgetHtml(
         ["PnL المفتوح", staleMoney(AIC, openPnl, ea.stale), ea.stale ? "amber" : (Number(openPnl) >= 0 ? "green" : "red")],
         ["إعداد حد الصفقة", first(risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), "blue"],
         ["حالة المخاطر", first(risk.status, risk.mode, data.risk_status), ""],
-        ["الصفقات المفتوحة", first(portfolio.openTrades, portfolio.open_trades, data.openTrades), ""],
+        ["الصفقات المفتوحة", AIC.formatOpenTrades(first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades)), ""],
         ["اتصال EA", ea.label, ea.stale ? "amber" : "green"],
       ];
       var grid = document.getElementById("grid");
@@ -66,7 +66,10 @@ const accountOverview = widgetHtml(
         grid.appendChild(el);
       });
       if (!grid.children.length) grid.innerHTML = '<div class="empty">لا توجد بيانات حساب متاحة</div>';
-      document.getElementById("status").textContent = ea.stale ? "EA offline/stale: لا نعرض PnL قديم كأنه صفر." : "";
+      AIC.applyBridgeBadge(document.getElementById("status"), data);
+      if (ea.stale && !document.getElementById("status").textContent) {
+        document.getElementById("status").textContent = "EA offline/stale: لا نعرض PnL قديم كأنه صفر.";
+      }
       AIC.notifySize();
     });
     document.getElementById("refresh").addEventListener("click", function () {
@@ -186,13 +189,16 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
     </div>`,
     `
     function obj(v) { return v && typeof v === "object" ? v : {}; }
-    function rowsFrom(data) {
+    function rowsFrom(data, AIC) {
       var out = [];
+      var trades = AIC.pickTrades(data);
+      if (trades.length) out.push(["الصفقات", AIC.formatOpenTrades(trades)]);
       for (var k in data) {
+        if (k === "trades" || k === "openTrades" || k === "open_trades") continue;
         var v = data[k];
         if (v == null) continue;
         if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") out.push([k, v]);
-        if (out.length >= 6) break;
+        if (out.length >= 8) break;
       }
       return out;
     }
@@ -200,7 +206,7 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
       AIC.onData(function (data) {
         data = obj(data);
         var body = document.getElementById("body");
-        var rows = rowsFrom(data);
+        var rows = rowsFrom(data, AIC);
         body.innerHTML = "";
         rows.forEach(function (row) {
           var el = document.createElement("div");
@@ -210,6 +216,7 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
           body.appendChild(el);
         });
         if (!body.children.length) body.innerHTML = '<div class="empty">لا توجد بيانات لهذه البطاقة</div>';
+        AIC.applyBridgeBadge(document.getElementById("status"), data);
         AIC.notifySize();
       });
       var btn = document.getElementById("action");
@@ -218,6 +225,40 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
     `,
   );
 }
+
+const openTradesCard = widgetHtml(
+  "Lonora open trades",
+  `<div class="card">
+    <div class="hd"><span class="title">الصفقات المفتوحة</span><span class="brand">Lonora</span></div>
+    <div id="trades" class="grid"></div>
+    <div class="foot">
+      <span id="status" class="status"></span>
+      <span class="spacer"></span>
+      <button class="btn primary" id="action">تحديث الصفقات</button>
+    </div>
+  </div>`,
+  `
+  window.__aicReady = function (AIC) {
+    function render(data) {
+      data = data || {};
+      AIC.applyBridgeBadge(document.getElementById("status"), data);
+      var stale = AIC.bridgeLinkState(data).stale;
+      var trades = AIC.pickTrades(data);
+      var box = document.getElementById("trades");
+      if (stale && !trades.length) {
+        box.innerHTML = '<div class="empty">الجسر غير متصل أو البيانات قديمة — لا نعرض صفقات وهمية</div>';
+      } else {
+        AIC.renderTradeLines(box, trades, AIC.fmt.bind(AIC));
+      }
+      AIC.notifySize();
+    }
+    AIC.onData(render);
+    document.getElementById("action").addEventListener("click", function () {
+      AIC.callTool("get_open_trades", {});
+    });
+  };
+  `,
+);
 
 const chartDrawn = widgetHtml(
   "Lonora chart drawing",
@@ -476,7 +517,7 @@ export const WIDGETS: Record<string, string> = {
   "account-status": accountOverview,
   "pair-picker": genericCard("اختيار زوج", "اختر الزوج المناسب قبل التحليل.", { label: "تحديث الأزواج", tool: "list_instruments" }),
   "risk-status": genericCard("حالة المخاطر", "حدود المخاطر الحالية وإعدادات الحساب."),
-  "open-trades": genericCard("الصفقات المفتوحة", "ملخص الصفقات النشطة.", { label: "تحديث الصفقات", tool: "get_open_trades" }),
+  "open-trades": openTradesCard,
   "pending-approvals": genericCard("الموافقات المعلقة", "طلبات التنفيذ التي تنتظر موافقتك.", { label: "تحديث", tool: "get_pending_approvals" }),
   "market-snapshot": analysis,
   "mtf-analysis": analysis,

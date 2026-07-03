@@ -47,6 +47,75 @@ export const RUNTIME_JS = `
       if (n == null || isNaN(n)) return "—";
       return Number(n).toLocaleString(undefined, { maximumFractionDigits: d == null ? 5 : d });
     };
+    api.formatOpenTrades = function (v) {
+      if (v == null) return "—";
+      if (typeof v === "number") return String(v);
+      if (typeof v === "string") return v;
+      if (!Array.isArray(v)) return String(v);
+      if (!v.length) return "0";
+      return v.map(function (t) {
+        if (!t || typeof t !== "object") return String(t);
+        var sym = t.symbol || t.sym || "?";
+        var side = String(t.side || "").toLowerCase();
+        var sideAr = side === "buy" ? "شراء" : side === "sell" ? "بيع" : side || "—";
+        var pnl = t.pnl != null ? t.pnl : (t.open_pnl != null ? t.open_pnl : t.profit);
+        var pnlStr = (pnl != null && !isNaN(pnl)) ? " · PnL " + Number(pnl).toFixed(2) : "";
+        return sym + " " + sideAr + pnlStr;
+      }).join(" | ");
+    };
+    api.pickTrades = function (data) {
+      data = data || {};
+      if (Array.isArray(data.trades)) return data.trades;
+      if (Array.isArray(data.openTrades)) return data.openTrades;
+      if (Array.isArray(data.open_trades)) return data.open_trades;
+      var p = data.portfolio || {};
+      if (Array.isArray(p.openTrades)) return p.openTrades;
+      if (Array.isArray(p.open_trades)) return p.open_trades;
+      if (Array.isArray(p.trades)) return p.trades;
+      return [];
+    };
+    api.bridgeLinkState = function (data) {
+      data = data || {};
+      var live = data.live || {};
+      var forex = live.forex || {};
+      var ea = forex.ea || live.ea || data.ea || {};
+      var quoteAge = ea.quoteAgeMs != null ? ea.quoteAgeMs : data.quoteAgeMs;
+      if (data.bridgeOffline === true || data.offline === true) {
+        return { stale: true, label: "الجسر غير متصل — لا بيانات حية" };
+      }
+      var offline = ea.heartbeatFresh === false || ea.online === false || ea.connected === false;
+      if (offline) return { stale: true, label: "EA غير متصل / بيانات قديمة" };
+      if (quoteAge != null && quoteAge > 5000) {
+        return { stale: true, label: "أسعار قديمة (" + Math.round(quoteAge / 1000) + "s)" };
+      }
+      return { stale: false, label: "متصل" };
+    };
+    api.applyBridgeBadge = function (el, data) {
+      if (!el) return;
+      var s = api.bridgeLinkState(data);
+      el.textContent = s.label;
+      el.className = "status " + (s.stale ? "stale" : "live");
+    };
+    api.renderTradeLines = function (container, trades, fmt) {
+      if (!container) return;
+      container.innerHTML = "";
+      if (!trades.length) {
+        container.innerHTML = '<div class="empty">لا صفقات مفتوحة</div>';
+        return;
+      }
+      trades.forEach(function (t) {
+        if (!t || typeof t !== "object") return;
+        var sym = t.symbol || t.sym || "?";
+        var side = String(t.side || "").toLowerCase();
+        var sideAr = side === "buy" ? "شراء" : side === "sell" ? "بيع" : side || "—";
+        var pnl = t.pnl != null ? t.pnl : (t.open_pnl != null ? t.open_pnl : t.profit);
+        var line = document.createElement("div");
+        line.className = "trade-line";
+        line.textContent = sym + " · " + sideAr +
+          (pnl != null && !isNaN(pnl) ? " · PnL " + fmt(pnl, 2) : "");
+        container.appendChild(line);
+      });
+    };
     window.AIC = api;
     if (window.__aicReady) { try { window.__aicReady(api); } catch (e) {} }
   }
@@ -212,6 +281,9 @@ export const THEME_CSS = `
   .imgwrap { border-radius: 8px; overflow: hidden; border: 1px solid rgba(148,163,184,.15); }
   .imgwrap img { display: block; width: 100%; height: auto; }
   .status { font-size: 11px; color: #94a3b8; min-height: 15px; }
+  .status.stale { color: #fbbf24; }
+  .status.live { color: #4ade80; }
+  .trade-line { font-size: 12px; line-height: 1.55; padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,.12); }
 `;
 
 /** Full HTML document for a widget. */

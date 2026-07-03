@@ -66,3 +66,22 @@ export function analyzeTrendlines(candles: OhlcCandle[]): TrendlineAnalysis {
 
   return { support, resistance, drawings };
 }
+
+/** Arabic block for LLM — trendline POI for limit entries. */
+export function formatTrendlinesForPrompt(tl: TrendlineAnalysis): string {
+  const lines = ["— خطوط اتجاه (POI للدخول عند اللمس — لا مطاردة) —"];
+  if (tl.support) {
+    lines.push(
+      `دعم/اتجاه سفلي: من ${tl.support.from.price.toFixed(2)} → ${tl.support.to.price.toFixed(2)} · إسقاط الآن @ ${tl.support.projectedNow.toFixed(2)}`,
+    );
+  }
+  if (tl.resistance) {
+    lines.push(
+      `مقاومة/اتجاه علوي: من ${tl.resistance.from.price.toFixed(2)} → ${tl.resistance.to.price.toFixed(2)} · إسقاط الآن @ ${tl.resistance.projectedNow.toFixed(2)}`,
+    );
+  }
+  if (!tl.support && !tl.resistance) {
+    lines.push("لا خط اتجاه واضح — اعتمد swing structure.");
+  }
+  return lines.join("\n");
+}

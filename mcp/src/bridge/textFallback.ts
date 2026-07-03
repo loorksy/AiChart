@@ -15,6 +15,27 @@ function fmtNum(n: unknown, digits = 2): string {
   return x.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
+function formatOpenTrades(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "number") return String(v);
+  if (typeof v === "string") return v;
+  if (!Array.isArray(v)) return String(v);
+  if (!v.length) return "0";
+  return v
+    .map((t) => {
+      if (!t || typeof t !== "object") return String(t);
+      const row = t as Record<string, unknown>;
+      const sym = String(row.symbol ?? row.sym ?? "?");
+      const side = String(row.side ?? "").toLowerCase();
+      const sideAr = side === "buy" ? "شراء" : side === "sell" ? "بيع" : side || "—";
+      const pnl = row.pnl ?? row.open_pnl ?? row.profit;
+      const pnlStr =
+        pnl != null && Number.isFinite(Number(pnl)) ? ` · PnL ${fmtNum(pnl)}` : "";
+      return `${sym} ${sideAr}${pnlStr}`;
+    })
+    .join(" | ");
+}
+
 function eaStale(data: Record<string, unknown>): boolean {
   const live = obj(data.live);
   const forex = obj(live.forex);
@@ -48,7 +69,7 @@ function formatAccountOverview(data: Record<string, unknown>): string {
     `حقوق الملكية: ${fmtNum(first(account.equity, portfolio.equity, data.equity))}`,
     `PnL المفتوح: ${stale || openPnl == null ? "— / بيانات قديمة" : fmtNum(openPnl)}`,
     `إعداد حد الصفقة: ${fmtNum(first(risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), 0)} USD`,
-    `الصفقات المفتوحة: ${String(first(portfolio.openTrades, portfolio.open_trades, data.openTrades) ?? "—")}`,
+    `الصفقات المفتوحة: ${formatOpenTrades(first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades))}`,
     stale ? "تنبيه: EA غير متصل أو الأسعار قديمة." : "",
   ];
   return lines.filter(Boolean).join("\n");
