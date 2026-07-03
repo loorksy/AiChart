@@ -148,6 +148,7 @@ export async function POST(req: NextRequest) {
           interval,
           market: "forex",
           limit: 300,
+          source: body.dataSource,
         }).catch(() => ({ candles: [] as never[] }));
         const decision = body.recommendation?.action ?? "wait";
         processed = processAgentDrawings(body.drawings as ChartDrawing[], {

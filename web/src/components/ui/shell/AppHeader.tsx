@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronDown, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NotificationPanel } from "./NotificationPanel";
+import { LonoraLogo } from "@/components/LonoraLogo";
 
 export function AppHeader({
   onMenuClick,
@@ -50,8 +51,7 @@ export function AppHeader({
             href="/chart"
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold transition hover:bg-secondary md:hidden"
           >
-            <img src="/logo.png" alt="AiChart" className="h-5 w-5 shrink-0 object-contain rounded-md" />
-            <span>AiChart</span>
+            <LonoraLogo size={20} showName />
           </Link>
         )}
       </div>

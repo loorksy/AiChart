@@ -37,6 +37,7 @@ const schema = z.object({
     .default("1h")
     .refine((v) => INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
   market: z.enum(["crypto", "forex"]).optional(),
+  data_source: z.enum(["oanda", "ea"]).optional(),
   stream: z.boolean().optional(),
   source: z.enum(["market", "smart_chart"]).optional(),
   trading_style: z.enum(TRADING_STYLES).optional(),
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
     let symbol = body.symbol.toUpperCase().trim();
     const interval = body.interval;
     const market = body.market ?? settings.active_market ?? "crypto";
+    const dataSource = market === "forex" ? (body.data_source ?? "oanda") : undefined;
     if (market === "forex") {
       const resolved = await resolveMt5Symbol(user.id, symbol);
       if (resolved) symbol = resolved;
@@ -127,6 +129,7 @@ export async function POST(req: NextRequest) {
       onDelta: undefined as ((text: string) => void) | undefined,
       telegramSession: false,
       market,
+      dataSource,
       chartImage,
       tradingStyle,
     };
@@ -184,6 +187,7 @@ export async function POST(req: NextRequest) {
                   recommendation: result.recommendation,
                   targets: result.targets,
                   liveReasoningLog: result.liveReasoningLog,
+                  dataSource,
                 },
               }).catch(() => {});
             }
@@ -244,7 +248,7 @@ export async function POST(req: NextRequest) {
         settings,
         symbol,
         interval,
-        { telegramSession: false, market, chartImage, tradingStyle },
+        { telegramSession: false, market, dataSource, chartImage, tradingStyle },
       );
     } finally {
       release?.();
@@ -267,6 +271,7 @@ export async function POST(req: NextRequest) {
           recommendation: result.recommendation,
           targets: result.targets,
           liveReasoningLog: result.liveReasoningLog,
+          dataSource,
         },
       }).catch(() => {});
     }

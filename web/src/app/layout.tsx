@@ -24,10 +24,12 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
+import { BRAND_NAME, BRAND_TAGLINE_AR } from "@/lib/brand";
+
 export const metadata: Metadata = {
-  title: "AiChart — منصة التداول الذكية",
+  title: `${BRAND_NAME} — ${BRAND_TAGLINE_AR}`,
   description:
-    "منصة تداول ذكية على Binance، يتحدث فيها كل متداول مع وكيل خبير يراقب السوق ويتحرك عند الفرصة المناسبة فقط.",
+    "منصة تداول ذكية، يتحدث فيها كل متداول مع وكيل خبير يراقب السوق ويتحرك عند الفرصة المناسبة فقط.",
 };
 
 export default function RootLayout({

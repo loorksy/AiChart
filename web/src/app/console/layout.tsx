@@ -6,9 +6,11 @@ import { needsMcpCredentials } from "@/lib/userCredentials";
 import { displayNameForUser } from "@/lib/displayName";
 import { AppConsoleShell } from "@/components/shell/AppConsoleShell";
 
+import { BRAND_NAME, BRAND_TAGLINE_AR } from "@/lib/brand";
+
 export const metadata: Metadata = {
-  title: "AiChart — لوحة التحكم",
-  description: "منصة AiChart — Claude MCP · Binance · MT5",
+  title: `${BRAND_NAME} — لوحة التحكم`,
+  description: `${BRAND_NAME} — ${BRAND_TAGLINE_AR} · Claude MCP · Binance · MT5`,
 };
 
 export default async function ConsoleLayout({

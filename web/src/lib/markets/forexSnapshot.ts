@@ -1,5 +1,5 @@
 import { normalizeInterval } from "@/lib/intervals";
-import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
+import { fetchOhlc, type OhlcSource } from "@/lib/ohlc/fetchOhlc";
 import { computeForexIndicators } from "@/lib/ohlc/indicators";
 import { atr } from "@/lib/indicators";
 import type { MarketSnapshot } from "../market";
@@ -47,6 +47,7 @@ export async function buildForexSnapshot(
   userId: number,
   symbol: string,
   interval = "1h",
+  source: Extract<OhlcSource, "oanda" | "ea"> = "oanda",
 ): Promise<ForexMarketSnapshot> {
   const sym = symbol.trim();
   const tf = normalizeInterval(interval);
@@ -59,6 +60,7 @@ export async function buildForexSnapshot(
       interval: tf,
       market: "forex",
       limit: 200,
+      source,
     });
   } catch {
     const price = await getForexLiveMid(userId, sym);

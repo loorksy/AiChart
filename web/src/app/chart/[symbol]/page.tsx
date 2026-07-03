@@ -6,6 +6,7 @@ import { isLLMConfiguredAsync } from "@/lib/llm";
 import { getChartLayoutById, getOrCreateChartLayout } from "@/lib/store";
 import { initDb } from "@/lib/db";
 import ChartPageClient from "@/components/ChartPageClient";
+import { BRAND_NAME } from "@/lib/brand";
 
 function cleanSymbol(raw: string): string {
   return decodeURIComponent(raw).toUpperCase().replace(/[^A-Z0-9.]/g, "");
@@ -19,7 +20,7 @@ export async function generateMetadata({
   const { symbol } = await params;
   const sym = cleanSymbol(symbol) || "الشارت";
   return {
-    title: `${sym} — AiChart`,
+    title: `${sym} — ${BRAND_NAME}`,
     description: `شارت ${sym} الذكي — تحليل AI، مستويات SL/TP، وإدارة الصفقات.`,
   };
 }

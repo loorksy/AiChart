@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { AppConfig } from "../config.js";
+import { formatToolTextFallback } from "./textFallback.js";
 
 export class BridgeError extends Error {
   constructor(
@@ -261,13 +262,14 @@ export function formatBridgeResult(
     !Array.isArray(data)
       ? (data as Record<string, unknown>)
       : undefined;
+  let text: string;
+  if (structured) {
+    text = formatToolTextFallback(data) ?? JSON.stringify(data, null, 2);
+  } else {
+    text = JSON.stringify(data, null, 2);
+  }
   return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(data, null, 2),
-      },
-    ],
+    content: [{ type: "text", text }],
     ...(structured ? { structuredContent: structured } : {}),
     ...(isError ? { isError: true as const } : {}),
   };

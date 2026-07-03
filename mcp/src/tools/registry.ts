@@ -1,5 +1,6 @@
-/** Lightweight tool metadata constants — avoids rewriting all 48 registerTool calls. */
+import { appsUri, skybridgeUri } from "../ui/index.js";
 
+/** Lightweight tool metadata constants - avoids rewriting all registerTool calls. */
 export const MCP_SERVER_VERSION = "1.1.1";
 
 export interface ToolAnnotations {
@@ -31,12 +32,14 @@ export function withAnnotations(annotations: ToolAnnotations) {
   return { annotations };
 }
 
-/** Tool `_meta` that lights the interactive card up on BOTH hosts
- *  (MCP Apps `_meta.ui.resourceUri` + ChatGPT `openai/outputTemplate`). */
+/** Tool `_meta` for MCP Apps plus ChatGPT compatibility. */
 export function uiMeta(widget: string): Record<string, unknown> {
   return {
-    ui: { resourceUri: `ui://aichart/${widget}.html` },
-    "openai/outputTemplate": `ui://aichart/${widget}-gpt.html`,
+    ui: { resourceUri: appsUri(widget) },
+    "openai/outputTemplate": skybridgeUri(widget),
+    "openai/toolInvocation/invoking": "تشغيل Lonora...",
+    "openai/toolInvocation/invoked": "اكتمل تحديث Lonora.",
+    "openai/widgetCSP": { connect_domains: [], resource_domains: [] },
   };
 }
 

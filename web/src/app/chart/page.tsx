@@ -6,9 +6,10 @@ import { isLLMConfiguredAsync } from "@/lib/llm";
 import { getOrCreateChartLayout } from "@/lib/store";
 import { initDb } from "@/lib/db";
 import ChartPageClient from "@/components/ChartPageClient";
+import { BRAND_NAME } from "@/lib/brand";
 
 export const metadata = {
-  title: "AiChart — الشارت الذكي",
+  title: `${BRAND_NAME} — الشارت الذكي`,
   description: "شارت ذكي كامل الشاشة — تحليل AI، SL/TP، وإدارة الصفقات.",
 };
 

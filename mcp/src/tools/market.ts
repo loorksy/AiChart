@@ -30,18 +30,20 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         intervals?: string[];
         market?: "crypto" | "forex";
       };
-      return bridgeCall(() =>
-        bridge.get(
-          "/api/agent/market/multi-snapshot",
-          {
-            symbol,
-            intervals: intervals?.length ? intervals.join(",") : undefined,
-            market,
-          },
-          // Forex frames serialize on the single-threaded EA (~2-3s each);
-          // allow up to 25s so 3-5 timeframes complete instead of 504-ing.
-          25000,
-        ),
+      return bridgeCall(
+        () =>
+          bridge.get(
+            "/api/agent/market/multi-snapshot",
+            {
+              symbol,
+              intervals: intervals?.length ? intervals.join(",") : undefined,
+              market,
+            },
+            // Forex frames serialize on the single-threaded EA (~2-3s each);
+            // allow up to 25s so 3-5 timeframes complete instead of 504-ing.
+            25000,
+          ),
+        { structured: true },
       );
     },
   );

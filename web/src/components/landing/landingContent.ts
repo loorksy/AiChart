@@ -1,5 +1,7 @@
+import { BRAND_NAME } from "@/lib/brand";
+
 export const LANDING = {
-  brand: "AiChart",
+  brand: BRAND_NAME,
   tagline: "منصة تداول ذكية — Claude MCP · Binance · MT5",
   hero: {
     title: "تداول بذكاء عبر Claude MCP",
@@ -44,7 +46,7 @@ export const LANDING = {
     steps: [
       { n: "1", title: "سجّل", desc: "اسم مستخدم، واتساب، بريد، وكلمة مرور — أو Telegram." },
       { n: "2", title: "موافقة", desc: "الإدارة تفعّل حسابك وتمنح صلاحية الوصول." },
-      { n: "3", title: "اربط Claude", desc: "أضف AiChart كـ MCP Connector في Claude." },
+      { n: "3", title: "اربط Claude", desc: `أضف ${BRAND_NAME} كـ MCP Connector في Claude.` },
       { n: "4", title: "تداول", desc: "اربط Binance/MT5 وابدأ بقراراتك — التنفيذ محمي." },
     ],
   },

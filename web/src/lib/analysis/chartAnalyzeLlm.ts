@@ -7,6 +7,7 @@ import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "@/lib/persona";
 import { isGenericLogPhrase } from "@/lib/chart/chartTerminology";
 import type { TradingSettings } from "@/lib/types";
 import { buildUserMessageContent, type ChatImagePayload } from "@/lib/chatImage";
+import { normalizeConfidence } from "@/lib/analysis/confidence";
 
 export type LiveReasoningType =
   | "observation"
@@ -55,7 +56,7 @@ const DRAWING_SCHEMA = {
   properties: {
     type: { type: "string" },
     label: { type: ["string", "null"] },
-    confidence: { type: "number" },
+    confidence: { type: "integer", minimum: 0, maximum: 100 },
     color: { type: ["string", "null"] },
     width: { type: ["number", "null"] },
     style: { type: ["string", "null"], enum: ["solid", "dashed", "dotted", null] },
@@ -96,7 +97,7 @@ const CHART_ANALYZE_SCHEMA = {
   type: "object",
   properties: {
     decision: { type: "string", enum: ["buy", "sell", "wait"] },
-    confidence: { type: "number" },
+    confidence: { type: "integer", minimum: 0, maximum: 100 },
     entry: { type: ["number", "null"] },
     stop_loss: { type: ["number", "null"] },
     targets: { type: "array", items: { type: "number" } },
@@ -233,6 +234,12 @@ export async function runChartAnalyzeLlm(opts: {
 
   const parsed = data as unknown as ChartAnalyzeLlmResult;
   const liveLog = sanitizeLiveReasoningLog(parsed.liveReasoningLog);
+  const drawings = Array.isArray(parsed.drawings)
+    ? (parsed.drawings as ChartDrawing[]).map((drawing) => ({
+        ...drawing,
+        confidence: normalizeConfidence(drawing.confidence),
+      }))
+    : [];
   const factors =
     liveLog.length >= 3
       ? liveLog.map((e) => e.text)
@@ -245,7 +252,7 @@ export async function runChartAnalyzeLlm(opts: {
       ...parsed,
       decision:
         parsed.decision === "buy" || parsed.decision === "sell" ? parsed.decision : "wait",
-      confidence: Math.round(Number(parsed.confidence) || 0),
+      confidence: normalizeConfidence(parsed.confidence),
       entry: parsed.entry != null ? Number(parsed.entry) : null,
       stop_loss: parsed.stop_loss != null ? Number(parsed.stop_loss) : null,
       targets: Array.isArray(parsed.targets) ? parsed.targets.map(Number) : [],
@@ -260,7 +267,7 @@ export async function runChartAnalyzeLlm(opts: {
       narrative: String(parsed.narrative ?? parsed.reason ?? ""),
       factors,
       liveReasoningLog: liveLog,
-      drawings: Array.isArray(parsed.drawings) ? (parsed.drawings as ChartDrawing[]) : [],
+      drawings,
     },
     usageTokens: usage.input_tokens + usage.output_tokens,
   };

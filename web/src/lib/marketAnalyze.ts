@@ -243,6 +243,52 @@ async function resolveChartImage(
   return { image: null, source: "text" };
 }
 
+function priceBounds(candles: Array<{ high: number; low: number }>) {
+  if (!candles.length) return null;
+  let low = Number.POSITIVE_INFINITY;
+  let high = Number.NEGATIVE_INFINITY;
+  for (const candle of candles) {
+    if (Number.isFinite(candle.low)) low = Math.min(low, candle.low);
+    if (Number.isFinite(candle.high)) high = Math.max(high, candle.high);
+  }
+  if (!Number.isFinite(low) || !Number.isFinite(high) || high <= low) return null;
+  const pad = (high - low) * 0.35;
+  return { low: low - pad, high: high + pad };
+}
+
+function isPriceInBounds(price: number | null | undefined, bounds: ReturnType<typeof priceBounds>) {
+  if (price == null || !Number.isFinite(price) || !bounds) return true;
+  return price >= bounds.low && price <= bounds.high;
+}
+
+function tradeLevelIssue(
+  action: "buy" | "sell",
+  entry: number | null,
+  stopLoss: number | null,
+  targets: number[],
+  candles: Array<{ high: number; low: number }>,
+): string | null {
+  const firstTarget = targets.find((t) => Number.isFinite(t) && t > 0) ?? null;
+  if (entry == null || stopLoss == null || firstTarget == null) {
+    return "تحويل القرار إلى انتظار: مستويات الدخول/الوقف/الهدف غير مكتملة.";
+  }
+  if (action === "buy" && !(stopLoss < entry && firstTarget > entry)) {
+    return "تحويل القرار إلى انتظار: مستويات الشراء متضاربة مع اتجاه الصفقة.";
+  }
+  if (action === "sell" && !(stopLoss > entry && firstTarget < entry)) {
+    return "تحويل القرار إلى انتظار: مستويات البيع متضاربة مع اتجاه الصفقة.";
+  }
+  const bounds = priceBounds(candles);
+  if (
+    !isPriceInBounds(entry, bounds) ||
+    !isPriceInBounds(stopLoss, bounds) ||
+    !isPriceInBounds(firstTarget, bounds)
+  ) {
+    return "تحويل القرار إلى انتظار: أحد مستويات الصفقة خارج نطاق الشموع المعروضة بوضوح.";
+  }
+  return null;
+}
+
 export async function runMarketAnalyze(
   userId: number,
   settings: TradingSettings,
@@ -253,11 +299,13 @@ export async function runMarketAnalyze(
     onDelta?: (text: string) => void;
     telegramSession?: boolean;
     market?: MarketType;
+    dataSource?: "oanda" | "ea";
     chartImage?: ChatImagePayload | null;
     tradingStyle?: TradingStyle;
   },
 ): Promise<MarketAnalyzeResult> {
   const market: MarketType = opts?.market ?? "forex";
+  const dataSource = market === "forex" ? (opts?.dataSource ?? "oanda") : undefined;
   let sym = symbol.toUpperCase().trim();
   if (market === "forex") {
     const resolved = await resolveMt5Symbol(userId, sym);
@@ -275,9 +323,9 @@ export async function runMarketAnalyze(
   emit({ id: "mkt-data", label: "جلب لقطة السوق والشموع", status: "running" });
   const [snapResult, ohlcResult, tvContext] = await Promise.all([
     market === "forex"
-      ? buildForexSnapshot(userId, sym, interval)
+      ? buildForexSnapshot(userId, sym, interval, dataSource)
       : buildSnapshot(sym, interval),
-    fetchOhlc({ userId, symbol: sym, interval, market, limit: 120 }).catch(
+    fetchOhlc({ userId, symbol: sym, interval, market, limit: 120, source: dataSource }).catch(
       () => null,
     ),
     fetchTradingViewContext(sym, interval, market),
@@ -436,10 +484,26 @@ export async function runMarketAnalyze(
   }
 
   let rec: Recommendation | null = null;
-  const action =
+  let action =
     llmOut.decision === "buy" || llmOut.decision === "sell" ? llmOut.decision : "wait";
 
   const candles = ohlcResult?.candles ?? [];
+  const issue =
+    action === "buy" || action === "sell"
+      ? llmOut.confidence < 35
+        ? "تحويل القرار إلى انتظار: الثقة ضعيفة، نراقب المناطق بدل توصية تنفيذ."
+        : tradeLevelIssue(action, llmOut.entry, llmOut.stop_loss, llmOut.targets, candles)
+      : null;
+  if (issue) {
+    action = "wait";
+    llmOut.decision = "wait";
+    llmOut.entry = null;
+    llmOut.stop_loss = null;
+    llmOut.targets = [];
+    llmOut.reason = [llmOut.reason, issue].filter(Boolean).join("\n");
+    reply = [reply, issue].filter(Boolean).join("\n\n");
+  }
+
   const processedAgent = processAgentDrawings(llmOut.drawings, {
     candles,
     decision: action,

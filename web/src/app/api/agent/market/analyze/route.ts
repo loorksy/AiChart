@@ -10,6 +10,7 @@ import {
   logAudit,
   isDailyQuotaEnforced,
   saveChartLayout,
+  getChartLayoutById,
 } from "@/lib/store";
 import { isLLMConfigured } from "@/lib/llm";
 import { runMarketAnalyze, MARKET_ANALYZE_COST } from "@/lib/marketAnalyze";
@@ -21,14 +22,15 @@ import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 export const maxDuration = 180;
 
 const schema = z.object({
-  symbol: z.string().min(3).max(20),
+  symbol: z.string().min(3).max(20).optional(),
   interval: z
     .string()
     .min(2)
     .max(4)
-    .default("1h")
-    .refine((v) => INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
+    .optional()
+    .refine((v) => v == null || INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
   market: z.enum(["crypto", "forex"]).optional(),
+  data_source: z.enum(["oanda", "ea"]).optional(),
   /** Chart layout to persist the finished analysis into (renders live on the chart). */
   layout_id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
 });
@@ -85,9 +87,27 @@ export async function POST(req: NextRequest) {
     release = slot.release;
 
     const settings = await getSettings(userId);
-    let symbol = body.symbol.toUpperCase().trim();
-    const interval = body.interval;
+    const layout = body.layout_id ? await getChartLayoutById(body.layout_id, userId) : null;
+    let layoutState: { dataSource?: "oanda" | "ea" } | null = null;
+    if (layout?.state_json) {
+      try {
+        const parsed = JSON.parse(layout.state_json) as { dataSource?: "oanda" | "ea" };
+        layoutState = parsed && typeof parsed === "object" ? parsed : null;
+      } catch {
+        layoutState = null;
+      }
+    }
+    let symbol = (body.symbol ?? layout?.symbol ?? "").toUpperCase().trim();
+    if (!symbol) {
+      return NextResponse.json(
+        { error: "symbol is required when layout_id is missing or invalid." },
+        { status: 400 },
+      );
+    }
+    const interval = body.interval ?? layout?.interval ?? "1h";
     const market = body.market ?? settings.active_market ?? "forex";
+    const dataSource =
+      market === "forex" ? (body.data_source ?? layoutState?.dataSource ?? "oanda") : undefined;
     if (market === "forex") {
       const resolved = await resolveMt5Symbol(userId, symbol);
       if (resolved) symbol = resolved;
@@ -97,6 +117,7 @@ export async function POST(req: NextRequest) {
     const result = await runMarketAnalyze(userId, settings, symbol, interval, {
       telegramSession: false,
       market,
+      dataSource,
       tradingStyle,
     });
 
@@ -117,6 +138,7 @@ export async function POST(req: NextRequest) {
           recommendation: result.recommendation,
           targets: result.targets,
           liveReasoningLog: result.liveReasoningLog,
+          dataSource,
         },
       }).catch(() => {});
     }
@@ -131,6 +153,7 @@ export async function POST(req: NextRequest) {
       profileLabel: result.profileLabel,
       analysisTier: result.analysisTier,
       contextSummary: result.contextSummary,
+      data_source: dataSource,
       quota: {
         used: used + MARKET_ANALYZE_COST,
         limit: limits.claude_quota,

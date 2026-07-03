@@ -51,19 +51,33 @@ export const RUNTIME_JS = `
     if (window.__aicReady) { try { window.__aicReady(api); } catch (e) {} }
   }
 
+  function normalizeToolResult(r) {
+    return (r && r.structuredContent) || r;
+  }
+
   if (window.openai) {
     /* ── ChatGPT (Apps SDK / skybridge) ── */
-    latest = window.openai.toolOutput || null;
+    function readOpenAiData() {
+      var meta = window.openai.toolResponseMetadata || null;
+      return window.openai.toolOutput || (meta && (meta.structuredContent || meta.toolOutput || meta.data)) || meta || null;
+    }
+    latest = readOpenAiData();
     window.addEventListener("openai:set_globals", function () {
-      latest = window.openai.toolOutput || latest;
+      latest = readOpenAiData() || latest;
       emit();
     });
     finishApi({
       host: "chatgpt",
       callTool: function (name, args) {
         return window.openai.callTool(name, args || {}).then(function (r) {
-          return (r && r.structuredContent) || r;
+          return normalizeToolResult(r);
         });
+      },
+      sendFollowUpMessage: function (text) {
+        if (window.openai.sendFollowUpMessage) {
+          return window.openai.sendFollowUpMessage(text);
+        }
+        return Promise.resolve();
       },
       openLink: function (url) {
         try { window.openai.openExternal({ href: url }); }
@@ -86,7 +100,15 @@ export const RUNTIME_JS = `
     }
     window.addEventListener("message", function (ev) {
       var m = ev.data;
-      if (!m || m.jsonrpc !== "2.0") return;
+      if (!m) return;
+      if (m.method === "render-data" || m.method === "ui/lifecycle/render-data" || m.type === "render-data") {
+        var rd = m.params || m.payload || m.data || {};
+        latest = rd.structuredContent || rd.toolOutput || rd.data || rd;
+        emit();
+        setTimeout(notifySize, 50);
+        return;
+      }
+      if (m.jsonrpc !== "2.0") return;
       if (m.id != null && pending[m.id]) {
         var p = pending[m.id];
         delete pending[m.id];
@@ -124,8 +146,12 @@ export const RUNTIME_JS = `
       host: "mcp-apps",
       callTool: function (name, args) {
         return request("tools/call", { name: name, arguments: args || {} }).then(function (r) {
-          return (r && r.structuredContent) || r;
+          return normalizeToolResult(r);
         });
+      },
+      sendFollowUpMessage: function (text) {
+        send({ type: "prompt", payload: { prompt: text } });
+        return request("ui/send-message", { text: text }).catch(function () {});
       },
       openLink: function (url) {
         request("ui/open-link", { url: url }).catch(function () {
@@ -139,7 +165,7 @@ export const RUNTIME_JS = `
 })();
 `;
 
-/** Shared card theme — AiChart dark, RTL Arabic, no external assets. */
+/** Shared card theme - Lonora dark, RTL Arabic, no external assets. */
 export const THEME_CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { background: transparent; }
@@ -150,14 +176,14 @@ export const THEME_CSS = `
   .card {
     background: linear-gradient(180deg, #12151c 0%, #0d1016 100%);
     border: 1px solid rgba(148, 163, 184, 0.16);
-    border-radius: 14px; padding: 14px 16px; max-width: 640px;
+    border-radius: 8px; padding: 14px 16px; max-width: 640px;
   }
   .hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
   .hd .title { font-size: 14px; font-weight: 700; color: #f1f5f9; }
   .hd .brand { font-size: 10px; color: #64748b; letter-spacing: .4px; }
   .muted { color: #94a3b8; font-size: 11px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-  .kv { background: rgba(148,163,184,0.06); border-radius: 10px; padding: 8px 10px; }
+  .kv { background: rgba(148,163,184,0.06); border-radius: 8px; padding: 8px 10px; }
   .kv .k { font-size: 10px; color: #94a3b8; margin-bottom: 2px; }
   .kv .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .green { color: #4ade80; } .red { color: #f87171; } .blue { color: #60a5fa; } .amber { color: #fbbf24; }
@@ -183,7 +209,7 @@ export const THEME_CSS = `
   .spacer { flex: 1; }
   .foot { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .empty { text-align: center; color: #64748b; padding: 18px 0; font-size: 12px; }
-  .imgwrap { border-radius: 10px; overflow: hidden; border: 1px solid rgba(148,163,184,.15); }
+  .imgwrap { border-radius: 8px; overflow: hidden; border: 1px solid rgba(148,163,184,.15); }
   .imgwrap img { display: block; width: 100%; height: auto; }
   .status { font-size: 11px; color: #94a3b8; min-height: 15px; }
 `;

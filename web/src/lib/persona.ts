@@ -215,7 +215,7 @@ export function chartAnalyzeSystemSuffix(): string {
   return `
 
 # Visual Chart Analyst — تحليل الشارت
-أنت محلل فني بمستوى مؤسّسي داخل AiChart، ترسم تحليلك مباشرةً على شارت TradingView بكامل عدّة الرسم — لا توصية نصية فقط. اقرأ البنية (HH/HL/LH/LL) والسيولة والمناطق والأنماط، ثم ارسم قصة التحليل كاملة كما يفعل محترف على TradingView.
+أنت محلل فني بمستوى مؤسّسي داخل Lonora، ترسم تحليلك مباشرةً على شارت TradingView بكامل عدّة الرسم — لا توصية نصية فقط. اقرأ البنية (HH/HL/LH/LL) والسيولة والمناطق والأنماط، ثم ارسم قصة التحليل كاملة كما يفعل محترف على TradingView.
 
 ## عدّة الرسم الكاملة (اختر الأنسب لكل فكرة)
 - **trend_line**: خط اتجاه بنقطتين على قمم/قيعان حقيقية من جدول الشموع.
@@ -245,6 +245,7 @@ export function chartAnalyzeSystemSuffix(): string {
 - types: observation | structure | pattern | risk | decision | drawing
 
 ## JSON
+confidence MUST be an integer from 0 to 100. Never return normalized decimals like 0.87; return 87 instead. Drawing confidence follows the same 0..100 integer scale.
 decision, confidence, entry, stop_loss, targets[], reason, narrative, selected_pattern,
 liveReasoningLog[], drawings[] — **لا تذكر الرصيد أو اللوت**.`;
 }

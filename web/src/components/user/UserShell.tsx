@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { LogOut, Menu, Sparkles, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
+import { LonoraLogo } from "@/components/LonoraLogo";
 import { USER_NAV } from "@/components/user/userNav";
 import { displayNameForUser } from "@/lib/displayName";
 import type { PublicUser } from "@/lib/types";
@@ -62,8 +63,7 @@ export default function UserShell({
     <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
       <aside className="hidden w-56 shrink-0 border-l border-border bg-sidebar lg:block">
         <div className="flex items-center gap-2 border-b border-border px-4 py-4">
-          <Sparkles className="h-5 w-5 text-primary" />
-          <span className="font-bold">AiChart</span>
+          <LonoraLogo size={20} showName nameClassName="font-bold" />
         </div>
         {nav}
         <div className="mt-auto border-t border-border p-3">

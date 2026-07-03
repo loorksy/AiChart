@@ -88,22 +88,25 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("run_market_analysis"),
     async (args) => {
       const a = args as {
-        symbol: string;
+        symbol?: string;
         interval?: string;
         market?: "crypto" | "forex";
         layout_id?: string;
+        data_source?: "oanda" | "ea";
       };
-      return bridgeCall(() =>
-        bridge.post(
-          "/api/agent/market/analyze",
-          {
-            symbol: a.symbol,
-            interval: a.interval ?? "1h",
-            market: a.market,
-            layout_id: a.layout_id,
-          },
-          ANALYZE_TIMEOUT_MS,
-        ),
+      return bridgeCall(
+        () =>
+          bridge.post(
+            "/api/agent/market/analyze",
+            {
+              symbol: a.symbol,
+              interval: a.interval ?? "1h",
+              market: a.market,
+              layout_id: a.layout_id,
+              data_source: a.data_source,
+            },
+            ANALYZE_TIMEOUT_MS,
+          ),
         { structured: true },
       );
     },

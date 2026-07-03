@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogOut, PanelLeftClose, PanelLeft, Menu, X, ChevronRight } from "lucide-react";
+import { LonoraLogo } from "@/components/LonoraLogo";
 import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
 import { cn } from "@/lib/utils";
 
@@ -92,17 +92,12 @@ export function AppConsoleShell({
     >
       {!collapsed && (
         <Link href="/console" className="flex items-center gap-2.5 group">
-          <div className="relative">
-            <Image
-              src="/logo.png"
-              alt="AiChart"
-              width={28}
-              height={28}
-              className="rounded-lg ring-1 ring-white/10 group-hover:ring-green-500/30 transition-all"
-            />
-            <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-500 ring-1 ring-background" />
-          </div>
-          <span className="font-bold tracking-tight text-foreground">AiChart</span>
+          <LonoraLogo
+            size={28}
+            showName
+            nameClassName="font-bold tracking-tight text-foreground"
+            className="group-hover:opacity-90"
+          />
         </Link>
       )}
       <button
@@ -181,8 +176,7 @@ export function AppConsoleShell({
           <aside className="absolute inset-y-0 start-0 flex w-[min(80%,18rem)] flex-col border-e border-white/[0.05] bg-[#080809] shadow-2xl">
             <div className="flex h-14 items-center justify-between border-b border-white/[0.05] px-4">
               <Link href="/console" className="flex items-center gap-2.5">
-                <Image src="/logo.png" alt="AiChart" width={26} height={26} className="rounded-lg" />
-                <span className="font-bold tracking-tight">AiChart</span>
+                <LonoraLogo size={26} showName nameClassName="font-bold tracking-tight" />
               </Link>
               <button
                 type="button"

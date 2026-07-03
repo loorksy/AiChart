@@ -90,6 +90,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       layout_id: zLayoutId,
       symbol: zSymbol.optional().describe("تغيير رمز الشارت (اختياري)"),
       interval: zInterval,
+      dataSource: z.enum(["oanda", "ea"]).optional(),
       mode: z.enum(["set", "add"]).default("set"),
       drawings: z.array(zDrawing).max(24),
       recommendation: zRecommendation.nullable().optional(),
@@ -120,9 +121,10 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "متى: تحليل AI كامل لزوج (نفس زر «تحليل» في المنصة): توصية + رسومات فنية تُرسم تلقائياً على شارت المستخدم عند تمرير layout_id. يستهلك رصيد المستخدم (4). قد يستغرق ≤120 ثانية.",
     inputSchema: {
-      symbol: zSymbol,
-      interval: zInterval,
+      symbol: zSymbol.optional(),
+      interval: zInterval.optional(),
       market: z.enum(["crypto", "forex"]).optional(),
+      data_source: z.enum(["oanda", "ea"]).optional(),
       layout_id: zLayoutId,
     },
     annotations: {
@@ -130,6 +132,6 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       destructiveHint: false,
       idempotentHint: false,
     },
-    ui: { widget: "recommendation-card" },
+    ui: { widget: "analysis" },
   },
 ];

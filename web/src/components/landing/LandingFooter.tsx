@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useLocale } from "@/components/LocaleProvider";
-import { Globe, ShieldCheck } from "lucide-react";
+import { LonoraLogo } from "@/components/LonoraLogo";
+import { BRAND_NAME } from "@/lib/brand";
 
 export function LandingFooter() {
   const { t, locale } = useLocale();
@@ -17,8 +18,7 @@ export function LandingFooter() {
           {/* Column 1: Brand Info */}
           <div className="space-y-4">
             <Link href="/" className="flex items-center gap-2">
-              <img src="/logo.png" alt="AiChart" className="h-6 w-6 object-contain rounded-md" />
-              <span className="text-base font-bold tracking-tight text-foreground">AiChart</span>
+              <LonoraLogo size={24} showName nameClassName="text-base font-bold tracking-tight text-foreground" />
             </Link>
             <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
               {locale === "ar"
@@ -117,7 +117,7 @@ export function LandingFooter() {
 
         {/* Bottom Section - Copyright */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-border/40 text-xs text-muted-foreground">
-          <p>© {new Date().getFullYear()} AiChart. {locale === "ar" ? "جميع الحقوق محفوظة." : "All rights reserved."}</p>
+          <p>© {new Date().getFullYear()} {BRAND_NAME}. {locale === "ar" ? "جميع الحقوق محفوظة." : "All rights reserved."}</p>
           <div className="flex items-center gap-1.5 font-medium text-foreground">
             <Globe className="h-3.5 w-3.5 text-primary" />
             <span>{locale === "ar" ? "العربية (RTL)" : "English (LTR)"}</span>

@@ -7,7 +7,8 @@ import { ArrowUpRight, ChevronDown, Sparkles } from "lucide-react";
 import { ChartBackdrop } from "@/components/chart/ChartBackdrop";
 import { TelegramLoginButton } from "@/components/TelegramLoginButton";
 import type { CountryCode } from "libphonenumber-js";
-import { PhoneInput } from "@/components/PhoneInput";
+import { LonoraLogo } from "@/components/LonoraLogo";
+import { BRAND_NAME } from "@/lib/brand";
 
 export default function AuthForm({
   mode,
@@ -76,8 +77,7 @@ export default function AuthForm({
     <div className="flex min-h-dvh">
       <div className="flex w-full flex-col justify-center bg-background px-6 py-10 sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">
         <Link href="/" className="mb-10 flex items-center gap-2 text-lg font-semibold">
-          <img src="/logo.png" alt="AiChart" className="h-5 w-5 shrink-0 object-contain rounded-md" />
-          AiChart
+          <LonoraLogo size={20} showName nameClassName="text-lg" />
         </Link>
 
         <h1 className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
@@ -223,7 +223,7 @@ export default function AuthForm({
         <div className="relative flex h-full items-center justify-center p-8">
           <div className="surface-card w-full max-w-2xl overflow-hidden">
             <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold text-foreground">AiChart</p>
+              <p className="text-sm font-semibold text-foreground">{BRAND_NAME}</p>
               <p className="text-xs text-muted-foreground">Claude MCP · MT5 · تحليل فني</p>
             </div>
             <ChartBackdrop className="h-[360px]" />

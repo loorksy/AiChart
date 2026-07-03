@@ -14,6 +14,7 @@ import {
   oandaAccountId,
   oandaConfigured,
 } from "@/lib/markets/oanda";
+import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 
 export const OHLC_CACHE_TTL_MS = 45_000;
 export const OHLC_MAX_LIMIT = 5000;
@@ -27,7 +28,7 @@ export interface OhlcCandle {
   volume?: number;
 }
 
-export type OhlcSource = "binance" | "oanda";
+export type OhlcSource = "binance" | "oanda" | "ea";
 
 export interface FetchOhlcResult {
   symbol: string;
@@ -58,6 +59,8 @@ export interface FetchOhlcOptions {
   /** Inclusive range for Pro datafeed (milliseconds). */
   fromMs?: number;
   toMs?: number;
+  /** Forex candle source: OANDA public data or the user's live EA/MT5 bridge. */
+  source?: "oanda" | "ea";
 }
 
 export function ohlcCacheResource(symbol: string, interval: string): string {
@@ -179,7 +182,9 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
     OHLC_MAX_LIMIT,
   );
 
-  const cacheKey = ohlcCacheResource(symbol, interval);
+  const sourceKey =
+    market === "forex" ? (options.source ?? "oanda") : "binance";
+  const cacheKey = `${ohlcCacheResource(symbol, interval)}:${sourceKey}`;
   if (
     !options.skipCache &&
     !options.cursor &&
@@ -204,11 +209,22 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   let hasMore = false;
 
   if (market === "forex") {
-    const live = await fetchForexOhlcLive(symbol, interval, limit, {
-      beforeMs: options.beforeMs,
-      fromMs: options.fromMs,
-      toMs: options.toMs,
-    });
+    const live =
+      options.source === "ea"
+        ? {
+            ...(await fetchEaOhlc(options.userId, symbol, interval, {
+              fromMs: options.fromMs,
+              toMs: options.toMs,
+              limit,
+            })),
+            source: "ea" as const,
+            hasMore: false,
+          }
+        : await fetchForexOhlcLive(symbol, interval, limit, {
+            beforeMs: options.beforeMs,
+            fromMs: options.fromMs,
+            toMs: options.toMs,
+          });
     candles =
       options.fromMs != null ? live.candles : live.candles.slice(-limit);
     source = live.source;

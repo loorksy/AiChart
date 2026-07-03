@@ -56,6 +56,7 @@ export interface UseChartAnalysisOptions {
   symbol: string;
   interval: string;
   market: MarketType;
+  dataSource?: "oanda" | "ea";
   chartRef: RefObject<ChartCaptureHandle | null>;
   source?: ChartAnalyzeSource;
   /** Trading style drives analyze prompts (scalp/day/swing/position). */
@@ -93,6 +94,7 @@ export function useChartAnalysis({
   symbol,
   interval,
   market,
+  dataSource,
   chartRef,
   source = "market",
   tradingStyle,
@@ -131,8 +133,8 @@ export function useChartAnalysis({
   const analyzingRef = useRef(false);
   const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [liveReasoningLog, setLiveReasoningLog] = useState<LiveReasoningEntry[]>([]);
-  const drawingContextRef = useRef(`${symbol}|${market}`);
-  const analysisContextRef = useRef(`${symbol}|${interval}|${market}`);
+  const drawingContextRef = useRef(`${symbol}|${market}|${dataSource ?? "default"}`);
+  const analysisContextRef = useRef(`${symbol}|${interval}|${market}|${dataSource ?? "default"}`);
   const skipLiveOnceRef = useRef(false);
 
   const riskReward = useMemo(() => {
@@ -257,6 +259,7 @@ export function useChartAnalysis({
           symbol: reqSymbol,
           interval,
           market,
+          ...(dataSource ? { data_source: dataSource } : {}),
           stream: true,
           source,
           ...(layoutId ? { layout_id: layoutId } : {}),
@@ -354,6 +357,7 @@ export function useChartAnalysis({
       symbol,
       interval,
       market,
+      dataSource,
       chartRef,
       source,
       tradingStyle,
@@ -376,10 +380,10 @@ export function useChartAnalysis({
     }
   }, []);
 
-  // Symbol/market change clears drawings; interval change keeps them (time+price reproject).
+  // Symbol/market/source change clears drawings; interval change keeps them (time+price reproject).
   useEffect(() => {
-    const drawingKey = `${symbol}|${market}`;
-    const analysisKey = `${symbol}|${interval}|${market}`;
+    const drawingKey = `${symbol}|${market}|${dataSource ?? "default"}`;
+    const analysisKey = `${symbol}|${interval}|${market}|${dataSource ?? "default"}`;
 
     const symbolChanged = drawingKey !== drawingContextRef.current;
     const intervalChanged = analysisKey !== analysisContextRef.current;
@@ -426,7 +430,7 @@ export function useChartAnalysis({
         liveTimerRef.current = null;
       }
     };
-  }, [symbol, interval, market, liveAnalysis, analyze]);
+  }, [symbol, interval, market, dataSource, liveAnalysis, analyze]);
 
   useEffect(() => {
     if (!toast) return;

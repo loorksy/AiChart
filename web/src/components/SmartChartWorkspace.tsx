@@ -116,6 +116,7 @@ export function SmartChartWorkspace({
     symbol,
     interval,
     market,
+    dataSource,
     chartRef,
     source: "smart_chart",
     hydrateSnapshot,

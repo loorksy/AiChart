@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LonoraLogo } from "@/components/LonoraLogo";
 import { AppConsoleShell } from "@/components/shell/AppConsoleShell";
 import { SmartChartWorkspace } from "@/components/SmartChartWorkspace";
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
@@ -15,7 +16,7 @@ function GuestChartHeader() {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 bg-card/80 px-3 backdrop-blur-md sm:px-4">
       <Link href="/" className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-foreground">AiChart</span>
+        <LonoraLogo size={20} showName />
         <span className="hidden text-[11px] text-muted-foreground sm:inline">
           الشارت الذكي
         </span>

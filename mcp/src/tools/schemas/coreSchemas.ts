@@ -34,6 +34,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       "متى: بداية الجلسة أو قبل تغيير الوضع. kill switch، حدود، mode، executionEnv. لا تستخدم بدل get_trade_readiness لصفقة فوركس. read-only. يعيد envelope { ok, data }.",
     inputSchema: {},
     annotations: READ_ONLY,
+    ui: { widget: "risk-status" },
   },
   {
     name: "get_trade_readiness",
@@ -47,6 +48,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       practice: z.boolean().optional(),
     },
     annotations: READ_ONLY,
+    ui: { widget: "trade-readiness" },
   },
   {
     name: "get_agent_capabilities",
@@ -86,6 +88,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       recent: z.boolean().optional().describe("آخر الدروس بغض النظر عن الرمز"),
     },
     annotations: READ_ONLY,
+    ui: { widget: "lessons-card" },
   },
   {
     name: "create_recommendation",
@@ -106,6 +109,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       chart_drawings: zChartDrawings,
     },
     annotations: DESTRUCTIVE,
+    ui: { widget: "recommendation-card" },
   },
   {
     name: "open_trade",
@@ -203,6 +207,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     description: "متى: mode=approval. قائمة intents معلّقة. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
+    ui: { widget: "pending-approvals" },
   },
   {
     name: "get_execution_env",

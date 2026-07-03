@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plug, Sparkles } from "lucide-react";
+import { Plug } from "lucide-react";
+import { LonoraLogo } from "@/components/LonoraLogo";
 import type { PublicUser } from "@/lib/types";
 
 export function CompleteProfileClient({ user }: { user: PublicUser }) {
@@ -44,9 +45,8 @@ export function CompleteProfileClient({ user }: { user: PublicUser }) {
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
-      <div className="mb-8 flex items-center gap-2 text-lg font-semibold">
-        <Sparkles className="h-5 w-5" />
-        AiChart
+      <div className="mb-8">
+        <LonoraLogo size={22} showName nameClassName="text-lg font-semibold" />
       </div>
       <div className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-card p-8 shadow-lg">
         <div className="flex items-start gap-3">
