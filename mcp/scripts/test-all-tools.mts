@@ -30,8 +30,6 @@ const SAMPLE_ARGS: Record<string, Record<string, unknown>> = {
   get_forex_indicators: { symbol: "EURUSD", interval: "1h" },
   detect_levels: { symbol: "EURUSD", interval: "1h", market: "forex" },
   get_trade_lessons: { limit: 3 },
-  evaluate_trade: {},
-  get_recommendation_chart: { recommendation_id: 1 },
   capture_chart_snapshot: { symbol: "EURUSD", interval: "15m" },
   capture_mt5_chart: { symbol: "EURUSD", timeframe: "15m" },
   capture_binance_chart: { symbol: "BTCUSDT", interval: "1h" },
@@ -44,8 +42,8 @@ const SAMPLE_ARGS: Record<string, Record<string, unknown>> = {
 
 /** set → restore pairs (safe mutators). */
 const ROUNDTRIP: Record<string, { probe: Record<string, unknown>; restoreFrom: string }> = {
-  set_trading_style: { probe: { style: "day" }, restoreFrom: "get_trading_style" },
-  set_active_market: { probe: { market: "forex" }, restoreFrom: "get_agent_settings" },
+  set_trading_style: { probe: { trading_style: "day" }, restoreFrom: "get_trading_style" },
+  set_active_market: { probe: { active_market: "forex" }, restoreFrom: "get_agent_settings" },
 };
 
 const SKIP_EXEC = new Set([
@@ -57,12 +55,13 @@ const SKIP_EXEC = new Set([
   "set_futures_enabled", "set_kill_switch", "run_trade_maintenance",
   "send_telegram_menu", "request_ea_reconnect", "record_exit_decision",
   "create_recommendation", "start_scalp_session", "stop_scalp_session",
+  "evaluate_trade", "get_recommendation_chart", // data-dependent (need live trade/rec id)
   "run_market_analysis", // consumes user credits — manual
   "draw_on_chart", "clear_chart_drawings", // mutate the user's live chart — manual
   "set_trading_style", "set_active_market", // handled by ROUNDTRIP
 ]);
 
-const DEGRADED_HINTS = [/EA/i, /غير متصل/, /MetaTrader/i, /offline/i, /heartbeat/i, /لم يستجب/];
+const DEGRADED_HINTS = [/EA/i, /غير متصل/, /MetaTrader/i, /offline/i, /heartbeat/i, /لم يستجب/, /انتهت مهلة/, /API-key/i, /permissions for action/i];
 
 let sessionId = "";
 let msgId = 0;
