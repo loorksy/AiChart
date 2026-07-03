@@ -18,6 +18,7 @@ import { mountLoginRoutes } from "./auth/login.js";
 import { loadConfig } from "./config.js";
 import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { createAiChartMcpServer } from "./server/mcpServer.js";
+import { wildcardPath } from "./http/wildcardPath.js";
 import { logPublicWidgetFetch, widgetHtmlByPublicPath } from "./ui/index.js";
 
 const cfg = loadConfig();
@@ -55,7 +56,7 @@ app.options("/mcp-ui/{*path}", (_req, res) => {
 });
 
 app.get("/mcp-ui/{*path}", (req, res) => {
-  const path = String(req.params.path ?? "");
+  const path = wildcardPath(req.params as Record<string, unknown>);
   const hit = widgetHtmlByPublicPath(path);
   logPublicWidgetFetch(path, Boolean(hit), hit?.html.length);
   if (!hit) {
