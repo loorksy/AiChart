@@ -1,8 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useTheme } from "@/components/ThemeProvider";
 import { cn } from "@/lib/utils";
 import { BRAND_NAME } from "@/lib/brand";
 
@@ -20,15 +19,9 @@ export function LonoraLogo({
   showName = false,
   nameClassName,
 }: LonoraLogoProps) {
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
-
+  const { resolved } = useTheme();
   const src =
-    mounted && resolvedTheme === "light"
-      ? "/lonora-logo-light.png"
-      : "/lonora-logo-dark.png";
+    resolved === "light" ? "/lonora-logo-light.png" : "/lonora-logo-dark.png";
 
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>
