@@ -20,6 +20,14 @@ import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { createAiChartMcpServer } from "./server/mcpServer.js";
 import { wildcardPath } from "./http/wildcardPath.js";
 import { logPublicWidgetFetch, widgetHtmlByPublicPath } from "./ui/index.js";
+import { STATIC_ASSETS } from "./ui/runtime.js";
+import { normalizeWidgetPublicPath } from "./ui/publicPath.js";
+import { PORTFOLIO_ASSETS } from "./ui/widgets.js";
+
+const MCP_UI_ASSETS = [
+  ...Object.values(STATIC_ASSETS),
+  ...Object.values(PORTFOLIO_ASSETS),
+];
 
 const cfg = loadConfig();
 const mcpServerUrl = cfg.publicUrl;
@@ -56,7 +64,22 @@ app.options("/mcp-ui/{*path}", (_req, res) => {
 });
 
 app.get("/mcp-ui/{*path}", (req, res) => {
-  const path = wildcardPath(req.params as Record<string, unknown>);
+  const path = normalizeWidgetPublicPath(
+    wildcardPath(req.params as Record<string, unknown>),
+  );
+
+  const asset = MCP_UI_ASSETS.find((a) => a.path === path);
+  if (asset) {
+    logPublicWidgetFetch(path, true, asset.body.length);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader("Content-Type", asset.mimeType);
+    res.removeHeader("X-Frame-Options");
+    res.send(asset.body);
+    return;
+  }
+
   const hit = widgetHtmlByPublicPath(path);
   logPublicWidgetFetch(path, Boolean(hit), hit?.html.length);
   if (!hit) {

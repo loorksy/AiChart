@@ -1,4 +1,4 @@
-import { widgetHtml, RUNTIME_JS } from "./runtime.js";
+import { widgetHtml, publicAssetOrigin } from "./runtime.js";
 
 const PLATFORM_URL = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
 
@@ -495,20 +495,36 @@ const PORTFOLIO_SCRIPT = `
 })();
 `;
 
-const portfolio = `<!DOCTYPE html>
+const portfolio = (() => {
+  const base = publicAssetOrigin();
+  return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lonora — بطاقة الحساب</title>
-<style>${PORTFOLIO_CSS}</style>
+<link rel="stylesheet" href="${base}/mcp-ui/portfolio-card.css" />
 </head>
 <body>
 <div class="card" id="card"></div>
-<script>${RUNTIME_JS}</script>
-<script>${PORTFOLIO_SCRIPT}</script>
+<script src="${base}/mcp-ui/aic-runtime.js" defer></script>
+<script src="${base}/mcp-ui/portfolio-card.js" defer></script>
 </body>
 </html>`;
+})();
+
+export const PORTFOLIO_ASSETS = {
+  css: {
+    path: "portfolio-card.css",
+    body: PORTFOLIO_CSS,
+    mimeType: "text/css; charset=utf-8",
+  },
+  js: {
+    path: "portfolio-card.js",
+    body: PORTFOLIO_SCRIPT,
+    mimeType: "application/javascript; charset=utf-8",
+  },
+} as const;
 
 export const WIDGETS: Record<string, string> = {
   "account-overview": accountOverview,

@@ -286,20 +286,39 @@ export const THEME_CSS = `
   .trade-line { font-size: 12px; line-height: 1.55; padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,.12); }
 `;
 
-/** Full HTML document for a widget. */
+/** Public origin for shared widget assets (runtime.js / theme.css). */
+export function publicAssetOrigin(): string {
+  const raw =
+    process.env.AICHART_PUBLIC_URL ??
+    process.env.MCP_PUBLIC_URL ??
+    "https://aichart.lork.cloud/mcp";
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return "https://aichart.lork.cloud";
+  }
+}
+
+export const STATIC_ASSETS = {
+  runtimeJs: { path: "aic-runtime.js", body: RUNTIME_JS, mimeType: "application/javascript; charset=utf-8" },
+  themeCss: { path: "aic-theme.css", body: THEME_CSS, mimeType: "text/css; charset=utf-8" },
+} as const;
+
+/** Slim shell (~3–5 KB) — heavy runtime/CSS loaded from /mcp-ui/*. */
 export function widgetHtml(title: string, body: string, script: string): string {
+  const base = publicAssetOrigin();
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${title}</title>
-<style>${THEME_CSS}</style>
+<link rel="stylesheet" href="${base}/mcp-ui/aic-theme.css" />
 </head>
 <body>
 ${body}
-<script>${RUNTIME_JS}</script>
-<script>${script}</script>
+<script src="${base}/mcp-ui/aic-runtime.js" defer></script>
+<script defer>${script}</script>
 </body>
 </html>`;
 }

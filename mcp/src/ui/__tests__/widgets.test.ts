@@ -7,6 +7,7 @@ import { TOOL_CATALOG } from "../../tools/schemas/index.js";
 import type { ToolDefinition } from "../../tools/schemas/types.js";
 import { RESOURCE_URI_META_KEY } from "@modelcontextprotocol/ext-apps/server";
 import { appsUri, skybridgeUri, uiMetaFor, widgetHtmlByPublicPath } from "../index.js";
+import { publicAssetOrigin } from "../runtime.js";
 import { WIDGETS } from "../widgets.js";
 
 describe("MCP UI resources", () => {
@@ -24,9 +25,10 @@ describe("MCP UI resources", () => {
     assert.equal(meta[RESOURCE_URI_META_KEY], uri);
     assert.equal(meta["openai/outputTemplate"], skybridgeUri("analysis"));
     assert.equal(meta["openai/toolInvocation/invoking"], "تشغيل Lonora...");
+    const origin = publicAssetOrigin();
     assert.deepEqual(meta["openai/widgetCSP"], {
-      connect_domains: [],
-      resource_domains: [],
+      connect_domains: [origin],
+      resource_domains: [origin],
     });
   });
 
@@ -38,7 +40,7 @@ describe("MCP UI resources", () => {
     const native = widgetHtmlByPublicPath("portfolio.html");
     assert.ok(native);
     assert.equal(native.uri, "ui://aichart/portfolio.html");
-    assert.ok(native.html.length > 1000);
+    assert.ok(native.html.length > 200);
     assert.equal(native.mimeType, "text/html;profile=mcp-app");
 
     const gpt = widgetHtmlByPublicPath("portfolio-gpt.html");

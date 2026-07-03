@@ -90,8 +90,10 @@ describe("MCP card tools integration audit", () => {
       const path = appsUri(name).replace(/^ui:\/\/aichart\//, "");
       const hit = widgetHtmlByPublicPath(path);
       assert.ok(hit, `public path missing for ${name} (${path})`);
-      assert.ok(hit.html.length > 100);
+      assert.ok(hit.html.length > 200);
+      assert.ok(hit.html.length < 12000, `${name} shell should be slim (${hit.html.length}b)`);
       assert.ok(hit.mimeType.includes("text/html"));
+      assert.ok(hit.html.includes("aic-runtime.js"), `${name} must load shared runtime`);
     }
   });
 });
