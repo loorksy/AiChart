@@ -31,9 +31,12 @@ const accountOverview = widgetHtml(
     var stale = ea.heartbeatFresh === false || ea.online === false || ea.connected === false || /offline|stale|down/i.test(String(ea.status || ""));
     return { fresh: fresh && !stale, stale: stale || !fresh, label: fresh && !stale ? "متصل" : "غير متصل / بيانات قديمة" };
   }
-  function staleMoney(AIC, value, stale) {
-    if (stale || value == null || isNaN(value)) return "— / بيانات قديمة";
-    return AIC.fmt(value, 2);
+  /* Last-known money while stale is shown but explicitly marked قديم;
+     a truly missing value hides the row (never renders 0). */
+  function moneyCell(AIC, value, stale) {
+    if (value == null) return stale ? "— / غير متاح" : null;
+    var t = AIC.fmt(value, 2);
+    return stale ? t + " · قديم" : t;
   }
   window.__aicReady = function (AIC) {
     var last = null;
@@ -42,14 +45,31 @@ const accountOverview = widgetHtml(
       var risk = obj(data.risk);
       var portfolio = obj(data.portfolio);
       var live = obj(data.live);
-      var account = obj(portfolio.account || live.account || data.account);
       var ea = eaState(data);
-      var openPnl = first(portfolio.openPnl, portfolio.open_pnl, account.openPnl, account.pnl, live.openPnl);
+      /* Source of truth: live EA account meta, then portfolio EA, then legacy keys. */
+      var eaLive = obj(obj(live.forex).ea);
+      var eaPort = obj(obj(portfolio.forex).ea);
+      var legacy = obj(portfolio.account || live.account || data.account);
+      var balance = AIC.num(first(eaLive.balance, eaPort.balance, legacy.balance, portfolio.balance, data.balance));
+      var equity = AIC.num(first(eaLive.equity, eaPort.equity, legacy.equity, portfolio.equity, data.equity));
+      var freeMargin = AIC.num(first(eaLive.freeMargin, eaLive.free_margin, legacy.freeMargin, legacy.free_margin, portfolio.freeMargin));
+      var openPnl = AIC.num(first(portfolio.openPnl, portfolio.open_pnl, legacy.openPnl, legacy.pnl, live.openPnl));
+      if (openPnl == null) {
+        var positions = obj(live.forex).positions;
+        if (Array.isArray(positions) && positions.length) {
+          var sum = 0, seen = false;
+          for (var i = 0; i < positions.length; i++) {
+            var pr = AIC.num(positions[i] && positions[i].profit);
+            if (pr != null) { sum += pr; seen = true; }
+          }
+          if (seen) openPnl = sum;
+        }
+      }
       var rows = [
-        ["الرصيد", first(account.balance, portfolio.balance, data.balance), ""],
-        ["حقوق الملكية", first(account.equity, portfolio.equity, data.equity), ""],
-        ["الهامش الحر", first(account.freeMargin, account.free_margin, portfolio.freeMargin), ""],
-        ["PnL المفتوح", staleMoney(AIC, openPnl, ea.stale), ea.stale ? "amber" : (Number(openPnl) >= 0 ? "green" : "red")],
+        ["الرصيد", moneyCell(AIC, balance, ea.stale), ea.stale ? "amber" : ""],
+        ["حقوق الملكية", moneyCell(AIC, equity, ea.stale), ea.stale ? "amber" : ""],
+        ["الهامش الحر", moneyCell(AIC, freeMargin, ea.stale), ea.stale ? "amber" : ""],
+        ["PnL المفتوح", ea.stale ? "— / بيانات قديمة" : moneyCell(AIC, openPnl, false), ea.stale ? "amber" : (Number(openPnl) >= 0 ? "green" : "red")],
         ["إعداد حد الصفقة", first(risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), "blue"],
         ["حالة المخاطر", first(risk.status, risk.mode, data.risk_status), ""],
         ["الصفقات المفتوحة", AIC.formatOpenTrades(first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades)), ""],
@@ -58,10 +78,10 @@ const accountOverview = widgetHtml(
       var grid = document.getElementById("grid");
       grid.innerHTML = "";
       rows.forEach(function (row) {
-        if (row[1] == null) return;
+        var value = AIC.cell(row[1], 2);
+        if (value == null) return;
         var el = document.createElement("div");
         el.className = "kv";
-        var value = typeof row[1] === "number" ? AIC.fmt(row[1], 2) : String(row[1]);
         el.innerHTML = '<div class="k">' + row[0] + '</div><div class="v ' + row[2] + '">' + value + '</div>';
         grid.appendChild(el);
       });
@@ -129,26 +149,31 @@ const analysis = widgetHtml(
       badge.className = "badge " + trend[0];
       badge.textContent = rec.action === "buy" ? "شراء" : rec.action === "sell" ? "بيع" : trend[1];
       var targets = data.targets || (rec.take_profit ? [rec.take_profit] : []);
+      /* Price-like fields: 0 is never a real market level — treat as missing. */
+      function pxv(v) {
+        var n = AIC.num(v);
+        return n == null || n === 0 ? null : n;
+      }
       var rows = [
-        ["السعر", snap.price ?? snap.close ?? rec.entry, "blue"],
+        ["السعر", pxv(snap.price ?? snap.close ?? rec.entry), "blue"],
         ["الثقة", rec.confidence != null ? rec.confidence + "%" : data.confidence, ""],
         ["RSI", snap.rsi14 ?? snap.rsi, ""],
         ["MACD", fmtMacd(snap.macd), ""],
-        ["الدعم", snap.support ?? snap.nearestSupport ?? data.support, "green"],
-        ["المقاومة", snap.resistance ?? snap.nearestResistance ?? data.resistance, "red"],
-        ["الدخول", rec.entry, "green"],
-        ["الوقف", rec.stop_loss, "red"],
-        ["الهدف", targets[0], "blue"],
+        ["الدعم", pxv(snap.support ?? snap.nearestSupport ?? data.support), "green"],
+        ["المقاومة", pxv(snap.resistance ?? snap.nearestResistance ?? data.resistance), "red"],
+        ["الدخول", pxv(rec.entry), "green"],
+        ["الوقف", pxv(rec.stop_loss), "red"],
+        ["الهدف", pxv(targets[0]), "blue"],
         ["الرسومات", Array.isArray(data.drawings) ? data.drawings.length : null, ""],
       ];
       var grid = document.getElementById("grid");
       grid.innerHTML = "";
       rows.forEach(function (row) {
-        if (row[1] == null || row[1] === "") return;
+        var value = AIC.cell(row[1], 5);
+        if (value == null) return;
         var el = document.createElement("div");
         el.className = "kv";
-        el.innerHTML = '<div class="k">' + row[0] + '</div><div class="v ' + row[2] + '">' +
-          (typeof row[1] === "number" ? AIC.fmt(row[1], 5) : String(row[1])) + "</div>";
+        el.innerHTML = '<div class="k">' + row[0] + '</div><div class="v ' + row[2] + '">' + value + "</div>";
         grid.appendChild(el);
       });
       if (!grid.children.length) grid.innerHTML = '<div class="empty">لا توجد بيانات تحليل متاحة</div>';
@@ -209,10 +234,11 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
         var rows = rowsFrom(data, AIC);
         body.innerHTML = "";
         rows.forEach(function (row) {
+          var value = AIC.cell(row[1], 4);
+          if (value == null) return;
           var el = document.createElement("div");
           el.className = "kv";
-          el.innerHTML = '<div class="k">' + row[0] + '</div><div class="v">' +
-            (typeof row[1] === "number" ? AIC.fmt(row[1], 4) : String(row[1])) + "</div>";
+          el.innerHTML = '<div class="k">' + row[0] + '</div><div class="v">' + value + "</div>";
           body.appendChild(el);
         });
         if (!body.children.length) body.innerHTML = '<div class="empty">لا توجد بيانات لهذه البطاقة</div>';
@@ -379,65 +405,77 @@ const PORTFOLIO_CSS = `
 
 const PORTFOLIO_SCRIPT = `
 (function(){
+  /* Null = unknown/unavailable — rendered as "—", never a fabricated 0. */
   var DATA = {
-    account:{login:"—",broker:"—",currency:"USD",balance:0,equity:0,online:false,lastHeartbeat:"—"},
-    todayPnl:0, openTrades:0, trades:[], signals:[]
+    account:{login:null,broker:null,currency:null,balance:null,equity:null,online:false,lastHeartbeat:null},
+    todayPnl:null, openTrades:null, trades:[], signals:[], empty:true
   };
+  function num(v){ return typeof v==="number"&&isFinite(v) ? v : null; }
   function money(n,d){ if(d==null)d=2; if(n==null||isNaN(n))return "—";
     return (n<0?"\\u2212":"")+"$"+Math.abs(Number(n)).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}); }
   function px(n){ if(n==null||isNaN(n))return "—"; n=Number(n);
     return n>=1000 ? n.toLocaleString("en-US",{maximumFractionDigits:2}) : n.toLocaleString("en-US",{maximumFractionDigits:4}); }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
 
-  /* Accept card-shaped data as-is; defensively map a raw bridge payload. */
+  /* Accept card-shaped data as-is; defensively map a raw bridge payload.
+     Unknown shapes return null — caller keeps the previous state instead of
+     rendering fake zeros. */
   function normalize(d){
-    if(!d || typeof d!=="object") return DATA;
-    if(d.account && d.trades) return d;
+    if(!d || typeof d!=="object") return null;
+    if(d.account && d.trades){ d.empty=false; return d; }
     if(d.forex || d.openTrades || d.recentTrades){
       var ea=(d.forex&&d.forex.ea)||{}, meta=(d.forex&&d.forex.metaapi)||{};
-      var open=Array.isArray(d.openTrades)?d.openTrades:[];
+      var open=Array.isArray(d.openTrades)?d.openTrades:null;
       var recent=Array.isArray(d.recentTrades)?d.recentTrades:[];
       var recs=Array.isArray(d.recommendations)?d.recommendations:[];
       return {
         account:{
-          login:ea.account_login||meta.account_login||"—",
-          broker:ea.broker_name||meta.broker_name||"—",
-          currency:ea.account_currency||meta.account_currency||"USD",
-          balance:ea.balance!=null?ea.balance:(meta.balance!=null?meta.balance:0),
-          equity:ea.equity!=null?ea.equity:(meta.equity!=null?meta.equity:0),
+          login:ea.account_login||meta.account_login||null,
+          broker:ea.broker_name||meta.broker_name||null,
+          currency:ea.account_currency||meta.account_currency||null,
+          balance:num(ea.balance)!=null?num(ea.balance):num(meta.balance),
+          equity:num(ea.equity)!=null?num(ea.equity):num(meta.equity),
           online:!!ea.online,
-          lastHeartbeat:ea.last_heartbeat_at||"—"
+          lastHeartbeat:ea.last_heartbeat_at||null,
+          tradeMode:ea.account_trade_mode||meta.account_trade_mode||null
         },
-        todayPnl:d.todayRealizedPnlUsd!=null?d.todayRealizedPnlUsd:0,
-        openTrades:open.length,
+        todayPnl:num(d.todayRealizedPnlUsd),
+        openTrades:open?open.length:null,
         trades:recent.map(function(t){return {sym:t.symbol,side:(t.side||"").toLowerCase(),qty:t.qty,price:t.avg_price,pnl:t.pnl,at:(t.created_at||"").slice(11,16)};}),
-        signals:recs.map(function(r){var a=(r.action||"").toLowerCase();return {sym:r.symbol,side:a==="sell"?"sell":"buy",entry:r.entry,sl:r.stop_loss,tp:r.take_profit,pat:r.pattern_name||"",blocked:a==="wait"||a==="hold"};})
+        signals:recs.map(function(r){var a=(r.action||"").toLowerCase();return {sym:r.symbol,side:a==="sell"?"sell":"buy",entry:r.entry,sl:r.stop_loss,tp:r.take_profit,pat:r.pattern_name||"",blocked:a==="wait"||a==="hold"};}),
+        empty:false
       };
     }
-    return DATA;
+    return null;
   }
 
   function render(){
     var a=DATA.account, T=DATA.trades||[], S=DATA.signals||[];
     var wins=T.filter(function(t){return t.pnl>0;}).length;
     var losses=T.filter(function(t){return t.pnl<=0;}).length;
-    var wr=T.length?Math.round(wins/T.length*100):0;
-    var up=(DATA.todayPnl||0)>=0;
+    var wr=T.length?Math.round(wins/T.length*100):null;
+    var pnlChip = DATA.todayPnl==null
+      ? '<span class="chip">\\u2014</span>'
+      : '<span class="chip '+(DATA.todayPnl>=0?"up":"down")+'">'+(DATA.todayPnl>=0?"\\u25b2":"\\u25bc")+" "+money(DATA.todayPnl)+"</span>";
     var h="";
-    h+='<div class="hd"><div class="brand"><b><span class="ai">Ai</span>Chart</b><small>#'+esc(a.login)+" \\u00b7 "+esc(a.broker)+'</small></div><div class="spacer"></div>';
+    h+='<div class="hd"><div class="brand"><b><span class="ai">Ai</span>Chart</b><small>#'+esc(a.login==null?"\\u2014":a.login)+" \\u00b7 "+esc(a.broker==null?"\\u2014":a.broker)+'</small></div><div class="spacer"></div>';
     h+='<span class="pill '+(a.online?"on":"off")+'"><span class="dot"></span>'+(a.online?"\\u0645\\u062a\\u0635\\u0644":"\\u063a\\u064a\\u0631 \\u0645\\u062a\\u0635\\u0644")+"</span>";
     h+='<button class="refresh" id="rf" title="\\u062a\\u062d\\u062f\\u064a\\u062b" aria-label="\\u062a\\u062d\\u062f\\u064a\\u062b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button></div>';
-    h+='<div class="eq"><div class="lbl">\\u0627\\u0644\\u0625\\u064a\\u0643\\u0648\\u064a\\u062a\\u064a</div><div class="big">'+px(a.equity)+'<span class="cur">'+esc(a.currency)+'</span></div>';
-    h+='<div class="sub"><span>\\u0627\\u0644\\u0631\\u0635\\u064a\\u062f <b>'+money(a.balance)+'</b></span><span>\\u0631\\u0628\\u062d \\u0627\\u0644\\u064a\\u0648\\u0645 <span class="chip '+(up?"up":"down")+'">'+(up?"\\u25b2":"\\u25bc")+" "+money(DATA.todayPnl)+"</span></span></div></div>";
+    h+='<div class="eq"><div class="lbl">\\u0627\\u0644\\u0625\\u064a\\u0643\\u0648\\u064a\\u062a\\u064a</div><div class="big">'+px(a.equity)+(a.currency?'<span class="cur">'+esc(a.currency)+'</span>':"")+'</div>';
+    h+='<div class="sub"><span>\\u0627\\u0644\\u0631\\u0635\\u064a\\u062f <b>'+money(a.balance)+'</b></span><span>\\u0631\\u0628\\u062d \\u0627\\u0644\\u064a\\u0648\\u0645 '+pnlChip+"</span></div></div>";
     h+='<div class="tabs" role="tablist"><button class="tab" role="tab" data-tab="ov" aria-selected="true">\\u0646\\u0638\\u0631\\u0629 \\u0639\\u0627\\u0645\\u0629</button>';
     h+='<button class="tab" role="tab" data-tab="tr" aria-selected="false">\\u0627\\u0644\\u0635\\u0641\\u0642\\u0627\\u062a<span class="n">'+T.length+'</span></button>';
     h+='<button class="tab" role="tab" data-tab="sg" aria-selected="false">\\u0627\\u0644\\u062a\\u0648\\u0635\\u064a\\u0627\\u062a<span class="n">'+S.length+"</span></button></div>";
     /* overview */
     h+='<div class="panel" data-panel="ov" data-active><div class="stats">';
-    h+='<div class="stat"><div class="k">\\u0635\\u0641\\u0642\\u0627\\u062a \\u0645\\u0641\\u062a\\u0648\\u062d\\u0629</div><div class="v">'+DATA.openTrades+"</div></div>";
-    h+='<div class="stat"><div class="k">\\u0646\\u0633\\u0628\\u0629 \\u0627\\u0644\\u0631\\u0628\\u062d \\u00b7 \\u0622\\u062e\\u0631 '+T.length+'</div><div class="v">'+wr+'<span style="font-size:12px;color:var(--muted)">%</span></div><div class="wl" style="font-size:11px;margin-top:2px"><span class="w">'+wins+' \\u0631\\u0628\\u062d</span><span class="l">'+losses+' \\u062e\\u0633\\u0627\\u0631\\u0629</span></div><div class="barwl"><i style="width:'+wr+'%"></i></div></div>';
-    h+='<div class="stat"><div class="k">\\u062d\\u0627\\u0644\\u0629 \\u0627\\u0644\\u062c\\u0633\\u0631 (EA)</div><div class="v" style="font-size:14px;color:'+(a.online?"var(--up)":"var(--down)")+'">'+(a.online?"\\u064a\\u0639\\u0645\\u0644":"\\u0645\\u062a\\u0648\\u0642\\u0641")+'</div><div style="color:var(--faint);font-size:10px;font-family:var(--mono);margin-top:3px">\\u0622\\u062e\\u0631 \\u0646\\u0628\\u0636\\u0629 '+esc(a.lastHeartbeat)+"</div></div>";
-    h+='<div class="stat"><div class="k">\\u0646\\u0648\\u0639 \\u0627\\u0644\\u062d\\u0633\\u0627\\u0628</div><div class="v" style="font-size:14px">\\u062d\\u0642\\u064a\\u0642\\u064a \\u00b7 '+esc(a.currency)+'</div><div style="color:var(--faint);font-size:10px;font-family:var(--mono);margin-top:3px">MT5 \\u00b7 '+esc(a.broker)+"</div></div>";
+    h+='<div class="stat"><div class="k">\\u0635\\u0641\\u0642\\u0627\\u062a \\u0645\\u0641\\u062a\\u0648\\u062d\\u0629</div><div class="v">'+(DATA.openTrades==null?"\\u2014":DATA.openTrades)+"</div></div>";
+    if(T.length){
+      h+='<div class="stat"><div class="k">\\u0646\\u0633\\u0628\\u0629 \\u0627\\u0644\\u0631\\u0628\\u062d \\u00b7 \\u0622\\u062e\\u0631 '+T.length+'</div><div class="v">'+wr+'<span style="font-size:12px;color:var(--muted)">%</span></div><div class="wl" style="font-size:11px;margin-top:2px"><span class="w">'+wins+' \\u0631\\u0628\\u062d</span><span class="l">'+losses+' \\u062e\\u0633\\u0627\\u0631\\u0629</span></div><div class="barwl"><i style="width:'+wr+'%"></i></div></div>';
+    } else {
+      h+='<div class="stat"><div class="k">\\u0646\\u0633\\u0628\\u0629 \\u0627\\u0644\\u0631\\u0628\\u062d</div><div class="v">\\u2014</div><div style="color:var(--faint);font-size:10px;margin-top:3px">\\u0644\\u0627 \\u0635\\u0641\\u0642\\u0627\\u062a \\u0628\\u0639\\u062f</div></div>';
+    }
+    h+='<div class="stat"><div class="k">\\u062d\\u0627\\u0644\\u0629 \\u0627\\u0644\\u062c\\u0633\\u0631 (EA)</div><div class="v" style="font-size:14px;color:'+(a.online?"var(--up)":"var(--down)")+'">'+(a.online?"\\u064a\\u0639\\u0645\\u0644":"\\u0645\\u062a\\u0648\\u0642\\u0641")+'</div><div style="color:var(--faint);font-size:10px;font-family:var(--mono);margin-top:3px">\\u0622\\u062e\\u0631 \\u0646\\u0628\\u0636\\u0629 '+esc(a.lastHeartbeat==null?"\\u2014":a.lastHeartbeat)+"</div></div>";
+    h+='<div class="stat"><div class="k">\\u0646\\u0648\\u0639 \\u0627\\u0644\\u062d\\u0633\\u0627\\u0628</div><div class="v" style="font-size:14px">'+(a.tradeMode==="live"?"\\u062d\\u0642\\u064a\\u0642\\u064a":a.tradeMode==="demo"?"\\u062a\\u062c\\u0631\\u064a\\u0628\\u064a":"\\u2014")+(a.currency?" \\u00b7 "+esc(a.currency):"")+'</div><div style="color:var(--faint);font-size:10px;font-family:var(--mono);margin-top:3px">MT5'+(a.broker?" \\u00b7 "+esc(a.broker):"")+"</div></div>";
     h+="</div></div>";
     /* trades */
     h+='<div class="panel" data-panel="tr"><div class="filters" id="flt"><button data-f="all" data-on>\\u0627\\u0644\\u0643\\u0644</button></div><div class="list" id="trlist"></div></div>';
@@ -451,7 +489,7 @@ const PORTFOLIO_SCRIPT = `
       h+="</div>";
     }
     h+="</div></div>";
-    h+='<div class="foot"><span>get_portfolio</span><span>\\u0645\\u062d\\u062f\\u0651\\u062b \\u0627\\u0644\\u0622\\u0646</span></div>';
+    h+='<div class="foot"><span>get_portfolio</span><span>'+(DATA.empty?"\\u0628\\u0627\\u0646\\u062a\\u0638\\u0627\\u0631 \\u0627\\u0644\\u0628\\u064a\\u0627\\u0646\\u0627\\u062a\\u2026":(a.lastHeartbeat?"\\u0622\\u062e\\u0631 \\u062a\\u062d\\u062f\\u064a\\u062b "+esc(String(a.lastHeartbeat).replace("T"," ").slice(0,16)):"\\u2014"))+"</span></div>";
 
     var card=document.getElementById("card");
     card.innerHTML=h;
@@ -481,15 +519,22 @@ const PORTFOLIO_SCRIPT = `
     };});
 
     var rf=document.getElementById("rf");
-    if(rf) rf.onclick=function(){ rf.disabled=true; AIC.callTool("get_portfolio",{}).then(function(d){ if(d){ DATA=normalize(d); render(); } }).catch(function(){}).finally(function(){ if(rf) rf.disabled=false; }); };
+    if(rf) rf.onclick=function(){ rf.disabled=true; AIC.callTool("get_portfolio",{}).then(function(d){ apply(d); }).catch(function(){}).finally(function(){ if(rf) rf.disabled=false; }); };
     if(AIC && AIC.notifySize) setTimeout(AIC.notifySize,60);
+  }
+
+  /* Unknown/empty payloads keep the previous state — never fake zeros. */
+  function apply(x){
+    if(!x) return;
+    var n=normalize(x);
+    if(n){ DATA=n; }
+    render();
   }
 
   function boot(api){
     var d=api.getData && api.getData();
-    if(d){ DATA=normalize(d); }
-    render();
-    api.onData(function(x){ if(x){ DATA=normalize(x); render(); } });
+    if(d){ apply(d); } else { render(); }
+    api.onData(apply);
   }
   if(window.AIC){ boot(window.AIC); } else { window.__aicReady=boot; }
 })();

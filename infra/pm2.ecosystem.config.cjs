@@ -19,7 +19,9 @@ module.exports = {
       interpreter: "bash",
       instances: 1,
       autorestart: true,
-      max_memory_restart: "256M",
+      // 256M tripped under chart-PNG buffers + accumulated MCP sessions and
+      // each restart killed every live session (cards fail until re-init).
+      max_memory_restart: "512M",
     },
     {
       // Background job tier (BullMQ). Only useful when REDIS_URL is set; with it

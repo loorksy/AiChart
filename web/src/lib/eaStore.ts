@@ -164,8 +164,8 @@ export interface EaHeartbeatPatch {
   account_login?: string | null;
   account_currency?: string | null;
   account_trade_mode?: string | null;
-  balance?: number;
-  equity?: number;
+  balance?: number | null;
+  equity?: number | null;
   symbol_specs_json?: string | null;
   positions_json?: string | null;
 }
@@ -186,8 +186,8 @@ export async function recordEaHeartbeat(
        account_login = COALESCE(?, account_login),
        account_currency = COALESCE(?, account_currency),
        account_trade_mode = COALESCE(?, account_trade_mode),
-       balance = ?,
-       equity = ?,
+       balance = COALESCE(?, balance),
+       equity = COALESCE(?, equity),
        symbol_specs_json = COALESCE(?, symbol_specs_json),
        positions_json = COALESCE(?, positions_json),
        status = 'online',
@@ -199,8 +199,10 @@ export async function recordEaHeartbeat(
       patch.account_login ?? null,
       patch.account_currency ?? null,
       patch.account_trade_mode ?? null,
-      patch.balance ?? 0,
-      patch.equity ?? 0,
+      // null preserves the last known value (COALESCE) — a heartbeat without
+      // account data must never zero the stored balance/equity.
+      patch.balance ?? null,
+      patch.equity ?? null,
       patch.symbol_specs_json ?? null,
       patch.positions_json ?? null,
       userId,

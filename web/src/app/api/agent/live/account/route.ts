@@ -17,6 +17,7 @@ import {
   getBinanceLiveQuotes,
 } from "@/lib/binanceLiveState";
 import { getBinanceCredentials, listOpenTrades } from "@/lib/store";
+import { attachLiveEaPnl } from "@/lib/openTradesSummary";
 import { parseEaPositions } from "@/lib/executionEnv";
 import { getFuturesPositions, getFuturesOpenOrders } from "@/lib/binanceFutures";
 
@@ -139,7 +140,7 @@ export async function GET(req: NextRequest) {
         liveQuotes: binanceQuotes,
         futures: binanceFutures,
       },
-      openTrades,
+      openTrades: attachLiveEaPnl(openTrades, mt5Positions),
       hints: {
         staleQuoteThresholdMs: 5000,
         rule: "لا تُنفّذ صفقة إذا quoteAgeMs > 5000 — استدعِ get_live_account أولاً.",

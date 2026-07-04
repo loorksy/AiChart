@@ -183,7 +183,55 @@ if (cfg.authMode === "oauth") {
   });
 }
 
+// In-memory session registry. Sessions die with the process (deploys, pm2
+// restarts) — per MCP spec an unknown/terminated session id MUST get HTTP 404
+// so the client transparently re-initializes; 400 makes hosts surface
+// "Failed to fetch app content" instead of recovering.
 const transports: Record<string, StreamableHTTPServerTransport> = {};
+const sessionLastSeen: Record<string, number> = {};
+
+const SESSION_IDLE_TTL_MS = Number(
+  process.env.MCP_SESSION_IDLE_TTL_MS ?? 45 * 60 * 1000,
+);
+const SESSION_MAX = Number(process.env.MCP_SESSION_MAX ?? 400);
+
+function touchSession(sid: string): void {
+  sessionLastSeen[sid] = Date.now();
+}
+
+function dropSession(sid: string): void {
+  const t = transports[sid];
+  delete transports[sid];
+  delete sessionLastSeen[sid];
+  if (t) void t.close().catch(() => {});
+}
+
+/** Evict idle sessions (and oldest beyond the cap) so memory stays flat. */
+function sweepSessions(): void {
+  const now = Date.now();
+  for (const sid of Object.keys(transports)) {
+    if (now - (sessionLastSeen[sid] ?? 0) > SESSION_IDLE_TTL_MS) {
+      dropSession(sid);
+    }
+  }
+  const ids = Object.keys(transports);
+  if (ids.length > SESSION_MAX) {
+    ids
+      .sort((a, b) => (sessionLastSeen[a] ?? 0) - (sessionLastSeen[b] ?? 0))
+      .slice(0, ids.length - SESSION_MAX)
+      .forEach(dropSession);
+  }
+}
+setInterval(sweepSessions, 5 * 60 * 1000).unref();
+
+/** Spec-compliant rejection: 404 tells the client to start a new session. */
+function respondSessionNotFound(res: import("express").Response): void {
+  res.status(404).json({
+    jsonrpc: "2.0",
+    error: { code: -32001, message: "Session not found — please reinitialize" },
+    id: null,
+  });
+}
 
 async function bridgeForRequest(
   req: import("express").Request,
@@ -218,21 +266,33 @@ const mcpPostHandler = async (
 
     if (sessionId && transports[sessionId]) {
       transport = transports[sessionId];
-    } else if (!sessionId && isInitializeRequest(req.body)) {
+      touchSession(sessionId);
+    } else if (isInitializeRequest(req.body)) {
+      // Fresh session — also accepted when the client retries initialize
+      // while still sending a stale session id after a server restart.
       const userBridge = await bridgeForRequest(req);
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (sid) => {
           transports[sid] = transport!;
+          touchSession(sid);
         },
       });
       transport.onclose = () => {
         const sid = transport!.sessionId;
-        if (sid && transports[sid]) delete transports[sid];
+        if (sid && transports[sid]) {
+          delete transports[sid];
+          delete sessionLastSeen[sid];
+        }
       };
       const server = createAiChartMcpServer(userBridge);
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
+      return;
+    } else if (sessionId) {
+      // Known-format request on a dead session (server restarted / evicted):
+      // MCP spec mandates 404 so the client re-initializes automatically.
+      respondSessionNotFound(res);
       return;
     } else {
       res.status(400).json({
@@ -263,10 +323,15 @@ const mcpGetHandler = async (
   res: import("express").Response,
 ) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
-  if (!sessionId || !transports[sessionId]) {
-    res.status(400).send("Invalid or missing session ID");
+  if (!sessionId) {
+    res.status(400).send("Missing session ID");
     return;
   }
+  if (!transports[sessionId]) {
+    respondSessionNotFound(res);
+    return;
+  }
+  touchSession(sessionId);
   await transports[sessionId].handleRequest(req, res);
 };
 
@@ -275,8 +340,12 @@ const mcpDeleteHandler = async (
   res: import("express").Response,
 ) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
-  if (!sessionId || !transports[sessionId]) {
-    res.status(400).send("Invalid or missing session ID");
+  if (!sessionId) {
+    res.status(400).send("Missing session ID");
+    return;
+  }
+  if (!transports[sessionId]) {
+    respondSessionNotFound(res);
     return;
   }
   await transports[sessionId].handleRequest(req, res);

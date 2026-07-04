@@ -58,3 +58,21 @@ export async function loadBrokerMt5Positions(
   const conn = await getEaConnection(userId);
   return parseEaPositions(conn?.positions_json ?? null);
 }
+
+/**
+ * Attach live EA position profit to open MT5 trades (order_id ↔ ticket).
+ * DB rows persist pnl only on close; without this, open trades read as a fake
+ * "0" everywhere the payload is displayed (cards, agent summaries).
+ */
+export function attachLiveEaPnl<T extends Trade>(
+  trades: T[],
+  positions: EaBrokerPosition[],
+): T[] {
+  if (!positions.length) return trades;
+  const byTicket = new Map(positions.map((p) => [String(p.ticket), p]));
+  return trades.map((t) => {
+    if (t.status !== "open" || t.broker !== "mt_ea" || !t.order_id) return t;
+    const pos = byTicket.get(String(t.order_id));
+    return pos && Number.isFinite(pos.profit) ? { ...t, pnl: pos.profit } : t;
+  });
+}

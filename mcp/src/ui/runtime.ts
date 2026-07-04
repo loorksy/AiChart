@@ -47,6 +47,33 @@ export const RUNTIME_JS = `
       if (n == null || isNaN(n)) return "—";
       return Number(n).toLocaleString(undefined, { maximumFractionDigits: d == null ? 5 : d });
     };
+    /* Strict numeric extraction: finite number out, or null. Objects yield
+       their first finite price-like field — never NaN, never 0-for-missing. */
+    api.num = function (v) {
+      if (typeof v === "number") return isFinite(v) ? v : null;
+      if (typeof v === "string" && v.trim() !== "") {
+        var p = Number(v);
+        return isFinite(p) ? p : null;
+      }
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        var keys = ["price", "value", "level", "close", "mid", "bid"];
+        for (var i = 0; i < keys.length; i++) {
+          var inner = v[keys[i]];
+          if (typeof inner === "number" && isFinite(inner)) return inner;
+        }
+      }
+      return null;
+    };
+    /* Safe display cell: string for the UI or null (= hide the row).
+       Never "[object Object]", never a fabricated number. */
+    api.cell = function (v, d) {
+      if (v == null || v === "") return null;
+      if (typeof v === "number") return isFinite(v) ? api.fmt(v, d) : null;
+      if (typeof v === "boolean") return v ? "نعم" : "لا";
+      if (typeof v === "string") return v;
+      var n = api.num(v);
+      return n == null ? null : api.fmt(n, d);
+    };
     api.formatOpenTrades = function (v) {
       if (v == null) return "—";
       if (typeof v === "number") return String(v);
@@ -68,6 +95,9 @@ export const RUNTIME_JS = `
       if (Array.isArray(data.trades)) return data.trades;
       if (Array.isArray(data.openTrades)) return data.openTrades;
       if (Array.isArray(data.open_trades)) return data.open_trades;
+      if (Array.isArray(data.aichartTrades) && data.aichartTrades.length) return data.aichartTrades;
+      var bp = data.brokerPositions || {};
+      if (Array.isArray(bp.mt5) && bp.mt5.length) return bp.mt5;
       var p = data.portfolio || {};
       if (Array.isArray(p.openTrades)) return p.openTrades;
       if (Array.isArray(p.open_trades)) return p.open_trades;
@@ -77,18 +107,23 @@ export const RUNTIME_JS = `
     api.bridgeLinkState = function (data) {
       data = data || {};
       var live = data.live || {};
-      var forex = live.forex || {};
+      var forex = live.forex || data.forex || {};
       var ea = forex.ea || live.ea || data.ea || {};
+      var envForex = (data.executionEnv && data.executionEnv.forex) || {};
       var quoteAge = ea.quoteAgeMs != null ? ea.quoteAgeMs : data.quoteAgeMs;
       if (data.bridgeOffline === true || data.offline === true) {
         return { stale: true, label: "الجسر غير متصل — لا بيانات حية" };
       }
-      var offline = ea.heartbeatFresh === false || ea.online === false || ea.connected === false;
+      var offline = ea.heartbeatFresh === false || ea.online === false || ea.connected === false ||
+        forex.heartbeatFresh === false || envForex.online === false;
       if (offline) return { stale: true, label: "EA غير متصل / بيانات قديمة" };
       if (quoteAge != null && quoteAge > 5000) {
         return { stale: true, label: "أسعار قديمة (" + Math.round(quoteAge / 1000) + "s)" };
       }
-      return { stale: false, label: "متصل" };
+      var evidence = ea.heartbeatFresh === true || ea.online === true || ea.connected === true ||
+        forex.heartbeatFresh === true || envForex.online === true || quoteAge != null;
+      /* No connectivity signal in the payload → say nothing, don't claim online. */
+      return evidence ? { stale: false, label: "متصل" } : { stale: false, label: "" };
     };
     api.applyBridgeBadge = function (el, data) {
       if (!el) return;

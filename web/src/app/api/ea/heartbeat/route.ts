@@ -47,8 +47,18 @@ export async function POST(req: NextRequest) {
         body.account?.login != null ? String(body.account.login) : null,
       account_currency: body.account?.currency ?? null,
       account_trade_mode: body.account?.trade_mode ?? null,
-      balance: Number(body.account?.balance ?? 0) || 0,
-      equity: Number(body.account?.equity ?? 0) || 0,
+      // Partial heartbeats (candles/positions-only) must NOT zero the stored
+      // account: pass null so the store keeps the last known real value.
+      balance:
+        body.account?.balance != null &&
+        Number.isFinite(Number(body.account.balance))
+          ? Number(body.account.balance)
+          : null,
+      equity:
+        body.account?.equity != null &&
+        Number.isFinite(Number(body.account.equity))
+          ? Number(body.account.equity)
+          : null,
       symbol_specs_json: Array.isArray(body.symbols)
         ? JSON.stringify(body.symbols)
         : null,
