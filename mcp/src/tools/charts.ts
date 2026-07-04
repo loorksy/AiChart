@@ -143,9 +143,10 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         // honor the layout's dataSource, then fall back to EA on empty.
         const layoutSource = (layout?.state as { dataSource?: string } | undefined)
           ?.dataSource;
-        // EA roundtrip can take ~25s through the terminal queue.
-        const fetchCandles = (source?: string) =>
-          bridge.get(
+        // EA roundtrip can take ~25s through the terminal queue. The route
+        // wraps its payload in {ok, data, meta} — unwrap before use.
+        const fetchCandles = async (source?: string) => {
+          const res = (await bridge.get(
             "/api/agent/market/ohlc",
             {
               symbol,
@@ -155,7 +156,11 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
               limit: 120,
             },
             source === "ea" ? 30000 : undefined,
-          ) as Promise<{ candles?: unknown[] }>;
+          )) as { data?: { candles?: unknown[] }; candles?: unknown[] };
+          return res && typeof res.data === "object" && res.data
+            ? res.data
+            : res;
+        };
         const preferEa = layoutSource === "ea";
         let ohlc = await fetchCandles(preferEa ? "ea" : undefined).catch(
           () => null as { candles?: unknown[] } | null,

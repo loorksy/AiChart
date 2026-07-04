@@ -361,14 +361,18 @@ const liveChart = widgetHtml(
       if (Array.isArray(st.targets)) S.targets = st.targets;
     }
     var cc = null;
-    if (d.ohlc) {
-      cc = normCandles(d.ohlc);
-      if (d.ohlc.source) S.source = d.ohlc.source;
-      S.warning = d.ohlc.warning || null;
-    } else if (Array.isArray(d.candles)) {
-      cc = normCandles(d);
-      if (d.source) S.source = d.source;
-      S.warning = d.warning || null;
+    var ohl = d.ohlc;
+    /* Some endpoints wrap payloads in {ok, data} — unwrap transparently. */
+    if (ohl && ohl.data && typeof ohl.data === "object") ohl = ohl.data;
+    var flat = d.data && typeof d.data === "object" ? d.data : d;
+    if (ohl) {
+      cc = normCandles(ohl);
+      if (ohl.source) S.source = ohl.source;
+      S.warning = ohl.warning || null;
+    } else if (Array.isArray(flat.candles)) {
+      cc = normCandles(flat);
+      if (flat.source) S.source = flat.source;
+      S.warning = flat.warning || null;
     }
     if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }
   }
