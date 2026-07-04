@@ -252,18 +252,18 @@ export function formatBridgeResult(
   isError?: boolean;
 } {
   const isError = isBridgeFailureEnvelope(data);
-  // structuredContent feeds the interactive card (MCP Apps / ChatGPT widget);
-  // the text block stays for hosts without UI support.
+  const isPlainObject =
+    !!data && typeof data === "object" && !Array.isArray(data);
+  // structuredContent feeds the interactive card (MCP Apps / ChatGPT widget).
+  // ALWAYS attach it for object payloads — a card-linked tool that omitted it
+  // rendered an empty card on first paint. Harmless for hosts without UI (they
+  // read the text block); the card layer defensively handles every shape.
   const structured =
-    opts?.structured &&
-    !isError &&
-    data &&
-    typeof data === "object" &&
-    !Array.isArray(data)
-      ? (data as Record<string, unknown>)
-      : undefined;
+    !isError && isPlainObject ? (data as Record<string, unknown>) : undefined;
+  // opts.structured only chooses the human-readable text fallback for the
+  // flagship shapes; other payloads keep pretty JSON in the text block.
   let text: string;
-  if (structured) {
+  if (opts?.structured && structured) {
     text = formatToolTextFallback(data) ?? JSON.stringify(data, null, 2);
   } else {
     text = JSON.stringify(data, null, 2);
