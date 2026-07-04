@@ -130,10 +130,11 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
     "get_ohlc",
     mcpToolConfig("get_ohlc"),
     async (args) => {
-      const { symbol, interval, market, limit, cursor } = args as {
+      const { symbol, interval, market, source, limit, cursor } = args as {
         symbol: string;
         interval?: string;
         market?: "crypto" | "forex";
+        source?: "oanda" | "ea";
         limit?: number;
         cursor?: number;
       };
@@ -142,6 +143,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
           symbol,
           interval,
           market,
+          source,
           limit,
           cursor,
         }),

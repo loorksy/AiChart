@@ -96,6 +96,10 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       symbol: zSymbol.describe("EURUSD أو BTCUSDT"),
       interval: zInterval,
       market: zMarket,
+      source: z
+        .enum(["oanda", "ea"])
+        .optional()
+        .describe("مصدر شموع الفوركس — ea إلزامي لرموز الوسيط بلاحقة (مثل XAUUSDM)"),
       limit: z.number().int().min(1).max(500).optional(),
       cursor: z.number().int().optional().describe("ms — pagination crypto"),
     },

@@ -17,6 +17,9 @@ export const GET = withBridge(async ({ req, userId }) => {
     settings.active_market ??
     "crypto") as MarketType;
   const interval = searchParams.get("interval") ?? "1h";
+  const sourceRaw = searchParams.get("source");
+  const source =
+    sourceRaw === "ea" ? "ea" : sourceRaw === "oanda" ? "oanda" : undefined;
   const limitRaw = searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : 200;
   const cursorRaw = searchParams.get("cursor");
@@ -35,6 +38,7 @@ export const GET = withBridge(async ({ req, userId }) => {
     symbol,
     interval,
     market,
+    source,
     limit: Math.min(limit, OHLC_MAX_LIMIT),
     cursor,
   });

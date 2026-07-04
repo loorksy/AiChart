@@ -327,7 +327,7 @@ const liveChart = widgetHtml(
   var PLATFORM = "${PLATFORM_URL}";
   var S = { symbol:null, interval:"15m", layoutId:null, url:null, candles:[],
             drawings:[], rec:null, targets:[], lastUpdate:0, paused:false,
-            failures:0, timer:null, booted:false };
+            failures:0, timer:null, booted:false, source:null };
 
   function nnum(v){ v = Number(v); return isFinite(v) ? v : null; }
   function toMs(t){ t = Number(t); if (!isFinite(t) || t <= 0) return null; return t < 20000000000 ? t * 1000 : t; }
@@ -361,8 +361,13 @@ const liveChart = widgetHtml(
       if (Array.isArray(st.targets)) S.targets = st.targets;
     }
     var cc = null;
-    if (d.ohlc) cc = normCandles(d.ohlc);
-    else if (Array.isArray(d.candles)) cc = normCandles(d);
+    if (d.ohlc) {
+      cc = normCandles(d.ohlc);
+      if (d.ohlc.source) S.source = d.ohlc.source;
+    } else if (Array.isArray(d.candles)) {
+      cc = normCandles(d);
+      if (d.source) S.source = d.source;
+    }
     if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }
   }
 
@@ -634,7 +639,9 @@ const liveChart = widgetHtml(
   }
   function tick(){
     if (document.hidden || !S.symbol || !window.AIC) { schedule(); return; }
-    var calls = [window.AIC.callTool("get_ohlc", { symbol: S.symbol, interval: S.interval, limit: 120 })];
+    var args = { symbol: S.symbol, interval: S.interval, limit: 120 };
+    if (S.source === "ea" || S.source === "oanda") args.source = S.source;
+    var calls = [window.AIC.callTool("get_ohlc", args)];
     if (S.layoutId) calls.push(window.AIC.callTool("get_chart_state", { layout_id: S.layoutId }));
     Promise.all(calls).then(function (res) {
       var got = false;

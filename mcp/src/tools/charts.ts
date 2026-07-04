@@ -139,12 +139,29 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           );
         }
         const interval = a.interval ?? layout?.interval ?? "15m";
-        const ohlc = await bridge.get("/api/agent/market/ohlc", {
-          symbol,
-          interval,
-          market: a.market,
-          limit: 120,
-        });
+        // Broker-suffixed symbols (XAUUSDM…) only exist on the EA bridge —
+        // honor the layout's dataSource, then fall back to EA on empty.
+        const layoutSource = (layout?.state as { dataSource?: string } | undefined)
+          ?.dataSource;
+        const fetchCandles = (source?: string) =>
+          bridge.get("/api/agent/market/ohlc", {
+            symbol,
+            interval,
+            market: a.market,
+            source,
+            limit: 120,
+          }) as Promise<{ candles?: unknown[] }>;
+        let ohlc = await fetchCandles(
+          layoutSource === "ea" ? "ea" : undefined,
+        );
+        if (
+          !ohlc?.candles?.length &&
+          layoutSource !== "ea" &&
+          a.market !== "crypto"
+        ) {
+          const eaTry = await fetchCandles("ea").catch(() => null);
+          if (eaTry?.candles?.length) ohlc = eaTry;
+        }
         return {
           live_chart: true,
           symbol,
