@@ -23,9 +23,21 @@
    - `ApiBase` = `https://aichart.lork.cloud`
    - `EaToken` = الرمز من الخطوة 1
    - `StreamSymbol` = الزوج الذي تريد بثّه (مثل `EURUSD`)
-4. **MT4 فقط:** أضف رابط AiChart في
+4. أضف رابط AiChart في
    `Tools → Options → Expert Advisors → Allow WebRequest for listed URL`.
 5. فعّل **AutoTrading** (الزر الأخضر).
+
+### تفعيل دائم (مرة واحدة) — لا إعادة تفعيل عند تبديل الأزواج/الفريمات
+
+في `Tools → Options → Expert Advisors` **ألغِ ✅** من:
+`Disable algorithmic trading when the charts symbol or period has been changed`
+(وكذلك خياري *account changed* و *profile changed*). هذا إعداد طرفية لا يمكن لأي
+كود EA تجاوزه — إلغاؤه مرة واحدة يُبقي الجسر مفعّلاً عبر كل التبديلات. للتشغيل 24/7
+استخدم **MetaQuotes Virtual Hosting** (انقر يميناً على الشارت → *Register a Virtual
+Server* → *Migrate*). التفاصيل في [`docs/EA_WINDOWS_VPS.md`](../docs/EA_WINDOWS_VPS.md).
+
+منذ **v4.05** يعرض الـ EA **لوحة حالة** على الشارت (اتصال المنصة · حالة
+AutoTrading · الحساب · البث) فتعرف فوراً إن كان الجسر حياً.
 
 ## EA v2.00 — إعدادات جديدة
 

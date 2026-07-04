@@ -10,7 +10,46 @@ VPS Linux (AiChart)  <── HTTPS heartbeat كل 1ث ──  VPS Windows (MT5 +
   Claude MCP + Risk Guard                              حساب الوسيط (Liirat-Live)
 ```
 
-## 1) اختيار VPS Windows
+## 0) التفعيل مرة واحدة — أوقف إعادة التفعيل عند تبديل الأزواج/الفريمات
+
+**المشكلة:** كل ما تبدّل الرمز أو الفريم على الشارت، يتوقف الجسر ويطلب إعادة تفعيل
+AutoTrading. **السبب:** إعداد أمان في الطرفية، لا في الـ EA — لا يستطيع أي كود EA
+تجاوزه. الحل مرة واحدة:
+
+1. **MT5 → Tools → Options → Expert Advisors**، فعّل:
+   - ✅ `Allow algorithmic trading`
+   - **ألغِ ✅** من الثلاثة التالية (هي سبب إعادة التفعيل):
+     - `Disable algorithmic trading when the account has been changed`
+     - `Disable algorithmic trading when the profile has been changed`
+     - **`Disable algorithmic trading when the charts symbol or period has been changed`** ← الأهم
+   - ✅ `Allow WebRequest for listed URL` وأضف `https://aichart.lork.cloud` (سطر واحد يكفي)
+2. اضغط زر **AutoTrading** الأخضر مرة واحدة (يبقى مفعّلاً بعدها).
+3. عند سحب الـ EA على الشارت: فعّل ✅ `Allow Algo Trading` فقط. (خيار
+   `Allow modification of Signals settings` غير مطلوب للجسر — اتركه.)
+4. **خصّص شارتاً للجسر:** اسحب الـ EA على شارت واحد ولا تبدّل رمزه/فريمه، وتصفّح
+   بقية الأزواج في نوافذ شارت أخرى. الجسر يخدم **كل** الرموز التي يطلبها الوكيل
+   تلقائياً — لا يحتاج أن يكون على شارت الزوج الذي تنظر إليه.
+
+بعد هذه الخطوة، لوحة الحالة على الشارت تعرض `AutoTrading: [ON]` و
+`Platform link: [ONLINE]` وتبقى كذلك عبر التبديلات. (لوحة الحالة أُضيفت في
+EA v4.05 — إن لم تظهر، أعد ترجمة `AiChartBridge.mq5` وأعد سحبه.)
+
+## 0.1) MetaQuotes Virtual Hosting — VPS مدمج في MT5 للتشغيل 24/7
+
+بدل استئجار VPS Windows منفصل، MetaTrader يوفّر **خادماً افتراضياً مدمجاً** يعمل
+24/7 حتى لو أطفأت جهازك (هذا ما تقصده بـ «VPS من خدمات meta5»):
+
+1. في MT5: انقر يميناً على الشارت الذي عليه الـ EA → **Register a Virtual Server**
+   (أو من قائمة `Trade` → `Virtual Hosting`).
+2. اختر أقرب مركز بيانات (يعرض زمن الوصول لوسيطك) واشترك (رسوم شهرية بسيطة).
+3. اختر **Migrate → Experts and Market Watch** لنسخ الـ EA وإعداداته إلى الخادم.
+4. الخادم الافتراضي يعمل نسخة MT5 headless تعمل دائماً — **لا أحد يبدّل رموزه**،
+   لذلك لا تنطفئ AutoTrading أبداً، والجسر يبقى `[ONLINE]` على مدار الساعة.
+
+> ملاحظة: بعد أي تعديل على إعدادات الـ EA أو إعادة ترجمته محلياً، أعد **Migrate**
+> حتى ينسخ النسخة الجديدة إلى الخادم الافتراضي.
+
+## 1) اختيار VPS Windows (بديل: خادم منفصل تديره بنفسك)
 
 | المعيار | التوصية |
 |---------|---------|
@@ -51,7 +90,7 @@ FOREX_BACKEND=ea
    - Login: رقم حسابك
    - Server: `Liirat-Live` (حرفياً كما في MT5)
    - Password: كلمة مرور التداول
-4. فعّخ **Tools → Options → Expert Advisors:**
+4. فعّل **Tools → Options → Expert Advisors** (راجع القسم 0 أعلاه للإعداد الدائم):
    - Allow algorithmic trading
    - Allow WebRequest (أضف `https://aichart.lork.cloud` إن طُلب)
 

@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "AiChart"
 #property link      "https://aichart.lork.cloud"
-#property version   "4.04"
+#property version   "4.05"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -27,6 +27,7 @@ input int     QuoteFlushSeconds = 1;                            // Live quote pu
 input int     ChartQuoteThrottleMs = 300;                       // Min ms between chart-symbol quote pushes on OnTick
 input int     QuoteWaitAttempts = 8;                            // Ticks to wait before off-quotes fail
 input int     QuoteWaitDelayMs  = 250;                          // Delay between quote wait attempts (ms)
+input bool    ShowStatusPanel   = true;                         // Show on-chart status/health panel
 
 CTrade  trade;
 long    g_last_acked = 0;
@@ -42,7 +43,10 @@ ulong   g_last_chart_quote_ms = 0;
 long    g_last_trade_ticket = 0;
 double  g_last_trade_price = 0;
 string  g_last_trade_error = "";
-const string EA_VERSION = "4.04";
+bool    g_connected = false;            // last heartbeat succeeded
+datetime g_last_hb_ok_time = 0;         // when the last heartbeat succeeded
+bool    g_algo_warned = false;          // one-shot alert when AutoTrading turns off
+const string EA_VERSION = "4.05";
 
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
@@ -57,9 +61,14 @@ int OnInit()
       return(INIT_FAILED);
    }
    EventSetTimer(1);
-   Print("AiChartBridge MT5 v4.01 started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s chartQuoteMs=", ChartQuoteThrottleMs);
+   Print("AiChartBridge MT5 v", EA_VERSION, " started. Base=", ApiBase, " hb=", HeartbeatSeconds, "s poll=", PollIntervalMs, "ms quotes=", QuoteFlushSeconds, "s chartQuoteMs=", ChartQuoteThrottleMs);
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+      Print("AiChartBridge: AutoTrading button is OFF. Enable it once, and UNTICK ",
+            "Tools>Options>Expert Advisors>'Disable algorithmic trading when the charts ",
+            "symbol or period has been changed' so it stays on across pair/timeframe switches.");
    PreWarmSymbols();
    LogAvailableSymbols();
+   UpdateStatusPanel();
    // FIX: 1 — immediate heartbeat on attach
    SendHeartbeat();
    return(INIT_SUCCEEDED);
@@ -68,6 +77,10 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    EventKillTimer();
+   // Keep the panel on a symbol/period switch (EA is re-created immediately);
+   // clear it only when the user truly removes the EA.
+   if(reason != REASON_CHARTCHANGE)
+      Comment("");
 }
 
 //+------------------------------------------------------------------+
@@ -81,9 +94,9 @@ void OnChartEvent(const int id, const long& lparam,
                   const double& dparam, const string& sparam)
 {
    if(id != CHARTEVENT_CHART_CHANGE) return;
-   Print("AiChartBridge: chart symbol/period changed — re-enable AutoTrading if disabled.");
    ArmKeepaliveTimer();
    g_last_hb_time = 0;
+   UpdateStatusPanel();
    SendHeartbeat();
 }
 
@@ -142,6 +155,7 @@ void OnTimer()
 {
    ArmKeepaliveTimer();
    ProcessBridgeTick();
+   UpdateStatusPanel();   // refresh "last heartbeat / AutoTrading" every second
 }
 
 //+------------------------------------------------------------------+
@@ -153,8 +167,10 @@ void SendHeartbeat()
    if(!HttpPost("/api/ea/heartbeat", body, resp))
    {
       g_hb_failures++;
+      g_connected = false;
       if(g_hb_failures == 1 || g_hb_failures % 10 == 0)
          Print("AiChartBridge: heartbeat failed (", g_hb_failures, "). Check WebRequest URL and network.");
+      UpdateStatusPanel();
       return;
    }
    if(g_hb_failures > 0)
@@ -162,8 +178,65 @@ void SendHeartbeat()
       Print("AiChartBridge: heartbeat restored after ", g_hb_failures, " failure(s).");
       g_hb_failures = 0;
    }
+   g_connected = true;
+   g_last_hb_ok_time = TimeCurrent();
    // FIX: 6 — process server flags from heartbeat (commands via PollCommands)
    ProcessHeartbeatFlags(resp);
+   UpdateStatusPanel();
+}
+
+//+------------------------------------------------------------------+
+//| On-chart status panel — always shows whether the bridge is live  |
+//| and whether AutoTrading is enabled, with one-time remediation.   |
+//| The panel cannot toggle terminal settings (MT5 forbids it); it   |
+//| only makes the state visible so setup is verifiably one-time.    |
+//+------------------------------------------------------------------+
+void UpdateStatusPanel()
+{
+   if(!ShowStatusPanel) { Comment(""); return; }
+
+   bool termOk = (bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED);
+   bool mqlOk  = (bool)MQLInfoInteger(MQL_TRADE_ALLOWED);
+   bool algoOk = termOk && mqlOk;
+
+   // One-shot loud alert the moment AutoTrading is turned off (e.g. after a
+   // symbol/period switch with the terminal "disable on change" box ticked).
+   if(!algoOk && !g_algo_warned)
+   {
+      g_algo_warned = true;
+      Print("AiChartBridge: AutoTrading is OFF — enable the green AutoTrading button. ",
+            "To make it permanent, UNTICK Tools>Options>Expert Advisors> ",
+            "'Disable algorithmic trading when the charts symbol or period has been changed'.");
+   }
+   if(algoOk) g_algo_warned = false;
+
+   string login  = (string)AccountInfoInteger(ACCOUNT_LOGIN);
+   string broker = AccountInfoString(ACCOUNT_COMPANY);
+   string cur    = AccountInfoString(ACCOUNT_CURRENCY);
+   double bal    = AccountInfoDouble(ACCOUNT_BALANCE);
+   int    agoSec = (g_last_hb_ok_time > 0) ? (int)(TimeCurrent() - g_last_hb_ok_time) : -1;
+   string ago    = (agoSec < 0) ? "-" : (string)agoSec + "s";
+
+   // English/ASCII only: MT5 Comment() has no RTL shaping and the chart font
+   // lacks emoji — Arabic/emoji here render as reversed text or tofu boxes.
+   string s = "";
+   s += "AiChart Bridge  v" + EA_VERSION + "\n";
+   s += "--------------------------------\n";
+   s += "Platform link : " + (g_connected ? "[ONLINE]" : "[OFFLINE]")
+        + "  (last hb: " + ago + ")\n";
+   s += "AutoTrading   : " + (algoOk ? "[ON]" : "[OFF] - click the green button") + "\n";
+   s += "Account       : " + login + " - " + broker + " - "
+        + DoubleToString(bal, 2) + " " + cur + "\n";
+   s += "Stream        : " + StreamSymbol + " " + TfToString(StreamTF) + "\n";
+   if(!algoOk)
+   {
+      s += "--------------------------------\n";
+      s += "To keep it ON permanently (one time):\n";
+      s += "Tools > Options > Expert Advisors,\n";
+      s += "UNTICK: 'Disable algorithmic trading when\n";
+      s += "the charts symbol or period has been changed'";
+   }
+   Comment(s);
 }
 
 //+------------------------------------------------------------------+
