@@ -147,6 +147,26 @@ function formatAnalysis(data: Record<string, unknown>): string {
   return lines.filter(Boolean).join("\n");
 }
 
+/** Compact text for the live-chart card payload — the heavy candle series
+ *  lives in structuredContent for the widget; the model only needs a line. */
+function formatLiveChart(data: Record<string, unknown>): string {
+  const ohlc = obj(data.ohlc);
+  const candles = Array.isArray(ohlc.candles) ? ohlc.candles : [];
+  const last = candles.length
+    ? (candles[candles.length - 1] as Record<string, unknown>).close
+    : null;
+  const state = obj(data.state);
+  const drawings = Array.isArray(state.drawings) ? state.drawings.length : 0;
+  const parts = [
+    `شارت حي ${String(data.symbol ?? "—")} @ ${String(data.interval ?? "—")}`,
+    `شموع: ${candles.length}`,
+    last != null ? `آخر سعر: ${fmtNum(last, 5)}` : "",
+    `رسومات: ${drawings}`,
+    data.layout_id ? "" : "(لا يوجد layout محفوظ — الرسومات غير متاحة)",
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
 function isAccountOverview(data: Record<string, unknown>): boolean {
   return "risk" in data && ("portfolio" in data || "live" in data);
 }
@@ -168,6 +188,7 @@ function isAnalysis(data: Record<string, unknown>): boolean {
 export function formatToolTextFallback(data: unknown): string | null {
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   const o = data as Record<string, unknown>;
+  if (o.live_chart === true) return formatLiveChart(o);
   if (isAccountOverview(o)) return formatAccountOverview(o);
   if (isAnalysis(o)) return formatAnalysis(o);
   return null;

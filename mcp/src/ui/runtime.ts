@@ -182,7 +182,20 @@ export const RUNTIME_JS = `
   }
 
   function normalizeToolResult(r) {
-    return (r && r.structuredContent) || r;
+    if (r && r.structuredContent) return r.structuredContent;
+    /* Tools without structuredContent carry JSON in the text block. */
+    if (r && Array.isArray(r.content)) {
+      for (var i = 0; i < r.content.length; i++) {
+        var c = r.content[i];
+        if (c && c.type === "text" && typeof c.text === "string") {
+          try {
+            var p = JSON.parse(c.text);
+            if (p && typeof p === "object") return p;
+          } catch (e) {}
+        }
+      }
+    }
+    return r;
   }
 
   if (window.openai) {

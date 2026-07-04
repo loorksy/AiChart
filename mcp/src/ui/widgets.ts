@@ -118,10 +118,23 @@ const analysis = widgetHtml(
   `
   var current = { symbol: "", interval: "15m", layout_id: null, data_source: null };
   function obj(v) { return v && typeof v === "object" ? v : {}; }
+  /* Handles: {snapshot}, MTF {snapshots:[{interval,snapshot}]}, detect_levels
+     (flat) — and surfaces indicator keys nested under snapshot.extra. */
   function pickSnapshot(data) {
-    if (data.snapshot) return data.snapshot;
-    if (Array.isArray(data.snapshots) && data.snapshots.length) return data.snapshots[0];
-    return data;
+    var s = data.snapshot;
+    if (!s && Array.isArray(data.snapshots)) {
+      for (var i = 0; i < data.snapshots.length; i++) {
+        var it = obj(data.snapshots[i]);
+        if (it.snapshot) { s = it.snapshot; break; }
+        if (it.price != null || it.close != null) { s = it; break; }
+      }
+    }
+    s = obj(s || data);
+    var extra = obj(s.extra);
+    var merged = {};
+    for (var k in s) merged[k] = s[k];
+    for (var k2 in extra) if (merged[k2] == null) merged[k2] = extra[k2];
+    return merged;
   }
   function fmtMacd(v) {
     if (v == null) return null;
@@ -155,7 +168,10 @@ const analysis = widgetHtml(
         return n == null || n === 0 ? null : n;
       }
       var rows = [
-        ["السعر", pxv(snap.price ?? snap.close ?? rec.entry), "blue"],
+        ["السعر", pxv(snap.price ?? snap.close ?? snap.currentPrice ?? rec.entry), "blue"],
+        ["الاتجاه", snap.trend != null ? trendClass(snap.trend)[1] : null, ""],
+        ["التغير 24س", snap.change24hPct != null ? AIC.fmt(snap.change24hPct, 2) + "%" : null,
+          Number(snap.change24hPct) >= 0 ? "green" : "red"],
         ["الثقة", rec.confidence != null ? rec.confidence + "%" : data.confidence, ""],
         ["RSI", snap.rsi14 ?? snap.rsi, ""],
         ["MACD", fmtMacd(snap.macd), ""],
@@ -177,7 +193,7 @@ const analysis = widgetHtml(
         grid.appendChild(el);
       });
       if (!grid.children.length) grid.innerHTML = '<div class="empty">لا توجد بيانات تحليل متاحة</div>';
-      var summary = data.reply || snap.summary || rec.rationale || data.summary || "";
+      var summary = data.reply || snap.summary || rec.rationale || data.summary || data.contextSummary || "";
       document.getElementById("summary").textContent = String(summary).slice(0, 420);
       document.getElementById("status").textContent = current.data_source ? "مصدر البيانات: " + current.data_source : "";
       AIC.notifySize();
@@ -286,25 +302,381 @@ const openTradesCard = widgetHtml(
   `,
 );
 
-const chartDrawn = widgetHtml(
-  "Lonora chart drawing",
-  `<div class="card">
-    <div class="hd"><span class="title">نتيجة الرسم على الشارت</span><span class="brand">Lonora</span></div>
-    <div id="summary" class="muted" style="line-height:1.7;">جاري التحميل...</div>
-    <div class="foot"><span id="status" class="status"></span><span class="spacer"></span><button class="btn primary" id="open">فتح الشارت</button></div>
+/* ────────────────────────────── live chart ──────────────────────────────
+ * Canvas mini-chart: candles from get_ohlc + Claude's drawings/recommendation
+ * from get_chart_state, refreshed every ~4s via host-mediated callTool.
+ * Read-only — no toolbars; one button opens the full TradingView chart. */
+const liveChart = widgetHtml(
+  "Lonora live chart",
+  `<div class="card" style="max-width:640px">
+    <div class="hd"><span class="title" id="title">الشارت الحي</span><span class="brand">Lonora</span></div>
+    <div style="position:relative">
+      <canvas id="cv" style="width:100%;height:300px;display:block;border-radius:11px;background:#0B0E13;border:1px solid #20262F"></canvas>
+      <div id="hint" class="empty" style="display:none;position:absolute;inset:0;margin:auto;height:fit-content;background:#171B22">لا يوجد رمز بعد — اطلب من كلود عرض شارت لرمز معين.</div>
+    </div>
+    <div id="levels" class="muted" style="margin-top:8px;font-variant-numeric:tabular-nums"></div>
+    <div class="foot">
+      <span id="status" class="status"></span>
+      <span id="age" class="muted"></span>
+      <span class="spacer"></span>
+      <button class="btn" id="pause">إيقاف التحديث</button>
+      <button class="btn primary" id="open">فتح الشارت الكامل</button>
+    </div>
   </div>`,
   `
-  var url = "${PLATFORM_URL}/chart";
+  var PLATFORM = "${PLATFORM_URL}";
+  var S = { symbol:null, interval:"15m", layoutId:null, url:null, candles:[],
+            drawings:[], rec:null, targets:[], lastUpdate:0, paused:false,
+            failures:0, timer:null, booted:false };
+
+  function nnum(v){ v = Number(v); return isFinite(v) ? v : null; }
+  function toMs(t){ t = Number(t); if (!isFinite(t) || t <= 0) return null; return t < 20000000000 ? t * 1000 : t; }
+  function normCandles(o){
+    o = o || {};
+    var arr = Array.isArray(o.candles) ? o.candles : (Array.isArray(o) ? o : []);
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {
+      var c = arr[i] || {};
+      var t = toMs(c.time != null ? c.time : (c.t != null ? c.t : c.openTime));
+      var op = nnum(c.open), hi = nnum(c.high), lo = nnum(c.low), cl = nnum(c.close);
+      if (t != null && op != null && hi != null && lo != null && cl != null) {
+        out.push({ t:t, o:op, h:hi, l:lo, c:cl });
+      }
+    }
+    out.sort(function(a,b){ return a.t - b.t; });
+    return out;
+  }
+
+  function applyPayload(d){
+    d = d || {};
+    if (d.symbol) S.symbol = String(d.symbol).toUpperCase();
+    if (d.interval) S.interval = String(d.interval);
+    if (d.layout_id) S.layoutId = d.layout_id;
+    if (d.id && (d.state || d.drawings_count != null)) S.layoutId = d.id;
+    if (d.url) S.url = d.url;
+    var st = (d.state && typeof d.state === "object") ? d.state : null;
+    if (st) {
+      if (Array.isArray(st.drawings)) S.drawings = st.drawings;
+      if (st.recommendation !== undefined) S.rec = st.recommendation;
+      if (Array.isArray(st.targets)) S.targets = st.targets;
+    }
+    var cc = null;
+    if (d.ohlc) cc = normCandles(d.ohlc);
+    else if (Array.isArray(d.candles)) cc = normCandles(d);
+    if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }
+  }
+
+  /* ── rendering ── */
+  var UP = "#3FB27F", DOWN = "#E5636B", GOLD = "#E0B15E", INFO = "#7FB4E8",
+      MUTED = "#8A93A3", LINE = "#262C36";
+  function roleColor(dr){
+    if (dr.color && /^#[0-9a-fA-F]{3,8}$/.test(dr.color)) return dr.color;
+    var r = String(dr.semanticRole || dr.type || "").toLowerCase();
+    if (/support|demand|take_profit|target/.test(r)) return UP;
+    if (/resistance|supply|stop/.test(r)) return DOWN;
+    if (/entry|fib|forecast/.test(r)) return GOLD;
+    return INFO;
+  }
+  function decimalsFor(span){
+    if (span < 0.05) return 5;
+    if (span < 5) return 3;
+    if (span < 100) return 2;
+    return 1;
+  }
+  function fmtP(p, dec){ return Number(p).toFixed(dec); }
+
+  function draw(){
+    var cv = document.getElementById("cv");
+    var dpr = window.devicePixelRatio || 1;
+    var W = cv.clientWidth, H = cv.clientHeight;
+    if (!W || !H) return;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    var g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    var cs = S.candles;
+    if (!cs.length) return;
+
+    var padL = 6, padR = 56, padT = 10, padB = 20;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var N = Math.min(90, cs.length), i0 = cs.length - N;
+    var lo = Infinity, hi = -Infinity;
+    for (var i = i0; i < cs.length; i++) { if (cs[i].l < lo) lo = cs[i].l; if (cs[i].h > hi) hi = cs[i].h; }
+    var span0 = hi - lo || Math.abs(hi) * 0.001 || 1;
+    /* pull recommendation/horizontal levels into range when nearby */
+    var extras = [];
+    if (S.rec) { extras.push(nnum(S.rec.entry), nnum(S.rec.stop_loss), nnum(S.rec.take_profit)); }
+    for (var e2 = 0; e2 < S.targets.length; e2++) extras.push(nnum(S.targets[e2]));
+    for (var e3 = 0; e3 < extras.length; e3++) {
+      var xv = extras[e3];
+      if (xv != null && xv > lo - span0 && xv < hi + span0) { if (xv < lo) lo = xv; if (xv > hi) hi = xv; }
+    }
+    var span = (hi - lo) || span0; lo -= span * 0.06; hi += span * 0.06; span = hi - lo;
+    var dec = decimalsFor(span);
+    var step = plotW / N;
+    function xFor(i){ var ii = i < i0 ? i0 : i; return padL + (ii - i0 + 0.5) * step; }
+    function yFor(p){ return padT + (hi - p) / span * plotH; }
+    function idxForTime(t){
+      if (t == null) return null;
+      for (var k = cs.length - 1; k >= 0; k--) { if (cs[k].t <= t) return k; }
+      return 0;
+    }
+    function ptX(pt){
+      if (pt.barsAhead != null && isFinite(pt.barsAhead)) return xFor(cs.length - 1 + Number(pt.barsAhead));
+      var t = toMs(pt.time != null ? pt.time : pt.time_offset);
+      var ix = idxForTime(t);
+      return ix == null ? null : xFor(ix);
+    }
+
+    /* grid + price axis */
+    g.font = "10px system-ui, sans-serif"; g.textBaseline = "middle";
+    for (var gl = 0; gl <= 4; gl++) {
+      var gp = lo + span * gl / 4, gy = yFor(gp);
+      g.strokeStyle = LINE; g.globalAlpha = 0.55; g.beginPath();
+      g.moveTo(padL, gy); g.lineTo(W - padR, gy); g.stroke(); g.globalAlpha = 1;
+      g.fillStyle = MUTED; g.textAlign = "left";
+      g.fillText(fmtP(gp, dec), W - padR + 5, gy);
+    }
+    /* time labels */
+    g.textAlign = "center"; g.fillStyle = MUTED;
+    for (var tl = 0; tl < 3; tl++) {
+      var ti = i0 + Math.round((N - 1) * tl / 2);
+      var d0 = new Date(cs[ti].t);
+      var lbl = ("0" + d0.getHours()).slice(-2) + ":" + ("0" + d0.getMinutes()).slice(-2);
+      g.fillText(lbl, xFor(ti), H - padB / 2);
+    }
+
+    function hline(p, color, dash, label){
+      var y = yFor(p);
+      if (y < padT - 4 || y > padT + plotH + 4) return;
+      g.strokeStyle = color; g.lineWidth = 1;
+      g.setLineDash(dash === "dashed" ? [5,4] : dash === "dotted" ? [2,3] : []);
+      g.beginPath(); g.moveTo(padL, y); g.lineTo(W - padR, y); g.stroke(); g.setLineDash([]);
+      if (label) {
+        g.font = "9px system-ui, sans-serif";
+        var tw = g.measureText(label).width + 8;
+        g.fillStyle = "#171B22"; g.strokeStyle = color; g.globalAlpha = 0.95;
+        g.fillRect(padL + 2, y - 8, tw, 15); g.strokeRect(padL + 2, y - 8, tw, 15);
+        g.globalAlpha = 1; g.fillStyle = color; g.textAlign = "left";
+        g.fillText(label, padL + 6, y);
+        g.font = "10px system-ui, sans-serif";
+      }
+    }
+
+    /* zones first (behind candles) */
+    for (var z = 0; z < S.drawings.length; z++) {
+      var dz = S.drawings[z] || {};
+      var tz = String(dz.type || "").toLowerCase();
+      if (!/zone|range_box|band|risk_reward/.test(tz)) continue;
+      var pts = Array.isArray(dz.points) ? dz.points : [];
+      var p1 = nnum(pts[0] && pts[0].price != null ? pts[0].price : dz.price);
+      var p2 = nnum(pts[1] && pts[1].price != null ? pts[1].price : dz.price2);
+      if (p1 == null || p2 == null) continue;
+      var zc = roleColor(dz);
+      var y1 = yFor(Math.max(p1, p2)), y2 = yFor(Math.min(p1, p2));
+      var zx1 = pts[0] ? ptX(pts[0]) : null, zx2 = pts[1] ? ptX(pts[1]) : null;
+      var rx = zx1 != null ? Math.min(zx1, zx2 != null ? zx2 : W - padR) : padL;
+      var rw = (zx2 != null ? Math.max(zx1 != null ? zx1 : padL, zx2) : W - padR) - rx;
+      if (rw < 8) { rx = padL; rw = plotW; }
+      g.fillStyle = zc; g.globalAlpha = 0.10; g.fillRect(rx, y1, rw, y2 - y1);
+      g.globalAlpha = 0.5; g.strokeStyle = zc; g.strokeRect(rx, y1, rw, y2 - y1);
+      g.globalAlpha = 1;
+      if (dz.label) { g.fillStyle = zc; g.textAlign = "left"; g.fillText(String(dz.label), rx + 4, y1 + 8); }
+    }
+
+    /* candles */
+    var cw = Math.max(1.5, step * 0.62);
+    for (var ci = i0; ci < cs.length; ci++) {
+      var c = cs[ci], x = xFor(ci), up = c.c >= c.o;
+      g.strokeStyle = g.fillStyle = up ? UP : DOWN;
+      g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, yFor(c.h)); g.lineTo(x, yFor(c.l)); g.stroke();
+      var yo = yFor(c.o), ycl = yFor(c.c);
+      var top = Math.min(yo, ycl), hgt = Math.max(1, Math.abs(ycl - yo));
+      g.fillRect(x - cw / 2, top, cw, hgt);
+    }
+
+    /* line/path drawings */
+    for (var di = 0; di < S.drawings.length; di++) {
+      var dr = S.drawings[di] || {};
+      var ty = String(dr.type || "").toLowerCase();
+      if (/zone|range_box|band|risk_reward/.test(ty)) continue;
+      var col = roleColor(dr);
+      var ps = Array.isArray(dr.points) ? dr.points : [];
+      var flatP = nnum(dr.price);
+      if (/price_line|hline|baseline/.test(ty) || (ps.length <= 1 && flatP != null)) {
+        var pv = ps.length && ps[0].price != null ? nnum(ps[0].price) : flatP;
+        if (pv != null) hline(pv, col, dr.style || "solid", dr.label ? String(dr.label) : null);
+        continue;
+      }
+      if (/fib/.test(ty)) {
+        var f1 = nnum(ps[0] && ps[0].price), f2 = nnum(ps[1] && ps[1].price);
+        if (f1 != null && f2 != null) {
+          var ratios = [0, 0.236, 0.382, 0.5, 0.618, 1];
+          for (var fr = 0; fr < ratios.length; fr++) {
+            hline(f1 + (f2 - f1) * ratios[fr], GOLD, fr === 0 || fr === 5 ? "solid" : "dotted",
+                  (ratios[fr] * 100).toFixed(1));
+          }
+        }
+        continue;
+      }
+      /* markers / labels */
+      if (/marker|arrow|text|label/.test(ty)) {
+        var mp = ps[0];
+        if (mp && mp.price != null) {
+          var mx = ptX(mp), my = yFor(nnum(mp.price));
+          if (mx != null) {
+            g.fillStyle = col; g.beginPath(); g.arc(mx, my, 3.5, 0, 7); g.fill();
+            if (dr.label) { g.textAlign = "center"; g.fillText(String(dr.label), mx, my - 10); }
+          }
+        }
+        continue;
+      }
+      /* long/short position boxes via meta */
+      if (/position/.test(ty)) {
+        var meta = dr.meta || {};
+        var en = nnum(meta.entry), sl = nnum(meta.stopLoss), tp = nnum(meta.takeProfit);
+        if (en != null) hline(en, GOLD, "dashed", "دخول " + fmtP(en, dec));
+        if (sl != null) hline(sl, DOWN, "dashed", "وقف " + fmtP(sl, dec));
+        if (tp != null) hline(tp, UP, "dashed", "هدف " + fmtP(tp, dec));
+        continue;
+      }
+      /* default: polyline through points (trend/channel/pattern/forecast) */
+      if (ps.length >= 2) {
+        g.strokeStyle = col; g.lineWidth = Number(dr.width) >= 1 ? Number(dr.width) : 1.5;
+        g.setLineDash(/forecast/.test(ty) || dr.style === "dashed" ? [5,4] : dr.style === "dotted" ? [2,3] : []);
+        g.beginPath();
+        var started = false;
+        for (var pi = 0; pi < ps.length; pi++) {
+          var lp = ps[pi];
+          if (lp == null || lp.price == null) continue;
+          var lx = ptX(lp), ly = yFor(nnum(lp.price));
+          if (lx == null) continue;
+          if (!started) { g.moveTo(lx, ly); started = true; } else { g.lineTo(lx, ly); }
+        }
+        if (started) g.stroke();
+        g.setLineDash([]); g.lineWidth = 1;
+        if (dr.label && ps[0] && ps[0].price != null) {
+          var lbx = ptX(ps[0]);
+          if (lbx != null) { g.fillStyle = col; g.textAlign = "left"; g.fillText(String(dr.label), lbx + 4, yFor(nnum(ps[0].price)) - 8); }
+        }
+      }
+    }
+
+    /* recommendation levels */
+    if (S.rec && typeof S.rec === "object") {
+      var re = nnum(S.rec.entry), rs = nnum(S.rec.stop_loss), rt = nnum(S.rec.take_profit);
+      if (re != null) hline(re, GOLD, "dashed", "دخول " + fmtP(re, dec));
+      if (rs != null) hline(rs, DOWN, "dashed", "وقف " + fmtP(rs, dec));
+      if (rt != null) hline(rt, UP, "dashed", "هدف " + fmtP(rt, dec));
+      for (var tg = 0; tg < S.targets.length; tg++) {
+        var tv = nnum(S.targets[tg]);
+        if (tv != null && tv !== rt) hline(tv, UP, "dotted", "هدف " + (tg + 1));
+      }
+    }
+
+    /* last price tag */
+    var last = cs[cs.length - 1];
+    var lpY = yFor(last.c);
+    g.strokeStyle = last.c >= last.o ? UP : DOWN;
+    g.setLineDash([2,3]); g.beginPath(); g.moveTo(padL, lpY); g.lineTo(W - padR, lpY); g.stroke(); g.setLineDash([]);
+    g.fillStyle = last.c >= last.o ? UP : DOWN;
+    g.fillRect(W - padR + 1, lpY - 8, padR - 3, 16);
+    g.fillStyle = "#0B0E13"; g.textAlign = "left"; g.font = "bold 10px system-ui, sans-serif";
+    g.fillText(fmtP(last.c, dec), W - padR + 5, lpY);
+  }
+
+  /* ── UI glue ── */
+  function setTitle(){
+    document.getElementById("title").textContent =
+      S.symbol ? "الشارت الحي — " + S.symbol + " · " + S.interval : "الشارت الحي";
+  }
+  function setLevels(){
+    var el = document.getElementById("levels");
+    if (S.rec && typeof S.rec === "object" && (S.rec.entry != null || S.rec.stop_loss != null)) {
+      var act = S.rec.action === "sell" ? "بيع" : S.rec.action === "buy" ? "شراء" : "";
+      var parts = [];
+      if (act) parts.push("التوصية: " + act);
+      if (S.rec.entry != null) parts.push("دخول " + S.rec.entry);
+      if (S.rec.stop_loss != null) parts.push("وقف " + S.rec.stop_loss);
+      if (S.rec.take_profit != null) parts.push("هدف " + S.rec.take_profit);
+      if (S.rec.confidence != null) parts.push("ثقة " + S.rec.confidence + "%");
+      el.textContent = parts.join(" · ");
+    } else if (S.drawings.length) {
+      el.textContent = "رسومات كلود على الشارت: " + S.drawings.length;
+    } else {
+      el.textContent = "";
+    }
+  }
+  function setStatus(txt, stale){
+    var el = document.getElementById("status");
+    el.textContent = txt || "";
+    el.className = txt ? "status " + (stale ? "stale" : "live") : "status";
+  }
+  function updateAge(){
+    var el = document.getElementById("age");
+    if (!S.lastUpdate) { el.textContent = ""; return; }
+    var s = Math.round((Date.now() - S.lastUpdate) / 1000);
+    el.textContent = "آخر تحديث قبل " + s + " ث";
+    el.style.color = s > 20 ? "#D9A441" : "";
+  }
+  function refresh(){
+    setTitle(); setLevels();
+    document.getElementById("hint").style.display = S.symbol ? "none" : "block";
+    draw();
+    if (window.AIC) window.AIC.notifySize();
+  }
+
+  function schedule(ms){
+    clearTimeout(S.timer);
+    if (S.paused) return;
+    S.timer = setTimeout(tick, ms != null ? ms : (S.failures > 1 ? 10000 : 4000));
+  }
+  function tick(){
+    if (document.hidden || !S.symbol || !window.AIC) { schedule(); return; }
+    var calls = [window.AIC.callTool("get_ohlc", { symbol: S.symbol, interval: S.interval, limit: 120 })];
+    if (S.layoutId) calls.push(window.AIC.callTool("get_chart_state", { layout_id: S.layoutId }));
+    Promise.all(calls).then(function (res) {
+      var got = false;
+      if (res[0] && typeof res[0] === "object") { applyPayload({ ohlc: res[0] }); got = true; }
+      if (res[1] && typeof res[1] === "object") { applyPayload(res[1]); got = true; }
+      S.failures = 0;
+      if (got) { setStatus("مباشر", false); refresh(); }
+      schedule();
+    }).catch(function () {
+      S.failures++;
+      setStatus("تعذر التحديث — إعادة المحاولة", true);
+      schedule();
+    });
+  }
+
   window.__aicReady = function (AIC) {
     AIC.onData(function (data) {
-      data = data || {};
-      if (data.url) url = "${PLATFORM_URL}" + data.url;
-      document.getElementById("summary").textContent =
-        (data.ok ? "تم تطبيق الرسم على الشارت." : "تم استلام نتيجة الرسم.") +
-        (data.drawings_count != null ? " عدد العناصر: " + data.drawings_count : "");
-      AIC.notifySize();
+      applyPayload(data);
+      refresh();
+      if (!S.booted) {
+        S.booted = true;
+        /* draw_on_chart boots without candles — fetch immediately */
+        schedule(S.candles.length ? 4000 : 600);
+      }
     });
-    document.getElementById("open").addEventListener("click", function () { AIC.openLink(url); });
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && !S.paused) schedule(300);
+    });
+    window.addEventListener("resize", draw);
+    setInterval(updateAge, 1000);
+    document.getElementById("pause").addEventListener("click", function () {
+      S.paused = !S.paused;
+      this.textContent = S.paused ? "استئناف التحديث" : "إيقاف التحديث";
+      if (S.paused) { clearTimeout(S.timer); setStatus("متوقف مؤقتاً", true); }
+      else { setStatus("مباشر", false); schedule(300); }
+    });
+    document.getElementById("open").addEventListener("click", function () {
+      var u = S.url
+        ? (S.url.indexOf("http") === 0 ? S.url : PLATFORM + S.url)
+        : PLATFORM + "/chart" + (S.symbol ? "/" + S.symbol : "");
+      AIC.openLink(u);
+    });
   };
   `,
 );
@@ -581,8 +953,9 @@ export const WIDGETS: Record<string, string> = {
   "pending-approvals": genericCard("الموافقات المعلقة", "طلبات التنفيذ التي تنتظر موافقتك.", { label: "تحديث", tool: "get_pending_approvals" }),
   "market-snapshot": analysis,
   "mtf-analysis": analysis,
-  "levels-card": genericCard("مستويات الدعم والمقاومة", "مستويات فنية من آخر الشموع."),
-  "chart-drawn": chartDrawn,
+  "levels-card": analysis,
+  "chart-drawn": liveChart,
+  "live-chart": liveChart,
   portfolio,
   "trade-readiness": genericCard("جاهزية الصفقة", "فحص ما قبل التنفيذ عبر Lonora."),
   "lessons-card": genericCard("دروس التداول", "ذاكرة الأداء والدروس المشابهة."),

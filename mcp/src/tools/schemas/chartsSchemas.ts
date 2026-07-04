@@ -80,6 +80,21 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       "متى: قراءة حالة شارت المستخدم الحالية (الرمز/الفريم/الرسومات/التوصية) قبل التعديل عليها. read-only. مثال: layout_id اختياري.",
     inputSchema: { layout_id: zLayoutId },
     annotations: READ_ONLY,
+    ui: { widget: "live-chart" },
+  },
+  {
+    name: "show_live_chart",
+    domain: "charts",
+    description:
+      "متى: عرض بطاقة شارت حي مصغّر داخل المحادثة (شموع تتحدث كل ~4 ثوانٍ + رسومات كلود والتوصية على الشارت). read-only — لا يرسم ولا ينفّذ. مرّر symbol أو layout_id؛ الافتراضي شارت المستخدم الأساسي.",
+    inputSchema: {
+      symbol: zSymbol.optional(),
+      interval: zInterval.optional(),
+      layout_id: zLayoutId,
+      market: z.enum(["crypto", "forex"]).optional(),
+    },
+    annotations: READ_ONLY,
+    ui: { widget: "live-chart" },
   },
   {
     name: "draw_on_chart",
@@ -101,7 +116,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       destructiveHint: false,
       idempotentHint: true,
     },
-    ui: { widget: "chart-drawn" },
+    ui: { widget: "live-chart" },
   },
   {
     name: "clear_chart_drawings",

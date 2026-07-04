@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
+import { BridgeError } from "../bridge/client.js";
 import { bridgeCall } from "./helpers.js";
 import { mcpToolConfig } from "./schemas/index.js";
 
@@ -80,6 +81,81 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           mode: "clear",
         }),
       );
+    },
+  );
+
+  server.registerTool(
+    "show_live_chart",
+    mcpToolConfig("show_live_chart"),
+    async (args) => {
+      const a = args as {
+        symbol?: string;
+        interval?: string;
+        layout_id?: string;
+        market?: "crypto" | "forex";
+      };
+      return bridgeCall(async () => {
+        // Layout is optional context (drawings/recommendation); the chart
+        // renders from candles alone when the user has no saved layout.
+        type LayoutRes = {
+          id?: string;
+          symbol?: string;
+          interval?: string;
+          state?: Record<string, unknown>;
+          url?: string;
+        };
+        let layout: LayoutRes | null = null;
+        try {
+          if (a.layout_id) {
+            layout = (await bridge.get("/api/agent/chart/layout", {
+              id: a.layout_id,
+            })) as LayoutRes;
+          } else {
+            const list = (await bridge.get("/api/agent/chart/layout")) as {
+              layouts?: Array<{ id: string; symbol?: string }>;
+            };
+            const wanted = a.symbol?.toUpperCase();
+            const pick =
+              (wanted &&
+                list.layouts?.find(
+                  (l) => l.symbol?.toUpperCase() === wanted,
+                )) ||
+              list.layouts?.[0];
+            if (pick) {
+              layout = (await bridge.get("/api/agent/chart/layout", {
+                id: pick.id,
+              })) as LayoutRes;
+            }
+          }
+        } catch {
+          layout = null;
+        }
+        const symbol = (a.symbol ?? layout?.symbol ?? "").toUpperCase().trim();
+        if (!symbol) {
+          throw new BridgeError(
+            "حدد symbol أو أنشئ شارتاً أولاً (list_chart_layouts).",
+            400,
+            null,
+          );
+        }
+        const interval = a.interval ?? layout?.interval ?? "15m";
+        const ohlc = await bridge.get("/api/agent/market/ohlc", {
+          symbol,
+          interval,
+          market: a.market,
+          limit: 120,
+        });
+        return {
+          live_chart: true,
+          symbol,
+          interval,
+          layout_id: layout?.id ?? null,
+          url: layout?.url ?? null,
+          ohlc,
+          state: layout?.state ?? null,
+          at: new Date().toISOString(),
+        };
+      }, { structured: true });
     },
   );
 

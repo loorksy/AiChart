@@ -14,7 +14,9 @@ const VERSIONED_WIDGET_PATHS: Record<string, string> = {
 };
 
 export function widgetPath(widget: string): string {
-  return VERSIONED_WIDGET_PATHS[widget] ?? `${widget}.html`;
+  // Default is versioned too: every shell went self-contained on 2026-07-04,
+  // and hosts cache templates by URI — stale paths would render dead shells.
+  return VERSIONED_WIDGET_PATHS[widget] ?? `${widget}/v2`;
 }
 
 export function widgetUri(widget: string): string {
@@ -22,9 +24,7 @@ export function widgetUri(widget: string): string {
 }
 
 export function skybridgePath(widget: string): string {
-  return VERSIONED_WIDGET_PATHS[widget]
-    ? `${VERSIONED_WIDGET_PATHS[widget]}-gpt`
-    : `${widget}-gpt.html`;
+  return `${widgetPath(widget)}-gpt`;
 }
 
 export function skybridgeUri(widget: string): string {
