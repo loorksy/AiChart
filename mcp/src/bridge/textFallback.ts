@@ -54,21 +54,48 @@ function formatAccountOverview(data: Record<string, unknown>): string {
   const risk = obj(data.risk);
   const portfolio = obj(data.portfolio);
   const live = obj(data.live);
+  // Source of truth: live EA account meta, then portfolio EA, then legacy keys.
+  const eaLive = obj(obj(live.forex).ea);
+  const eaPort = obj(obj(portfolio.forex).ea);
   const account = obj(portfolio.account ?? live.account ?? data.account);
   const stale = eaStale(data);
-  const openPnl = first(
+  const balance = first(eaLive.balance, eaPort.balance, account.balance, portfolio.balance, data.balance);
+  const equity = first(eaLive.equity, eaPort.equity, account.equity, portfolio.equity, data.equity);
+  const login = first(eaLive.account_login, eaPort.account_login);
+  const broker = first(eaLive.broker_name, eaPort.broker_name);
+  const tradeMode = String(first(eaLive.account_trade_mode, eaPort.account_trade_mode) ?? "");
+  let openPnl = first(
     portfolio.openPnl,
     portfolio.open_pnl,
     account.openPnl,
     account.pnl,
     live.openPnl,
   );
+  if (openPnl == null) {
+    const positions = obj(live.forex).positions;
+    if (Array.isArray(positions) && positions.length) {
+      let sum = 0;
+      let seen = false;
+      for (const p of positions) {
+        const profit = Number((p as Record<string, unknown>)?.profit);
+        if (Number.isFinite(profit)) {
+          sum += profit;
+          seen = true;
+        }
+      }
+      if (seen) openPnl = sum;
+    }
+  }
+  const staleMark = stale ? " (قديم — EA غير متصل)" : "";
   const lines = [
     "حالة الحساب — Lonora",
-    `الرصيد: ${fmtNum(first(account.balance, portfolio.balance, data.balance))}`,
-    `حقوق الملكية: ${fmtNum(first(account.equity, portfolio.equity, data.equity))}`,
+    login || broker
+      ? `الحساب: #${String(login ?? "—")} · ${String(broker ?? "—")}${tradeMode === "live" ? " · حقيقي" : tradeMode === "demo" ? " · تجريبي" : ""}`
+      : "",
+    `الرصيد: ${fmtNum(balance)}${balance != null ? staleMark : ""}`,
+    `حقوق الملكية: ${fmtNum(equity)}${equity != null ? staleMark : ""}`,
     `PnL المفتوح: ${stale || openPnl == null ? "— / بيانات قديمة" : fmtNum(openPnl)}`,
-    `إعداد حد الصفقة: ${fmtNum(first(risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), 0)} USD`,
+    `إعداد حد الصفقة: ${fmtNum(first(risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), 0)} USD (قيمة إعداد، ليست الرصيد)`,
     `الصفقات المفتوحة: ${formatOpenTrades(first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades))}`,
     stale ? "تنبيه: EA غير متصل أو الأسعار قديمة." : "",
   ];

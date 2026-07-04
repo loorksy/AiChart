@@ -16,12 +16,13 @@ describe("normalizeWidgetPublicPath", () => {
   });
 });
 
-describe("slim widget shells", () => {
+describe("self-contained widget shells", () => {
   it("resolves comma path to registered widget HTML", () => {
-    const hit = widgetHtmlByPublicPath("account-overview,v1");
+    const hit = widgetHtmlByPublicPath("account-overview,v2");
     assert.ok(hit);
-    assert.ok(hit.html.includes("aic-runtime.js"));
-    assert.ok(!hit.html.includes("window.openai"));
-    assert.ok(hit.html.length < 8000, `shell too large: ${hit.html.length} bytes`);
+    // Host sandboxes block external assets — runtime must ship inline.
+    assert.ok(hit.html.includes("window.AIC"));
+    assert.ok(!/<(script|link)[^>]+(src|href)=/i.test(hit.html));
+    assert.ok(hit.html.length < 80000, `shell too large: ${hit.html.length} bytes`);
   });
 });

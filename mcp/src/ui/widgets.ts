@@ -1,4 +1,4 @@
-import { widgetHtml, publicAssetOrigin } from "./runtime.js";
+import { widgetHtml, RUNTIME_JS } from "./runtime.js";
 
 const PLATFORM_URL = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
 
@@ -6,7 +6,7 @@ const accountOverview = widgetHtml(
   "Lonora account overview",
   `<div class="card">
     <div class="hd"><span class="title">حالة الحساب</span><span class="brand">Lonora</span></div>
-    <div id="grid" class="grid"><div class="empty">جاري التحميل...</div></div>
+    <div id="grid" class="grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
@@ -106,7 +106,7 @@ const analysis = widgetHtml(
   "Lonora analysis",
   `<div class="card">
     <div class="hd"><span class="title" id="title">تحليل السوق</span><span id="badge" class="badge wait">Lonora</span></div>
-    <div id="grid" class="grid"><div class="empty">جاري التحميل...</div></div>
+    <div id="grid" class="grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
     <div id="summary" class="muted" style="margin-top:10px; line-height:1.7;"></div>
     <div class="foot">
       <span id="status" class="status"></span>
@@ -204,7 +204,7 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
     `Lonora ${title}`,
     `<div class="card">
       <div class="hd"><span class="title">${title}</span><span class="brand">Lonora</span></div>
-      <div id="body" class="grid"><div class="empty">جاري التحميل...</div></div>
+      <div id="body" class="grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       <div id="summary" class="muted" style="margin-top:10px; line-height:1.7;">${subtitle}</div>
       <div class="foot">
         <span id="status" class="status"></span>
@@ -540,23 +540,22 @@ const PORTFOLIO_SCRIPT = `
 })();
 `;
 
-const portfolio = (() => {
-  const base = publicAssetOrigin();
-  return `<!DOCTYPE html>
+/* Self-contained: the host iframe sandbox blocks external assets, so the
+ * flagship card inlines its stylesheet, the shared runtime and its script. */
+const portfolio = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lonora — بطاقة الحساب</title>
-<link rel="stylesheet" href="${base}/mcp-ui/portfolio-card.css" />
+<style>${PORTFOLIO_CSS}</style>
 </head>
 <body>
 <div class="card" id="card"></div>
-<script src="${base}/mcp-ui/aic-runtime.js" defer></script>
-<script src="${base}/mcp-ui/portfolio-card.js" defer></script>
+<script>${RUNTIME_JS}</script>
+<script>${PORTFOLIO_SCRIPT}</script>
 </body>
 </html>`;
-})();
 
 export const PORTFOLIO_ASSETS = {
   css: {

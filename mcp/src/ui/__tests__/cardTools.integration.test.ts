@@ -91,9 +91,11 @@ describe("MCP card tools integration audit", () => {
       const hit = widgetHtmlByPublicPath(path);
       assert.ok(hit, `public path missing for ${name} (${path})`);
       assert.ok(hit.html.length > 200);
-      assert.ok(hit.html.length < 12000, `${name} shell should be slim (${hit.html.length}b)`);
+      // Self-contained shells (inline theme+runtime): sandbox blocks external
+      // assets, so everything ships in the HTML — keep a sanity upper bound.
+      assert.ok(hit.html.length < 80000, `${name} shell too large (${hit.html.length}b)`);
       assert.ok(hit.mimeType.includes("text/html"));
-      assert.ok(hit.html.includes("aic-runtime.js"), `${name} must load shared runtime`);
+      assert.ok(hit.html.includes("window.AIC"), `${name} must inline shared runtime`);
     }
   });
 });

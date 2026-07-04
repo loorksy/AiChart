@@ -12,10 +12,11 @@ import { WIDGETS } from "../widgets.js";
 
 describe("MCP UI resources", () => {
   it("registers versioned canonical URIs for flagship cards", () => {
-    assert.equal(appsUri("account-overview"), "ui://aichart/account-overview/v1");
-    assert.equal(appsUri("analysis"), "ui://aichart/analysis/v1");
-    assert.equal(skybridgeUri("account-overview"), "ui://aichart/account-overview/v1-gpt");
-    assert.equal(skybridgeUri("analysis"), "ui://aichart/analysis/v1-gpt");
+    assert.equal(appsUri("account-overview"), "ui://aichart/account-overview/v2");
+    assert.equal(appsUri("analysis"), "ui://aichart/analysis/v2");
+    assert.equal(appsUri("portfolio"), "ui://aichart/portfolio/v1");
+    assert.equal(skybridgeUri("account-overview"), "ui://aichart/account-overview/v2-gpt");
+    assert.equal(skybridgeUri("analysis"), "ui://aichart/analysis/v2-gpt");
   });
 
   it("emits MCP Apps and OpenAI compatibility metadata", () => {
@@ -37,16 +38,23 @@ describe("MCP UI resources", () => {
   });
 
   it("resolves public HTTP paths for native and skybridge templates", () => {
-    const native = widgetHtmlByPublicPath("portfolio.html");
+    const native = widgetHtmlByPublicPath("portfolio/v1");
     assert.ok(native);
-    assert.equal(native.uri, "ui://aichart/portfolio.html");
+    assert.equal(native.uri, "ui://aichart/portfolio/v1");
     assert.ok(native.html.length > 200);
     assert.equal(native.mimeType, "text/html;profile=mcp-app");
 
-    const gpt = widgetHtmlByPublicPath("portfolio-gpt.html");
+    const gpt = widgetHtmlByPublicPath("portfolio/v1-gpt");
     assert.ok(gpt);
-    assert.equal(gpt.uri, "ui://aichart/portfolio-gpt.html");
+    assert.equal(gpt.uri, "ui://aichart/portfolio/v1-gpt");
     assert.equal(gpt.mimeType, "text/html+skybridge");
+  });
+
+  it("shells are self-contained (inline runtime, no external assets)", () => {
+    for (const [name, html] of Object.entries(WIDGETS) as [string, string][]) {
+      assert.ok(html.includes("window.AIC"), `${name} must inline the AIC runtime`);
+      assert.ok(!/<(script|link)[^>]+(src|href)=/i.test(html), `${name} must not reference external assets`);
+    }
   });
 });
 

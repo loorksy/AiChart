@@ -16,6 +16,23 @@ export const RUNTIME_JS = `
     }
   }
 
+  /* Card scripts run AFTER this runtime and only assign window.__aicReady —
+     an interception setter fires the callback immediately once both sides
+     exist, regardless of load order. */
+  var readyCb = null, readyFired = false;
+  function fireReady() {
+    if (readyFired || !window.AIC || typeof readyCb !== "function") return;
+    readyFired = true;
+    try { readyCb(window.AIC); } catch (e) {}
+  }
+  try {
+    Object.defineProperty(window, "__aicReady", {
+      configurable: true,
+      get: function () { return readyCb; },
+      set: function (fn) { readyCb = fn; fireReady(); },
+    });
+  } catch (e) {}
+
   function finishApi(api) {
     api.onData = function (cb) {
       listeners.push(cb);
@@ -129,7 +146,7 @@ export const RUNTIME_JS = `
       if (!el) return;
       var s = api.bridgeLinkState(data);
       el.textContent = s.label;
-      el.className = "status " + (s.stale ? "stale" : "live");
+      el.className = s.label ? "status " + (s.stale ? "stale" : "live") : "status";
     };
     api.renderTradeLines = function (container, trades, fmt) {
       if (!container) return;
@@ -152,7 +169,16 @@ export const RUNTIME_JS = `
       });
     };
     window.AIC = api;
-    if (window.__aicReady) { try { window.__aicReady(api); } catch (e) {} }
+    /* If the host never delivers data, swap loading skeletons for an honest
+       empty state instead of pulsing forever. */
+    setTimeout(function () {
+      if (latest != null) return;
+      var sk = document.querySelectorAll(".skel");
+      if (!sk.length) return;
+      var parent = sk[0].parentNode;
+      if (parent) parent.innerHTML = '<div class="empty">لم تصل بيانات من الأداة بعد — جرّب زر التحديث أو أعد استدعاء الأداة.</div>';
+    }, 6000);
+    fireReady();
   }
 
   function normalizeToolResult(r) {
@@ -269,56 +295,77 @@ export const RUNTIME_JS = `
 })();
 `;
 
-/** Shared card theme - Lonora dark, RTL Arabic, no external assets. */
+/** Shared card theme — Lonora premium dark, RTL Arabic, fully inline (the
+ *  host iframe sandbox blocks external assets, so no fonts/CDNs/links). */
 export const THEME_CSS = `
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { background: transparent; }
-  body {
-    font-family: "Segoe UI", system-ui, -apple-system, "Tahoma", sans-serif;
-    direction: rtl; color: #e2e8f0; padding: 4px;
+  :root{
+    --bg:#0E1116; --surface:#171B22; --surface-2:#1E242D;
+    --line:#262C36; --line-soft:#20262F;
+    --txt:#E6E9EF; --muted:#8A93A3; --faint:#5C6674;
+    --gold:#E0B15E; --up:#3FB27F; --down:#E5636B; --warn:#D9A441; --info:#7FB4E8;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Tahoma",sans-serif;
   }
-  .card {
-    background: linear-gradient(180deg, #12151c 0%, #0d1016 100%);
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    border-radius: 8px; padding: 14px 16px; max-width: 640px;
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:transparent}
+  body{font-family:var(--sans);direction:rtl;color:var(--txt);padding:4px;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  .card{
+    background:var(--surface);border:1px solid var(--line);border-radius:16px;
+    padding:14px 16px;max-width:560px;margin:0 auto;overflow:hidden;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
   }
-  .hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-  .hd .title { font-size: 14px; font-weight: 700; color: #f1f5f9; }
-  .hd .brand { font-size: 10px; color: #64748b; letter-spacing: .4px; }
-  .muted { color: #94a3b8; font-size: 11px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-  .kv { background: rgba(148,163,184,0.06); border-radius: 8px; padding: 8px 10px; }
-  .kv .k { font-size: 10px; color: #94a3b8; margin-bottom: 2px; }
-  .kv .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .green { color: #4ade80; } .red { color: #f87171; } .blue { color: #60a5fa; } .amber { color: #fbbf24; }
-  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-  .badge.buy { background: rgba(34,197,94,.15); color: #4ade80; border: 1px solid rgba(34,197,94,.35); }
-  .badge.sell { background: rgba(239,68,68,.15); color: #f87171; border: 1px solid rgba(239,68,68,.35); }
-  .badge.wait { background: rgba(251,191,36,.12); color: #fbbf24; border: 1px solid rgba(251,191,36,.3); }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { color: #94a3b8; font-weight: 600; text-align: right; padding: 6px 8px; border-bottom: 1px solid rgba(148,163,184,.15); font-size: 10px; }
-  td { padding: 7px 8px; border-bottom: 1px solid rgba(148,163,184,.07); font-variant-numeric: tabular-nums; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
-    background: rgba(148,163,184,.1); color: #e2e8f0; border: 1px solid rgba(148,163,184,.25);
-    border-radius: 8px; padding: 5px 12px; font-size: 11px; font-weight: 600; font-family: inherit;
-    transition: background .15s;
+  .hd{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    margin:-14px -16px 14px;padding:13px 16px;border-bottom:1px solid var(--line-soft);
+    background:linear-gradient(180deg,#1A1F27 0%,rgba(26,31,39,0) 140%)}
+  .hd .title{font-size:14px;font-weight:700;color:var(--txt);letter-spacing:.2px}
+  .hd .brand{font-size:10px;color:var(--gold);letter-spacing:.8px;font-weight:700;text-transform:uppercase}
+  .muted{color:var(--muted);font-size:12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  .kv{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 12px;min-height:56px}
+  .kv .k{font-size:11px;color:var(--muted);margin-bottom:4px;letter-spacing:.2px}
+  .kv .v{font-size:16px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.2px;word-break:break-word}
+  .green{color:var(--up)} .red{color:var(--down)} .blue{color:var(--info)} .amber{color:var(--warn)}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:999px;font-size:11px;font-weight:700}
+  .badge.buy{background:#14211B;color:var(--up);border:1px solid #1E352B}
+  .badge.sell{background:#221517;color:var(--down);border:1px solid #3A2429}
+  .badge.wait{background:#211C12;color:var(--gold);border:1px solid #3A3016}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{color:var(--muted);font-weight:600;text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);font-size:11px}
+  td{padding:8px;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums;font-family:var(--mono)}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
+    background:var(--surface-2);color:var(--muted);border:1px solid var(--line);
+    border-radius:9px;padding:7px 14px;min-height:32px;font-size:12px;font-weight:600;font-family:var(--sans);
+    transition:background .2s,color .2s,border-color .2s;
   }
-  .btn:hover { background: rgba(148,163,184,.18); }
-  .btn.primary { background: rgba(34,197,94,.15); color: #4ade80; border-color: rgba(34,197,94,.4); }
-  .btn.danger { background: rgba(239,68,68,.12); color: #f87171; border-color: rgba(239,68,68,.35); }
-  .btn.confirming { background: #b45309 !important; color: #fff !important; border-color: #f59e0b !important; }
-  .btn:disabled { opacity: .5; cursor: not-allowed; }
-  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .spacer { flex: 1; }
-  .foot { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .empty { text-align: center; color: #64748b; padding: 18px 0; font-size: 12px; }
-  .imgwrap { border-radius: 8px; overflow: hidden; border: 1px solid rgba(148,163,184,.15); }
-  .imgwrap img { display: block; width: 100%; height: auto; }
-  .status { font-size: 11px; color: #94a3b8; min-height: 15px; }
-  .status.stale { color: #fbbf24; }
-  .status.live { color: #4ade80; }
-  .trade-line { font-size: 12px; line-height: 1.55; padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,.12); }
+  .btn:hover{color:var(--txt);border-color:#333C48;background:#232A34}
+  .btn:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+  .btn.primary{background:#211C12;color:var(--gold);border-color:#3A3016}
+  .btn.primary:hover{background:#2A2416;border-color:#4A3D1E;color:#EBC57E}
+  .btn.danger{background:#221517;color:var(--down);border-color:#3A2429}
+  .btn.danger:hover{background:#2B1A1D}
+  .btn.confirming{background:#B45309!important;color:#fff!important;border-color:#F59E0B!important}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .spacer{flex:1}
+  .foot{margin:14px -16px -14px;padding:10px 16px 12px;border-top:1px solid var(--line-soft);
+    display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .empty{text-align:center;color:var(--faint);padding:22px 12px;font-size:12px;
+    border:1px dashed var(--line);border-radius:11px;grid-column:1/-1}
+  .imgwrap{border-radius:11px;overflow:hidden;border:1px solid var(--line)}
+  .imgwrap img{display:block;width:100%;height:auto}
+  .status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--muted);min-height:16px}
+  .status.stale{color:var(--warn)} .status.live{color:var(--up)}
+  .status.live::before,.status.stale::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+  .status.live::before{box-shadow:0 0 0 3px rgba(63,178,127,.2)}
+  .trade-line{font-size:12px;line-height:1.6;padding:8px 2px;border-bottom:1px solid var(--line-soft);
+    font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .trade-line:last-child{border-bottom:0}
+  .skel{min-height:56px;border-radius:11px;border:1px solid var(--line-soft);
+    background:linear-gradient(90deg,var(--surface-2) 25%,#232A34 40%,var(--surface-2) 60%);
+    background-size:300% 100%;animation:skel 1.4s ease infinite}
+  @keyframes skel{0%{background-position:100% 0}100%{background-position:-100% 0}}
 `;
 
 /** Public origin for shared widget assets (runtime.js / theme.css). */
@@ -339,21 +386,23 @@ export const STATIC_ASSETS = {
   themeCss: { path: "aic-theme.css", body: THEME_CSS, mimeType: "text/css; charset=utf-8" },
 } as const;
 
-/** Slim shell (~3–5 KB) — heavy runtime/CSS loaded from /mcp-ui/*. */
+/** Self-contained shell: theme + runtime + card script all inline. Host
+ *  sandboxes (Claude MCP Apps) block external assets, so nothing may be
+ *  fetched at render time — the /mcp-ui endpoints remain only for legacy
+ *  shells and manual inspection. */
 export function widgetHtml(title: string, body: string, script: string): string {
-  const base = publicAssetOrigin();
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${title}</title>
-<link rel="stylesheet" href="${base}/mcp-ui/aic-theme.css" />
+<style>${THEME_CSS}</style>
 </head>
 <body>
 ${body}
-<script src="${base}/mcp-ui/aic-runtime.js" defer></script>
-<script defer>${script}</script>
+<script>${RUNTIME_JS}</script>
+<script>${script}</script>
 </body>
 </html>`;
 }
