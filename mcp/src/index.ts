@@ -183,10 +183,14 @@ if (cfg.authMode === "oauth") {
   });
 }
 
-// In-memory session registry. Sessions die with the process (deploys, pm2
-// restarts) — per MCP spec an unknown/terminated session id MUST get HTTP 404
-// so the client transparently re-initializes; 400 makes hosts surface
-// "Failed to fetch app content" instead of recovering.
+// Stateless by default: each POST spins up a throwaway server+transport with
+// NO session id, so there is nothing to "expire". A server restart / deploy
+// can never orphan a client session → the "Session not found — reinitialize"
+// error and the card's "Failed to fetch app content" simply cannot happen.
+// Set MCP_STATELESS=0 to fall back to the legacy stateful session map.
+const STATELESS = (process.env.MCP_STATELESS ?? "1") !== "0";
+
+// In-memory session registry (legacy stateful mode only).
 const transports: Record<string, StreamableHTTPServerTransport> = {};
 const sessionLastSeen: Record<string, number> = {};
 
@@ -256,11 +260,34 @@ async function bridgeForRequest(
   return BridgeClient.forUser(cfg, email);
 }
 
+/** Stateless request: fresh server+transport per call, torn down on response.
+ *  No session id is ever issued, so none can be rejected. */
+const handleStatelessPost = async (
+  req: import("express").Request,
+  res: import("express").Response,
+) => {
+  const userBridge = await bridgeForRequest(req);
+  const server = createAiChartMcpServer(userBridge);
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+  res.on("close", () => {
+    void transport.close().catch(() => {});
+    void server.close().catch(() => {});
+  });
+  await server.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+};
+
 const mcpPostHandler = async (
   req: import("express").Request,
   res: import("express").Response,
 ) => {
   try {
+    if (STATELESS) {
+      await handleStatelessPost(req, res);
+      return;
+    }
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     let transport: StreamableHTTPServerTransport | undefined;
 
@@ -318,10 +345,24 @@ const mcpPostHandler = async (
   }
 };
 
+/** Stateless mode has no per-session SSE stream: 405 (JSON-RPC) is the
+ *  spec-compliant answer and the client falls back to POST request/response. */
+function respondMethodNotAllowed(res: import("express").Response): void {
+  res.status(405).json({
+    jsonrpc: "2.0",
+    error: { code: -32000, message: "Method not allowed (stateless server)" },
+    id: null,
+  });
+}
+
 const mcpGetHandler = async (
   req: import("express").Request,
   res: import("express").Response,
 ) => {
+  if (STATELESS) {
+    respondMethodNotAllowed(res);
+    return;
+  }
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
   if (!sessionId) {
     res.status(400).send("Missing session ID");
@@ -339,6 +380,11 @@ const mcpDeleteHandler = async (
   req: import("express").Request,
   res: import("express").Response,
 ) => {
+  if (STATELESS) {
+    // Nothing to terminate — acknowledge so the client's teardown succeeds.
+    res.status(200).json({ jsonrpc: "2.0", result: {}, id: null });
+    return;
+  }
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
   if (!sessionId) {
     res.status(400).send("Missing session ID");
