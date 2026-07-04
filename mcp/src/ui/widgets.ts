@@ -145,7 +145,8 @@ const analysis = widgetHtml(
     v = String(v || "").toLowerCase();
     if (/up|bull|buy|صاعد/.test(v)) return ["buy", "صاعد"];
     if (/down|bear|sell|هابط/.test(v)) return ["sell", "هابط"];
-    return ["wait", v || "محايد"];
+    if (/side|range|flat|neutral|عرضي|محايد/.test(v)) return ["wait", "عرضي"];
+    return ["wait", v ? "محايد" : "محايد"];
   }
   window.__aicReady = function (AIC) {
     AIC.onData(function (data) {
@@ -167,16 +168,39 @@ const analysis = widgetHtml(
         var n = AIC.num(v);
         return n == null || n === 0 ? null : n;
       }
+      /* detect_levels gives supports[]/resistances[] arrays of {price,touches}.
+         Pick the level nearest to price on the correct side. */
+      function levelPrice(v) { return AIC.num(v && typeof v === "object" ? (v.price != null ? v.price : v.level) : v); }
+      function nearest(arr, ref, below) {
+        if (!Array.isArray(arr) || !arr.length) return null;
+        var best = null, bestD = Infinity;
+        for (var i = 0; i < arr.length; i++) {
+          var p = levelPrice(arr[i]);
+          if (p == null) continue;
+          if (ref != null) {
+            if (below && p > ref) continue;
+            if (!below && p < ref) continue;
+          }
+          var d = ref != null ? Math.abs(p - ref) : 0;
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        return best != null ? best : levelPrice(arr[0]);
+      }
+      var refPrice = AIC.num(snap.price ?? snap.close ?? snap.currentPrice);
+      var supVal = pxv(snap.support ?? snap.nearestSupport ?? data.support);
+      if (supVal == null) supVal = nearest(snap.supports || data.supports, refPrice, true);
+      var resVal = pxv(snap.resistance ?? snap.nearestResistance ?? data.resistance);
+      if (resVal == null) resVal = nearest(snap.resistances || data.resistances, refPrice, false);
       var rows = [
         ["السعر", pxv(snap.price ?? snap.close ?? snap.currentPrice ?? rec.entry), "blue"],
-        ["الاتجاه", snap.trend != null ? trendClass(snap.trend)[1] : null, ""],
+        ["الاتجاه", (rec.action || snap.trend || data.trend) != null ? trend[1] : null, trend[0] === "buy" ? "green" : trend[0] === "sell" ? "red" : ""],
         ["التغير 24س", snap.change24hPct != null ? AIC.fmt(snap.change24hPct, 2) + "%" : null,
           Number(snap.change24hPct) >= 0 ? "green" : "red"],
         ["الثقة", rec.confidence != null ? rec.confidence + "%" : data.confidence, ""],
-        ["RSI", snap.rsi14 ?? snap.rsi, ""],
-        ["MACD", fmtMacd(snap.macd), ""],
-        ["الدعم", pxv(snap.support ?? snap.nearestSupport ?? data.support), "green"],
-        ["المقاومة", pxv(snap.resistance ?? snap.nearestResistance ?? data.resistance), "red"],
+        ["RSI", (snap.rsi14 ?? snap.rsi) != null ? AIC.fmt(snap.rsi14 ?? snap.rsi, 1) : null, ""],
+        ["MACD", fmtMacd(snap.macd) != null ? AIC.fmt(fmtMacd(snap.macd), 4) : null, ""],
+        ["الدعم", supVal, "green"],
+        ["المقاومة", resVal, "red"],
         ["الدخول", pxv(rec.entry), "green"],
         ["الوقف", pxv(rec.stop_loss), "red"],
         ["الهدف", pxv(targets[0]), "blue"],
@@ -966,10 +990,154 @@ export const PORTFOLIO_ASSETS = {
   },
 } as const;
 
+/* ─────────────────────────── recommendation ───────────────────────────
+ * Dedicated trade-idea card: action badge + confidence, entry/stop/target
+ * ladder with computed R:R, rationale, factor chips. Also renders scan_market
+ * multi-opportunity payloads as a ranked list. Reads the recommendation from
+ * many shapes (create_recommendation, run_market_analysis, scan_market). */
+const recommendationCard = widgetHtml(
+  "Lonora recommendation",
+  `<div class="card">
+    <div class="hd">
+      <span class="title" id="title">التوصية</span>
+      <span id="badge" class="badge wait">Lonora</span>
+    </div>
+    <div id="body">
+      <div class="skel" style="height:64px"></div>
+      <div class="skel" style="height:48px;margin-top:10px"></div>
+    </div>
+    <div id="summary" class="muted" style="margin-top:10px;line-height:1.7"></div>
+    <div id="factors" class="row" style="margin-top:8px"></div>
+    <div class="foot">
+      <span id="status" class="status"></span>
+      <span class="spacer"></span>
+      <button class="btn" id="chart" style="display:none">عرض الشارت</button>
+      <button class="btn primary" id="deep">تحليل أعمق</button>
+    </div>
+  </div>`,
+  `
+  var PLATFORM = "${PLATFORM_URL}";
+  var current = { symbol:"", chartUrl:null };
+  function obj(v){ return v && typeof v === "object" ? v : {}; }
+  function pickRec(data){
+    if (data.recommendation) return obj(data.recommendation);
+    if (data.action || data.side) return data;
+    var lists = [data.opportunities, data.results, data.candidates, data.picks, data.scan, data.top];
+    for (var i=0;i<lists.length;i++){ if (Array.isArray(lists[i]) && lists[i].length) return obj(lists[i][0]); }
+    if (data.best || data.pick) return obj(data.best || data.pick);
+    return {};
+  }
+  function pickList(data){
+    var lists = [data.opportunities, data.results, data.candidates, data.picks, data.scan];
+    for (var i=0;i<lists.length;i++){ if (Array.isArray(lists[i]) && lists[i].length > 1) return lists[i]; }
+    return null;
+  }
+  function actInfo(a){
+    a = String(a||"").toLowerCase();
+    if (a === "buy" || a === "long") return { cls:"buy", ar:"شراء", dir:1 };
+    if (a === "sell" || a === "short") return { cls:"sell", ar:"بيع", dir:-1 };
+    return { cls:"wait", ar:"انتظار", dir:0 };
+  }
+  window.__aicReady = function (AIC){
+    function big(label, val, cls){
+      var v = AIC.num(val);
+      return '<div class="kv" style="flex:1"><div class="k">'+label+'</div><div class="v '+cls+'">'+
+        (v==null?"—":AIC.fmt(v,5))+'</div></div>';
+    }
+    AIC.onData(function (data){
+      data = obj(data);
+      var rec = pickRec(data);
+      var act = actInfo(rec.action || rec.side);
+      current.symbol = rec.symbol || data.symbol || current.symbol;
+      current.chartUrl = data.chart_url || data.chart_image_url || rec.chart_url || current.chartUrl;
+
+      document.getElementById("title").textContent = current.symbol ? "توصية " + current.symbol : "التوصية";
+      var badge = document.getElementById("badge");
+      badge.className = "badge " + act.cls;
+      var conf = AIC.num(rec.confidence);
+      badge.textContent = act.ar + (conf!=null ? " · " + Math.round(conf) + "%" : "");
+
+      var entry = AIC.num(rec.entry), sl = AIC.num(rec.stop_loss ?? rec.stop ?? rec.sl);
+      var tp = AIC.num(rec.take_profit ?? rec.target ?? rec.tp ?? (Array.isArray(rec.targets)?rec.targets[0]:null));
+      var rr = null;
+      if (entry!=null && sl!=null && tp!=null){
+        var risk = Math.abs(entry - sl), reward = Math.abs(tp - entry);
+        if (risk > 0) rr = reward / risk;
+      }
+      var body = document.getElementById("body");
+      var list = pickList(data);
+      if (list){
+        /* scan_market: ranked opportunities */
+        var h = '<table><thead><tr><th>الرمز</th><th>الاتجاه</th><th>الثقة</th><th>الدخول</th></tr></thead><tbody>';
+        for (var i=0;i<Math.min(list.length,8);i++){
+          var o = obj(list[i]); var oa = actInfo(o.action||o.side);
+          var oc = AIC.num(o.confidence);
+          h += '<tr><td>'+(o.symbol||o.sym||"—")+'</td>'+
+               '<td><span class="badge '+oa.cls+'" style="padding:1px 8px">'+oa.ar+'</span></td>'+
+               '<td>'+(oc!=null?Math.round(oc)+"%":"—")+'</td>'+
+               '<td>'+(AIC.num(o.entry)!=null?AIC.fmt(o.entry,5):"—")+'</td></tr>';
+        }
+        h += '</tbody></table>';
+        body.innerHTML = h;
+      } else if (entry!=null || sl!=null || tp!=null){
+        var h2 = '<div class="row" style="gap:8px">'+
+          big("الدخول", entry, act.cls==="sell"?"red":"green")+
+          big("الوقف", sl, "red")+
+          big("الهدف", tp, "blue")+'</div>';
+        var meta = [];
+        if (rr!=null) meta.push('<span class="badge '+(rr>=1?"buy":"wait")+'">عائد/مخاطرة '+rr.toFixed(2)+'</span>');
+        if (rec.timeframe) meta.push('<span class="muted">فريم '+rec.timeframe+'</span>');
+        if (rec.pattern_name) meta.push('<span class="muted">نموذج: '+rec.pattern_name+'</span>');
+        if (conf!=null){
+          meta.push('<span class="muted" style="flex:1">الثقة</span>');
+        }
+        h2 += '<div class="row" style="margin-top:10px;gap:8px">'+meta.join("")+'</div>';
+        if (conf!=null){
+          h2 += '<div style="height:6px;border-radius:3px;background:#221517;margin-top:6px;overflow:hidden">'+
+                '<i style="display:block;height:100%;width:'+Math.max(0,Math.min(100,conf))+'%;background:var(--gold)"></i></div>';
+        }
+        body.innerHTML = h2;
+      } else {
+        body.innerHTML = '<div class="empty">لا توجد توصية قابلة للعرض بعد — شغّل تحليلاً أو مسحاً للسوق.</div>';
+      }
+
+      var summary = rec.rationale || rec.reason || data.reply || data.summary || "";
+      document.getElementById("summary").textContent = String(summary).slice(0, 420);
+
+      var fx = document.getElementById("factors");
+      fx.innerHTML = "";
+      var factors = Array.isArray(rec.factors) ? rec.factors : (Array.isArray(data.factors) ? data.factors : []);
+      factors.slice(0,6).forEach(function (f){
+        if (!f) return;
+        var chip = document.createElement("span");
+        chip.className = "badge wait";
+        chip.style.fontWeight = "600";
+        chip.textContent = String(f).slice(0,40);
+        fx.appendChild(chip);
+      });
+
+      AIC.applyBridgeBadge(document.getElementById("status"), data);
+      var chartBtn = document.getElementById("chart");
+      chartBtn.style.display = current.chartUrl ? "inline-flex" : "none";
+      AIC.notifySize();
+    });
+    document.getElementById("chart").addEventListener("click", function (){
+      if (!current.chartUrl) return;
+      var u = current.chartUrl.indexOf("http") === 0 ? current.chartUrl : PLATFORM + current.chartUrl;
+      AIC.openLink(u);
+    });
+    document.getElementById("deep").addEventListener("click", function (){
+      if (!current.symbol) return;
+      AIC.callTool("run_market_analysis", { symbol: current.symbol });
+    });
+  };
+  `,
+);
+
 export const WIDGETS: Record<string, string> = {
   "account-overview": accountOverview,
   analysis,
-  "recommendation-card": analysis,
+  "recommendation-card": recommendationCard,
   "account-status": accountOverview,
   "pair-picker": genericCard("اختيار زوج", "اختر الزوج المناسب قبل التحليل.", { label: "تحديث الأزواج", tool: "list_instruments" }),
   "risk-status": genericCard("حالة المخاطر", "حدود المخاطر الحالية وإعدادات الحساب."),

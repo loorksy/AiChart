@@ -181,8 +181,22 @@ export const RUNTIME_JS = `
     fireReady();
   }
 
+  /* Newer web routes (withBridge) wrap payloads as {ok, data, meta}; older
+     ones return bare JSON. Unwrap centrally so EVERY card reads the real
+     payload — never {ok,data} whose fields all read as missing. Envelopes
+     that carry their fields alongside ok (e.g. create_recommendation) are
+     left intact (no inner data object). */
+  function unwrapEnvelope(d) {
+    if (d && typeof d === "object" && !Array.isArray(d) &&
+        (d.ok === true || d.ok === false) &&
+        d.data && typeof d.data === "object") {
+      return d.data;
+    }
+    return d;
+  }
+
   function normalizeToolResult(r) {
-    if (r && r.structuredContent) return r.structuredContent;
+    if (r && r.structuredContent) return unwrapEnvelope(r.structuredContent);
     /* Tools without structuredContent carry JSON in the text block. */
     if (r && Array.isArray(r.content)) {
       for (var i = 0; i < r.content.length; i++) {
@@ -190,7 +204,7 @@ export const RUNTIME_JS = `
         if (c && c.type === "text" && typeof c.text === "string") {
           try {
             var p = JSON.parse(c.text);
-            if (p && typeof p === "object") return p;
+            if (p && typeof p === "object") return unwrapEnvelope(p);
           } catch (e) {}
         }
       }
@@ -202,7 +216,7 @@ export const RUNTIME_JS = `
     /* ── ChatGPT (Apps SDK / skybridge) ── */
     function readOpenAiData() {
       var meta = window.openai.toolResponseMetadata || null;
-      return window.openai.toolOutput || (meta && (meta.structuredContent || meta.toolOutput || meta.data)) || meta || null;
+      return unwrapEnvelope(window.openai.toolOutput || (meta && (meta.structuredContent || meta.toolOutput || meta.data)) || meta || null);
     }
     latest = readOpenAiData();
     window.addEventListener("openai:set_globals", function () {
@@ -246,7 +260,7 @@ export const RUNTIME_JS = `
       if (!m) return;
       if (m.method === "render-data" || m.method === "ui/lifecycle/render-data" || m.type === "render-data") {
         var rd = m.params || m.payload || m.data || {};
-        latest = rd.structuredContent || rd.toolOutput || rd.data || rd;
+        latest = unwrapEnvelope(rd.structuredContent || rd.toolOutput || rd.data || rd);
         emit();
         setTimeout(notifySize, 50);
         return;
@@ -261,7 +275,7 @@ export const RUNTIME_JS = `
       }
       if (m.method === "ui/notifications/tool-result") {
         var pr = m.params || {};
-        latest = pr.structuredContent != null ? pr.structuredContent : pr;
+        latest = unwrapEnvelope(pr.structuredContent != null ? pr.structuredContent : pr);
         emit();
         setTimeout(notifySize, 50);
       }
