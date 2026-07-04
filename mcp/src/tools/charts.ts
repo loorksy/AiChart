@@ -156,17 +156,19 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
             },
             source === "ea" ? 30000 : undefined,
           ) as Promise<{ candles?: unknown[] }>;
-        let ohlc = await fetchCandles(
-          layoutSource === "ea" ? "ea" : undefined,
+        const preferEa = layoutSource === "ea";
+        let ohlc = await fetchCandles(preferEa ? "ea" : undefined).catch(
+          () => null as { candles?: unknown[] } | null,
         );
-        if (
-          !ohlc?.candles?.length &&
-          layoutSource !== "ea" &&
-          a.market !== "crypto"
-        ) {
-          const eaTry = await fetchCandles("ea").catch(() => null);
-          if (eaTry?.candles?.length) ohlc = eaTry;
+        if (!ohlc?.candles?.length && a.market !== "crypto") {
+          // Whichever source failed, try the other (EA offline ↔ OANDA
+          // doesn't know broker-suffixed symbols).
+          const alt = await fetchCandles(preferEa ? "oanda" : "ea").catch(
+            () => null,
+          );
+          if (alt?.candles?.length) ohlc = alt;
         }
+        if (!ohlc) ohlc = { candles: [] };
         return {
           live_chart: true,
           symbol,
