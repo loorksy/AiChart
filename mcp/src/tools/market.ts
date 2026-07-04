@@ -139,14 +139,19 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         cursor?: number;
       };
       return bridgeCall(() =>
-        bridge.get("/api/agent/market/ohlc", {
-          symbol,
-          interval,
-          market,
-          source,
-          limit,
-          cursor,
-        }),
+        bridge.get(
+          "/api/agent/market/ohlc",
+          {
+            symbol,
+            interval,
+            market,
+            source,
+            limit,
+            cursor,
+          },
+          // EA-sourced candles ride the MT5 terminal queue (~25s worst case).
+          source === "ea" ? 30000 : undefined,
+        ),
       );
     },
   );

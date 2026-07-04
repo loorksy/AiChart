@@ -143,14 +143,19 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         // honor the layout's dataSource, then fall back to EA on empty.
         const layoutSource = (layout?.state as { dataSource?: string } | undefined)
           ?.dataSource;
+        // EA roundtrip can take ~25s through the terminal queue.
         const fetchCandles = (source?: string) =>
-          bridge.get("/api/agent/market/ohlc", {
-            symbol,
-            interval,
-            market: a.market,
-            source,
-            limit: 120,
-          }) as Promise<{ candles?: unknown[] }>;
+          bridge.get(
+            "/api/agent/market/ohlc",
+            {
+              symbol,
+              interval,
+              market: a.market,
+              source,
+              limit: 120,
+            },
+            source === "ea" ? 30000 : undefined,
+          ) as Promise<{ candles?: unknown[] }>;
         let ohlc = await fetchCandles(
           layoutSource === "ea" ? "ea" : undefined,
         );

@@ -364,9 +364,11 @@ const liveChart = widgetHtml(
     if (d.ohlc) {
       cc = normCandles(d.ohlc);
       if (d.ohlc.source) S.source = d.ohlc.source;
+      S.warning = d.ohlc.warning || null;
     } else if (Array.isArray(d.candles)) {
       cc = normCandles(d);
       if (d.source) S.source = d.source;
+      S.warning = d.warning || null;
     }
     if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }
   }
@@ -627,7 +629,18 @@ const liveChart = widgetHtml(
   }
   function refresh(){
     setTitle(); setLevels();
-    document.getElementById("hint").style.display = S.symbol ? "none" : "block";
+    var hint = document.getElementById("hint");
+    if (!S.symbol) {
+      hint.textContent = "لا يوجد رمز بعد — اطلب من كلود عرض شارت لرمز معين.";
+      hint.style.display = "block";
+    } else if (!S.candles.length) {
+      hint.textContent = S.warning
+        ? String(S.warning)
+        : "لا شموع متاحة الآن — للرموز الخاصة بالوسيط تأكد أن منصة MetaTrader تعمل.";
+      hint.style.display = "block";
+    } else {
+      hint.style.display = "none";
+    }
     draw();
     if (window.AIC) window.AIC.notifySize();
   }
