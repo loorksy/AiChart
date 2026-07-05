@@ -20,6 +20,21 @@ export function bridgeUserSig(serviceToken: string, email: string): string {
     .digest("hex");
 }
 
+/** Strip canonical bridge envelope `{ ok, data }` — leave `{ ok, forex }` live snapshots intact. */
+export function unwrapBridgePayload(data: unknown): unknown {
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    !Array.isArray(data) &&
+    (data as { ok?: unknown }).ok === true &&
+    (data as { data?: unknown }).data != null &&
+    typeof (data as { data: unknown }).data === "object"
+  ) {
+    return (data as { data: unknown }).data;
+  }
+  return data;
+}
+
 /** Upstream request timeout (ms). Prevents a slow EA/exchange from hanging the
  *  whole MCP call until the platform's own timeout. Override via BRIDGE_FETCH_TIMEOUT_MS.
  *  Default 15s — a single forex EA round trip (queueEaGetOhlc) can take up to 12s. */
@@ -227,7 +242,7 @@ export class BridgeClient {
           : `Bridge ${res.status}`;
       throw new BridgeError(msg, res.status, data);
     }
-    return data;
+    return unwrapBridgePayload(data);
   }
 }
 

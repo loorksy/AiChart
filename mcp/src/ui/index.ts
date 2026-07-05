@@ -8,8 +8,24 @@ import { createUIResource } from "@mcp-ui/server";
 import { loggedHtmlReadHandler, logResourceRead } from "./resourceLog.js";
 import { normalizeWidgetPublicPath } from "./publicPath.js";
 import { publicAssetOrigin } from "./runtime.js";
-import { skybridgePath, skybridgeUri, widgetUri } from "./uris.js";
+import { legacyWidgetUris, skybridgePath, skybridgeUri, widgetUri } from "./uris.js";
 import { WIDGETS } from "./widgets.js";
+
+function registerWidgetResource(
+  server: McpServer,
+  label: string,
+  uri: string,
+  html: string,
+  mimeType: string,
+): void {
+  registerAppResource(
+    server,
+    label,
+    uri,
+    { description: label, ...(mimeType !== RESOURCE_MIME_TYPE ? { mimeType } : {}) },
+    loggedHtmlReadHandler(uri, html, mimeType),
+  );
+}
 
 function asUiUri(path: string): `ui://${string}` {
   return `ui://${path}` as `ui://${string}`;
@@ -54,27 +70,22 @@ export function registerWidgets(server: McpServer): void {
       encoding: "text",
       adapters: { appsSdk: { enabled: true } },
     }).resource;
+    const gptHtml = gptResource.text ?? html;
+    const gptMime = gptResource.mimeType;
 
-    registerAppResource(
-      server,
-      `Lonora ${name} card`,
-      nativeUri,
-      {
-        description: `بطاقة Lonora التفاعلية: ${name}`,
-      },
-      loggedHtmlReadHandler(nativeUri, html, RESOURCE_MIME_TYPE),
-    );
+    registerWidgetResource(server, `Lonora ${name} card`, nativeUri, html, RESOURCE_MIME_TYPE);
+    registerWidgetResource(server, `Lonora ${name} card (ChatGPT)`, gptUri, gptHtml, gptMime);
 
-    registerAppResource(
-      server,
-      `Lonora ${name} card (ChatGPT)`,
-      gptUri,
-      {
-        description: `بطاقة Lonora التفاعلية لواجهة ChatGPT: ${name}`,
-        mimeType: gptResource.mimeType,
-      },
-      loggedHtmlReadHandler(gptUri, gptResource.text ?? html, gptResource.mimeType),
-    );
+    for (const legacyUri of legacyWidgetUris(name)) {
+      const isGpt = legacyUri.endsWith("-gpt");
+      registerWidgetResource(
+        server,
+        `Lonora ${name} card (legacy)`,
+        legacyUri,
+        isGpt ? gptHtml : html,
+        isGpt ? gptMime : RESOURCE_MIME_TYPE,
+      );
+    }
   }
 }
 
@@ -88,10 +99,16 @@ export function widgetHtmlByPublicPath(path: string): {
   for (const [name, html] of Object.entries(WIDGETS)) {
     const native = widgetUri(name).replace(/^ui:\/\/aichart\//, "");
     const gpt = skybridgeUri(name).replace(/^ui:\/\/aichart\//, "");
-    if (normalized === native) {
-      return { uri: widgetUri(name), html, mimeType: RESOURCE_MIME_TYPE };
-    }
-    if (normalized === gpt) {
+    const legacyPaths = legacyWidgetUris(name).map((u) =>
+      u.replace(/^ui:\/\/aichart\//, ""),
+    );
+    const isGptPath = normalized === gpt || legacyPaths.includes(normalized) && normalized.endsWith("-gpt");
+    const isNativePath =
+      normalized === native ||
+      (legacyPaths.includes(normalized) && !normalized.endsWith("-gpt"));
+    if (!isNativePath && !isGptPath) continue;
+
+    if (isGptPath) {
       const gptResource = createUIResource({
         uri: asUiUri(skybridgePath(name)),
         content: { type: "rawHtml", htmlString: html },
@@ -104,6 +121,7 @@ export function widgetHtmlByPublicPath(path: string): {
         mimeType: gptResource.mimeType,
       };
     }
+    return { uri: widgetUri(name), html, mimeType: RESOURCE_MIME_TYPE };
   }
   return null;
 }

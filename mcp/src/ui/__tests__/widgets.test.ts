@@ -12,11 +12,11 @@ import { WIDGETS } from "../widgets.js";
 
 describe("MCP UI resources", () => {
   it("registers versioned canonical URIs for flagship cards", () => {
-    assert.equal(appsUri("account-overview"), "ui://aichart/account-overview/v2");
-    assert.equal(appsUri("analysis"), "ui://aichart/analysis/v2");
-    assert.equal(appsUri("portfolio"), "ui://aichart/portfolio/v1");
-    assert.equal(skybridgeUri("account-overview"), "ui://aichart/account-overview/v2-gpt");
-    assert.equal(skybridgeUri("analysis"), "ui://aichart/analysis/v2-gpt");
+    assert.equal(appsUri("account-overview"), "ui://aichart/account-overview/v4");
+    assert.equal(appsUri("analysis"), "ui://aichart/analysis/v4");
+    assert.equal(appsUri("portfolio"), "ui://aichart/portfolio/v3");
+    assert.equal(skybridgeUri("account-overview"), "ui://aichart/account-overview/v4-gpt");
+    assert.equal(skybridgeUri("analysis"), "ui://aichart/analysis/v4-gpt");
   });
 
   it("emits MCP Apps and OpenAI compatibility metadata", () => {
@@ -40,13 +40,13 @@ describe("MCP UI resources", () => {
   it("resolves public HTTP paths for native and skybridge templates", () => {
     const native = widgetHtmlByPublicPath("portfolio/v1");
     assert.ok(native);
-    assert.equal(native.uri, "ui://aichart/portfolio/v1");
+    assert.equal(native.uri, "ui://aichart/portfolio/v3");
     assert.ok(native.html.length > 200);
     assert.equal(native.mimeType, "text/html;profile=mcp-app");
 
     const gpt = widgetHtmlByPublicPath("portfolio/v1-gpt");
     assert.ok(gpt);
-    assert.equal(gpt.uri, "ui://aichart/portfolio/v1-gpt");
+    assert.equal(gpt.uri, "ui://aichart/portfolio/v3-gpt");
     assert.equal(gpt.mimeType, "text/html+skybridge");
   });
 
@@ -59,15 +59,29 @@ describe("MCP UI resources", () => {
 });
 
 describe("structured tool text fallback", () => {
-  it("formats account overview as readable Arabic text", () => {
+  it("formats account overview with bridge risk envelope", () => {
     const text = formatToolTextFallback({
-      risk: { perTradeMaxUsd: 250, status: "ok" },
-      portfolio: { account: { balance: 1000, equity: 1050 }, openPnl: 12.5 },
-      live: { forex: { ea: { heartbeatFresh: true, online: true } } },
+      risk: {
+        ok: true,
+        data: {
+          mode: "auto",
+          capital: { perTradeMaxUsd: 250, effectiveCapital: 5000 },
+        },
+      },
+      portfolio: { forex: { ea: { balance: 86.4, equity: 84.62, online: true } }, openTrades: [] },
+      live: {
+        forex: {
+          ea: { balance: 86.4, equity: 84.62, online: true, heartbeatFresh: true },
+          heartbeatFresh: true,
+          positions: [{ symbol: "XAUUSDm", side: "buy", profit: -1.78 }],
+        },
+        openTrades: [{ symbol: "XAUUSDm", side: "buy", profit: -1.78 }],
+      },
     });
-    assert.ok(text?.includes("حالة الحساب"));
-    assert.ok(text?.includes("إعداد حد الصفقة"));
+    assert.ok(text?.includes("86.4"));
+    assert.ok(text?.includes("84.62"));
     assert.ok(text?.includes("250"));
+    assert.ok(text?.includes("5000"));
   });
 
   it("marks stale EA open PnL as unavailable", () => {
@@ -126,11 +140,11 @@ describe("widget HTML safety", () => {
     }
   });
 
-  it("account overview widget reads direct live account shapes", () => {
+  it("account overview widget uses shared parseAccountOverview helper", () => {
     const html = WIDGETS["account-overview"];
-    assert.ok(html.includes("dataForex.ea"));
-    assert.ok(html.includes("dataForex.positions"));
-    assert.ok(html.includes("data.openTrades"));
+    assert.ok(html.includes("parseAccountOverview"));
+    assert.ok(html.includes("equity-val"));
+    assert.ok(html.includes("balance-val"));
   });
 
   it("registers at least 13 interactive card widgets", () => {

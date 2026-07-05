@@ -1,134 +1,67 @@
-import { widgetHtml, RUNTIME_JS } from "./runtime.js";
+import { widgetHtml } from "./runtime.js";
 
 const PLATFORM_URL = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
 
 const accountOverview = widgetHtml(
   "Lonora account overview",
-  `<div class="card">
-    <div class="hd"><span class="title">حالة الحساب</span><span class="brand">Lonora</span></div>
-    <div id="grid" class="grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+  `<div class="card" id="acct-card">
+    <div class="top">
+      <div>
+        <div class="title" id="acct-title">—</div>
+      </div>
+      <div class="tag" id="acct-tag">—</div>
+    </div>
+    <div class="main">
+      <div class="value" id="equity-val">—</div>
+    </div>
+    <div class="row">
+      <div class="mini"><strong id="balance-val">—</strong></div>
+      <div class="mini"><strong id="pnl-val">—</strong></div>
+    </div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
       <button class="btn" id="refresh">تحديث</button>
-      <button class="btn primary" id="manage">إدارة الصفقات</button>
+      <button class="btn primary" id="manage">إدارة</button>
     </div>
   </div>`,
   `
-  function obj(v) { return v && typeof v === "object" ? v : {}; }
-  function unwrapBridge(v) {
-    v = obj(v);
-    if (v.ok === true && v.data != null && typeof v.data === "object") return v.data;
-    return v;
+  function money(AIC, v) {
+    return v == null ? "—" : "$" + AIC.fmt(v, 2);
   }
-  function hasKeys(v) {
-    v = obj(v);
-    for (var k in v) return true;
-    return false;
-  }
-  function first() {
-    for (var i = 0; i < arguments.length; i++) {
-      var v = arguments[i];
-      if (v !== undefined && v !== null && v !== "") return v;
-    }
-    return null;
-  }
-  function sumPnl(AIC) {
-    for (var i = 1; i < arguments.length; i++) {
-      var arr = arguments[i];
-      if (!Array.isArray(arr) || !arr.length) continue;
-      var sum = 0, seen = false;
-      for (var j = 0; j < arr.length; j++) {
-        var t = obj(arr[j]);
-        var p = AIC.num(first(t.profit, t.pnl, t.open_pnl, t.openPnl));
-        if (p != null) { sum += p; seen = true; }
-      }
-      if (seen) return sum;
-    }
-    return null;
-  }
-  function eaState(data) {
-    var live = obj(data.live);
-    var liveForex = obj(live.forex);
-    var dataForex = obj(data.forex);
-    var portfolioForex = obj(obj(data.portfolio).forex);
-    var ea = obj(first(liveForex.ea, dataForex.ea, portfolioForex.ea, live.ea, data.ea));
-    var heartbeatFresh = first(ea.heartbeatFresh, liveForex.heartbeatFresh, dataForex.heartbeatFresh, live.heartbeatFresh, data.heartbeatFresh);
-    var online = first(ea.online, ea.connected, liveForex.online, dataForex.online, live.online, data.online);
-    var status = String(first(ea.status, liveForex.status, dataForex.status, live.status, data.status) || "");
-    var fresh = heartbeatFresh === true || online === true || /online|connected|live/i.test(status);
-    var stale = heartbeatFresh === false || online === false || /offline|stale|down|revoked/i.test(status);
-    var known = heartbeatFresh != null || online != null || status !== "" || hasKeys(ea);
-    if (!known) return { fresh: false, stale: false, label: "" };
-    return { fresh: fresh && !stale, stale: stale || !fresh, label: fresh && !stale ? "متصل" : "غير متصل / بيانات قديمة" };
-  }
-  /* Last-known money while stale is shown but explicitly marked قديم;
-     a truly missing value hides the row (never renders 0). */
-  function moneyCell(AIC, value, stale) {
-    if (value == null) return stale ? "— / غير متاح" : null;
-    var t = AIC.fmt(value, 2);
-    return stale ? t + " · قديم" : t;
+  function pnlClass(v) {
+    if (v == null) return "";
+    return Number(v) >= 0 ? "green" : "red";
   }
   window.__aicReady = function (AIC) {
-    var last = null;
     AIC.onData(function (data) {
-      data = obj(data);
-      /* Flat get_live_account payload (forex at root) → normalize to overview shape. */
-      if (!obj(data.live).forex && obj(data.forex).ea) {
-        data = { risk: data.risk, portfolio: data.portfolio, live: data };
+      var ac = AIC.parseAccountOverview(data);
+      document.getElementById("acct-title").textContent = ac.acctTitle || "—";
+      var tagEl = document.getElementById("acct-tag");
+      tagEl.textContent = ac.tag || "—";
+      tagEl.className = "tag" + (ac.ea.stale ? " amber" : ac.tag === "LIVE" ? " green" : "");
+      var eqEl = document.getElementById("equity-val");
+      eqEl.textContent = money(AIC, ac.equity);
+      eqEl.className = "value" + (ac.ea.stale ? " amber" : "");
+      document.getElementById("balance-val").textContent = money(AIC, ac.balance);
+      var pnlEl = document.getElementById("pnl-val");
+      if (ac.ea.stale) {
+        pnlEl.textContent = "—";
+        pnlEl.className = "amber";
+      } else if (ac.openPnl != null) {
+        pnlEl.textContent = (ac.openPnl >= 0 ? "+" : "") + AIC.fmt(ac.openPnl, 2);
+        pnlEl.className = pnlClass(ac.openPnl);
+      } else {
+        pnlEl.textContent = "—";
+        pnlEl.className = "";
       }
-      var last = data;
-      var risk = unwrapBridge(data.risk);
-      var portfolio = unwrapBridge(data.portfolio);
-      var live = unwrapBridge(data.live);
-      var cap = obj(risk.capital);
-      var ea = eaState({ risk: risk, portfolio: portfolio, live: live, forex: data.forex });
-      var liveForex = obj(live.forex);
-      var dataForex = obj(data.forex);
-      var portfolioForex = obj(portfolio.forex);
-      /* Source of truth: live/account payloads, then portfolio EA, then legacy keys. */
-      var eaLive = obj(liveForex.ea);
-      var eaDirect = obj(dataForex.ea);
-      var eaPort = obj(portfolioForex.ea);
-      var conn = obj(first(live.connection, liveForex.connection, data.connection, dataForex.connection));
-      var legacy = obj(first(portfolio.account, live.account, data.account, conn));
-      var balance = AIC.num(first(eaLive.balance, eaDirect.balance, eaPort.balance, conn.balance, legacy.balance, portfolio.balance, live.balance, data.balance));
-      var equity = AIC.num(first(eaLive.equity, eaDirect.equity, eaPort.equity, conn.equity, legacy.equity, portfolio.equity, live.equity, data.equity));
-      var freeMargin = AIC.num(first(
-        eaLive.freeMargin, eaLive.free_margin, eaLive.margin_free,
-        eaDirect.freeMargin, eaDirect.free_margin, eaDirect.margin_free,
-        conn.freeMargin, conn.free_margin, conn.margin_free,
-        legacy.freeMargin, legacy.free_margin, legacy.margin_free,
-        portfolio.freeMargin, portfolio.free_margin, live.freeMargin, data.freeMargin
-      ));
-      var openPnl = AIC.num(first(portfolio.openPnl, portfolio.open_pnl, legacy.openPnl, legacy.pnl, live.openPnl, live.open_pnl, data.openPnl, data.open_pnl));
-      if (openPnl == null) openPnl = sumPnl(AIC, liveForex.positions, dataForex.positions, live.positions, data.positions, portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades);
-      var openTrades = first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.open_trades, data.trades, live.openTrades, live.open_trades);
-      var rows = [
-        ["الرصيد", moneyCell(AIC, balance, ea.stale), ea.stale ? "amber" : ""],
-        ["حقوق الملكية", moneyCell(AIC, equity, ea.stale), ea.stale ? "amber" : ""],
-        ["الهامش الحر", moneyCell(AIC, freeMargin, ea.stale), ea.stale ? "amber" : ""],
-        ["PnL المفتوح", ea.stale ? "— / بيانات قديمة" : moneyCell(AIC, openPnl, false), ea.stale ? "amber" : (Number(openPnl) >= 0 ? "green" : "red")],
-        ["رأس المال الفعّال", cap.effectiveCapital != null ? AIC.fmt(cap.effectiveCapital, 0) + " USD" : null, "blue"],
-        ["إعداد حد الصفقة", first(cap.perTradeMaxUsd, risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), "blue"],
-        ["حالة المخاطر", first(risk.mode, risk.status, data.risk_status), ""],
-        ["الصفقات المفتوحة", AIC.formatOpenTrades(openTrades), ""],
-        ["اتصال EA", ea.label, ea.stale ? "amber" : "green"],
-      ];
-      var grid = document.getElementById("grid");
-      grid.innerHTML = "";
-      rows.forEach(function (row) {
-        var value = AIC.cell(row[1], 2);
-        if (value == null) return;
-        var el = document.createElement("div");
-        el.className = "kv";
-        el.innerHTML = '<div class="k">' + row[0] + '</div><div class="v ' + row[2] + '">' + value + '</div>';
-        grid.appendChild(el);
-      });
-      if (!grid.children.length) grid.innerHTML = '<div class="empty">لا توجد بيانات حساب متاحة</div>';
-      AIC.applyBridgeBadge(document.getElementById("status"), data);
-      if (ea.stale && !document.getElementById("status").textContent) {
-        document.getElementById("status").textContent = "EA offline/stale: لا نعرض PnL قديم كأنه صفر.";
+      var statusEl = document.getElementById("status");
+      if (ac.ea.stale) {
+        statusEl.textContent = ac.ea.label;
+        statusEl.className = "status stale";
+      } else {
+        statusEl.textContent = "";
+        statusEl.className = "status";
       }
       AIC.notifySize();
     });
@@ -144,15 +77,21 @@ const accountOverview = widgetHtml(
 
 const analysis = widgetHtml(
   "Lonora analysis",
-  `<div class="card">
-    <div class="hd"><span class="title" id="title">تحليل السوق</span><span id="badge" class="badge wait">Lonora</span></div>
-    <div id="grid" class="grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
-    <div id="summary" class="muted" style="margin-top:10px; line-height:1.7;"></div>
+  `<div class="card" id="analysis-card">
+    <div class="top">
+      <div><div class="title" id="title">—</div></div>
+      <div class="tag wait" id="badge">—</div>
+    </div>
+    <div class="main" id="main"><div class="skel"></div></div>
+    <div class="row">
+      <div class="mini"><strong id="price-val">—</strong></div>
+      <div class="mini"><strong id="trend-val">—</strong></div>
+    </div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
       <button class="btn" id="refresh">تحديث</button>
-      <button class="btn primary" id="deep">تحليل أعمق</button>
+      <button class="btn primary" id="deep">أعمق</button>
     </div>
   </div>`,
   `
@@ -202,10 +141,13 @@ const analysis = widgetHtml(
       current.layout_id = data.layout_id || current.layout_id;
       current.data_source = data.data_source || data.dataSource || current.data_source || "oanda";
       var trend = trendClass(rec.action || snap.trend || data.trend);
-      document.getElementById("title").textContent = current.symbol ? "تحليل " + current.symbol : "تحليل السوق";
+      var card = document.getElementById("analysis-card");
+      card.className = "card " + trend[0];
+      document.getElementById("title").textContent = current.symbol ? current.symbol + " · " + current.interval : "—";
       var badge = document.getElementById("badge");
-      badge.className = "badge " + trend[0];
-      badge.textContent = rec.action === "buy" ? "شراء" : rec.action === "sell" ? "بيع" : trend[1];
+      badge.className = "tag " + (trend[0] === "buy" ? "green" : trend[0] === "sell" ? "red" : "amber");
+      var conf = AIC.num(rec.confidence ?? data.confidence);
+      badge.textContent = conf != null ? Math.round(conf) + "%" : (rec.action === "buy" ? "شراء" : rec.action === "sell" ? "بيع" : trend[1]);
       var targets = data.targets || (rec.take_profit ? [rec.take_profit] : []);
       /* Price-like fields: 0 is never a real market level — treat as missing. */
       function pxv(v) {
@@ -235,36 +177,38 @@ const analysis = widgetHtml(
       if (supVal == null) supVal = nearest(snap.supports || data.supports, refPrice, true);
       var resVal = pxv(snap.resistance ?? snap.nearestResistance ?? data.resistance);
       if (resVal == null) resVal = nearest(snap.resistances || data.resistances, refPrice, false);
-      var rows = [
-        ["السعر", pxv(snap.price ?? snap.close ?? snap.currentPrice ?? rec.entry), "blue"],
-        ["الاتجاه", (rec.action || snap.trend || data.trend) != null ? trend[1] : null, trend[0] === "buy" ? "green" : trend[0] === "sell" ? "red" : ""],
-        ["التغير 24س", snap.change24hPct != null ? AIC.fmt(snap.change24hPct, 2) + "%" : null,
-          Number(snap.change24hPct) >= 0 ? "green" : "red"],
-        ["الثقة", rec.confidence != null ? rec.confidence + "%" : data.confidence, ""],
-        ["RSI", (snap.rsi14 ?? snap.rsi) != null ? AIC.fmt(snap.rsi14 ?? snap.rsi, 1) : null, ""],
-        ["MACD", fmtMacd(snap.macd) != null ? AIC.fmt(fmtMacd(snap.macd), 4) : null, ""],
-        ["الدعم", supVal, "green"],
-        ["المقاومة", resVal, "red"],
-        ["الدخول", pxv(rec.entry), "green"],
-        ["الوقف", pxv(rec.stop_loss), "red"],
-        ["الهدف", pxv(targets[0]), "blue"],
-        ["الرسومات", Array.isArray(data.drawings) ? data.drawings.length : null, ""],
-      ];
-      var grid = document.getElementById("grid");
-      grid.innerHTML = "";
-      rows.forEach(function (row) {
-        var value = AIC.cell(row[1], 5);
-        if (value == null) return;
-        var el = document.createElement("div");
-        el.className = "kv";
-        el.innerHTML = '<div class="k">' + row[0] + '</div><div class="v ' + row[2] + '">' + value + "</div>";
-        grid.appendChild(el);
-      });
-      if (!grid.children.length) grid.innerHTML = '<div class="empty">لا توجد بيانات تحليل متاحة</div>';
-      var summary = data.reply || snap.summary || rec.rationale || data.summary || data.contextSummary || "";
-      document.getElementById("summary").textContent = String(summary).slice(0, 420);
-      document.getElementById("status").textContent =
-        "مصدر البيانات: " + (current.data_source || "oanda");
+      var priceVal = pxv(snap.price ?? snap.close ?? snap.currentPrice ?? rec.entry);
+      var main = document.getElementById("main");
+      var signalCls = trend[0] === "buy" ? "green" : trend[0] === "sell" ? "red" : "amber";
+      var signalTxt = rec.action === "buy" ? "شراء" : rec.action === "sell" ? "بيع" : trend[1];
+      var pairs = [];
+      if ((snap.rsi14 ?? snap.rsi) != null) pairs.push(["RSI", AIC.fmt(snap.rsi14 ?? snap.rsi, 1), ""]);
+      if (fmtMacd(snap.macd) != null) pairs.push(["MACD", AIC.fmt(fmtMacd(snap.macd), 4), ""]);
+      if (supVal != null) pairs.push(["الدعم", AIC.fmt(supVal, 5), "green"]);
+      if (resVal != null) pairs.push(["المقاومة", AIC.fmt(resVal, 5), "red"]);
+      if (snap.change24hPct != null) {
+        pairs.push(["24س", AIC.fmt(snap.change24hPct, 2) + "%", Number(snap.change24hPct) >= 0 ? "green" : "red"]);
+      }
+      var h = '<div class="signal ' + signalCls + '">' + signalTxt + '</div>';
+      if (conf != null) {
+        h += '<div class="confidence"><div class="bar ' + signalCls + '" style="width:' + Math.max(0, Math.min(100, conf)) + '%"></div></div>';
+      }
+      if (pairs.length) {
+        h += pairs.slice(0, 3).map(function (p) {
+          return '<div class="pair"><strong>' + p[0] + '</strong><span class="' + p[2] + '">' + p[1] + '</span></div>';
+        }).join("");
+      } else {
+        h += '<div class="sub">' + String(data.reply || snap.summary || rec.rationale || data.summary || "").slice(0, 120) + '</div>';
+      }
+      main.innerHTML = h;
+      document.getElementById("price-val").textContent = priceVal != null ? AIC.fmt(priceVal, 5) : "—";
+      document.getElementById("price-val").className = priceVal != null ? "blue" : "";
+      document.getElementById("trend-val").textContent = trend[1];
+      document.getElementById("trend-val").className = signalCls;
+      var statusEl = document.getElementById("status");
+      var stale = AIC.bridgeLinkState(data).stale;
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
+      statusEl.className = stale ? "status stale" : "status";
       AIC.notifySize();
     });
     document.getElementById("refresh").addEventListener("click", function () {
@@ -284,13 +228,14 @@ const analysis = widgetHtml(
   `,
 );
 
-function genericCard(title: string, subtitle: string, action?: { label: string; tool: string }) {
+function genericCard(title: string, _subtitle: string, action?: { label: string; tool: string }) {
   return widgetHtml(
     `Lonora ${title}`,
     `<div class="card">
-      <div class="hd"><span class="title">${title}</span><span class="brand">Lonora</span></div>
-      <div id="body" class="grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
-      <div id="summary" class="muted" style="margin-top:10px; line-height:1.7;">${subtitle}</div>
+      <div class="top">
+        <div><div class="title">${title}</div></div>
+      </div>
+      <div class="main" id="body"><div class="skel"></div></div>
       <div class="foot">
         <span id="status" class="status"></span>
         <span class="spacer"></span>
@@ -302,13 +247,13 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
     function rowsFrom(data, AIC) {
       var out = [];
       var trades = AIC.pickTrades(data);
-      if (trades.length) out.push(["الصفقات", AIC.formatOpenTrades(trades)]);
+      if (trades.length) out.push(["الصفقات", String(trades.length)]);
       for (var k in data) {
         if (k === "trades" || k === "openTrades" || k === "open_trades") continue;
         var v = data[k];
         if (v == null) continue;
         if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") out.push([k, v]);
-        if (out.length >= 8) break;
+        if (out.length >= 6) break;
       }
       return out;
     }
@@ -317,21 +262,21 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
         data = obj(data);
         var body = document.getElementById("body");
         var rows = rowsFrom(data, AIC);
-        body.innerHTML = "";
-        rows.forEach(function (row) {
-          var value = AIC.cell(row[1], 4);
-          if (value == null) return;
-          var el = document.createElement("div");
-          el.className = "kv";
-          el.innerHTML = '<div class="k">' + row[0] + '</div><div class="v">' + value + "</div>";
-          body.appendChild(el);
-        });
-        if (!body.children.length) body.innerHTML = '<div class="empty">لا توجد بيانات لهذه البطاقة</div>';
-        AIC.applyBridgeBadge(document.getElementById("status"), data);
+        if (!rows.length) {
+          body.innerHTML = '<div class="empty">لا توجد بيانات</div>';
+        } else {
+          body.innerHTML = rows.slice(0, 4).map(function (row) {
+            var val = AIC.cell(row[1], 4);
+            return val ? '<div class="pair"><strong>' + row[0] + '</strong><span>' + val + '</span></div>' : '';
+          }).join("") || '<div class="empty">لا توجد بيانات</div>';
+        }
+        var stale = AIC.bridgeLinkState(data).stale;
+        var statusEl = document.getElementById("status");
+        statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
+        statusEl.className = stale ? "status stale" : "status";
         AIC.notifySize();
       });
-      var btn = document.getElementById("action");
-      if (btn) btn.addEventListener("click", function () { AIC.callTool("${action?.tool ?? ""}", {}); });
+      ${action ? `document.getElementById("action").addEventListener("click", function () { AIC.callTool("${action.tool}", {}); });` : ""}
     };
     `,
   );
@@ -340,27 +285,61 @@ function genericCard(title: string, subtitle: string, action?: { label: string; 
 const openTradesCard = widgetHtml(
   "Lonora open trades",
   `<div class="card">
-    <div class="hd"><span class="title">الصفقات المفتوحة</span><span class="brand">Lonora</span></div>
-    <div id="trades" class="grid"></div>
+    <div class="top">
+      <div><div class="title" id="trades-title">—</div></div>
+      <div class="tag" id="count-tag">—</div>
+    </div>
+    <div class="main" id="trades"><div class="skel"></div></div>
+    <div class="row">
+      <div class="mini"><strong id="total-pnl">—</strong></div>
+      <div class="mini"><strong id="conn-status">—</strong></div>
+    </div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
-      <button class="btn primary" id="action">تحديث الصفقات</button>
+      <button class="btn primary" id="action">تحديث</button>
     </div>
   </div>`,
   `
   window.__aicReady = function (AIC) {
+    function sumPnl(trades) {
+      var sum = 0, seen = false;
+      for (var i = 0; i < trades.length; i++) {
+        var t = trades[i] || {};
+        var p = AIC.num(t.profit != null ? t.profit : (t.pnl != null ? t.pnl : t.open_pnl));
+        if (p != null) { sum += p; seen = true; }
+      }
+      return seen ? sum : null;
+    }
     function render(data) {
       data = data || {};
-      AIC.applyBridgeBadge(document.getElementById("status"), data);
       var stale = AIC.bridgeLinkState(data).stale;
       var trades = AIC.pickTrades(data);
       var box = document.getElementById("trades");
+      document.getElementById("count-tag").textContent = String(trades.length);
       if (stale && !trades.length) {
-        box.innerHTML = '<div class="empty">الجسر غير متصل أو البيانات قديمة — لا نعرض صفقات وهمية</div>';
+        box.innerHTML = '<div class="empty">الجسر غير متصل — لا صفقات وهمية</div>';
       } else {
         AIC.renderTradeLines(box, trades, AIC.fmt.bind(AIC));
       }
+      var pnl = sumPnl(trades);
+      var pnlEl = document.getElementById("total-pnl");
+      if (stale) {
+        pnlEl.textContent = "—";
+        pnlEl.className = "amber";
+      } else if (pnl != null) {
+        pnlEl.textContent = (pnl >= 0 ? "+" : "") + AIC.fmt(pnl, 2);
+        pnlEl.className = pnl >= 0 ? "green" : "red";
+      } else {
+        pnlEl.textContent = "—";
+        pnlEl.className = "";
+      }
+      var connEl = document.getElementById("conn-status");
+      connEl.textContent = stale ? "قديم" : "مباشر";
+      connEl.className = stale ? "amber" : "green";
+      var statusEl = document.getElementById("status");
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
+      statusEl.className = stale ? "status stale" : "status";
       AIC.notifySize();
     }
     AIC.onData(render);
@@ -377,19 +356,28 @@ const openTradesCard = widgetHtml(
  * Read-only — no toolbars; one button opens the full TradingView chart. */
 const liveChart = widgetHtml(
   "Lonora live chart",
-  `<div class="card" style="max-width:640px">
-    <div class="hd"><span class="title" id="title">الشارت الحي</span><span class="brand">Lonora</span></div>
-    <div style="position:relative">
-      <canvas id="cv" style="width:100%;height:300px;display:block;border-radius:11px;background:#0B0E13;border:1px solid #20262F"></canvas>
-      <div id="hint" class="empty" style="display:none;position:absolute;inset:0;margin:auto;height:fit-content;background:#171B22">لا يوجد رمز بعد — اطلب من كلود عرض شارت لرمز معين.</div>
+  `<div class="card">
+    <div class="top">
+      <div>
+        <div class="title" id="title">—</div>
+      </div>
+      <div class="tag green" id="live-tag">LIVE</div>
     </div>
-    <div id="levels" class="muted" style="margin-top:8px;font-variant-numeric:tabular-nums"></div>
+    <div class="main">
+      <div class="chart-wrap">
+        <canvas id="cv"></canvas>
+        <div id="hint" class="empty" style="display:none;position:absolute;inset:0;margin:auto;height:fit-content">لا يوجد رمز بعد</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="mini"><strong id="price-lbl" class="green">—</strong></div>
+      <div class="mini"><strong id="trend-lbl">—</strong></div>
+    </div>
     <div class="foot">
       <span id="status" class="status"></span>
-      <span id="age" class="muted"></span>
       <span class="spacer"></span>
-      <button class="btn" id="pause">إيقاف التحديث</button>
-      <button class="btn primary" id="open">فتح الشارت الكامل</button>
+      <button class="btn" id="pause">إيقاف</button>
+      <button class="btn primary" id="open">فتح</button>
     </div>
   </div>`,
   `
@@ -678,37 +666,39 @@ const liveChart = widgetHtml(
 
   /* ── UI glue ── */
   function setTitle(){
-    document.getElementById("title").textContent =
-      S.symbol ? "الشارت الحي — " + S.symbol + " · " + S.interval : "الشارت الحي";
+    document.getElementById("title").textContent = S.symbol ? S.symbol + " · " + S.interval : "الشارت";
   }
   function setLevels(){
-    var el = document.getElementById("levels");
-    if (S.rec && typeof S.rec === "object" && (S.rec.entry != null || S.rec.stop_loss != null)) {
-      var act = S.rec.action === "sell" ? "بيع" : S.rec.action === "buy" ? "شراء" : "";
-      var parts = [];
-      if (act) parts.push("التوصية: " + act);
-      if (S.rec.entry != null) parts.push("دخول " + S.rec.entry);
-      if (S.rec.stop_loss != null) parts.push("وقف " + S.rec.stop_loss);
-      if (S.rec.take_profit != null) parts.push("هدف " + S.rec.take_profit);
-      if (S.rec.confidence != null) parts.push("ثقة " + S.rec.confidence + "%");
-      el.textContent = parts.join(" · ");
-    } else if (S.drawings.length) {
-      el.textContent = "رسومات كلود على الشارت: " + S.drawings.length;
+    var priceEl = document.getElementById("price-lbl");
+    var trendEl = document.getElementById("trend-lbl");
+    var last = S.candles.length ? S.candles[S.candles.length - 1] : null;
+    if (last) {
+      var lo = last.l, hi = last.h;
+      for (var ci = 0; ci < S.candles.length; ci++) {
+        lo = Math.min(lo, S.candles[ci].l);
+        hi = Math.max(hi, S.candles[ci].h);
+      }
+      var dec = decimalsFor(hi - lo);
+      priceEl.textContent = fmtP(last.c, dec);
+      priceEl.className = last.c >= last.o ? "green" : "red";
+      var up = S.candles.length > 1 && last.c >= S.candles[S.candles.length - 2].c;
+      trendEl.textContent = up ? "Up" : "Down";
+      trendEl.className = up ? "green" : "red";
     } else {
-      el.textContent = "";
+      priceEl.textContent = "—";
+      priceEl.className = "";
+      trendEl.textContent = "—";
+      trendEl.className = "";
     }
+    var tag = document.getElementById("live-tag");
+    tag.textContent = S.paused ? "PAUSE" : "LIVE";
+    tag.className = "tag " + (S.paused ? "amber" : "green");
   }
   function setStatus(txt, stale){
     var el = document.getElementById("status");
+    if (!stale) { el.textContent = ""; el.className = "status"; return; }
     el.textContent = txt || "";
-    el.className = txt ? "status " + (stale ? "stale" : "live") : "status";
-  }
-  function updateAge(){
-    var el = document.getElementById("age");
-    if (!S.lastUpdate) { el.textContent = ""; return; }
-    var s = Math.round((Date.now() - S.lastUpdate) / 1000);
-    el.textContent = "آخر تحديث قبل " + s + " ث";
-    el.style.color = s > 20 ? "#D9A441" : "";
+    el.className = txt ? "status stale" : "status";
   }
   function refresh(){
     setTitle(); setLevels();
@@ -743,11 +733,11 @@ const liveChart = widgetHtml(
       if (res[0] && typeof res[0] === "object") { applyPayload({ ohlc: res[0] }); got = true; }
       if (res[1] && typeof res[1] === "object") { applyPayload(res[1]); got = true; }
       S.failures = 0;
-      if (got) { setStatus("مباشر", false); refresh(); }
+      if (got) { setStatus("", false); refresh(); }
       schedule();
     }).catch(function () {
       S.failures++;
-      setStatus("تعذر التحديث — إعادة المحاولة", true);
+      setStatus("تعذر التحديث", true);
       schedule();
     });
   }
@@ -766,12 +756,11 @@ const liveChart = widgetHtml(
       if (!document.hidden && !S.paused) schedule(300);
     });
     window.addEventListener("resize", draw);
-    setInterval(updateAge, 1000);
     document.getElementById("pause").addEventListener("click", function () {
       S.paused = !S.paused;
-      this.textContent = S.paused ? "استئناف التحديث" : "إيقاف التحديث";
-      if (S.paused) { clearTimeout(S.timer); setStatus("متوقف مؤقتاً", true); }
-      else { setStatus("مباشر", false); schedule(300); }
+      this.textContent = S.paused ? "استئناف" : "إيقاف";
+      if (S.paused) { clearTimeout(S.timer); setStatus("متوقف", true); }
+      else { setStatus("", false); schedule(300); }
     });
     document.getElementById("open").addEventListener("click", function () {
       var u = S.url
@@ -783,274 +772,6 @@ const liveChart = widgetHtml(
   `,
 );
 
-/* ─────────────────────────────── portfolio ───────────────────────────────
- * Flagship card (get_portfolio). Luxury dark RTL design with equity headline,
- * tabs (overview / trades / signals), symbol filter, and a refresh that calls
- * the tool back. Uses its own stylesheet (not THEME_CSS) but the shared AIC
- * runtime, so it lights up identically on Claude (MCP Apps) and ChatGPT.
- * structuredContent render-data shape:
- *   { account:{login,broker,currency,balance,equity,online,lastHeartbeat},
- *     todayPnl, openTrades, trades:[{sym,side,qty,price,pnl,at}],
- *     signals:[{sym,side,entry,sl,tp,pat,blocked}] }
- */
-const PORTFOLIO_CSS = `
-  :root{
-    --bg:#070A0F; --surface:#101720; --surface-2:#151D28; --surface-3:#0C1118;
-    --line:#263241; --line-soft:#1D2632;
-    --txt:#EDF2F7; --muted:#9AA6B6; --faint:#667386;
-    --gold:#E4B45F; --up:#38C083; --down:#EF6A72; --info:#71B7FF;
-    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;background:transparent}
-  body{color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.4;padding:4px;-webkit-font-smoothing:antialiased}
-  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-  .card{position:relative;max-width:520px;margin:0 auto;background:linear-gradient(180deg,#111925 0%,var(--surface-3) 100%);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 16px 36px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.04)}
-  .card::before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,var(--up),var(--gold),var(--down));opacity:.9}
-  .hd{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line-soft);background:rgba(12,17,24,.78)}
-  .brand{display:flex;align-items:baseline;gap:7px}
-  .brand b{font-weight:700;letter-spacing:0}
-  .brand b .ai{color:var(--gold)}
-  .brand small{color:var(--faint);font-family:var(--mono);font-size:11px}
-  .hd .spacer{flex:1}
-  .pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;border:1px solid var(--line)}
-  .pill .dot{width:7px;height:7px;border-radius:50%}
-  .pill.off{color:var(--down);border-color:#4A252C;background:#2A151A99}
-  .pill.off .dot{background:var(--down)}
-  .pill.on{color:var(--up);border-color:#1D4B38;background:#10251D99}
-  .pill.on .dot{background:var(--up);box-shadow:0 0 0 3px #3fb27f33}
-  .refresh{appearance:none;background:#121A24;color:var(--muted);border:1px solid var(--line);width:32px;height:32px;border-radius:8px;cursor:pointer;display:grid;place-items:center;transition:.15s}
-  .refresh:hover{color:var(--txt);border-color:#3B4A5F;background:#182231}
-  .refresh:active{transform:rotate(180deg)}
-  .refresh svg{width:15px;height:15px}
-  .eq{padding:16px}
-  .eq .lbl{color:var(--muted);font-size:11px;letter-spacing:0;text-transform:uppercase}
-  .eq .big{font-family:var(--mono);font-size:32px;font-weight:650;letter-spacing:0;margin-top:2px;font-variant-numeric:tabular-nums}
-  .eq .big .cur{color:var(--faint);font-size:17px;margin-inline-start:4px}
-  .eq .sub{display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;align-items:center}
-  .eq .sub span{color:var(--muted);font-size:12px}
-  .eq .sub b{color:var(--txt);font-family:var(--mono);font-variant-numeric:tabular-nums}
-  .chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-weight:650;padding:3px 9px;border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums}
-  .chip.up{color:var(--up);background:#10251D}
-  .chip.down{color:var(--down);background:#2A151A}
-  .tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--line-soft)}
-  .tab{appearance:none;background:none;border:0;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:600;padding:11px 12px;cursor:pointer;position:relative;transition:.15s}
-  .tab[aria-selected="true"]{color:var(--txt)}
-  .tab[aria-selected="true"]::after{content:"";position:absolute;inset-inline:8px;bottom:-1px;height:2px;background:var(--gold);border-radius:2px}
-  .tab .n{color:var(--faint);font-family:var(--mono);font-size:11px;margin-inline-start:5px}
-  .panel{display:none;padding:12px 14px 16px}
-  .panel[data-active]{display:block}
-  .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .stat{background:linear-gradient(180deg,var(--surface-2),#101722);border:1px solid var(--line-soft);border-radius:8px;padding:11px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
-  .stat .k{color:var(--muted);font-size:11px}
-  .stat .v{font-family:var(--mono);font-size:17px;font-weight:650;margin-top:4px;font-variant-numeric:tabular-nums}
-  .wl{display:flex;align-items:baseline;gap:8px}
-  .wl .w{color:var(--up)} .wl .l{color:var(--down)}
-  .barwl{height:5px;border-radius:3px;margin-top:9px;overflow:hidden;display:flex;background:#2A151A}
-  .barwl i{display:block;height:100%;background:var(--up)}
-  .filters{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
-  .filters button{appearance:none;background:var(--surface-2);border:1px solid var(--line-soft);color:var(--muted);font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer;transition:.12s;font-family:var(--sans)}
-  .filters button[data-on]{color:var(--bg);background:var(--gold);border-color:var(--gold)}
-  .list{max-height:280px;overflow:auto;margin:0 -4px;padding:0 4px}
-  .list::-webkit-scrollbar{width:6px} .list::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
-  .row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line-soft)}
-  .row:last-child{border-bottom:0}
-  .side{width:36px;height:34px;border-radius:8px;display:grid;place-items:center;font-size:10px;font-weight:700;flex:none;font-family:var(--mono)}
-  .side.buy{color:var(--up);background:#10251D} .side.sell{color:var(--down);background:#2A151A}
-  .row .mid{flex:1;min-width:0}
-  .row .sym{font-weight:600;font-size:13px}
-  .row .meta{color:var(--faint);font-size:11px;font-family:var(--mono);margin-top:1px}
-  .row .pnl{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;font-size:13px;text-align:end}
-  .row .pnl small{display:block;color:var(--faint);font-weight:400;font-size:10px}
-  .pos{color:var(--up)} .neg{color:var(--down)}
-  .sigrow{display:block;padding:10px 4px;border-bottom:1px solid var(--line-soft)}
-  .sigrow:last-child{border-bottom:0}
-  .sighd{display:flex;align-items:center;gap:8px}
-  .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;font-family:var(--mono)}
-  .badge.blocked{color:var(--down);background:#2A151A;border:1px solid #4A252C}
-  .badge.open{color:var(--gold);background:#281F10;border:1px solid #4B3518}
-  .lvls{display:flex;gap:12px;margin-top:5px;font-family:var(--mono);font-size:11px}
-  .lvls span{color:var(--faint)} .lvls b{font-variant-numeric:tabular-nums}
-  .lvls .e{color:var(--txt)} .lvls .sl{color:var(--down)} .lvls .tp{color:var(--up)}
-  .pat{color:var(--muted);font-size:11px;margin-top:4px;font-style:italic}
-  .foot{padding:9px 16px;border-top:1px solid var(--line-soft);color:var(--faint);font-size:10px;font-family:var(--mono);display:flex;justify-content:space-between;align-items:center;background:rgba(7,10,15,.45)}
-  .empty{color:var(--faint);text-align:center;padding:24px;font-size:12px}
-  @media (max-width:420px){
-    .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-    .eq .big{font-size:28px}
-    .tab{padding:10px 9px;font-size:12px}
-    .row{gap:8px}
-  }
-`;
-
-const PORTFOLIO_SCRIPT = `
-(function(){
-  /* Null = unknown/unavailable — rendered as "—", never a fabricated 0. */
-  var DATA = {
-    account:{login:null,broker:null,currency:null,balance:null,equity:null,online:false,lastHeartbeat:null},
-    todayPnl:null, openTrades:null, trades:[], signals:[], empty:true
-  };
-  function num(v){ return typeof v==="number"&&isFinite(v) ? v : null; }
-  function money(n,d){ if(d==null)d=2; if(n==null||isNaN(n))return "—";
-    return (n<0?"\\u2212":"")+"$"+Math.abs(Number(n)).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d}); }
-  function px(n){ if(n==null||isNaN(n))return "—"; n=Number(n);
-    return n>=1000 ? n.toLocaleString("en-US",{maximumFractionDigits:2}) : n.toLocaleString("en-US",{maximumFractionDigits:4}); }
-  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
-
-  /* Accept card-shaped data as-is; defensively map a raw bridge payload.
-     Unknown shapes return null — caller keeps the previous state instead of
-     rendering fake zeros. */
-  function normalize(d){
-    if(!d || typeof d!=="object") return null;
-    if(d.account && d.trades){ d.empty=false; return d; }
-    if(d.forex || d.openTrades || d.recentTrades){
-      var ea=(d.forex&&d.forex.ea)||{}, meta=(d.forex&&d.forex.metaapi)||{};
-      var open=Array.isArray(d.openTrades)?d.openTrades:null;
-      var recent=Array.isArray(d.recentTrades)?d.recentTrades:[];
-      var recs=Array.isArray(d.recommendations)?d.recommendations:[];
-      return {
-        account:{
-          login:ea.account_login||meta.account_login||null,
-          broker:ea.broker_name||meta.broker_name||null,
-          currency:ea.account_currency||meta.account_currency||null,
-          balance:num(ea.balance)!=null?num(ea.balance):num(meta.balance),
-          equity:num(ea.equity)!=null?num(ea.equity):num(meta.equity),
-          online:!!ea.online,
-          lastHeartbeat:ea.last_heartbeat_at||null,
-          tradeMode:ea.account_trade_mode||meta.account_trade_mode||null
-        },
-        todayPnl:num(d.todayRealizedPnlUsd),
-        openTrades:open?open.length:null,
-        trades:recent.map(function(t){return {sym:t.symbol,side:(t.side||"").toLowerCase(),qty:t.qty,price:t.avg_price,pnl:t.pnl,at:(t.created_at||"").slice(11,16)};}),
-        signals:recs.map(function(r){var a=(r.action||"").toLowerCase();return {sym:r.symbol,side:a==="sell"?"sell":"buy",entry:r.entry,sl:r.stop_loss,tp:r.take_profit,pat:r.pattern_name||"",blocked:a==="wait"||a==="hold"};}),
-        empty:false
-      };
-    }
-    return null;
-  }
-
-  function render(){
-    var a=DATA.account, T=DATA.trades||[], S=DATA.signals||[];
-    var wins=T.filter(function(t){return t.pnl>0;}).length;
-    var losses=T.filter(function(t){return t.pnl<=0;}).length;
-    var wr=T.length?Math.round(wins/T.length*100):null;
-    var pnlChip = DATA.todayPnl==null
-      ? '<span class="chip">\\u2014</span>'
-      : '<span class="chip '+(DATA.todayPnl>=0?"up":"down")+'">'+(DATA.todayPnl>=0?"\\u25b2":"\\u25bc")+" "+money(DATA.todayPnl)+"</span>";
-    var h="";
-    h+='<div class="hd"><div class="brand"><b><span class="ai">Ai</span>Chart</b><small>#'+esc(a.login==null?"\\u2014":a.login)+" \\u00b7 "+esc(a.broker==null?"\\u2014":a.broker)+'</small></div><div class="spacer"></div>';
-    h+='<span class="pill '+(a.online?"on":"off")+'"><span class="dot"></span>'+(a.online?"\\u0645\\u062a\\u0635\\u0644":"\\u063a\\u064a\\u0631 \\u0645\\u062a\\u0635\\u0644")+"</span>";
-    h+='<button class="refresh" id="rf" title="\\u062a\\u062d\\u062f\\u064a\\u062b" aria-label="\\u062a\\u062d\\u062f\\u064a\\u062b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button></div>';
-    h+='<div class="eq"><div class="lbl">\\u0627\\u0644\\u0625\\u064a\\u0643\\u0648\\u064a\\u062a\\u064a</div><div class="big">'+px(a.equity)+(a.currency?'<span class="cur">'+esc(a.currency)+'</span>':"")+'</div>';
-    h+='<div class="sub"><span>\\u0627\\u0644\\u0631\\u0635\\u064a\\u062f <b>'+money(a.balance)+'</b></span><span>\\u0631\\u0628\\u062d \\u0627\\u0644\\u064a\\u0648\\u0645 '+pnlChip+"</span></div></div>";
-    h+='<div class="tabs" role="tablist"><button class="tab" role="tab" data-tab="ov" aria-selected="true">\\u0646\\u0638\\u0631\\u0629 \\u0639\\u0627\\u0645\\u0629</button>';
-    h+='<button class="tab" role="tab" data-tab="tr" aria-selected="false">\\u0627\\u0644\\u0635\\u0641\\u0642\\u0627\\u062a<span class="n">'+T.length+'</span></button>';
-    h+='<button class="tab" role="tab" data-tab="sg" aria-selected="false">\\u0627\\u0644\\u062a\\u0648\\u0635\\u064a\\u0627\\u062a<span class="n">'+S.length+"</span></button></div>";
-    /* overview */
-    h+='<div class="panel" data-panel="ov" data-active><div class="stats">';
-    h+='<div class="stat"><div class="k">\\u0635\\u0641\\u0642\\u0627\\u062a \\u0645\\u0641\\u062a\\u0648\\u062d\\u0629</div><div class="v">'+(DATA.openTrades==null?"\\u2014":DATA.openTrades)+"</div></div>";
-    if(T.length){
-      h+='<div class="stat"><div class="k">\\u0646\\u0633\\u0628\\u0629 \\u0627\\u0644\\u0631\\u0628\\u062d \\u00b7 \\u0622\\u062e\\u0631 '+T.length+'</div><div class="v">'+wr+'<span style="font-size:12px;color:var(--muted)">%</span></div><div class="wl" style="font-size:11px;margin-top:2px"><span class="w">'+wins+' \\u0631\\u0628\\u062d</span><span class="l">'+losses+' \\u062e\\u0633\\u0627\\u0631\\u0629</span></div><div class="barwl"><i style="width:'+wr+'%"></i></div></div>';
-    } else {
-      h+='<div class="stat"><div class="k">\\u0646\\u0633\\u0628\\u0629 \\u0627\\u0644\\u0631\\u0628\\u062d</div><div class="v">\\u2014</div><div style="color:var(--faint);font-size:10px;margin-top:3px">\\u0644\\u0627 \\u0635\\u0641\\u0642\\u0627\\u062a \\u0628\\u0639\\u062f</div></div>';
-    }
-    h+='<div class="stat"><div class="k">\\u062d\\u0627\\u0644\\u0629 \\u0627\\u0644\\u062c\\u0633\\u0631 (EA)</div><div class="v" style="font-size:14px;color:'+(a.online?"var(--up)":"var(--down)")+'">'+(a.online?"\\u064a\\u0639\\u0645\\u0644":"\\u0645\\u062a\\u0648\\u0642\\u0641")+'</div><div style="color:var(--faint);font-size:10px;font-family:var(--mono);margin-top:3px">\\u0622\\u062e\\u0631 \\u0646\\u0628\\u0636\\u0629 '+esc(a.lastHeartbeat==null?"\\u2014":a.lastHeartbeat)+"</div></div>";
-    h+='<div class="stat"><div class="k">\\u0646\\u0648\\u0639 \\u0627\\u0644\\u062d\\u0633\\u0627\\u0628</div><div class="v" style="font-size:14px">'+(a.tradeMode==="live"?"\\u062d\\u0642\\u064a\\u0642\\u064a":a.tradeMode==="demo"?"\\u062a\\u062c\\u0631\\u064a\\u0628\\u064a":"\\u2014")+(a.currency?" \\u00b7 "+esc(a.currency):"")+'</div><div style="color:var(--faint);font-size:10px;font-family:var(--mono);margin-top:3px">MT5'+(a.broker?" \\u00b7 "+esc(a.broker):"")+"</div></div>";
-    h+="</div></div>";
-    /* trades */
-    h+='<div class="panel" data-panel="tr"><div class="filters" id="flt"><button data-f="all" data-on>\\u0627\\u0644\\u0643\\u0644</button></div><div class="list" id="trlist"></div></div>';
-    /* signals */
-    h+='<div class="panel" data-panel="sg"><div class="list">';
-    if(!S.length){ h+='<div class="empty">\\u0644\\u0627 \\u062a\\u0648\\u0635\\u064a\\u0627\\u062a \\u0627\\u0644\\u0622\\u0646</div>'; }
-    for(var i=0;i<S.length;i++){ var s=S[i];
-      h+='<div class="sigrow"><div class="sighd"><span class="side '+(s.side==="sell"?"sell":"buy")+'" style="width:auto;height:auto;padding:2px 6px">'+(s.side==="sell"?"\\u0628\\u064a\\u0639":"\\u0634\\u0631\\u0627\\u0621")+'</span><b style="font-size:13px">'+esc(s.sym)+'</b><span class="badge '+(s.blocked?"blocked":"open")+'">'+(s.blocked?"\\u0645\\u062d\\u0638\\u0648\\u0631\\u0629":"\\u0642\\u0627\\u0628\\u0644\\u0629 \\u0644\\u0644\\u062a\\u0646\\u0641\\u064a\\u0630")+"</span></div>";
-      h+='<div class="lvls"><span>\\u062f\\u062e\\u0648\\u0644 <b class="e">'+px(s.entry)+'</b></span><span>\\u0648\\u0642\\u0641 <b class="sl">'+px(s.sl)+'</b></span><span>\\u0647\\u062f\\u0641 <b class="tp">'+px(s.tp)+"</b></span></div>";
-      if(s.pat) h+='<div class="pat">'+esc(s.pat)+"</div>";
-      h+="</div>";
-    }
-    h+="</div></div>";
-    h+='<div class="foot"><span>get_portfolio</span><span>'+(DATA.empty?"\\u0628\\u0627\\u0646\\u062a\\u0638\\u0627\\u0631 \\u0627\\u0644\\u0628\\u064a\\u0627\\u0646\\u0627\\u062a\\u2026":(a.lastHeartbeat?"\\u0622\\u062e\\u0631 \\u062a\\u062d\\u062f\\u064a\\u062b "+esc(String(a.lastHeartbeat).replace("T"," ").slice(0,16)):"\\u2014"))+"</span></div>";
-
-    var card=document.getElementById("card");
-    card.innerHTML=h;
-
-    /* symbol filter chips derived from trades */
-    var syms=[]; for(var j=0;j<T.length;j++){ var base=(T[j].sym||"").replace(/m$/i,"").slice(0,3); if(base && syms.indexOf(base)<0) syms.push(base); }
-    var flt=document.getElementById("flt");
-    for(var k=0;k<syms.length && k<4;k++){ var b=document.createElement("button"); b.setAttribute("data-f",syms[k]); b.textContent=syms[k]; flt.appendChild(b); }
-
-    card.querySelectorAll(".tab").forEach(function(t){ t.onclick=function(){
-      card.querySelectorAll(".tab").forEach(function(x){ x.setAttribute("aria-selected", x===t?"true":"false"); });
-      card.querySelectorAll(".panel").forEach(function(p){ if(p.getAttribute("data-panel")===t.getAttribute("data-tab")) p.setAttribute("data-active",""); else p.removeAttribute("data-active"); });
-    };});
-
-    function drawTrades(f){
-      var out=""; var list=T.filter(function(t){ return f==="all" || (t.sym||"").toUpperCase().indexOf(f.toUpperCase())===0; });
-      for(var m=0;m<list.length;m++){ var t=list[m]; var closed=t.at ? t.at : "";
-        out+='<div class="row"><div class="side '+(t.side==="sell"?"sell":"buy")+'">'+(t.side==="sell"?"SELL":"BUY")+'</div><div class="mid"><div class="sym">'+esc(t.sym)+'</div><div class="meta">'+px(t.qty)+" @ "+px(t.price)+(closed?(" \\u00b7 "+esc(closed)):"")+'</div></div><div class="pnl '+(t.pnl>=0?"pos":"neg")+'">'+money(t.pnl)+"</div></div>";
-      }
-      var el=document.getElementById("trlist"); el.innerHTML = out || '<div class="empty">\\u0644\\u0627 \\u0635\\u0641\\u0642\\u0627\\u062a</div>';
-    }
-    drawTrades("all");
-    card.querySelectorAll("#flt button").forEach(function(b){ b.onclick=function(){
-      card.querySelectorAll("#flt button").forEach(function(x){ x.removeAttribute("data-on"); });
-      b.setAttribute("data-on","");
-      drawTrades(b.getAttribute("data-f"));
-    };});
-
-    var rf=document.getElementById("rf");
-    if(rf) rf.onclick=function(){ rf.disabled=true; AIC.callTool("get_portfolio",{}).then(function(d){ apply(d); }).catch(function(){}).finally(function(){ if(rf) rf.disabled=false; }); };
-    if(AIC && AIC.notifySize) setTimeout(AIC.notifySize,60);
-  }
-
-  /* Unknown/empty payloads keep the previous state — never fake zeros. */
-  function apply(x){
-    if(!x) return;
-    var n=normalize(x);
-    if(n){ DATA=n; }
-    render();
-  }
-
-  function boot(api){
-    var d=api.getData && api.getData();
-    if(d){ apply(d); } else { render(); }
-    api.onData(apply);
-  }
-  if(window.AIC){ boot(window.AIC); } else { window.__aicReady=boot; }
-})();
-`;
-
-/* Self-contained: the host iframe sandbox blocks external assets, so the
- * flagship card inlines its stylesheet, the shared runtime and its script. */
-const portfolio = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lonora — بطاقة الحساب</title>
-<style>${PORTFOLIO_CSS}</style>
-</head>
-<body>
-<div class="card" id="card"></div>
-<script>${RUNTIME_JS}</script>
-<script>${PORTFOLIO_SCRIPT}</script>
-</body>
-</html>`;
-
-export const PORTFOLIO_ASSETS = {
-  css: {
-    path: "portfolio-card.css",
-    body: PORTFOLIO_CSS,
-    mimeType: "text/css; charset=utf-8",
-  },
-  js: {
-    path: "portfolio-card.js",
-    body: PORTFOLIO_SCRIPT,
-    mimeType: "application/javascript; charset=utf-8",
-  },
-} as const;
-
 /* ─────────────────────────── recommendation ───────────────────────────
  * Dedicated trade-idea card: action badge + confidence, entry/stop/target
  * ladder with computed R:R, rationale, factor chips. Also renders scan_market
@@ -1058,22 +779,23 @@ export const PORTFOLIO_ASSETS = {
  * many shapes (create_recommendation, run_market_analysis, scan_market). */
 const recommendationCard = widgetHtml(
   "Lonora recommendation",
-  `<div class="card">
-    <div class="hd">
-      <span class="title" id="title">التوصية</span>
-      <span id="badge" class="badge wait">Lonora</span>
+  `<div class="card wait" id="rec-card">
+    <div class="top">
+      <div>
+        <div class="title" id="title">—</div>
+      </div>
+      <div class="tag amber" id="badge">—</div>
     </div>
-    <div id="body">
-      <div class="skel" style="height:64px"></div>
-      <div class="skel" style="height:48px;margin-top:10px"></div>
+    <div class="main" id="body"><div class="skel"></div></div>
+    <div class="row">
+      <div class="mini"><strong id="sl-val" class="red">—</strong></div>
+      <div class="mini"><strong id="tp-val" class="green">—</strong></div>
     </div>
-    <div id="summary" class="muted" style="margin-top:10px;line-height:1.7"></div>
-    <div id="factors" class="row" style="margin-top:8px"></div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
-      <button class="btn" id="chart" style="display:none">عرض الشارت</button>
-      <button class="btn primary" id="deep">تحليل أعمق</button>
+      <button class="btn" id="chart" style="display:none">شارت</button>
+      <button class="btn primary" id="deep">تحليل</button>
     </div>
   </div>`,
   `
@@ -1100,84 +822,53 @@ const recommendationCard = widgetHtml(
     return { cls:"wait", ar:"انتظار", dir:0 };
   }
   window.__aicReady = function (AIC){
-    function big(label, val, cls){
-      var v = AIC.num(val);
-      return '<div class="kv" style="flex:1"><div class="k">'+label+'</div><div class="v '+cls+'">'+
-        (v==null?"—":AIC.fmt(v,5))+'</div></div>';
-    }
     AIC.onData(function (data){
       data = obj(data);
       var rec = pickRec(data);
       var act = actInfo(rec.action || rec.side);
       current.symbol = rec.symbol || data.symbol || current.symbol;
       current.chartUrl = data.chart_url || data.chart_image_url || rec.chart_url || current.chartUrl;
-
-      document.getElementById("title").textContent = current.symbol ? "توصية " + current.symbol : "التوصية";
+      var tf = rec.timeframe || rec.interval || data.interval || "15m";
+      document.getElementById("title").textContent = current.symbol ? current.symbol + " · " + tf : "—";
+      var card = document.getElementById("rec-card");
+      card.className = "card " + act.cls;
       var badge = document.getElementById("badge");
-      badge.className = "badge " + act.cls;
       var conf = AIC.num(rec.confidence);
-      badge.textContent = act.ar + (conf!=null ? " · " + Math.round(conf) + "%" : "");
-
+      badge.className = "tag " + (act.cls === "buy" ? "green" : act.cls === "sell" ? "red" : "amber");
+      badge.textContent = conf != null ? Math.round(conf) + "%" : act.ar;
       var entry = AIC.num(rec.entry), sl = AIC.num(rec.stop_loss ?? rec.stop ?? rec.sl);
       var tp = AIC.num(rec.take_profit ?? rec.target ?? rec.tp ?? (Array.isArray(rec.targets)?rec.targets[0]:null));
-      var rr = null;
-      if (entry!=null && sl!=null && tp!=null){
-        var risk = Math.abs(entry - sl), reward = Math.abs(tp - entry);
-        if (risk > 0) rr = reward / risk;
-      }
       var body = document.getElementById("body");
       var list = pickList(data);
-      if (list){
-        /* scan_market: ranked opportunities */
-        var h = '<table><thead><tr><th>الرمز</th><th>الاتجاه</th><th>الثقة</th><th>الدخول</th></tr></thead><tbody>';
-        for (var i=0;i<Math.min(list.length,8);i++){
+      if (list) {
+        var h = "";
+        for (var i=0;i<Math.min(list.length,4);i++){
           var o = obj(list[i]); var oa = actInfo(o.action||o.side);
           var oc = AIC.num(o.confidence);
-          h += '<tr><td>'+(o.symbol||o.sym||"—")+'</td>'+
-               '<td><span class="badge '+oa.cls+'" style="padding:1px 8px">'+oa.ar+'</span></td>'+
-               '<td>'+(oc!=null?Math.round(oc)+"%":"—")+'</td>'+
-               '<td>'+(AIC.num(o.entry)!=null?AIC.fmt(o.entry,5):"—")+'</td></tr>';
+          h += '<div class="pair"><strong>'+(o.symbol||o.sym||"—")+'</strong><span class="'+
+            (oa.cls==="buy"?"green":oa.cls==="sell"?"red":"amber")+'">'+
+            oa.ar+(oc!=null?" "+Math.round(oc)+"%":"")+'</span></div>';
         }
-        h += '</tbody></table>';
-        body.innerHTML = h;
-      } else if (entry!=null || sl!=null || tp!=null){
-        var h2 = '<div class="row" style="gap:8px">'+
-          big("الدخول", entry, act.cls==="sell"?"red":"green")+
-          big("الوقف", sl, "red")+
-          big("الهدف", tp, "blue")+'</div>';
-        var meta = [];
-        if (rr!=null) meta.push('<span class="badge '+(rr>=1?"buy":"wait")+'">عائد/مخاطرة '+rr.toFixed(2)+'</span>');
-        if (rec.timeframe) meta.push('<span class="muted">فريم '+rec.timeframe+'</span>');
-        if (rec.pattern_name) meta.push('<span class="muted">نموذج: '+rec.pattern_name+'</span>');
-        if (conf!=null){
-          meta.push('<span class="muted" style="flex:1">الثقة</span>');
-        }
-        h2 += '<div class="row" style="margin-top:10px;gap:8px">'+meta.join("")+'</div>';
-        if (conf!=null){
-          h2 += '<div style="height:6px;border-radius:3px;background:#221517;margin-top:6px;overflow:hidden">'+
-                '<i style="display:block;height:100%;width:'+Math.max(0,Math.min(100,conf))+'%;background:var(--gold)"></i></div>';
-        }
-        body.innerHTML = h2;
+        body.innerHTML = h || '<div class="empty">لا فرص</div>';
+        document.getElementById("sl-val").textContent = "—";
+        document.getElementById("tp-val").textContent = "—";
+      } else if (entry!=null || sl!=null || tp!=null || act.dir !== 0) {
+        body.innerHTML = '<div class="signal '+(act.cls==="buy"?"green":act.cls==="sell"?"red":"amber")+'">'+
+          act.ar+'</div>' +
+          (conf!=null ? '<div class="confidence"><div class="bar '+
+          (act.cls==="buy"?"green":act.cls==="sell"?"red":"amber")+
+          '" style="width:'+Math.max(0,Math.min(100,conf))+'%"></div></div>' : "");
+        document.getElementById("sl-val").textContent = sl != null ? AIC.fmt(sl, 5) : "—";
+        document.getElementById("tp-val").textContent = tp != null ? AIC.fmt(tp, 5) : "—";
       } else {
-        body.innerHTML = '<div class="empty">لا توجد توصية قابلة للعرض بعد — شغّل تحليلاً أو مسحاً للسوق.</div>';
+        body.innerHTML = '<div class="empty">لا توصية بعد</div>';
+        document.getElementById("sl-val").textContent = "—";
+        document.getElementById("tp-val").textContent = "—";
       }
-
-      var summary = rec.rationale || rec.reason || data.reply || data.summary || "";
-      document.getElementById("summary").textContent = String(summary).slice(0, 420);
-
-      var fx = document.getElementById("factors");
-      fx.innerHTML = "";
-      var factors = Array.isArray(rec.factors) ? rec.factors : (Array.isArray(data.factors) ? data.factors : []);
-      factors.slice(0,6).forEach(function (f){
-        if (!f) return;
-        var chip = document.createElement("span");
-        chip.className = "badge wait";
-        chip.style.fontWeight = "600";
-        chip.textContent = String(f).slice(0,40);
-        fx.appendChild(chip);
-      });
-
-      AIC.applyBridgeBadge(document.getElementById("status"), data);
+      var stale = AIC.bridgeLinkState(data).stale;
+      var statusEl = document.getElementById("status");
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
+      statusEl.className = stale ? "status stale" : "status";
       var chartBtn = document.getElementById("chart");
       chartBtn.style.display = current.chartUrl ? "inline-flex" : "none";
       AIC.notifySize();
@@ -1209,7 +900,7 @@ export const WIDGETS: Record<string, string> = {
   "levels-card": analysis,
   "chart-drawn": liveChart,
   "live-chart": liveChart,
-  portfolio,
+  portfolio: accountOverview,
   "trade-readiness": genericCard("جاهزية الصفقة", "فحص ما قبل التنفيذ عبر Lonora."),
   "lessons-card": genericCard("دروس التداول", "ذاكرة الأداء والدروس المشابهة."),
 };

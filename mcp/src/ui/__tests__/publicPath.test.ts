@@ -18,7 +18,7 @@ describe("normalizeWidgetPublicPath", () => {
 
 describe("self-contained widget shells", () => {
   it("resolves comma path to registered widget HTML", () => {
-    const hit = widgetHtmlByPublicPath("account-overview,v2");
+    const hit = widgetHtmlByPublicPath("account-overview,v4");
     assert.ok(hit);
     // Host sandboxes block external assets — runtime must ship inline.
     assert.ok(hit.html.includes("window.AIC"));

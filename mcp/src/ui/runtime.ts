@@ -151,8 +151,13 @@ export const RUNTIME_JS = `
     api.applyBridgeBadge = function (el, data) {
       if (!el) return;
       var s = api.bridgeLinkState(data);
+      if (!s.stale) {
+        el.textContent = "";
+        el.className = "status";
+        return;
+      }
       el.textContent = s.label;
-      el.className = s.label ? "status " + (s.stale ? "stale" : "live") : "status";
+      el.className = "status stale";
     };
     api.renderTradeLines = function (container, trades, fmt) {
       if (!container) return;
@@ -161,18 +166,105 @@ export const RUNTIME_JS = `
         container.innerHTML = '<div class="empty">لا صفقات مفتوحة</div>';
         return;
       }
-      trades.forEach(function (t) {
+      trades.slice(0, 4).forEach(function (t) {
         if (!t || typeof t !== "object") return;
         var sym = t.symbol || t.sym || "?";
         var side = String(t.side || "").toLowerCase();
-        var sideAr = side === "buy" ? "شراء" : side === "sell" ? "بيع" : side || "—";
-        var pnl = t.pnl != null ? t.pnl : (t.open_pnl != null ? t.open_pnl : t.profit);
+        var sideAr = side === "buy" ? "Buy" : side === "sell" ? "Sell" : side || "—";
+        var vol = t.volume != null ? t.volume : (t.lots != null ? t.lots : t.qty);
         var line = document.createElement("div");
-        line.className = "trade-line";
-        line.textContent = sym + " · " + sideAr +
-          (pnl != null && !isNaN(pnl) ? " · PnL " + fmt(pnl, 2) : "");
+        line.className = "pair";
+        line.innerHTML = "<strong>" + sym + "</strong><span class=\"" +
+          (side === "buy" ? "green" : side === "sell" ? "red" : "") + "\">" +
+          sideAr + (vol != null ? " " + vol : "") + "</span>";
         container.appendChild(line);
       });
+      if (trades.length > 4) {
+        var more = document.createElement("div");
+        more.className = "sub";
+        more.textContent = "+" + (trades.length - 4) + " صفقات أخرى";
+        container.appendChild(more);
+      }
+    };
+    api.unwrapBridge = function (v) {
+      v = v && typeof v === "object" ? v : {};
+      if (v.ok === true && v.data != null && typeof v.data === "object") return v.data;
+      return v;
+    };
+    api.first = function () {
+      for (var i = 0; i < arguments.length; i++) {
+        var v = arguments[i];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+      return null;
+    };
+    api.parseAccountOverview = function (data) {
+      data = data && typeof data === "object" ? data : {};
+      if (!data.live && !data.risk && (data.forex || data.openTrades || data.open_trades)) {
+        data = { portfolio: data, live: data };
+      }
+      if (!api.unwrapBridge(data.live || {}).forex && api.unwrapBridge(data.forex || {}).ea) {
+        data = { risk: data.risk, portfolio: data.portfolio, live: data };
+      }
+      var risk = api.unwrapBridge(data.risk);
+      var portfolio = api.unwrapBridge(data.portfolio);
+      var live = api.unwrapBridge(data.live);
+      var cap = risk.capital || {};
+      var liveForex = live.forex || {};
+      var dataForex = data.forex || {};
+      var portfolioForex = portfolio.forex || {};
+      var eaLive = liveForex.ea || {};
+      var eaDirect = dataForex.ea || {};
+      var eaPort = portfolioForex.ea || {};
+      var conn = api.first(live.connection, liveForex.connection, data.connection, dataForex.connection) || {};
+      var legacy = api.first(portfolio.account, live.account, data.account, conn) || {};
+      var heartbeatFresh = api.first(eaLive.heartbeatFresh, liveForex.heartbeatFresh, dataForex.heartbeatFresh, live.heartbeatFresh, data.heartbeatFresh);
+      var online = api.first(eaLive.online, eaLive.connected, liveForex.online, dataForex.online, live.online, data.online);
+      var status = String(api.first(eaLive.status, liveForex.status, dataForex.status, live.status, data.status) || "");
+      var fresh = heartbeatFresh === true || online === true || /online|connected|live/i.test(status);
+      var stale = heartbeatFresh === false || online === false || /offline|stale|down|revoked/i.test(status);
+      var known = heartbeatFresh != null || online != null || status !== "" || Object.keys(eaLive).length > 0;
+      var ea = { fresh: fresh && !stale, stale: stale || !fresh, label: !known ? "" : (fresh && !stale ? "متصل" : "غير متصل / بيانات قديمة") };
+      var balance = api.num(api.first(eaLive.balance, eaDirect.balance, eaPort.balance, conn.balance, legacy.balance, portfolio.balance, live.balance, data.balance));
+      var equity = api.num(api.first(eaLive.equity, eaDirect.equity, eaPort.equity, conn.equity, legacy.equity, portfolio.equity, live.equity, data.equity));
+      var freeMargin = api.num(api.first(
+        eaLive.freeMargin, eaLive.free_margin, eaLive.margin_free,
+        eaDirect.freeMargin, eaDirect.free_margin, eaDirect.margin_free,
+        conn.freeMargin, conn.free_margin, conn.margin_free,
+        legacy.freeMargin, legacy.free_margin, legacy.margin_free,
+        portfolio.freeMargin, portfolio.free_margin, live.freeMargin, data.freeMargin
+      ));
+      var openPnl = api.num(api.first(portfolio.openPnl, portfolio.open_pnl, legacy.openPnl, legacy.pnl, live.openPnl, live.open_pnl, data.openPnl, data.open_pnl));
+      if (openPnl == null) {
+        var arrs = [liveForex.positions, dataForex.positions, live.positions, data.positions, portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades];
+        for (var ai = 0; ai < arrs.length; ai++) {
+          var arr = arrs[ai];
+          if (!Array.isArray(arr) || !arr.length) continue;
+          var sum = 0, seen = false;
+          for (var j = 0; j < arr.length; j++) {
+            var t = arr[j] || {};
+            var p = api.num(api.first(t.profit, t.pnl, t.open_pnl, t.openPnl));
+            if (p != null) { sum += p; seen = true; }
+          }
+          if (seen) { openPnl = sum; break; }
+        }
+      }
+      var openTrades = api.first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.open_trades, data.trades, live.openTrades, live.open_trades);
+      var tradeCount = Array.isArray(openTrades) ? openTrades.length : (typeof openTrades === "number" ? openTrades : null);
+      var broker = String(api.first(eaLive.broker_name, eaDirect.broker_name, eaPort.broker_name, conn.broker, legacy.broker) || "MT5");
+      var mode = String(api.first(eaLive.account_trade_mode, eaDirect.account_trade_mode, eaPort.account_trade_mode, conn.mode, legacy.mode) || "live").toLowerCase();
+      var login = api.first(eaLive.account_login, eaDirect.account_login, eaPort.account_login, conn.login, legacy.login);
+      var acctTitle = broker + (mode === "live" ? " Real" : mode === "demo" ? " Demo" : "");
+      var tag = mode === "live" ? "LIVE" : (mode === "demo" ? "DEMO" : String(mode).toUpperCase());
+      if (ea.stale) tag = "Stale";
+      return {
+        ea: ea, balance: balance, equity: equity, freeMargin: freeMargin, openPnl: openPnl,
+        openTrades: openTrades, tradeCount: tradeCount, acctTitle: acctTitle, tag: tag,
+        riskMode: api.first(risk.mode, risk.status, data.risk_status),
+        perTradeMax: api.first(cap.perTradeMaxUsd, risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd),
+        effectiveCapital: cap.effectiveCapital,
+        login: login,
+      };
     };
     window.AIC = api;
     /* If the host never delivers data, swap loading skeletons for an honest
@@ -328,16 +420,15 @@ export const RUNTIME_JS = `
 })();
 `;
 
-/** Shared card theme — Lonora premium dark, RTL Arabic, fully inline (the
- *  host iframe sandbox blocks external assets, so no fonts/CDNs/links). */
+/** Shared card theme — square 1:1 MCP cards, flat #20201e, RTL Arabic.
+ *  Fully inline (host iframe sandbox blocks external assets). */
 export const THEME_CSS = `
   :root{
-    --bg:#070A0F; --surface:#101720; --surface-2:#151D28; --surface-3:#0C1118;
-    --line:#263241; --line-soft:#1D2632;
-    --txt:#EDF2F7; --muted:#9AA6B6; --faint:#667386;
-    --gold:#E4B45F; --up:#38C083; --down:#EF6A72; --warn:#E1A84A; --info:#71B7FF;
-    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
-    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Tahoma",sans-serif;
+    --surface:#20201e; --surface-2:#2a2a28;
+    --txt:#f8fafc; --muted:#94a3b8; --faint:#64748b;
+    --amber:#fbbf24; --up:#34d399; --down:#fb7185; --info:#60a5fa;
+    --line:rgba(148,163,184,.18); --line-soft:rgba(148,163,184,.12);
+    --sans:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{background:transparent}
@@ -345,79 +436,91 @@ export const THEME_CSS = `
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
   .card{
     position:relative;isolation:isolate;
-    background:linear-gradient(180deg,#111925 0%,var(--surface-3) 100%);
-    border:1px solid var(--line);border-radius:8px;
-    padding:14px 16px;max-width:560px;margin:0 auto;overflow:hidden;
-    box-shadow:0 16px 36px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.04);
+    aspect-ratio:1/1;min-width:260px;max-width:340px;width:100%;margin:0 auto;
+    border:1px solid var(--line);border-radius:28px;
+    background:var(--surface);
+    box-shadow:0 16px 48px rgba(0,0,0,.28);
+    padding:22px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;
   }
-  .card::before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,var(--up),var(--gold),var(--down));opacity:.9}
-  .hd{display:flex;align-items:center;justify-content:space-between;gap:8px;
-    margin:-14px -16px 14px;padding:13px 16px 12px;border-bottom:1px solid var(--line-soft);
-    background:rgba(12,17,24,.78)}
-  .hd .title{font-size:14px;font-weight:700;color:var(--txt);letter-spacing:0}
-  .hd .brand{font-size:10px;color:var(--gold);letter-spacing:0;font-weight:700;text-transform:uppercase}
+  .card.buy{border-color:rgba(52,211,153,.35);background:var(--surface)}
+  .card.sell{border-color:rgba(251,113,133,.35);background:var(--surface)}
+  .card.wait{border-color:rgba(251,191,36,.35);background:var(--surface)}
+  .top,.hd{position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .label{font-size:13px;font-weight:700;color:var(--muted)}
+  .title{margin-top:6px;font-size:22px;line-height:1.1;font-weight:900;letter-spacing:-.03em;color:var(--txt)}
+  .tag,.badge{
+    border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900;white-space:nowrap;
+    border:1px solid rgba(245,158,11,.28);color:var(--amber);background:rgba(245,158,11,.1);
+    display:inline-flex;align-items:center;gap:6px
+  }
+  .tag.green,.badge.buy{border-color:rgba(52,211,153,.35);color:var(--up);background:rgba(52,211,153,.12)}
+  .tag.red,.badge.sell{border-color:rgba(251,113,133,.35);color:var(--down);background:rgba(251,113,133,.12)}
+  .tag.amber,.badge.wait{border-color:rgba(251,191,36,.35);color:var(--amber);background:rgba(245,158,11,.1)}
+  .main{position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0;overflow:auto}
+  .value{font-size:clamp(34px,5vw,54px);line-height:.95;font-weight:950;letter-spacing:-.06em;font-variant-numeric:tabular-nums}
+  .signal{font-size:clamp(40px,6vw,64px);line-height:.85;font-weight:1000;letter-spacing:-.08em}
+  .sub{margin-top:10px;color:var(--muted);font-size:14px;font-weight:700}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;position:relative}
+  .row.flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap;grid-template-columns:none}
+  .mini{
+    border-radius:18px;border:1px solid var(--line-soft);background:var(--surface-2);padding:13px;
+  }
+  .mini span{display:block;color:var(--muted);font-size:12px;font-weight:700}
+  .mini strong{display:block;margin-top:6px;font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;word-break:break-word}
+  .pair{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:10px 0;border-bottom:1px solid var(--line-soft);position:relative;
+  }
+  .pair:last-child{border-bottom:0}
+  .pair strong{font-size:15px}
+  .pair span{font-size:13px;color:var(--muted);font-weight:800;font-variant-numeric:tabular-nums}
+  .confidence{width:100%;height:9px;border-radius:99px;background:rgba(148,163,184,.16);overflow:hidden;margin-top:16px}
+  .bar{height:100%;border-radius:inherit;max-width:100%}
+  .bar.green{background:var(--up)} .bar.red{background:var(--down)} .bar.amber{background:var(--amber)}
+  .green{color:var(--up)} .red{color:var(--down)} .amber{color:var(--amber)} .blue{color:var(--info)}
   .muted{color:var(--muted);font-size:12px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
-  .kv{
-    position:relative;overflow:hidden;background:linear-gradient(180deg,var(--surface-2),#101722);
-    border:1px solid var(--line-soft);border-radius:8px;padding:11px 12px;min-height:64px;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
-  }
-  .kv::before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:var(--line);opacity:.9}
-  .kv:has(.green)::before{background:var(--up)} .kv:has(.red)::before{background:var(--down)}
-  .kv:has(.blue)::before{background:var(--info)} .kv:has(.amber)::before{background:var(--warn)}
-  .kv .k{font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:0}
-  .kv .v{font-size:16px;font-weight:650;font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:0;word-break:break-word}
-  .green{color:var(--up)} .red{color:var(--down)} .blue{color:var(--info)} .amber{color:var(--warn)}
-  .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:999px;font-size:11px;font-weight:700}
-  .badge.buy{background:#10251D;color:var(--up);border:1px solid #1D4B38}
-  .badge.sell{background:#2A151A;color:var(--down);border:1px solid #4A252C}
-  .badge.wait{background:#281F10;color:var(--gold);border:1px solid #4B3518}
+  .chart{width:100%;height:110px;margin-top:8px;display:block;border-radius:12px}
+  .chart-wrap{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line-soft);background:var(--surface-2);flex:1;min-height:0}
+  .chart-wrap canvas{width:100%;height:110px;display:block}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .kv,.mini-kv{border-radius:18px;border:1px solid var(--line-soft);background:var(--surface-2);padding:13px}
+  .kv .k,.mini-kv .k{font-size:12px;color:var(--muted);font-weight:700;margin-bottom:6px}
+  .kv .v,.mini-kv .v{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;word-break:break-word}
   table{width:100%;border-collapse:collapse;font-size:12px}
-  th{color:var(--muted);font-weight:600;text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);font-size:11px}
-  td{padding:8px;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums;font-family:var(--mono)}
+  th{color:var(--muted);font-weight:700;text-align:right;padding:7px 4px;border-bottom:1px solid var(--line-soft);font-size:11px}
+  td{padding:8px 4px;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums;font-weight:700}
   .btn{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
-    background:#121A24;color:var(--muted);border:1px solid var(--line);
-    border-radius:8px;padding:7px 14px;min-height:34px;font-size:12px;font-weight:650;font-family:var(--sans);
-    transition:background .18s,color .18s,border-color .18s,box-shadow .18s;
+    background:var(--surface-2);color:var(--muted);border:1px solid var(--line-soft);
+    border-radius:14px;padding:7px 12px;min-height:34px;font-size:11px;font-weight:800;font-family:var(--sans);
   }
-  .btn:hover{color:var(--txt);border-color:#3B4A5F;background:#182231;box-shadow:0 0 0 1px rgba(113,183,255,.08)}
-  .btn:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
-  .btn.primary{background:#2B2111;color:var(--gold);border-color:#513819}
-  .btn.primary:hover{background:#352913;border-color:#69491F;color:#F1C879}
-  .btn.danger{background:#2A151A;color:var(--down);border-color:#4A252C}
-  .btn.danger:hover{background:#351A20}
-  .btn.confirming{background:#B45309!important;color:#fff!important;border-color:#F59E0B!important}
+  .btn:hover{color:var(--txt);border-color:rgba(148,163,184,.28);background:#333330}
+  .btn:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+  .btn.primary{color:var(--amber);border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.12)}
+  .btn.primary:hover{background:rgba(245,158,11,.18);color:#fde68a}
+  .btn.confirming{background:#b45309!important;color:#fff!important;border-color:#f59e0b!important}
   .btn:disabled{opacity:.5;cursor:not-allowed}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .spacer{flex:1}
-  .foot{margin:14px -16px -14px;padding:10px 16px 12px;border-top:1px solid var(--line-soft);
-    display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:rgba(7,10,15,.45)}
-  .empty{text-align:center;color:var(--faint);padding:22px 12px;font-size:12px;
-    border:1px dashed var(--line);border-radius:8px;grid-column:1/-1;background:rgba(12,17,24,.46)}
-  .imgwrap{border-radius:8px;overflow:hidden;border:1px solid var(--line)}
-  .imgwrap img{display:block;width:100%;height:auto}
-  .status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--muted);min-height:16px}
-  .status.stale{color:var(--warn)} .status.live{color:var(--up)}
-  .status.live::before,.status.stale::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
-  .status.live::before{box-shadow:0 0 0 3px rgba(63,178,127,.2)}
-  .trade-line{font-size:12px;line-height:1.6;padding:8px 2px;border-bottom:1px solid var(--line-soft);
-    font-family:var(--mono);font-variant-numeric:tabular-nums}
-  .trade-line:last-child{border-bottom:0}
-  .skel{min-height:64px;border-radius:8px;border:1px solid var(--line-soft);
-    background:linear-gradient(90deg,var(--surface-2) 25%,#223047 40%,var(--surface-2) 60%);
-    background-size:300% 100%;animation:skel 1.4s ease infinite}
-  @media (max-width:420px){
-    body{font-size:13px}
-    .card{padding:12px;max-width:100%}
-    .hd{margin:-12px -12px 12px;padding:12px}
-    .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-    .kv{padding:10px;min-height:62px}
-    .kv .v{font-size:15px}
-    .foot{margin:12px -12px -12px;padding:10px 12px}
+  .foot{
+    position:relative;margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft);
+    display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   }
-  @keyframes skel{0%{background-position:100% 0}100%{background-position:-100% 0}}
+  .empty{text-align:center;color:var(--faint);padding:18px 10px;font-size:12px;font-weight:700;
+    border:1px dashed var(--line-soft);border-radius:18px;background:var(--surface-2)}
+  .status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);min-height:16px}
+  .status:empty{display:none}
+  .status.stale{color:var(--amber)} .status.live{color:var(--up)}
+  .status.live::before,.status.stale::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+  .trade-line,.pair-line{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:10px 0;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums}
+  .trade-line:last-child,.pair-line:last-child{border-bottom:0}
+  .skel{min-height:48px;border-radius:18px;border:1px solid var(--line-soft);
+    background:var(--surface-2);opacity:.55;animation:skel 1.4s ease infinite}
+  @media (max-width:640px){
+    body{padding:2px}
+    .card{border-radius:24px;padding:18px;max-width:100%}
+  }
+  @keyframes skel{0%,100%{opacity:.45}50%{opacity:.75}}
 `;
 
 /** Public origin for shared widget assets (runtime.js / theme.css). */

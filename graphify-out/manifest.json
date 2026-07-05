@@ -4720,23 +4720,23 @@
     "semantic_hash": ""
   },
   "mcp/src/ui/__tests__/widgets.test.ts": {
-    "mtime": 1783116108.00042,
-    "ast_hash": "bba0ab047b218c8c68c7f75d10fce134",
+    "mtime": 1783223946.229598,
+    "ast_hash": "fd8d5a53242e50c821e22d6a6e4fea29",
     "semantic_hash": ""
   },
   "mcp/src/ui/index.ts": {
-    "mtime": 1783116008.4561741,
-    "ast_hash": "ab667652f30aa1f5f1b36940afcfd369",
+    "mtime": 1783222445.1711092,
+    "ast_hash": "24dae12bbc0e0f76974c2fe7974ad17e",
     "semantic_hash": ""
   },
   "mcp/src/ui/runtime.ts": {
-    "mtime": 1783118401.8519242,
-    "ast_hash": "4a212296ef482ca4de4b7806ba13d157",
+    "mtime": 1783223746.7655327,
+    "ast_hash": "4741598ceeb099a9f6bd8c5541a32508",
     "semantic_hash": ""
   },
   "mcp/src/ui/widgets.ts": {
-    "mtime": 1783118430.8078606,
-    "ast_hash": "d3e785750dd21b409cc452be51ea5527",
+    "mtime": 1783223891.131719,
+    "ast_hash": "f018276e2abce99c8eff4b0bc6a1b0cf",
     "semantic_hash": ""
   },
   "web/scripts/vps-download.mjs": {
@@ -4890,8 +4890,8 @@
     "semantic_hash": ""
   },
   "mcp/src/ui/uris.ts": {
-    "mtime": 1783115723.0920994,
-    "ast_hash": "4e53cc6977e962de5d1512e679c27e9e",
+    "mtime": 1783223870.9429548,
+    "ast_hash": "32f0411dfcffae0c5ac86e8154178def",
     "semantic_hash": ""
   },
   "mcp/src/http/__tests__/wildcardPath.test.ts": {
@@ -4905,8 +4905,8 @@
     "semantic_hash": ""
   },
   "mcp/src/ui/__tests__/cardTools.integration.test.ts": {
-    "mtime": 1783118549.3932447,
-    "ast_hash": "d8fd7e3397570404bb772df1d585a7d0",
+    "mtime": 1783128690.826966,
+    "ast_hash": "224cb0adc13d3fa0dea501019aec2552",
     "semantic_hash": ""
   },
   "web/src/lib/analysis/__tests__/normalizeTradeSetup.test.ts": {
@@ -4917,6 +4917,16 @@
   "web/src/lib/analysis/normalizeTradeSetup.ts": {
     "mtime": 1783117832.2821991,
     "ast_hash": "fb7c4259a5e097caf46a3e8bf2ba9fe1",
+    "semantic_hash": ""
+  },
+  "mcp/src/ui/__tests__/publicPath.test.ts": {
+    "mtime": 1783223870.9349,
+    "ast_hash": "63db64835a52ca140c588a280048f1cf",
+    "semantic_hash": ""
+  },
+  "mcp/src/ui/publicPath.ts": {
+    "mtime": 1783119610.9335136,
+    "ast_hash": "2ec5d777e844665e74ff15d7c3103c96",
     "semantic_hash": ""
   }
 }

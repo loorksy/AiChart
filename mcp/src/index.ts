@@ -22,11 +22,9 @@ import { wildcardPath } from "./http/wildcardPath.js";
 import { logPublicWidgetFetch, widgetHtmlByPublicPath } from "./ui/index.js";
 import { STATIC_ASSETS } from "./ui/runtime.js";
 import { normalizeWidgetPublicPath } from "./ui/publicPath.js";
-import { PORTFOLIO_ASSETS } from "./ui/widgets.js";
 
 const MCP_UI_ASSETS = [
   ...Object.values(STATIC_ASSETS),
-  ...Object.values(PORTFOLIO_ASSETS),
 ];
 
 const cfg = loadConfig();
@@ -73,7 +71,7 @@ app.get("/mcp-ui/{*path}", (req, res) => {
     logPublicWidgetFetch(path, true, asset.body.length);
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Content-Type", asset.mimeType);
     res.removeHeader("X-Frame-Options");
     res.send(asset.body);
@@ -88,7 +86,7 @@ app.get("/mcp-ui/{*path}", (req, res) => {
   }
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.setHeader("Content-Type", hit.mimeType || RESOURCE_MIME_TYPE);
   res.removeHeader("X-Frame-Options");
   res.send(hit.html);

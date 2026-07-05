@@ -3,20 +3,35 @@
 export const UI_HOST = "aichart";
 
 /** Versioned flagship MCP App templates (bump path when markup changes).
- *  v2: assets inlined (Claude sandbox blocks external CSS/JS) + premium theme. */
-export const APP_URI_ACCOUNT_OVERVIEW = `ui://${UI_HOST}/account-overview/v2` as const;
-export const APP_URI_ANALYSIS = `ui://${UI_HOST}/analysis/v2` as const;
+ *  v4: flat #20201e 1:1 cards, border-only buy/sell accents (2026-07-05). */
+export const APP_URI_ACCOUNT_OVERVIEW = `ui://${UI_HOST}/account-overview/v4` as const;
+export const APP_URI_ANALYSIS = `ui://${UI_HOST}/analysis/v4` as const;
 
 const VERSIONED_WIDGET_PATHS: Record<string, string> = {
-  "account-overview": "account-overview/v2",
-  analysis: "analysis/v2",
-  portfolio: "portfolio/v1",
+  "account-overview": "account-overview/v4",
+  analysis: "analysis/v4",
+  portfolio: "portfolio/v3",
 };
 
+/** Older URIs Claude may still request after a version bump — serve current HTML. */
+export function legacyWidgetUris(widget: string): string[] {
+  const current = widgetPath(widget);
+  const m = current.match(/^(.+)\/v(\d+)$/);
+  if (!m) return [];
+  const base = m[1];
+  const ver = Number(m[2]);
+  const out: string[] = [];
+  for (let v = 1; v < ver; v++) {
+    out.push(`ui://${UI_HOST}/${base}/v${v}`);
+    out.push(`ui://${UI_HOST}/${base}/v${v}-gpt`);
+  }
+  return out;
+}
+
 export function widgetPath(widget: string): string {
-  // Default is versioned too: every shell went self-contained on 2026-07-04,
-  // and hosts cache templates by URI — stale paths would render dead shells.
-  return VERSIONED_WIDGET_PATHS[widget] ?? `${widget}/v2`;
+  // Hosts (Claude MCP Apps) cache widget HTML by URI — bump version on every
+  // visual/markup change or clients keep serving stale templates forever.
+  return VERSIONED_WIDGET_PATHS[widget] ?? `${widget}/v4`;
 }
 
 export function widgetUri(widget: string): string {

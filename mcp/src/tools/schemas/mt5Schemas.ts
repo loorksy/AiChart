@@ -40,6 +40,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
       "متى: قبل أي صفقة — MT5+Binance موحّد + quoteAgeMs. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
+    ui: { widget: "account-overview" },
   },
   {
     name: "get_ea_diagnostics",

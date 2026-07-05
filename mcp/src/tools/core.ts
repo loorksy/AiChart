@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { BridgeError, formatBridgeError } from "../bridge/client.js";
+import { BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/client.js";
 import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
@@ -30,15 +30,17 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
             ? bridge.get("/api/agent/live/account", undefined, 10000)
             : Promise.resolve({ skipped: true }),
         ]);
-        const val = (r: PromiseSettledResult<unknown>) =>
-          r.status === "fulfilled"
-            ? r.value
-            : {
-                error:
-                  r.reason instanceof Error
-                    ? r.reason.message
-                    : String(r.reason),
-              };
+        const val = (r: PromiseSettledResult<unknown>) => {
+          if (r.status !== "fulfilled") {
+            return {
+              error:
+                r.reason instanceof Error
+                  ? r.reason.message
+                  : String(r.reason),
+            };
+          }
+          return unwrapBridgePayload(r.value);
+        };
         return {
           risk: val(settled[0]),
           portfolio: val(settled[1]),
