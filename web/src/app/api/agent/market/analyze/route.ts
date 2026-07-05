@@ -18,6 +18,8 @@ import { tradingStyleForInterval } from "@/lib/analysisProfile";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 
 export const maxDuration = 180;
 
@@ -107,10 +109,18 @@ export async function POST(req: NextRequest) {
     const interval = body.interval ?? layout?.interval ?? "1h";
     const market = body.market ?? settings.active_market ?? "forex";
     const dataSource =
-      market === "forex" ? (body.data_source ?? layoutState?.dataSource ?? "oanda") : undefined;
+      market === "forex"
+        ? isOandaDataOnly() || body.data_source === "oanda"
+          ? "oanda"
+          : (body.data_source ?? layoutState?.dataSource ?? "oanda")
+        : undefined;
     if (market === "forex") {
-      const resolved = await resolveMt5Symbol(userId, symbol);
-      if (resolved) symbol = resolved;
+      if (dataSource === "oanda") {
+        symbol = forexCanonicalKey(symbol);
+      } else {
+        const resolved = await resolveMt5Symbol(userId, symbol);
+        if (resolved) symbol = resolved;
+      }
     }
     const tradingStyle = tradingStyleForInterval(interval);
 

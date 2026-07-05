@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
 import { BridgeError } from "../bridge/client.js";
+import { toOandaForexSymbol } from "../lib/forexSymbol.js";
 import { bridgeCall } from "./helpers.js";
 import { mcpToolConfig } from "./schemas/index.js";
 
@@ -51,17 +52,19 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("draw_on_chart"),
     async (args) => {
       const a = args as Record<string, unknown>;
+      const rawSymbol = typeof a.symbol === "string" ? a.symbol : undefined;
       return bridgeCall(() =>
         bridge.post(
           "/api/agent/chart/layout",
           {
             id: a.layout_id,
-            symbol: a.symbol,
+            symbol: rawSymbol ? toOandaForexSymbol(rawSymbol) : undefined,
             interval: a.interval,
             mode: a.mode ?? "set",
             drawings: a.drawings ?? [],
             recommendation: a.recommendation,
             targets: a.targets,
+            dataSource: "oanda",
           },
           DRAW_TIMEOUT_MS,
         ),
@@ -130,7 +133,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         } catch {
           layout = null;
         }
-        const symbol = (a.symbol ?? layout?.symbol ?? "").toUpperCase().trim();
+        const symbol = toOandaForexSymbol(a.symbol ?? layout?.symbol ?? "");
         if (!symbol) {
           throw new BridgeError(
             "حدد symbol أو أنشئ شارتاً أولاً (list_chart_layouts).",
@@ -139,12 +142,8 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           );
         }
         const interval = a.interval ?? layout?.interval ?? "15m";
-        // Broker-suffixed symbols (XAUUSDM…) only exist on the EA bridge —
-        // honor the layout's dataSource, then fall back to EA on empty.
-        const layoutSource = (layout?.state as { dataSource?: string } | undefined)
-          ?.dataSource;
-        // EA roundtrip can take ~25s through the terminal queue. The route
-        // wraps its payload in {ok, data, meta} — unwrap before use.
+        // OANDA instruments only — strip broker suffixes (XAUUSDM → XAUUSD).
+        // Route may wrap payload in {ok, data, meta} — unwrap before use.
         const fetchCandles = async (source?: string) => {
           const res = (await bridge.get(
             "/api/agent/market/ohlc",
@@ -161,18 +160,9 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
             ? res.data
             : res;
         };
-        const preferEa = layoutSource === "ea";
-        let ohlc = await fetchCandles(preferEa ? "ea" : undefined).catch(
+        let ohlc = await fetchCandles("oanda").catch(
           () => null as { candles?: unknown[] } | null,
         );
-        if (!ohlc?.candles?.length && a.market !== "crypto") {
-          // Whichever source failed, try the other (EA offline ↔ OANDA
-          // doesn't know broker-suffixed symbols).
-          const alt = await fetchCandles(preferEa ? "oanda" : "ea").catch(
-            () => null,
-          );
-          if (alt?.candles?.length) ohlc = alt;
-        }
         if (!ohlc) ohlc = { candles: [] };
         return {
           live_chart: true,
@@ -180,8 +170,9 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           interval,
           layout_id: layout?.id ?? null,
           url: layout?.url ?? null,
-          ohlc,
+          ohlc: ohlc ? { ...ohlc, source: "oanda" } : ohlc,
           state: layout?.state ?? null,
+          data_source: "oanda",
           at: new Date().toISOString(),
         };
       }, { structured: true });
@@ -204,11 +195,11 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
           bridge.post(
             "/api/agent/market/analyze",
             {
-              symbol: a.symbol,
+              symbol: a.symbol ? toOandaForexSymbol(a.symbol) : undefined,
               interval: a.interval ?? "1h",
               market: a.market,
               layout_id: a.layout_id,
-              data_source: a.data_source,
+              data_source: a.data_source ?? "oanda",
             },
             ANALYZE_TIMEOUT_MS,
           ),

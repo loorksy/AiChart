@@ -14,6 +14,7 @@ import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
 import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 import { normalizeInterval } from "@/lib/intervals";
+import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 import type { MarketType } from "@/lib/markets/types";
 
 /** Market UI klines — forex via OANDA, crypto via Binance. */
@@ -59,7 +60,10 @@ export async function GET(req: NextRequest) {
       toRaw != null && toRaw !== "" ? Number(toRaw) : undefined;
 
     // Second data source: the user's own broker via the EA bridge (MT5).
-    if (req.nextUrl.searchParams.get("source") === "ea") {
+    if (
+      !isOandaDataOnly() &&
+      req.nextUrl.searchParams.get("source") === "ea"
+    ) {
       if (!user) {
         return NextResponse.json(
           { error: "بيانات الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },

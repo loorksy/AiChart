@@ -3,6 +3,7 @@ import { getOptionalUser, checkRateLimit, clientKey } from "@/lib/api";
 import { searchBinanceInstruments } from "@/lib/binanceSymbols";
 import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 import {
   fetchOandaInstruments,
   oandaAccountId,
@@ -57,7 +58,10 @@ export async function GET(request: NextRequest) {
 
     // Second data source: the user's ENTIRE broker symbol universe via the EA
     // bridge (not just MT5 Market Watch).
-    if (request.nextUrl.searchParams.get("source") === "ea") {
+    if (
+      !isOandaDataOnly() &&
+      request.nextUrl.searchParams.get("source") === "ea"
+    ) {
       if (!user) {
         return NextResponse.json(
           { error: "أزواج الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },

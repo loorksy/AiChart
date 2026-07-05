@@ -79,6 +79,35 @@ describe("structured tool text fallback", () => {
     assert.ok(text?.includes("— / بيانات قديمة"));
   });
 
+  it("formats direct live account payloads from get_live_account", () => {
+    const text = formatToolTextFallback({
+      forex: {
+        heartbeatFresh: true,
+        ea: {
+          online: true,
+          account_login: "252493119",
+          broker_name: "Exness",
+          account_trade_mode: "live",
+          balance: 86.4,
+          equity: 84.62,
+        },
+        positions: [
+          { symbol: "XAUUSDm", side: "buy", profit: -1.72 },
+          { symbol: "XAUUSDm", side: "buy", profit: -0.06 },
+        ],
+      },
+      openTrades: [
+        { symbol: "XAUUSDm", side: "buy", profit: -1.72 },
+        { symbol: "XAUUSDm", side: "buy", profit: -0.06 },
+      ],
+    });
+    assert.ok(text?.includes("#252493119"));
+    assert.ok(text?.includes("Exness"));
+    assert.ok(text?.includes("الرصيد: 86.4"));
+    assert.ok(text?.includes("حقوق الملكية: 84.62"));
+    assert.ok(text?.includes("PnL المفتوح: -1.78"));
+  });
+
   it("formatBridgeResult uses readable fallback when structured", () => {
     const out = formatBridgeResult(
       { snapshot: { symbol: "EURUSD", price: 1.08, rsi14: 55, trend: "bullish" } },
@@ -95,6 +124,13 @@ describe("widget HTML safety", () => {
     for (const [name, html] of Object.entries(WIDGETS) as [string, string][]) {
       assert.ok(!html.includes("fetch("), `${name} must not call fetch()`);
     }
+  });
+
+  it("account overview widget reads direct live account shapes", () => {
+    const html = WIDGETS["account-overview"];
+    assert.ok(html.includes("dataForex.ea"));
+    assert.ok(html.includes("dataForex.positions"));
+    assert.ok(html.includes("data.openTrades"));
   });
 
   it("registers at least 13 interactive card widgets", () => {

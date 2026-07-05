@@ -3,6 +3,8 @@ import { ApiError } from "@/lib/api";
 import { getSettings } from "@/lib/store";
 import type { MarketType } from "@/lib/markets/types";
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 
 /** Bridge: OHLC candles — forex via EA get_ohlc, crypto via Binance klines. */
 export const GET = withBridge(async ({ req, userId }) => {
@@ -19,7 +21,16 @@ export const GET = withBridge(async ({ req, userId }) => {
   const interval = searchParams.get("interval") ?? "1h";
   const sourceRaw = searchParams.get("source");
   const source =
-    sourceRaw === "ea" ? "ea" : sourceRaw === "oanda" ? "oanda" : undefined;
+    isOandaDataOnly() || sourceRaw === "oanda"
+      ? "oanda"
+      : sourceRaw === "ea"
+        ? "ea"
+        : undefined;
+  const rawSymbol = symbol.trim().toUpperCase();
+  const ohlcSymbol =
+    market === "forex" && source !== "ea"
+      ? forexCanonicalKey(rawSymbol)
+      : rawSymbol;
   const limitRaw = searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : 200;
   const cursorRaw = searchParams.get("cursor");
@@ -35,7 +46,7 @@ export const GET = withBridge(async ({ req, userId }) => {
 
   return fetchOhlc({
     userId,
-    symbol,
+    symbol: ohlcSymbol,
     interval,
     market,
     source,

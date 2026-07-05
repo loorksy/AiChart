@@ -78,9 +78,7 @@ export function SmartChartWorkspace({
     return localStorage.getItem(LS_INTERVAL) ?? "15m";
   });
 
-  const [dataSource, setDataSource] = useState<"oanda" | "ea">(
-    initialState?.dataSource === "ea" && !guest ? "ea" : "oanda",
-  );
+  const [dataSource, setDataSource] = useState<"oanda" | "ea">("oanda");
   const [tradesOpen, setTradesOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
@@ -184,7 +182,7 @@ export function SmartChartWorkspace({
   // /chart/<SYMBOL> for guests. replaceState only — no page reload.
   useEffect(() => {
     if (typeof window === "undefined" || !symbol) return;
-    const src = dataSource === "ea" ? "&src=ea" : "";
+    const src = "";
     const target = layoutId
       ? `/chart/${layoutId}?symbol=${encodeURIComponent(symbol)}${src}`
       : `/chart/${encodeURIComponent(symbol)}`;
@@ -275,8 +273,8 @@ export function SmartChartWorkspace({
         if (savePendingRef.current) return;
         if (d.state) {
           hydrateFromSnapshot(d.state);
-          if (d.state.dataSource === "ea" || d.state.dataSource === "oanda") {
-            setDataSource(d.state.dataSource === "ea" && !guest ? "ea" : "oanda");
+          if (d.state.dataSource === "oanda") {
+            setDataSource("oanda");
           }
         }
         if (d.symbol && d.symbol !== symbol) setSymbol(d.symbol.toUpperCase());
@@ -296,19 +294,13 @@ export function SmartChartWorkspace({
   }, [guest, layoutId, isAnalyzing, symbol, interval, hydrateFromSnapshot]);
 
   useEffect(() => {
-    // Prefetch only for the OANDA path — broker (EA) candles are per-user
-    // on-demand via the bridge and must not be warmed anonymously.
-    if (dataSource === "ea") return;
     prefetchKlines(symbol, interval, market);
-  }, [symbol, interval, market, dataSource]);
+  }, [symbol, interval, market]);
 
-  const handleSymbolChange = useCallback(
-    (s: string, source: "oanda" | "ea" = "oanda") => {
-      setSymbol(s.toUpperCase());
-      setDataSource(source);
-    },
-    [],
-  );
+  const handleSymbolChange = useCallback((s: string) => {
+    setSymbol(s.toUpperCase());
+    setDataSource("oanda");
+  }, []);
 
   const handleIntervalChange = useCallback((iv: string) => {
     setChartInterval(normalizeInterval(iv));
@@ -444,8 +436,8 @@ export function SmartChartWorkspace({
             overlays={overlays}
             drawings={drawings}
             headerActions={headerActions}
-            eaEnabled={!guest}
-            dataSource={dataSource}
+            eaEnabled={false}
+            dataSource="oanda"
             className="h-full min-h-0 w-full"
             onSymbolChange={handleSymbolChange}
             onIntervalChange={handleIntervalChange}

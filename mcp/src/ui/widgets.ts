@@ -16,6 +16,16 @@ const accountOverview = widgetHtml(
   </div>`,
   `
   function obj(v) { return v && typeof v === "object" ? v : {}; }
+  function unwrapBridge(v) {
+    v = obj(v);
+    if (v.ok === true && v.data != null && typeof v.data === "object") return v.data;
+    return v;
+  }
+  function hasKeys(v) {
+    v = obj(v);
+    for (var k in v) return true;
+    return false;
+  }
   function first() {
     for (var i = 0; i < arguments.length; i++) {
       var v = arguments[i];
@@ -23,12 +33,33 @@ const accountOverview = widgetHtml(
     }
     return null;
   }
+  function sumPnl(AIC) {
+    for (var i = 1; i < arguments.length; i++) {
+      var arr = arguments[i];
+      if (!Array.isArray(arr) || !arr.length) continue;
+      var sum = 0, seen = false;
+      for (var j = 0; j < arr.length; j++) {
+        var t = obj(arr[j]);
+        var p = AIC.num(first(t.profit, t.pnl, t.open_pnl, t.openPnl));
+        if (p != null) { sum += p; seen = true; }
+      }
+      if (seen) return sum;
+    }
+    return null;
+  }
   function eaState(data) {
     var live = obj(data.live);
-    var forex = obj(live.forex);
-    var ea = obj(forex.ea || live.ea || data.ea);
-    var fresh = ea.heartbeatFresh === true || ea.online === true || ea.connected === true;
-    var stale = ea.heartbeatFresh === false || ea.online === false || ea.connected === false || /offline|stale|down/i.test(String(ea.status || ""));
+    var liveForex = obj(live.forex);
+    var dataForex = obj(data.forex);
+    var portfolioForex = obj(obj(data.portfolio).forex);
+    var ea = obj(first(liveForex.ea, dataForex.ea, portfolioForex.ea, live.ea, data.ea));
+    var heartbeatFresh = first(ea.heartbeatFresh, liveForex.heartbeatFresh, dataForex.heartbeatFresh, live.heartbeatFresh, data.heartbeatFresh);
+    var online = first(ea.online, ea.connected, liveForex.online, dataForex.online, live.online, data.online);
+    var status = String(first(ea.status, liveForex.status, dataForex.status, live.status, data.status) || "");
+    var fresh = heartbeatFresh === true || online === true || /online|connected|live/i.test(status);
+    var stale = heartbeatFresh === false || online === false || /offline|stale|down|revoked/i.test(status);
+    var known = heartbeatFresh != null || online != null || status !== "" || hasKeys(ea);
+    if (!known) return { fresh: false, stale: false, label: "" };
     return { fresh: fresh && !stale, stale: stale || !fresh, label: fresh && !stale ? "متصل" : "غير متصل / بيانات قديمة" };
   }
   /* Last-known money while stale is shown but explicitly marked قديم;
@@ -41,38 +72,47 @@ const accountOverview = widgetHtml(
   window.__aicReady = function (AIC) {
     var last = null;
     AIC.onData(function (data) {
-      data = obj(data); last = data;
-      var risk = obj(data.risk);
-      var portfolio = obj(data.portfolio);
-      var live = obj(data.live);
-      var ea = eaState(data);
-      /* Source of truth: live EA account meta, then portfolio EA, then legacy keys. */
-      var eaLive = obj(obj(live.forex).ea);
-      var eaPort = obj(obj(portfolio.forex).ea);
-      var legacy = obj(portfolio.account || live.account || data.account);
-      var balance = AIC.num(first(eaLive.balance, eaPort.balance, legacy.balance, portfolio.balance, data.balance));
-      var equity = AIC.num(first(eaLive.equity, eaPort.equity, legacy.equity, portfolio.equity, data.equity));
-      var freeMargin = AIC.num(first(eaLive.freeMargin, eaLive.free_margin, legacy.freeMargin, legacy.free_margin, portfolio.freeMargin));
-      var openPnl = AIC.num(first(portfolio.openPnl, portfolio.open_pnl, legacy.openPnl, legacy.pnl, live.openPnl));
-      if (openPnl == null) {
-        var positions = obj(live.forex).positions;
-        if (Array.isArray(positions) && positions.length) {
-          var sum = 0, seen = false;
-          for (var i = 0; i < positions.length; i++) {
-            var pr = AIC.num(positions[i] && positions[i].profit);
-            if (pr != null) { sum += pr; seen = true; }
-          }
-          if (seen) openPnl = sum;
-        }
+      data = obj(data);
+      /* Flat get_live_account payload (forex at root) → normalize to overview shape. */
+      if (!obj(data.live).forex && obj(data.forex).ea) {
+        data = { risk: data.risk, portfolio: data.portfolio, live: data };
       }
+      var last = data;
+      var risk = unwrapBridge(data.risk);
+      var portfolio = unwrapBridge(data.portfolio);
+      var live = unwrapBridge(data.live);
+      var cap = obj(risk.capital);
+      var ea = eaState({ risk: risk, portfolio: portfolio, live: live, forex: data.forex });
+      var liveForex = obj(live.forex);
+      var dataForex = obj(data.forex);
+      var portfolioForex = obj(portfolio.forex);
+      /* Source of truth: live/account payloads, then portfolio EA, then legacy keys. */
+      var eaLive = obj(liveForex.ea);
+      var eaDirect = obj(dataForex.ea);
+      var eaPort = obj(portfolioForex.ea);
+      var conn = obj(first(live.connection, liveForex.connection, data.connection, dataForex.connection));
+      var legacy = obj(first(portfolio.account, live.account, data.account, conn));
+      var balance = AIC.num(first(eaLive.balance, eaDirect.balance, eaPort.balance, conn.balance, legacy.balance, portfolio.balance, live.balance, data.balance));
+      var equity = AIC.num(first(eaLive.equity, eaDirect.equity, eaPort.equity, conn.equity, legacy.equity, portfolio.equity, live.equity, data.equity));
+      var freeMargin = AIC.num(first(
+        eaLive.freeMargin, eaLive.free_margin, eaLive.margin_free,
+        eaDirect.freeMargin, eaDirect.free_margin, eaDirect.margin_free,
+        conn.freeMargin, conn.free_margin, conn.margin_free,
+        legacy.freeMargin, legacy.free_margin, legacy.margin_free,
+        portfolio.freeMargin, portfolio.free_margin, live.freeMargin, data.freeMargin
+      ));
+      var openPnl = AIC.num(first(portfolio.openPnl, portfolio.open_pnl, legacy.openPnl, legacy.pnl, live.openPnl, live.open_pnl, data.openPnl, data.open_pnl));
+      if (openPnl == null) openPnl = sumPnl(AIC, liveForex.positions, dataForex.positions, live.positions, data.positions, portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades);
+      var openTrades = first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.open_trades, data.trades, live.openTrades, live.open_trades);
       var rows = [
         ["الرصيد", moneyCell(AIC, balance, ea.stale), ea.stale ? "amber" : ""],
         ["حقوق الملكية", moneyCell(AIC, equity, ea.stale), ea.stale ? "amber" : ""],
         ["الهامش الحر", moneyCell(AIC, freeMargin, ea.stale), ea.stale ? "amber" : ""],
         ["PnL المفتوح", ea.stale ? "— / بيانات قديمة" : moneyCell(AIC, openPnl, false), ea.stale ? "amber" : (Number(openPnl) >= 0 ? "green" : "red")],
-        ["إعداد حد الصفقة", first(risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), "blue"],
-        ["حالة المخاطر", first(risk.status, risk.mode, data.risk_status), ""],
-        ["الصفقات المفتوحة", AIC.formatOpenTrades(first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades)), ""],
+        ["رأس المال الفعّال", cap.effectiveCapital != null ? AIC.fmt(cap.effectiveCapital, 0) + " USD" : null, "blue"],
+        ["إعداد حد الصفقة", first(cap.perTradeMaxUsd, risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), "blue"],
+        ["حالة المخاطر", first(risk.mode, risk.status, data.risk_status), ""],
+        ["الصفقات المفتوحة", AIC.formatOpenTrades(openTrades), ""],
         ["اتصال EA", ea.label, ea.stale ? "amber" : "green"],
       ];
       var grid = document.getElementById("grid");
@@ -116,7 +156,11 @@ const analysis = widgetHtml(
     </div>
   </div>`,
   `
-  var current = { symbol: "", interval: "15m", layout_id: null, data_source: null };
+  var current = { symbol: "", interval: "15m", layout_id: null, data_source: "oanda" };
+  function oandaSym(s){
+    s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return s.length >= 6 ? s.slice(0, 6) : s;
+  }
   function obj(v) { return v && typeof v === "object" ? v : {}; }
   /* Handles: {snapshot}, MTF {snapshots:[{interval,snapshot}]}, detect_levels
      (flat) — and surfaces indicator keys nested under snapshot.extra. */
@@ -153,10 +197,10 @@ const analysis = widgetHtml(
       data = obj(data);
       var snap = pickSnapshot(data);
       var rec = obj(data.recommendation);
-      current.symbol = snap.symbol || rec.symbol || data.symbol || current.symbol;
+      current.symbol = oandaSym(snap.symbol || rec.symbol || data.symbol || current.symbol);
       current.interval = snap.interval || data.interval || current.interval;
       current.layout_id = data.layout_id || current.layout_id;
-      current.data_source = data.data_source || data.dataSource || current.data_source;
+      current.data_source = data.data_source || data.dataSource || current.data_source || "oanda";
       var trend = trendClass(rec.action || snap.trend || data.trend);
       document.getElementById("title").textContent = current.symbol ? "تحليل " + current.symbol : "تحليل السوق";
       var badge = document.getElementById("badge");
@@ -219,7 +263,8 @@ const analysis = widgetHtml(
       if (!grid.children.length) grid.innerHTML = '<div class="empty">لا توجد بيانات تحليل متاحة</div>';
       var summary = data.reply || snap.summary || rec.rationale || data.summary || data.contextSummary || "";
       document.getElementById("summary").textContent = String(summary).slice(0, 420);
-      document.getElementById("status").textContent = current.data_source ? "مصدر البيانات: " + current.data_source : "";
+      document.getElementById("status").textContent =
+        "مصدر البيانات: " + (current.data_source || "oanda");
       AIC.notifySize();
     });
     document.getElementById("refresh").addEventListener("click", function () {
@@ -232,7 +277,7 @@ const analysis = widgetHtml(
         symbol: current.symbol || undefined,
         interval: current.interval,
         layout_id: current.layout_id || undefined,
-        data_source: current.data_source || undefined
+        data_source: current.data_source || "oanda"
       });
     });
   };
@@ -351,7 +396,13 @@ const liveChart = widgetHtml(
   var PLATFORM = "${PLATFORM_URL}";
   var S = { symbol:null, interval:"15m", layoutId:null, url:null, candles:[],
             drawings:[], rec:null, targets:[], lastUpdate:0, paused:false,
-            failures:0, timer:null, booted:false, source:null };
+            failures:0, timer:null, booted:false, source:"oanda", warning:null };
+
+  /* Broker tickers (XAUUSDM, EURUSDm) → OANDA 6-letter key for candle fetch. */
+  function oandaSym(s){
+    s = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return s.length >= 6 ? s.slice(0, 6) : s;
+  }
 
   function nnum(v){ v = Number(v); return isFinite(v) ? v : null; }
   function toMs(t){ t = Number(t); if (!isFinite(t) || t <= 0) return null; return t < 20000000000 ? t * 1000 : t; }
@@ -373,11 +424,13 @@ const liveChart = widgetHtml(
 
   function applyPayload(d){
     d = d || {};
-    if (d.symbol) S.symbol = String(d.symbol).toUpperCase();
+    if (d.symbol) S.symbol = oandaSym(d.symbol);
     if (d.interval) S.interval = String(d.interval);
     if (d.layout_id) S.layoutId = d.layout_id;
     if (d.id && (d.state || d.drawings_count != null)) S.layoutId = d.id;
     if (d.url) S.url = d.url;
+    if (d.data_source === "oanda" || d.dataSource === "oanda") S.source = "oanda";
+    else if (!S.source) S.source = "oanda";
     var st = (d.state && typeof d.state === "object") ? d.state : null;
     if (st) {
       if (Array.isArray(st.drawings)) S.drawings = st.drawings;
@@ -391,11 +444,13 @@ const liveChart = widgetHtml(
     var flat = d.data && typeof d.data === "object" ? d.data : d;
     if (ohl) {
       cc = normCandles(ohl);
-      if (ohl.source) S.source = ohl.source;
+      if (ohl.source === "oanda" || ohl.source === "ea") S.source = ohl.source;
+      else S.source = "oanda";
       S.warning = ohl.warning || null;
     } else if (Array.isArray(flat.candles)) {
       cc = normCandles(flat);
-      if (flat.source) S.source = flat.source;
+      if (flat.source === "oanda" || flat.source === "ea") S.source = flat.source;
+      else S.source = "oanda";
       S.warning = flat.warning || null;
     }
     if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }
@@ -664,7 +719,7 @@ const liveChart = widgetHtml(
     } else if (!S.candles.length) {
       hint.textContent = S.warning
         ? String(S.warning)
-        : "لا شموع متاحة الآن — للرموز الخاصة بالوسيط تأكد أن منصة MetaTrader تعمل.";
+        : "لا شموع متاحة الآن — تأكد من إعداد OANDA على الخادم.";
       hint.style.display = "block";
     } else {
       hint.style.display = "none";
@@ -680,8 +735,7 @@ const liveChart = widgetHtml(
   }
   function tick(){
     if (document.hidden || !S.symbol || !window.AIC) { schedule(); return; }
-    var args = { symbol: S.symbol, interval: S.interval, limit: 120 };
-    if (S.source === "ea" || S.source === "oanda") args.source = S.source;
+    var args = { symbol: oandaSym(S.symbol), interval: S.interval, limit: 120, source: "oanda" };
     var calls = [window.AIC.callTool("get_ohlc", args)];
     if (S.layoutId) calls.push(window.AIC.callTool("get_chart_state", { layout_id: S.layoutId }));
     Promise.all(calls).then(function (res) {
@@ -741,10 +795,10 @@ const liveChart = widgetHtml(
  */
 const PORTFOLIO_CSS = `
   :root{
-    --bg:#0E1116; --surface:#171B22; --surface-2:#1E242D;
-    --line:#262C36; --line-soft:#20262F;
-    --txt:#E6E9EF; --muted:#8A93A3; --faint:#5C6674;
-    --gold:#E0B15E; --up:#3FB27F; --down:#E5636B;
+    --bg:#070A0F; --surface:#101720; --surface-2:#151D28; --surface-3:#0C1118;
+    --line:#263241; --line-soft:#1D2632;
+    --txt:#EDF2F7; --muted:#9AA6B6; --faint:#667386;
+    --gold:#E4B45F; --up:#38C083; --down:#EF6A72; --info:#71B7FF;
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   }
@@ -752,33 +806,34 @@ const PORTFOLIO_CSS = `
   html,body{margin:0;background:transparent}
   body{color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.4;padding:4px;-webkit-font-smoothing:antialiased}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-  .card{max-width:520px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-  .hd{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line-soft)}
+  .card{position:relative;max-width:520px;margin:0 auto;background:linear-gradient(180deg,#111925 0%,var(--surface-3) 100%);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 16px 36px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.04)}
+  .card::before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,var(--up),var(--gold),var(--down));opacity:.9}
+  .hd{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line-soft);background:rgba(12,17,24,.78)}
   .brand{display:flex;align-items:baseline;gap:7px}
-  .brand b{font-weight:700;letter-spacing:.2px}
+  .brand b{font-weight:700;letter-spacing:0}
   .brand b .ai{color:var(--gold)}
   .brand small{color:var(--faint);font-family:var(--mono);font-size:11px}
   .hd .spacer{flex:1}
   .pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;border:1px solid var(--line)}
   .pill .dot{width:7px;height:7px;border-radius:50%}
-  .pill.off{color:var(--down);border-color:#3a2429;background:#22151799}
+  .pill.off{color:var(--down);border-color:#4A252C;background:#2A151A99}
   .pill.off .dot{background:var(--down)}
-  .pill.on{color:var(--up);border-color:#1e352b;background:#14211b99}
+  .pill.on{color:var(--up);border-color:#1D4B38;background:#10251D99}
   .pill.on .dot{background:var(--up);box-shadow:0 0 0 3px #3fb27f33}
-  .refresh{appearance:none;background:var(--surface-2);color:var(--muted);border:1px solid var(--line);width:30px;height:30px;border-radius:9px;cursor:pointer;display:grid;place-items:center;transition:.15s}
-  .refresh:hover{color:var(--txt);border-color:#333c48}
+  .refresh{appearance:none;background:#121A24;color:var(--muted);border:1px solid var(--line);width:32px;height:32px;border-radius:8px;cursor:pointer;display:grid;place-items:center;transition:.15s}
+  .refresh:hover{color:var(--txt);border-color:#3B4A5F;background:#182231}
   .refresh:active{transform:rotate(180deg)}
   .refresh svg{width:15px;height:15px}
   .eq{padding:16px}
-  .eq .lbl{color:var(--muted);font-size:11px;letter-spacing:.4px;text-transform:uppercase}
-  .eq .big{font-family:var(--mono);font-size:32px;font-weight:600;letter-spacing:-.5px;margin-top:2px;font-variant-numeric:tabular-nums}
+  .eq .lbl{color:var(--muted);font-size:11px;letter-spacing:0;text-transform:uppercase}
+  .eq .big{font-family:var(--mono);font-size:32px;font-weight:650;letter-spacing:0;margin-top:2px;font-variant-numeric:tabular-nums}
   .eq .big .cur{color:var(--faint);font-size:17px;margin-inline-start:4px}
   .eq .sub{display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;align-items:center}
   .eq .sub span{color:var(--muted);font-size:12px}
   .eq .sub b{color:var(--txt);font-family:var(--mono);font-variant-numeric:tabular-nums}
-  .chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-weight:600;padding:3px 9px;border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums}
-  .chip.up{color:var(--up);background:#14211b}
-  .chip.down{color:var(--down);background:#221517}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-weight:650;padding:3px 9px;border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums}
+  .chip.up{color:var(--up);background:#10251D}
+  .chip.down{color:var(--down);background:#2A151A}
   .tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--line-soft)}
   .tab{appearance:none;background:none;border:0;color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:600;padding:11px 12px;cursor:pointer;position:relative;transition:.15s}
   .tab[aria-selected="true"]{color:var(--txt)}
@@ -787,12 +842,12 @@ const PORTFOLIO_CSS = `
   .panel{display:none;padding:12px 14px 16px}
   .panel[data-active]{display:block}
   .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .stat{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:11px;padding:11px 12px}
+  .stat{background:linear-gradient(180deg,var(--surface-2),#101722);border:1px solid var(--line-soft);border-radius:8px;padding:11px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
   .stat .k{color:var(--muted);font-size:11px}
-  .stat .v{font-family:var(--mono);font-size:17px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+  .stat .v{font-family:var(--mono);font-size:17px;font-weight:650;margin-top:4px;font-variant-numeric:tabular-nums}
   .wl{display:flex;align-items:baseline;gap:8px}
   .wl .w{color:var(--up)} .wl .l{color:var(--down)}
-  .barwl{height:5px;border-radius:3px;margin-top:9px;overflow:hidden;display:flex;background:#221517}
+  .barwl{height:5px;border-radius:3px;margin-top:9px;overflow:hidden;display:flex;background:#2A151A}
   .barwl i{display:block;height:100%;background:var(--up)}
   .filters{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
   .filters button{appearance:none;background:var(--surface-2);border:1px solid var(--line-soft);color:var(--muted);font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer;transition:.12s;font-family:var(--sans)}
@@ -801,8 +856,8 @@ const PORTFOLIO_CSS = `
   .list::-webkit-scrollbar{width:6px} .list::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
   .row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line-soft)}
   .row:last-child{border-bottom:0}
-  .side{width:36px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:10px;font-weight:700;flex:none;font-family:var(--mono)}
-  .side.buy{color:var(--up);background:#14211b} .side.sell{color:var(--down);background:#221517}
+  .side{width:36px;height:34px;border-radius:8px;display:grid;place-items:center;font-size:10px;font-weight:700;flex:none;font-family:var(--mono)}
+  .side.buy{color:var(--up);background:#10251D} .side.sell{color:var(--down);background:#2A151A}
   .row .mid{flex:1;min-width:0}
   .row .sym{font-weight:600;font-size:13px}
   .row .meta{color:var(--faint);font-size:11px;font-family:var(--mono);margin-top:1px}
@@ -813,14 +868,20 @@ const PORTFOLIO_CSS = `
   .sigrow:last-child{border-bottom:0}
   .sighd{display:flex;align-items:center;gap:8px}
   .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;font-family:var(--mono)}
-  .badge.blocked{color:var(--down);background:#221517;border:1px solid #3a2429}
-  .badge.open{color:var(--gold);background:#211c12;border:1px solid #3a3016}
+  .badge.blocked{color:var(--down);background:#2A151A;border:1px solid #4A252C}
+  .badge.open{color:var(--gold);background:#281F10;border:1px solid #4B3518}
   .lvls{display:flex;gap:12px;margin-top:5px;font-family:var(--mono);font-size:11px}
   .lvls span{color:var(--faint)} .lvls b{font-variant-numeric:tabular-nums}
   .lvls .e{color:var(--txt)} .lvls .sl{color:var(--down)} .lvls .tp{color:var(--up)}
   .pat{color:var(--muted);font-size:11px;margin-top:4px;font-style:italic}
-  .foot{padding:9px 16px;border-top:1px solid var(--line-soft);color:var(--faint);font-size:10px;font-family:var(--mono);display:flex;justify-content:space-between;align-items:center}
+  .foot{padding:9px 16px;border-top:1px solid var(--line-soft);color:var(--faint);font-size:10px;font-family:var(--mono);display:flex;justify-content:space-between;align-items:center;background:rgba(7,10,15,.45)}
   .empty{color:var(--faint);text-align:center;padding:24px;font-size:12px}
+  @media (max-width:420px){
+    .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .eq .big{font-size:28px}
+    .tab{padding:10px 9px;font-size:12px}
+    .row{gap:8px}
+  }
 `;
 
 const PORTFOLIO_SCRIPT = `

@@ -13,6 +13,8 @@ import { processAgentDrawings } from "@/lib/chart/processDrawings";
 import { profileForInterval } from "@/lib/analysisProfile";
 import { normalizeInterval } from "@/lib/intervals";
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 
 const pointSchema = z.object({
   price: z.number(),
@@ -130,9 +132,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "layout غير موجود." }, { status: 404 });
     }
 
-    const symbol = (body.symbol ?? layout.symbol).toUpperCase();
+    const rawSymbol = (body.symbol ?? layout.symbol).toUpperCase();
+    const symbol = forexCanonicalKey(rawSymbol);
     const interval = normalizeInterval(body.interval ?? layout.interval);
     const state = parseState(layout.state_json);
+    state.dataSource = "oanda";
 
     if (body.mode === "clear") {
       state.drawings = [];
@@ -148,7 +152,7 @@ export async function POST(req: NextRequest) {
           interval,
           market: "forex",
           limit: 300,
-          source: body.dataSource,
+          source: "oanda",
         }).catch(() => ({ candles: [] as never[] }));
         const decision = body.recommendation?.action ?? "wait";
         processed = processAgentDrawings(body.drawings as ChartDrawing[], {
@@ -173,7 +177,7 @@ export async function POST(req: NextRequest) {
       }
       if (body.targets !== undefined) state.targets = body.targets;
     }
-    if (body.dataSource) state.dataSource = body.dataSource;
+    if (body.dataSource === "oanda" || isOandaDataOnly()) state.dataSource = "oanda";
 
     await saveChartLayout(layout.id, userId, {
       symbol,

@@ -14,6 +14,8 @@ import {
   oandaAccountId,
   oandaConfigured,
 } from "@/lib/markets/oanda";
+import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 
 export const OHLC_CACHE_TTL_MS = 45_000;
@@ -171,7 +173,6 @@ async function fetchCryptoOhlc(
 
 /** Fetches OHLC with bridge cache (45s) — forex via OANDA, crypto via Binance. */
 export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcResult> {
-  const symbol = options.symbol.toUpperCase().trim();
   const interval = normalizeInterval(options.interval ?? "1h");
   // Guests (userId <= 0) have no settings row — never touch getSettings for them
   // (it upserts a users-FK'd row). Market comes from the explicit option.
@@ -182,8 +183,17 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
     OHLC_MAX_LIMIT,
   );
 
-  const sourceKey =
-    market === "forex" ? (options.source ?? "oanda") : "binance";
+  const forexSource =
+    market === "forex" && isOandaDataOnly()
+      ? "oanda"
+      : market === "forex"
+        ? (options.source ?? "oanda")
+        : "binance";
+  const symbol =
+    market === "forex" && forexSource === "oanda"
+      ? forexCanonicalKey(options.symbol)
+      : options.symbol.toUpperCase().trim();
+  const sourceKey = forexSource;
   const cacheKey = `${ohlcCacheResource(symbol, interval)}:${sourceKey}`;
   if (
     !options.skipCache &&
@@ -210,7 +220,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
 
   if (market === "forex") {
     const live =
-      options.source === "ea"
+      !isOandaDataOnly() && options.source === "ea"
         ? {
             ...(await fetchEaOhlc(options.userId, symbol, interval, {
               fromMs: options.fromMs,

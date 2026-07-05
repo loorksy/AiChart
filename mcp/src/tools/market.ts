@@ -1,7 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
+import { toOandaForexSymbol } from "../lib/forexSymbol.js";
 import { bridgeCall } from "./helpers.js";
 import { mcpToolConfig } from "./schemas/index.js";
+
+function bridgeSymbol(symbol: string, market?: "crypto" | "forex"): string {
+  return market === "crypto" ? symbol.toUpperCase() : toOandaForexSymbol(symbol);
+}
 
 export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
@@ -15,7 +20,11 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       };
       return bridgeCall(
         () =>
-          bridge.get("/api/agent/market/snapshot", { symbol, interval, market }),
+          bridge.get("/api/agent/market/snapshot", {
+            symbol: bridgeSymbol(symbol, market),
+            interval,
+            market,
+          }),
         { structured: true },
       );
     },
@@ -35,7 +44,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
           bridge.get(
             "/api/agent/market/multi-snapshot",
             {
-              symbol,
+              symbol: bridgeSymbol(symbol, market),
               intervals: intervals?.length ? intervals.join(",") : undefined,
               market,
             },
@@ -57,7 +66,10 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         market?: "crypto" | "forex";
       };
       return bridgeCall(() =>
-        bridge.get("/api/agent/market/price", { symbol, market }),
+        bridge.get("/api/agent/market/price", {
+          symbol: bridgeSymbol(symbol, market),
+          market,
+        }),
       );
     },
   );
@@ -138,19 +150,21 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         limit?: number;
         cursor?: number;
       };
+      const oandaSymbol = toOandaForexSymbol(symbol);
+      const dataSource =
+        market === "crypto" ? source : source === "ea" ? "ea" : "oanda";
       return bridgeCall(() =>
         bridge.get(
           "/api/agent/market/ohlc",
           {
-            symbol,
+            symbol: market === "crypto" ? symbol.toUpperCase() : oandaSymbol,
             interval,
             market,
-            source,
+            source: dataSource,
             limit,
             cursor,
           },
-          // EA-sourced candles ride the MT5 terminal queue (~25s worst case).
-          source === "ea" ? 30000 : undefined,
+          dataSource === "ea" ? 30000 : undefined,
         ),
       );
     },

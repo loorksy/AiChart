@@ -2,11 +2,23 @@ function obj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
+function unwrapBridge(v: unknown): Record<string, unknown> {
+  const o = obj(v);
+  if (o.ok === true && o.data != null && typeof o.data === "object") {
+    return o.data as Record<string, unknown>;
+  }
+  return o;
+}
+
 function first(...values: unknown[]): unknown {
   for (const v of values) {
     if (v !== undefined && v !== null && v !== "") return v;
   }
   return null;
+}
+
+function hasKeys(v: unknown): boolean {
+  return Object.keys(obj(v)).length > 0;
 }
 
 function fmtNum(n: unknown, digits = 2): string {
@@ -37,55 +49,140 @@ function formatOpenTrades(v: unknown): string {
 }
 
 function eaStale(data: Record<string, unknown>): boolean {
-  const live = obj(data.live);
-  const forex = obj(live.forex);
-  const ea = obj(forex.ea ?? live.ea ?? data.ea);
+  const live = unwrapBridge(data.live);
+  const liveForex = obj(live.forex);
+  const dataForex = obj(data.forex);
+  const portfolioForex = obj(unwrapBridge(data.portfolio).forex);
+  const ea = obj(first(liveForex.ea, dataForex.ea, portfolioForex.ea, live.ea, data.ea));
+  const heartbeatFresh = first(
+    ea.heartbeatFresh,
+    liveForex.heartbeatFresh,
+    dataForex.heartbeatFresh,
+    live.heartbeatFresh,
+    data.heartbeatFresh,
+  );
+  const online = first(
+    ea.online,
+    ea.connected,
+    liveForex.online,
+    dataForex.online,
+    live.online,
+    data.online,
+  );
+  const status = String(
+    first(ea.status, liveForex.status, dataForex.status, live.status, data.status) ?? "",
+  );
   const fresh =
-    ea.heartbeatFresh === true || ea.online === true || ea.connected === true;
+    heartbeatFresh === true ||
+    online === true ||
+    /online|connected|live/i.test(status);
   const stale =
-    ea.heartbeatFresh === false ||
-    ea.online === false ||
-    ea.connected === false ||
-    /offline|stale|down/i.test(String(ea.status ?? ""));
-  return stale || !fresh;
+    heartbeatFresh === false ||
+    online === false ||
+    /offline|stale|down|revoked/i.test(status);
+  const known =
+    heartbeatFresh != null || online != null || status !== "" || hasKeys(ea);
+  return known ? stale || !fresh : false;
+}
+
+function sumPnl(...values: unknown[]): number | null {
+  for (const v of values) {
+    if (!Array.isArray(v)) continue;
+    let sum = 0;
+    let seen = false;
+    for (const row of v) {
+      const item = obj(row);
+      const profit = Number(first(item.profit, item.pnl, item.open_pnl, item.openPnl));
+      if (Number.isFinite(profit)) {
+        sum += profit;
+        seen = true;
+      }
+    }
+    if (seen) return sum;
+  }
+  return null;
 }
 
 function formatAccountOverview(data: Record<string, unknown>): string {
-  const risk = obj(data.risk);
-  const portfolio = obj(data.portfolio);
-  const live = obj(data.live);
-  // Source of truth: live EA account meta, then portfolio EA, then legacy keys.
-  const eaLive = obj(obj(live.forex).ea);
-  const eaPort = obj(obj(portfolio.forex).ea);
-  const account = obj(portfolio.account ?? live.account ?? data.account);
+  /* Host may pass get_live_account flat payload instead of get_account_overview wrapper. */
+  if (!obj(data.live).forex && obj(data.forex).ea) {
+    data = { ...data, live: data };
+  }
+  const risk = unwrapBridge(data.risk);
+  const portfolio = unwrapBridge(data.portfolio);
+  const live = unwrapBridge(data.live);
+  const cap = obj(risk.capital);
+  const liveForex = obj(live.forex);
+  const dataForex = obj(data.forex);
+  const portfolioForex = obj(portfolio.forex);
+  // Source of truth: live/account payloads, then portfolio EA, then legacy keys.
+  const eaLive = obj(liveForex.ea);
+  const eaDirect = obj(dataForex.ea);
+  const eaPort = obj(portfolioForex.ea);
+  const connection = obj(first(live.connection, liveForex.connection, data.connection, dataForex.connection));
+  const account = obj(first(portfolio.account, live.account, data.account, connection));
   const stale = eaStale(data);
-  const balance = first(eaLive.balance, eaPort.balance, account.balance, portfolio.balance, data.balance);
-  const equity = first(eaLive.equity, eaPort.equity, account.equity, portfolio.equity, data.equity);
-  const login = first(eaLive.account_login, eaPort.account_login);
-  const broker = first(eaLive.broker_name, eaPort.broker_name);
-  const tradeMode = String(first(eaLive.account_trade_mode, eaPort.account_trade_mode) ?? "");
+  const balance = first(
+    eaLive.balance,
+    eaDirect.balance,
+    eaPort.balance,
+    connection.balance,
+    account.balance,
+    portfolio.balance,
+    live.balance,
+    data.balance,
+  );
+  const equity = first(
+    eaLive.equity,
+    eaDirect.equity,
+    eaPort.equity,
+    connection.equity,
+    account.equity,
+    portfolio.equity,
+    live.equity,
+    data.equity,
+  );
+  const login = first(eaLive.account_login, eaDirect.account_login, eaPort.account_login, connection.account_login);
+  const broker = first(eaLive.broker_name, eaDirect.broker_name, eaPort.broker_name, connection.broker_name);
+  const tradeMode = String(
+    first(
+      eaLive.account_trade_mode,
+      eaDirect.account_trade_mode,
+      eaPort.account_trade_mode,
+      connection.account_trade_mode,
+    ) ?? "",
+  );
   let openPnl = first(
     portfolio.openPnl,
     portfolio.open_pnl,
     account.openPnl,
     account.pnl,
     live.openPnl,
+    live.open_pnl,
+    data.openPnl,
+    data.open_pnl,
   );
   if (openPnl == null) {
-    const positions = obj(live.forex).positions;
-    if (Array.isArray(positions) && positions.length) {
-      let sum = 0;
-      let seen = false;
-      for (const p of positions) {
-        const profit = Number((p as Record<string, unknown>)?.profit);
-        if (Number.isFinite(profit)) {
-          sum += profit;
-          seen = true;
-        }
-      }
-      if (seen) openPnl = sum;
-    }
+    openPnl = sumPnl(
+      liveForex.positions,
+      dataForex.positions,
+      live.positions,
+      data.positions,
+      portfolio.openTrades,
+      portfolio.open_trades,
+      data.openTrades,
+      data.trades,
+    );
   }
+  const openTrades = first(
+    portfolio.openTrades,
+    portfolio.open_trades,
+    data.openTrades,
+    data.open_trades,
+    data.trades,
+    live.openTrades,
+    live.open_trades,
+  );
   const staleMark = stale ? " (قديم — EA غير متصل)" : "";
   const lines = [
     "حالة الحساب — Lonora",
@@ -95,8 +192,11 @@ function formatAccountOverview(data: Record<string, unknown>): string {
     `الرصيد: ${fmtNum(balance)}${balance != null ? staleMark : ""}`,
     `حقوق الملكية: ${fmtNum(equity)}${equity != null ? staleMark : ""}`,
     `PnL المفتوح: ${stale || openPnl == null ? "— / بيانات قديمة" : fmtNum(openPnl)}`,
-    `إعداد حد الصفقة: ${fmtNum(first(risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), 0)} USD (قيمة إعداد، ليست الرصيد)`,
-    `الصفقات المفتوحة: ${formatOpenTrades(first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.trades))}`,
+    `إعداد حد الصفقة: ${fmtNum(first(cap.perTradeMaxUsd, risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), 0)} USD (قيمة إعداد، ليست الرصيد)`,
+    cap.effectiveCapital != null
+      ? `رأس المال الفعّال: ${fmtNum(cap.effectiveCapital, 0)} USD`
+      : "",
+    `الصفقات المفتوحة: ${formatOpenTrades(openTrades)}`,
     stale ? "تنبيه: EA غير متصل أو الأسعار قديمة." : "",
   ];
   return lines.filter(Boolean).join("\n");
@@ -168,7 +268,16 @@ function formatLiveChart(data: Record<string, unknown>): string {
 }
 
 function isAccountOverview(data: Record<string, unknown>): boolean {
-  return "risk" in data && ("portfolio" in data || "live" in data);
+  const forex = obj(data.forex);
+  return (
+    ("risk" in data && ("portfolio" in data || "live" in data)) ||
+    hasKeys(obj(forex.ea)) ||
+    hasKeys(obj(data.connection)) ||
+    data.balance != null ||
+    data.equity != null ||
+    Array.isArray(forex.positions) ||
+    Array.isArray(data.positions)
+  );
 }
 
 function isAnalysis(data: Record<string, unknown>): boolean {
