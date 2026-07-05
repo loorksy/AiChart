@@ -1,3 +1,108 @@
+type Locale = "en" | "ar";
+
+const MESSAGES: Record<Locale, Record<string, string>> = {
+  en: {
+    buy: "Buy",
+    sell: "Sell",
+    staleMark: " (stale — EA offline)",
+    accountTitle: "Account status — Lonora",
+    accountLine: "Account: #{login} · {broker}{mode}",
+    liveMode: " · Live",
+    demoMode: " · Demo",
+    balance: "Balance: {val}{stale}",
+    equity: "Equity: {val}{stale}",
+    openPnl: "Open PnL: {val}",
+    openPnlStale: "— / stale data",
+    perTradeMax: "Per-trade limit setting: {val} USD (configured limit, not balance)",
+    effectiveCapital: "Effective capital: {val} USD",
+    openTrades: "Open trades: {val}",
+    staleWarning: "Note: EA offline or quotes are stale.",
+    analysisTitle: "Analysis {symbol} — Lonora",
+    trend: "Trend: {val}",
+    price: "Price: {val}",
+    rsi: "RSI: {val}",
+    macd: "MACD: {val}",
+    support: "Support: {val}",
+    resistance: "Resistance: {val}",
+    decision: "Decision: {action} ({conf}%)",
+    entry: "Entry: {val}",
+    stop: "Stop: {val}",
+    target: "Target: {val}",
+    liveChart: "Live chart {symbol} @ {interval}",
+    candles: "Candles: {n}",
+    lastPrice: "Last price: {val}",
+    drawings: "Drawings: {n}",
+    noLayout: "(no saved layout — drawings unavailable)",
+  },
+  ar: {
+    buy: "شراء",
+    sell: "بيع",
+    staleMark: " (قديم — EA غير متصل)",
+    accountTitle: "حالة الحساب — Lonora",
+    accountLine: "الحساب: #{login} · {broker}{mode}",
+    liveMode: " · حقيقي",
+    demoMode: " · تجريبي",
+    balance: "الرصيد: {val}{stale}",
+    equity: "حقوق الملكية: {val}{stale}",
+    openPnl: "PnL المفتوح: {val}",
+    openPnlStale: "— / بيانات قديمة",
+    perTradeMax: "إعداد حد الصفقة: {val} USD (قيمة إعداد، ليست الرصيد)",
+    effectiveCapital: "رأس المال الفعّال: {val} USD",
+    openTrades: "الصفقات المفتوحة: {val}",
+    staleWarning: "تنبيه: EA غير متصل أو الأسعار قديمة.",
+    analysisTitle: "تحليل {symbol} — Lonora",
+    trend: "الاتجاه: {val}",
+    price: "السعر: {val}",
+    rsi: "RSI: {val}",
+    macd: "MACD: {val}",
+    support: "الدعم: {val}",
+    resistance: "المقاومة: {val}",
+    decision: "القرار: {action} ({conf}%)",
+    entry: "الدخول: {val}",
+    stop: "الوقف: {val}",
+    target: "الهدف: {val}",
+    liveChart: "شارت حي {symbol} @ {interval}",
+    candles: "شموع: {n}",
+    lastPrice: "آخر سعر: {val}",
+    drawings: "رسومات: {n}",
+    noLayout: "(لا يوجد layout محفوظ — الرسومات غير متاحة)",
+  },
+};
+
+function hasArabicScript(s: unknown): boolean {
+  return /[\u0600-\u06FF]/.test(String(s ?? ""));
+}
+
+/** Mirror widget runtime locale policy: explicit field → Arabic prose → default English. */
+export function resolveTextFallbackLocale(data: Record<string, unknown>): Locale {
+  const loc = first(data.locale, data.lang, data.operatorLocale, data.uiLocale);
+  if (loc != null) {
+    return String(loc).toLowerCase().startsWith("ar") ? "ar" : "en";
+  }
+  const probe = [
+    data.reply,
+    data.summary,
+    data.rationale,
+    data.message,
+    data.note,
+    obj(data.recommendation).rationale,
+  ];
+  for (const v of probe) {
+    if (hasArabicScript(v)) return "ar";
+  }
+  return "en";
+}
+
+function msg(key: string, locale: Locale, vars?: Record<string, string | number>): string {
+  let s = MESSAGES[locale][key] ?? MESSAGES.en[key] ?? key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      s = s.split(`{${k}}`).join(String(v));
+    }
+  }
+  return s;
+}
+
 function obj(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -27,7 +132,7 @@ function fmtNum(n: unknown, digits = 2): string {
   return x.toLocaleString(undefined, { maximumFractionDigits: digits, useGrouping: false });
 }
 
-function formatOpenTrades(v: unknown): string {
+function formatOpenTrades(v: unknown, locale: Locale): string {
   if (v == null) return "—";
   if (typeof v === "number") return String(v);
   if (typeof v === "string") return v;
@@ -39,11 +144,12 @@ function formatOpenTrades(v: unknown): string {
       const row = t as Record<string, unknown>;
       const sym = String(row.symbol ?? row.sym ?? "?");
       const side = String(row.side ?? "").toLowerCase();
-      const sideAr = side === "buy" ? "شراء" : side === "sell" ? "بيع" : side || "—";
+      const sideLbl =
+        side === "buy" ? msg("buy", locale) : side === "sell" ? msg("sell", locale) : side || "—";
       const pnl = row.pnl ?? row.open_pnl ?? row.profit;
       const pnlStr =
         pnl != null && Number.isFinite(Number(pnl)) ? ` · PnL ${fmtNum(pnl)}` : "";
-      return `${sym} ${sideAr}${pnlStr}`;
+      return `${sym} ${sideLbl}${pnlStr}`;
     })
     .join(" | ");
 }
@@ -103,7 +209,7 @@ function sumPnl(...values: unknown[]): number | null {
   return null;
 }
 
-function formatAccountOverview(data: Record<string, unknown>): string {
+function formatAccountOverview(data: Record<string, unknown>, locale: Locale): string {
   /* Host may pass get_live_account flat payload instead of get_account_overview wrapper. */
   if (!obj(data.live).forex && obj(data.forex).ea) {
     data = { ...data, live: data };
@@ -115,7 +221,6 @@ function formatAccountOverview(data: Record<string, unknown>): string {
   const liveForex = obj(live.forex);
   const dataForex = obj(data.forex);
   const portfolioForex = obj(portfolio.forex);
-  // Source of truth: live/account payloads, then portfolio EA, then legacy keys.
   const eaLive = obj(liveForex.ea);
   const eaDirect = obj(dataForex.ea);
   const eaPort = obj(portfolioForex.ea);
@@ -183,21 +288,38 @@ function formatAccountOverview(data: Record<string, unknown>): string {
     live.openTrades,
     live.open_trades,
   );
-  const staleMark = stale ? " (قديم — EA غير متصل)" : "";
+  const staleMark = stale ? msg("staleMark", locale) : "";
+  const modeSuffix =
+    tradeMode === "live"
+      ? msg("liveMode", locale)
+      : tradeMode === "demo"
+        ? msg("demoMode", locale)
+        : "";
   const lines = [
-    "حالة الحساب — Lonora",
+    msg("accountTitle", locale),
     login || broker
-      ? `الحساب: #${String(login ?? "—")} · ${String(broker ?? "—")}${tradeMode === "live" ? " · حقيقي" : tradeMode === "demo" ? " · تجريبي" : ""}`
+      ? msg("accountLine", locale, {
+          login: String(login ?? "—"),
+          broker: String(broker ?? "—"),
+          mode: modeSuffix,
+        })
       : "",
-    `الرصيد: ${fmtNum(balance)}${balance != null ? staleMark : ""}`,
-    `حقوق الملكية: ${fmtNum(equity)}${equity != null ? staleMark : ""}`,
-    `PnL المفتوح: ${stale || openPnl == null ? "— / بيانات قديمة" : fmtNum(openPnl)}`,
-    `إعداد حد الصفقة: ${fmtNum(first(cap.perTradeMaxUsd, risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd), 0)} USD (قيمة إعداد، ليست الرصيد)`,
+    msg("balance", locale, { val: fmtNum(balance), stale: balance != null ? staleMark : "" }),
+    msg("equity", locale, { val: fmtNum(equity), stale: equity != null ? staleMark : "" }),
+    msg("openPnl", locale, {
+      val: stale || openPnl == null ? msg("openPnlStale", locale) : fmtNum(openPnl),
+    }),
+    msg("perTradeMax", locale, {
+      val: fmtNum(
+        first(cap.perTradeMaxUsd, risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd),
+        0,
+      ),
+    }),
     cap.effectiveCapital != null
-      ? `رأس المال الفعّال: ${fmtNum(cap.effectiveCapital, 0)} USD`
+      ? msg("effectiveCapital", locale, { val: fmtNum(cap.effectiveCapital, 0) })
       : "",
-    `الصفقات المفتوحة: ${formatOpenTrades(openTrades)}`,
-    stale ? "تنبيه: EA غير متصل أو الأسعار قديمة." : "",
+    msg("openTrades", locale, { val: formatOpenTrades(openTrades, locale) }),
+    stale ? msg("staleWarning", locale) : "",
   ];
   return lines.filter(Boolean).join("\n");
 }
@@ -214,7 +336,7 @@ function pickSnapshot(data: Record<string, unknown>): Record<string, unknown> {
   return data;
 }
 
-function formatAnalysis(data: Record<string, unknown>): string {
+function formatAnalysis(data: Record<string, unknown>, locale: Locale): string {
   const rec = obj(data.recommendation);
   const snap = pickSnapshot(data);
   const extra = obj(snap.extra);
@@ -228,18 +350,29 @@ function formatAnalysis(data: Record<string, unknown>): string {
     first(snap.trend, extra.trend, rec.trend, data.trend) ?? "neutral",
   );
   const lines = [
-    `تحليل ${symbol} — Lonora`,
-    `الاتجاه: ${trend}`,
-    `السعر: ${fmtNum(first(snap.price, snap.close, rec.entry, data.price), 5)}`,
-    `RSI: ${fmtNum(first(snap.rsi14, snap.rsi, extra.rsi14, data.rsi), 1)}`,
-    `MACD: ${String(first(snap.macd, extra.macd, data.macd) ?? "—")}`,
-    `الدعم: ${fmtNum(first(snap.support, snap.nearestSupport, data.support), 5)}`,
-    `المقاومة: ${fmtNum(first(snap.resistance, snap.nearestResistance, data.resistance), 5)}`,
+    msg("analysisTitle", locale, { symbol }),
+    msg("trend", locale, { val: trend }),
+    msg("price", locale, { val: fmtNum(first(snap.price, snap.close, rec.entry, data.price), 5) }),
+    msg("rsi", locale, { val: fmtNum(first(snap.rsi14, snap.rsi, extra.rsi14, data.rsi), 1) }),
+    msg("macd", locale, { val: String(first(snap.macd, extra.macd, data.macd) ?? "—") }),
+    msg("support", locale, {
+      val: fmtNum(first(snap.support, snap.nearestSupport, data.support), 5),
+    }),
+    msg("resistance", locale, {
+      val: fmtNum(first(snap.resistance, snap.nearestResistance, data.resistance), 5),
+    }),
   ];
-  if (rec.action) lines.push(`القرار: ${String(rec.action)} (${fmtNum(rec.confidence, 0)}%)`);
-  if (rec.entry != null) lines.push(`الدخول: ${fmtNum(rec.entry, 5)}`);
-  if (rec.stop_loss != null) lines.push(`الوقف: ${fmtNum(rec.stop_loss, 5)}`);
-  if (targets[0] != null) lines.push(`الهدف: ${fmtNum(targets[0], 5)}`);
+  if (rec.action) {
+    lines.push(
+      msg("decision", locale, {
+        action: String(rec.action),
+        conf: fmtNum(rec.confidence, 0),
+      }),
+    );
+  }
+  if (rec.entry != null) lines.push(msg("entry", locale, { val: fmtNum(rec.entry, 5) }));
+  if (rec.stop_loss != null) lines.push(msg("stop", locale, { val: fmtNum(rec.stop_loss, 5) }));
+  if (targets[0] != null) lines.push(msg("target", locale, { val: fmtNum(targets[0], 5) }));
   const summary = String(
     first(data.reply, snap.summary, rec.rationale, data.summary, data.narrative) ?? "",
   ).slice(0, 280);
@@ -249,7 +382,7 @@ function formatAnalysis(data: Record<string, unknown>): string {
 
 /** Compact text for the live-chart card payload — the heavy candle series
  *  lives in structuredContent for the widget; the model only needs a line. */
-function formatLiveChart(data: Record<string, unknown>): string {
+function formatLiveChart(data: Record<string, unknown>, locale: Locale): string {
   const ohlc = obj(data.ohlc);
   const candles = Array.isArray(ohlc.candles) ? ohlc.candles : [];
   const last = candles.length
@@ -258,11 +391,14 @@ function formatLiveChart(data: Record<string, unknown>): string {
   const state = obj(data.state);
   const drawings = Array.isArray(state.drawings) ? state.drawings.length : 0;
   const parts = [
-    `شارت حي ${String(data.symbol ?? "—")} @ ${String(data.interval ?? "—")}`,
-    `شموع: ${candles.length}`,
-    last != null ? `آخر سعر: ${fmtNum(last, 5)}` : "",
-    `رسومات: ${drawings}`,
-    data.layout_id ? "" : "(لا يوجد layout محفوظ — الرسومات غير متاحة)",
+    msg("liveChart", locale, {
+      symbol: String(data.symbol ?? "—"),
+      interval: String(data.interval ?? "—"),
+    }),
+    msg("candles", locale, { n: candles.length }),
+    last != null ? msg("lastPrice", locale, { val: fmtNum(last, 5) }) : "",
+    msg("drawings", locale, { n: drawings }),
+    data.layout_id ? "" : msg("noLayout", locale),
   ];
   return parts.filter(Boolean).join(" · ");
 }
@@ -293,12 +429,13 @@ function isAnalysis(data: Record<string, unknown>): boolean {
   );
 }
 
-/** Readable Arabic fallback for card-linked tool results (non-UI hosts). */
+/** Readable fallback for card-linked tool results (non-UI hosts). Locale mirrors operator language. */
 export function formatToolTextFallback(data: unknown): string | null {
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   const o = data as Record<string, unknown>;
-  if (o.live_chart === true) return formatLiveChart(o);
-  if (isAccountOverview(o)) return formatAccountOverview(o);
-  if (isAnalysis(o)) return formatAnalysis(o);
+  const locale = resolveTextFallbackLocale(o);
+  if (o.live_chart === true) return formatLiveChart(o, locale);
+  if (isAccountOverview(o)) return formatAccountOverview(o, locale);
+  if (isAnalysis(o)) return formatAnalysis(o, locale);
   return null;
 }

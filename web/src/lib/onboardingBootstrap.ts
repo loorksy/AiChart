@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const BOOTSTRAP_REL = "agent/onboarding/bootstrap.ar.md";
+const BOOTSTRAP_REL = "agent/onboarding/bootstrap.en.md";
 
 export function getOnboardingBootstrapText(): string {
   const candidates = [
@@ -19,5 +19,5 @@ export function getOnboardingBootstrapText(): string {
     }
   }
 
-  return "تعذّر تحميل رسالة البدء من agent/onboarding/bootstrap.ar.md.";
+  return "Failed to load bootstrap from agent/onboarding/bootstrap.en.md.";
 }

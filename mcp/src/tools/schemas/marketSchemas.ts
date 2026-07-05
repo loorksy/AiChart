@@ -8,9 +8,9 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_snapshot",
     domain: "market",
     description:
-      "متى: تحليل سريع لزوج واحد. RSI/MACD/SMA + اتجاه. read-only. لا تستخدم بدل get_ohlc للمؤشرات الكاملة. مثال: symbol=BTCUSDT&interval=1h.",
+      "When: quick analysis of one pair. RSI/MACD/SMA + trend. read-only. Do not use instead of get_ohlc for full indicators. Example: symbol=BTCUSDT&interval=1h.",
     inputSchema: {
-      symbol: zSymbol.describe("مثل BTCUSDT"),
+      symbol: zSymbol.describe("e.g. BTCUSDT"),
       interval: zInterval,
       market: zMarket,
     },
@@ -21,14 +21,14 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_multi_timeframe_snapshot",
     domain: "market",
     description:
-      "متى: تحليل متعدد الأطر لزوج واحد — يجلب كل الأطر بنداء واحد متوازٍ (أسرع من استدعاء get_market_snapshot لكل فريم). read-only. مثال: symbol=EURUSD&intervals=1h,15m,5m.",
+      "When: multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
     inputSchema: {
-      symbol: zSymbol.describe("مثل EURUSD أو BTCUSDT"),
+      symbol: zSymbol.describe("e.g. EURUSD or BTCUSDT"),
       intervals: z
         .array(z.string())
         .max(5)
         .optional()
-        .describe("قائمة أطر، الافتراضي 1h,15m,5m — حد أقصى 5"),
+        .describe("Frame list, default 1h,15m,5m — max 5"),
       market: zMarket,
     },
     annotations: READ_ONLY,
@@ -38,7 +38,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_price",
     domain: "market",
     description:
-      "متى: سعر لحظي فقط. read-only. للفوركس تحقق quoteAgeMs عبر get_ea_live_quotes. مثال: symbol=EURUSD.",
+      "When: live price only. read-only. For forex check quoteAgeMs via get_ea_live_quotes. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol, market: zMarket },
     annotations: READ_ONLY,
   },
@@ -46,14 +46,14 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_instruments",
     domain: "market",
     description:
-      "متى: استعراض/بحث كل الأزواج المتاحة (فوركس عبر OANDA أو كريبتو عبر Binance)، أو source=ea لكامل رموز وسيط المستخدم عبر جسر MT5 (وليس Market Watch فقط). read-only. مثال: market=forex&q=EUR أو source=ea&q=XAU.",
+      "When: browse/search all available pairs (forex via OANDA or crypto via Binance), or source=ea for full broker symbols via MT5 bridge (not Market Watch only). read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
     inputSchema: {
       market: zMarket,
-      q: z.string().max(20).optional().describe("بحث اختياري مثل EUR أو XAU"),
+      q: z.string().max(20).optional().describe("Optional search e.g. EUR or XAU"),
       source: z
         .enum(["oanda", "ea"])
         .optional()
-        .describe("ea = كل رموز وسيط المستخدم من MT5"),
+        .describe("ea = all broker symbols from MT5"),
     },
     annotations: READ_ONLY,
     ui: { widget: "pair-picker" },
@@ -62,7 +62,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_chart_link",
     domain: "market",
     description:
-      "متى: رابط شارت AiChart المباشر لزوج معيّن لمشاركته مع المستخدم. read-only. مثال: symbol=EURUSD.",
+      "When: live AiChart chart link for a pair to share with user. read-only. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol },
     annotations: READ_ONLY,
   },
@@ -70,7 +70,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_context",
     domain: "market",
     description:
-      "متى: سياق أخبار/mood. read-only. لا side-effects. مثال: symbol=BTCUSDT.",
+      "When: news/mood context. read-only. No side-effects. Example: symbol=BTCUSDT.",
     inputSchema: { symbol: zSymbol, interval: zInterval },
     annotations: READ_ONLY,
   },
@@ -78,7 +78,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "scan_market",
     domain: "market",
     description:
-      "scan مسح السوق · قارن عدة رموز · أفضل فرصة دخول · اختر صفقة. متى: «خذ صفقة» أو «شو أفضل عملة». read-only. مثال: symbols=[BTCUSDT,ETHUSDT].",
+      "scan market · compare symbols · best entry · pick a trade. When: 'take a trade' or 'best opportunity'. read-only. Example: symbols=[BTCUSDT,ETHUSDT].",
     inputSchema: {
       symbols: z.array(z.string()).max(30).optional(),
       interval: zInterval,
@@ -91,15 +91,15 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_ohlc",
     domain: "market",
     description:
-      "متى: قبل indicators/detect_levels. فوركس via EA، كريبتو Binance. read-only. cursor/limit≤500. مثال: symbol=EURUSD&interval=1h&limit=100.",
+      "When: before indicators/detect_levels. Forex via EA, crypto Binance. read-only. cursor/limit≤500. Example: symbol=EURUSD&interval=1h&limit=100.",
     inputSchema: {
-      symbol: zSymbol.describe("EURUSD أو BTCUSDT"),
+      symbol: zSymbol.describe("EURUSD or BTCUSDT"),
       interval: zInterval,
       market: zMarket,
       source: z
         .enum(["oanda", "ea"])
         .optional()
-        .describe("مصدر شموع الفوركس — ea إلزامي لرموز الوسيط بلاحقة (مثل XAUUSDM)"),
+        .describe("Forex candle source — ea required for broker suffix symbols (e.g. XAUUSDM)"),
       limit: z.number().int().min(1).max(500).optional(),
       cursor: z.number().int().optional().describe("ms — pagination crypto"),
     },
@@ -109,7 +109,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_forex_indicators",
     domain: "market",
     description:
-      "متى: بعد get_ohlc. RSI/MACD/Bollinger/ATR + trend. read-only. لا مع quote قديم. مثال: symbol=EURUSD&interval=1h.",
+      "When: after get_ohlc. RSI/MACD/Bollinger/ATR + trend. read-only. Not with stale quote. Example: symbol=EURUSD&interval=1h.",
     inputSchema: { symbol: zSymbol, interval: zInterval, market: zMarket },
     annotations: READ_ONLY,
   },
@@ -117,7 +117,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "detect_levels",
     domain: "market",
     description:
-      "متى: قبل SL/TP. دعم/مقاومة + بنية. read-only. ليس إشارة دخول وحيدة. مثال: symbol=EURUSD&interval=4h&limit=120.",
+      "When: before SL/TP. Support/resistance + structure. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,

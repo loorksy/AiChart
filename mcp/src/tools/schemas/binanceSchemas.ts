@@ -8,7 +8,7 @@ export const BINANCE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "connect_binance",
     domain: "binance",
     description:
-      "متى: ربط أول مرة أو تبديل testnet/prod. side-effect: يحفظ مفاتيح مشفّرة. يتحقق canTrade/Futures. لا تستخدم verify_binance للحفظ.",
+      "When: first connect or switch testnet/prod. side-effect: saves encrypted keys. Verifies canTrade/Futures. Do not use verify_binance to save.",
     inputSchema: {
       apiKey: z.string().min(10),
       apiSecret: z.string().min(10),
@@ -22,7 +22,7 @@ export const BINANCE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "verify_binance",
     domain: "binance",
     description:
-      "متى: قبل connect — تحقق دون حفظ. read-only على المفاتيح (لا side-effect حفظ).",
+      "When: before connect — verify without saving. read-only on keys (no save side-effect).",
     inputSchema: {
       apiKey: z.string().min(10),
       apiSecret: z.string().min(10),
@@ -35,7 +35,7 @@ export const BINANCE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_binance_status",
     domain: "binance",
     description:
-      "متى: قبل صفقة كريبتو. permissionReport. read-only.",
+      "When: before crypto trade. permissionReport. read-only.",
     inputSchema: { futuresRequired: z.boolean().optional() },
     annotations: READ_ONLY,
   },
@@ -43,7 +43,7 @@ export const BINANCE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "disconnect_binance",
     domain: "binance",
     description:
-      "متى: فصل حساب. side-effect: يحذف credentials. env اختياري.",
+      "When: disconnect account. side-effect: deletes credentials. env optional.",
     inputSchema: { env: z.enum(["testnet", "prod"]).optional() },
     annotations: DESTRUCTIVE,
   },
@@ -51,7 +51,7 @@ export const BINANCE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_binance_chart",
     domain: "binance",
     description:
-      "متى: توصية كريبتو. PNG + chart_url_telegram. side-effect: capture Playwright. مثال: symbol=BTCUSDT.",
+      "When: crypto recommendation. PNG + chart_url_telegram. side-effect: Playwright capture. Example: symbol=BTCUSDT.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -64,14 +64,14 @@ export const BINANCE_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_futures_positions",
     domain: "binance",
-    description: "متى: قبل modify_futures_sl_tp. مراكز USDT-M. read-only.",
+    description: "When: before modify_futures_sl_tp. USDT-M positions. read-only.",
     inputSchema: { symbol: z.string().optional() },
     annotations: READ_ONLY,
   },
   {
     name: "get_futures_orders",
     domain: "binance",
-    description: "متى: أوامر معلّقة futures. read-only.",
+    description: "When: pending futures orders. read-only.",
     inputSchema: { symbol: z.string().optional() },
     annotations: READ_ONLY,
   },
@@ -79,7 +79,7 @@ export const BINANCE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "modify_futures_sl_tp",
     domain: "binance",
     description:
-      "متى: مركز futures مفتوح. side-effect: يعدّل SL/TP. مثال: symbol=BTCUSDT&stop_loss=60000.",
+      "When: open futures position. side-effect: modifies SL/TP. Example: symbol=BTCUSDT&stop_loss=60000.",
     inputSchema: {
       symbol: zSymbol,
       stop_loss: z.number().positive().nullish(),
@@ -91,7 +91,7 @@ export const BINANCE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "cancel_futures_order",
     domain: "binance",
     description:
-      "متى: إلغاء أمر معلّق. side-effect: cancel. all=true لكل أمر الرمز.",
+      "When: cancel pending order. side-effect: cancel. all=true for all symbol orders.",
     inputSchema: {
       symbol: zSymbol,
       order_id: z.number().int().positive().optional(),

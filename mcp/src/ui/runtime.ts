@@ -10,7 +10,154 @@ export const RUNTIME_JS = `
 (function () {
   var listeners = [];
   var latest = null;
+  var currentLocale = "en";
+  var I18N = {
+    en: {
+      confirmAgain: "Confirm? Click again",
+      yes: "Yes", no: "No",
+      buy: "Buy", sell: "Sell", wait: "Wait", opportunity: "Opportunity",
+      bullish: "Bullish", bearish: "Bearish", sideways: "Sideways", neutral: "Neutral",
+      bridgeOffline: "Bridge offline — no live data",
+      eaOffline: "EA offline / stale data",
+      staleQuotes: "Stale quotes ({s}s)",
+      connected: "Connected",
+      eaStaleLabel: "Offline / stale data",
+      noOpenTrades: "No open trades",
+      moreTrades: "+{n} more trades",
+      noDataYet: "No tool data yet — try Refresh or call the tool again.",
+      equity: "Equity", balance: "Balance", openPnl: "Open PnL",
+      price: "Price", trend: "Trend",
+      refresh: "Refresh", manage: "Manage", deep: "Deeper", analyze: "Analyze",
+      chart: "Chart", open: "Open", pause: "Pause", resume: "Resume",
+      support: "Support", resistance: "Resistance", change24h: "24h",
+      totalPnl: "Total PnL", connection: "Connection",
+      connLive: "Live", connStale: "Stale",
+      noSymbol: "No symbol yet",
+      noSymbolHint: "No symbol yet — ask Claude to show a chart for a pair.",
+      noCandles: "No candles available — check OANDA setup on the server.",
+      updateFailed: "Update failed", pausedStatus: "Paused",
+      entry: "Entry", stop: "Stop", target: "Target",
+      stopLoss: "Stop loss", targetLabel: "Target", entryLabel: "Entry",
+      pattern: "Pattern", factors: "Factors",
+      noData: "No data", noOpportunities: "No opportunities",
+      noRecommendation: "No recommendation yet",
+      trades: "Trades", items: "Items", candidates: "Candidates",
+      pending: "Pending", status: "Status", capital: "Capital",
+      perTradeMax: "Per-trade max", todayPnl: "Today PnL",
+      bridgeNoTrades: "Bridge offline — no phantom trades",
+      followUpManage: "Open open-trade and risk management in Lonora for me.",
+      pairPickerTitle: "Pick a pair",
+      pairPickerSubtitle: "Choose a pair before analysis.",
+      refreshPairs: "Refresh pairs",
+      riskStatusTitle: "Risk status",
+      riskStatusSubtitle: "Current risk limits and account settings.",
+      pendingApprovalsTitle: "Pending approvals",
+      pendingApprovalsSubtitle: "Execution requests awaiting your approval.",
+      tradeReadinessTitle: "Trade readiness",
+      tradeReadinessSubtitle: "Pre-execution check via Lonora.",
+      lessonsTitle: "Trading lessons",
+      lessonsSubtitle: "Performance memory and similar lessons.",
+      chartTitle: "Chart",
+    },
+    ar: {
+      confirmAgain: "تأكيد؟ اضغط مرة أخرى",
+      yes: "نعم", no: "لا",
+      buy: "شراء", sell: "بيع", wait: "انتظار", opportunity: "فرصة",
+      bullish: "صاعد", bearish: "هابط", sideways: "عرضي", neutral: "محايد",
+      bridgeOffline: "الجسر غير متصل — لا بيانات حية",
+      eaOffline: "EA غير متصل / بيانات قديمة",
+      staleQuotes: "أسعار قديمة ({s}s)",
+      connected: "متصل",
+      eaStaleLabel: "غير متصل / بيانات قديمة",
+      noOpenTrades: "لا صفقات مفتوحة",
+      moreTrades: "+{n} صفقات أخرى",
+      noDataYet: "لم تصل بيانات من الأداة بعد — جرّب زر التحديث أو أعد استدعاء الأداة.",
+      equity: "حقوق الملكية", balance: "الرصيد", openPnl: "PnL المفتوح",
+      price: "السعر", trend: "الاتجاه",
+      refresh: "تحديث", manage: "إدارة", deep: "أعمق", analyze: "تحليل",
+      chart: "شارت", open: "فتح", pause: "إيقاف", resume: "استئناف",
+      support: "الدعم", resistance: "المقاومة", change24h: "24س",
+      totalPnl: "إجمالي PnL", connection: "الاتصال",
+      connLive: "مباشر", connStale: "قديم",
+      noSymbol: "لا يوجد رمز بعد",
+      noSymbolHint: "لا يوجد رمز بعد — اطلب من كلود عرض شارت لرمز معين.",
+      noCandles: "لا شموع متاحة الآن — تأكد من إعداد OANDA على الخادم.",
+      updateFailed: "تعذر التحديث", pausedStatus: "متوقف",
+      entry: "دخول", stop: "وقف", target: "هدف",
+      stopLoss: "وقف الخسارة", targetLabel: "الهدف", entryLabel: "الدخول",
+      pattern: "النمط", factors: "العوامل",
+      noData: "لا توجد بيانات", noOpportunities: "لا فرص",
+      noRecommendation: "لا توصية بعد",
+      trades: "الصفقات", items: "العناصر", candidates: "الفرص",
+      pending: "المعلّق", status: "الحالة", capital: "رأس المال",
+      perTradeMax: "حد الصفقة", todayPnl: "PnL اليوم",
+      bridgeNoTrades: "الجسر غير متصل — لا صفقات وهمية",
+      followUpManage: "افتح لي إدارة الصفقات المفتوحة والمخاطر في Lonora.",
+      pairPickerTitle: "اختيار زوج",
+      pairPickerSubtitle: "اختر الزوج المناسب قبل التحليل.",
+      refreshPairs: "تحديث الأزواج",
+      riskStatusTitle: "حالة المخاطر",
+      riskStatusSubtitle: "حدود المخاطر الحالية وإعدادات الحساب.",
+      pendingApprovalsTitle: "الموافقات المعلقة",
+      pendingApprovalsSubtitle: "طلبات التنفيذ التي تنتظر موافقتك.",
+      tradeReadinessTitle: "جاهزية الصفقة",
+      tradeReadinessSubtitle: "فحص ما قبل التنفيذ عبر Lonora.",
+      lessonsTitle: "دروس التداول",
+      lessonsSubtitle: "ذاكرة الأداء والدروس المشابهة.",
+      chartTitle: "الشارت",
+    },
+  };
+  function msg(key, vars) {
+    var s = (I18N[currentLocale] || I18N.en)[key] || (I18N.en[key] || key);
+    if (vars) {
+      for (var vk in vars) s = s.split("{" + vk + "}").join(String(vars[vk]));
+    }
+    return s;
+  }
+  function hasArabicScript(s) {
+    return /[\\u0600-\\u06FF]/.test(String(s || ""));
+  }
+  function resolveLocale(data) {
+    data = data && typeof data === "object" ? data : {};
+    var loc = data.locale || data.lang || data.operatorLocale || data.uiLocale;
+    if (loc) return String(loc).toLowerCase().indexOf("ar") === 0 ? "ar" : "en";
+    var probe = [
+      data.reply, data.summary, data.rationale, data.message, data.note,
+      data.recommendation && data.recommendation.rationale,
+    ];
+    for (var i = 0; i < probe.length; i++) {
+      if (hasArabicScript(probe[i])) return "ar";
+    }
+    try {
+      var nav = (navigator.language || navigator.userLanguage || "").toLowerCase();
+      if (nav.indexOf("ar") === 0) return "ar";
+    } catch (e) {}
+    return "en";
+  }
+  function applyDocLocale() {
+    var el = document.documentElement;
+    if (!el) return;
+    el.lang = currentLocale === "ar" ? "ar" : "en";
+    el.dir = currentLocale === "ar" ? "rtl" : "ltr";
+  }
+  function applyStaticLabels(root) {
+    root = root || document;
+    if (!root || !root.querySelectorAll) return;
+    var nodes = root.querySelectorAll("[data-i18n]");
+    for (var i = 0; i < nodes.length; i++) {
+      var key = nodes[i].getAttribute("data-i18n");
+      if (key) nodes[i].textContent = msg(key);
+    }
+  }
+  function setLocale(loc) {
+    loc = loc === "ar" ? "ar" : "en";
+    if (loc === currentLocale) return;
+    currentLocale = loc;
+    applyDocLocale();
+    applyStaticLabels();
+  }
   function emit() {
+    if (latest != null) setLocale(resolveLocale(latest));
     for (var i = 0; i < listeners.length; i++) {
       try { listeners[i](latest); } catch (e) {}
     }
@@ -57,7 +204,7 @@ export const RUNTIME_JS = `
         if (!armed) {
           armed = true;
           btn.classList.add("confirming");
-          btn.textContent = "تأكيد؟ اضغط مرة أخرى";
+          btn.textContent = msg("confirmAgain");
           timer = setTimeout(function () {
             armed = false;
             btn.classList.remove("confirming");
@@ -98,7 +245,7 @@ export const RUNTIME_JS = `
     api.cell = function (v, d) {
       if (v == null || v === "") return null;
       if (typeof v === "number") return isFinite(v) ? api.fmt(v, d) : null;
-      if (typeof v === "boolean") return v ? "نعم" : "لا";
+      if (typeof v === "boolean") return v ? msg("yes") : msg("no");
       if (typeof v === "string") return v;
       var n = api.num(v);
       return n == null ? null : api.fmt(n, d);
@@ -109,14 +256,14 @@ export const RUNTIME_JS = `
       if (typeof v === "string") return v;
       if (!Array.isArray(v)) return String(v);
       if (!v.length) return "0";
-      return v.map(function (t) {
-        if (!t || typeof t !== "object") return String(t);
-        var sym = t.symbol || t.sym || "?";
-        var side = String(t.side || "").toLowerCase();
-        var sideAr = side === "buy" ? "شراء" : side === "sell" ? "بيع" : side || "—";
-        var pnl = t.pnl != null ? t.pnl : (t.open_pnl != null ? t.open_pnl : t.profit);
+      return v.map(function (tr) {
+        if (!tr || typeof tr !== "object") return String(tr);
+        var sym = tr.symbol || tr.sym || "?";
+        var side = String(tr.side || "").toLowerCase();
+        var sideLbl = side === "buy" ? msg("buy") : side === "sell" ? msg("sell") : side || "—";
+        var pnl = tr.pnl != null ? tr.pnl : (tr.open_pnl != null ? tr.open_pnl : tr.profit);
         var pnlStr = (pnl != null && !isNaN(pnl)) ? " · PnL " + Number(pnl).toFixed(2) : "";
-        return sym + " " + sideAr + pnlStr;
+        return sym + " " + sideLbl + pnlStr;
       }).join(" | ");
     };
     api.pickTrades = function (data) {
@@ -147,18 +294,18 @@ export const RUNTIME_JS = `
       var envForex = (data.executionEnv && data.executionEnv.forex) || {};
       var quoteAge = ea.quoteAgeMs != null ? ea.quoteAgeMs : data.quoteAgeMs;
       if (data.bridgeOffline === true || data.offline === true) {
-        return { stale: true, label: "الجسر غير متصل — لا بيانات حية" };
+        return { stale: true, label: msg("bridgeOffline") };
       }
       var offline = ea.heartbeatFresh === false || ea.online === false || ea.connected === false ||
         forex.heartbeatFresh === false || envForex.online === false;
-      if (offline) return { stale: true, label: "EA غير متصل / بيانات قديمة" };
+      if (offline) return { stale: true, label: msg("eaOffline") };
       if (quoteAge != null && quoteAge > 5000) {
-        return { stale: true, label: "أسعار قديمة (" + Math.round(quoteAge / 1000) + "s)" };
+        return { stale: true, label: msg("staleQuotes", { s: Math.round(quoteAge / 1000) }) };
       }
       var evidence = ea.heartbeatFresh === true || ea.online === true || ea.connected === true ||
         forex.heartbeatFresh === true || envForex.online === true || quoteAge != null;
       /* No connectivity signal in the payload → say nothing, don't claim online. */
-      return evidence ? { stale: false, label: "متصل" } : { stale: false, label: "" };
+      return evidence ? { stale: false, label: msg("connected") } : { stale: false, label: "" };
     };
     api.applyBridgeBadge = function (el, data) {
       if (!el) return;
@@ -175,26 +322,26 @@ export const RUNTIME_JS = `
       if (!container) return;
       container.innerHTML = "";
       if (!trades.length) {
-        container.innerHTML = '<div class="empty">لا صفقات مفتوحة</div>';
+        container.innerHTML = '<div class="empty">' + msg("noOpenTrades") + '</div>';
         return;
       }
-      trades.slice(0, 4).forEach(function (t) {
-        if (!t || typeof t !== "object") return;
-        var sym = t.symbol || t.sym || "?";
-        var side = String(t.side || "").toLowerCase();
-        var sideAr = side === "buy" ? "Buy" : side === "sell" ? "Sell" : side || "—";
-        var vol = t.volume != null ? t.volume : (t.lots != null ? t.lots : t.qty);
+      trades.slice(0, 4).forEach(function (tr) {
+        if (!tr || typeof tr !== "object") return;
+        var sym = tr.symbol || tr.sym || "?";
+        var side = String(tr.side || "").toLowerCase();
+        var sideLbl = side === "buy" ? msg("buy") : side === "sell" ? msg("sell") : side || "—";
+        var vol = tr.volume != null ? tr.volume : (tr.lots != null ? tr.lots : tr.qty);
         var line = document.createElement("div");
         line.className = "pair";
         line.innerHTML = "<strong>" + sym + "</strong><span class=\\\"" +
           (side === "buy" ? "green" : side === "sell" ? "red" : "") + "\\\">" +
-          sideAr + (vol != null ? " " + vol : "") + "</span>";
+          sideLbl + (vol != null ? " " + vol : "") + "</span>";
         container.appendChild(line);
       });
       if (trades.length > 4) {
         var more = document.createElement("div");
         more.className = "sub";
-        more.textContent = "+" + (trades.length - 4) + " صفقات أخرى";
+        more.textContent = msg("moreTrades", { n: trades.length - 4 });
         container.appendChild(more);
       }
     };
@@ -244,7 +391,7 @@ export const RUNTIME_JS = `
       var known = heartbeatFresh != null || online != null || status !== "" || hasAccountNumbers ||
         Object.keys(eaLive).length > 0 || Object.keys(eaDirect).length > 0 || Object.keys(eaPort).length > 0;
       var usable = !stale && (fresh || hasAccountNumbers);
-      var ea = { fresh: usable, stale: stale, label: !known ? "" : (stale ? "غير متصل / بيانات قديمة" : (usable ? "متصل" : "")) };
+      var ea = { fresh: usable, stale: stale, label: !known ? "" : (stale ? msg("eaStaleLabel") : (usable ? msg("connected") : "")) };
       var balance = api.num(api.first(eaLive.balance, eaDirect.balance, eaPort.balance, conn.balance, legacy.balance, portfolio.balance, live.balance, data.balance));
       var equity = api.num(api.first(eaLive.equity, eaDirect.equity, eaPort.equity, conn.equity, legacy.equity, portfolio.equity, live.equity, data.equity));
       var freeMargin = api.num(api.first(
@@ -262,8 +409,8 @@ export const RUNTIME_JS = `
           if (!Array.isArray(arr) || !arr.length) continue;
           var sum = 0, seen = false;
           for (var j = 0; j < arr.length; j++) {
-            var t = arr[j] || {};
-            var p = api.num(api.first(t.profit, t.pnl, t.open_pnl, t.openPnl));
+            var tr = arr[j] || {};
+            var p = api.num(api.first(tr.profit, tr.pnl, tr.open_pnl, tr.openPnl));
             if (p != null) { sum += p; seen = true; }
           }
           if (seen) { openPnl = sum; break; }
@@ -286,6 +433,25 @@ export const RUNTIME_JS = `
         login: login,
       };
     };
+    api.t = msg;
+    api.locale = function () { return currentLocale; };
+    api.setLocale = setLocale;
+    api.applyStaticLabels = applyStaticLabels;
+    api.applyDocLocale = applyDocLocale;
+    api.actInfo = function (a) {
+      a = String(a || "").toLowerCase();
+      if (/buy|long|bull|شراء|صاعد/.test(a)) return { cls: "buy", label: msg("buy"), dir: 1 };
+      if (/sell|short|bear|بيع|هابط/.test(a)) return { cls: "sell", label: msg("sell"), dir: -1 };
+      if (/opportunity|candidate|فرصة/.test(a)) return { cls: "wait", label: msg("opportunity"), dir: 0 };
+      return { cls: "wait", label: msg("wait"), dir: 0 };
+    };
+    api.trendInfo = function (v) {
+      v = String(v || "").toLowerCase();
+      if (/up|bull|buy|صاعد/.test(v)) return ["buy", msg("bullish")];
+      if (/down|bear|sell|هابط/.test(v)) return ["sell", msg("bearish")];
+      if (/side|range|flat|neutral|عرضي|محايد/.test(v)) return ["wait", msg("sideways")];
+      return ["wait", v ? msg("neutral") : msg("neutral")];
+    };
     window.AIC = api;
     /* If the host never delivers data, swap loading skeletons for an honest
        empty state instead of pulsing forever. */
@@ -294,7 +460,7 @@ export const RUNTIME_JS = `
       var sk = document.querySelectorAll(".skel");
       if (!sk.length) return;
       var parent = sk[0].parentNode;
-      if (parent) parent.innerHTML = '<div class="empty">لم تصل بيانات من الأداة بعد — جرّب زر التحديث أو أعد استدعاء الأداة.</div>';
+      if (parent) parent.innerHTML = '<div class="empty">' + msg("noDataYet") + '</div>';
     }, 6000);
     fireReady();
   }
@@ -572,7 +738,7 @@ export const STATIC_ASSETS = {
  *  shells and manual inspection. */
 export function widgetHtml(title: string, body: string, script: string): string {
   return `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -15,9 +15,9 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
   server.registerPrompt(
     "aichart_start",
     {
-      title: "AiChart — رسالة البدء (تهيئة الوكيل)",
+      title: "AiChart — bootstrap message (agent setup)",
       description:
-        "الصقها كأول رسالة بعد ربط الـMCP: تُحمّل القواعد، تقرأ المهارات، وتلخّص الحساب.",
+        "Paste as the first message after connecting MCP: loads rules, reads skills, summarizes account.",
     },
     () => ({
       messages: [
@@ -31,17 +31,24 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
 
   const resources = [
     {
+      id: "system",
+      uri: "aichart://system",
+      title: "AiChart System Constitution",
+      description: "Canonical English agent instructions — identity, language policy, analysis, risk",
+      file: "SYSTEM.md",
+    },
+    {
       id: "trading-rules",
       uri: "aichart://trading-rules",
       title: "AiChart Trading Rules (AGENTS.md)",
-      description: "قواعد التشغيل والتداول للوكيل",
+      description: "Agent operational and trading rules",
       file: "AGENTS.md",
     },
     {
       id: "trading-lexicon",
       uri: "aichart://trading-lexicon",
       title: "AiChart Trading Lexicon Skill",
-      description: "دليل مصطلحات واستراتيجيات المال الذكي والأسواق (عربي)",
+      description: "Smart money and market terminology guide",
       file: "skills/trading-lexicon/SKILL.md",
     },
     {
@@ -56,56 +63,56 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
       uri: "aichart://execution-desk",
       title: "AiChart Execution Desk v3 (Disciplined)",
       description:
-        "إطار مكتب التنفيذ المؤسسي: لجنة الوكلاء الأربعة (درجات تشخيصية) + بوابات الجودة الموضوعية + قرار EXECUTE/NO TRADE",
+        "Institutional execution desk: four-agent committee (diagnostic scores) + objective quality gates + EXECUTE/NO TRADE decision",
       file: "EXECUTION_DESK_V3.md",
     },
     {
       id: "cards",
       uri: "aichart://cards",
       title: "AiChart Interactive Cards Skill",
-      description: "متى وكيف تعرض البطاقات التفاعلية (نماذج مصغّرة) وكتالوجها الكامل",
+      description: "When and how to show interactive cards (mini widgets) and full catalog",
       file: "skills/cards/SKILL.md",
     },
     {
       id: "ea-troubleshooting",
       uri: "aichart://ea-troubleshooting",
       title: "AiChart EA Troubleshooting",
-      description: "دليل استكشاف أخطاء وإصلاح اتصال MetaTrader EA",
+      description: "MetaTrader EA connection troubleshooting guide",
       file: "EA_TROUBLESHOOTING.md",
     },
     {
       id: "heartbeat",
       uri: "aichart://heartbeat",
       title: "AiChart Heartbeat Spec",
-      description: "تفاصيل صيانة ومراقبة الصفقات ونبضات القلب التلقائية",
+      description: "Trade maintenance, monitoring, and automatic heartbeat details",
       file: "HEARTBEAT.md",
     },
     {
       id: "memory",
       uri: "aichart://memory",
       title: "AiChart Memory",
-      description: "ملف الذاكرة الدائمة للحقائق والدروس المستفادة والصفقات",
+      description: "Persistent memory file for facts, lessons learned, and trades",
       file: "MEMORY.md",
     },
     {
       id: "soul",
       uri: "aichart://soul",
       title: "AiChart Soul Profile",
-      description: "ملف شخصية الخبير للوكيل والأسلوب المتبع والمبادئ",
+      description: "Agent expert persona, style, and principles profile",
       file: "SOUL.md",
     },
     {
       id: "user",
       uri: "aichart://user",
       title: "AiChart Operator Profile",
-      description: "ملف معلومات وتفضيلات المشغّل البشري",
+      description: "Human operator info and preferences profile",
       file: "USER.md",
     },
     {
       id: "agent-readme",
       uri: "aichart://agent-readme",
       title: "AiChart Agent README",
-      description: "دليل مستندات وهيكل الوكيل الفني",
+      description: "Agent documentation and technical structure guide",
       file: "../README.md",
     },
   ];

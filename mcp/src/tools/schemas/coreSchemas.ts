@@ -17,12 +17,12 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_account_overview",
     domain: "core",
     description:
-      "متى: بداية جلسة التداول قبل أي قرار. يجمع risk + portfolio + live. مرن: لو فشل الجزء الحي (live) يرجع الباقي. include_live=false لملخّص سريع بلا الحساب الحي. read-only.",
+      "When: start of trading session before any decision. Combines risk + portfolio + live. Resilient: if live fails, returns the rest. include_live=false for quick summary without live account. read-only.",
     inputSchema: {
       include_live: z
         .boolean()
         .optional()
-        .describe("تضمين الحساب الحي (الأبطأ) — false لملخّص أسرع"),
+        .describe("Include live account (slower) — false for faster summary"),
     },
     annotations: READ_ONLY,
     ui: { widget: "account-overview" },
@@ -31,7 +31,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_risk_status",
     domain: "core",
     description:
-      "متى: بداية الجلسة أو قبل تغيير الوضع. kill switch، حدود، mode، executionEnv. لا تستخدم بدل get_trade_readiness لصفقة فوركس. read-only. يعيد envelope { ok, data }.",
+      "When: session start or before mode change. kill switch, limits, mode, executionEnv. Do not use instead of get_trade_readiness for immediate forex. read-only. Returns envelope { ok, data }.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "risk-status" },
@@ -40,11 +40,11 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_readiness",
     domain: "core",
     description:
-      "متى: قبل open_trade فوركس أو quoteAgeMs>5000. لا تنفّذ إذا ready=false. read-only. مثال: symbol=EURUSD&confidence=85&market=forex.",
+      "When: before open_trade forex or quoteAgeMs>5000. Do not execute if ready=false. read-only. Example: symbol=EURUSD&confidence=85&market=forex.",
     inputSchema: {
-      symbol: z.string().optional().describe("رمز الزوج — لفحص quote/spread"),
+      symbol: z.string().optional().describe("Pair symbol — for quote/spread check"),
       market: zMarket,
-      confidence: zOptionalConfidence.describe("ثقة مقترحة — تقديرية وإرشادية للوكيل"),
+      confidence: zOptionalConfidence.describe("Proposed confidence — advisory estimate for the agent"),
       practice: z.boolean().optional(),
     },
     annotations: READ_ONLY,
@@ -54,7 +54,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_capabilities",
     domain: "core",
     description:
-      "متى: أول رسالة في الجلسة. serverVersion، featureFlags، EA debounce. read-only. لا side-effects.",
+      "When: first message in session. serverVersion, featureFlags, EA debounce. read-only. No side-effects.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -62,7 +62,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_portfolio",
     domain: "core",
     description:
-      "متى: بعد get_account_overview أو لتحديث PnL. رصيد وملخص. read-only. لا تستخدم للتنفيذ.",
+      "When: after get_account_overview or to refresh PnL. Balance and summary. read-only. Not for execution.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "portfolio" },
@@ -71,7 +71,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_open_trades",
     domain: "core",
     description:
-      "متى: قبل evaluate_trade أو إغلاق. صفقات مفتوحة + summary_ar. read-only.",
+      "When: before evaluate_trade or close. Open trades + summary_ar. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "open-trades" },
@@ -80,12 +80,12 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_lessons",
     domain: "core",
     description:
-      "متى: قبل كل تحليل أو بعد خسارة. recent=true للأخطاء الأخيرة. read-only. مثال: symbol=BTCUSDT&recent=true.",
+      "When: before every analysis or after a loss. recent=true for recent mistakes. read-only. Example: symbol=BTCUSDT&recent=true.",
     inputSchema: {
       symbol: z.string().optional(),
       pattern: z.string().optional(),
       limit: z.number().int().min(1).max(10).optional(),
-      recent: z.boolean().optional().describe("آخر الدروس بغض النظر عن الرمز"),
+      recent: z.boolean().optional().describe("Latest lessons regardless of symbol"),
     },
     annotations: READ_ONLY,
     ui: { widget: "lessons-card" },
@@ -94,7 +94,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "متى: قبل open_trade — تسجيل توصية. rationale 2–4 جمل «نحن». side-effect: يكتب توصية. مثال: action=buy&confidence=85.",
+      "When: before open_trade — record recommendation. rationale 2–4 sentences in 'we' voice. side-effect: writes recommendation. Example: action=buy&confidence=85.",
     inputSchema: {
       symbol: zSymbol,
       action: z.enum(["buy", "sell", "wait"]),
@@ -115,7 +115,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_trade",
     domain: "core",
     description:
-      "متى: بعد موافقة صريحة. stop_loss إلزامي (Risk Guard يرفض بدونه)، ومرّر entry/take_profit ليُحسب العائد/المخاطرة (يُرفض إن قلّ عن الحد الأدنى). notional اختياري — إن غاب يُشتقّ الحجم من مسافة الوقف. يرفض إذا كان الـ quote قديماً. القرار من تحليل الوكيل (لا عتبة ثقة — confidence للتسجيل/التحجيم فقط). idempotencyKey اختياري. side-effect: ينفّذ عبر Risk Guard. مثال: stop_loss=64000&take_profit=68000&approved_by_user=true.",
+      "When: after explicit approval. stop_loss mandatory (Risk Guard rejects without it); pass entry/take_profit for reward/risk (rejected if below minimum). notional optional — if omitted, size derived from stop distance. Rejects stale quotes. Decision from agent analysis (no confidence threshold — confidence for logging/sizing only). idempotencyKey optional. side-effect: executes via Risk Guard. Example: stop_loss=64000&take_profit=68000&approved_by_user=true.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -123,7 +123,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       lots: z.number().positive().max(100).optional().describe("forex: explicit lot size (overrides notional)"),
       market: zMarket,
       entry: z.number().optional(),
-      stop_loss: z.number().describe("وقف الخسارة — إلزامي، يُرفض بدونه"),
+      stop_loss: z.number().describe("Stop loss — mandatory, rejected without it"),
       take_profit: z.number().optional(),
       confidence: zConfidence,
       rationale: z.string().min(10),
@@ -142,7 +142,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "close_trade",
     domain: "core",
     description:
-      "إغلاق صفقة · أغلق المركز · خروج · close position · إنهاء الصفقة بالكامل. متى: طلب المشغّل أو بعد record_exit_decision=close. side-effect: يغلق صفقة/الكل. مثال: trade_id=123.",
+      "Close trade · close position · exit · close position · fully exit. When: operator request or after record_exit_decision=close. side-effect: closes trade/all. Example: trade_id=123.",
     inputSchema: {
       trade_id: zTradeId.optional(),
       all: z.boolean().optional(),
@@ -153,7 +153,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "evaluate_trade",
     domain: "core",
     description:
-      "متى: صفقة مفتوحة وطلب المشغّل. PnL حي + سياق. read-only. مثال: trade_id=42.",
+      "When: open trade and operator request. Live PnL + context. read-only. Example: trade_id=42.",
     inputSchema: { trade_id: zTradeId },
     annotations: READ_ONLY,
   },
@@ -161,7 +161,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "record_exit_decision",
     domain: "core",
     description:
-      "متى: بعد evaluate_trade. audit hold/close/adjust_sl. side-effect: يسجّل قراراً. لا يغلق تلقائياً.",
+      "When: after evaluate_trade. audit hold/close/adjust_sl. side-effect: records decision. Does not auto-close.",
     inputSchema: {
       trade_id: zTradeId,
       decision: z.enum(["hold", "close", "adjust_sl"]),
@@ -174,7 +174,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_approval",
     domain: "core",
     description:
-      "طلب موافقة · اعتماد صفقة · إرسال للموافقة · approval buttons. متى: mode=approval. يرسل أزرار تيليجرام. side-effect: intent معلّق. لا تستخدم في direct mode.",
+      "Request approval · trade approval · send for approval · approval buttons. When: mode=approval. Sends Telegram buttons. side-effect: pending intent. Do not use in direct mode.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -194,7 +194,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "respond_approval",
     domain: "core",
     description:
-      "متى: intent معلّق. approve/reject. side-effect: قد ينفّذ عند approve.",
+      "When: pending intent. approve/reject. side-effect: may execute on approve.",
     inputSchema: {
       intent_id: zTradeId,
       action: z.enum(["approve", "reject"]),
@@ -204,7 +204,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_pending_approvals",
     domain: "core",
-    description: "متى: mode=approval. قائمة intents معلّقة. read-only.",
+    description: "When: mode=approval. List of pending intents. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "pending-approvals" },
@@ -212,7 +212,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_execution_env",
     domain: "core",
-    description: "متى: قبل صفقة live. demo/live + منصات. read-only.",
+    description: "When: before live trade. demo/live + platforms. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -220,7 +220,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_execution_env",
     domain: "core",
     description:
-      "متى: تبديل demo↔live بموافقة. side-effect: يغيّر preference. لا تستخدم تلقائياً.",
+      "When: switch demo↔live with approval. side-effect: changes preference. Do not use automatically.",
     inputSchema: { preference: z.enum(["demo", "live"]) },
     annotations: DESTRUCTIVE,
   },
@@ -228,7 +228,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_trading_mode",
     domain: "core",
     description:
-      "متى: تبديل auto/approval/direct. side-effect: يغيّر mode. direct موصى به للمحادثة.",
+      "When: switch auto/approval/direct. side-effect: changes mode. direct recommended for chat.",
     inputSchema: { mode: z.enum(["auto", "approval", "direct"]) },
     annotations: DESTRUCTIVE,
   },
@@ -236,7 +236,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_settings",
     domain: "core",
     description:
-      "متى: قبل futures أو تغيير سوق. active_market، leverage. read-only.",
+      "When: before futures or market change. active_market, leverage. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -244,7 +244,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_active_market",
     domain: "core",
     description:
-      "متى: التبديل crypto↔forex. side-effect: يحدّث active_market.",
+      "When: switch crypto↔forex. side-effect: updates active_market.",
     inputSchema: { active_market: z.enum(["crypto", "forex"]) },
     annotations: DESTRUCTIVE,
   },
@@ -252,7 +252,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_futures_enabled",
     domain: "core",
     description:
-      "متى: تفعيل Binance Futures. side-effect: إعدادات. لا تفعّل live بدون موافقة.",
+      "When: enable Binance Futures. side-effect: settings. Do not enable live without approval.",
     inputSchema: {
       futures_enabled: z.boolean(),
       default_leverage: z.number().min(1).max(125).optional(),
@@ -263,7 +263,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_trade_maintenance",
     domain: "core",
     description:
-      "متى: صيانة OCO/TP ميكانيكية. side-effect: قد يعدّل أوامر. لا بديل للتحليل.",
+      "When: mechanical OCO/TP maintenance. side-effect: may modify orders. Not a substitute for analysis.",
     inputSchema: {},
     annotations: DESTRUCTIVE,
   },
@@ -271,7 +271,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "send_telegram_menu",
     domain: "core",
     description:
-      "متى: outbound إشعار. side-effect: رسالة تيليجرام. لا محادثة تفاعلية.",
+      "When: outbound notification. side-effect: Telegram message. Not interactive chat.",
     inputSchema: {},
     annotations: DESTRUCTIVE,
   },
@@ -279,7 +279,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_chart_snapshot",
     domain: "core",
     description:
-      "متى: مع كل توصية. PNG inline + رسوم. read-only على السوق؛ side-effect: capture. مثال: symbol=BTCUSDT&interval=1h.",
+      "When: with every recommendation. PNG inline + drawings. read-only on market; side-effect: capture. Example: symbol=BTCUSDT&interval=1h.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -293,7 +293,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_recommendation_chart",
     domain: "core",
     description:
-      "متى: بعد create_recommendation. شارت PNG لتوصية. توصيات قديمة بدون chart_image_url قد تفشل — للشارت الحي استخدم capture_chart_snapshot. read-only.",
+      "When: after create_recommendation. PNG chart for recommendation. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for live chart. read-only.",
     inputSchema: { recommendation_id: zTradeId },
     annotations: READ_ONLY,
   },
@@ -301,7 +301,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trading_style",
     domain: "core",
     description:
-      "أسلوب التداول الحالي + قائمة الأساليب (scalp/day/swing/position). متى: بداية الجلسة لعرض الخيارات على المستخدم. read-only.",
+      "Current trading style + style list (scalp/day/swing/position). When: session start to show options to user. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -309,7 +309,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_trading_style",
     domain: "core",
     description:
-      "اختيار أسلوب التداول · scalp/day/swing/position. متى: بعد سؤال المستخدم. في scalp مرّر scalp_max_trades (سقف الصفقات). side-effect: يحدّث الإعدادات. مثال: trading_style=scalp&scalp_max_trades=5.",
+      "Set trading style · scalp/day/swing/position. When: after asking user. For scalp pass scalp_max_trades (trade cap). side-effect: updates settings. Example: trading_style=scalp&scalp_max_trades=5.",
     inputSchema: {
       trading_style: z.enum(["scalp", "day", "swing", "position"]),
       scalp_max_trades: z
@@ -318,11 +318,11 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         .min(0)
         .max(100)
         .optional()
-        .describe("سقف الصفقات المتزامنة — مطلوب في scalp"),
+        .describe("Concurrent trade cap — required for scalp"),
       sync_interval: z
         .boolean()
         .optional()
-        .describe("ضبط الإطار الزمني تلقائياً حسب الأسلوب"),
+        .describe("Auto-set timeframe based on style"),
     },
     annotations: DESTRUCTIVE,
   },

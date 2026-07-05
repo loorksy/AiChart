@@ -1,124 +1,96 @@
-# مهارة البطاقات التفاعلية (Interactive Cards Skill)
+# Interactive Cards Skill
 
-دليلك لكيفية ومتى تعرض **بطاقات تفاعلية** (نماذج مصغّرة) للمستخدم في منصة AiChart بدل النص الجاف.
+Guide for when and how to show **interactive cards** (mini UI) in AiChart instead of dry text. **English instructions** — localize card **content** to the operator's language.
 
-## البروتوكول (Card Protocol) — مستقل عن الموديل والمزوّد
-البطاقات في AiChart **بروتوكول أصيل في النظام**، لا ميزة خاصة بموديل واحد. تعمل مع **أي موديل من أي شركة** (OpenAI / Anthropic / Google / OpenRouter) لأنها:
-- **بيانات تصريحية لا كود**: تُرسل كـ `ui_schema = { version: "1.0", layout: UIElement[] }`، و`UIElement = { id, component, props, children? }` — قائمة مسطّحة بمراجع ID تُسقطها الواجهة على مكوّنات أصلية. (نفس فلسفة معيارَي **A2UI** من Google و**AG-UI** من CopilotKit.)
-- **طبقتا ضمان**: (1) أنت تستدعي `render_cards` (يمرّ عبر طبقة أدوات موحّدة تعمل مع كل المزوّدات)؛ (2) وإن لم تفعل، **النظام يولّد البطاقة حتمياً** من نواتج أدواتك (مُركِّب server-side مستقل عن الموديل). فالبطاقة تظهر دائماً عند وجود بيانات.
+## Card protocol
 
-## القاعدة الذهبية
-- **أي رد يحتوي بيانات** (تحليل زوج، أسعار، أزواج الحساب، المحفظة، الصفقات، اقتراح دخول) → **اعرضه كبطاقة واحدة مناسبة للمرحلة**، ولا تكتفِ بسرده نصاً.
-- **محادثة عامة / تحية / توضيح بسيط** → نص فقط، بلا بطاقة.
-- اكتب دائماً جملة أو جملتين بشريّتين موجزتين مع البطاقة (البطاقة تكمّل النص لا تلغيه).
-- **كل بطاقة في وقته**: تحليل → analysis فقط؛ صفقة → order_ticket أو risk_reward أو record_recommendation (واحدة)؛ موافقة → trade_confirm/intent فقط.
-- **حد أقصى بطاقتين** في render_cards.layout؛ **بطاقة واحدة** عند اقتراح صفقة. اذكر لماذا اخترت هذه البطاقة.
+Cards are a **native AiChart protocol**, not model-specific. They work with any provider because:
 
-## مصفوفة المرحلة → البطاقة
-| المرحلة | البطاقة | ممنوع في نفس الرد |
-|---|---|---|
-| تحليل زوج | `analysis` واحدة (RSI/SR في props) | order_ticket, risk_reward, rsi_gauge, sr_ladder |
-| اقتراح صفقة | record_recommendation **أو** order_ticket **أو** risk_reward | analysis + gauges معاً |
-| بعد record_recommendation | لا render_cards إضافية | أي تكرار لمستويات SL/TP |
-| موافقة معلّقة | trade_confirm / intent | order_ticket + analysis |
-| حساب/صفقات | account_overview, positions_table | بطاقات تحليل/صفقة |
+- **Declarative data, not code**: `ui_schema = { version: "1.0", layout: UIElement[] }` where `UIElement = { id, component, props, children? }`.
+- **Two layers**: (1) you call `render_cards`; (2) if you forget, the server may compose a card from tool output deterministically.
 
-## كيف تعرض بطاقة (مهم)
-**استدعِ أداة `render_cards`** ومعها `layout` (مصفوفة عناصر — **1–2 كحد أقصى**). **لا تكتب JSON أو كتل كود في نصّك** — لن يُعرض.
+## Golden rules
 
-> ملاحظة: حتى إن نسيت استدعاء render_cards، يحاول الخادم توليد بطاقة من بيانات الأدوات التي استدعيتها — لكن **الأفضل أن تستدعيها بنفسك** لتختار البطاقة الأغنى والأنسب.
+- Any reply with **data** (analysis, prices, account, trades, trade proposal) → **one appropriate card** for the stage — not text alone.
+- General chat / greeting / simple clarification → text only, no card.
+- Always add 1–2 brief human sentences with the card.
+- **One card per stage**: analysis → analysis only; trade proposal → one of record_recommendation / order_ticket / risk_reward.
+- Max **two cards** in `render_cards.layout`; **one** when proposing a trade. Say why you picked the card.
 
-## الربط بين الأدوات والبطاقات (افعلها تلقائياً)
-| بعد استدعاء | اعرض البطاقة |
-|---|---|
-| get_account_symbols | `pair_browser` (مرّر symbols) |
-| get_market_snapshot / تحليل زوج | `analysis` **واحدة** (RSI/SR في props) |
+## Stage → card matrix
+
+| Stage | Card | Forbidden in same reply |
+|-------|------|-------------------------|
+| Pair analysis | `analysis` (RSI/SR in props) | order_ticket, risk_reward, rsi_gauge, sr_ladder |
+| Trade proposal | record_recommendation **or** order_ticket **or** risk_reward | analysis + gauges together |
+| After record_recommendation | no extra render_cards | repeating SL/TP |
+| Pending approval | trade_confirm / intent | order_ticket + analysis |
+| Account/trades | account_overview, positions_table | analysis/trade cards |
+
+## How to show a card
+
+**Call `render_cards`** with `layout` (1–2 elements max). **Do not paste JSON in chat** — it will not render.
+
+## Tool → card mapping
+
+| After tool | Show |
+|------------|------|
+| get_account_symbols | `pair_browser` |
+| get_market_snapshot / analysis | `analysis` only |
 | get_account_overview | `account_overview` |
 | get_open_trades | `positions_table` |
-| اقتراح/تعديل صفقة | record_recommendation **أو** `order_ticket` **أو** `risk_reward` — **واحدة فقط** |
-| مقارنة عدة أزواج | `change_grid` أو `heatmap` أو `table` |
+| trade proposal | record_recommendation **or** `order_ticket` **or** `risk_reward` — one only |
+| multi-symbol compare | `change_grid`, `heatmap`, or `table` |
 
-## كتالوج المكوّنات
-### تنفيذ وصفقات
-- `order_ticket` — تذكرة أمر قابلة للتعديل. props: symbol, side, notional, entry, stop_loss, take_profit, intentId?, balance?, editable?
-- `quick_trade` (symbol, price?) · `close_position` (symbol, size, pnl?, tradeId?) · `modify_sltp` (symbol, entry, stop_loss, take_profit, tradeId?) · `position_sizer` (balance?, riskPct?, stopDistance?) · `risk_reward` (entry, stop_loss, take_profit) · `bracket_order` (symbol, side) · `trade_confirm` (symbol, side, notional, intentId)
+## Component catalog (summary)
 
-### تحليل
-- `analysis` — props: symbol, price, trend (bullish/bearish/neutral), rsi, macd, support, resistance, summary
-- `rsi_gauge` (value, symbol?) · `macd_meter` (value|bars[]) · `trend_meter` (score -100..100) · `sr_ladder` (symbol, levels:[{price,type}]) · `mtf_grid` (rows:[{tf,signal}]) · `pattern_card` (pattern, confidence) · `confidence_meter` (value) · `signal_strength` (score) · `indicator_tabs` (items:[{key,label,value,note}])
+**Execution**: order_ticket, quick_trade, close_position, modify_sltp, position_sizer, risk_reward, bracket_order, trade_confirm
 
-### السوق وأزواج الحساب
-- `pair_browser` (symbols:[{symbol,market,bid,ask,spreadPct}]) · `watchlist` · `price_ticker` (symbol, price, changePct) · `spread_monitor` (symbol, spreadPct, threshold?) · `movers` · `heatmap` (cells:[{symbol,changePct}]) · `change_grid` · `depth_mini`
+**Analysis**: analysis, rsi_gauge, macd_meter, trend_meter, sr_ladder, mtf_grid, pattern_card, confidence_meter, signal_strength, indicator_tabs
 
-### الحساب والمحفظة
-- `account_overview` (balance, equity, margin, freeMargin, marginLevel) · `equity_sparkline` (points[]) · `positions_table` (positions:[{symbol,side,size,pnl,tradeId}]) · `pnl_summary` (realized, unrealized) · `margin_gauge` (marginLevel) · `allocation_donut` (slices:[{label,value}]) · `exposure_bars` (longPct, shortPct) · `balance_card`
+**Market**: pair_browser, watchlist, price_ticker, spread_monitor, movers, heatmap, change_grid, depth_mini
 
-### تصوّر عام
-- `gauge` · `progress_ring` · `sparkline` · `bar_compare` · `stat_grid` · `timeline` · `kpi_card` · `donut`
+**Account**: account_overview, equity_sparkline, positions_table, pnl_summary, margin_gauge, allocation_donut, exposure_bars, balance_card
 
-### تحكّم وسير عمل
-- `timeframe_picker` · `market_switch` · `mode_switch` · `strategy_picker` · `checklist` · `step_progress` · `fear_greed` (value) · `news_feed` · `alert_banner` (type,title?,text) · `confirm_dialog` · `quick_actions`
+**Controls**: timeframe_picker, market_switch, mode_switch, strategy_picker, checklist, step_progress, fear_greed, news_feed, alert_banner, confirm_dialog, quick_actions
 
-### شارت مصغّر
-- `candles_mini` (candles:[{o,h,l,c}]) · `area_spark` (points[]) · `compare_chart` · `range_slider_chart`
+**Mini charts**: candles_mini, area_spark, compare_chart, range_slider_chart
 
-## أمثلة قرار
-- «حلّل EURUSD» → نص موجز + render_cards [ analysis ] فقط.
-- «ما الأزواج المتاحة؟» → بعد get_account_symbols → render_cards [ pair_browser ].
-- «نظرة على حسابي» → بعد get_account_overview + get_open_trades → render_cards [ account_overview, positions_table ].
-- «أريد دخول بيع على XAUUSD» → record_recommendation **أو** render_cards [ order_ticket ] — لا analysis + order_ticket معاً.
-- «شكراً» / «كيف حالك» → نص فقط، بلا بطاقة.
+## render_cards signature
 
-## توقيع `render_cards`
 ```
 render_cards({ layout: UIElement[] })
 UIElement = { id: string, component: string, props: object, children?: UIElement[] }
 ```
-مثال كامل:
+
+Example:
+
 ```
 render_cards({ "layout": [
-  { "id": "a1", "component": "analysis", "props": { "symbol": "EURUSD", "price": 1.165, "trend": "neutral", "rsi": "41 (محايد)", "macd": "زخم ضعيف", "support": 1.158, "resistance": 1.172, "summary": "السوق عرضي — الأفضل الانتظار." } }
-] })
+  { "id": "a1", "component": "analysis", "props": {
+    "symbol": "EURUSD", "price": 1.165, "trend": "neutral",
+    "rsi": "41 neutral", "macd": "weak momentum",
+    "support": 1.158, "resistance": 1.172,
+    "summary": "Range-bound — prefer waiting."
+  }}
+]})
 ```
 
-## سجل الإجراءات (Actions) — المسموح فقط داخل أزرار البطاقات
-| action | payload | الأثر |
-|---|---|---|
-| `submit_prompt` | `{ text }` | يرسل `text` كرسالة جديدة للوكيل (لتعديل صفقة/طلب تحليل/تبديل وضع…). |
-| `inject_input` | `{ text }` | يملأ حقل الإدخال بـ`text` دون إرسال. |
-| `execute_trade` | `{ intentId }` | يوافق على نية صفقة معلّقة (يمرّ عبر Risk Guard). |
-| `reject_trade` | `{ intentId }` | يرفض نية صفقة معلّقة. |
+## Allowed card button actions
 
-## مرجع نداءات الوكيل (API & IDs) — كل ما تحتاجه لجلب البيانات ثم عرضها كبطاقة
-أدوات بيانات (read-only) ونقاط النهاية المقابلة عبر الجسر الداخلي:
-| الأداة (tool id) | النداء | المعاملات | الناتج → البطاقة |
-|---|---|---|---|
-| `get_account_symbols` | `GET /api/agent/ea/symbols` | `q?`, `market?` (forex/crypto), `limit?` | `{ symbols[] }` → `pair_browser` |
-| `get_market_snapshot` | محلي (Binance/EA) | `symbol`, `interval?` | لقطة `{symbol,price,extra{trend,rsi14,macd},high24h,low24h,summary}` → `analysis` |
-| `get_multi_timeframe_snapshot` | `GET /api/agent/market/multi-snapshot` | `symbol`, `intervals?`, `market?` | `{ snapshots[] }` → `analysis` + `mtf_grid` |
-| `get_account_overview` | `GET /api/agent/{risk/status, portfolio, live/account}` | `include_live?` | `{ risk, portfolio, live }` → `account_overview` |
-| `get_open_trades` | `GET /api/agent/trades/open` | — | `{ aichartTrades[], brokerPositions }` → `positions_table` |
-| `get_risk_status` | `GET /api/agent/risk/status` | — | حالة المخاطر → `stat_grid`/`alert_banner` |
-| `get_trade_readiness` | `GET /api/agent/trade/readiness` | `symbol?`, `market?`, `confidence?` | `{ ready, blockers[] }` → `alert_banner` |
-| `scan_market` | `POST /api/agent/market/scan` | معايير المسح | فرص → `table`/`heatmap` |
-| `get_scalp_status` | `GET /api/agent/scalp` | — | إذن/حالة السكالب |
+| action | payload | effect |
+|--------|---------|--------|
+| submit_prompt | { text } | sends text as new message |
+| inject_input | { text } | fills input only |
+| execute_trade | { intentId } | approves pending intent via Risk Guard |
+| reject_trade | { intentId } | rejects pending intent |
 
-أدوات تنفيذ/تحكّم (تمرّ عبر Risk Guard — لا تُكسر):
-| الأداة | النداء | ملاحظة |
-|---|---|---|
-| `open_trade` | `POST /api/agent/trade/open` | في وضع موافقة يُنشئ نية معلّقة → بطاقة موافقة. |
-| `close_trade` | `POST /api/agent/trade/close` | إغلاق صفقة/الكل. |
-| `modify_sl_tp` | `POST /api/agent/ea/modify-sl-tp` | تعديل وقف/هدف. |
-| `request_approval` | `POST /api/agent/approval/request` | يُنشئ نية معلّقة + بطاقة موافقة. |
-| `set_trading_mode` | `POST /api/agent/mode` | تلقائي/موافقة/مباشر. |
-| `set_active_market` | `PATCH /api/agent/settings` | كريبتو/فوركس. |
-| `set_trading_style` | `POST /api/agent/style` | scalp/day/swing/position. |
-| `start_scalp_session` / `stop_scalp_session` | `POST /api/agent/scalp` | بدء/إيقاف جلسة سكالب. |
-| `render_cards` | محلي (عرض) | عرض البطاقات (لا نداء شبكة). |
-| `get_cards_guide` | محلي | يقرأ هذه المهارة. |
+## Security
 
-> نمط الاستخدام: استدعِ أداة البيانات → استدعِ `render_cards` بالبطاقة المناسبة من نفس الناتج (أو دع المُركِّب الحتمي يفعلها). كل النداءات مُصادَق عليها بهوية المستخدم تلقائياً عبر الجسر — لا تمرّر مفاتيح.
+- No `on...` handlers in props — stripped.
+- Number edits via submit_prompt so execution stays behind Risk Guard.
 
-## القيود الأمنية
-- أزرار البطاقات تستخدم الإجراءات المعتمدة فقط: `submit_prompt` · `inject_input` · `execute_trade` · `reject_trade`. أي تعديل أرقام (حجم/وقف/هدف) يمرّ عبر submit_prompt فيبقى التنفيذ خلف Risk Guard.
-- لا تضع معالجات أحداث (on...) في props — تُحذف أمنياً.
+## MCP vs web
+
+- **Web chat**: always use `render_cards` tool.
+- **MCP App sessions**: structured tool results may render MCP UI widgets automatically — keep prose brief alongside them.

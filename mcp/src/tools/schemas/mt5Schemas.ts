@@ -8,7 +8,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "connect_mt5",
     domain: "mt5",
     description:
-      "ربط حساب MetaTrader · اتصال MT5/MT4 · ربط فوركس · MetaApi login. متى: MetaApi/mt5local — لا مع FOREX_BACKEND=ea. side-effect: يحفظ credentials. مثال: platform=mt5&server=...",
+      "Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. When: MetaApi/mt5local — not with FOREX_BACKEND=ea. side-effect: saves credentials. Example: platform=mt5&server=...",
     inputSchema: {
       platform: z.enum(["mt4", "mt5"]),
       server: z.string().min(2),
@@ -21,7 +21,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "disconnect_mt5",
     domain: "mt5",
     description:
-      "فصل حساب MetaTrader · قطع اتصال MT5/MT4 · إلغاء ربط فوركس. متى: فصل MetaApi/mt5local. side-effect: disconnect.",
+      "Disconnect MetaTrader · unlink MT5/MT4 · remove forex link. When: disconnect MetaApi/mt5local. side-effect: disconnect.",
     inputSchema: {},
     annotations: DESTRUCTIVE,
   },
@@ -29,7 +29,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_mt5_status",
     domain: "mt5",
     description:
-      "متى: MetaApi/mt5local. مع EA backend استخدم get_ea_diagnostics. read-only.",
+      "When: MetaApi/mt5local. With EA backend use get_ea_diagnostics. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -37,7 +37,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_live_account",
     domain: "mt5",
     description:
-      "متى: قبل أي صفقة — MT5+Binance موحّد + quoteAgeMs. read-only.",
+      "When: before any trade — unified MT5+Binance + quoteAgeMs. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "account-overview" },
@@ -46,7 +46,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_ea_diagnostics",
     domain: "mt5",
     description:
-      "متى: فوركس EA — heartbeat، spread، retcodes. read-only. مثال: symbol=EURUSD.",
+      "When: forex EA — heartbeat, spread, retcodes. read-only. Example: symbol=EURUSD.",
     inputSchema: { symbol: z.string().optional() },
     annotations: READ_ONLY,
   },
@@ -54,7 +54,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_ea_live_quotes",
     domain: "mt5",
     description:
-      "متى: قبل open_trade فوركس. isFresh، spreadPips، freshCount. read-only. لا تنفّذ إذا stale.",
+      "When: before open_trade forex. isFresh, spreadPips, freshCount. read-only. Do not execute if stale.",
     inputSchema: { symbol: z.string().optional() },
     annotations: READ_ONLY,
   },
@@ -62,7 +62,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_account_symbols",
     domain: "mt5",
     description:
-      "كل أزواج/رموز الوسيط في حساب MetaTrader (Market Watch كاملة) مع bid/ask/spread — لرؤية كل الأزواج المتاحة والتقليب بينها، لا قائمة مختصرة. مرشّحات: q، market=forex|crypto. read-only. مثال: market=forex.",
+      "All broker pairs/symbols in MetaTrader account (full Market Watch) with bid/ask/spread — see all available pairs, not a short list. Filters: q, market=forex|crypto. read-only. Example: market=forex.",
     inputSchema: {
       q: z.string().optional(),
       market: z.enum(["forex", "crypto"]).optional(),
@@ -74,7 +74,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_mt5_chart",
     domain: "mt5",
     description:
-      "متى: re-capture MT5 مع entry/SL/TP/drawings/recommendation_id (draw_and_capture، poll حتى 30s). شارت ad-hoc بدون annotations → capture_chart_snapshot أسرع.",
+      "When: re-capture MT5 with entry/SL/TP/drawings/recommendation_id (draw_and_capture, poll up to 30s). Ad-hoc chart without annotations → capture_chart_snapshot is faster.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -91,7 +91,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "modify_sl_tp",
     domain: "mt5",
     description:
-      "متى: مركز MT5 مفتوح. side-effect: EA modify. مثال: ticket=123&stop_loss=1.08.",
+      "When: open MT5 position. side-effect: EA modify. Example: ticket=123&stop_loss=1.08.",
     inputSchema: {
       ticket: z.number().int().positive(),
       stop_loss: z.number().positive(),
@@ -103,7 +103,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_pending_order",
     domain: "mt5",
     description:
-      "متى: أمر معلّق MT5. side-effect: EA pending. EA v3+.",
+      "When: MT5 pending order. side-effect: EA pending. EA v3+.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -118,14 +118,14 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "cancel_mt5_order",
     domain: "mt5",
-    description: "متى: إلغاء pending MT5. side-effect: EA cancel.",
+    description: "When: cancel MT5 pending. side-effect: EA cancel.",
     inputSchema: { ticket: z.number().int().positive() },
     annotations: DESTRUCTIVE,
   },
   {
     name: "close_partial",
     domain: "mt5",
-    description: "متى: إغلاق جزئي MT5. side-effect: EA partial close.",
+    description: "When: partial MT5 close. side-effect: EA partial close.",
     inputSchema: {
       ticket: z.number().int().positive(),
       lots: z.number().positive(),
@@ -135,7 +135,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "query_mt5_terminal",
     domain: "mt5",
-    description: "متى: margin/equity/pending snapshot. read-only via EA.",
+    description: "When: margin/equity/pending snapshot. read-only via EA.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -143,7 +143,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_ea_reconnect",
     domain: "mt5",
     description:
-      "متى: quotes قديمة — مرة/دقيقة max. side-effect: flags DB. resync_candles اختياري.",
+      "When: stale quotes — once/minute max. side-effect: flags DB. resync_candles optional.",
     inputSchema: { resync_candles: z.boolean().optional() },
     annotations: DESTRUCTIVE,
   },

@@ -12,18 +12,18 @@ const accountOverview = widgetHtml(
       <div class="tag" id="acct-tag">—</div>
     </div>
     <div class="main">
-      <div class="label">حقوق الملكية</div>
+      <div class="label" data-i18n="equity">Equity</div>
       <div class="value" id="equity-val">—</div>
     </div>
     <div class="row">
-      <div class="mini"><span>الرصيد</span><strong id="balance-val">—</strong></div>
-      <div class="mini"><span>PnL المفتوح</span><strong id="pnl-val">—</strong></div>
+      <div class="mini"><span data-i18n="balance">Balance</span><strong id="balance-val">—</strong></div>
+      <div class="mini"><span data-i18n="openPnl">Open PnL</span><strong id="pnl-val">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
-      <button class="btn" id="refresh">تحديث</button>
-      <button class="btn primary" id="manage">إدارة</button>
+      <button class="btn" id="refresh" data-i18n="refresh">Refresh</button>
+      <button class="btn primary" id="manage" data-i18n="manage">Manage</button>
     </div>
   </div>`,
   `
@@ -35,6 +35,7 @@ const accountOverview = widgetHtml(
     return Number(v) >= 0 ? "green" : "red";
   }
   window.__aicReady = function (AIC) {
+    AIC.applyStaticLabels();
     AIC.onData(function (data) {
       var ac = AIC.parseAccountOverview(data);
       var ea = ac.ea || {};
@@ -74,7 +75,7 @@ const accountOverview = widgetHtml(
       AIC.callTool("get_account_overview", {});
     });
     document.getElementById("manage").addEventListener("click", function () {
-      AIC.sendFollowUpMessage("افتح لي إدارة الصفقات المفتوحة والمخاطر في Lonora.");
+      AIC.sendFollowUpMessage(AIC.t("followUpManage"));
     });
   };
   `,
@@ -89,14 +90,14 @@ const analysis = widgetHtml(
     </div>
     <div class="main" id="main"><div class="skel"></div></div>
     <div class="row">
-      <div class="mini"><span>السعر</span><strong id="price-val">—</strong></div>
-      <div class="mini"><span>الاتجاه</span><strong id="trend-val">—</strong></div>
+      <div class="mini"><span data-i18n="price">Price</span><strong id="price-val">—</strong></div>
+      <div class="mini"><span data-i18n="trend">Trend</span><strong id="trend-val">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
-      <button class="btn" id="refresh">تحديث</button>
-      <button class="btn primary" id="deep">أعمق</button>
+      <button class="btn" id="refresh" data-i18n="refresh">Refresh</button>
+      <button class="btn primary" id="deep" data-i18n="deep">Deeper</button>
     </div>
   </div>`,
   `
@@ -129,14 +130,11 @@ const analysis = widgetHtml(
     if (typeof v === "number") return v;
     return v.histogram ?? v.value ?? v.macd ?? null;
   }
-  function trendClass(v) {
-    v = String(v || "").toLowerCase();
-    if (/up|bull|buy|صاعد/.test(v)) return ["buy", "صاعد"];
-    if (/down|bear|sell|هابط/.test(v)) return ["sell", "هابط"];
-    if (/side|range|flat|neutral|عرضي|محايد/.test(v)) return ["wait", "عرضي"];
-    return ["wait", v ? "محايد" : "محايد"];
+  function trendClass(AIC, v) {
+    return AIC.trendInfo(v);
   }
   window.__aicReady = function (AIC) {
+    AIC.applyStaticLabels();
     AIC.onData(function (data) {
       data = obj(data);
       var snap = pickSnapshot(data);
@@ -145,14 +143,14 @@ const analysis = widgetHtml(
       current.interval = snap.interval || data.interval || current.interval;
       current.layout_id = data.layout_id || current.layout_id;
       current.data_source = data.data_source || data.dataSource || current.data_source || "oanda";
-      var trend = trendClass(rec.action || snap.trend || data.trend);
+      var trend = trendClass(AIC, rec.action || snap.trend || data.trend);
       var card = document.getElementById("analysis-card");
       card.className = "card " + trend[0];
       document.getElementById("title").textContent = current.symbol ? current.symbol + " · " + current.interval : "—";
       var badge = document.getElementById("badge");
       badge.className = "tag " + (trend[0] === "buy" ? "green" : trend[0] === "sell" ? "red" : "amber");
       var conf = AIC.num(rec.confidence ?? data.confidence);
-      badge.textContent = conf != null ? Math.round(conf) + "%" : (rec.action === "buy" ? "شراء" : rec.action === "sell" ? "بيع" : trend[1]);
+      badge.textContent = conf != null ? Math.round(conf) + "%" : (rec.action === "buy" ? AIC.t("buy") : rec.action === "sell" ? AIC.t("sell") : trend[1]);
       var targets = data.targets || (rec.take_profit ? [rec.take_profit] : []);
       /* Price-like fields: 0 is never a real market level — treat as missing. */
       function pxv(v) {
@@ -185,14 +183,14 @@ const analysis = widgetHtml(
       var priceVal = pxv(snap.price ?? snap.close ?? snap.currentPrice ?? rec.entry);
       var main = document.getElementById("main");
       var signalCls = trend[0] === "buy" ? "green" : trend[0] === "sell" ? "red" : "amber";
-      var signalTxt = rec.action === "buy" ? "شراء" : rec.action === "sell" ? "بيع" : trend[1];
+      var signalTxt = rec.action === "buy" ? AIC.t("buy") : rec.action === "sell" ? AIC.t("sell") : trend[1];
       var pairs = [];
       if ((snap.rsi14 ?? snap.rsi) != null) pairs.push(["RSI", AIC.fmt(snap.rsi14 ?? snap.rsi, 1), ""]);
       if (fmtMacd(snap.macd) != null) pairs.push(["MACD", AIC.fmt(fmtMacd(snap.macd), 4), ""]);
-      if (supVal != null) pairs.push(["الدعم", AIC.fmt(supVal, 5), "green"]);
-      if (resVal != null) pairs.push(["المقاومة", AIC.fmt(resVal, 5), "red"]);
+      if (supVal != null) pairs.push([AIC.t("support"), AIC.fmt(supVal, 5), "green"]);
+      if (resVal != null) pairs.push([AIC.t("resistance"), AIC.fmt(resVal, 5), "red"]);
       if (snap.change24hPct != null) {
-        pairs.push(["24س", AIC.fmt(snap.change24hPct, 2) + "%", Number(snap.change24hPct) >= 0 ? "green" : "red"]);
+        pairs.push([AIC.t("change24h"), AIC.fmt(snap.change24hPct, 2) + "%", Number(snap.change24hPct) >= 0 ? "green" : "red"]);
       }
       var h = '<div class="signal ' + signalCls + '">' + signalTxt + '</div>';
       if (conf != null) {
@@ -233,18 +231,18 @@ const analysis = widgetHtml(
   `,
 );
 
-function genericCard(title: string, _subtitle: string, action?: { label: string; tool: string }) {
+function genericCard(titleKey: string, _subtitleKey: string, action?: { labelKey: string; tool: string }) {
   return widgetHtml(
-    `Lonora ${title}`,
+    `Lonora ${titleKey}`,
     `<div class="card">
       <div class="top">
-        <div><div class="title">${title}</div></div>
+        <div><div class="title" data-i18n="${titleKey}"></div></div>
       </div>
       <div class="main" id="body"><div class="skel"></div></div>
       <div class="foot">
         <span id="status" class="status"></span>
         <span class="spacer"></span>
-        ${action ? `<button class="btn primary" id="action">${action.label}</button>` : ""}
+        ${action ? `<button class="btn primary" id="action" data-i18n="${action.labelKey}"></button>` : ""}
       </div>
     </div>`,
     `
@@ -270,15 +268,15 @@ function genericCard(title: string, _subtitle: string, action?: { label: string;
         if (val) out.push([label, val]);
       }
       var trades = AIC.pickTrades(data);
-      if (trades.length) add("الصفقات", String(trades.length));
-      if (Array.isArray(data.items)) add("العناصر", String(data.items.length));
-      if (Array.isArray(data.candidates)) add("الفرص", String(data.candidates.length));
-      if (Array.isArray(data.pending) || Array.isArray(data.approvals)) add("المعلّق", String((data.pending || data.approvals).length));
+      if (trades.length) add(AIC.t("trades"), String(trades.length));
+      if (Array.isArray(data.items)) add(AIC.t("items"), String(data.items.length));
+      if (Array.isArray(data.candidates)) add(AIC.t("candidates"), String(data.candidates.length));
+      if (Array.isArray(data.pending) || Array.isArray(data.approvals)) add(AIC.t("pending"), String((data.pending || data.approvals).length));
       var cap = obj(data.capital);
-      add("الحالة", data.status || data.mode || data.ready);
-      add("رأس المال", cap.effectiveCapital || data.effectiveCapital, 2);
-      add("حد الصفقة", cap.perTradeMaxUsd || data.perTradeMaxUsd || data.per_trade_max_usd, 2);
-      add("PnL اليوم", data.todayRealizedPnlUsd || data.today_pnl || data.pnl, 2);
+      add(AIC.t("status"), data.status || data.mode || data.ready);
+      add(AIC.t("capital"), cap.effectiveCapital || data.effectiveCapital, 2);
+      add(AIC.t("perTradeMax"), cap.perTradeMaxUsd || data.perTradeMaxUsd || data.per_trade_max_usd, 2);
+      add(AIC.t("todayPnl"), data.todayRealizedPnlUsd || data.today_pnl || data.pnl, 2);
       for (var k in data) {
         if (k === "trades" || k === "openTrades" || k === "open_trades" || k === "capital" ||
             k === "items" || k === "candidates" || k === "pending" || k === "approvals") continue;
@@ -291,17 +289,18 @@ function genericCard(title: string, _subtitle: string, action?: { label: string;
       return out;
     }
     window.__aicReady = function (AIC) {
+      AIC.applyStaticLabels();
       AIC.onData(function (data) {
         data = unwrap(data);
         var body = document.getElementById("body");
         var rows = rowsFrom(data, AIC);
         if (!rows.length) {
-          body.innerHTML = '<div class="empty">لا توجد بيانات</div>';
+          body.innerHTML = '<div class="empty">' + AIC.t("noData") + '</div>';
         } else {
           body.innerHTML = rows.slice(0, 4).map(function (row) {
             var val = AIC.cell(row[1], 4);
             return val ? '<div class="pair"><strong>' + row[0] + '</strong><span>' + val + '</span></div>' : '';
-          }).join("") || '<div class="empty">لا توجد بيانات</div>';
+          }).join("") || '<div class="empty">' + AIC.t("noData") + '</div>';
         }
         var stale = AIC.bridgeLinkState(data).stale;
         var statusEl = document.getElementById("status");
@@ -324,17 +323,18 @@ const openTradesCard = widgetHtml(
     </div>
     <div class="main" id="trades"><div class="skel"></div></div>
     <div class="row">
-      <div class="mini"><span>إجمالي PnL</span><strong id="total-pnl">—</strong></div>
-      <div class="mini"><span>الاتصال</span><strong id="conn-status">—</strong></div>
+      <div class="mini"><span data-i18n="totalPnl">Total PnL</span><strong id="total-pnl">—</strong></div>
+      <div class="mini"><span data-i18n="connection">Connection</span><strong id="conn-status">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
-      <button class="btn primary" id="action">تحديث</button>
+      <button class="btn primary" id="action" data-i18n="refresh">Refresh</button>
     </div>
   </div>`,
   `
   window.__aicReady = function (AIC) {
+    AIC.applyStaticLabels();
     function sumPnl(trades) {
       var sum = 0, seen = false;
       for (var i = 0; i < trades.length; i++) {
@@ -351,7 +351,7 @@ const openTradesCard = widgetHtml(
       var box = document.getElementById("trades");
       document.getElementById("count-tag").textContent = String(trades.length);
       if (stale && !trades.length) {
-        box.innerHTML = '<div class="empty">الجسر غير متصل — لا صفقات وهمية</div>';
+        box.innerHTML = '<div class="empty">' + AIC.t("bridgeNoTrades") + '</div>';
       } else {
         AIC.renderTradeLines(box, trades, AIC.fmt.bind(AIC));
       }
@@ -368,7 +368,7 @@ const openTradesCard = widgetHtml(
         pnlEl.className = "";
       }
       var connEl = document.getElementById("conn-status");
-      connEl.textContent = stale ? "قديم" : "مباشر";
+      connEl.textContent = stale ? AIC.t("connStale") : AIC.t("connLive");
       connEl.className = stale ? "amber" : "green";
       var statusEl = document.getElementById("status");
       statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
@@ -399,18 +399,18 @@ const liveChart = widgetHtml(
     <div class="main">
       <div class="chart-wrap">
         <canvas id="cv"></canvas>
-        <div id="hint" class="empty" style="display:none;position:absolute;inset:0;margin:auto;height:fit-content">لا يوجد رمز بعد</div>
+        <div id="hint" class="empty" style="display:none;position:absolute;inset:0;margin:auto;height:fit-content" data-i18n="noSymbol">No symbol yet</div>
       </div>
     </div>
     <div class="row">
-      <div class="mini"><span>السعر</span><strong id="price-lbl" class="green">—</strong></div>
-      <div class="mini"><span>الاتجاه</span><strong id="trend-lbl">—</strong></div>
+      <div class="mini"><span data-i18n="price">Price</span><strong id="price-lbl" class="green">—</strong></div>
+      <div class="mini"><span data-i18n="trend">Trend</span><strong id="trend-lbl">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
-      <button class="btn" id="pause">إيقاف</button>
-      <button class="btn primary" id="open">فتح</button>
+      <button class="btn" id="pause" data-i18n="pause">Pause</button>
+      <button class="btn primary" id="open" data-i18n="open">Open</button>
     </div>
   </div>`,
   `
@@ -493,6 +493,9 @@ const liveChart = widgetHtml(
     if (span < 5) return 3;
     if (span < 100) return 2;
     return 1;
+  }
+  function chartLbl(key, val) {
+    return (window.AIC && window.AIC.t ? window.AIC.t(key) : key) + " " + val;
   }
   function fmtP(p, dec){ return Number(p).toFixed(dec); }
 
@@ -647,9 +650,9 @@ const liveChart = widgetHtml(
       if (/position/.test(ty)) {
         var meta = dr.meta || {};
         var en = nnum(meta.entry), sl = nnum(meta.stopLoss), tp = nnum(meta.takeProfit);
-        if (en != null) hline(en, GOLD, "dashed", "دخول " + fmtP(en, dec));
-        if (sl != null) hline(sl, DOWN, "dashed", "وقف " + fmtP(sl, dec));
-        if (tp != null) hline(tp, UP, "dashed", "هدف " + fmtP(tp, dec));
+        if (en != null) hline(en, GOLD, "dashed", chartLbl("entry", fmtP(en, dec)));
+        if (sl != null) hline(sl, DOWN, "dashed", chartLbl("stop", fmtP(sl, dec)));
+        if (tp != null) hline(tp, UP, "dashed", chartLbl("target", fmtP(tp, dec)));
         continue;
       }
       /* default: polyline through points (trend/channel/pattern/forecast) */
@@ -677,12 +680,12 @@ const liveChart = widgetHtml(
     /* recommendation levels */
     if (S.rec && typeof S.rec === "object") {
       var re = nnum(S.rec.entry), rs = nnum(S.rec.stop_loss), rt = nnum(S.rec.take_profit);
-      if (re != null) hline(re, GOLD, "dashed", "دخول " + fmtP(re, dec));
-      if (rs != null) hline(rs, DOWN, "dashed", "وقف " + fmtP(rs, dec));
-      if (rt != null) hline(rt, UP, "dashed", "هدف " + fmtP(rt, dec));
+      if (re != null) hline(re, GOLD, "dashed", chartLbl("entry", fmtP(re, dec)));
+      if (rs != null) hline(rs, DOWN, "dashed", chartLbl("stop", fmtP(rs, dec)));
+      if (rt != null) hline(rt, UP, "dashed", chartLbl("target", fmtP(rt, dec)));
       for (var tg = 0; tg < S.targets.length; tg++) {
         var tv = nnum(S.targets[tg]);
-        if (tv != null && tv !== rt) hline(tv, UP, "dotted", "هدف " + (tg + 1));
+        if (tv != null && tv !== rt) hline(tv, UP, "dotted", chartLbl("target", String(tg + 1)));
       }
     }
 
@@ -699,7 +702,8 @@ const liveChart = widgetHtml(
 
   /* ── UI glue ── */
   function setTitle(){
-    document.getElementById("title").textContent = S.symbol ? S.symbol + " · " + S.interval : "الشارت";
+    var fallback = window.AIC && window.AIC.t ? window.AIC.t("chartTitle") : "Chart";
+    document.getElementById("title").textContent = S.symbol ? S.symbol + " · " + S.interval : fallback;
   }
   function setLevels(){
     var priceEl = document.getElementById("price-lbl");
@@ -715,7 +719,7 @@ const liveChart = widgetHtml(
       priceEl.textContent = fmtP(last.c, dec);
       priceEl.className = last.c >= last.o ? "green" : "red";
       var up = S.candles.length > 1 && last.c >= S.candles[S.candles.length - 2].c;
-      trendEl.textContent = up ? "Up" : "Down";
+      trendEl.textContent = window.AIC && window.AIC.t ? (up ? window.AIC.t("bullish") : window.AIC.t("bearish")) : (up ? "Up" : "Down");
       trendEl.className = up ? "green" : "red";
     } else {
       priceEl.textContent = "—";
@@ -737,12 +741,12 @@ const liveChart = widgetHtml(
     setTitle(); setLevels();
     var hint = document.getElementById("hint");
     if (!S.symbol) {
-      hint.textContent = "لا يوجد رمز بعد — اطلب من كلود عرض شارت لرمز معين.";
+      hint.textContent = window.AIC && window.AIC.t ? window.AIC.t("noSymbolHint") : "No symbol yet";
       hint.style.display = "block";
     } else if (!S.candles.length) {
       hint.textContent = S.warning
         ? String(S.warning)
-        : "لا شموع متاحة الآن — تأكد من إعداد OANDA على الخادم.";
+        : (window.AIC && window.AIC.t ? window.AIC.t("noCandles") : "No candles available");
       hint.style.display = "block";
     } else {
       hint.style.display = "none";
@@ -770,12 +774,13 @@ const liveChart = widgetHtml(
       schedule();
     }).catch(function () {
       S.failures++;
-      setStatus("تعذر التحديث", true);
+      setStatus(window.AIC && window.AIC.t ? window.AIC.t("updateFailed") : "Update failed", true);
       schedule();
     });
   }
 
   window.__aicReady = function (AIC) {
+    AIC.applyStaticLabels();
     AIC.onData(function (data) {
       applyPayload(data);
       refresh();
@@ -791,8 +796,8 @@ const liveChart = widgetHtml(
     window.addEventListener("resize", draw);
     document.getElementById("pause").addEventListener("click", function () {
       S.paused = !S.paused;
-      this.textContent = S.paused ? "استئناف" : "إيقاف";
-      if (S.paused) { clearTimeout(S.timer); setStatus("متوقف", true); }
+      this.textContent = S.paused ? AIC.t("resume") : AIC.t("pause");
+      if (S.paused) { clearTimeout(S.timer); setStatus(AIC.t("pausedStatus"), true); }
       else { setStatus("", false); schedule(300); }
     });
     document.getElementById("open").addEventListener("click", function () {
@@ -821,14 +826,14 @@ const recommendationCard = widgetHtml(
     </div>
     <div class="main" id="body"><div class="skel"></div></div>
     <div class="row">
-      <div class="mini"><span>وقف الخسارة</span><strong id="sl-val" class="red">—</strong></div>
-      <div class="mini"><span>الهدف</span><strong id="tp-val" class="green">—</strong></div>
+      <div class="mini"><span data-i18n="stopLoss">Stop loss</span><strong id="sl-val" class="red">—</strong></div>
+      <div class="mini"><span data-i18n="targetLabel">Target</span><strong id="tp-val" class="green">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
       <span class="spacer"></span>
-      <button class="btn" id="chart" style="display:none">شارت</button>
-      <button class="btn primary" id="deep">تحليل</button>
+      <button class="btn" id="chart" style="display:none" data-i18n="chart">Chart</button>
+      <button class="btn primary" id="deep" data-i18n="analyze">Analyze</button>
     </div>
   </div>`,
   `
@@ -848,11 +853,8 @@ const recommendationCard = widgetHtml(
     for (var i=0;i<lists.length;i++){ if (Array.isArray(lists[i]) && lists[i].length > 1) return lists[i]; }
     return null;
   }
-  function actInfo(a){
-    a = String(a||"").toLowerCase();
-    if (a === "buy" || a === "long") return { cls:"buy", ar:"شراء", dir:1 };
-    if (a === "sell" || a === "short") return { cls:"sell", ar:"بيع", dir:-1 };
-    return { cls:"wait", ar:"انتظار", dir:0 };
+  function actInfo(AIC, a){
+    return AIC.actInfo(a);
   }
   function first(){
     for (var i=0;i<arguments.length;i++){
@@ -893,18 +895,12 @@ const recommendationCard = widgetHtml(
     var list = listFrom(data);
     return list ? obj(list[0]) : {};
   };
-  actInfo = function(a){
-    a = String(a||"").toLowerCase();
-    if (/buy|long|bull|شراء|صاعد/.test(a)) return { cls:"buy", ar:"شراء", dir:1 };
-    if (/sell|short|bear|بيع|هابط/.test(a)) return { cls:"sell", ar:"بيع", dir:-1 };
-    if (/opportunity|candidate|فرصة/.test(a)) return { cls:"wait", ar:"فرصة", dir:0 };
-    return { cls:"wait", ar:"انتظار", dir:0 };
-  };
   window.__aicReady = function (AIC){
+    AIC.applyStaticLabels();
     AIC.onData(function (data){
       data = unwrapPayload(data);
       var rec = pickRec(data);
-      var act = actInfo(first(rec.action, rec.side, rec.decision, rec.direction, rec.signal, rec.type, rec.score != null ? "candidate" : null));
+      var act = actInfo(AIC, first(rec.action, rec.side, rec.decision, rec.direction, rec.signal, rec.type, rec.score != null ? "candidate" : null));
       current.symbol = first(rec.symbol, rec.sym, data.symbol, data.baseSymbol, current.symbol);
       current.interval = first(rec.timeframe, rec.interval, data.timeframe, data.interval, current.interval, "1h");
       current.chartUrl = first(data.chart_url, data.chart_url_public, data.chart_url_telegram, data.chart_image_url, rec.chart_url, rec.chart_image_url, current.chartUrl);
@@ -915,7 +911,7 @@ const recommendationCard = widgetHtml(
       var badge = document.getElementById("badge");
       var conf = AIC.num(first(rec.confidence, rec.score, rec.probability, data.confidence, data.score));
       badge.className = "tag " + (act.cls === "buy" ? "green" : act.cls === "sell" ? "red" : "amber");
-      badge.textContent = conf != null ? Math.round(conf) + "%" : act.ar;
+      badge.textContent = conf != null ? Math.round(conf) + "%" : act.label;
       var entry = AIC.num(first(rec.entry, rec.open, rec.price, rec.currentPrice));
       var sl = AIC.num(first(rec.stop_loss, rec.stopLoss, rec.stop, rec.sl));
       var tp = AIC.num(first(rec.take_profit, rec.takeProfit, rec.target, rec.tp, Array.isArray(rec.targets)?rec.targets[0]:null, Array.isArray(data.targets)?data.targets[0]:null));
@@ -924,24 +920,24 @@ const recommendationCard = widgetHtml(
       if (list) {
         var h = "";
         for (var i=0;i<Math.min(list.length,4);i++){
-          var o = obj(list[i]); var oa = actInfo(first(o.action, o.side, o.decision, o.direction, o.signal, o.type, "candidate"));
+          var o = obj(list[i]); var oa = actInfo(AIC, first(o.action, o.side, o.decision, o.direction, o.signal, o.type, "candidate"));
           var oc = AIC.num(first(o.confidence, o.score, o.probability));
           var note = oc != null ? Math.round(oc)+"%" : (AIC.cell(first(o.summary, o.reason, o.rationale, o.price), 5) || "");
           h += '<div class="pair"><strong>'+(o.symbol||o.sym||"—")+'</strong><span class="'+
             (oa.cls==="buy"?"green":oa.cls==="sell"?"red":"amber")+'">'+
-            oa.ar+(note ? " "+note : "")+'</span></div>';
+            oa.label+(note ? " "+note : "")+'</span></div>';
         }
-        body.innerHTML = h || '<div class="empty">لا فرص</div>';
+        body.innerHTML = h || '<div class="empty">'+AIC.t("noOpportunities")+'</div>';
         document.getElementById("sl-val").textContent = "—";
         document.getElementById("tp-val").textContent = "—";
       } else if (entry!=null || sl!=null || tp!=null || act.dir !== 0) {
         var sigCls = act.cls==="buy"?"green":act.cls==="sell"?"red":"amber";
         var details = [];
-        if (entry != null) details.push(["الدخول", AIC.fmt(entry, 5), "blue"]);
+        if (entry != null) details.push([AIC.t("entryLabel"), AIC.fmt(entry, 5), "blue"]);
         if (rec.risk_reward != null || rec.rr != null) details.push(["R:R", AIC.cell(first(rec.risk_reward, rec.rr), 2), ""]);
-        if (rec.pattern_name || rec.pattern) details.push(["النمط", String(first(rec.pattern_name, rec.pattern)), ""]);
-        if (Array.isArray(rec.factors) && rec.factors.length) details.push(["العوامل", rec.factors.slice(0,2).join(" · "), ""]);
-        var h2 = '<div class="signal '+sigCls+'">'+act.ar+'</div>';
+        if (rec.pattern_name || rec.pattern) details.push([AIC.t("pattern"), String(first(rec.pattern_name, rec.pattern)), ""]);
+        if (Array.isArray(rec.factors) && rec.factors.length) details.push([AIC.t("factors"), rec.factors.slice(0,2).join(" · "), ""]);
+        var h2 = '<div class="signal '+sigCls+'">'+act.label+'</div>';
         if (conf!=null) {
           h2 += '<div class="confidence"><div class="bar '+sigCls+'" style="width:'+Math.max(0,Math.min(100,conf))+'%"></div></div>';
         }
@@ -956,7 +952,7 @@ const recommendationCard = widgetHtml(
         document.getElementById("sl-val").textContent = sl != null ? AIC.fmt(sl, 5) : "—";
         document.getElementById("tp-val").textContent = tp != null ? AIC.fmt(tp, 5) : "—";
       } else {
-        body.innerHTML = '<div class="empty">لا توصية بعد</div>';
+        body.innerHTML = '<div class="empty">'+AIC.t("noRecommendation")+'</div>';
         document.getElementById("sl-val").textContent = "—";
         document.getElementById("tp-val").textContent = "—";
       }
@@ -986,16 +982,16 @@ export const WIDGETS: Record<string, string> = {
   analysis,
   "recommendation-card": recommendationCard,
   "account-status": accountOverview,
-  "pair-picker": genericCard("اختيار زوج", "اختر الزوج المناسب قبل التحليل.", { label: "تحديث الأزواج", tool: "list_instruments" }),
-  "risk-status": genericCard("حالة المخاطر", "حدود المخاطر الحالية وإعدادات الحساب."),
+  "pair-picker": genericCard("pairPickerTitle", "pairPickerSubtitle", { labelKey: "refreshPairs", tool: "list_instruments" }),
+  "risk-status": genericCard("riskStatusTitle", "riskStatusSubtitle"),
   "open-trades": openTradesCard,
-  "pending-approvals": genericCard("الموافقات المعلقة", "طلبات التنفيذ التي تنتظر موافقتك.", { label: "تحديث", tool: "get_pending_approvals" }),
+  "pending-approvals": genericCard("pendingApprovalsTitle", "pendingApprovalsSubtitle", { labelKey: "refresh", tool: "get_pending_approvals" }),
   "market-snapshot": analysis,
   "mtf-analysis": analysis,
   "levels-card": analysis,
   "chart-drawn": liveChart,
   "live-chart": liveChart,
   portfolio: accountOverview,
-  "trade-readiness": genericCard("جاهزية الصفقة", "فحص ما قبل التنفيذ عبر Lonora."),
-  "lessons-card": genericCard("دروس التداول", "ذاكرة الأداء والدروس المشابهة."),
+  "trade-readiness": genericCard("tradeReadinessTitle", "tradeReadinessSubtitle"),
+  "lessons-card": genericCard("lessonsTitle", "lessonsSubtitle"),
 };

@@ -3,7 +3,7 @@
 <!-- Edit this file to configure your personal trading preferences -->
 
 - **Name**: (Enter your name here)
-- **Preferred Language**: Arabic
+- **Preferred Language**: Arabic *(hint only — follow the operator's live message language; see SYSTEM.md §2)*
 - **Primary Channel**: Telegram
 - **Active Markets**: Crypto (Always active) · Forex & Gold (Only upon explicit request)
 - **Risk Profile**: Managed dynamically via platform settings (`GET /api/agent/risk/status`)

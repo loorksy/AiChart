@@ -1,21 +1,25 @@
 /**
  * Onboarding bootstrap — single source of truth for the "first message" that
- * primes any model (Claude / ChatGPT) on connect. The canonical text lives in
- * `agent/onboarding/bootstrap.ar.md`; this module reads it (resolved upward from
- * cwd / this file) and derives the short `instructions` extract from the same
- * text so the three surfaces (copy panel, MCP prompt, server instructions)
- * never drift.
+ * primes any model (Claude / ChatGPT) on connect. Canonical text lives in
+ * `agent/onboarding/bootstrap.en.md`; MCP instructions core is extracted from
+ * `agent/workspace/SYSTEM.md` so the three surfaces never drift.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REL = "agent/onboarding/bootstrap.ar.md";
+const BOOTSTRAP_REL = "agent/onboarding/bootstrap.en.md";
+const SYSTEM_REL = "agent/workspace/SYSTEM.md";
+const CORE_START = "<!-- instructions-core-start -->";
+const CORE_END = "<!-- instructions-core-end -->";
 
 const MISSING_BOOTSTRAP =
-  "تعذّر تحميل رسالة البدء من agent/onboarding/bootstrap.ar.md.";
+  "Failed to load bootstrap from agent/onboarding/bootstrap.en.md.";
+const MISSING_SYSTEM =
+  "Failed to load system constitution from agent/workspace/SYSTEM.md.";
 
-let cached: string | null = null;
+let cachedBootstrap: string | null = null;
+let cachedSystem: string | null = null;
 
 function here(): string {
   try {
@@ -25,51 +29,51 @@ function here(): string {
   }
 }
 
-/** Full canonical bootstrap text (read once, cached). */
-export function bootstrapText(): string {
-  if (cached != null) return cached;
+function readRepoFile(relativePath: string): string | null {
   const base = here();
   const candidates = [
-    join(process.cwd(), REL),
-    join(process.cwd(), "..", REL),
-    join(base, "../../..", REL), // dist/onboarding → repo root
-    join(base, "../../../..", REL),
-    join(base, "../..", REL),
+    join(process.cwd(), relativePath),
+    join(process.cwd(), "..", relativePath),
+    join(base, "../../..", relativePath),
+    join(base, "../../../..", relativePath),
+    join(base, "../..", relativePath),
   ];
   for (const path of candidates) {
     try {
       const raw = readFileSync(path, "utf8").trim();
-      if (raw) {
-        cached = raw;
-        return cached;
-      }
+      if (raw) return raw;
     } catch {
       /* try next */
     }
   }
-  cached = MISSING_BOOTSTRAP;
-  return cached;
+  return null;
 }
 
-/**
- * Short core extract for the MCP `instructions` field — identity + the
- * non-negotiable bullet rules only (never the full onboarding dump). Derived
- * from the same text so it can't drift.
- */
+/** Full canonical bootstrap text (read once, cached). */
+export function bootstrapText(): string {
+  if (cachedBootstrap != null) return cachedBootstrap;
+  cachedBootstrap = readRepoFile(BOOTSTRAP_REL) ?? MISSING_BOOTSTRAP;
+  return cachedBootstrap;
+}
+
+/** Full SYSTEM.md constitution (read once, cached). */
+export function systemText(): string {
+  if (cachedSystem != null) return cachedSystem;
+  cachedSystem = readRepoFile(SYSTEM_REL) ?? MISSING_SYSTEM;
+  return cachedSystem;
+}
+
+/** Extract the delimited core block from SYSTEM.md for MCP `instructions`. */
 export function instructionsCore(): string {
-  const text = bootstrapText();
-  const rules = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith("•"));
-  const body = rules.length
-    ? rules.join("\n")
-    : "• احترم Risk Guard دائماً. • لا تنفّذ بلا موافقة صريحة (رمز + مبلغ + وقف + «نفّذ»). • احسب الحجم على الرصيد الحقيقي.";
+  const text = systemText();
+  const start = text.indexOf(CORE_START);
+  const end = text.indexOf(CORE_END);
+  if (start >= 0 && end > start) {
+    return text.slice(start + CORE_START.length, end).trim();
+  }
   return [
-    "منصة AiChart للتداول — أنت شريك تنفيذ (صيغة «نحن»)، لا مستشار.",
-    "عند بدء أي جلسة، نادِ get_agent_capabilities واقرأ مهارات AGENTS/SOUL، ثم لخّص الحساب عبر get_risk_status + get_portfolio + get_live_account.",
-    "القواعد غير القابلة للكسر:",
-    body,
-    "لتهيئة كاملة استعمل الأمر aichart_start (MCP prompt) أو الصق رسالة البدء من شاشة الربط.",
-  ].join("\n");
+    "AiChart Trading Agent — execution partner. Reply in the operator's language.",
+    "Read aichart://system at session start. Respect Risk Guard. Direction is yours, not the operator's.",
+    text.slice(0, 4000),
+  ].join("\n\n");
 }

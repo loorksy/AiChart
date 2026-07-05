@@ -169,7 +169,7 @@ Add `"market":"forex"` to your calls. Run diagnostics before trade execution. Se
 
 ---
 
-## Telegram Arabic Keyboard & Menus
+## Telegram keyboard and menus
 
 On `/start` or `/qaima`:
 ```bash
@@ -180,14 +180,14 @@ curl -s -X POST -H "Authorization: Bearer $AICHART_SERVICE_TOKEN" \
 | Command / Button | Execution Endpoint / Action |
 |------------------|-----------------------------|
 | `/qaima` · `/start` | `POST /api/agent/telegram/menu` |
-| `/tahil` · `📊 تحليل زوج` | Analyze + List symbols |
-| `/rased` · `💰 الرصيد` | `GET /api/agent/portfolio` |
-| `/safaqat` · `📈 الصفقات` | `GET /api/agent/trades/open` |
-| `/iadadat` · `⚙️ الإعدادات` | `GET /api/agent/risk/status` |
-| `/crypto` · `🪙 كربتو` | Crypto market configuration |
-| `/forex` · `💱 فوركس` | Forex market configuration |
-| `/demo` · `🧪 ديمو` | `POST execution/env` demo |
-| `/live` · `🔴 حقيقي` | `POST execution/env` live |
+| `/tahil` · analyze pair button | Analyze + list symbols |
+| `/rased` · balance button | `GET /api/agent/portfolio` |
+| `/safaqat` · trades button | `GET /api/agent/trades/open` |
+| `/iadadat` · settings button | `GET /api/agent/risk/status` |
+| `/crypto` | Crypto market configuration |
+| `/forex` | Forex market configuration |
+| `/demo` | `POST execution/env` demo |
+| `/live` | `POST execution/env` live |
 
 **Fixing Telegram Bot Unresponsiveness on VPS:**
 ```bash

@@ -13,11 +13,11 @@ import { WIDGETS } from "../widgets.js";
 
 describe("MCP UI resources", () => {
   it("registers versioned canonical URIs for flagship cards", () => {
-    assert.equal(appsUri("account-overview"), "ui://aichart/account-overview/v4");
-    assert.equal(appsUri("analysis"), "ui://aichart/analysis/v4");
+    assert.equal(appsUri("account-overview"), "ui://aichart/account-overview/v5");
+    assert.equal(appsUri("analysis"), "ui://aichart/analysis/v5");
     assert.equal(appsUri("portfolio"), "ui://aichart/portfolio/v3");
-    assert.equal(skybridgeUri("account-overview"), "ui://aichart/account-overview/v4-gpt");
-    assert.equal(skybridgeUri("analysis"), "ui://aichart/analysis/v4-gpt");
+    assert.equal(skybridgeUri("account-overview"), "ui://aichart/account-overview/v5-gpt");
+    assert.equal(skybridgeUri("analysis"), "ui://aichart/analysis/v5-gpt");
   });
 
   it("emits MCP Apps and OpenAI compatibility metadata", () => {
@@ -91,11 +91,22 @@ describe("structured tool text fallback", () => {
       portfolio: { openPnl: 0 },
       live: { forex: { ea: { heartbeatFresh: false, online: false } } },
     });
+    assert.ok(text?.includes("— / stale data"));
+  });
+
+  it("formats account overview in Arabic when locale is ar", () => {
+    const text = formatToolTextFallback({
+      locale: "ar",
+      risk: {},
+      portfolio: { openPnl: 0 },
+      live: { forex: { ea: { heartbeatFresh: false, online: false } } },
+    });
     assert.ok(text?.includes("— / بيانات قديمة"));
   });
 
   it("formats direct live account payloads from get_live_account", () => {
     const text = formatToolTextFallback({
+      locale: "ar",
       forex: {
         heartbeatFresh: true,
         ea: {
@@ -123,13 +134,14 @@ describe("structured tool text fallback", () => {
     assert.ok(text?.includes("PnL المفتوح: -1.78"));
   });
 
-  it("formatBridgeResult uses readable fallback when structured", () => {
+  it("formatBridgeResult uses readable English fallback when structured", () => {
     const out = formatBridgeResult(
       { snapshot: { symbol: "EURUSD", price: 1.08, rsi14: 55, trend: "bullish" } },
       { structured: true },
     );
     assert.ok(out.structuredContent);
     assert.ok(out.content[0]?.text.includes("EURUSD"));
+    assert.ok(out.content[0]?.text.includes("Analysis EURUSD"));
     assert.ok(!out.content[0]?.text.startsWith("{"));
   });
 });

@@ -3,13 +3,13 @@
 export const UI_HOST = "aichart";
 
 /** Versioned flagship MCP App templates (bump path when markup changes).
- *  v4: flat #20201e 1:1 cards, border-only buy/sell accents (2026-07-05). */
-export const APP_URI_ACCOUNT_OVERVIEW = `ui://${UI_HOST}/account-overview/v4` as const;
-export const APP_URI_ANALYSIS = `ui://${UI_HOST}/analysis/v4` as const;
+ *  v5: locale-aware cards (EN/AR via runtime i18n, 2026-07-05). */
+export const APP_URI_ACCOUNT_OVERVIEW = `ui://${UI_HOST}/account-overview/v5` as const;
+export const APP_URI_ANALYSIS = `ui://${UI_HOST}/analysis/v5` as const;
 
 const VERSIONED_WIDGET_PATHS: Record<string, string> = {
-  "account-overview": "account-overview/v4",
-  analysis: "analysis/v4",
+  "account-overview": "account-overview/v5",
+  analysis: "analysis/v5",
   portfolio: "portfolio/v3",
 };
 
@@ -31,7 +31,7 @@ export function legacyWidgetUris(widget: string): string[] {
 export function widgetPath(widget: string): string {
   // Hosts (Claude MCP Apps) cache widget HTML by URI — bump version on every
   // visual/markup change or clients keep serving stale templates forever.
-  return VERSIONED_WIDGET_PATHS[widget] ?? `${widget}/v4`;
+  return VERSIONED_WIDGET_PATHS[widget] ?? `${widget}/v5`;
 }
 
 export function widgetUri(widget: string): string {
