@@ -34,6 +34,18 @@ export const RUNTIME_JS = `
   } catch (e) {}
 
   function finishApi(api) {
+    var rawCallTool = api.callTool;
+    api.callTool = function (name, args) {
+      return rawCallTool(name, args || {}).then(function (result) {
+        var normalized = normalizeToolResult(result);
+        if (normalized != null) {
+          latest = normalized;
+          emit();
+          setTimeout(function () { try { api.notifySize(); } catch (e) {} }, 50);
+        }
+        return normalized;
+      });
+    };
     api.onData = function (cb) {
       listeners.push(cb);
       if (latest != null) { try { cb(latest); } catch (e) {} }
@@ -174,8 +186,8 @@ export const RUNTIME_JS = `
         var vol = t.volume != null ? t.volume : (t.lots != null ? t.lots : t.qty);
         var line = document.createElement("div");
         line.className = "pair";
-        line.innerHTML = "<strong>" + sym + "</strong><span class=\"" +
-          (side === "buy" ? "green" : side === "sell" ? "red" : "") + "\">" +
+        line.innerHTML = "<strong>" + sym + "</strong><span class=\\\"" +
+          (side === "buy" ? "green" : side === "sell" ? "red" : "") + "\\\">" +
           sideAr + (vol != null ? " " + vol : "") + "</span>";
         container.appendChild(line);
       });
@@ -221,10 +233,18 @@ export const RUNTIME_JS = `
       var heartbeatFresh = api.first(eaLive.heartbeatFresh, liveForex.heartbeatFresh, dataForex.heartbeatFresh, live.heartbeatFresh, data.heartbeatFresh);
       var online = api.first(eaLive.online, eaLive.connected, liveForex.online, dataForex.online, live.online, data.online);
       var status = String(api.first(eaLive.status, liveForex.status, dataForex.status, live.status, data.status) || "");
+      var quoteAge = api.num(api.first(eaLive.quoteAgeMs, liveForex.quoteAgeMs, dataForex.quoteAgeMs, live.quoteAgeMs, data.quoteAgeMs));
+      var hasAccountNumbers = api.first(
+        eaLive.balance, eaLive.equity, eaDirect.balance, eaDirect.equity, eaPort.balance, eaPort.equity,
+        conn.balance, conn.equity, legacy.balance, legacy.equity, portfolio.balance, portfolio.equity,
+        live.balance, live.equity, data.balance, data.equity
+      ) != null;
       var fresh = heartbeatFresh === true || online === true || /online|connected|live/i.test(status);
-      var stale = heartbeatFresh === false || online === false || /offline|stale|down|revoked/i.test(status);
-      var known = heartbeatFresh != null || online != null || status !== "" || Object.keys(eaLive).length > 0;
-      var ea = { fresh: fresh && !stale, stale: stale || !fresh, label: !known ? "" : (fresh && !stale ? "متصل" : "غير متصل / بيانات قديمة") };
+      var stale = heartbeatFresh === false || online === false || quoteAge > 5000 || /offline|stale|down|revoked/i.test(status);
+      var known = heartbeatFresh != null || online != null || status !== "" || hasAccountNumbers ||
+        Object.keys(eaLive).length > 0 || Object.keys(eaDirect).length > 0 || Object.keys(eaPort).length > 0;
+      var usable = !stale && (fresh || hasAccountNumbers);
+      var ea = { fresh: usable, stale: stale, label: !known ? "" : (stale ? "غير متصل / بيانات قديمة" : (usable ? "متصل" : "")) };
       var balance = api.num(api.first(eaLive.balance, eaDirect.balance, eaPort.balance, conn.balance, legacy.balance, portfolio.balance, live.balance, data.balance));
       var equity = api.num(api.first(eaLive.equity, eaDirect.equity, eaPort.equity, conn.equity, legacy.equity, portfolio.equity, live.equity, data.equity));
       var freeMargin = api.num(api.first(
@@ -373,7 +393,7 @@ export const RUNTIME_JS = `
       }
       if (m.method === "ui/notifications/tool-result") {
         var pr = m.params || {};
-        latest = unwrapEnvelope(pr.structuredContent != null ? pr.structuredContent : pr);
+        latest = normalizeToolResult(pr);
         emit();
         setTimeout(notifySize, 50);
       }
@@ -420,14 +440,14 @@ export const RUNTIME_JS = `
 })();
 `;
 
-/** Shared card theme — square 1:1 MCP cards, flat #20201e, RTL Arabic.
- *  Fully inline (host iframe sandbox blocks external assets). */
+/** Shared inline trading-card theme (host iframe sandbox blocks external assets). */
 export const THEME_CSS = `
   :root{
-    --surface:#20201e; --surface-2:#2a2a28;
-    --txt:#f8fafc; --muted:#94a3b8; --faint:#64748b;
-    --amber:#fbbf24; --up:#34d399; --down:#fb7185; --info:#60a5fa;
-    --line:rgba(148,163,184,.18); --line-soft:rgba(148,163,184,.12);
+    --surface:#131922; --surface-2:#192231; --surface-3:#202b3b;
+    --txt:#f8fafc; --muted:#9aa6b2; --faint:#64748b;
+    --amber:#f5c26b; --up:#2dd4bf; --down:#fb7185; --info:#60a5fa;
+    --line:rgba(148,163,184,.2); --line-soft:rgba(148,163,184,.12);
+    --shadow:0 18px 44px rgba(2,6,23,.34);
     --sans:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -436,54 +456,54 @@ export const THEME_CSS = `
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
   .card{
     position:relative;isolation:isolate;
-    aspect-ratio:1/1;min-width:260px;max-width:340px;width:100%;margin:0 auto;
-    border:1px solid var(--line);border-radius:28px;
-    background:var(--surface);
-    box-shadow:0 16px 48px rgba(0,0,0,.28);
-    padding:22px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;
+    min-width:260px;max-width:560px;width:100%;min-height:300px;margin:0 auto;
+    border:1px solid var(--line);border-radius:8px;
+    background:linear-gradient(180deg,var(--surface),#101620 100%);
+    box-shadow:var(--shadow);
+    padding:18px;display:flex;flex-direction:column;gap:14px;overflow:hidden;
   }
-  .card.buy{border-color:rgba(52,211,153,.35);background:var(--surface)}
-  .card.sell{border-color:rgba(251,113,133,.35);background:var(--surface)}
-  .card.wait{border-color:rgba(251,191,36,.35);background:var(--surface)}
+  .card.buy{border-color:rgba(45,212,191,.42)}
+  .card.sell{border-color:rgba(251,113,133,.42)}
+  .card.wait{border-color:rgba(245,194,107,.42)}
   .top,.hd{position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
   .label{font-size:13px;font-weight:700;color:var(--muted)}
-  .title{margin-top:6px;font-size:22px;line-height:1.1;font-weight:900;letter-spacing:-.03em;color:var(--txt)}
+  .title{margin-top:4px;font-size:20px;line-height:1.15;font-weight:900;letter-spacing:0;color:var(--txt);overflow-wrap:anywhere}
   .tag,.badge{
-    border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900;white-space:nowrap;
-    border:1px solid rgba(245,158,11,.28);color:var(--amber);background:rgba(245,158,11,.1);
+    border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900;white-space:nowrap;
+    border:1px solid rgba(245,194,107,.32);color:var(--amber);background:rgba(245,194,107,.1);
     display:inline-flex;align-items:center;gap:6px
   }
-  .tag.green,.badge.buy{border-color:rgba(52,211,153,.35);color:var(--up);background:rgba(52,211,153,.12)}
+  .tag.green,.badge.buy{border-color:rgba(45,212,191,.35);color:var(--up);background:rgba(45,212,191,.12)}
   .tag.red,.badge.sell{border-color:rgba(251,113,133,.35);color:var(--down);background:rgba(251,113,133,.12)}
-  .tag.amber,.badge.wait{border-color:rgba(251,191,36,.35);color:var(--amber);background:rgba(245,158,11,.1)}
-  .main{position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0;overflow:auto}
-  .value{font-size:clamp(34px,5vw,54px);line-height:.95;font-weight:950;letter-spacing:-.06em;font-variant-numeric:tabular-nums}
-  .signal{font-size:clamp(40px,6vw,64px);line-height:.85;font-weight:1000;letter-spacing:-.08em}
-  .sub{margin-top:10px;color:var(--muted);font-size:14px;font-weight:700}
+  .tag.amber,.badge.wait{border-color:rgba(245,194,107,.35);color:var(--amber);background:rgba(245,194,107,.1)}
+  .main{position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;gap:10px;min-height:96px;overflow:visible}
+  .value{font-size:40px;line-height:1;font-weight:950;letter-spacing:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .signal{font-size:38px;line-height:1;font-weight:1000;letter-spacing:0;overflow-wrap:anywhere}
+  .sub{color:var(--muted);font-size:13px;font-weight:700;line-height:1.6;overflow-wrap:anywhere}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;position:relative}
   .row.flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap;grid-template-columns:none}
   .mini{
-    border-radius:18px;border:1px solid var(--line-soft);background:var(--surface-2);padding:13px;
+    border-radius:8px;border:1px solid var(--line-soft);background:var(--surface-2);padding:12px;min-width:0;
   }
   .mini span{display:block;color:var(--muted);font-size:12px;font-weight:700}
-  .mini strong{display:block;margin-top:6px;font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;word-break:break-word}
+  .mini strong{display:block;margin-top:5px;font-size:17px;font-weight:900;font-variant-numeric:tabular-nums;word-break:break-word}
   .pair{
     display:flex;align-items:center;justify-content:space-between;gap:12px;
-    padding:10px 0;border-bottom:1px solid var(--line-soft);position:relative;
+    padding:9px 0;border-bottom:1px solid var(--line-soft);position:relative;
   }
   .pair:last-child{border-bottom:0}
-  .pair strong{font-size:15px}
-  .pair span{font-size:13px;color:var(--muted);font-weight:800;font-variant-numeric:tabular-nums}
-  .confidence{width:100%;height:9px;border-radius:99px;background:rgba(148,163,184,.16);overflow:hidden;margin-top:16px}
+  .pair strong{font-size:14px;overflow-wrap:anywhere}
+  .pair span{font-size:13px;color:var(--muted);font-weight:800;font-variant-numeric:tabular-nums;text-align:left;overflow-wrap:anywhere}
+  .confidence{width:100%;height:8px;border-radius:99px;background:rgba(148,163,184,.16);overflow:hidden}
   .bar{height:100%;border-radius:inherit;max-width:100%}
   .bar.green{background:var(--up)} .bar.red{background:var(--down)} .bar.amber{background:var(--amber)}
   .green{color:var(--up)} .red{color:var(--down)} .amber{color:var(--amber)} .blue{color:var(--info)}
   .muted{color:var(--muted);font-size:12px}
-  .chart{width:100%;height:110px;margin-top:8px;display:block;border-radius:12px}
-  .chart-wrap{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line-soft);background:var(--surface-2);flex:1;min-height:0}
-  .chart-wrap canvas{width:100%;height:110px;display:block}
+  .chart{width:100%;height:128px;margin-top:8px;display:block;border-radius:8px}
+  .chart-wrap{position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--line-soft);background:var(--surface-2);flex:1;min-height:128px}
+  .chart-wrap canvas{width:100%;height:128px;display:block}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .kv,.mini-kv{border-radius:18px;border:1px solid var(--line-soft);background:var(--surface-2);padding:13px}
+  .kv,.mini-kv{border-radius:8px;border:1px solid var(--line-soft);background:var(--surface-2);padding:12px}
   .kv .k,.mini-kv .k{font-size:12px;color:var(--muted);font-weight:700;margin-bottom:6px}
   .kv .v,.mini-kv .v{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;word-break:break-word}
   table{width:100%;border-collapse:collapse;font-size:12px}
@@ -492,21 +512,21 @@ export const THEME_CSS = `
   .btn{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
     background:var(--surface-2);color:var(--muted);border:1px solid var(--line-soft);
-    border-radius:14px;padding:7px 12px;min-height:34px;font-size:11px;font-weight:800;font-family:var(--sans);
+    border-radius:8px;padding:8px 12px;min-height:40px;font-size:12px;font-weight:800;font-family:var(--sans);
   }
-  .btn:hover{color:var(--txt);border-color:rgba(148,163,184,.28);background:#333330}
+  .btn:hover{color:var(--txt);border-color:rgba(148,163,184,.28);background:var(--surface-3)}
   .btn:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
-  .btn.primary{color:var(--amber);border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.12)}
-  .btn.primary:hover{background:rgba(245,158,11,.18);color:#fde68a}
+  .btn.primary{color:var(--amber);border-color:rgba(245,194,107,.35);background:rgba(245,194,107,.12)}
+  .btn.primary:hover{background:rgba(245,194,107,.18);color:#fde68a}
   .btn.confirming{background:#b45309!important;color:#fff!important;border-color:#f59e0b!important}
   .btn:disabled{opacity:.5;cursor:not-allowed}
   .spacer{flex:1}
   .foot{
-    position:relative;margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft);
+    position:relative;padding-top:12px;border-top:1px solid var(--line-soft);
     display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   }
   .empty{text-align:center;color:var(--faint);padding:18px 10px;font-size:12px;font-weight:700;
-    border:1px dashed var(--line-soft);border-radius:18px;background:var(--surface-2)}
+    border:1px dashed var(--line-soft);border-radius:8px;background:var(--surface-2)}
   .status{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);min-height:16px}
   .status:empty{display:none}
   .status.stale{color:var(--amber)} .status.live{color:var(--up)}
@@ -514,11 +534,16 @@ export const THEME_CSS = `
   .trade-line,.pair-line{display:flex;align-items:center;justify-content:space-between;gap:12px;
     padding:10px 0;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums}
   .trade-line:last-child,.pair-line:last-child{border-bottom:0}
-  .skel{min-height:48px;border-radius:18px;border:1px solid var(--line-soft);
+  .skel{min-height:48px;border-radius:8px;border:1px solid var(--line-soft);
     background:var(--surface-2);opacity:.55;animation:skel 1.4s ease infinite}
   @media (max-width:640px){
     body{padding:2px}
-    .card{border-radius:24px;padding:18px;max-width:100%}
+    .card{padding:16px;max-width:100%;min-height:292px}
+  }
+  @media (max-width:360px){
+    .row,.grid{grid-template-columns:1fr}
+    .value{font-size:34px}
+    .signal{font-size:32px}
   }
   @keyframes skel{0%,100%{opacity:.45}50%{opacity:.75}}
 `;

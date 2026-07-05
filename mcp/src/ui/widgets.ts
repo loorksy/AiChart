@@ -12,11 +12,12 @@ const accountOverview = widgetHtml(
       <div class="tag" id="acct-tag">—</div>
     </div>
     <div class="main">
+      <div class="label">حقوق الملكية</div>
       <div class="value" id="equity-val">—</div>
     </div>
     <div class="row">
-      <div class="mini"><strong id="balance-val">—</strong></div>
-      <div class="mini"><strong id="pnl-val">—</strong></div>
+      <div class="mini"><span>الرصيد</span><strong id="balance-val">—</strong></div>
+      <div class="mini"><span>PnL المفتوح</span><strong id="pnl-val">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
@@ -36,16 +37,17 @@ const accountOverview = widgetHtml(
   window.__aicReady = function (AIC) {
     AIC.onData(function (data) {
       var ac = AIC.parseAccountOverview(data);
+      var ea = ac.ea || {};
       document.getElementById("acct-title").textContent = ac.acctTitle || "—";
       var tagEl = document.getElementById("acct-tag");
       tagEl.textContent = ac.tag || "—";
-      tagEl.className = "tag" + (ac.ea.stale ? " amber" : ac.tag === "LIVE" ? " green" : "");
+      tagEl.className = "tag" + (ea.stale ? " amber" : String(ac.tag || "").toUpperCase() === "LIVE" ? " green" : "");
       var eqEl = document.getElementById("equity-val");
       eqEl.textContent = money(AIC, ac.equity);
-      eqEl.className = "value" + (ac.ea.stale ? " amber" : "");
+      eqEl.className = "value" + (ea.stale && ac.equity == null ? " amber" : "");
       document.getElementById("balance-val").textContent = money(AIC, ac.balance);
       var pnlEl = document.getElementById("pnl-val");
-      if (ac.ea.stale) {
+      if (ea.stale) {
         pnlEl.textContent = "—";
         pnlEl.className = "amber";
       } else if (ac.openPnl != null) {
@@ -56,9 +58,12 @@ const accountOverview = widgetHtml(
         pnlEl.className = "";
       }
       var statusEl = document.getElementById("status");
-      if (ac.ea.stale) {
-        statusEl.textContent = ac.ea.label;
+      if (ea.stale) {
+        statusEl.textContent = ea.label;
         statusEl.className = "status stale";
+      } else if (ea.label) {
+        statusEl.textContent = ea.label;
+        statusEl.className = "status live";
       } else {
         statusEl.textContent = "";
         statusEl.className = "status";
@@ -84,8 +89,8 @@ const analysis = widgetHtml(
     </div>
     <div class="main" id="main"><div class="skel"></div></div>
     <div class="row">
-      <div class="mini"><strong id="price-val">—</strong></div>
-      <div class="mini"><strong id="trend-val">—</strong></div>
+      <div class="mini"><span>السعر</span><strong id="price-val">—</strong></div>
+      <div class="mini"><span>الاتجاه</span><strong id="trend-val">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
@@ -244,22 +249,50 @@ function genericCard(title: string, _subtitle: string, action?: { label: string;
     </div>`,
     `
     function obj(v) { return v && typeof v === "object" ? v : {}; }
+    function unwrap(data) {
+      if (Array.isArray(data)) return { items: data };
+      data = obj(data);
+      var inner = data.data || data.payload || data.result;
+      if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+        var merged = {};
+        for (var ik in inner) merged[ik] = inner[ik];
+        for (var dk in data) if (dk !== "data" && dk !== "payload" && dk !== "result" && merged[dk] == null) merged[dk] = data[dk];
+        return merged;
+      }
+      return data;
+    }
     function rowsFrom(data, AIC) {
       var out = [];
+      data = unwrap(data);
+      function add(label, value, digits) {
+        if (out.length >= 6) return;
+        var val = AIC.cell(value, digits == null ? 4 : digits);
+        if (val) out.push([label, val]);
+      }
       var trades = AIC.pickTrades(data);
-      if (trades.length) out.push(["الصفقات", String(trades.length)]);
+      if (trades.length) add("الصفقات", String(trades.length));
+      if (Array.isArray(data.items)) add("العناصر", String(data.items.length));
+      if (Array.isArray(data.candidates)) add("الفرص", String(data.candidates.length));
+      if (Array.isArray(data.pending) || Array.isArray(data.approvals)) add("المعلّق", String((data.pending || data.approvals).length));
+      var cap = obj(data.capital);
+      add("الحالة", data.status || data.mode || data.ready);
+      add("رأس المال", cap.effectiveCapital || data.effectiveCapital, 2);
+      add("حد الصفقة", cap.perTradeMaxUsd || data.perTradeMaxUsd || data.per_trade_max_usd, 2);
+      add("PnL اليوم", data.todayRealizedPnlUsd || data.today_pnl || data.pnl, 2);
       for (var k in data) {
-        if (k === "trades" || k === "openTrades" || k === "open_trades") continue;
+        if (k === "trades" || k === "openTrades" || k === "open_trades" || k === "capital" ||
+            k === "items" || k === "candidates" || k === "pending" || k === "approvals") continue;
         var v = data[k];
         if (v == null) continue;
-        if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") out.push([k, v]);
+        if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") add(k, v);
+        if (Array.isArray(v)) add(k, String(v.length));
         if (out.length >= 6) break;
       }
       return out;
     }
     window.__aicReady = function (AIC) {
       AIC.onData(function (data) {
-        data = obj(data);
+        data = unwrap(data);
         var body = document.getElementById("body");
         var rows = rowsFrom(data, AIC);
         if (!rows.length) {
@@ -291,8 +324,8 @@ const openTradesCard = widgetHtml(
     </div>
     <div class="main" id="trades"><div class="skel"></div></div>
     <div class="row">
-      <div class="mini"><strong id="total-pnl">—</strong></div>
-      <div class="mini"><strong id="conn-status">—</strong></div>
+      <div class="mini"><span>إجمالي PnL</span><strong id="total-pnl">—</strong></div>
+      <div class="mini"><span>الاتصال</span><strong id="conn-status">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
@@ -370,8 +403,8 @@ const liveChart = widgetHtml(
       </div>
     </div>
     <div class="row">
-      <div class="mini"><strong id="price-lbl" class="green">—</strong></div>
-      <div class="mini"><strong id="trend-lbl">—</strong></div>
+      <div class="mini"><span>السعر</span><strong id="price-lbl" class="green">—</strong></div>
+      <div class="mini"><span>الاتجاه</span><strong id="trend-lbl">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
@@ -788,8 +821,8 @@ const recommendationCard = widgetHtml(
     </div>
     <div class="main" id="body"><div class="skel"></div></div>
     <div class="row">
-      <div class="mini"><strong id="sl-val" class="red">—</strong></div>
-      <div class="mini"><strong id="tp-val" class="green">—</strong></div>
+      <div class="mini"><span>وقف الخسارة</span><strong id="sl-val" class="red">—</strong></div>
+      <div class="mini"><span>الهدف</span><strong id="tp-val" class="green">—</strong></div>
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
@@ -800,7 +833,7 @@ const recommendationCard = widgetHtml(
   </div>`,
   `
   var PLATFORM = "${PLATFORM_URL}";
-  var current = { symbol:"", chartUrl:null };
+  var current = { symbol:"", interval:"1h", chartUrl:null };
   function obj(v){ return v && typeof v === "object" ? v : {}; }
   function pickRec(data){
     if (data.recommendation) return obj(data.recommendation);
@@ -821,43 +854,105 @@ const recommendationCard = widgetHtml(
     if (a === "sell" || a === "short") return { cls:"sell", ar:"بيع", dir:-1 };
     return { cls:"wait", ar:"انتظار", dir:0 };
   }
+  function first(){
+    for (var i=0;i<arguments.length;i++){
+      var v = arguments[i];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return null;
+  }
+  function unwrapPayload(data){
+    data = obj(data);
+    var inner = data.data || data.payload || data.result;
+    if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+      var merged = {};
+      for (var ik in inner) merged[ik] = inner[ik];
+      for (var dk in data) if (dk !== "data" && dk !== "payload" && dk !== "result" && merged[dk] == null) merged[dk] = data[dk];
+      return merged;
+    }
+    return data;
+  }
+  function listFrom(data){
+    data = unwrapPayload(data);
+    var lists = [
+      data.opportunities, data.results, data.candidates, data.picks,
+      data.scan, data.top, data.recommendations
+    ];
+    if (Array.isArray(data.recommendation)) lists.push(data.recommendation);
+    for (var i=0;i<lists.length;i++){
+      if (Array.isArray(lists[i]) && lists[i].length) return lists[i];
+    }
+    return null;
+  }
+  pickList = listFrom;
+  pickRec = function(data){
+    data = unwrapPayload(data);
+    if (data.recommendation && !Array.isArray(data.recommendation)) return obj(data.recommendation);
+    if (data.best || data.pick || data.selected) return obj(data.best || data.pick || data.selected);
+    if (data.action || data.side || data.decision || data.direction || data.signal || data.entry || data.stop_loss || data.take_profit) return data;
+    var list = listFrom(data);
+    return list ? obj(list[0]) : {};
+  };
+  actInfo = function(a){
+    a = String(a||"").toLowerCase();
+    if (/buy|long|bull|شراء|صاعد/.test(a)) return { cls:"buy", ar:"شراء", dir:1 };
+    if (/sell|short|bear|بيع|هابط/.test(a)) return { cls:"sell", ar:"بيع", dir:-1 };
+    if (/opportunity|candidate|فرصة/.test(a)) return { cls:"wait", ar:"فرصة", dir:0 };
+    return { cls:"wait", ar:"انتظار", dir:0 };
+  };
   window.__aicReady = function (AIC){
     AIC.onData(function (data){
-      data = obj(data);
+      data = unwrapPayload(data);
       var rec = pickRec(data);
-      var act = actInfo(rec.action || rec.side);
-      current.symbol = rec.symbol || data.symbol || current.symbol;
-      current.chartUrl = data.chart_url || data.chart_image_url || rec.chart_url || current.chartUrl;
-      var tf = rec.timeframe || rec.interval || data.interval || "15m";
+      var act = actInfo(first(rec.action, rec.side, rec.decision, rec.direction, rec.signal, rec.type, rec.score != null ? "candidate" : null));
+      current.symbol = first(rec.symbol, rec.sym, data.symbol, data.baseSymbol, current.symbol);
+      current.interval = first(rec.timeframe, rec.interval, data.timeframe, data.interval, current.interval, "1h");
+      current.chartUrl = first(data.chart_url, data.chart_url_public, data.chart_url_telegram, data.chart_image_url, rec.chart_url, rec.chart_image_url, current.chartUrl);
+      var tf = current.interval || "1h";
       document.getElementById("title").textContent = current.symbol ? current.symbol + " · " + tf : "—";
       var card = document.getElementById("rec-card");
       card.className = "card " + act.cls;
       var badge = document.getElementById("badge");
-      var conf = AIC.num(rec.confidence);
+      var conf = AIC.num(first(rec.confidence, rec.score, rec.probability, data.confidence, data.score));
       badge.className = "tag " + (act.cls === "buy" ? "green" : act.cls === "sell" ? "red" : "amber");
       badge.textContent = conf != null ? Math.round(conf) + "%" : act.ar;
-      var entry = AIC.num(rec.entry), sl = AIC.num(rec.stop_loss ?? rec.stop ?? rec.sl);
-      var tp = AIC.num(rec.take_profit ?? rec.target ?? rec.tp ?? (Array.isArray(rec.targets)?rec.targets[0]:null));
+      var entry = AIC.num(first(rec.entry, rec.open, rec.price, rec.currentPrice));
+      var sl = AIC.num(first(rec.stop_loss, rec.stopLoss, rec.stop, rec.sl));
+      var tp = AIC.num(first(rec.take_profit, rec.takeProfit, rec.target, rec.tp, Array.isArray(rec.targets)?rec.targets[0]:null, Array.isArray(data.targets)?data.targets[0]:null));
       var body = document.getElementById("body");
       var list = pickList(data);
       if (list) {
         var h = "";
         for (var i=0;i<Math.min(list.length,4);i++){
-          var o = obj(list[i]); var oa = actInfo(o.action||o.side);
-          var oc = AIC.num(o.confidence);
+          var o = obj(list[i]); var oa = actInfo(first(o.action, o.side, o.decision, o.direction, o.signal, o.type, "candidate"));
+          var oc = AIC.num(first(o.confidence, o.score, o.probability));
+          var note = oc != null ? Math.round(oc)+"%" : (AIC.cell(first(o.summary, o.reason, o.rationale, o.price), 5) || "");
           h += '<div class="pair"><strong>'+(o.symbol||o.sym||"—")+'</strong><span class="'+
             (oa.cls==="buy"?"green":oa.cls==="sell"?"red":"amber")+'">'+
-            oa.ar+(oc!=null?" "+Math.round(oc)+"%":"")+'</span></div>';
+            oa.ar+(note ? " "+note : "")+'</span></div>';
         }
         body.innerHTML = h || '<div class="empty">لا فرص</div>';
         document.getElementById("sl-val").textContent = "—";
         document.getElementById("tp-val").textContent = "—";
       } else if (entry!=null || sl!=null || tp!=null || act.dir !== 0) {
-        body.innerHTML = '<div class="signal '+(act.cls==="buy"?"green":act.cls==="sell"?"red":"amber")+'">'+
-          act.ar+'</div>' +
-          (conf!=null ? '<div class="confidence"><div class="bar '+
-          (act.cls==="buy"?"green":act.cls==="sell"?"red":"amber")+
-          '" style="width:'+Math.max(0,Math.min(100,conf))+'%"></div></div>' : "");
+        var sigCls = act.cls==="buy"?"green":act.cls==="sell"?"red":"amber";
+        var details = [];
+        if (entry != null) details.push(["الدخول", AIC.fmt(entry, 5), "blue"]);
+        if (rec.risk_reward != null || rec.rr != null) details.push(["R:R", AIC.cell(first(rec.risk_reward, rec.rr), 2), ""]);
+        if (rec.pattern_name || rec.pattern) details.push(["النمط", String(first(rec.pattern_name, rec.pattern)), ""]);
+        if (Array.isArray(rec.factors) && rec.factors.length) details.push(["العوامل", rec.factors.slice(0,2).join(" · "), ""]);
+        var h2 = '<div class="signal '+sigCls+'">'+act.ar+'</div>';
+        if (conf!=null) {
+          h2 += '<div class="confidence"><div class="bar '+sigCls+'" style="width:'+Math.max(0,Math.min(100,conf))+'%"></div></div>';
+        }
+        if (details.length) {
+          h2 += details.slice(0,3).map(function (p) {
+            return '<div class="pair"><strong>'+p[0]+'</strong><span class="'+p[2]+'">'+p[1]+'</span></div>';
+          }).join("");
+        } else if (rec.rationale || data.summary || data.reply) {
+          h2 += '<div class="sub">'+String(first(rec.rationale, data.summary, data.reply)).slice(0,140)+'</div>';
+        }
+        body.innerHTML = h2;
         document.getElementById("sl-val").textContent = sl != null ? AIC.fmt(sl, 5) : "—";
         document.getElementById("tp-val").textContent = tp != null ? AIC.fmt(tp, 5) : "—";
       } else {
@@ -880,7 +975,7 @@ const recommendationCard = widgetHtml(
     });
     document.getElementById("deep").addEventListener("click", function (){
       if (!current.symbol) return;
-      AIC.callTool("run_market_analysis", { symbol: current.symbol });
+      AIC.callTool("run_market_analysis", { symbol: current.symbol, interval: current.interval || "1h" });
     });
   };
   `,

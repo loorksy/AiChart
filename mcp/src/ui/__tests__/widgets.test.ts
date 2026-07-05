@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import vm from "node:vm";
 import { describe, it } from "node:test";
 import { formatBridgeResult } from "../../bridge/client.js";
 import { formatToolTextFallback } from "../../bridge/textFallback.js";
@@ -7,7 +8,7 @@ import { TOOL_CATALOG } from "../../tools/schemas/index.js";
 import type { ToolDefinition } from "../../tools/schemas/types.js";
 import { RESOURCE_URI_META_KEY } from "@modelcontextprotocol/ext-apps/server";
 import { appsUri, skybridgeUri, uiMetaFor, widgetHtmlByPublicPath } from "../index.js";
-import { publicAssetOrigin } from "../runtime.js";
+import { publicAssetOrigin, RUNTIME_JS } from "../runtime.js";
 import { WIDGETS } from "../widgets.js";
 
 describe("MCP UI resources", () => {
@@ -145,6 +146,52 @@ describe("widget HTML safety", () => {
     assert.ok(html.includes("parseAccountOverview"));
     assert.ok(html.includes("equity-val"));
     assert.ok(html.includes("balance-val"));
+  });
+
+  it("runtime account parser keeps connected account numbers visible", () => {
+    const window = {
+      openai: { callTool: async () => ({}) },
+      addEventListener() {},
+      open() {},
+    } as Record<string, unknown>;
+    const document = {
+      querySelectorAll: () => [],
+      body: { clientWidth: 320, scrollHeight: 320 },
+    };
+    vm.runInNewContext(RUNTIME_JS, {
+      window,
+      document,
+      setTimeout: () => 0,
+      clearTimeout: () => undefined,
+      Promise,
+      Number,
+      String,
+      Object,
+      Array,
+      Math,
+      isFinite,
+    });
+    const api = window.AIC as {
+      parseAccountOverview(data: unknown): {
+        balance: number | null;
+        equity: number | null;
+        ea: { stale: boolean; label: string };
+      };
+    };
+    const parsed = api.parseAccountOverview({
+      live: { forex: { ea: { broker_name: "Exness", balance: 86.4, equity: 84.62 } } },
+    });
+    assert.equal(parsed.balance, 86.4);
+    assert.equal(parsed.equity, 84.62);
+    assert.equal(parsed.ea.stale, false);
+  });
+
+  it("recommendation card recognizes wrapped scan candidate payloads", () => {
+    const html = WIDGETS["recommendation-card"];
+    assert.ok(html.includes("unwrapPayload"));
+    assert.ok(html.includes("data.candidates"));
+    assert.ok(html.includes("data.recommendations"));
+    assert.ok(html.includes("rec.score"));
   });
 
   it("registers at least 13 interactive card widgets", () => {

@@ -24,7 +24,7 @@ function hasKeys(v: unknown): boolean {
 function fmtNum(n: unknown, digits = 2): string {
   const x = typeof n === "number" ? n : Number(n);
   if (!Number.isFinite(x)) return "—";
-  return x.toLocaleString(undefined, { maximumFractionDigits: digits });
+  return x.toLocaleString(undefined, { maximumFractionDigits: digits, useGrouping: false });
 }
 
 function formatOpenTrades(v: unknown): string {

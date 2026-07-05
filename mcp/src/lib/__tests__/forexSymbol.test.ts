@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   isBrokerForexSuffix,
   toOandaForexSymbol,
-} from "../lib/forexSymbol.js";
+} from "../forexSymbol.js";
 
 describe("toOandaForexSymbol", () => {
   it("strips broker M suffix for OANDA candles", () => {
