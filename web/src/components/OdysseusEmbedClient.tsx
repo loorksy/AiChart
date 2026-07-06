@@ -8,7 +8,7 @@ import {
   sanitizeOdysseusInterval,
   sanitizeOdysseusSource,
   sanitizeOdysseusSymbol,
-} from "@/lib/integrations/odysseus";
+} from "@/lib/integrations/odysseusSanitize";
 
 function postToParent(type: string, data: Record<string, unknown>) {
   if (typeof window === "undefined" || window.parent === window) return;
