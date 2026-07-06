@@ -168,3 +168,34 @@ def test_ea_token_and_command_flow():
     store.ack_command(owner, cmd["id"], "acked", {"ticket": 999, "price": 1.1004, "lots": 0.02})
     filled = [t for t in store.list_trades(owner) if t["id"] == trade["id"]][0]
     assert filled["status"] == "open" and filled["broker_ticket"] == "999"
+
+
+# ── Native agent tools (registry contract, DB-backed) ─────────────────────────
+def test_agent_trading_tools():
+    import asyncio
+    import json as _json
+    from src.agent_tools.trading_tools import (
+        SetTradingModeTool, GetRiskSettingsTool, ExecuteMt5OrderTool, EmergencyStopTool,
+    )
+
+    ctx = {"owner": "tool_test_user", "session_id": "s1"}
+    run = lambda tool, c="": asyncio.get_event_loop().run_until_complete(tool.execute(c, ctx))
+
+    _, r = run(SetTradingModeTool(), _json.dumps({"mode": "full_auto"}))
+    assert r["exit_code"] == 0 and r["data"]["settings"]["mode"] == "auto"
+
+    # Auto mode + demo env → paper trade with valid SL/RR.
+    _, r = run(ExecuteMt5OrderTool(), _json.dumps(
+        {"symbol": "EURUSD", "side": "buy", "notional": 20, "entry": 1.10,
+         "stop_loss": 1.095, "take_profit": 1.115, "confidence": 85}))
+    assert r["exit_code"] == 0 and r["data"]["routed"] == "paper"
+
+    # Missing SL → Risk Guard denial (tool surfaces an error).
+    _, r = run(ExecuteMt5OrderTool(), _json.dumps(
+        {"symbol": "EURUSD", "side": "buy", "notional": 20, "entry": 1.10, "take_profit": 1.115}))
+    assert r["exit_code"] == 1
+
+    # Emergency stop drops the user to analyze-only.
+    run(EmergencyStopTool(), _json.dumps({"enabled": True}))
+    _, r = run(GetRiskSettingsTool())
+    assert r["data"]["settings"]["mode"] == "direct"
