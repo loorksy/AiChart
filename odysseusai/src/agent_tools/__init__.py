@@ -24,6 +24,18 @@ from .web_tools import WebSearchTool, WebFetchTool
 from .filesystem_tools import ReadFileTool, WriteFileTool, EditFileTool, LsTool, GlobTool, GrepTool, GetWorkspaceTool
 from .document_tools import CreateDocumentTool, UpdateDocumentTool, EditDocumentTool, SuggestDocumentTool, ManageDocumentTool
 from .interaction_tools import AskUserTool, UpdatePlanTool
+from .trading_tools import (
+    AnalyzeMarketTool,
+    CreateRecommendationTool,
+    EmergencyStopTool,
+    ExecuteMt5OrderTool,
+    GetCandlesTool,
+    GetMt5StatusTool,
+    GetOandaInstrumentsTool,
+    GetRiskSettingsTool,
+    OpenChartTool,
+    SetTradingModeTool,
+)
 from .model_interaction_tools import ChatWithModelTool, AskTeacherTool, ListModelsTool
 from .bg_job_tools import ManageBgJobsTool
 from .session_tools import CreateSessionTool, ListSessionsTool, SendToSessionTool, ManageSessionTool
@@ -60,6 +72,16 @@ TOOL_HANDLERS = {
     "list_sessions": ListSessionsTool().execute,
     "send_to_session": SendToSessionTool().execute,
     "manage_session": ManageSessionTool().execute,
+    "open_chart": OpenChartTool().execute,
+    "analyze_market": AnalyzeMarketTool().execute,
+    "create_recommendation": CreateRecommendationTool().execute,
+    "execute_mt5_order": ExecuteMt5OrderTool().execute,
+    "get_mt5_status": GetMt5StatusTool().execute,
+    "get_risk_settings": GetRiskSettingsTool().execute,
+    "emergency_stop": EmergencyStopTool().execute,
+    "set_trading_mode": SetTradingModeTool().execute,
+    "get_candles": GetCandlesTool().execute,
+    "get_oanda_instruments": GetOandaInstrumentsTool().execute,
 }
 # Config/integration admin tools (manage_endpoints/mcp/webhooks/tokens/settings).
 TOOL_HANDLERS.update(ADMIN_TOOL_HANDLERS)
@@ -82,6 +104,10 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "pipeline",
              "manage_session", "manage_memory", "list_models",
              "ui_control", "generate_image", "ask_user", "update_plan",
+             "open_chart", "analyze_market", "create_recommendation",
+             "execute_mt5_order", "get_mt5_status", "get_risk_settings",
+             "emergency_stop", "set_trading_mode", "get_candles",
+             "get_oanda_instruments",
              "manage_tasks", "api_call", "ask_teacher", "manage_skills",
              "suggest_document",
              "manage_endpoints", "manage_mcp", "manage_webhooks",

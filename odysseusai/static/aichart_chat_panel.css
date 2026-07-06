@@ -1,0 +1,151 @@
+/* AiChart trading workspace embedded in Odysseus chat */
+
+.aichart-workspace {
+  margin-top: 10px;
+  border: 1px solid var(--border, #3a3f4b);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel, #1e2127);
+}
+
+.aichart-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg, #abb2bf);
+  border-bottom: 1px solid var(--border, #3a3f4b);
+}
+
+.aichart-workspace-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.aichart-workspace-meta span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.aichart-mode-badge {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #3a3f4b);
+  color: var(--brand-color, #e06c75);
+}
+
+.aichart-workspace-close {
+  border: none;
+  background: transparent;
+  color: var(--fg, #abb2bf);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.aichart-workspace-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.aichart-workspace-frame-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 420px;
+  height: min(56vh, 640px);
+  background: #0b0e11;
+}
+
+.aichart-workspace-frame-wrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.aichart-workspace-loading,
+.aichart-workspace-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fg, #abb2bf);
+}
+
+.aichart-workspace-error {
+  color: #e06c75;
+}
+
+.aichart-trade-proposal {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #3a3f4b);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.aichart-trade-proposal h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.aichart-trade-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.aichart-trade-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--fg, #abb2bf);
+}
+
+.aichart-trade-grid input {
+  border: 1px solid var(--border, #3a3f4b);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--input-bg, #282c34);
+  color: var(--fg, #abb2bf);
+  font-size: 12px;
+}
+
+.aichart-trade-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.aichart-trade-actions button {
+  border: 1px solid var(--border, #3a3f4b);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--panel, #1e2127);
+  color: var(--fg, #abb2bf);
+}
+
+.aichart-trade-actions button.primary {
+  background: var(--brand-color, #e06c75);
+  border-color: transparent;
+  color: #fff;
+}
+
+.aichart-trade-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

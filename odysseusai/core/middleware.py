@@ -119,8 +119,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "font-src 'self' https://cdn.jsdelivr.net; "
                 "img-src 'self' data: blob: https:; "
                 "media-src 'self' blob:; "
-                "connect-src 'self'; "
-                "frame-src 'self'; "
+                "connect-src 'self' " + _aichart_connect_src() + "; "
+                "frame-src 'self' " + _aichart_frame_src() + "; "
                 "frame-ancestors 'none'"
             )
         return response
+
+
+def _aichart_frame_src() -> str:
+    raw = (os.getenv("AICHART_BASE_URL") or "http://127.0.0.1:3000").strip().rstrip("/")
+    return raw if raw else "http://127.0.0.1:3000"
+
+
+def _aichart_connect_src() -> str:
+    return _aichart_frame_src()

@@ -502,6 +502,164 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "open_chart",
+            "description": "Open an embedded TradingView forex chart inside the Odysseus chat. Use before analyze_market or when the user asks to see a pair.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string", "description": "Forex symbol, e.g. EURUSD"},
+                    "interval": {"type": "string", "description": "Candle interval: 1m, 5m, 15m, 1h, 4h, 1d"},
+                    "source": {"type": "string", "enum": ["oanda", "ea"], "description": "oanda = demo OHLC; ea = user's broker feed"},
+                    "layoutId": {"type": "string", "description": "Optional saved chart layout id"},
+                    "recommendationId": {"type": "integer", "description": "Optional recommendation to overlay"},
+                    "tradingMode": {"type": "string", "description": "Display hint: manual, semi_auto, full_auto"}
+                },
+                "required": ["symbol"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_oanda_instruments",
+            "description": "List forex instruments available from OANDA market data.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "q": {"type": "string", "description": "Optional search filter, e.g. EUR or USD"}
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_candles",
+            "description": "Fetch OHLC candles for a forex symbol.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string"},
+                    "interval": {"type": "string"},
+                    "source": {"type": "string", "enum": ["oanda", "ea"]}
+                },
+                "required": ["symbol", "interval"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_market",
+            "description": "Run structured AI market analysis (drawings + recommendation). Opens/updates the embedded chart when layout_id is returned.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string"},
+                    "interval": {"type": "string"},
+                    "source": {"type": "string", "enum": ["oanda", "ea"]},
+                    "layout_id": {"type": "string", "description": "Optional chart layout to persist analysis into"}
+                },
+                "required": ["symbol", "interval"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_recommendation",
+            "description": "Record a structured trade recommendation before execution (semi-auto approval flow).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string"},
+                    "action": {"type": "string", "enum": ["buy", "sell", "wait"]},
+                    "confidence": {"type": "number"},
+                    "entry": {"type": "number"},
+                    "stop_loss": {"type": "number"},
+                    "take_profit": {"type": "number"},
+                    "timeframe": {"type": "string"},
+                    "rationale": {"type": "string"},
+                    "factors": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["symbol", "action", "confidence", "rationale", "factors"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_mt5_order",
+            "description": "Execute a forex trade via MetaTrader EA bridge. Requires stop_loss. Blocked in manual/direct analysis-only mode unless approved_by_user is true.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string"},
+                    "side": {"type": "string", "enum": ["buy", "sell"]},
+                    "notional": {"type": "number", "description": "Position size in USD"},
+                    "lots": {"type": "number"},
+                    "entry": {"type": "number"},
+                    "stop_loss": {"type": "number"},
+                    "take_profit": {"type": "number"},
+                    "confidence": {"type": "number"},
+                    "rationale": {"type": "string"},
+                    "recommendation_id": {"type": "integer"},
+                    "approved_by_user": {"type": "boolean", "description": "True when the user explicitly approved execution"}
+                },
+                "required": ["symbol", "side", "stop_loss"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "emergency_stop",
+            "description": "Enable the user's kill switch — block new trades and queue close-all on MT5.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "enabled": {"type": "boolean", "description": "Default true — pass false to re-enable trading"}
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_mt5_status",
+            "description": "EA online state, quote freshness, and bridge diagnostics.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_risk_settings",
+            "description": "Read trading mode, capital limits, daily PnL, and open trades count.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_trading_mode",
+            "description": "Set execution authority: manual/direct (analysis only), semi_auto/approval, or full_auto/auto.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["manual", "semi_auto", "full_auto", "direct", "approval", "auto"],
+                        "description": "manual=direct analysis-only; semi_auto=approval; full_auto=auto"
+                    }
+                },
+                "required": ["mode"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "manage_tasks",
             "description": "Manage scheduled/automated tasks: list, create, edit, delete, pause, resume, or run tasks. Use this for ANY recurring/scheduled request ('every morning…', 'each day at 7:30', 'daily summarize…') — create a task rather than doing it once. Task types: llm (AI runs a prompt), research (runs the deep-research pipeline on a question), or action (built-in automation). Triggers can be time-based or event-based.",
             "parameters": {
@@ -1486,6 +1644,19 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         # JSON encoder will escape them for transport and JSON.parse restores
         # them once; pre-escaping here caused literal ``\u00f1`` sequences to
         # remain visible in the debug panel.
+        content = json.dumps(args, ensure_ascii=False)
+    elif tool_type in (
+        "open_chart",
+        "get_oanda_instruments",
+        "get_candles",
+        "analyze_market",
+        "create_recommendation",
+        "execute_mt5_order",
+        "emergency_stop",
+        "get_mt5_status",
+        "get_risk_settings",
+        "set_trading_mode",
+    ):
         content = json.dumps(args, ensure_ascii=False)
     else:
         content = json.dumps(args)

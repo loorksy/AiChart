@@ -42,16 +42,23 @@ export function SmartChartWorkspace({
   agentReady = true,
   onCreditsUsed,
   guest = false,
+  embedMode = false,
   initialSymbol,
   layoutId,
   initialInterval,
   initialState,
+  odysseusSessionId,
+  readonlyAgentDrawings = false,
+  onEmbedSymbolChange,
+  onEmbedIntervalChange,
 }: {
   recommendations?: Recommendation[];
   agentReady?: boolean;
   onCreditsUsed?: () => void;
   /** Guest (not signed in): browse chart only; tools redirect to login. */
   guest?: boolean;
+  /** Odysseus iframe embed — minimal chrome, postMessage to parent. */
+  embedMode?: boolean;
   /** Symbol from the URL — takes precedence over last-used. */
   initialSymbol?: string;
   /** Per-user chart layout id (TradingView-style /chart/<id> URL). */
@@ -59,6 +66,11 @@ export function SmartChartWorkspace({
   initialInterval?: string;
   /** Saved drawings/recommendation restored on load (no re-analysis). */
   initialState?: ChartLayoutState | null;
+  odysseusSessionId?: string;
+  /** When true in embed mode, agent layout drawings are view-only. */
+  readonlyAgentDrawings?: boolean;
+  onEmbedSymbolChange?: (symbol: string) => void;
+  onEmbedIntervalChange?: (interval: string) => void;
 }) {
   const chartRef = useRef<TvChartHandle>(null);
 
@@ -78,7 +90,9 @@ export function SmartChartWorkspace({
     return localStorage.getItem(LS_INTERVAL) ?? "15m";
   });
 
-  const [dataSource, setDataSource] = useState<"oanda" | "ea">("oanda");
+  const [dataSource, setDataSource] = useState<"oanda" | "ea">(
+    () => initialState?.dataSource ?? "oanda",
+  );
   const [tradesOpen, setTradesOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
@@ -181,7 +195,7 @@ export function SmartChartWorkspace({
   // TradingView-style URLs: /chart/<layoutId>?symbol=X for signed-in users,
   // /chart/<SYMBOL> for guests. replaceState only — no page reload.
   useEffect(() => {
-    if (typeof window === "undefined" || !symbol) return;
+    if (typeof window === "undefined" || !symbol || embedMode) return;
     const src = "";
     const target = layoutId
       ? `/chart/${layoutId}?symbol=${encodeURIComponent(symbol)}${src}`
@@ -300,11 +314,14 @@ export function SmartChartWorkspace({
   const handleSymbolChange = useCallback((s: string) => {
     setSymbol(s.toUpperCase());
     setDataSource("oanda");
-  }, []);
+    onEmbedSymbolChange?.(s.toUpperCase());
+  }, [onEmbedSymbolChange]);
 
   const handleIntervalChange = useCallback((iv: string) => {
-    setChartInterval(normalizeInterval(iv));
-  }, []);
+    const normalized = normalizeInterval(iv);
+    setChartInterval(normalized);
+    onEmbedIntervalChange?.(normalized);
+  }, [onEmbedIntervalChange]);
 
   const handleClearLayers = useCallback(() => {
     clearLayers();
@@ -339,6 +356,7 @@ export function SmartChartWorkspace({
 
   // Platform buttons INSIDE the TradingView header (item: no separate layer).
   const headerActions = useMemo<TvHeaderAction[]>(() => {
+    if (guest || embedMode) return [];
     const actions: TvHeaderAction[] = [
       {
         id: "analyze",
@@ -393,6 +411,7 @@ export function SmartChartWorkspace({
     return actions;
   }, [
     guest,
+    embedMode,
     isAnalyzing,
     creditsRemaining,
     hasLayers,
@@ -409,7 +428,7 @@ export function SmartChartWorkspace({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      {!guest && !agentReady && (
+      {!guest && !embedMode && !agentReady && (
         <p className="pointer-events-none absolute inset-x-0 top-12 z-40 mx-auto w-fit max-w-[90%] rounded-md border border-amber-500/30 bg-amber-500/90 px-3 py-1 text-xs text-amber-950 shadow">
           الذكاء الاصطناعي غير مُفعّل على الخادم — التحليل غير متاح.
         </p>
@@ -437,51 +456,57 @@ export function SmartChartWorkspace({
             drawings={drawings}
             headerActions={headerActions}
             eaEnabled={false}
-            dataSource="oanda"
+            dataSource={dataSource}
             className="h-full min-h-0 w-full"
             onSymbolChange={handleSymbolChange}
             onIntervalChange={handleIntervalChange}
           />
         </ChartErrorBoundary>
 
-        <ChartTradeOverlay
+        {!embedMode && (
+          <ChartTradeOverlay
+            recommendation={recommendation}
+            targets={targets}
+            riskReward={riskReward}
+            liveReasoningLog={liveReasoningLog}
+            isAnalyzing={isAnalyzing}
+            liveAnalysis={liveAnalysis}
+            drawings={drawings}
+            onHighlightDrawing={setHighlightDrawingIndex}
+            onStopLive={stopLiveAnalysis}
+            onExecute={canExecute ? () => void handleExecute() : undefined}
+            executing={executing}
+            executeLabel={canExecute ? "موافقة وتنفيذ" : undefined}
+          />
+        )}
+      </div>
+
+      {!embedMode && (
+        <OpenTradesDrawer open={tradesOpen} onClose={() => setTradesOpen(false)} />
+      )}
+
+      {!embedMode && (
+        <AnalysisResultModal
+          open={resultOpen}
+          onClose={() => setResultOpen(false)}
+          symbol={symbol}
+          interval={interval}
           recommendation={recommendation}
           targets={targets}
           riskReward={riskReward}
-          liveReasoningLog={liveReasoningLog}
-          isAnalyzing={isAnalyzing}
-          liveAnalysis={liveAnalysis}
-          drawings={drawings}
-          onHighlightDrawing={setHighlightDrawingIndex}
-          onStopLive={stopLiveAnalysis}
-          onExecute={canExecute ? () => void handleExecute() : undefined}
+          narrative={analysisText}
+          reasoningLog={liveReasoningLog}
+          onExecute={
+            canExecute
+              ? () => {
+                  setResultOpen(false);
+                  void handleExecute();
+                }
+              : undefined
+          }
           executing={executing}
-          executeLabel={canExecute ? "موافقة وتنفيذ" : undefined}
         />
-      </div>
-
-      <OpenTradesDrawer open={tradesOpen} onClose={() => setTradesOpen(false)} />
-
-      <AnalysisResultModal
-        open={resultOpen}
-        onClose={() => setResultOpen(false)}
-        symbol={symbol}
-        interval={interval}
-        recommendation={recommendation}
-        targets={targets}
-        riskReward={riskReward}
-        narrative={analysisText}
-        reasoningLog={liveReasoningLog}
-        onExecute={
-          canExecute
-            ? () => {
-                setResultOpen(false);
-                void handleExecute();
-              }
-            : undefined
-        }
-        executing={executing}
-      />
+      )}
     </div>
   );
 }

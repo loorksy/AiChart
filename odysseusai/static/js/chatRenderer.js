@@ -2059,13 +2059,6 @@ export function removeAskUserCards(root) {
   scope.querySelectorAll('.ask-user-card').forEach((node) => node.remove());
 }
 
-/**
- * Render an ask_user payload as a durable choice card.
- *
- * This lives in the history renderer rather than the streaming loop so the
- * same UI can be used both for a live SSE event and for a persisted tool event
- * after a session reload.
- */
 export function renderAskUserCard(payload, options) {
   const aq = payload || {};
   const opts = Array.isArray(aq.options) ? aq.options : [];
@@ -2189,6 +2182,16 @@ export function renderAskUserCard(payload, options) {
   return card;
 }
 
+/** Mount an AiChart trading workspace inside the latest assistant bubble. */
+export function renderAichartWorkspace(payload, options) {
+  const data = payload || {};
+  if (window.OdysseusAiChart?.openChart) {
+    return window.OdysseusAiChart.openChart(data, options?.mountTarget);
+  }
+  console.warn("OdysseusAiChart panel not loaded");
+  return null;
+}
+
 /**
  * Add a message to the chat history.
  */
@@ -2211,6 +2214,7 @@ export function addMessage(role, content, modelName, metadata) {
       const roundTexts = metadata.round_texts || [];
       const toolEvents = metadata.tool_events;
       let pendingAskUser = null;
+      let pendingAichart = null;
       let lastWrap = null;
       let firstMsgAi = null;
       let lastMsgAi = null;
@@ -2288,6 +2292,7 @@ export function addMessage(role, content, modelName, metadata) {
           }
           for (const ev of roundTools) {
             if (ev.ask_user) pendingAskUser = ev.ask_user;
+            if (ev.aichart_workspace) pendingAichart = ev.aichart_workspace;
             const ok = (ev.exit_code === 0 || ev.exit_code == null);
             let outHtml = '';
             if (ev.output && ev.output.trim()) {
@@ -2356,6 +2361,9 @@ export function addMessage(role, content, modelName, metadata) {
         // removes this card; if there is none, the pending choice survives a
         // refresh.  Avoid stealing focus while the history is loading.
         renderAskUserCard(pendingAskUser, { focus: false, scroll: false });
+      }
+      if (pendingAichart) {
+        renderAichartWorkspace(pendingAichart, { scroll: false });
       }
       return lastWrap;
     }

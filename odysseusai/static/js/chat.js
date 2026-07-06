@@ -2612,6 +2612,12 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                 _removeThinkingSpinner();
                 chatRenderer.renderAskUserCard(json.data || {});
 
+              } else if (json.type === 'aichart_workspace') {
+                if (_isBg) continue;
+                _cancelThinkingTimer();
+                _removeThinkingSpinner();
+                chatRenderer.renderAichartWorkspace(json.data || {});
+
               } else if (json.type === 'plan_update') {
                 if (_isBg) continue;
                 // Agent wrote back to the plan (ticked a step / revised). Update
