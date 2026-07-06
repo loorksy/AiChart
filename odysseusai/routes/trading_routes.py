@@ -69,6 +69,13 @@ def setup_trading_routes() -> APIRouter:
         owner = require_user(request)
         return await mk.market_snapshot(owner, _sanitize_symbol(symbol), normalize_interval(interval))
 
+    @router.get("/market/analyze")
+    async def analyze(request: Request, symbol: str = "EURUSD", interval: str = "15m"):
+        owner = require_user(request)
+        from services.trading.analysis import build_analysis
+
+        return await build_analysis(owner, _sanitize_symbol(symbol), normalize_interval(interval))
+
     @router.get("/market/price")
     async def market_price(request: Request, symbol: str = "EURUSD"):
         owner = require_user(request)

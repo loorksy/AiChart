@@ -99,3 +99,23 @@ def test_constants_normalization():
     assert const.normalize_trading_mode(None) == "approval"
     assert const.normalize_interval("99x") == "15m"
     assert const.normalize_trading_style("scalp") == "scalp"
+
+
+# ── Analysis confluences (deterministic verdict inputs) ───────────────────────
+def test_analysis_confluences_direction():
+    from services.trading.analysis import _confluences
+
+    bull = {"trend": "uptrend", "rsi14": 62.0, "macd": {"histogram": 0.001},
+            "price": 1.10, "ema20": 1.099}
+    direction, reasons = _confluences(bull)
+    assert direction == "buy" and len(reasons) >= 3
+
+    bear = {"trend": "downtrend", "rsi14": 38.0, "macd": {"histogram": -0.001},
+            "price": 1.10, "ema20": 1.101}
+    direction, _ = _confluences(bear)
+    assert direction == "sell"
+
+    flat = {"trend": "sideways", "rsi14": 50.0, "macd": {"histogram": 0.0},
+            "price": 1.10, "ema20": 1.10}
+    direction, _ = _confluences(flat)
+    assert direction == "neutral"

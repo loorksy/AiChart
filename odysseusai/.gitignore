@@ -102,3 +102,6 @@ compound.config.json
 *.error.log
 _scratch/
 /odysseus/
+charting_library/*
+!charting_library/.gitkeep
+!charting_library/README.md

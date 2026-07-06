@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Odysseus · Trading</title>
+  <link rel="icon" href="/static/icon.ico">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/trading_workspace.css">
+</head>
+<body>
+  <div class="tw-root" id="tw-root">
+    <div class="tw-banner" id="tw-banner">⛔ الإيقاف الطارئ مفعّل — لا تنفيذ. الوكيل في وضع التحليل فقط.</div>
+
+    <header class="tw-topbar">
+      <div class="tw-brand"><span class="tw-dot"></span> <b>Odysseus</b> · Trading</div>
+
+      <div class="tw-field">
+        <label for="tw-symbol">الرمز</label>
+        <input class="tw-input sym" id="tw-symbol" value="EURUSD" spellcheck="false">
+      </div>
+      <div class="tw-field">
+        <label for="tw-interval">الفريم</label>
+        <select class="tw-select" id="tw-interval">
+          <option>1m</option><option>5m</option><option>15m</option>
+          <option>30m</option><option>1h</option><option>4h</option><option>1d</option>
+        </select>
+      </div>
+
+      <div class="tw-modes" id="tw-modes" role="group" aria-label="وضع التداول">
+        <button class="tw-mode-btn" data-mode="direct" aria-pressed="false" title="يدوي — تحليل وتوصية فقط">يدوي</button>
+        <button class="tw-mode-btn" data-mode="approval" aria-pressed="true" title="نصف آلي — الوكيل يجهّز الصفقة وأنت تنفّذ">نصف آلي</button>
+        <button class="tw-mode-btn" data-mode="auto" aria-pressed="false" title="آلي كامل — تنفيذ عبر Risk Guard">آلي كامل</button>
+      </div>
+
+      <span class="tw-env-badge demo" id="tw-env">DEMO</span>
+      <button class="tw-estop" id="tw-estop" title="إيقاف طارئ">⛔ إيقاف طارئ</button>
+    </header>
+
+    <div class="tw-body">
+      <section class="tw-conversation">
+        <div class="tw-stream" id="tw-stream"></div>
+        <form class="tw-composer" id="tw-composer">
+          <input id="tw-input" placeholder="اكتب أمراً… مثل: حلّل EURUSD  •  افتح شارت GBPUSD 1h  •  الحالة" autocomplete="off">
+          <button type="submit">إرسال</button>
+        </form>
+      </section>
+
+      <aside class="tw-rail" id="tw-rail">
+        <!-- panels injected by JS -->
+      </aside>
+    </div>
+  </div>
+
+  <script type="module" src="/static/js/trading_workspace.js"></script>
+</body>
+</html>

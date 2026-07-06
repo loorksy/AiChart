@@ -235,7 +235,7 @@ if AUTH_ENABLED:
         "/api/version",
         "/login",
     }
-    AUTH_EXEMPT_PREFIXES = ["/static"]
+    AUTH_EXEMPT_PREFIXES = ["/static", "/charting_library"]
     # Dynamic paths whose own handler proves identity via a path-embedded
     # secret instead of the session/bearer auth. The route handler at
     # routes/task_routes.py validates the per-task `webhook_token` itself
@@ -462,6 +462,14 @@ class _RevalidatingStatic(StaticFiles):
 
 
 app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")
+
+# TradingView Advanced Charting Library — licensed vendor assets the operator
+# drops into odysseusai/charting_library/ (gitignored). The trading workspace
+# loads the widget from /charting_library/ and gracefully falls back to the
+# built-in canvas chart when the bundle is absent.
+CHARTING_LIB_DIR = abs_join(BASE_DIR, "charting_library")
+os.makedirs(CHARTING_LIB_DIR, exist_ok=True)
+app.mount("/charting_library", StaticFiles(directory=CHARTING_LIB_DIR), name="charting_library")
 
 # ========= GENERATED IMAGES =========
 @app.get("/api/generated-image/{filename}")
@@ -839,6 +847,11 @@ async def serve_index(request: Request):
     # "not found". This keeps the app-shell route consistent with the other
     # bundled-template routes instead of mislabelling the fault as a 404.
     return serve_html_with_nonce(request, abs_join(BASE_DIR, "index.html"))
+
+@app.get("/trading")
+async def serve_trading(request: Request):
+    """Odysseus Trading Workspace — chat-centric trading UI (native engine)."""
+    return serve_html_with_nonce(request, abs_join(BASE_DIR, "static/trading.html"))
 
 @app.get("/notes")
 async def serve_notes(request: Request):
