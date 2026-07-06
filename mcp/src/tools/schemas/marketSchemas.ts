@@ -8,9 +8,9 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_snapshot",
     domain: "market",
     description:
-      "When: quick analysis of one pair. RSI/MACD/SMA + trend. read-only. Do not use instead of get_ohlc for full indicators. Example: symbol=BTCUSDT&interval=1h.",
+      "When: quick analysis of one pair. RSI/MACD/SMA + trend. read-only. Do not use instead of get_ohlc for full indicators. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
-      symbol: zSymbol.describe("e.g. BTCUSDT"),
+      symbol: zSymbol.describe("e.g. EURUSD"),
       interval: zInterval,
       market: zMarket,
     },
@@ -23,7 +23,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "When: multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
     inputSchema: {
-      symbol: zSymbol.describe("e.g. EURUSD or BTCUSDT"),
+      symbol: zSymbol.describe("e.g. EURUSD"),
       intervals: z
         .array(z.string())
         .max(5)
@@ -46,7 +46,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_instruments",
     domain: "market",
     description:
-      "When: browse/search all available pairs (forex via OANDA or crypto via Binance), or source=ea for full broker symbols via MT5 bridge (not Market Watch only). read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
+      "When: browse/search forex pairs via OANDA, or source=ea for full broker symbols via MT5 bridge (not Market Watch only). read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
     inputSchema: {
       market: zMarket,
       q: z.string().max(20).optional().describe("Optional search e.g. EUR or XAU"),
@@ -70,7 +70,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_context",
     domain: "market",
     description:
-      "When: news/mood context. read-only. No side-effects. Example: symbol=BTCUSDT.",
+      "When: news/mood context. read-only. No side-effects. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol, interval: zInterval },
     annotations: READ_ONLY,
   },
@@ -78,7 +78,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "scan_market",
     domain: "market",
     description:
-      "scan market · compare symbols · best entry · pick a trade. When: 'take a trade' or 'best opportunity'. read-only. Example: symbols=[BTCUSDT,ETHUSDT].",
+      "scan market · compare symbols · best entry · pick a trade. When: 'take a trade' or 'best opportunity'. read-only. Example: symbols=[EURUSD,GBPUSD].",
     inputSchema: {
       symbols: z.array(z.string()).max(30).optional(),
       interval: zInterval,
@@ -91,9 +91,9 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_ohlc",
     domain: "market",
     description:
-      "When: before indicators/detect_levels. Forex via EA, crypto Binance. read-only. cursor/limit≤500. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "When: before indicators/detect_levels. Forex via OANDA or EA. read-only. cursor/limit≤500. Example: symbol=EURUSD&interval=1h&limit=100.",
     inputSchema: {
-      symbol: zSymbol.describe("EURUSD or BTCUSDT"),
+      symbol: zSymbol.describe("EURUSD"),
       interval: zInterval,
       market: zMarket,
       source: z
@@ -101,7 +101,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
         .optional()
         .describe("Forex candle source — ea required for broker suffix symbols (e.g. XAUUSDM)"),
       limit: z.number().int().min(1).max(500).optional(),
-      cursor: z.number().int().optional().describe("ms — pagination crypto"),
+      cursor: z.number().int().optional().describe("ms — pagination cursor"),
     },
     annotations: READ_ONLY,
   },

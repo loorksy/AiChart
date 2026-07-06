@@ -1,5 +1,6 @@
 .cursor/mcp.json
 graphify-out/
+infra/crypto-endpoints.local.env
 
 # Python
 __pycache__/

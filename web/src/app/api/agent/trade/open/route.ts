@@ -4,7 +4,6 @@ import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   createIntent,
-  getBinanceCredentials,
   getLimits,
   getSettings,
   hasRecentTradeOpenFailure,
@@ -22,10 +21,14 @@ import {
   toBridgeResponse,
   type BridgeEnvelope,
 } from "@/lib/bridge";
-import { getAccountSummary, getApiRestrictions } from "@/lib/binance";
 import { deriveDynamicNotional } from "@/lib/dynamicSizing";
 import { getEaSymbolSpec } from "@/lib/eaStore";
-import { futuresPermissionBlockReason } from "@/lib/binanceVerify";
+import {
+  NON_FOREX_MARKET_MESSAGE,
+  DEFAULT_MARKET,
+  rejectNonForexMarket,
+  resolveActiveMarket,
+} from "@/lib/marketPolicy";
 import type { MarketType } from "@/lib/markets/types";
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
 
@@ -33,11 +36,11 @@ const schema = z
   .object({
     symbol: z.string().min(1),
     side: z.enum(["buy", "sell"]),
-    /** Quote amount (USDT) — defaults to per-trade budget from settings. */
+    /** Quote amount (USD) — defaults to per-trade budget from settings. */
     notional: z.number().positive().optional(),
     /** Forex: explicit lot size — overrides notional-based sizing when set. */
     lots: z.number().positive().max(100).optional(),
-    market: z.enum(["crypto", "forex"]).optional(),
+    market: z.literal("forex").optional(),
     entry: z.number().nullish(),
     stop_loss: z.number().nullish(),
     take_profit: z.number().nullish(),
@@ -47,25 +50,10 @@ const schema = z
     /** True when the human operator explicitly ordered/approved this trade. */
     approved_by_user: z.boolean().default(false),
     practice: z.boolean().default(false),
-    /** 'futures' opens a Binance USDT-M position (short + leverage supported). */
-    market_type: z.enum(["spot", "futures"]).default("spot"),
-    /** Leverage multiplier (futures only; capped by admin max_leverage_cap). */
-    leverage: z.number().min(1).max(125).optional(),
-    /** 'market' (default) or 'limit' (futures pending entry). */
+    market_type: z.literal("spot").default("spot"),
     order_type: z.enum(["market", "limit"]).default("market"),
-    /** Required when order_type is limit. */
     limit_price: z.number().positive().optional(),
-    /** Optional idempotency key — replays cached result within TTL. */
     idempotencyKey: z.string().max(128).optional(),
-  })
-  .refine(
-    (b) =>
-      b.order_type !== "limit" ||
-      (b.market_type === "futures" && b.limit_price != null),
-    { message: "limit_price مطلوب لأوامر Limit في Futures." },
-  )
-  .refine((b) => b.order_type !== "limit" || b.market_type === "futures", {
-    message: "أوامر Limit متاحة في Futures فقط.",
   })
   .refine(
     (b) =>
@@ -158,64 +146,27 @@ export async function POST(req: NextRequest) {
 
     const settings = await getSettings(userId);
     const limits = await getLimits(userId);
-    const market = (body.market ??
-      settings.active_market ??
-      "crypto") as MarketType;
+    const requestedMarket = body.market ?? settings.active_market ?? DEFAULT_MARKET;
+    const marketBlock = rejectNonForexMarket(requestedMarket);
+    if (marketBlock) {
+      const envelope = bridgeSuccess(
+        tradeOpenPayload(false, "denied", marketBlock, null, null, null),
+      );
+      return respondWithIdempotency(userId, idempotencyKey, envelope);
+    }
+    const market = resolveActiveMarket(requestedMarket) as MarketType;
 
-    if (market === "forex") {
-      const preflight = await checkForexTradePreflight(userId, body.symbol);
-      if (preflight) {
-        await logAudit(
-          userId,
-          "agent_trade_open",
-          `${body.symbol} ${body.side} denied ${preflight.error.code} (pre-flight)`,
-        );
-        return respondWithIdempotency(userId, idempotencyKey, preflight);
-      }
+    const preflight = await checkForexTradePreflight(userId, body.symbol);
+    if (preflight) {
+      await logAudit(
+        userId,
+        "agent_trade_open",
+        `${body.symbol} ${body.side} denied ${preflight.error.code} (pre-flight)`,
+      );
+      return respondWithIdempotency(userId, idempotencyKey, preflight);
     }
 
-    const marketType = body.market_type ?? "spot";
     const orderType = body.order_type ?? "market";
-
-    if (marketType === "futures") {
-      const creds = await getBinanceCredentials(userId);
-      if (!creds) {
-        const envelope = bridgeSuccess(
-          tradeOpenPayload(
-            false,
-            "denied",
-            "لا يوجد حساب Binance مرتبط.",
-            null,
-            null,
-            null,
-          ),
-        );
-        return respondWithIdempotency(userId, idempotencyKey, envelope);
-      }
-      if (creds.env === "prod") {
-        const summary = await getAccountSummary(
-          creds.apiKey,
-          creds.apiSecret,
-          creds.env,
-        );
-        const restrictions = await getApiRestrictions(
-          creds.apiKey,
-          creds.apiSecret,
-          creds.env,
-        );
-        const block = futuresPermissionBlockReason(
-          summary,
-          restrictions,
-          creds.env,
-        );
-        if (block) {
-          const envelope = bridgeSuccess(
-            tradeOpenPayload(false, "denied", block, null, null, null),
-          );
-          return respondWithIdempotency(userId, idempotencyKey, envelope);
-        }
-      }
-    }
 
     const effectiveCapital =
       limits.max_capital_cap > 0
@@ -240,7 +191,7 @@ export async function POST(req: NextRequest) {
       });
     // Explicit forex lot → equivalent notional (lots × contract size × price),
     // so the agent/MCP can size a trade by lot. Risk Guard still gates it.
-    if (body.lots && body.lots > 0 && market === "forex") {
+    if (body.lots && body.lots > 0) {
       const spec = await getEaSymbolSpec(
         userId,
         normalizeIntentSymbol(body.symbol, market),
@@ -250,10 +201,7 @@ export async function POST(req: NextRequest) {
       if (price > 0) notional = body.lots * contractSize * price;
     }
 
-    const leverage =
-      marketType === "futures"
-        ? (body.leverage ?? settings.default_leverage ?? 3)
-        : 1;
+    const leverage = 1;
 
     const intent = await createIntent(userId, {
       recommendation_id: body.recommendation_id ?? null,
@@ -268,7 +216,7 @@ export async function POST(req: NextRequest) {
       rationale: body.rationale ?? null,
       status: "approved",
       practice: body.practice,
-      market_type: marketType,
+      market_type: "spot",
       leverage,
       order_type: orderType,
       limit_price: body.limit_price ?? null,
@@ -308,11 +256,7 @@ export async function POST(req: NextRequest) {
     await logAudit(
       userId,
       "agent_trade_open",
-      `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USDT${
-        marketType === "futures"
-          ? ` futures ${leverage}x${orderType === "limit" ? " limit" : ""}`
-          : ""
-      } → ${result.status}${result.ok ? "" : ` (${result.reason})`}`,
+      `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USD → ${result.status}${result.ok ? "" : ` (${result.reason})`}`,
     );
 
     const envelope = bridgeSuccess(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import Link from "next/link";
 import { Clock, Loader2 } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
@@ -27,7 +28,7 @@ export function WaitingRoom({
   const analysisInterval = normalizeInterval(
     settings.analysis_interval ?? "1h",
   );
-  const activeMarket = settings.active_market ?? "crypto";
+  const activeMarket = settings.active_market ?? DEFAULT_MARKET;
 
   const runPollScan = useCallback(async () => {
     if (pollMinutes <= 0) return;
@@ -79,7 +80,7 @@ export function WaitingRoom({
         : "تنفيذ تلقائي مع موافقتك"
       : "توصيات — بانتظار موافقتك";
 
-  const marketLabel = activeMarket === "forex" ? "فوركس" : "كريبتو";
+  const marketLabel = "فوركس";
 
   return (
     <div className="space-y-4">

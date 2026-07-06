@@ -3,16 +3,23 @@
   "type": "object",
   "properties": {
     "layout_id": {
-      "description": "معرّف شارت المستخدم (من list_chart_layouts) — الافتراضي شارته الأساسي",
+      "description": "User chart layout id (from list_chart_layouts) — defaults to primary chart",
       "type": "string",
       "pattern": "^[A-Za-z0-9]{8,16}$"
     },
     "symbol": {
-      "description": "تغيير رمز الشارت (اختياري)",
+      "description": "Change chart symbol (optional)",
       "type": "string"
     },
     "interval": {
       "type": "string"
+    },
+    "dataSource": {
+      "type": "string",
+      "enum": [
+        "oanda",
+        "ea"
+      ]
     },
     "mode": {
       "default": "set",
@@ -30,7 +37,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "نوع الرسم: price_line | trend_line | ray | channel | parallel_channel | regression_trend | zone | supply_zone | demand_zone | range_box | fib_retracement | forecast_path | polyline_pattern | triangle | neckline | long_position | short_position | labeled_arrow | arrow_up | arrow_down | text | pattern_label"
+            "description": "Drawing type: price_line | trend_line | ray | channel | parallel_channel | regression_trend | zone | supply_zone | demand_zone | range_box | fib_retracement | forecast_path | polyline_pattern | triangle | neckline | long_position | short_position | labeled_arrow | arrow_up | arrow_down | text | pattern_label"
           },
           "confidence": {
             "default": 70,
@@ -39,17 +46,17 @@
             "maximum": 100
           },
           "label": {
-            "description": "تسمية عربية تظهر على الشارت",
+            "description": "Label shown on chart",
             "type": "string",
             "maxLength": 64
           },
           "color": {
-            "description": "لون hex مثل #22c55e",
+            "description": "Hex color e.g. #22c55e",
             "type": "string",
             "maxLength": 24
           },
           "width": {
-            "description": "سماكة الخط 1–4",
+            "description": "Line width 1–4",
             "type": "number",
             "minimum": 1,
             "maximum": 4
@@ -63,7 +70,7 @@
             ]
           },
           "fill": {
-            "description": "تعبئة المناطق",
+            "description": "Fill zones",
             "type": "boolean"
           },
           "fill_color": {
@@ -76,7 +83,7 @@
             "maxLength": 32
           },
           "patternType": {
-            "description": "مثل double_bottom | head_and_shoulders | ascending_triangle",
+            "description": "e.g. double_bottom | head_and_shoulders | ascending_triangle",
             "type": "string",
             "maxLength": 40
           },
@@ -88,10 +95,10 @@
               "properties": {
                 "price": {
                   "type": "number",
-                  "description": "السعر"
+                  "description": "Price"
                 },
                 "time": {
-                  "description": "Unix time (ثوانٍ أو ms) — إلزامي للنقاط التاريخية",
+                  "description": "Unix time (seconds or ms) — required for historical points",
                   "anyOf": [
                     {
                       "type": "number"
@@ -102,7 +109,7 @@
                   ]
                 },
                 "barsAhead": {
-                  "description": "عدد شموع للأمام — لنقاط forecast_path المستقبلية فقط",
+                  "description": "Bars ahead — for forecast_path future points only",
                   "anyOf": [
                     {
                       "type": "number"
@@ -118,10 +125,10 @@
               ],
               "additionalProperties": false
             },
-            "description": "نقاط الرسم (time+price). long/short_position: نقطة الدخول + meta"
+            "description": "Drawing points (time+price). long/short_position: entry point + meta"
           },
           "meta": {
-            "description": "للمراكز: {entry, stopLoss, takeProfit}",
+            "description": "For positions: {entry, stopLoss, takeProfit}",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -197,7 +204,7 @@
       ]
     },
     "targets": {
-      "description": "أهداف ربح إضافية",
+      "description": "Additional profit targets",
       "maxItems": 6,
       "type": "array",
       "items": {

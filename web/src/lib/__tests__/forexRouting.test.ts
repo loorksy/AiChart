@@ -50,14 +50,4 @@ test("createIntent routes forex broker by the user's forex_backend choice", asyn
     status: "pending",
   });
   assert.equal(eaIntent.broker, "mt_ea");
-
-  // Crypto always routes to binance regardless of forex choice.
-  const cryptoIntent = await store.createIntent(userId, {
-    symbol: "BTCUSDT",
-    side: "buy",
-    notional: 100,
-    market: "crypto",
-    status: "pending",
-  });
-  assert.equal(cryptoIntent.broker, "binance");
 });

@@ -7,7 +7,7 @@ import { profileForInterval } from "@/lib/analysisProfile";
 export async function GET() {
   try {
     await requirePlatformAccess();
-    const ctx = await fetchMarketContext("BTCUSDT", profileForInterval("1h"));
+    const ctx = await fetchMarketContext("EURUSD", profileForInterval("1h"));
     return NextResponse.json({ ok: true, context: ctx });
   } catch (e) {
     return handleError(e);

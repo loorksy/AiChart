@@ -222,14 +222,14 @@ export function LandingFeatures() {
     {
       id: "2",
       colSpan: 3,
-      title: isRtl ? "اتصالات بينانس و MetaTrader 5" : "Binance & MT5 Connectors",
+      title: isRtl ? "اتصالات MetaTrader 5" : "MetaTrader 5 Connectors",
       description: isRtl
-        ? "ربط وتكامل سلس مع منصتي Binance و MetaTrader 5. نفذ الصفقات عبر منصات متعددة بزمن استجابة بالملي ثانية."
-        : "Seamless integration with Binance and MetaTrader 5 platforms. Execute trades across multiple exchanges with millisecond latency.",
+        ? "ربط وتكامل سلس مع MetaTrader 5 عبر EA أو MetaApi. نفّذ الصفقات بزمن استجابة منخفض."
+        : "Seamless MetaTrader 5 integration via EA or MetaApi. Execute trades with low latency.",
       icon: <TrendingUp className="w-5 h-5" />,
       status: isRtl ? "نشط" : "Active",
-      tags: isRtl ? ["منصة", "MT5", "واجهة_برمجية"] : ["Exchange", "MT5", "API"],
-      meta: "12 pairs",
+      tags: isRtl ? ["MT5", "EA", "MetaApi"] : ["MT5", "EA", "MetaApi"],
+      meta: isRtl ? "فوركس" : "Forex",
       accentColor: "#f59e0b",
     },
     {

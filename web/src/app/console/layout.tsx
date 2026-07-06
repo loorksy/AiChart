@@ -10,7 +10,7 @@ import { BRAND_NAME, BRAND_TAGLINE_AR } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: `${BRAND_NAME} — لوحة التحكم`,
-  description: `${BRAND_NAME} — ${BRAND_TAGLINE_AR} · Claude MCP · Binance · MT5`,
+  description: `${BRAND_NAME} — ${BRAND_TAGLINE_AR} · Claude MCP · MetaTrader 5`,
 };
 
 export default async function ConsoleLayout({

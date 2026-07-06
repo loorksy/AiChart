@@ -106,7 +106,6 @@ export function AdminUsersTable({
             {mode === "full" && <th className="p-3">الحالة</th>}
             {mode === "full" && <th className="p-3">صلاحية حتى</th>}
             {mode === "full" && <th className="p-3">أيام</th>}
-            {mode === "full" && <th className="p-3">Binance</th>}
             <th className="p-3">التنفيذ</th>
             <th className="p-3">سقف رأس المال</th>
             <th className="p-3">أقصى صفقات</th>
@@ -177,17 +176,6 @@ export function AdminUsersTable({
                         }))
                       }
                     />
-                  </td>
-                )}
-                {mode === "full" && (
-                  <td className="p-3">
-                    {u.has_binance ? (
-                      <span className="text-primary">
-                        {u.binance_env === "testnet" ? "تجريبي" : "حقيقي"}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
                   </td>
                 )}
                 <td className="p-3">

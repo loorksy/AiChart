@@ -74,14 +74,14 @@ export function exportReportPdf({
 }) {
   const generatedAt = new Date().toLocaleString("ar");
   const statRows: [string, string][] = [
-    ["إجمالي العائد المحقّق", `${formatCurrency(stats.totalPnl)} USDT`],
+    ["إجمالي العائد المحقّق", `${formatCurrency(stats.totalPnl)} USD`],
     ["عدد الصفقات المغلقة", String(stats.closedTrades)],
     ["نسبة الفوز", `${stats.winRate.toFixed(1)}%`],
     ["صفقات رابحة / خاسرة", `${stats.winningTrades} / ${stats.losingTrades}`],
-    ["متوسط ربح الصفقة", `${formatCurrency(stats.avgPnl)} USDT`],
-    ["أفضل صفقة", `${formatCurrency(stats.bestTrade)} USDT`],
-    ["أسوأ صفقة", `${formatCurrency(stats.worstTrade)} USDT`],
-    ["أقصى تراجع", `${formatCurrency(stats.maxDrawdown)} USDT`],
+    ["متوسط ربح الصفقة", `${formatCurrency(stats.avgPnl)} USD`],
+    ["أفضل صفقة", `${formatCurrency(stats.bestTrade)} USD`],
+    ["أسوأ صفقة", `${formatCurrency(stats.worstTrade)} USD`],
+    ["أقصى تراجع", `${formatCurrency(stats.maxDrawdown)} USD`],
     ["عامل الربح", isFinite(stats.profitFactor) ? stats.profitFactor.toFixed(2) : "∞"],
     ["نسبة شارب", stats.sharpeRatio.toFixed(2)],
   ];

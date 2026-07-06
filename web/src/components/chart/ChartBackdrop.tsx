@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Decorative static chart backdrop — no API calls, no Binance stream.
+ * Decorative static chart backdrop — no API calls, no live stream.
  * Used on login/marketing surfaces where live candles are unavailable.
  */
 export function ChartBackdrop({ className }: { className?: string }) {

@@ -2,11 +2,11 @@ import { BRAND_NAME } from "@/lib/brand";
 
 export const LANDING = {
   brand: BRAND_NAME,
-  tagline: "منصة تداول ذكية — Claude MCP · Binance · MT5",
+  tagline: "منصة تداول ذكية — Claude MCP · MetaTrader 5",
   hero: {
     title: "تداول بذكاء عبر Claude MCP",
     subtitle:
-      "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر Binance وMetaTrader — مع Risk Guard وموافقة إدارية.",
+      "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر MetaTrader — مع Risk Guard وموافقة إدارية.",
     ctaPrimary: "ابدأ مجاناً",
     ctaSecondary: "تسجيل الدخول",
     chatTitle: "ماذا ستتداول اليوم؟",
@@ -24,8 +24,8 @@ export const LANDING = {
         desc: "حدود رأس المال، سقف الصفقات، وKill Switch قبل أي تنفيذ.",
       },
       {
-        title: "Binance + MT5",
-        desc: "كربتو عبر Binance، فوركس عبر EA على MetaTrader 5.",
+        title: "MetaTrader 5",
+        desc: "فوركس عبر EA على MetaTrader 5 أو MetaApi — تنفيذ مباشر من المحادثة.",
       },
       {
         title: "Telegram",
@@ -33,7 +33,7 @@ export const LANDING = {
       },
       {
         title: "ديمو / حقيقي",
-        desc: "ابدأ على Testnet أو حساب تجريبي قبل الانتقال للحقيقي.",
+        desc: "ابدأ على حساب MT5 تجريبي قبل الانتقال للحقيقي.",
       },
       {
         title: "صلاحية زمنية",
@@ -47,12 +47,12 @@ export const LANDING = {
       { n: "1", title: "سجّل", desc: "اسم مستخدم، واتساب، بريد، وكلمة مرور — أو Telegram." },
       { n: "2", title: "موافقة", desc: "الإدارة تفعّل حسابك وتمنح صلاحية الوصول." },
       { n: "3", title: "اربط Claude", desc: `أضف ${BRAND_NAME} كـ MCP Connector في Claude.` },
-      { n: "4", title: "تداول", desc: "اربط Binance/MT5 وابدأ بقراراتك — التنفيذ محمي." },
+      { n: "4", title: "تداول", desc: "اربط MetaTrader وابدأ بقراراتك — التنفيذ محمي." },
     ],
   },
   integrations: {
     title: "تكاملات",
-    items: ["Claude MCP", "Binance", "MetaTrader 5 / EA", "Telegram"],
+    items: ["Claude MCP", "MetaTrader 5 / EA", "MetaApi", "Telegram"],
   },
   security: {
     title: "ثقة وحماية",
@@ -83,8 +83,8 @@ export const LANDING = {
         a: "Telegram للتسجيل السريع؛ الدخول اليومي عبر البريد وكلمة المرور. بعد الموافقة يمكن إكمال الملف.",
       },
       {
-        q: "هل يوجد Testnet؟",
-        a: "نعم — Binance Testnet وحساب MT5 تجريبي مدعومان قبل التداول الحقيقي.",
+        q: "هل يوجد حساب تجريبي؟",
+        a: "نعم — حساب MT5 تجريبي مدعوم قبل التداول الحقيقي.",
       },
     ],
   },

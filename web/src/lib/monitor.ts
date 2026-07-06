@@ -1,4 +1,4 @@
-import { buildSnapshot, buildForexSnapshot, type MarketSnapshot } from "./market";
+import { buildForexSnapshot, type MarketSnapshot } from "./market";
 import type { TradingSettings } from "./types";
 
 export interface OpportunityCandidate {
@@ -72,16 +72,6 @@ export function scoreOpportunity(
 }
 
 export { parseAllowedAssets, isOpenAssetsPolicy } from "./allowedAssets";
-
-/** Scans one crypto symbol and returns an opportunity candidate if signals align. */
-export async function scanSymbol(
-  symbol: string,
-  style: TradingSettings["style"],
-  interval = "1h",
-): Promise<OpportunityCandidate | null> {
-  const snap = await buildSnapshot(symbol, interval, "prod");
-  return scoreOpportunity(snap, style);
-}
 
 /** Scans one forex symbol via MetaTrader / EA snapshot. */
 export async function scanForexSymbol(

@@ -17,16 +17,6 @@ const SCHEMA = `
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
-  CREATE TABLE IF NOT EXISTS binance_accounts (
-    user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    api_key_enc    TEXT NOT NULL,
-    api_secret_enc TEXT NOT NULL,
-    env            TEXT NOT NULL DEFAULT 'testnet',
-    region         TEXT NOT NULL DEFAULT 'global',
-    label          TEXT,
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-
   CREATE TABLE IF NOT EXISTS trading_settings (
     user_id                  INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     mode                     TEXT NOT NULL DEFAULT 'approval',
@@ -42,7 +32,7 @@ const SCHEMA = `
     monthly_loss_limit_pct   DOUBLE PRECISION NOT NULL DEFAULT 15,
     auto_take_profit_usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
-    active_market            TEXT NOT NULL DEFAULT 'crypto',
+    active_market            TEXT NOT NULL DEFAULT 'forex',
     -- 'ea' | 'mt5local' | NULL (operator's global default).
     forex_backend            TEXT,
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
@@ -104,8 +94,8 @@ const SCHEMA = `
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          DOUBLE PRECISION NOT NULL,
-    market            TEXT NOT NULL DEFAULT 'crypto',
-    broker            TEXT NOT NULL DEFAULT 'binance',
+    market            TEXT NOT NULL DEFAULT 'forex',
+    broker            TEXT NOT NULL DEFAULT 'mt_ea',
     entry             DOUBLE PRECISION,
     stop_loss         DOUBLE PRECISION,
     take_profit       DOUBLE PRECISION,
@@ -129,8 +119,8 @@ const SCHEMA = `
     avg_price   DOUBLE PRECISION NOT NULL DEFAULT 0,
     order_id    TEXT,
     env         TEXT NOT NULL DEFAULT 'testnet',
-    market      TEXT NOT NULL DEFAULT 'crypto',
-    broker      TEXT NOT NULL DEFAULT 'binance',
+    market      TEXT NOT NULL DEFAULT 'forex',
+    broker      TEXT NOT NULL DEFAULT 'mt_ea',
     status      TEXT NOT NULL DEFAULT 'open',
     pnl         DOUBLE PRECISION NOT NULL DEFAULT 0,
     oco_order_list_id TEXT,
@@ -391,7 +381,7 @@ const SCHEMA = `
     trade_id            INTEGER NOT NULL,
     recommendation_id   INTEGER,
     symbol              TEXT NOT NULL,
-    market              TEXT NOT NULL DEFAULT 'crypto',
+    market              TEXT NOT NULL DEFAULT 'forex',
     timeframe           TEXT,
     pattern_name        TEXT,
     outcome             TEXT NOT NULL,
@@ -471,8 +461,8 @@ async function migratePg(client: PoolClient) {
       slug: "risk-disclosure",
       title_ar: "إخلاء المسؤولية عن مخاطر التداول",
       title_en: "Risk Disclosure",
-      content_ar: "# إخلاء المسؤولية عن مخاطر التداول\n\n> [!WARNING]\n> التداول في الأسواق المالية (مثل العملات المشفرة والرافعة المالية في الفيوتشرز) ينطوي على مخاطر خسارة مالية كبيرة.\n\n### 1. مخاطر السوق\nالأسعار متقلبة بشكل كبير والرافعة المالية قد تضاعف الخسائر كما تضاعف الأرباح.\n\n### 2. عدم وجود ضمانات\nلا تقدم منصة **AiChart** أي ضمانات بتحقيق أرباح. الأداء السابق لا يضمن الأداء المستقبلي.",
-      content_en: "# Risk Disclosure\n\n> [!WARNING]\n> Trading in financial markets (such as cryptocurrencies and leverage in Futures) carries significant risk of financial loss.\n\n### 1. Market Risks\nPrices are highly volatile, and leverage can multiply losses just as it multiplies profits.\n\n### 2. No Guarantees\nThe **AiChart** platform makes no guarantees of profits. Past performance does not guarantee future results."
+      content_ar: "# إخلاء المسؤولية عن مخاطر التداول\n\n> [!WARNING]\n> التداول في أسواق الفوركس والرافعة المالية ينطوي على مخاطر خسارة مالية كبيرة.\n\n### 1. مخاطر السوق\nالأسعار متقلبة بشكل كبير والرافعة المالية قد تضاعف الخسائر كما تضاعف الأرباح.\n\n### 2. عدم وجود ضمانات\nلا تقدم منصة **AiChart** أي ضمانات بتحقيق أرباح. الأداء السابق لا يضمن الأداء المستقبلي.",
+      content_en: "# Risk Disclosure\n\n> [!WARNING]\n> Trading in forex and leveraged markets carries significant risk of financial loss.\n\n### 1. Market Risks\nPrices are highly volatile, and leverage can multiply losses just as it multiplies profits.\n\n### 2. No Guarantees\nThe **AiChart** platform makes no guarantees of profits. Past performance does not guarantee future results."
     },
     {
       slug: "about-us",
@@ -547,19 +537,10 @@ async function migratePg(client: PoolClient) {
         'ANTHROPIC_MODEL',
         'TELEGRAM_BOT_USERNAME',
         'APP_URL',
-        'ENABLE_BINANCE_CLI',
         'METAAPI_REGION'
       )
   `).catch(() => {
     /* table may be empty on first boot */
-  });
-
-  // Multi-region Binance support.
-  await client.query(`
-    ALTER TABLE binance_accounts
-      ADD COLUMN IF NOT EXISTS region TEXT NOT NULL DEFAULT 'global'
-  `).catch(() => {
-    /* column may already exist */
   });
 
   // Advanced alert preferences on trading_settings.
@@ -587,7 +568,7 @@ async function migratePg(client: PoolClient) {
 
   await client.query(`
     ALTER TABLE trading_settings
-      ADD COLUMN IF NOT EXISTS active_market TEXT NOT NULL DEFAULT 'crypto'
+      ADD COLUMN IF NOT EXISTS active_market TEXT NOT NULL DEFAULT 'forex'
   `).catch(() => {});
 
   await client.query(`
@@ -609,14 +590,14 @@ async function migratePg(client: PoolClient) {
 
   await client.query(`
     ALTER TABLE trades
-      ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'crypto',
-      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'binance'
+      ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'forex',
+      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'mt_ea'
   `).catch(() => {});
 
   await client.query(`
     ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'crypto',
-      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'binance'
+      ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'forex',
+      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'mt_ea'
   `).catch(() => {});
 
   await client.query(`
@@ -773,30 +754,13 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'binance_accounts_pkey'
-          AND conrelid = 'binance_accounts'::regclass
-          AND pg_get_constraintdef(oid) LIKE '%user_id, env%'
-      ) THEN
-        ALTER TABLE binance_accounts DROP CONSTRAINT IF EXISTS binance_accounts_pkey;
-        ALTER TABLE binance_accounts ADD PRIMARY KEY (user_id, env);
-      END IF;
-    EXCEPTION WHEN OTHERS THEN
-      NULL;
-    END $$;
-  `).catch(() => {});
-
-  await client.query(`
     CREATE TABLE IF NOT EXISTS trade_lessons (
       id                  SERIAL PRIMARY KEY,
       user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       trade_id            INTEGER NOT NULL,
       recommendation_id   INTEGER,
       symbol              TEXT NOT NULL,
-      market              TEXT NOT NULL DEFAULT 'crypto',
+      market              TEXT NOT NULL DEFAULT 'forex',
       timeframe           TEXT,
       pattern_name        TEXT,
       outcome             TEXT NOT NULL,
@@ -990,6 +954,26 @@ async function migratePg(client: PoolClient) {
   ).catch(() => {});
 
   await dropLegacyBotAndScalpTablesPg(client);
+
+  await client.query(`
+    UPDATE trading_settings SET active_market = 'forex' WHERE active_market = 'crypto'
+  `).catch(() => {});
+  await client.query(`
+    UPDATE trades SET market = 'forex' WHERE market = 'crypto'
+  `).catch(() => {});
+  await client.query(`
+    UPDATE trade_intents SET market = 'forex' WHERE market = 'crypto'
+  `).catch(() => {});
+  await client.query(`
+    UPDATE recommendations SET market = 'forex' WHERE market = 'crypto'
+  `).catch(() => {});
+  await client.query(`
+    UPDATE trades SET broker = 'mt_ea' WHERE broker = 'binance'
+  `).catch(() => {});
+  await client.query(`
+    UPDATE trade_intents SET broker = 'mt_ea' WHERE broker = 'binance'
+  `).catch(() => {});
+  await client.query(`DROP TABLE IF EXISTS binance_accounts CASCADE`).catch(() => {});
 }
 
 async function seedAdminPg(client: PoolClient) {

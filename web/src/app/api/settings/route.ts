@@ -26,16 +26,15 @@ const schema = z
     daily_loss_limit_pct: z.number().min(0).max(100),
     monthly_loss_limit_pct: z.number().min(0).max(100),
     auto_take_profit_usd: z.number().min(0).max(100_000),
-    // Legacy array (crypto whitelist) OR structured per-market object.
+    // Legacy array OR structured forex object.
     allowed_assets: z.union([
       assetList,
       z.object({
-        crypto: assetList.optional(),
         forex: assetList.optional(),
         watchlist: assetList.optional(),
       }),
     ]),
-    active_market: z.enum(["crypto", "forex"]),
+    active_market: z.literal("forex").optional(),
     // User's forex connection method: EA bridge (on their device) vs server-side.
     forex_backend: z.enum(["ea", "mt5local", "metaapi"]).nullable(),
     send_screenshot: z.boolean(),
@@ -52,7 +51,7 @@ const schema = z
     scan_poll_minutes: z.number().int().min(0).max(120),
     analysis_interval: z.string().min(2).max(4),
     execution_env_preference: z.enum(["demo", "live"]),
-    futures_enabled: z.boolean(),
+    futures_enabled: z.literal(false).optional(),
     default_leverage: z.number().min(1).max(125),
   })
   .partial();
@@ -75,7 +74,11 @@ export async function PUT(req: NextRequest) {
     const input = schema.parse(await req.json());
     const limits = await getLimits(user.id);
 
-    const patch: Record<string, unknown> = { ...input };
+    const patch: Record<string, unknown> = {
+      ...input,
+      active_market: "forex",
+      futures_enabled: 0,
+    };
 
     // Hard caps enforced server-side regardless of what the user submits.
     if (typeof input.max_capital === "number") {
@@ -99,19 +102,16 @@ export async function PUT(req: NextRequest) {
     if (input.allowed_assets !== undefined) {
       const current = await getSettings(user.id);
       if (Array.isArray(input.allowed_assets)) {
-        // Legacy crypto array: update crypto, preserve forex.
         patch.allowed_assets = setMarketAssets(
           current.allowed_assets,
-          "crypto",
           input.allowed_assets,
         );
       } else {
         const obj = input.allowed_assets;
         let raw = current.allowed_assets;
-        if (obj.crypto !== undefined) raw = setMarketAssets(raw, "crypto", obj.crypto);
-        if (obj.forex !== undefined) raw = setMarketAssets(raw, "forex", obj.forex);
+        if (obj.forex !== undefined) raw = setMarketAssets(raw, obj.forex);
         if (obj.watchlist !== undefined) raw = setWatchlist(raw, obj.watchlist);
-        patch.allowed_assets = raw || serializeMarketAssets({ crypto: [], forex: [] });
+        patch.allowed_assets = raw || serializeMarketAssets({ forex: [] });
       }
     }
     if (typeof input.send_screenshot === "boolean") {

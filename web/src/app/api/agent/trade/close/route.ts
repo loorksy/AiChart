@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       await logAudit(
         userId,
         "agent_trade_close",
-        `all: closed ${result.closed}, pnl ${result.totalPnl.toFixed(2)} USDT`,
+        `all: closed ${result.closed}, pnl ${result.totalPnl.toFixed(2)} USD`,
       );
       return NextResponse.json({ ok: result.failed === 0, ...result });
     }
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     await logAudit(
       userId,
       "agent_trade_close",
-      `#${body.trade_id} ${result.symbol}: ${result.ok ? `pnl ${result.pnl.toFixed(2)} USDT` : result.reason}`,
+      `#${body.trade_id} ${result.symbol}: ${result.ok ? `pnl ${result.pnl.toFixed(2)} USD` : result.reason}`,
     );
     return NextResponse.json(result);
   } catch (e) {

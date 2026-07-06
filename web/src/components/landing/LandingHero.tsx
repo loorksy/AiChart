@@ -25,16 +25,16 @@ export function LandingHero() {
   const isRtl = locale === "ar";
 
   const tagline = isRtl
-    ? "منصة تداول ذكية — Claude MCP · Binance · MT5"
-    : "AI-Powered Trading Assistant — Claude MCP · Binance · MT5";
+    ? "منصة تداول ذكية — Claude MCP · MetaTrader 5"
+    : "AI-Powered Trading Assistant — Claude MCP · MetaTrader 5";
 
   const titlePre = isRtl ? "تداول بذكاء عبر " : "Trade Smartly with ";
   const titleGlow = "Claude MCP";
   const titlePost = isRtl ? "" : "";
 
   const subtitle = isRtl
-    ? "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر Binance وMetaTrader — مع Risk Guard. استعرض الشارت الآن مجاناً بلا تسجيل."
-    : "Connect Claude Connectors, monitor markets, and execute trades on Binance & MetaTrader 5 — backed by Risk Guard. Browse the live chart free, no sign-up.";
+    ? "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر MetaTrader — مع Risk Guard. استعرض الشارت الآن مجاناً بلا تسجيل."
+    : "Connect Claude Connectors, monitor markets, and execute trades on MetaTrader 5 — backed by Risk Guard. Browse the live chart free, no sign-up.";
 
   const ctaPrimary = isRtl ? "ابدأ مجاناً" : "Start Free";
   const ctaSecondary = isRtl ? "تسجيل الدخول" : "Sign In";

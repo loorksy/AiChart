@@ -1,4 +1,5 @@
 import { getSettings, getLimits, getPublicUser } from "./store";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { allowedAssetsLabel } from "./allowedAssets";
 
 /**
@@ -16,7 +17,7 @@ export async function buildUserProfileSummary(userId: number): Promise<string> {
     return "لا توجد تفضيلات أو سجلات شخصية محفوظة للمستخدم حالياً.";
   }
 
-  const activeMarket = settings.active_market ?? "crypto";
+  const activeMarket = settings.active_market ?? DEFAULT_MARKET;
   const assetsLabel = allowedAssetsLabel(settings.allowed_assets, activeMarket);
   const styleAr =
     settings.style === "conservative"
@@ -34,14 +35,14 @@ export async function buildUserProfileSummary(userId: number): Promise<string> {
 
   const lines = [
     `- البريد الإلكتروني وصلاحية الحساب: ${user.email} [الحالة: ${user.status}] (المصدر: جدول users)`,
-    `- السوق النشط المفضل: ${activeMarket === "forex" ? "سوق العملات الأجنبية (Forex)" : "العملات الرقمية (Crypto)"} (المصدر: جدول trading_settings)`,
+    `- السوق النشط: سوق العملات الأجنبية (Forex / MetaTrader) (المصدر: جدول trading_settings)`,
     `- الأصول المسموح بتداولها: ${assetsLabel} (المصدر: جدول trading_settings)`,
     `- أسلوب إدارة المخاطر: ${styleAr} (المصدر: جدول trading_settings)`,
     `- أسلوب التداول الأساسي: ${settings.trading_style ?? "day"} (المصدر: جدول trading_settings)`,
     `- وضع تنفيذ الصفقات: ${executionModeLabel} (المصدر: جدول trading_settings)`,
-    `- الحد الأقصى لرأس المال التداولي: ${settings.max_capital} USDT (الحد الإداري الأقصى: ${limits.max_capital_cap || "غير محدود"}) (المصدر: جدولي trading_settings و admin_limits)`,
+    `- الحد الأقصى لرأس المال التداولي: ${settings.max_capital} USD (الحد الإداري الأقصى: ${limits.max_capital_cap || "غير محدود"}) (المصدر: جدولي trading_settings و admin_limits)`,
     `- الحد الأقصى لعدد الصفقات المفتوحة بالتزامن: ${settings.max_open_trades} صفقة (الحد الإداري الأقصى: ${limits.max_open_trades_cap || "غير محدود"}) (المصدر: جدولي trading_settings و admin_limits)`,
-    `- تفعيل العقود الآجلة (Futures): ${settings.futures_enabled ? "مفعّل" : "غير مفعّل"} (المصدر: جدول trading_settings)`,
+    `- العقود الآجلة (Futures): غير متاحة — المنصة فوركس فقط (المصدر: جدول trading_settings)`,
     `- الرافعة المالية الافتراضية: ${settings.default_leverage ?? 3}x (الحد الإداري الأقصى: ${limits.max_leverage_cap ?? 10}x) (المصدر: جدولي trading_settings و admin_limits)`,
     `- حدود وقف الخسارة اليومي: وقف عند خسارة ${settings.daily_loss_limit_pct}% من المحفظة (المصدر: جدول trading_settings)`,
     `- نسبة الدخول بالصفقة الواحدة: ${settings.per_trade_pct}% من رأس المال المخصص (المصدر: جدول trading_settings)`,

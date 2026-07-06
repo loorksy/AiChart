@@ -8,7 +8,7 @@ const OPTIONS: { id: MarketType; label: string; icon: typeof CandlestickChart }[
   { id: "forex", label: "فوركس", icon: CandlestickChart },
 ];
 
-/** Segmented control to switch the active market (crypto vs forex). */
+/** Forex-only market selector (single option for layout compatibility). */
 export function MarketTypeSelector({
   value,
   onChange,

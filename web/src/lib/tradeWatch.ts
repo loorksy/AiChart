@@ -1,7 +1,3 @@
-import { getPrice } from "./binance";
-import {
-  getFuturesPositions,
-} from "./binanceFutures";
 import {
   getEaConnection,
   isHeartbeatFresh,
@@ -9,20 +5,17 @@ import {
 } from "./eaStore";
 import { parseEaPositions, type EaBrokerPosition } from "./executionEnv";
 import { checkSlTpProximity } from "./monitor";
-import { buildSnapshot } from "./market";
 import { queryOne } from "./db";
 import {
-  getBinanceCredentials,
   getLimits,
   getSettings,
   listOpenTrades,
   todayRealizedPnlPct,
 } from "./store";
-import type { Trade, TradingSettings, AdminLimits } from "./types";
+import type { TradingSettings, AdminLimits } from "./types";
 
 const PROXIMITY_PCT = 1.5;
 const DAILY_LOSS_WARN_RATIO = 0.8;
-const LIQUIDATION_WARN_PCT = 10;
 
 async function intentStopsForTrade(
   intentId: number | null,
@@ -62,20 +55,10 @@ export async function watchAichartOpenTrades(
   userId: number,
 ): Promise<TradeWatchAlert[]> {
   const alerts: TradeWatchAlert[] = [];
-  const creds = await getBinanceCredentials(userId);
   const open = await listOpenTrades(userId, 20);
 
   for (const trade of open) {
-    let price: number | null = null;
-    if (trade.market === "forex" || trade.broker === "mt5_local" || trade.broker === "mt_ea") {
-      price = await forexMidPrice(userId, trade.symbol);
-    } else {
-      try {
-        price = await getPrice(trade.symbol, creds?.env ?? "prod");
-      } catch {
-        continue;
-      }
-    }
+    const price = await forexMidPrice(userId, trade.symbol);
     if (price == null) continue;
     const { sl, tp } = await intentStopsForTrade(trade.intent_id);
     const hits = checkSlTpProximity(price, sl, tp, PROXIMITY_PCT);
@@ -93,31 +76,6 @@ export async function watchAichartOpenTrades(
             )
             .join(" · "),
       });
-      continue;
-    }
-    if (trade.market !== "forex" && trade.broker !== "mt5_local" && trade.broker !== "mt_ea") {
-      try {
-        const snap = await buildSnapshot(trade.symbol, "15m", creds?.env ?? "prod");
-        if (snap.rsi14 != null) {
-          if (trade.side === "buy" && snap.rsi14 > 72) {
-            alerts.push({
-              symbol: trade.symbol,
-              source: "aichart",
-              hits: [],
-              detail: `صفقة #${trade.id} ${trade.symbol} — RSI تشبّع شرائي ${snap.rsi14.toFixed(0)}`,
-            });
-          } else if (trade.side === "sell" && snap.rsi14 < 28) {
-            alerts.push({
-              symbol: trade.symbol,
-              source: "aichart",
-              hits: [],
-              detail: `صفقة #${trade.id} ${trade.symbol} — RSI تشبّع بيعي ${snap.rsi14.toFixed(0)}`,
-            });
-          }
-        }
-      } catch {
-        /* skip */
-      }
     }
   }
   return alerts;
@@ -185,52 +143,17 @@ export async function watchDailyLossProximity(
 }
 
 export async function watchFuturesLiquidationProximity(
-  userId: number,
+  _userId: number,
 ): Promise<TradeWatchAlert[]> {
-  const settings = await getSettings(userId);
-  if (!settings.futures_enabled) return [];
-
-  const creds = await getBinanceCredentials(userId);
-  if (!creds) return [];
-
-  let positions: Awaited<ReturnType<typeof getFuturesPositions>>;
-  try {
-    positions = await getFuturesPositions(
-      creds.apiKey,
-      creds.apiSecret,
-      creds.env,
-    );
-  } catch {
-    return [];
-  }
-
-  const alerts: TradeWatchAlert[] = [];
-  for (const p of positions) {
-    if (p.liquidationPrice <= 0 || p.markPrice <= 0) continue;
-    const distancePct =
-      (Math.abs(p.markPrice - p.liquidationPrice) / p.markPrice) * 100;
-    if (distancePct >= LIQUIDATION_WARN_PCT) continue;
-
-    const direction = p.positionAmt > 0 ? "Long" : "Short";
-    alerts.push({
-      symbol: p.symbol,
-      source: "aichart",
-      hits: [],
-      detail:
-        `⚠️ اقتراب تصفية Futures · ${p.symbol} ${direction} ${p.leverage}x\n` +
-        `السعر ${p.markPrice} · تصفية ${p.liquidationPrice} · بعد ${distancePct.toFixed(1)}%`,
-    });
-  }
-  return alerts;
+  return [];
 }
 
 export async function collectTradeWatchAlerts(
   userId: number,
 ): Promise<TradeWatchAlert[]> {
-  const [aichart, mt5, liquidation] = await Promise.all([
+  const [aichart, mt5] = await Promise.all([
     watchAichartOpenTrades(userId),
     watchMt5Positions(userId),
-    watchFuturesLiquidationProximity(userId),
   ]);
-  return [...aichart, ...mt5, ...liquidation];
+  return [...aichart, ...mt5];
 }

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { buildAccountProfile } from "./accountProfile";
 import { getAppSecret } from "./env";
 import { getPlatformValue } from "./platformConfig";
@@ -118,7 +119,7 @@ export async function createApprovalRequest(
     );
   }
   const limits = await getLimits(userId);
-  const market = input.market ?? settings.active_market ?? "crypto";
+  const market = input.market ?? settings.active_market ?? DEFAULT_MARKET;
   const effectiveCapital =
     limits.max_capital_cap > 0
       ? Math.min(settings.max_capital, limits.max_capital_cap)

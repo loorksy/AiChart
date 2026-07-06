@@ -3,7 +3,7 @@
   "type": "object",
   "properties": {
     "include_live": {
-      "description": "تضمين الحساب الحي (الأبطأ) — false لملخّص أسرع",
+      "description": "Include live account (slower) — false for faster summary",
       "type": "boolean"
     }
   },

@@ -128,8 +128,8 @@ export function AdminOverview({
           icon={Clock}
         />
         <StatTile
-          label="مرتبطون بـ Binance"
-          value={stats.users_with_binance}
+          label="مرتبطون بـ MetaTrader"
+          value={stats.users_with_mt5}
           icon={Link2}
         />
       </Section>

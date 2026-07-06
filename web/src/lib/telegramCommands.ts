@@ -40,7 +40,6 @@ export const CMD_CALLBACK_MAP: Record<string, string> = {
   "cmd:balance": MENU_ACTIONS.rased,
   "cmd:trades": MENU_ACTIONS.safaqat,
   "cmd:settings": MENU_ACTIONS.iadadat,
-  "cmd:market:crypto": MENU_ACTIONS.crypto,
   "cmd:market:forex": MENU_ACTIONS.forex,
   "cmd:env:demo": MENU_ACTIONS.demo,
   "cmd:env:live": MENU_ACTIONS.live,
@@ -80,7 +79,6 @@ export function mainMenuButtons(): InlineButton[][] {
       { text: "⚙️ الإعدادات", callback_data: "cmd:settings" },
     ],
     [
-      { text: "🪙 كربتو", callback_data: "cmd:market:crypto" },
       { text: "💱 فوركس", callback_data: "cmd:market:forex" },
     ],
     [

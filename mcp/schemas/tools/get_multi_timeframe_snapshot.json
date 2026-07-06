@@ -4,10 +4,10 @@
   "properties": {
     "symbol": {
       "type": "string",
-      "description": "مثل EURUSD أو BTCUSDT"
+      "description": "e.g. EURUSD"
     },
     "intervals": {
-      "description": "قائمة أطر، الافتراضي 1h,15m,5m — حد أقصى 5",
+      "description": "Frame list, default 1h,15m,5m — max 5",
       "maxItems": 5,
       "type": "array",
       "items": {
@@ -16,10 +16,7 @@
     },
     "market": {
       "type": "string",
-      "enum": [
-        "crypto",
-        "forex"
-      ]
+      "const": "forex"
     }
   },
   "required": [

@@ -15,7 +15,7 @@ function getKey(): Buffer {
 }
 
 /**
- * Encrypts a secret string (e.g. a Binance API secret) using AES-256-GCM.
+ * Encrypts a secret string using AES-256-GCM.
  * Returns a compact `iv:tag:ciphertext` hex string.
  */
 export function encryptSecret(plaintext: string): string {

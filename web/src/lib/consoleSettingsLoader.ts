@@ -7,7 +7,6 @@ import { isMetaApiConfiguredAsync } from "@/lib/metaapi/client";
 import {
   getSettings,
   getLimits,
-  getBinanceAccountMeta,
   getMtAccountMeta,
 } from "@/lib/store";
 import { getEaConnectionMeta } from "@/lib/eaStore";
@@ -26,7 +25,6 @@ export async function loadConsoleSettingsProps(user: PublicUser) {
     user,
     settings,
     limits: await getLimits(user.id),
-    binance: await getBinanceAccountMeta(user.id),
     ea: await getEaConnectionMeta(user.id),
     mt: usesMtAccount ? await getMtAccountMeta(user.id) : null,
     forexBackend,

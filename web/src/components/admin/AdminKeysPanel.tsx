@@ -228,7 +228,7 @@ export function AdminKeysPanel() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        تحذير: تغيير <span dir="ltr">ENCRYPTION_KEY</span> بعد ربط حسابات Binance
+        تحذير: تغيير <span dir="ltr">ENCRYPTION_KEY</span> بعد ربط حسابات MetaTrader
         يمنع فك تشفير المفاتيح القديمة. غيّره فقط عند بداية التشغيل.
       </p>
     </div>

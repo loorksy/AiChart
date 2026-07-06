@@ -7,28 +7,23 @@ export const MONITOR_TOP_SYMBOL_LIMIT = 40;
 export const OPEN_ASSETS_TOKEN = "*";
 
 export interface MarketAssets {
-  crypto: string[]; // [] or ["*"] => open
-  forex: string[]; // [] or ["*"] => open
-  /** Optional scan watchlist (crypto symbols); overrides top-volume when set. */
+  forex: string[];
+  /** Optional scan watchlist; overrides top-volume when set. */
   watchlist?: string[];
 }
 
 /**
- * Parses the stored `allowed_assets` value, supporting two formats:
- * - Legacy: a JSON array (treated as the crypto whitelist).
- * - Structured: `{ "crypto": [...], "forex": [...] }`.
+ * Parses stored `allowed_assets` — structured `{ "forex": [...], "watchlist": [...] }`.
  */
 export function parseMarketAssets(raw: string): MarketAssets {
-  const out: MarketAssets = { crypto: [], forex: [] };
+  const out: MarketAssets = { forex: [] };
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) {
-      out.crypto = parsed.map((s) => String(s));
       return out;
     }
     if (parsed && typeof parsed === "object") {
       const obj = parsed as Record<string, unknown>;
-      if (Array.isArray(obj.crypto)) out.crypto = obj.crypto.map((s) => String(s));
       if (Array.isArray(obj.forex)) out.forex = obj.forex.map((s) => String(s));
       if (Array.isArray(obj.watchlist)) {
         out.watchlist = obj.watchlist.map((s) => String(s));
@@ -40,34 +35,27 @@ export function parseMarketAssets(raw: string): MarketAssets {
   return out;
 }
 
-/** Returns the per-market list as a JSON-array string (for legacy helpers). */
-export function marketAssetsJson(raw: string, market: MarketType): string {
-  const assets = parseMarketAssets(raw);
-  return JSON.stringify(market === "forex" ? assets.forex : assets.crypto);
+/** Returns the forex list as a JSON-array string. */
+export function marketAssetsJson(raw: string): string {
+  return JSON.stringify(parseMarketAssets(raw).forex);
 }
 
-/** Serializes a structured per-market policy back to storage form. */
+/** Serializes forex policy back to storage form. */
 export function serializeMarketAssets(assets: MarketAssets): string {
   return JSON.stringify({
-    crypto: assets.crypto,
     forex: assets.forex,
     watchlist: assets.watchlist ?? [],
   });
 }
 
-/** Updates one market's list and returns the merged structured JSON. */
-export function setMarketAssets(
-  raw: string,
-  market: MarketType,
-  list: string[],
-): string {
+/** Updates the forex list and returns merged structured JSON. */
+export function setMarketAssets(raw: string, list: string[]): string {
   const assets = parseMarketAssets(raw);
-  if (market === "forex") assets.forex = list;
-  else assets.crypto = list;
+  assets.forex = list;
   return serializeMarketAssets(assets);
 }
 
-/** Updates scan watchlist while preserving crypto/forex lists. */
+/** Updates scan watchlist while preserving forex list. */
 export function setWatchlist(raw: string, list: string[]): string {
   const assets = parseMarketAssets(raw);
   assets.watchlist = list;
@@ -88,43 +76,47 @@ function cleanList(list: string[]): string[] {
     .filter((s) => s && s !== OPEN_ASSETS_TOKEN);
 }
 
-/** True when the user has not restricted pairs (empty list or `["*"]`). */
-export function isOpenAssetsPolicy(raw: string, market: MarketType = "crypto"): boolean {
-  const assets = parseMarketAssets(raw);
-  return listIsOpen(market === "forex" ? assets.forex : assets.crypto);
+/** True when the user has not restricted forex pairs (empty list or `["*"]`). */
+export function isOpenAssetsPolicy(
+  raw: string,
+  _market: MarketType = "forex",
+): boolean {
+  return listIsOpen(parseMarketAssets(raw).forex);
 }
 
-/** Explicit whitelist symbols for a market (never includes `*`). */
-export function parseAllowedAssets(raw: string, market: MarketType = "crypto"): string[] {
-  const assets = parseMarketAssets(raw);
-  return cleanList(market === "forex" ? assets.forex : assets.crypto);
+/** Explicit whitelist symbols for forex (never includes `*`). */
+export function parseAllowedAssets(
+  raw: string,
+  _market: MarketType = "forex",
+): string[] {
+  return cleanList(parseMarketAssets(raw).forex);
 }
 
-/** Whether a symbol is permitted under the user's policy for a market. */
+/** Whether a symbol is permitted under the user's forex policy. */
 export function isSymbolAllowed(
   raw: string,
   symbol: string,
-  market: MarketType,
+  _market: MarketType = "forex",
 ): boolean {
-  if (isOpenAssetsPolicy(raw, market)) return true;
-  const allowed = parseAllowedAssets(raw, market);
+  if (isOpenAssetsPolicy(raw)) return true;
+  const allowed = parseAllowedAssets(raw);
   if (allowed.length === 0) return true;
   return allowed.includes(symbol.toUpperCase());
 }
 
-/** Resolves the effective crypto symbol list — crypto scanning is out of scope. */
+/** Legacy alias — returns forex whitelist only. */
 export async function resolveAllowedAssets(raw: string): Promise<string[]> {
-  return parseAllowedAssets(raw, "crypto");
+  return parseAllowedAssets(raw);
 }
 
-/** Bounded crypto list for monitor — crypto path disabled; returns explicit whitelist only. */
+/** Bounded forex list for monitor. */
 export async function resolveMonitorAssets(
   raw: string,
   topLimit = MONITOR_TOP_SYMBOL_LIMIT,
 ): Promise<string[]> {
   const watchlist = parseWatchlist(raw);
   if (watchlist.length > 0) return watchlist.slice(0, topLimit);
-  return parseAllowedAssets(raw, "crypto").slice(0, topLimit);
+  return parseAllowedAssets(raw).slice(0, topLimit);
 }
 
 /** Explicit watchlist from structured allowed_assets (empty if unset). */
@@ -140,19 +132,14 @@ export async function resolveScanAssets(
   return resolveMonitorAssets(raw, topLimit);
 }
 
-// NOTE: the market-aware scan resolver lives in `allowedAssets.server.ts` —
-// it pulls the broker (EA) symbol universe, which imports server-only Node
-// modules (pg/sqlite/ioredis). Keeping it out of this module ensures client
-// components can import the pure parse helpers above without dragging those
-// modules into the browser bundle.
-
-export function allowedAssetsLabel(raw: string, market: MarketType = "crypto"): string {
-  if (isOpenAssetsPolicy(raw, market)) {
-    return market === "forex"
-      ? "كل أزواج الفوركس المتاحة لدى الوسيط"
-      : "غير متاح — المنصة مخصّصة للفوركس عبر الوسيط";
+export function allowedAssetsLabel(
+  raw: string,
+  _market: MarketType = "forex",
+): string {
+  if (isOpenAssetsPolicy(raw)) {
+    return "كل أزواج الفوركس المتاحة لدى الوسيط";
   }
-  const list = parseAllowedAssets(raw, market);
+  const list = parseAllowedAssets(raw);
   return list.length ? list.join("، ") : "غير محددة";
 }
 

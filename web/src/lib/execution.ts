@@ -58,8 +58,7 @@ export function bridgeEnvelopeForExecutionDenial(
 /**
  * Executes a pending/approved trade intent. The Risk Guard is the gate: no
  * order is sent unless every hard cap passes. Order placement is delegated to
- * the broker adapter selected by the intent's market (Binance for crypto,
- * the MetaTrader EA bridge for forex).
+ * the MetaTrader EA bridge for forex.
  */
 export interface ExecuteIntentOptions {
   onActivity?: ActivityListener;

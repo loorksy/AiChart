@@ -54,8 +54,6 @@ const DEFAULT_SYMBOL = "EURUSD";
 
 export default function MarketClient({
   initialMarket = "forex",
-  cryptoOpen: _cryptoOpen,
-  cryptoAllowed: _cryptoAllowed,
   forexOpen,
   forexAllowed,
   eaOnline = false,
@@ -63,8 +61,6 @@ export default function MarketClient({
   recommendations,
 }: {
   initialMarket?: MarketType;
-  cryptoOpen: boolean;
-  cryptoAllowed: string[];
   forexOpen: boolean;
   forexAllowed: string[];
   eaOnline?: boolean;

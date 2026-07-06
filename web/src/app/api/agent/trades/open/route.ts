@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       executionEnv,
       aichartTrades,
-      brokerPositions: { mt5: brokerMt5, binance: null },
+      brokerPositions: { mt5: brokerMt5 },
       summary_ar,
     });
   } catch (e) {

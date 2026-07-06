@@ -21,8 +21,8 @@ function baseSettings(
     daily_loss_limit_pct: 0,
     monthly_loss_limit_pct: 0,
     auto_take_profit_usd: 0,
-    allowed_assets: '["BTCUSDT"]',
-    active_market: "crypto",
+    allowed_assets: '["EURUSD"]',
+    active_market: "forex",
     send_screenshot: 1,
     telegram_chat_id: null,
     risk_guard_enabled: 1,
@@ -65,7 +65,7 @@ describe("riskGuard confidence gate", () => {
       baseSettings(),
       limits,
       {
-        symbol: "BTCUSDT",
+        symbol: "EURUSD",
         side: "buy",
         notional: 50,
         confidence: 79,
@@ -81,7 +81,7 @@ describe("riskGuard confidence gate", () => {
       baseSettings(),
       limits,
       {
-        symbol: "BTCUSDT",
+        symbol: "EURUSD",
         side: "buy",
         notional: 50,
         confidence: 80,
@@ -97,7 +97,7 @@ describe("riskGuard confidence gate", () => {
       baseSettings(),
       limits,
       {
-        symbol: "BTCUSDT",
+        symbol: "EURUSD",
         side: "buy",
         notional: 50,
         confidence: 55,
@@ -114,7 +114,7 @@ describe("riskGuard objective quality gates (discipline, not confidence)", () =>
     const d = evaluateTrade(
       baseSettings(),
       limits,
-      { symbol: "BTCUSDT", side: "buy", notional: 50, confidence: 90 },
+      { symbol: "EURUSD", side: "buy", notional: 50, confidence: 90 },
       openCtx,
     );
     assert.equal(d.ok, false);
@@ -125,7 +125,7 @@ describe("riskGuard objective quality gates (discipline, not confidence)", () =>
     const d = evaluateTrade(
       baseSettings({ risk_guard_enabled: 0 }),
       limits,
-      { symbol: "BTCUSDT", side: "buy", notional: 50, confidence: 90 },
+      { symbol: "EURUSD", side: "buy", notional: 50, confidence: 90 },
       openCtx,
     );
     assert.equal(d.ok, true);
@@ -137,7 +137,7 @@ describe("riskGuard objective quality gates (discipline, not confidence)", () =>
       baseSettings({ min_rr: 1 }),
       limits,
       {
-        symbol: "BTCUSDT",
+        symbol: "EURUSD",
         side: "buy",
         notional: 50,
         confidence: 90,
@@ -157,7 +157,7 @@ describe("riskGuard objective quality gates (discipline, not confidence)", () =>
       baseSettings({ min_rr: 1 }),
       limits,
       {
-        symbol: "BTCUSDT",
+        symbol: "EURUSD",
         side: "buy",
         notional: 50,
         confidence: 40,
@@ -175,7 +175,7 @@ describe("riskGuard objective quality gates (discipline, not confidence)", () =>
       baseSettings({ min_rr: 0 }),
       limits,
       {
-        symbol: "BTCUSDT",
+        symbol: "EURUSD",
         side: "buy",
         notional: 50,
         confidence: 90,
@@ -190,7 +190,7 @@ describe("riskGuard objective quality gates (discipline, not confidence)", () =>
 });
 
 describe("riskGuard full-autonomous toggle (risk_guard_enabled=0)", () => {
-  const buy = { symbol: "BTCUSDT", side: "buy" as const, notional: 50, confidence: 1, stopLoss: 49000 };
+  const buy = { symbol: "EURUSD", side: "buy" as const, notional: 50, confidence: 1, stopLoss: 49000 };
 
   it("ENFORCED: blocks at max open trades", () => {
     const d = evaluateTrade(
@@ -209,7 +209,7 @@ describe("riskGuard full-autonomous toggle (risk_guard_enabled=0)", () => {
         max_open_trades: 1,
         daily_loss_limit_pct: 5,
         per_trade_pct: 1, // perTradeMax = 10; notional 50 would breach when enforced
-        allowed_assets: '["ETHUSDT"]', // BTCUSDT not in list
+        allowed_assets: '["GBPUSD"]', // EURUSD not in list
       }),
       { ...limits, max_open_trades_cap: 0, can_execute: 0 },
       buy,
@@ -236,9 +236,22 @@ describe("riskGuard full-autonomous toggle (risk_guard_enabled=0)", () => {
       {
         ...buy,
         marketType: "futures",
-        market: "crypto",
+        market: "forex",
         leverage: 5,
         stopLoss: null,
+      },
+      openCtx,
+    );
+    assert.equal(d.ok, false);
+  });
+
+  it("rejects non-forex market on trade proposals", () => {
+    const d = evaluateTrade(
+      baseSettings(),
+      limits,
+      {
+        ...buy,
+        market: "equities" as never,
       },
       openCtx,
     );

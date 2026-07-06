@@ -1,8 +1,8 @@
-import { getPrice } from "./binance";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { getEaConnection, isHeartbeatFresh, parseEaSymbolSpecs } from "./eaStore";
 import { getResolvedExecutionEnv } from "./executionEnv";
 import { validateOpportunity } from "./opportunityCheck";
-import { scanForexSymbol, scanSymbol } from "./monitor";
+import { scanForexSymbol } from "./monitor";
 import { evaluateTrade } from "./riskGuard";
 import {
   countOpenTrades,
@@ -96,17 +96,20 @@ export async function revalidatePendingIntent(
     rec = await getRecommendation(intent.recommendation_id);
   }
 
-  const market = intent.market ?? "crypto";
-  let oppCheck = await validateOpportunity({
-    symbol: intent.symbol,
-    side: intent.side,
-    entry: intent.entry,
-    stop_loss: intent.stop_loss,
-    take_profit: intent.take_profit,
-    timeframe: rec?.timeframe ?? "1h",
-    created_at: intent.created_at,
-    chart_drawings_json: rec?.chart_drawings_json ?? null,
-  });
+  const market = intent.market ?? DEFAULT_MARKET;
+  let oppCheck = await validateOpportunity(
+    {
+      symbol: intent.symbol,
+      side: intent.side,
+      entry: intent.entry,
+      stop_loss: intent.stop_loss,
+      take_profit: intent.take_profit,
+      timeframe: rec?.timeframe ?? "1h",
+      created_at: intent.created_at,
+      chart_drawings_json: rec?.chart_drawings_json ?? null,
+    },
+    userId,
+  );
 
   if (market === "forex") {
     const live = await forexLivePrice(userId, intent.symbol);
@@ -143,10 +146,12 @@ export async function revalidatePendingIntent(
 
   const settings = await getSettings(userId);
   const interval = settings.analysis_interval ?? "1h";
-  const candidate =
-    market === "forex"
-      ? await scanForexSymbol(userId, intent.symbol, settings.style, interval)
-      : await scanSymbol(intent.symbol, settings.style, interval);
+  const candidate = await scanForexSymbol(
+    userId,
+    intent.symbol,
+    settings.style,
+    interval,
+  );
 
   if (candidate && !signalMatchesSide(intent.side, candidate.signals)) {
     return {

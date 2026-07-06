@@ -42,9 +42,9 @@ export interface AiChatAction {
 }
 
 const DEFAULT_ACTIONS: AiChatAction[] = [
-  { icon: <TrendingUp className="h-4 w-4" />, label: "تحليل BTC", prompt: "ما رأيك في BTCUSDT الآن؟" },
+  { icon: <TrendingUp className="h-4 w-4" />, label: "تحليل EURUSD", prompt: "ما رأيك في EURUSD الآن؟" },
   { icon: <LineChart className="h-4 w-4" />, label: "فرص اليوم", prompt: "هل توجد فرصة تداول جيدة اليوم؟" },
-  { icon: <BarChart3 className="h-4 w-4" />, label: "تحليل ETH", prompt: "حلّل ETHUSDT على إطار الساعة." },
+  { icon: <BarChart3 className="h-4 w-4" />, label: "تحليل الذهب", prompt: "حلّل XAUUSD على إطار الساعة." },
   { icon: <Shield className="h-4 w-4" />, label: "المخاطر", prompt: "راجع إعدادات المخاطر الحالية." },
 ];
 

@@ -1,12 +1,12 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-03T00:52:00.835Z",
-  "toolCount": 65,
+  "exportedAt": "2026-07-05T20:24:52.219Z",
+  "toolCount": 57,
   "tools": [
     {
       "name": "get_account_overview",
       "domain": "core",
-      "description": "متى: بداية جلسة التداول قبل أي قرار. يجمع risk + portfolio + live. مرن: لو فشل الجزء الحي (live) يرجع الباقي. include_live=false لملخّص سريع بلا الحساب الحي. read-only.",
+      "description": "When: start of trading session before any decision. Combines risk + portfolio + live. Resilient: if live fails, returns the rest. include_live=false for quick summary without live account. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -16,7 +16,7 @@
     {
       "name": "get_risk_status",
       "domain": "core",
-      "description": "متى: بداية الجلسة أو قبل تغيير الوضع. kill switch، حدود، mode، executionEnv. لا تستخدم بدل get_trade_readiness لصفقة فوركس. read-only. يعيد envelope { ok, data }.",
+      "description": "When: session start or before mode change. kill switch, limits, mode, executionEnv. Do not use instead of get_trade_readiness for immediate forex. read-only. Returns envelope { ok, data }.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -26,7 +26,7 @@
     {
       "name": "get_trade_readiness",
       "domain": "core",
-      "description": "متى: قبل open_trade فوركس أو quoteAgeMs>5000. لا تنفّذ إذا ready=false. read-only. مثال: symbol=EURUSD&confidence=85&market=forex.",
+      "description": "When: before open_trade forex or quoteAgeMs>5000. Do not execute if ready=false. read-only. Example: symbol=EURUSD&confidence=85&market=forex.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -36,7 +36,7 @@
     {
       "name": "get_agent_capabilities",
       "domain": "core",
-      "description": "متى: أول رسالة في الجلسة. serverVersion، featureFlags، EA debounce. read-only. لا side-effects.",
+      "description": "When: first message in session. serverVersion, featureFlags, EA debounce. read-only. No side-effects.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -46,7 +46,7 @@
     {
       "name": "get_portfolio",
       "domain": "core",
-      "description": "متى: بعد get_account_overview أو لتحديث PnL. رصيد وملخص. read-only. لا تستخدم للتنفيذ.",
+      "description": "When: after get_account_overview or to refresh PnL. Balance and summary. read-only. Not for execution.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -56,7 +56,7 @@
     {
       "name": "get_open_trades",
       "domain": "core",
-      "description": "متى: قبل evaluate_trade أو إغلاق. صفقات مفتوحة + summary_ar. read-only.",
+      "description": "When: before evaluate_trade or close. Open trades + summary_ar. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -66,7 +66,7 @@
     {
       "name": "get_trade_lessons",
       "domain": "core",
-      "description": "متى: قبل كل تحليل أو بعد خسارة. recent=true للأخطاء الأخيرة. read-only. مثال: symbol=BTCUSDT&recent=true.",
+      "description": "When: before every analysis or after a loss. recent=true for recent mistakes. read-only. Example: symbol=EURUSD&recent=true.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -76,7 +76,7 @@
     {
       "name": "create_recommendation",
       "domain": "core",
-      "description": "متى: قبل open_trade — تسجيل توصية. rationale 2–4 جمل «نحن». side-effect: يكتب توصية. مثال: action=buy&confidence=85.",
+      "description": "When: before open_trade — record recommendation. rationale 2–4 sentences in 'we' voice. side-effect: writes recommendation. Example: action=buy&confidence=85.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -86,7 +86,7 @@
     {
       "name": "open_trade",
       "domain": "core",
-      "description": "متى: بعد موافقة صريحة. stop_loss إلزامي (Risk Guard يرفض بدونه)، ومرّر entry/take_profit ليُحسب العائد/المخاطرة (يُرفض إن قلّ عن الحد الأدنى). notional اختياري — إن غاب يُشتقّ الحجم من مسافة الوقف. يرفض إذا كان الـ quote قديماً. القرار من تحليل الوكيل (لا عتبة ثقة — confidence للتسجيل/التحجيم فقط). idempotencyKey اختياري. side-effect: ينفّذ عبر Risk Guard. مثال: stop_loss=64000&take_profit=68000&approved_by_user=true.",
+      "description": "When: after explicit approval. stop_loss mandatory (Risk Guard rejects without it); pass entry/take_profit for reward/risk (rejected if below minimum). notional optional — if omitted, size derived from stop distance. Rejects stale quotes. Decision from agent analysis (no confidence threshold — confidence for logging/sizing only). idempotencyKey optional. side-effect: executes via Risk Guard. Example: stop_loss=64000&take_profit=68000&approved_by_user=true.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -96,7 +96,7 @@
     {
       "name": "close_trade",
       "domain": "core",
-      "description": "إغلاق صفقة · أغلق المركز · خروج · close position · إنهاء الصفقة بالكامل. متى: طلب المشغّل أو بعد record_exit_decision=close. side-effect: يغلق صفقة/الكل. مثال: trade_id=123.",
+      "description": "Close trade · close position · exit · close position · fully exit. When: operator request or after record_exit_decision=close. side-effect: closes trade/all. Example: trade_id=123.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -106,7 +106,7 @@
     {
       "name": "evaluate_trade",
       "domain": "core",
-      "description": "متى: صفقة مفتوحة وطلب المشغّل. PnL حي + سياق. read-only. مثال: trade_id=42.",
+      "description": "When: open trade and operator request. Live PnL + context. read-only. Example: trade_id=42.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -116,7 +116,7 @@
     {
       "name": "record_exit_decision",
       "domain": "core",
-      "description": "متى: بعد evaluate_trade. audit hold/close/adjust_sl. side-effect: يسجّل قراراً. لا يغلق تلقائياً.",
+      "description": "When: after evaluate_trade. audit hold/close/adjust_sl. side-effect: records decision. Does not auto-close.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -126,7 +126,7 @@
     {
       "name": "request_approval",
       "domain": "core",
-      "description": "طلب موافقة · اعتماد صفقة · إرسال للموافقة · approval buttons. متى: mode=approval. يرسل أزرار تيليجرام. side-effect: intent معلّق. لا تستخدم في direct mode.",
+      "description": "Request approval · trade approval · send for approval · approval buttons. When: mode=approval. Sends Telegram buttons. side-effect: pending intent. Do not use in direct mode.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -136,7 +136,7 @@
     {
       "name": "respond_approval",
       "domain": "core",
-      "description": "متى: intent معلّق. approve/reject. side-effect: قد ينفّذ عند approve.",
+      "description": "When: pending intent. approve/reject. side-effect: may execute on approve.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -146,7 +146,7 @@
     {
       "name": "get_pending_approvals",
       "domain": "core",
-      "description": "متى: mode=approval. قائمة intents معلّقة. read-only.",
+      "description": "When: mode=approval. List of pending intents. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -156,7 +156,7 @@
     {
       "name": "get_execution_env",
       "domain": "core",
-      "description": "متى: قبل صفقة live. demo/live + منصات. read-only.",
+      "description": "When: before live trade. demo/live + platforms. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -166,7 +166,7 @@
     {
       "name": "set_execution_env",
       "domain": "core",
-      "description": "متى: تبديل demo↔live بموافقة. side-effect: يغيّر preference. لا تستخدم تلقائياً.",
+      "description": "When: switch demo↔live with approval. side-effect: changes preference. Do not use automatically.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -176,7 +176,7 @@
     {
       "name": "set_trading_mode",
       "domain": "core",
-      "description": "متى: تبديل auto/approval/direct. side-effect: يغيّر mode. direct موصى به للمحادثة.",
+      "description": "When: switch auto/approval/direct. side-effect: changes mode. direct recommended for chat.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -186,7 +186,7 @@
     {
       "name": "get_agent_settings",
       "domain": "core",
-      "description": "متى: قبل futures أو تغيير سوق. active_market، leverage. read-only.",
+      "description": "When: before futures or market change. active_market, leverage. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -196,7 +196,7 @@
     {
       "name": "set_active_market",
       "domain": "core",
-      "description": "متى: التبديل crypto↔forex. side-effect: يحدّث active_market.",
+      "description": "When: confirm active market (forex-only platform). side-effect: no-op — always forex.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -206,7 +206,7 @@
     {
       "name": "set_futures_enabled",
       "domain": "core",
-      "description": "متى: تفعيل Binance Futures. side-effect: إعدادات. لا تفعّل live بدون موافقة.",
+      "description": "Legacy — futures disabled; platform is forex-only. Always returns futures_enabled=false.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -216,7 +216,7 @@
     {
       "name": "run_trade_maintenance",
       "domain": "core",
-      "description": "متى: صيانة OCO/TP ميكانيكية. side-effect: قد يعدّل أوامر. لا بديل للتحليل.",
+      "description": "When: mechanical OCO/TP maintenance. side-effect: may modify orders. Not a substitute for analysis.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -226,7 +226,7 @@
     {
       "name": "send_telegram_menu",
       "domain": "core",
-      "description": "متى: outbound إشعار. side-effect: رسالة تيليجرام. لا محادثة تفاعلية.",
+      "description": "When: outbound notification. side-effect: Telegram message. Not interactive chat.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -236,7 +236,7 @@
     {
       "name": "capture_chart_snapshot",
       "domain": "core",
-      "description": "متى: مع كل توصية. PNG inline + رسوم. read-only على السوق؛ side-effect: capture. مثال: symbol=BTCUSDT&interval=1h.",
+      "description": "When: with every recommendation. PNG inline + drawings. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -246,7 +246,7 @@
     {
       "name": "get_recommendation_chart",
       "domain": "core",
-      "description": "متى: بعد create_recommendation. شارت PNG لتوصية. توصيات قديمة بدون chart_image_url قد تفشل — للشارت الحي استخدم capture_chart_snapshot. read-only.",
+      "description": "When: after create_recommendation. PNG chart for recommendation. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for live chart. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -256,7 +256,7 @@
     {
       "name": "get_trading_style",
       "domain": "core",
-      "description": "أسلوب التداول الحالي + قائمة الأساليب (scalp/day/swing/position). متى: بداية الجلسة لعرض الخيارات على المستخدم. read-only.",
+      "description": "Current trading style + style list (scalp/day/swing/position). When: session start to show options to user. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -266,7 +266,7 @@
     {
       "name": "set_trading_style",
       "domain": "core",
-      "description": "اختيار أسلوب التداول · scalp/day/swing/position. متى: بعد سؤال المستخدم. في scalp مرّر scalp_max_trades (سقف الصفقات). side-effect: يحدّث الإعدادات. مثال: trading_style=scalp&scalp_max_trades=5.",
+      "description": "Set trading style · scalp/day/swing/position. When: after asking user. For scalp pass scalp_max_trades (trade cap). side-effect: updates settings. Example: trading_style=scalp&scalp_max_trades=5.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -276,7 +276,7 @@
     {
       "name": "get_market_snapshot",
       "domain": "market",
-      "description": "متى: تحليل سريع لزوج واحد. RSI/MACD/SMA + اتجاه. read-only. لا تستخدم بدل get_ohlc للمؤشرات الكاملة. مثال: symbol=BTCUSDT&interval=1h.",
+      "description": "When: quick analysis of one pair. RSI/MACD/SMA + trend. read-only. Do not use instead of get_ohlc for full indicators. Example: symbol=EURUSD&interval=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -286,7 +286,7 @@
     {
       "name": "get_multi_timeframe_snapshot",
       "domain": "market",
-      "description": "متى: تحليل متعدد الأطر لزوج واحد — يجلب كل الأطر بنداء واحد متوازٍ (أسرع من استدعاء get_market_snapshot لكل فريم). read-only. مثال: symbol=EURUSD&intervals=1h,15m,5m.",
+      "description": "When: multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -296,7 +296,7 @@
     {
       "name": "get_market_price",
       "domain": "market",
-      "description": "متى: سعر لحظي فقط. read-only. للفوركس تحقق quoteAgeMs عبر get_ea_live_quotes. مثال: symbol=EURUSD.",
+      "description": "When: live price only. read-only. For forex check quoteAgeMs via get_ea_live_quotes. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -306,7 +306,7 @@
     {
       "name": "list_instruments",
       "domain": "market",
-      "description": "متى: استعراض/بحث كل الأزواج المتاحة (فوركس عبر OANDA أو كريبتو عبر Binance)، أو source=ea لكامل رموز وسيط المستخدم عبر جسر MT5 (وليس Market Watch فقط). read-only. مثال: market=forex&q=EUR أو source=ea&q=XAU.",
+      "description": "When: browse/search forex pairs (OANDA or source=ea for full broker symbols via MT5 bridge). read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -316,7 +316,7 @@
     {
       "name": "get_chart_link",
       "domain": "market",
-      "description": "متى: رابط شارت AiChart المباشر لزوج معيّن لمشاركته مع المستخدم. read-only. مثال: symbol=EURUSD.",
+      "description": "When: live AiChart chart link for a pair to share with user. read-only. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -326,7 +326,7 @@
     {
       "name": "get_market_context",
       "domain": "market",
-      "description": "متى: سياق أخبار/mood. read-only. لا side-effects. مثال: symbol=BTCUSDT.",
+      "description": "When: news/mood context. read-only. No side-effects. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -336,7 +336,7 @@
     {
       "name": "scan_market",
       "domain": "market",
-      "description": "scan مسح السوق · قارن عدة رموز · أفضل فرصة دخول · اختر صفقة. متى: «خذ صفقة» أو «شو أفضل عملة». read-only. مثال: symbols=[BTCUSDT,ETHUSDT].",
+      "description": "scan market · compare symbols · best entry · pick a trade. When: 'take a trade' or 'best opportunity'. read-only. Example: symbols=[EURUSD,GBPUSD].",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -346,7 +346,7 @@
     {
       "name": "get_ohlc",
       "domain": "market",
-      "description": "متى: قبل indicators/detect_levels. فوركس via EA، كريبتو Binance. read-only. cursor/limit≤500. مثال: symbol=EURUSD&interval=1h&limit=100.",
+      "description": "When: before indicators/detect_levels. Forex via EA or OANDA. read-only. cursor/limit≤500. Example: symbol=EURUSD&interval=1h&limit=100.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -356,7 +356,7 @@
     {
       "name": "get_forex_indicators",
       "domain": "market",
-      "description": "متى: بعد get_ohlc. RSI/MACD/Bollinger/ATR + trend. read-only. لا مع quote قديم. مثال: symbol=EURUSD&interval=1h.",
+      "description": "When: after get_ohlc. RSI/MACD/Bollinger/ATR + trend. read-only. Not with stale quote. Example: symbol=EURUSD&interval=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -366,107 +366,17 @@
     {
       "name": "detect_levels",
       "domain": "market",
-      "description": "متى: قبل SL/TP. دعم/مقاومة + بنية. read-only. ليس إشارة دخول وحيدة. مثال: symbol=EURUSD&interval=4h&limit=120.",
+      "description": "When: before SL/TP. Support/resistance + structure. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true
-      }
-    },
-    {
-      "name": "connect_binance",
-      "domain": "binance",
-      "description": "متى: ربط أول مرة أو تبديل testnet/prod. side-effect: يحفظ مفاتيح مشفّرة. يتحقق canTrade/Futures. لا تستخدم verify_binance للحفظ.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
-      "name": "verify_binance",
-      "domain": "binance",
-      "description": "متى: قبل connect — تحقق دون حفظ. read-only على المفاتيح (لا side-effect حفظ).",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "get_binance_status",
-      "domain": "binance",
-      "description": "متى: قبل صفقة كريبتو. permissionReport. read-only.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "disconnect_binance",
-      "domain": "binance",
-      "description": "متى: فصل حساب. side-effect: يحذف credentials. env اختياري.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
-      "name": "capture_binance_chart",
-      "domain": "binance",
-      "description": "متى: توصية كريبتو. PNG + chart_url_telegram. side-effect: capture Playwright. مثال: symbol=BTCUSDT.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "get_futures_positions",
-      "domain": "binance",
-      "description": "متى: قبل modify_futures_sl_tp. مراكز USDT-M. read-only.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "get_futures_orders",
-      "domain": "binance",
-      "description": "متى: أوامر معلّقة futures. read-only.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "modify_futures_sl_tp",
-      "domain": "binance",
-      "description": "متى: مركز futures مفتوح. side-effect: يعدّل SL/TP. مثال: symbol=BTCUSDT&stop_loss=60000.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
-      "name": "cancel_futures_order",
-      "domain": "binance",
-      "description": "متى: إلغاء أمر معلّق. side-effect: cancel. all=true لكل أمر الرمز.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
       }
     },
     {
       "name": "connect_mt5",
       "domain": "mt5",
-      "description": "ربط حساب MetaTrader · اتصال MT5/MT4 · ربط فوركس · MetaApi login. متى: MetaApi/mt5local — لا مع FOREX_BACKEND=ea. side-effect: يحفظ credentials. مثال: platform=mt5&server=...",
+      "description": "Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. When: MetaApi/mt5local — not with FOREX_BACKEND=ea. side-effect: saves credentials. Example: platform=mt5&server=...",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -476,7 +386,7 @@
     {
       "name": "disconnect_mt5",
       "domain": "mt5",
-      "description": "فصل حساب MetaTrader · قطع اتصال MT5/MT4 · إلغاء ربط فوركس. متى: فصل MetaApi/mt5local. side-effect: disconnect.",
+      "description": "Disconnect MetaTrader · unlink MT5/MT4 · remove forex link. When: disconnect MetaApi/mt5local. side-effect: disconnect.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -486,7 +396,7 @@
     {
       "name": "get_mt5_status",
       "domain": "mt5",
-      "description": "متى: MetaApi/mt5local. مع EA backend استخدم get_ea_diagnostics. read-only.",
+      "description": "When: MetaApi/mt5local. With EA backend use get_ea_diagnostics. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -496,7 +406,7 @@
     {
       "name": "get_live_account",
       "domain": "mt5",
-      "description": "متى: قبل أي صفقة — MT5+Binance موحّد + quoteAgeMs. read-only.",
+      "description": "When: before any trade — MT5 readiness + quoteAgeMs. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -506,7 +416,7 @@
     {
       "name": "get_ea_diagnostics",
       "domain": "mt5",
-      "description": "متى: فوركس EA — heartbeat، spread، retcodes. read-only. مثال: symbol=EURUSD.",
+      "description": "When: forex EA — heartbeat, spread, retcodes. read-only. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -516,7 +426,7 @@
     {
       "name": "get_ea_live_quotes",
       "domain": "mt5",
-      "description": "متى: قبل open_trade فوركس. isFresh، spreadPips، freshCount. read-only. لا تنفّذ إذا stale.",
+      "description": "When: before open_trade forex. isFresh, spreadPips, freshCount. read-only. Do not execute if stale.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -526,7 +436,7 @@
     {
       "name": "get_account_symbols",
       "domain": "mt5",
-      "description": "كل أزواج/رموز الوسيط في حساب MetaTrader (Market Watch كاملة) مع bid/ask/spread — لرؤية كل الأزواج المتاحة والتقليب بينها، لا قائمة مختصرة. مرشّحات: q، market=forex|crypto. read-only. مثال: market=forex.",
+      "description": "All broker pairs/symbols in MetaTrader account (full Market Watch) with bid/ask/spread. Filters: q, market=forex. read-only. Example: market=forex.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -536,7 +446,7 @@
     {
       "name": "capture_mt5_chart",
       "domain": "mt5",
-      "description": "متى: re-capture MT5 مع entry/SL/TP/drawings/recommendation_id (draw_and_capture، poll حتى 30s). شارت ad-hoc بدون annotations → capture_chart_snapshot أسرع.",
+      "description": "When: re-capture MT5 with entry/SL/TP/drawings/recommendation_id (draw_and_capture, poll up to 30s). Ad-hoc chart without annotations → capture_chart_snapshot is faster.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -546,7 +456,7 @@
     {
       "name": "modify_sl_tp",
       "domain": "mt5",
-      "description": "متى: مركز MT5 مفتوح. side-effect: EA modify. مثال: ticket=123&stop_loss=1.08.",
+      "description": "When: open MT5 position. side-effect: EA modify. Example: ticket=123&stop_loss=1.08.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -556,7 +466,7 @@
     {
       "name": "open_pending_order",
       "domain": "mt5",
-      "description": "متى: أمر معلّق MT5. side-effect: EA pending. EA v3+.",
+      "description": "When: MT5 pending order. side-effect: EA pending. EA v3+.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -566,7 +476,7 @@
     {
       "name": "cancel_mt5_order",
       "domain": "mt5",
-      "description": "متى: إلغاء pending MT5. side-effect: EA cancel.",
+      "description": "When: cancel MT5 pending. side-effect: EA cancel.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -576,7 +486,7 @@
     {
       "name": "close_partial",
       "domain": "mt5",
-      "description": "متى: إغلاق جزئي MT5. side-effect: EA partial close.",
+      "description": "When: partial MT5 close. side-effect: EA partial close.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -586,7 +496,7 @@
     {
       "name": "query_mt5_terminal",
       "domain": "mt5",
-      "description": "متى: margin/equity/pending snapshot. read-only via EA.",
+      "description": "When: margin/equity/pending snapshot. read-only via EA.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -596,7 +506,7 @@
     {
       "name": "request_ea_reconnect",
       "domain": "mt5",
-      "description": "متى: quotes قديمة — مرة/دقيقة max. side-effect: flags DB. resync_candles اختياري.",
+      "description": "When: stale quotes — once/minute max. side-effect: flags DB. resync_candles optional.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -606,7 +516,7 @@
     {
       "name": "list_chart_layouts",
       "domain": "charts",
-      "description": "متى: قبل الرسم — اجلب شارتات المستخدم المحفوظة (id + رمز + رابط). read-only.",
+      "description": "When: before drawing — fetch user saved charts (id + symbol + link). read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -616,7 +526,17 @@
     {
       "name": "get_chart_state",
       "domain": "charts",
-      "description": "متى: قراءة حالة شارت المستخدم الحالية (الرمز/الفريم/الرسومات/التوصية) قبل التعديل عليها. read-only. مثال: layout_id اختياري.",
+      "description": "When: read current user chart state (symbol/frame/drawings/recommendation) before editing. read-only. Example: optional layout_id.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "show_live_chart",
+      "domain": "charts",
+      "description": "When: show live mini chart card in chat (candles refresh ~every 4s + Claude drawings and recommendation on chart). read-only — does not draw or execute. Pass symbol or layout_id; defaults to user primary chart.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -626,7 +546,7 @@
     {
       "name": "draw_on_chart",
       "domain": "charts",
-      "description": "متى: الرسم مباشرة على شارت المستخدم الحي (TradingView) — يدعم كل الأدوات: خطوط/قنوات/مناطق/فيبوناتشي/نماذج/مراكز شراء وبيع/توقّع مستقبلي، مع الألوان والسماكة والنمط. الرسومات تظهر على شاشة المستخدم خلال ثوانٍ بلا تحديث. mode=set يستبدل، add يضيف. مرّر recommendation لرسم مركز صفقة كامل (دخول/وقف/أهداف).",
+      "description": "When: draw directly on user live chart (TradingView) — supports all tools: lines/channels/zones/fibonacci/patterns/long-short positions/forecast, with colors, width, and style. Drawings appear on user screen within seconds without refresh. mode=set replaces, add appends. Pass recommendation for full trade box (entry/stop/targets).",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,
@@ -636,7 +556,7 @@
     {
       "name": "clear_chart_drawings",
       "domain": "charts",
-      "description": "متى: مسح كل رسومات وتوصية شارت المستخدم. لا يمس الشموع ولا رسومات المستخدم اليدوية داخل TradingView.",
+      "description": "When: clear all user chart drawings and recommendation. Does not touch candles or manual TradingView drawings.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -646,7 +566,7 @@
     {
       "name": "run_market_analysis",
       "domain": "charts",
-      "description": "متى: تحليل AI كامل لزوج (نفس زر «تحليل» في المنصة): توصية + رسومات فنية تُرسم تلقائياً على شارت المستخدم عند تمرير layout_id. يستهلك رصيد المستخدم (4). قد يستغرق ≤120 ثانية.",
+      "description": "When: full AI analysis for a pair (same as platform Analyze button): recommendation + technical drawings auto-drawn on user chart when layout_id passed. Consumes user credits (4). May take up to 120 seconds.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,

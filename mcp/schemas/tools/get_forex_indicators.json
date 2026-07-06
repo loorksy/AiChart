@@ -10,10 +10,7 @@
     },
     "market": {
       "type": "string",
-      "enum": [
-        "crypto",
-        "forex"
-      ]
+      "const": "forex"
     }
   },
   "required": [

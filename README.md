@@ -1,6 +1,6 @@
 # AiChart
 
-منصة تداول ذكية متعددة المستخدمين على **Binance**، يتحدث فيها كل متداول مع وكيل خبير
+منصة تداول ذكية متعددة المستخدمين على **سبوت USDT (منصة الكريبتو)**، يتحدث فيها كل متداول مع وكيل خبير
 يراقب السوق بصبر ويتحرّك فقط عند الفرصة المناسبة — صفقة أو توصية، حسب اختيار المستخدم.
 
 > راجع خطة المشروع الكاملة في [`docs/PLAN.md`](docs/PLAN.md).  
@@ -15,8 +15,8 @@
 
 | المرحلة | المحتوى |
 |---------|---------|
-| **1** | تسجيل دخول، مفاتيح Binance مشفّرة، إعدادات، صفحة أدمن |
-| **2** | دردشة الوكيل + توصيات (Claude + Binance Skills Hub) |
+| **1** | تسجيل دخول، مفاتيح منصة الكريبتو مشفّرة، إعدادات، صفحة أدمن |
+| **2** | دردشة الوكيل + توصيات (Claude + أدوات تداول الكريبتو) |
 | **3** | شارت حي (شموع + إشارات) |
 | **4** | تنفيذ صفقات، Risk Guard، Kill Switch |
 | **5** | بوت تليجرام (ربط، أزرار موافقة، أوامر، ثنائي اللغة) |
@@ -35,7 +35,7 @@ npm run dev            # http://localhost:3010
 
 | المتغيّر | الوصف |
 |----------|-------|
-| `ENCRYPTION_KEY` | مفتاح 32 بايت (64 hex) لتشفير أسرار Binance. `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | مفتاح 32 بايت (64 hex) لتشفير أسرار منصة الكريبتو. `openssl rand -hex 32` |
 | `APP_SECRET` | سرّ توقيع الجلسات. `openssl rand -base64 48` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | حساب الأدمن المُنشأ تلقائياً عند أول تشغيل |
 | `DB_PATH` | مسار قاعدة SQLite (افتراضي `data/aichart.db`) |
@@ -90,7 +90,7 @@ sudo systemctl enable --now aichart
 
 ## التقنيات
 
-Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · SQLite · Claude (Anthropic) · Binance Skills Hub · Telegram Bot API · Lightweight Charts
+Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · SQLite · Claude (Anthropic) · Crypto Spot API · Telegram Bot API · Lightweight Charts
 
 > ملاحظة: استُخدمت **SQLite** للتشغيل المحلي البسيط. الخطة تنصّ على **PostgreSQL** للإنتاج الكبير — يمكن الترحيل لاحقاً.
 

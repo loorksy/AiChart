@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { LivePriceTick } from "./useBinanceLivePrice";
+import type { LivePriceTick } from "@/hooks/livePriceTypes";
 
 const POLL_MS = 1000;
 
@@ -18,8 +18,7 @@ export function useEaLivePrice(symbol: string, enabled = true): LivePriceTick {
   const prevRef = useRef(0);
 
   useEffect(() => {
-    // When disabled (e.g. crypto market active) we simply stop polling; the
-    // consumer reads the other market's tick, so a stale value is harmless.
+    // When disabled we simply stop polling.
     if (!enabled || !symbol) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;

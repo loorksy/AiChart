@@ -27,7 +27,7 @@ const CARDS: SettingsCard[] = [
   {
     href: "/console/connect",
     title: "الاتصالات",
-    desc: "Binance · MetaTrader · Telegram",
+    desc: "MetaTrader · Telegram",
     icon: Link2,
   },
   {

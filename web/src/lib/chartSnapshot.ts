@@ -1,4 +1,3 @@
-import { getKlines } from "./binance";
 import { getEaCandlesResolved } from "./eaStore";
 import { fetchOhlc } from "./ohlc/fetchOhlc";
 import { getForexBackend } from "./brokers/forexBackend";
@@ -138,15 +137,7 @@ async function fetchCandleSeries(
     return null;
   }
 
-  const candles = await getKlines(sym, tf, limit, "prod");
-  if (candles.length < 10) return null;
-  return candles.map((c) => ({
-    time: c.openTime,
-    open: Number(c.open.toFixed(6)),
-    high: Number(c.high.toFixed(6)),
-    low: Number(c.low.toFixed(6)),
-    close: Number(c.close.toFixed(6)),
-  }));
+  return null;
 }
 
 const UP_COLOR = "#22c55e";
@@ -490,7 +481,7 @@ export async function buildChartSnapshotUrl(
       undefined,
       input.symbol,
       input.interval,
-      "crypto",
+      "forex",
       limit,
     );
     if (!candles) return null;
@@ -513,7 +504,7 @@ export async function buildChartSnapshotBuffer(
       undefined,
       input.symbol,
       input.interval,
-      "crypto",
+      "forex",
       limit,
     );
     if (!candles) return null;
@@ -525,7 +516,7 @@ export async function buildChartSnapshotBuffer(
   }
 }
 
-/** Server-side chart PNG for crypto or forex (EA candles). */
+/** Server-side chart PNG for forex (EA candles). */
 export async function buildChartSnapshotBufferForMarket(
   userId: number,
   symbol: string,

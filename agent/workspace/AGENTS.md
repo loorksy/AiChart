@@ -1,6 +1,6 @@
 # AGENTS.md — AiChart Agent Rules (MCP Conversation)
 
-Operational rules for the AiChart Trading Agent via **MCP Bridge**. See [`SYSTEM.md`](SYSTEM.md) for the canonical constitution. All execution routes through **Risk Guard** to Binance/MT5.
+Operational rules for the AiChart Trading Agent via **MCP Bridge**. See [`SYSTEM.md`](SYSTEM.md) for the canonical constitution. All execution routes through **Risk Guard** to **MetaTrader (forex)** only.
 
 ---
 
@@ -51,7 +51,7 @@ The moment the operator mentions scalping (scalp / quick repeated trades), your 
 This gate is cheap and instant — never burn a full analysis only to refuse at the end.
 
 ### Starting a scalp session
-1.  Extract the target **symbol from the conversation** — e.g. "scalp BTCUSDT" or "scalp EURUSD". Ask only if unclear.
+1.  Extract the target **symbol from the conversation** — e.g. "scalp EURUSD" or "scalp XAUUSD". Ask only if unclear.
 2.  Ask for the **trade cap** if not mentioned: "How many trades should we run?"
 3.  Remind the operator of **execution mode** (`scalp_execution_mode`) — especially if "live".
 4.  Call `start_scalp_session` with the confirmed symbol + cap.
@@ -93,7 +93,6 @@ Pick one option per dimension → state `Strategy: [A2-B4-C3-D5]` on every recom
 ### Use the real indicators (don't guess values)
 Pull live indicators from the tools and map them to the dimensions:
 *   `get_multi_timeframe_snapshot` — RSI/MACD/SMA across several frames in one call (best for confluence).
-*   `get_market_snapshot` — quick single-frame read (crypto).
 *   `get_forex_indicators` — RSI, MACD, Bollinger, ATR, Stochastic, EMA, SMA (forex).
 *   `detect_levels` — support/resistance + structure for dimension B and for placing SL/TP.
 
@@ -120,7 +119,7 @@ When the operator says "Open a trade" or "Buy BTC":
 
 ## 5. Position Sizing & Margin Inquiries — Mandatory
 
-*   **Always ask**: "How much margin are **we entering** with? (USDT or Account Margin)"
+*   **Always ask**: "How much margin are **we entering** with? (account currency or lot size)"
 *   **Do not** automatically use `perTradeMaxUsd` as the default trade size.
 *   State the boundaries: "Our maximum allowed trade limit is X USD — Leverage Yx."
 *   `open_trade` execution requires the `notional`, `rationale`, and `confidence` fields.
@@ -130,7 +129,6 @@ When the operator says "Open a trade" or "Buy BTC":
 ## 6. Recommendation and Execution Steps
 
 1.  Call `create_recommendation` — populate `rationale` (2-4 sentences on why we are entering) + `confidence` + `chart_drawings` + screenshot.
-    *   **Binance**: `capture_binance_chart` → use `chart_url_telegram` in outbound cards.
     *   **MT5 Ad-hoc (no active drawings)**: Call `capture_chart_snapshot` (faster).
     *   **MT5 with levels/drawings**: Call `capture_mt5_chart` (poll `/api/agent/chart/{id}/mt5` up to 30s).
 2.  **Wait**: Do not call `open_trade` until the user states "execute", "go", "approved", or hits the approval button.
@@ -168,7 +166,7 @@ When the operator says "Open a trade" or "Buy BTC":
 Refer to **`EA_TROUBLESHOOTING.md`**.
 *   Before Forex execution: verify `get_live_account` and `get_ea_diagnostics` to ensure `quoteAgeMs < 5000`.
 *   Forex trades are executed **only on explicit operator requests** or confirmations.
-*   Crypto assets (BTCUSDT, ETHUSDT) are routed to Binance; Forex/Gold to MT5.
+*   The platform is **forex-only** — trade forex symbols via MetaTrader only.
 
 ---
 
@@ -176,7 +174,6 @@ Refer to **`EA_TROUBLESHOOTING.md`**.
 
 | Market / Platform | MCP Tool |
 |-------------------|----------|
-| Binance | `connect_binance` · `verify_binance` |
 | MetaApi (Direct) | `connect_mt5` · `get_mt5_status` |
 | MT5 EA | Connected via web console (token embedded) |
 
@@ -187,10 +184,10 @@ Refer to **`EA_TROUBLESHOOTING.md`**.
 A professional desk manages every open position; it does not open and walk away.
 
 1.  Call `get_open_trades` → `evaluate_trade` to read the live state of each position.
-2.  **Move stop to break-even after +1R** (once price has moved one risk-unit in favor), via `modify_sl_tp` / `modify_futures_sl_tp`.
+2.  **Move stop to break-even after +1R** (once price has moved one risk-unit in favor), via `modify_sl_tp`.
 3.  **Scale out** at intermediate targets when justified (`close_partial`), and **trail** the stop along structure/ATR — no fixed template.
 4.  Record rationale via `record_exit_decision` then call `close_trade` when the thesis is invalidated or the target is met.
-5.  MT5: `modify_sl_tp` · Futures: `modify_futures_sl_tp`. Call `run_trade_maintenance` for mechanical OCO adjustments.
+5.  MT5: `modify_sl_tp`. Call `run_trade_maintenance` for mechanical OCO adjustments.
 
 ---
 

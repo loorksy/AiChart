@@ -6,7 +6,7 @@ import { getSettings } from "@/lib/store";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
 import { profileForInterval } from "@/lib/analysisProfile";
-import type { MarketType } from "@/lib/markets/types";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import {
   canUseMt5ChartCapture,
   mt5ChartUrl,
@@ -16,7 +16,7 @@ import {
 const schema = z.object({
   symbol: z.string().min(1),
   interval: z.string().default("1h"),
-  market: z.enum(["crypto", "forex"]).optional(),
+  market: z.string().optional(),
   pattern_name: z.string().nullish(),
   chart_drawings: z.array(z.record(z.string(), z.unknown())).optional(),
   /** json = base64 PNG for MCP; png = raw image (default for curl). */
@@ -33,9 +33,11 @@ export async function POST(req: NextRequest) {
     const body = schema.parse(await req.json());
 
     const settings = await getSettings(userId);
-    const market = (body.market ??
-      settings.active_market ??
-      "crypto") as MarketType;
+    const marketErr = rejectNonForexMarket(body.market);
+    if (marketErr) {
+      return NextResponse.json({ error: marketErr }, { status: 400 });
+    }
+    const market = resolveActiveMarket(body.market ?? settings.active_market ?? DEFAULT_MARKET);
 
     const drawings = validateChartDrawings(
       (body.chart_drawings ?? []) as unknown as ChartDrawing[],

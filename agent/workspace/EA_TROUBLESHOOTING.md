@@ -7,8 +7,8 @@ Read this document before diagnosing any Forex or Expert Advisor (EA) execution 
 ## 1. Pre-Diagnostic Checklist
 Run these endpoints to gather facts before reporting any issue to the operator:
 ```bash
-GET /api/agent/live/account           # Unified live data for MT5/Binance + quoteAgeMs
-GET /api/agent/risk/status          # Checks activeMarket (crypto | forex)
+GET /api/agent/live/account           # Unified live data for MT5 + quoteAgeMs
+GET /api/agent/risk/status          # Checks activeMarket (forex)
 GET /api/agent/portfolio            # Checks if forex.ea.online is true and account_login
 GET /api/agent/ea/diagnostics?symbol=EURUSD   # Lists symbols received in heartbeat
 GET /api/agent/ea/live-quotes?symbol=EURUSD   # Fetches live prices streamed by EA v3
@@ -69,13 +69,13 @@ Some demo/live accounts block automated trading server-side, even if the local A
 
 ---
 
-## 7. Asset Routing: Crypto vs Forex
+## 7. Forex Symbol Routing
 
-| Symbol | activeMarket=crypto | activeMarket=forex |
-|--------|---------------------|---------------------|
-| `TRXUSDT`, `BTCUSDT` | Routed to **Binance** | Do not route to MT5 unless `BTCUSD` is explicitly active in diagnostics |
-| `EURUSD`, `GBPUSD` | Ignored | Routed to **MT5 EA** (verified via `diagnostics.symbols`) |
+| Symbol | Routing |
+|--------|---------|
+| `EURUSD`, `GBPUSD`, `XAUUSD`, … | Routed to **MT5 EA** (verified via `diagnostics.symbols`) |
 
+*   Non-forex symbol formats are **not supported** — the platform is forex-only (MetaTrader).
 *   If the system returns "Symbol specifications not available from MetaTrader", the symbol is missing from the last heartbeat or the EA is offline. Do not poll indefinitely; run diagnostics.
 
 ---

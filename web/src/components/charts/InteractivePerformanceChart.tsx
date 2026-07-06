@@ -186,7 +186,7 @@ export function InteractivePerformanceChart({
           }}
         >
           <p className="font-mono font-bold" dir="ltr">
-            {formatCurrency(active.d.value)} USDT
+            {formatCurrency(active.d.value)} USD
           </p>
           <p className="text-muted-foreground" dir="ltr">
             {active.d.date} · {active.d.label}

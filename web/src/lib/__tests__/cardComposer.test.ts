@@ -20,7 +20,7 @@ describe("composeCardSchema — deterministic, shape-driven, model-independent",
       {
         name: "anything",
         data: {
-          symbol: "BTCUSDT",
+          symbol: "EURUSD",
           price: 64000,
           high24h: 65000,
           low24h: 63000,
@@ -31,7 +31,7 @@ describe("composeCardSchema — deterministic, shape-driven, model-independent",
     ];
     const s = composeCardSchema(td);
     assert.deepEqual(components(s), ["analysis"]);
-    assert.equal(s!.layout[0].props.symbol, "BTCUSDT");
+    assert.equal(s!.layout[0].props.symbol, "EURUSD");
     assert.equal(s!.layout[0].props.trend, "bullish");
   });
 
@@ -61,7 +61,7 @@ describe("composeCardSchema — deterministic, shape-driven, model-independent",
     const td: ToolDatum[] = [
       {
         name: "get_account_symbols",
-        data: { ok: true, data: { symbols: [{ symbol: "ADAUSDm", market: "crypto", bid: 0.33, ask: 0.34, spreadPct: 0.8 }] } },
+        data: { ok: true, data: { symbols: [{ symbol: "EURUSD", market: "forex", bid: 1.13, ask: 1.14, spreadPct: 0.8 }] } },
       },
     ];
     assert.deepEqual(components(composeCardSchema(td)), ["pair_browser"]);

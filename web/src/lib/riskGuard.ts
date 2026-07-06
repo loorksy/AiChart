@@ -5,6 +5,7 @@ import type { ExecutionEnv } from "./executionEnv";
 import type { MarketType } from "./markets/types";
 import type { AdminLimits, TradingSettings } from "./types";
 import { computeRewardRisk } from "./rewardRisk";
+import { NON_FOREX_MARKET_MESSAGE, resolveActiveMarket } from "./marketPolicy";
 
 export { computeRewardRisk } from "./rewardRisk";
 
@@ -29,9 +30,9 @@ export function getEffectiveMinConfidence(
 export interface ProposedTrade {
   symbol: string;
   side: "buy" | "sell";
-  notional: number; // quote-currency amount (e.g. USDT) / risk budget (= margin for futures)
+  notional: number; // quote-currency amount (USD) / risk budget
   market?: MarketType;
-  /** 'spot' (default) or 'futures' (Binance USDT-M). */
+  /** 'spot' (default) or 'futures' (broker margin). */
   marketType?: "spot" | "futures";
   /** Leverage multiplier (futures only, 1 = none). */
   leverage?: number;
@@ -154,7 +155,13 @@ export function evaluateTrade(
     );
   }
 
-  const market: MarketType = proposed.market ?? "crypto";
+  const market: MarketType = resolveActiveMarket(
+    proposed.market ?? settings.active_market,
+  );
+  const requestedMarket = proposed.market ?? settings.active_market;
+  if (requestedMarket && requestedMarket !== "forex") {
+    return deny(NON_FOREX_MARKET_MESSAGE);
+  }
   if (
     riskEnforced &&
     !isSymbolAllowed(settings.allowed_assets, proposed.symbol, market)
@@ -187,26 +194,7 @@ export function evaluateTrade(
   // Futures-specific gates (opt-in, leverage cap, mandatory SL).
   const marketType = proposed.marketType ?? "spot";
   if (marketType === "futures") {
-    if (market !== "crypto")
-      return deny("العقود الآجلة متاحة لسوق الكريبتو (Binance) فقط.");
-    if (!settings.futures_enabled)
-      return deny("تداول العقود الآجلة (Futures) غير مفعّل في إعداداتك.");
-    const leverageCap =
-      limits.max_leverage_cap && limits.max_leverage_cap > 0
-        ? limits.max_leverage_cap
-        : 10;
-    const leverage = proposed.leverage ?? 1;
-    if (leverage < 1 || leverage > leverageCap)
-      return deny(
-        `الرافعة (${leverage}x) خارج النطاق المسموح (1x — ${leverageCap}x).`,
-      );
-    if (proposed.stopLoss == null)
-      return deny("وقف الخسارة إلزامي في صفقات العقود الآجلة (حماية من التصفية).");
-    const positionNotional = proposed.notional * leverage;
-    if (positionNotional > effectiveCapital + 1e-8)
-      return deny(
-        `حجم المركز (${positionNotional.toFixed(2)} USDT) يتجاوز سقف رأس المال (${effectiveCapital.toFixed(2)}).`,
-      );
+    return deny(NON_FOREX_MARKET_MESSAGE);
   }
 
   if (effectiveCapital <= 0)
@@ -254,7 +242,7 @@ export function evaluateTrade(
       ctx.todayRealizedPnlUsd >= settings.daily_profit_target_usd
     )
       return deny(
-        `بلغت هدف الربح اليومي (+${settings.daily_profit_target_usd.toFixed(2)} USDT). لا صفقات جديدة اليوم.`,
+        `بلغت هدف الربح اليومي (+${settings.daily_profit_target_usd.toFixed(2)} USD). لا صفقات جديدة اليوم.`,
       );
   }
 

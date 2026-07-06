@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
       },
       notes: {
         chart_media:
-          "POST binance-capture ثم MEDIA:<chart_url_telegram> (توكن مدمج). لا تستخدم localhost ولا ?token= يدوياً.",
+          "POST chart snapshot ثم MEDIA:<chart_url_telegram> (توكن مدمج). لا تستخدم localhost ولا ?token= يدوياً.",
       },
     });
   } catch (e) {

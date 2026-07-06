@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { getRecommendation, getSettings } from "@/lib/store";
@@ -26,7 +27,7 @@ export async function GET(
     }
 
     const settings = await getSettings(userId);
-    const market = (rec.market ?? settings.active_market ?? "crypto") as MarketType;
+    const market = (rec.market ?? settings.active_market ?? DEFAULT_MARKET) as MarketType;
 
     const buffer = await buildChartSnapshotBufferForMarket(
       userId,

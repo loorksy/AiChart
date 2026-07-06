@@ -33,9 +33,7 @@ export interface EnrichedEaLiveQuote extends EaLiveQuote {
   /** Age of last MT5 tick in ms (undefined when tickTime not provided by EA). */
   tickAgeMs?: number;
   /**
-   * True when tickAgeMs exceeds the per-market threshold.
-   * Forex pairs: stale after FOREX_TICK_STALE_MS (default 120 s).
-   * Crypto CFDs (symbol ends in 'M' like BTCUSDm): 24/7 market, not flagged.
+   * True when tickAgeMs exceeds FOREX_TICK_STALE_MS (default 120 s).
    */
   tickStale?: boolean;
 }
@@ -226,24 +224,9 @@ function getForexTickStaleMs(): number {
 }
 
 /**
- * True for instruments that trade on a weekday session schedule (forex majors,
- * metals, indices). Crypto CFDs (XBTUSDm, BTCUSDm, ETHUSDm…) trade 24/7 on
- * Exness and should NOT be penalised for quiet weekends.
- * Heuristic: if the root symbol starts with well-known crypto tickers or the
- * symbol matches common crypto CFD patterns, it's 24/7.
+ * Platform is forex-only — all symbols use the forex tick-staleness gate.
  */
-export function isForexSymbol(symbol: string): boolean {
-  const s = symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  // Crypto-derived CFDs traded on MT5 brokers — 24/7, no tick staleness gate.
-  const cryptoRoots = [
-    "BTC", "ETH", "XBT", "LTC", "XRP", "BCH", "ADA", "BNB",
-    "SOL", "DOT", "LINK", "UNI", "DOGE", "AVAX", "MATIC", "TRX", "EOS",
-    "BAT", "XLM", "XTZ", "DASH", "ZEC", "ETC", "NEO", "ATOM", "FIL",
-    "AAVE", "ALGO", "COMP", "MKR", "SUSHI", "YFI", "SHIB", "PEPE",
-  ];
-  for (const root of cryptoRoots) {
-    if (s.startsWith(root)) return false;
-  }
+export function isForexSymbol(_symbol: string): boolean {
   return true;
 }
 
@@ -263,21 +246,18 @@ function enrichQuote(
 ): EnrichedEaLiveQuote {
   const spread = spreadFromBidAsk(quote.bid, quote.ask, quote.symbol);
 
-  // For crypto CFDs the raw spreadPips number is meaningless (150 000 for BCH).
-  // Only expose spreadPips when spreadPipsReliable=true; always expose spreadPrice + spreadPct.
+  // spreadPips only when spreadPipsReliable=true; always expose spreadPrice + spreadPct.
   const spreadPips = spread?.spreadPipsReliable !== false ? (spread ? Math.round(spread.spreadPips * 10) / 10 : null) : null;
   const spreadPrice = spread ? Math.round(spread.spreadRaw * 1e6) / 1e6 : null;
   const spreadPct = spread ? Math.round(spread.spreadPct * 1000) / 1000 : null;
 
-  // Tick-staleness: only applies to forex instruments (not crypto CFDs).
+  // Tick-staleness: forex instruments only (platform is forex-only).
   let tickAgeMs: number | undefined;
   let tickStale: boolean | undefined;
   if (quote.tickTime && quote.tickTime > 0) {
     tickAgeMs = Date.now() - quote.tickTime * 1000;
     if (isForexSymbol(quote.symbol)) {
       tickStale = tickAgeMs > getForexTickStaleMs();
-    } else {
-      tickStale = false; // crypto CFD — 24/7, never stale by tick age
     }
   }
 

@@ -1,4 +1,4 @@
-import { getPrice } from "./binance";
+import { getForexLiveMid } from "./markets/forexPrice";
 import {
   drawingPriceBounds,
   parseChartDrawingsJson,
@@ -40,9 +40,10 @@ function intentAgeMinutes(createdAt: string): number {
 
 export async function validateOpportunity(
   input: CheckInput,
+  userId?: number,
 ): Promise<OpportunityCheck> {
-  const price = await getPrice(input.symbol, "prod");
-  const livePrice = price ?? 0;
+  const livePrice =
+    userId != null ? await getForexLiveMid(userId, input.symbol) : 0;
   if (livePrice <= 0) {
     return {
       verdict: "valid",

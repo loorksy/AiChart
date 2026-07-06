@@ -68,7 +68,6 @@ export default function SettingsClient({
   user,
   settings: initialSettings,
   limits,
-  binance: _binance,
   ea,
   mt: _mt,
   forexBackend: _forexBackend,
@@ -83,7 +82,6 @@ export default function SettingsClient({
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
-  binance?: unknown;
   ea: EaConnectionMeta | null;
   mt?: unknown;
   forexBackend?: unknown;
@@ -653,7 +651,6 @@ function TradingCard({
           monthly_loss_limit_pct: Number(s.monthly_loss_limit_pct),
           auto_take_profit_usd: Number(s.auto_take_profit_usd ?? 0),
           allowed_assets: {
-            crypto: [],
             forex: forexOpen ? [] : parseCsv(forexAssets),
             watchlist: [],
           },
@@ -736,7 +733,7 @@ function TradingCard({
           </select>
         </Field>
 
-        <Field label="سقف رأس المال (USDT)">
+        <Field label="سقف رأس المال (USD)">
           <input
             type="number"
             min={0}
@@ -795,7 +792,7 @@ function TradingCard({
           </p>
         </Field>
 
-        <Field label="هدف الربح اليومي (USDT)">
+        <Field label="هدف الربح اليومي (USD)">
           <input
             type="number"
             min={0}
@@ -839,7 +836,7 @@ function TradingCard({
           />
         </Field>
 
-        <Field label="إغلاق تلقائي عند ربح (USDT)">
+        <Field label="إغلاق تلقائي عند ربح (USD)">
           <input
             type="number"
             min={0}

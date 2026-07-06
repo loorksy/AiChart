@@ -62,7 +62,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     async (args) => {
       const { symbol, market, confidence, practice } = args as {
         symbol?: string;
-        market?: "crypto" | "forex";
+        market?: "forex";
         confidence?: number;
         practice?: boolean;
       };
@@ -250,9 +250,15 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "set_active_market",
     mcpToolConfig("set_active_market"),
     async (args) => {
-      const { active_market } = args as { active_market: string };
+      const { active_market } = args as { active_market?: string };
+      if (active_market && active_market !== "forex") {
+        return bridgeCall(async () => ({
+          ok: false,
+          error: "Platform is forex-only.",
+        }));
+      }
       return bridgeCall(() =>
-        bridge.patch("/api/agent/settings", { active_market }),
+        bridge.patch("/api/agent/settings", { active_market: "forex" }),
       );
     },
   );
@@ -286,14 +292,16 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "set_futures_enabled",
     mcpToolConfig("set_futures_enabled"),
     async (args) => {
-      const { futures_enabled, default_leverage } = args as {
-        futures_enabled: boolean;
-        default_leverage?: number;
-      };
+      const { futures_enabled } = args as { futures_enabled?: boolean };
+      if (futures_enabled) {
+        return bridgeCall(async () => ({
+          ok: false,
+          error: "Platform is forex-only.",
+        }));
+      }
       return bridgeCall(() =>
         bridge.patch("/api/agent/settings", {
-          futures_enabled,
-          ...(default_leverage != null ? { default_leverage } : {}),
+          futures_enabled: false,
         }),
       );
     },

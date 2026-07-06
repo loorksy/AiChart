@@ -1,7 +1,7 @@
 import { withBridge } from "@/lib/bridge";
 import { ApiError } from "@/lib/api";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { getSettings } from "@/lib/store";
-import type { MarketType } from "@/lib/markets/types";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { detectStructureLevels } from "@/lib/ohlc/structure";
 
@@ -14,9 +14,10 @@ export const GET = withBridge(async ({ req, userId }) => {
   }
 
   const settings = await getSettings(userId);
-  const market = (searchParams.get("market") ??
-    settings.active_market ??
-    "crypto") as MarketType;
+  const rawMarket = searchParams.get("market") ?? settings.active_market;
+  const marketErr = rejectNonForexMarket(rawMarket);
+  if (marketErr) throw new ApiError(400, marketErr);
+  const market = resolveActiveMarket(rawMarket ?? DEFAULT_MARKET);
   const interval = searchParams.get("interval") ?? "1h";
   const limitRaw = searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : 120;

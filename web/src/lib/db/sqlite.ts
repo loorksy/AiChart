@@ -19,17 +19,6 @@ const SCHEMA = `
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  CREATE TABLE IF NOT EXISTS binance_accounts (
-    user_id        INTEGER PRIMARY KEY,
-    api_key_enc    TEXT NOT NULL,
-    api_secret_enc TEXT NOT NULL,
-    env            TEXT NOT NULL DEFAULT 'testnet',
-    region         TEXT NOT NULL DEFAULT 'global',
-    label          TEXT,
-    updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
   CREATE TABLE IF NOT EXISTS trading_settings (
     user_id                  INTEGER PRIMARY KEY,
     mode                     TEXT NOT NULL DEFAULT 'approval',
@@ -45,7 +34,7 @@ const SCHEMA = `
     monthly_loss_limit_pct   REAL NOT NULL DEFAULT 15,
     auto_take_profit_usd     REAL NOT NULL DEFAULT 0,
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
-    active_market            TEXT NOT NULL DEFAULT 'crypto',
+    active_market            TEXT NOT NULL DEFAULT 'forex',
     -- User-chosen forex connection: 'ea' (bridge installed on the user's MT5)
     -- or 'mt5local' (server-side, no download). NULL = operator's global default.
     forex_backend            TEXT,
@@ -76,7 +65,7 @@ const SCHEMA = `
     active          INTEGER NOT NULL DEFAULT 0,
     status          TEXT NOT NULL DEFAULT 'stopped',
     symbol          TEXT NOT NULL DEFAULT '',
-    market          TEXT NOT NULL DEFAULT 'crypto',
+    market          TEXT NOT NULL DEFAULT 'forex',
     interval        TEXT NOT NULL DEFAULT '1m',
     max_trades      INTEGER NOT NULL DEFAULT 0,
     executed_count  INTEGER NOT NULL DEFAULT 0,
@@ -182,8 +171,8 @@ const SCHEMA = `
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          REAL NOT NULL,
-    market            TEXT NOT NULL DEFAULT 'crypto',
-    broker            TEXT NOT NULL DEFAULT 'binance',
+    market            TEXT NOT NULL DEFAULT 'forex',
+    broker            TEXT NOT NULL DEFAULT 'mt_ea',
     entry             REAL,
     stop_loss         REAL,
     take_profit       REAL,
@@ -208,8 +197,8 @@ const SCHEMA = `
     avg_price   REAL NOT NULL DEFAULT 0,
     order_id    TEXT,
     env         TEXT NOT NULL DEFAULT 'testnet',
-    market      TEXT NOT NULL DEFAULT 'crypto',
-    broker      TEXT NOT NULL DEFAULT 'binance',
+    market      TEXT NOT NULL DEFAULT 'forex',
+    broker      TEXT NOT NULL DEFAULT 'mt_ea',
     status      TEXT NOT NULL DEFAULT 'open',
     pnl         REAL NOT NULL DEFAULT 0,
     oco_order_list_id TEXT,
@@ -439,7 +428,7 @@ const SCHEMA = `
     trade_id            INTEGER NOT NULL,
     recommendation_id   INTEGER,
     symbol              TEXT NOT NULL,
-    market              TEXT NOT NULL DEFAULT 'crypto',
+    market              TEXT NOT NULL DEFAULT 'forex',
     timeframe           TEXT,
     pattern_name        TEXT,
     outcome             TEXT NOT NULL,
@@ -512,8 +501,8 @@ function migrate(db: Database.Database) {
       slug: "risk-disclosure",
       title_ar: "إخلاء المسؤولية عن مخاطر التداول",
       title_en: "Risk Disclosure",
-      content_ar: "# إخلاء المسؤولية عن مخاطر التداول\n\n> [!WARNING]\n> التداول في الأسواق المالية (مثل العملات المشفرة والرافعة المالية في الفيوتشرز) ينطوي على مخاطر خسارة مالية كبيرة.\n\n### 1. مخاطر السوق\nالأسعار متقلبة بشكل كبير والرافعة المالية قد تضاعف الخسائر كما تضاعف الأرباح.\n\n### 2. عدم وجود ضمانات\nلا تقدم منصة **AiChart** أي ضمانات بتحقيق أرباح. الأداء السابق لا يضمن الأداء المستقبلي.",
-      content_en: "# Risk Disclosure\n\n> [!WARNING]\n> Trading in financial markets (such as cryptocurrencies and leverage in Futures) carries significant risk of financial loss.\n\n### 1. Market Risks\nPrices are highly volatile, and leverage can multiply losses just as it multiplies profits.\n\n### 2. No Guarantees\nThe **AiChart** platform makes no guarantees of profits. Past performance does not guarantee future results."
+      content_ar: "# إخلاء المسؤولية عن مخاطر التداول\n\n> [!WARNING]\n> التداول في أسواق الفوركس والرافعة المالية ينطوي على مخاطر خسارة مالية كبيرة.\n\n### 1. مخاطر السوق\nالأسعار متقلبة بشكل كبير والرافعة المالية قد تضاعف الخسائر كما تضاعف الأرباح.\n\n### 2. عدم وجود ضمانات\nلا تقدم منصة **AiChart** أي ضمانات بتحقيق أرباح. الأداء السابق لا يضمن الأداء المستقبلي.",
+      content_en: "# Risk Disclosure\n\n> [!WARNING]\n> Trading in forex and leveraged markets carries significant risk of financial loss.\n\n### 1. Market Risks\nPrices are highly volatile, and leverage can multiply losses just as it multiplies profits.\n\n### 2. No Guarantees\nThe **AiChart** platform makes no guarantees of profits. Past performance does not guarantee future results."
     },
     {
       slug: "about-us",
@@ -543,15 +532,6 @@ function migrate(db: Database.Database) {
       INSERT OR IGNORE INTO dynamic_pages (slug, title_ar, title_en, content_ar, content_en, is_published, metadata_json)
       VALUES (?, ?, ?, ?, ?, 1, '{}')
     `).run(page.slug, page.title_ar, page.title_en, page.content_ar, page.content_en);
-  }
-
-  const binCols = db
-    .prepare("PRAGMA table_info(binance_accounts)")
-    .all() as { name: string }[];
-  if (!binCols.some((c) => c.name === "region")) {
-    db.exec(
-      "ALTER TABLE binance_accounts ADD COLUMN region TEXT NOT NULL DEFAULT 'global'",
-    );
   }
 
   const scalpCols = db
@@ -661,7 +641,7 @@ function migrate(db: Database.Database) {
   }
   if (!settingsCols.some((c) => c.name === "active_market")) {
     db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN active_market TEXT NOT NULL DEFAULT 'crypto'",
+      "ALTER TABLE trading_settings ADD COLUMN active_market TEXT NOT NULL DEFAULT 'forex'",
     );
   }
   if (!settingsCols.some((c) => c.name === "forex_backend")) {
@@ -725,10 +705,10 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE trades ADD COLUMN oco_order_list_id TEXT");
   }
   if (!tradeCols.some((c) => c.name === "market")) {
-    db.exec("ALTER TABLE trades ADD COLUMN market TEXT NOT NULL DEFAULT 'crypto'");
+    db.exec("ALTER TABLE trades ADD COLUMN market TEXT NOT NULL DEFAULT 'forex'");
   }
   if (!tradeCols.some((c) => c.name === "broker")) {
-    db.exec("ALTER TABLE trades ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance'");
+    db.exec("ALTER TABLE trades ADD COLUMN broker TEXT NOT NULL DEFAULT 'mt_ea'");
   }
   if (!tradeCols.some((c) => c.name === "market_type")) {
     db.exec(
@@ -749,12 +729,12 @@ function migrate(db: Database.Database) {
     .all() as { name: string }[];
   if (!intentCols.some((c) => c.name === "market")) {
     db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN market TEXT NOT NULL DEFAULT 'crypto'",
+      "ALTER TABLE trade_intents ADD COLUMN market TEXT NOT NULL DEFAULT 'forex'",
     );
   }
   if (!intentCols.some((c) => c.name === "broker")) {
     db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN broker TEXT NOT NULL DEFAULT 'binance'",
+      "ALTER TABLE trade_intents ADD COLUMN broker TEXT NOT NULL DEFAULT 'mt_ea'",
     );
   }
   if (!intentCols.some((c) => c.name === "practice")) {
@@ -868,7 +848,6 @@ function migrate(db: Database.Database) {
         'ANTHROPIC_MODEL',
         'TELEGRAM_BOT_USERNAME',
         'APP_URL',
-        'ENABLE_BINANCE_CLI',
         'METAAPI_REGION'
       )
   `);
@@ -880,33 +859,6 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE recommendations ADD COLUMN memory_refs_json TEXT");
   }
 
-  const binanceSql = db
-    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='binance_accounts'")
-    .get() as { sql?: string } | undefined;
-  if (
-    binanceSql?.sql &&
-    !binanceSql.sql.includes("PRIMARY KEY (user_id, env)")
-  ) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS binance_accounts_v2 (
-        user_id        INTEGER NOT NULL,
-        api_key_enc    TEXT NOT NULL,
-        api_secret_enc TEXT NOT NULL,
-        env            TEXT NOT NULL DEFAULT 'testnet',
-        label          TEXT,
-        updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
-        PRIMARY KEY (user_id, env),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      );
-      INSERT OR IGNORE INTO binance_accounts_v2
-        (user_id, api_key_enc, api_secret_enc, env, label, updated_at)
-      SELECT user_id, api_key_enc, api_secret_enc, env, label, updated_at
-        FROM binance_accounts;
-      DROP TABLE binance_accounts;
-      ALTER TABLE binance_accounts_v2 RENAME TO binance_accounts;
-    `);
-  }
-
   db.exec(`
     CREATE TABLE IF NOT EXISTS trade_lessons (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -914,7 +866,7 @@ function migrate(db: Database.Database) {
       trade_id            INTEGER NOT NULL,
       recommendation_id   INTEGER,
       symbol              TEXT NOT NULL,
-      market              TEXT NOT NULL DEFAULT 'crypto',
+      market              TEXT NOT NULL DEFAULT 'forex',
       timeframe           TEXT,
       pattern_name        TEXT,
       outcome             TEXT NOT NULL,
@@ -1118,6 +1070,16 @@ function migrate(db: Database.Database) {
   `);
 
   dropLegacyBotAndScalpTables(db);
+
+  db.exec(`
+    UPDATE trading_settings SET active_market = 'forex' WHERE active_market = 'crypto';
+    UPDATE trades SET market = 'forex' WHERE market = 'crypto';
+    UPDATE trade_intents SET market = 'forex' WHERE market = 'crypto';
+    UPDATE recommendations SET market = 'forex' WHERE market = 'crypto';
+    UPDATE trades SET broker = 'mt_ea' WHERE broker = 'binance';
+    UPDATE trade_intents SET broker = 'mt_ea' WHERE broker = 'binance';
+    DROP TABLE IF EXISTS binance_accounts;
+  `);
 }
 
 function dropLegacyBotAndScalpTables(db: import("better-sqlite3").Database) {

@@ -23,8 +23,8 @@ export function LandingFooter() {
             </Link>
             <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
               {locale === "ar"
-                ? "منصة التداول الذكية المعتمدة على وكلاء الذكاء الاصطناعي لمراقبة الأسواق وتنفيذ الصفقات بأعلى كفاءة وأمان على منصتي Binance و MT5."
-                : "The intelligent AI-powered trading platform designed to monitor markets and execute trades with peak efficiency and safety on Binance & MT5."}
+                ? "منصة التداول الذكية المعتمدة على وكلاء الذكاء الاصطناعي لمراقبة الأسواق وتنفيذ الصفقات بأعلى كفاءة وأمان عبر MetaTrader 5."
+                : "The intelligent AI-powered trading platform designed to monitor markets and execute trades with peak efficiency and safety on MetaTrader 5."}
             </p>
           </div>
 

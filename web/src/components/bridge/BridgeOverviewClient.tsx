@@ -20,7 +20,6 @@ import {
 import { cn } from "@/lib/utils";
 
 interface ConnectionStatus {
-  binance: { connected: boolean; env: string | null; futuresOk: boolean | null };
   mt5: { connected: boolean; online: boolean };
   telegram: { linked: boolean };
   executionEnv: { label: string; mismatch: boolean };
@@ -77,7 +76,6 @@ function ConnBentoCard({
 
 export function BridgeOverviewClient({
   settings,
-  hasBinance: _hasBinance,
   eaConnected,
   eaOnline,
   pendingIntents,
@@ -85,7 +83,6 @@ export function BridgeOverviewClient({
   adminStats,
 }: {
   settings: TradingSettings;
-  hasBinance: boolean;
   eaConnected: boolean;
   eaOnline: boolean;
   pendingIntents: TradeIntent[];
@@ -102,9 +99,7 @@ export function BridgeOverviewClient({
   }, []);
 
   const tgLinked = Boolean(settings.telegram_chat_id);
-  const execLabel =
-    conn?.executionEnv.label ??
-    (settings.active_market === "forex" ? "فوركس" : "كريبتو");
+  const execLabel = conn?.executionEnv.label ?? "فوركس";
 
   return (
     <FadeIn>

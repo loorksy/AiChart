@@ -2,6 +2,7 @@ import {
   buildChartSnapshotBufferForMarket,
   chartImagePathForRecommendation,
 } from "./chartSnapshot";
+import { DEFAULT_MARKET } from "./marketPolicy";
 import { overlaysFromRecommendation } from "./chartOverlays";
 import type { ChartDrawing } from "./chartDrawings";
 import { parseChartDrawingsJson } from "./chartDrawings";
@@ -37,7 +38,7 @@ export async function attachChartToRecommendation(
   if (rec.action === "wait") return { rec };
 
   const settings = await getSettings(userId);
-  const market = (rec.market ?? settings.active_market ?? "crypto") as MarketType;
+  const market = (rec.market ?? settings.active_market ?? DEFAULT_MARKET) as MarketType;
   const overlays = overlaysFromRecommendation(rec);
   const drawings =
     options.drawings ?? parseChartDrawingsJson(rec.chart_drawings_json);

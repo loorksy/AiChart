@@ -91,7 +91,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
       layout_id: zLayoutId,
-      market: z.enum(["crypto", "forex"]).optional(),
+      market: z.literal("forex").optional(),
     },
     annotations: READ_ONLY,
     ui: { widget: "live-chart" },
@@ -138,7 +138,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
-      market: z.enum(["crypto", "forex"]).optional(),
+      market: z.literal("forex").optional(),
       data_source: z.enum(["oanda", "ea"]).optional(),
       layout_id: zLayoutId,
     },

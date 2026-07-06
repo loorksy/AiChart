@@ -62,7 +62,6 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     "mode.auto": "تلقائي",
     
     // Market types
-    "market.crypto": "كريبتو",
     "market.forex": "فوركس",
     
     // Profile menu items
@@ -136,7 +135,6 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     "mode.auto": "Auto",
     
     // Market types
-    "market.crypto": "Crypto",
     "market.forex": "Forex",
     
     // Profile menu items

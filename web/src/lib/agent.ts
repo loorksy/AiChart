@@ -25,7 +25,7 @@ import {
   getUnifiedPrice,
   resolveSymbol,
 } from "./markets";
-import { getBinanceCredentials, saveRecommendation, getPublicUser, listTrades, listIntents, listRecommendations, countOpenTrades, getBinanceAccountMeta, getSettings, updateRecommendationIntelligence } from "./store";
+import { getPublicUser, saveRecommendation, listTrades, listIntents, listRecommendations, countOpenTrades, getSettings, updateRecommendationIntelligence } from "./store";
 import { enrichRecommendationAfterRecord } from "./recommendationLevels";
 import { attachChartToRecommendation } from "./recommendationChart";
 import { internalBridgeForUser } from "./agentBridge";
@@ -39,13 +39,6 @@ import {
   validateChartDrawings,
   type ChartDrawing,
 } from "./chartDrawings";
-import { getAccountSummary } from "./binance";
-import {
-  smartMoneySignals,
-  cryptoMarketRank,
-  type MarketRankCommand,
-} from "./binanceWeb3";
-import { runBinanceCli, isBinanceCliEnabled } from "./binanceCli";
 import {
   searchSimilarLessons,
   formatLessonsForPrompt,
@@ -67,11 +60,11 @@ const TOOLS: ToolDef[] = [
   {
     name: "resolve_symbol",
     description:
-      "يحدّد زوج USDT الصحيح على Binance Spot (مثل BTC → BTCUSDT). استخدمها عندما يذكر المستخدم رمزاً غير واضح.",
+      "يحدّد زوج الفوركس الصحيح (مثل EUR → EURUSD، XAU → XAUUSD). استخدمها عندما يذكر المستخدم رمزاً غير واضح.",
     input_schema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "مثل BTC، ETH، SOL" },
+        query: { type: "string", description: "مثل EUR، GBP، XAU" },
       },
       required: ["query"],
     },
@@ -79,11 +72,11 @@ const TOOLS: ToolDef[] = [
   {
     name: "get_market_snapshot",
     description:
-      "يجلب لقطة فنية حية من Binance: السعر، RSI، MACD، SMA، والاتجاه. استخدمها قبل أي رأي فني.",
+      "يجلب لقطة فنية حية: السعر، RSI، MACD، SMA، والاتجاه. استخدمها قبل أي رأي فني.",
     input_schema: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "مثل BTCUSDT، ETHUSDT" },
+        symbol: { type: "string", description: "مثل EURUSD، GBPUSD، XAUUSD" },
         interval: {
           type: "string",
           description: "1m,5m,15m,1h,4h,1d,1w",
@@ -94,7 +87,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "get_price",
-    description: "يجلب السعر اللحظي لزوج USDT على Binance Spot.",
+    description: "يجلب السعر اللحظي لزوج فوركس.",
     input_schema: {
       type: "object",
       properties: {
@@ -106,7 +99,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "get_user_profile",
     description:
-      "يجلب ملف المستخدم: الاسم، البريد، هل Binance/Telegram مربوطان، وضع التداول.",
+      "يجلب ملف المستخدم: الاسم، البريد، اتصال MetaTrader/Telegram، وضع التداول.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -124,60 +117,9 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "get_account_balances",
-    description: "يجلب أرصدة حساب Binance المرتبط بالمستخدم (إن وُجد).",
+    description: "أرصدة الحساب غير متاحة هنا — استخدم get_account_overview أو get_live_account.",
     input_schema: { type: "object", properties: {} },
   },
-  {
-    name: "smart_money_signals",
-    description:
-      "إشارات 'الأموال الذكية' (Smart Money) على السلسلة من Binance Web3 — صفقات شراء/بيع لمحافظ محترفة. مفيدة لقياس اتجاه كبار المتداولين. السلاسل: 56 (BSC)، CT_501 (Solana).",
-    input_schema: {
-      type: "object",
-      properties: {
-        chainId: { type: "string", enum: ["56", "CT_501"] },
-        pageSize: { type: "number" },
-      },
-      required: ["chainId"],
-    },
-  },
-  {
-    name: "crypto_market_rank",
-    description:
-      "بيانات سوق ذكية من Binance Web3: الرواج الاجتماعي (social-hype)، ترتيب العملات (token-rank)، تدفّق الأموال الذكية (smart-money-inflow)، ترتيب الميمز (meme-rank)، وترتيب أرباح المتداولين (address-pnl-rank). استخدمها لقياس مزاج السوق وزخمه.",
-    input_schema: {
-      type: "object",
-      properties: {
-        command: {
-          type: "string",
-          enum: [
-            "social-hype",
-            "token-rank",
-            "smart-money-inflow",
-            "meme-rank",
-            "address-pnl-rank",
-          ],
-        },
-        chainId: { type: "string", description: "مثل 56 (BSC) أو CT_501 (Solana)" },
-      },
-      required: ["command", "chainId"],
-    },
-  },
-  ...(isBinanceCliEnabled()
-    ? [
-        {
-          name: "binance_cli",
-          description:
-            "قراءة بيانات Binance الرسمية الموسّعة (سبوت/فيوتشرز/أرنينغ/محفظة) عبر binance-cli — للقراءة فقط. مرّر args كمصفوفة، مثل [\"spot\",\"exchange-info\",\"--symbol\",\"BTCUSDT\"]. لا يُستخدم لفتح أو إغلاق الصفقات إطلاقاً.",
-          input_schema: {
-            type: "object",
-            properties: {
-              args: { type: "array", items: { type: "string" } },
-            },
-            required: ["args"],
-          },
-        },
-      ]
-    : []),
   {
     name: "get_market_context",
     description:
@@ -272,12 +214,12 @@ const TOOLS: ToolDef[] = [
   {
     name: "get_account_symbols",
     description:
-      "كل الأزواج/الرموز التي يوفّرها الوسيط في حساب MetaTrader (Market Watch كاملة) مع bid/ask/spread — وليس قائمة مختصرة. استخدمها ليرى المستخدم/أنت كل الأزواج المتاحة وتقلّب بينها. مرشّحات اختيارية: q (بحث)، market (forex/crypto). read-only.",
+      "كل الأزواج/الرموز التي يوفّرها الوسيط في حساب MetaTrader (Market Watch كاملة) مع bid/ask/spread — وليس قائمة مختصرة. استخدمها ليرى المستخدم/أنت كل الأزواج المتاحة وتقلّب بينها. مرشّحات اختيارية: q (بحث). read-only.",
     input_schema: {
       type: "object",
       properties: {
         q: { type: "string", description: "بحث نصّي في اسم الرمز" },
-        market: { type: "string", enum: ["forex", "crypto"] },
+        market: { type: "string", enum: ["forex"] },
         limit: { type: "number" },
       },
     },
@@ -323,7 +265,7 @@ const TOOLS: ToolDef[] = [
       properties: {
         symbol: { type: "string" },
         intervals: { type: "array", items: { type: "string" } },
-        market: { type: "string", enum: ["crypto", "forex"] },
+        market: { type: "string", enum: ["forex"] },
       },
       required: ["symbol"],
     },
@@ -331,13 +273,13 @@ const TOOLS: ToolDef[] = [
   {
     name: "scan_market",
     description:
-      "مسح ومقارنة عدة رموز لاختيار أفضل فرصة. مثل symbols=[BTCUSDT,ETHUSDT].",
+      "مسح ومقارنة عدة رموز فوركس لاختيار أفضل فرصة. مثل symbols=[EURUSD,GBPUSD].",
     input_schema: {
       type: "object",
       properties: {
         symbols: { type: "array", items: { type: "string" } },
         interval: { type: "string" },
-        market: { type: "string", enum: ["crypto", "forex"] },
+        market: { type: "string", enum: ["forex"] },
       },
     },
   },
@@ -349,7 +291,7 @@ const TOOLS: ToolDef[] = [
       type: "object",
       properties: {
         symbol: { type: "string" },
-        market: { type: "string", enum: ["crypto", "forex"] },
+        market: { type: "string", enum: ["forex"] },
         confidence: { type: "number" },
       },
     },
@@ -363,9 +305,9 @@ const TOOLS: ToolDef[] = [
       properties: {
         symbol: { type: "string" },
         side: { type: "string", enum: ["buy", "sell"] },
-        notional: { type: "number", description: "حجم الصفقة (USDT/هامش)" },
+        notional: { type: "number", description: "حجم الصفقة (USD/هامش)" },
         lots: { type: "number", description: "فوركس: حجم اللوت مباشرة (يتجاوز notional). مثال 0.10" },
-        market: { type: "string", enum: ["crypto", "forex"] },
+        market: { type: "string", enum: ["forex"] },
         market_type: { type: "string", enum: ["spot", "futures"] },
         leverage: { type: "number" },
         order_type: { type: "string", enum: ["market", "limit"] },
@@ -418,7 +360,7 @@ const TOOLS: ToolDef[] = [
         symbol: { type: "string" },
         side: { type: "string", enum: ["buy", "sell"] },
         notional: { type: "number" },
-        market: { type: "string", enum: ["crypto", "forex"] },
+        market: { type: "string", enum: ["forex"] },
         entry: { type: "number" },
         stop_loss: { type: "number" },
         take_profit: { type: "number" },
@@ -449,11 +391,12 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "set_active_market",
-    description: "يبدّل السوق النشط: crypto / forex.",
+    description:
+      "المنصة فوركس فقط — السوق النشط دائماً forex.",
     input_schema: {
       type: "object",
       properties: {
-        active_market: { type: "string", enum: ["crypto", "forex"] },
+        active_market: { type: "string", enum: ["forex"] },
       },
       required: ["active_market"],
     },
@@ -727,15 +670,12 @@ async function executeTool(
       case "get_user_profile": {
         const user = await getPublicUser(ctx.userId);
         const settings = await getSettings(ctx.userId);
-        const binance = await getBinanceAccountMeta(ctx.userId);
         if (!user) return { content: "المستخدم غير موجود.", isError: true };
         return {
           content: JSON.stringify({
             displayName: displayNameFromEmail(user.email),
             email: user.email,
             status: user.status,
-            binanceLinked: Boolean(binance),
-            binanceEnv: binance?.env ?? null,
             telegramLinked: Boolean(settings.telegram_chat_id),
             mode: settings.mode,
             style: settings.style,
@@ -762,45 +702,9 @@ async function executeTool(
         return { content: JSON.stringify(recs) };
       }
       case "get_account_balances": {
-        const creds = await getBinanceCredentials(ctx.userId);
-        if (!creds) {
-          return {
-            content: "لا يوجد حساب Binance مرتبط بهذا المستخدم بعد.",
-          };
-        }
-        const summary = await getAccountSummary(
-          creds.apiKey,
-          creds.apiSecret,
-          creds.env,
-        );
         return {
-          content: JSON.stringify({
-            env: creds.env,
-            canTrade: summary.canTrade,
-            balances: summary.balances.slice(0, 20),
-          }),
+          content: "المنصة تدعم الفوركس (MetaTrader) فقط — أرصدة الكريبتو غير متاحة.",
         };
-      }
-      case "smart_money_signals": {
-        const data = await smartMoneySignals({
-          chainId: String(input.chainId ?? "56"),
-          pageSize: input.pageSize ? Number(input.pageSize) : 30,
-        });
-        return { content: JSON.stringify(data).slice(0, 6000) };
-      }
-      case "crypto_market_rank": {
-        const data = await cryptoMarketRank(
-          String(input.command) as MarketRankCommand,
-          { ...input, command: undefined },
-        );
-        return { content: JSON.stringify(data).slice(0, 6000) };
-      }
-      case "binance_cli": {
-        const args = Array.isArray(input.args)
-          ? input.args.map((a) => String(a))
-          : [];
-        const res = await runBinanceCli(ctx.userId, args);
-        return { content: res.output, isError: !res.ok };
       }
       case "get_market_context": {
         const symbol = String(input.symbol ?? "");

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOptionalUser, checkRateLimit, clientKey } from "@/lib/api";
-import { searchBinanceInstruments } from "@/lib/binanceSymbols";
+import { rejectNonForexMarket } from "@/lib/marketPolicy";
 import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
@@ -47,7 +47,6 @@ async function oandaForexInstruments(
 
 export async function GET(request: NextRequest) {
   try {
-    // Public: guests need the instrument list to switch pairs while browsing.
     const user = await getOptionalUser();
     if (!user && !checkRateLimit(`instruments:${clientKey(request)}`, 40, 60_000)) {
       return NextResponse.json(
@@ -56,8 +55,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Second data source: the user's ENTIRE broker symbol universe via the EA
-    // bridge (not just MT5 Market Watch).
     if (
       !isOandaDataOnly() &&
       request.nextUrl.searchParams.get("source") === "ea"
@@ -101,20 +98,21 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("search") ??
       ""
     ).trim();
-    const market = request.nextUrl.searchParams.get("market") === "forex"
-      ? "forex"
-      : "crypto";
+
+    const marketParam = request.nextUrl.searchParams.get("market");
+    const marketBlock = rejectNonForexMarket(marketParam);
+    if (marketBlock) {
+      return NextResponse.json({ error: marketBlock }, { status: 400 });
+    }
 
     const { instruments, total } =
-      market === "forex"
-        ? oandaConfigured() && oandaAccountId()
-          ? await oandaForexInstruments(q)
-          : { instruments: [], total: 0 }
-        : await searchBinanceInstruments(q, 200);
+      oandaConfigured() && oandaAccountId()
+        ? await oandaForexInstruments(q)
+        : { instruments: [], total: 0 };
 
     const wrapped = request.nextUrl.searchParams.get("wrapped") === "1";
     if (wrapped) {
-      return NextResponse.json({ instruments, total, source: market === "forex" ? "oanda" : "binance" });
+      return NextResponse.json({ instruments, total, source: "oanda" });
     }
     return NextResponse.json(instruments);
   } catch (e) {

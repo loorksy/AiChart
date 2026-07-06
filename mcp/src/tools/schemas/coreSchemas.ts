@@ -80,7 +80,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_lessons",
     domain: "core",
     description:
-      "When: before every analysis or after a loss. recent=true for recent mistakes. read-only. Example: symbol=BTCUSDT&recent=true.",
+      "When: before every analysis or after a loss. recent=true for recent mistakes. read-only. Example: symbol=EURUSD&recent=true.",
     inputSchema: {
       symbol: z.string().optional(),
       pattern: z.string().optional(),
@@ -244,15 +244,15 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_active_market",
     domain: "core",
     description:
-      "When: switch crypto↔forex. side-effect: updates active_market.",
-    inputSchema: { active_market: z.enum(["crypto", "forex"]) },
+      "When: confirm active market (forex-only platform). side-effect: no-op — always forex.",
+    inputSchema: { active_market: z.literal("forex") },
     annotations: DESTRUCTIVE,
   },
   {
     name: "set_futures_enabled",
     domain: "core",
     description:
-      "When: enable Binance Futures. side-effect: settings. Do not enable live without approval.",
+      "Legacy — futures disabled; platform is forex-only. Always returns futures_enabled=false.",
     inputSchema: {
       futures_enabled: z.boolean(),
       default_leverage: z.number().min(1).max(125).optional(),
@@ -279,7 +279,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_chart_snapshot",
     domain: "core",
     description:
-      "When: with every recommendation. PNG inline + drawings. read-only on market; side-effect: capture. Example: symbol=BTCUSDT&interval=1h.",
+      "When: with every recommendation. PNG inline + drawings. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,

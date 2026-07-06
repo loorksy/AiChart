@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
@@ -31,7 +32,7 @@ const schema = z.object({
     .max(4)
     .optional()
     .refine((v) => v == null || INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
-  market: z.enum(["crypto", "forex"]).optional(),
+  market: z.string().optional(),
   data_source: z.enum(["oanda", "ea"]).optional(),
   /** Chart layout to persist the finished analysis into (renders live on the chart). */
   layout_id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
@@ -107,20 +108,20 @@ export async function POST(req: NextRequest) {
       );
     }
     const interval = body.interval ?? layout?.interval ?? "1h";
-    const market = body.market ?? settings.active_market ?? "forex";
+    const marketErr = rejectNonForexMarket(body.market);
+    if (marketErr) {
+      return NextResponse.json({ error: marketErr }, { status: 400 });
+    }
+    const market = resolveActiveMarket(body.market ?? settings.active_market ?? DEFAULT_MARKET);
     const dataSource =
-      market === "forex"
-        ? isOandaDataOnly() || body.data_source === "oanda"
-          ? "oanda"
-          : (body.data_source ?? layoutState?.dataSource ?? "oanda")
-        : undefined;
-    if (market === "forex") {
-      if (dataSource === "oanda") {
-        symbol = forexCanonicalKey(symbol);
-      } else {
-        const resolved = await resolveMt5Symbol(userId, symbol);
-        if (resolved) symbol = resolved;
-      }
+      isOandaDataOnly() || body.data_source === "oanda"
+        ? "oanda"
+        : (body.data_source ?? layoutState?.dataSource ?? "oanda");
+    if (dataSource === "oanda") {
+      symbol = forexCanonicalKey(symbol);
+    } else {
+      const resolved = await resolveMt5Symbol(userId, symbol);
+      if (resolved) symbol = resolved;
     }
     const tradingStyle = tradingStyleForInterval(interval);
 

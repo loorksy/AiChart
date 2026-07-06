@@ -8,7 +8,6 @@ import { needsMcpCredentials } from "@/lib/userCredentials";
 import {
   getSettings,
   getLimits,
-  getBinanceAccountMeta,
   getTodayUsage,
   countPendingIntents,
   countUnreadAlerts,
@@ -34,7 +33,6 @@ export async function GET() {
     access_block_reason: accessBlockReason,
     settings: await getSettings(user.id),
     limits,
-    binance: await getBinanceAccountMeta(user.id),
     quota: {
       used,
       limit,

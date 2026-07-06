@@ -15,9 +15,7 @@ export async function buildOpenTradesSummary(
   const env = await getExecutionEnvSnapshot(userId);
   const lines: string[] = [
     `<b>📂 الصفقات المفتوحة</b>`,
-    `البيئة · Env: <b>${executionEnvLabelAr(
-      env.activeMarket === "forex" ? env.forex.resolved : env.crypto.resolved,
-    )}</b>`,
+    `البيئة · Env: <b>${executionEnvLabelAr(env.forex.resolved)}</b>`,
     ``,
   ];
 

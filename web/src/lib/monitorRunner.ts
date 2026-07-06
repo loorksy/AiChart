@@ -1,4 +1,5 @@
 import { resolveScanAssetsForMarket } from "./allowedAssets.server";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { buildAccountProfile } from "./accountProfile";
 import { wakeAgentViaTelegram } from "./agentWake";
 import { isAgentWakeEnabled } from "./agentWakeConfig";
@@ -11,7 +12,6 @@ import {
 import { forexCanonicalKey, resolveMt5Symbol } from "./mt5SymbolMap";
 import {
   scanForexSymbol,
-  scanSymbol,
   type OpportunityCandidate,
 } from "./monitor";
 import {
@@ -67,7 +67,7 @@ async function scanMarketForUser(
   userId: number,
   settings: TradingSettings,
 ): Promise<OpportunityCandidate | null> {
-  const market: MarketType = settings.active_market ?? "crypto";
+  const market: MarketType = settings.active_market ?? DEFAULT_MARKET;
   const interval = settings.analysis_interval ?? "1h";
   const symbols = await resolveScanAssetsForMarket(
     settings.allowed_assets,
@@ -80,10 +80,12 @@ async function scanMarketForUser(
   for (const symbol of symbols) {
     if (await isOnCooldown(userId, symbol)) continue;
     try {
-      const candidate =
-        market === "forex"
-          ? await scanForexSymbol(userId, symbol, settings.style, interval)
-          : await scanSymbol(symbol, settings.style, interval);
+      const candidate = await scanForexSymbol(
+        userId,
+        symbol,
+        settings.style,
+        interval,
+      );
       if (!candidate) continue;
       if (!best || candidate.score > best.score) best = candidate;
     } catch {
@@ -171,7 +173,7 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
       const candidate = await scanMarketForUser(userId, settings);
       if (!candidate) continue;
 
-      const market = settings.active_market ?? "crypto";
+      const market = settings.active_market ?? DEFAULT_MARKET;
       if (market === "forex") {
         const ready = await forexScanReady(userId, candidate.symbol);
         if (!ready.ok) continue;

@@ -4,18 +4,15 @@
   "properties": {
     "market": {
       "type": "string",
-      "enum": [
-        "crypto",
-        "forex"
-      ]
+      "const": "forex"
     },
     "q": {
-      "description": "بحث اختياري مثل EUR أو XAU",
+      "description": "Optional search e.g. EUR or XAU",
       "type": "string",
       "maxLength": 20
     },
     "source": {
-      "description": "ea = كل رموز وسيط المستخدم من MT5",
+      "description": "ea = all broker symbols from MT5",
       "type": "string",
       "enum": [
         "oanda",

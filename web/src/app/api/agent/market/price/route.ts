@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { getSettings } from "@/lib/store";
 import { getUnifiedPrice } from "@/lib/markets";
-import type { MarketType } from "@/lib/markets/types";
 
-/** Bridge: spot price for a symbol (crypto via Binance, forex via EA/MetaApi). */
+/** Bridge: spot price for a forex symbol via EA/MetaApi or OANDA. */
 export async function GET(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
@@ -15,9 +15,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "symbol مطلوب." }, { status: 400 });
     }
     const settings = await getSettings(userId);
-    const market = (searchParams.get("market") ??
-      settings.active_market ??
-      "crypto") as MarketType;
+    const rawMarket = searchParams.get("market") ?? settings.active_market;
+    const marketErr = rejectNonForexMarket(rawMarket);
+    if (marketErr) {
+      return NextResponse.json({ error: marketErr }, { status: 400 });
+    }
+    const market = resolveActiveMarket(rawMarket ?? DEFAULT_MARKET);
 
     const { resolved, price } = await getUnifiedPrice(symbol, market, userId);
     return NextResponse.json({

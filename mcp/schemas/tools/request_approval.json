@@ -18,10 +18,7 @@
     },
     "market": {
       "type": "string",
-      "enum": [
-        "crypto",
-        "forex"
-      ]
+      "const": "forex"
     },
     "entry": {
       "type": "number"

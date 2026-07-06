@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AdminLimits, BinanceAccountMeta, PublicUser } from "@/lib/types";
+import type { AdminLimits, PublicUser } from "@/lib/types";
 import { displayNameFromEmail } from "@/lib/displayName";
 
 export interface QuotaInfo {
@@ -14,7 +14,6 @@ export interface MeData {
   user: PublicUser;
   settings: { telegram_chat_id: string | null };
   limits: AdminLimits;
-  binance: BinanceAccountMeta | null;
   quota: QuotaInfo;
   displayName: string;
   pendingIntents: number;
@@ -44,7 +43,6 @@ export function useMe(refreshKey = 0) {
         user: json.user,
         settings: json.settings,
         limits: json.limits,
-        binance: json.binance,
         quota: { used, limit, remaining },
         displayName: displayNameFromEmail(json.user.email),
         pendingIntents: json.pendingIntents ?? 0,

@@ -6,21 +6,13 @@ import Link from "next/link";
 import type { TradingSettings } from "@/lib/types";
 import { PageLayout } from "@/components/ui/shell";
 
-const EXPERT_STEPS = ["المستوى", "Binance", "الإعدادات", "تليجرام"] as const;
-const BEGINNER_STEPS = [
-  "المستوى",
-  "أهدافك",
-  "Binance",
-  "الإعدادات",
-  "تليجرام",
-] as const;
+const EXPERT_STEPS = ["المستوى", "الإعدادات", "تليجرام"] as const;
+const BEGINNER_STEPS = ["المستوى", "أهدافك", "الإعدادات", "تليجرام"] as const;
 
 export default function OnboardingClient({
   settings,
-  hasBinance,
 }: {
   settings: TradingSettings;
-  hasBinance: boolean;
 }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -45,8 +37,6 @@ export default function OnboardingClient({
   const [suggestBusy, setSuggestBusy] = useState(false);
   const isBeginner = experience === "beginner";
   const STEPS = isBeginner ? BEGINNER_STEPS : EXPERT_STEPS;
-  const [apiKey, setApiKey] = useState("");
-  const [apiSecret, setApiSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,30 +59,6 @@ export default function OnboardingClient({
     } catch {
       setError("تعذّر الاتصال بالخادم.");
       return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function connectBinance() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/binance/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, apiSecret, env: "testnet" }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "فشل الربط.");
-        return;
-      }
-      setApiKey("");
-      setApiSecret("");
-      router.refresh();
-    } catch {
-      setError("تعذّر الاتصال بالخادم.");
     } finally {
       setBusy(false);
     }
@@ -182,8 +148,7 @@ export default function OnboardingClient({
       )}
 
       <div className="mb-4 rounded-[var(--radius)] border border-border bg-secondary/40 px-4 py-3 text-xs text-muted-foreground">
-        تتداول على الكريبتو عبر Binance والفوركس عبر MetaTrader (3 حقول فقط — بدون
-        تثبيت). يمكنك ربط MetaTrader لاحقاً من{" "}
+        تتداول على الفوركس عبر MetaTrader (EA). يمكنك ربط MT5 من{" "}
         <Link href="/console/connect" className="text-link underline">
           مركز الجسر ← الاتصالات
         </Link>
@@ -261,7 +226,7 @@ export default function OnboardingClient({
           <p className="text-sm text-muted-foreground">
             أجب ببساطة — الوكيل يقترح إعدادات محافظة تناسب المبتدئين.
           </p>
-          <label className="text-sm">كم رأس مال تخصّص للتداول؟ (USDT)</label>
+          <label className="text-sm">كم رأس مال تخصّص للتداول؟ (USD)</label>
           <input
             type="number"
             className="input w-full"
@@ -363,60 +328,6 @@ export default function OnboardingClient({
 
       {step === (isBeginner ? 2 : 1) && (
         <section className="card space-y-4 p-6">
-          <h2 className="text-lg font-bold">ربط Binance (Testnet)</h2>
-          <p className="text-sm text-muted-foreground">
-            فعّل <b>التداول</b> فقط وعطّل <b>السحب</b>. ابدأ دائماً ببيئة تجريبية.
-          </p>
-          {hasBinance ? (
-            <div className="rounded-[var(--radius)] bg-secondary px-4 py-3 text-sm text-primary">
-              ● تم ربط الحساب بنجاح
-            </div>
-          ) : (
-            <>
-              <input
-                className="input w-full"
-                placeholder="API Key"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                dir="ltr"
-              />
-              <input
-                className="input w-full"
-                type="password"
-                placeholder="API Secret"
-                value={apiSecret}
-                onChange={(e) => setApiSecret(e.target.value)}
-                dir="ltr"
-              />
-              <button
-                disabled={busy || !apiKey || !apiSecret}
-                onClick={connectBinance}
-                className="btn btn-secondary w-full"
-              >
-                ربط والتحقق
-              </button>
-            </>
-          )}
-          <div className="flex gap-3">
-            <button
-              onClick={() => setStep(isBeginner ? 1 : 0)}
-              className="btn btn-secondary flex-1"
-            >
-              رجوع
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => setStep(isBeginner ? 3 : 2)}
-              className="btn btn-primary flex-1"
-            >
-              {hasBinance ? "التالي" : "تخطّي مؤقتاً"}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {step === (isBeginner ? 3 : 2) && (
-        <section className="card space-y-4 p-6">
           <h2 className="text-lg font-bold">أسلوب التداول</h2>
           <select
             className="input w-full"
@@ -442,7 +353,7 @@ export default function OnboardingClient({
           </select>
           {experience === "beginner" && (
             <>
-              <label className="text-sm">المبلغ المسموح (USDT)</label>
+              <label className="text-sm">المبلغ المسموح (USD)</label>
               <input
                 type="number"
                 className="input w-full"
@@ -476,7 +387,7 @@ export default function OnboardingClient({
 
           <div className="flex gap-3">
             <button
-              onClick={() => setStep(isBeginner ? 2 : 1)}
+              onClick={() => setStep(isBeginner ? 1 : 0)}
               className="btn btn-secondary flex-1"
             >
               رجوع
@@ -493,8 +404,9 @@ export default function OnboardingClient({
                     per_trade_pct: perTrade,
                     daily_loss_limit_pct: dailyLoss,
                     daily_profit_target_pct: dailyProfit,
+                    active_market: "forex",
                   },
-                  isBeginner ? 4 : 3,
+                  isBeginner ? 3 : 2,
                 )
               }
               className="btn btn-primary flex-1"
@@ -505,7 +417,7 @@ export default function OnboardingClient({
         </section>
       )}
 
-      {step === (isBeginner ? 4 : 3) && (
+      {step === (isBeginner ? 3 : 2) && (
         <section className="card space-y-4 p-6">
           <h2 className="text-lg font-bold">ربط تليجرام (اختياري)</h2>
           <p className="text-sm text-muted-foreground">
@@ -514,7 +426,7 @@ export default function OnboardingClient({
           </p>
           <div className="flex gap-3">
             <button
-              onClick={() => setStep(isBeginner ? 3 : 2)}
+              onClick={() => setStep(isBeginner ? 2 : 1)}
               className="btn btn-secondary flex-1"
             >
               رجوع

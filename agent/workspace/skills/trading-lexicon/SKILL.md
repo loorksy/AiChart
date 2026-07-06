@@ -1,12 +1,12 @@
 ---
 name: trading-lexicon
-description: Comprehensive Trading Lexicon and analysis strategies (SMC, Wyckoff, Elliott Waves, Indicators) for Crypto and Forex.
+description: Comprehensive Trading Lexicon and analysis strategies (SMC, Wyckoff, Elliott Waves, Indicators) for Forex.
 metadata: {"aichart":{"requires":{"env":[]}}}
 ---
 
 # Trading Lexicon & Strategy Invalidation Skill
 
-This skill represents the complete technical and fundamental framework for the trading Agent to analyze markets, formulate trading setup hypotheses, and determine confluence entries for both Crypto and Forex.
+This skill represents the complete technical and fundamental framework for the trading Agent to analyze forex markets, formulate trading setup hypotheses, and determine confluence entries on MetaTrader 5.
 
 ---
 
@@ -54,18 +54,9 @@ Reading the geometric structure of price action based on collective crowd psycho
 
 ---
 
-## 3. Crypto Market Trading Rules
-When analyzing crypto assets on Binance (Spot & Futures), the Agent must apply these rules:
-*   **Funding Rates**:
-    *   High Positive Funding: Longs pay Shorts. Bullish bias overextended, increasing risk of a sudden crash to sweep leverage (Long Squeeze).
-    *   High Negative Funding: Shorts pay Longs. Bearish bias overextended, increasing risk of a sudden surge to liquidate shorts (Short Squeeze).
-*   **Open Interest (OI)**:
-    *   Price Increase + OI Increase = New buying volume entering (Strong Bullish signal).
-    *   Price Decrease + OI Increase = New selling volume entering (Strong Bearish signal).
-    *   Sideways Price + OI Sharp Decrease = Position liquidations / mass closures.
-*   **Smart Money Flow & Web3 Signals**:
-    *   Use `smart_money_signals` to track on-chain institutional movement.
-    *   Use `crypto_market_rank` to align social-hype and smart money flows for altcoins.
+## 3. Platform Scope
+
+Crypto spot, futures, and on-chain tools are **not available**. Analyze **forex pairs and gold** only via MetaTrader 5 / OANDA market data.
 
 ---
 

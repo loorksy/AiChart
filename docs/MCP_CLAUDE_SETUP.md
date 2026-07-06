@@ -94,11 +94,11 @@ curl -sI https://aichart.lork.cloud/.well-known/oauth-protected-resource
 → Claude يسأل الزوج، يمسح البدائل، يعرض الحساب، يسأل المبلغ.
 
 ```
-BTC أو ETH — أيهما أفضل؟
+EURUSD أو GBPUSD — أيهما أفضل؟
 ```
 
 ```
-40 USDT — نفّذ
+0.01 lot — نفّذ
 ```
 
 ```
@@ -122,14 +122,14 @@ BTC أو ETH — أيهما أفضل؟
 
 عند «خذ صفقة» أو أي أمر عام:
 1. اسأل عن الزوج إن لم يُذكر (الزوج والمبلغ يُسألان — أما الاتجاه فتقرّره أنت)
-2. scan_market + get_market_snapshot — قارن بدائل (BTC vs ETH …)
+2. scan_market + get_market_snapshot — قارن بدائل (EURUSD vs GBPUSD …)
 3. get_trade_lessons (+ recent:true) — شرط قبلي
 4. قيّم لجنة الوكلاء الأربعة (Trend/Breakout/MeanReversion/Risk — تشخيصية) واقرأ aichart://execution-desk
 5. **قرّر الاتجاه (شراء/بيع) بنفسك من التحليل — لا تسأل المستخدم «شراء أم بيع؟»**
 6. اقترح أو ارفض على أساس الجدارة (لا عتبة ثقة) — مع وقف محدّد و R:R مقبول
 
 قبل open_trade:
-- اسأل: بكم ندخل؟ (USDT) — لا تستخدم perTradeMax تلقائياً (في auto يُشتقّ الحجم من مسافة الوقف)
+- اسأل: بكم ندخل؟ (حجم اللوت أو الهامش) — لا تستخدم perTradeMax تلقائياً (في auto يُشتقّ الحجم من مسافة الوقف)
 - create_recommendation أولاً (rationale + confidence + شارت)
 - open_trade بعد الموافقة + notional + approved_by_user:true + **stop_loss إلزامي** + entry/take_profit (للـ R:R)
 - الانضباط الموضوعي: Risk Guard يرفض الصفقة بلا وقف أو بعائد/مخاطرة أقل من الحد الأدنى — **ليست عتبة ثقة**
@@ -160,25 +160,18 @@ Risk Guard يرفض تجاوز الحدود — انقل السبب حرفياً
 | **محفظة** | `get_portfolio`, `get_open_trades`, `get_trade_lessons`, `get_pending_approvals` |
 | **تداول** | `create_recommendation`, `open_trade`, `close_trade`, `evaluate_trade`, `record_exit_decision` |
 | **موافقات** | `request_approval`, `respond_approval` |
-| **Binance** | `connect_binance`, `verify_binance`, `get_binance_status`, `disconnect_binance`, `capture_binance_chart` |
-| **Futures** | `get_futures_positions`, `get_futures_orders`, `modify_futures_sl_tp`, `cancel_futures_order` |
-| **MT5 EA** | `get_ea_diagnostics`, `get_ea_live_quotes`, `capture_mt5_chart`, `modify_sl_tp`, `open_pending_order`, `cancel_mt5_order`, `close_partial`, `query_mt5_terminal` |
-| **MT5 MetaApi** | `connect_mt5`, `disconnect_mt5`, `get_mt5_status` |
-| **شارت** | `capture_chart_snapshot`, `get_recommendation_chart` |
+| **MT5 EA** | `connect_mt5`, `disconnect_mt5`, `get_ea_diagnostics`, `get_ea_live_quotes`, `get_trade_readiness`, `capture_mt5_chart`, `modify_sl_tp`, `open_pending_order`, `cancel_mt5_order`, `close_partial`, `query_mt5_terminal`, `get_account_symbols` |
+| **شارت** | `capture_chart_snapshot`, `get_recommendation_chart`, `get_ohlc`, `detect_levels`, `get_forex_indicators` |
 | **أخرى** | `run_trade_maintenance`, `send_telegram_menu` |
 
 ### أمثلة إضافية
 
 ```
-connect_binance testnet ثم get_binance_status
+set_active_market forex ثم get_trade_readiness — تحقق quoteAgeMs و EA online
 ```
 
 ```
-set_active_market forex ثم get_live_account — تحقق quoteAgeMs
-```
-
-```
-open_trade BTCUSDT market_type futures leverage 5 stop_loss …
+open_trade EURUSD stop_loss 1.15800 take_profit 1.16500 approved_by_user true
 ```
 
 ---

@@ -5,7 +5,7 @@
 - **Name**: (Enter your name here)
 - **Preferred Language**: Arabic *(hint only — follow the operator's live message language; see SYSTEM.md §2)*
 - **Primary Channel**: Telegram
-- **Active Markets**: Crypto (Always active) · Forex & Gold (Only upon explicit request)
+- **Active Markets**: Forex via MetaTrader 5 (platform is forex-only)
 - **Risk Profile**: Managed dynamically via platform settings (`GET /api/agent/risk/status`)
 
 ---

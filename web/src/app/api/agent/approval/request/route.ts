@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { createApprovalRequest } from "@/lib/approvalFlow";
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
-import type { MarketType } from "@/lib/markets/types";
 import { logAudit } from "@/lib/store";
 
 const schema = z.object({
   symbol: z.string().min(1),
   side: z.enum(["buy", "sell"]),
   notional: z.number().positive().optional(),
-  market: z.enum(["crypto", "forex"]).optional(),
+  market: z.string().optional(),
   entry: z.number().nullish(),
   stop_loss: z.number().nullish(),
   take_profit: z.number().nullish(),
@@ -30,13 +30,17 @@ export async function POST(req: NextRequest) {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
 
-    const market = (body.market ?? "crypto") as MarketType;
+    const marketErr = rejectNonForexMarket(body.market);
+    if (marketErr) {
+      return NextResponse.json({ error: marketErr }, { status: 400 });
+    }
+    const market = resolveActiveMarket(body.market ?? DEFAULT_MARKET);
 
     const result = await createApprovalRequest(userId, {
       symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
       notional: body.notional,
-      market: body.market,
+      market,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,
       take_profit: body.take_profit ?? null,

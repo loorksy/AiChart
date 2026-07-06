@@ -1,5 +1,5 @@
-import { buildSnapshot } from "./market";
-import { buildForexSnapshot } from "./markets/forexSnapshot";
+import { buildForexSnapshot } from "./market";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { detectStructureLevels, type StructureAnalysis } from "./ohlc/structure";
 import { fetchOhlc } from "./ohlc/fetchOhlc";
 import { getEffectiveMinRr } from "./riskGuard";
@@ -209,12 +209,9 @@ export async function enrichRecommendationAfterRecord(
 ): Promise<Recommendation> {
   const sym = rec.symbol;
   const interval = rec.timeframe ?? "1h";
-  const mkt: MarketType = market ?? settings.active_market ?? "crypto";
+  const mkt: MarketType = market ?? settings.active_market ?? DEFAULT_MARKET;
 
-  const snap =
-    mkt === "forex"
-      ? await buildForexSnapshot(userId, sym, interval)
-      : await buildSnapshot(sym, interval);
+  const snap = await buildForexSnapshot(userId, sym, interval);
 
   const ohlc = await fetchOhlc({
     userId,

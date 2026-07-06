@@ -1,6 +1,6 @@
 ---
 name: trading-strategies
-description: Universal Combinatorial Matrix of 10,000 Trading Strategy Configurations for Crypto and Forex.
+description: Universal Combinatorial Matrix of 10,000 Trading Strategy Configurations for Forex.
 metadata: {"aichart":{"requires":{"resources":["aichart://trading-strategies"]}}}
 ---
 
@@ -65,7 +65,7 @@ These represent the short-term signal confirming that the price is reacting to t
 *   **C2: Candlestick Pattern Confirmation**: Standard candlestick formations (Bullish/Bearish Engulfing, Hammer/Shooting Star, Pinbar, Morning/Evening Star) on the entry timeframe.
 *   **C3: RSI / MACD Divergence**: Bullish or Bearish divergence between price action and RSI or MACD at the POI.
 *   **C4: MACD Signal Line Cross / Histogram Acceleration**: Momentum cross on the entry timeframe confirming transition of power.
-*   **C5: Order Book Depth & Delta Spikes**: Binance/crypto-specific. Sudden cluster of buy/sell wall absorption or aggressive market order imbalance on footprint/delta charts.
+*   **C5: Order Book Depth & Delta Spikes**: Sudden cluster of buy/sell wall absorption or aggressive market order imbalance on footprint/delta charts (when available from broker feed).
 *   **C6: Smart Money On-Chain Flow (Crypto)**: Aggressive whale deposits/withdrawals, exchange flow balance changes, or smart money wallet buy signals.
 *   **C7: Funding Rate & Open Interest (OI) Divergence**: High funding rate crash or negative funding rate short-squeeze setups coupled with rising Open Interest.
 *   **C8: Volume Breakout Confirmation**: Entry triggered when price breaks a local range with a volume bar at least 1.5x the 20-period average volume.

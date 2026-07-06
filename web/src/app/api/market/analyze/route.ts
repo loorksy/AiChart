@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import {
@@ -36,7 +37,7 @@ const schema = z.object({
     .max(4)
     .default("1h")
     .refine((v) => INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
-  market: z.enum(["crypto", "forex"]).optional(),
+  market: z.string().optional(),
   data_source: z.enum(["oanda", "ea"]).optional(),
   stream: z.boolean().optional(),
   source: z.enum(["market", "smart_chart"]).optional(),
@@ -98,16 +99,20 @@ export async function POST(req: NextRequest) {
     }
     release = slot.release;
 
+    const marketErr = rejectNonForexMarket(body.market);
+    if (marketErr) {
+      return NextResponse.json({ error: marketErr }, { status: 400 });
+    }
+
     const settings = await getSettings(user.id);
     let symbol = body.symbol.toUpperCase().trim();
     const interval = body.interval;
-    const market = body.market ?? settings.active_market ?? "crypto";
-    const dataSource = market === "forex" ? (body.data_source ?? "oanda") : undefined;
+    const market = resolveActiveMarket(body.market ?? settings.active_market ?? DEFAULT_MARKET);
+    const dataSource = body.data_source ?? "oanda";
     if (market === "forex") {
       const resolved = await resolveMt5Symbol(user.id, symbol);
       if (resolved) symbol = resolved;
     }
-    // Session type is inferred from the selected timeframe — no manual choice.
     const tradingStyle = tradingStyleForInterval(interval);
     const profile = profileForTradingStyle(tradingStyle);
     const stream = body.stream !== false;

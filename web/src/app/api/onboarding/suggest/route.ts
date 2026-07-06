@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     const prompt = [
       "أنت مستشار تداول لمبتدئ عربي. اقترح إعدادات آمنة بناءً على:",
-      `- رأس المال: ${body.maxCapital} USDT`,
+      `- رأس المال: ${body.maxCapital} USD`,
       `- هدف ربح يومي: ${body.dailyProfit}%`,
       `- أقصى خسارة يومية: ${body.dailyLoss}%`,
       body.tradingGoal ? `- الهدف من التداول: ${body.tradingGoal}` : "",

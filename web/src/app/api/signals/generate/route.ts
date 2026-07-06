@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     const intents = await processRecommendations(
       user.id,
       result.recommendations ?? [],
-      { market: "crypto" },
+      { market: "forex" },
     );
 
     const rec = result.recommendations?.[0];

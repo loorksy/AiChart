@@ -17,7 +17,7 @@ import { normalizeInterval } from "@/lib/intervals";
 import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 import type { MarketType } from "@/lib/markets/types";
 
-/** Market UI klines — forex via OANDA, crypto via Binance. */
+/** Market UI klines — forex via OANDA or EA bridge. */
 export async function GET(req: NextRequest) {
   try {
     // Public: guests may load candles to browse the chart (rate-limited).
@@ -29,14 +29,12 @@ export async function GET(req: NextRequest) {
       );
     }
     const userId = user?.id ?? 0;
-    const symbol = (req.nextUrl.searchParams.get("symbol") || "BTCUSDT")
+    const symbol = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
       .toUpperCase()
       .replace(/[^A-Z0-9.]/g, "");
     const intervalRaw = req.nextUrl.searchParams.get("interval") || "1h";
     const interval = normalizeInterval(intervalRaw);
-    const market = (req.nextUrl.searchParams.get("market") === "forex"
-      ? "forex"
-      : "crypto") as MarketType;
+    const market: MarketType = "forex";
     const limitParam = req.nextUrl.searchParams.get("limit");
     const limit = Math.min(
       Math.max(
@@ -132,11 +130,7 @@ export async function GET(req: NextRequest) {
       }
 
       const nextCursor =
-        market === "crypto" && result.nextCursor
-          ? result.nextCursor
-          : trimmed.length > 0
-            ? toChartSeconds(trimmed[0]!.time) * 1000
-            : null;
+        trimmed.length > 0 ? toChartSeconds(trimmed[0]!.time) * 1000 : null;
 
       const res = NextResponse.json({
         symbol: result.symbol,

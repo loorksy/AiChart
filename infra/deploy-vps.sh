@@ -100,6 +100,26 @@ EOF
   log "       export AICHART_SERVICE_TOKEN from web/.env, then: pm2 start aichart-mcp -- gateway"
 }
 
+merge_crypto_endpoints() {
+  local local_env="$INSTALL_DIR/infra/crypto-endpoints.local.env"
+  local web_env="$INSTALL_DIR/web/.env"
+  if [ ! -f "$local_env" ]; then
+    log "No infra/crypto-endpoints.local.env — set CRYPTO_* in web/.env manually"
+    return 0
+  fi
+  log "Merging crypto endpoint keys from crypto-endpoints.local.env"
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [ -z "$line" ] && continue
+    key="${line%%=*}"
+    [ -z "$key" ] && continue
+    if ! grep -q "^${key}=" "$web_env" 2>/dev/null; then
+      echo "$line" >>"$web_env"
+    fi
+  done <"$local_env"
+}
+
 main() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "Run as root (or sudo bash deploy-vps.sh)" >&2
@@ -127,6 +147,7 @@ main() {
   log "Using port $PORT (other projects untouched)"
 
   write_env_if_missing
+  merge_crypto_endpoints
 
   cd "$INSTALL_DIR/web"
   mkdir -p data

@@ -1,34 +1,6 @@
+import { DEFAULT_MARKET } from "../marketPolicy";
 import type { MarketType, ResolvedSymbol } from "./types";
 import { getForexBackend } from "../brokers/forexBackend";
-
-/** Normalizes a crypto symbol to a Binance spot USDT pair (e.g. BTC → BTCUSDT). */
-function resolveCrypto(query: string): ResolvedSymbol {
-  const raw = query.trim().toUpperCase();
-  if (!raw) {
-    return {
-      raw: query,
-      symbol: "BTCUSDT",
-      market: "crypto",
-      displayName: "BTC/USDT",
-    };
-  }
-
-  let sym = raw.replace(/[^A-Z0-9]/g, "");
-  if (sym.endsWith("USDC") || sym.endsWith("BUSD")) {
-    sym = `${sym.slice(0, -4)}USDT`;
-  } else if (!sym.endsWith("USDT")) {
-    sym = sym.replace(/USD$/i, "");
-    if (!sym.endsWith("USDT")) sym = `${sym}USDT`;
-  }
-
-  const base = sym.slice(0, -4);
-  return {
-    raw: query,
-    symbol: sym,
-    market: "crypto",
-    displayName: `${base}/USDT`,
-  };
-}
 
 /**
  * Normalizes a forex symbol (e.g. "EUR/USD" → "EURUSD", "xauusd" → "XAUUSD").
@@ -48,26 +20,24 @@ function resolveForex(query: string): ResolvedSymbol {
   return { raw: query, symbol: sym, market: "forex", displayName: display };
 }
 
-/** Normalizes user input to a broker symbol for the given market. */
+/** Normalizes user input to a broker symbol for forex. */
 export function resolveSymbol(
   query: string,
-  market: MarketType = "crypto",
+  market: MarketType = DEFAULT_MARKET,
 ): ResolvedSymbol {
-  return market === "forex" ? resolveForex(query) : resolveCrypto(query);
+  void market;
+  return resolveForex(query);
 }
 
-/** Intent/recommendation symbol: uppercase for crypto; preserve broker suffix case for forex. */
+/** Intent/recommendation symbol: preserve broker suffix case for forex. */
 export function normalizeIntentSymbol(
   symbol: string,
-  market: MarketType = "crypto",
+  _market: MarketType = DEFAULT_MARKET,
 ): string {
-  const trimmed = symbol.trim();
-  if (market === "forex") return trimmed.replace(/[\s/_-]+/g, "");
-  return trimmed.toUpperCase();
+  return symbol.trim().replace(/[\s/_-]+/g, "");
 }
 
-export function marketLabel(market: MarketType = "crypto"): string {
-  if (market !== "forex") return "عملات رقمية (Binance Spot)";
+export function marketLabel(_market: MarketType = DEFAULT_MARKET): string {
   return getForexBackend() === "metaapi"
     ? "فوركس (MetaTrader · MetaApi)"
     : "فوركس (MetaTrader · EA)";

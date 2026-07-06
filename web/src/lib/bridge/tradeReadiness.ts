@@ -2,6 +2,7 @@ import {
   getEffectiveMinConfidence,
   type RiskContext,
 } from "@/lib/riskGuard";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import {
   countOpenTrades,
   getLimits,
@@ -320,7 +321,7 @@ export async function buildTradeReadiness(
   const userId = input.userId;
   const settings = await getSettings(userId);
   const limits = await getLimits(userId);
-  const market = input.market ?? settings.active_market ?? "crypto";
+  const market = input.market ?? settings.active_market ?? DEFAULT_MARKET;
   const symbol = input.symbol?.trim().toUpperCase() || null;
   const resolvedEnv = await getResolvedExecutionEnv(userId, market);
   const riskCtx: Pick<RiskContext, "practiceMode" | "resolvedEnv"> = {
@@ -409,7 +410,7 @@ export async function buildTradeReadiness(
 
         // P1 — tick-staleness gate: if the EA sent a tickTime and the last
         // real MT5 tick is too old, the market is closed/frozen. Only applies
-        // to forex instruments; crypto CFDs are 24/7 and not gated here.
+        // to forex instruments.
         if (forexQuote.tickTime && forexQuote.tickTime > 0 && symbol && isForexSymbol(symbol)) {
           const forexTickStaleMs = Number(process.env.FOREX_TICK_STALE_MS) > 0
             ? Number(process.env.FOREX_TICK_STALE_MS)

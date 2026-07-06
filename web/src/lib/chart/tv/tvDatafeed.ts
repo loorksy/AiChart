@@ -90,9 +90,9 @@ export function createAiChartDatafeed(
   market: MarketType = "forex",
   opts: { eaEnabled?: boolean } = {},
 ): IBasicDataFeed {
-  const exchange = market === "forex" ? "OANDA" : "BINANCE";
-  const symbolType = market === "forex" ? "forex" : "crypto";
-  const eaEnabled = Boolean(opts.eaEnabled) && market === "forex";
+  const exchange = "OANDA";
+  const symbolType = "forex";
+  const eaEnabled = Boolean(opts.eaEnabled);
   const subscribers = new Map<string, ReturnType<typeof setInterval>>();
 
   const config: DatafeedConfiguration = {

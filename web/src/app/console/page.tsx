@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import {
   getAdminPlatformStats,
-  getBinanceAccountMeta,
   getSettings,
   listIntents,
 } from "@/lib/store";
@@ -28,14 +27,12 @@ export default async function ConsoleOverviewPage() {
   }
 
   const settings = await getSettings(user.id);
-  const binance = await getBinanceAccountMeta(user.id);
   const forex = await getForexConnectionView(user.id);
   const pendingIntents = await listIntents(user.id, "pending", 50);
 
   return (
     <BridgeOverviewClient
       settings={settings}
-      hasBinance={Boolean(binance)}
       eaConnected={forex.connected}
       eaOnline={forex.online}
       pendingIntents={pendingIntents}

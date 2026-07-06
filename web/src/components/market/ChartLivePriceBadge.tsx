@@ -1,10 +1,8 @@
 "use client";
 
 import { TrendingDown, TrendingUp } from "lucide-react";
-import {
-  useBinanceLivePrice,
-  type LivePriceTick,
-} from "@/hooks/useBinanceLivePrice";
+import { useEaLivePrice } from "@/hooks/useEaLivePrice";
+import type { LivePriceTick } from "@/hooks/livePriceTypes";
 import { formatTickerPrice } from "@/components/market/formatLevel";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +15,7 @@ export function ChartLivePriceBadge({
   live?: LivePriceTick;
   className?: string;
 }) {
-  const fromHook = useBinanceLivePrice(liveProp ? "" : symbol);
+  const fromHook = useEaLivePrice(liveProp ? "" : symbol, !liveProp);
   const live = liveProp ?? fromHook;
   const up = live.changePct >= 0;
   const hasPrice = live.price > 0;
@@ -45,7 +43,7 @@ export function ChartLivePriceBadge({
       >
         {hasPrice ? formatTickerPrice(live.price) : "—"}
       </p>
-      {hasPrice && (
+      {hasPrice && live.changePct !== 0 && (
         <span
           className={cn(
             "inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums",

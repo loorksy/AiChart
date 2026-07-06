@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getRecommendation, getSettings } from "@/lib/store";
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
@@ -24,7 +25,7 @@ export async function GET(
     }
 
     const settings = await getSettings(user.id);
-    const market = (rec.market ?? settings.active_market ?? "crypto") as MarketType;
+    const market = (rec.market ?? settings.active_market ?? DEFAULT_MARKET) as MarketType;
 
     const buffer = await buildChartSnapshotBufferForMarket(
       user.id,

@@ -1,4 +1,5 @@
 import { withBridge } from "@/lib/bridge";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { resolveMaxOpenTrades } from "@/lib/riskLimits";
 import { buildAccountProfile } from "@/lib/accountProfile";
 import { getExecutionEnvSnapshot } from "@/lib/executionEnv";
@@ -30,7 +31,7 @@ export const GET = withBridge(async ({ userId }) => {
   return {
     mode: settings.mode,
     style: settings.style,
-    activeMarket: settings.active_market ?? "crypto",
+    activeMarket: settings.active_market ?? DEFAULT_MARKET,
     // 1 = riskGuard enforced (safe default); 0 = full-autonomous (agent decides).
     riskGuardEnabled: settings.risk_guard_enabled !== 0,
     capital: {

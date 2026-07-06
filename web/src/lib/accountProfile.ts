@@ -1,5 +1,6 @@
 import { getEaConnection, isHeartbeatFresh, parseEaSymbolSpecs } from "./eaStore";
 import { getExecutionEnvSnapshot, type ExecutionEnv } from "./executionEnv";
+import { DEFAULT_MARKET, resolveActiveMarket } from "./marketPolicy";
 import type { MarketType } from "./markets/types";
 import { spreadFromBidAsk } from "./spread";
 import { getSettings } from "./store";
@@ -25,15 +26,11 @@ function accountTypeAr(env: ExecutionEnv | null): "حقيقي" | "ديمو" | "�
 }
 
 function platformLabel(
-  market: MarketType,
   eaPlatform: string | null,
   connected: boolean,
 ): string {
-  if (market === "forex") {
-    if (!connected) return "—";
-    return eaPlatform?.toUpperCase() === "MT4" ? "MT4" : "MT5";
-  }
-  return connected ? "Binance" : "—";
+  if (!connected) return "—";
+  return eaPlatform?.toUpperCase() === "MT4" ? "MT4" : "MT5";
 }
 
 export async function buildAccountProfile(
@@ -42,17 +39,15 @@ export async function buildAccountProfile(
 ): Promise<AccountProfile> {
   const settings = await getSettings(userId);
   const envSnap = await getExecutionEnvSnapshot(userId);
-  const market = settings.active_market ?? "crypto";
+  const market = resolveActiveMarket(settings.active_market ?? DEFAULT_MARKET);
   const eaConn = await getEaConnection(userId);
   const forexOnline =
     Boolean(eaConn) &&
     eaConn!.status !== "revoked" &&
     isHeartbeatFresh(eaConn!.last_heartbeat_at);
 
-  const resolved =
-    market === "forex" ? envSnap.forex.resolved : envSnap.crypto.resolved;
-  const connected =
-    market === "forex" ? forexOnline : envSnap.crypto.connected;
+  const resolved = envSnap.forex.resolved;
+  const connected = forexOnline;
 
   let spreadPips: number | null = null;
   let spreadPct: number | null = null;
@@ -74,24 +69,20 @@ export async function buildAccountProfile(
     }
   }
 
-  const futuresEnabled = Boolean(settings.futures_enabled);
-  const leverage = futuresEnabled ? (settings.default_leverage ?? 3) : null;
+  const futuresEnabled = false;
+  const leverage = null;
 
   return {
-    hasLeverage: futuresEnabled && market === "crypto",
+    hasLeverage: false,
     leverage,
-    marginMode: futuresEnabled ? "cross" : null,
+    marginMode: null,
     hasSpread,
     spreadPips,
     spreadPct,
     marketType: market,
-    platform: platformLabel(market, eaConn?.platform ?? null, connected),
+    platform: platformLabel(eaConn?.platform ?? null, connected),
     accountLogin:
-      market === "forex" && eaConn?.account_login
-        ? String(eaConn.account_login)
-        : market === "crypto" && connected
-          ? "Spot/Futures"
-          : null,
+      eaConn?.account_login ? String(eaConn.account_login) : null,
     accountCurrency: eaConn?.account_currency ?? "USD",
     accountType: accountTypeAr(resolved),
   };

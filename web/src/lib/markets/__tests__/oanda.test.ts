@@ -14,7 +14,7 @@ test("maps AiChart symbols to OANDA instruments", () => {
 });
 
 test("rejects unmappable symbols", () => {
-  assert.equal(toOandaInstrument("BTCUSDT"), null); // 7 chars
+  assert.equal(toOandaInstrument("NOTFOREX"), null);
   assert.equal(toOandaInstrument("US30"), null);
 });
 

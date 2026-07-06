@@ -8,7 +8,7 @@ import {
 } from "@/lib/ohlc/chartTime";
 
 describe("toChartSeconds", () => {
-  it("converts Binance ms to seconds", () => {
+  it("converts millisecond timestamps to seconds", () => {
     assert.equal(toChartSeconds(1_700_000_000_000), 1_700_000_000);
   });
 
@@ -31,7 +31,7 @@ describe("normalizeCandlesForChart", () => {
 });
 
 describe("sanitizeCandlesForMarket", () => {
-  it("drops crypto-scale bars on forex chart", () => {
+  it("drops cross-market-scale bars on forex chart", () => {
     const forex = [
       { time: 100, open: 1.13, high: 1.14, low: 1.12, close: 1.135 },
       { time: 200, open: 1600, high: 1620, low: 1590, close: 1615 },

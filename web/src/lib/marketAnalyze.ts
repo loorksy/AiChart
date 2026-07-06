@@ -1,4 +1,5 @@
-import { buildSnapshot, buildForexSnapshot, type MarketSnapshot } from "./market";
+import { resolveActiveMarket } from "./marketPolicy";
+import { buildForexSnapshot, type MarketSnapshot } from "./market";
 import { profileForTradingStyle, buildProfilePromptHints, buildTradingStylePromptHints, buildStrategyMatrixHints } from "./analysisProfile";
 import type { AnalysisProfile } from "./analysisProfile";
 import type { TradingStyle } from "./types";
@@ -107,13 +108,12 @@ function buildAnalyzeFallbackReply(
 export type { ChartVisionSource } from "./marketAnalyzeLabels";
 export { chartVisionLabelAr } from "./marketAnalyzeLabels";
 
-/** Map MT5 symbols to a news feed symbol (CryptoPanic / fear-greed). */
+/** Map symbol to a context label for macro sentiment (forex-only). */
 function newsContextSymbol(symbol: string): string {
   const u = symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (u.includes("BTC")) return "BTCUSDT";
-  if (u.includes("ETH")) return "ETHUSDT";
-  if (u.includes("XAU") || u.includes("GOLD")) return "XAUUSDT";
-  return symbol;
+  if (u.includes("XAU") || u.includes("GOLD")) return "XAUUSD";
+  if (u.length >= 6) return u.slice(0, 6);
+  return symbol.toUpperCase();
 }
 
 function buildAnalyzePrompt(
@@ -322,8 +322,8 @@ export async function runMarketAnalyze(
     tradingStyle?: TradingStyle;
   },
 ): Promise<MarketAnalyzeResult> {
-  const market: MarketType = opts?.market ?? "forex";
-  const dataSource = market === "forex" ? (opts?.dataSource ?? "oanda") : undefined;
+  const market: MarketType = resolveActiveMarket(opts?.market);
+  const dataSource = opts?.dataSource ?? "oanda";
   let sym = symbol.toUpperCase().trim();
   if (market === "forex") {
     const resolved = await resolveMt5Symbol(userId, sym);
@@ -341,9 +341,7 @@ export async function runMarketAnalyze(
 
   emit({ id: "mkt-data", label: "جلب لقطة السوق والشموع", status: "running" });
   const [snapResult, ohlcResult, tvContext] = await Promise.all([
-    market === "forex"
-      ? buildForexSnapshot(userId, sym, interval, dataSource)
-      : buildSnapshot(sym, interval),
+    buildForexSnapshot(userId, sym, interval, dataSource),
     fetchOhlc({ userId, symbol: sym, interval, market, limit: 120, source: dataSource }).catch(
       () => null,
     ),

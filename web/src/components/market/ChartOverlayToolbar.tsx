@@ -17,7 +17,7 @@ import { formatTickerPrice } from "@/components/market/formatLevel";
 import { IntervalPicker } from "@/components/market/IntervalPicker";
 import { MarketTypeSelector } from "@/components/market/MarketTypeSelector";
 import { SymbolPicker, type SymbolOption } from "@/components/market/SymbolPicker";
-import type { LivePriceTick } from "@/hooks/useBinanceLivePrice";
+import type { LivePriceTick } from "@/hooks/livePriceTypes";
 import type { MarketType } from "@/lib/markets/types";
 import { cn } from "@/lib/utils";
 

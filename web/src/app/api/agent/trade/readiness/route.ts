@@ -1,16 +1,17 @@
 import { withBridge } from "@/lib/bridge";
 import { buildTradeReadiness } from "@/lib/bridge/tradeReadiness";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { getSettings } from "@/lib/store";
-import type { MarketType } from "@/lib/markets/types";
 import { ApiError } from "@/lib/api";
 
 /** Bridge: aggregated trade pre-flight — EA, quotes, risk, confidence gate. */
 export const GET = withBridge(async ({ req, userId }) => {
   const { searchParams } = req.nextUrl;
   const settings = await getSettings(userId);
-  const market = (searchParams.get("market") ??
-    settings.active_market ??
-    "crypto") as MarketType;
+  const rawMarket = searchParams.get("market") ?? settings.active_market;
+  const marketErr = rejectNonForexMarket(rawMarket);
+  if (marketErr) throw new ApiError(400, marketErr);
+  const market = resolveActiveMarket(rawMarket ?? DEFAULT_MARKET);
   const symbol = searchParams.get("symbol");
   const confidenceRaw = searchParams.get("confidence");
   const confidence =

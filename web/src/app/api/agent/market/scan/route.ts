@@ -1,31 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { isSymbolAllowed } from "@/lib/allowedAssets";
 import { resolveScanAssetsForMarket } from "@/lib/allowedAssets.server";
 import { getSettings } from "@/lib/store";
-import { scanForexSymbol, scanSymbol } from "@/lib/monitor";
-import type { MarketType } from "@/lib/markets/types";
+import { scanForexSymbol } from "@/lib/monitor";
 
 const schema = z.object({
   symbols: z.array(z.string()).max(30).optional(),
   interval: z.string().optional(),
-  market: z.enum(["crypto", "forex"]).optional(),
+  market: z.string().optional(),
 });
 
 /**
- * Bridge: cheap code-only opportunity scan over the watchlist.
- * Uses crypto Binance data or forex EA-streamed candles per active_market.
+ * Bridge: cheap code-only opportunity scan over the watchlist (forex via EA).
  */
 export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json().catch(() => ({})));
 
+    const marketErr = rejectNonForexMarket(body.market);
+    if (marketErr) {
+      return NextResponse.json({ error: marketErr }, { status: 400 });
+    }
+
     const settings = await getSettings(userId);
-    const market: MarketType =
-      body.market ?? settings.active_market ?? "crypto";
+    const market = resolveActiveMarket(body.market ?? settings.active_market ?? DEFAULT_MARKET);
     const interval = body.interval ?? settings.analysis_interval ?? "1h";
 
     const symbols =
@@ -40,10 +43,12 @@ export async function POST(req: NextRequest) {
         continue;
       }
       try {
-        const candidate =
-          market === "forex"
-            ? await scanForexSymbol(userId, symbol, settings.style, interval)
-            : await scanSymbol(symbol, settings.style, interval);
+        const candidate = await scanForexSymbol(
+          userId,
+          symbol,
+          settings.style,
+          interval,
+        );
         if (candidate) {
           candidates.push({
             symbol: candidate.symbol,

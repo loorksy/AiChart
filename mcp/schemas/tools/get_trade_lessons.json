@@ -14,7 +14,7 @@
       "maximum": 10
     },
     "recent": {
-      "description": "آخر الدروس بغض النظر عن الرمز",
+      "description": "Latest lessons regardless of symbol",
       "type": "boolean"
     }
   },

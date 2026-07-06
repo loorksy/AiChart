@@ -3,7 +3,6 @@ import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import {
   completeOnboarding,
-  getBinanceAccountMeta,
   getSettings,
   isOnboardingDone,
   updateSettings,
@@ -27,10 +26,8 @@ export async function GET() {
   try {
     const user = await requirePlatformAccess();
     const settings = await getSettings(user.id);
-    const binance = await getBinanceAccountMeta(user.id);
     return NextResponse.json({
       done: await isOnboardingDone(user.id),
-      hasBinance: Boolean(binance),
       settings,
     });
   } catch (err) {

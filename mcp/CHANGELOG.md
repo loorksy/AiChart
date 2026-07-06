@@ -16,7 +16,7 @@
 | Tool | Route | Purpose |
 |------|-------|---------|
 | `get_trade_readiness` | `GET /api/agent/trade/readiness` | Pre-flight: EA online, fresh quotes, spread, kill switch, daily loss, **confidenceGate** |
-| `get_ohlc` | `GET /api/agent/market/ohlc` | OHLC candles (forex via EA `get_ohlc`, crypto via Binance) |
+| `get_ohlc` | `GET /api/agent/market/ohlc` | OHLC candles (forex via EA or OANDA) |
 | `get_forex_indicators` | `GET /api/agent/market/forex-indicators` | RSI, MACD, SMA, EMA, Bollinger, ATR, Stochastic + trend |
 | `detect_levels` | `GET /api/agent/market/detect-levels` | Swing-based support/resistance + market structure |
 | `request_ea_reconnect` | `POST /api/agent/ea/reconnect` | Queue EA reconnect on next heartbeat |

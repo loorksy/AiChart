@@ -4,16 +4,21 @@
   "properties": {
     "symbol": {
       "type": "string",
-      "description": "EURUSD أو BTCUSDT"
+      "description": "e.g. EURUSD"
     },
     "interval": {
       "type": "string"
     },
     "market": {
       "type": "string",
+      "const": "forex"
+    },
+    "source": {
+      "description": "Forex candle source — ea required for broker suffix symbols (e.g. XAUUSDM)",
+      "type": "string",
       "enum": [
-        "crypto",
-        "forex"
+        "oanda",
+        "ea"
       ]
     },
     "limit": {
@@ -22,7 +27,7 @@
       "maximum": 500
     },
     "cursor": {
-      "description": "ms — pagination crypto",
+      "description": "ms — pagination cursor",
       "type": "integer",
       "minimum": -9007199254740991,
       "maximum": 9007199254740991

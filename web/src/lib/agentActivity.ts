@@ -27,15 +27,7 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
     return `جلب لقطة فنية لـ ${symbol} · ${interval}`;
   },
   get_price: (input) => `جلب السعر اللحظي لـ ${String(input.symbol ?? "الرمز")}`,
-  get_account_balances: () => "قراءة أرصدة حساب Binance",
-  smart_money_signals: (input) =>
-    `إشارات الأموال الذكية · سلسلة ${String(input.chainId ?? "56")}`,
-  crypto_market_rank: (input) =>
-    `بيانات سوق Web3 · ${String(input.command ?? "token-rank")}`,
-  binance_cli: (input) => {
-    const args = Array.isArray(input.args) ? input.args.map(String).join(" ") : "";
-    return `Binance CLI · ${args.slice(0, 80)}`;
-  },
+  get_account_balances: () => "قراءة أرصدة الحساب",
   record_recommendation: (input) => {
     const symbol = String(input.symbol ?? "");
     const action =
@@ -70,8 +62,7 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
     return `طلب موافقة على ${side} · ${String(input.symbol ?? "")}`;
   },
   set_trading_mode: (input) => `تبديل وضع التنفيذ · ${String(input.mode ?? "")}`,
-  set_active_market: (input) =>
-    `تبديل السوق · ${input.active_market === "forex" ? "فوركس" : "كريبتو"}`,
+  set_active_market: () => "تبديل السوق · فوركس",
   set_trading_style: (input) =>
     `ضبط أسلوب التداول · ${String(input.trading_style ?? "")}`,
   search_trade_memory: (input) =>

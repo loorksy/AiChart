@@ -9,7 +9,7 @@ Trading and technical analysis execution using **Claude.ai Connectors** and the 
 ```
 User ←→ Claude (Connectors Interface)
           ↓ (Model Context Protocol)
-     aichart-mcp → /api/agent/* → Risk Guard → Binance / MT5 (Exness)
+     aichart-mcp → /api/agent/* → Risk Guard → MetaTrader 5 (Forex)
 ```
 
 *   **Agent Rules**: [`workspace/AGENTS.md`](workspace/AGENTS.md) (served as resource `aichart://trading-rules`).

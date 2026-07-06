@@ -1,28 +1,21 @@
 import { getSettings, listUsersForTradeMaintenance } from "./store";
-import {
-  scanOpenTradesForTakeProfit,
-  syncFuturesClosures,
-  syncFuturesLimitFills,
-  syncOcoFills,
-} from "./tradeClose";
+import { scanOpenTradesForTakeProfit } from "./tradeClose";
 
 const MAX_USERS = 8;
 const MAX_TRADES_PER_USER = 5;
 
 export interface CronPostScanResult {
   usersProcessed: number;
-  ocoSynced: number;
   autoClosed: number;
   errors: string[];
 }
 
-/** OCO sync + auto take-profit for one user (MCP maintenance tool). */
+/** Auto take-profit scan for one user (MCP maintenance tool). */
 export async function runUserPostScan(
   userId: number,
 ): Promise<CronPostScanResult> {
   const result: CronPostScanResult = {
     usersProcessed: 1,
-    ocoSynced: 0,
     autoClosed: 0,
     errors: [],
   };
@@ -30,22 +23,6 @@ export async function runUserPostScan(
   const settings = await getSettings(userId);
 
   try {
-    const oco = await syncOcoFills(userId, MAX_TRADES_PER_USER);
-    result.ocoSynced += oco.synced;
-    result.errors.push(...oco.errors.map((e) => `user ${userId} oco: ${e}`));
-
-    const limit = await syncFuturesLimitFills(userId, MAX_TRADES_PER_USER);
-    result.ocoSynced += limit.synced;
-    result.errors.push(
-      ...limit.errors.map((e) => `user ${userId} limit: ${e}`),
-    );
-
-    const fut = await syncFuturesClosures(userId, MAX_TRADES_PER_USER);
-    result.ocoSynced += fut.synced;
-    result.errors.push(
-      ...fut.errors.map((e) => `user ${userId} futures: ${e}`),
-    );
-
     if (settings.auto_take_profit_usd > 0) {
       const tp = await scanOpenTradesForTakeProfit(userId, MAX_TRADES_PER_USER);
       result.autoClosed += tp.closed;
@@ -60,11 +37,10 @@ export async function runUserPostScan(
   return result;
 }
 
-/** OCO sync + auto take-profit after the monitor cycle (batched). */
+/** Auto take-profit after the monitor cycle (batched). */
 export async function runCronPostScan(): Promise<CronPostScanResult> {
   const result: CronPostScanResult = {
     usersProcessed: 0,
-    ocoSynced: 0,
     autoClosed: 0,
     errors: [],
   };
@@ -74,7 +50,6 @@ export async function runCronPostScan(): Promise<CronPostScanResult> {
 
   for (const { id: userId } of users) {
     const one = await runUserPostScan(userId);
-    result.ocoSynced += one.ocoSynced;
     result.autoClosed += one.autoClosed;
     result.errors.push(...one.errors);
   }

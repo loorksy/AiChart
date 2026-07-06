@@ -86,7 +86,7 @@ export default function ReportsClient({
             <KpiCard
               label="إجمالي العائد"
               value={`${formatCurrency(stats.totalPnl)}`}
-              sub="USDT محقّق"
+              sub="USD محقّق"
               tone={stats.totalPnl >= 0 ? "positive" : "negative"}
             />
             <KpiCard

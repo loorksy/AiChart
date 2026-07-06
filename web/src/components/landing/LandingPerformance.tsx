@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 interface LogEntry {
   id: string;
   time: string;
-  platform: "Binance" | "MT5";
+  platform: "MT5";
   type: string;
   symbol: string;
   detail: string;
@@ -36,10 +36,10 @@ export function LandingPerformance() {
       {
         id: "1",
         time: "03:45:10",
-        platform: "Binance",
+        platform: "MT5",
         type: "BUY",
-        symbol: "BTCUSDT",
-        detail: "ستوب لوز: $63,800 · تيك بروفيت: $66,200",
+        symbol: "EURUSD",
+        detail: "ستوب لوز: 1.07900 · تيك بروفيت: 1.08900",
         status: "success",
       },
       {
@@ -54,9 +54,9 @@ export function LandingPerformance() {
       {
         id: "3",
         time: "03:47:55",
-        platform: "Binance",
+        platform: "MT5",
         type: "TP TARGET",
-        symbol: "ETHUSDT",
+        symbol: "XAUUSD",
         detail: "تيك بروفيت منفّذ تلقائياً (+2.85%)",
         status: "info",
       },
@@ -64,11 +64,11 @@ export function LandingPerformance() {
     setLogs(initialLogs);
 
     const logPool = [
-      { platform: "Binance", type: "BUY", symbol: "SOLUSDT", detail: "ستوب لوز: $132.50 · تيك بروفيت: $148.00" },
+      { platform: "MT5", type: "BUY", symbol: "EURUSD", detail: "ستوب لوز: 1.07900 · تيك بروفيت: 1.08900" },
       { platform: "MT5", type: "SELL", symbol: "GBPUSD", detail: "ستوب لوز: 1.27500 · تيك بروفيت: 1.25800" },
-      { platform: "Binance", type: "BUY", symbol: "BNBUSDT", detail: "ستوب لوز: $582.00 · تيك بروفيت: $615.00" },
+      { platform: "MT5", type: "BUY", symbol: "USDJPY", detail: "ستوب لوز: 149.200 · تيك بروفيت: 150.100" },
       { platform: "MT5", type: "TP TARGET", symbol: "XAUUSD", detail: "تيك بروفيت منفّذ على الذهب (+3.20%)" },
-      { platform: "Binance", type: "SL HIT", symbol: "AVAXUSDT", detail: "ستوب لوز مفعّل لحماية رأس المال (-1.5%)" },
+      { platform: "MT5", type: "SL HIT", symbol: "AUDUSD", detail: "ستوب لوز مفعّل لحماية رأس المال (-1.5%)" },
     ] as const;
 
     const interval = setInterval(() => {
@@ -118,12 +118,12 @@ export function LandingPerformance() {
               <span>{isRtl ? "بث الأداء المباشر" : "Live Performance Stream"}</span>
             </div>
             <h2 className="text-2xl font-bold tracking-tight sm:text-3xl text-white">
-              {isRtl ? "تشغيل عبر المنصات بالثواني" : "Cross-Platform Execution Live"}
+              {isRtl ? "تنفيذ فوركس مباشر عبر MT5" : "Live Forex Execution on MT5"}
             </h2>
             <p className="text-xs text-white/50 leading-relaxed">
               {isRtl
-                ? "شاهد وكلاء الذكاء الاصطناعي يراقبون مستويات الأسعار، ويفحصون إعدادات المخاطر (Risk Guard) وينفذون الصفقات بشكل متزامن على Binance و MT5."
-                : "Watch AI Agents monitor price action levels, verify Risk Guard constraints, and execute trades concurrently across Binance and MetaTrader 5."}
+                ? "شاهد وكلاء الذكاء الاصطناعي يراقبون مستويات الأسعار، ويفحصون إعدادات المخاطر (Risk Guard) وينفذون الصفقات على MetaTrader 5."
+                : "Watch AI agents monitor price action, verify Risk Guard constraints, and execute forex trades on MetaTrader 5."}
             </p>
           </div>
 
@@ -181,7 +181,7 @@ export function LandingPerformance() {
               </span>
             </div>
             <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest">
-              Binance · MT5 Bridge
+              MetaTrader 5 Bridge
             </span>
           </div>
 
@@ -198,12 +198,7 @@ export function LandingPerformance() {
                 >
                   <div className="flex items-start gap-2.5 min-w-0">
                     <span
-                      className={cn(
-                        "inline-flex shrink-0 items-center justify-center rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase",
-                        log.platform === "Binance"
-                          ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                          : "bg-blue-500/10 text-blue-400 border border-blue-500/20",
-                      )}
+                      className="inline-flex shrink-0 items-center justify-center rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20"
                     >
                       {log.platform}
                     </span>

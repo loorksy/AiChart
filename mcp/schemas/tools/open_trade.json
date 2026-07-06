@@ -24,17 +24,14 @@
     },
     "market": {
       "type": "string",
-      "enum": [
-        "crypto",
-        "forex"
-      ]
+      "const": "forex"
     },
     "entry": {
       "type": "number"
     },
     "stop_loss": {
       "type": "number",
-      "description": "وقف الخسارة — إلزامي، يُرفض بدونه"
+      "description": "Stop loss — mandatory, rejected without it"
     },
     "take_profit": {
       "type": "number"

@@ -3,6 +3,7 @@ import {
   getLimits,
   createIntent,
 } from "./store";
+import { DEFAULT_MARKET } from "./marketPolicy";
 import { planOrderFromRecommendation } from "./orderPlan";
 import { executeIntent } from "./execution";
 import { buildAccountProfile } from "./accountProfile";
@@ -71,7 +72,7 @@ export async function processRecommendations(
 
   const autoExecute = settings.mode === "auto";
 
-  const market = options?.market ?? settings.active_market ?? "crypto";
+  const market = options?.market ?? settings.active_market ?? DEFAULT_MARKET;
 
   const effectiveCapital =
     limits.max_capital_cap > 0

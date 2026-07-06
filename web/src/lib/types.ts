@@ -155,7 +155,7 @@ export interface TradingSettings {
   analysis_interval?: string;
   /** demo | live — preferred execution environment for agent + UI. */
   execution_env_preference?: string;
-  /** Binance USDT-M futures opt-in (0 = spot only). */
+  /** Futures opt-in (legacy column — always disabled on forex-only platform). */
   futures_enabled?: number;
   /** Default leverage for futures intents (capped by admin max_leverage_cap). */
   default_leverage?: number;
@@ -170,14 +170,6 @@ export interface AdminLimits {
   claude_quota: number;
   /** Admin hard cap on leverage for futures (default 10x). */
   max_leverage_cap?: number;
-  updated_at: string;
-}
-
-export interface BinanceAccountMeta {
-  user_id: number;
-  env: "testnet" | "prod";
-  region?: "global" | "us" | "tr";
-  label: string | null;
   updated_at: string;
 }
 
@@ -210,7 +202,7 @@ export interface Recommendation {
   analysis_tier: string | null;
   context_json: string | null;
   source: RecommendationSource;
-  /** Market context when the recommendation was created (crypto | forex). */
+  /** Market context when the recommendation was created (forex). */
   market: MarketType | null;
   /** Multi-agent committee votes (JSON). */
   committee_json: string | null;
@@ -289,7 +281,7 @@ export interface TradeIntent {
   status: IntentStatus;
   reason: string | null;
   practice: number;
-  /** 'spot' (default) or 'futures' (USDT-M, supports short + leverage). */
+  /** Legacy market type column — spot only on forex-only platform. */
   market_type?: "spot" | "futures";
   /** Leverage multiplier for futures (1 = no leverage). */
   leverage?: number;

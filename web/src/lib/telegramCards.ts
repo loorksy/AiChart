@@ -193,7 +193,7 @@ export function recommendationCard(rec: {
     hasSpread: false,
     spreadPips: null,
     spreadPct: null,
-    marketType: "crypto",
+    marketType: "forex",
     platform: "—",
     accountLogin: null,
     accountCurrency: "USD",

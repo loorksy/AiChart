@@ -10,7 +10,7 @@ async function main() {
   try {
     const result = await runAgent(
       { userId, settings },
-      [{ role: "user", content: "ما رأيك في BTCUSDT الآن؟" }],
+      [{ role: "user", content: "ما رأيك في EURUSD الآن؟" }],
     );
     console.log("done in", Date.now() - start, "ms");
     console.log("reply:", result.reply.slice(0, 200));

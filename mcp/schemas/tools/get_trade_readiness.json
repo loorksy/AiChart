@@ -3,18 +3,15 @@
   "type": "object",
   "properties": {
     "symbol": {
-      "description": "رمز الزوج — لفحص quote/spread",
+      "description": "Pair symbol — for quote/spread check",
       "type": "string"
     },
     "market": {
       "type": "string",
-      "enum": [
-        "crypto",
-        "forex"
-      ]
+      "const": "forex"
     },
     "confidence": {
-      "description": "ثقة مقترحة — تقديرية وإرشادية للوكيل",
+      "description": "Proposed confidence — advisory estimate for the agent",
       "type": "number",
       "minimum": 0,
       "maximum": 100

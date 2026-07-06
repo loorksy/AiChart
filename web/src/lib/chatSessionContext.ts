@@ -1,10 +1,11 @@
 import type { TradingSettings, TradingStyle } from "./types";
+import { DEFAULT_MARKET, resolveActiveMarket } from "@/lib/marketPolicy";
 import { getSettings, updateSettings } from "./store";
 
 export interface ChatSessionContext {
   trading_style?: TradingStyle;
   mode?: "auto" | "approval" | "direct";
-  active_market?: "crypto" | "forex";
+  active_market?: "forex";
   response_mode?: "fast" | "expert" | "vision";
   symbol?: string;
 }
@@ -35,7 +36,6 @@ const MODE_AR: Record<string, string> = {
 };
 
 const MARKET_AR: Record<string, string> = {
-  crypto: "كريبتو",
   forex: "فوركس",
 };
 
@@ -98,14 +98,18 @@ export async function applyChatSessionContext(
     patch.mode = ctx.mode;
   }
 
-  if (ctx.active_market && ctx.active_market !== before.active_market) {
-    changes.push({
-      field: "active_market",
-      labelAr: "السوق",
-      from: label("active_market", before.active_market),
-      to: label("active_market", ctx.active_market),
-    });
-    patch.active_market = ctx.active_market;
+  if (ctx.active_market) {
+    const nextMarket = resolveActiveMarket(ctx.active_market);
+    const prevMarket = resolveActiveMarket(before.active_market);
+    if (nextMarket !== prevMarket) {
+      changes.push({
+        field: "active_market",
+        labelAr: "السوق",
+        from: label("active_market", prevMarket),
+        to: label("active_market", nextMarket),
+      });
+      patch.active_market = nextMarket;
+    }
   }
 
   if (Object.keys(patch).length) {
@@ -125,7 +129,7 @@ export function buildSessionPromptBlock(
   settings: TradingSettings,
   changes: SessionChange[] = [],
 ): string {
-  const market = ctx?.active_market ?? settings.active_market ?? "crypto";
+  const market = ctx?.active_market ?? settings.active_market ?? DEFAULT_MARKET;
   const mode = ctx?.mode ?? settings.mode;
   const style = ctx?.trading_style ?? settings.trading_style ?? "day";
   const responseMode = ctx?.response_mode ?? "expert";

@@ -1,5 +1,4 @@
-import { getKlines, type BinanceEnv } from "@/lib/binance";
-import { executionToBinanceEnv } from "@/lib/executionEnv";
+import { DEFAULT_MARKET, rejectNonForexMarket } from "@/lib/marketPolicy";
 import {
   intervalPlan,
   normalizeInterval,
@@ -30,7 +29,7 @@ export interface OhlcCandle {
   volume?: number;
 }
 
-export type OhlcSource = "binance" | "oanda" | "ea";
+export type OhlcSource = "oanda" | "ea";
 
 export interface FetchOhlcResult {
   symbol: string;
@@ -53,7 +52,7 @@ export interface FetchOhlcOptions {
   interval?: string;
   market?: MarketType;
   limit?: number;
-  /** Millisecond open time — fetch candles strictly before this (crypto pagination). */
+  /** Millisecond open time — fetch candles strictly before this (pagination cursor). */
   cursor?: number;
   skipCache?: boolean;
   /** Millisecond open time — fetch forex candles strictly before this (OANDA pagination). */
@@ -116,81 +115,26 @@ async function fetchForexOhlcLive(
   }
 }
 
-async function fetchCryptoOhlc(
-  userId: number,
-  symbol: string,
-  interval: string,
-  limit: number,
-  cursor?: number,
-): Promise<{ candles: OhlcCandle[]; nextCursor: number | null }> {
-  const settings = userId > 0 ? await getSettings(userId) : null;
-  const env: BinanceEnv = executionToBinanceEnv(
-    settings?.execution_env_preference === "live" ? "live" : "demo",
-  );
-
-  const sym = symbol.toUpperCase();
-  // Derived intervals (e.g. 2w, 10m) aren't native on Binance — fetch the base
-  // interval and aggregate. factor=1 is the native passthrough.
-  const { base: tf, factor } = intervalPlan(interval);
-  const baseLimit = Math.min(limit * factor, OHLC_MAX_LIMIT);
-
-  if (cursor && Number.isFinite(cursor)) {
-    const base = env === "testnet"
-      ? "https://testnet.binance.vision"
-      : "https://api.binance.com";
-    const url = `${base}/api/v3/klines?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(tf)}&limit=${baseLimit}&endTime=${cursor - 1}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      throw new Error(`Binance klines failed for ${sym}`);
-    }
-    const rows = (await res.json()) as unknown[][];
-    const baseCandles = rows.map((r) => ({
-      time: Number(r[0]),
-      open: Number(r[1]),
-      high: Number(r[2]),
-      low: Number(r[3]),
-      close: Number(r[4]),
-      volume: Number(r[5]),
-    }));
-    const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
-    const nextCursor = baseCandles.length > 0 ? baseCandles[0]!.time : null;
-    return { candles, nextCursor };
-  }
-
-  const rows = await getKlines(sym, tf, baseLimit, env);
-  const baseCandles = rows.map((r) => ({
-    time: r.openTime,
-    open: r.open,
-    high: r.high,
-    low: r.low,
-    close: r.close,
-    volume: r.volume,
-  }));
-  const candles = resampleOhlc(baseCandles, factor) as OhlcCandle[];
-  const nextCursor = baseCandles.length > 0 ? baseCandles[0]!.time : null;
-  return { candles, nextCursor };
-}
-
-/** Fetches OHLC with bridge cache (45s) — forex via OANDA, crypto via Binance. */
+/** Fetches OHLC with bridge cache (45s) — forex via OANDA or EA. */
 export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcResult> {
   const interval = normalizeInterval(options.interval ?? "1h");
-  // Guests (userId <= 0) have no settings row — never touch getSettings for them
-  // (it upserts a users-FK'd row). Market comes from the explicit option.
   const settings = options.userId > 0 ? await getSettings(options.userId) : null;
-  const market = options.market ?? settings?.active_market ?? "crypto";
+  const market = options.market ?? settings?.active_market ?? DEFAULT_MARKET;
+  const marketBlock = rejectNonForexMarket(market);
+  if (marketBlock) {
+    throw new Error(marketBlock);
+  }
   const limit = Math.min(
     Math.max(1, options.limit ?? 200),
     OHLC_MAX_LIMIT,
   );
 
   const forexSource =
-    market === "forex" && isOandaDataOnly()
+    isOandaDataOnly()
       ? "oanda"
-      : market === "forex"
-        ? (options.source ?? "oanda")
-        : "binance";
+      : (options.source ?? "oanda");
   const symbol =
-    market === "forex" && forexSource === "oanda"
+    forexSource === "oanda"
       ? forexCanonicalKey(options.symbol)
       : options.symbol.toUpperCase().trim();
   const sourceKey = forexSource;
@@ -213,44 +157,32 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   }
 
   let candles: OhlcCandle[] = [];
-  let source: OhlcSource = market === "forex" ? "oanda" : "binance";
+  let source: OhlcSource = "oanda";
   let warning: string | undefined;
   let nextCursor: number | null = null;
   let hasMore = false;
 
-  if (market === "forex") {
-    const live =
-      !isOandaDataOnly() && options.source === "ea"
-        ? {
-            ...(await fetchEaOhlc(options.userId, symbol, interval, {
-              fromMs: options.fromMs,
-              toMs: options.toMs,
-              limit,
-            })),
-            source: "ea" as const,
-            hasMore: false,
-          }
-        : await fetchForexOhlcLive(symbol, interval, limit, {
-            beforeMs: options.beforeMs,
+  const live =
+    !isOandaDataOnly() && options.source === "ea"
+      ? {
+          ...(await fetchEaOhlc(options.userId, symbol, interval, {
             fromMs: options.fromMs,
             toMs: options.toMs,
-          });
-    candles =
-      options.fromMs != null ? live.candles : live.candles.slice(-limit);
-    source = live.source;
-    warning = live.warning;
-    hasMore = live.hasMore ?? false;
-  } else {
-    const crypto = await fetchCryptoOhlc(
-      options.userId,
-      symbol,
-      interval,
-      limit,
-      options.cursor,
-    );
-    candles = crypto.candles;
-    nextCursor = crypto.nextCursor;
-  }
+            limit,
+          })),
+          source: "ea" as const,
+          hasMore: false,
+        }
+      : await fetchForexOhlcLive(symbol, interval, limit, {
+          beforeMs: options.beforeMs,
+          fromMs: options.fromMs,
+          toMs: options.toMs,
+        });
+  candles =
+    options.fromMs != null ? live.candles : live.candles.slice(-limit);
+  source = live.source;
+  warning = live.warning;
+  hasMore = live.hasMore ?? false;
 
   const result: FetchOhlcResult = {
     symbol,

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useBinanceLivePrices } from "@/hooks/useBinanceLivePrice";
 import { useRouter } from "next/navigation";
 import { Search, TrendingDown, TrendingUp } from "lucide-react";
 import {
@@ -11,6 +10,7 @@ import {
   PillButton,
 } from "@/components/ui/shell";
 import { cn } from "@/lib/utils";
+import type { LivePriceMap } from "@/hooks/livePriceTypes";
 import { useMe } from "@/hooks/useMe";
 
 interface Instrument {
@@ -40,7 +40,7 @@ export default function SignalsWizardClient() {
   const router = useRouter();
   const { data: me, refresh: refreshMe } = useMe();
   const [step, setStep] = useState(1);
-  const [symbol, setSymbol] = useState("BTCUSDT");
+  const [symbol, setSymbol] = useState("EURUSD");
   const [style, setStyle] = useState<"scalp" | "swing">("swing");
   const [riskPct, setRiskPct] = useState(2);
   const [capital, setCapital] = useState(1000);
@@ -80,11 +80,7 @@ export default function SignalsWizardClient() {
     return () => clearTimeout(t);
   }, [search, fetchInstruments]);
 
-  const liveSymbols = useMemo(
-    () => instruments.slice(0, 40).map((i) => i.symbol),
-    [instruments],
-  );
-  const liveTicks = useBinanceLivePrices(liveSymbols);
+  const liveTicks: LivePriceMap = {};
 
   async function generate() {
     setGenerating(true);
@@ -143,7 +139,7 @@ export default function SignalsWizardClient() {
       <div className="flex-1 overflow-y-auto">
         <PageLayout
           title="إشارة جديدة"
-          subtitle="معالج 4 خطوات — Binance فقط"
+          subtitle="معالج 4 خطوات — أزواج فوركس"
           maxWidth="lg"
           className="space-y-6"
         >
@@ -161,7 +157,7 @@ export default function SignalsWizardClient() {
                 <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   className="input h-11 ps-10"
-                  placeholder="ابحث عن زوج USDT…"
+                  placeholder="ابحث عن زوج فوركس…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   dir="ltr"

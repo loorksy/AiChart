@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPrice } from "@/lib/binance";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { buildAccountProfile } from "@/lib/accountProfile";
 import { getEaConnection, isHeartbeatFresh, parseEaSymbolSpecs } from "@/lib/eaStore";
-import { buildSnapshot, buildForexSnapshot } from "@/lib/market";
+import { buildForexSnapshot } from "@/lib/market";
 import { profileForInterval } from "@/lib/analysisProfile";
 import { fetchMarketContext } from "@/lib/marketContext";
 import { getIntent, getTrade } from "@/lib/store";
@@ -12,20 +12,17 @@ import { getIntent, getTrade } from "@/lib/store";
 async function livePrice(
   userId: number,
   symbol: string,
-  market: string,
+  _market: string,
 ): Promise<number> {
-  if (market === "forex") {
-    const conn = await getEaConnection(userId);
-    if (!conn || !isHeartbeatFresh(conn.last_heartbeat_at)) return 0;
-    const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(
-      (s) => s.symbol?.toUpperCase() === symbol.toUpperCase(),
-    );
-    if (!spec) return 0;
-    const bid = Number(spec.bid) || 0;
-    const ask = Number(spec.ask) || 0;
-    return bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask || 0;
-  }
-  return (await getPrice(symbol, "prod")) ?? 0;
+  const conn = await getEaConnection(userId);
+  if (!conn || !isHeartbeatFresh(conn.last_heartbeat_at)) return 0;
+  const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(
+    (s) => s.symbol?.toUpperCase() === symbol.toUpperCase(),
+  );
+  if (!spec) return 0;
+  const bid = Number(spec.bid) || 0;
+  const ask = Number(spec.ask) || 0;
+  return bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask || 0;
 }
 
 /** Bridge: live snapshot for an open trade — price, candles, PnL, context. */
@@ -42,13 +39,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "صفقة غير موجودة أو مغلقة." }, { status: 404 });
     }
 
-    const market = trade.market ?? "crypto";
+    const market = trade.market ?? DEFAULT_MARKET;
     const interval = "15m";
     const price = await livePrice(userId, trade.symbol, market);
-    const snapshot =
-      market === "forex"
-        ? await buildForexSnapshot(userId, trade.symbol, interval)
-        : await buildSnapshot(trade.symbol, interval, "prod");
+    const snapshot = await buildForexSnapshot(userId, trade.symbol, interval);
 
     let unrealizedPnl = 0;
     if (price > 0 && trade.avg_price > 0) {

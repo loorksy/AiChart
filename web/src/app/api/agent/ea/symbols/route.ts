@@ -2,7 +2,6 @@ import { withBridge } from "@/lib/bridge";
 import { getEaConnection, parseEaSymbolSpecs } from "@/lib/eaStore";
 import { isHeartbeatFresh } from "@/lib/eaStore";
 import { spreadFromBidAsk } from "@/lib/spread";
-import { isForexSymbol } from "@/lib/eaLiveState";
 
 /**
  * Bridge: the FULL list of symbols the broker exposes in the account's MetaTrader
@@ -11,7 +10,7 @@ import { isForexSymbol } from "@/lib/eaLiveState";
  */
 export const GET = withBridge(async ({ req, userId }) => {
   const q = req.nextUrl.searchParams.get("q")?.trim().toUpperCase();
-  const marketFilter = req.nextUrl.searchParams.get("market"); // "forex" | "crypto"
+  const marketFilter = req.nextUrl.searchParams.get("market");
   const limit = Math.min(
     Number(req.nextUrl.searchParams.get("limit")) || 300,
     500,
@@ -37,7 +36,7 @@ export const GET = withBridge(async ({ req, userId }) => {
       const bid = Number(s.bid) || 0;
       const ask = Number(s.ask) || 0;
       const sp = bid > 0 && ask > 0 ? spreadFromBidAsk(bid, ask, s.symbol) : null;
-      const market = isForexSymbol(s.symbol) ? "forex" : "crypto";
+      const market = "forex" as const;
       return {
         symbol: s.symbol,
         market,
@@ -51,7 +50,7 @@ export const GET = withBridge(async ({ req, userId }) => {
       };
     });
 
-  if (marketFilter === "forex" || marketFilter === "crypto") {
+  if (marketFilter === "forex") {
     rows = rows.filter((r) => r.market === marketFilter);
   }
   if (q) {

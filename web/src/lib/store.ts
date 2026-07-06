@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { DEFAULT_MARKET, resolveActiveMarket } from "@/lib/marketPolicy";
 import {
   execute,
   insertReturningId,
@@ -13,7 +14,6 @@ import type { TelegramLoginPayload } from "./telegramAuth";
 import { telegramDisplayEmail } from "./telegramAuth";
 import type {
   AdminLimits,
-  BinanceAccountMeta,
   MtAccount,
   MtAccountMeta,
   PublicUser,
@@ -31,8 +31,6 @@ import {
   computeAccessExpiresAt,
   DEFAULT_ACCESS_DAYS,
 } from "./platformAccess";
-import type { BinanceEnv } from "./binance";
-import { type BinanceRegion, isBinanceRegion } from "./binanceRegions";
 import type { BrokerKind, MarketType, MtPlatform } from "./markets/types";
 import {
   forexModeToBrokerKind,
@@ -49,7 +47,9 @@ export async function resolveBrokerForMarket(
   userId: number,
   market: MarketType,
 ): Promise<BrokerKind> {
-  if (market !== "forex") return "binance";
+  if (market !== "forex") {
+    throw new Error("Forex-only platform — non-forex markets are not supported.");
+  }
   const settings = await getSettings(userId);
   return forexModeToBrokerKind(
     resolveForexBackendFromPref(settings.forex_backend),
@@ -274,104 +274,6 @@ export async function updateSettings(
     `UPDATE trading_settings SET ${assignments}, updated_at = datetime('now') WHERE user_id = ?`,
     params,
   );
-}
-
-export async function saveBinanceAccount(
-  userId: number,
-  apiKey: string,
-  apiSecret: string,
-  env: BinanceEnv,
-  label?: string,
-  region: BinanceRegion = "global",
-) {
-  await execute(
-    `INSERT INTO binance_accounts (user_id, api_key_enc, api_secret_enc, env, region, label, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(user_id, env) DO UPDATE SET
-       api_key_enc = excluded.api_key_enc,
-       api_secret_enc = excluded.api_secret_enc,
-       region = excluded.region,
-       label = excluded.label,
-       updated_at = datetime('now')`,
-    [userId, encryptSecret(apiKey), encryptSecret(apiSecret), env, region, label ?? null],
-  );
-}
-
-export async function listBinanceAccountMetas(
-  userId: number,
-): Promise<BinanceAccountMeta[]> {
-  return query<BinanceAccountMeta>(
-    "SELECT user_id, env, region, label, updated_at FROM binance_accounts WHERE user_id = ? ORDER BY env",
-    [userId],
-  );
-}
-
-export async function getBinanceAccountMeta(
-  userId: number,
-  env?: BinanceEnv,
-): Promise<BinanceAccountMeta | null> {
-  if (env) {
-    return queryOne<BinanceAccountMeta>(
-      "SELECT user_id, env, region, label, updated_at FROM binance_accounts WHERE user_id = ? AND env = ?",
-      [userId, env],
-    );
-  }
-  const settings = await getSettings(userId);
-  const pref =
-    settings.execution_env_preference === "live" ? "prod" : "testnet";
-  return (
-    (await queryOne<BinanceAccountMeta>(
-      "SELECT user_id, env, region, label, updated_at FROM binance_accounts WHERE user_id = ? AND env = ?",
-      [userId, pref],
-    )) ??
-    (await queryOne<BinanceAccountMeta>(
-      "SELECT user_id, env, region, label, updated_at FROM binance_accounts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1",
-      [userId],
-    ))
-  );
-}
-
-export async function getBinanceCredentials(
-  userId: number,
-  env?: BinanceEnv,
-): Promise<{
-  apiKey: string;
-  apiSecret: string;
-  env: BinanceEnv;
-  region: BinanceRegion;
-} | null> {
-  let target = env;
-  if (!target) {
-    const settings = await getSettings(userId);
-    target = settings.execution_env_preference === "live" ? "prod" : "testnet";
-  }
-  const row = await queryOne<{
-    api_key_enc: string;
-    api_secret_enc: string;
-    env: BinanceEnv;
-    region?: string;
-  }>(
-    "SELECT api_key_enc, api_secret_enc, env, region FROM binance_accounts WHERE user_id = ? AND env = ?",
-    [userId, target],
-  );
-  if (!row) return null;
-  return {
-    apiKey: decryptSecret(row.api_key_enc),
-    apiSecret: decryptSecret(row.api_secret_enc),
-    env: row.env,
-    region: isBinanceRegion(row.region) ? row.region : "global",
-  };
-}
-
-export async function deleteBinanceAccount(userId: number, env?: BinanceEnv) {
-  if (env) {
-    await execute("DELETE FROM binance_accounts WHERE user_id = ? AND env = ?", [
-      userId,
-      env,
-    ]);
-    return;
-  }
-  await execute("DELETE FROM binance_accounts WHERE user_id = ?", [userId]);
 }
 
 export async function saveMtAccount(
@@ -603,8 +505,7 @@ export async function updateUserCredentials(
 }
 
 export interface AdminUserView extends PublicUser {
-  has_binance: number;
-  binance_env: string | null;
+  has_mt5: number;
   can_execute: number;
   max_capital_cap: number;
   max_open_trades_cap: number;
@@ -617,9 +518,10 @@ export async function listUsersForAdmin(): Promise<AdminUserView[]> {
     `SELECT u.id, u.email, u.role, u.status, u.username, u.whatsapp_e164,
             u.telegram_id, u.access_expires_at, u.created_at,
             CASE WHEN u.telegram_id IS NOT NULL THEN 'telegram' ELSE 'email' END AS signup_via,
-            EXISTS (SELECT 1 FROM binance_accounts bx WHERE bx.user_id = u.id) AS has_binance,
-            (SELECT bx.env FROM binance_accounts bx
-              WHERE bx.user_id = u.id ORDER BY bx.updated_at DESC LIMIT 1) AS binance_env,
+            EXISTS (
+              SELECT 1 FROM ea_connections ec
+              WHERE ec.user_id = u.id AND ec.status != 'revoked'
+            ) AS has_mt5,
             COALESCE(a.can_execute, FALSE) AS can_execute,
             COALESCE(a.max_capital_cap, 0) AS max_capital_cap,
             COALESCE(a.max_open_trades_cap, 0) AS max_open_trades_cap,
@@ -923,7 +825,7 @@ export async function createIntent(
     limit_price?: number | null;
   },
 ): Promise<TradeIntent> {
-  const market: MarketType = intent.market ?? "crypto";
+  const market: MarketType = resolveActiveMarket(intent.market ?? DEFAULT_MARKET);
   const broker: BrokerKind =
     intent.broker ?? (await resolveBrokerForMarket(userId, market));
   const id = await insertReturningId(
@@ -1077,7 +979,7 @@ export async function recordTrade(
     limit_price?: number | null;
   },
 ): Promise<Trade> {
-  const market: MarketType = trade.market ?? "crypto";
+  const market: MarketType = resolveActiveMarket(trade.market ?? DEFAULT_MARKET);
   const broker: BrokerKind =
     trade.broker ?? (await resolveBrokerForMarket(userId, market));
   const id = await insertReturningId(
@@ -1418,7 +1320,6 @@ export async function listUsersForTradeMaintenance(
      FROM users u
      JOIN trading_settings s ON s.user_id = u.id
      JOIN admin_limits a ON a.user_id = u.id
-     JOIN binance_accounts b ON b.user_id = u.id
      WHERE u.status = 'active' AND u.role IN ('user', 'admin')
        AND a.can_execute = 1 AND s.onboarding_done = 1
        AND (s.mode = 'auto' OR s.auto_take_profit_usd > 0)
@@ -1588,7 +1489,7 @@ export interface AdminPlatformStats {
   users_active: number;
   users_pending: number;
   users_suspended: number;
-  users_with_binance: number;
+  users_with_mt5: number;
   trades_total: number;
   trades_open: number;
   intents_pending: number;
@@ -1612,8 +1513,8 @@ export async function getAdminPlatformStats(): Promise<AdminPlatformStats> {
      FROM users`,
   ))!;
 
-  const withBinance = (await queryOne<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM binance_accounts",
+  const withMt5 = (await queryOne<{ n: number }>(
+    "SELECT COUNT(DISTINCT user_id) AS n FROM ea_connections WHERE status != 'revoked'",
   ))!;
 
   const trades = (await queryOne<{ total: number; open: number }>(
@@ -1647,7 +1548,7 @@ export async function getAdminPlatformStats(): Promise<AdminPlatformStats> {
     users_active: users.active,
     users_pending: users.pending,
     users_suspended: users.suspended,
-    users_with_binance: withBinance.n,
+    users_with_mt5: withMt5.n,
     trades_total: trades.total,
     trades_open: trades.open,
     intents_pending: intents.pending ?? 0,

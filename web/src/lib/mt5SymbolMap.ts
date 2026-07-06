@@ -1,19 +1,7 @@
 import { getEaConnection, parseEaSymbolSpecs } from "./eaStore";
 import { forexCanonicalKey } from "./markets/forexCanonical";
 
-/** Common Binance spot → MT5 CFD symbol aliases. */
-const CRYPTO_ALIASES: Record<string, string[]> = {
-  BTCUSDT: ["BTCUSD", "BTCUSDT", "XBTUSD"],
-  ETHUSDT: ["ETHUSD", "ETHUSDT"],
-  BNBUSDT: ["BNBUSD", "BNBUSDT"],
-  SOLUSDT: ["SOLUSD", "SOLUSDT"],
-  XRPUSDT: ["XRPUSD", "XRPUSDT"],
-  DOGEUSDT: ["DOGEUSD", "DOGEUSDT"],
-  ADAUSDT: ["ADAUSD", "ADAUSDT"],
-  LTCUSDT: ["LTCUSD", "LTCUSDT"],
-};
-
-/** First 6 letters of a forex/CFD symbol (EURUSDm → EURUSD, XAUUSD.pro → XAUUSD). */
+/** First 6 letters of a forex symbol (EURUSDm → EURUSD, XAUUSD.pro → XAUUSD). */
 export { forexCanonicalKey } from "./markets/forexCanonical";
 
 /** Symbols reported by the EA in its latest heartbeat (broker-exact case). */
@@ -50,7 +38,7 @@ export function formatEaSymbolHint(symbols: string[], max = 20): string {
 }
 
 /**
- * Maps a platform symbol (BTCUSDT, EURUSD) to the broker MT5 symbol name.
+ * Maps a platform symbol (EURUSD, XAUUSD) to the broker MT5 symbol name.
  * Returns the exact case from the EA heartbeat (e.g. EURUSDm, not EURUSDM).
  */
 export async function resolveMt5Symbol(
@@ -63,32 +51,10 @@ export async function resolveMt5Symbol(
   const available = await getEaSymbolList(userId);
   if (available.length === 0) return null;
 
-  // 1) Exact match (preserves API-provided case)
   if (available.includes(query)) return query;
 
-  // 2) Case-insensitive match → broker's exact case
   const ci = findCaseInsensitive(available, query);
   if (ci) return ci;
 
-  // 3) Forex canonical base (EURUSD → EURUSDm, XAUUSD → XAUUSDm)
-  const canonical = findByForexCanonical(available, query);
-  if (canonical) return canonical;
-
-  // 4) Crypto aliases
-  const upper = query.toUpperCase();
-  const aliases = CRYPTO_ALIASES[upper] ?? [];
-  for (const alias of aliases) {
-    const match = findCaseInsensitive(available, alias);
-    if (match) return match;
-  }
-
-  if (upper.endsWith("USDT")) {
-    const baseUsd = `${upper.slice(0, -4)}USD`;
-    const match =
-      findCaseInsensitive(available, baseUsd) ??
-      findByForexCanonical(available, baseUsd);
-    if (match) return match;
-  }
-
-  return null;
+  return findByForexCanonical(available, query);
 }

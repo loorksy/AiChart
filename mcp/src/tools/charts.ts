@@ -95,7 +95,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         symbol?: string;
         interval?: string;
         layout_id?: string;
-        market?: "crypto" | "forex";
+        market?: "forex";
       };
       return bridgeCall(async () => {
         // Layout is optional context (drawings/recommendation); the chart
@@ -186,7 +186,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
       const a = args as {
         symbol?: string;
         interval?: string;
-        market?: "crypto" | "forex";
+        market?: "forex";
         layout_id?: string;
         data_source?: "oanda" | "ea";
       };

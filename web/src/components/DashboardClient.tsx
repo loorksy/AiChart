@@ -31,7 +31,6 @@ export default function DashboardClient({
   user,
   settings,
   limits,
-  hasBinance,
   eaConnected = false,
   eaOnline = false,
   pendingIntentCount = 0,
@@ -41,7 +40,6 @@ export default function DashboardClient({
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
-  hasBinance: boolean;
   eaConnected?: boolean;
   eaOnline?: boolean;
   pendingIntentCount?: number;
@@ -156,18 +154,6 @@ export default function DashboardClient({
       </SurfaceCard>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Link href="/console/connect" className="block">
-          <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
-            <ArrowLeftRight className="h-5 w-5 text-accent-gold" />
-            <div>
-              <p className="font-medium">ربط Binance</p>
-              <p className="text-xs text-muted-foreground">
-                {hasBinance ? "مرتبط" : "غير مربوط"}
-              </p>
-            </div>
-          </SurfaceCard>
-        </Link>
-
         <Link href="/console/connect" className="block">
           <SurfaceCard className="flex items-center gap-3 transition hover:bg-secondary/50">
             <ArrowLeftRight className="h-5 w-5 text-accent-gold" />

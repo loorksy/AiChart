@@ -64,7 +64,6 @@ export function UserHomeClient({
   canDownloadEa: boolean;
 }) {
   const [conn, setConn] = useState<{
-    binance: boolean;
     mt5Online: boolean;
     telegram: boolean;
   } | null>(null);
@@ -75,7 +74,6 @@ export function UserHomeClient({
       .then((d) => {
         if (!d) return;
         setConn({
-          binance: Boolean(d.binance?.connected),
           mt5Online: Boolean(d.mt5?.online),
           telegram: Boolean(d.telegram?.linked),
         });

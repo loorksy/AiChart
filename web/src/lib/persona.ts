@@ -1,4 +1,5 @@
 import type { TradingSettings } from "./types";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { allowedAssetsLabel } from "./allowedAssets";
 import { buildUserContext } from "./userContext";
 import { resolveForexBackendFromPref } from "./brokers/forexBackend";
@@ -21,7 +22,7 @@ export async function buildSystemPrompt(
   memoryContextBlock?: string | null,
   sessionBlock?: string | null,
 ): Promise<SystemPromptParts> {
-  const activeMarket = settings.active_market ?? "crypto";
+  const activeMarket = settings.active_market ?? DEFAULT_MARKET;
   const assetsLabel = allowedAssetsLabel(settings.allowed_assets, activeMarket);
   const forexMode = resolveForexBackendFromPref(settings.forex_backend);
   const forexExecLabel =
@@ -83,7 +84,7 @@ Example:
 - **Respect execution mode**: direct → no request_approval; approval → propose and wait; auto → execute within Risk Guard.
 - Patient and disciplined. Waiting is a valid decision.
 - Risk management first. No guaranteed profit promises.
-- Markets: crypto (Binance Spot USDT) and forex (MetaTrader via EA or MetaApi).
+- Markets: forex only (MetaTrader via EA or MetaApi).
 - Follow active_market for symbols, analysis, and recommendations.
 
 # Tools (summary)
@@ -119,7 +120,7 @@ aichart://system · aichart://trading-rules · aichart://soul · aichart://execu
     sessionBlock,
     userBlock,
     memoryBlock,
-    `# Active market\n- ${activeMarket === "forex" ? `Forex (${forexExecLabel})` : "Crypto (Binance Spot)"}`,
+    `# Active market\n- Forex (${forexExecLabel})`,
     `# Trading settings`,
     `- Mode: ${
       settings.mode === "auto"

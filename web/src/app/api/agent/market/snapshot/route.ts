@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { getSettings } from "@/lib/store";
 import { getUnifiedSnapshot } from "@/lib/markets";
-import type { MarketType } from "@/lib/markets/types";
 
 /** Bridge: live technical snapshot (price, RSI, MACD, SMA, trend). */
 export async function GET(req: NextRequest) {
@@ -16,9 +16,12 @@ export async function GET(req: NextRequest) {
     }
     const interval = searchParams.get("interval") ?? "1h";
     const settings = await getSettings(userId);
-    const market = (searchParams.get("market") ??
-      settings.active_market ??
-      "crypto") as MarketType;
+    const rawMarket = searchParams.get("market") ?? settings.active_market;
+    const marketErr = rejectNonForexMarket(rawMarket);
+    if (marketErr) {
+      return NextResponse.json({ error: marketErr }, { status: 400 });
+    }
+    const market = resolveActiveMarket(rawMarket ?? DEFAULT_MARKET);
 
     const snapshot = await getUnifiedSnapshot(symbol, market, interval, userId);
     return NextResponse.json({ snapshot });

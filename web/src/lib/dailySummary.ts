@@ -22,7 +22,7 @@ export async function buildDailySummary(
     `التاريخ · Date: ${today}`,
     `صفقات مغلقة · Closed: ${closedToday.length}`,
     `صفقات مفتوحة · Open: ${open.length}`,
-    `الربح/الخسارة · PnL: ${pnl >= 0 ? "🟢 +" : "🔴 "}${pnl.toFixed(2)} USDT` +
+    `الربح/الخسارة · PnL: ${pnl >= 0 ? "🟢 +" : "🔴 "}${pnl.toFixed(2)} USD` +
       (capital > 0 ? ` (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%)` : ""),
     ``,
     open.length

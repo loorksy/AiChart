@@ -12,13 +12,13 @@
       ]
     },
     "scalp_max_trades": {
-      "description": "سقف الصفقات المتزامنة — مطلوب في scalp",
+      "description": "Concurrent trade cap — required for scalp",
       "type": "integer",
       "minimum": 0,
       "maximum": 100
     },
     "sync_interval": {
-      "description": "ضبط الإطار الزمني تلقائياً حسب الأسلوب",
+      "description": "Auto-set timeframe based on style",
       "type": "boolean"
     }
   },

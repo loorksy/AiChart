@@ -11,15 +11,9 @@ interface HealthPayload {
   ai_provider?: string;
   telegram: boolean;
   cron_secret_set: boolean;
-  binance_capture?: {
-    enabled: boolean;
-    chromiumReady: boolean;
-    detail: string;
-  };
   users: {
     total: number;
     active: number;
-    with_binance: number;
   };
 }
 
@@ -71,9 +65,7 @@ export function AdminSystemPanel() {
         </p>
       </div>
 
-      {error && (
-        <p className="text-sm text-destructive">{error}</p>
-      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {health && (
         <>
@@ -82,19 +74,6 @@ export function AdminSystemPanel() {
             <StatusPill ok={health.llm} label="OpenAI" />
             <StatusPill ok={health.telegram} label="بوت تليجرام" />
             <StatusPill ok={health.cron_secret_set} label="Cron / المراقبة 24/7" />
-            {health.binance_capture && (
-              <StatusPill
-                ok={
-                  !health.binance_capture.enabled ||
-                  health.binance_capture.chromiumReady
-                }
-                label={
-                  health.binance_capture.enabled
-                    ? "Playwright Binance"
-                    : "Playwright (معطّل)"
-                }
-              />
-            )}
           </div>
 
           <div className="admin-card p-4 text-sm">
@@ -103,8 +82,7 @@ export function AdminSystemPanel() {
               <span dir="ltr">{health.timestamp.slice(0, 19).replace("T", " ")}</span>
             </p>
             <p className="mt-2">
-              مستخدمون نشطون: {health.users.active} / {health.users.total} ·
-              Binance: {health.users.with_binance}
+              مستخدمون نشطون: {health.users.active} / {health.users.total}
             </p>
           </div>
         </>

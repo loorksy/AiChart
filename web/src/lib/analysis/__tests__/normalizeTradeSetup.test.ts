@@ -74,8 +74,8 @@ describe("normalizeTradeSetup", () => {
     const trendlines = {
       support: {
         kind: "support" as const,
-        from: { index: 0, price: 62000, time: 0 },
-        to: { index: 20, price: 62400, time: 0 },
+        from: { index: 0, price: 62000, kind: "low" as const },
+        to: { index: 20, price: 62400, kind: "low" as const },
         slopePerBar: 20,
         projectedNow: 62400,
       },

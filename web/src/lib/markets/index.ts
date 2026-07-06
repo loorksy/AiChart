@@ -1,54 +1,39 @@
-import { buildSnapshot, buildForexSnapshot } from "../market";
-import { getPrice } from "../binance";
-import { getBinanceLivePrice, ensureBinanceLiveQuotes, getBinanceLiveQuotes } from "../binanceLiveState";
+import { buildForexSnapshot } from "../market";
+import { DEFAULT_MARKET } from "../marketPolicy";
 import { getForexLiveMid } from "./forexPrice";
 import { resolveSymbol, marketLabel } from "./resolve";
 import type { MarketType, ResolvedSymbol, UnifiedSnapshot } from "./types";
 import type { ForexMarketSnapshot } from "./forexSnapshot";
 
 export { resolveSymbol, marketLabel };
-export { getBinanceLiveQuotes, ensureBinanceLiveQuotes, getBinanceLivePrice };
 export type { ResolvedSymbol, UnifiedSnapshot };
 
 export async function getUnifiedPrice(
   query: string,
-  market: MarketType = "crypto",
+  market: MarketType = DEFAULT_MARKET,
   userId?: number,
 ): Promise<{ resolved: ResolvedSymbol; price: number }> {
   const resolved = resolveSymbol(query, market);
-  if (market === "forex") {
-    const price = userId ? await getForexLiveMid(userId, resolved.symbol) : 0;
-    return { resolved, price };
-  }
-  if (userId) {
-    await ensureBinanceLiveQuotes(userId);
-    const live = await getBinanceLivePrice(userId, resolved.symbol);
-    if (live && live.price > 0) {
-      return { resolved, price: live.price };
-    }
-  }
-  const price = await getPrice(resolved.symbol, "prod");
+  const price = userId ? await getForexLiveMid(userId, resolved.symbol) : 0;
   return { resolved, price };
 }
 
 export async function getUnifiedSnapshot(
   query: string,
-  market: MarketType = "crypto",
+  market: MarketType = DEFAULT_MARKET,
   interval = "1h",
   userId?: number,
 ): Promise<UnifiedSnapshot> {
   const resolved = resolveSymbol(query, market);
-  const snap =
-    market === "forex" && userId
-      ? await buildForexSnapshot(userId, resolved.symbol, interval)
-      : await buildSnapshot(resolved.symbol, interval, "prod");
-
-  const forexMeta =
-    market === "forex" ? (snap as ForexMarketSnapshot) : undefined;
+  if (!userId) {
+    throw new Error("Forex snapshots require a connected user session.");
+  }
+  const snap = await buildForexSnapshot(userId, resolved.symbol, interval);
+  const forexMeta = snap as ForexMarketSnapshot;
 
   return {
     symbol: snap.symbol,
-    market,
+    market: DEFAULT_MARKET,
     price: snap.price,
     change24hPct: snap.change24hPct,
     high24h: snap.high24h,
@@ -61,16 +46,14 @@ export async function getUnifiedSnapshot(
       macd: snap.macd,
       trend: snap.trend,
       interval: snap.interval,
-      ...(forexMeta?.ohlcSource != null
+      ...(forexMeta.ohlcSource != null
         ? { ohlcSource: forexMeta.ohlcSource }
         : {}),
-      ...(forexMeta?.ohlcWarning
-        ? { ohlcWarning: forexMeta.ohlcWarning }
-        : {}),
-      ...(forexMeta?.candleCount != null
+      ...(forexMeta.ohlcWarning ? { ohlcWarning: forexMeta.ohlcWarning } : {}),
+      ...(forexMeta.candleCount != null
         ? { candleCount: forexMeta.candleCount }
         : {}),
-      ...(forexMeta?.highLow24hApproximate != null
+      ...(forexMeta.highLow24hApproximate != null
         ? { highLow24hApproximate: forexMeta.highLow24hApproximate }
         : {}),
     },

@@ -240,7 +240,7 @@ export async function buildTradeHistorySummary(userId: number): Promise<string> 
   const recentLines = allTrades.slice(0, 5).map((t) => {
     const pnlLabel =
       t.status === "closed"
-        ? `[ربح/خسارة: ${t.pnl.toFixed(2)} USDT]`
+        ? `[ربح/خسارة: ${t.pnl.toFixed(2)} USD]`
         : "[مفتوحة حالياً]";
     return `- صفقة ${t.side === "buy" ? "شراء" : "بيع"} على ${t.symbol} بتاريخ ${t.created_at} ${pnlLabel}`;
   });
@@ -250,7 +250,7 @@ export async function buildTradeHistorySummary(userId: number): Promise<string> 
     `- إجمالي الصفقات المغلقة المحللة مؤخراً: ${totalClosed}`,
     `- عدد الصفقات المفتوحة حالياً: ${openTrades.length}`,
     `- نسبة النجاح (Win Rate): ${winRate.toFixed(1)}%`,
-    `- إجمالي الربح/الخسارة المحقق (Realized PnL): ${totalPnL.toFixed(2)} USDT`,
+    `- إجمالي الربح/الخسارة المحقق (Realized PnL): ${totalPnL.toFixed(2)} USD`,
     `- الأصول الأكثر تداولاً: ${topSymbols || "لا توجد بعد"}`,
     `- آخر 5 صفقات منفذة:`,
     ...recentLines,

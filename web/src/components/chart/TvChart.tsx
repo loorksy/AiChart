@@ -119,7 +119,7 @@ export interface TvHeaderAction {
 interface Props {
   symbol: string;
   interval: string;
-  market?: "crypto" | "forex";
+  market?: "forex";
   analyzing?: boolean;
   /** Active AI recommendation — entry/SL/TP drawn as native TV lines. */
   recommendation?: Recommendation | null;

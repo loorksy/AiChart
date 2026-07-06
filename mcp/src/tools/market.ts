@@ -4,8 +4,8 @@ import { toOandaForexSymbol } from "../lib/forexSymbol.js";
 import { bridgeCall } from "./helpers.js";
 import { mcpToolConfig } from "./schemas/index.js";
 
-function bridgeSymbol(symbol: string, market?: "crypto" | "forex"): string {
-  return market === "crypto" ? symbol.toUpperCase() : toOandaForexSymbol(symbol);
+function bridgeSymbol(symbol: string): string {
+  return toOandaForexSymbol(symbol);
 }
 
 export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
@@ -16,14 +16,14 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       const { symbol, interval, market } = args as {
         symbol: string;
         interval?: string;
-        market?: "crypto" | "forex";
+        market?: "forex";
       };
       return bridgeCall(
         () =>
           bridge.get("/api/agent/market/snapshot", {
-            symbol: bridgeSymbol(symbol, market),
+            symbol: bridgeSymbol(symbol),
             interval,
-            market,
+            market: market ?? "forex",
           }),
         { structured: true },
       );
@@ -37,19 +37,17 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       const { symbol, intervals, market } = args as {
         symbol: string;
         intervals?: string[];
-        market?: "crypto" | "forex";
+        market?: "forex";
       };
       return bridgeCall(
         () =>
           bridge.get(
             "/api/agent/market/multi-snapshot",
             {
-              symbol: bridgeSymbol(symbol, market),
+              symbol: bridgeSymbol(symbol),
               intervals: intervals?.length ? intervals.join(",") : undefined,
-              market,
+              market: market ?? "forex",
             },
-            // Forex frames serialize on the single-threaded EA (~2-3s each);
-            // allow up to 25s so 3-5 timeframes complete instead of 504-ing.
             25000,
           ),
         { structured: true },
@@ -63,12 +61,12 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
     async (args) => {
       const { symbol, market } = args as {
         symbol: string;
-        market?: "crypto" | "forex";
+        market?: "forex";
       };
       return bridgeCall(() =>
         bridge.get("/api/agent/market/price", {
-          symbol: bridgeSymbol(symbol, market),
-          market,
+          symbol: bridgeSymbol(symbol),
+          market: market ?? "forex",
         }),
       );
     },
@@ -79,12 +77,10 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("list_instruments"),
     async (args) => {
       const { market, q, source } = args as {
-        market?: "crypto" | "forex";
+        market?: "forex";
         q?: string;
         source?: "oanda" | "ea";
       };
-      // Public instruments endpoint (OANDA forex / Binance crypto universe);
-      // source=ea → the user's FULL broker symbol universe via the MT5 bridge.
       return bridgeCall(() =>
         bridge.get(
           "/api/instruments",
@@ -145,21 +141,20 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       const { symbol, interval, market, source, limit, cursor } = args as {
         symbol: string;
         interval?: string;
-        market?: "crypto" | "forex";
+        market?: "forex";
         source?: "oanda" | "ea";
         limit?: number;
         cursor?: number;
       };
       const oandaSymbol = toOandaForexSymbol(symbol);
-      const dataSource =
-        market === "crypto" ? source : source === "ea" ? "ea" : "oanda";
+      const dataSource = source === "ea" ? "ea" : "oanda";
       return bridgeCall(() =>
         bridge.get(
           "/api/agent/market/ohlc",
           {
-            symbol: market === "crypto" ? symbol.toUpperCase() : oandaSymbol,
+            symbol: oandaSymbol,
             interval,
-            market,
+            market: market ?? "forex",
             source: dataSource,
             limit,
             cursor,
@@ -177,13 +172,13 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       const { symbol, interval, market } = args as {
         symbol: string;
         interval?: string;
-        market?: "crypto" | "forex";
+        market?: "forex";
       };
       return bridgeCall(() =>
         bridge.get("/api/agent/market/forex-indicators", {
           symbol,
           interval,
-          market,
+          market: market ?? "forex",
         }),
       );
     },
@@ -196,14 +191,14 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       const { symbol, interval, market, limit } = args as {
         symbol: string;
         interval?: string;
-        market?: "crypto" | "forex";
+        market?: "forex";
         limit?: number;
       };
       return bridgeCall(() =>
         bridge.get("/api/agent/market/detect-levels", {
           symbol,
           interval,
-          market,
+          market: market ?? "forex",
           limit,
         }),
       );

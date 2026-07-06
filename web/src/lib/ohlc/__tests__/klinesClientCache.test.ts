@@ -8,15 +8,15 @@ import {
 
 describe("klinesClientCache", () => {
   it("stores and retrieves candles by key", () => {
-    const key = klinesClientKey("BTCUSDT", "1h", "crypto");
+    const key = klinesClientKey("EURUSD", "1h", "forex");
     const bars = [{ time: 100, open: 1, high: 2, low: 0.5, close: 1.5 }];
     setKlinesClientCache(key, bars);
     assert.deepEqual(getKlinesClientCache(key), bars);
   });
 
   it("normalizes symbol case in keys", () => {
-    const a = klinesClientKey("btcusdt", "1h", "crypto");
-    const b = klinesClientKey("BTCUSDT", "1h", "crypto");
+    const a = klinesClientKey("eurusd", "1h", "forex");
+    const b = klinesClientKey("EURUSD", "1h", "forex");
     assert.equal(a, b);
   });
 });

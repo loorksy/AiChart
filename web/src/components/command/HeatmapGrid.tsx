@@ -44,7 +44,7 @@ export function HeatmapGrid({ cells }: { cells: HeatmapCell[] }) {
           )}
         >
           <p className="text-xs font-semibold" dir="ltr">
-            {c.symbol.replace(/USDT$/, "")}
+            {c.symbol}
           </p>
           <p
             className={cn(

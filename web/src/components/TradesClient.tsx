@@ -139,7 +139,7 @@ export default function TradesClient({
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  الحجم: <span dir="ltr">{i.notional.toFixed(2)} USDT</span>
+                  الحجم: <span dir="ltr">{i.notional.toFixed(2)} USD</span>
                 </p>
                 {i.rationale && (
                   <p className="mt-1 text-xs text-muted-foreground">{i.rationale}</p>

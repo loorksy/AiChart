@@ -1,4 +1,5 @@
 import { isSymbolAllowed } from "./allowedAssets";
+import { DEFAULT_MARKET, resolveActiveMarket } from "@/lib/marketPolicy";
 import { resolveScanAssetsForMarket } from "./allowedAssets.server";
 import { isLLMConfigured } from "./llm";
 import {
@@ -12,7 +13,6 @@ import {
   touchScanCooldown,
 } from "./store";
 import {
-  scanSymbol,
   scanForexSymbol,
   type OpportunityCandidate,
 } from "./monitor";
@@ -69,12 +69,9 @@ async function scanOne(
   symbol: string,
   style: TradingSettings["style"],
   interval: string,
-  market: MarketType,
+  _market: MarketType,
 ): Promise<OpportunityCandidate | null> {
-  if (market === "forex") {
-    return scanForexSymbol(userId, symbol, style, interval);
-  }
-  return scanSymbol(symbol, style, interval);
+  return scanForexSymbol(userId, symbol, style, interval);
 }
 
 async function buildSymbolList(
@@ -144,8 +141,9 @@ export async function runOpportunityScan(
     focusOnly?: boolean;
   },
 ): Promise<OpportunityScanResult> {
-  const market: MarketType =
-    opts?.market ?? settings.active_market ?? "crypto";
+  const market: MarketType = resolveActiveMarket(
+    opts?.market ?? settings.active_market ?? DEFAULT_MARKET,
+  );
   const interval = effectiveInterval(settings, opts?.interval);
 
   const result: OpportunityScanResult = {

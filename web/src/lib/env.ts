@@ -15,7 +15,7 @@ function readBootstrapKey(name: "ENCRYPTION_KEY" | "APP_SECRET", devFallback: st
   return devFallback;
 }
 
-/** 32-byte key (hex) used for AES-256-GCM encryption of Binance credentials. */
+/** 32-byte key (hex) used for AES-256-GCM encryption of stored secrets. */
 export function getEncryptionKey(): string {
   return readBootstrapKey(
     "ENCRYPTION_KEY",

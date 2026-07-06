@@ -29,7 +29,7 @@ test("store helpers enforce the optional userId guard", async () => {
   );
   const intentId = await db.insertReturningId(
     "INSERT INTO trade_intents (user_id, symbol, side, notional, status) VALUES (?,?,?,?,?)",
-    [owner, "BTCUSDT", "buy", 100, "pending"],
+    [owner, "EURUSD", "buy", 100, "pending"],
   );
 
   const store = await import("@/lib/store");

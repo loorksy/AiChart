@@ -8,8 +8,7 @@
     "market": {
       "type": "string",
       "enum": [
-        "forex",
-        "crypto"
+        "forex"
       ]
     },
     "limit": {

@@ -35,7 +35,7 @@ describe("LLM tool parity — provider-agnostic card tool", () => {
   });
 
   it("fromOAChoice normalizes a render_cards tool_call into a unified tool_use", () => {
-    const layout = [{ id: "a1", component: "analysis", props: { symbol: "BTCUSDT" } }];
+    const layout = [{ id: "a1", component: "analysis", props: { symbol: "EURUSD" } }];
     const res = fromOAChoice({
       message: {
         content: "إليك التحليل",

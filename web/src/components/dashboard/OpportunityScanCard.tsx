@@ -13,7 +13,7 @@ const LS_MARKET = "aichart_last_market";
 export function OpportunityScanCard({
   onScanComplete,
   analysisInterval = "1h",
-  activeMarket = "crypto",
+  activeMarket = "forex",
 }: {
   onScanComplete?: (result: OpportunityScanResult) => void;
   analysisInterval?: string;
@@ -78,7 +78,7 @@ export function OpportunityScanCard({
         <div>
           <h2 className="font-semibold">ابحث عن صفقة</h2>
           <p className="text-sm text-muted-foreground">
-            مسح على إطار {interval} · {activeMarket === "forex" ? "فوركس" : "كريبتو"}
+            مسح على إطار {interval} · فوركس
           </p>
         </div>
         <Radar className="h-5 w-5 shrink-0 text-chart-1" />
@@ -109,7 +109,7 @@ export function OpportunityScanCard({
           type="text"
           className="input"
           dir="ltr"
-          placeholder="BTCUSDT أو EURUSD"
+          placeholder="EURUSD أو XAUUSD"
           value={focusSymbol}
           onChange={(e) => setFocusSymbol(e.target.value.toUpperCase())}
         />
@@ -136,8 +136,7 @@ export function OpportunityScanCard({
       {result && (
         <div className="space-y-2 text-sm">
           <p className="text-muted-foreground">
-            إطار {result.interval} ·{" "}
-            {result.market === "forex" ? "فوركس" : "كريبتو"} — فُحص{" "}
+            إطار {result.interval} · فوركس — فُحص{" "}
             {result.symbolsChecked} زوج — {result.candidates.length} فرصة
           </p>
           {result.candidates.length > 0 && (

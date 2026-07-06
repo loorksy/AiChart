@@ -3,7 +3,6 @@ import type { BridgeClient } from "../bridge/client.js";
 import { tradingRulesText, readWorkspaceFile } from "./helpers.js";
 import { registerMarketTools } from "./market.js";
 import { registerCoreTools } from "./core.js";
-import { registerBinanceTools } from "./binance.js";
 import { registerMt5Tools } from "./mt5.js";
 import { registerChartsTools } from "./charts.js";
 import { registerWidgets } from "../ui/index.js";
@@ -140,7 +139,6 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
 
   registerCoreTools(server, bridge);
   registerMarketTools(server, bridge);
-  registerBinanceTools(server, bridge);
   registerMt5Tools(server, bridge);
   registerChartsTools(server, bridge);
   registerWidgets(server);

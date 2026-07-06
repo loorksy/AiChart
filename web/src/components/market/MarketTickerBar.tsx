@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTickerPrice } from "./formatLevel";
-
-type TickerStat = { price: number; changePct: number };
+import { useEaLivePrice } from "@/hooks/useEaLivePrice";
 
 const BTN =
   "inline-flex h-11 min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -19,35 +17,8 @@ export function MarketTickerBar({
   onAnalyze: () => void;
   isAnalyzing: boolean;
 }) {
-  const [ticker, setTicker] = useState<TickerStat | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/market/tickers?symbols=${encodeURIComponent(symbol)}`,
-        );
-        const data = (await res.json()) as Record<string, TickerStat>;
-        if (!cancelled && res.ok) {
-          setTicker(data[symbol] ?? null);
-        }
-      } catch {
-        if (!cancelled) setTicker(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [symbol]);
-
-  const up = ticker ? ticker.changePct >= 0 : null;
+  const tick = useEaLivePrice(symbol);
+  const up = tick.price > 0 ? tick.direction !== "down" : null;
 
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3">
@@ -55,31 +26,30 @@ export function MarketTickerBar({
         <span className="text-lg font-semibold tracking-tight" dir="ltr">
           {symbol}
         </span>
-        {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        ) : ticker ? (
+        {tick.price > 0 ? (
           <>
             <span
               className="text-xl font-semibold tabular-nums text-foreground"
               dir="ltr"
             >
-              {formatTickerPrice(ticker.price)}
+              {formatTickerPrice(tick.price)}
             </span>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 text-sm font-medium tabular-nums",
-                up ? "text-green-500" : "text-red-500",
-              )}
-              dir="ltr"
-            >
-              {up ? (
-                <TrendingUp className="h-3.5 w-3.5" aria-hidden />
-              ) : (
-                <TrendingDown className="h-3.5 w-3.5" aria-hidden />
-              )}
-              {up ? "+" : ""}
-              {ticker.changePct.toFixed(2)}%
-            </span>
+            {tick.direction ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 text-sm font-medium tabular-nums",
+                  up ? "text-green-500" : "text-red-500",
+                )}
+                dir="ltr"
+              >
+                {up ? (
+                  <TrendingUp className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <TrendingDown className="h-3.5 w-3.5" aria-hidden />
+                )}
+                live
+              </span>
+            ) : null}
           </>
         ) : (
           <span className="text-sm text-muted-foreground">—</span>
@@ -97,11 +67,7 @@ export function MarketTickerBar({
         )}
         aria-label="تحليل الشارت بالذكاء الاصطناعي"
       >
-        {isAnalyzing ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Sparkles className="h-4 w-4" />
-        )}
+        <Sparkles className="h-4 w-4" />
         <span className="hidden sm:inline">تحليل</span>
       </button>
     </div>

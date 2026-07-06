@@ -54,7 +54,7 @@ export function DashboardAnalytics({ trades }: { trades: Trade[] }) {
         <KpiCard
           label="إجمالي العائد"
           value={`${formatCurrency(stats.totalPnl)}`}
-          sub="USDT (محقّق)"
+          sub="USD (محقّق)"
           icon={stats.totalPnl >= 0 ? TrendingUp : TrendingDown}
           tone={stats.totalPnl >= 0 ? "positive" : "negative"}
         />
@@ -89,14 +89,14 @@ export function DashboardAnalytics({ trades }: { trades: Trade[] }) {
         <KpiCard
           label="متوسط الصفقة"
           value={formatCurrency(stats.avgPnl)}
-          sub="USDT لكل صفقة"
+          sub="USD لكل صفقة"
           icon={Wallet}
           tone={stats.avgPnl >= 0 ? "positive" : "negative"}
         />
         <KpiCard
           label="أفضل صفقة"
           value={formatCurrency(stats.bestTrade)}
-          sub="USDT"
+          sub="USD"
           icon={TrendingUp}
           tone="positive"
         />
@@ -120,7 +120,7 @@ export function DashboardAnalytics({ trades }: { trades: Trade[] }) {
             }
             dir="ltr"
           >
-            {formatCurrency(stats.cumulativePnl)} USDT
+            {formatCurrency(stats.cumulativePnl)} USD
           </span>
         </div>
         <InteractivePerformanceChart data={equity} />

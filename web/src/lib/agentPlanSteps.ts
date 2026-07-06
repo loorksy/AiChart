@@ -35,7 +35,7 @@ export const ANALYSIS_PLAN_TEMPLATE: PlanTask[] = [
   {
     id: "1",
     title: "جمع بيانات السوق",
-    description: "جلب الأسعار والشموع والمؤشرات من Binance",
+    description: "جلب الأسعار والشموع والمؤشرات من OANDA أو وسيط MT5",
     status: "pending",
     subtasks: [
       {
@@ -43,21 +43,21 @@ export const ANALYSIS_PLAN_TEMPLATE: PlanTask[] = [
         title: "قراءة السعر اللحظي",
         description: "get_price — آخر سعر للرمز",
         status: "pending",
-        tools: ["Binance API"],
+        tools: ["Market API"],
       },
       {
         id: "1.2",
         title: "لقطة فنية",
         description: "get_market_snapshot — RSI، MACD، المتوسطات",
         status: "pending",
-        tools: ["Binance API"],
+        tools: ["Market API"],
       },
       {
         id: "1.3",
-        title: "إشارات الأموال الذكية",
-        description: "smart_money_signals عند الحاجة",
+        title: "سياق السوق",
+        description: "get_market_context عند الحاجة",
         status: "pending",
-        tools: ["Binance Web3"],
+        tools: ["Market API"],
       },
     ],
   },
@@ -147,15 +147,15 @@ export const TRADE_PLAN_TEMPLATE: PlanTask[] = [
   {
     id: "2",
     title: "تنفيذ الأمر",
-    description: "إرسال الأمر إلى Binance",
+    description: "إرسال الأمر إلى MetaTrader 5",
     status: "pending",
     subtasks: [
       {
         id: "2.1",
         title: "التحقق من الرصيد",
-        description: "رصيد USDT/العملة كافٍ",
+        description: "رصيد الحساب كافٍ",
         status: "pending",
-        tools: ["Binance API"],
+        tools: ["MT5 / EA"],
       },
       {
         id: "2.2",

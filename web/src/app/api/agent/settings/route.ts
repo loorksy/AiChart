@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { getLimits, getSettings, logAudit, updateSettings } from "@/lib/store";
 
 const patchSchema = z
   .object({
-    active_market: z.enum(["crypto", "forex"]),
-    futures_enabled: z.boolean(),
+    active_market: z.literal("forex"),
+    futures_enabled: z.literal(false).optional(),
     default_leverage: z.number().min(1).max(125),
   })
   .partial();
@@ -18,8 +19,8 @@ export async function GET(req: NextRequest) {
     const userId = await resolveBridgeUserId(req);
     const settings = await getSettings(userId);
     return NextResponse.json({
-      active_market: settings.active_market ?? "crypto",
-      futures_enabled: Boolean(settings.futures_enabled),
+      active_market: DEFAULT_MARKET,
+      futures_enabled: false,
       default_leverage: settings.default_leverage ?? 1,
       mode: settings.mode,
       execution_env_preference: settings.execution_env_preference ?? "demo",
@@ -42,11 +43,12 @@ export async function PATCH(req: NextRequest) {
     }
 
     const limits = await getLimits(userId);
-    const patch: Record<string, unknown> = { ...input };
+    const patch: Record<string, unknown> = {
+      ...input,
+      active_market: DEFAULT_MARKET,
+      futures_enabled: 0,
+    };
 
-    if (typeof input.futures_enabled === "boolean") {
-      patch.futures_enabled = input.futures_enabled ? 1 : 0;
-    }
     if (typeof input.default_leverage === "number") {
       const leverageCap =
         limits.max_leverage_cap && limits.max_leverage_cap > 0
@@ -61,8 +63,8 @@ export async function PATCH(req: NextRequest) {
     const settings = await getSettings(userId);
     return NextResponse.json({
       ok: true,
-      active_market: settings.active_market ?? "crypto",
-      futures_enabled: Boolean(settings.futures_enabled),
+      active_market: DEFAULT_MARKET,
+      futures_enabled: false,
       default_leverage: settings.default_leverage ?? 1,
     });
   } catch (err) {

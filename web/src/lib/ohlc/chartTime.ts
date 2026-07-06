@@ -1,11 +1,11 @@
 /** Normalize candle open time to Lightweight Charts UTCTimestamp (seconds). */
 export function toChartSeconds(time: number): number {
   if (!Number.isFinite(time) || time <= 0) return 0;
-  // Binance openTime is ms; MT5/EA typically Unix seconds.
+  // Some feeds use ms; MT5/EA typically Unix seconds.
   return time > 1e12 ? Math.floor(time / 1000) : Math.floor(time);
 }
 
-export type ChartMarket = "crypto" | "forex";
+export type ChartMarket = "forex";
 
 /** Order of magnitude of a positive price (e.g. 1.135→0, 1615→3). */
 function magnitudeBucket(price: number): number {
@@ -18,8 +18,7 @@ function magnitudeBucket(price: number): number {
  * For forex we can't rely on the median as an anchor: when a large share of the
  * feed is corrupt the median lands between the two scales and the wrong bars
  * survive. Instead we cluster bars by price order-of-magnitude and keep the
- * dominant cluster (ties favour the smaller magnitude, since stray crypto/index
- * intruders are the larger values).
+ * dominant cluster (ties favour the smaller magnitude when stray scales leak in).
  */
 export function sanitizeCandlesForMarket<
   T extends { time: number; open: number; high: number; low: number; close: number },
@@ -71,7 +70,7 @@ export function livePriceConsistent(
 ): boolean {
   if (!(refClose > 0) || !(live > 0)) return false;
   const ratio = live / refClose;
-  const band = market === "forex" ? 0.08 : 0.25;
+  const band = 0.08;
   return ratio >= 1 - band && ratio <= 1 + band;
 }
 

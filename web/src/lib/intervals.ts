@@ -1,4 +1,4 @@
-/** Binance Spot intervals natively returned by the klines API. */
+/** Supported chart/kline intervals. */
 export const MARKET_INTERVALS = [
   "1m",
   "3m",

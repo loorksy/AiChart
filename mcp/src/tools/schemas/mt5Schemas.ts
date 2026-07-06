@@ -37,7 +37,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_live_account",
     domain: "mt5",
     description:
-      "When: before any trade — unified MT5+Binance + quoteAgeMs. read-only.",
+      "When: before any trade — unified MT5 account + quoteAgeMs. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "account-overview" },
@@ -62,10 +62,10 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_account_symbols",
     domain: "mt5",
     description:
-      "All broker pairs/symbols in MetaTrader account (full Market Watch) with bid/ask/spread — see all available pairs, not a short list. Filters: q, market=forex|crypto. read-only. Example: market=forex.",
+      "All broker pairs/symbols in MetaTrader account (full Market Watch) with bid/ask/spread — see all available pairs, not a short list. Filters: q, market=forex. read-only. Example: market=forex.",
     inputSchema: {
       q: z.string().optional(),
-      market: z.enum(["forex", "crypto"]).optional(),
+      market: z.literal("forex").optional(),
       limit: z.number().int().min(1).max(500).optional(),
     },
     annotations: READ_ONLY,

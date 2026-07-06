@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Loader2, Search, TrendingDown, TrendingUp, X } from "lucide-react";
 import { formatTickerPrice } from "@/components/market/formatLevel";
-import { useBinanceLivePrices } from "@/hooks/useBinanceLivePrice";
-import type { MarketType } from "@/lib/markets/types";
-import { cn } from "@/lib/utils";
+import type { LivePriceMap } from "@/hooks/livePriceTypes";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
+import { cn } from "@/lib/utils";
 
 const CTRL =
   "inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-border/50 bg-background/80 text-xs font-medium text-foreground backdrop-blur-md transition hover:bg-background/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -27,7 +27,7 @@ export function SymbolPicker({
   onSearchChange,
   loading,
   onOpen,
-  market = "crypto",
+  market = DEFAULT_MARKET,
   interval = "1h",
 }: {
   value: string;
@@ -38,10 +38,10 @@ export function SymbolPicker({
   onSearchChange: (q: string) => void;
   loading?: boolean;
   onOpen?: () => void;
-  market?: MarketType;
+  market?: typeof DEFAULT_MARKET;
   interval?: string;
 }) {
-  const isForex = market === "forex";
+  const isForex = true;
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -58,13 +58,7 @@ export function SymbolPicker({
     );
   }, [openAssets, options, search]);
 
-  const liveSymbols = useMemo(
-    () => filtered.slice(0, 60).map((o) => o.symbol),
-    [filtered],
-  );
-  const liveTicks = useBinanceLivePrices(
-    open && !isForex ? liveSymbols : [],
-  );
+  const liveTicks: LivePriceMap = {};
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1023px)");
@@ -118,9 +112,7 @@ export function SymbolPicker({
           placeholder={
             isForex
               ? "ابحث عن زوج فوركس…"
-              : openAssets
-                ? "ابحث عن زوج USDT…"
-                : "فلترة الأزواج…"
+              : "فلترة الأزواج…"
           }
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
@@ -290,9 +282,7 @@ export function SymbolPicker({
         onClick={openPanel}
         dir="ltr"
       >
-        <span className="truncate">
-          {isForex ? value : value.replace(/USDT$/, "")}
-        </span>
+        <span className="truncate">{value}</span>
         <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
       </button>
       {desktopPanel}

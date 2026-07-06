@@ -38,7 +38,7 @@ export function setKlinesClientCache(key: string, candles: ClientKlineBar[]): vo
 export function prefetchKlines(
   symbol: string,
   interval: string,
-  market: "crypto" | "forex" = "crypto",
+  market: "forex" = "forex",
   limit?: number,
 ): void {
   const key = klinesClientKey(symbol, interval, market);
