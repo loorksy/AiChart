@@ -20,6 +20,7 @@ from services.trading import market as mk
 from services.trading import store
 from services.trading.constants import normalize_interval
 from services.trading.models import ensure_tables
+from services.trading.mt5map import resolve_mt5_symbol
 from services.trading.risk import (
     ProposedTrade,
     RiskContext,
@@ -39,12 +40,13 @@ def _sanitize_symbol(raw: str | None) -> str:
 
 
 def _risk_context(owner: str, settings: dict[str, Any]) -> RiskContext:
-    ea = store.get_ea_state(owner)
-    resolved_env = "live" if ea.get("connected") and settings.get("env_preference") == "live" else "demo"
+    connected = store.ea_connected(owner)
     return RiskContext(
         open_trades_count=store.open_trades_count(owner),
         env_preference=settings.get("env_preference", "demo"),
-        resolved_env=resolved_env if ea.get("connected") else None,
+        # Resolved env reflects a *live* bridge only when the EA is actually
+        # online; otherwise there is no live broker to execute on.
+        resolved_env=("live" if settings.get("env_preference") == "live" else "demo") if connected else None,
     )
 
 
@@ -115,7 +117,7 @@ def setup_trading_routes() -> APIRouter:
         return {
             "oanda": store.has_broker_credential(owner, "oanda"),
             "mt5": store.has_broker_credential(owner, "mt5"),
-            "ea": store.get_ea_state(owner).get("connected", False),
+            "ea": store.ea_connected(owner),
         }
 
     @router.post("/broker/oanda")
@@ -185,13 +187,11 @@ def setup_trading_routes() -> APIRouter:
         if not will_execute:
             intent = store.create_intent(owner, "open", proposed.symbol, body)
             return {"ok": True, "queued": True, "intent": intent}
-        trade = store.record_trade(owner, {
-            "symbol": proposed.symbol, "side": proposed.side, "notional": proposed.notional,
-            "entry": proposed.entry, "stop_loss": proposed.stop_loss,
-            "take_profit": proposed.take_profit, "confidence": proposed.confidence,
-            "env": settings.get("env_preference", "demo"), "reason": body.get("reason"),
-        })
-        return {"ok": True, "queued": False, "trade": trade}
+        try:
+            result = _execute_trade(owner, settings, proposed, body.get("reason"))
+        except _ExecutionError as exc:
+            return JSONResponse({"ok": False, "reason": str(exc)}, status_code=422)
+        return {"ok": True, "queued": False, **result}
 
     @router.post("/trades/{trade_id}/close")
     async def close_trade(request: Request, trade_id: str, body: dict[str, Any] = Body(default={})):
@@ -229,29 +229,40 @@ def setup_trading_routes() -> APIRouter:
         row = store.decide_intent(owner, intent_id, approve)
         if row is None:
             raise HTTPException(404, "Intent not found")
-        # On approval, materialize the trade from the stored payload.
+        # On approval, execute the trade from the stored payload (this is the
+        # explicit user approval that clears the Risk Guard mode gate).
         trade = None
+        error = None
         if approve and row.get("payload"):
             import json
 
             try:
                 payload = json.loads(row["payload"])
                 proposed = _proposed_from_body(payload)
-                trade = store.record_trade(owner, {
-                    "symbol": proposed.symbol, "side": proposed.side, "notional": proposed.notional,
-                    "entry": proposed.entry, "stop_loss": proposed.stop_loss,
-                    "take_profit": proposed.take_profit, "confidence": proposed.confidence,
-                    "env": store.get_settings(owner).get("env_preference", "demo"),
-                })
+                settings = store.get_settings(owner)
+                result = _execute_trade(owner, settings, proposed, payload.get("reason"))
+                trade = result.get("trade")
+            except _ExecutionError as exc:
+                error = str(exc)
             except Exception as exc:
                 logger.warning("Intent materialize failed: %s", exc)
-        return {"ok": True, "intent": row, "trade": trade}
+                error = "تعذّر تنفيذ الصفقة."
+        return {"ok": True, "intent": row, "trade": trade, "error": error}
 
     # ── EA / MT5 live state ───────────────────────────────────────────────────
     @router.get("/ea/state")
     async def ea_state(request: Request):
         owner = require_user(request)
-        return store.get_ea_state(owner)
+        st = store.get_ea_state(owner)
+        st["online"] = store.ea_is_online(st)
+        return st
+
+    @router.post("/broker/ea-token")
+    async def mint_ea_token(request: Request):
+        """Mint a one-time EA bridge token for the user's MetaTrader 5 EA."""
+        owner = require_user(request)
+        token = store.generate_ea_token(owner)
+        return {"token": token, "hint": "أدخل هذا التوكن في EaToken داخل الإكسبيرت. يظهر مرة واحدة."}
 
     @router.get("/risk/status")
     async def risk_status(request: Request):
@@ -285,6 +296,61 @@ def setup_trading_routes() -> APIRouter:
         return store.set_kill_switch(bool(body.get("on")))
 
     return router
+
+
+class _ExecutionError(Exception):
+    """A safe, user-facing reason the trade could not be routed to execution."""
+
+
+def _execute_trade(owner: str, settings: dict[str, Any], proposed: ProposedTrade, reason: str | None) -> dict[str, Any]:
+    """Route an approved trade to execution.
+
+    - demo/paper: record the trade locally (status ``open``).
+    - live: require an ONLINE MT5 bridge, resolve the broker-exact symbol, and
+      queue an ``open_position`` command the EA will pick up. The trade is
+      recorded ``pending`` until the EA acks it with a broker ticket.
+    """
+    env = settings.get("env_preference", "demo")
+    lots = _notional_to_lots(proposed.notional)
+    if env == "live":
+        if not store.ea_connected(owner):
+            raise _ExecutionError("جسر MT5 غير متصل — لا يتم التنفيذ الحقيقي بدون جسر متصل.")
+        ea_symbols = store.ea_symbol_list(owner)
+        broker_symbol = resolve_mt5_symbol(ea_symbols, proposed.symbol) if ea_symbols else None
+        if not broker_symbol:
+            raise _ExecutionError(f"الرمز {proposed.symbol} غير متاح لدى وسيط MT5 المتصل.")
+        trade = store.record_trade(owner, {
+            "symbol": proposed.symbol, "side": proposed.side, "notional": proposed.notional,
+            "entry": proposed.entry, "stop_loss": proposed.stop_loss,
+            "take_profit": proposed.take_profit, "confidence": proposed.confidence,
+            "env": "live", "status": "pending", "reason": reason, "volume": lots,
+        })
+        command = store.create_ea_command(owner, "open_position", {
+            "symbol": broker_symbol, "side": proposed.side, "lots": lots,
+            "stop_loss": proposed.stop_loss, "take_profit": proposed.take_profit,
+        }, trade_id=trade["id"])
+        command["payload"] = {
+            "symbol": broker_symbol, "side": proposed.side, "lots": lots,
+            "stop_loss": proposed.stop_loss, "take_profit": proposed.take_profit,
+        }
+        return {"trade": trade, "command": command, "routed": "mt5"}
+    trade = store.record_trade(owner, {
+        "symbol": proposed.symbol, "side": proposed.side, "notional": proposed.notional,
+        "entry": proposed.entry, "stop_loss": proposed.stop_loss,
+        "take_profit": proposed.take_profit, "confidence": proposed.confidence,
+        "env": "demo", "reason": reason, "volume": lots,
+    })
+    return {"trade": trade, "routed": "paper"}
+
+
+def _notional_to_lots(notional: float) -> float:
+    """Rough USD-risk → lots mapping for forex majors (0.01 lot per $10 risk,
+    floored at the 0.01 micro-lot minimum). The broker validates final sizing."""
+    try:
+        lots = round(max(0.01, float(notional) / 10.0 * 0.01), 2)
+    except (TypeError, ValueError):
+        lots = 0.01
+    return lots
 
 
 def _proposed_from_body(body: dict[str, Any]) -> ProposedTrade:

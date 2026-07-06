@@ -209,3 +209,6 @@
   .tw-rail { max-width: none; }
   .tw-levels { grid-template-columns: repeat(2, 1fr); }
 }
+
+.tw-broker-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.tw-broker-actions .tw-field { gap: 6px; }

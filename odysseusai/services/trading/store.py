@@ -18,6 +18,7 @@ from . import constants as const
 from .models import (
     AdminLimits,
     BrokerCredential,
+    EaCommand,
     EaState,
     Intent,
     Recommendation,
@@ -25,6 +26,9 @@ from .models import (
     TradingSettings,
     ensure_tables,
 )
+
+# EA is considered offline after 3 missed 30s heartbeats (~90s).
+EA_OFFLINE_SECONDS = 95
 
 logger = logging.getLogger(__name__)
 
@@ -355,7 +359,7 @@ def get_ea_state(owner: str) -> dict[str, Any]:
         if row is None:
             return {"owner": owner, "connected": False, "online": False}
         data = _row_to_dict(row)
-        for key in ("last_quotes", "last_positions"):
+        for key in ("last_quotes", "last_positions", "symbol_specs"):
             if data.get(key):
                 try:
                     data[key] = json.loads(data[key])
@@ -366,7 +370,8 @@ def get_ea_state(owner: str) -> dict[str, Any]:
 
 def update_ea_state(owner: str, patch: dict[str, Any]) -> dict[str, Any]:
     ensure_tables()
-    json_fields = {"last_quotes", "last_positions"}
+    json_fields = {"last_quotes", "last_positions", "symbol_specs"}
+    datetime_fields = {"last_heartbeat"}
     allowed = {c.name for c in EaState.__table__.columns} - {"owner", "created_at", "updated_at"}
     with get_db_session() as db:
         row = db.get(EaState, owner)
@@ -378,7 +383,158 @@ def update_ea_state(owner: str, patch: dict[str, Any]) -> dict[str, Any]:
                 continue
             if key in json_fields and not isinstance(val, str):
                 val = json.dumps(val)
+            elif key in datetime_fields and isinstance(val, str):
+                try:
+                    val = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                    if val.tzinfo is not None:
+                        val = val.astimezone(timezone.utc).replace(tzinfo=None)
+                except ValueError:
+                    val = _now()
             setattr(row, key, val)
         db.commit()
         db.refresh(row)
         return _row_to_dict(row)
+
+
+# ── EA token + commands (MT5 bridge) ──────────────────────────────────────────
+def _hash_ea_token(token: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+
+
+def generate_ea_token(owner: str) -> str:
+    """Mint a new EA bearer token for ``owner`` (shown once), store its hash."""
+    import secrets
+
+    ensure_tables()
+    token = "ea_" + secrets.token_hex(24)
+    token_hash = _hash_ea_token(token)
+    with get_db_session() as db:
+        row = db.get(EaState, owner)
+        if row is None:
+            row = EaState(owner=owner)
+            db.add(row)
+        row.ea_token_hash = token_hash
+        db.commit()
+    return token
+
+
+def resolve_owner_by_ea_token(token: str) -> str | None:
+    ensure_tables()
+    token_hash = _hash_ea_token(token or "")
+    if not token:
+        return None
+    with get_db_session() as db:
+        row = db.query(EaState).filter(EaState.ea_token_hash == token_hash).first()
+        return row.owner if row else None
+
+
+def ea_is_online(state: dict[str, Any]) -> bool:
+    hb = state.get("last_heartbeat")
+    if not hb:
+        return False
+    try:
+        ts = datetime.fromisoformat(hb) if isinstance(hb, str) else hb
+    except (TypeError, ValueError):
+        return False
+    if ts.tzinfo is not None:
+        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+    return (_now() - ts).total_seconds() <= EA_OFFLINE_SECONDS
+
+
+def ea_connected(owner: str) -> bool:
+    """True only when the EA has heartbeat within the offline threshold."""
+    return ea_is_online(get_ea_state(owner))
+
+
+def ea_symbol_list(owner: str) -> list[str]:
+    specs = get_ea_state(owner).get("symbol_specs")
+    if isinstance(specs, list):
+        return [s.get("symbol") for s in specs if isinstance(s, dict) and s.get("symbol")]
+    return []
+
+
+def create_ea_command(owner: str, command_type: str, payload: dict[str, Any], trade_id: str | None = None) -> dict[str, Any]:
+    import uuid
+
+    ensure_tables()
+    with get_db_session() as db:
+        row = EaCommand(
+            id=uuid.uuid4().hex,
+            owner=owner,
+            command_type=command_type,
+            payload=json.dumps(payload),
+            status="pending",
+            trade_id=trade_id,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return _row_to_dict(row)
+
+
+def list_pending_commands(owner: str, mark_sent: bool = False) -> list[dict[str, Any]]:
+    ensure_tables()
+    with get_db_session() as db:
+        rows = (
+            db.query(EaCommand)
+            .filter(EaCommand.owner == owner, EaCommand.status.in_(["pending", "sent"]))
+            .order_by(EaCommand.created_at.asc())
+            .all()
+        )
+        out = []
+        for r in rows:
+            out.append({
+                "id": r.id,
+                "command_type": r.command_type,
+                "payload": json.loads(r.payload) if r.payload else {},
+            })
+            if mark_sent and r.status == "pending":
+                r.status = "sent"
+                r.sent_at = _now()
+        if mark_sent:
+            db.commit()
+        return out
+
+
+def ack_command(owner: str, command_id: str, status: str, result: dict[str, Any] | None) -> dict[str, Any] | None:
+    ensure_tables()
+    with get_db_session() as db:
+        row = db.get(EaCommand, command_id)
+        if row is None or row.owner != owner:
+            return None
+        row.status = "acked" if status == "acked" else "failed"
+        row.result = json.dumps(result or {})
+        row.acked_at = _now()
+        trade_id = row.trade_id
+        cmd_type = row.command_type
+        db.commit()
+    # Reconcile the linked local trade with the broker result.
+    if trade_id and result:
+        _apply_ack_to_trade(owner, trade_id, cmd_type, status, result)
+    return {"ok": True}
+
+
+def _apply_ack_to_trade(owner: str, trade_id: str, cmd_type: str, status: str, result: dict[str, Any]) -> None:
+    with get_db_session() as db:
+        row = db.get(Trade, trade_id)
+        if row is None or row.owner != owner:
+            return
+        if status != "acked":
+            row.status = "cancelled"
+            row.reason = (row.reason or "") + f" | EA failed: {result.get('error', '')}"
+        elif cmd_type == "open_position":
+            row.status = "open"
+            if result.get("ticket") is not None:
+                row.broker_ticket = str(result["ticket"])
+            if result.get("price") is not None:
+                row.entry = float(result["price"])
+            if result.get("lots") is not None:
+                row.volume = float(result["lots"])
+        elif cmd_type == "close_position":
+            row.status = "closed"
+            if result.get("price") is not None:
+                row.exit_price = float(result["price"])
+            row.closed_at = _now()
+        db.commit()

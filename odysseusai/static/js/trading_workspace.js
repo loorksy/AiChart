@@ -408,10 +408,35 @@ async function refreshRail() {
   try {
     const b = await api("/broker/status");
     const box = $("#tw-broker");
-    if (box) box.innerHTML =
-      statusLine("OANDA (بيانات السوق)", b.oanda) +
-      statusLine("جسر MT5 (التنفيذ)", b.ea) +
-      (!b.oanda ? `<div class="tw-hint">أضف مفتاح OANDA لعرض الشموع الحيّة. التنفيذ يتم عبر MT5 فقط.</div>` : "");
+    if (box) {
+      box.innerHTML =
+        statusLine("OANDA (بيانات السوق)", b.oanda) +
+        statusLine("جسر MT5 (التنفيذ)", b.ea) +
+        `<div class="tw-broker-actions">` +
+        (!b.oanda
+          ? `<div class="tw-field"><input class="tw-input" id="tw-oanda-key" placeholder="مفتاح OANDA" style="flex:1"><button class="tw-btn" id="tw-oanda-save">حفظ</button></div>`
+          : "") +
+        `<button class="tw-btn" id="tw-mt5-connect">ربط MetaTrader 5…</button>` +
+        `<div class="tw-hint">بيانات السوق من OANDA · التنفيذ عبر جسر MT5 فقط.</div>` +
+        `<div id="tw-mt5-token"></div>` +
+        `</div>`;
+      const oSave = $("#tw-oanda-save");
+      if (oSave) oSave.onclick = async () => {
+        const key = $("#tw-oanda-key").value.trim(); if (!key) return;
+        try { await api("/broker/oanda", { method: "POST", body: { api_key: key } }); refreshRail(); }
+        catch (e) { alert(e.message); }
+      };
+      $("#tw-mt5-connect").onclick = async () => {
+        try {
+          const r = await api("/broker/ea-token", { method: "POST" });
+          $("#tw-mt5-token").innerHTML =
+            `<div class="tw-result queued" style="display:block;word-break:break-all">` +
+            `توكن الإكسبيرت (يظهر مرة واحدة): <b>${esc(r.token)}</b><br>` +
+            `ApiBase: <b>${location.origin}</b> · المسار: <b>/api/ea-bridge</b><br>` +
+            `أدخله في EaToken داخل AiChartBridge على جهازك.</div>`;
+        } catch (e) { alert(e.message); }
+      };
+    }
   } catch {}
 }
 const statusLine = (label, on) => `<div class="tw-status-line"><span class="led ${on ? "on" : "off"}"></span> ${esc(label)} — ${on ? "متصل" : "غير متصل"}</div>`;

@@ -150,12 +150,31 @@ class EaState(TimestampMixin, Base):
     online = Column(Boolean, nullable=False, default=False)
     account_login = Column(String, nullable=True)
     account_server = Column(String, nullable=True)
+    trade_mode = Column(String, nullable=True)  # demo|live|contest (from EA)
     balance = Column(Float, nullable=True)
     equity = Column(Float, nullable=True)
     currency = Column(String, nullable=True, default="USD")
+    ea_token_hash = Column(String, nullable=True, index=True)  # sha256 of EA bearer token
     last_heartbeat = Column(DateTime, nullable=True)
-    last_quotes = Column(Text, nullable=True)     # JSON: {symbol: {bid, ask, ts}}
-    last_positions = Column(Text, nullable=True)  # JSON array of broker positions
+    last_quotes = Column(Text, nullable=True)      # JSON: {symbol: {bid, ask, ts}}
+    last_positions = Column(Text, nullable=True)   # JSON array of broker positions
+    symbol_specs = Column(Text, nullable=True)     # JSON array of EA symbol specs
+
+
+class EaCommand(TimestampMixin, Base):
+    """A trade command queued for the user's EA to poll and execute."""
+
+    __tablename__ = "trading_ea_commands"
+
+    id = Column(String, primary_key=True, index=True)
+    owner = Column(String, nullable=False, index=True)
+    command_type = Column(String, nullable=False)  # open_position|close_position|modify_sl_tp
+    payload = Column(Text, nullable=True)           # JSON command payload
+    status = Column(String, nullable=False, default="pending")  # pending|sent|acked|failed
+    result = Column(Text, nullable=True)            # JSON ack result (ticket, price, error)
+    trade_id = Column(String, nullable=True)        # linked local trade, if any
+    sent_at = Column(DateTime, nullable=True)
+    acked_at = Column(DateTime, nullable=True)
 
 
 # All trading tables, in dependency order (none have FKs between them today).
@@ -167,6 +186,7 @@ _TRADING_TABLES = [
     Recommendation.__table__,
     Intent.__table__,
     EaState.__table__,
+    EaCommand.__table__,
 ]
 
 _tables_ready = False
@@ -185,6 +205,35 @@ def ensure_tables() -> None:
         return
     try:
         Base.metadata.create_all(bind=engine, tables=_TRADING_TABLES)
+        _reconcile_columns()
         _tables_ready = True
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Trading table creation failed: %s", exc)
+
+
+def _reconcile_columns() -> None:
+    """Add any model columns missing from an already-created table.
+
+    ``create_all`` never ALTERs existing tables, so a column added to a model
+    after its table was first created (e.g. EaState.ea_token_hash) would be
+    absent. SQLite supports ``ALTER TABLE ADD COLUMN``; we add only what's
+    missing so the helper stays idempotent.
+    """
+    from sqlalchemy import inspect as sa_inspect, text
+
+    insp = sa_inspect(engine)
+    with engine.begin() as conn:
+        for table in _TRADING_TABLES:
+            try:
+                existing = {c["name"] for c in insp.get_columns(table.name)}
+            except Exception:
+                continue
+            for col in table.columns:
+                if col.name in existing:
+                    continue
+                ddl = col.type.compile(dialect=engine.dialect)
+                default = ""
+                if col.default is not None and getattr(col.default, "is_scalar", False):
+                    val = col.default.arg
+                    default = f" DEFAULT {val!r}" if isinstance(val, str) else f" DEFAULT {val}"
+                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {ddl}{default}'))

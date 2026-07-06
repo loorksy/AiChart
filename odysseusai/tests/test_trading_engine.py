@@ -119,3 +119,52 @@ def test_analysis_confluences_direction():
             "price": 1.10, "ema20": 1.10}
     direction, _ = _confluences(flat)
     assert direction == "neutral"
+
+
+# ── MT5 symbol mapping ────────────────────────────────────────────────────────
+def test_mt5_symbol_mapping():
+    from services.trading.mt5map import forex_canonical_key, resolve_mt5_symbol
+
+    assert forex_canonical_key("EURUSDm") == "EURUSD"
+    assert forex_canonical_key("XAUUSD.pro") == "XAUUSD"
+    assert forex_canonical_key("EUR_USD") == "EURUSD"
+
+    broker = ["EURUSDm", "GBPUSDm", "XAUUSD.pro"]
+    assert resolve_mt5_symbol(broker, "EURUSDm") == "EURUSDm"   # exact
+    assert resolve_mt5_symbol(broker, "eurusdm") == "EURUSDm"   # case-insensitive
+    assert resolve_mt5_symbol(broker, "EURUSD") == "EURUSDm"    # canonical
+    assert resolve_mt5_symbol(broker, "XAUUSD") == "XAUUSD.pro"
+    assert resolve_mt5_symbol(broker, "USDJPY") is None         # unavailable
+    assert resolve_mt5_symbol([], "EURUSD") is None
+
+
+# ── EA bridge: token + command reconciliation (DB-backed) ─────────────────────
+def test_ea_token_and_command_flow():
+    from services.trading import store
+
+    owner = "ea_test_user"
+    token = store.generate_ea_token(owner)
+    assert token.startswith("ea_")
+    assert store.resolve_owner_by_ea_token(token) == owner
+    assert store.resolve_owner_by_ea_token("ea_wrong") is None
+
+    # Heartbeat marks the bridge online.
+    from datetime import datetime, timezone
+    store.update_ea_state(owner, {
+        "connected": True, "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+        "symbol_specs": [{"symbol": "EURUSDm"}], "balance": 1000.0,
+    })
+    assert store.ea_connected(owner) is True
+    assert store.ea_symbol_list(owner) == ["EURUSDm"]
+
+    # A pending open command linked to a pending trade, then acked → open.
+    trade = store.record_trade(owner, {"symbol": "EURUSD", "side": "buy",
+                                       "notional": 20, "status": "pending", "env": "live"})
+    cmd = store.create_ea_command(owner, "open_position",
+                                  {"symbol": "EURUSDm", "side": "buy", "lots": 0.02},
+                                  trade_id=trade["id"])
+    pending = store.list_pending_commands(owner, mark_sent=True)
+    assert any(c["id"] == cmd["id"] for c in pending)
+    store.ack_command(owner, cmd["id"], "acked", {"ticket": 999, "price": 1.1004, "lots": 0.02})
+    filled = [t for t in store.list_trades(owner) if t["id"] == trade["id"]][0]
+    assert filled["status"] == "open" and filled["broker_ticket"] == "999"

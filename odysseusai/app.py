@@ -235,7 +235,7 @@ if AUTH_ENABLED:
         "/api/version",
         "/login",
     }
-    AUTH_EXEMPT_PREFIXES = ["/static", "/charting_library"]
+    AUTH_EXEMPT_PREFIXES = ["/static", "/charting_library", "/api/ea-bridge"]
     # Dynamic paths whose own handler proves identity via a path-embedded
     # secret instead of the session/bearer auth. The route handler at
     # routes/task_routes.py validates the per-task `webhook_token` itself
@@ -833,6 +833,10 @@ app.include_router(setup_aichart_routes())
 # Native Python trading engine (rewrite of the AiChart platform).
 from routes.trading_routes import setup_trading_routes
 app.include_router(setup_trading_routes())
+
+# MT5/EA execution bridge — token-authenticated (auth-exempt prefix above).
+from routes.ea_routes import setup_ea_routes
+app.include_router(setup_ea_routes())
 
 # ========= ROUTES (kept in app.py) =========
 
