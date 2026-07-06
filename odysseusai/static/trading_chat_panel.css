@@ -1,0 +1,23 @@
+/* In-conversation trading chart card (main Odysseus chat). */
+.tw-chat-chart {
+  margin: 10px 0;
+  border: 1px solid var(--border, #355a66);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--panel, #2c313a);
+}
+.tw-chat-chart-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #355a66);
+  font-size: 13px;
+  color: var(--color-muted, #8a94a6);
+}
+.tw-chat-chart-head b { color: var(--color-accent, #00aaff); }
+.tw-chat-open { margin-left: auto; text-decoration: none; color: var(--color-accent, #00aaff); font-size: 15px; }
+.tw-chat-close { background: none; border: 0; color: var(--color-muted, #8a94a6); cursor: pointer; font-size: 14px; }
+.tw-chat-chart-mount { width: 100%; min-height: 60px; }
+.tw-chat-fallback { padding: 22px 14px; text-align: center; color: var(--color-muted, #8a94a6); font-size: 13px; }
+.tw-chat-fallback a { color: var(--color-accent, #00aaff); }

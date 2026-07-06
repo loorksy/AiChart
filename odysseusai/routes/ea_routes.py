@@ -87,6 +87,36 @@ def setup_ea_routes() -> APIRouter:
             "commands": store.list_pending_commands(owner, mark_sent=True),
         }
 
+    @router.post("/quotes")
+    async def quotes(
+        request: Request,
+        body: dict[str, Any] = Body(...),
+        authorization: str | None = Header(default=None),
+        x_ea_token: str | None = Header(default=None),
+    ):
+        """Intraday tick flush from the EA (best-effort; updates live quotes)."""
+        owner = _auth(request, authorization, x_ea_token)
+        symbols = body.get("symbols") or body.get("quotes") or []
+        if isinstance(symbols, list) and symbols:
+            quotes = {
+                s["symbol"]: {"bid": s.get("bid"), "ask": s.get("ask"), "ts": _iso()}
+                for s in symbols if isinstance(s, dict) and s.get("symbol")
+            }
+            if quotes:
+                store.update_ea_state(owner, {"last_quotes": quotes, "last_heartbeat": _iso()})
+        return {"ok": True}
+
+    @router.post("/event")
+    async def event(
+        request: Request,
+        body: dict[str, Any] = Body(default={}),
+        authorization: str | None = Header(default=None),
+        x_ea_token: str | None = Header(default=None),
+    ):
+        """Trade-event notification from the EA (accepted; no-op ack)."""
+        _auth(request, authorization, x_ea_token)
+        return {"ok": True}
+
     @router.get("/commands")
     async def commands(
         request: Request,

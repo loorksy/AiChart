@@ -2612,11 +2612,11 @@ import { wireArrowUpRecall, getLastUserMessageFromChatHistory } from './composer
                 _removeThinkingSpinner();
                 chatRenderer.renderAskUserCard(json.data || {});
 
-              } else if (json.type === 'aichart_workspace') {
+              } else if (json.type === 'trading_workspace') {
                 if (_isBg) continue;
                 _cancelThinkingTimer();
                 _removeThinkingSpinner();
-                chatRenderer.renderAichartWorkspace(json.data || {});
+                chatRenderer.renderTradingWorkspace(json.data || {});
 
               } else if (json.type === 'plan_update') {
                 if (_isBg) continue;

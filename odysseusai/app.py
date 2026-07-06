@@ -827,9 +827,6 @@ app.include_router(setup_contacts_routes())
 from companion import setup_companion_routes
 app.include_router(setup_companion_routes())
 
-from routes.aichart_routes import setup_aichart_routes
-app.include_router(setup_aichart_routes())
-
 # Native Python trading engine (rewrite of the AiChart platform).
 from routes.trading_routes import setup_trading_routes
 app.include_router(setup_trading_routes())

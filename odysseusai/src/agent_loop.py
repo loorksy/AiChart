@@ -3695,11 +3695,11 @@ async def stream_agent_loop(
                     f'data: {json.dumps({"type": "ui_control", "data": result})}\n\n'
                 )
 
-            # AiChart embedded trading workspace (chart iframe + optional proposal).
-            _pending_aichart_workspace = result.get("aichart_workspace")
+            # Native trading workspace (agent opens a chart in the conversation).
+            _pending_aichart_workspace = result.get("trading_workspace") or result.get("aichart_workspace")
             if _pending_aichart_workspace:
                 yield (
-                    f'data: {json.dumps({"type": "aichart_workspace", "data": _pending_aichart_workspace})}\n\n'
+                    f'data: {json.dumps({"type": "trading_workspace", "data": _pending_aichart_workspace})}\n\n'
                 )
 
             # ask_user: remember the payload now, but emit the interactive event
@@ -3791,7 +3791,7 @@ async def stream_agent_loop(
                 # clients to render the prompt without depending on event order.
                 tool_output_data["ask_user"] = _pending_ask_user_event
             if _pending_aichart_workspace:
-                tool_output_data["aichart_workspace"] = _pending_aichart_workspace
+                tool_output_data["trading_workspace"] = _pending_aichart_workspace
             if "ui_event" in result:
                 tool_output_data["ui_event"] = result["ui_event"]
                 for k in (
@@ -3893,7 +3893,7 @@ async def stream_agent_loop(
                 # message removes it as answered.
                 tool_event["ask_user"] = _pending_ask_user_event
             if _pending_aichart_workspace:
-                tool_event["aichart_workspace"] = _pending_aichart_workspace
+                tool_event["trading_workspace"] = _pending_aichart_workspace
             tool_events.append(tool_event)
             if block.tool_type in _VERIFIER_EFFECTFUL_TOOLS:
                 _effectful_used = True

@@ -471,7 +471,7 @@ async function refreshRail() {
             `<div class="tw-result queued" style="display:block;word-break:break-all">` +
             `توكن الإكسبيرت (يظهر مرة واحدة): <b>${esc(r.token)}</b><br>` +
             `ApiBase: <b>${location.origin}</b> · المسار: <b>/api/ea-bridge</b><br>` +
-            `أدخله في EaToken داخل AiChartBridge على جهازك.</div>`;
+            `أدخله في EaToken داخل OdysseusBridge (MT5) على جهازك.</div>`;
         } catch (e) { alert(e.message); }
       };
     }
