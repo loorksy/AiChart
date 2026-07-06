@@ -38,7 +38,7 @@ export interface ChartLayoutState extends ChartHydrateSnapshot {
 }
 
 export function SmartChartWorkspace({
-  recommendations = [],
+  recommendations: _recommendations = [],
   agentReady = true,
   onCreditsUsed,
   guest = false,
@@ -46,6 +46,7 @@ export function SmartChartWorkspace({
   layoutId,
   initialInterval,
   initialState,
+  embedMode = false,
 }: {
   recommendations?: Recommendation[];
   agentReady?: boolean;
@@ -59,7 +60,10 @@ export function SmartChartWorkspace({
   initialInterval?: string;
   /** Saved drawings/recommendation restored on load (no re-analysis). */
   initialState?: ChartLayoutState | null;
+  /** Embedded inside Odysseus: no route rewriting or AiChart chrome controls. */
+  embedMode?: boolean;
 }) {
+  void _recommendations;
   const chartRef = useRef<TvChartHandle>(null);
 
   const router = useRouter();
@@ -181,14 +185,14 @@ export function SmartChartWorkspace({
   // TradingView-style URLs: /chart/<layoutId>?symbol=X for signed-in users,
   // /chart/<SYMBOL> for guests. replaceState only — no page reload.
   useEffect(() => {
-    if (typeof window === "undefined" || !symbol) return;
+    if (embedMode || typeof window === "undefined" || !symbol) return;
     const src = "";
     const target = layoutId
       ? `/chart/${layoutId}?symbol=${encodeURIComponent(symbol)}${src}`
       : `/chart/${encodeURIComponent(symbol)}`;
     const current = window.location.pathname + window.location.search;
     if (current !== target) window.history.replaceState(null, "", target);
-  }, [symbol, layoutId, dataSource]);
+  }, [symbol, layoutId, dataSource, embedMode]);
 
   // Autosave the layout (drawings + recommendation) so refresh restores it.
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -339,6 +343,7 @@ export function SmartChartWorkspace({
 
   // Platform buttons INSIDE the TradingView header (item: no separate layer).
   const headerActions = useMemo<TvHeaderAction[]>(() => {
+    if (embedMode) return [];
     const actions: TvHeaderAction[] = [
       {
         id: "analyze",
@@ -405,7 +410,18 @@ export function SmartChartWorkspace({
     router,
     analyze,
     handleClearLayers,
+    embedMode,
   ]);
+
+
+
+  useEffect(() => {
+    if (!embedMode || typeof window === "undefined") return;
+    window.parent?.postMessage(
+      { type: "aichart:ready", symbol, interval, source: dataSource },
+      "*",
+    );
+  }, [embedMode, symbol, interval, dataSource]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
