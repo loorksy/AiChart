@@ -199,3 +199,39 @@ def test_agent_trading_tools():
     run(EmergencyStopTool(), _json.dumps({"enabled": True}))
     _, r = run(GetRiskSettingsTool())
     assert r["data"]["settings"]["mode"] == "direct"
+
+
+# ── Backtesting + journal (Phase 7) ───────────────────────────────────────────
+def test_backtest_runs_and_scores():
+    import math
+    from services.trading import backtest as bt, indicators as ind
+
+    candles = []
+    p = 100.0
+    for i in range(300):
+        p += 0.15 + 0.6 * math.sin(i / 9.0)
+        candles.append(ind.Candle(high=p + 0.2, low=p - 0.2, close=p, open=p - 0.05))
+    d = bt.backtest(candles, "TESTX", "15m").to_dict()
+    assert d["trades"] >= 1
+    assert 0.0 <= d["win_rate"] <= 1.0
+    assert d["max_drawdown"] >= 0
+    assert d["profit_factor"] >= 0
+
+
+def test_journal_performance_stats():
+    from services.trading import store, journal
+
+    owner = "journal_test_user"
+    store.record_trade(owner, {"symbol": "EURUSD", "side": "buy", "notional": 20,
+                               "entry": 1.10, "stop_loss": 1.095, "take_profit": 1.115})
+    t = [x for x in store.list_trades(owner) if x["symbol"] == "EURUSD"][0]
+    store.close_trade(owner, t["id"], 1.115, 30.0)
+    store.record_trade(owner, {"symbol": "GBPUSD", "side": "sell", "notional": 20,
+                               "entry": 1.27, "stop_loss": 1.275, "take_profit": 1.26})
+    t2 = [x for x in store.list_trades(owner) if x["symbol"] == "GBPUSD"][0]
+    store.close_trade(owner, t2["id"], 1.275, -15.0)
+
+    st = journal.performance_stats(owner)
+    assert st["trades"] == 2 and st["wins"] == 1 and st["losses"] == 1
+    assert st["win_rate"] == 0.5 and st["profit_factor"] == 2.0
+    assert st["best_symbol"] == "EURUSD" and st["total_pnl"] == 15.0

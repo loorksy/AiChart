@@ -363,9 +363,33 @@ async function buildRail() {
   rail.appendChild(rk);
   $("#tw-save-risk").onclick = saveRisk;
 
+  // Performance / learning
+  const perf = document.createElement("div"); perf.className = "tw-panel";
+  perf.innerHTML =
+    `<div class="tw-panel-head"><span class="ic">📈</span> الأداء والتعلّم</div><div class="tw-panel-body">` +
+    `<div id="tw-perf"></div>` +
+    `<div class="tw-save-row"><button class="tw-btn" id="tw-backtest">اختبار تاريخي للرمز الحالي</button></div>` +
+    `</div>`;
+  rail.appendChild(perf);
+  $("#tw-backtest").onclick = runBacktest;
+
   if (state.isAdmin) buildAdminPanel(rail);
 
   refreshRail();
+}
+
+async function runBacktest() {
+  const btn = $("#tw-backtest"); btn.disabled = true; const o = btn.textContent; btn.textContent = "يعمل…";
+  try {
+    const r = await api(`/backtest?symbol=${encodeURIComponent(state.symbol)}&interval=${state.interval}`);
+    if (r.error) { agentMsg("الاختبار التاريخي: " + esc(r.error)); }
+    else agentMsg(
+      `<b>اختبار تاريخي — ${esc(r.symbol)} ${esc(r.interval)}</b><br>` +
+      `صفقات: ${r.trades} · نسبة الربح: ${(r.win_rate * 100).toFixed(0)}% · ` +
+      `Profit Factor: ${r.profit_factor} · متوسط R:R: ${r.avg_rr}<br>` +
+      `أقصى تراجع: ${r.max_drawdown}R · صافي: ${r.net_r}R`);
+  } catch (e) { agentMsg("تعذّر الاختبار التاريخي: " + esc(e.message)); }
+  finally { btn.disabled = false; btn.textContent = o; }
 }
 
 const rowNum = (label, f, v, step) => `<div class="tw-row"><label>${label}</label><input type="number" step="${step}" data-s="${f}" value="${v ?? ""}"></div>`;
@@ -404,6 +428,20 @@ async function refreshRail() {
       `<div class="tw-trade-item"><span class="side ${t.side}">${t.side === "buy" ? "▲" : "▼"}</span>` +
       `<span class="sym">${esc(t.symbol)}</span><span class="tf">${fmt(t.entry)}</span>` +
       `<span class="pnl">${t.notional} USD</span></div>`).join("") || `<div class="tw-hint">لا صفقات مفتوحة.</div>`;
+  } catch {}
+  try {
+    const p = await api("/journal/stats");
+    const box = $("#tw-perf");
+    if (box) {
+      if (!p.trades) box.innerHTML = `<div class="tw-hint">لا صفقات مغلقة بعد — ستظهر إحصاءات الأداء هنا.</div>`;
+      else box.innerHTML =
+        `<div class="tw-stats-grid">` +
+        `<div class="tw-stat"><div class="k">نسبة الربح</div><div class="v">${(p.win_rate * 100).toFixed(0)}%</div></div>` +
+        `<div class="tw-stat"><div class="k">Profit Factor</div><div class="v">${p.profit_factor}</div></div>` +
+        `<div class="tw-stat"><div class="k">صفقات</div><div class="v">${p.trades}</div></div>` +
+        `<div class="tw-stat"><div class="k">أفضل رمز</div><div class="v" style="font-size:15px">${esc(p.best_symbol || "—")}</div></div>` +
+        `</div>`;
+    }
   } catch {}
   try {
     const b = await api("/broker/status");

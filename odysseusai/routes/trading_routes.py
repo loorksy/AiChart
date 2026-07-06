@@ -258,6 +258,42 @@ def setup_trading_routes() -> APIRouter:
             "env_preference": settings.get("env_preference"),
         }
 
+    # ── Journal / performance / backtest / monitor ────────────────────────────
+    @router.get("/journal/stats")
+    async def journal_stats(request: Request):
+        owner = require_user(request)
+        from services.trading.journal import performance_stats
+
+        return performance_stats(owner)
+
+    @router.get("/backtest")
+    async def backtest(request: Request, symbol: str = "EURUSD", interval: str = "15m", count: int = 500):
+        owner = require_user(request)
+        from services.trading.backtest import backtest_symbol
+
+        count = max(120, min(int(count), 5000))
+        return await backtest_symbol(owner, _sanitize_symbol(symbol), normalize_interval(interval), count)
+
+    @router.post("/monitor/scan")
+    async def monitor_scan(request: Request, body: dict[str, Any] = Body(default={})):
+        """Scan a watchlist and create recommendations for directional setups."""
+        owner = require_user(request)
+        from services.trading.analysis import build_analysis
+
+        symbols = body.get("symbols") or ["EURUSD", "GBPUSD", "XAUUSD", "USDJPY"]
+        interval = normalize_interval(body.get("interval") or "15m")
+        created = []
+        for sym in symbols[:10]:
+            a = await build_analysis(owner, _sanitize_symbol(sym), interval)
+            if a.get("direction") in ("buy", "sell") and (a.get("confidence") or 0) >= 65:
+                rec = store.create_recommendation(owner, {
+                    "symbol": a["symbol"], "interval": interval, "side": a["direction"],
+                    "entry": a["entry"], "stop_loss": a["stop_loss"], "take_profit": a["take_profit"],
+                    "confidence": a["confidence"], "summary": a["verdict"], "reasons": a["reasons"],
+                })
+                created.append(rec)
+        return {"scanned": len(symbols[:10]), "created": created}
+
     # ── Admin ─────────────────────────────────────────────────────────────────
     @router.get("/admin/limits")
     async def admin_limits(request: Request):
