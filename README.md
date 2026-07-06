@@ -1,99 +1,50 @@
-# AiChart
+# Odysseus — Trading Platform
 
-منصة تداول ذكية متعددة المستخدمين على **سبوت USDT (منصة الكريبتو)**، يتحدث فيها كل متداول مع وكيل خبير
-يراقب السوق بصبر ويتحرّك فقط عند الفرصة المناسبة — صفقة أو توصية، حسب اختيار المستخدم.
+Odysseus هو المنصة الرئيسية: تطبيق **Python / FastAPI** ذاتي الاستضافة يجمع بين
+مساحة عمل الذكاء الاصطناعي (محادثة، وكلاء، أبحاث، مستندات…) و**منصة تداول فوركس
+متكاملة** مدمجة داخل واجهة المحادثة.
 
-> راجع خطة المشروع الكاملة في [`docs/PLAN.md`](docs/PLAN.md).  
-> **أرشيف خطط منفّذة (2026-06):** [`docs/plans/README.md`](docs/plans/README.md).  
-> دليل شامل بالعربية (صفحات، وكيل، تليجرام، إعدادات): [`docs/PROJECT_AR.md`](docs/PROJECT_AR.md).  
-> اقتراحات قابلة للتنفيذ (فجوات الكود مقابل الخطة): [`docs/SUGGESTIONS_FEASIBLE.md`](docs/SUGGESTIONS_FEASIBLE.md).
-> دليل تشغيل وتوسّع إنتاجي: [`docs/PRODUCTION_SCALING.md`](docs/PRODUCTION_SCALING.md).
+> كامل التطبيق موجود في مجلد [`odysseusai/`](odysseusai/). منصة AiChart السابقة
+> (Next.js) أُعيد بناء وظائفها بالكامل بلغة Python داخل Odysseus وأُزيلت.
 
-## الحالة الحالية: المراحل 1–6 مكتملة
+## منصة التداول (Python أصلية)
 
-تطبيق **Next.js** كامل (واجهة + API) في مجلد [`web/`](web):
+| القدرة | الموقع |
+|--------|--------|
+| محرّك المخاطر (Risk Guard) + المؤشرات + reward:risk | `odysseusai/services/trading/{risk,indicators}.py` |
+| بيانات السوق (OANDA v20) + اللقطة والتحليل | `odysseusai/services/trading/{market,analysis}.py` |
+| جسر التنفيذ MT5/EA + تعيين الرموز | `odysseusai/services/trading/{execution,mt5map}.py` + `routes/ea_routes.py` |
+| الاختبار التاريخي + دفتر الأداء | `odysseusai/services/trading/{backtest,journal}.py` |
+| أدوات الوكيل الأصلية | `odysseusai/src/agent_tools/trading_tools.py` |
+| واجهة المستخدم/الأدمن (محادثة + شارت TradingView) | `odysseusai/static/trading.html` + `static/js/trading_workspace.js` + `tv_*.js` |
+| الـ Expert Advisor لِـ MetaTrader 5 | `odysseusai/ea/mt5/OdysseusBridge.mq5` |
 
-| المرحلة | المحتوى |
-|---------|---------|
-| **1** | تسجيل دخول، مفاتيح منصة الكريبتو مشفّرة، إعدادات، صفحة أدمن |
-| **2** | دردشة الوكيل + توصيات (Claude + أدوات تداول الكريبتو) |
-| **3** | شارت حي (شموع + إشارات) |
-| **4** | تنفيذ صفقات، Risk Guard، Kill Switch |
-| **5** | بوت تليجرام (ربط، أزرار موافقة، أوامر، ثنائي اللغة) |
-| **6** | مراقبة 24/7، سكرين شوت، ملخّص يومي، onboarding، أمن، نشر |
+- **الأوضاع الثلاثة:** يدوي (تحليل/توصية فقط) · نصف‑آلي (تجهيز صفقة + تنفيذ يدوي)
+  · آلي‑كامل (تنفيذ عبر Risk Guard) — مع **إيقاف طارئ** و**Kill Switch** للأدمن.
+- **البيانات من OANDA، التنفيذ عبر MT5 فقط.** لا تنفيذ بدون جسر متصل ووقف خسارة.
+- الشارت من **TradingView Advanced Charting Library** (تضع أصولك المرخّصة في
+  `odysseusai/charting_library/`) مع بديل شمعي مدمج.
 
-## التشغيل المحلي
-
-```bash
-cd web
-npm install
-cp .env.example .env   # ثم املأ القيم
-npm run dev            # http://localhost:3010
-```
-
-### متغيرات البيئة المطلوبة
-
-| المتغيّر | الوصف |
-|----------|-------|
-| `ENCRYPTION_KEY` | مفتاح 32 بايت (64 hex) لتشفير أسرار منصة الكريبتو. `openssl rand -hex 32` |
-| `APP_SECRET` | سرّ توقيع الجلسات. `openssl rand -base64 48` |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | حساب الأدمن المُنشأ تلقائياً عند أول تشغيل |
-| `DB_PATH` | مسار قاعدة SQLite (افتراضي `data/aichart.db`) |
-| `ANTHROPIC_API_KEY` | مفتاح Claude للوكيل |
-| `TELEGRAM_BOT_TOKEN` | (اختياري) بوت تليجرام للإشعارات |
-| `CRON_SECRET` | (إنتاج) سرّ لحماية مهام المراقبة والملخّص اليومي |
-
-## Claude MCP — التداول من Connectors
-
-MCP Server في [`mcp/`](mcp/) يغلّف Bridge API للربط مع **Claude.ai → Customize → Connectors**.
-
-| الحقل | القيمة |
-|-------|--------|
-| Remote MCP server URL | `https://aichart.lork.cloud/mcp` |
-
-دليل كامل: [`docs/MCP_CLAUDE_SETUP.md`](docs/MCP_CLAUDE_SETUP.md)
+## التشغيل
 
 ```bash
-cd mcp && npm install && npm run build
-bash infra/vps-mcp-deploy.sh /opt/aichart
+cd odysseusai
+cp .env.example .env      # املأ ENCRYPTION/APP secrets + OANDA_* (اختياري)
+docker compose up -d --build
+# أو محلياً:
+pip install -r requirements.txt && python app.py
 ```
 
-## المراقبة — صيانة ميكانيكية
+افتح `http://localhost:7000` ثم `/trading` لمساحة التداول. ربط MetaTrader 5 في
+[`odysseusai/ea/README.md`](odysseusai/ea/README.md).
 
-Cron (`monitorRunner.ts`) يشغّل صيانة OCO/journal كل 10 دقائق — **بدون استيقاظ وكيل**.
-قرارات التداول في محادثة Claude MCP. انظر [`agent/`](agent/README.md).
+## الاختبارات
 
 ```bash
-# مراقبة بالأحداث (كل 10 دقائق)
-curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
-  https://your-domain/api/cron/event-monitor
-
-# ملخّص يومي + تحديث ذاكرة (مرة/يوم)
-curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
-  https://your-domain/api/cron/daily-summary
+cd odysseusai
+pytest tests/test_trading_engine.py -q
 ```
 
-## النشر على خادم لينكس
+## الترخيص
 
-```bash
-# PM2
-cd web && npm run build
-pm2 start ../infra/pm2.ecosystem.config.cjs
-
-# Docker
-docker compose -f infra/docker-compose.yml up -d
-
-# systemd
-sudo cp infra/aichart.service /etc/systemd/system/
-sudo systemctl enable --now aichart
-```
-
-## التقنيات
-
-Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · SQLite · Claude (Anthropic) · Crypto Spot API · Telegram Bot API · Lightweight Charts
-
-> ملاحظة: استُخدمت **SQLite** للتشغيل المحلي البسيط. الخطة تنصّ على **PostgreSQL** للإنتاج الكبير — يمكن الترحيل لاحقاً.
-
----
-
-تنبيه: للأغراض التعليمية. التداول ينطوي على مخاطر عالية. ابدأ دائماً ببيئة **Testnet**.
+AGPL-3.0-or-later — راجع [`odysseusai/LICENSE`](odysseusai/LICENSE).

@@ -1,3 +1,2 @@
 # Shell scripts must use LF (VPS bash breaks on CRLF)
 *.sh text eol=lf
-infra/** text eol=lf

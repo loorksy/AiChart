@@ -1,8 +1,0 @@
-# AiChart cron jobs — replace YOUR_DOMAIN and CRON_SECRET
-# reviews open-trade theses hourly (agent/workspace/HEARTBEAT.md).
-
-# 24/7 market monitor every 30 min — deep AI runs only when candidates appear.
-*/30 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor
-
-# Daily Telegram summary at 20:00 UTC
-0 20 * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary
