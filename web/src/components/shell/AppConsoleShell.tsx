@@ -7,6 +7,7 @@ import { LogOut, PanelLeftClose, PanelLeft, Menu, X, ChevronRight } from "lucide
 import { LonoraLogo } from "@/components/LonoraLogo";
 import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
 import { cn } from "@/lib/utils";
+import { GridPattern } from "@/components/ui/grid-pattern";
 
 /**
  * Premium OLED-dark console shell with collapsible glassmorphism sidebar,
@@ -56,25 +57,25 @@ export function AppConsoleShell({
             onClick={onNavigate}
             title={collapsed && !onNavigate ? item.label : undefined}
             className={cn(
-              "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 cursor-pointer",
+              "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 cursor-pointer border border-transparent",
               collapsed && !onNavigate && "justify-center px-0",
               active
-                ? "console-nav-active bg-green-500/10 text-green-400"
-                : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200",
+                ? "bg-primary text-primary-foreground border-border"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
             <Icon
               className={cn(
                 "shrink-0 transition-colors",
                 collapsed && !onNavigate ? "h-5 w-5" : "h-4 w-4",
-                active ? "text-green-400" : "text-zinc-600 group-hover:text-zinc-300",
+                active ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground",
               )}
             />
             {(!collapsed || onNavigate) && (
               <span className="truncate">{item.label}</span>
             )}
             {active && !collapsed && (
-              <ChevronRight className="ms-auto h-3.5 w-3.5 text-green-400/60 shrink-0" />
+              <ChevronRight className="ms-auto h-3.5 w-3.5 opacity-80 shrink-0" />
             )}
           </Link>
         );
@@ -86,7 +87,7 @@ export function AppConsoleShell({
   const sidebarHeader = (
     <div
       className={cn(
-        "flex h-14 items-center border-b border-white/[0.05] px-3",
+        "flex h-14 items-center border-b border-border px-3",
         collapsed ? "justify-center" : "justify-between",
       )}
     >
@@ -103,7 +104,7 @@ export function AppConsoleShell({
       <button
         type="button"
         onClick={() => setCollapsed((c) => !c)}
-        className="rounded-lg p-1.5 text-zinc-500 transition-all hover:bg-white/[0.06] hover:text-zinc-200"
+        className="rounded-lg p-1.5 text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
         aria-label={collapsed ? "توسيع القائمة" : "طيّ القائمة"}
       >
         {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -113,22 +114,22 @@ export function AppConsoleShell({
 
   /* ─── Sidebar footer (user + logout) ─── */
   const sidebarFooter = (
-    <div className="border-t border-white/[0.05] p-3 space-y-1">
+    <div className="border-t border-border p-3 space-y-1">
       {!collapsed && (
         <div className="px-3 pb-2 flex items-center gap-2">
-          <div className="h-6 w-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
-            <span className="text-[10px] font-bold text-green-400">
+          <div className="h-6 w-6 rounded-lg bg-accent text-accent-foreground border border-border flex items-center justify-center shrink-0">
+            <span className="text-[10px] font-bold">
               {displayName.charAt(0).toUpperCase()}
             </span>
           </div>
-          <p className="truncate text-xs text-zinc-500 font-medium">{displayName}</p>
+          <p className="truncate text-xs text-muted-foreground font-medium">{displayName}</p>
         </div>
       )}
       <button
         type="button"
         onClick={() => void logout()}
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-zinc-600 transition-all hover:bg-red-500/10 hover:text-red-400 cursor-pointer",
+          "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive cursor-pointer border border-transparent",
           collapsed && "justify-center px-0",
         )}
         title={collapsed ? "خروج" : undefined}
@@ -140,11 +141,11 @@ export function AppConsoleShell({
   );
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background lg:flex-row">
+    <div className="flex h-dvh overflow-hidden bg-background lg:flex-row relative">
       {/* ─── Desktop sidebar — fixed width; only main content grows on resize ─── */}
       <aside
         className={cn(
-          "hidden h-full shrink-0 flex-col border-e border-white/[0.05] bg-[#080809] transition-[width] duration-200 ease-in-out lg:flex",
+          "hidden h-full shrink-0 flex-col border-e border-border bg-sidebar transition-[width] duration-200 ease-in-out lg:flex z-10",
           collapsed ? "w-[3.75rem]" : "w-60",
         )}
       >
@@ -157,7 +158,7 @@ export function AppConsoleShell({
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed start-3 top-3 z-30 rounded-xl border border-white/[0.08] bg-[#080809]/90 p-2.5 text-zinc-300 shadow-lg backdrop-blur-md lg:hidden cursor-pointer"
+        className="fixed start-3 top-3 z-30 rounded-lg border border-border bg-sidebar p-2.5 text-foreground shadow backdrop-blur-md lg:hidden cursor-pointer"
         aria-label="القائمة"
       >
         <Menu className="h-5 w-5" />
@@ -169,38 +170,38 @@ export function AppConsoleShell({
           {/* backdrop */}
           <button
             type="button"
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/75 backdrop-blur-xs"
             aria-label="إغلاق"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 start-0 flex w-[min(80%,18rem)] flex-col border-e border-white/[0.05] bg-[#080809] shadow-2xl">
-            <div className="flex h-14 items-center justify-between border-b border-white/[0.05] px-4">
+          <aside className="absolute inset-y-0 start-0 flex w-[min(80%,18rem)] flex-col border-e border-border bg-sidebar shadow-2xl">
+            <div className="flex h-14 items-center justify-between border-b border-border px-4">
               <Link href="/console" className="flex items-center gap-2.5">
                 <LonoraLogo size={26} showName nameClassName="font-bold tracking-tight" />
               </Link>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg p-1.5 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200 cursor-pointer"
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
                 aria-label="إغلاق"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             {navList(() => setMobileOpen(false))}
-            <div className="border-t border-white/[0.05] p-3 space-y-1">
+            <div className="border-t border-border p-3 space-y-1">
               <div className="px-3 pb-2 flex items-center gap-2">
-                <div className="h-6 w-6 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
-                  <span className="text-[10px] font-bold text-green-400">
+                <div className="h-6 w-6 rounded-lg bg-accent text-accent-foreground border border-border flex items-center justify-center shrink-0">
+                  <span className="text-[10px] font-bold">
                     {displayName.charAt(0).toUpperCase()}
                   </span>
                 </div>
-                <p className="truncate text-xs text-zinc-500 font-medium">{displayName}</p>
+                <p className="truncate text-xs text-muted-foreground font-medium">{displayName}</p>
               </div>
               <button
                 type="button"
                 onClick={() => void logout()}
-                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-zinc-600 hover:bg-red-500/10 hover:text-red-400 cursor-pointer"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer border border-transparent"
               >
                 <LogOut className="h-4 w-4" />
                 خروج
@@ -211,10 +212,11 @@ export function AppConsoleShell({
       )}
 
       {/* ─── Page content — fills remaining viewport beside sidebar ─── */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden relative">
+        <GridPattern className="pointer-events-none opacity-30 z-0" />
         <main
           className={cn(
-            "flex min-h-0 flex-1 flex-col",
+            "flex min-h-0 flex-1 flex-col z-10",
             noPadding
               ? "overflow-hidden"
               : "overflow-y-auto px-4 pb-6 pt-14 sm:px-6 sm:pb-8 lg:pt-6",

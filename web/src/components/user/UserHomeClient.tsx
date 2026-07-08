@@ -45,7 +45,7 @@ function ConnPill({
       <span
         className={cn(
           "ms-auto text-xs font-medium",
-          connected ? "text-green-400" : "text-zinc-600",
+          connected ? "text-foreground" : "text-muted-foreground",
         )}
       >
         {connected === null ? "…" : connected ? "متصل" : "غير مرتبط"}
@@ -92,27 +92,27 @@ export function UserHomeClient({
         <div className="bento-card relative overflow-hidden p-6">
           {/* Background radial */}
           <div
-            className="pointer-events-none absolute inset-0 opacity-20"
+            className="pointer-events-none absolute inset-0 opacity-15"
             style={{
               background:
-                "radial-gradient(ellipse at 10% 50%, rgba(34,197,94,0.3) 0%, transparent 60%)",
+                "radial-gradient(ellipse at 10% 50%, rgba(255,255,255,0.15) 0%, transparent 60%)",
             }}
           />
           <div className="relative flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-green-500/70 mb-1">
+              <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-1">
                 لوحة AiChart
               </p>
               <h1 className="text-2xl font-bold tracking-tight">
                 مرحباً، {displayNameForUser(user)}
               </h1>
-              <p className="mt-1 text-sm text-zinc-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Claude MCP — التداول الذكي من الشارت
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-green-500/20 bg-green-500/5 px-3 py-1.5">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-accent px-3 py-1.5">
               <span className="status-dot status-dot-ok" />
-              <span className="text-xs font-medium text-green-400">مباشر</span>
+              <span className="text-xs font-medium text-foreground">مباشر</span>
             </div>
           </div>
         </div>
@@ -139,16 +139,16 @@ export function UserHomeClient({
             href="/chart"
             className="bento-card group flex flex-col gap-3 p-5 cursor-pointer"
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10 ring-1 ring-green-500/20 group-hover:ring-green-500/40 transition-all">
-              <CandlestickChart className="h-5 w-5 text-green-400" />
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent ring-1 ring-border group-hover:ring-foreground/20 transition-all">
+              <CandlestickChart className="h-5 w-5 text-foreground" />
             </span>
             <div>
               <h2 className="font-semibold text-sm">الشارت الذكي</h2>
-              <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                 تحليل AI، SL/TP، وإدارة الصفقات.
               </p>
             </div>
-            <ExternalLink className="h-3.5 w-3.5 text-zinc-600 group-hover:text-green-400 transition-colors" />
+            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
           </Link>
 
           <Link
@@ -170,9 +170,9 @@ export function UserHomeClient({
 
         {/* ─── Account status card ─── */}
         <div className="bento-card p-5 flex items-center gap-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-500/10">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent border border-border">
             {user.status === "active" ? (
-              <CheckCircle2 className="h-5 w-5 text-green-400" />
+              <CheckCircle2 className="h-5 w-5 text-foreground" />
             ) : (
               <Clock className="h-5 w-5 text-amber-400" />
             )}
@@ -182,7 +182,7 @@ export function UserHomeClient({
             <p className="font-semibold text-sm">
               {user.status === "active" ? "مفعّل" : user.status}
             </p>
-            <p className="text-xs text-zinc-600 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               صلاحية: {formatAccessExpiryLabel(user.access_expires_at)}
             </p>
           </div>
@@ -191,17 +191,17 @@ export function UserHomeClient({
         {/* ─── Connection status panel ─── */}
         <div className="bento-card p-5 space-y-3">
           <div className="flex items-center gap-2 mb-4">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent border border-border">
               {conn?.mt5Online ? (
-                <Wifi className="h-4 w-4 text-green-400" />
+                <Wifi className="h-4 w-4 text-foreground" />
               ) : (
-                <WifiOff className="h-4 w-4 text-zinc-600" />
+                <WifiOff className="h-4 w-4 text-muted-foreground" />
               )}
             </span>
             <h2 className="font-semibold text-sm">حالة الاتصالات</h2>
             <Link
               href="/console/connect"
-              className="ms-auto text-xs text-zinc-600 hover:text-green-400 transition-colors flex items-center gap-1"
+              className="ms-auto text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
             >
               إدارة
               <ExternalLink className="h-3 w-3" />
@@ -214,8 +214,8 @@ export function UserHomeClient({
         {/* ─── Claude MCP card ─── */}
         <div className="bento-card p-5 space-y-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10">
-              <Plug className="h-4 w-4 text-green-400" />
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent border border-border">
+              <Plug className="h-4 w-4 text-foreground" />
             </span>
             <h2 className="font-semibold text-sm">Claude MCP</h2>
           </div>
@@ -259,9 +259,9 @@ export function UserHomeClient({
         {needsProfile && (
           <div className="bento-card border-amber-500/20 p-5">
             <h2 className="font-semibold text-sm">أكمل ملفك</h2>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               أضف رقم واتساب من{" "}
-              <Link href="/console/account" className="text-green-400 hover:underline">
+              <Link href="/console/account" className="text-foreground font-medium underline">
                 حسابي
               </Link>
             </p>

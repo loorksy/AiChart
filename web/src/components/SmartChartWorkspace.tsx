@@ -352,7 +352,7 @@ export function SmartChartWorkspace({
         title: guest
           ? "سجّل الدخول لاستخدام التحليل بالذكاء الاصطناعي"
           : "تحليل بالذكاء الاصطناعي",
-        color: "#22c55e",
+        color: "#71717a",
         onClick: () => {
           if (guest) router.push("/login?next=/chart");
           else if (!isAnalyzing) void analyze();
@@ -386,7 +386,7 @@ export function SmartChartWorkspace({
         id: "mt",
         text: forexOnline ? "MT ✅" : "MT ⚠️",
         title: forexOnline ? "MetaTrader متصل" : "MetaTrader غير متصل — اضغط للإعداد",
-        color: forexOnline ? "#22c55e" : "#f59e0b",
+        color: forexOnline ? "#71717a" : "#f59e0b",
         onClick: () => router.push("/console/connect"),
       });
     }

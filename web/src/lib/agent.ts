@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildSystemPrompt, chartAnalyzeSystemSuffix } from "./persona";
 import { composeCardSchema } from "./cardComposer";
+import { browseUrlWithPlaywright } from "./playwrightBrowser";
 import {
   applyCardPolicy,
   buildCardContext,
@@ -418,6 +419,30 @@ const TOOLS: ToolDef[] = [
       required: ["trading_style"],
     },
   },
+  {
+    name: "browse_web",
+    description:
+      "يستخدم متصفح Playwright لزيارة صفحة ويب (مثل أخبار أو شارت أو معلومات حية) واستخراج النصوص منها أو التقاط صورة لها. مفيد جداً عندما يطلب المستخدم زيارة رابط أو التحقق من موقع.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "الرابط الكامل لزيارته (مثال: https://example.com)",
+        },
+        mode: {
+          type: "string",
+          enum: ["screenshot", "text", "both"],
+          description: "وضع الاسترجاع: نصوص فقط، لقطة شاشة فقط، أو كلاهما (الافتراضي: both)",
+        },
+        selector: {
+          type: "string",
+          description: "محدد CSS لانتظار تحميله قبل التقاط الصفحة (اختياري)",
+        },
+      },
+      required: ["url"],
+    },
+  },
 ];
 
 const CHART_ANALYZE_TOOL_NAMES = new Set([
@@ -617,6 +642,13 @@ async function executeTool(
       return await forwardBridge(ctx.userId, name, input);
     }
     switch (name) {
+      case "browse_web": {
+        const url = String(input.url ?? "");
+        const mode = input.mode ? String(input.mode) : "both";
+        const selector = input.selector ? String(input.selector) : undefined;
+        const res = await browseUrlWithPlaywright(url, { mode: mode as any, selector });
+        return { content: JSON.stringify(res) };
+      }
       case "get_cards_guide": {
         return { content: readCardsSkill() };
       }

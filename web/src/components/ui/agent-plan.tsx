@@ -95,7 +95,7 @@ export default function AgentPlan({
   return (
     <div className={cn("text-foreground w-full", className)}>
       <motion.div
-        className="surface-card overflow-hidden rounded-xl border border-border shadow-sm"
+        className="surface-card overflow-hidden rounded-lg border border-border shadow-sm"
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
