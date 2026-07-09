@@ -21,6 +21,11 @@ import { INTERVAL_SET } from "@/lib/intervals";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
+import { FEATURES } from "@/lib/agent/featureFlags";
+import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
+import { buildUserTradingProfile } from "@/lib/agent/risk/userTradingProfile";
+import { newId } from "@/lib/agent/activity";
+import type { Recommendation } from "@/lib/types";
 
 export const maxDuration = 180;
 
@@ -124,6 +129,82 @@ export async function POST(req: NextRequest) {
       if (resolved) symbol = resolved;
     }
     const tradingStyle = tradingStyleForInterval(interval);
+
+    // Opt-in: route MCP analysis through the unified Smart Chart Agent engine.
+    // OFF by default so the existing MCP contract is preserved byte-for-byte.
+    if (FEATURES.mcpUnifiedEngine() && FEATURES.smartChartAgent()) {
+      const unified = await runUnifiedChartAgent({
+        userMessage: `حلّل ${symbol} على فريم ${interval} وارسم أفضل سيناريو واشرح القرار.`,
+        chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
+        requestContext: {
+          requestId: newId(),
+          userId,
+          // MCP has no live UI stream — activity is kept in structuredContent.
+          emitActivity: () => {},
+        },
+        profile: buildUserTradingProfile(settings),
+        account: null,
+        canExecute: false,
+        tradingStyle,
+      });
+
+      const rec = unified.recommendation;
+      const mappedRec: Recommendation | null =
+        rec && (rec.action === "buy" || rec.action === "sell")
+          ? ({
+              symbol,
+              action: rec.action,
+              entry: rec.entry ?? null,
+              stop_loss: rec.stop_loss ?? null,
+              take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
+              confidence: Math.round(unified.confidence * 100),
+              timeframe: interval,
+            } as Recommendation)
+          : null;
+
+      await incrementUsage(userId, MARKET_ANALYZE_COST);
+      await logAudit(
+        userId,
+        "market_analyze",
+        `${symbol}@${interval} via=agent-unified decision=${unified.decision}`,
+      );
+
+      if (body.layout_id) {
+        await saveChartLayout(body.layout_id, userId, {
+          symbol,
+          interval,
+          state: {
+            drawings: unified.drawings ?? [],
+            overlays: [],
+            recommendation: mappedRec,
+            targets: rec?.targets ?? [],
+            dataSource,
+          },
+        }).catch(() => {});
+      }
+
+      return NextResponse.json({
+        reply: unified.summary,
+        recommendation: mappedRec,
+        targets: rec?.targets ?? [],
+        drawings: unified.drawings ?? [],
+        overlays: [],
+        // No raw reasoning is exposed — public activity events + summary only.
+        activityEvents: unified.activityEvents,
+        decision: unified.decision,
+        newsRisk: unified.newsRisk,
+        requiresConfirmation: unified.requiresConfirmation ?? false,
+        data_source: dataSource,
+        quota: {
+          used: used + MARKET_ANALYZE_COST,
+          limit: limits.claude_quota,
+          remaining: Math.max(0, limits.claude_quota - used - MARKET_ANALYZE_COST),
+        },
+        ...(body.layout_id
+          ? { layout_id: body.layout_id, applied_to_chart: true }
+          : {}),
+      });
+    }
 
     const result = await runMarketAnalyze(userId, settings, symbol, interval, {
       telegramSession: false,

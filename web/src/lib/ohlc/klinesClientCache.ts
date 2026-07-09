@@ -1,4 +1,5 @@
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
+import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 
 export interface ClientKlineBar {
   time: number;
@@ -8,7 +9,6 @@ export interface ClientKlineBar {
   close: number;
 }
 
-const TTL_MS = 45_000;
 const store = new Map<string, { candles: ClientKlineBar[]; at: number }>();
 
 export function klinesClientKey(
@@ -19,10 +19,16 @@ export function klinesClientKey(
   return `${market}:${symbol.toUpperCase()}:${interval}`;
 }
 
+/** Interval-aware TTL derived from the key (`market:SYMBOL:interval`). */
+function ttlForKey(key: string): number {
+  const interval = key.split(":")[2] ?? "";
+  return ohlcCacheTtlMs(interval);
+}
+
 export function getKlinesClientCache(key: string): ClientKlineBar[] | null {
   const hit = store.get(key);
   if (!hit) return null;
-  if (Date.now() - hit.at > TTL_MS) {
+  if (Date.now() - hit.at > ttlForKey(key)) {
     store.delete(key);
     return null;
   }

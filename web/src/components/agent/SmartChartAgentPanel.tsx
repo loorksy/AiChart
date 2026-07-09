@@ -1,0 +1,187 @@
+"use client";
+
+import { useImperativeHandle, forwardRef } from "react";
+import type { AgentFinalResult } from "@/lib/agent/types";
+import { useSmartChartAgent } from "@/hooks/useSmartChartAgent";
+import {
+  ANALYZE_QUICK_PROMPT,
+  NEWS_QUICK_PROMPT,
+} from "@/lib/agent/quickPrompts";
+import { AgentActivityTimeline } from "./AgentActivityTimeline";
+import { AgentChatInput } from "./AgentChatInput";
+
+export interface SmartChartAgentHandle {
+  /** Fire the Analyze quick prompt into the chat (used by the header button). */
+  quickAnalyze: () => void;
+  sendMessage: (message: string) => void;
+}
+
+const DECISION_LABEL: Record<AgentFinalResult["decision"], string> = {
+  buy: "شراء",
+  sell: "بيع",
+  wait: "انتظار",
+  informational: "معلومة",
+  action_required: "يتطلب إجراء",
+};
+
+const DECISION_COLOR: Record<AgentFinalResult["decision"], string> = {
+  buy: "text-emerald-500",
+  sell: "text-red-500",
+  wait: "text-amber-500",
+  informational: "text-sky-500",
+  action_required: "text-fuchsia-500",
+};
+
+interface Props {
+  symbol: string;
+  interval: string;
+  layoutId?: string;
+  getVisibleRange?: () => { from: number; to: number } | undefined;
+  onResult?: (result: AgentFinalResult) => void;
+  onClose?: () => void;
+}
+
+/** Docked, chart-connected Smart Chart Agent chat — one visible agent. */
+export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
+  function SmartChartAgentPanel(
+    { symbol, interval, layoutId, getVisibleRange, onResult, onClose },
+    ref,
+  ) {
+    const { messages, activityEvents, running, error, sendMessage, cancel } =
+      useSmartChartAgent({
+        symbol,
+        interval,
+        layoutId,
+        getVisibleRange,
+        onResult,
+      });
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        quickAnalyze: () => void sendMessage(ANALYZE_QUICK_PROMPT),
+        sendMessage: (m: string) => void sendMessage(m),
+      }),
+      [sendMessage],
+    );
+
+    return (
+      <div
+        className="flex h-full min-h-0 w-full flex-col bg-card"
+        dir="rtl"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-3 py-2">
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              الوكيل الذكي للشارت
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {symbol} · {interval}
+            </p>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+              aria-label="إغلاق"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="flex shrink-0 gap-2 border-b border-border/60 px-3 py-2">
+          <button
+            onClick={() => void sendMessage(ANALYZE_QUICK_PROMPT)}
+            disabled={running}
+            className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            تحليل الشارت
+          </button>
+          <button
+            onClick={() => void sendMessage(NEWS_QUICK_PROMPT)}
+            disabled={running}
+            className="rounded-md bg-muted px-3 py-1 text-xs text-foreground hover:bg-muted/70 disabled:opacity-50"
+          >
+            خطر الأخبار
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          {messages.length === 0 && !running && (
+            <p className="text-center text-xs text-muted-foreground">
+              اسأل الوكيل أو اضغط «تحليل الشارت».
+            </p>
+          )}
+
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              className={
+                m.role === "user"
+                  ? "ml-auto max-w-[85%] rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground"
+                  : "mr-auto max-w-[95%] rounded-lg bg-muted/50 px-3 py-2 text-sm text-foreground"
+              }
+            >
+              {m.role === "assistant" && m.result && (
+                <div className="mb-1 flex items-center gap-2 text-[11px]">
+                  <span
+                    className={`font-bold ${DECISION_COLOR[m.result.decision]}`}
+                  >
+                    {DECISION_LABEL[m.result.decision]}
+                  </span>
+                  {m.result.confidence > 0 && (
+                    <span className="text-muted-foreground">
+                      ثقة {Math.round(m.result.confidence * 100)}%
+                    </span>
+                  )}
+                </div>
+              )}
+              <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+              {m.result?.keyReasons?.length ? (
+                <ul className="mt-1 list-inside list-disc text-[12px] text-muted-foreground">
+                  {m.result.keyReasons.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {m.result?.riskWarnings?.length ? (
+                <ul className="mt-1 space-y-0.5 text-[12px] text-amber-500">
+                  {m.result.riskWarnings.map((w, i) => (
+                    <li key={i}>⚠ {w}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {m.result?.requiresConfirmation && m.result.confirmationPayload && (
+                <div className="mt-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2 text-[12px]">
+                  <p className="font-semibold text-fuchsia-500">
+                    تحتاج الصفقة تأكيدك قبل التنفيذ
+                  </p>
+                  <p className="text-muted-foreground">
+                    {m.result.confirmationPayload.direction === "buy"
+                      ? "شراء"
+                      : "بيع"}{" "}
+                    {m.result.confirmationPayload.symbol} ·{" "}
+                    {m.result.confirmationPayload.executionMode === "live"
+                      ? "حساب LIVE"
+                      : "محاكاة/ديمو"}
+                  </p>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {running && <AgentActivityTimeline events={activityEvents} />}
+
+          {error && (
+            <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} />
+      </div>
+    );
+  },
+);

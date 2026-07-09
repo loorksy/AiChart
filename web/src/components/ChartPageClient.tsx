@@ -43,6 +43,7 @@ export default function ChartPageClient({
   email,
   role,
   agentReady,
+  smartAgentEnabled = false,
   guest = false,
   initialSymbol,
   layoutId,
@@ -52,6 +53,7 @@ export default function ChartPageClient({
   email: string | null;
   role: "user" | "admin";
   agentReady: boolean;
+  smartAgentEnabled?: boolean;
   guest?: boolean;
   initialSymbol?: string;
   layoutId?: string;
@@ -81,6 +83,7 @@ export default function ChartPageClient({
         <ChartErrorBoundary>
           <SmartChartWorkspace
             agentReady={agentReady}
+            smartAgentEnabled={smartAgentEnabled}
             initialSymbol={initialSymbol}
             layoutId={layoutId}
             initialInterval={initialInterval}

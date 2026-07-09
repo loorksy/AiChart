@@ -458,6 +458,50 @@ const SCHEMA = `
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Candle Warehouse: server-side OANDA candle store. time = candle open (ms).
+  CREATE TABLE IF NOT EXISTS market_candles (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol     TEXT NOT NULL,
+    interval   TEXT NOT NULL,
+    time       INTEGER NOT NULL,
+    open       REAL NOT NULL,
+    high       REAL NOT NULL,
+    low        REAL NOT NULL,
+    close      REAL NOT NULL,
+    volume     REAL NOT NULL DEFAULT 0,
+    source     TEXT NOT NULL DEFAULT 'oanda',
+    complete   INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(symbol, interval, time, source)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_market_candles_lookup
+    ON market_candles(symbol, interval, source, time);
+
+  -- Smart Chart Agent decision audit (never stores raw model reasoning).
+  CREATE TABLE IF NOT EXISTS agent_audit_logs (
+    id                              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                         INTEGER,
+    request_id                      TEXT NOT NULL,
+    session_id                      TEXT,
+    symbol                          TEXT,
+    interval                        TEXT,
+    intent                          TEXT,
+    decision                        TEXT,
+    confidence                      REAL,
+    risk_veto                       INTEGER NOT NULL DEFAULT 0,
+    news_risk                       TEXT,
+    execution_requires_confirmation INTEGER NOT NULL DEFAULT 0,
+    execution_confirmed             INTEGER NOT NULL DEFAULT 0,
+    summary                         TEXT,
+    metadata                        TEXT NOT NULL DEFAULT '{}',
+    created_at                      TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user
+    ON agent_audit_logs (user_id, id DESC);
 `;
 
 function migrate(db: Database.Database) {

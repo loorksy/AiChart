@@ -15,8 +15,10 @@ import {
 } from "@/lib/markets/oanda";
 import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 
+/** @deprecated Prefer interval-aware {@link ohlcCacheTtlMs}. Kept for callers. */
 export const OHLC_CACHE_TTL_MS = 45_000;
 export const OHLC_MAX_LIMIT = 5000;
 
@@ -200,7 +202,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   };
 
   if (!options.cursor && !options.beforeMs && options.fromMs == null) {
-    await setCached(options.userId, cacheKey, result, OHLC_CACHE_TTL_MS);
+    await setCached(options.userId, cacheKey, result, ohlcCacheTtlMs(interval));
   }
 
   return result;

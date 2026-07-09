@@ -12,9 +12,42 @@ import type {
 } from "@/vendor/tradingview/charting_library";
 import type { MarketType } from "@/lib/markets/types";
 import { barDurationMs } from "@/lib/intervals";
+import {
+  getKlinesClientCache,
+  setKlinesClientCache,
+  klinesClientKey,
+} from "@/lib/ohlc/klinesClientCache";
 
 /** OANDA rejects ranges over ~5000 candles with HTTP 400 — stay safely under. */
 const MAX_BARS_PER_REQUEST = 4000;
+
+/** Build the /api/market/klines query. `fresh` is OMITTED unless explicitly
+ *  requested — normal history reads go through the warehouse/cache; only a
+ *  manual refresh or the live forming candle sets fresh=1. */
+export function buildKlinesUrl(params: {
+  symbol: string;
+  interval: string;
+  market?: MarketType;
+  limit?: number;
+  from?: number;
+  to?: number;
+  ea?: boolean;
+  fresh?: boolean;
+}): string {
+  const search = new URLSearchParams({
+    symbol: stripEaPrefix(params.symbol),
+    interval: params.interval,
+    market: params.market ?? "forex",
+  });
+  if (params.ea) search.set("source", "ea");
+  if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.from != null) search.set("from", String(params.from));
+  if (params.to != null) search.set("to", String(params.to));
+  // IMPORTANT: do NOT set fresh=1 for normal getBars — it bypasses the cache
+  // and warehouse. Only manual refresh / latest-candle polling passes fresh.
+  if (params.fresh) search.set("fresh", "1");
+  return `/api/market/klines?${search.toString()}`;
+}
 
 /** TradingView resolution → AiChart interval (klines API). */
 const RES_TO_INTERVAL: Record<string, string> = {
@@ -110,25 +143,32 @@ export function createAiChartDatafeed(
   async function fetchCandles(
     symbol: string,
     interval: string,
-    opts2: { from?: number; to?: number; limit?: number; ea?: boolean },
+    opts2: {
+      from?: number;
+      to?: number;
+      limit?: number;
+      ea?: boolean;
+      /** Only true for manual refresh / the live forming candle. */
+      fresh?: boolean;
+    },
   ): Promise<{ candles: RawCandle[]; failed: boolean }> {
     const opts = opts2;
-    const params = new URLSearchParams({
-      symbol: stripEaPrefix(symbol),
+    const url = buildKlinesUrl({
+      symbol,
       interval,
       market,
-      fresh: "1",
+      limit: opts.limit,
+      from: opts.from,
+      to: opts.to,
+      ea: opts.ea,
+      fresh: opts.fresh,
     });
-    if (opts.ea) params.set("source", "ea");
-    if (opts.limit) params.set("limit", String(opts.limit));
-    if (opts.from != null) params.set("from", String(opts.from));
-    if (opts.to != null) params.set("to", String(opts.to));
     // Transient upstream blips (OANDA rate-limit under burst load) are retried
     // HERE, silently — surfacing onError would flash TV's "network error"
     // badge for a one-off hiccup.
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const res = await fetch(`/api/market/klines?${params}`, {
+        const res = await fetch(url, {
           cache: "no-store",
         });
         if (res.ok) {
@@ -273,8 +313,46 @@ export function createAiChartDatafeed(
       // Clamp the window so a single request never exceeds the source's cap.
       // TV paginates for older data, so bounded windows still fill the chart.
       const fromMs = Math.max(from * 1000, toMs - maxBars * barMs);
+      const ticker = symbolInfo.ticker ?? symbolInfo.name;
+      // The newest window (to ≈ now) can be served from the warm client cache
+      // seeded by prefetch — instant symbol/timeframe switches — then a normal
+      // (non-fresh) network read refreshes it. Never sets fresh=1.
+      const isLatestWindow = toMs >= Date.now() - barMs * 2;
+      const cacheKey = klinesClientKey(stripEaPrefix(ticker), interval, market);
+      if (isLatestWindow && !ea) {
+        const cached = getKlinesClientCache(cacheKey);
+        if (cached?.length) {
+          const cachedBars: Bar[] = cached
+            .filter((c) => Number.isFinite(c.time) && c.time > 0)
+            .map((c) => ({
+              time: c.time * 1000,
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: 0,
+            }))
+            .filter((b) => b.time <= toMs)
+            .sort((a, b) => a.time - b.time);
+          if (cachedBars.length) {
+            onResult(cachedBars, { noData: false });
+            // Background refresh keeps the cache warm without a fresh fetch.
+            void fetchCandles(ticker, interval, {
+              from: fromMs,
+              to: toMs,
+              limit: Math.min(Math.max(countBack, 300), maxBars),
+              ea,
+            })
+              .then(({ candles }) => {
+                if (candles.length) setKlinesClientCache(cacheKey, candles);
+              })
+              .catch(() => {});
+            return;
+          }
+        }
+      }
       const { candles: rows } = await fetchCandles(
-        symbolInfo.ticker ?? symbolInfo.name,
+        ticker,
         interval,
         {
           from: fromMs,
@@ -283,6 +361,9 @@ export function createAiChartDatafeed(
           ea,
         },
       );
+      if (isLatestWindow && !ea && rows.length) {
+        setKlinesClientCache(cacheKey, rows);
+      }
       // Retries exhausted or gap: return empty with noData:false (below) so TV
       // keeps the chart alive and re-requests naturally — never the error badge.
       const bars: Bar[] = rows
@@ -320,9 +401,12 @@ export function createAiChartDatafeed(
       const ticker = symbolInfo.ticker ?? symbolInfo.name;
       const ea = isEaTicker(ticker);
       const poll = async () => {
+        // Live forming candle: fresh=1 bypasses cache/warehouse staleness so the
+        // last bar ticks in real time. Only the 2-bar tail is fetched fresh.
         const { candles: rows } = await fetchCandles(ticker, interval, {
           limit: 2,
           ea,
+          fresh: true,
         });
         const last = rows[rows.length - 1];
         if (last && Number.isFinite(last.time)) {
