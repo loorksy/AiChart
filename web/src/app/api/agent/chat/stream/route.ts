@@ -6,13 +6,22 @@ import { isLLMConfigured } from "@/lib/llm";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
 import { FEATURES } from "@/lib/agent/featureFlags";
-import { createActivityEvent, newId } from "@/lib/agent/activity";
+import {
+  createActivityEvent,
+  newId,
+  shouldShowActivity,
+} from "@/lib/agent/activity";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
 import { buildUserTradingProfile } from "@/lib/agent/risk/userTradingProfile";
 import {
   updateSessionFromMessage,
   rememberContext,
 } from "@/lib/agent/sessionMemory";
+import {
+  resolveOptionReply,
+  rememberOptions,
+  DEFAULT_AGENT_OPTIONS,
+} from "@/lib/agent/sessionOptions";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { tradingStyleForInterval } from "@/lib/analysisProfile";
 import type { AgentActivityEvent } from "@/lib/agent/types";
@@ -78,8 +87,15 @@ export async function POST(req: NextRequest) {
     const canExecute = limits.can_execute !== 0;
 
     const sessionId = body.sessionId ?? newId();
+
+    // If the last assistant turn offered numbered options and the user replied
+    // with a bare index ("1" / "١"), resolve it to that option's real prompt
+    // instead of treating it as a new general question.
+    const resolvedMessage =
+      resolveOptionReply(sessionId, body.message) ?? body.message;
+
     // Fold any preference directives into session memory before the run.
-    const session = updateSessionFromMessage(sessionId, body.message);
+    const session = updateSessionFromMessage(sessionId, resolvedMessage);
     const tradingStyle = tradingStyleForInterval(
       body.chartContext?.interval ?? "15m",
     );
@@ -101,19 +117,23 @@ export async function POST(req: NextRequest) {
           ev: Omit<AgentActivityEvent, "id" | "timestamp">,
         ) => {
           const full = createActivityEvent(ev);
+          // Only real, meaningful tool/agent work reaches the client. Internal
+          // narration and scripted intent messages are suppressed.
+          if (!shouldShowActivity(full)) return;
           activityEvents.push(full);
           send("activity", full);
         };
 
         try {
           const result = await runUnifiedChartAgent({
-            userMessage: body.message,
+            userMessage: resolvedMessage,
             chartContext: body.chartContext,
             requestContext: {
               requestId,
               userId: user.id,
               sessionId,
               emitActivity,
+              emitDebug: () => {},
               signal: req.signal,
               session,
             },
@@ -145,7 +165,22 @@ export async function POST(req: NextRequest) {
             metadata: { sessionId },
           });
 
-          send("final", { ...result, sessionId, activityEvents });
+          // After a general/informational reply, offer the capability options
+          // so the user can just answer "1"/"2" next. Clear them after a real
+          // analysis so a stale index can't hijack the next message.
+          if (result.decision === "informational") {
+            rememberOptions(sessionId, DEFAULT_AGENT_OPTIONS);
+          }
+
+          send("final", {
+            ...result,
+            sessionId,
+            activityEvents,
+            options:
+              result.decision === "informational"
+                ? DEFAULT_AGENT_OPTIONS
+                : undefined,
+          });
         } catch (error) {
           if (req.signal.aborted) {
             // Cancelled by the user — no partial result, no error badge.

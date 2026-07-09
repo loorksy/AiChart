@@ -12,6 +12,8 @@ export interface AgentChatMessage {
   role: "user" | "assistant";
   content: string;
   result?: AgentFinalResult;
+  /** Meaningful activity captured during this turn — kept in history. */
+  activityEvents?: AgentActivityEvent[];
 }
 
 export interface UseSmartChartAgentOptions {
@@ -118,9 +120,11 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               continue;
             }
             if (eventName === "activity") {
+              // Live stream only — the server already filtered to visible work.
               setActivityEvents((prev) => [...prev, data as AgentActivityEvent]);
             } else if (eventName === "final") {
               const result = data as AgentFinalResult;
+              const turnActivity = result.activityEvents ?? [];
               setMessages((prev) => [
                 ...prev,
                 {
@@ -128,8 +132,15 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
                   role: "assistant",
                   content: result.summary,
                   result,
+                  // Persist meaningful activity into history so it doesn't vanish.
+                  activityEvents: turnActivity.filter(
+                    (e) => e.visible !== false && e.message.trim().length > 0,
+                  ),
                 },
               ]);
+              // Clear the live stream — history now owns these events.
+              setActivityEvents([]);
+              // Only the final event delivers drawings to the chart.
               opts.onResult?.(result);
             } else if (eventName === "error") {
               const msg =

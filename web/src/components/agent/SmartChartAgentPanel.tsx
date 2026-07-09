@@ -123,6 +123,11 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   : "mr-auto max-w-[95%] rounded-lg bg-muted/50 px-3 py-2 text-sm text-foreground"
               }
             >
+              {m.role === "assistant" && m.activityEvents?.length ? (
+                <div className="mb-2">
+                  <AgentActivityTimeline events={m.activityEvents} />
+                </div>
+              ) : null}
               {m.role === "assistant" && m.result && (
                 <div className="mb-1 flex items-center gap-2 text-[11px]">
                   <span
@@ -171,7 +176,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             </div>
           ))}
 
-          {running && <AgentActivityTimeline events={activityEvents} />}
+          {running && <AgentActivityTimeline events={activityEvents} live />}
 
           {error && (
             <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">

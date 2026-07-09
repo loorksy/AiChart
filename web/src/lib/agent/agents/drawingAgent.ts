@@ -1,106 +1,127 @@
 import type { AgentRunContext } from "../types";
-import type { ChartDrawing, ChartPoint } from "@/lib/chartDrawings";
-import { barDurationMs } from "@/lib/intervals";
+import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { AgentMarketContext } from "../marketContext/buildAgentMarketContext";
 import type { FinalDecisionResult } from "./finalDecisionAgent";
-import type { StructureResult } from "./structureAgent";
-import type { SupplyDemandResult } from "./supplyDemandAgent";
+import type { DrawingPlan } from "../drawings/buildDrawingPlan";
 import { sanitizeAgentDrawings } from "../drawings/drawingOwnership";
 
 export interface DrawingAgentInput {
   analysisId: string;
   market: AgentMarketContext;
   finalDecision: FinalDecisionResult;
-  structure: StructureResult | null;
-  supplyDemand: SupplyDemandResult | null;
+  /** The single source of truth for what may be drawn. */
+  plan: DrawingPlan;
 }
 
 /**
- * Builds chart drawings for the decision. For buy/sell: entry, SL, targets,
- * POI zone, and a forecast path. For WAIT: key support/resistance zones and
- * scenarios instead of forcing a trade. All drawings are anchored to actual
- * candle times/prices, then sanitized + stamped with owner=agent + analysisId.
+ * Renders the DrawingPlan — and ONLY the plan. It never re-detects levels, never
+ * draws every fractal, and never forces support/resistance on a WAIT. If the
+ * plan says `shouldDraw=false` the chart receives nothing. All drawings are
+ * anchored to real candle times/prices, then sanitized + stamped owner=agent.
  */
 export async function runDrawingAgent(
   ctx: AgentRunContext,
   input: DrawingAgentInput,
 ): Promise<ChartDrawing[]> {
-  ctx.emitActivity({
-    type: "drawing",
-    status: "started",
-    message: "أجهّز الرسومات المناسبة على الشارت.",
-  });
+  const { plan } = input;
 
-  // Session preference: minimal drawings.
-  if (ctx.session?.preferences.preferMinimalDrawings) {
+  if (!plan.shouldDraw) {
+    // Only surface a note when the reason is user-meaningful (e.g. thin data).
     ctx.emitActivity({
       type: "drawing",
       status: "completed",
-      message: "وضع الرسومات المختصرة مفعّل — سأرسم الحد الأدنى.",
+      message: `لن أرسم الآن: ${plan.reason}`,
+      metadata: { drawingIntent: plan.drawingIntent },
     });
+    return [];
   }
+
+  ctx.emitActivity({
+    type: "drawing",
+    status: "started",
+    message: "أجهّز خطة الرسم النهائية على الشارت.",
+    metadata: { drawingIntent: plan.drawingIntent },
+  });
 
   const candles = input.market.currentTfCandles;
   const lastTime = candles.at(-1)?.time ?? Date.now();
-  const barMs = barDurationMs(input.market.interval) || 60_000;
   const rec = input.finalDecision.recommendation;
   const raw: ChartDrawing[] = [];
 
-  if (rec.action === "buy" || rec.action === "sell") {
+  if (plan.drawingIntent === "trade_setup") {
     if (rec.entry != null) {
       raw.push(priceLine("دخول", rec.entry, lastTime, "entry", "#3b82f6"));
     }
     if (rec.stop_loss != null) {
-      raw.push(priceLine("وقف خسارة", rec.stop_loss, lastTime, "stop_loss", "#ef4444"));
+      raw.push(
+        priceLine("وقف خسارة", rec.stop_loss, lastTime, "stop_loss", "#ef4444"),
+      );
     }
     (rec.targets ?? []).forEach((t, i) => {
       if (t != null) {
         raw.push(priceLine(`هدف ${i + 1}`, t, lastTime, "take_profit", "#22c55e"));
       }
     });
+  }
 
-    // POI zone (demand for buy, supply for sell).
-    const zone =
-      rec.action === "buy"
-        ? input.supplyDemand?.nearestDemand
-        : input.supplyDemand?.nearestSupply;
-    if (zone) {
-      raw.push({
-        type: rec.action === "buy" ? "demand_zone" : "supply_zone",
-        confidence: 70,
-        label: rec.action === "buy" ? "منطقة طلب" : "منطقة عرض",
-        semanticRole: rec.action === "buy" ? "demand_zone" : "supply_zone",
-        points: [
-          { time: zone.time, price: zone.high },
-          { time: lastTime, price: zone.low },
-        ],
-      });
-    }
+  // Plan-selected zones (POI for a trade, or strong WAIT zones).
+  for (const zone of plan.selectedZones) {
+    const isDemand = zone.type === "demand";
+    raw.push({
+      type:
+        zone.type === "demand"
+          ? "demand_zone"
+          : zone.type === "supply"
+            ? "supply_zone"
+            : "range_box",
+      confidence: Math.round(zone.strength),
+      label: zoneLabel(zone.type),
+      semanticRole:
+        zone.type === "demand"
+          ? "demand_zone"
+          : zone.type === "supply"
+            ? "supply_zone"
+            : zone.type === "retest"
+              ? "retest"
+              : "range",
+      points: [
+        { time: zone.time, price: zone.high },
+        { time: lastTime, price: zone.low },
+      ],
+      meta: { strength: zone.strength, reason: zone.reason, demand: isDemand },
+    });
+  }
 
-    // Forecast path: current → entry → first target.
-    if (rec.entry != null && input.market.currentPrice != null) {
-      raw.push({
-        type: "forecast_path",
-        confidence: 60,
-        label: "المسار المتوقع",
-        semanticRole: "forecast",
-        points: buildForecastPath({
-          lastTime,
-          barMs,
-          currentPrice: input.market.currentPrice,
-          entry: rec.entry,
-          target: rec.targets?.[0] ?? rec.entry,
-        }),
-      });
-    }
-  } else {
-    // WAIT: draw the key zones/scenarios instead of a trade.
-    for (const level of input.structure?.support ?? []) {
-      raw.push(priceLine("دعم", level.price, level.time ?? lastTime, "support", "#22c55e"));
-    }
-    for (const level of input.structure?.resistance ?? []) {
-      raw.push(priceLine("مقاومة", level.price, level.time ?? lastTime, "resistance", "#ef4444"));
-    }
+  // Plan-selected levels (WAIT: only high-strength support/resistance).
+  for (const level of plan.selectedLevels) {
+    const color =
+      level.type === "resistance"
+        ? "#ef4444"
+        : level.type === "liquidity"
+          ? "#a855f7"
+          : "#22c55e";
+    const role =
+      level.type === "resistance"
+        ? "resistance"
+        : level.type === "liquidity"
+          ? "liquidity_sweep"
+          : "support";
+    raw.push({
+      ...priceLine(levelLabel(level.type), level.price, level.time, role, color),
+      confidence: Math.round(level.strength),
+      meta: { strength: level.strength, reason: level.reason },
+    });
+  }
+
+  // Forecast path (trade setups only).
+  if (plan.forecastPath?.length) {
+    raw.push({
+      type: "forecast_path",
+      confidence: 60,
+      label: "المسار المتوقع",
+      semanticRole: "forecast",
+      points: plan.forecastPath.map((p) => ({ time: p.time, price: p.price })),
+    });
   }
 
   const bounds = priceBounds(candles);
@@ -114,10 +135,34 @@ export async function runDrawingAgent(
     type: "drawing",
     status: "completed",
     message: "جهّزت الرسومات النهائية.",
-    metadata: { count: drawings.length },
+    metadata: { count: drawings.length, drawingIntent: plan.drawingIntent },
   });
 
   return drawings;
+}
+
+function zoneLabel(type: "supply" | "demand" | "retest" | "range"): string {
+  switch (type) {
+    case "demand":
+      return "منطقة طلب";
+    case "supply":
+      return "منطقة عرض";
+    case "retest":
+      return "منطقة إعادة اختبار";
+    default:
+      return "نطاق سعري";
+  }
+}
+
+function levelLabel(type: "support" | "resistance" | "liquidity"): string {
+  switch (type) {
+    case "resistance":
+      return "مقاومة";
+    case "liquidity":
+      return "سيولة";
+    default:
+      return "دعم";
+  }
 }
 
 function priceLine(
@@ -135,20 +180,6 @@ function priceLine(
     semanticRole,
     points: [{ time, price }],
   };
-}
-
-function buildForecastPath(input: {
-  lastTime: number;
-  barMs: number;
-  currentPrice: number;
-  entry: number;
-  target: number;
-}): ChartPoint[] {
-  return [
-    { time: input.lastTime, price: input.currentPrice },
-    { time: input.lastTime + input.barMs, price: input.entry },
-    { time: input.lastTime + input.barMs * 3, price: input.target },
-  ];
 }
 
 function priceBounds(
