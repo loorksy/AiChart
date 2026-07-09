@@ -33,8 +33,12 @@ import {
   type RiskAgentResult,
 } from "./agents/riskAgent";
 import { runFinalDecisionAgent } from "./agents/finalDecisionAgent";
+import { runFinalDecisionSynthesizer } from "./agents/finalDecisionSynthesizer";
 import { runDrawingAgent } from "./agents/drawingAgent";
-import { buildDrawingPlan } from "./drawings/buildDrawingPlan";
+import {
+  buildDrawingPlan,
+  buildDrawingCandidates,
+} from "./drawings/buildDrawingPlan";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import {
   effectiveMinRr,
@@ -205,25 +209,53 @@ export async function runUnifiedChartAgent(
     );
   }
 
-  const finalDecision = await withTimeout(
-    runFinalDecisionAgent(trackedCtx, {
-      userMessage,
-      risk,
-      news,
-      market,
-      structure,
-      supplyDemand,
-      mtf,
-    }),
+  const decisionInput = {
+    userMessage,
+    risk,
+    news,
+    market,
+    structure,
+    supplyDemand,
+    mtf,
+  };
+
+  // Deterministic baseline first — it computes the trade skeleton, risk veto,
+  // and numeric levels, and is the safety fallback if the LLM fails.
+  const deterministic = await withTimeout(
+    runFinalDecisionAgent(trackedCtx, decisionInput),
     AGENT_TIMEOUTS.finalDecision,
     null,
   );
-  if (!finalDecision) {
+  if (!deterministic) {
     return buildAgentFallbackResult(
       "Final decision agent timed out — defaulting to WAIT.",
       collected,
     );
   }
+
+  // Detector output becomes candidates the synthesizer may select from —
+  // detectors NEVER draw directly.
+  const candidates = buildDrawingCandidates({
+    market,
+    structure,
+    supplyDemand,
+    liquidity,
+    mtf,
+  });
+
+  // LLM synthesizer: context-specific wording + candidate selection + drawing
+  // advice. Hard rules (risk veto, no invented trades) are clamped inside it;
+  // any failure falls back to the deterministic result.
+  const synth = (await withTimeout(
+    runFinalDecisionSynthesizer(trackedCtx, {
+      ...decisionInput,
+      deterministic,
+      candidates,
+    }).catch(() => null),
+    AGENT_TIMEOUTS.finalDecision,
+    null,
+  )) ?? { result: deterministic, usedLLM: false };
+  const finalDecision = synth.result;
 
   // Build the drawing plan: the single source of truth for what may be drawn.
   // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
@@ -235,6 +267,8 @@ export async function runUnifiedChartAgent(
     liquidity,
     mtf,
     preferMinimalDrawings: ctx.session?.preferences.preferMinimalDrawings,
+    selectedCandidateIds: synth.selectedCandidateIds,
+    drawingAdvice: synth.drawingAdvice ?? null,
   });
 
   // Drawings are non-critical: failure → return text result without drawings.
@@ -253,8 +287,10 @@ export async function runUnifiedChartAgent(
   const debugDecisionFlow: AgentFinalResult["debugDecisionFlow"] =
     process.env.NODE_ENV === "development"
       ? {
-          usedLLM: false,
-          usedDeterministicFallback: false,
+          usedLLM: synth.usedLLM,
+          usedDeterministicFallback: !synth.usedLLM,
+          // Ticker state is owned by the SSE route; it overwrites these.
+          tickerGenerated: false,
           candleCount: market.currentTfCandles.length,
           htfCandleCount: market.higherTfCandles.length,
           dailyCandleCount: market.dailyCandles.length,
@@ -351,6 +387,7 @@ export async function runUnifiedChartAgent(
     newsRisk: news ? { level: news.newsRisk, reason: news.reason } : undefined,
     activityEvents: collected,
     analysisId,
+    publicReasoningSummary: finalDecision.publicReasoningSummary,
     debugDecisionFlow,
   };
 }

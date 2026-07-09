@@ -22,12 +22,19 @@ import {
   rememberOptions,
   DEFAULT_AGENT_OPTIONS,
 } from "@/lib/agent/sessionOptions";
+import { routeIntent } from "@/lib/agent/intentRouter";
+import { generateTickerPlan } from "@/lib/agent/ticker/generateTickerPlan";
+import { streamTicker } from "@/lib/agent/ticker/streamTicker";
+import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
+import { createLogger } from "@/lib/logger";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { tradingStyleForInterval } from "@/lib/analysisProfile";
 import type { AgentActivityEvent } from "@/lib/agent/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
+
+const log = createLogger("agent.chat.stream");
 
 const schema = z.object({
   message: z.string().min(1).max(4000),
@@ -124,6 +131,48 @@ export async function POST(req: NextRequest) {
           send("activity", full);
         };
 
+        // --- Live thinking ticker (UI-only, model-generated per run). ---
+        // Runs CONCURRENTLY with the agent: the final answer never waits for
+        // ticker generation, and if generation fails the ticker is simply
+        // hidden — there is NO static fallback text, ever.
+        let done = false;
+        const tickerDebug: {
+          tickerGenerated: boolean;
+          tickerHiddenReason?: string;
+        } = { tickerGenerated: false };
+        const previewIntents = routeIntent({
+          message: resolvedMessage,
+          chartContext: body.chartContext,
+          ctx: { requestId, emitActivity: () => {} },
+        });
+        const tickerTask = (async () => {
+          try {
+            const plan = await generateTickerPlan({
+              userMessage: resolvedMessage,
+              symbol: body.chartContext?.symbol,
+              interval: body.chartContext?.interval,
+              intent: previewIntents,
+              hasChartContext: Boolean(body.chartContext?.symbol),
+              newsProviderConfigured: newsProviderConfigured(),
+              canUseMarketTools: true,
+              canUseNewsTools: newsProviderConfigured(),
+            });
+            if (done || req.signal.aborted) return;
+            tickerDebug.tickerGenerated = true;
+            await streamTicker({
+              items: plan,
+              sendTicker: (item) => send("ticker", item),
+              shouldStop: () => done || req.signal.aborted,
+            });
+          } catch (error) {
+            tickerDebug.tickerHiddenReason = "ticker_generation_failed";
+            log.warn("agent.ticker.failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        })();
+        void tickerTask;
+
         try {
           const result = await runUnifiedChartAgent({
             userMessage: resolvedMessage,
@@ -165,6 +214,9 @@ export async function POST(req: NextRequest) {
             metadata: { sessionId },
           });
 
+          // Stop the ticker the moment the final result is ready.
+          done = true;
+
           // After a general/informational reply, offer the capability options
           // so the user can just answer "1"/"2" next. Clear them after a real
           // analysis so a stale index can't hijack the next message.
@@ -180,6 +232,10 @@ export async function POST(req: NextRequest) {
               result.decision === "informational"
                 ? DEFAULT_AGENT_OPTIONS
                 : undefined,
+            // Accurate ticker state in dev diagnostics.
+            debugDecisionFlow: result.debugDecisionFlow
+              ? { ...result.debugDecisionFlow, ...tickerDebug }
+              : undefined,
           });
         } catch (error) {
           if (req.signal.aborted) {
@@ -196,6 +252,7 @@ export async function POST(req: NextRequest) {
             });
           }
         } finally {
+          done = true; // stop any in-flight ticker loop
           release?.();
           try {
             controller.close();

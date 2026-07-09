@@ -117,8 +117,8 @@ export function routeIntent(input: {
   if (intents.length > 1) intents.push("mixed_request");
 
   // Intent classification is INTERNAL. It must never surface as user-visible
-  // activity — a real agent shows work it is actually doing, not a canned
-  // "I understood the question" narration. Kept as a debug-only signal.
+  // activity — a real agent shows work it is actually doing, never canned
+  // comprehension narration. Kept as a debug-only signal.
   input.ctx.emitDebug?.({ type: "intent", intents });
 
   return intents;

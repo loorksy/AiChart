@@ -8,6 +8,7 @@ import {
   NEWS_QUICK_PROMPT,
 } from "@/lib/agent/quickPrompts";
 import { AgentActivityTimeline } from "./AgentActivityTimeline";
+import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
 
 export interface SmartChartAgentHandle {
@@ -47,8 +48,15 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
     { symbol, interval, layoutId, getVisibleRange, onResult, onClose },
     ref,
   ) {
-    const { messages, activityEvents, running, error, sendMessage, cancel } =
-      useSmartChartAgent({
+    const {
+      messages,
+      activityEvents,
+      currentTicker,
+      running,
+      error,
+      sendMessage,
+      cancel,
+    } = useSmartChartAgent({
         symbol,
         interval,
         layoutId,
@@ -157,6 +165,32 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   ))}
                 </ul>
               ) : null}
+              {m.result?.publicReasoningSummary?.length ? (
+                <div className="mt-2 rounded-md bg-background/50 p-2 text-[12px]">
+                  <p className="mb-1 font-medium text-muted-foreground">
+                    سبب القرار:
+                  </p>
+                  <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
+                    {m.result.publicReasoningSummary.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {m.options?.length ? (
+                <div className="mt-2 grid gap-1">
+                  {m.options.map((option, index) => (
+                    <button
+                      key={option.id}
+                      onClick={() => void sendMessage(option.prompt)}
+                      disabled={running}
+                      className="rounded-md border border-border/60 bg-background px-2 py-1 text-right text-xs hover:bg-muted disabled:opacity-50"
+                    >
+                      {index + 1}. {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               {m.result?.requiresConfirmation && m.result.confirmationPayload && (
                 <div className="mt-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2 text-[12px]">
                   <p className="font-semibold text-fuchsia-500">
@@ -184,6 +218,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             </p>
           )}
         </div>
+
+        {running && <AgentThinkingTicker item={currentTicker} />}
 
         <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} />
       </div>

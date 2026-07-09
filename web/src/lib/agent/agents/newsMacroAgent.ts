@@ -29,20 +29,14 @@ export async function runNewsMacroAgent(
   const symbol = input.symbol ?? "";
   const currencies = affectedCurrencies(symbol);
 
-  ctx.emitActivity({
-    type: "news",
-    status: "started",
-    message: symbol
-      ? `أراجع الأخبار والأحداث المؤثرة على ${symbol}.`
-      : "أراجع السياق الإخباري المطلوب.",
-    metadata: { symbol, currencies },
-  });
-
+  // HONESTY FIRST: never announce a news review before confirming a provider
+  // actually exists. With no provider, the only truthful statement is that
+  // news risk cannot be confirmed.
   if (!newsProviderConfigured()) {
     ctx.emitActivity({
       type: "news",
       status: "warning",
-      message: "لا يوجد مزوّد أخبار مفعّل — سأعتبر خطر الأخبار غير معروف.",
+      message: "مزوّد الأخبار غير مفعّل، لا يمكن تأكيد خطر الأخبار حالياً.",
     });
     return {
       newsRisk: "unknown",
@@ -56,6 +50,11 @@ export async function runNewsMacroAgent(
 
   const provider = getNewsProvider();
   if (!provider) {
+    ctx.emitActivity({
+      type: "news",
+      status: "warning",
+      message: "مزوّد الأخبار غير متاح، لا يمكن تأكيد خطر الأخبار حالياً.",
+    });
     return {
       newsRisk: "unknown",
       biasImpact: "unknown",
@@ -65,6 +64,19 @@ export async function runNewsMacroAgent(
       reason: "News provider unavailable.",
     };
   }
+
+  // A real provider exists and a real request is about to be made — only now
+  // is it truthful to say the news is being reviewed.
+  ctx.emitActivity({
+    type: "news",
+    status: "started",
+    message: currencies.length
+      ? `أراجع الأخبار والأحداث المؤثرة على ${currencies.join(" و ")}.`
+      : symbol
+        ? `أراجع الأخبار والأحداث المؤثرة على ${symbol}.`
+        : "أراجع السياق الإخباري المطلوب.",
+    metadata: { symbol, currencies },
+  });
 
   const now = new Date();
   const to = new Date(now.getTime() + 6 * 60 * 60 * 1000);
