@@ -23,7 +23,35 @@ export interface TradeValidationInput {
   minRr?: number;
   /** Educational-only requests skip the RR gate. */
   educationalOnly?: boolean;
+  // --- Phase-2 context (all optional for backward compatibility) ---
+  /** Session-based risk (Asia/London/NY open volatility etc.). */
+  sessionRisk?: "low" | "medium" | "high" | "unknown";
+  spreadState?: "normal" | "wide" | "unknown";
+  volatilityState?: "normal" | "spike" | "dead" | "unknown";
+  /** How far price is from the intended entry. "missed" = already ran away. */
+  entryDistanceState?: "near" | "far" | "missed" | "unknown";
+  /** Reversal evidence (sweep + CHoCH/MSS) that can justify counter-HTF. */
+  hasReversalEvidence?: boolean;
+  /** POI quality score 0–100; below threshold blocks the trade. */
+  poiScore?: number;
+  rangePosition?:
+    | "premium"
+    | "discount"
+    | "mid_range"
+    | "near_high"
+    | "near_low"
+    | "unknown";
+  setupType?:
+    | "trend_continuation"
+    | "reversal_after_sweep"
+    | "range_boundary"
+    | "breakout_retest";
+  /** Market closed blocks execution; educational analysis may continue. */
+  marketOpen?: boolean;
 }
+
+/** POI score below this cannot produce a Buy/Sell. */
+export const MIN_TRADABLE_POI_SCORE = 75;
 
 export interface TradeValidationResult {
   accepted: boolean;
@@ -50,11 +78,52 @@ export function validateTradeSetup(
   if (!input.hasValidPoi) {
     reasons.push("Entry is not near a valid POI.");
   }
+  // HTF conflict is a hard BLOCK unless reversal evidence exists.
   if (input.htfConflict) {
-    warnings.push("Setup conflicts with higher timeframe context.");
+    if (input.hasReversalEvidence) {
+      warnings.push(
+        "Setup conflicts with higher timeframe but reversal evidence exists.",
+      );
+    } else {
+      reasons.push(
+        "Higher-timeframe conflict without reversal evidence blocks the trade.",
+      );
+    }
   }
   if (input.newsRisk === "high") {
     reasons.push("High news risk blocks the trade.");
+  }
+
+  // --- Phase-2 gates ---------------------------------------------------
+  if (input.poiScore != null && input.poiScore < MIN_TRADABLE_POI_SCORE) {
+    reasons.push(
+      `POI score ${input.poiScore} is below the tradable minimum (${MIN_TRADABLE_POI_SCORE}).`,
+    );
+  }
+  if (
+    input.rangePosition === "mid_range" &&
+    input.setupType !== "breakout_retest"
+  ) {
+    reasons.push("Price is mid-range without a breakout-retest setup.");
+  }
+  if (input.entryDistanceState === "missed") {
+    reasons.push("Price already ran away from the entry — setup missed.");
+  } else if (input.entryDistanceState === "far") {
+    warnings.push("Entry is far from current price — setup may take time.");
+  }
+  if (input.spreadState === "wide") {
+    reasons.push("Spread is too wide for a safe stop.");
+  }
+  if (input.volatilityState === "spike" && !input.educationalOnly) {
+    reasons.push("Volatility spike — execution blocked until it settles.");
+  } else if (input.volatilityState === "dead") {
+    warnings.push("Very low volatility — targets may take long to reach.");
+  }
+  if (input.sessionRisk === "high") {
+    warnings.push("High session risk (open/rollover volatility).");
+  }
+  if (input.marketOpen === false && !input.educationalOnly) {
+    reasons.push("Market is closed — execution is blocked (analysis only).");
   }
 
   const entry = trade.entry;

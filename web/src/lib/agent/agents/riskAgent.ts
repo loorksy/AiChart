@@ -10,7 +10,23 @@ import {
   type ProposedTrade,
   type TradeValidationResult,
 } from "../risk/validateTradeSetup";
+import { isSpreadTooHigh } from "../risk/spreadCheck";
 import type { UserTradingProfile } from "../risk/userTradingProfile";
+import {
+  computeRangePosition,
+  type RangePosition,
+} from "../marketContext/rangePosition";
+import { enrichSweepsWithStructure } from "../marketContext/liquiditySweeps";
+import {
+  buildTradeCandidates,
+  type TradeCandidate,
+  type TradeCandidatesResult,
+} from "../trading/buildTradeCandidates";
+import {
+  runTradingPlaybook,
+  type TradingPlaybookResult,
+} from "../trading/tradingPlaybook";
+import { meetsDataQuality } from "../dataQualityPolicy";
 
 export interface AccountRiskSnapshot {
   openTradesCount: number;
@@ -40,12 +56,19 @@ export interface RiskAgentResult {
   accountWarnings: string[];
   /** Account-level block (limits exceeded / data unavailable). */
   accountBlocked: boolean;
+  // --- Phase-2 trading-brain context ---
+  selectedCandidate: TradeCandidate | null;
+  candidatesResult: TradeCandidatesResult;
+  playbook: TradingPlaybookResult;
+  rangePosition: RangePosition | null;
 }
 
 /**
- * Proposes a POI-based trade candidate (never entry = current price blindly)
- * from structure + supply/demand, validates the setup, and layers account-level
- * risk. A rejected setup or a breached account limit forces the final WAIT.
+ * The disciplined trade gate. Builds evidence-based trade candidates (POI
+ * scoring, structure events, sweeps, range position, HTF discipline), runs the
+ * deterministic trading playbook, then validates the selected candidate.
+ * A rejected setup, a failing checklist, or a breached account limit forces
+ * the final decision to WAIT — this can never be overridden downstream.
  */
 export async function runRiskAgent(
   ctx: AgentRunContext,
@@ -54,28 +77,110 @@ export async function runRiskAgent(
   ctx.emitActivity({
     type: "risk",
     status: "started",
-    message: "أتحقق من صلاحية الصفقة والمخاطرة.",
+    message: "أشغّل قائمة فحص التداول وأتحقق من صلاحية الإعداد والمخاطرة.",
   });
 
-  const proposedTrade = proposeTradeCandidate(input);
+  const market = input.market;
+  const price = market.currentPrice ?? 0;
+  const rangePosition = computeRangePosition(market.currentTfCandles, price);
+
+  // Enrich sweeps now that structure events are known (agents ran in parallel).
+  const structureEvents = input.structure?.structureEvents ?? [];
+  const sweeps = enrichSweepsWithStructure(
+    input.liquidity?.sweeps ?? [],
+    structureEvents,
+  );
+
+  const htfLevels = [
+    ...market.majorLevels.support.map((l) => l.price),
+    ...market.majorLevels.resistance.map((l) => l.price),
+  ];
+
+  const candidatesResult = buildTradeCandidates({
+    candles: market.currentTfCandles,
+    currentPrice: price,
+    atr: market.atr,
+    trend: input.structure?.trend ?? "unknown",
+    htfBias: input.mtf?.higherBias ?? "unknown",
+    htfConflict: Boolean(input.mtf?.conflict),
+    zones: input.supplyDemand?.zones ?? [],
+    structureEvents,
+    sweeps,
+    rangePosition,
+    htfLevels,
+    minRr: input.minRr,
+    newsRisk: input.news?.newsRisk ?? "unknown",
+    spread: market.spread,
+  });
+
+  const candidate = candidatesResult.best;
+  const proposedTrade: ProposedTrade = candidate
+    ? {
+        action: candidate.action,
+        entry: candidate.entry,
+        stop_loss: candidate.stop_loss,
+        targets: candidate.targets,
+      }
+    : { action: "wait" };
+
+  // Deterministic playbook checklist — runs BEFORE any Buy/Sell is allowed.
+  const playbook = runTradingPlaybook({
+    market,
+    structure: input.structure,
+    liquidity: input.liquidity ? { ...input.liquidity, sweeps } : null,
+    mtf: input.mtf,
+    news: input.news,
+    rangePosition,
+    candidatesResult,
+    candidate,
+    minRr: input.minRr,
+    profile: input.profile,
+    account: input.account,
+    educationalOnly: input.educationalOnly,
+  });
+
+  // Entry-distance state for validation.
+  const atr = market.atr ?? 0;
+  const entryDistanceState = !candidate
+    ? "unknown"
+    : atr > 0
+      ? Math.abs(price - candidate.entry) / atr > 6
+        ? "missed"
+        : Math.abs(price - candidate.entry) / atr > 3
+          ? "far"
+          : "near"
+      : "unknown";
+
+  const spreadState =
+    market.spread == null
+      ? "unknown"
+      : candidate &&
+          isSpreadTooHigh({
+            spread: market.spread,
+            atr,
+            stopDistance: Math.abs(candidate.entry - candidate.stop_loss),
+          })
+        ? "wide"
+        : "normal";
 
   const validation = validateTradeSetup({
     trade: proposedTrade,
-    currentPrice: input.market.currentPrice ?? 0,
-    atr: input.market.atr,
-    spread: input.market.spread,
-    // A valid POI is a supply/demand zone OR a nearby resting-liquidity pool.
-    hasValidPoi: Boolean(
-      input.supplyDemand?.nearestDemand ||
-        input.supplyDemand?.nearestSupply ||
-        input.liquidity?.nearestBuySide ||
-        input.liquidity?.nearestSellSide,
-    ),
+    currentPrice: price,
+    atr: market.atr,
+    spread: market.spread,
+    hasValidPoi: Boolean(candidate),
     htfConflict: Boolean(input.mtf?.conflict),
     newsRisk: input.news?.newsRisk ?? "unknown",
-    dataSufficient: input.market.dataQuality.sufficient,
+    dataSufficient: meetsDataQuality(market.dataQuality, "trade"),
     minRr: input.minRr,
     educationalOnly: input.educationalOnly,
+    hasReversalEvidence: candidatesResult.hasReversalEvidence,
+    poiScore: candidate?.poi.score.score,
+    rangePosition: rangePosition?.label ?? "unknown",
+    setupType: candidate?.setupType,
+    entryDistanceState,
+    spreadState,
+    marketOpen: market.marketOpen,
   });
 
   // Account-level gate (separate from single-trade validation).
@@ -108,18 +213,36 @@ export async function runRiskAgent(
     }
   }
 
-  const veto = !validation.accepted || accountBlocked;
+  const veto =
+    !validation.accepted ||
+    accountBlocked ||
+    (proposedTrade.action !== "wait" && !playbook.canTrade);
+
+  // If the playbook blocked a proposed trade, surface its reasons.
+  if (proposedTrade.action !== "wait" && !playbook.canTrade) {
+    for (const r of playbook.blockingReasons) {
+      if (!validation.reasons.includes(r)) validation.reasons.push(r);
+    }
+  }
+  // If there is no candidate at all, surface the strongest rejection reasons.
+  if (!candidate && candidatesResult.rejectedReasons.length) {
+    for (const r of candidatesResult.rejectedReasons.slice(0, 3)) {
+      if (!validation.reasons.includes(r)) validation.reasons.push(r);
+    }
+  }
 
   ctx.emitActivity({
     type: "risk",
     status: veto ? "warning" : "completed",
     message: veto
-      ? "رفضت الصفقة أو خفّضتها بسبب شروط المخاطرة."
-      : "قبلت المخاطرة مبدئياً.",
+      ? "قائمة الفحص أو المخاطرة رفضت الإعداد — القرار انتظار."
+      : `اجتاز الإعداد قائمة الفحص (${playbook.checklist.filter((i) => i.status === "pass").length}/${playbook.checklist.length}).`,
     metadata: {
       accepted: validation.accepted,
       rr: validation.rr,
       accountBlocked,
+      canTrade: playbook.canTrade,
+      candidates: candidatesResult.candidates.length,
     },
   });
 
@@ -129,50 +252,9 @@ export async function runRiskAgent(
     veto,
     accountWarnings,
     accountBlocked,
+    selectedCandidate: candidate,
+    candidatesResult,
+    playbook,
+    rangePosition,
   };
-}
-
-/**
- * POI-based candidate. Buys are anchored to the nearest demand zone, sells to
- * the nearest supply zone; entry = the zone edge (retest), NOT the current
- * close. No zone in the trend direction → WAIT.
- */
-function proposeTradeCandidate(input: RiskAgentInput): ProposedTrade {
-  const price = input.market.currentPrice;
-  if (!price || !input.structure || !input.supplyDemand) {
-    return { action: "wait" };
-  }
-
-  const trend = input.structure.trend;
-  const demand = input.supplyDemand.nearestDemand;
-  const supply = input.supplyDemand.nearestSupply;
-
-  if (trend === "uptrend" && demand) {
-    const entry = demand.high;
-    const stop = demand.low;
-    const risk = Math.abs(entry - stop);
-    if (risk <= 0) return { action: "wait" };
-    return {
-      action: "buy",
-      entry,
-      stop_loss: stop,
-      targets: [entry + risk * Math.max(input.minRr, 2)],
-    };
-  }
-
-  if (trend === "downtrend" && supply) {
-    const entry = supply.low;
-    const stop = supply.high;
-    const risk = Math.abs(stop - entry);
-    if (risk <= 0) return { action: "wait" };
-    return {
-      action: "sell",
-      entry,
-      stop_loss: stop,
-      targets: [entry - risk * Math.max(input.minRr, 2)],
-    };
-  }
-
-  // Range or conflict → prefer WAIT (no chasing).
-  return { action: "wait" };
 }

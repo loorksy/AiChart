@@ -99,19 +99,30 @@ export async function runFinalDecisionAgent(
   }
 
   const trade = risk?.proposedTrade;
+  const candidate = risk?.selectedCandidate ?? null;
+  const playbook = risk?.playbook ?? null;
 
-  // --- Valid trade setup → buy/sell with POI + invalidation context. ---
+  // --- Valid trade setup → buy/sell with POI + evidence + invalidation. ---
   if (trade && (trade.action === "buy" || trade.action === "sell")) {
     const rr = risk?.validation.rr;
-    const zone =
-      trade.action === "buy"
-        ? input.supplyDemand?.nearestDemand
-        : input.supplyDemand?.nearestSupply;
-    const poiAr = zone
-      ? `منطقة ${trade.action === "buy" ? "طلب" : "عرض"} عند ${fmt(zone.low)}–${fmt(zone.high)}`
+    const poiAr = candidate
+      ? `منطقة ${candidate.poi.type === "demand" ? "طلب" : "عرض"} (${candidate.poi.score.grade}/${candidate.poi.score.score}) عند ${fmt(candidate.poi.low)}–${fmt(candidate.poi.high)}`
       : "منطقة POI محددة";
-    const baseConfidence =
+    const setupAr =
+      candidate?.setupType === "reversal_after_sweep"
+        ? "انعكاس بعد سحب سيولة"
+        : candidate?.setupType === "range_boundary"
+          ? "ارتداد من حد النطاق"
+          : candidate?.setupType === "breakout_retest"
+            ? "إعادة اختبار بعد اختراق"
+            : "استمرار مع الاتجاه";
+    let baseConfidence =
       newsRisk === "high" ? 0.55 : newsRisk === "medium" ? 0.66 : 0.74;
+    if (candidate?.poi.score.grade === "A") baseConfidence += 0.06;
+    baseConfidence = Math.max(
+      0.4,
+      Math.min(0.9, baseConfidence + (playbook?.confidenceAdjustment ?? 0)),
+    );
 
     ctx.emitActivity({
       type: "final",
@@ -127,16 +138,19 @@ export async function runFinalDecisionAgent(
       decision: trade.action,
       confidence: baseConfidence,
       summary:
-        `${dirAr} مشروط على ${symbol} من ${poiAr} عند اللمس، وليس بمطاردة السعر. ` +
+        `${dirAr} مشروط على ${symbol} — إعداد ${setupAr} من ${poiAr} عند اللمس، وليس بمطاردة السعر. ` +
         `الدخول ${fmt(trade.entry)} والوقف ${fmt(trade.stop_loss)}` +
         (rr ? ` بعائد/مخاطرة ~${rr.toFixed(1)}.` : ".") +
-        ` يُلغى السيناريو بإغلاق ما وراء الوقف.`,
-      keyReasons: [
+        ` ${candidate?.invalidationReason ?? "يُلغى السيناريو بإغلاق ما وراء الوقف."}`,
+      keyReasons: candidate?.evidence.slice(0, 4) ?? [
         `الاتجاه ${trendAr} يدعم ${dirAr} من ${poiAr}.`,
         "الدخول مبني على منطقة POI مع وقف خلف المنطقة، لا على السعر الحالي.",
-        "روجعت بنية السوق والفريم الأكبر والمخاطرة قبل القرار.",
       ],
-      riskWarnings: [...(risk?.validation.warnings ?? []), ...newsWarn],
+      riskWarnings: [
+        ...(risk?.validation.warnings ?? []),
+        ...(candidate?.warnings.slice(0, 2) ?? []),
+        ...newsWarn,
+      ],
       recommendation: {
         action: trade.action,
         entry: trade.entry,
@@ -147,7 +161,7 @@ export async function runFinalDecisionAgent(
       },
       publicReasoningSummary: [
         `الاتجاه ${trendAr}، ونظام السوق ${regimeAr}.`,
-        `POI المختارة: ${poiAr}.`,
+        `الإعداد: ${setupAr} من ${poiAr}.`,
         `إبطال السيناريو: إغلاق ما وراء ${fmt(trade.stop_loss)}.`,
       ],
       riskVeto: false,
@@ -182,6 +196,12 @@ function explainMissingSetup(
   input: FinalDecisionInput,
   trend: string,
 ): string {
+  // The playbook/candidate engine already computed the exact rejection.
+  const rejected = input.risk?.candidatesResult?.rejectedReasons ?? [];
+  if (rejected.length) return rejected[0]!;
+  const blocking = input.risk?.playbook?.blockingReasons ?? [];
+  if (blocking.length) return blocking[0]!;
+
   if (input.mtf?.conflict) {
     return "يوجد تعارض بين الفريم الحالي والفريم الأعلى، والدخول ضد الفريم الأكبر غير مبرَّر.";
   }

@@ -2,7 +2,10 @@ import type { AgentRunContext } from "../types";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { AgentMarketContext } from "../marketContext/buildAgentMarketContext";
 import type { FinalDecisionResult } from "./finalDecisionAgent";
-import type { DrawingPlan } from "../drawings/buildDrawingPlan";
+import type {
+  DrawingAnnotation,
+  DrawingPlan,
+} from "../drawings/buildDrawingPlan";
 import { sanitizeAgentDrawings } from "../drawings/drawingOwnership";
 
 export interface DrawingAgentInput {
@@ -113,13 +116,19 @@ export async function runDrawingAgent(
     });
   }
 
-  // Forecast path (trade setups only).
+  // Structure/liquidity/range annotations from the plan.
+  for (const ann of plan.selectedAnnotations ?? []) {
+    raw.push(annotationDrawing(ann, lastTime));
+  }
+
+  // Scenario path (valid setups only) — a POSSIBLE route, never a guarantee.
   if (plan.forecastPath?.length) {
     raw.push({
       type: "forecast_path",
-      confidence: 60,
-      label: "المسار المتوقع",
+      confidence: 55,
+      label: "سيناريو محتمل",
       semanticRole: "forecast",
+      style: "dashed",
       points: plan.forecastPath.map((p) => ({ time: p.time, price: p.price })),
     });
   }
@@ -139,6 +148,60 @@ export async function runDrawingAgent(
   });
 
   return drawings;
+}
+
+/** Render a plan annotation (BOS/CHoCH/sweep/range/invalidation) faithfully. */
+function annotationDrawing(
+  ann: DrawingAnnotation,
+  lastTime: number,
+): ChartDrawing {
+  switch (ann.type) {
+    case "invalidation":
+      return {
+        type: "decision_zone",
+        confidence: Math.round(ann.strength),
+        label: ann.label,
+        semanticRole: "decision_zone",
+        color: "#ef4444",
+        fill: true,
+        points: [
+          { time: ann.time, price: ann.price },
+          { time: lastTime, price: ann.price2 ?? ann.price },
+        ],
+        meta: { annotation: ann.type },
+      };
+    case "sweep":
+      return {
+        ...priceLine(ann.label, ann.price, ann.time, "liquidity_sweep", "#a855f7"),
+        confidence: Math.round(ann.strength),
+        style: "dashed",
+        meta: { annotation: ann.type },
+      };
+    case "bos":
+    case "choch":
+      return {
+        ...priceLine(
+          ann.label,
+          ann.price,
+          ann.time,
+          "breakout",
+          ann.direction === "bullish" ? "#22c55e" : "#ef4444",
+        ),
+        confidence: Math.round(ann.strength),
+        style: "dashed",
+        meta: { annotation: ann.type },
+      };
+    case "range_high":
+    case "range_low":
+    case "premium_discount":
+    default:
+      return {
+        ...priceLine(ann.label, ann.price, ann.time, "range", "#eab308"),
+        confidence: Math.round(ann.strength),
+        style: ann.type === "premium_discount" ? "dotted" : "solid",
+        meta: { annotation: ann.type },
+      };
+  }
 }
 
 function zoneLabel(type: "supply" | "demand" | "retest" | "range"): string {

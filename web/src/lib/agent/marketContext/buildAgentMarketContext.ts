@@ -14,6 +14,10 @@ import {
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { isForexMarketOpen } from "@/lib/agent/marketSession";
 import {
+  DATA_QUALITY_POLICY,
+  meetsDataQuality,
+} from "@/lib/agent/dataQualityPolicy";
+import {
   calculateAtr,
   detectLiquidity,
   detectMajorLevels,
@@ -80,11 +84,12 @@ export async function buildAgentMarketContext(input: {
         : Promise.resolve([] as AgentCandle[]),
     ]);
 
-  // Thin coverage → background top-up (never blocks this request).
-  if (currentTfCandles.length < 300) {
+  // Thin coverage → background top-up (never blocks this request). Uses the
+  // TRADE gate so drawing/trade thresholds are proactively satisfied.
+  if (currentTfCandles.length < DATA_QUALITY_POLICY.trade.currentTf) {
     triggerBackfill({ symbol, interval, limit: 5000 });
   }
-  if (higherTfCandles.length < 100) {
+  if (higherTfCandles.length < DATA_QUALITY_POLICY.trade.higherTf) {
     triggerBackfill({ symbol, interval: higherInterval, limit: 2000 });
   }
 
@@ -124,7 +129,16 @@ export async function buildAgentMarketContext(input: {
       currentTfCount: currentTfCandles.length,
       higherTfCount: higherTfCandles.length,
       dailyCount: dailyCandles.length,
-      sufficient: currentTfCandles.length >= 300 && higherTfCandles.length >= 100,
+      // "sufficient" = the ANALYSIS gate; trade/drawing gates are stricter and
+      // enforced by the playbook + drawing plan via the same central policy.
+      sufficient: meetsDataQuality(
+        {
+          currentTfCount: currentTfCandles.length,
+          higherTfCount: higherTfCandles.length,
+          dailyCount: dailyCandles.length,
+        },
+        "analysis",
+      ),
     },
     freshness,
     marketOpen,

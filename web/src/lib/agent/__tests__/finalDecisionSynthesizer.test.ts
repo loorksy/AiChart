@@ -8,6 +8,7 @@ import type {
 import type { AgentMarketContext } from "@/lib/agent/marketContext/buildAgentMarketContext";
 import type { AgentRunContext } from "@/lib/agent/types";
 import type { RiskAgentResult } from "@/lib/agent/agents/riskAgent";
+import { makeStructure } from "./helpers";
 
 function fakeCtx(): AgentRunContext {
   return { requestId: "t", emitActivity: () => {} };
@@ -49,7 +50,7 @@ function baseInput(
     risk,
     news: null,
     market: market(),
-    structure: { trend: "range", swings: [], support: [], resistance: [] },
+    structure: makeStructure(),
     supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null },
     mtf: null,
     deterministic,
