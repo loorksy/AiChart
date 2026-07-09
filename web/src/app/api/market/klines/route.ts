@@ -14,7 +14,10 @@ import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
 import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 import { normalizeInterval } from "@/lib/intervals";
+import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
+import { FEATURES } from "@/lib/agent/featureFlags";
+import { serveWarehouseOhlc } from "@/lib/candles/warehouseOhlc";
 import type { MarketType } from "@/lib/markets/types";
 
 /** Market UI klines — forex via OANDA or EA bridge. */
@@ -86,6 +89,54 @@ export async function GET(req: NextRequest) {
         pending: candles.length === 0 && Boolean(ea.warning),
         ...(ea.warning ? { error: ea.warning } : {}),
       });
+    }
+
+    // Warehouse-first: serve AiChart's own candle store, backfilling from OANDA
+    // only for missing/stale coverage. Falls through to the legacy direct-OANDA
+    // path when the warehouse is empty for this symbol/interval or the flag is
+    // off. `cursor`-based pagination stays on the legacy path (warehouse uses
+    // from/to/before windows).
+    if (FEATURES.candleWarehouse() && cursor == null) {
+      try {
+        const wh = await serveWarehouseOhlc({
+          symbol,
+          interval,
+          limit,
+          fresh,
+          fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
+          toMs: Number.isFinite(toMs) ? toMs : undefined,
+          beforeMs: Number.isFinite(beforeMs) ? beforeMs : undefined,
+        });
+        if (wh.candles.length > 0) {
+          const normalized = normalizeCandlesForChart(wh.candles);
+          const candles = sanitizeCandlesForMarket(normalized, market);
+          const nextCursor =
+            candles.length > 0
+              ? toChartSeconds(candles[0]!.time) * 1000
+              : null;
+          const res = NextResponse.json({
+            symbol,
+            interval,
+            market,
+            source: wh.source,
+            candles,
+            pending: candles.length === 0,
+            coverage: wh.coverage,
+            backfillStatus: wh.backfillStatus,
+            nextCursor,
+            hasMore: wh.hasMore,
+          });
+          const ttlSec = Math.round(ohlcCacheTtlMs(interval) / 1000);
+          res.headers.set(
+            "Cache-Control",
+            `private, max-age=${Math.min(ttlSec, 30)}, stale-while-revalidate=${ttlSec}`,
+          );
+          return res;
+        }
+        // Empty warehouse result → fall through to legacy direct-OANDA fetch.
+      } catch (whErr) {
+        console.error("[klines] warehouse path failed, falling back", whErr);
+      }
     }
 
     try {

@@ -19,10 +19,16 @@ import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
 import { OpenTradesDrawer } from "@/components/chart/OpenTradesDrawer";
 import { AnalysisResultModal } from "@/components/chart/AnalysisResultModal";
+import {
+  SmartChartAgentPanel,
+  type SmartChartAgentHandle,
+} from "@/components/agent/SmartChartAgentPanel";
 import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { useAccountCapital } from "@/hooks/useAccountCapital";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 import { normalizeInterval } from "@/lib/intervals";
+import { clearAgentDrawings } from "@/lib/agent/drawings/drawingOwnership";
+import type { AgentFinalResult } from "@/lib/agent/types";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
 
@@ -40,6 +46,7 @@ export interface ChartLayoutState extends ChartHydrateSnapshot {
 export function SmartChartWorkspace({
   recommendations = [],
   agentReady = true,
+  smartAgentEnabled = false,
   onCreditsUsed,
   guest = false,
   initialSymbol,
@@ -49,6 +56,8 @@ export function SmartChartWorkspace({
 }: {
   recommendations?: Recommendation[];
   agentReady?: boolean;
+  /** When true, the docked Smart Chart Agent replaces the legacy analyze path. */
+  smartAgentEnabled?: boolean;
   onCreditsUsed?: () => void;
   /** Guest (not signed in): browse chart only; tools redirect to login. */
   guest?: boolean;
@@ -61,6 +70,8 @@ export function SmartChartWorkspace({
   initialState?: ChartLayoutState | null;
 }) {
   const chartRef = useRef<TvChartHandle>(null);
+  const agentRef = useRef<SmartChartAgentHandle>(null);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
 
   const router = useRouter();
 
@@ -110,6 +121,8 @@ export function SmartChartWorkspace({
     stopLiveAnalysis,
     setHighlightDrawingIndex,
     hydrateFromSnapshot,
+    setDrawings,
+    setRecommendation,
   } = useChartAnalysis({
     symbol,
     interval,
@@ -311,6 +324,49 @@ export function SmartChartWorkspace({
     stopLiveAnalysis();
   }, [clearLayers, stopLiveAnalysis]);
 
+  // Apply the agent's drawings to the chart: keep user/manual drawings, replace
+  // only the agent-owned set (one coherent set of drawings on the chart).
+  const handleAgentResult = useCallback(
+    (result: AgentFinalResult) => {
+      if (result.drawings) {
+        setDrawings((prev) =>
+          [...clearAgentDrawings(prev), ...(result.drawings ?? [])],
+        );
+      }
+      const rec = result.recommendation;
+      if (rec && (rec.action === "buy" || rec.action === "sell")) {
+        setRecommendation({
+          symbol,
+          action: rec.action,
+          entry: rec.entry ?? null,
+          stop_loss: rec.stop_loss ?? null,
+          take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
+          confidence: Math.round(result.confidence * 100),
+          timeframe: interval,
+        } as Recommendation);
+      } else if (result.decision === "wait") {
+        setRecommendation(null);
+      }
+    },
+    [setDrawings, setRecommendation, symbol, interval],
+  );
+
+  // Analyze button: with the Smart Chart Agent, open the docked chat and fire
+  // the quick prompt into the unified engine (no separate analysis path).
+  const handleAnalyzeClick = useCallback(() => {
+    if (guest) {
+      router.push("/login?next=/chart");
+      return;
+    }
+    if (smartAgentEnabled) {
+      setAgentPanelOpen(true);
+      // Defer so the panel mounts before the imperative call.
+      setTimeout(() => agentRef.current?.quickAnalyze(), 0);
+      return;
+    }
+    if (!isAnalyzing) void analyze();
+  }, [guest, smartAgentEnabled, isAnalyzing, analyze, router]);
+
   const handleExecute = useCallback(async () => {
     const pending = intents.find((i) => i.status === "pending");
     if (!pending) return;
@@ -353,12 +409,17 @@ export function SmartChartWorkspace({
           ? "سجّل الدخول لاستخدام التحليل بالذكاء الاصطناعي"
           : "تحليل بالذكاء الاصطناعي",
         color: "#71717a",
-        onClick: () => {
-          if (guest) router.push("/login?next=/chart");
-          else if (!isAnalyzing) void analyze();
-        },
+        onClick: handleAnalyzeClick,
       },
     ];
+    if (!guest && smartAgentEnabled) {
+      actions.push({
+        id: "agent",
+        text: "💬 الوكيل",
+        title: "فتح محادثة الوكيل الذكي للشارت",
+        onClick: () => setAgentPanelOpen((v) => !v),
+      });
+    }
     if (!guest) {
       if (hasLayers) {
         actions.push({
@@ -403,7 +464,8 @@ export function SmartChartWorkspace({
     capital.label,
     forexOnline,
     router,
-    analyze,
+    smartAgentEnabled,
+    handleAnalyzeClick,
     handleClearLayers,
   ]);
 
@@ -421,43 +483,58 @@ export function SmartChartWorkspace({
         </p>
       )}
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
-            setResolution) — never remount, so drawings and chart state survive. */}
-        <ChartErrorBoundary key="tv">
-          <TvChart
-            ref={chartRef}
-            symbol={symbol}
-            interval={interval}
-            market={market}
-            analyzing={isAnalyzing}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
+              setResolution) — never remount, so drawings and chart state survive. */}
+          <ChartErrorBoundary key="tv">
+            <TvChart
+              ref={chartRef}
+              symbol={symbol}
+              interval={interval}
+              market={market}
+              analyzing={isAnalyzing}
+              recommendation={recommendation}
+              targets={targets}
+              overlays={overlays}
+              drawings={drawings}
+              headerActions={headerActions}
+              eaEnabled={false}
+              dataSource="oanda"
+              className="h-full min-h-0 w-full"
+              onSymbolChange={handleSymbolChange}
+              onIntervalChange={handleIntervalChange}
+            />
+          </ChartErrorBoundary>
+
+          <ChartTradeOverlay
             recommendation={recommendation}
             targets={targets}
-            overlays={overlays}
+            riskReward={riskReward}
+            liveReasoningLog={liveReasoningLog}
+            isAnalyzing={isAnalyzing}
+            liveAnalysis={liveAnalysis}
             drawings={drawings}
-            headerActions={headerActions}
-            eaEnabled={false}
-            dataSource="oanda"
-            className="h-full min-h-0 w-full"
-            onSymbolChange={handleSymbolChange}
-            onIntervalChange={handleIntervalChange}
+            onHighlightDrawing={setHighlightDrawingIndex}
+            onStopLive={stopLiveAnalysis}
+            onExecute={canExecute ? () => void handleExecute() : undefined}
+            executing={executing}
+            executeLabel={canExecute ? "موافقة وتنفيذ" : undefined}
           />
-        </ChartErrorBoundary>
+        </div>
 
-        <ChartTradeOverlay
-          recommendation={recommendation}
-          targets={targets}
-          riskReward={riskReward}
-          liveReasoningLog={liveReasoningLog}
-          isAnalyzing={isAnalyzing}
-          liveAnalysis={liveAnalysis}
-          drawings={drawings}
-          onHighlightDrawing={setHighlightDrawingIndex}
-          onStopLive={stopLiveAnalysis}
-          onExecute={canExecute ? () => void handleExecute() : undefined}
-          executing={executing}
-          executeLabel={canExecute ? "موافقة وتنفيذ" : undefined}
-        />
+        {smartAgentEnabled && agentPanelOpen && !guest && (
+          <div className="hidden w-[360px] shrink-0 border-r border-border/60 md:block">
+            <SmartChartAgentPanel
+              ref={agentRef}
+              symbol={symbol}
+              interval={interval}
+              layoutId={layoutId}
+              onResult={handleAgentResult}
+              onClose={() => setAgentPanelOpen(false)}
+            />
+          </div>
+        )}
       </div>
 
       <OpenTradesDrawer open={tradesOpen} onClose={() => setTradesOpen(false)} />

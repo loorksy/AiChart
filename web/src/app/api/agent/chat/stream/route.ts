@@ -1,0 +1,195 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { requirePlatformAccess, handleError } from "@/lib/api";
+import { getSettings, getLimits } from "@/lib/store";
+import { isLLMConfigured } from "@/lib/llm";
+import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
+import { sseEncode } from "@/lib/sse";
+import { FEATURES } from "@/lib/agent/featureFlags";
+import { createActivityEvent, newId } from "@/lib/agent/activity";
+import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
+import { buildUserTradingProfile } from "@/lib/agent/risk/userTradingProfile";
+import {
+  updateSessionFromMessage,
+  rememberContext,
+} from "@/lib/agent/sessionMemory";
+import { writeAgentAudit } from "@/lib/agent/auditLog";
+import { tradingStyleForInterval } from "@/lib/analysisProfile";
+import type { AgentActivityEvent } from "@/lib/agent/types";
+
+export const runtime = "nodejs";
+export const maxDuration = 180;
+
+const schema = z.object({
+  message: z.string().min(1).max(4000),
+  sessionId: z.string().min(1).max(64).optional(),
+  chartContext: z
+    .object({
+      symbol: z.string().max(20).optional(),
+      interval: z.string().max(8).optional(),
+      layoutId: z.string().max(32).optional(),
+      visibleRange: z
+        .object({ from: z.number(), to: z.number() })
+        .optional(),
+      dataSource: z.enum(["oanda", "ea"]).optional(),
+    })
+    .optional(),
+});
+
+export async function POST(req: NextRequest) {
+  let release: (() => void) | null = null;
+  try {
+    const user = await requirePlatformAccess();
+
+    if (!FEATURES.smartChartAgent()) {
+      return NextResponse.json(
+        { error: "الوكيل الذكي غير مُفعّل حالياً." },
+        { status: 503 },
+      );
+    }
+    if (!isLLMConfigured()) {
+      return NextResponse.json(
+        { error: "الذكاء الاصطناعي غير مُفعّل على الخادم." },
+        { status: 503 },
+      );
+    }
+
+    const body = schema.parse(await req.json());
+
+    // Burst guard: one heavy agent run per user + global cap (rate limiting).
+    const slot = acquireAnalyzeSlot(user.id);
+    if (!slot.ok) {
+      const msg =
+        slot.reason === "in_flight"
+          ? "يوجد تحليل قيد التشغيل. انتظر قليلاً ثم حاول مرة أخرى."
+          : "المنصة تحت ضغط مرتفع حالياً — أعد المحاولة خلال ثوانٍ.";
+      return NextResponse.json(
+        { error: msg },
+        { status: slot.reason === "in_flight" ? 429 : 503 },
+      );
+    }
+    release = slot.release;
+
+    const [settings, limits] = await Promise.all([
+      getSettings(user.id),
+      getLimits(user.id),
+    ]);
+    const profile = buildUserTradingProfile(settings);
+    const canExecute = limits.can_execute !== 0;
+
+    const sessionId = body.sessionId ?? newId();
+    // Fold any preference directives into session memory before the run.
+    const session = updateSessionFromMessage(sessionId, body.message);
+    const tradingStyle = tradingStyleForInterval(
+      body.chartContext?.interval ?? "15m",
+    );
+
+    const requestId = newId();
+    const activityEvents: AgentActivityEvent[] = [];
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (event: string, data: unknown) => {
+          try {
+            controller.enqueue(sseEncode(event, data));
+          } catch {
+            /* client gone — keep working so audit + state persist */
+          }
+        };
+
+        const emitActivity = (
+          ev: Omit<AgentActivityEvent, "id" | "timestamp">,
+        ) => {
+          const full = createActivityEvent(ev);
+          activityEvents.push(full);
+          send("activity", full);
+        };
+
+        try {
+          const result = await runUnifiedChartAgent({
+            userMessage: body.message,
+            chartContext: body.chartContext,
+            requestContext: {
+              requestId,
+              userId: user.id,
+              sessionId,
+              emitActivity,
+              signal: req.signal,
+              session,
+            },
+            profile,
+            account: null,
+            canExecute,
+            tradingStyle,
+          });
+
+          rememberContext(sessionId, {
+            symbol: body.chartContext?.symbol,
+            interval: body.chartContext?.interval,
+            analysisId: result.analysisId,
+          });
+
+          await writeAgentAudit({
+            userId: user.id,
+            requestId,
+            sessionId,
+            symbol: body.chartContext?.symbol,
+            interval: body.chartContext?.interval,
+            decision: result.decision,
+            confidence: result.confidence,
+            riskVeto: result.decision === "wait",
+            newsRisk: result.newsRisk?.level,
+            executionRequiresConfirmation: result.requiresConfirmation,
+            executionConfirmed: false,
+            summary: result.summary,
+            metadata: { sessionId },
+          });
+
+          send("final", { ...result, sessionId, activityEvents });
+        } catch (error) {
+          if (req.signal.aborted) {
+            // Cancelled by the user — no partial result, no error badge.
+          } else {
+            const failed = createActivityEvent({
+              type: "final",
+              status: "failed",
+              message: "تعذّر إكمال الطلب بسبب خطأ أثناء تشغيل الوكيل.",
+            });
+            send("activity", failed);
+            send("error", {
+              error: error instanceof Error ? error.message : "Agent failed",
+            });
+          }
+        } finally {
+          release?.();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+        }
+      },
+      cancel() {
+        // Client aborted the fetch — release the slot promptly.
+        release?.();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  } catch (err) {
+    release?.();
+    if (err instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: err.issues[0]?.message ?? "بيانات غير صالحة." },
+        { status: 400 },
+      );
+    }
+    return handleError(err);
+  }
+}

@@ -5,6 +5,7 @@ import { needsMcpCredentials } from "@/lib/userCredentials";
 import { isLLMConfiguredAsync } from "@/lib/llm";
 import { getChartLayoutById, getOrCreateChartLayout } from "@/lib/store";
 import { initDb } from "@/lib/db";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import ChartPageClient from "@/components/ChartPageClient";
 import { BRAND_NAME } from "@/lib/brand";
 
@@ -71,6 +72,7 @@ export default async function ChartSymbolPage({
           email={user.email}
           role={user.role}
           agentReady={agentReady}
+          smartAgentEnabled={FEATURES.smartChartAgent()}
           guest={false}
           initialSymbol={qsSymbol || layout.symbol}
           layoutId={layout.id}
