@@ -63,25 +63,25 @@ export function createActivityEvent(
 }
 
 /**
- * Phrases that read like a scripted bot narrating intent rather than real work.
- * Any event carrying one of these is treated as non-visible so the user never
- * sees fake "I understood the question is general" activity.
- */
-const NON_ACTIONABLE_PHRASES = [
-  "فهمت أن السؤال عام",
-  "أجهز إجابة عامة",
-  "أجهّز إجابة عامة",
-  "سأجيب دون تشغيل أدوات التداول",
-  "فهمت أن الطلب",
-];
-
-/**
  * Gate applied before an activity event reaches the UI. Only real tool/agent
- * work is shown: events explicitly marked `visible: false`, empty messages, and
- * scripted intent-narration phrases are suppressed.
+ * work is shown: events explicitly marked `visible: false` and empty messages
+ * are suppressed. Scripted intent-narration was removed from the SOURCE (not
+ * merely filtered) — a repo-scan test enforces it never comes back.
  */
 export function shouldShowActivity(event: AgentActivityEvent): boolean {
   if (event.visible === false) return false;
   if (!event.message.trim()) return false;
-  return !NON_ACTIONABLE_PHRASES.some((p) => event.message.includes(p));
+  return true;
+}
+
+/**
+ * Like sanitizeActivityMessage but WITHOUT the 240-char cap — for full public
+ * answers/summaries where truncation would drop legitimate content.
+ */
+export function sanitizePublicText(text: string): string {
+  let clean = String(text ?? "").trim();
+  for (const phrase of BLOCKED_PHRASES) {
+    clean = clean.replace(new RegExp(escapeRegExp(phrase), "gi"), "");
+  }
+  return clean.replace(/[ \t]{2,}/g, " ").trim();
 }

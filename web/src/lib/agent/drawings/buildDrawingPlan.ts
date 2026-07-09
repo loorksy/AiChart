@@ -60,6 +60,83 @@ export interface DrawingPlanInput {
   liquidity: LiquidityResult | null;
   mtf: MultiTimeframeResult | null;
   preferMinimalDrawings?: boolean;
+  /** LLM-selected candidate ids (subset filter). The LLM can only SHRINK the
+   *  candidate set — every selection is still strength-validated here. */
+  selectedCandidateIds?: string[];
+  /** LLM drawing veto. `shouldDraw:false` suppresses drawings; `true` cannot
+   *  force weak levels through — validation still applies. */
+  drawingAdvice?: { shouldDraw: boolean; reason: string } | null;
+}
+
+/**
+ * Detector output packaged as CANDIDATES — never drawn directly. The LLM
+ * synthesizer may pick meaningful ids; the plan then validates each pick.
+ */
+export type DrawingCandidate = {
+  id: string;
+  type: "support" | "resistance" | "supply" | "demand" | "liquidity";
+  price?: number;
+  low?: number;
+  high?: number;
+  time: number;
+  computedStrength: number;
+  evidence: string[];
+};
+
+export interface DrawingCandidateInput {
+  market: AgentMarketContext;
+  structure: StructureResult | null;
+  supplyDemand: SupplyDemandResult | null;
+  liquidity: LiquidityResult | null;
+  mtf: MultiTimeframeResult | null;
+}
+
+/**
+ * Builds the scored candidate list from detector output. Deterministic and
+ * stable: the same inputs yield the same ids, so the synthesizer's selected
+ * ids match what the plan re-derives.
+ */
+export function buildDrawingCandidates(
+  input: DrawingCandidateInput,
+): DrawingCandidate[] {
+  const out: DrawingCandidate[] = [];
+
+  (input.structure?.support ?? []).forEach((l, i) => {
+    const strength = scoreLevel(l, input);
+    out.push({
+      id: `sup-${i}`,
+      type: "support",
+      price: l.price,
+      time: l.time,
+      computedStrength: strength,
+      evidence: [`scored=${strength}`, "structure_support"],
+    });
+  });
+  (input.structure?.resistance ?? []).forEach((l, i) => {
+    const strength = scoreLevel(l, input);
+    out.push({
+      id: `res-${i}`,
+      type: "resistance",
+      price: l.price,
+      time: l.time,
+      computedStrength: strength,
+      evidence: [`scored=${strength}`, "structure_resistance"],
+    });
+  });
+  (input.supplyDemand?.zones ?? []).forEach((z, i) => {
+    const strength = scoreZone(z, input);
+    out.push({
+      id: `zone-${i}`,
+      type: z.type,
+      low: z.low,
+      high: z.high,
+      time: z.time,
+      computedStrength: strength,
+      evidence: [`scored=${strength}`, "supply_demand_zone"],
+    });
+  });
+
+  return out;
 }
 
 /** True only when there is enough multi-timeframe history to draw reliably. */
@@ -83,6 +160,18 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
       shouldDraw: false,
       reason:
         "البيانات التاريخية غير كافية لرسم مستويات موثوقة. تم طلب استكمال البيانات.",
+      drawingIntent: "none",
+      selectedLevels: [],
+      selectedZones: [],
+    };
+  }
+
+  // LLM drawing veto: the synthesizer may decide drawing would be misleading.
+  // (It can only suppress — a `shouldDraw: true` never bypasses validation.)
+  if (input.drawingAdvice && input.drawingAdvice.shouldDraw === false) {
+    return {
+      shouldDraw: false,
+      reason: input.drawingAdvice.reason || "قرر الوكيل أن الرسم الآن غير مفيد.",
       drawingIntent: "none",
       selectedLevels: [],
       selectedZones: [],
@@ -134,34 +223,44 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
   }
 
   // --- WAIT → draw ONLY strong, validated zones/levels (or nothing). ---
-  const levels = [
-    ...(input.structure?.support ?? []).map((l) => ({
-      ...l,
-      role: "support" as const,
-    })),
-    ...(input.structure?.resistance ?? []).map((l) => ({
-      ...l,
-      role: "resistance" as const,
-    })),
-  ]
-    .map((level) => ({
-      type: level.role,
-      price: level.price,
-      time: level.time,
-      strength: scoreLevel(level, input),
+  // Detector output becomes CANDIDATES; the LLM may pre-select meaningful ids
+  // (shrink only), then every survivor is still strength-gated here.
+  let candidates = buildDrawingCandidates(input);
+  if (input.selectedCandidateIds?.length) {
+    const selected = new Set(input.selectedCandidateIds);
+    candidates = candidates.filter((c) => selected.has(c.id));
+  }
+
+  const levels = candidates
+    .filter(
+      (c): c is DrawingCandidate & { price: number } =>
+        (c.type === "support" || c.type === "resistance" || c.type === "liquidity") &&
+        c.price != null,
+    )
+    .map((c) => ({
+      type: c.type as "support" | "resistance" | "liquidity",
+      price: c.price,
+      time: c.time,
+      strength: c.computedStrength,
       reason: "مستوى مُقيَّم من البنية والسياق.",
     }))
     .filter((level) => level.strength >= threshold)
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 3);
 
-  const zones = (input.supplyDemand?.zones ?? [])
-    .map((zone) => ({
-      type: zone.type,
-      low: zone.low,
-      high: zone.high,
-      time: zone.time,
-      strength: scoreZone(zone, input),
+  const zones = candidates
+    .filter(
+      (c): c is DrawingCandidate & { low: number; high: number } =>
+        (c.type === "supply" || c.type === "demand") &&
+        c.low != null &&
+        c.high != null,
+    )
+    .map((c) => ({
+      type: c.type as "supply" | "demand",
+      low: c.low,
+      high: c.high,
+      time: c.time,
+      strength: c.computedStrength,
       reason: "منطقة عرض/طلب مُقيَّمة.",
     }))
     .filter((zone) => zone.strength >= threshold)
@@ -197,7 +296,7 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
  */
 export function scoreLevel(
   level: PriceLevel,
-  input: DrawingPlanInput,
+  input: DrawingCandidateInput,
 ): number {
   const candles = input.market.currentTfCandles;
   const atr = input.market.atr ?? approxAtr(candles) ?? level.price * 0.001;
@@ -219,7 +318,7 @@ export function scoreLevel(
 /** Score a supply/demand zone 0–100: freshness, reaction, HTF confluence. */
 export function scoreZone(
   zone: { low: number; high: number; time: number },
-  input: DrawingPlanInput,
+  input: DrawingCandidateInput,
 ): number {
   const candles = input.market.currentTfCandles;
   const atr = input.market.atr ?? approxAtr(candles) ?? 0;

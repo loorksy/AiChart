@@ -5,7 +5,9 @@ import type {
   AgentActivityEvent,
   AgentChartContext,
   AgentFinalResult,
+  AgentOption,
 } from "@/lib/agent/types";
+import type { AgentTickerItem } from "@/lib/agent/ticker/types";
 
 export interface AgentChatMessage {
   id: string;
@@ -14,6 +16,8 @@ export interface AgentChatMessage {
   result?: AgentFinalResult;
   /** Meaningful activity captured during this turn — kept in history. */
   activityEvents?: AgentActivityEvent[];
+  /** Clickable follow-up options offered with this reply. */
+  options?: AgentOption[];
 }
 
 export interface UseSmartChartAgentOptions {
@@ -39,6 +43,7 @@ function uuid(): string {
 export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   const [messages, setMessages] = useState<AgentChatMessage[]>([]);
   const [activityEvents, setActivityEvents] = useState<AgentActivityEvent[]>([]);
+  const [currentTicker, setCurrentTicker] = useState<AgentTickerItem | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -47,6 +52,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   const cancel = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    setCurrentTicker(null);
     setRunning(false);
   }, []);
 
@@ -119,7 +125,10 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
             } catch {
               continue;
             }
-            if (eventName === "activity") {
+            if (eventName === "ticker") {
+              // UI-only: one changing line while running; never stored in history.
+              setCurrentTicker(data as AgentTickerItem);
+            } else if (eventName === "activity") {
               // Live stream only — the server already filtered to visible work.
               setActivityEvents((prev) => [...prev, data as AgentActivityEvent]);
             } else if (eventName === "final") {
@@ -136,11 +145,14 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
                   activityEvents: turnActivity.filter(
                     (e) => e.visible !== false && e.message.trim().length > 0,
                   ),
+                  options: result.options ?? [],
                 },
               ]);
-              // Clear the live stream — history now owns these events.
+              // Clear the live stream + ticker — the run is over.
               setActivityEvents([]);
-              // Only the final event delivers drawings to the chart.
+              setCurrentTicker(null);
+              // Only the final event delivers drawings to the chart. Ticker and
+              // activity events NEVER touch the chart.
               opts.onResult?.(result);
             } else if (eventName === "error") {
               const msg =
@@ -159,6 +171,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
+        setCurrentTicker(null);
         setRunning(false);
       }
     },
@@ -166,7 +179,15 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   );
 
   return useMemo(
-    () => ({ messages, activityEvents, running, error, sendMessage, cancel }),
-    [messages, activityEvents, running, error, sendMessage, cancel],
+    () => ({
+      messages,
+      activityEvents,
+      currentTicker,
+      running,
+      error,
+      sendMessage,
+      cancel,
+    }),
+    [messages, activityEvents, currentTicker, running, error, sendMessage, cancel],
   );
 }

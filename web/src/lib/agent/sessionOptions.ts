@@ -7,11 +7,9 @@
  * In-memory is sufficient: options are ephemeral UX state, not durable data.
  */
 
-export type AgentOption = {
-  id: string;
-  label: string;
-  prompt: string;
-};
+import type { AgentOption } from "./types";
+
+export type { AgentOption } from "./types";
 
 interface StoredOptions {
   options: AgentOption[];

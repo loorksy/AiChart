@@ -1,26 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createActivityEvent, shouldShowActivity } from "@/lib/agent/activity";
+import {
+  createActivityEvent,
+  shouldShowActivity,
+  sanitizePublicText,
+} from "@/lib/agent/activity";
 
 describe("shouldShowActivity", () => {
-  it("suppresses scripted intent-narration phrases", () => {
-    const ev = createActivityEvent({
-      type: "analysis",
-      status: "started",
-      message: "فهمت أن السؤال عام، سأجيب دون تشغيل أدوات التداول غير اللازمة.",
-    });
-    assert.equal(shouldShowActivity(ev), false);
-  });
-
-  it("suppresses the 'preparing a general answer' phrase", () => {
-    const ev = createActivityEvent({
-      type: "analysis",
-      status: "started",
-      message: "أجهّز إجابة عامة دون تشغيل وكلاء التداول.",
-    });
-    assert.equal(shouldShowActivity(ev), false);
-  });
-
   it("suppresses events explicitly marked visible: false", () => {
     const ev = createActivityEvent({
       type: "data",
@@ -43,5 +29,14 @@ describe("shouldShowActivity", () => {
       message: "أقرأ بيانات EUR/USD من مخزن الشموع.",
     });
     assert.equal(shouldShowActivity(ev), true);
+  });
+});
+
+describe("sanitizePublicText", () => {
+  it("strips chain-of-thought phrasing without truncating long text", () => {
+    const long = `سلسلة التفكير: ${"تحليل مفصل ".repeat(50)}`;
+    const out = sanitizePublicText(long);
+    assert.ok(!out.includes("سلسلة التفكير"));
+    assert.ok(out.length > 240); // no 240-char cap
   });
 });

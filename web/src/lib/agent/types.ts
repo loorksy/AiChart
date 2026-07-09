@@ -102,6 +102,14 @@ export interface AgentNewsRisk {
   reason: string;
 }
 
+/** A clickable follow-up option the assistant offered (also selectable by
+ *  replying with its number, e.g. "1" / "١"). */
+export interface AgentOption {
+  id: string;
+  label: string;
+  prompt: string;
+}
+
 export interface AgentFinalResult {
   decision: AgentDecision;
   confidence: number;
@@ -116,15 +124,21 @@ export interface AgentFinalResult {
   analysisId?: string;
   requiresConfirmation?: boolean;
   confirmationPayload?: AgentConfirmationPayload;
+  /** Follow-up options for this reply (clickable + number-selectable). */
+  options?: AgentOption[];
+  /** Concise public reasons behind the decision — never chain-of-thought. */
+  publicReasoningSummary?: string[];
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM or a
-   *  deterministic fallback, candle counts, and the drawing-plan decision.
-   *  Populated only in development — never carries secrets or raw reasoning. */
+   *  deterministic fallback, ticker state, candle counts, and the drawing-plan
+   *  decision. Never carries secrets or raw reasoning. */
   debugDecisionFlow?: AgentDebugDecisionFlow;
 }
 
 export interface AgentDebugDecisionFlow {
   usedLLM: boolean;
   usedDeterministicFallback: boolean;
+  tickerGenerated: boolean;
+  tickerHiddenReason?: string;
   candleCount: number;
   htfCandleCount: number;
   dailyCandleCount: number;
