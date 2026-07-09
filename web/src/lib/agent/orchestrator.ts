@@ -39,6 +39,7 @@ import {
   buildDrawingPlan,
   buildDrawingCandidates,
 } from "./drawings/buildDrawingPlan";
+import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import {
   effectiveMinRr,
@@ -243,6 +244,9 @@ export async function runUnifiedChartAgent(
     mtf,
   });
 
+  // Evidence-based chart story for the synthesizer (real detector output only).
+  const narrative = buildMarketNarrative({ market, structure, liquidity, mtf });
+
   // LLM synthesizer: context-specific wording + candidate selection + drawing
   // advice. Hard rules (risk veto, no invented trades) are clamped inside it;
   // any failure falls back to the deterministic result.
@@ -251,6 +255,7 @@ export async function runUnifiedChartAgent(
       ...decisionInput,
       deterministic,
       candidates,
+      narrative,
     }).catch(() => null),
     AGENT_TIMEOUTS.finalDecision,
     null,

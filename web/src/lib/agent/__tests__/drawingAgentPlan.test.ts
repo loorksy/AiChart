@@ -41,6 +41,7 @@ describe("drawingAgent (plan-only)", () => {
       drawingIntent: "none",
       selectedLevels: [],
       selectedZones: [],
+      selectedAnnotations: [],
     };
     const out = await runDrawingAgent(fakeCtx(), {
       analysisId: "a1",
@@ -60,6 +61,7 @@ describe("drawingAgent (plan-only)", () => {
         { type: "support", price: 99.5, time: 0, strength: 80, reason: "قوي" },
       ],
       selectedZones: [],
+      selectedAnnotations: [],
     };
     const out = await runDrawingAgent(fakeCtx(), {
       analysisId: "a1",

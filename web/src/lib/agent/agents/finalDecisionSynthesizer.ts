@@ -24,6 +24,7 @@ import type {
   FinalDecisionResult,
 } from "./finalDecisionAgent";
 import type { DrawingCandidate } from "../drawings/buildDrawingPlan";
+import type { MarketNarrative } from "../marketContext/buildMarketNarrative";
 
 const FinalDecisionModelSchema = z.object({
   decision: z.enum(["buy", "sell", "wait"]),
@@ -74,6 +75,8 @@ export async function runFinalDecisionSynthesizer(
   input: FinalDecisionInput & {
     deterministic: FinalDecisionResult;
     candidates: DrawingCandidate[];
+    /** Evidence-based chart story (built from real detector output). */
+    narrative?: MarketNarrative | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -124,10 +127,52 @@ function buildModelContext(
   input: FinalDecisionInput & {
     deterministic: FinalDecisionResult;
     candidates: DrawingCandidate[];
+    narrative?: MarketNarrative | null;
   },
 ): Record<string, unknown> {
   const det = input.deterministic;
+  const playbook = input.risk?.playbook ?? null;
+  const candidate = input.risk?.selectedCandidate ?? null;
   return {
+    // --- Trading-brain context (Phase 2) ---
+    narrative: input.narrative ?? null,
+    playbook: playbook
+      ? {
+          canTrade: playbook.canTrade,
+          preferredAction: playbook.preferredAction,
+          blockingReasons: playbook.blockingReasons,
+          warnings: playbook.warnings,
+          checklist: playbook.checklist.map((i) => ({
+            id: i.id,
+            status: i.status,
+            reason: i.reason,
+          })),
+        }
+      : null,
+    selectedCandidate: candidate
+      ? {
+          action: candidate.action,
+          setupType: candidate.setupType,
+          rr: candidate.rr,
+          poiGrade: candidate.poi.score.grade,
+          poiScore: candidate.poi.score.score,
+          evidence: candidate.evidence,
+          warnings: candidate.warnings,
+          invalidationReason: candidate.invalidationReason,
+        }
+      : null,
+    rejectedCandidateReasons:
+      input.risk?.candidatesResult?.rejectedReasons.slice(0, 6) ?? [],
+    hasReversalEvidence:
+      input.risk?.candidatesResult?.hasReversalEvidence ?? false,
+    rangePosition: input.risk?.rangePosition?.label ?? "unknown",
+    newsEvents:
+      input.news?.upcomingEvents.slice(0, 8).map((e) => ({
+        title: e.title,
+        time: e.time,
+        impact: e.impact,
+        currency: e.currency,
+      })) ?? [],
     userMessage: input.userMessage.slice(0, 500),
     symbol: input.market.symbol,
     interval: input.market.interval,

@@ -5,6 +5,7 @@ import type { FinalDecisionInput } from "@/lib/agent/agents/finalDecisionAgent";
 import type { AgentMarketContext } from "@/lib/agent/marketContext/buildAgentMarketContext";
 import type { AgentRunContext } from "@/lib/agent/types";
 import type { RiskAgentResult } from "@/lib/agent/agents/riskAgent";
+import { makeRisk, makeStructure, makeValidation } from "./helpers";
 
 function fakeCtx(): AgentRunContext {
   return { requestId: "t", emitActivity: () => {} };
@@ -22,13 +23,10 @@ function market(over: Partial<AgentMarketContext> = {}): AgentMarketContext {
 }
 
 function vetoRisk(reasons: string[]): RiskAgentResult {
-  return {
-    proposedTrade: { action: "wait" },
-    validation: { accepted: false, reasons, warnings: [], rr: null } as unknown as RiskAgentResult["validation"],
+  return makeRisk({
+    validation: makeValidation({ accepted: false, reasons }),
     veto: true,
-    accountWarnings: [],
-    accountBlocked: false,
-  };
+  });
 }
 
 const OLD_CANNED = "لا توجد صفقة واضحة حالياً. الأفضل انتظار وصول السعر إلى منطقة أوضح.";
@@ -40,7 +38,7 @@ describe("finalDecisionAgent synthesizer", () => {
       userMessage: "حلل",
       news: null,
       market: market(),
-      structure: { trend: "range", swings: [], support: [], resistance: [] },
+      structure: makeStructure(),
       supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null },
       mtf: null,
     };
@@ -68,15 +66,37 @@ describe("finalDecisionAgent synthesizer", () => {
     const ctx = fakeCtx();
     const rangeWait = await runFinalDecisionAgent(ctx, {
       userMessage: "حلل",
-      risk: { proposedTrade: { action: "wait" }, validation: { accepted: true, reasons: [], warnings: [], rr: null } as unknown as RiskAgentResult["validation"], veto: false, accountWarnings: [], accountBlocked: false },
+      risk: makeRisk(),
       news: null,
       market: market({ marketRegime: "range" }),
-      structure: { trend: "range", swings: [], support: [], resistance: [] },
+      structure: makeStructure(),
       supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null },
       mtf: { currentBias: "bullish", higherBias: "bearish", dailyBias: "unknown", conflict: true },
     });
     assert.equal(rangeWait.decision, "wait");
     assert.ok(rangeWait.summary.includes("تعارض")); // htf conflict named
     assert.notEqual(rangeWait.summary, OLD_CANNED);
+  });
+
+  it("no-setup WAIT surfaces the candidate engine's exact rejection reason", async () => {
+    const ctx = fakeCtx();
+    const wait = await runFinalDecisionAgent(ctx, {
+      userMessage: "حلل",
+      risk: makeRisk({
+        candidatesResult: {
+          candidates: [],
+          best: null,
+          rejectedReasons: ["منطقة طلب رُفضت: قوة 40 أقل من الحد."],
+          hasReversalEvidence: false,
+        },
+      }),
+      news: null,
+      market: market(),
+      structure: makeStructure(),
+      supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null },
+      mtf: null,
+    });
+    assert.equal(wait.decision, "wait");
+    assert.ok(wait.summary.includes("قوة 40"));
   });
 });

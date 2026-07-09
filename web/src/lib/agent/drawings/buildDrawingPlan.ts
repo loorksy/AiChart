@@ -13,17 +13,35 @@ import type { StructureResult } from "../agents/structureAgent";
 import type { SupplyDemandResult } from "../agents/supplyDemandAgent";
 import type { LiquidityResult } from "../agents/liquidityAgent";
 import type { MultiTimeframeResult } from "../agents/multiTimeframeAgent";
+import { computeRangePosition } from "../marketContext/rangePosition";
+import { DATA_QUALITY_POLICY } from "../dataQualityPolicy";
 
-/** Minimum candle history required before ANY level/zone drawing is trusted. */
-export const MIN_CANDLES_FOR_DRAWINGS = {
-  currentTf: 500,
-  higherTf: 200,
-  daily: 100,
-} as const;
+/** Minimum candle history required before ANY level/zone drawing is trusted.
+ *  Sourced from the central data-quality policy (drawing gate). */
+export const MIN_CANDLES_FOR_DRAWINGS = DATA_QUALITY_POLICY.drawing;
 
 /** Strength gate: a level/zone below this score is never drawn. */
 export const DEFAULT_STRENGTH_THRESHOLD = 75;
 export const MINIMAL_STRENGTH_THRESHOLD = 85;
+
+/** Structure/liquidity/range annotations the plan may include (max a few). */
+export type DrawingAnnotation = {
+  type:
+    | "bos"
+    | "choch"
+    | "sweep"
+    | "range_high"
+    | "range_low"
+    | "premium_discount"
+    | "invalidation";
+  price: number;
+  /** Second price for bands (premium_discount, invalidation zone). */
+  price2?: number;
+  time: number;
+  label: string;
+  strength: number;
+  direction?: "bullish" | "bearish";
+};
 
 export type DrawingPlan = {
   shouldDraw: boolean;
@@ -49,8 +67,14 @@ export type DrawingPlan = {
     strength: number;
     reason: string;
   }>;
+  /** BOS/CHoCH lines, sweep markers, range extremes, invalidation zone. */
+  selectedAnnotations: DrawingAnnotation[];
+  /** Scenario path — a POSSIBLE route, never a prediction guarantee. */
   forecastPath?: Array<{ time: number; price: number }>;
 };
+
+/** Hard cap: meaningful analysis, never chart clutter. */
+export const MAX_PLAN_OBJECTS = 7;
 
 export interface DrawingPlanInput {
   decision: FinalDecisionResult;
@@ -74,7 +98,20 @@ export interface DrawingPlanInput {
  */
 export type DrawingCandidate = {
   id: string;
-  type: "support" | "resistance" | "supply" | "demand" | "liquidity";
+  type:
+    | "support"
+    | "resistance"
+    | "supply"
+    | "demand"
+    | "liquidity"
+    | "bos"
+    | "choch"
+    | "sweep"
+    | "range_high"
+    | "range_low"
+    | "premium_discount"
+    | "invalidation"
+    | "scenario_path";
   price?: number;
   low?: number;
   high?: number;
@@ -136,6 +173,33 @@ export function buildDrawingCandidates(
     });
   });
 
+  // Structure events (BOS/CHoCH/MSS) as annotation candidates.
+  (input.structure?.structureEvents ?? []).forEach((ev, i) => {
+    out.push({
+      id: `ev-${i}`,
+      type: ev.type === "BOS" ? "bos" : "choch",
+      price: ev.brokenLevel,
+      time: ev.breakCandleTime,
+      computedStrength: ev.strength,
+      evidence: [`${ev.type} ${ev.direction}`, `strength=${ev.strength}`],
+    });
+  });
+
+  // Liquidity sweeps as annotation candidates.
+  (input.liquidity?.sweeps ?? []).forEach((s, i) => {
+    out.push({
+      id: `sweep-${i}`,
+      type: "sweep",
+      price: s.sweptLevel,
+      time: s.candleTime,
+      computedStrength: s.strength,
+      evidence: [
+        s.side,
+        s.followedByStructureShift ? "confirmed_by_structure" : "unconfirmed",
+      ],
+    });
+  });
+
   return out;
 }
 
@@ -148,6 +212,17 @@ export function hasSufficientDataForDrawings(market: AgentMarketContext): boolea
   );
 }
 
+function noDrawPlan(reason: string): DrawingPlan {
+  return {
+    shouldDraw: false,
+    reason,
+    drawingIntent: "none",
+    selectedLevels: [],
+    selectedZones: [],
+    selectedAnnotations: [],
+  };
+}
+
 export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
   const threshold = input.preferMinimalDrawings
     ? MINIMAL_STRENGTH_THRESHOLD
@@ -156,29 +231,20 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
 
   // Hard data gate: never invent levels from a tiny candle window.
   if (!hasSufficientDataForDrawings(input.market)) {
-    return {
-      shouldDraw: false,
-      reason:
-        "البيانات التاريخية غير كافية لرسم مستويات موثوقة. تم طلب استكمال البيانات.",
-      drawingIntent: "none",
-      selectedLevels: [],
-      selectedZones: [],
-    };
+    return noDrawPlan(
+      "البيانات التاريخية غير كافية لرسم مستويات موثوقة. تم طلب استكمال البيانات.",
+    );
   }
 
   // LLM drawing veto: the synthesizer may decide drawing would be misleading.
   // (It can only suppress — a `shouldDraw: true` never bypasses validation.)
   if (input.drawingAdvice && input.drawingAdvice.shouldDraw === false) {
-    return {
-      shouldDraw: false,
-      reason: input.drawingAdvice.reason || "قرر الوكيل أن الرسم الآن غير مفيد.",
-      drawingIntent: "none",
-      selectedLevels: [],
-      selectedZones: [],
-    };
+    return noDrawPlan(
+      input.drawingAdvice.reason || "قرر الوكيل أن الرسم الآن غير مفيد.",
+    );
   }
 
-  // --- Valid trade setup → draw the POI + forecast path only. ---
+  // --- Valid trade setup → POI + invalidation + evidence + scenario path. ---
   if (rec.action === "buy" || rec.action === "sell") {
     const zone =
       rec.action === "buy"
@@ -191,18 +257,32 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
       rec.stop_loss == null ||
       !rec.targets?.length
     ) {
-      return {
-        shouldDraw: false,
-        reason: "خطة الصفقة تفتقد منطقة POI صالحة أو مستويات دخول/وقف/هدف.",
-        drawingIntent: "none",
-        selectedLevels: [],
-        selectedZones: [],
-      };
+      return noDrawPlan(
+        "خطة الصفقة تفتقد منطقة POI صالحة أو مستويات دخول/وقف/هدف.",
+      );
     }
+
+    // Evidence annotations: invalidation zone + the strongest supporting
+    // structure event / confirmed sweep. Kept small — no clutter.
+    const annotations: DrawingAnnotation[] = [];
+    const atr = input.market.atr ?? Math.abs(rec.entry - rec.stop_loss);
+    const bandWidth = Math.min(Math.abs(rec.entry - rec.stop_loss) * 0.5, atr);
+    annotations.push({
+      type: "invalidation",
+      price: rec.stop_loss,
+      price2:
+        rec.action === "buy"
+          ? rec.stop_loss - bandWidth
+          : rec.stop_loss + bandWidth,
+      time: input.market.currentTfCandles.at(-1)?.time ?? Date.now(),
+      label: "منطقة إبطال السيناريو",
+      strength: 80,
+    });
+    annotations.push(...pickEvidenceAnnotations(input, 2));
 
     return {
       shouldDraw: true,
-      reason: "خطة صفقة صالحة: منطقة POI + دخول + وقف + أهداف.",
+      reason: "خطة صفقة صالحة: منطقة POI + دخول + وقف + أهداف + إبطال.",
       drawingIntent: "trade_setup",
       selectedLevels: [],
       selectedZones: [
@@ -215,6 +295,7 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
           reason: "منطقة POI المختارة للصفقة النهائية.",
         },
       ],
+      selectedAnnotations: annotations.slice(0, 3),
       forecastPath: buildForecastPathFromTrade(input.market, {
         entry: rec.entry,
         target: rec.targets[0]!,
@@ -267,24 +348,117 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 2);
 
-  if (!levels.length && !zones.length) {
-    return {
-      shouldDraw: false,
-      reason:
-        "قرار انتظار دون مستويات أو مناطق قوية موثوقة — الرسم الآن سيكون مضللاً.",
-      drawingIntent: "none",
-      selectedLevels: [],
-      selectedZones: [],
-    };
+  // WAIT annotations: strong range extremes + confirmed structure/sweep
+  // evidence only — never decorative.
+  const annotations: DrawingAnnotation[] = [];
+  const rangePos = computeRangePosition(
+    input.market.currentTfCandles,
+    input.market.currentPrice,
+  );
+  const strongRange =
+    rangePos != null &&
+    input.market.marketRegime === "range" &&
+    (input.market.atr ?? 0) > 0 &&
+    rangePos.rangeHigh - rangePos.rangeLow >= (input.market.atr ?? 0) * 3;
+  if (strongRange && rangePos) {
+    annotations.push(
+      {
+        type: "range_high",
+        price: rangePos.rangeHigh,
+        time: rangePos.rangeHighTime,
+        label: "قمة النطاق",
+        strength: 75,
+      },
+      {
+        type: "range_low",
+        price: rangePos.rangeLow,
+        time: rangePos.rangeLowTime,
+        label: "قاع النطاق",
+        strength: 75,
+      },
+      {
+        type: "premium_discount",
+        price: rangePos.equilibrium,
+        time: rangePos.rangeLowTime,
+        label: "منتصف النطاق (توازن)",
+        strength: 65,
+      },
+    );
   }
+  annotations.push(...pickEvidenceAnnotations(input, 2));
+
+  if (!levels.length && !zones.length && !annotations.length) {
+    return noDrawPlan(
+      "قرار انتظار دون مستويات أو مناطق قوية موثوقة — الرسم الآن سيكون مضللاً.",
+    );
+  }
+
+  // Cap total drawn objects — analysis, not clutter.
+  const budget = MAX_PLAN_OBJECTS;
+  const cappedLevels = levels.slice(0, Math.min(3, budget));
+  const cappedZones = zones.slice(
+    0,
+    Math.max(0, Math.min(2, budget - cappedLevels.length)),
+  );
+  const cappedAnnotations = annotations.slice(
+    0,
+    Math.max(0, budget - cappedLevels.length - cappedZones.length),
+  );
 
   return {
     shouldDraw: true,
-    reason: "قرار انتظار مع مناطق/مستويات عالية القوة فقط.",
+    reason: "قرار انتظار مع مناطق/مستويات وأدلة هيكلية عالية القوة فقط.",
     drawingIntent: "wait_zones",
-    selectedLevels: levels,
-    selectedZones: zones,
+    selectedLevels: cappedLevels,
+    selectedZones: cappedZones,
+    selectedAnnotations: cappedAnnotations,
   };
+}
+
+/**
+ * The strongest structure event + the latest CONFIRMED sweep as annotations.
+ * Weak or unconfirmed evidence is never drawn.
+ */
+function pickEvidenceAnnotations(
+  input: DrawingCandidateInput,
+  max: number,
+): DrawingAnnotation[] {
+  const out: DrawingAnnotation[] = [];
+
+  const strongestEvent = [...(input.structure?.structureEvents ?? [])]
+    .filter((ev) => ev.strength >= 60)
+    .sort((a, b) => b.strength - a.strength)[0];
+  if (strongestEvent) {
+    out.push({
+      type: strongestEvent.type === "BOS" ? "bos" : "choch",
+      price: strongestEvent.brokenLevel,
+      time: strongestEvent.breakCandleTime,
+      label:
+        strongestEvent.type === "BOS"
+          ? `BOS ${strongestEvent.direction === "bullish" ? "صاعد" : "هابط"}`
+          : `${strongestEvent.type} ${strongestEvent.direction === "bullish" ? "صاعد" : "هابط"}`,
+      strength: strongestEvent.strength,
+      direction: strongestEvent.direction,
+    });
+  }
+
+  const confirmedSweep = [...(input.liquidity?.sweeps ?? [])]
+    .filter((s) => s.followedByStructureShift && s.strength >= 60)
+    .at(-1);
+  if (confirmedSweep) {
+    out.push({
+      type: "sweep",
+      price: confirmedSweep.sweptLevel,
+      time: confirmedSweep.candleTime,
+      label:
+        confirmedSweep.side === "buy_side"
+          ? "سحب سيولة علوي"
+          : "سحب سيولة سفلي",
+      strength: confirmedSweep.strength,
+    });
+  }
+
+  return out.slice(0, max);
 }
 
 // --- Scoring ---------------------------------------------------------------

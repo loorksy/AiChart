@@ -8,6 +8,7 @@ import {
 import type { AgentMarketContext } from "@/lib/agent/marketContext/buildAgentMarketContext";
 import type { AgentCandle } from "@/lib/agent/marketContext/detectors";
 import type { FinalDecisionResult } from "@/lib/agent/agents/finalDecisionAgent";
+import { makeLiquidity, makeStructure } from "./helpers";
 
 /** N flat candles around a base price (enough history to pass the data gate). */
 function flatCandles(n: number, base = 100, t0 = 0, step = 60_000): AgentCandle[] {
@@ -76,9 +77,9 @@ function baseInput(over: Partial<DrawingPlanInput> = {}): DrawingPlanInput {
   return {
     decision: waitDecision,
     market: makeMarket(),
-    structure: { trend: "range", swings: [], support: [], resistance: [] },
+    structure: makeStructure(),
     supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null },
-    liquidity: makeMarket().liquidity,
+    liquidity: makeLiquidity(),
     mtf: null,
     ...over,
   };
@@ -109,12 +110,7 @@ describe("buildDrawingPlan", () => {
     // A lone level far from price with zero confluence must score < 75.
     const plan = buildDrawingPlan(
       baseInput({
-        structure: {
-          trend: "range",
-          swings: [],
-          support: [{ price: 50, time: 0 }],
-          resistance: [],
-        },
+        structure: makeStructure({ support: [{ price: 50, time: 0 }] }),
       }),
     );
     assert.equal(plan.shouldDraw, false);
@@ -132,12 +128,7 @@ describe("buildDrawingPlan", () => {
     const plan = buildDrawingPlan(
       baseInput({
         market,
-        structure: {
-          trend: "range",
-          swings: [],
-          support: [{ price: 100, time: 0 }],
-          resistance: [],
-        },
+        structure: makeStructure({ support: [{ price: 100, time: 0 }] }),
       }),
     );
     assert.equal(plan.shouldDraw, true);
@@ -161,7 +152,7 @@ describe("buildDrawingPlan", () => {
           },
         },
         supplyDemand: { zones: [demand], nearestDemand: demand, nearestSupply: null },
-        structure: { trend: "uptrend", swings: [], support: [], resistance: [] },
+        structure: makeStructure({ trend: "uptrend" }),
       }),
     );
     assert.equal(plan.shouldDraw, true);
