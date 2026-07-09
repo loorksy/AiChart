@@ -24,7 +24,6 @@ export type AgentDecision =
   | "action_required";
 
 export type AgentActivityType =
-  | "intent"
   | "data"
   | "tool"
   | "analysis"
@@ -37,13 +36,15 @@ export type AgentActivityType =
 export type AgentActivityStatus = "started" | "completed" | "warning" | "failed";
 
 /** A public, user-safe description of what the agent is doing right now.
- *  NEVER carries raw chain-of-thought — only sanitized activity messages. */
+ *  NEVER carries raw chain-of-thought — only sanitized activity messages.
+ *  `visible: false` marks an internal/debug event the UI must not render. */
 export interface AgentActivityEvent {
   id: string;
   type: AgentActivityType;
   message: string;
   timestamp: number;
   status: AgentActivityStatus;
+  visible?: boolean;
   metadata?: Record<string, unknown>;
 }
 
@@ -78,6 +79,9 @@ export interface AgentRunContext {
   sessionId?: string;
   /** Emit a public activity event. The orchestrator sanitizes + timestamps. */
   emitActivity: (event: Omit<AgentActivityEvent, "id" | "timestamp">) => void;
+  /** Optional internal/debug signal — NEVER shown to the user. Used for
+   *  observability (e.g. intent classification) without leaking to the UI. */
+  emitDebug?: (event: { type: string; [key: string]: unknown }) => void;
   /** Cooperative cancellation from the client (AbortController). */
   signal?: AbortSignal;
   /** Session preferences (educational-only, minimal drawings, no execution…). */
@@ -112,6 +116,23 @@ export interface AgentFinalResult {
   analysisId?: string;
   requiresConfirmation?: boolean;
   confirmationPayload?: AgentConfirmationPayload;
+  /** Dev-only diagnostics: whether the run used the synthesizer/LLM or a
+   *  deterministic fallback, candle counts, and the drawing-plan decision.
+   *  Populated only in development — never carries secrets or raw reasoning. */
+  debugDecisionFlow?: AgentDebugDecisionFlow;
+}
+
+export interface AgentDebugDecisionFlow {
+  usedLLM: boolean;
+  usedDeterministicFallback: boolean;
+  candleCount: number;
+  htfCandleCount: number;
+  dailyCandleCount: number;
+  selectedLevelsCount: number;
+  rejectedLevelsCount: number;
+  drawingPlanReason: string;
+  dataSource: string;
+  warehouseSource?: string;
 }
 
 /** What the user must explicitly confirm before any MT5/EA execution. */

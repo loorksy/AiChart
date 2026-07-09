@@ -34,6 +34,7 @@ import {
 } from "./agents/riskAgent";
 import { runFinalDecisionAgent } from "./agents/finalDecisionAgent";
 import { runDrawingAgent } from "./agents/drawingAgent";
+import { buildDrawingPlan } from "./drawings/buildDrawingPlan";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import {
   effectiveMinRr,
@@ -67,13 +68,10 @@ export async function runUnifiedChartAgent(
     ctx: trackedCtx,
   });
 
-  // General-only → answer with no market agents (cost control).
+  // General-only → answer with no market agents and NO visible activity. A real
+  // agent stays silent unless it is actually running a tool; it never narrates
+  // "preparing a general answer".
   if (isGeneralOnly(intents)) {
-    trackedCtx.emitActivity({
-      type: "analysis",
-      status: "started",
-      message: "أجهّز إجابة عامة دون تشغيل وكلاء التداول.",
-    });
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage),
       AGENT_TIMEOUTS.general,
@@ -94,16 +92,22 @@ export async function runUnifiedChartAgent(
       null,
     );
     const level = news?.newsRisk ?? "unknown";
+    const unknownNews = level === "unknown";
     return {
       decision: "informational",
-      confidence: level === "high" ? 0.6 : 0.75,
-      summary: news?.reason
-        ? `مراجعة الأخبار: ${news.reason}`
-        : "تمت مراجعة الأخبار.",
+      confidence: level === "high" ? 0.6 : unknownNews ? 0.5 : 0.75,
+      summary: unknownNews
+        ? "خطر الأخبار غير معروف لأن مزوّد الأخبار غير مفعّل، لا يمكن تأكيد خطر الأخبار حالياً."
+        : news?.reason
+          ? `مراجعة الأخبار: ${news.reason}`
+          : "تمت مراجعة الأخبار.",
       keyReasons: [],
       riskWarnings: level === "high" ? ["خطر إخباري مرتفع قريب."] : [],
       activityEvents: collected,
-      newsRisk: news ? { level, reason: news.reason } : undefined,
+      newsRisk: {
+        level,
+        reason: news?.reason ?? "News provider is not configured.",
+      },
     };
   }
 
@@ -202,7 +206,15 @@ export async function runUnifiedChartAgent(
   }
 
   const finalDecision = await withTimeout(
-    runFinalDecisionAgent(trackedCtx, { userMessage, risk, news }),
+    runFinalDecisionAgent(trackedCtx, {
+      userMessage,
+      risk,
+      news,
+      market,
+      structure,
+      supplyDemand,
+      mtf,
+    }),
     AGENT_TIMEOUTS.finalDecision,
     null,
   );
@@ -213,19 +225,53 @@ export async function runUnifiedChartAgent(
     );
   }
 
+  // Build the drawing plan: the single source of truth for what may be drawn.
+  // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
+  const drawingPlan = buildDrawingPlan({
+    decision: finalDecision,
+    market,
+    structure,
+    supplyDemand,
+    liquidity,
+    mtf,
+    preferMinimalDrawings: ctx.session?.preferences.preferMinimalDrawings,
+  });
+
   // Drawings are non-critical: failure → return text result without drawings.
   let drawings = await withTimeout(
     runDrawingAgent(trackedCtx, {
       analysisId,
       market,
       finalDecision,
-      structure,
-      supplyDemand,
+      plan: drawingPlan,
     }).catch(() => [] as AgentFinalResult["drawings"]),
     AGENT_TIMEOUTS.drawing,
     [] as AgentFinalResult["drawings"],
   );
   drawings = drawings ?? [];
+
+  const debugDecisionFlow: AgentFinalResult["debugDecisionFlow"] =
+    process.env.NODE_ENV === "development"
+      ? {
+          usedLLM: false,
+          usedDeterministicFallback: false,
+          candleCount: market.currentTfCandles.length,
+          htfCandleCount: market.higherTfCandles.length,
+          dailyCandleCount: market.dailyCandles.length,
+          selectedLevelsCount:
+            drawingPlan.selectedLevels.length + drawingPlan.selectedZones.length,
+          rejectedLevelsCount: Math.max(
+            0,
+            (structure?.support.length ?? 0) +
+              (structure?.resistance.length ?? 0) +
+              (supplyDemand?.zones.length ?? 0) -
+              drawingPlan.selectedLevels.length -
+              drawingPlan.selectedZones.length,
+          ),
+          drawingPlanReason: drawingPlan.reason,
+          dataSource: chartContext?.dataSource ?? "oanda",
+        }
+      : undefined;
 
   // Execution intent → Execution Guard (never auto-executes).
   let requiresConfirmation: boolean | undefined;
@@ -305,5 +351,6 @@ export async function runUnifiedChartAgent(
     newsRisk: news ? { level: news.newsRisk, reason: news.reason } : undefined,
     activityEvents: collected,
     analysisId,
+    debugDecisionFlow,
   };
 }

@@ -116,30 +116,12 @@ export function routeIntent(input: {
   if (!intents.length) intents.push("general_question");
   if (intents.length > 1) intents.push("mixed_request");
 
-  input.ctx.emitActivity({
-    type: "intent",
-    status: "completed",
-    message: buildIntentActivityMessage(intents),
-    metadata: { intents },
-  });
+  // Intent classification is INTERNAL. It must never surface as user-visible
+  // activity — a real agent shows work it is actually doing, not a canned
+  // "I understood the question" narration. Kept as a debug-only signal.
+  input.ctx.emitDebug?.({ type: "intent", intents });
 
   return intents;
-}
-
-function buildIntentActivityMessage(intents: AgentIntent[]): string {
-  if (intents.includes("trade_execution")) {
-    return "فهمت أن الطلب قد يتضمن تنفيذ أو إدارة صفقة، سأتحقق من المخاطر والتأكيد أولاً.";
-  }
-  if (intents.includes("chart_analysis") || intents.includes("draw_on_chart")) {
-    return "فهمت أن الطلب متعلق بالشارت الحالي، سأبني سياق السوق قبل الإجابة.";
-  }
-  if (intents.includes("market_news")) {
-    return "فهمت أن الطلب متعلق بالأخبار أو تأثيرها على السوق.";
-  }
-  if (intents.includes("account_status")) {
-    return "فهمت أن الطلب متعلق بحالة الحساب أو المخاطر.";
-  }
-  return "فهمت أن السؤال عام، سأجيب دون تشغيل أدوات التداول غير اللازمة.";
 }
 
 export function isGeneralOnly(intents: AgentIntent[]): boolean {
