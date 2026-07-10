@@ -104,6 +104,9 @@ export type TvChartHandle = {
   capturePng: () => Promise<ChatImagePayload | null>;
   currentSymbol: () => string;
   latestCandle: () => TvLatestCandle | null;
+  /** Visible time window (unix seconds) so the agent can reason on what the
+   *  user is actually looking at (trendlines, support/resistance in view). */
+  visibleRange: () => { from: number; to: number } | undefined;
   /** Underlying widget (for drawing overlays in later phases). */
   widget: () => IChartingLibraryWidget | null;
 };
@@ -235,6 +238,20 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       }
     },
     latestCandle: () => latestCandleRef.current,
+    visibleRange: () => {
+      const w = widgetRef.current;
+      if (!w || !readyRef.current) return undefined;
+      try {
+        const range = w.activeChart().getVisibleRange();
+        if (!range || !Number.isFinite(range.from) || !Number.isFinite(range.to)) {
+          return undefined;
+        }
+        // TV reports unix seconds; the agent's warehouse queries use ms.
+        return { from: range.from * 1000, to: range.to * 1000 };
+      } catch {
+        return undefined;
+      }
+    },
     widget: () => widgetRef.current,
   }));
 

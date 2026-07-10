@@ -1,6 +1,7 @@
-import type {
-  ActiveRecommendation,
-  RecommendationStatus,
+import {
+  isTerminalRecommendationStatus,
+  type ActiveRecommendation,
+  type RecommendationStatus,
 } from "../sessionRecommendation";
 import type { AgentMarketContext } from "../marketContext/buildAgentMarketContext";
 
@@ -17,6 +18,14 @@ function candlesAfterCreation(
   recommendation: ActiveRecommendation,
   market: AgentMarketContext,
 ) {
+  // Prefer the creation candle's time and evaluate STRICTLY after it, so the
+  // candle that created the recommendation can never trigger/SL it. Fall back
+  // to createdAt (inclusive) only when the creation candle time is unknown.
+  if (recommendation.createdCandleTime != null) {
+    return market.currentTfCandles.filter(
+      (c) => c.time > recommendation.createdCandleTime!,
+    );
+  }
   return market.currentTfCandles.filter((c) => c.time >= recommendation.createdAt);
 }
 
@@ -26,6 +35,17 @@ export function evaluateRecommendationStatus(input: {
 }): RecommendationStatusEvaluation {
   const { recommendation, market } = input;
   const priceNow = market.currentPrice ?? market.currentTfCandles.at(-1)?.close ?? 0;
+
+  // A terminal recommendation is final — never re-evaluate it as active.
+  if (isTerminalRecommendationStatus(recommendation.status)) {
+    return {
+      status: recommendation.status,
+      reason: "التوصية في حالة نهائية ولا يُعاد تقييمها.",
+      priceNow,
+      triggered: recommendation.status !== "pending_entry",
+      invalidated: recommendation.status === "invalidated",
+    };
+  }
 
   if (recommendation.expiresAt && Date.now() > recommendation.expiresAt) {
     return {

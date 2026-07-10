@@ -15,6 +15,8 @@ import { newId } from "./activity";
 import {
   isGeneralOnly,
   isDrawingOnly,
+  isDrawActiveRecommendation,
+  isScalpRecommendation,
   needsMarketContext,
   routeIntent,
 } from "./intentRouter";
@@ -49,6 +51,7 @@ import {
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
   clearActiveRecommendation,
+  computeRecommendationExpiry,
   getActiveRecommendation,
   isActiveRecommendationLive,
   recommendationDirectionAr,
@@ -64,6 +67,7 @@ import {
 import { hashMarketSnapshot } from "./chartSnapshot";
 import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
+import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
 
 export interface UnifiedAgentInput {
   userMessage: string;
@@ -92,21 +96,39 @@ export async function runUnifiedChartAgent(
     ctx: trackedCtx,
   });
   const sessionId = ctx.sessionId ?? "default";
-  const activeRecommendation =
+  let activeRecommendation =
     (await getActiveRecommendation(sessionId, chartContext?.symbol)) ??
     activeRecommendationFromChartContext(sessionId, chartContext);
 
+  // "Cancel the previous AND analyze again" → cancel first, then fall through
+  // into a fresh analysis. A plain cancel stops here.
+  const wantsReanalyzeAfterCancel =
+    intents.includes("cancel_active_recommendation") &&
+    (intents.includes("new_trade_analysis") ||
+      intents.includes("scalp_recommendation"));
+
   if (intents.includes("cancel_active_recommendation")) {
     await clearActiveRecommendation(sessionId, chartContext?.symbol);
-    return {
-      decision: "informational",
-      confidence: 0.9,
-      summary: "ألغيت التوصية النشطة في هذه الجلسة. إذا أردت تحليلًا جديدًا اطلبه صراحة.",
-      keyReasons: [],
-      riskWarnings: [],
-      activityEvents: collected,
-      options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true }),
-    };
+    // The old recommendation is now terminal — drop it so the no-flip-flop
+    // guard cannot block the fresh analysis the user explicitly asked for.
+    activeRecommendation = null;
+    if (!wantsReanalyzeAfterCancel) {
+      return {
+        decision: "informational",
+        confidence: 0.9,
+        summary: "ألغيت التوصية النشطة في هذه الجلسة. إذا أردت تحليلًا جديدًا اطلبه صراحة.",
+        keyReasons: [],
+        riskWarnings: [],
+        activityEvents: collected,
+        options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true }),
+      };
+    }
+  }
+
+  // Draw the STORED recommendation (entry/SL/TP/invalidation) — never recompute
+  // a new trade, never change direction, never run Risk/News agents.
+  if (isDrawActiveRecommendation(intents)) {
+    return drawStoredRecommendation(activeRecommendation, collected);
   }
 
   if (intents.includes("explain_active_recommendation")) {
@@ -390,6 +412,43 @@ export async function runUnifiedChartAgent(
   const finalDecision = synth.result;
   const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
 
+  // HTF / daily freshness gate: a Buy/Sell decision leans on higher-timeframe
+  // context, so it must not be issued on stale HTF data. Daily is only required
+  // when daily confluence was actually available to the decision (mtf ran).
+  if (finalDecision.decision === "buy" || finalDecision.decision === "sell") {
+    const htfStale = isTimeframeStale(
+      market.higherTfCandles.at(-1)?.time ?? null,
+      market.higherInterval,
+      market.marketOpen,
+    );
+    const dailyConfluenceUsed = Boolean(mtf);
+    const dailyStale =
+      dailyConfluenceUsed &&
+      isTimeframeStale(
+        market.dailyCandles.at(-1)?.time ?? null,
+        "1d",
+        market.marketOpen,
+      );
+    if (htfStale || dailyStale) {
+      const which = htfStale ? `الفريم الأعلى (${market.higherInterval})` : "الفريم اليومي";
+      return {
+        decision: "action_required",
+        confidence: 0,
+        summary:
+          `لن أعطي توصية ${recommendationDirectionAr(finalDecision.decision)} لأن بيانات ${which} غير محدّثة بما يكفي لقرار تداول موثوق. حدّث البيانات أو انتظر اكتمال شموع الفريم الأعلى ثم أعد التحليل.`,
+        keyReasons: [
+          htfStale
+            ? `شموع ${market.higherInterval} متأخرة عن الزمن الحالي.`
+            : "الشموع اليومية متأخرة بينما تعتمد التوصية على تأكيد يومي.",
+        ],
+        riskWarnings: ["تم حظر التوصية بسبب تقادم بيانات الفريم الأعلى/اليومي."],
+        recommendation: { action: "wait" },
+        activityEvents: collected,
+        analysisId,
+      };
+    }
+  }
+
   if (
     isActiveRecommendationLive(activeRecommendation) &&
     activeRecommendation.symbol.toUpperCase() === market.symbol.toUpperCase() &&
@@ -549,6 +608,7 @@ export async function runUnifiedChartAgent(
       sessionId,
       layoutId: chartContext?.layoutId,
       analysisId,
+      scalp: isScalpRecommendation(intents),
       market,
       finalDecision,
       risk,
@@ -597,6 +657,23 @@ export async function runUnifiedChartAgent(
   };
 }
 
+/**
+ * True when a timeframe's latest candle is too old to trust for a trade
+ * decision. A closed market (weekend) never counts as stale. Uses a generous
+ * multiple of the bar tolerance since higher timeframes update slowly.
+ */
+function isTimeframeStale(
+  lastCandleTime: number | null,
+  interval: string,
+  marketOpen: boolean,
+): boolean {
+  if (!marketOpen) return false;
+  if (lastCandleTime == null) return true;
+  const ageMs = Date.now() - lastCandleTime;
+  const tolerance = candleFreshnessToleranceMs(interval) * 3;
+  return ageMs > tolerance;
+}
+
 function noStoredRecommendation(collected: AgentFinalResult["activityEvents"]): AgentFinalResult {
   return {
     decision: "informational",
@@ -631,6 +708,7 @@ function activeRecommendationFromChartContext(
     symbol: chartContext?.symbol ?? "UNKNOWN",
     interval: chartContext?.interval ?? "unknown",
     createdAt: chartContext?.latestCandle?.time ?? Date.now(),
+    createdCandleTime: chartContext?.latestCandle?.time,
     direction: rec.action,
     entry: rec.entry,
     entryType: rec.entryType,
@@ -650,6 +728,54 @@ function activeRecommendationFromChartContext(
     riskWarnings: [],
     publicReasoningSummary: [],
     priceAtCreation: chartContext?.latestCandle?.close,
+  };
+}
+
+/**
+ * Re-draws the STORED active recommendation using the drawings captured when it
+ * was created. It never recomputes a trade, changes direction, or runs any
+ * market/risk agent — it only re-emits the saved overlay.
+ */
+function drawStoredRecommendation(
+  rec: ActiveRecommendation | null,
+  collected: AgentFinalResult["activityEvents"],
+): AgentFinalResult {
+  if (!isActiveRecommendationLive(rec)) {
+    return {
+      decision: "informational",
+      confidence: 0.7,
+      summary:
+        "لا توجد توصية نشطة لأرسم تفاصيلها. اطلب تحليلًا جديدًا أو توصية أولًا، ثم يمكنني رسم الدخول والوقف والأهداف.",
+      keyReasons: [],
+      riskWarnings: [],
+      activityEvents: collected,
+      options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true }),
+    };
+  }
+  const drawings = rec.drawings ?? [];
+  return {
+    decision: "informational",
+    confidence: 0.85,
+    summary: drawings.length
+      ? `رسمت تفاصيل التوصية النشطة (${recommendationDirectionAr(rec.direction)} على ${rec.symbol}): الدخول والوقف والأهداف ومنطقة الإبطال. لم أُنشئ توصية جديدة.`
+      : "التوصية النشطة موجودة لكن لا توجد رسومات محفوظة لها لإعادة عرضها.",
+    keyReasons: [
+      `التوصية: ${recommendationDirectionAr(rec.direction)} من ${rec.entry}.`,
+      `الوقف: ${rec.stopLoss} — الأهداف: ${rec.targets.join(", ")}.`,
+    ],
+    riskWarnings: [],
+    activityEvents: collected,
+    drawings,
+    analysisId: rec.analysisId,
+    recommendationId: rec.id,
+    activeRecommendation: {
+      id: rec.id,
+      status: rec.status,
+      direction: rec.direction,
+      symbol: rec.symbol,
+      interval: rec.interval,
+    },
+    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true }),
   };
 }
 
@@ -760,6 +886,7 @@ async function storeFinalRecommendation(input: {
   sessionId: string;
   layoutId?: string;
   analysisId: string;
+  scalp?: boolean;
   market: Awaited<ReturnType<typeof runMarketDataAgent>>;
   finalDecision: Awaited<ReturnType<typeof runFinalDecisionAgent>>;
   risk: RiskAgentResult;
@@ -778,6 +905,7 @@ async function storeFinalRecommendation(input: {
   }
   const candidate = input.risk.selectedCandidate;
   const id = newId();
+  const createdCandleTime = input.market.currentTfCandles.at(-1)?.time;
   const active: ActiveRecommendation = {
     id,
     analysisId: input.analysisId,
@@ -785,7 +913,13 @@ async function storeFinalRecommendation(input: {
     layoutId: input.layoutId,
     symbol: input.market.symbol,
     interval: input.market.interval,
-    createdAt: input.market.currentTfCandles.at(-1)?.time ?? Date.now(),
+    createdAt: createdCandleTime ?? Date.now(),
+    createdCandleTime,
+    expiresAt: computeRecommendationExpiry({
+      interval: input.market.interval,
+      scalp: input.scalp,
+      from: Date.now(),
+    }),
     direction: rec.action,
     entry: rec.entry,
     entryType: rec.entryType,

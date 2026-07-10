@@ -7,8 +7,10 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 
 export type AgentIntent =
   | "new_trade_analysis"
+  | "scalp_recommendation"
   | "chart_analysis"
   | "draw_on_chart"
+  | "draw_active_recommendation"
   | "explain_chart_drawings"
   | "draw_trendline"
   | "draw_support_resistance"
@@ -64,6 +66,10 @@ export interface AgentChartContext {
   layoutId?: string;
   visibleRange?: { from: number; to: number };
   latestCandle?: {
+    /** Symbol the chart's latest candle belongs to — used to reject symbol drift. */
+    symbol?: string;
+    /** Interval the chart's latest candle belongs to — used to reject TF drift. */
+    interval?: string;
     time: number;
     open?: number;
     high?: number;

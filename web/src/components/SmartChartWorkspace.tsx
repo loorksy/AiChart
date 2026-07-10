@@ -547,6 +547,7 @@ export function SmartChartWorkspace({
               interval={interval}
               layoutId={layoutId}
               dataSource={dataSource}
+              getVisibleRange={() => chartRef.current?.visibleRange() ?? undefined}
               getLatestCandle={() => chartRef.current?.latestCandle() ?? undefined}
               getDrawings={() => drawings}
               getRecommendation={() =>

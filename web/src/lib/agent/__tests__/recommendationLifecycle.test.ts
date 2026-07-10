@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { evaluateRecommendationStatus } from "@/lib/agent/recommendation/evaluateRecommendationStatus";
 import {
+  computeRecommendationExpiry,
   getActiveRecommendation,
   isActiveRecommendationLive,
   rememberActiveRecommendation,
@@ -130,5 +131,65 @@ describe("evaluateRecommendationStatus", () => {
     });
     assert.equal(status.status, "invalidated");
     assert.equal(status.invalidated, true);
+  });
+
+  it("does not let the creation candle trigger or stop the recommendation", () => {
+    // The candle at T created the recommendation; even though it dips to the
+    // entry and stop, it must be ignored — only later candles count.
+    const status = evaluateRecommendationStatus({
+      recommendation: rec({ createdCandleTime: T }),
+      market: market([candle(0, 101, 101.2, 98.9, 99.2)]),
+    });
+    assert.equal(status.status, "pending_entry");
+    assert.equal(status.triggered, false);
+  });
+
+  it("evaluates candles strictly after the creation candle", () => {
+    const status = evaluateRecommendationStatus({
+      recommendation: rec({ createdCandleTime: T }),
+      market: market([
+        candle(0, 101, 101.2, 98.9, 99.2), // creation candle — ignored
+        candle(1, 101, 101.2, 99.8, 100.5), // next candle triggers entry
+      ]),
+    });
+    assert.equal(status.triggered, true);
+    assert.equal(status.status, "triggered");
+  });
+
+  it("does not re-evaluate a terminal recommendation as active", () => {
+    // Price action here would hit TP1, but a cancelled recommendation stays put.
+    const status = evaluateRecommendationStatus({
+      recommendation: rec({ status: "cancelled" }),
+      market: market([candle(0, 101, 102.1, 99.8, 101.5)]),
+    });
+    assert.equal(status.status, "cancelled");
+  });
+
+  it("keeps an SL result from being overwritten by later target hits", () => {
+    const status = evaluateRecommendationStatus({
+      recommendation: rec({ status: "sl_hit" }),
+      market: market([candle(0, 101, 102.1, 99.8, 101.5)]),
+    });
+    assert.equal(status.status, "sl_hit");
+  });
+
+  it("expires a recommendation past its expiry deadline", () => {
+    const status = evaluateRecommendationStatus({
+      recommendation: rec({ expiresAt: Date.now() - 1000 }),
+      market: market([candle(0, 101, 101.2, 100.5, 101)]),
+    });
+    assert.equal(status.status, "expired");
+  });
+});
+
+describe("computeRecommendationExpiry", () => {
+  it("gives scalps a short lifetime and higher timeframes a long one", () => {
+    const from = T;
+    const scalp = computeRecommendationExpiry({ interval: "1m", scalp: true, from });
+    const oneMin = computeRecommendationExpiry({ interval: "1m", from });
+    const fourH = computeRecommendationExpiry({ interval: "4h", from });
+    assert.ok(scalp - from <= 30 * 60_000);
+    assert.ok(oneMin - from > scalp - from);
+    assert.ok(fourH - from > oneMin - from);
   });
 });
