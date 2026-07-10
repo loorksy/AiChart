@@ -57,8 +57,13 @@ import {
   type ActiveRecommendation,
 } from "./sessionRecommendation";
 import { evaluateRecommendationStatus } from "./recommendation/evaluateRecommendationStatus";
+import {
+  composeRecommendationExplanation,
+  composeRecommendationStatusAnswer,
+} from "./recommendation/followupAnswer";
 import { hashMarketSnapshot } from "./chartSnapshot";
 import { contextualOptionsFor } from "./contextualOptions";
+import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 
 export interface UnifiedAgentInput {
   userMessage: string;
@@ -87,10 +92,9 @@ export async function runUnifiedChartAgent(
     ctx: trackedCtx,
   });
   const sessionId = ctx.sessionId ?? "default";
-  const activeRecommendation = await getActiveRecommendation(
-    sessionId,
-    chartContext?.symbol,
-  );
+  const activeRecommendation =
+    (await getActiveRecommendation(sessionId, chartContext?.symbol)) ??
+    activeRecommendationFromChartContext(sessionId, chartContext);
 
   if (intents.includes("cancel_active_recommendation")) {
     await clearActiveRecommendation(sessionId, chartContext?.symbol);
@@ -106,7 +110,7 @@ export async function runUnifiedChartAgent(
   }
 
   if (intents.includes("explain_active_recommendation")) {
-    return explainStoredRecommendation(activeRecommendation, collected);
+    return explainStoredRecommendation(activeRecommendation, collected, userMessage);
   }
 
   if (intents.includes("track_active_recommendation")) {
@@ -115,7 +119,41 @@ export async function runUnifiedChartAgent(
       chartContext,
       ctx: trackedCtx,
       collected,
+      userMessage,
     });
+  }
+
+  if (intents.includes("explain_chart_drawings")) {
+    const summary = await withTimeout(
+      answerChartDrawingQuestion({
+        userMessage,
+        chartContext,
+        activeRecommendation,
+      }),
+      AGENT_TIMEOUTS.general,
+      "تعذّر شرح الرسومات في الوقت المتاح.",
+    );
+    return {
+      decision: "informational",
+      confidence: 0.8,
+      summary,
+      keyReasons: [],
+      riskWarnings: [],
+      activityEvents: collected,
+      activeRecommendation: activeRecommendation
+        ? {
+            id: activeRecommendation.id,
+            status: activeRecommendation.status,
+            direction: activeRecommendation.direction,
+            symbol: activeRecommendation.symbol,
+            interval: activeRecommendation.interval,
+          }
+        : undefined,
+      options: contextualOptionsFor({
+        decision: "informational",
+        hasActiveRecommendation: Boolean(activeRecommendation),
+      }),
+    };
   }
 
   if (isDrawingOnly(intents)) {
@@ -278,6 +316,7 @@ export async function runUnifiedChartAgent(
         account: input.account ?? null,
         minRr,
         educationalOnly,
+        chartDrawings: chartContext?.drawings,
       }),
       AGENT_TIMEOUTS.risk,
       null,
@@ -305,6 +344,7 @@ export async function runUnifiedChartAgent(
     structure,
     supplyDemand,
     mtf,
+    chartDrawings: chartContext?.drawings,
   };
 
   // Deterministic baseline first — it computes the trade skeleton, risk veto,
@@ -570,18 +610,63 @@ function noStoredRecommendation(collected: AgentFinalResult["activityEvents"]): 
   };
 }
 
-function explainStoredRecommendation(
+function activeRecommendationFromChartContext(
+  sessionId: string,
+  chartContext?: AgentChartContext,
+): ActiveRecommendation | null {
+  const rec = chartContext?.recommendation;
+  if (!rec || (rec.action !== "buy" && rec.action !== "sell")) return null;
+  if (rec.entry == null || rec.stop_loss == null) return null;
+  const targets = rec.targets?.length
+    ? rec.targets
+    : rec.take_profit != null
+      ? [rec.take_profit]
+      : [];
+  if (!targets.length) return null;
+  return {
+    id: `chart-${sessionId}-${chartContext?.symbol ?? "symbol"}`,
+    analysisId: chartContext?.layoutId ?? "chart-context",
+    sessionId,
+    layoutId: chartContext?.layoutId,
+    symbol: chartContext?.symbol ?? "UNKNOWN",
+    interval: chartContext?.interval ?? "unknown",
+    createdAt: chartContext?.latestCandle?.time ?? Date.now(),
+    direction: rec.action,
+    entry: rec.entry,
+    entryType: rec.entryType,
+    stopLoss: rec.stop_loss,
+    targets,
+    takeProfit: rec.take_profit ?? targets[0],
+    rr: rec.rr,
+    status: "pending_entry",
+    triggerCondition: "توصية مستعادة من الشارت الحالي.",
+    invalidationLevel: rec.stop_loss,
+    invalidationRule:
+      rec.action === "buy"
+        ? `إغلاق شمعة تحت ${rec.stop_loss} يبطل السيناريو.`
+        : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`,
+    summary: "توصية مستعادة من الرسم/التخطيط الحالي على الشارت.",
+    keyReasons: ["التوصية موجودة على الشارت الحالي وتم استخدامها كسياق للمتابعة."],
+    riskWarnings: [],
+    publicReasoningSummary: [],
+    priceAtCreation: chartContext?.latestCandle?.close,
+  };
+}
+
+async function explainStoredRecommendation(
   rec: ActiveRecommendation | null,
   collected: AgentFinalResult["activityEvents"],
-): AgentFinalResult {
+  userMessage?: string,
+): Promise<AgentFinalResult> {
   if (!rec) return noStoredRecommendation(collected);
+  const summary = await composeRecommendationExplanation({
+    recommendation: rec,
+    userMessage,
+  });
   return {
     decision: "informational",
     confidence: 0.85,
-    summary:
-      `التوصية السابقة كانت ${recommendationDirectionAr(rec.direction)} على ${rec.symbol} (${rec.interval}) من ${rec.entry}، الوقف ${rec.stopLoss}، الأهداف ${rec.targets.join(", ")}.\n` +
-      `سببها:\n- ${rec.keyReasons.join("\n- ")}\n` +
-      `الإبطال: ${rec.invalidationRule}`,
+    summary,
     keyReasons: rec.keyReasons,
     riskWarnings: rec.riskWarnings,
     activityEvents: collected,
@@ -601,6 +686,7 @@ async function trackStoredRecommendation(input: {
   chartContext?: AgentChartContext;
   ctx: AgentRunContext;
   collected: AgentFinalResult["activityEvents"];
+  userMessage?: string;
 }): Promise<AgentFinalResult> {
   const { activeRecommendation: rec, chartContext, ctx, collected } = input;
   if (!rec) return noStoredRecommendation(collected);
@@ -640,6 +726,11 @@ async function trackStoredRecommendation(input: {
 
   const evaluated = evaluateRecommendationStatus({ recommendation: rec, market });
   await updateActiveRecommendationStatus(rec.id, evaluated.status, evaluated.reason);
+  const summary = await composeRecommendationStatusAnswer({
+    recommendation: rec,
+    evaluation: evaluated,
+    userMessage: input.userMessage,
+  });
   ctx.emitActivity({
     type: "analysis",
     status: "completed",
@@ -650,9 +741,7 @@ async function trackStoredRecommendation(input: {
   return {
     decision: "informational",
     confidence: 0.85,
-    summary:
-      `حالة التوصية ${recommendationDirectionAr(rec.direction)} على ${rec.symbol}: ${evaluated.status}.\n` +
-      `${evaluated.reason}\nالسعر الحالي: ${evaluated.priceNow}. الدخول: ${rec.entry}، الوقف: ${rec.stopLoss}، الأهداف: ${rec.targets.join(", ")}.`,
+    summary,
     keyReasons: [evaluated.reason],
     riskWarnings: rec.riskWarnings,
     activityEvents: collected,
@@ -699,6 +788,7 @@ async function storeFinalRecommendation(input: {
     createdAt: input.market.currentTfCandles.at(-1)?.time ?? Date.now(),
     direction: rec.action,
     entry: rec.entry,
+    entryType: rec.entryType,
     stopLoss: rec.stop_loss,
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],

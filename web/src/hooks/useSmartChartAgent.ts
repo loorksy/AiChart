@@ -27,6 +27,8 @@ export interface UseSmartChartAgentOptions {
   dataSource?: "oanda" | "ea";
   getVisibleRange?: () => { from: number; to: number } | undefined;
   getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
+  getDrawings?: () => AgentChartContext["drawings"] | undefined;
+  getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
   /** Deliver the agent's drawings to the chart. */
   onResult?: (result: AgentFinalResult) => void;
 }
@@ -81,6 +83,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         dataSource: opts.dataSource,
         visibleRange: opts.getVisibleRange?.(),
         latestCandle: opts.getLatestCandle?.(),
+        drawings: opts.getDrawings?.(),
+        recommendation: opts.getRecommendation?.(),
       };
 
       try {

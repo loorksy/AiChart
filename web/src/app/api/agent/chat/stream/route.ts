@@ -36,6 +36,139 @@ export const maxDuration = 180;
 
 const log = createLogger("agent.chat.stream");
 
+const drawingTypes = [
+  "price_line",
+  "trend_line",
+  "forecast_path",
+  "channel",
+  "zone",
+  "fib_retracement",
+  "baseline",
+  "marker",
+  "histogram_band",
+  "polyline_pattern",
+  "risk_reward_box",
+  "neckline",
+  "breakout_arrow",
+  "retest_zone",
+  "pattern_label",
+  "range_box",
+  "supply_zone",
+  "demand_zone",
+  "decision_zone",
+  "labeled_arrow",
+  "long_position",
+  "short_position",
+  "parallel_channel",
+  "regression_trend",
+  "hline",
+  "vline",
+  "trend",
+  "trendline",
+  "ray",
+  "rectangle",
+  "triangle",
+  "ellipse",
+  "arrow_down",
+  "arrow_sell",
+  "arrow_up",
+  "arrow_buy",
+  "arrow_stop",
+  "arrow_check",
+  "arrow_thumb_up",
+  "arrow_thumb_down",
+  "arrow",
+  "fibo",
+  "fibonacci",
+  "fibo_fan",
+  "fibo_arc",
+  "expansion",
+  "pitchfork",
+  "gann_line",
+  "gann_fan",
+  "text",
+  "label",
+] as const;
+
+const semanticRoles = [
+  "support",
+  "resistance",
+  "demand_zone",
+  "supply_zone",
+  "range",
+  "trendline",
+  "channel",
+  "neckline",
+  "breakout",
+  "retest",
+  "entry",
+  "stop_loss",
+  "take_profit",
+  "risk_reward",
+  "pattern",
+  "forecast",
+  "liquidity_sweep",
+  "decision_zone",
+] as const;
+
+const patternTypes = [
+  "double_bottom",
+  "double_top",
+  "w_pattern",
+  "m_pattern",
+  "head_and_shoulders",
+  "inverse_head_and_shoulders",
+  "ascending_triangle",
+  "descending_triangle",
+  "symmetrical_triangle",
+  "cup_and_handle",
+  "flag",
+  "pennant",
+  "wedge",
+  "channel",
+  "range",
+] as const;
+
+const chartPointSchema = z
+  .object({
+    price: z.number(),
+    time: z.number().optional(),
+    barsAhead: z.number().optional(),
+    time_offset: z.number().optional(),
+  })
+  .passthrough();
+
+const chartDrawingSchema = z
+  .object({
+    type: z.enum(drawingTypes),
+    confidence: z.number().default(0.75),
+    label: z.string().max(160).optional(),
+    color: z.string().max(40).optional(),
+    points: z.array(chartPointSchema).max(12).default([]),
+    semanticRole: z.enum(semanticRoles).optional(),
+    patternType: z.enum(patternTypes).optional(),
+    drawingPurpose: z.string().max(240).optional(),
+    price: z.number().optional(),
+    price2: z.number().optional(),
+    price3: z.number().optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+const chartRecommendationSchema = z
+  .object({
+    action: z.enum(["buy", "sell", "wait"]),
+    entry: z.number().optional(),
+    entryType: z
+      .enum(["market", "buy_limit", "buy_stop", "sell_limit", "sell_stop"])
+      .optional(),
+    stop_loss: z.number().optional(),
+    take_profit: z.number().optional(),
+    targets: z.array(z.number()).max(5).optional(),
+    rr: z.number().optional(),
+  })
+  .passthrough();
+
 const schema = z.object({
   message: z.string().min(1).max(4000),
   sessionId: z.string().min(1).max(64).optional(),
@@ -57,6 +190,8 @@ const schema = z.object({
           volume: z.number().optional(),
         })
         .optional(),
+      drawings: z.array(chartDrawingSchema).max(80).optional(),
+      recommendation: chartRecommendationSchema.optional(),
       dataSource: z.enum(["oanda", "ea"]).optional(),
     })
     .optional(),

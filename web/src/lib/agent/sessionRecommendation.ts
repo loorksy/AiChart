@@ -21,6 +21,7 @@ export type ActiveRecommendation = {
   expiresAt?: number;
   direction: "buy" | "sell";
   entry: number;
+  entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   stopLoss: number;
   targets: number[];
   takeProfit?: number;
@@ -113,4 +114,3 @@ export function isActiveRecommendationLive(
 export function recommendationDirectionAr(direction: "buy" | "sell"): string {
   return direction === "buy" ? "شراء" : "بيع";
 }
-

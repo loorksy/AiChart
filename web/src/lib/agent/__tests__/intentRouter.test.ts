@@ -83,6 +83,16 @@ describe("intentRouter", () => {
     assert.deepEqual(intents, ["track_active_recommendation"]);
   });
 
+  it("question about a user drawing routes to chart drawing explanation", () => {
+    const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
+    const intents = routeIntent({
+      message: "what is this zone I drew?",
+      chartContext: { symbol: "EURUSD", interval: "15m" },
+      ctx: fakeCtx(events),
+    });
+    assert.deepEqual(intents, ["explain_chart_drawings"]);
+  });
+
   it("execution wording triggers trade_execution intent", () => {
     const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
     const intents = routeIntent({

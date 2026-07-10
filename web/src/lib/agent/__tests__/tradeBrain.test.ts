@@ -79,7 +79,7 @@ function baseInput(
   const { candles, zone } = strongDemandScenario();
   return {
     candles,
-    currentPrice: 101,
+    currentPrice: 100.5,
     atr: 0.5,
     trend: "uptrend",
     htfBias: "bullish",
@@ -87,7 +87,7 @@ function baseInput(
     zones: [zone],
     structureEvents: [BULLISH_BOS],
     sweeps: [],
-    rangePosition: computeRangePosition(candles, over.currentPrice ?? 101),
+    rangePosition: computeRangePosition(candles, over.currentPrice ?? 100.5),
     htfLevels: [99.5],
     minRr: 1.5,
     newsRisk: "low",
@@ -165,7 +165,18 @@ describe("buildTradeCandidates", () => {
     assert.ok(result.best!.stop_loss < 99);
     assert.ok(
       99 - result.best!.stop_loss >=
-        stopBuffer({ symbolPrice: 101, spread: null, atr: 0.5 }) - 1e-10,
+        stopBuffer({ symbolPrice: 100.5, spread: null, atr: 0.5 }) - 1e-10,
+    );
+    assert.equal(result.best!.entryType, "buy_limit");
+  });
+
+  it("rejects a setup once price has consumed too much distance to target", () => {
+    const result = buildTradeCandidates(baseInput({ currentPrice: 100.75 }));
+    assert.equal(result.best, null);
+    assert.ok(
+      result.rejectedReasons.some(
+        (r) => r.includes("ثلث") || r.includes("ابتعد"),
+      ),
     );
   });
 

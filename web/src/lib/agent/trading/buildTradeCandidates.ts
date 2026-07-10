@@ -26,6 +26,12 @@ export type TradeCandidate = {
   id: string;
   action: "buy" | "sell";
   entry: number;
+  entryType:
+    | "market"
+    | "buy_limit"
+    | "buy_stop"
+    | "sell_limit"
+    | "sell_stop";
   stop_loss: number;
   targets: number[];
   poi: {
@@ -69,7 +75,8 @@ export interface TradeCandidatesResult {
   hasReversalEvidence: boolean;
 }
 
-const MAX_ENTRY_DISTANCE_ATR = 6;
+const MAX_ENTRY_DISTANCE_ATR = 1.5;
+const CONSUMED_PROGRESS = 0.33;
 const MIN_TICK_MULTIPLIER = 8;
 
 export function buildTradeCandidates(
@@ -148,6 +155,21 @@ export function buildTradeCandidates(
     const stop = action === "buy" ? zone.low - buffer : zone.high + buffer;
     const risk = Math.abs(entry - stop);
     if (!(risk > 0)) continue;
+    const target =
+      action === "buy"
+        ? entry + risk * Math.max(input.minRr, 2)
+        : entry - risk * Math.max(input.minRr, 2);
+    const rr = Math.abs(target - entry) / risk;
+    const entryType = classifyEntryType({
+      action,
+      entry,
+      currentPrice: input.currentPrice,
+      tolerance: entryTolerance({
+        symbolPrice: input.currentPrice,
+        spread: input.spread,
+        atr: input.atr,
+      }),
+    });
 
     // Spread sanity: SL must not sit inside spread noise.
     if (input.spread && risk < input.spread * 5) {
@@ -167,11 +189,17 @@ export function buildTradeCandidates(
       continue;
     }
 
-    const target =
-      action === "buy"
-        ? entry + risk * Math.max(input.minRr, 2)
-        : entry - risk * Math.max(input.minRr, 2);
-    const rr = Math.abs(target - entry) / risk;
+    const consumed = consumedSetupState({
+      action,
+      entry,
+      target,
+      currentPrice: input.currentPrice,
+    });
+    if (!consumed.ok) {
+      rejectedReasons.push(consumed.reason);
+      continue;
+    }
+
     if (rr < input.minRr) {
       rejectedReasons.push(
         `العائد/المخاطرة ${rr.toFixed(2)} أقل من الحد الأدنى ${input.minRr}.`,
@@ -183,6 +211,7 @@ export function buildTradeCandidates(
       id: `tc-${idSeq++}`,
       action,
       entry,
+      entryType,
       stop_loss: stop,
       targets: [target],
       poi: { type: zone.type, low: zone.low, high: zone.high, score: poiScore },
@@ -334,6 +363,59 @@ function buildScoreInput(
     htfLevels: input.htfLevels,
     otherZones: input.zones,
   };
+}
+
+function classifyEntryType(input: {
+  action: "buy" | "sell";
+  entry: number;
+  currentPrice: number;
+  tolerance: number;
+}): TradeCandidate["entryType"] {
+  const near = Math.abs(input.entry - input.currentPrice) <= input.tolerance;
+  if (near) return "market";
+  if (input.action === "buy") {
+    return input.entry < input.currentPrice ? "buy_limit" : "buy_stop";
+  }
+  return input.entry > input.currentPrice ? "sell_limit" : "sell_stop";
+}
+
+function consumedSetupState(input: {
+  action: "buy" | "sell";
+  entry: number;
+  target: number;
+  currentPrice: number;
+}): { ok: true } | { ok: false; reason: string } {
+  if (input.action === "buy") {
+    if (input.currentPrice >= input.target) {
+      return { ok: false, reason: "السعر وصل إلى الهدف أو تجاوزه قبل الدخول — الإعداد انتهى." };
+    }
+    const progress = (input.currentPrice - input.entry) / (input.target - input.entry);
+    if (progress >= CONSUMED_PROGRESS) {
+      return { ok: false, reason: "السعر قطع أكثر من ثلث الطريق نحو الهدف — لا نطارد الدخول." };
+    }
+    return { ok: true };
+  }
+  if (input.currentPrice <= input.target) {
+    return { ok: false, reason: "السعر وصل إلى الهدف أو تجاوزه قبل الدخول — الإعداد انتهى." };
+  }
+  const progress = (input.entry - input.currentPrice) / (input.entry - input.target);
+  if (progress >= CONSUMED_PROGRESS) {
+    return { ok: false, reason: "السعر قطع أكثر من ثلث الطريق نحو الهدف — لا نطارد الدخول." };
+  }
+  return { ok: true };
+}
+
+function entryTolerance(input: {
+  symbolPrice: number;
+  spread?: number | null;
+  atr?: number | null;
+}): number {
+  const minTick = minTickForPrice(input.symbolPrice);
+  return Math.max(
+    input.spread && input.spread > 0 ? input.spread : 0,
+    input.atr && input.atr > 0 ? input.atr * 0.15 : 0,
+    minTick * MIN_TICK_MULTIPLIER,
+  );
 }
 
 function minTickForPrice(price: number): number {

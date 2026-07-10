@@ -9,6 +9,7 @@ import type { AgentMarketContext } from "../marketContext/buildAgentMarketContex
 import type { StructureResult } from "./structureAgent";
 import type { SupplyDemandResult } from "./supplyDemandAgent";
 import type { MultiTimeframeResult } from "./multiTimeframeAgent";
+import type { ChartDrawing } from "@/lib/chartDrawings";
 
 export interface FinalDecisionResult {
   decision: Exclude<AgentDecision, "informational" | "action_required">;
@@ -31,6 +32,7 @@ export interface FinalDecisionInput {
   structure: StructureResult | null;
   supplyDemand: SupplyDemandResult | null;
   mtf: MultiTimeframeResult | null;
+  chartDrawings?: ChartDrawing[];
 }
 
 const TREND_AR: Record<string, string> = {
@@ -134,12 +136,13 @@ export async function runFinalDecisionAgent(
     });
 
     const dirAr = trade.action === "buy" ? "شراء" : "بيع";
+    const entryTypeAr = entryTypeLabel(trade.entryType);
     return {
       decision: trade.action,
       confidence: baseConfidence,
       summary:
         `${dirAr} مشروط على ${symbol} — إعداد ${setupAr} من ${poiAr} عند اللمس، وليس بمطاردة السعر. ` +
-        `الدخول ${fmt(trade.entry)} والوقف ${fmt(trade.stop_loss)}` +
+        `نوع الدخول: ${entryTypeAr}. الدخول ${fmt(trade.entry)} والوقف ${fmt(trade.stop_loss)}` +
         (rr ? ` بعائد/مخاطرة ~${rr.toFixed(1)}.` : ".") +
         ` ${candidate?.invalidationReason ?? "يُلغى السيناريو بإغلاق ما وراء الوقف."}`,
       keyReasons: candidate?.evidence.slice(0, 4) ?? [
@@ -154,6 +157,7 @@ export async function runFinalDecisionAgent(
       recommendation: {
         action: trade.action,
         entry: trade.entry,
+        entryType: trade.entryType,
         stop_loss: trade.stop_loss,
         targets: trade.targets,
         take_profit: trade.targets?.[0],
@@ -217,6 +221,13 @@ function explainMissingSetup(
     return "الاتجاه هابط لكن لا توجد منطقة عرض قريبة صالحة للبيع عند الارتداد.";
   }
   return "السعر ليس عند منطقة POI مناسبة الآن، والدخول هنا يعني مطاردة السعر.";
+}
+
+function entryTypeLabel(type: AgentRecommendation["entryType"]): string {
+  if (type === "market") return "سوق";
+  if (type === "buy_limit" || type === "sell_limit") return "ليمت/تصحيح";
+  if (type === "buy_stop" || type === "sell_stop") return "ستوب/اختراق";
+  return "مشروط";
 }
 
 function fmt(n: number | undefined): string {

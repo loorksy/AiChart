@@ -94,7 +94,7 @@ export function effectiveMinRr(
   style?: TradingStyle,
 ): number {
   const base = profile?.minRR ?? 1;
-  // Scalp/day discipline: never below 1.5 unless explicitly educational.
-  if (style === "scalp" || style === "day") return Math.max(base, 1.5);
+  // Scalp/day discipline: never below 1.8 for real recommendations.
+  if (style === "scalp" || style === "day") return Math.max(base, 1.8);
   return Math.max(base, 1);
 }

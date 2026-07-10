@@ -40,6 +40,8 @@ interface Props {
   dataSource?: "oanda" | "ea";
   getVisibleRange?: () => { from: number; to: number } | undefined;
   getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
+  getDrawings?: () => AgentChartContext["drawings"] | undefined;
+  getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
   onResult?: (result: AgentFinalResult) => void;
   onClose?: () => void;
 }
@@ -54,6 +56,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       dataSource,
       getVisibleRange,
       getLatestCandle,
+      getDrawings,
+      getRecommendation,
       onResult,
       onClose,
     },
@@ -74,6 +78,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         dataSource,
         getVisibleRange,
         getLatestCandle,
+        getDrawings,
+        getRecommendation,
         onResult,
       });
 

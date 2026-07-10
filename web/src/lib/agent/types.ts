@@ -9,6 +9,7 @@ export type AgentIntent =
   | "new_trade_analysis"
   | "chart_analysis"
   | "draw_on_chart"
+  | "explain_chart_drawings"
   | "draw_trendline"
   | "draw_support_resistance"
   | "draw_poi_zones"
@@ -70,6 +71,10 @@ export interface AgentChartContext {
     close: number;
     volume?: number;
   };
+  /** Drawings currently known to AiChart for this layout. */
+  drawings?: ChartDrawing[];
+  /** Recommendation currently rendered/restored on the chart, if any. */
+  recommendation?: AgentRecommendation;
   /** oanda (default) or the user's broker bridge. */
   dataSource?: "oanda" | "ea";
 }
@@ -108,6 +113,7 @@ export interface AgentRunContext {
 export interface AgentRecommendation {
   action: "buy" | "sell" | "wait";
   entry?: number;
+  entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   stop_loss?: number;
   take_profit?: number;
   targets?: number[];

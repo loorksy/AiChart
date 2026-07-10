@@ -25,6 +25,7 @@ import type {
 } from "./finalDecisionAgent";
 import type { DrawingCandidate } from "../drawings/buildDrawingPlan";
 import type { MarketNarrative } from "../marketContext/buildMarketNarrative";
+import { summarizeChartDrawings } from "../chartDrawingContext";
 
 const FinalDecisionModelSchema = z.object({
   decision: z.enum(["buy", "sell", "wait"]),
@@ -152,6 +153,7 @@ function buildModelContext(
     selectedCandidate: candidate
       ? {
           action: candidate.action,
+          entryType: candidate.entryType,
           setupType: candidate.setupType,
           rr: candidate.rr,
           poiGrade: candidate.poi.score.grade,
@@ -174,6 +176,10 @@ function buildModelContext(
         currency: e.currency,
       })) ?? [],
     userMessage: input.userMessage.slice(0, 500),
+    chartDrawings: summarizeChartDrawings(
+      input.chartDrawings,
+      input.market.currentPrice,
+    ),
     symbol: input.market.symbol,
     interval: input.market.interval,
     currentPrice: input.market.currentPrice,
@@ -204,6 +210,7 @@ function buildModelContext(
       det.recommendation.action !== "wait"
         ? {
             entry: det.recommendation.entry,
+            entryType: det.recommendation.entryType,
             stop_loss: det.recommendation.stop_loss,
             targets: det.recommendation.targets,
           }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { CandlestickChart, MessageSquare } from "lucide-react";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 
 const TvChart = dynamic(() => import("@/components/chart/TvChart"), {
@@ -72,6 +73,7 @@ export function SmartChartWorkspace({
   const chartRef = useRef<TvChartHandle>(null);
   const agentRef = useRef<SmartChartAgentHandle>(null);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [mobilePane, setMobilePane] = useState<"chart" | "chat">("chart");
 
   const router = useRouter();
 
@@ -338,6 +340,7 @@ export function SmartChartWorkspace({
         setRecommendation({
           symbol,
           action: rec.action,
+          entryType: rec.entryType,
           entry: rec.entry ?? null,
           stop_loss: rec.stop_loss ?? null,
           take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
@@ -360,6 +363,7 @@ export function SmartChartWorkspace({
     }
     if (smartAgentEnabled) {
       setAgentPanelOpen(true);
+      setMobilePane("chat");
       // Defer so the panel mounts before the imperative call.
       setTimeout(() => agentRef.current?.quickAnalyze(), 0);
       return;
@@ -417,7 +421,10 @@ export function SmartChartWorkspace({
         id: "agent",
         text: "💬 الوكيل",
         title: "فتح محادثة الوكيل الذكي للشارت",
-        onClick: () => setAgentPanelOpen((v) => !v),
+        onClick: () => {
+          setAgentPanelOpen((v) => !v);
+          setMobilePane("chat");
+        },
       });
     }
     if (!guest) {
@@ -469,6 +476,15 @@ export function SmartChartWorkspace({
     handleClearLayers,
   ]);
 
+  const showMobileChat =
+    smartAgentEnabled && agentPanelOpen && !guest && mobilePane === "chat";
+  const chartPaneClass = showMobileChat
+    ? "relative hidden min-h-0 flex-1 overflow-hidden md:block"
+    : "relative min-h-0 flex-1 overflow-hidden";
+  const agentPaneClass = showMobileChat
+    ? "flex min-h-0 flex-1 border-r border-border/60 md:block md:w-[360px] md:shrink-0"
+    : "hidden w-[360px] shrink-0 border-r border-border/60 md:block";
+
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       {!guest && !agentReady && (
@@ -484,7 +500,7 @@ export function SmartChartWorkspace({
       )}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div className={chartPaneClass}>
           {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
               setResolution) — never remount, so drawings and chart state survive. */}
           <ChartErrorBoundary key="tv">
@@ -524,7 +540,7 @@ export function SmartChartWorkspace({
         </div>
 
         {smartAgentEnabled && agentPanelOpen && !guest && (
-          <div className="hidden w-[360px] shrink-0 border-r border-border/60 md:block">
+          <div className={agentPaneClass}>
             <SmartChartAgentPanel
               ref={agentRef}
               symbol={symbol}
@@ -532,12 +548,54 @@ export function SmartChartWorkspace({
               layoutId={layoutId}
               dataSource={dataSource}
               getLatestCandle={() => chartRef.current?.latestCandle() ?? undefined}
+              getDrawings={() => drawings}
+              getRecommendation={() =>
+                recommendation
+                  ? {
+                      action: recommendation.action,
+                      entryType: recommendation.entryType,
+                      entry: recommendation.entry ?? undefined,
+                      stop_loss: recommendation.stop_loss ?? undefined,
+                      take_profit: recommendation.take_profit ?? undefined,
+                      targets,
+                    }
+                  : undefined
+              }
               onResult={handleAgentResult}
               onClose={() => setAgentPanelOpen(false)}
             />
           </div>
         )}
       </div>
+
+      {smartAgentEnabled && agentPanelOpen && !guest && (
+        <div className="grid shrink-0 grid-cols-2 border-t border-border/60 bg-card p-1 md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobilePane("chart")}
+            className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold ${
+              mobilePane === "chart"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <CandlestickChart className="h-4 w-4" />
+            الشارت
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePane("chat")}
+            className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold ${
+              mobilePane === "chat"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <MessageSquare className="h-4 w-4" />
+            الشات
+          </button>
+        </div>
+      )}
 
       <OpenTradesDrawer open={tradesOpen} onClose={() => setTradesOpen(false)} />
 

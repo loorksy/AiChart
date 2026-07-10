@@ -22,11 +22,13 @@ import {
   type TradeCandidate,
   type TradeCandidatesResult,
 } from "../trading/buildTradeCandidates";
+import { chartDrawingZones } from "../trading/chartDrawingZones";
 import {
   runTradingPlaybook,
   type TradingPlaybookResult,
 } from "../trading/tradingPlaybook";
 import { meetsDataQuality } from "../dataQualityPolicy";
+import type { ChartDrawing } from "@/lib/chartDrawings";
 
 export interface AccountRiskSnapshot {
   openTradesCount: number;
@@ -47,6 +49,7 @@ export interface RiskAgentInput {
   account?: AccountRiskSnapshot | null;
   minRr: number;
   educationalOnly?: boolean;
+  chartDrawings?: ChartDrawing[];
 }
 
 export interface RiskAgentResult {
@@ -96,6 +99,13 @@ export async function runRiskAgent(
     ...market.majorLevels.resistance.map((l) => l.price),
   ];
 
+  const userDrawingZones = chartDrawingZones({
+    drawings: input.chartDrawings,
+    currentPrice: price,
+    atr: market.atr,
+    lastCandleTime: market.currentTfCandles.at(-1)?.time,
+  });
+
   const candidatesResult = buildTradeCandidates({
     candles: market.currentTfCandles,
     currentPrice: price,
@@ -103,7 +113,7 @@ export async function runRiskAgent(
     trend: input.structure?.trend ?? "unknown",
     htfBias: input.mtf?.higherBias ?? "unknown",
     htfConflict: Boolean(input.mtf?.conflict),
-    zones: input.supplyDemand?.zones ?? [],
+    zones: [...(input.supplyDemand?.zones ?? []), ...userDrawingZones],
     structureEvents,
     sweeps,
     rangePosition,
@@ -118,6 +128,7 @@ export async function runRiskAgent(
     ? {
         action: candidate.action,
         entry: candidate.entry,
+        entryType: candidate.entryType,
         stop_loss: candidate.stop_loss,
         targets: candidate.targets,
       }
@@ -144,9 +155,9 @@ export async function runRiskAgent(
   const entryDistanceState = !candidate
     ? "unknown"
     : atr > 0
-      ? Math.abs(price - candidate.entry) / atr > 6
+      ? Math.abs(price - candidate.entry) / atr > 1.5
         ? "missed"
-        : Math.abs(price - candidate.entry) / atr > 3
+        : Math.abs(price - candidate.entry) / atr > 1
           ? "far"
           : "near"
       : "unknown";

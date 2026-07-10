@@ -121,6 +121,24 @@ const CLEAR_DRAWINGS_PHRASES = [
   "مسح الرسومات",
 ];
 
+const EXPLAIN_DRAWINGS_PHRASES = [
+  "explain drawing",
+  "explain drawings",
+  "my drawing",
+  "the line i drew",
+  "what is this line",
+  "what is this zone",
+  "اشرح الرسم",
+  "اشرح الرسومات",
+  "الرسم الذي رسمته",
+  "الخط الذي رسمته",
+  "المنطقة التي رسمتها",
+  "ما هذه المنطقة",
+  "ما هذا الخط",
+  "رأيك في رسمي",
+  "رأيك بالرسم",
+];
+
 const TRACK_RECOMMENDATION_PHRASES = [
   "recommendation status",
   "where is the recommendation",
@@ -182,6 +200,7 @@ export function routeIntent(input: {
   if (hasPhrase(text, CANCEL_RECOMMENDATION_PHRASES)) intents.push("cancel_active_recommendation");
   if (hasPhrase(text, TRACK_RECOMMENDATION_PHRASES)) intents.push("track_active_recommendation");
   if (hasPhrase(text, EXPLAIN_RECOMMENDATION_PHRASES)) intents.push("explain_active_recommendation");
+  if (hasPhrase(text, EXPLAIN_DRAWINGS_PHRASES)) intents.push("explain_chart_drawings");
   if (hasPhrase(text, DRAW_TRENDLINE_PHRASES)) intents.push("draw_trendline");
   if (hasPhrase(text, DRAW_SUPPORT_RESISTANCE_PHRASES)) intents.push("draw_support_resistance");
 
@@ -206,6 +225,7 @@ export function routeIntent(input: {
       "clear_agent_drawings",
       "track_active_recommendation",
       "explain_active_recommendation",
+      "explain_chart_drawings",
       "cancel_active_recommendation",
     ])
   ) {
@@ -255,4 +275,3 @@ export function isDrawingOnly(intents: AgentIntent[]): boolean {
     ])
   );
 }
-

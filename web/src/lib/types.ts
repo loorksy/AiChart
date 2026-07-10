@@ -189,6 +189,7 @@ export interface Recommendation {
   user_id: number;
   symbol: string;
   action: RecommendationAction;
+  entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   confidence: number;
   entry: number | null;
   stop_loss: number | null;

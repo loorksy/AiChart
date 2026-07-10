@@ -6,6 +6,7 @@
 export interface ProposedTrade {
   action: "buy" | "sell" | "wait";
   entry?: number;
+  entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   stop_loss?: number;
   targets?: number[];
 }
