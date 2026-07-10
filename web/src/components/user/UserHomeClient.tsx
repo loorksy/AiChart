@@ -101,7 +101,7 @@ export function UserHomeClient({
           <div className="relative flex items-center justify-between">
             <div>
               <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-1">
-                لوحة AiChart
+                لوحة Lonora
               </p>
               <h1 className="text-2xl font-bold tracking-tight">
                 مرحباً، {displayNameForUser(user)}

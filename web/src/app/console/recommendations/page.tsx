@@ -4,7 +4,7 @@ import { listRecommendations } from "@/lib/store";
 import RecommendationsHistoryClient from "@/components/RecommendationsHistoryClient";
 
 export const metadata = {
-  title: "سجل التوصيات — AiChart",
+  title: "سجل التوصيات — Lonora",
   description: "كل توصيات الذكاء الاصطناعي السابقة مع المستويات والثقة.",
 };
 

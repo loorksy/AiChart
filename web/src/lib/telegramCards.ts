@@ -42,7 +42,7 @@ export function formatAmount(notional: number, currency = "دولار"): string 
 
 export function sessionStartCard(profile: AccountProfile): string {
   return formatCard(
-    "👋 مرحباً — AiChart",
+    "👋 مرحباً — Lonora",
     [
       "🔹 اختر من الأزرار أو اكتب أمراً.",
       `🔹 السوق: ${profile.marketType === "forex" ? "فوركس" : "كربتو"}`,
