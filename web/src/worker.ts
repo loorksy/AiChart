@@ -5,6 +5,9 @@
  *
  * Requires REDIS_URL. With it unset this exits early (web runs jobs inline).
  */
+import { loadEnvConfig } from "@next/env";
+loadEnvConfig(process.cwd());
+
 import { initDb } from "./lib/db";
 import { createLogger } from "./lib/logger";
 import { shutdownQueue, startWorker } from "./lib/queue";

@@ -20,7 +20,7 @@ import {
 import {
   resolveOptionReply,
   rememberOptions,
-  DEFAULT_AGENT_OPTIONS,
+  clearOptions,
 } from "@/lib/agent/sessionOptions";
 import { routeIntent } from "@/lib/agent/intentRouter";
 import { generateTickerPlan } from "@/lib/agent/ticker/generateTickerPlan";
@@ -46,6 +46,16 @@ const schema = z.object({
       layoutId: z.string().max(32).optional(),
       visibleRange: z
         .object({ from: z.number(), to: z.number() })
+        .optional(),
+      latestCandle: z
+        .object({
+          time: z.number(),
+          open: z.number().optional(),
+          high: z.number().optional(),
+          low: z.number().optional(),
+          close: z.number(),
+          volume: z.number().optional(),
+        })
         .optional(),
       dataSource: z.enum(["oanda", "ea"]).optional(),
     })
@@ -217,21 +227,17 @@ export async function POST(req: NextRequest) {
           // Stop the ticker the moment the final result is ready.
           done = true;
 
-          // After a general/informational reply, offer the capability options
-          // so the user can just answer "1"/"2" next. Clear them after a real
-          // analysis so a stale index can't hijack the next message.
-          if (result.decision === "informational") {
-            rememberOptions(sessionId, DEFAULT_AGENT_OPTIONS);
+          if (result.options?.length) {
+            rememberOptions(sessionId, result.options);
+          } else {
+            clearOptions(sessionId);
           }
 
           send("final", {
             ...result,
             sessionId,
             activityEvents,
-            options:
-              result.decision === "informational"
-                ? DEFAULT_AGENT_OPTIONS
-                : undefined,
+            options: result.options,
             // Accurate ticker state in dev diagnostics.
             debugDecisionFlow: result.debugDecisionFlow
               ? { ...result.debugDecisionFlow, ...tickerDebug }

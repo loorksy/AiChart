@@ -20,9 +20,12 @@ export async function runMarketDataAgent(
   });
 
   const market = await buildAgentMarketContext({
+    userId: ctx.userId,
     symbol,
     interval,
     visibleRange: input.visibleRange,
+    latestCandle: input.latestCandle,
+    dataSource: input.dataSource,
     spread: input.spread ?? null,
   });
 
@@ -49,6 +52,19 @@ export async function runMarketDataAgent(
       status: "warning",
       message: `ملاحظة على حداثة البيانات: ${market.freshness.reason}.`,
       metadata: { ...market.freshness },
+    });
+  }
+
+  if (!market.sync.ok) {
+    ctx.emitActivity({
+      type: "data",
+      status: "failed",
+      message: market.sync.reason,
+      metadata: {
+        warehouseLastTime: market.sync.warehouseLastTime,
+        liveLastTime: market.sync.liveLastTime,
+        chartLastTime: market.sync.chartLastTime,
+      },
     });
   }
 

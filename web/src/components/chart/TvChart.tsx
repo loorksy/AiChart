@@ -21,6 +21,7 @@ import {
   isEaTicker,
   stripEaPrefix,
 } from "@/lib/chart/tv/tvDatafeed";
+import type { TvLatestCandle } from "@/lib/chart/tv/tvDatafeed";
 import { TvDrawingManager } from "@/lib/chart/tv/tvDrawingAdapter";
 import { ChartScanOverlay } from "@/components/chart/ChartScanOverlay";
 import type { ChatImagePayload } from "@/lib/chatImage";
@@ -102,6 +103,7 @@ function loadTvScript(): Promise<void> {
 export type TvChartHandle = {
   capturePng: () => Promise<ChatImagePayload | null>;
   currentSymbol: () => string;
+  latestCandle: () => TvLatestCandle | null;
   /** Underlying widget (for drawing overlays in later phases). */
   widget: () => IChartingLibraryWidget | null;
 };
@@ -188,6 +190,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   // Stable indirection so the mount effect can call the latest applyDrawings.
   const applyDrawingsRef = useRef<() => void>(() => {});
   const pushSyncRef = useRef(false);
+  const latestCandleRef = useRef<TvLatestCandle | null>(null);
   const onSymbolChangeRef = useRef(onSymbolChange);
   const onIntervalChangeRef = useRef(onIntervalChange);
   onSymbolChangeRef.current = onSymbolChange;
@@ -231,6 +234,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         return symbol.toUpperCase();
       }
     },
+    latestCandle: () => latestCandleRef.current,
     widget: () => widgetRef.current,
   }));
 
@@ -255,7 +259,12 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         const options: ChartingLibraryWidgetOptions = {
           container: el,
           library_path: LIBRARY_PATH,
-          datafeed: createAiChartDatafeed(bootMarket, { eaEnabled: bootEa }),
+          datafeed: createAiChartDatafeed(bootMarket, {
+            eaEnabled: bootEa,
+            onLatestCandle: (candle) => {
+              latestCandleRef.current = candle;
+            },
+          }),
           symbol: bootSymbol,
           interval: toResolution(bootInterval),
           locale: "ar",

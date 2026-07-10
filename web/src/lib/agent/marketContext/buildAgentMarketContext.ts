@@ -25,6 +25,12 @@ import {
   detectSupplyDemandZones,
   type AgentCandle,
 } from "./detectors";
+import type { AgentChartContext } from "../types";
+import { getFreshAgentCandles } from "./getFreshAgentCandles";
+import {
+  evaluateMarketSync,
+  type MarketSyncStatus,
+} from "./marketSyncGuard";
 
 export interface DataFreshness {
   lastCandleTime: number | null;
@@ -48,6 +54,7 @@ export interface AgentMarketContext {
     sufficient: boolean;
   };
   freshness: DataFreshness;
+  sync: MarketSyncStatus;
   marketOpen: boolean;
   currentTfCandles: AgentCandle[];
   higherTfCandles: AgentCandle[];
@@ -59,18 +66,28 @@ export interface AgentMarketContext {
 }
 
 export async function buildAgentMarketContext(input: {
+  userId?: number;
   symbol: string;
   interval: string;
   visibleRange?: { from: number; to: number };
+  latestCandle?: AgentChartContext["latestCandle"];
+  dataSource?: AgentChartContext["dataSource"];
   spread?: number | null;
 }): Promise<AgentMarketContext> {
   const symbol = forexCanonicalKey(input.symbol);
   const interval = normalizeCanonicalInterval(input.interval);
   const higherInterval = getHigherInterval(interval);
 
-  const [currentTfCandles, higherTfCandles, dailyCandles, visibleCandles] =
+  const fresh = await getFreshAgentCandles({
+    userId: input.userId,
+    symbol,
+    interval,
+    dataSource: input.dataSource,
+    limit: 1500,
+  });
+
+  const [higherTfCandles, dailyCandles, visibleCandles] =
     await Promise.all([
-      getCandles({ symbol, interval, limit: 1500 }),
       getCandles({ symbol, interval: higherInterval, limit: 1000 }),
       getCandles({ symbol, interval: "1d", limit: 500 }),
       input.visibleRange
@@ -83,6 +100,7 @@ export async function buildAgentMarketContext(input: {
           })
         : Promise.resolve([] as AgentCandle[]),
     ]);
+  const currentTfCandles = fresh.currentTfCandles;
 
   // Thin coverage → background top-up (never blocks this request). Uses the
   // TRADE gate so drawing/trade thresholds are proactively satisfied.
@@ -117,13 +135,25 @@ export async function buildAgentMarketContext(input: {
             : "السوق مغلق — شموع قديمة مقبولة",
   };
 
+  const atr = calculateAtr(currentTfCandles);
+  const sync = evaluateMarketSync({
+    symbol,
+    interval,
+    warehouseCandles: currentTfCandles,
+    liveCandles: fresh.liveCandles,
+    chartLatestCandle: input.latestCandle,
+    spread: input.spread,
+    atr,
+    liveError: fresh.liveError,
+  });
+
   return {
     symbol,
     interval,
     higherInterval,
     currentPrice,
     spread: input.spread ?? null,
-    atr: calculateAtr(currentTfCandles),
+    atr,
     marketRegime: detectMarketRegime(currentTfCandles),
     dataQuality: {
       currentTfCount: currentTfCandles.length,
@@ -141,6 +171,7 @@ export async function buildAgentMarketContext(input: {
       ),
     },
     freshness,
+    sync,
     marketOpen,
     currentTfCandles,
     higherTfCandles,

@@ -20,7 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(__dirname, "..");
 const tarball = path.join(webDir, ".deploy-src.tgz");
 
-execSync(`tar -czf "${tarball}" -C "${webDir}" src package.json package-lock.json next.config.ts`, {
+execSync(`tar -czf "${tarball}" -C "${webDir}" src public package.json package-lock.json next.config.ts tsconfig.json postcss.config.mjs eslint.config.mjs instrumentation.ts`, {
   stdio: "inherit",
 });
 

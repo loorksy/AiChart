@@ -70,6 +70,7 @@ export interface TradeCandidatesResult {
 }
 
 const MAX_ENTRY_DISTANCE_ATR = 6;
+const MIN_TICK_MULTIPLIER = 8;
 
 export function buildTradeCandidates(
   input: BuildTradeCandidatesInput,
@@ -135,9 +136,16 @@ export function buildTradeCandidates(
       continue;
     }
 
-    // Levels: entry at the zone edge, stop behind it, target at min structure.
+    // Levels: entry at the zone edge, stop buffered beyond the POI. Never place
+    // SL exactly on the obvious zone boundary; that is where noise/liquidity
+    // commonly hits.
     const entry = action === "buy" ? zone.high : zone.low;
-    const stop = action === "buy" ? zone.low : zone.high;
+    const buffer = stopBuffer({
+      symbolPrice: input.currentPrice,
+      spread: input.spread,
+      atr: input.atr,
+    });
+    const stop = action === "buy" ? zone.low - buffer : zone.high + buffer;
     const risk = Math.abs(entry - stop);
     if (!(risk > 0)) continue;
 
@@ -149,6 +157,10 @@ export function buildTradeCandidates(
 
     // Entry distance: if price already ran too far, the entry is missed.
     const atr = input.atr && input.atr > 0 ? input.atr : risk;
+    if (input.atr && risk > input.atr * 4) {
+      rejectedReasons.push("توسيع وقف الخسارة بالبافر أضعف الإعداد وجعل المخاطرة كبيرة جداً.");
+      continue;
+    }
     const entryDistanceAtr = Math.abs(input.currentPrice - entry) / atr;
     if (entryDistanceAtr > MAX_ENTRY_DISTANCE_ATR) {
       rejectedReasons.push("السعر ابتعد كثيراً عن منطقة الدخول — الدخول فات.");
@@ -322,4 +334,24 @@ function buildScoreInput(
     htfLevels: input.htfLevels,
     otherZones: input.zones,
   };
+}
+
+function minTickForPrice(price: number): number {
+  if (price > 100) return 0.01;
+  if (price > 10) return 0.001;
+  if (price > 2) return 0.0001;
+  return 0.00001;
+}
+
+export function stopBuffer(input: {
+  symbolPrice: number;
+  spread?: number | null;
+  atr?: number | null;
+}): number {
+  const minTick = minTickForPrice(input.symbolPrice);
+  return Math.max(
+    input.spread && input.spread > 0 ? input.spread * 2 : 0,
+    input.atr && input.atr > 0 ? input.atr * 0.1 : 0,
+    minTick * MIN_TICK_MULTIPLIER,
+  );
 }

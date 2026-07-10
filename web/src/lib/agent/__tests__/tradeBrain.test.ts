@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { scorePoi } from "@/lib/agent/trading/scorePoi";
 import {
   buildTradeCandidates,
+  stopBuffer,
   type BuildTradeCandidatesInput,
 } from "@/lib/agent/trading/buildTradeCandidates";
 import { computeRangePosition } from "@/lib/agent/marketContext/rangePosition";
@@ -158,6 +159,16 @@ describe("buildTradeCandidates", () => {
     assert.ok(result.best!.invalidationReason.length > 0);
   });
 
+  it("places buy stop loss beyond the demand zone with a real buffer", () => {
+    const result = buildTradeCandidates(baseInput());
+    assert.ok(result.best, "expected a candidate");
+    assert.ok(result.best!.stop_loss < 99);
+    assert.ok(
+      99 - result.best!.stop_loss >=
+        stopBuffer({ symbolPrice: 101, spread: null, atr: 0.5 }) - 1e-10,
+    );
+  });
+
   it("uptrend + WEAK (over-touched) demand = no candidate (WAIT)", () => {
     const { candles, zone } = overTouchedScenario();
     const result = buildTradeCandidates(
@@ -223,8 +234,7 @@ describe("buildTradeCandidates", () => {
   });
 
   it("stop inside spread noise blocks the candidate", () => {
-    const result = buildTradeCandidates(baseInput({ spread: 0.3 }));
-    // risk = 1.0, spread*5 = 1.5 → blocked.
+    const result = buildTradeCandidates(baseInput({ spread: 0.6 }));
     assert.equal(result.best, null);
     assert.ok(result.rejectedReasons.some((r) => r.includes("السبريد")));
   });

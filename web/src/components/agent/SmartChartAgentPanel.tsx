@@ -1,7 +1,7 @@
 "use client";
 
 import { useImperativeHandle, forwardRef } from "react";
-import type { AgentFinalResult } from "@/lib/agent/types";
+import type { AgentChartContext, AgentFinalResult } from "@/lib/agent/types";
 import { useSmartChartAgent } from "@/hooks/useSmartChartAgent";
 import {
   ANALYZE_QUICK_PROMPT,
@@ -37,7 +37,9 @@ interface Props {
   symbol: string;
   interval: string;
   layoutId?: string;
+  dataSource?: "oanda" | "ea";
   getVisibleRange?: () => { from: number; to: number } | undefined;
+  getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
   onResult?: (result: AgentFinalResult) => void;
   onClose?: () => void;
 }
@@ -45,7 +47,16 @@ interface Props {
 /** Docked, chart-connected Smart Chart Agent chat — one visible agent. */
 export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
   function SmartChartAgentPanel(
-    { symbol, interval, layoutId, getVisibleRange, onResult, onClose },
+    {
+      symbol,
+      interval,
+      layoutId,
+      dataSource,
+      getVisibleRange,
+      getLatestCandle,
+      onResult,
+      onClose,
+    },
     ref,
   ) {
     const {
@@ -60,7 +71,9 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         symbol,
         interval,
         layoutId,
+        dataSource,
         getVisibleRange,
+        getLatestCandle,
         onResult,
       });
 

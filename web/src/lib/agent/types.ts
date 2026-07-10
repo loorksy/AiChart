@@ -6,8 +6,17 @@
 import type { ChartDrawing } from "@/lib/chartDrawings";
 
 export type AgentIntent =
+  | "new_trade_analysis"
   | "chart_analysis"
   | "draw_on_chart"
+  | "draw_trendline"
+  | "draw_support_resistance"
+  | "draw_poi_zones"
+  | "clear_agent_drawings"
+  | "explain_active_recommendation"
+  | "track_active_recommendation"
+  | "cancel_active_recommendation"
+  | "modify_active_recommendation"
   | "market_news"
   | "account_status"
   | "trade_execution"
@@ -53,6 +62,14 @@ export interface AgentChartContext {
   interval?: string;
   layoutId?: string;
   visibleRange?: { from: number; to: number };
+  latestCandle?: {
+    time: number;
+    open?: number;
+    high?: number;
+    low?: number;
+    close: number;
+    volume?: number;
+  };
   /** oanda (default) or the user's broker bridge. */
   dataSource?: "oanda" | "ea";
 }
@@ -95,6 +112,12 @@ export interface AgentRecommendation {
   take_profit?: number;
   targets?: number[];
   rr?: number;
+  id?: string;
+  status?: string;
+  triggerCondition?: string;
+  invalidationLevel?: number;
+  invalidationRule?: string;
+  chartSnapshotHash?: string;
 }
 
 export interface AgentNewsRisk {
@@ -122,6 +145,14 @@ export interface AgentFinalResult {
   newsRisk?: AgentNewsRisk;
   /** analysisId stamps every drawing this run produced (versioning + undo). */
   analysisId?: string;
+  recommendationId?: string;
+  activeRecommendation?: {
+    id: string;
+    status: string;
+    direction: "buy" | "sell";
+    symbol: string;
+    interval: string;
+  };
   requiresConfirmation?: boolean;
   confirmationPayload?: AgentConfirmationPayload;
   /** Follow-up options for this reply (clickable + number-selectable). */
@@ -147,6 +178,17 @@ export interface AgentDebugDecisionFlow {
   drawingPlanReason: string;
   dataSource: string;
   warehouseSource?: string;
+  chartSnapshotHash?: string;
+  marketSync?: {
+    ok: boolean;
+    reason: string;
+    warehouseLastTime?: number | null;
+    liveLastTime?: number | null;
+    chartLastTime?: number | null;
+    warehouseClose?: number | null;
+    liveClose?: number | null;
+    chartClose?: number | null;
+  };
 }
 
 /** What the user must explicitly confirm before any MT5/EA execution. */

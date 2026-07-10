@@ -14,6 +14,7 @@ import type { TradingStyle } from "@/lib/types";
 import { newId } from "./activity";
 import {
   isGeneralOnly,
+  isDrawingOnly,
   needsMarketContext,
   routeIntent,
 } from "./intentRouter";
@@ -45,6 +46,19 @@ import {
   effectiveMinRr,
   type UserTradingProfile,
 } from "./risk/userTradingProfile";
+import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
+import {
+  clearActiveRecommendation,
+  getActiveRecommendation,
+  isActiveRecommendationLive,
+  recommendationDirectionAr,
+  rememberActiveRecommendation,
+  updateActiveRecommendationStatus,
+  type ActiveRecommendation,
+} from "./sessionRecommendation";
+import { evaluateRecommendationStatus } from "./recommendation/evaluateRecommendationStatus";
+import { hashMarketSnapshot } from "./chartSnapshot";
+import { contextualOptionsFor } from "./contextualOptions";
 
 export interface UnifiedAgentInput {
   userMessage: string;
@@ -72,6 +86,49 @@ export async function runUnifiedChartAgent(
     chartContext,
     ctx: trackedCtx,
   });
+  const sessionId = ctx.sessionId ?? "default";
+  const activeRecommendation = await getActiveRecommendation(
+    sessionId,
+    chartContext?.symbol,
+  );
+
+  if (intents.includes("cancel_active_recommendation")) {
+    await clearActiveRecommendation(sessionId, chartContext?.symbol);
+    return {
+      decision: "informational",
+      confidence: 0.9,
+      summary: "ألغيت التوصية النشطة في هذه الجلسة. إذا أردت تحليلًا جديدًا اطلبه صراحة.",
+      keyReasons: [],
+      riskWarnings: [],
+      activityEvents: collected,
+      options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true }),
+    };
+  }
+
+  if (intents.includes("explain_active_recommendation")) {
+    return explainStoredRecommendation(activeRecommendation, collected);
+  }
+
+  if (intents.includes("track_active_recommendation")) {
+    return trackStoredRecommendation({
+      activeRecommendation,
+      chartContext,
+      ctx: trackedCtx,
+      collected,
+    });
+  }
+
+  if (isDrawingOnly(intents)) {
+    const drawingResult = await handleDrawingCommand({
+      intents,
+      chartContext,
+      ctx: trackedCtx,
+    });
+    return {
+      ...drawingResult,
+      options: contextualOptionsFor({ decision: drawingResult.decision, drawingOnly: true }),
+    };
+  }
 
   // General-only → answer with no market agents and NO visible activity. A real
   // agent stays silent unless it is actually running a tool; it never narrates
@@ -153,6 +210,36 @@ export async function runUnifiedChartAgent(
       activityEvents: collected,
       recommendation: { action: "wait" },
       analysisId,
+    };
+  }
+
+  if (!market.sync.ok) {
+    return {
+      decision: "action_required",
+      confidence: 0,
+      summary:
+        "بيانات الوكيل غير متزامنة مع الشارت الحالي، لذلك لن أعطي توصية شراء/بيع ولن أرسم صفقة الآن. حدّث الشارت أو انتظر اكتمال مزامنة الشموع ثم أعد التحليل.",
+      keyReasons: [market.sync.reason],
+      riskWarnings: ["تم حظر التوصية لأن آخر شمعة/سعر لا يطابق الشارت الحالي."],
+      activityEvents: collected,
+      recommendation: { action: "wait" },
+      analysisId,
+      debugDecisionFlow:
+        process.env.NODE_ENV === "development"
+          ? {
+              usedLLM: false,
+              usedDeterministicFallback: true,
+              tickerGenerated: false,
+              candleCount: market.currentTfCandles.length,
+              htfCandleCount: market.higherTfCandles.length,
+              dailyCandleCount: market.dailyCandles.length,
+              selectedLevelsCount: 0,
+              rejectedLevelsCount: 0,
+              drawingPlanReason: "market sync failed",
+              dataSource: chartContext?.dataSource ?? "oanda",
+              marketSync: market.sync,
+            }
+          : undefined,
     };
   }
 
@@ -261,6 +348,36 @@ export async function runUnifiedChartAgent(
     null,
   )) ?? { result: deterministic, usedLLM: false };
   const finalDecision = synth.result;
+  const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
+
+  if (
+    isActiveRecommendationLive(activeRecommendation) &&
+    activeRecommendation.symbol.toUpperCase() === market.symbol.toUpperCase() &&
+    (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
+    finalDecision.decision !== activeRecommendation.direction
+  ) {
+    return {
+      decision: "action_required",
+      confidence: finalDecision.confidence,
+      summary:
+        `التوصية الحالية ${recommendationDirectionAr(activeRecommendation.direction)} على ${activeRecommendation.symbol} ولم تُلغَ أو تُبطَل بعد. لا أعطي توصية ${recommendationDirectionAr(finalDecision.decision)} معاكسة حتى تُلغى السابقة أو يكسر السعر مستوى الإبطال.`,
+      keyReasons: [
+        `التوصية النشطة: ${recommendationDirectionAr(activeRecommendation.direction)} من ${activeRecommendation.entry}.`,
+        `الإبطال: ${activeRecommendation.invalidationRule}.`,
+      ],
+      riskWarnings: ["تم منع الانقلاب بين شراء/بيع على نفس الشارت بدون إبطال واضح."],
+      recommendation: { action: "wait" },
+      activityEvents: collected,
+      analysisId,
+      activeRecommendation: {
+        id: activeRecommendation.id,
+        status: activeRecommendation.status,
+        direction: activeRecommendation.direction,
+        symbol: activeRecommendation.symbol,
+        interval: activeRecommendation.interval,
+      },
+    };
+  }
 
   // Build the drawing plan: the single source of truth for what may be drawn.
   // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
@@ -311,6 +428,8 @@ export async function runUnifiedChartAgent(
           ),
           drawingPlanReason: drawingPlan.reason,
           dataSource: chartContext?.dataSource ?? "oanda",
+          chartSnapshotHash,
+          marketSync: market.sync,
         }
       : undefined;
 
@@ -381,18 +500,237 @@ export async function runUnifiedChartAgent(
     };
   }
 
+  let storedRecommendation: ActiveRecommendation | null = null;
+  if (
+    finalDecision.decision === "buy" ||
+    finalDecision.decision === "sell"
+  ) {
+    storedRecommendation = await storeFinalRecommendation({
+      sessionId,
+      layoutId: chartContext?.layoutId,
+      analysisId,
+      market,
+      finalDecision,
+      risk,
+      drawings,
+      chartSnapshotHash,
+    });
+  }
+
   return {
     decision: finalDecision.decision,
     confidence: finalDecision.confidence,
     summary: finalDecision.summary,
     keyReasons: finalDecision.keyReasons,
     riskWarnings: finalDecision.riskWarnings,
-    recommendation: finalDecision.recommendation,
+    recommendation: storedRecommendation
+      ? {
+          ...finalDecision.recommendation,
+          id: storedRecommendation.id,
+          status: storedRecommendation.status,
+          triggerCondition: storedRecommendation.triggerCondition,
+          invalidationLevel: storedRecommendation.invalidationLevel,
+          invalidationRule: storedRecommendation.invalidationRule,
+          chartSnapshotHash,
+        }
+      : finalDecision.recommendation,
     drawings,
     newsRisk: news ? { level: news.newsRisk, reason: news.reason } : undefined,
     activityEvents: collected,
     analysisId,
+    recommendationId: storedRecommendation?.id,
+    activeRecommendation: storedRecommendation
+      ? {
+          id: storedRecommendation.id,
+          status: storedRecommendation.status,
+          direction: storedRecommendation.direction,
+          symbol: storedRecommendation.symbol,
+          interval: storedRecommendation.interval,
+        }
+      : undefined,
     publicReasoningSummary: finalDecision.publicReasoningSummary,
     debugDecisionFlow,
+    options: contextualOptionsFor({
+      decision: finalDecision.decision,
+      hasActiveRecommendation: Boolean(storedRecommendation),
+    }),
   };
+}
+
+function noStoredRecommendation(collected: AgentFinalResult["activityEvents"]): AgentFinalResult {
+  return {
+    decision: "informational",
+    confidence: 0.75,
+    summary:
+      "لا توجد توصية محفوظة في هذه الجلسة حاليًا. اطلب تحليلًا جديدًا أو أرسل التوصية التي تريد مراجعتها.",
+    keyReasons: [],
+    riskWarnings: [],
+    activityEvents: collected,
+    options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true }),
+  };
+}
+
+function explainStoredRecommendation(
+  rec: ActiveRecommendation | null,
+  collected: AgentFinalResult["activityEvents"],
+): AgentFinalResult {
+  if (!rec) return noStoredRecommendation(collected);
+  return {
+    decision: "informational",
+    confidence: 0.85,
+    summary:
+      `التوصية السابقة كانت ${recommendationDirectionAr(rec.direction)} على ${rec.symbol} (${rec.interval}) من ${rec.entry}، الوقف ${rec.stopLoss}، الأهداف ${rec.targets.join(", ")}.\n` +
+      `سببها:\n- ${rec.keyReasons.join("\n- ")}\n` +
+      `الإبطال: ${rec.invalidationRule}`,
+    keyReasons: rec.keyReasons,
+    riskWarnings: rec.riskWarnings,
+    activityEvents: collected,
+    activeRecommendation: {
+      id: rec.id,
+      status: rec.status,
+      direction: rec.direction,
+      symbol: rec.symbol,
+      interval: rec.interval,
+    },
+    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true }),
+  };
+}
+
+async function trackStoredRecommendation(input: {
+  activeRecommendation: ActiveRecommendation | null;
+  chartContext?: AgentChartContext;
+  ctx: AgentRunContext;
+  collected: AgentFinalResult["activityEvents"];
+}): Promise<AgentFinalResult> {
+  const { activeRecommendation: rec, chartContext, ctx, collected } = input;
+  if (!rec) return noStoredRecommendation(collected);
+
+  ctx.emitActivity({
+    type: "analysis",
+    status: "started",
+    message: "أراجع التوصية السابقة وحالتها الحالية.",
+  });
+  const market = await runMarketDataAgent({ ...ctx, emitActivity: () => {} }, {
+    symbol: rec.symbol,
+    interval: rec.interval,
+    layoutId: chartContext?.layoutId,
+    visibleRange: chartContext?.visibleRange,
+    latestCandle: chartContext?.latestCandle,
+    dataSource: chartContext?.dataSource,
+  });
+
+  if (!market.sync.ok) {
+    return {
+      decision: "action_required",
+      confidence: 0,
+      summary:
+        "لا أستطيع تحديث حالة التوصية لأن بيانات الوكيل غير متزامنة مع الشارت الحالي.",
+      keyReasons: [market.sync.reason],
+      riskWarnings: [],
+      activityEvents: collected,
+      activeRecommendation: {
+        id: rec.id,
+        status: rec.status,
+        direction: rec.direction,
+        symbol: rec.symbol,
+        interval: rec.interval,
+      },
+    };
+  }
+
+  const evaluated = evaluateRecommendationStatus({ recommendation: rec, market });
+  await updateActiveRecommendationStatus(rec.id, evaluated.status, evaluated.reason);
+  ctx.emitActivity({
+    type: "analysis",
+    status: "completed",
+    message: "حدّثت حالة التوصية المحفوظة.",
+    metadata: { status: evaluated.status },
+  });
+
+  return {
+    decision: "informational",
+    confidence: 0.85,
+    summary:
+      `حالة التوصية ${recommendationDirectionAr(rec.direction)} على ${rec.symbol}: ${evaluated.status}.\n` +
+      `${evaluated.reason}\nالسعر الحالي: ${evaluated.priceNow}. الدخول: ${rec.entry}، الوقف: ${rec.stopLoss}، الأهداف: ${rec.targets.join(", ")}.`,
+    keyReasons: [evaluated.reason],
+    riskWarnings: rec.riskWarnings,
+    activityEvents: collected,
+    activeRecommendation: {
+      id: rec.id,
+      status: evaluated.status,
+      direction: rec.direction,
+      symbol: rec.symbol,
+      interval: rec.interval,
+    },
+    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true }),
+  };
+}
+
+async function storeFinalRecommendation(input: {
+  sessionId: string;
+  layoutId?: string;
+  analysisId: string;
+  market: Awaited<ReturnType<typeof runMarketDataAgent>>;
+  finalDecision: Awaited<ReturnType<typeof runFinalDecisionAgent>>;
+  risk: RiskAgentResult;
+  drawings: AgentFinalResult["drawings"];
+  chartSnapshotHash: string;
+}): Promise<ActiveRecommendation | null> {
+  const rec = input.finalDecision.recommendation;
+  if (
+    rec.action !== "buy" &&
+    rec.action !== "sell"
+  ) {
+    return null;
+  }
+  if (rec.entry == null || rec.stop_loss == null || !rec.targets?.length) {
+    return null;
+  }
+  const candidate = input.risk.selectedCandidate;
+  const id = newId();
+  const active: ActiveRecommendation = {
+    id,
+    analysisId: input.analysisId,
+    sessionId: input.sessionId,
+    layoutId: input.layoutId,
+    symbol: input.market.symbol,
+    interval: input.market.interval,
+    createdAt: input.market.currentTfCandles.at(-1)?.time ?? Date.now(),
+    direction: rec.action,
+    entry: rec.entry,
+    stopLoss: rec.stop_loss,
+    targets: rec.targets,
+    takeProfit: rec.take_profit ?? rec.targets[0],
+    rr: rec.rr,
+    status: "pending_entry",
+    triggerCondition:
+      rec.action === "buy"
+        ? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`
+        : `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`,
+    invalidationLevel: rec.stop_loss,
+    invalidationRule:
+      rec.action === "buy"
+        ? `إغلاق شمعة تحت ${rec.stop_loss} يبطل السيناريو.`
+        : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`,
+    setupType: candidate?.setupType,
+    poi: candidate
+      ? {
+          type: candidate.poi.type,
+          low: candidate.poi.low,
+          high: candidate.poi.high,
+          score: candidate.poi.score.score,
+          grade: candidate.poi.score.grade,
+        }
+      : undefined,
+    summary: input.finalDecision.summary,
+    keyReasons: input.finalDecision.keyReasons,
+    riskWarnings: input.finalDecision.riskWarnings,
+    publicReasoningSummary: input.finalDecision.publicReasoningSummary,
+    drawings: input.drawings,
+    chartSnapshotHash: input.chartSnapshotHash,
+    priceAtCreation: input.market.currentPrice ?? undefined,
+  };
+  await rememberActiveRecommendation(active);
+  return active;
 }

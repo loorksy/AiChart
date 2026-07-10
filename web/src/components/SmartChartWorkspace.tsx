@@ -500,7 +500,7 @@ export function SmartChartWorkspace({
               drawings={drawings}
               headerActions={headerActions}
               eaEnabled={false}
-              dataSource="oanda"
+              dataSource={dataSource}
               className="h-full min-h-0 w-full"
               onSymbolChange={handleSymbolChange}
               onIntervalChange={handleIntervalChange}
@@ -530,6 +530,8 @@ export function SmartChartWorkspace({
               symbol={symbol}
               interval={interval}
               layoutId={layoutId}
+              dataSource={dataSource}
+              getLatestCandle={() => chartRef.current?.latestCandle() ?? undefined}
               onResult={handleAgentResult}
               onClose={() => setAgentPanelOpen(false)}
             />

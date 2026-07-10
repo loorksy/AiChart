@@ -97,6 +97,17 @@ interface RawCandle {
   volume?: number;
 }
 
+export interface TvLatestCandle {
+  symbol: string;
+  interval: string;
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
 function priceScale(symbol: string): number {
   const s = symbol.toUpperCase();
   if (s.includes("JPY")) return 1000; // 3 decimals
@@ -121,7 +132,7 @@ export function stripEaPrefix(t: string): string {
 /** Datafeed backed by AiChart's own /api/market/klines + /api/instruments. */
 export function createAiChartDatafeed(
   market: MarketType = "forex",
-  opts: { eaEnabled?: boolean } = {},
+  opts: { eaEnabled?: boolean; onLatestCandle?: (candle: TvLatestCandle) => void } = {},
 ): IBasicDataFeed {
   const exchange = "OANDA";
   const symbolType = "forex";
@@ -364,6 +375,19 @@ export function createAiChartDatafeed(
       if (isLatestWindow && !ea && rows.length) {
         setKlinesClientCache(cacheKey, rows);
       }
+      const latest = rows[rows.length - 1];
+      if (latest) {
+        opts.onLatestCandle?.({
+          symbol: stripEaPrefix(ticker).toUpperCase(),
+          interval,
+          time: latest.time * 1000,
+          open: latest.open,
+          high: latest.high,
+          low: latest.low,
+          close: latest.close,
+          volume: latest.volume,
+        });
+      }
       // Retries exhausted or gap: return empty with noData:false (below) so TV
       // keeps the chart alive and re-requests naturally — never the error badge.
       const bars: Bar[] = rows
@@ -410,6 +434,16 @@ export function createAiChartDatafeed(
         });
         const last = rows[rows.length - 1];
         if (last && Number.isFinite(last.time)) {
+          opts.onLatestCandle?.({
+            symbol: stripEaPrefix(ticker).toUpperCase(),
+            interval,
+            time: last.time * 1000,
+            open: last.open,
+            high: last.high,
+            low: last.low,
+            close: last.close,
+            volume: last.volume,
+          });
           onTick({
             time: last.time * 1000,
             open: last.open,
