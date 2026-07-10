@@ -182,6 +182,9 @@ const schema = z.object({
         .optional(),
       latestCandle: z
         .object({
+          // symbol/interval let the Market Sync Guard reject chart drift.
+          symbol: z.string().max(20).optional(),
+          interval: z.string().max(8).optional(),
           time: z.number(),
           open: z.number().optional(),
           high: z.number().optional(),
@@ -195,6 +198,7 @@ const schema = z.object({
       dataSource: z.enum(["oanda", "ea"]).optional(),
     })
     .optional(),
+  locale: z.enum(["ar", "en"]).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -322,6 +326,7 @@ export async function POST(req: NextRequest) {
           const result = await runUnifiedChartAgent({
             userMessage: resolvedMessage,
             chartContext: body.chartContext,
+            locale: body.locale,
             requestContext: {
               requestId,
               userId: user.id,

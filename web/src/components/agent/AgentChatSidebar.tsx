@@ -2,7 +2,9 @@
 
 import { MessageSquarePlus, MessageSquare } from "lucide-react";
 import { BRAND_NAME } from "@/lib/brand";
+import { useLocale } from "@/hooks/useLocale";
 import type { AgentChatSession } from "@/lib/agent/chatHistory/types";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SidebarProfileMenu } from "./SidebarProfileMenu";
 
 interface Props {
@@ -14,9 +16,9 @@ interface Props {
 }
 
 /**
- * Sidebar for the Smart Chart Agent: brand header, New Chat, the list of
- * persistent chat sessions (active one highlighted), and the profile menu
- * pinned at the bottom. Layout/navigation sections land in later tranches.
+ * Sidebar for the Smart Chart Agent: brand header + language switcher, New Chat,
+ * the list of persistent chat sessions (active one highlighted), and the profile
+ * menu pinned at the bottom. Direction follows the active locale.
  */
 export function AgentChatSidebar({
   sessions,
@@ -25,13 +27,16 @@ export function AgentChatSidebar({
   onNewChat,
   busy,
 }: Props) {
+  const { t, dir } = useLocale();
+
   return (
     <aside
-      dir="rtl"
-      className="flex h-full min-h-0 w-full flex-col border-l border-border/60 bg-card"
+      dir={dir}
+      className="flex h-full min-h-0 w-full flex-col border-s border-border/60 bg-card"
     >
-      <div className="flex shrink-0 items-center justify-between px-3 py-3">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-3">
         <span className="text-sm font-bold text-foreground">{BRAND_NAME}</span>
+        <LanguageSwitcher variant="segmented" />
       </div>
 
       <div className="shrink-0 px-2">
@@ -42,17 +47,17 @@ export function AgentChatSidebar({
           className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
         >
           <MessageSquarePlus className="h-4 w-4" />
-          محادثة جديدة
+          {t("nav.new_chat")}
         </button>
       </div>
 
       <nav
-        aria-label="المحادثات"
+        aria-label={t("nav.chats")}
         className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2"
       >
         {sessions.length === 0 ? (
           <p className="px-2 py-4 text-center text-[11px] text-muted-foreground">
-            لا توجد محادثات بعد.
+            {t("nav.no_chats")}
           </p>
         ) : (
           sessions.map((s) => {
@@ -63,7 +68,7 @@ export function AgentChatSidebar({
                 type="button"
                 aria-current={active ? "true" : undefined}
                 onClick={() => onSelectChat(s.id)}
-                className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-right text-xs ${
+                className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-start text-xs ${
                   active
                     ? "bg-primary/15 text-foreground ring-1 ring-primary/40"
                     : "text-muted-foreground hover:bg-muted"

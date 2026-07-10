@@ -26,6 +26,7 @@ import {
 } from "@/components/agent/SmartChartAgentPanel";
 import { AgentChatSidebar } from "@/components/agent/AgentChatSidebar";
 import { useChatSessions } from "@/hooks/useChatSessions";
+import { useLocale } from "@/hooks/useLocale";
 import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { useAccountCapital } from "@/hooks/useAccountCapital";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
@@ -479,10 +480,12 @@ export function SmartChartWorkspace({
     handleClearLayers,
   ]);
 
+  const { locale } = useLocale();
   const chat = useChatSessions({
     enabled: chatEnabled,
     symbol,
     interval,
+    locale,
   });
 
   const showMobileChat =

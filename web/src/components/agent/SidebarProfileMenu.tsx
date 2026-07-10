@@ -12,6 +12,8 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import { useMe } from "@/hooks/useMe";
+import { useLocale } from "@/hooks/useLocale";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 interface MenuItem {
   id: string;
@@ -24,13 +26,14 @@ interface MenuItem {
 
 /**
  * Profile block pinned to the bottom of the sidebar. Clicking it opens a
- * compact menu (Profile / Trading settings / Language / Theme / Integrations /
- * Logout). Language + Theme are placeholders here — the i18n/theme systems land
- * in a later tranche — so they are shown but disabled with a "coming soon" hint.
+ * compact, localized menu (Profile / Trading settings / Language / Theme /
+ * Integrations / Logout). The Language row hosts the live Arabic/English
+ * switcher; Theme is a placeholder until its tranche lands.
  */
 export function SidebarProfileMenu() {
   const router = useRouter();
   const { data } = useMe();
+  const { t, dir } = useLocale();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +48,7 @@ export function SidebarProfileMenu() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
-  const displayName = data?.displayName ?? "المستخدم";
+  const displayName = data?.displayName ?? "—";
   const email = data?.user?.email ?? "";
   const initial = (displayName || email || "?").trim().charAt(0).toUpperCase();
 
@@ -59,7 +62,7 @@ export function SidebarProfileMenu() {
   const items: MenuItem[] = [
     {
       id: "profile",
-      label: "الملف الشخصي",
+      label: t("profile.profile"),
       icon: UserIcon,
       onSelect: () => {
         setOpen(false);
@@ -68,7 +71,7 @@ export function SidebarProfileMenu() {
     },
     {
       id: "trading-settings",
-      label: "إعدادات التداول",
+      label: t("profile.trading_settings"),
       icon: Sliders,
       onSelect: () => {
         setOpen(false);
@@ -76,24 +79,16 @@ export function SidebarProfileMenu() {
       },
     },
     {
-      id: "language",
-      label: "اللغة",
-      icon: Languages,
-      onSelect: () => {},
-      disabled: true,
-      hint: "قريباً",
-    },
-    {
       id: "theme",
-      label: "المظهر",
+      label: t("profile.theme"),
       icon: SunMoon,
       onSelect: () => {},
       disabled: true,
-      hint: "قريباً",
+      hint: t("profile.coming_soon"),
     },
     {
       id: "integrations",
-      label: "التكاملات",
+      label: t("nav.integrations"),
       icon: Plug,
       onSelect: () => {
         setOpen(false);
@@ -102,20 +97,27 @@ export function SidebarProfileMenu() {
     },
     {
       id: "logout",
-      label: "تسجيل الخروج",
+      label: t("profile.logout"),
       icon: LogOut,
       onSelect: () => void logout(),
     },
   ];
 
   return (
-    <div ref={rootRef} className="relative border-t border-border/60 p-2">
+    <div ref={rootRef} dir={dir} className="relative border-t border-border/60 p-2">
       {open && (
         <div
           role="menu"
-          aria-label="قائمة الحساب"
-          className="absolute bottom-full left-2 right-2 mb-2 overflow-hidden rounded-lg border border-border/60 bg-popover shadow-lg"
+          aria-label={t("profile.account_menu")}
+          className="absolute bottom-full inset-x-2 mb-2 overflow-hidden rounded-lg border border-border/60 bg-popover shadow-lg"
         >
+          {/* Language row: live Arabic/English switcher. */}
+          <div className="flex items-center gap-2 px-3 py-2 text-xs text-foreground">
+            <Languages className="h-4 w-4 shrink-0" />
+            <span className="flex-1">{t("profile.language")}</span>
+            <LanguageSwitcher variant="inline" />
+          </div>
+          <div className="h-px bg-border/60" />
           {items.map((item) => (
             <button
               key={item.id}
@@ -123,7 +125,7 @@ export function SidebarProfileMenu() {
               role="menuitem"
               disabled={item.disabled}
               onClick={item.onSelect}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-right text-xs ${
+              className={`flex w-full items-center gap-2 px-3 py-2 text-start text-xs ${
                 item.disabled
                   ? "cursor-default text-muted-foreground/60"
                   : item.id === "logout"
@@ -132,7 +134,7 @@ export function SidebarProfileMenu() {
               }`}
             >
               <item.icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1">{item.label}</span>
+              <span className="flex-1 text-start">{item.label}</span>
               {item.hint && (
                 <span className="text-[10px] text-muted-foreground/70">
                   {item.hint}
@@ -147,14 +149,14 @@ export function SidebarProfileMenu() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="حساب المستخدم"
+        aria-label={t("profile.account_menu")}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-right hover:bg-muted"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start hover:bg-muted"
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
           {initial}
         </span>
-        <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex min-w-0 flex-1 flex-col text-start">
           <span className="truncate text-xs font-semibold text-foreground">
             {displayName}
           </span>

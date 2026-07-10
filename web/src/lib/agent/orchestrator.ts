@@ -11,6 +11,7 @@ import type {
   AgentRunContext,
 } from "./types";
 import type { TradingStyle } from "@/lib/types";
+import type { AppLocale } from "@/lib/i18n";
 import { newId } from "./activity";
 import {
   isGeneralOnly,
@@ -78,12 +79,15 @@ export interface UnifiedAgentInput {
   canExecute?: boolean;
   spread?: number | null;
   tradingStyle?: TradingStyle;
+  /** UI locale — used to localize contextual follow-up options. */
+  locale?: AppLocale;
 }
 
 export async function runUnifiedChartAgent(
   input: UnifiedAgentInput,
 ): Promise<AgentFinalResult> {
   const { userMessage, chartContext, requestContext: ctx } = input;
+  const locale: AppLocale = input.locale ?? "ar";
   const analysisId = newId();
   // The caller (SSE route / MCP wrapper) accumulates the emitted events and
   // merges them into the final payload — the orchestrator returns [] here.
@@ -120,7 +124,7 @@ export async function runUnifiedChartAgent(
         keyReasons: [],
         riskWarnings: [],
         activityEvents: collected,
-        options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true }),
+        options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true, locale }),
       };
     }
   }
@@ -128,11 +132,11 @@ export async function runUnifiedChartAgent(
   // Draw the STORED recommendation (entry/SL/TP/invalidation) — never recompute
   // a new trade, never change direction, never run Risk/News agents.
   if (isDrawActiveRecommendation(intents)) {
-    return drawStoredRecommendation(activeRecommendation, collected);
+    return drawStoredRecommendation(activeRecommendation, collected, locale);
   }
 
   if (intents.includes("explain_active_recommendation")) {
-    return explainStoredRecommendation(activeRecommendation, collected, userMessage);
+    return explainStoredRecommendation(activeRecommendation, collected, userMessage, locale);
   }
 
   if (intents.includes("track_active_recommendation")) {
@@ -142,6 +146,7 @@ export async function runUnifiedChartAgent(
       ctx: trackedCtx,
       collected,
       userMessage,
+      locale,
     });
   }
 
@@ -174,6 +179,7 @@ export async function runUnifiedChartAgent(
       options: contextualOptionsFor({
         decision: "informational",
         hasActiveRecommendation: Boolean(activeRecommendation),
+        locale,
       }),
     };
   }
@@ -186,7 +192,7 @@ export async function runUnifiedChartAgent(
     });
     return {
       ...drawingResult,
-      options: contextualOptionsFor({ decision: drawingResult.decision, drawingOnly: true }),
+      options: contextualOptionsFor({ decision: drawingResult.decision, drawingOnly: true, locale }),
     };
   }
 
@@ -653,6 +659,7 @@ export async function runUnifiedChartAgent(
     options: contextualOptionsFor({
       decision: finalDecision.decision,
       hasActiveRecommendation: Boolean(storedRecommendation),
+      locale,
     }),
   };
 }
@@ -674,7 +681,10 @@ function isTimeframeStale(
   return ageMs > tolerance;
 }
 
-function noStoredRecommendation(collected: AgentFinalResult["activityEvents"]): AgentFinalResult {
+function noStoredRecommendation(
+  collected: AgentFinalResult["activityEvents"],
+  locale: AppLocale = "ar",
+): AgentFinalResult {
   return {
     decision: "informational",
     confidence: 0.75,
@@ -683,7 +693,7 @@ function noStoredRecommendation(collected: AgentFinalResult["activityEvents"]): 
     keyReasons: [],
     riskWarnings: [],
     activityEvents: collected,
-    options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true }),
+    options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true, locale }),
   };
 }
 
@@ -739,6 +749,7 @@ function activeRecommendationFromChartContext(
 function drawStoredRecommendation(
   rec: ActiveRecommendation | null,
   collected: AgentFinalResult["activityEvents"],
+  locale: AppLocale = "ar",
 ): AgentFinalResult {
   if (!isActiveRecommendationLive(rec)) {
     return {
@@ -749,7 +760,7 @@ function drawStoredRecommendation(
       keyReasons: [],
       riskWarnings: [],
       activityEvents: collected,
-      options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true }),
+      options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true, locale }),
     };
   }
   const drawings = rec.drawings ?? [];
@@ -775,7 +786,7 @@ function drawStoredRecommendation(
       symbol: rec.symbol,
       interval: rec.interval,
     },
-    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true }),
+    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true, locale }),
   };
 }
 
@@ -783,8 +794,9 @@ async function explainStoredRecommendation(
   rec: ActiveRecommendation | null,
   collected: AgentFinalResult["activityEvents"],
   userMessage?: string,
+  locale: AppLocale = "ar",
 ): Promise<AgentFinalResult> {
-  if (!rec) return noStoredRecommendation(collected);
+  if (!rec) return noStoredRecommendation(collected, locale);
   const summary = await composeRecommendationExplanation({
     recommendation: rec,
     userMessage,
@@ -803,7 +815,7 @@ async function explainStoredRecommendation(
       symbol: rec.symbol,
       interval: rec.interval,
     },
-    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true }),
+    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true, locale }),
   };
 }
 
@@ -813,9 +825,11 @@ async function trackStoredRecommendation(input: {
   ctx: AgentRunContext;
   collected: AgentFinalResult["activityEvents"];
   userMessage?: string;
+  locale?: AppLocale;
 }): Promise<AgentFinalResult> {
   const { activeRecommendation: rec, chartContext, ctx, collected } = input;
-  if (!rec) return noStoredRecommendation(collected);
+  const locale: AppLocale = input.locale ?? "ar";
+  if (!rec) return noStoredRecommendation(collected, locale);
 
   ctx.emitActivity({
     type: "analysis",
@@ -878,7 +892,7 @@ async function trackStoredRecommendation(input: {
       symbol: rec.symbol,
       interval: rec.interval,
     },
-    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true }),
+    options: contextualOptionsFor({ decision: rec.direction, hasActiveRecommendation: true, locale }),
   };
 }
 

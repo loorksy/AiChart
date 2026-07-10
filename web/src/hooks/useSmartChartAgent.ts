@@ -39,6 +39,8 @@ export interface UseSmartChartAgentOptions {
   /** Chat/session id — also used as the agent sessionId so recommendation
    *  memory is scoped per chat. When omitted, an ephemeral id is used. */
   chatId?: string;
+  /** UI locale — sent to the agent so it can answer in the selected language. */
+  locale?: "ar" | "en";
   /** Messages loaded from history to hydrate this chat on mount. */
   initialMessages?: AgentChatMessage[];
   getVisibleRange?: () => { from: number; to: number } | undefined;
@@ -129,6 +131,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
           body: JSON.stringify({
             message: text,
             sessionId: chatId,
+            locale: opts.locale,
             chartContext,
           }),
           signal: controller.signal,

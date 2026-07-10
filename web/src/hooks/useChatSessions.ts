@@ -44,8 +44,10 @@ export function useChatSessions(opts: {
   enabled: boolean;
   symbol?: string;
   interval?: string;
+  /** Current UI locale — new chats inherit it (stored on the session). */
+  locale?: "ar" | "en";
 }): UseChatSessions {
-  const { enabled, symbol, interval } = opts;
+  const { enabled, symbol, interval, locale } = opts;
   const [sessions, setSessions] = useState<AgentChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeMessages, setActiveMessages] = useState<AgentChatMessage[]>([]);
@@ -73,12 +75,12 @@ export function useChatSessions(opts: {
     const res = await fetch("/api/agent/chats", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol, interval }),
+      body: JSON.stringify({ symbol, interval, language: locale }),
     });
     if (!res.ok) return null;
     const json = (await res.json()) as { session?: AgentChatSession };
     return json.session ?? null;
-  }, [symbol, interval]);
+  }, [symbol, interval, locale]);
 
   // Initialize once on enable: restore last-active or the most recent chat, or
   // create the first one. Keeps at most one reusable empty chat per user.

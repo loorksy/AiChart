@@ -7,6 +7,7 @@ import {
   type AgentChatMessage,
   type AgentPersistPayload,
 } from "@/hooks/useSmartChartAgent";
+import { useLocale } from "@/hooks/useLocale";
 import {
   ANALYZE_QUICK_PROMPT,
   NEWS_QUICK_PROMPT,
@@ -20,14 +21,6 @@ export interface SmartChartAgentHandle {
   quickAnalyze: () => void;
   sendMessage: (message: string) => void;
 }
-
-const DECISION_LABEL: Record<AgentFinalResult["decision"], string> = {
-  buy: "شراء",
-  sell: "بيع",
-  wait: "انتظار",
-  informational: "معلومة",
-  action_required: "يتطلب إجراء",
-};
 
 const DECISION_COLOR: Record<AgentFinalResult["decision"], string> = {
   buy: "text-emerald-500",
@@ -75,6 +68,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
     },
     ref,
   ) {
+    const { t, dir, locale } = useLocale();
     const {
       messages,
       activityEvents,
@@ -89,6 +83,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         layoutId,
         dataSource,
         chatId,
+        locale,
         initialMessages,
         getVisibleRange,
         getLatestCandle,
@@ -110,14 +105,14 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
     return (
       <div
         className="flex h-full min-h-0 w-full flex-col bg-card"
-        dir="rtl"
+        dir={dir}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-3 py-2">
           <div>
             <p className="text-sm font-semibold text-foreground">
-              الوكيل الذكي للشارت
+              {t("agent.title")}
             </p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground" dir="ltr">
               {symbol} · {interval}
             </p>
           </div>
@@ -125,7 +120,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             <button
               onClick={onClose}
               className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-              aria-label="إغلاق"
+              aria-label={t("agent.close")}
             >
               ✕
             </button>
@@ -138,21 +133,21 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             disabled={running}
             className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            تحليل الشارت
+            {t("agent.analyze_chart")}
           </button>
           <button
             onClick={() => void sendMessage(NEWS_QUICK_PROMPT)}
             disabled={running}
             className="rounded-md bg-muted px-3 py-1 text-xs text-foreground hover:bg-muted/70 disabled:opacity-50"
           >
-            خطر الأخبار
+            {t("agent.news_risk")}
           </button>
         </div>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           {messages.length === 0 && !running && (
             <p className="text-center text-xs text-muted-foreground">
-              اسأل الوكيل أو اضغط «تحليل الشارت».
+              {t("agent.empty")}
             </p>
           )}
 
@@ -175,11 +170,11 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   <span
                     className={`font-bold ${DECISION_COLOR[m.result.decision]}`}
                   >
-                    {DECISION_LABEL[m.result.decision]}
+                    {t(`decision.${m.result.decision}`)}
                   </span>
                   {m.result.confidence > 0 && (
                     <span className="text-muted-foreground">
-                      ثقة {Math.round(m.result.confidence * 100)}%
+                      {t("agent.confidence")} {Math.round(m.result.confidence * 100)}%
                     </span>
                   )}
                 </div>
@@ -202,7 +197,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {m.result?.publicReasoningSummary?.length ? (
                 <div className="mt-2 rounded-md bg-background/50 p-2 text-[12px]">
                   <p className="mb-1 font-medium text-muted-foreground">
-                    سبب القرار:
+                    {t("agent.decision_reason")}
                   </p>
                   <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
                     {m.result.publicReasoningSummary.map((r, i) => (
@@ -228,16 +223,16 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {m.result?.requiresConfirmation && m.result.confirmationPayload && (
                 <div className="mt-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2 text-[12px]">
                   <p className="font-semibold text-fuchsia-500">
-                    تحتاج الصفقة تأكيدك قبل التنفيذ
+                    {t("agent.needs_confirmation")}
                   </p>
                   <p className="text-muted-foreground">
                     {m.result.confirmationPayload.direction === "buy"
-                      ? "شراء"
-                      : "بيع"}{" "}
+                      ? t("decision.buy")
+                      : t("decision.sell")}{" "}
                     {m.result.confirmationPayload.symbol} ·{" "}
                     {m.result.confirmationPayload.executionMode === "live"
-                      ? "حساب LIVE"
-                      : "محاكاة/ديمو"}
+                      ? t("agent.account_live")
+                      : t("agent.account_demo")}
                   </p>
                 </div>
               )}
