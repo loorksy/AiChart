@@ -457,6 +457,38 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user
     ON agent_audit_logs (user_id, id DESC);
+
+  CREATE TABLE IF NOT EXISTS agent_chats (
+    id                   TEXT PRIMARY KEY,
+    user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title                TEXT NOT NULL DEFAULT 'محادثة جديدة',
+    symbol               TEXT,
+    interval             TEXT,
+    language             TEXT NOT NULL DEFAULT 'ar',
+    created_at           BIGINT NOT NULL,
+    updated_at           BIGINT NOT NULL,
+    last_message_preview TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_chats_user
+    ON agent_chats (user_id, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS agent_chat_messages (
+    id                TEXT PRIMARY KEY,
+    chat_id           TEXT NOT NULL REFERENCES agent_chats(id) ON DELETE CASCADE,
+    user_id           INTEGER NOT NULL,
+    role              TEXT NOT NULL,
+    content           TEXT NOT NULL,
+    result_json       TEXT,
+    recommendation_id TEXT,
+    analysis_id       TEXT,
+    symbol            TEXT,
+    interval          TEXT,
+    created_at        BIGINT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat
+    ON agent_chat_messages (chat_id, created_at);
 `;
 
 async function dropLegacyBotAndScalpTablesPg(client: PoolClient): Promise<void> {

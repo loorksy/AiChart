@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentActivityEvent,
   AgentChartContext,
@@ -20,17 +20,35 @@ export interface AgentChatMessage {
   options?: AgentOption[];
 }
 
+/** Persisted-message payload handed to the chat-history store on each turn. */
+export interface AgentPersistPayload {
+  role: "user" | "assistant";
+  content: string;
+  result?: AgentFinalResult;
+  recommendationId?: string;
+  analysisId?: string;
+  symbol?: string;
+  interval?: string;
+}
+
 export interface UseSmartChartAgentOptions {
   symbol: string;
   interval: string;
   layoutId?: string;
   dataSource?: "oanda" | "ea";
+  /** Chat/session id — also used as the agent sessionId so recommendation
+   *  memory is scoped per chat. When omitted, an ephemeral id is used. */
+  chatId?: string;
+  /** Messages loaded from history to hydrate this chat on mount. */
+  initialMessages?: AgentChatMessage[];
   getVisibleRange?: () => { from: number; to: number } | undefined;
   getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
   getDrawings?: () => AgentChartContext["drawings"] | undefined;
   getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
   /** Deliver the agent's drawings to the chart. */
   onResult?: (result: AgentFinalResult) => void;
+  /** Persist a user/assistant message to chat history (fire-and-forget). */
+  onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
 }
 
 function uuid(): string {
@@ -44,19 +62,26 @@ function uuid(): string {
  * Supports mid-run cancellation via AbortController.
  */
 export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
-  const [messages, setMessages] = useState<AgentChatMessage[]>([]);
+  const [messages, setMessages] = useState<AgentChatMessage[]>(
+    () => opts.initialMessages ?? [],
+  );
   const [activityEvents, setActivityEvents] = useState<AgentActivityEvent[]>([]);
   const [currentTicker, setCurrentTicker] = useState<AgentTickerItem | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const sessionIdRef = useRef<string>(uuid());
+  const sessionIdRef = useRef<string>(opts.chatId ?? uuid());
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setCurrentTicker(null);
     setRunning(false);
+  }, []);
+
+  // Abort any in-flight stream when the hook unmounts (e.g. switching chats).
+  useEffect(() => {
+    return () => abortRef.current?.abort();
   }, []);
 
   const sendMessage = useCallback(
@@ -68,6 +93,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const chatId = opts.chatId ?? sessionIdRef.current;
+
       setMessages((prev) => [
         ...prev,
         { id: uuid(), role: "user", content: text },
@@ -75,6 +102,14 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       setActivityEvents([]);
       setError(null);
       setRunning(true);
+
+      // Persist the user turn (fire-and-forget — never blocks streaming).
+      opts.onPersistMessage?.(chatId, {
+        role: "user",
+        content: text,
+        symbol: opts.symbol,
+        interval: opts.interval,
+      });
 
       const chartContext: AgentChartContext = {
         symbol: opts.symbol,
@@ -93,7 +128,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
-            sessionId: sessionIdRef.current,
+            sessionId: chatId,
             chartContext,
           }),
           signal: controller.signal,
@@ -160,6 +195,17 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               // Only the final event delivers drawings to the chart. Ticker and
               // activity events NEVER touch the chart.
               opts.onResult?.(result);
+              // Persist the assistant turn with its result + references.
+              opts.onPersistMessage?.(chatId, {
+                role: "assistant",
+                content: result.summary,
+                result,
+                recommendationId:
+                  result.recommendationId ?? result.activeRecommendation?.id,
+                analysisId: result.analysisId,
+                symbol: opts.symbol,
+                interval: opts.interval,
+              });
             } else if (eventName === "error") {
               const msg =
                 (data as { error?: string }).error ?? "حدث خطأ في الوكيل.";

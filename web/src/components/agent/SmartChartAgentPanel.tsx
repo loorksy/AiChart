@@ -2,7 +2,11 @@
 
 import { useImperativeHandle, forwardRef } from "react";
 import type { AgentChartContext, AgentFinalResult } from "@/lib/agent/types";
-import { useSmartChartAgent } from "@/hooks/useSmartChartAgent";
+import {
+  useSmartChartAgent,
+  type AgentChatMessage,
+  type AgentPersistPayload,
+} from "@/hooks/useSmartChartAgent";
 import {
   ANALYZE_QUICK_PROMPT,
   NEWS_QUICK_PROMPT,
@@ -38,11 +42,16 @@ interface Props {
   interval: string;
   layoutId?: string;
   dataSource?: "oanda" | "ea";
+  /** Active chat/session id (also the agent sessionId for recommendation memory). */
+  chatId?: string;
+  /** Messages loaded from history to hydrate this chat. */
+  initialMessages?: AgentChatMessage[];
   getVisibleRange?: () => { from: number; to: number } | undefined;
   getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
   getDrawings?: () => AgentChartContext["drawings"] | undefined;
   getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
   onResult?: (result: AgentFinalResult) => void;
+  onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
   onClose?: () => void;
 }
 
@@ -54,11 +63,14 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       interval,
       layoutId,
       dataSource,
+      chatId,
+      initialMessages,
       getVisibleRange,
       getLatestCandle,
       getDrawings,
       getRecommendation,
       onResult,
+      onPersistMessage,
       onClose,
     },
     ref,
@@ -76,11 +88,14 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         interval,
         layoutId,
         dataSource,
+        chatId,
+        initialMessages,
         getVisibleRange,
         getLatestCandle,
         getDrawings,
         getRecommendation,
         onResult,
+        onPersistMessage,
       });
 
     useImperativeHandle(

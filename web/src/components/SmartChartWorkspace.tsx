@@ -24,6 +24,8 @@ import {
   SmartChartAgentPanel,
   type SmartChartAgentHandle,
 } from "@/components/agent/SmartChartAgentPanel";
+import { AgentChatSidebar } from "@/components/agent/AgentChatSidebar";
+import { useChatSessions } from "@/hooks/useChatSessions";
 import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { useAccountCapital } from "@/hooks/useAccountCapital";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
@@ -74,6 +76,7 @@ export function SmartChartWorkspace({
   const agentRef = useRef<SmartChartAgentHandle>(null);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [mobilePane, setMobilePane] = useState<"chart" | "chat">("chart");
+  const chatEnabled = smartAgentEnabled && !guest;
 
   const router = useRouter();
 
@@ -476,6 +479,12 @@ export function SmartChartWorkspace({
     handleClearLayers,
   ]);
 
+  const chat = useChatSessions({
+    enabled: chatEnabled,
+    symbol,
+    interval,
+  });
+
   const showMobileChat =
     smartAgentEnabled && agentPanelOpen && !guest && mobilePane === "chat";
   const chartPaneClass = showMobileChat
@@ -542,11 +551,14 @@ export function SmartChartWorkspace({
         {smartAgentEnabled && agentPanelOpen && !guest && (
           <div className={agentPaneClass}>
             <SmartChartAgentPanel
+              key={chat.activeChatId ?? "new"}
               ref={agentRef}
               symbol={symbol}
               interval={interval}
               layoutId={layoutId}
               dataSource={dataSource}
+              chatId={chat.activeChatId ?? undefined}
+              initialMessages={chat.activeMessages}
               getVisibleRange={() => chartRef.current?.visibleRange() ?? undefined}
               getLatestCandle={() => chartRef.current?.latestCandle() ?? undefined}
               getDrawings={() => drawings}
@@ -563,7 +575,20 @@ export function SmartChartWorkspace({
                   : undefined
               }
               onResult={handleAgentResult}
+              onPersistMessage={chat.persistMessage}
               onClose={() => setAgentPanelOpen(false)}
+            />
+          </div>
+        )}
+
+        {smartAgentEnabled && agentPanelOpen && !guest && (
+          <div className="hidden w-[240px] shrink-0 md:block">
+            <AgentChatSidebar
+              sessions={chat.sessions}
+              activeChatId={chat.activeChatId}
+              onSelectChat={chat.selectChat}
+              onNewChat={() => void chat.newChat()}
+              busy={!chat.ready}
             />
           </div>
         )}
