@@ -35,6 +35,16 @@ describe("i18n core", () => {
     assert.equal(t("en", "agent.error"), "Something went wrong");
   });
 
+  it("has the Parts 10-13/19 layout labels in both dictionaries", () => {
+    assert.equal(t("ar", "layout.chart"), "الشارت");
+    assert.equal(t("en", "layout.chart"), "Chart");
+    assert.equal(t("ar", "layout.chat"), "الشات");
+    assert.equal(t("en", "layout.chat"), "Chat");
+    assert.equal(t("ar", "layout.mt_connected"), "MT متصل");
+    assert.equal(t("en", "layout.mt_disconnected"), "MT disconnected");
+    assert.equal(t("ar", "layout.resize_chat"), "تغيير حجم الشات");
+  });
+
   it("falls back safely for a missing key (returns the key)", () => {
     assert.equal(t("ar", "this.key.does.not.exist"), "this.key.does.not.exist");
     assert.equal(t("en", "this.key.does.not.exist"), "this.key.does.not.exist");

@@ -45,7 +45,6 @@ interface Props {
   getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
   onResult?: (result: AgentFinalResult) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
-  onClose?: () => void;
 }
 
 /** Docked, chart-connected Smart Chart Agent chat — one visible agent. */
@@ -64,7 +63,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       getRecommendation,
       onResult,
       onPersistMessage,
-      onClose,
     },
     ref,
   ) {
@@ -105,26 +103,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         className="flex h-full min-h-0 w-full flex-col bg-card"
         dir={dir}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-3 py-2">
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              {t("agent.title")}
-            </p>
-            <p className="text-[11px] text-muted-foreground" dir="ltr">
-              {symbol} · {interval}
-            </p>
-          </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-              aria-label={t("agent.close")}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
+        {/* No fixed agent header bar — the chat panel is clean. Symbol/interval
+            live in the chart controls, not duplicated above the chat. */}
         <div className="flex shrink-0 gap-2 border-b border-border/60 px-3 py-2">
           <button
             onClick={() => void sendMessage(ANALYZE_QUICK_PROMPT)}

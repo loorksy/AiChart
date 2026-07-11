@@ -273,6 +273,13 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         await loadTvScript();
         if (cancelled || !window.TradingView?.widget) return;
 
+        // Manual drawing tools are desktop-only: on mobile the left drawing
+        // toolbar is removed entirely (existing drawings still render; the
+        // agent can still draw via chat). Computed once at mount.
+        const isMobile =
+          typeof window !== "undefined" &&
+          window.matchMedia("(max-width: 767px)").matches;
+
         const options: ChartingLibraryWidgetOptions = {
           container: el,
           library_path: LIBRARY_PATH,
@@ -292,8 +299,14 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             "use_localstorage_for_settings",
             "header_saveload",
             "popup_hints",
+            // Clean chart top bar: no indicators / compare clutter. Symbol,
+            // timeframe, and screenshot controls stay (TV-native).
+            "header_indicators",
+            "header_compare",
+            // Manual drawing toolbar hidden on mobile only.
+            ...(isMobile ? ["left_toolbar"] : []),
           ],
-          enabled_features: ["hide_left_toolbar_by_default"],
+          enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
           overrides: {
             "paneProperties.background": "#0f1115",
             "paneProperties.backgroundType": "solid",

@@ -115,4 +115,15 @@ export const ar: Record<TranslationKey, string> = {
 
   "language.arabic": "العربية",
   "language.english": "English",
+
+  // --- Parts 10-13/19: layout shell ---
+  "layout.chart": "الشارت",
+  "layout.chat": "الشات",
+  "layout.show_chat": "عرض الشات",
+  "layout.show_chart": "عرض الشارت",
+  "layout.resize_chat": "تغيير حجم الشات",
+  "layout.screenshot": "لقطة شاشة",
+  "layout.mt_connected": "MT متصل",
+  "layout.mt_disconnected": "MT غير متصل",
 };
+

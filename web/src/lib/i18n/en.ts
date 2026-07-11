@@ -116,6 +116,16 @@ export const en = {
 
   "language.arabic": "العربية",
   "language.english": "English",
+
+  // --- Parts 10-13/19: layout shell ---
+  "layout.chart": "Chart",
+  "layout.chat": "Chat",
+  "layout.show_chat": "Show chat",
+  "layout.show_chart": "Show chart",
+  "layout.resize_chat": "Resize chat",
+  "layout.screenshot": "Screenshot",
+  "layout.mt_connected": "MT connected",
+  "layout.mt_disconnected": "MT disconnected",
 } as const;
 
 export type TranslationKey = keyof typeof en;

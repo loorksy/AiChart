@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -27,6 +35,13 @@ import {
 import { AgentChatSidebar } from "@/components/agent/AgentChatSidebar";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { useLocale } from "@/hooks/useLocale";
+import {
+  DEFAULT_MOBILE_PANE,
+  clampChatWidth,
+  loadChatWidth,
+  saveChatWidth,
+  type MobilePane,
+} from "@/lib/layout/chatLayout";
 import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { useAccountCapital } from "@/hooks/useAccountCapital";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
@@ -75,11 +90,14 @@ export function SmartChartWorkspace({
 }) {
   const chartRef = useRef<TvChartHandle>(null);
   const agentRef = useRef<SmartChartAgentHandle>(null);
-  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
-  const [mobilePane, setMobilePane] = useState<"chart" | "chat">("chart");
+  const [mobilePane, setMobilePane] = useState<MobilePane>(DEFAULT_MOBILE_PANE);
   const chatEnabled = smartAgentEnabled && !guest;
 
+  const { locale, t, dir } = useLocale();
   const router = useRouter();
+
+  // Desktop chat-panel width (persisted, clamped). Not used on mobile.
+  const [chatWidth, setChatWidth] = useState<number>(() => loadChatWidth());
 
   const market: MarketType = "forex";
 
@@ -366,7 +384,6 @@ export function SmartChartWorkspace({
       return;
     }
     if (smartAgentEnabled) {
-      setAgentPanelOpen(true);
       setMobilePane("chat");
       // Defer so the panel mounts before the imperative call.
       setTimeout(() => agentRef.current?.quickAnalyze(), 0);
@@ -401,8 +418,21 @@ export function SmartChartWorkspace({
   const hasLayers =
     drawings.length > 0 || overlays.length > 0 || recommendation != null;
 
-  // Platform buttons INSIDE the TradingView header (item: no separate layer).
+  // Platform buttons INSIDE the TradingView header (no separate layer).
   const headerActions = useMemo<TvHeaderAction[]>(() => {
+    const mtAction: TvHeaderAction = {
+      id: "mt",
+      text: forexOnline ? "MT ✅" : "MT ⚠️",
+      title: forexOnline ? t("layout.mt_connected") : t("layout.mt_disconnected"),
+      color: forexOnline ? "#71717a" : "#f59e0b",
+      onClick: () => router.push("/console/connect"),
+    };
+    // Clean chart top bar in agent mode: analysis lives in chat, trades/
+    // recommendations in the sidebar. Only the MT status stays (plus the
+    // TV-native symbol / timeframe / screenshot controls).
+    if (chatEnabled) {
+      return [mtAction];
+    }
     const actions: TvHeaderAction[] = [
       {
         id: "analyze",
@@ -420,17 +450,6 @@ export function SmartChartWorkspace({
         onClick: handleAnalyzeClick,
       },
     ];
-    if (!guest && smartAgentEnabled) {
-      actions.push({
-        id: "agent",
-        text: "💬 الوكيل",
-        title: "فتح محادثة الوكيل الذكي للشارت",
-        onClick: () => {
-          setAgentPanelOpen((v) => !v);
-          setMobilePane("chat");
-        },
-      });
-    }
     if (!guest) {
       if (hasLayers) {
         actions.push({
@@ -464,6 +483,8 @@ export function SmartChartWorkspace({
     }
     return actions;
   }, [
+    chatEnabled,
+    t,
     guest,
     isAnalyzing,
     creditsRemaining,
@@ -475,12 +496,10 @@ export function SmartChartWorkspace({
     capital.label,
     forexOnline,
     router,
-    smartAgentEnabled,
     handleAnalyzeClick,
     handleClearLayers,
   ]);
 
-  const { locale } = useLocale();
   const chat = useChatSessions({
     enabled: chatEnabled,
     symbol,
@@ -488,14 +507,33 @@ export function SmartChartWorkspace({
     locale,
   });
 
-  const showMobileChat =
-    smartAgentEnabled && agentPanelOpen && !guest && mobilePane === "chat";
-  const chartPaneClass = showMobileChat
-    ? "relative hidden min-h-0 flex-1 overflow-hidden md:block"
-    : "relative min-h-0 flex-1 overflow-hidden";
-  const agentPaneClass = showMobileChat
-    ? "flex min-h-0 flex-1 border-r border-border/60 md:block md:w-[360px] md:shrink-0"
-    : "hidden w-[360px] shrink-0 border-r border-border/60 md:block";
+  // Mobile shows exactly one pane (Chart or Chat); desktop shows both.
+  const showMobileChat = chatEnabled && mobilePane === "chat";
+  const chartPaneClass = `relative min-h-0 flex-1 overflow-hidden ${
+    showMobileChat ? "hidden md:block" : "block"
+  }`;
+  // Chat: full width on mobile (when its tab is active), fixed persisted width
+  // on desktop. Sits on the right (last column, dir="ltr" row) in both locales.
+  const chatPaneClass = `flex min-h-0 w-full flex-col border-border/60 md:w-[var(--chat-w)] md:shrink-0 ${
+    mobilePane === "chart" ? "hidden md:flex" : "flex"
+  }`;
+
+  // Desktop chat resize: chat is the right column, so dragging the handle left
+  // widens it. Persists on release.
+  const startChatResize = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = chatWidth;
+    const onMove = (ev: PointerEvent) =>
+      setChatWidth(clampChatWidth(startW + (startX - ev.clientX)));
+    const onUp = (ev: PointerEvent) => {
+      saveChatWidth(clampChatWidth(startW + (startX - ev.clientX)));
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
@@ -511,7 +549,23 @@ export function SmartChartWorkspace({
         </p>
       )}
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div
+        className="flex min-h-0 flex-1 overflow-hidden"
+        dir="ltr"
+        style={{ "--chat-w": `${chatWidth}px` } as CSSProperties}
+      >
+        {chatEnabled && (
+          <div className="hidden w-[240px] shrink-0 md:block">
+            <AgentChatSidebar
+              sessions={chat.sessions}
+              activeChatId={chat.activeChatId}
+              onSelectChat={chat.selectChat}
+              onNewChat={() => void chat.newChat()}
+              busy={!chat.ready}
+            />
+          </div>
+        )}
+
         <div className={chartPaneClass}>
           {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
               setResolution) — never remount, so drawings and chart state survive. */}
@@ -551,8 +605,18 @@ export function SmartChartWorkspace({
           />
         </div>
 
-        {smartAgentEnabled && agentPanelOpen && !guest && (
-          <div className={agentPaneClass}>
+        {chatEnabled && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t("layout.resize_chat")}
+            onPointerDown={startChatResize}
+            className="hidden w-1 shrink-0 cursor-col-resize bg-border/40 hover:bg-primary/50 md:block"
+          />
+        )}
+
+        {chatEnabled && (
+          <div className={chatPaneClass}>
             <SmartChartAgentPanel
               key={chat.activeChatId ?? "new"}
               ref={agentRef}
@@ -579,28 +643,19 @@ export function SmartChartWorkspace({
               }
               onResult={handleAgentResult}
               onPersistMessage={chat.persistMessage}
-              onClose={() => setAgentPanelOpen(false)}
-            />
-          </div>
-        )}
-
-        {smartAgentEnabled && agentPanelOpen && !guest && (
-          <div className="hidden w-[240px] shrink-0 md:block">
-            <AgentChatSidebar
-              sessions={chat.sessions}
-              activeChatId={chat.activeChatId}
-              onSelectChat={chat.selectChat}
-              onNewChat={() => void chat.newChat()}
-              busy={!chat.ready}
             />
           </div>
         )}
       </div>
 
-      {smartAgentEnabled && agentPanelOpen && !guest && (
-        <div className="grid shrink-0 grid-cols-2 border-t border-border/60 bg-card p-1 md:hidden">
+      {chatEnabled && (
+        <div
+          dir={dir}
+          className="grid shrink-0 grid-cols-2 border-t border-border/60 bg-card p-1 md:hidden"
+        >
           <button
             type="button"
+            aria-pressed={mobilePane === "chart"}
             onClick={() => setMobilePane("chart")}
             className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold ${
               mobilePane === "chart"
@@ -609,10 +664,11 @@ export function SmartChartWorkspace({
             }`}
           >
             <CandlestickChart className="h-4 w-4" />
-            الشارت
+            {t("layout.chart")}
           </button>
           <button
             type="button"
+            aria-pressed={mobilePane === "chat"}
             onClick={() => setMobilePane("chat")}
             className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold ${
               mobilePane === "chat"
@@ -621,7 +677,7 @@ export function SmartChartWorkspace({
             }`}
           >
             <MessageSquare className="h-4 w-4" />
-            الشات
+            {t("layout.chat")}
           </button>
         </div>
       )}
