@@ -103,6 +103,9 @@ export const ar: Record<TranslationKey, string> = {
   "agent.needs_confirmation": "تحتاج الصفقة تأكيدك قبل التنفيذ",
   "agent.account_live": "حساب LIVE",
   "agent.account_demo": "محاكاة/ديمو",
+  "agent.processing": "جاري المعالجة",
+  "agent.run_details": "تفاصيل التنفيذ",
+  "agent.error": "حدث خطأ",
 
   "decision.buy": "شراء",
   "decision.sell": "بيع",

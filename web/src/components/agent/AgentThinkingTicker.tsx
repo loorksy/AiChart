@@ -15,10 +15,7 @@ export function AgentThinkingTicker({
   if (!item || !item.text.trim()) return null;
 
   return (
-    <div
-      className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
-      dir="rtl"
-    >
+    <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
       <span>{stripTrailingDots(item.text)}</span>
       <span className="inline-flex w-5 overflow-hidden">

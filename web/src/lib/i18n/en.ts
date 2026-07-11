@@ -104,6 +104,9 @@ export const en = {
   "agent.needs_confirmation": "This trade needs your confirmation before execution",
   "agent.account_live": "LIVE account",
   "agent.account_demo": "demo / simulation",
+  "agent.processing": "Processing",
+  "agent.run_details": "Run details",
+  "agent.error": "Something went wrong",
 
   "decision.buy": "Buy",
   "decision.sell": "Sell",

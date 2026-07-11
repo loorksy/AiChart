@@ -8,16 +8,27 @@ import type {
   AgentOption,
 } from "@/lib/agent/types";
 import type { AgentTickerItem } from "@/lib/agent/ticker/types";
+import {
+  appendUserAndPending,
+  applyFinal,
+  applyTicker,
+  dropPending,
+} from "@/hooks/agentChatReducer";
 
 export interface AgentChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   result?: AgentFinalResult;
-  /** Meaningful activity captured during this turn — kept in history. */
+  /** Meaningful activity captured during this turn — kept in memory for the
+   *  optional "run details" toggle; never rendered as a timeline by default. */
   activityEvents?: AgentActivityEvent[];
-  /** Clickable follow-up options offered with this reply. */
+  /** Clickable follow-up suggestions offered with this reply. */
   options?: AgentOption[];
+  /** A temporary assistant bubble shown while the agent runs. Not persisted. */
+  pending?: boolean;
+  /** Live thinking-ticker line shown inside the pending bubble. */
+  ticker?: AgentTickerItem | null;
 }
 
 /** Persisted-message payload handed to the chat-history store on each turn. */
@@ -96,11 +107,14 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       abortRef.current = controller;
 
       const chatId = opts.chatId ?? sessionIdRef.current;
+      // A temporary assistant bubble hosts the live ticker while the run is in
+      // flight; the final event replaces it in place (same id → no duplicate).
+      const pendingId = uuid();
+      let finalized = false;
 
-      setMessages((prev) => [
-        ...prev,
-        { id: uuid(), role: "user", content: text },
-      ]);
+      setMessages((prev) =>
+        appendUserAndPending(prev, { id: uuid(), content: text }, pendingId),
+      );
       setActivityEvents([]);
       setError(null);
       setRunning(true);
@@ -170,28 +184,30 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               continue;
             }
             if (eventName === "ticker") {
-              // UI-only: one changing line while running; never stored in history.
-              setCurrentTicker(data as AgentTickerItem);
+              // UI-only: drives the pending bubble's line; never stored in history.
+              const item = data as AgentTickerItem;
+              setCurrentTicker(item);
+              setMessages((prev) => applyTicker(prev, pendingId, item));
             } else if (eventName === "activity") {
               // Live stream only — the server already filtered to visible work.
               setActivityEvents((prev) => [...prev, data as AgentActivityEvent]);
             } else if (eventName === "final") {
               const result = data as AgentFinalResult;
               const turnActivity = result.activityEvents ?? [];
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: uuid(),
-                  role: "assistant",
+              finalized = true;
+              // Replace the pending bubble in place — no duplicate assistant
+              // message, and the temporary ticker text is discarded.
+              setMessages((prev) =>
+                applyFinal(prev, pendingId, {
                   content: result.summary,
                   result,
-                  // Persist meaningful activity into history so it doesn't vanish.
+                  // Kept only for the optional run-details toggle.
                   activityEvents: turnActivity.filter(
                     (e) => e.visible !== false && e.message.trim().length > 0,
                   ),
                   options: result.options ?? [],
-                },
-              ]);
+                }),
+              );
               // Clear the live stream + ticker — the run is over.
               setActivityEvents([]);
               setCurrentTicker(null);
@@ -228,6 +244,11 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         if (abortRef.current === controller) abortRef.current = null;
         setCurrentTicker(null);
         setRunning(false);
+        // No final arrived (error / cancel / dropped stream) → drop the pending
+        // bubble so it never gets stuck showing a ticker.
+        if (!finalized) {
+          setMessages((prev) => dropPending(prev, pendingId));
+        }
       }
     },
     [opts, running],

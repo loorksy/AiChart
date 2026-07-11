@@ -71,8 +71,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
     const { t, dir, locale } = useLocale();
     const {
       messages,
-      activityEvents,
-      currentTicker,
       running,
       error,
       sendMessage,
@@ -160,11 +158,19 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   : "mr-auto max-w-[95%] rounded-lg bg-muted/50 px-3 py-2 text-sm text-foreground"
               }
             >
-              {m.role === "assistant" && m.activityEvents?.length ? (
-                <div className="mb-2">
-                  <AgentActivityTimeline events={m.activityEvents} />
-                </div>
-              ) : null}
+              {/* Temporary assistant bubble: live thinking ticker while the run
+                  is in flight. Replaced in place by the final answer. */}
+              {m.pending ? (
+                m.ticker ? (
+                  <AgentThinkingTicker item={m.ticker} />
+                ) : (
+                  <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                    <span>{t("agent.processing")}</span>
+                  </div>
+                )
+              ) : (
+                <>
               {m.role === "assistant" && m.result && (
                 <div className="mb-1 flex items-center gap-2 text-[11px]">
                   <span
@@ -213,7 +219,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                       key={option.id}
                       onClick={() => void sendMessage(option.prompt)}
                       disabled={running}
-                      className="rounded-md border border-border/60 bg-background px-2 py-1 text-right text-xs hover:bg-muted disabled:opacity-50"
+                      className="rounded-md border border-border/60 bg-background px-2 py-1 text-start text-xs hover:bg-muted disabled:opacity-50"
                     >
                       {index + 1}. {option.label}
                     </button>
@@ -236,10 +242,22 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   </p>
                 </div>
               )}
+              {/* Optional, collapsed-by-default run details — activity is kept
+                  for debugging but never shown as a noisy timeline by default. */}
+              {m.role === "assistant" && m.activityEvents?.length ? (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[11px] text-muted-foreground/70">
+                    {t("agent.run_details")}
+                  </summary>
+                  <div className="mt-1">
+                    <AgentActivityTimeline events={m.activityEvents} />
+                  </div>
+                </details>
+              ) : null}
+                </>
+              )}
             </div>
           ))}
-
-          {running && <AgentActivityTimeline events={activityEvents} live />}
 
           {error && (
             <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
@@ -247,8 +265,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             </p>
           )}
         </div>
-
-        {running && <AgentThinkingTicker item={currentTicker} />}
 
         <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} />
       </div>

@@ -23,6 +23,7 @@ import {
   clearOptions,
 } from "@/lib/agent/sessionOptions";
 import { routeIntent } from "@/lib/agent/intentRouter";
+import { generateAgentSuggestions } from "@/lib/agent/suggestions/generateAgentSuggestions";
 import { generateTickerPlan } from "@/lib/agent/ticker/generateTickerPlan";
 import { streamTicker } from "@/lib/agent/ticker/streamTicker";
 import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
@@ -364,11 +365,24 @@ export async function POST(req: NextRequest) {
             metadata: { sessionId },
           });
 
+          // Dynamic, model-generated follow-up suggestions for THIS turn/state.
+          // No static fallback: a failure yields [] and the UI shows nothing.
+          const suggestions = await generateAgentSuggestions({
+            locale: body.locale ?? "ar",
+            userMessage: resolvedMessage,
+            result,
+            symbol: body.chartContext?.symbol,
+            interval: body.chartContext?.interval,
+            activeRecommendation: result.activeRecommendation,
+            maxSuggestions: 4,
+          }).catch(() => []);
+
           // Stop the ticker the moment the final result is ready.
           done = true;
 
-          if (result.options?.length) {
-            rememberOptions(sessionId, result.options);
+          // Number-reply resolver targets the suggestions actually shown.
+          if (suggestions.length) {
+            rememberOptions(sessionId, suggestions);
           } else {
             clearOptions(sessionId);
           }
@@ -377,7 +391,9 @@ export async function POST(req: NextRequest) {
             ...result,
             sessionId,
             activityEvents,
-            options: result.options,
+            // Replace static contextual options with the dynamic suggestions.
+            options: suggestions,
+            suggestions,
             // Accurate ticker state in dev diagnostics.
             debugDecisionFlow: result.debugDecisionFlow
               ? { ...result.debugDecisionFlow, ...tickerDebug }

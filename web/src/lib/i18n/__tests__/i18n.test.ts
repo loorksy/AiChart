@@ -26,6 +26,15 @@ describe("i18n core", () => {
     assert.equal(t("en", "agent.send"), "Send");
   });
 
+  it("has the Parts 7-9 labels in both dictionaries", () => {
+    assert.equal(t("ar", "agent.run_details"), "تفاصيل التنفيذ");
+    assert.equal(t("en", "agent.run_details"), "Run details");
+    assert.equal(t("ar", "agent.processing"), "جاري المعالجة");
+    assert.equal(t("en", "agent.processing"), "Processing");
+    assert.equal(t("ar", "agent.error"), "حدث خطأ");
+    assert.equal(t("en", "agent.error"), "Something went wrong");
+  });
+
   it("falls back safely for a missing key (returns the key)", () => {
     assert.equal(t("ar", "this.key.does.not.exist"), "this.key.does.not.exist");
     assert.equal(t("en", "this.key.does.not.exist"), "this.key.does.not.exist");
