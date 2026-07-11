@@ -33,7 +33,11 @@ import {
   type SmartChartAgentHandle,
 } from "@/components/agent/SmartChartAgentPanel";
 import { AgentChatSidebar } from "@/components/agent/AgentChatSidebar";
+import { AgentVoiceButton } from "@/components/agent/AgentVoiceButton";
+import { AgentVoicePanel } from "@/components/agent/AgentVoicePanel";
 import { useChatSessions } from "@/hooks/useChatSessions";
+import { useAgentVoiceSession } from "@/hooks/useAgentVoiceSession";
+import { useMe } from "@/hooks/useMe";
 import { useLocale } from "@/hooks/useLocale";
 import {
   DEFAULT_MOBILE_PANE,
@@ -507,6 +511,27 @@ export function SmartChartWorkspace({
     locale,
   });
 
+  // Live voice conversation. The realtime model is only the speech interface —
+  // every final transcript is routed through the SAME agent flow as typed text
+  // (agentRef.sendMessage with inputMode "voice"), and the agent's public final
+  // answer is spoken back. Voice never bypasses the agent's authority.
+  const me = useMe();
+  const voice = useAgentVoiceSession({
+    chatId: chat.activeChatId ?? undefined,
+    locale,
+    symbol,
+    interval,
+    userId: me.data?.user.id ?? 0,
+    enabled: chatEnabled && Boolean(chat.activeChatId),
+    sendAgentMessage: (text) =>
+      agentRef.current?.sendMessage(text, { inputMode: "voice" }),
+  });
+  // Stop any live voice session when switching chats (rebind safely).
+  useEffect(() => {
+    if (voice.active) void voice.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.activeChatId]);
+
   // Mobile shows exactly one pane (Chart or Chat); desktop shows both.
   const showMobileChat = chatEnabled && mobilePane === "chat";
   const chartPaneClass = `relative min-h-0 flex-1 overflow-hidden ${
@@ -649,7 +674,24 @@ export function SmartChartWorkspace({
                   : undefined
               }
               onResult={handleAgentResult}
+              onVoiceFinal={voice.handleAgentFinal}
               onPersistMessage={chat.persistMessage}
+              voiceSlot={
+                <div className="shrink-0">
+                  <div className="flex items-center gap-2 border-t border-border/60 px-2 py-1.5">
+                    <AgentVoiceButton
+                      voice={voice}
+                      disabled={!chat.activeChatId}
+                    />
+                    {!voice.active && (
+                      <span className="text-xs text-muted-foreground">
+                        {t("voice.start")}
+                      </span>
+                    )}
+                  </div>
+                  <AgentVoicePanel voice={voice} />
+                </div>
+              }
             />
           </div>
         )}

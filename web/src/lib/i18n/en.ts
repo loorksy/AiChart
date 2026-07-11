@@ -231,6 +231,33 @@ export const en = {
     "That drawing belongs to a different symbol than the chart you're on now. Switch to its symbol first, then I can edit it.",
   "drawing.invalid_price":
     "That price looks off for this chart, so I didn't move anything. Give me a price near the current range and I'll adjust it.",
+
+  // Real-time voice conversation
+  "voice.start": "Start voice conversation",
+  "voice.requesting_permission": "Requesting microphone access",
+  "voice.connecting": "Connecting",
+  "voice.listening": "Listening",
+  "voice.user_speaking": "You are speaking",
+  "voice.thinking": "Lonora is thinking",
+  "voice.speaking": "Lonora is speaking",
+  "voice.muted": "Microphone muted",
+  "voice.reconnecting": "Reconnecting",
+  "voice.end": "End conversation",
+  "voice.mute": "Mute",
+  "voice.unmute": "Unmute",
+  "voice.interrupt": "Interrupt",
+  "voice.reconnect": "Reconnect",
+  "voice.ready": "Voice ready",
+  "voice.stopped": "Conversation ended",
+  "voice.you_said": "You said",
+  "voice.err_mic": "Microphone access failed",
+  "voice.err_unsupported": "Your browser does not support live voice",
+  "voice.err_network": "Connection lost. Trying to reconnect…",
+  "voice.err_credential": "Could not start the voice session. Try again.",
+  "voice.err_provider": "The voice service is unavailable right now.",
+  "voice.err_not_configured": "Voice conversation is not enabled on the server.",
+  "voice.err_generic": "The voice conversation failed. You can keep typing.",
+  "voice.locale_changed": "Language changed — restart the voice session to switch language.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

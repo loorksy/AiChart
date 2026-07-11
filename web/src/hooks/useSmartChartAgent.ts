@@ -40,6 +40,8 @@ export interface AgentPersistPayload {
   analysisId?: string;
   symbol?: string;
   interval?: string;
+  /** How the turn was produced. Voice turns persist as normal text turns. */
+  inputMode?: "text" | "voice";
 }
 
 export interface UseSmartChartAgentOptions {
@@ -64,6 +66,9 @@ export interface UseSmartChartAgentOptions {
   getSelectedDrawingId?: () => string | undefined;
   /** Deliver the agent's drawings to the chart. */
   onResult?: (result: AgentFinalResult) => void;
+  /** Final result of a VOICE-initiated turn — the voice layer speaks its
+   *  public answer. Never fired for typed turns. */
+  onVoiceFinal?: (result: AgentFinalResult) => void;
   /** Apply user-drawing mutations onto the native chart (after the final SSE). */
   applyDrawingMutations?: (
     commands: NonNullable<AgentFinalResult["drawingMutations"]>,
@@ -108,9 +113,10 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   }, []);
 
   const sendMessage = useCallback(
-    async (message: string) => {
+    async (message: string, sendOpts?: { inputMode?: "text" | "voice" }) => {
       const text = message.trim();
       if (!text || running) return;
+      const inputMode = sendOpts?.inputMode ?? "text";
 
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -135,6 +141,7 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         content: text,
         symbol: opts.symbol,
         interval: opts.interval,
+        inputMode,
       });
 
       const chartContext: AgentChartContext = {
@@ -246,7 +253,13 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
                 analysisId: result.analysisId,
                 symbol: opts.symbol,
                 interval: opts.interval,
+                inputMode,
               });
+              // A voice-initiated turn: hand the PUBLIC final answer to the
+              // voice layer to speak. Never activity/debug/reasoning.
+              if (inputMode === "voice") {
+                opts.onVoiceFinal?.(result);
+              }
             } else if (eventName === "error") {
               const msg =
                 (data as { error?: string }).error ?? "حدث خطأ في الوكيل.";

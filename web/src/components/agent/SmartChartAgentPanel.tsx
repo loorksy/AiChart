@@ -1,6 +1,6 @@
 "use client";
 
-import { useImperativeHandle, forwardRef } from "react";
+import { useImperativeHandle, forwardRef, type ReactNode } from "react";
 import type { AgentChartContext, AgentFinalResult } from "@/lib/agent/types";
 import {
   useSmartChartAgent,
@@ -21,7 +21,7 @@ import { trackedRecommendationFromResult } from "@/lib/recommendations/fromAgent
 export interface SmartChartAgentHandle {
   /** Fire the Analyze quick prompt into the chat (used by the header button). */
   quickAnalyze: () => void;
-  sendMessage: (message: string) => void;
+  sendMessage: (message: string, opts?: { inputMode?: "text" | "voice" }) => void;
 }
 
 const DECISION_COLOR: Record<AgentFinalResult["decision"], string> = {
@@ -48,10 +48,13 @@ interface Props {
   getUserDrawings?: () => AgentChartContext["userDrawings"] | undefined;
   getSelectedDrawingId?: () => string | undefined;
   onResult?: (result: AgentFinalResult) => void;
+  onVoiceFinal?: (result: AgentFinalResult) => void;
   applyDrawingMutations?: (
     commands: NonNullable<AgentFinalResult["drawingMutations"]>,
   ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
+  /** Live voice conversation surface, rendered above the chat input. */
+  voiceSlot?: ReactNode;
 }
 
 /** Docked, chart-connected Smart Chart Agent chat — one visible agent. */
@@ -71,8 +74,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       getUserDrawings,
       getSelectedDrawingId,
       onResult,
+      onVoiceFinal,
       applyDrawingMutations,
       onPersistMessage,
+      voiceSlot,
     },
     ref,
   ) {
@@ -98,6 +103,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         getUserDrawings,
         getSelectedDrawingId,
         onResult,
+        onVoiceFinal,
         applyDrawingMutations,
         onPersistMessage,
       });
@@ -106,7 +112,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       ref,
       () => ({
         quickAnalyze: () => void sendMessage(ANALYZE_QUICK_PROMPT),
-        sendMessage: (m: string) => void sendMessage(m),
+        sendMessage: (m: string, o?: { inputMode?: "text" | "voice" }) =>
+          void sendMessage(m, o),
       }),
       [sendMessage],
     );
@@ -268,6 +275,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             </p>
           )}
         </div>
+
+        {voiceSlot}
 
         <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} />
       </div>

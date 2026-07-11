@@ -230,6 +230,33 @@ export const ar: Record<TranslationKey, string> = {
     "هذا الرسم يخص رمزًا مختلفًا عن الشارت الحالي. انتقل إلى رمزه أولًا ثم أستطيع تعديله.",
   "drawing.invalid_price":
     "هذا السعر يبدو غير مناسب لهذا الشارت، لذلك لم أحرّك شيئًا. أعطني سعرًا قريبًا من النطاق الحالي وسأعدّله.",
+
+  // المحادثة الصوتية اللحظية
+  "voice.start": "بدء المحادثة الصوتية",
+  "voice.requesting_permission": "جاري طلب إذن الميكروفون",
+  "voice.connecting": "جاري الاتصال",
+  "voice.listening": "أستمع إليك",
+  "voice.user_speaking": "أنت تتحدث",
+  "voice.thinking": "Lonora تفكر",
+  "voice.speaking": "Lonora تتحدث",
+  "voice.muted": "تم كتم الميكروفون",
+  "voice.reconnecting": "إعادة الاتصال",
+  "voice.end": "إنهاء المحادثة",
+  "voice.mute": "كتم",
+  "voice.unmute": "إلغاء الكتم",
+  "voice.interrupt": "مقاطعة",
+  "voice.reconnect": "إعادة الاتصال",
+  "voice.ready": "الصوت جاهز",
+  "voice.stopped": "انتهت المحادثة",
+  "voice.you_said": "قلت",
+  "voice.err_mic": "تعذّر الوصول إلى الميكروفون",
+  "voice.err_unsupported": "متصفحك لا يدعم المحادثة الصوتية اللحظية",
+  "voice.err_network": "انقطع الاتصال، جارٍ إعادة المحاولة…",
+  "voice.err_credential": "تعذّر بدء الجلسة الصوتية. حاول مرة أخرى.",
+  "voice.err_provider": "الخدمة الصوتية غير متاحة حالياً.",
+  "voice.err_not_configured": "المحادثة الصوتية غير مفعّلة على الخادم.",
+  "voice.err_generic": "تعذّرت المحادثة الصوتية. يمكنك المتابعة بالكتابة.",
+  "voice.locale_changed": "تغيّرت اللغة — أعد تشغيل الجلسة الصوتية لتبديل اللغة.",
 };
 
 
