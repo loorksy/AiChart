@@ -58,8 +58,16 @@ export interface UseSmartChartAgentOptions {
   getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
   getDrawings?: () => AgentChartContext["drawings"] | undefined;
   getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
+  /** Safe serialized user drawings read from the chart for this turn. */
+  getUserDrawings?: () => AgentChartContext["userDrawings"] | undefined;
+  /** The user's currently-selected drawing id (highest-priority "this" hint). */
+  getSelectedDrawingId?: () => string | undefined;
   /** Deliver the agent's drawings to the chart. */
   onResult?: (result: AgentFinalResult) => void;
+  /** Apply user-drawing mutations onto the native chart (after the final SSE). */
+  applyDrawingMutations?: (
+    commands: NonNullable<AgentFinalResult["drawingMutations"]>,
+  ) => void;
   /** Persist a user/assistant message to chat history (fire-and-forget). */
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
 }
@@ -84,6 +92,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string>(opts.chatId ?? uuid());
+  // Idempotency: a mutationId is applied to the chart at most once, ever.
+  const appliedMutationsRef = useRef<Set<string>>(new Set());
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -135,6 +145,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         visibleRange: opts.getVisibleRange?.(),
         latestCandle: opts.getLatestCandle?.(),
         drawings: opts.getDrawings?.(),
+        userDrawings: opts.getUserDrawings?.(),
+        selectedDrawingId: opts.getSelectedDrawingId?.(),
         recommendation: opts.getRecommendation?.(),
       };
 
@@ -214,6 +226,16 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               // Only the final event delivers drawings to the chart. Ticker and
               // activity events NEVER touch the chart.
               opts.onResult?.(result);
+              // Apply user-drawing mutations exactly once (idempotent by id) —
+              // AFTER the final result, never mid-stream.
+              const mutations = result.drawingMutations ?? [];
+              const fresh = mutations.filter(
+                (m) => !appliedMutationsRef.current.has(m.mutationId),
+              );
+              if (fresh.length) {
+                for (const m of fresh) appliedMutationsRef.current.add(m.mutationId);
+                opts.applyDrawingMutations?.(fresh);
+              }
               // Persist the assistant turn with its result + references.
               opts.onPersistMessage?.(chatId, {
                 role: "assistant",

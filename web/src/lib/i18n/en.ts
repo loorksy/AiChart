@@ -207,6 +207,30 @@ export const en = {
   "stats.filter.7d": "7 days",
   "stats.filter.30d": "30 days",
   "stats.filter.all": "All time",
+
+  // User drawings — reading, discussing, modifying, deleting the drawings the
+  // user made by hand on the chart (owner = user; never agent drawings).
+  "drawing.user_drawing": "your drawing",
+  "drawing.selected": "your selected drawing",
+  "drawing.none_found":
+    "I don't see any drawings you've made on the chart right now. Draw a line or zone with the chart tools, then ask me about it.",
+  "drawing.not_found":
+    "I couldn't find the drawing you mean among the ones you've drawn. Select it on the chart or describe it (its price or type) and I'll work with it.",
+  "drawing.ambiguous":
+    "You have more than one drawing that could match. Which one do you mean? {list}",
+  "drawing.clarify": "Which of your drawings do you mean — by price, type, or by selecting it on the chart?",
+  "drawing.updated": "Done — I updated {which}.",
+  "drawing.moved": "Done — I moved {which} to {price}.",
+  "drawing.deleted": "Done — I deleted {which}. I didn't touch any other drawing.",
+  "drawing.deleted_all": "Done — I deleted your {count} drawings. Agent and recommendation drawings were left untouched.",
+  "drawing.cannot_modify":
+    "I couldn't apply that change to {which}. Tell me the exact new price or how much to widen/narrow it and I'll adjust it.",
+  "drawing.wrong_owner":
+    "I can only move or delete the drawings you made yourself — not the agent or recommendation drawings. Ask me to clear the agent drawings separately if that's what you want.",
+  "drawing.wrong_symbol":
+    "That drawing belongs to a different symbol than the chart you're on now. Switch to its symbol first, then I can edit it.",
+  "drawing.invalid_price":
+    "That price looks off for this chart, so I didn't move anything. Give me a price near the current range and I'll adjust it.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

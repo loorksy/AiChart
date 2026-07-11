@@ -629,6 +629,13 @@ export function SmartChartWorkspace({
               getVisibleRange={() => chartRef.current?.visibleRange() ?? undefined}
               getLatestCandle={() => chartRef.current?.latestCandle() ?? undefined}
               getDrawings={() => drawings}
+              getUserDrawings={() => chartRef.current?.getUserDrawings() ?? undefined}
+              getSelectedDrawingId={() =>
+                chartRef.current?.getSelectedUserDrawingId() ?? undefined
+              }
+              applyDrawingMutations={(commands) =>
+                chartRef.current?.applyUserDrawingMutations(commands)
+              }
               getRecommendation={() =>
                 recommendation
                   ? {

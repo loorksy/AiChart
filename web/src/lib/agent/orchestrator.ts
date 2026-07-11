@@ -18,9 +18,11 @@ import {
   isDrawingOnly,
   isDrawActiveRecommendation,
   isScalpRecommendation,
+  isUserDrawingEdit,
   needsMarketContext,
   routeIntent,
 } from "./intentRouter";
+import { handleUserDrawingCommand } from "./drawingCommands/handleUserDrawingCommand";
 import { withTimeout, AGENT_TIMEOUTS } from "./timeout";
 import { buildInformationalResult, buildAgentFallbackResult } from "./fallback";
 import { answerGeneralQuestion } from "./generalAnswer";
@@ -147,6 +149,21 @@ export async function runUnifiedChartAgent(
       ctx: trackedCtx,
       collected,
       userMessage,
+      locale,
+    });
+  }
+
+  // User-drawing understanding / editing (discuss / move / modify / delete /
+  // clarify). This NEVER runs market/risk/news agents and NEVER opens a trade —
+  // it only reads the safe serialized user drawings and returns an answer or a
+  // set of idempotent mutations the client applies after the final SSE. Checked
+  // before explain_chart_drawings because "رأيك في رسمي" references the user's
+  // OWN manual drawing, not the agent's Lonora drawings.
+  if (isUserDrawingEdit(intents)) {
+    return handleUserDrawingCommand({
+      intents,
+      userMessage,
+      chartContext,
       locale,
     });
   }

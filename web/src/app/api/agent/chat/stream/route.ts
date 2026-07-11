@@ -156,6 +156,36 @@ const chartDrawingSchema = z
   })
   .passthrough();
 
+// Safe, bounded transport for user-created drawings read from the chart. Mirrors
+// DRAWING_LIMITS (max 50 drawings, 8 points, label 200) and requires finite
+// numeric prices/times — no raw TradingView objects ever cross this boundary.
+const serializedDrawingPointSchema = z
+  .object({
+    time: z.number().finite().optional(),
+    price: z.number().finite().positive().optional(),
+  })
+  .strip();
+
+const serializedUserDrawingSchema = z
+  .object({
+    id: z.string().min(1).max(80),
+    owner: z.enum(["user", "agent", "recommendation"]).default("user"),
+    type: z.string().min(1).max(60),
+    symbol: z.string().max(20).default(""),
+    interval: z.string().max(8).default(""),
+    points: z.array(serializedDrawingPointSchema).max(8).default([]),
+    priceLevels: z.array(z.number().finite().positive()).max(8).optional(),
+    label: z.string().max(200).optional(),
+    color: z.string().max(40).optional(),
+    lineStyle: z.string().max(20).optional(),
+    visible: z.boolean().optional(),
+    locked: z.boolean().optional(),
+    createdAt: z.number().finite().optional(),
+    updatedAt: z.number().finite().optional(),
+    source: z.enum(["tradingview", "lonora"]).default("tradingview"),
+  })
+  .strip();
+
 const chartRecommendationSchema = z
   .object({
     action: z.enum(["buy", "sell", "wait"]),
@@ -195,6 +225,8 @@ const schema = z.object({
         })
         .optional(),
       drawings: z.array(chartDrawingSchema).max(80).optional(),
+      userDrawings: z.array(serializedUserDrawingSchema).max(50).optional(),
+      selectedDrawingId: z.string().max(80).optional(),
       recommendation: chartRecommendationSchema.optional(),
       dataSource: z.enum(["oanda", "ea"]).optional(),
     })

@@ -178,6 +178,55 @@ const CLEAR_DRAWINGS_PHRASES = [
   "مسح الرسومات",
 ];
 
+/** Words that reference the USER's own manual drawings (not agent drawings). */
+const USER_DRAWING_REF = [
+  "رسمي",
+  "رسومي",
+  "رسوماتي",
+  "رسوماتى",
+  "منطقتي",
+  "خطي",
+  "الخط الذي رسمته",
+  "الخط اللي رسمته",
+  "المنطقة التي رسمتها",
+  "المنطقة اللي رسمتها",
+  "الترند الذي رسمته",
+  "هذا الخط",
+  "هذه المنطقة",
+  "هذا الترند",
+  "هالخط",
+  "هالمنطقة",
+  "my drawing",
+  "my drawings",
+  "my line",
+  "my zone",
+  "my trendline",
+  "my support",
+  "my resistance",
+  "the line i drew",
+  "the zone i drew",
+  "i drew",
+];
+
+const DELETE_WORDS = ["احذف", "امسح", "delete", "remove"];
+const MOVE_WORDS = ["حرّك", "حرك", "انقل", "move"];
+const MODIFY_WORDS = [
+  "عدّل", "عدل", "وسّع", "وسع", "ضيّق", "ضيق",
+  "غيّر مستوى", "غير مستوى", "غيّر الخط", "اربط",
+  "adjust", "resize", "widen", "narrow", "change the level", "change level",
+  "connect",
+];
+const ANALYZE_WITH_DRAWINGS_PHRASES = [
+  "بناءً على رسوماتي",
+  "بناء على رسوماتي",
+  "حلل بناء على رسمي",
+  "على رسوماتي",
+  "using my drawings",
+  "based on my drawings",
+  "with my drawings",
+  "analyze my drawings",
+];
+
 const EXPLAIN_DRAWINGS_PHRASES = [
   "explain drawing",
   "explain drawings",
@@ -262,6 +311,31 @@ export function routeIntent(input: {
   if (hasPhrase(text, TRACK_RECOMMENDATION_PHRASES)) intents.push("track_active_recommendation");
   if (hasPhrase(text, EXPLAIN_RECOMMENDATION_PHRASES)) intents.push("explain_active_recommendation");
   if (hasPhrase(text, EXPLAIN_DRAWINGS_PHRASES)) intents.push("explain_chart_drawings");
+
+  // --- User-drawing understanding / editing (never triggers a trade) ---
+  // "Analyze based on my drawings" runs analysis WITH the user's drawing context.
+  if (hasPhrase(text, ANALYZE_WITH_DRAWINGS_PHRASES)) {
+    intents.push("analyze_with_user_drawings");
+  }
+  const refsUserDrawing = hasAny(text, USER_DRAWING_REF);
+  const editsAgentDrawings = text.includes("الوكيل") || text.includes("agent");
+  if (
+    refsUserDrawing &&
+    !editsAgentDrawings &&
+    !hasAnyIntent(intents, ["analyze_with_user_drawings"])
+  ) {
+    if (hasAny(text, DELETE_WORDS)) intents.push("delete_user_drawing");
+    else if (hasAny(text, MOVE_WORDS)) intents.push("move_user_drawing");
+    else if (hasAny(text, MODIFY_WORDS)) intents.push("modify_user_drawing");
+    else intents.push("discuss_user_drawing");
+  }
+  const editsUserDrawing = hasAnyIntent(intents, [
+    "discuss_user_drawing",
+    "modify_user_drawing",
+    "move_user_drawing",
+    "delete_user_drawing",
+  ]);
+
   // Draw the STORED recommendation — checked before generic draw/trade so it
   // can never fall through to a new Buy/Sell analysis.
   if (hasPhrase(text, DRAW_ACTIVE_RECOMMENDATION_PHRASES)) {
@@ -270,8 +344,10 @@ export function routeIntent(input: {
   if (hasPhrase(text, DRAW_TRENDLINE_PHRASES)) intents.push("draw_trendline");
   if (hasPhrase(text, DRAW_SUPPORT_RESISTANCE_PHRASES)) intents.push("draw_support_resistance");
 
-  if (hasAny(text, EXECUTION_WORDS)) intents.push("trade_execution");
-  if (hasAny(text, MANAGEMENT_WORDS)) intents.push("trade_management");
+  // A user-drawing edit/discuss/delete must never fall through to execution,
+  // management, or a new trade — even though wording like "عدّل" overlaps.
+  if (hasAny(text, EXECUTION_WORDS) && !editsUserDrawing) intents.push("trade_execution");
+  if (hasAny(text, MANAGEMENT_WORDS) && !editsUserDrawing) intents.push("trade_management");
   if (
     hasAny(text, DRAW_WORDS) &&
     !hasAnyIntent(intents, [
@@ -297,6 +373,10 @@ export function routeIntent(input: {
     "track_active_recommendation",
     "explain_active_recommendation",
     "explain_chart_drawings",
+    "discuss_user_drawing",
+    "modify_user_drawing",
+    "move_user_drawing",
+    "delete_user_drawing",
   ];
   const tradeSignal =
     hasAny(text, TRADING_WORDS) || wantsScalp || wantsReanalyze;
@@ -325,10 +405,30 @@ export function isGeneralOnly(intents: AgentIntent[]): boolean {
   return intents.length === 1 && intents[0] === "general_question";
 }
 
+/** A user-drawing discuss/modify/move/delete intent (never a trade). */
+export function isUserDrawingEdit(intents: AgentIntent[]): boolean {
+  return hasAnyIntent(intents, [
+    "discuss_user_drawing",
+    "modify_user_drawing",
+    "move_user_drawing",
+    "delete_user_drawing",
+    "clarify_drawing_reference",
+  ]);
+}
+
+export function isUserDrawingMutation(intents: AgentIntent[]): boolean {
+  return hasAnyIntent(intents, [
+    "modify_user_drawing",
+    "move_user_drawing",
+    "delete_user_drawing",
+  ]);
+}
+
 export function needsMarketContext(intents: AgentIntent[]): boolean {
   return (
     intents.includes("new_trade_analysis") ||
     intents.includes("scalp_recommendation") ||
+    intents.includes("analyze_with_user_drawings") ||
     intents.includes("chart_analysis") ||
     intents.includes("draw_on_chart") ||
     intents.includes("draw_trendline") ||

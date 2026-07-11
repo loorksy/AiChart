@@ -45,7 +45,12 @@ interface Props {
   getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
   getDrawings?: () => AgentChartContext["drawings"] | undefined;
   getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
+  getUserDrawings?: () => AgentChartContext["userDrawings"] | undefined;
+  getSelectedDrawingId?: () => string | undefined;
   onResult?: (result: AgentFinalResult) => void;
+  applyDrawingMutations?: (
+    commands: NonNullable<AgentFinalResult["drawingMutations"]>,
+  ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
 }
 
@@ -63,7 +68,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       getLatestCandle,
       getDrawings,
       getRecommendation,
+      getUserDrawings,
+      getSelectedDrawingId,
       onResult,
+      applyDrawingMutations,
       onPersistMessage,
     },
     ref,
@@ -87,7 +95,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         getLatestCandle,
         getDrawings,
         getRecommendation,
+        getUserDrawings,
+        getSelectedDrawingId,
         onResult,
+        applyDrawingMutations,
         onPersistMessage,
       });
 
