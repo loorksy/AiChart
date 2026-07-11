@@ -536,6 +536,44 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat
     ON agent_chat_messages (chat_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS tracked_recommendations (
+    id                  TEXT PRIMARY KEY,
+    user_id             INTEGER NOT NULL,
+    chat_id             TEXT,
+    analysis_id         TEXT,
+    symbol              TEXT NOT NULL,
+    interval            TEXT NOT NULL,
+    direction           TEXT NOT NULL,
+    entry_type          TEXT NOT NULL,
+    entry               REAL NOT NULL,
+    stop_loss           REAL NOT NULL,
+    targets             TEXT NOT NULL DEFAULT '[]',
+    invalidation_level  REAL,
+    status              TEXT NOT NULL,
+    outcome             TEXT NOT NULL DEFAULT 'pending',
+    setup_type          TEXT,
+    rr                  REAL,
+    created_at          INTEGER NOT NULL,
+    created_candle_time INTEGER NOT NULL,
+    expires_at          INTEGER NOT NULL,
+    triggered_at        INTEGER,
+    tp1_hit_at          INTEGER,
+    tp2_hit_at          INTEGER,
+    tp3_hit_at          INTEGER,
+    sl_hit_at           INTEGER,
+    invalidated_at      INTEGER,
+    cancelled_at        INTEGER,
+    expired_at          INTEGER,
+    price_at_creation   REAL,
+    last_checked_at     INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tracked_recs_user
+    ON tracked_recommendations (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_tracked_recs_outcome
+    ON tracked_recommendations (outcome);
 `;
 
 function migrate(db: Database.Database) {

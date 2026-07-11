@@ -69,6 +69,7 @@ import { hashMarketSnapshot } from "./chartSnapshot";
 import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
+import { createTrackedRecommendation } from "@/lib/recommendations/recommendationStore";
 
 export interface UnifiedAgentInput {
   userMessage: string;
@@ -418,6 +419,32 @@ export async function runUnifiedChartAgent(
   const finalDecision = synth.result;
   const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
 
+  // Scalp mode is stricter: it demands a live session and fresh current-TF data.
+  // Anything less resolves to WAIT (a bad scalp is worse than no scalp).
+  if (
+    isScalpRecommendation(intents) &&
+    (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
+    (!market.freshness.isFresh || !market.marketOpen)
+  ) {
+    return {
+      decision: "action_required",
+      confidence: 0,
+      summary: !market.marketOpen
+        ? "لا أعطي توصية سكالب والسوق خارج جلسة نشطة. السكالب يحتاج سيولة وحركة سعرية حية."
+        : "لا أعطي توصية سكالب لأن بيانات الفريم الحالي ليست حديثة بما يكفي للسكالب. حدّث الشارت ثم أعد الطلب.",
+      keyReasons: [
+        !market.marketOpen
+          ? "السوق مغلق/هادئ — شروط السكالب غير متوفرة."
+          : "شموع الفريم الحالي متأخرة — دقة الدخول السريع غير مضمونة.",
+      ],
+      riskWarnings: ["تم حظر السكالب بسبب شروط الجلسة/الحداثة الصارمة."],
+      recommendation: { action: "wait" },
+      activityEvents: collected,
+      analysisId,
+      options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true, locale }),
+    };
+  }
+
   // HTF / daily freshness gate: a Buy/Sell decision leans on higher-timeframe
   // context, so it must not be issued on stale HTF data. Daily is only required
   // when daily confluence was actually available to the decision (mtf ran).
@@ -612,6 +639,7 @@ export async function runUnifiedChartAgent(
   ) {
     storedRecommendation = await storeFinalRecommendation({
       sessionId,
+      userId: ctx.userId,
       layoutId: chartContext?.layoutId,
       analysisId,
       scalp: isScalpRecommendation(intents),
@@ -898,6 +926,7 @@ async function trackStoredRecommendation(input: {
 
 async function storeFinalRecommendation(input: {
   sessionId: string;
+  userId?: number;
   layoutId?: string;
   analysisId: string;
   scalp?: boolean;
@@ -951,7 +980,7 @@ async function storeFinalRecommendation(input: {
       rec.action === "buy"
         ? `إغلاق شمعة تحت ${rec.stop_loss} يبطل السيناريو.`
         : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`,
-    setupType: candidate?.setupType,
+    setupType: input.scalp ? "scalp" : candidate?.setupType,
     poi: candidate
       ? {
           type: candidate.poi.type,
@@ -970,5 +999,49 @@ async function storeFinalRecommendation(input: {
     priceAtCreation: input.market.currentPrice ?? undefined,
   };
   await rememberActiveRecommendation(active);
+  // Persist a server-side tracked record (monitoring only — never executes).
+  // Best-effort: a storage failure must not break the agent's reply.
+  if (input.userId != null) {
+    await persistTrackedRecommendation(active, input.userId, input.sessionId).catch(
+      () => {},
+    );
+  }
   return active;
+}
+
+/** Map the in-memory recommendation to a persisted tracker record. */
+async function persistTrackedRecommendation(
+  active: ActiveRecommendation,
+  userId: number,
+  chatId: string,
+): Promise<void> {
+  const entryType: "market" | "limit" | "pending" =
+    active.entryType === "market"
+      ? "market"
+      : active.entryType?.includes("limit")
+        ? "limit"
+        : "pending";
+  await createTrackedRecommendation({
+    id: active.id,
+    userId,
+    chatId,
+    analysisId: active.analysisId,
+    symbol: active.symbol,
+    interval: active.interval,
+    direction: active.direction,
+    entryType,
+    entry: active.entry,
+    stopLoss: active.stopLoss,
+    targets: active.targets,
+    invalidationLevel: active.invalidationLevel,
+    status: entryType === "market" ? "triggered" : "pending_entry",
+    outcome: "pending",
+    setupType: active.setupType,
+    rr: active.rr,
+    createdAt: Date.now(),
+    createdCandleTime: active.createdCandleTime ?? active.createdAt,
+    expiresAt: active.expiresAt ?? Date.now() + 4 * 60 * 60 * 1000,
+    triggeredAt: entryType === "market" ? Date.now() : undefined,
+    priceAtCreation: active.priceAtCreation,
+  });
 }

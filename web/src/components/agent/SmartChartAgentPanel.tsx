@@ -15,6 +15,8 @@ import {
 import { AgentActivityTimeline } from "./AgentActivityTimeline";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
+import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
+import { trackedRecommendationFromResult } from "@/lib/recommendations/fromAgentResult";
 
 export interface SmartChartAgentHandle {
   /** Fire the Analyze quick prompt into the chat (used by the header button). */
@@ -166,6 +168,16 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 </div>
               )}
               <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+              {(() => {
+                const tracked = m.result
+                  ? trackedRecommendationFromResult(m.result)
+                  : null;
+                return tracked ? (
+                  <div className="mt-2">
+                    <RecommendationTrackerCard rec={tracked} />
+                  </div>
+                ) : null;
+              })()}
               {m.result?.keyReasons?.length ? (
                 <ul className="mt-1 list-inside list-disc text-[12px] text-muted-foreground">
                   {m.result.keyReasons.map((r, i) => (

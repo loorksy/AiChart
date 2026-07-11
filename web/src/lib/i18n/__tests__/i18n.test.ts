@@ -45,6 +45,23 @@ describe("i18n core", () => {
     assert.equal(t("ar", "layout.resize_chat"), "تغيير حجم الشات");
   });
 
+  it("has the Parts 16-18 tracker + stats labels in both dictionaries", () => {
+    assert.equal(t("ar", "stats.win_rate"), "نسبة النجاح");
+    assert.equal(t("en", "stats.win_rate"), "Win rate");
+    assert.equal(t("ar", "rec.step.entered"), "الدخول");
+    assert.equal(t("en", "rec.entry.market"), "Market Entry");
+    assert.equal(t("ar", "rec.tip.tp1"), "بعد وصول TP1، حرّك وقف الخسارة إلى نقطة الدخول لحماية الصفقة.");
+    assert.equal(t("en", "stats.filter.7d"), "7 days");
+  });
+
+  it("ar and en dictionaries have identical key sets (parity)", async () => {
+    const { ar } = await import("@/lib/i18n/ar");
+    const { en } = await import("@/lib/i18n/en");
+    const arKeys = Object.keys(ar).sort();
+    const enKeys = Object.keys(en).sort();
+    assert.deepEqual(arKeys, enKeys);
+  });
+
   it("falls back safely for a missing key (returns the key)", () => {
     assert.equal(t("ar", "this.key.does.not.exist"), "this.key.does.not.exist");
     assert.equal(t("en", "this.key.does.not.exist"), "this.key.does.not.exist");

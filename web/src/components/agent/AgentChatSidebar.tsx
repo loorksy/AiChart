@@ -1,6 +1,7 @@
 "use client";
 
-import { MessageSquarePlus, MessageSquare } from "lucide-react";
+import { MessageSquarePlus, MessageSquare, Target, BarChart3 } from "lucide-react";
+import Link from "next/link";
 import { BRAND_NAME } from "@/lib/brand";
 import { useLocale } from "@/hooks/useLocale";
 import type { AgentChatSession } from "@/lib/agent/chatHistory/types";
@@ -50,6 +51,23 @@ export function AgentChatSidebar({
           {t("nav.new_chat")}
         </button>
       </div>
+
+      <nav aria-label="Lonora" className="shrink-0 space-y-0.5 p-2">
+        <Link
+          href="/recommendations"
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Target className="h-4 w-4" />
+          {t("nav.recommendations")}
+        </Link>
+        <Link
+          href="/statistics"
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <BarChart3 className="h-4 w-4" />
+          {t("nav.statistics")}
+        </Link>
+      </nav>
 
       <nav
         aria-label={t("nav.chats")}

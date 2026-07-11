@@ -489,6 +489,43 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat
     ON agent_chat_messages (chat_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS tracked_recommendations (
+    id                  TEXT PRIMARY KEY,
+    user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    chat_id             TEXT,
+    analysis_id         TEXT,
+    symbol              TEXT NOT NULL,
+    interval            TEXT NOT NULL,
+    direction           TEXT NOT NULL,
+    entry_type          TEXT NOT NULL,
+    entry               DOUBLE PRECISION NOT NULL,
+    stop_loss           DOUBLE PRECISION NOT NULL,
+    targets             TEXT NOT NULL DEFAULT '[]',
+    invalidation_level  DOUBLE PRECISION,
+    status              TEXT NOT NULL,
+    outcome             TEXT NOT NULL DEFAULT 'pending',
+    setup_type          TEXT,
+    rr                  DOUBLE PRECISION,
+    created_at          BIGINT NOT NULL,
+    created_candle_time BIGINT NOT NULL,
+    expires_at          BIGINT NOT NULL,
+    triggered_at        BIGINT,
+    tp1_hit_at          BIGINT,
+    tp2_hit_at          BIGINT,
+    tp3_hit_at          BIGINT,
+    sl_hit_at           BIGINT,
+    invalidated_at      BIGINT,
+    cancelled_at        BIGINT,
+    expired_at          BIGINT,
+    price_at_creation   DOUBLE PRECISION,
+    last_checked_at     BIGINT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tracked_recs_user
+    ON tracked_recommendations (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_tracked_recs_outcome
+    ON tracked_recommendations (outcome);
 `;
 
 async function dropLegacyBotAndScalpTablesPg(client: PoolClient): Promise<void> {
