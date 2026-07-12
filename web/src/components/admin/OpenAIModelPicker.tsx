@@ -17,12 +17,20 @@ export function OpenAIModelPicker({
   currentModel,
   draftModel,
   onSelectModel,
+  endpoint = "/api/admin/config/models",
+  title = "النموذج الافتراضي",
+  emptyHint = "أدخل مفتاح OpenAI أعلاه لعرض النماذج المتاحة.",
+  loadingHint = "جارٍ جلب النماذج من OpenAI…",
 }: {
   apiKeyDraft: string;
   apiKeyConfigured: boolean;
   currentModel: string;
   draftModel: string;
   onSelectModel: (modelId: string) => void;
+  endpoint?: string;
+  title?: string;
+  emptyHint?: string;
+  loadingHint?: string;
 }) {
   const [models, setModels] = useState<OpenAIModelOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,7 +45,7 @@ export function OpenAIModelPicker({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/config/models", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -67,7 +75,7 @@ export function OpenAIModelPicker({
     } finally {
       setLoading(false);
     }
-  }, [apiKeyDraft, canFetch, currentModel, draftModel, onSelectModel]);
+  }, [apiKeyDraft, canFetch, currentModel, draftModel, endpoint, onSelectModel]);
 
   useEffect(() => {
     if (apiKeyConfigured && !fetched && !apiKeyDraft.trim()) {
@@ -83,11 +91,7 @@ export function OpenAIModelPicker({
   }, [apiKeyDraft]);
 
   if (!canFetch) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        أدخل مفتاح OpenAI أعلاه لعرض النماذج المتاحة.
-      </p>
-    );
+    return <p className="text-xs text-muted-foreground">{emptyHint}</p>;
   }
 
   return (
@@ -95,7 +99,7 @@ export function OpenAIModelPicker({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
-          <p className="text-sm font-semibold">النموذج الافتراضي</p>
+          <p className="text-sm font-semibold">{title}</p>
         </div>
         <button
           type="button"
@@ -137,7 +141,7 @@ export function OpenAIModelPicker({
 
       {loading && models.length === 0 && (
         <p className="py-4 text-center text-xs text-muted-foreground">
-          جارٍ جلب النماذج من OpenAI…
+          {loadingHint}
         </p>
       )}
 

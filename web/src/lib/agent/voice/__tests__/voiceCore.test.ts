@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { clearPlatformConfigCache } from "@/lib/platformConfig";
 import {
   readVoiceLimits,
   getVoiceServerConfig,
@@ -63,17 +64,19 @@ describe("voiceSessionConfig", () => {
     assert.equal(limits.maxReconnectAttempts, 0);
   });
 
-  it("throws when no API key is configured", () => {
+  it("throws when no API key is configured", async () => {
+    clearPlatformConfigCache();
     delete process.env.OPENAI_API_KEY;
-    assert.equal(isVoiceConfigured(), false);
-    assert.throws(() => getVoiceServerConfig(), /voice_not_configured/);
+    assert.equal(await isVoiceConfigured(), false);
+    await assert.rejects(() => getVoiceServerConfig(), /voice_not_configured/);
   });
 
-  it("reads model/voice from env when present", () => {
+  it("reads model/voice from env when present", async () => {
+    clearPlatformConfigCache();
     process.env.OPENAI_API_KEY = "sk-secret";
     process.env.OPENAI_REALTIME_MODEL = "gpt-realtime";
     process.env.OPENAI_REALTIME_VOICE = "cedar";
-    const cfg = getVoiceServerConfig();
+    const cfg = await getVoiceServerConfig();
     assert.equal(cfg.model, "gpt-realtime");
     assert.equal(cfg.voice, "cedar");
     assert.equal(cfg.apiKey, "sk-secret");

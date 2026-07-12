@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
 
-    if (!isVoiceConfigured()) {
+    if (!(await isVoiceConfigured())) {
       return NextResponse.json(
         { error: "voice_not_configured" },
         { status: 503 },
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "chat_not_found" }, { status: 404 });
     }
 
-    const config = getVoiceServerConfig();
+    const config = await getVoiceServerConfig();
     const sessionId = newId();
 
     let minted;

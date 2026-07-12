@@ -572,3 +572,24 @@ export async function listOpenAIChatModels(
     .map((m) => ({ id: m.id, display_name: m.id }))
     .sort((a, b) => b.id.localeCompare(a.id));
 }
+
+export async function listOpenAIRealtimeModels(
+  apiKey: string,
+): Promise<CompatModelInfo[]> {
+  const res = await fetchWithTimeout(
+    "https://api.openai.com/v1/models",
+    {
+      headers: { authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    },
+    { timeoutMs: httpTimeoutMs(), label: "OpenAI models" },
+  );
+  if (!res.ok) throw new Error(await readError(res, "OpenAI"));
+  const data = (await res.json()) as { data?: { id: string }[] };
+  // Keep only realtime-capable models.
+  const include = /realtime/i;
+  return (data.data ?? [])
+    .filter((m) => include.test(m.id))
+    .map((m) => ({ id: m.id, display_name: m.id }))
+    .sort((a, b) => b.id.localeCompare(a.id));
+}

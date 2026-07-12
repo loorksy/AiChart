@@ -1,13 +1,15 @@
 /**
- * Server-side voice session configuration. Reads realtime model/voice and cost
- * limits from environment variables with conservative defaults, and derives a
+ * Server-side voice session configuration. Reads the API key + realtime model
+ * from platformConfig (DB-backed, with env-var fallback) and cost limits from
+ * environment variables with conservative defaults, and derives a
  * privacy-preserving stable safety identifier from the internal user id.
  *
- * SERVER ONLY: this reads process.env (the standard API key) and node:crypto.
+ * SERVER ONLY: this reads platformConfig (the standard API key) and node:crypto.
  * Never import it into client bundles — the client receives only the minimal,
  * short-lived `VoiceSessionCredential` from the session endpoint.
  */
 import { createHash } from "node:crypto";
+import { getPlatformValueAsync } from "@/lib/platformConfig";
 import type { VoiceSessionLimits } from "./types";
 
 /** GA Realtime defaults (overridable via env). */
@@ -52,21 +54,21 @@ export interface VoiceServerConfig {
 }
 
 /** The standard API key + realtime settings. Throws if no key is configured. */
-export function getVoiceServerConfig(): VoiceServerConfig {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+export async function getVoiceServerConfig(): Promise<VoiceServerConfig> {
+  const apiKey = (await getPlatformValueAsync("OPENAI_API_KEY"))?.trim();
   if (!apiKey) {
     throw new Error("voice_not_configured");
   }
   return {
     apiKey,
-    model: process.env.OPENAI_REALTIME_MODEL?.trim() || DEFAULT_MODEL,
+    model: (await getPlatformValueAsync("OPENAI_REALTIME_MODEL"))?.trim() || DEFAULT_MODEL,
     voice: process.env.OPENAI_REALTIME_VOICE?.trim() || DEFAULT_VOICE,
     limits: readVoiceLimits(),
   };
 }
 
-export function isVoiceConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY?.trim());
+export async function isVoiceConfigured(): Promise<boolean> {
+  return Boolean((await getPlatformValueAsync("OPENAI_API_KEY"))?.trim());
 }
 
 /**

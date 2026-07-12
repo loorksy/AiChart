@@ -110,12 +110,17 @@ export function AdminKeysPanel() {
   const apiKeyField = fields.find((f) => f.key === "OPENAI_API_KEY");
   const aiModelField = fields.find((f) => f.key === "AI_MODEL");
   const currentAiModel = aiModelField?.value ?? "gpt-4.1";
+  const realtimeModelField = fields.find(
+    (f) => f.key === "OPENAI_REALTIME_MODEL",
+  );
+  const currentRealtimeModel = realtimeModelField?.value ?? "gpt-realtime";
 
   const aiExtraFields = fields.filter(
     (f) =>
       f.group === "ai" &&
       f.key !== "OPENAI_API_KEY" &&
-      f.key !== "AI_MODEL",
+      f.key !== "AI_MODEL" &&
+      f.key !== "OPENAI_REALTIME_MODEL",
   );
 
   return (
@@ -172,6 +177,19 @@ export function AdminKeysPanel() {
                     currentModel={currentAiModel}
                     draftModel={draft.AI_MODEL ?? ""}
                     onSelectModel={(id) => setDraftValue("AI_MODEL", id)}
+                  />
+                  <OpenAIModelPicker
+                    apiKeyDraft={draft.OPENAI_API_KEY ?? ""}
+                    apiKeyConfigured={apiKeyField.configured}
+                    currentModel={currentRealtimeModel}
+                    draftModel={draft.OPENAI_REALTIME_MODEL ?? ""}
+                    onSelectModel={(id) =>
+                      setDraftValue("OPENAI_REALTIME_MODEL", id)
+                    }
+                    endpoint="/api/admin/config/voice-models"
+                    title="نموذج المحادثة الصوتية (Realtime)"
+                    emptyHint="أدخل مفتاح OpenAI أعلاه لعرض نماذج المحادثة الصوتية المتاحة."
+                    loadingHint="جارٍ جلب نماذج المحادثة الصوتية من OpenAI…"
                   />
                   {agentModel && (
                     <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">

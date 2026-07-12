@@ -42,6 +42,15 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "gpt-4.1",
   },
   {
+    key: "OPENAI_REALTIME_MODEL",
+    label: "نموذج المحادثة الصوتية (Realtime)",
+    labelEn: "OPENAI_REALTIME_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "gpt-realtime",
+  },
+  {
     key: "OPENAI_API_KEY",
     label: "مفتاح OpenAI",
     labelEn: "OPENAI_API_KEY",

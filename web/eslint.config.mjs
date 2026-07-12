@@ -15,6 +15,9 @@ const eslintConfig = defineConfig([
     // Third-party vendored typings (gitignored; present on machines that have
     // pulled the licensed TradingView library) — not our code to lint.
     "src/vendor/**",
+    // Licensed TradingView runtime bundles (gitignored; provisioned into
+    // public/ at build time on the VPS/CI). Minified vendor JS — never lint it.
+    "public/charting_library/**",
   ]),
   {
     // --- Explicit, intentional lint policy ---------------------------------
