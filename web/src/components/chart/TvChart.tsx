@@ -361,7 +361,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             "header_indicators",
             "header_compare",
             // Manual drawing toolbar hidden on mobile only.
-            ...(isMobile ? ["left_toolbar"] : []),
+            ...(isMobile ? (["left_toolbar"] as const) : []),
           ],
           enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
           overrides: {

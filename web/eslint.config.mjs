@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Third-party vendored typings (gitignored; present on machines that have
+    // pulled the licensed TradingView library) — not our code to lint.
+    "src/vendor/**",
   ]),
   {
     // --- Explicit, intentional lint policy ---------------------------------
