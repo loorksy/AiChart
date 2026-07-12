@@ -16,17 +16,42 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
         run: npm install --no-audit --no-fund
       - name: Lint
         run: npm run lint
-      - name: Bridge/unit tests
-        run: npm run test:bridge
+      - name: Unit tests (no external services)
+        run: npm run test:unit
+      - name: Integration tests (Redis service)
+        env:
+          REDIS_URL: redis://localhost:6379
+        run: npm run test:integration
+      # Provision the LICENSED TradingView library from a private source before
+      # building. Requires the repository/organization secrets below; the build
+      # cannot compile the chart module without the real files. If the secret is
+      # absent the step fails early with a clear message (never a cryptic
+      # module-not-found), and never prints the URL or token.
+      - name: Provision TradingView library
+        env:
+          TRADINGVIEW_LIBRARY_URL: ${{ secrets.TRADINGVIEW_LIBRARY_URL }}
+          TRADINGVIEW_LIBRARY_TOKEN: ${{ secrets.TRADINGVIEW_LIBRARY_TOKEN }}
+        run: npm run provision:tradingview
       - name: Build
         run: npm run build
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
   mcp:
     name: MCP checks
@@ -38,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: mcp/package-lock.json
       - name: Install MCP dependencies

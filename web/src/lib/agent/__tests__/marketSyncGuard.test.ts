@@ -67,6 +67,41 @@ describe("marketSyncGuard", () => {
     assert.equal(status.liveClose, 1.144);
   });
 
+  it("rejects a chart symbol that differs from the analyzed symbol", () => {
+    const status = evaluateMarketSync({
+      symbol: "EURUSD",
+      interval: "1m",
+      warehouseCandles: [candle(T, 1.144)],
+      liveCandles: [candle(T, 1.144)],
+      chartLatestCandle: { symbol: "GBPUSD", interval: "1m", time: T, close: 1.144 },
+    });
+    assert.equal(status.ok, false);
+    assert.match(status.reason, /رمز الشارت/);
+  });
+
+  it("rejects a chart interval that differs from the analyzed interval", () => {
+    const status = evaluateMarketSync({
+      symbol: "EURUSD",
+      interval: "1m",
+      warehouseCandles: [candle(T, 1.144)],
+      liveCandles: [candle(T, 1.144)],
+      chartLatestCandle: { symbol: "EURUSD", interval: "15m", time: T, close: 1.144 },
+    });
+    assert.equal(status.ok, false);
+    assert.match(status.reason, /فريم الشارت/);
+  });
+
+  it("allows a chart candle carrying a matching symbol/interval (namespaced)", () => {
+    const status = evaluateMarketSync({
+      symbol: "EURUSD",
+      interval: "1m",
+      warehouseCandles: [candle(T, 1.144)],
+      liveCandles: [candle(T, 1.144)],
+      chartLatestCandle: { symbol: "EA:EURUSD", interval: "1m", time: T, close: 1.144 },
+    });
+    assert.equal(status.ok, true);
+  });
+
   it("blocks live fetch errors", () => {
     const status = evaluateMarketSync({
       symbol: "EURUSD",

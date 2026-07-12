@@ -25,7 +25,7 @@ export async function buildOpenTradesSummary(
   }
 
   if (aichartTrades.length > 0) {
-    lines.push(`<b>AiChart (${aichartTrades.length})</b>`);
+    lines.push(`<b>Lonora (${aichartTrades.length})</b>`);
     for (const t of aichartTrades) {
       lines.push(
         `• ${t.symbol} ${t.side === "buy" ? "شراء" : "بيع"} · ${t.qty} @ ${t.avg_price} · ${t.env}`,

@@ -27,6 +27,17 @@ function last(candles: AgentCandle[]): AgentCandle | null {
   return candles.length ? candles[candles.length - 1]! : null;
 }
 
+/** Loose, comparison-only normalization (strips namespace + case + spaces). */
+function normLoose(value: string | null | undefined): string {
+  return (value ?? "")
+    .toString()
+    .split(":")
+    .pop()!
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
 function symbolFallbackTolerance(symbol: string): number {
   const s = symbol.toUpperCase();
   if (s.includes("JPY")) return 0.03;
@@ -77,6 +88,20 @@ export function evaluateMarketSync(input: {
     ok: false,
     reason,
   });
+
+  // Reject if the chart's latest candle belongs to a different symbol or
+  // timeframe than the one the agent is analyzing — a Buy/Sell decision must
+  // never be built on data from a chart the user has since switched away from.
+  if (chart?.symbol && normLoose(chart.symbol) !== normLoose(input.symbol)) {
+    return fail(
+      "بيانات الوكيل غير متزامنة مع الشارت الحالي: رمز الشارت يختلف عن الرمز الذي يحلّله الوكيل.",
+    );
+  }
+  if (chart?.interval && normLoose(chart.interval) !== normLoose(input.interval)) {
+    return fail(
+      "بيانات الوكيل غير متزامنة مع الشارت الحالي: فريم الشارت يختلف عن الفريم الذي يحلّله الوكيل.",
+    );
+  }
 
   if (input.liveError) {
     return fail("تعذّر جلب شمعة حية لمزامنة الوكيل مع الشارت الحالي.");

@@ -21,9 +21,6 @@ const accountOverview = widgetHtml(
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
-      <span class="spacer"></span>
-      <button class="btn" id="refresh" data-i18n="refresh">Refresh</button>
-      <button class="btn primary" id="manage" data-i18n="manage">Manage</button>
     </div>
   </div>`,
   `
@@ -71,12 +68,6 @@ const accountOverview = widgetHtml(
       }
       AIC.notifySize();
     });
-    document.getElementById("refresh").addEventListener("click", function () {
-      AIC.callTool("get_account_overview", {});
-    });
-    document.getElementById("manage").addEventListener("click", function () {
-      AIC.sendFollowUpMessage(AIC.t("followUpManage"));
-    });
   };
   `,
 );
@@ -95,9 +86,6 @@ const analysis = widgetHtml(
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
-      <span class="spacer"></span>
-      <button class="btn" id="refresh" data-i18n="refresh">Refresh</button>
-      <button class="btn primary" id="deep" data-i18n="deep">Deeper</button>
     </div>
   </div>`,
   `
@@ -214,24 +202,11 @@ const analysis = widgetHtml(
       statusEl.className = stale ? "status stale" : "status";
       AIC.notifySize();
     });
-    document.getElementById("refresh").addEventListener("click", function () {
-      if (!current.symbol) return;
-      AIC.callTool("get_market_snapshot", { symbol: current.symbol, interval: current.interval });
-    });
-    document.getElementById("deep").addEventListener("click", function () {
-      if (!current.symbol && !current.layout_id) return;
-      AIC.callTool("run_market_analysis", {
-        symbol: current.symbol || undefined,
-        interval: current.interval,
-        layout_id: current.layout_id || undefined,
-        data_source: current.data_source || "oanda"
-      });
-    });
   };
   `,
 );
 
-function genericCard(titleKey: string, _subtitleKey: string, action?: { labelKey: string; tool: string }) {
+function genericCard(titleKey: string, _subtitleKey: string) {
   return widgetHtml(
     `Lonora ${titleKey}`,
     `<div class="card">
@@ -241,8 +216,6 @@ function genericCard(titleKey: string, _subtitleKey: string, action?: { labelKey
       <div class="main" id="body"><div class="skel"></div></div>
       <div class="foot">
         <span id="status" class="status"></span>
-        <span class="spacer"></span>
-        ${action ? `<button class="btn primary" id="action" data-i18n="${action.labelKey}"></button>` : ""}
       </div>
     </div>`,
     `
@@ -308,7 +281,6 @@ function genericCard(titleKey: string, _subtitleKey: string, action?: { labelKey
         statusEl.className = stale ? "status stale" : "status";
         AIC.notifySize();
       });
-      ${action ? `document.getElementById("action").addEventListener("click", function () { AIC.callTool("${action.tool}", {}); });` : ""}
     };
     `,
   );
@@ -328,8 +300,6 @@ const openTradesCard = widgetHtml(
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
-      <span class="spacer"></span>
-      <button class="btn primary" id="action" data-i18n="refresh">Refresh</button>
     </div>
   </div>`,
   `
@@ -376,9 +346,6 @@ const openTradesCard = widgetHtml(
       AIC.notifySize();
     }
     AIC.onData(render);
-    document.getElementById("action").addEventListener("click", function () {
-      AIC.callTool("get_open_trades", {});
-    });
   };
   `,
 );
@@ -408,9 +375,6 @@ const liveChart = widgetHtml(
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
-      <span class="spacer"></span>
-      <button class="btn" id="pause" data-i18n="pause">Pause</button>
-      <button class="btn primary" id="open" data-i18n="open">Open</button>
     </div>
   </div>`,
   `
@@ -794,18 +758,6 @@ const liveChart = widgetHtml(
       if (!document.hidden && !S.paused) schedule(300);
     });
     window.addEventListener("resize", draw);
-    document.getElementById("pause").addEventListener("click", function () {
-      S.paused = !S.paused;
-      this.textContent = S.paused ? AIC.t("resume") : AIC.t("pause");
-      if (S.paused) { clearTimeout(S.timer); setStatus(AIC.t("pausedStatus"), true); }
-      else { setStatus("", false); schedule(300); }
-    });
-    document.getElementById("open").addEventListener("click", function () {
-      var u = S.url
-        ? (S.url.indexOf("http") === 0 ? S.url : PLATFORM + S.url)
-        : PLATFORM + "/chart" + (S.symbol ? "/" + S.symbol : "");
-      AIC.openLink(u);
-    });
   };
   `,
 );
@@ -831,9 +783,6 @@ const recommendationCard = widgetHtml(
     </div>
     <div class="foot">
       <span id="status" class="status"></span>
-      <span class="spacer"></span>
-      <button class="btn" id="chart" style="display:none" data-i18n="chart">Chart</button>
-      <button class="btn primary" id="deep" data-i18n="analyze">Analyze</button>
     </div>
   </div>`,
   `
@@ -960,18 +909,7 @@ const recommendationCard = widgetHtml(
       var statusEl = document.getElementById("status");
       statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
       statusEl.className = stale ? "status stale" : "status";
-      var chartBtn = document.getElementById("chart");
-      chartBtn.style.display = current.chartUrl ? "inline-flex" : "none";
       AIC.notifySize();
-    });
-    document.getElementById("chart").addEventListener("click", function (){
-      if (!current.chartUrl) return;
-      var u = current.chartUrl.indexOf("http") === 0 ? current.chartUrl : PLATFORM + current.chartUrl;
-      AIC.openLink(u);
-    });
-    document.getElementById("deep").addEventListener("click", function (){
-      if (!current.symbol) return;
-      AIC.callTool("run_market_analysis", { symbol: current.symbol, interval: current.interval || "1h" });
     });
   };
   `,
@@ -982,10 +920,10 @@ export const WIDGETS: Record<string, string> = {
   analysis,
   "recommendation-card": recommendationCard,
   "account-status": accountOverview,
-  "pair-picker": genericCard("pairPickerTitle", "pairPickerSubtitle", { labelKey: "refreshPairs", tool: "list_instruments" }),
+  "pair-picker": genericCard("pairPickerTitle", "pairPickerSubtitle"),
   "risk-status": genericCard("riskStatusTitle", "riskStatusSubtitle"),
   "open-trades": openTradesCard,
-  "pending-approvals": genericCard("pendingApprovalsTitle", "pendingApprovalsSubtitle", { labelKey: "refresh", tool: "get_pending_approvals" }),
+  "pending-approvals": genericCard("pendingApprovalsTitle", "pendingApprovalsSubtitle"),
   "market-snapshot": analysis,
   "mtf-analysis": analysis,
   "levels-card": analysis,

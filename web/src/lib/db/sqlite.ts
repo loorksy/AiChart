@@ -502,6 +502,78 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user
     ON agent_audit_logs (user_id, id DESC);
+
+  CREATE TABLE IF NOT EXISTS agent_chats (
+    id                   TEXT PRIMARY KEY,
+    user_id              INTEGER NOT NULL,
+    title                TEXT NOT NULL DEFAULT 'محادثة جديدة',
+    symbol               TEXT,
+    interval             TEXT,
+    language             TEXT NOT NULL DEFAULT 'ar',
+    created_at           INTEGER NOT NULL,
+    updated_at           INTEGER NOT NULL,
+    last_message_preview TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_chats_user
+    ON agent_chats (user_id, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS agent_chat_messages (
+    id                TEXT PRIMARY KEY,
+    chat_id           TEXT NOT NULL,
+    user_id           INTEGER NOT NULL,
+    role              TEXT NOT NULL,
+    content           TEXT NOT NULL,
+    result_json       TEXT,
+    recommendation_id TEXT,
+    analysis_id       TEXT,
+    symbol            TEXT,
+    interval          TEXT,
+    created_at        INTEGER NOT NULL,
+    FOREIGN KEY (chat_id) REFERENCES agent_chats(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_chat
+    ON agent_chat_messages (chat_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS tracked_recommendations (
+    id                  TEXT PRIMARY KEY,
+    user_id             INTEGER NOT NULL,
+    chat_id             TEXT,
+    analysis_id         TEXT,
+    symbol              TEXT NOT NULL,
+    interval            TEXT NOT NULL,
+    direction           TEXT NOT NULL,
+    entry_type          TEXT NOT NULL,
+    entry               REAL NOT NULL,
+    stop_loss           REAL NOT NULL,
+    targets             TEXT NOT NULL DEFAULT '[]',
+    invalidation_level  REAL,
+    status              TEXT NOT NULL,
+    outcome             TEXT NOT NULL DEFAULT 'pending',
+    setup_type          TEXT,
+    rr                  REAL,
+    created_at          INTEGER NOT NULL,
+    created_candle_time INTEGER NOT NULL,
+    expires_at          INTEGER NOT NULL,
+    triggered_at        INTEGER,
+    tp1_hit_at          INTEGER,
+    tp2_hit_at          INTEGER,
+    tp3_hit_at          INTEGER,
+    sl_hit_at           INTEGER,
+    invalidated_at      INTEGER,
+    cancelled_at        INTEGER,
+    expired_at          INTEGER,
+    price_at_creation   REAL,
+    last_checked_at     INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tracked_recs_user
+    ON tracked_recommendations (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_tracked_recs_outcome
+    ON tracked_recommendations (outcome);
 `;
 
 function migrate(db: Database.Database) {
@@ -519,55 +591,60 @@ function migrate(db: Database.Database) {
     );
   `);
 
+  // Support contacts are configurable (Lonora defaults). Seeded only into fresh
+  // DBs; existing rows are managed via the admin dynamic-pages editor.
+  const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL?.trim() || "support@lonora.ai";
+  const SUPPORT_TELEGRAM = process.env.SUPPORT_TELEGRAM?.trim() || "@LonoraSupportBot";
+
   const seedPages = [
     {
       slug: "privacy-policy",
       title_ar: "سياسة الخصوصية",
       title_en: "Privacy Policy",
-      content_ar: "# سياسة الخصوصية\n\nنحن في **AiChart** نلتزم بحماية خصوصيتك وأمان بياناتك المالية والشخصية.\n\n### 1. جمع المعلومات\nنقوم بجمع المعلومات اللازمة فقط لربط حسابات التداول الخاصة بك وتنفيذ صفقاتك بأمان. لا نقوم بمشاركة أي بيانات سرية مع أي طرف ثالث.\n\n### 2. حماية البيانات\nيتم تشفير جميع مفاتيح API وكلمات المرور الخاصة بك باستخدام خوارزميات تشفير متقدمة على مستوى الخادم.",
-      content_en: "# Privacy Policy\n\nAt **AiChart**, we are committed to protecting your privacy and the security of your financial and personal data.\n\n### 1. Data Collection\nWe collect only the information necessary to connect your trading accounts and execute trades securely. We never share sensitive data with third parties.\n\n### 2. Data Protection\nAll API keys and passwords are encrypted using state-of-the-art server-side encryption algorithms."
+      content_ar: "# سياسة الخصوصية\n\nنحن في **Lonora** نلتزم بحماية خصوصيتك وأمان بياناتك المالية والشخصية.\n\n### 1. جمع المعلومات\nنقوم بجمع المعلومات اللازمة فقط لربط حسابات التداول الخاصة بك وتنفيذ صفقاتك بأمان. لا نقوم بمشاركة أي بيانات سرية مع أي طرف ثالث.\n\n### 2. حماية البيانات\nيتم تشفير جميع مفاتيح API وكلمات المرور الخاصة بك باستخدام خوارزميات تشفير متقدمة على مستوى الخادم.",
+      content_en: "# Privacy Policy\n\nAt **Lonora**, we are committed to protecting your privacy and the security of your financial and personal data.\n\n### 1. Data Collection\nWe collect only the information necessary to connect your trading accounts and execute trades securely. We never share sensitive data with third parties.\n\n### 2. Data Protection\nAll API keys and passwords are encrypted using state-of-the-art server-side encryption algorithms."
     },
     {
       slug: "terms-of-service",
       title_ar: "الشروط والأحكام",
       title_en: "Terms of Service",
-      content_ar: "# الشروط والأحكام\n\nمرحباً بك في منصة **AiChart**. باستخدامك لخدماتنا، فإنك توافق على الالتزام بالشروط التالية.\n\n### 1. شروط الاستخدام\nيجب أن تكون مؤهلاً قانونياً للتداول واستخدام منصات التداول. المنصة تقدم خدمات اتخاذ القرارات والربط البرمجي فقط.\n\n### 2. المسؤولية\nأنت مسؤول بشكل كامل عن الصفقات والقرارات التي يتم تنفيذها من خلال المنصة.",
-      content_en: "# Terms of Service\n\nWelcome to **AiChart**. By using our services, you agree to comply with the following terms.\n\n### 1. Conditions of Use\nYou must be legally eligible to trade and use financial platforms. The platform provides decision support and programmatic connectivity only.\n\n### 2. Liability\nYou are fully responsible for the trades and decisions executed through the platform."
+      content_ar: "# الشروط والأحكام\n\nمرحباً بك في منصة **Lonora**. باستخدامك لخدماتنا، فإنك توافق على الالتزام بالشروط التالية.\n\n### 1. شروط الاستخدام\nيجب أن تكون مؤهلاً قانونياً للتداول واستخدام منصات التداول. المنصة تقدم خدمات اتخاذ القرارات والربط البرمجي فقط.\n\n### 2. المسؤولية\nأنت مسؤول بشكل كامل عن الصفقات والقرارات التي يتم تنفيذها من خلال المنصة.",
+      content_en: "# Terms of Service\n\nWelcome to **Lonora**. By using our services, you agree to comply with the following terms.\n\n### 1. Conditions of Use\nYou must be legally eligible to trade and use financial platforms. The platform provides decision support and programmatic connectivity only.\n\n### 2. Liability\nYou are fully responsible for the trades and decisions executed through the platform."
     },
     {
       slug: "user-agreement",
       title_ar: "اتفاقية الاستخدام",
       title_en: "User Agreement",
-      content_ar: "# اتفاقية الاستخدام\n\nتوضح هذه الاتفاقية الحقوق والالتزامات المتبادلة بين المستخدم ومنصة **AiChart**.\n\n### 1. ترخيص الخدمة\nتمنحك المنصة ترخيصاً محدداً وغير حصري للوصول إلى أدوات تحليل البيانات ووكيل التداول الذكي.\n\n### 2. الحسابات والاشتراكات\nيجب الحفاظ على سرية معلومات الدخول والتحقق الثنائي لضمان أمان حسابك.",
-      content_en: "# User Agreement\n\nThis agreement outlines the mutual rights and obligations between the user and the **AiChart** platform.\n\n### 1. Service License\nThe platform grants you a limited, non-exclusive license to access data analysis tools and the smart trading agent.\n\n### 2. Accounts and Subscriptions\nCredentials and two-factor authentication parameters must be kept confidential to ensure account safety."
+      content_ar: "# اتفاقية الاستخدام\n\nتوضح هذه الاتفاقية الحقوق والالتزامات المتبادلة بين المستخدم ومنصة **Lonora**.\n\n### 1. ترخيص الخدمة\nتمنحك المنصة ترخيصاً محدداً وغير حصري للوصول إلى أدوات تحليل البيانات ووكيل التداول الذكي.\n\n### 2. الحسابات والاشتراكات\nيجب الحفاظ على سرية معلومات الدخول والتحقق الثنائي لضمان أمان حسابك.",
+      content_en: "# User Agreement\n\nThis agreement outlines the mutual rights and obligations between the user and the **Lonora** platform.\n\n### 1. Service License\nThe platform grants you a limited, non-exclusive license to access data analysis tools and the smart trading agent.\n\n### 2. Accounts and Subscriptions\nCredentials and two-factor authentication parameters must be kept confidential to ensure account safety."
     },
     {
       slug: "risk-disclosure",
       title_ar: "إخلاء المسؤولية عن مخاطر التداول",
       title_en: "Risk Disclosure",
-      content_ar: "# إخلاء المسؤولية عن مخاطر التداول\n\n> [!WARNING]\n> التداول في أسواق الفوركس والرافعة المالية ينطوي على مخاطر خسارة مالية كبيرة.\n\n### 1. مخاطر السوق\nالأسعار متقلبة بشكل كبير والرافعة المالية قد تضاعف الخسائر كما تضاعف الأرباح.\n\n### 2. عدم وجود ضمانات\nلا تقدم منصة **AiChart** أي ضمانات بتحقيق أرباح. الأداء السابق لا يضمن الأداء المستقبلي.",
-      content_en: "# Risk Disclosure\n\n> [!WARNING]\n> Trading in forex and leveraged markets carries significant risk of financial loss.\n\n### 1. Market Risks\nPrices are highly volatile, and leverage can multiply losses just as it multiplies profits.\n\n### 2. No Guarantees\nThe **AiChart** platform makes no guarantees of profits. Past performance does not guarantee future results."
+      content_ar: "# إخلاء المسؤولية عن مخاطر التداول\n\n> [!WARNING]\n> التداول في أسواق الفوركس والرافعة المالية ينطوي على مخاطر خسارة مالية كبيرة.\n\n### 1. مخاطر السوق\nالأسعار متقلبة بشكل كبير والرافعة المالية قد تضاعف الخسائر كما تضاعف الأرباح.\n\n### 2. عدم وجود ضمانات\nلا تقدم منصة **Lonora** أي ضمانات بتحقيق أرباح. الأداء السابق لا يضمن الأداء المستقبلي.",
+      content_en: "# Risk Disclosure\n\n> [!WARNING]\n> Trading in forex and leveraged markets carries significant risk of financial loss.\n\n### 1. Market Risks\nPrices are highly volatile, and leverage can multiply losses just as it multiplies profits.\n\n### 2. No Guarantees\nThe **Lonora** platform makes no guarantees of profits. Past performance does not guarantee future results."
     },
     {
       slug: "about-us",
       title_ar: "من نحن",
       title_en: "About Us",
-      content_ar: "# من نحن\n\n**AiChart** هي منصة متكاملة تجمع بين أدوات تحليل الشارتات المتقدمة ووكيل الذكاء الاصطناعي الذكي لتوجيه صفقاتك بنقرة واحدة.\n\n### رؤيتنا\nتمكين المتداولين الأفراد من استخدام أدوات تداول مؤسساتية تعتمد على الذكاء الاصطناعي لإدارة المخاطر وتحسين الأداء.",
-      content_en: "# About Us\n\n**AiChart** is an integrated platform combining advanced charting tools and an intelligent AI agent to guide your trades in a single click.\n\n### Our Vision\nEmpowering retail traders to use institutional-grade AI-powered trading tools to manage risk and optimize performance."
+      content_ar: "# من نحن\n\n**Lonora** هي منصة متكاملة تجمع بين أدوات تحليل الشارتات المتقدمة ووكيل الذكاء الاصطناعي الذكي لتوجيه صفقاتك بنقرة واحدة.\n\n### رؤيتنا\nتمكين المتداولين الأفراد من استخدام أدوات تداول مؤسساتية تعتمد على الذكاء الاصطناعي لإدارة المخاطر وتحسين الأداء.",
+      content_en: "# About Us\n\n**Lonora** is an integrated platform combining advanced charting tools and an intelligent AI agent to guide your trades in a single click.\n\n### Our Vision\nEmpowering retail traders to use institutional-grade AI-powered trading tools to manage risk and optimize performance."
     },
     {
       slug: "blog",
       title_ar: "المدونة الرسمية",
       title_en: "Official Blog",
-      content_ar: "# المدونة الرسمية لمنصة AiChart\n\nتابع أحدث مقالاتنا وتحليلات السوق وتحديثات الذكاء الاصطناعي.\n\n- **كيف يعمل التداول الآلي بالذكاء الاصطناعي؟**\n- **استراتيجيات إدارة المخاطر وتجنب التصفية.**\n- **التحديثات الأخيرة لوكلاء التداول وكتابة السيناريوهات.**",
-      content_en: "# AiChart Official Blog\n\nFollow our latest articles, market analysis, and AI updates.\n\n- **How AI-Assisted Trading Works?**\n- **Risk Management Strategies and Avoiding Liquidation.**\n- **Latest Updates on Trading Agents and Scripting.**"
+      content_ar: "# المدونة الرسمية لمنصة Lonora\n\nتابع أحدث مقالاتنا وتحليلات السوق وتحديثات الذكاء الاصطناعي.\n\n- **كيف يعمل التداول الآلي بالذكاء الاصطناعي؟**\n- **استراتيجيات إدارة المخاطر وتجنب التصفية.**\n- **التحديثات الأخيرة لوكلاء التداول وكتابة السيناريوهات.**",
+      content_en: "# Lonora Official Blog\n\nFollow our latest articles, market analysis, and AI updates.\n\n- **How AI-Assisted Trading Works?**\n- **Risk Management Strategies and Avoiding Liquidation.**\n- **Latest Updates on Trading Agents and Scripting.**"
     },
     {
       slug: "contact-us",
       title_ar: "تواصل معنا",
       title_en: "Contact Us",
-      content_ar: "# تواصل معنا\n\nفريق الدعم الفني متواجد لمساعدتك على مدار الساعة.\n\n- **البريد الإلكتروني:** support@aichart.com\n- **التليجرام:** @AiChartSupportBot\n- **الموقع:** مركز دبي المالي العالمي، دبي، الإمارات العربية المتحدة.",
-      content_en: "# Contact Us\n\nOur technical support team is available 24/7 to assist you.\n\n- **Email:** support@aichart.com\n- **Telegram:** @AiChartSupportBot\n- **Location:** DIFC, Dubai, United Arab Emirates."
+      content_ar: `# تواصل معنا\n\nفريق الدعم الفني متواجد لمساعدتك على مدار الساعة.\n\n- **البريد الإلكتروني:** ${SUPPORT_EMAIL}\n- **التليجرام:** ${SUPPORT_TELEGRAM}\n- **الموقع:** مركز دبي المالي العالمي، دبي، الإمارات العربية المتحدة.`,
+      content_en: `# Contact Us\n\nOur technical support team is available 24/7 to assist you.\n\n- **Email:** ${SUPPORT_EMAIL}\n- **Telegram:** ${SUPPORT_TELEGRAM}\n- **Location:** DIFC, Dubai, United Arab Emirates.`
     }
   ];
 

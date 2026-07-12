@@ -68,7 +68,7 @@ export async function watchAichartOpenTrades(
         source: "aichart",
         hits,
         detail:
-          `صفقة AiChart #${trade.id} ${trade.symbol} ${trade.side} @ ${trade.avg_price} — ` +
+          `صفقة Lonora #${trade.id} ${trade.symbol} ${trade.side} @ ${trade.avg_price} — ` +
           hits
             .map(
               (h) =>

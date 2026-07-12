@@ -1,0 +1,263 @@
+/**
+ * English messages — the canonical dictionary. Its keys define `TranslationKey`,
+ * so `ar.ts` must provide every key here (enforced by the compiler).
+ */
+export const en = {
+  // Navigation & Shell (existing keys — do not remove; landing depends on them)
+  "sidebar.chat": "Chat",
+  "sidebar.dashboard": "Dashboard",
+  "sidebar.command": "Command",
+  "sidebar.agent": "Agent",
+  "sidebar.market": "Market",
+  "sidebar.signals": "Signals",
+  "sidebar.settings": "Settings",
+  "sidebar.admin": "Admin Panel",
+  "sidebar.new_chat": "New Chat",
+  "sidebar.recent_chats": "Recent Chats",
+  "sidebar.no_chats": "No chats yet",
+  "sidebar.delete": "Delete",
+  "sidebar.credits": "Balance",
+
+  // Welcoming Phase
+  "welcome.title": "Welcome, {name} 👋",
+  "welcome.subtitle": "Type your message to begin — forex via MetaTrader.",
+  "welcome.session_settings": "Session Settings",
+  "welcome.response_mode": "Response Type",
+  "welcome.trading_style": "Trading Style",
+  "welcome.execution_mode": "Execution Mode",
+  "welcome.market": "Market",
+
+  // Terminology (Strict Transliterations/Originals)
+  "term.scalping": "Scalping",
+  "term.stop_loss": "Stop Loss",
+  "term.take_profit": "Take Profit",
+  "term.trailing": "Trailing",
+  "term.spot": "Spot",
+  "term.futures": "Futures",
+  "term.day_trading": "Day Trading",
+  "term.swing_trading": "Swing Trading",
+  "term.margin": "Margin / Free Margin",
+  "term.equity": "Equity",
+  "settings.position": "Position",
+
+  // Response Modes
+  "response.fast": "Fast",
+  "response.expert": "Expert",
+  "response.vision": "Vision",
+
+  // Execution Modes
+  "mode.approval": "Approval",
+  "mode.direct": "Direct",
+  "mode.auto": "Auto",
+
+  // Market types
+  "market.forex": "Forex",
+
+  // Profile menu items
+  "profile.settings": "Global Settings",
+  "profile.analytics": "Analytics",
+  "profile.account": "Account Parameters",
+  "profile.theme": "Theme",
+  "profile.theme.dark": "Dark",
+  "profile.theme.light": "Light",
+  "profile.language": "Language",
+  "profile.language.ar": "العربية",
+  "profile.language.en": "English",
+  "profile.logout": "Logout",
+  "profile.free_plan": "Free",
+
+  // Placeholders (existing)
+  "chat.placeholder": "Ask the expert about the market or your account…",
+  "chat.placeholder_followup": "Follow up message…",
+  "chat.placeholder_image": "Add a question about the chart (optional)…",
+  "chat.no_agent_key": "AI agent not active — add OPENAI_API_KEY from Admin Panel.",
+  "chat.chart_preview": "Chart Preview",
+  "chat.close_chart": "Close Chart",
+  "chat.resize_chart": "Resize Chart",
+
+  // --- Part 5 additions: agent sidebar + chat shell ---
+  "nav.new_chat": "New Chat",
+  "nav.no_chats": "No chats yet",
+  "nav.chats": "Chats",
+  "nav.statistics": "Statistics",
+  "nav.recommendations": "Recommendations",
+  "nav.settings": "Settings",
+  "nav.integrations": "Integrations",
+
+  "profile.profile": "Profile",
+  "profile.trading_settings": "Trading settings",
+  "profile.account_menu": "Account",
+  "profile.coming_soon": "Soon",
+  "profile.select_language": "Language",
+
+  "agent.title": "Smart Chart Agent",
+  "agent.empty": "Ask the agent or start a chart analysis",
+  "agent.analyze_chart": "Analyze chart",
+  "agent.news_risk": "News risk",
+  "agent.send": "Send",
+  "agent.stop": "Stop",
+  "agent.cancel": "Cancel",
+  "agent.close": "Close",
+  "agent.input_placeholder": "Ask the agent about this chart…",
+  "agent.confidence": "confidence",
+  "agent.decision_reason": "Reason for the decision:",
+  "agent.needs_confirmation": "This trade needs your confirmation before execution",
+  "agent.account_live": "LIVE account",
+  "agent.account_demo": "demo / simulation",
+  "agent.processing": "Processing",
+  "agent.run_details": "Run details",
+  "agent.error": "Something went wrong",
+
+  "decision.buy": "Buy",
+  "decision.sell": "Sell",
+  "decision.wait": "Wait",
+  "decision.informational": "Info",
+  "decision.action_required": "Action required",
+
+  "language.arabic": "العربية",
+  "language.english": "English",
+
+  // --- Parts 10-13/19: layout shell ---
+  "layout.chart": "Chart",
+  "layout.chat": "Chat",
+  "layout.show_chat": "Show chat",
+  "layout.show_chart": "Show chart",
+  "layout.resize_chat": "Resize chat",
+  "layout.screenshot": "Screenshot",
+  "layout.mt_connected": "MT connected",
+  "layout.mt_disconnected": "MT disconnected",
+
+  // --- Parts 16-18: recommendation tracker + statistics ---
+  "rec.status.pending_entry": "Pending entry",
+  "rec.status.triggered": "Entered",
+  "rec.status.tp1_hit": "TP1 hit",
+  "rec.status.tp2_hit": "TP2 hit",
+  "rec.status.tp3_hit": "TP3 hit",
+  "rec.status.sl_hit": "SL hit",
+  "rec.status.invalidated": "Invalidated",
+  "rec.status.expired": "Expired",
+  "rec.status.cancelled": "Cancelled",
+
+  "rec.step.sl": "SL",
+  "rec.step.entered": "Entered",
+  "rec.step.tp1": "TP1",
+  "rec.step.tp2": "TP2",
+  "rec.step.tp3": "TP3",
+
+  "rec.entry.market": "Market Entry",
+  "rec.entry.limit": "Limit Entry",
+  "rec.entry.pending": "Pending Entry",
+
+  "rec.row.entry": "Entry",
+  "rec.row.stop_loss": "Stop Loss",
+  "rec.row.target1": "Target 1",
+  "rec.row.target2": "Target 2",
+  "rec.row.target3": "Target 3",
+  "rec.copy": "Copy",
+  "rec.copied": "Copied",
+
+  "rec.tip.title": "Smart Tip",
+  "rec.tip.pending": "Waiting for price to reach the entry zone.",
+  "rec.tip.triggered": "The trade is active and tracked automatically.",
+  "rec.tip.tp1": "After TP1 is reached, consider moving stop loss to breakeven.",
+  "rec.tip.tp2": "After TP2, lock partial profit and trail the rest.",
+  "rec.tip.tp3": "All targets reached — a winning trade.",
+  "rec.tip.sl": "The trade closed at stop loss.",
+  "rec.tip.expired": "The recommendation expired before completing.",
+  "rec.tip.cancelled": "This recommendation was cancelled.",
+  "rec.tip.invalidated": "The recommendation scenario was invalidated.",
+
+  "rec.page.title": "Recommendations",
+  "rec.page.active": "Active",
+  "rec.page.history": "History",
+  "rec.page.empty": "No tracked recommendations yet.",
+  "rec.page.refresh": "Refresh status",
+  "rec.page.open": "Open details",
+  "rec.page.cancel": "Cancel",
+  "rec.page.back": "Back to recommendations",
+
+  "stats.title": "Statistics",
+  "stats.total": "Total",
+  "stats.active": "Active",
+  "stats.pending": "Pending",
+  "stats.winning": "Winning",
+  "stats.losing": "Losing",
+  "stats.win_rate": "Win rate",
+  "stats.completed": "Completed trades",
+  "stats.breakdown": "Outcome breakdown",
+  "stats.tp1_only": "TP1 only",
+  "stats.tp2_reached": "TP2 reached",
+  "stats.tp3_reached": "TP3 reached",
+  "stats.sl_hit": "SL hit",
+  "stats.expired": "Expired",
+  "stats.cancelled": "Cancelled",
+  "stats.invalidated": "Invalidated",
+  "stats.by_symbol": "By symbol",
+  "stats.by_timeframe": "By timeframe",
+  "stats.by_setup": "By setup type",
+  "stats.by_direction": "Buy vs Sell",
+  "stats.scalp": "Scalp performance",
+  "stats.avg_planned_rr": "Avg planned RR",
+  "stats.avg_achieved_rr": "Avg achieved RR",
+  "stats.rate": "Rate",
+  "stats.group": "Group",
+  "stats.empty":
+    "No tracked recommendations yet. Start with a chart analysis or request a recommendation to build statistics.",
+  "stats.filter.today": "Today",
+  "stats.filter.7d": "7 days",
+  "stats.filter.30d": "30 days",
+  "stats.filter.all": "All time",
+
+  // User drawings — reading, discussing, modifying, deleting the drawings the
+  // user made by hand on the chart (owner = user; never agent drawings).
+  "drawing.user_drawing": "your drawing",
+  "drawing.selected": "your selected drawing",
+  "drawing.none_found":
+    "I don't see any drawings you've made on the chart right now. Draw a line or zone with the chart tools, then ask me about it.",
+  "drawing.not_found":
+    "I couldn't find the drawing you mean among the ones you've drawn. Select it on the chart or describe it (its price or type) and I'll work with it.",
+  "drawing.ambiguous":
+    "You have more than one drawing that could match. Which one do you mean? {list}",
+  "drawing.clarify": "Which of your drawings do you mean — by price, type, or by selecting it on the chart?",
+  "drawing.updated": "Done — I updated {which}.",
+  "drawing.moved": "Done — I moved {which} to {price}.",
+  "drawing.deleted": "Done — I deleted {which}. I didn't touch any other drawing.",
+  "drawing.deleted_all": "Done — I deleted your {count} drawings. Agent and recommendation drawings were left untouched.",
+  "drawing.cannot_modify":
+    "I couldn't apply that change to {which}. Tell me the exact new price or how much to widen/narrow it and I'll adjust it.",
+  "drawing.wrong_owner":
+    "I can only move or delete the drawings you made yourself — not the agent or recommendation drawings. Ask me to clear the agent drawings separately if that's what you want.",
+  "drawing.wrong_symbol":
+    "That drawing belongs to a different symbol than the chart you're on now. Switch to its symbol first, then I can edit it.",
+  "drawing.invalid_price":
+    "That price looks off for this chart, so I didn't move anything. Give me a price near the current range and I'll adjust it.",
+
+  // Real-time voice conversation
+  "voice.start": "Start voice conversation",
+  "voice.requesting_permission": "Requesting microphone access",
+  "voice.connecting": "Connecting",
+  "voice.listening": "Listening",
+  "voice.user_speaking": "You are speaking",
+  "voice.thinking": "Lonora is thinking",
+  "voice.speaking": "Lonora is speaking",
+  "voice.muted": "Microphone muted",
+  "voice.reconnecting": "Reconnecting",
+  "voice.end": "End conversation",
+  "voice.mute": "Mute",
+  "voice.unmute": "Unmute",
+  "voice.interrupt": "Interrupt",
+  "voice.reconnect": "Reconnect",
+  "voice.ready": "Voice ready",
+  "voice.stopped": "Conversation ended",
+  "voice.you_said": "You said",
+  "voice.err_mic": "Microphone access failed",
+  "voice.err_unsupported": "Your browser does not support live voice",
+  "voice.err_network": "Connection lost. Trying to reconnect…",
+  "voice.err_credential": "Could not start the voice session. Try again.",
+  "voice.err_provider": "The voice service is unavailable right now.",
+  "voice.err_not_configured": "Voice conversation is not enabled on the server.",
+  "voice.err_generic": "The voice conversation failed. You can keep typing.",
+  "voice.locale_changed": "Language changed — restart the voice session to switch language.",
+} as const;
+
+export type TranslationKey = keyof typeof en;

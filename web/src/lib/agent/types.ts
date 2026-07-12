@@ -4,12 +4,24 @@
  * user sees one activity stream and one final result.
  */
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import type {
+  SerializedChartDrawing,
+  UserDrawingMutationCommand,
+} from "@/lib/chart/drawings/types";
 
 export type AgentIntent =
   | "new_trade_analysis"
+  | "scalp_recommendation"
   | "chart_analysis"
   | "draw_on_chart"
+  | "draw_active_recommendation"
   | "explain_chart_drawings"
+  | "discuss_user_drawing"
+  | "modify_user_drawing"
+  | "move_user_drawing"
+  | "delete_user_drawing"
+  | "analyze_with_user_drawings"
+  | "clarify_drawing_reference"
   | "draw_trendline"
   | "draw_support_resistance"
   | "draw_poi_zones"
@@ -64,6 +76,10 @@ export interface AgentChartContext {
   layoutId?: string;
   visibleRange?: { from: number; to: number };
   latestCandle?: {
+    /** Symbol the chart's latest candle belongs to — used to reject symbol drift. */
+    symbol?: string;
+    /** Interval the chart's latest candle belongs to — used to reject TF drift. */
+    interval?: string;
     time: number;
     open?: number;
     high?: number;
@@ -73,6 +89,10 @@ export interface AgentChartContext {
   };
   /** Drawings currently known to AiChart for this layout. */
   drawings?: ChartDrawing[];
+  /** Safe, serialized user-created drawings read from the chart (owner=user). */
+  userDrawings?: SerializedChartDrawing[];
+  /** The user's currently-selected drawing id (highest-priority "this" hint). */
+  selectedDrawingId?: string;
   /** Recommendation currently rendered/restored on the chart, if any. */
   recommendation?: AgentRecommendation;
   /** oanda (default) or the user's broker bridge. */
@@ -148,6 +168,8 @@ export interface AgentFinalResult {
   activityEvents: AgentActivityEvent[];
   recommendation?: AgentRecommendation;
   drawings?: ChartDrawing[];
+  /** User-drawing mutations to apply AFTER the final SSE (idempotent by id). */
+  drawingMutations?: UserDrawingMutationCommand[];
   newsRisk?: AgentNewsRisk;
   /** analysisId stamps every drawing this run produced (versioning + undo). */
   analysisId?: string;

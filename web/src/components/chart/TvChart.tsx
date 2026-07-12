@@ -23,6 +23,15 @@ import {
 } from "@/lib/chart/tv/tvDatafeed";
 import type { TvLatestCandle } from "@/lib/chart/tv/tvDatafeed";
 import { TvDrawingManager } from "@/lib/chart/tv/tvDrawingAdapter";
+import {
+  applyUserDrawingMutations,
+  readSelectedUserDrawingId,
+  readUserDrawings,
+} from "@/lib/chart/tv/tvUserDrawings";
+import type {
+  SerializedChartDrawing,
+  UserDrawingMutationCommand,
+} from "@/lib/chart/drawings/types";
 import { ChartScanOverlay } from "@/components/chart/ChartScanOverlay";
 import type { ChatImagePayload } from "@/lib/chatImage";
 import type { ChartDrawing } from "@/lib/chartDrawings";
@@ -104,6 +113,15 @@ export type TvChartHandle = {
   capturePng: () => Promise<ChatImagePayload | null>;
   currentSymbol: () => string;
   latestCandle: () => TvLatestCandle | null;
+  /** Visible time window (unix seconds) so the agent can reason on what the
+   *  user is actually looking at (trendlines, support/resistance in view). */
+  visibleRange: () => { from: number; to: number } | undefined;
+  /** Safe, serialized user-drawn shapes (all chart shapes minus app-owned). */
+  getUserDrawings: () => SerializedChartDrawing[];
+  /** The user's currently-selected manual drawing id (if exactly one). */
+  getSelectedUserDrawingId: () => string | undefined;
+  /** Apply the agent's validated user-drawing mutations onto the native shapes. */
+  applyUserDrawingMutations: (commands: UserDrawingMutationCommand[]) => void;
   /** Underlying widget (for drawing overlays in later phases). */
   widget: () => IChartingLibraryWidget | null;
 };
@@ -235,6 +253,62 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       }
     },
     latestCandle: () => latestCandleRef.current,
+    visibleRange: () => {
+      const w = widgetRef.current;
+      if (!w || !readyRef.current) return undefined;
+      try {
+        const range = w.activeChart().getVisibleRange();
+        if (!range || !Number.isFinite(range.from) || !Number.isFinite(range.to)) {
+          return undefined;
+        }
+        // TV reports unix seconds; the agent's warehouse queries use ms.
+        return { from: range.from * 1000, to: range.to * 1000 };
+      } catch {
+        return undefined;
+      }
+    },
+    getUserDrawings: () => {
+      const w = widgetRef.current;
+      const mgr = managerRef.current;
+      if (!w || !mgr || !readyRef.current) return [];
+      try {
+        return readUserDrawings({
+          chart: w.activeChart(),
+          trackedIds: mgr.trackedIds(),
+          symbol: symbol.toUpperCase(),
+          interval,
+        });
+      } catch {
+        return [];
+      }
+    },
+    getSelectedUserDrawingId: () => {
+      const w = widgetRef.current;
+      const mgr = managerRef.current;
+      if (!w || !mgr || !readyRef.current) return undefined;
+      try {
+        return readSelectedUserDrawingId({
+          chart: w.activeChart(),
+          trackedIds: mgr.trackedIds(),
+        });
+      } catch {
+        return undefined;
+      }
+    },
+    applyUserDrawingMutations: (commands) => {
+      const w = widgetRef.current;
+      const mgr = managerRef.current;
+      if (!w || !mgr || !readyRef.current || !commands.length) return;
+      try {
+        applyUserDrawingMutations({
+          chart: w.activeChart(),
+          trackedIds: mgr.trackedIds(),
+          commands,
+        });
+      } catch {
+        /* chart not ready / TV rejected — no-op */
+      }
+    },
     widget: () => widgetRef.current,
   }));
 
@@ -256,6 +330,13 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         await loadTvScript();
         if (cancelled || !window.TradingView?.widget) return;
 
+        // Manual drawing tools are desktop-only: on mobile the left drawing
+        // toolbar is removed entirely (existing drawings still render; the
+        // agent can still draw via chat). Computed once at mount.
+        const isMobile =
+          typeof window !== "undefined" &&
+          window.matchMedia("(max-width: 767px)").matches;
+
         const options: ChartingLibraryWidgetOptions = {
           container: el,
           library_path: LIBRARY_PATH,
@@ -275,8 +356,14 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             "use_localstorage_for_settings",
             "header_saveload",
             "popup_hints",
+            // Clean chart top bar: no indicators / compare clutter. Symbol,
+            // timeframe, and screenshot controls stay (TV-native).
+            "header_indicators",
+            "header_compare",
+            // Manual drawing toolbar hidden on mobile only.
+            ...(isMobile ? (["left_toolbar"] as const) : []),
           ],
-          enabled_features: ["hide_left_toolbar_by_default"],
+          enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
           overrides: {
             "paneProperties.background": "#0f1115",
             "paneProperties.backgroundType": "solid",

@@ -106,14 +106,14 @@ export const metaApiAdapter: BrokerAdapter = {
               sizing.lots,
               sl,
               tp,
-              { comment: `AiChart #${intent.id}` },
+              { comment: `Lonora #${intent.id}` },
             )
           : await conn.createMarketSellOrder(
               intent.symbol,
               sizing.lots,
               sl,
               tp,
-              { comment: `AiChart #${intent.id}` },
+              { comment: `Lonora #${intent.id}` },
             );
 
       const ticket =

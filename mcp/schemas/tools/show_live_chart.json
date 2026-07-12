@@ -15,9 +15,7 @@
     },
     "market": {
       "type": "string",
-      "enum": [
-        "forex"
-      ]
+      "const": "forex"
     }
   },
   "additionalProperties": false

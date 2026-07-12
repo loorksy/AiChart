@@ -15,6 +15,12 @@ import type { ToolDefinition } from "../../tools/schemas/types.js";
 import { appsUri, widgetHtmlByPublicPath } from "../index.js";
 import { WIDGETS } from "../widgets.js";
 
+// This is a self-contained in-memory audit (linked client/server transport). It
+// never calls the live bridge, so run in unauthenticated mode — otherwise
+// loadConfig() would require a production AICHART_SERVICE_TOKEN that this test
+// does not use. Set BEFORE loadConfig() reads it.
+process.env.MCP_AUTH_MODE = "none";
+
 const CARD_TOOLS = TOOL_CATALOG.filter((t: ToolDefinition) => t.ui?.widget);
 
 async function withMcpClient<T>(

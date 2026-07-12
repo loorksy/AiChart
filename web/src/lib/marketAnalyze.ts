@@ -336,7 +336,6 @@ export async function runMarketAnalyze(
   const emit = (a: import("./agentActivity").AgentActivity) =>
     opts?.onActivity?.(a);
 
-  let snap: MarketSnapshot;
   let ctx: Awaited<ReturnType<typeof fetchMarketContext>> | null = null;
 
   emit({ id: "mkt-data", label: "جلب لقطة السوق والشموع", status: "running" });
@@ -357,7 +356,7 @@ export async function runMarketAnalyze(
     });
   }
 
-  snap = snapResult;
+  const snap: MarketSnapshot = snapResult;
   if (market === "forex") {
     ctx = await fetchMarketContext(newsContextSymbol(sym), profile).catch(() => null);
   } else {

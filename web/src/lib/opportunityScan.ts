@@ -229,7 +229,7 @@ export async function runOpportunityScan(
   const top = candidates.slice(0, MAX_DEEP_CANDIDATES);
   let bestRec: Recommendation | null = null;
   let bestReply = "";
-  let allIntents: ProcessedIntent[] = [];
+  const allIntents: ProcessedIntent[] = [];
   let finalDelivery: DeliveryResult | undefined;
 
   for (const c of top) {

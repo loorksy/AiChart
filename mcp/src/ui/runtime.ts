@@ -3,17 +3,16 @@
  * - ChatGPT Apps SDK: `window.openai` bridge (toolOutput / callTool / events).
  * - MCP Apps (Claude & co.): postMessage JSON-RPC per spec 2026-01-26
  *   (ui/initialize handshake, ui/notifications/tool-result, tools/call).
- * Exposes one API: AIC.getData / onData / callTool / openLink / bindConfirm.
- * bindConfirm implements the two-step "execute with confirmation" pattern.
+ * Exposes a read-only data API: AIC.getData / onData / callTool (data polling
+ * only) / localization (t / applyStaticLabels). Cards render no action buttons.
  */
 export const RUNTIME_JS = `
 (function () {
   var listeners = [];
   var latest = null;
-  var currentLocale = "en";
+  var currentLocale = "ar";
   var I18N = {
     en: {
-      confirmAgain: "Confirm? Click again",
       yes: "Yes", no: "No",
       buy: "Buy", sell: "Sell", wait: "Wait", opportunity: "Opportunity",
       bullish: "Bullish", bearish: "Bearish", sideways: "Sideways", neutral: "Neutral",
@@ -39,7 +38,7 @@ export const RUNTIME_JS = `
       entry: "Entry", stop: "Stop", target: "Target",
       stopLoss: "Stop loss", targetLabel: "Target", entryLabel: "Entry",
       pattern: "Pattern", factors: "Factors",
-      noData: "No data", noOpportunities: "No opportunities",
+      noData: "No data available", noOpportunities: "No opportunities",
       noRecommendation: "No recommendation yet",
       trades: "Trades", items: "Items", candidates: "Candidates",
       pending: "Pending", status: "Status", capital: "Capital",
@@ -58,9 +57,20 @@ export const RUNTIME_JS = `
       lessonsTitle: "Trading lessons",
       lessonsSubtitle: "Performance memory and similar lessons.",
       chartTitle: "Chart",
+      noDataAvailable: "No data available",
+      updated: "Last updated",
+      confidence: "Confidence", riskReward: "Risk/Reward", setup: "Setup",
+      freeMargin: "Free Margin", floatingPnl: "Floating P/L",
+      "status.pending": "Pending", "status.pending_entry": "Pending entry",
+      "status.triggered": "Entered", "status.tp1_hit": "TP1 reached",
+      "status.tp2_hit": "TP2 reached", "status.tp3_hit": "TP3 reached",
+      "status.sl_hit": "Stop loss hit", "status.expired": "Expired",
+      "status.cancelled": "Cancelled", "status.invalidated": "Invalidated",
+      "trend.uptrend": "Uptrend", "trend.downtrend": "Downtrend",
+      "trend.range": "Range", "trend.sideways": "Sideways",
+      "trend.neutral": "Neutral", "trend.unknown": "Unknown",
     },
     ar: {
-      confirmAgain: "تأكيد؟ اضغط مرة أخرى",
       yes: "نعم", no: "لا",
       buy: "شراء", sell: "بيع", wait: "انتظار", opportunity: "فرصة",
       bullish: "صاعد", bearish: "هابط", sideways: "عرضي", neutral: "محايد",
@@ -86,7 +96,7 @@ export const RUNTIME_JS = `
       entry: "دخول", stop: "وقف", target: "هدف",
       stopLoss: "وقف الخسارة", targetLabel: "الهدف", entryLabel: "الدخول",
       pattern: "النمط", factors: "العوامل",
-      noData: "لا توجد بيانات", noOpportunities: "لا فرص",
+      noData: "لا توجد بيانات متاحة", noOpportunities: "لا فرص",
       noRecommendation: "لا توصية بعد",
       trades: "الصفقات", items: "العناصر", candidates: "الفرص",
       pending: "المعلّق", status: "الحالة", capital: "رأس المال",
@@ -105,6 +115,18 @@ export const RUNTIME_JS = `
       lessonsTitle: "دروس التداول",
       lessonsSubtitle: "ذاكرة الأداء والدروس المشابهة.",
       chartTitle: "الشارت",
+      noDataAvailable: "لا توجد بيانات متاحة",
+      updated: "آخر تحديث",
+      confidence: "نسبة الثقة", riskReward: "نسبة العائد إلى المخاطرة", setup: "نوع الصفقة",
+      freeMargin: "الهامش المتاح", floatingPnl: "الربح/الخسارة العائمة",
+      "status.pending": "معلقة", "status.pending_entry": "بانتظار الدخول",
+      "status.triggered": "تم الدخول", "status.tp1_hit": "تحقق الهدف الأول",
+      "status.tp2_hit": "تحقق الهدف الثاني", "status.tp3_hit": "تحقق الهدف الثالث",
+      "status.sl_hit": "ضُرب وقف الخسارة", "status.expired": "منتهية",
+      "status.cancelled": "ملغاة", "status.invalidated": "مبطلة",
+      "trend.uptrend": "اتجاه صاعد", "trend.downtrend": "اتجاه هابط",
+      "trend.range": "نطاق عرضي", "trend.sideways": "حركة جانبية",
+      "trend.neutral": "محايد", "trend.unknown": "غير معروف",
     },
   };
   function msg(key, vars) {
@@ -114,25 +136,31 @@ export const RUNTIME_JS = `
     }
     return s;
   }
-  function hasArabicScript(s) {
-    return /[\\u0600-\\u06FF]/.test(String(s || ""));
+  function normLoc(v) {
+    if (v == null) return null;
+    v = String(v).toLowerCase().split("_").join("-");
+    if (v === "ar" || v.indexOf("ar-") === 0 || v.slice(0, 2) === "ar") return "ar";
+    if (v === "en" || v.indexOf("en-") === 0 || v.slice(0, 2) === "en") return "en";
+    return null;
   }
+  /* Precedence: explicit payload → account → request/client meta → host/browser
+     → default Arabic. Never guessed from symbols or market data. */
   function resolveLocale(data) {
     data = data && typeof data === "object" ? data : {};
-    var loc = data.locale || data.lang || data.operatorLocale || data.uiLocale;
-    if (loc) return String(loc).toLowerCase().indexOf("ar") === 0 ? "ar" : "en";
-    var probe = [
-      data.reply, data.summary, data.rationale, data.message, data.note,
-      data.recommendation && data.recommendation.rationale,
+    var order = [
+      data.locale, data.lang,
+      data.accountLocale, data.operatorLocale,
+      data.uiLocale, data.clientLocale, data.requestLocale,
     ];
-    for (var i = 0; i < probe.length; i++) {
-      if (hasArabicScript(probe[i])) return "ar";
+    for (var i = 0; i < order.length; i++) {
+      var n = normLoc(order[i]);
+      if (n) return n;
     }
     try {
-      var nav = (navigator.language || navigator.userLanguage || "").toLowerCase();
-      if (nav.indexOf("ar") === 0) return "ar";
+      var host = normLoc(navigator.language || navigator.userLanguage || "");
+      if (host) return host;
     } catch (e) {}
-    return "en";
+    return "ar";
   }
   function applyDocLocale() {
     var el = document.documentElement;
@@ -198,27 +226,6 @@ export const RUNTIME_JS = `
       if (latest != null) { try { cb(latest); } catch (e) {} }
     };
     api.getData = function () { return latest; };
-    api.bindConfirm = function (btn, onConfirmed) {
-      var armed = false, orig = btn.textContent, timer = null;
-      btn.addEventListener("click", function () {
-        if (!armed) {
-          armed = true;
-          btn.classList.add("confirming");
-          btn.textContent = msg("confirmAgain");
-          timer = setTimeout(function () {
-            armed = false;
-            btn.classList.remove("confirming");
-            btn.textContent = orig;
-          }, 4000);
-          return;
-        }
-        clearTimeout(timer);
-        armed = false;
-        btn.classList.remove("confirming");
-        btn.textContent = orig;
-        onConfirmed();
-      });
-    };
     api.fmt = function (n, d) {
       if (n == null || isNaN(n)) return "—";
       return Number(n).toLocaleString(undefined, { maximumFractionDigits: d == null ? 5 : d });
@@ -514,16 +521,6 @@ export const RUNTIME_JS = `
           return normalizeToolResult(r);
         });
       },
-      sendFollowUpMessage: function (text) {
-        if (window.openai.sendFollowUpMessage) {
-          return window.openai.sendFollowUpMessage(text);
-        }
-        return Promise.resolve();
-      },
-      openLink: function (url) {
-        try { window.openai.openExternal({ href: url }); }
-        catch (e) { window.open(url, "_blank"); }
-      },
       notifySize: function () {},
     });
     if (latest != null) setTimeout(emit, 0);
@@ -590,15 +587,6 @@ export const RUNTIME_JS = `
           return normalizeToolResult(r);
         });
       },
-      sendFollowUpMessage: function (text) {
-        send({ type: "prompt", payload: { prompt: text } });
-        return request("ui/send-message", { text: text }).catch(function () {});
-      },
-      openLink: function (url) {
-        request("ui/open-link", { url: url }).catch(function () {
-          window.open(url, "_blank");
-        });
-      },
       notifySize: notifySize,
     });
     window.addEventListener("load", function () { setTimeout(notifySize, 100); });
@@ -618,7 +606,7 @@ export const THEME_CSS = `
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{background:transparent}
-  body{font-family:var(--sans);direction:rtl;color:var(--txt);padding:4px;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  body{font-family:var(--sans);color:var(--txt);padding:4px;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
   .card{
     position:relative;isolation:isolate;
@@ -673,20 +661,8 @@ export const THEME_CSS = `
   .kv .k,.mini-kv .k{font-size:12px;color:var(--muted);font-weight:700;margin-bottom:6px}
   .kv .v,.mini-kv .v{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;word-break:break-word}
   table{width:100%;border-collapse:collapse;font-size:12px}
-  th{color:var(--muted);font-weight:700;text-align:right;padding:7px 4px;border-bottom:1px solid var(--line-soft);font-size:11px}
+  th{color:var(--muted);font-weight:700;text-align:start;padding:7px 4px;border-bottom:1px solid var(--line-soft);font-size:11px}
   td{padding:8px 4px;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums;font-weight:700}
-  .btn{
-    display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
-    background:var(--surface-2);color:var(--muted);border:1px solid var(--line-soft);
-    border-radius:8px;padding:8px 12px;min-height:40px;font-size:12px;font-weight:800;font-family:var(--sans);
-  }
-  .btn:hover{color:var(--txt);border-color:rgba(148,163,184,.28);background:var(--surface-3)}
-  .btn:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
-  .btn.primary{color:var(--amber);border-color:rgba(245,194,107,.35);background:rgba(245,194,107,.12)}
-  .btn.primary:hover{background:rgba(245,194,107,.18);color:#fde68a}
-  .btn.confirming{background:#b45309!important;color:#fff!important;border-color:#f59e0b!important}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .spacer{flex:1}
   .foot{
     position:relative;padding-top:12px;border-top:1px solid var(--line-soft);
     display:flex;gap:8px;align-items:center;flex-wrap:wrap;
@@ -738,7 +714,7 @@ export const STATIC_ASSETS = {
  *  shells and manual inspection. */
 export function widgetHtml(title: string, body: string, script: string): string {
   return `<!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -130,6 +130,12 @@ export class TvDrawingManager {
 
   constructor(private readonly chart: IChartWidgetApi) {}
 
+  /** Entity ids this manager owns (agent + recommendation shapes). Everything
+   *  else on the chart is a user-drawn shape. */
+  trackedIds(): EntityId[] {
+    return [...this.ids];
+  }
+
   clear(): void {
     for (const id of this.ids) {
       try {

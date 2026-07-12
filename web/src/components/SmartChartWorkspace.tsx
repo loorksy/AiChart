@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -24,11 +32,31 @@ import {
   SmartChartAgentPanel,
   type SmartChartAgentHandle,
 } from "@/components/agent/SmartChartAgentPanel";
+import { AgentChatSidebar } from "@/components/agent/AgentChatSidebar";
+import { AgentVoiceButton } from "@/components/agent/AgentVoiceButton";
+import { AgentVoicePanel } from "@/components/agent/AgentVoicePanel";
+import { useChatSessions } from "@/hooks/useChatSessions";
+import { useAgentVoiceSession } from "@/hooks/useAgentVoiceSession";
+import { useMe } from "@/hooks/useMe";
+import { useLocale } from "@/hooks/useLocale";
+import {
+  DEFAULT_MOBILE_PANE,
+  clampChatWidth,
+  loadChatWidth,
+  saveChatWidth,
+  type MobilePane,
+} from "@/lib/layout/chatLayout";
 import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { useAccountCapital } from "@/hooks/useAccountCapital";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 import { normalizeInterval } from "@/lib/intervals";
 import { clearAgentDrawings } from "@/lib/agent/drawings/drawingOwnership";
+import {
+  debugBridgeEnabled,
+  installAgentDebugBridge,
+  removeAgentDebugBridge,
+  publicFinalResult,
+} from "@/lib/debug/agentDebugBridge";
 import type { AgentFinalResult } from "@/lib/agent/types";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
@@ -72,10 +100,16 @@ export function SmartChartWorkspace({
 }) {
   const chartRef = useRef<TvChartHandle>(null);
   const agentRef = useRef<SmartChartAgentHandle>(null);
-  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
-  const [mobilePane, setMobilePane] = useState<"chart" | "chat">("chart");
+  // Last final agent result — surfaced read-only via the dev/test debug bridge.
+  const lastFinalResultRef = useRef<AgentFinalResult | null>(null);
+  const [mobilePane, setMobilePane] = useState<MobilePane>(DEFAULT_MOBILE_PANE);
+  const chatEnabled = smartAgentEnabled && !guest;
 
+  const { locale, t, dir } = useLocale();
   const router = useRouter();
+
+  // Desktop chat-panel width (persisted, clamped). Not used on mobile.
+  const [chatWidth, setChatWidth] = useState<number>(() => loadChatWidth());
 
   const market: MarketType = "forex";
 
@@ -330,6 +364,7 @@ export function SmartChartWorkspace({
   // only the agent-owned set (one coherent set of drawings on the chart).
   const handleAgentResult = useCallback(
     (result: AgentFinalResult) => {
+      lastFinalResultRef.current = result;
       if (result.drawings) {
         setDrawings((prev) =>
           [...clearAgentDrawings(prev), ...(result.drawings ?? [])],
@@ -362,7 +397,6 @@ export function SmartChartWorkspace({
       return;
     }
     if (smartAgentEnabled) {
-      setAgentPanelOpen(true);
       setMobilePane("chat");
       // Defer so the panel mounts before the imperative call.
       setTimeout(() => agentRef.current?.quickAnalyze(), 0);
@@ -397,69 +431,93 @@ export function SmartChartWorkspace({
   const hasLayers =
     drawings.length > 0 || overlays.length > 0 || recommendation != null;
 
-  // Platform buttons INSIDE the TradingView header (item: no separate layer).
+  // Platform buttons INSIDE the TradingView header (no separate layer).
   const headerActions = useMemo<TvHeaderAction[]>(() => {
-    const actions: TvHeaderAction[] = [
-      {
-        id: "analyze",
-        text: guest
-          ? "🔒 دخول للتحليل"
-          : isAnalyzing
-            ? "… يُحلِّل"
-            : creditsRemaining != null
-              ? `✨ تحليل (${creditsRemaining})`
-              : "✨ تحليل",
-        title: guest
-          ? "سجّل الدخول لاستخدام التحليل بالذكاء الاصطناعي"
-          : "تحليل بالذكاء الاصطناعي",
-        color: "#71717a",
-        onClick: handleAnalyzeClick,
-      },
+    const mtAction: TvHeaderAction = {
+      id: "mt",
+      text: forexOnline ? "MT ✅" : "MT ⚠️",
+      title: forexOnline ? t("layout.mt_connected") : t("layout.mt_disconnected"),
+      color: forexOnline ? "#71717a" : "#f59e0b",
+      onClick: () => router.push("/console/connect"),
+    };
+    // Clean chart top bar in agent mode: analysis lives in chat, trades/
+    // recommendations in the sidebar. Only the MT status stays (plus the
+    // TV-native symbol / timeframe / screenshot controls).
+    if (chatEnabled) {
+      return [mtAction];
+    }
+    // Built as a single array literal (no render-time mutation of an array that
+    // holds ref-capturing click handlers).
+    const analyzeAction: TvHeaderAction = {
+      id: "analyze",
+      text: guest
+        ? "🔒 دخول للتحليل"
+        : isAnalyzing
+          ? "… يُحلِّل"
+          : creditsRemaining != null
+            ? `✨ تحليل (${creditsRemaining})`
+            : "✨ تحليل",
+      title: guest
+        ? "سجّل الدخول لاستخدام التحليل بالذكاء الاصطناعي"
+        : "تحليل بالذكاء الاصطناعي",
+      color: "#71717a",
+      onClick: handleAnalyzeClick,
+    };
+    const clearAction: TvHeaderAction[] =
+      !guest && hasLayers
+        ? [
+            {
+              id: "clear",
+              text: "🧹 مسح الرسومات",
+              title: "إزالة رسومات التحليل من الشارت",
+              onClick: handleClearLayers,
+            },
+          ]
+        : [];
+    const tradesAction: TvHeaderAction[] = !guest
+      ? [
+          {
+            id: "trades",
+            text:
+              openTradesCount > 0 ? `💼 صفقات (${openTradesCount})` : "💼 صفقات",
+            title: "الصفقات المفتوحة",
+            onClick: () => setTradesOpen(true),
+          },
+        ]
+      : [];
+    const capitalAction: TvHeaderAction[] =
+      !guest && capital.connected && capital.amount != null
+        ? [
+            {
+              id: "capital",
+              text: `$ ${Math.round(capital.amount).toLocaleString()} ${capital.currency ?? ""}`,
+              title: capital.label ?? "رصيد الحساب",
+            },
+          ]
+        : [];
+    const mtStatusAction: TvHeaderAction[] = !guest
+      ? [
+          {
+            id: "mt",
+            text: forexOnline ? "MT ✅" : "MT ⚠️",
+            title: forexOnline
+              ? "MetaTrader متصل"
+              : "MetaTrader غير متصل — اضغط للإعداد",
+            color: forexOnline ? "#71717a" : "#f59e0b",
+            onClick: () => router.push("/console/connect"),
+          },
+        ]
+      : [];
+    return [
+      analyzeAction,
+      ...clearAction,
+      ...tradesAction,
+      ...capitalAction,
+      ...mtStatusAction,
     ];
-    if (!guest && smartAgentEnabled) {
-      actions.push({
-        id: "agent",
-        text: "💬 الوكيل",
-        title: "فتح محادثة الوكيل الذكي للشارت",
-        onClick: () => {
-          setAgentPanelOpen((v) => !v);
-          setMobilePane("chat");
-        },
-      });
-    }
-    if (!guest) {
-      if (hasLayers) {
-        actions.push({
-          id: "clear",
-          text: "🧹 مسح الرسومات",
-          title: "إزالة رسومات التحليل من الشارت",
-          onClick: handleClearLayers,
-        });
-      }
-      actions.push({
-        id: "trades",
-        text:
-          openTradesCount > 0 ? `💼 صفقات (${openTradesCount})` : "💼 صفقات",
-        title: "الصفقات المفتوحة",
-        onClick: () => setTradesOpen(true),
-      });
-      if (capital.connected && capital.amount != null) {
-        actions.push({
-          id: "capital",
-          text: `$ ${Math.round(capital.amount).toLocaleString()} ${capital.currency ?? ""}`,
-          title: capital.label ?? "رصيد الحساب",
-        });
-      }
-      actions.push({
-        id: "mt",
-        text: forexOnline ? "MT ✅" : "MT ⚠️",
-        title: forexOnline ? "MetaTrader متصل" : "MetaTrader غير متصل — اضغط للإعداد",
-        color: forexOnline ? "#71717a" : "#f59e0b",
-        onClick: () => router.push("/console/connect"),
-      });
-    }
-    return actions;
   }, [
+    chatEnabled,
+    t,
     guest,
     isAnalyzing,
     creditsRemaining,
@@ -471,19 +529,100 @@ export function SmartChartWorkspace({
     capital.label,
     forexOnline,
     router,
-    smartAgentEnabled,
     handleAnalyzeClick,
     handleClearLayers,
   ]);
 
-  const showMobileChat =
-    smartAgentEnabled && agentPanelOpen && !guest && mobilePane === "chat";
-  const chartPaneClass = showMobileChat
-    ? "relative hidden min-h-0 flex-1 overflow-hidden md:block"
-    : "relative min-h-0 flex-1 overflow-hidden";
-  const agentPaneClass = showMobileChat
-    ? "flex min-h-0 flex-1 border-r border-border/60 md:block md:w-[360px] md:shrink-0"
-    : "hidden w-[360px] shrink-0 border-r border-border/60 md:block";
+  const chat = useChatSessions({
+    enabled: chatEnabled,
+    symbol,
+    interval,
+    locale,
+  });
+
+  // Live voice conversation. The realtime model is only the speech interface —
+  // every final transcript is routed through the SAME agent flow as typed text
+  // (agentRef.sendMessage with inputMode "voice"), and the agent's public final
+  // answer is spoken back. Voice never bypasses the agent's authority.
+  const me = useMe();
+  const voice = useAgentVoiceSession({
+    chatId: chat.activeChatId ?? undefined,
+    locale,
+    symbol,
+    interval,
+    userId: me.data?.user.id ?? 0,
+    enabled: chatEnabled && Boolean(chat.activeChatId),
+    sendAgentMessage: (text) =>
+      agentRef.current?.sendMessage(text, { inputMode: "voice" }),
+  });
+  // Stop any live voice session when switching chats (rebind safely).
+  useEffect(() => {
+    if (voice.active) void voice.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.activeChatId]);
+
+  // Dev/test-only read-only debug bridge for Playwright UI-sync assertions.
+  // Refreshes each render so the getter closes over the latest values; never
+  // exposes secrets, tokens, audio, or provider payloads. No-op in production.
+  useEffect(() => {
+    if (!debugBridgeEnabled()) return;
+    installAgentDebugBridge(() => {
+      const candle = chartRef.current?.latestCandle() ?? null;
+      const userDrawings = chartRef.current?.getUserDrawings() ?? [];
+      return {
+        symbol,
+        interval,
+        latestChartCandleTime: candle?.time ?? null,
+        latestChartClose: candle?.close ?? null,
+        visibleRange: chartRef.current?.visibleRange() ?? null,
+        agentDrawingCount: drawings.length,
+        userDrawingCount: userDrawings.length,
+        drawingCount: drawings.length + userDrawings.length,
+        activeRecommendation: recommendation
+          ? {
+              action: recommendation.action,
+              entry: recommendation.entry ?? null,
+              stop_loss: recommendation.stop_loss ?? null,
+              take_profit: recommendation.take_profit ?? null,
+            }
+          : null,
+        activeChatId: chat.activeChatId ?? null,
+        locale,
+        mobilePane,
+        voiceStatus: voice.status,
+        lastFinalResult: publicFinalResult(lastFinalResultRef.current),
+      };
+    });
+    return () => removeAgentDebugBridge();
+  });
+
+  // Mobile shows exactly one pane (Chart or Chat); desktop shows both.
+  const showMobileChat = chatEnabled && mobilePane === "chat";
+  const chartPaneClass = `relative min-h-0 flex-1 overflow-hidden ${
+    showMobileChat ? "hidden md:block" : "block"
+  }`;
+  // Chat: full width on mobile (when its tab is active), fixed persisted width
+  // on desktop. Sits on the right (last column, dir="ltr" row) in both locales.
+  const chatPaneClass = `flex min-h-0 w-full flex-col border-border/60 md:w-[var(--chat-w)] md:shrink-0 ${
+    mobilePane === "chart" ? "hidden md:flex" : "flex"
+  }`;
+
+  // Desktop chat resize: chat is the right column, so dragging the handle left
+  // widens it. Persists on release.
+  const startChatResize = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = chatWidth;
+    const onMove = (ev: PointerEvent) =>
+      setChatWidth(clampChatWidth(startW + (startX - ev.clientX)));
+    const onUp = (ev: PointerEvent) => {
+      saveChatWidth(clampChatWidth(startW + (startX - ev.clientX)));
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
@@ -499,7 +638,23 @@ export function SmartChartWorkspace({
         </p>
       )}
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div
+        className="flex min-h-0 flex-1 overflow-hidden"
+        dir="ltr"
+        style={{ "--chat-w": `${chatWidth}px` } as CSSProperties}
+      >
+        {chatEnabled && (
+          <div className="hidden w-[240px] shrink-0 md:block">
+            <AgentChatSidebar
+              sessions={chat.sessions}
+              activeChatId={chat.activeChatId}
+              onSelectChat={chat.selectChat}
+              onNewChat={() => void chat.newChat()}
+              busy={!chat.ready}
+            />
+          </div>
+        )}
+
         <div className={chartPaneClass}>
           {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
               setResolution) — never remount, so drawings and chart state survive. */}
@@ -539,16 +694,37 @@ export function SmartChartWorkspace({
           />
         </div>
 
-        {smartAgentEnabled && agentPanelOpen && !guest && (
-          <div className={agentPaneClass}>
+        {chatEnabled && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t("layout.resize_chat")}
+            onPointerDown={startChatResize}
+            className="hidden w-1 shrink-0 cursor-col-resize bg-border/40 hover:bg-primary/50 md:block"
+          />
+        )}
+
+        {chatEnabled && (
+          <div className={chatPaneClass}>
             <SmartChartAgentPanel
+              key={chat.activeChatId ?? "new"}
               ref={agentRef}
               symbol={symbol}
               interval={interval}
               layoutId={layoutId}
               dataSource={dataSource}
+              chatId={chat.activeChatId ?? undefined}
+              initialMessages={chat.activeMessages}
+              getVisibleRange={() => chartRef.current?.visibleRange() ?? undefined}
               getLatestCandle={() => chartRef.current?.latestCandle() ?? undefined}
               getDrawings={() => drawings}
+              getUserDrawings={() => chartRef.current?.getUserDrawings() ?? undefined}
+              getSelectedDrawingId={() =>
+                chartRef.current?.getSelectedUserDrawingId() ?? undefined
+              }
+              applyDrawingMutations={(commands) =>
+                chartRef.current?.applyUserDrawingMutations(commands)
+              }
               getRecommendation={() =>
                 recommendation
                   ? {
@@ -562,16 +738,37 @@ export function SmartChartWorkspace({
                   : undefined
               }
               onResult={handleAgentResult}
-              onClose={() => setAgentPanelOpen(false)}
+              onVoiceFinal={voice.handleAgentFinal}
+              onPersistMessage={chat.persistMessage}
+              voiceSlot={
+                <div className="shrink-0">
+                  <div className="flex items-center gap-2 border-t border-border/60 px-2 py-1.5">
+                    <AgentVoiceButton
+                      voice={voice}
+                      disabled={!chat.activeChatId}
+                    />
+                    {!voice.active && (
+                      <span className="text-xs text-muted-foreground">
+                        {t("voice.start")}
+                      </span>
+                    )}
+                  </div>
+                  <AgentVoicePanel voice={voice} />
+                </div>
+              }
             />
           </div>
         )}
       </div>
 
-      {smartAgentEnabled && agentPanelOpen && !guest && (
-        <div className="grid shrink-0 grid-cols-2 border-t border-border/60 bg-card p-1 md:hidden">
+      {chatEnabled && (
+        <div
+          dir={dir}
+          className="grid shrink-0 grid-cols-2 border-t border-border/60 bg-card p-1 md:hidden"
+        >
           <button
             type="button"
+            aria-pressed={mobilePane === "chart"}
             onClick={() => setMobilePane("chart")}
             className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold ${
               mobilePane === "chart"
@@ -580,10 +777,11 @@ export function SmartChartWorkspace({
             }`}
           >
             <CandlestickChart className="h-4 w-4" />
-            الشارت
+            {t("layout.chart")}
           </button>
           <button
             type="button"
+            aria-pressed={mobilePane === "chat"}
             onClick={() => setMobilePane("chat")}
             className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold ${
               mobilePane === "chat"
@@ -592,7 +790,7 @@ export function SmartChartWorkspace({
             }`}
           >
             <MessageSquare className="h-4 w-4" />
-            الشات
+            {t("layout.chat")}
           </button>
         </div>
       )}

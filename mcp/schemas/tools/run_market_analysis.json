@@ -10,9 +10,7 @@
     },
     "market": {
       "type": "string",
-      "enum": [
-        "forex"
-      ]
+      "const": "forex"
     },
     "data_source": {
       "type": "string",

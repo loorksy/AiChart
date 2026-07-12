@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  isDrawActiveRecommendation,
   isDrawingOnly,
   isGeneralOnly,
+  isScalpRecommendation,
   routeIntent,
 } from "@/lib/agent/intentRouter";
 import type { AgentActivityEvent, AgentRunContext } from "@/lib/agent/types";
@@ -109,5 +111,71 @@ describe("intentRouter", () => {
       ctx: fakeCtx(events),
     });
     assert.ok(intents.includes("market_news"));
+  });
+
+  it("an Arabic recommendation request routes to a new trade analysis", () => {
+    const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
+    const intents = routeIntent({
+      message: "أعطني توصية جديدة",
+      chartContext: { symbol: "XAUUSD", interval: "15m" },
+      ctx: fakeCtx(events),
+    });
+    assert.ok(intents.includes("new_trade_analysis"));
+    assert.equal(intents.includes("scalp_recommendation"), false);
+  });
+
+  it("a scalp request routes to scalp mode, not standard analysis", () => {
+    const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
+    const intents = routeIntent({
+      message: "توصية سكالب",
+      chartContext: { symbol: "XAUUSD", interval: "1m" },
+      ctx: fakeCtx(events),
+    });
+    assert.ok(isScalpRecommendation(intents));
+    assert.equal(intents.includes("new_trade_analysis"), false);
+  });
+
+  it("draw-the-recommendation wording never triggers a new trade analysis", () => {
+    const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
+    const intents = routeIntent({
+      message: "ارسم تفاصيل الصفقة",
+      chartContext: { symbol: "XAUUSD", interval: "15m" },
+      ctx: fakeCtx(events),
+    });
+    assert.ok(isDrawActiveRecommendation(intents));
+    assert.equal(intents.includes("new_trade_analysis"), false);
+    assert.equal(intents.includes("draw_on_chart"), false);
+  });
+
+  it("generic 'draw the analysis' is drawing-only, not a new trade analysis", () => {
+    const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
+    const intents = routeIntent({
+      message: "ارسم التحليل",
+      chartContext: { symbol: "XAUUSD", interval: "15m" },
+      ctx: fakeCtx(events),
+    });
+    assert.equal(intents.includes("new_trade_analysis"), false);
+  });
+
+  it("'cancel the previous and analyze again' cancels AND analyzes", () => {
+    const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
+    const intents = routeIntent({
+      message: "ألغ السابقة وحلل من جديد",
+      chartContext: { symbol: "XAUUSD", interval: "15m" },
+      ctx: fakeCtx(events),
+    });
+    assert.ok(intents.includes("cancel_active_recommendation"));
+    assert.ok(intents.includes("new_trade_analysis"));
+  });
+
+  it("a plain cancel does not start a new analysis", () => {
+    const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
+    const intents = routeIntent({
+      message: "ألغِ هذه التوصية",
+      chartContext: { symbol: "XAUUSD", interval: "15m" },
+      ctx: fakeCtx(events),
+    });
+    assert.ok(intents.includes("cancel_active_recommendation"));
+    assert.equal(intents.includes("new_trade_analysis"), false);
   });
 });

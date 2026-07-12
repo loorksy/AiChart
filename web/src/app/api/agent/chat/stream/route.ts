@@ -23,6 +23,7 @@ import {
   clearOptions,
 } from "@/lib/agent/sessionOptions";
 import { routeIntent } from "@/lib/agent/intentRouter";
+import { generateAgentSuggestions } from "@/lib/agent/suggestions/generateAgentSuggestions";
 import { generateTickerPlan } from "@/lib/agent/ticker/generateTickerPlan";
 import { streamTicker } from "@/lib/agent/ticker/streamTicker";
 import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
@@ -155,6 +156,36 @@ const chartDrawingSchema = z
   })
   .passthrough();
 
+// Safe, bounded transport for user-created drawings read from the chart. Mirrors
+// DRAWING_LIMITS (max 50 drawings, 8 points, label 200) and requires finite
+// numeric prices/times — no raw TradingView objects ever cross this boundary.
+const serializedDrawingPointSchema = z
+  .object({
+    time: z.number().finite().optional(),
+    price: z.number().finite().positive().optional(),
+  })
+  .strip();
+
+const serializedUserDrawingSchema = z
+  .object({
+    id: z.string().min(1).max(80),
+    owner: z.enum(["user", "agent", "recommendation"]).default("user"),
+    type: z.string().min(1).max(60),
+    symbol: z.string().max(20).default(""),
+    interval: z.string().max(8).default(""),
+    points: z.array(serializedDrawingPointSchema).max(8).default([]),
+    priceLevels: z.array(z.number().finite().positive()).max(8).optional(),
+    label: z.string().max(200).optional(),
+    color: z.string().max(40).optional(),
+    lineStyle: z.string().max(20).optional(),
+    visible: z.boolean().optional(),
+    locked: z.boolean().optional(),
+    createdAt: z.number().finite().optional(),
+    updatedAt: z.number().finite().optional(),
+    source: z.enum(["tradingview", "lonora"]).default("tradingview"),
+  })
+  .strip();
+
 const chartRecommendationSchema = z
   .object({
     action: z.enum(["buy", "sell", "wait"]),
@@ -182,6 +213,9 @@ const schema = z.object({
         .optional(),
       latestCandle: z
         .object({
+          // symbol/interval let the Market Sync Guard reject chart drift.
+          symbol: z.string().max(20).optional(),
+          interval: z.string().max(8).optional(),
           time: z.number(),
           open: z.number().optional(),
           high: z.number().optional(),
@@ -191,10 +225,13 @@ const schema = z.object({
         })
         .optional(),
       drawings: z.array(chartDrawingSchema).max(80).optional(),
+      userDrawings: z.array(serializedUserDrawingSchema).max(50).optional(),
+      selectedDrawingId: z.string().max(80).optional(),
       recommendation: chartRecommendationSchema.optional(),
       dataSource: z.enum(["oanda", "ea"]).optional(),
     })
     .optional(),
+  locale: z.enum(["ar", "en"]).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -322,6 +359,7 @@ export async function POST(req: NextRequest) {
           const result = await runUnifiedChartAgent({
             userMessage: resolvedMessage,
             chartContext: body.chartContext,
+            locale: body.locale,
             requestContext: {
               requestId,
               userId: user.id,
@@ -359,11 +397,24 @@ export async function POST(req: NextRequest) {
             metadata: { sessionId },
           });
 
+          // Dynamic, model-generated follow-up suggestions for THIS turn/state.
+          // No static fallback: a failure yields [] and the UI shows nothing.
+          const suggestions = await generateAgentSuggestions({
+            locale: body.locale ?? "ar",
+            userMessage: resolvedMessage,
+            result,
+            symbol: body.chartContext?.symbol,
+            interval: body.chartContext?.interval,
+            activeRecommendation: result.activeRecommendation,
+            maxSuggestions: 4,
+          }).catch(() => []);
+
           // Stop the ticker the moment the final result is ready.
           done = true;
 
-          if (result.options?.length) {
-            rememberOptions(sessionId, result.options);
+          // Number-reply resolver targets the suggestions actually shown.
+          if (suggestions.length) {
+            rememberOptions(sessionId, suggestions);
           } else {
             clearOptions(sessionId);
           }
@@ -372,7 +423,9 @@ export async function POST(req: NextRequest) {
             ...result,
             sessionId,
             activityEvents,
-            options: result.options,
+            // Replace static contextual options with the dynamic suggestions.
+            options: suggestions,
+            suggestions,
             // Accurate ticker state in dev diagnostics.
             debugDecisionFlow: result.debugDecisionFlow
               ? { ...result.debugDecisionFlow, ...tickerDebug }

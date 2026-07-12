@@ -1,29 +1,25 @@
 "use client";
 
-import { useImperativeHandle, forwardRef } from "react";
+import { useImperativeHandle, forwardRef, type ReactNode } from "react";
 import type { AgentChartContext, AgentFinalResult } from "@/lib/agent/types";
-import { useSmartChartAgent } from "@/hooks/useSmartChartAgent";
 import {
-  ANALYZE_QUICK_PROMPT,
-  NEWS_QUICK_PROMPT,
-} from "@/lib/agent/quickPrompts";
+  useSmartChartAgent,
+  type AgentChatMessage,
+  type AgentPersistPayload,
+} from "@/hooks/useSmartChartAgent";
+import { useLocale } from "@/hooks/useLocale";
+import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentActivityTimeline } from "./AgentActivityTimeline";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
+import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
+import { trackedRecommendationFromResult } from "@/lib/recommendations/fromAgentResult";
 
 export interface SmartChartAgentHandle {
   /** Fire the Analyze quick prompt into the chat (used by the header button). */
   quickAnalyze: () => void;
-  sendMessage: (message: string) => void;
+  sendMessage: (message: string, opts?: { inputMode?: "text" | "voice" }) => void;
 }
-
-const DECISION_LABEL: Record<AgentFinalResult["decision"], string> = {
-  buy: "شراء",
-  sell: "بيع",
-  wait: "انتظار",
-  informational: "معلومة",
-  action_required: "يتطلب إجراء",
-};
 
 const DECISION_COLOR: Record<AgentFinalResult["decision"], string> = {
   buy: "text-emerald-500",
@@ -38,12 +34,24 @@ interface Props {
   interval: string;
   layoutId?: string;
   dataSource?: "oanda" | "ea";
+  /** Active chat/session id (also the agent sessionId for recommendation memory). */
+  chatId?: string;
+  /** Messages loaded from history to hydrate this chat. */
+  initialMessages?: AgentChatMessage[];
   getVisibleRange?: () => { from: number; to: number } | undefined;
   getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
   getDrawings?: () => AgentChartContext["drawings"] | undefined;
   getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
+  getUserDrawings?: () => AgentChartContext["userDrawings"] | undefined;
+  getSelectedDrawingId?: () => string | undefined;
   onResult?: (result: AgentFinalResult) => void;
-  onClose?: () => void;
+  onVoiceFinal?: (result: AgentFinalResult) => void;
+  applyDrawingMutations?: (
+    commands: NonNullable<AgentFinalResult["drawingMutations"]>,
+  ) => void;
+  onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
+  /** Live voice conversation surface, rendered above the chat input. */
+  voiceSlot?: ReactNode;
 }
 
 /** Docked, chart-connected Smart Chart Agent chat — one visible agent. */
@@ -54,19 +62,25 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       interval,
       layoutId,
       dataSource,
+      chatId,
+      initialMessages,
       getVisibleRange,
       getLatestCandle,
       getDrawings,
       getRecommendation,
+      getUserDrawings,
+      getSelectedDrawingId,
       onResult,
-      onClose,
+      onVoiceFinal,
+      applyDrawingMutations,
+      onPersistMessage,
+      voiceSlot,
     },
     ref,
   ) {
+    const { t, dir, locale } = useLocale();
     const {
       messages,
-      activityEvents,
-      currentTicker,
       running,
       error,
       sendMessage,
@@ -76,18 +90,27 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         interval,
         layoutId,
         dataSource,
+        chatId,
+        locale,
+        initialMessages,
         getVisibleRange,
         getLatestCandle,
         getDrawings,
         getRecommendation,
+        getUserDrawings,
+        getSelectedDrawingId,
         onResult,
+        onVoiceFinal,
+        applyDrawingMutations,
+        onPersistMessage,
       });
 
     useImperativeHandle(
       ref,
       () => ({
         quickAnalyze: () => void sendMessage(ANALYZE_QUICK_PROMPT),
-        sendMessage: (m: string) => void sendMessage(m),
+        sendMessage: (m: string, o?: { inputMode?: "text" | "voice" }) =>
+          void sendMessage(m, o),
       }),
       [sendMessage],
     );
@@ -95,49 +118,16 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
     return (
       <div
         className="flex h-full min-h-0 w-full flex-col bg-card"
-        dir="rtl"
+        dir={dir}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-3 py-2">
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              الوكيل الذكي للشارت
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              {symbol} · {interval}
-            </p>
-          </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-              aria-label="إغلاق"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
-        <div className="flex shrink-0 gap-2 border-b border-border/60 px-3 py-2">
-          <button
-            onClick={() => void sendMessage(ANALYZE_QUICK_PROMPT)}
-            disabled={running}
-            className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            تحليل الشارت
-          </button>
-          <button
-            onClick={() => void sendMessage(NEWS_QUICK_PROMPT)}
-            disabled={running}
-            className="rounded-md bg-muted px-3 py-1 text-xs text-foreground hover:bg-muted/70 disabled:opacity-50"
-          >
-            خطر الأخبار
-          </button>
-        </div>
-
+        {/* No fixed agent header bar and NO static quick-action toolbar — the
+            chat panel is clean. All follow-up prompts are dynamic, model-
+            generated suggestions rendered per turn (never hardcoded buttons).
+            Analysis is reachable from the chart's Analyze control and by typing. */}
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           {messages.length === 0 && !running && (
             <p className="text-center text-xs text-muted-foreground">
-              اسأل الوكيل أو اضغط «تحليل الشارت».
+              {t("agent.empty")}
             </p>
           )}
 
@@ -150,26 +140,44 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   : "mr-auto max-w-[95%] rounded-lg bg-muted/50 px-3 py-2 text-sm text-foreground"
               }
             >
-              {m.role === "assistant" && m.activityEvents?.length ? (
-                <div className="mb-2">
-                  <AgentActivityTimeline events={m.activityEvents} />
-                </div>
-              ) : null}
+              {/* Temporary assistant bubble: live thinking ticker while the run
+                  is in flight. Replaced in place by the final answer. */}
+              {m.pending ? (
+                m.ticker ? (
+                  <AgentThinkingTicker item={m.ticker} />
+                ) : (
+                  <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                    <span>{t("agent.processing")}</span>
+                  </div>
+                )
+              ) : (
+                <>
               {m.role === "assistant" && m.result && (
                 <div className="mb-1 flex items-center gap-2 text-[11px]">
                   <span
                     className={`font-bold ${DECISION_COLOR[m.result.decision]}`}
                   >
-                    {DECISION_LABEL[m.result.decision]}
+                    {t(`decision.${m.result.decision}`)}
                   </span>
                   {m.result.confidence > 0 && (
                     <span className="text-muted-foreground">
-                      ثقة {Math.round(m.result.confidence * 100)}%
+                      {t("agent.confidence")} {Math.round(m.result.confidence * 100)}%
                     </span>
                   )}
                 </div>
               )}
               <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+              {(() => {
+                const tracked = m.result
+                  ? trackedRecommendationFromResult(m.result)
+                  : null;
+                return tracked ? (
+                  <div className="mt-2">
+                    <RecommendationTrackerCard rec={tracked} />
+                  </div>
+                ) : null;
+              })()}
               {m.result?.keyReasons?.length ? (
                 <ul className="mt-1 list-inside list-disc text-[12px] text-muted-foreground">
                   {m.result.keyReasons.map((r, i) => (
@@ -187,7 +195,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {m.result?.publicReasoningSummary?.length ? (
                 <div className="mt-2 rounded-md bg-background/50 p-2 text-[12px]">
                   <p className="mb-1 font-medium text-muted-foreground">
-                    سبب القرار:
+                    {t("agent.decision_reason")}
                   </p>
                   <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
                     {m.result.publicReasoningSummary.map((r, i) => (
@@ -203,7 +211,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                       key={option.id}
                       onClick={() => void sendMessage(option.prompt)}
                       disabled={running}
-                      className="rounded-md border border-border/60 bg-background px-2 py-1 text-right text-xs hover:bg-muted disabled:opacity-50"
+                      className="rounded-md border border-border/60 bg-background px-2 py-1 text-start text-xs hover:bg-muted disabled:opacity-50"
                     >
                       {index + 1}. {option.label}
                     </button>
@@ -213,23 +221,35 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {m.result?.requiresConfirmation && m.result.confirmationPayload && (
                 <div className="mt-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2 text-[12px]">
                   <p className="font-semibold text-fuchsia-500">
-                    تحتاج الصفقة تأكيدك قبل التنفيذ
+                    {t("agent.needs_confirmation")}
                   </p>
                   <p className="text-muted-foreground">
                     {m.result.confirmationPayload.direction === "buy"
-                      ? "شراء"
-                      : "بيع"}{" "}
+                      ? t("decision.buy")
+                      : t("decision.sell")}{" "}
                     {m.result.confirmationPayload.symbol} ·{" "}
                     {m.result.confirmationPayload.executionMode === "live"
-                      ? "حساب LIVE"
-                      : "محاكاة/ديمو"}
+                      ? t("agent.account_live")
+                      : t("agent.account_demo")}
                   </p>
                 </div>
               )}
+              {/* Optional, collapsed-by-default run details — activity is kept
+                  for debugging but never shown as a noisy timeline by default. */}
+              {m.role === "assistant" && m.activityEvents?.length ? (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[11px] text-muted-foreground/70">
+                    {t("agent.run_details")}
+                  </summary>
+                  <div className="mt-1">
+                    <AgentActivityTimeline events={m.activityEvents} />
+                  </div>
+                </details>
+              ) : null}
+                </>
+              )}
             </div>
           ))}
-
-          {running && <AgentActivityTimeline events={activityEvents} live />}
 
           {error && (
             <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
@@ -238,7 +258,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
           )}
         </div>
 
-        {running && <AgentThinkingTicker item={currentTicker} />}
+        {voiceSlot}
 
         <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} />
       </div>

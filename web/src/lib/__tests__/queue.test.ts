@@ -29,25 +29,31 @@ test("inline fallback runs the handler when REDIS_URL is unset", async () => {
 });
 
 test("BullMQ round-trip: enqueue → worker processes the job", async (t) => {
-  const url = "redis://127.0.0.1:6379";
-  // Skip unless a local Redis answers quickly.
+  const url = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+  // Skip unless a Redis answers quickly. Always disconnect the probe — including
+  // on failure — so a leaked ioredis retry timer can't keep the process alive
+  // (which would hang node:test after the suite otherwise passes).
   let reachable = false;
   try {
     const { default: IORedis } = await import("ioredis");
     const probe = new IORedis(url, {
       maxRetriesPerRequest: 1,
       connectTimeout: 500,
+      retryStrategy: () => null, // never retry — fail fast, no lingering timer
       lazyConnect: true,
     });
-    await probe.connect();
-    await probe.ping();
-    await probe.quit();
-    reachable = true;
+    try {
+      await probe.connect();
+      await probe.ping();
+      reachable = true;
+    } finally {
+      probe.disconnect();
+    }
   } catch {
     reachable = false;
   }
   if (!reachable) {
-    t.skip("Redis not reachable on 127.0.0.1:6379");
+    t.skip("Redis not reachable — set REDIS_URL to a running instance to run this test");
     return;
   }
 

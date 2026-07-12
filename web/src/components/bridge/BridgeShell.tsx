@@ -100,7 +100,7 @@ export default function BridgeShell({
               <Cable className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-bold">AiChart Bridge</p>
+              <p className="text-sm font-bold">Lonora Bridge</p>
               <p className="text-[10px] text-muted-foreground">
                 Claude MCP · MetaTrader 5
               </p>
@@ -136,7 +136,7 @@ export default function BridgeShell({
               <Menu className="h-5 w-5" />
             </button>
             <div>
-              <p className="text-xs text-muted-foreground md:hidden">AiChart Bridge</p>
+              <p className="text-xs text-muted-foreground md:hidden">Lonora Bridge</p>
               <h1 className="text-sm font-semibold md:text-base">
                 {bridgeNavLabel(pathname)}
               </h1>

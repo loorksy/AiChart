@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
     // 2. Step 1: Request trade without params
     log("2. Sending: 'أريد فتح صفقة شراء على BTC'");
-    let result1 = await runCopilot(userId, conversationId, "أريد فتح صفقة شراء على BTC", []);
+    const result1 = await runCopilot(userId, conversationId, "أريد فتح صفقة شراء على BTC", []);
     log("Reply:", result1.reply);
     log("Question payload:", JSON.stringify(result1.question));
 
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       ["awaiting_timeframe_selection", JSON.stringify({ initial_request: "أريد فتح صفقة شراء على BTC" }), conversationId]
     );
 
-    let result2 = await runCopilot(userId, conversationId, "1h", []);
+    const result2 = await runCopilot(userId, conversationId, "1h", []);
     log("Reply:", result2.reply);
     log("Question payload:", JSON.stringify(result2.question));
 
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       ["awaiting_strategy_selection", JSON.stringify({ initial_request: "أريد فتح صفقة شراء على BTC", timeframe: "1h" }), conversationId]
     );
 
-    let result3 = await runCopilot(userId, conversationId, "scalp", []);
+    const result3 = await runCopilot(userId, conversationId, "scalp", []);
     log("Reply:", result3.reply);
     log("Recommendations count:", result3.recommendations?.length);
 

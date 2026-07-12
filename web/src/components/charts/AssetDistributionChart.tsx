@@ -57,14 +57,13 @@ export function AssetDistributionChart({
   const R = 80;
   const CX = SIZE / 2;
   const CY = SIZE / 2;
-  let cursor = 0;
-
+  // Cumulative arc offsets computed without mutating an outer variable during
+  // render (data is tiny, so the prefix-sum cost is negligible).
+  const portions = data.map((d) => d.value / total);
   const slices = data.map((d, i) => {
-    const portion = d.value / total;
-    const start = cursor * 360;
-    const end = (cursor + portion) * 360;
-    cursor += portion;
-    return { d, i, start, end, portion };
+    const before = portions.slice(0, i).reduce((a, b) => a + b, 0);
+    const portion = portions[i]!;
+    return { d, i, start: before * 360, end: (before + portion) * 360, portion };
   });
 
   const active = activeIdx != null ? slices[activeIdx] : null;

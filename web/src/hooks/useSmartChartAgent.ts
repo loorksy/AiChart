@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentActivityEvent,
   AgentChartContext,
@@ -8,16 +8,40 @@ import type {
   AgentOption,
 } from "@/lib/agent/types";
 import type { AgentTickerItem } from "@/lib/agent/ticker/types";
+import {
+  appendUserAndPending,
+  applyFinal,
+  applyTicker,
+  dropPending,
+} from "@/hooks/agentChatReducer";
 
 export interface AgentChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   result?: AgentFinalResult;
-  /** Meaningful activity captured during this turn — kept in history. */
+  /** Meaningful activity captured during this turn — kept in memory for the
+   *  optional "run details" toggle; never rendered as a timeline by default. */
   activityEvents?: AgentActivityEvent[];
-  /** Clickable follow-up options offered with this reply. */
+  /** Clickable follow-up suggestions offered with this reply. */
   options?: AgentOption[];
+  /** A temporary assistant bubble shown while the agent runs. Not persisted. */
+  pending?: boolean;
+  /** Live thinking-ticker line shown inside the pending bubble. */
+  ticker?: AgentTickerItem | null;
+}
+
+/** Persisted-message payload handed to the chat-history store on each turn. */
+export interface AgentPersistPayload {
+  role: "user" | "assistant";
+  content: string;
+  result?: AgentFinalResult;
+  recommendationId?: string;
+  analysisId?: string;
+  symbol?: string;
+  interval?: string;
+  /** How the turn was produced. Voice turns persist as normal text turns. */
+  inputMode?: "text" | "voice";
 }
 
 export interface UseSmartChartAgentOptions {
@@ -25,12 +49,32 @@ export interface UseSmartChartAgentOptions {
   interval: string;
   layoutId?: string;
   dataSource?: "oanda" | "ea";
+  /** Chat/session id — also used as the agent sessionId so recommendation
+   *  memory is scoped per chat. When omitted, an ephemeral id is used. */
+  chatId?: string;
+  /** UI locale — sent to the agent so it can answer in the selected language. */
+  locale?: "ar" | "en";
+  /** Messages loaded from history to hydrate this chat on mount. */
+  initialMessages?: AgentChatMessage[];
   getVisibleRange?: () => { from: number; to: number } | undefined;
   getLatestCandle?: () => AgentChartContext["latestCandle"] | undefined;
   getDrawings?: () => AgentChartContext["drawings"] | undefined;
   getRecommendation?: () => AgentChartContext["recommendation"] | undefined;
+  /** Safe serialized user drawings read from the chart for this turn. */
+  getUserDrawings?: () => AgentChartContext["userDrawings"] | undefined;
+  /** The user's currently-selected drawing id (highest-priority "this" hint). */
+  getSelectedDrawingId?: () => string | undefined;
   /** Deliver the agent's drawings to the chart. */
   onResult?: (result: AgentFinalResult) => void;
+  /** Final result of a VOICE-initiated turn — the voice layer speaks its
+   *  public answer. Never fired for typed turns. */
+  onVoiceFinal?: (result: AgentFinalResult) => void;
+  /** Apply user-drawing mutations onto the native chart (after the final SSE). */
+  applyDrawingMutations?: (
+    commands: NonNullable<AgentFinalResult["drawingMutations"]>,
+  ) => void;
+  /** Persist a user/assistant message to chat history (fire-and-forget). */
+  onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
 }
 
 function uuid(): string {
@@ -44,13 +88,17 @@ function uuid(): string {
  * Supports mid-run cancellation via AbortController.
  */
 export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
-  const [messages, setMessages] = useState<AgentChatMessage[]>([]);
+  const [messages, setMessages] = useState<AgentChatMessage[]>(
+    () => opts.initialMessages ?? [],
+  );
   const [activityEvents, setActivityEvents] = useState<AgentActivityEvent[]>([]);
   const [currentTicker, setCurrentTicker] = useState<AgentTickerItem | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const sessionIdRef = useRef<string>(uuid());
+  const sessionIdRef = useRef<string>(opts.chatId ?? uuid());
+  // Idempotency: a mutationId is applied to the chart at most once, ever.
+  const appliedMutationsRef = useRef<Set<string>>(new Set());
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -59,22 +107,42 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
     setRunning(false);
   }, []);
 
+  // Abort any in-flight stream when the hook unmounts (e.g. switching chats).
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
   const sendMessage = useCallback(
-    async (message: string) => {
+    async (message: string, sendOpts?: { inputMode?: "text" | "voice" }) => {
       const text = message.trim();
       if (!text || running) return;
+      const inputMode = sendOpts?.inputMode ?? "text";
 
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
-      setMessages((prev) => [
-        ...prev,
-        { id: uuid(), role: "user", content: text },
-      ]);
+      const chatId = opts.chatId ?? sessionIdRef.current;
+      // A temporary assistant bubble hosts the live ticker while the run is in
+      // flight; the final event replaces it in place (same id → no duplicate).
+      const pendingId = uuid();
+      let finalized = false;
+
+      setMessages((prev) =>
+        appendUserAndPending(prev, { id: uuid(), content: text }, pendingId),
+      );
       setActivityEvents([]);
       setError(null);
       setRunning(true);
+
+      // Persist the user turn (fire-and-forget — never blocks streaming).
+      opts.onPersistMessage?.(chatId, {
+        role: "user",
+        content: text,
+        symbol: opts.symbol,
+        interval: opts.interval,
+        inputMode,
+      });
 
       const chartContext: AgentChartContext = {
         symbol: opts.symbol,
@@ -84,6 +152,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         visibleRange: opts.getVisibleRange?.(),
         latestCandle: opts.getLatestCandle?.(),
         drawings: opts.getDrawings?.(),
+        userDrawings: opts.getUserDrawings?.(),
+        selectedDrawingId: opts.getSelectedDrawingId?.(),
         recommendation: opts.getRecommendation?.(),
       };
 
@@ -93,7 +163,8 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
-            sessionId: sessionIdRef.current,
+            sessionId: chatId,
+            locale: opts.locale,
             chartContext,
           }),
           signal: controller.signal,
@@ -132,34 +203,63 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
               continue;
             }
             if (eventName === "ticker") {
-              // UI-only: one changing line while running; never stored in history.
-              setCurrentTicker(data as AgentTickerItem);
+              // UI-only: drives the pending bubble's line; never stored in history.
+              const item = data as AgentTickerItem;
+              setCurrentTicker(item);
+              setMessages((prev) => applyTicker(prev, pendingId, item));
             } else if (eventName === "activity") {
               // Live stream only — the server already filtered to visible work.
               setActivityEvents((prev) => [...prev, data as AgentActivityEvent]);
             } else if (eventName === "final") {
               const result = data as AgentFinalResult;
               const turnActivity = result.activityEvents ?? [];
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: uuid(),
-                  role: "assistant",
+              finalized = true;
+              // Replace the pending bubble in place — no duplicate assistant
+              // message, and the temporary ticker text is discarded.
+              setMessages((prev) =>
+                applyFinal(prev, pendingId, {
                   content: result.summary,
                   result,
-                  // Persist meaningful activity into history so it doesn't vanish.
+                  // Kept only for the optional run-details toggle.
                   activityEvents: turnActivity.filter(
                     (e) => e.visible !== false && e.message.trim().length > 0,
                   ),
                   options: result.options ?? [],
-                },
-              ]);
+                }),
+              );
               // Clear the live stream + ticker — the run is over.
               setActivityEvents([]);
               setCurrentTicker(null);
               // Only the final event delivers drawings to the chart. Ticker and
               // activity events NEVER touch the chart.
               opts.onResult?.(result);
+              // Apply user-drawing mutations exactly once (idempotent by id) —
+              // AFTER the final result, never mid-stream.
+              const mutations = result.drawingMutations ?? [];
+              const fresh = mutations.filter(
+                (m) => !appliedMutationsRef.current.has(m.mutationId),
+              );
+              if (fresh.length) {
+                for (const m of fresh) appliedMutationsRef.current.add(m.mutationId);
+                opts.applyDrawingMutations?.(fresh);
+              }
+              // Persist the assistant turn with its result + references.
+              opts.onPersistMessage?.(chatId, {
+                role: "assistant",
+                content: result.summary,
+                result,
+                recommendationId:
+                  result.recommendationId ?? result.activeRecommendation?.id,
+                analysisId: result.analysisId,
+                symbol: opts.symbol,
+                interval: opts.interval,
+                inputMode,
+              });
+              // A voice-initiated turn: hand the PUBLIC final answer to the
+              // voice layer to speak. Never activity/debug/reasoning.
+              if (inputMode === "voice") {
+                opts.onVoiceFinal?.(result);
+              }
             } else if (eventName === "error") {
               const msg =
                 (data as { error?: string }).error ?? "حدث خطأ في الوكيل.";
@@ -179,6 +279,11 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         if (abortRef.current === controller) abortRef.current = null;
         setCurrentTicker(null);
         setRunning(false);
+        // No final arrived (error / cancel / dropped stream) → drop the pending
+        // bubble so it never gets stuck showing a ticker.
+        if (!finalized) {
+          setMessages((prev) => dropPending(prev, pendingId));
+        }
       }
     },
     [opts, running],

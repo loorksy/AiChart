@@ -62,7 +62,7 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
     server: input.server.trim(),
     login,
     password: input.password,
-    name: `AiChart u${userId}`,
+    name: `Lonora u${userId}`,
   });
 
   await saveMtAccount(userId, {

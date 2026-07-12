@@ -1,0 +1,262 @@
+import type { TranslationKey } from "./en";
+
+/** Arabic messages. Must cover every key in `en` (enforced by the type). */
+export const ar: Record<TranslationKey, string> = {
+  // Navigation & Shell
+  "sidebar.chat": "المحادثة",
+  "sidebar.dashboard": "اللوحة",
+  "sidebar.command": "القيادة",
+  "sidebar.agent": "الوكيل",
+  "sidebar.market": "السوق",
+  "sidebar.signals": "الإشارات",
+  "sidebar.settings": "الإعدادات",
+  "sidebar.admin": "لوحة الأدمن",
+  "sidebar.new_chat": "محادثة جديدة",
+  "sidebar.recent_chats": "المحادثات الأخيرة",
+  "sidebar.no_chats": "لا محادثات بعد",
+  "sidebar.delete": "حذف",
+  "sidebar.credits": "الرصيد",
+
+  // Welcoming Phase
+  "welcome.title": "مرحباً {name} 👋",
+  "welcome.subtitle": "اكتب رسالتك لتبدأ — فوركس عبر MetaTrader.",
+  "welcome.session_settings": "إعدادات الجلسة",
+  "welcome.response_mode": "نوع الرد",
+  "welcome.trading_style": "أسلوب التداول",
+  "welcome.execution_mode": "صلاحية التنفيذ",
+  "welcome.market": "السوق",
+
+  // Terminology (Strict Transliterations)
+  "term.scalping": "سكالبينج",
+  "term.stop_loss": "ستوب لوز",
+  "term.take_profit": "تيك بروفيت",
+  "term.trailing": "تريلينج",
+  "term.spot": "سبوت",
+  "term.futures": "فيوتشرز",
+  "term.day_trading": "تداول يومي",
+  "term.swing_trading": "سوينج",
+  "term.margin": "مارجن / فري مارجن",
+  "term.equity": "إيكويتي",
+  "settings.position": "بوزيشن",
+
+  // Response Modes
+  "response.fast": "سريع",
+  "response.expert": "خبير",
+  "response.vision": "رؤية",
+
+  // Execution Modes
+  "mode.approval": "موافقة",
+  "mode.direct": "مباشر",
+  "mode.auto": "تلقائي",
+
+  // Market types
+  "market.forex": "فوركس",
+
+  // Profile menu items
+  "profile.settings": "الإعدادات العامة",
+  "profile.analytics": "التحليلات",
+  "profile.account": "معلمات الحساب",
+  "profile.theme": "المظهر",
+  "profile.theme.dark": "داكن",
+  "profile.theme.light": "مضيء",
+  "profile.language": "اللغة",
+  "profile.language.ar": "العربية",
+  "profile.language.en": "English",
+  "profile.logout": "تسجيل الخروج",
+  "profile.free_plan": "مجاني",
+
+  // Placeholders
+  "chat.placeholder": "اسأل الخبير عن السوق أو حسابك…",
+  "chat.placeholder_followup": "تابع المحادثة…",
+  "chat.placeholder_image": "أضف سؤالاً عن الشارت (اختياري)…",
+  "chat.no_agent_key": "الذكاء الاصطناعي غير مُفعّل — أضِف OPENAI_API_KEY من لوحة الإدارة.",
+  "chat.chart_preview": "معاينة الشارت",
+  "chat.close_chart": "إغلاق الشارت",
+  "chat.resize_chart": "تغيير حجم الشارت",
+
+  // --- Part 5 additions: agent sidebar + chat shell ---
+  "nav.new_chat": "محادثة جديدة",
+  "nav.no_chats": "لا توجد محادثات بعد",
+  "nav.chats": "المحادثات",
+  "nav.statistics": "الإحصائيات",
+  "nav.recommendations": "التوصيات",
+  "nav.settings": "الإعدادات",
+  "nav.integrations": "التكاملات",
+
+  "profile.profile": "الملف الشخصي",
+  "profile.trading_settings": "إعدادات التداول",
+  "profile.account_menu": "الحساب",
+  "profile.coming_soon": "قريباً",
+  "profile.select_language": "اللغة",
+
+  "agent.title": "الوكيل الذكي للشارت",
+  "agent.empty": "اسأل الوكيل أو ابدأ تحليل الشارت",
+  "agent.analyze_chart": "تحليل الشارت",
+  "agent.news_risk": "خطر الأخبار",
+  "agent.send": "إرسال",
+  "agent.stop": "إيقاف",
+  "agent.cancel": "إلغاء",
+  "agent.close": "إغلاق",
+  "agent.input_placeholder": "اسأل الوكيل عن هذا الشارت…",
+  "agent.confidence": "ثقة",
+  "agent.decision_reason": "سبب القرار:",
+  "agent.needs_confirmation": "تحتاج الصفقة تأكيدك قبل التنفيذ",
+  "agent.account_live": "حساب LIVE",
+  "agent.account_demo": "محاكاة/ديمو",
+  "agent.processing": "جاري المعالجة",
+  "agent.run_details": "تفاصيل التنفيذ",
+  "agent.error": "حدث خطأ",
+
+  "decision.buy": "شراء",
+  "decision.sell": "بيع",
+  "decision.wait": "انتظار",
+  "decision.informational": "معلومة",
+  "decision.action_required": "يتطلب إجراء",
+
+  "language.arabic": "العربية",
+  "language.english": "English",
+
+  // --- Parts 10-13/19: layout shell ---
+  "layout.chart": "الشارت",
+  "layout.chat": "الشات",
+  "layout.show_chat": "عرض الشات",
+  "layout.show_chart": "عرض الشارت",
+  "layout.resize_chat": "تغيير حجم الشات",
+  "layout.screenshot": "لقطة شاشة",
+  "layout.mt_connected": "MT متصل",
+  "layout.mt_disconnected": "MT غير متصل",
+
+  // --- Parts 16-18: recommendation tracker + statistics ---
+  "rec.status.pending_entry": "بانتظار الدخول",
+  "rec.status.triggered": "دخلت الصفقة",
+  "rec.status.tp1_hit": "تحقق TP1",
+  "rec.status.tp2_hit": "تحقق TP2",
+  "rec.status.tp3_hit": "تحقق TP3",
+  "rec.status.sl_hit": "ضرب الوقف",
+  "rec.status.invalidated": "مبطلة",
+  "rec.status.expired": "منتهية",
+  "rec.status.cancelled": "ملغاة",
+
+  "rec.step.sl": "الوقف",
+  "rec.step.entered": "الدخول",
+  "rec.step.tp1": "TP1",
+  "rec.step.tp2": "TP2",
+  "rec.step.tp3": "TP3",
+
+  "rec.entry.market": "دخول سوق",
+  "rec.entry.limit": "دخول معلق",
+  "rec.entry.pending": "دخول شرطي",
+
+  "rec.row.entry": "الدخول",
+  "rec.row.stop_loss": "وقف الخسارة",
+  "rec.row.target1": "الهدف 1",
+  "rec.row.target2": "الهدف 2",
+  "rec.row.target3": "الهدف 3",
+  "rec.copy": "نسخ",
+  "rec.copied": "تم النسخ",
+
+  "rec.tip.title": "نصيحة ذكية",
+  "rec.tip.pending": "بانتظار وصول السعر إلى منطقة الدخول.",
+  "rec.tip.triggered": "الصفقة نشطة وتُتابَع تلقائياً.",
+  "rec.tip.tp1": "بعد وصول TP1، حرّك وقف الخسارة إلى نقطة الدخول لحماية الصفقة.",
+  "rec.tip.tp2": "بعد TP2، ثبّت جزءاً من الربح وتابع البقية.",
+  "rec.tip.tp3": "اكتملت الأهداف — صفقة رابحة.",
+  "rec.tip.sl": "أُغلقت الصفقة على وقف الخسارة.",
+  "rec.tip.expired": "انتهت صلاحية التوصية قبل اكتمالها.",
+  "rec.tip.cancelled": "أُلغيت هذه التوصية.",
+  "rec.tip.invalidated": "أُبطل سيناريو التوصية.",
+
+  "rec.page.title": "التوصيات",
+  "rec.page.active": "النشطة",
+  "rec.page.history": "السجل",
+  "rec.page.empty": "لا توجد توصيات متتبعة بعد.",
+  "rec.page.refresh": "تحديث الحالة",
+  "rec.page.open": "فتح التفاصيل",
+  "rec.page.cancel": "إلغاء",
+  "rec.page.back": "العودة إلى التوصيات",
+
+  "stats.title": "الإحصائيات",
+  "stats.total": "الإجمالي",
+  "stats.active": "نشطة",
+  "stats.pending": "معلقة",
+  "stats.winning": "ناجحة",
+  "stats.losing": "فاشلة",
+  "stats.win_rate": "نسبة النجاح",
+  "stats.completed": "صفقات منتهية",
+  "stats.breakdown": "تفصيل النتائج",
+  "stats.tp1_only": "وصلت TP1 فقط",
+  "stats.tp2_reached": "وصلت TP2",
+  "stats.tp3_reached": "وصلت TP3",
+  "stats.sl_hit": "ضربت الوقف",
+  "stats.expired": "منتهية الصلاحية",
+  "stats.cancelled": "ملغاة",
+  "stats.invalidated": "مبطلة",
+  "stats.by_symbol": "حسب الأداة",
+  "stats.by_timeframe": "حسب الفريم",
+  "stats.by_setup": "حسب نوع الصفقة",
+  "stats.by_direction": "شراء مقابل بيع",
+  "stats.scalp": "أداء السكالب",
+  "stats.avg_planned_rr": "متوسط RR المخطط",
+  "stats.avg_achieved_rr": "متوسط RR المحقق",
+  "stats.rate": "النسبة",
+  "stats.group": "المجموعة",
+  "stats.empty":
+    "لا توجد توصيات متتبعة بعد. ابدأ بتحليل شارت أو اطلب توصية ليبدأ النظام بتجميع الإحصائيات.",
+  "stats.filter.today": "اليوم",
+  "stats.filter.7d": "آخر 7 أيام",
+  "stats.filter.30d": "آخر 30 يوم",
+  "stats.filter.all": "كل الوقت",
+
+  // رسومات المستخدم — قراءة/مناقشة/تعديل/حذف الرسومات التي رسمها المستخدم يدويًا
+  // على الشارت (المالك = المستخدم؛ ليست رسومات الوكيل إطلاقًا).
+  "drawing.user_drawing": "رسمتك",
+  "drawing.selected": "الرسم المحدد",
+  "drawing.none_found":
+    "لا أرى أي رسم رسمته أنت على الشارت الآن. ارسم خطًا أو منطقة بأدوات الشارت ثم اسألني عنه.",
+  "drawing.not_found":
+    "لم أتمكّن من تحديد الرسم الذي تقصده بين رسوماتك. حدّده على الشارت أو صِفه (سعره أو نوعه) وسأتعامل معه.",
+  "drawing.ambiguous":
+    "لديك أكثر من رسم قد يطابق طلبك. أيها تقصد؟ {list}",
+  "drawing.clarify": "أي رسم من رسوماتك تقصد — بالسعر أو النوع أو بتحديده على الشارت؟",
+  "drawing.updated": "تم — عدّلت {which}.",
+  "drawing.moved": "تم — نقلت {which} إلى {price}.",
+  "drawing.deleted": "تم — حذفت {which}. لم ألمس أي رسم آخر.",
+  "drawing.deleted_all": "تم — حذفت رسوماتك ({count}). لم أمسّ رسومات الوكيل أو التوصيات.",
+  "drawing.cannot_modify":
+    "لم أستطع تطبيق هذا التغيير على {which}. أخبرني بالسعر الجديد بالضبط أو بمقدار التوسيع/التضييق وسأعدّله.",
+  "drawing.wrong_owner":
+    "أستطيع فقط تحريك أو حذف الرسومات التي رسمتها أنت — وليس رسومات الوكيل أو التوصيات. إن أردت مسح رسومات الوكيل فاطلب ذلك صراحةً.",
+  "drawing.wrong_symbol":
+    "هذا الرسم يخص رمزًا مختلفًا عن الشارت الحالي. انتقل إلى رمزه أولًا ثم أستطيع تعديله.",
+  "drawing.invalid_price":
+    "هذا السعر يبدو غير مناسب لهذا الشارت، لذلك لم أحرّك شيئًا. أعطني سعرًا قريبًا من النطاق الحالي وسأعدّله.",
+
+  // المحادثة الصوتية اللحظية
+  "voice.start": "بدء المحادثة الصوتية",
+  "voice.requesting_permission": "جاري طلب إذن الميكروفون",
+  "voice.connecting": "جاري الاتصال",
+  "voice.listening": "أستمع إليك",
+  "voice.user_speaking": "أنت تتحدث",
+  "voice.thinking": "Lonora تفكر",
+  "voice.speaking": "Lonora تتحدث",
+  "voice.muted": "تم كتم الميكروفون",
+  "voice.reconnecting": "إعادة الاتصال",
+  "voice.end": "إنهاء المحادثة",
+  "voice.mute": "كتم",
+  "voice.unmute": "إلغاء الكتم",
+  "voice.interrupt": "مقاطعة",
+  "voice.reconnect": "إعادة الاتصال",
+  "voice.ready": "الصوت جاهز",
+  "voice.stopped": "انتهت المحادثة",
+  "voice.you_said": "قلت",
+  "voice.err_mic": "تعذّر الوصول إلى الميكروفون",
+  "voice.err_unsupported": "متصفحك لا يدعم المحادثة الصوتية اللحظية",
+  "voice.err_network": "انقطع الاتصال، جارٍ إعادة المحاولة…",
+  "voice.err_credential": "تعذّر بدء الجلسة الصوتية. حاول مرة أخرى.",
+  "voice.err_provider": "الخدمة الصوتية غير متاحة حالياً.",
+  "voice.err_not_configured": "المحادثة الصوتية غير مفعّلة على الخادم.",
+  "voice.err_generic": "تعذّرت المحادثة الصوتية. يمكنك المتابعة بالكتابة.",
+  "voice.locale_changed": "تغيّرت اللغة — أعد تشغيل الجلسة الصوتية لتبديل اللغة.",
+};
+
+
