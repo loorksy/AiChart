@@ -1,14 +1,12 @@
 /**
  * Server-side voice session configuration. Reads the API key + realtime model
  * from platformConfig (DB-backed, with env-var fallback) and cost limits from
- * environment variables with conservative defaults, and derives a
- * privacy-preserving stable safety identifier from the internal user id.
+ * environment variables with conservative defaults.
  *
- * SERVER ONLY: this reads platformConfig (the standard API key) and node:crypto.
- * Never import it into client bundles — the client receives only the minimal,
- * short-lived `VoiceSessionCredential` from the session endpoint.
+ * SERVER ONLY: this reads platformConfig (the standard API key). Never import it
+ * into client bundles — the client receives only the minimal, short-lived
+ * `VoiceSessionCredential` from the session endpoint.
  */
-import { createHash } from "node:crypto";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
 import type { VoiceSessionLimits } from "./types";
 
@@ -71,12 +69,3 @@ export async function isVoiceConfigured(): Promise<boolean> {
   return Boolean((await getPlatformValueAsync("OPENAI_API_KEY"))?.trim());
 }
 
-/**
- * A stable, non-reversible identifier for provider abuse/safety signals. It is
- * derived from the internal user id + a server salt so the provider never sees
- * the real user id, yet the same user maps to the same value across sessions.
- */
-export function voiceSafetyIdentifier(userId: number): string {
-  const salt = process.env.VOICE_SAFETY_SALT?.trim() || "lonora-voice-safety";
-  return createHash("sha256").update(`${salt}:${userId}`).digest("hex").slice(0, 32);
-}

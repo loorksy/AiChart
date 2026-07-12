@@ -6,7 +6,6 @@ import { createLogger } from "@/lib/logger";
 import {
   getVoiceServerConfig,
   isVoiceConfigured,
-  voiceSafetyIdentifier,
 } from "@/lib/agent/voice/voiceSessionConfig";
 import { parseVoiceSessionRequest } from "@/lib/agent/voice/voiceSessionRequest";
 import {
@@ -63,7 +62,6 @@ export async function POST(req: NextRequest) {
       minted = await createRealtimeClientSecret({
         config,
         locale,
-        safetyIdentifier: voiceSafetyIdentifier(user.id),
       });
     } catch (err) {
       const code = err instanceof VoiceProviderError ? err.code : "provider_unavailable";

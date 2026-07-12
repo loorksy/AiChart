@@ -22,7 +22,6 @@ export interface MintedClientSecret {
 export interface MintOptions {
   config: VoiceServerConfig;
   locale: AppLocale;
-  safetyIdentifier: string;
   ttlSeconds?: number;
   fetchImpl?: typeof fetch;
 }
@@ -37,17 +36,19 @@ interface ClientSecretResponse {
 export async function createRealtimeClientSecret(
   opts: MintOptions,
 ): Promise<MintedClientSecret> {
-  const { config, locale, safetyIdentifier } = opts;
+  const { config, locale } = opts;
   const ttl = Math.max(60, Math.min(opts.ttlSeconds ?? 600, 3600));
   const doFetch = opts.fetchImpl ?? fetch;
 
+  // Note: the GA `client_secrets` endpoint does NOT accept a `safety_identifier`
+  // — it rejects the request with 400 `unknown_parameter` whether the field is
+  // nested under `session` or placed at the top level. So we do not send one. If
+  // OpenAI adds support later, re-introduce it here.
   const body = {
     expires_after: { anchor: "created_at", seconds: ttl },
     session: {
       type: "realtime",
       model: config.model,
-      // A privacy-preserving stable id for provider-side abuse signals.
-      safety_identifier: safetyIdentifier,
       instructions: voiceSystemInstructions(locale),
       audio: { output: { voice: config.voice } },
     },

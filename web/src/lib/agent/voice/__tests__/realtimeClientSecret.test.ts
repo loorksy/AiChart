@@ -35,7 +35,6 @@ describe("createRealtimeClientSecret", () => {
     const minted = await createRealtimeClientSecret({
       config,
       locale: "ar",
-      safetyIdentifier: "safe-abc",
       fetchImpl,
     });
 
@@ -46,14 +45,15 @@ describe("createRealtimeClientSecret", () => {
     assert.equal(sentAuth, "Bearer sk-standard-secret");
     // …but never appears in the returned object.
     assert.ok(!JSON.stringify(minted).includes("sk-standard-secret"));
-    // The privacy-preserving safety id is forwarded to the provider.
-    assert.ok(sentBody!.includes("safe-abc"));
+    // Regression guard: the GA client_secrets endpoint rejects
+    // `safety_identifier` (400 unknown_parameter), so we must never send one.
+    assert.ok(!sentBody!.includes("safety_identifier"));
   });
 
   it("maps 401 to a credential error", async () => {
     const fetchImpl = (async () => jsonResponse({ error: "bad key" }, 401)) as unknown as typeof fetch;
     await assert.rejects(
-      createRealtimeClientSecret({ config, locale: "en", safetyIdentifier: "s", fetchImpl }),
+      createRealtimeClientSecret({ config, locale: "en", fetchImpl }),
       (e: unknown) => e instanceof VoiceProviderError && e.code === "credential_failed",
     );
   });
@@ -63,7 +63,7 @@ describe("createRealtimeClientSecret", () => {
       throw new Error("ECONNREFUSED");
     }) as unknown as typeof fetch;
     await assert.rejects(
-      createRealtimeClientSecret({ config, locale: "en", safetyIdentifier: "s", fetchImpl }),
+      createRealtimeClientSecret({ config, locale: "en", fetchImpl }),
       (e: unknown) => e instanceof VoiceProviderError && e.code === "provider_unavailable",
     );
   });
@@ -71,7 +71,7 @@ describe("createRealtimeClientSecret", () => {
   it("rejects a response with no client secret", async () => {
     const fetchImpl = (async () => jsonResponse({ nothing: true })) as unknown as typeof fetch;
     await assert.rejects(
-      createRealtimeClientSecret({ config, locale: "en", safetyIdentifier: "s", fetchImpl }),
+      createRealtimeClientSecret({ config, locale: "en", fetchImpl }),
       (e: unknown) => e instanceof VoiceProviderError && e.code === "credential_failed",
     );
   });

@@ -5,7 +5,6 @@ import {
   readVoiceLimits,
   getVoiceServerConfig,
   isVoiceConfigured,
-  voiceSafetyIdentifier,
 } from "@/lib/agent/voice/voiceSessionConfig";
 import {
   voiceSessionReducer,
@@ -34,7 +33,6 @@ const ENV_KEYS = [
   "VOICE_SESSION_MAX_MINUTES",
   "VOICE_IDLE_TIMEOUT_SECONDS",
   "VOICE_MAX_RECONNECT_ATTEMPTS",
-  "VOICE_SAFETY_SALT",
 ];
 const savedEnv: Record<string, string | undefined> = {};
 for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
@@ -80,17 +78,6 @@ describe("voiceSessionConfig", () => {
     assert.equal(cfg.model, "gpt-realtime");
     assert.equal(cfg.voice, "cedar");
     assert.equal(cfg.apiKey, "sk-secret");
-  });
-
-  it("safety identifier is stable, salted, and non-reversible", () => {
-    process.env.VOICE_SAFETY_SALT = "salt";
-    const a = voiceSafetyIdentifier(42);
-    const b = voiceSafetyIdentifier(42);
-    const c = voiceSafetyIdentifier(43);
-    assert.equal(a, b);
-    assert.notEqual(a, c);
-    assert.ok(!a.includes("42")); // does not expose the raw user id
-    assert.equal(a.length, 32);
   });
 });
 
