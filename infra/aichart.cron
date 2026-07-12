@@ -13,6 +13,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # tick only dispatches per-user jobs to the worker tier.
 * * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/bots >/dev/null 2>&1
 
+# Recommendation-tracker sweep — every 5 min. Evaluates all non-terminal tracked
+# recommendations against fresh warehouse candles (no browser, no LLM, no trade
+# execution). Overlap-safe via a distributed lease lock, so an occasional long
+# run is skipped rather than double-processed.
+*/5 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep >/dev/null 2>&1
+
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 

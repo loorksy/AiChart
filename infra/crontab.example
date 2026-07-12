@@ -4,5 +4,8 @@
 # 24/7 market monitor every 30 min — deep AI runs only when candidates appear.
 */30 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor
 
+# Recommendation-tracker sweep every 5 min (no browser / no LLM / no execution).
+*/5 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep
+
 # Daily Telegram summary at 20:00 UTC
 0 20 * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary
