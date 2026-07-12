@@ -160,8 +160,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
 
   let candles: OhlcCandle[] = [];
   let source: OhlcSource = "oanda";
-  let warning: string | undefined;
-  let nextCursor: number | null = null;
+  const nextCursor: number | null = null;
   let hasMore = false;
 
   const live =
@@ -183,7 +182,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   candles =
     options.fromMs != null ? live.candles : live.candles.slice(-limit);
   source = live.source;
-  warning = live.warning;
+  const warning: string | undefined = live.warning;
   hasMore = live.hasMore ?? false;
 
   const result: FetchOhlcResult = {

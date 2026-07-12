@@ -215,7 +215,7 @@ async function readError(res: Response, label: string): Promise<string> {
     error?: { message?: string } | string;
   };
   const err = body?.error;
-  let apiMsg =
+  const apiMsg =
     typeof err === "string" ? err : err?.message ? err.message : undefined;
 
   if (apiMsg && apiMsg.toLowerCase().includes("image_url")) {

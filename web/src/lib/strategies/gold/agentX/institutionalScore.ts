@@ -91,7 +91,7 @@ export function computeInstitutionalScore(
       components.consensus) /
     weightSum;
 
-  let score = clampScore(raw * 0.7 + quality.score * 0.15 + align.score * 0.15);
+  const score = clampScore(raw * 0.7 + quality.score * 0.15 + align.score * 0.15);
 
   return {
     score,

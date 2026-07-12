@@ -14,8 +14,8 @@ async function runTest() {
 
   // 2. Test Step 1: Request trade without parameters
   console.log("\n2. Sending request: 'أريد فتح صفقة شراء على BTC'");
-  let history: any[] = [];
-  let result1 = await runCopilot(userId, conversationId, "أريد فتح صفقة شراء على BTC", history);
+  const history: any[] = [];
+  const result1 = await runCopilot(userId, conversationId, "أريد فتح صفقة شراء على BTC", history);
   console.log("Reply:", result1.reply);
   console.log("Question payload:", JSON.stringify(result1.question, null, 2));
 
@@ -34,7 +34,7 @@ async function runTest() {
     ["awaiting_timeframe_selection", JSON.stringify({ initial_request: "أريد فتح صفقة شراء على BTC" }), conversationId]
   );
   
-  let result2 = await runCopilot(userId, conversationId, "1h", history);
+  const result2 = await runCopilot(userId, conversationId, "1h", history);
   console.log("Reply:", result2.reply);
   console.log("Question payload:", JSON.stringify(result2.question, null, 2));
 
@@ -51,7 +51,7 @@ async function runTest() {
     ["awaiting_strategy_selection", JSON.stringify({ initial_request: "أريد فتح صفقة شراء على BTC", timeframe: "1h" }), conversationId]
   );
 
-  let result3 = await runCopilot(userId, conversationId, "scalp", history);
+  const result3 = await runCopilot(userId, conversationId, "scalp", history);
   console.log("Reply:", result3.reply);
   console.log("Recommendations count:", result3.recommendations?.length);
 

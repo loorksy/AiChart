@@ -8,6 +8,10 @@ import type {
   PerformanceSnapshot,
   RegimeProbabilities,
 } from "./agentX/types";
+// Static imports (the reverse edges are type-only, so there is no runtime cycle).
+import { DEFAULT_GOLD_AGENTX_CONFIG } from "./goldDefaults";
+import { defaultAdaptiveWeights } from "./agentX/adaptiveWeights";
+import { emptyPerformance } from "./agentX/performanceEngine";
 
 export type GoldSide = "buy" | "sell";
 
@@ -130,7 +134,6 @@ export function isLegacyGoldConfig(
 export function migrateGoldConfig(
   raw: Record<string, unknown>,
 ): GoldAgentXConfig {
-  const { DEFAULT_GOLD_AGENTX_CONFIG } = require("./goldDefaults") as typeof import("./goldDefaults");
   if (isLegacyGoldConfig(raw)) {
     return {
       ...DEFAULT_GOLD_AGENTX_CONFIG,
@@ -164,8 +167,6 @@ export function migrateGoldConfig(
 }
 
 export function parseGoldAgentState(raw: Record<string, unknown>): GoldAgentXState {
-  const { defaultAdaptiveWeights } = require("./agentX/adaptiveWeights") as typeof import("./agentX/adaptiveWeights");
-  const { emptyPerformance } = require("./agentX/performanceEngine") as typeof import("./agentX/performanceEngine");
 
   return {
     levels: (raw.levels as GoldGridLevel[]) ?? [],

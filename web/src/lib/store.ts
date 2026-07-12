@@ -434,7 +434,7 @@ export async function setUserTelegramId(
 }
 
 async function uniqueTelegramEmail(base: string): Promise<string> {
-  let email = base.toLowerCase();
+  const email = base.toLowerCase();
   if (!(await queryOne("SELECT id FROM users WHERE email = ?", [email]))) {
     return email;
   }
