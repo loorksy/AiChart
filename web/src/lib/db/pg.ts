@@ -551,6 +551,11 @@ async function migratePg(client: PoolClient) {
     )
   `);
 
+  // Support contacts are configurable (Lonora defaults). Seeded only into fresh
+  // DBs; existing rows are managed via the admin dynamic-pages editor.
+  const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL?.trim() || "support@lonora.ai";
+  const SUPPORT_TELEGRAM = process.env.SUPPORT_TELEGRAM?.trim() || "@LonoraSupportBot";
+
   const seedPages = [
     {
       slug: "privacy-policy",
@@ -598,8 +603,8 @@ async function migratePg(client: PoolClient) {
       slug: "contact-us",
       title_ar: "تواصل معنا",
       title_en: "Contact Us",
-      content_ar: "# تواصل معنا\n\nفريق الدعم الفني متواجد لمساعدتك على مدار الساعة.\n\n- **البريد الإلكتروني:** support@aichart.com\n- **التليجرام:** @AiChartSupportBot\n- **الموقع:** مركز دبي المالي العالمي، دبي، الإمارات العربية المتحدة.",
-      content_en: "# Contact Us\n\nOur technical support team is available 24/7 to assist you.\n\n- **Email:** support@aichart.com\n- **Telegram:** @AiChartSupportBot\n- **Location:** DIFC, Dubai, United Arab Emirates."
+      content_ar: `# تواصل معنا\n\nفريق الدعم الفني متواجد لمساعدتك على مدار الساعة.\n\n- **البريد الإلكتروني:** ${SUPPORT_EMAIL}\n- **التليجرام:** ${SUPPORT_TELEGRAM}\n- **الموقع:** مركز دبي المالي العالمي، دبي، الإمارات العربية المتحدة.`,
+      content_en: `# Contact Us\n\nOur technical support team is available 24/7 to assist you.\n\n- **Email:** ${SUPPORT_EMAIL}\n- **Telegram:** ${SUPPORT_TELEGRAM}\n- **Location:** DIFC, Dubai, United Arab Emirates.`
     }
   ];
 

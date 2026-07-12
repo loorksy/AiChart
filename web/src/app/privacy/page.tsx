@@ -1,3 +1,5 @@
+import { BRAND_DOMAIN, BRAND_NAME } from "@/lib/brand";
+
 export const metadata = {
   title: "سياسة الخصوصية — Lonora",
   description: "كيف تتعامل Lonora مع بياناتك عبر المنصة وتكاملات الذكاء الاصطناعي.",
@@ -9,8 +11,8 @@ export default function PrivacyPage() {
     <main dir="rtl" className="mx-auto max-w-3xl px-6 py-14 text-slate-200">
       <h1 className="mb-6 text-2xl font-bold text-white">سياسة الخصوصية</h1>
       <p className="mb-4 text-sm leading-7 text-slate-400">
-        آخر تحديث: يوليو 2026 — تنطبق هذه السياسة على منصة Lonora
-        (aichart.lork.cloud) وتكاملاتها مع مساعدي الذكاء الاصطناعي (Claude،
+        آخر تحديث: يوليو 2026 — تنطبق هذه السياسة على منصة {BRAND_NAME}
+        {" "}({BRAND_DOMAIN}) وتكاملاتها مع مساعدي الذكاء الاصطناعي (Claude،
         ChatGPT) عبر بروتوكول MCP.
       </p>
       <section className="space-y-5 text-sm leading-7">

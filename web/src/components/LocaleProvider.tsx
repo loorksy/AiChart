@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useSyncExternalStore,
+} from "react";
 import {
   DEFAULT_LOCALE,
   LOCALE_STORAGE_KEY,
@@ -30,23 +36,59 @@ function applyLocale(locale: AppLocale) {
   document.documentElement.lang = locale;
 }
 
-export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<AppLocale>(DEFAULT_LOCALE);
-  const [mounted, setMounted] = useState(false);
+// --- Locale as an external store (localStorage) read via useSyncExternalStore.
+// This is the React-recommended pattern for external, client-only state: it
+// avoids set-state-in-effect and hydration mismatches (SSR gets DEFAULT_LOCALE,
+// the client swaps in the persisted locale after hydration).
+const localeListeners = new Set<() => void>();
 
-  useEffect(() => {
-    const stored = localStorage.getItem(LOCALE_STORAGE_KEY);
-    const initial: AppLocale = isAppLocale(stored) ? stored : DEFAULT_LOCALE;
-    setLocaleState(initial);
-    applyLocale(initial);
-    setMounted(true);
-  }, []);
+function readStoredLocale(): AppLocale {
+  if (typeof window === "undefined") return DEFAULT_LOCALE;
+  const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+  return isAppLocale(stored) ? stored : DEFAULT_LOCALE;
+}
 
-  const setLocale = (next: AppLocale) => {
-    setLocaleState(next);
-    localStorage.setItem(LOCALE_STORAGE_KEY, next);
-    applyLocale(next);
+function subscribeLocale(cb: () => void): () => void {
+  localeListeners.add(cb);
+  if (typeof window !== "undefined") window.addEventListener("storage", cb);
+  return () => {
+    localeListeners.delete(cb);
+    if (typeof window !== "undefined") window.removeEventListener("storage", cb);
   };
+}
+
+function writeStoredLocale(next: AppLocale): void {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, next);
+  }
+  applyLocale(next);
+  for (const cb of localeListeners) cb();
+}
+
+// `hydrated` flips false → true after hydration with NO setState-in-effect.
+const noopSubscribe = () => () => {};
+
+export function LocaleProvider({ children }: { children: React.ReactNode }) {
+  const locale = useSyncExternalStore(
+    subscribeLocale,
+    readStoredLocale,
+    () => DEFAULT_LOCALE,
+  );
+  const hydrated = useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
+
+  // Keep the <html> dir/lang in sync with the active locale (external DOM
+  // update from React state — the intended use of an effect, no setState).
+  useEffect(() => {
+    applyLocale(locale);
+  }, [locale]);
+
+  const setLocale = useCallback((next: AppLocale) => {
+    writeStoredLocale(next);
+  }, []);
 
   const value: LocaleContextValue = {
     locale,
@@ -58,7 +100,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <LocaleContext.Provider value={value}>
-      <div className={!mounted ? "invisible" : ""}>{children}</div>
+      <div className={!hydrated ? "invisible" : ""}>{children}</div>
     </LocaleContext.Provider>
   );
 }

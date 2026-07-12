@@ -91,7 +91,7 @@ export async function provisionAccount(input: ProvisionMtInput) {
   const region = await metaApiRegion();
 
   const account = await api.metatraderAccountApi.createAccount({
-    name: input.name ?? `AiChart ${input.login}`,
+    name: input.name ?? `Lonora ${input.login}`,
     login: input.login.replace(/\D/g, ""),
     password: input.password,
     server: input.server.trim(),

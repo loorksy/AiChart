@@ -252,7 +252,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_futures_enabled",
     domain: "core",
     description:
-      "Legacy — futures disabled; platform is forex-only. Always returns futures_enabled=false.",
+      "When: never needed — legacy no-op. Futures disabled; platform is forex-only. Always returns futures_enabled=false. read-only.",
     inputSchema: {
       futures_enabled: z.boolean(),
       default_leverage: z.number().min(1).max(125).optional(),

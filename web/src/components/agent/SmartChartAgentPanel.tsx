@@ -8,10 +8,7 @@ import {
   type AgentPersistPayload,
 } from "@/hooks/useSmartChartAgent";
 import { useLocale } from "@/hooks/useLocale";
-import {
-  ANALYZE_QUICK_PROMPT,
-  NEWS_QUICK_PROMPT,
-} from "@/lib/agent/quickPrompts";
+import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentActivityTimeline } from "./AgentActivityTimeline";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
@@ -123,25 +120,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         className="flex h-full min-h-0 w-full flex-col bg-card"
         dir={dir}
       >
-        {/* No fixed agent header bar — the chat panel is clean. Symbol/interval
-            live in the chart controls, not duplicated above the chat. */}
-        <div className="flex shrink-0 gap-2 border-b border-border/60 px-3 py-2">
-          <button
-            onClick={() => void sendMessage(ANALYZE_QUICK_PROMPT)}
-            disabled={running}
-            className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {t("agent.analyze_chart")}
-          </button>
-          <button
-            onClick={() => void sendMessage(NEWS_QUICK_PROMPT)}
-            disabled={running}
-            className="rounded-md bg-muted px-3 py-1 text-xs text-foreground hover:bg-muted/70 disabled:opacity-50"
-          >
-            {t("agent.news_risk")}
-          </button>
-        </div>
-
+        {/* No fixed agent header bar and NO static quick-action toolbar — the
+            chat panel is clean. All follow-up prompts are dynamic, model-
+            generated suggestions rendered per turn (never hardcoded buttons).
+            Analysis is reachable from the chart's Analyze control and by typing. */}
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           {messages.length === 0 && !running && (
             <p className="text-center text-xs text-muted-foreground">

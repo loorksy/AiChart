@@ -1,6 +1,6 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-05T20:24:52.219Z",
+  "exportedAt": "2026-07-12T03:04:15.477Z",
   "toolCount": 57,
   "tools": [
     {
@@ -206,7 +206,7 @@
     {
       "name": "set_futures_enabled",
       "domain": "core",
-      "description": "Legacy — futures disabled; platform is forex-only. Always returns futures_enabled=false.",
+      "description": "When: never needed — legacy no-op. Futures disabled; platform is forex-only. Always returns futures_enabled=false. read-only.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -306,7 +306,7 @@
     {
       "name": "list_instruments",
       "domain": "market",
-      "description": "When: browse/search forex pairs (OANDA or source=ea for full broker symbols via MT5 bridge). read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
+      "description": "When: browse/search forex pairs via OANDA, or source=ea for full broker symbols via MT5 bridge (not Market Watch only). read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -346,7 +346,7 @@
     {
       "name": "get_ohlc",
       "domain": "market",
-      "description": "When: before indicators/detect_levels. Forex via EA or OANDA. read-only. cursor/limit≤500. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "description": "When: before indicators/detect_levels. Forex via OANDA or EA. read-only. cursor/limit≤500. Example: symbol=EURUSD&interval=1h&limit=100.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -406,7 +406,7 @@
     {
       "name": "get_live_account",
       "domain": "mt5",
-      "description": "When: before any trade — MT5 readiness + quoteAgeMs. read-only.",
+      "description": "When: before any trade — unified MT5 account + quoteAgeMs. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -436,7 +436,7 @@
     {
       "name": "get_account_symbols",
       "domain": "mt5",
-      "description": "All broker pairs/symbols in MetaTrader account (full Market Watch) with bid/ask/spread. Filters: q, market=forex. read-only. Example: market=forex.",
+      "description": "All broker pairs/symbols in MetaTrader account (full Market Watch) with bid/ask/spread — see all available pairs, not a short list. Filters: q, market=forex. read-only. Example: market=forex.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

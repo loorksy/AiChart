@@ -51,6 +51,12 @@ import { useAccountCapital } from "@/hooks/useAccountCapital";
 import { prefetchKlines } from "@/lib/ohlc/klinesClientCache";
 import { normalizeInterval } from "@/lib/intervals";
 import { clearAgentDrawings } from "@/lib/agent/drawings/drawingOwnership";
+import {
+  debugBridgeEnabled,
+  installAgentDebugBridge,
+  removeAgentDebugBridge,
+  publicFinalResult,
+} from "@/lib/debug/agentDebugBridge";
 import type { AgentFinalResult } from "@/lib/agent/types";
 import type { Recommendation } from "@/lib/types";
 import type { MarketType } from "@/lib/markets/types";
@@ -94,6 +100,8 @@ export function SmartChartWorkspace({
 }) {
   const chartRef = useRef<TvChartHandle>(null);
   const agentRef = useRef<SmartChartAgentHandle>(null);
+  // Last final agent result — surfaced read-only via the dev/test debug bridge.
+  const lastFinalResultRef = useRef<AgentFinalResult | null>(null);
   const [mobilePane, setMobilePane] = useState<MobilePane>(DEFAULT_MOBILE_PANE);
   const chatEnabled = smartAgentEnabled && !guest;
 
@@ -356,6 +364,7 @@ export function SmartChartWorkspace({
   // only the agent-owned set (one coherent set of drawings on the chart).
   const handleAgentResult = useCallback(
     (result: AgentFinalResult) => {
+      lastFinalResultRef.current = result;
       if (result.drawings) {
         setDrawings((prev) =>
           [...clearAgentDrawings(prev), ...(result.drawings ?? [])],
@@ -437,55 +446,75 @@ export function SmartChartWorkspace({
     if (chatEnabled) {
       return [mtAction];
     }
-    const actions: TvHeaderAction[] = [
-      {
-        id: "analyze",
-        text: guest
-          ? "🔒 دخول للتحليل"
-          : isAnalyzing
-            ? "… يُحلِّل"
-            : creditsRemaining != null
-              ? `✨ تحليل (${creditsRemaining})`
-              : "✨ تحليل",
-        title: guest
-          ? "سجّل الدخول لاستخدام التحليل بالذكاء الاصطناعي"
-          : "تحليل بالذكاء الاصطناعي",
-        color: "#71717a",
-        onClick: handleAnalyzeClick,
-      },
+    // Built as a single array literal (no render-time mutation of an array that
+    // holds ref-capturing click handlers).
+    const analyzeAction: TvHeaderAction = {
+      id: "analyze",
+      text: guest
+        ? "🔒 دخول للتحليل"
+        : isAnalyzing
+          ? "… يُحلِّل"
+          : creditsRemaining != null
+            ? `✨ تحليل (${creditsRemaining})`
+            : "✨ تحليل",
+      title: guest
+        ? "سجّل الدخول لاستخدام التحليل بالذكاء الاصطناعي"
+        : "تحليل بالذكاء الاصطناعي",
+      color: "#71717a",
+      onClick: handleAnalyzeClick,
+    };
+    const clearAction: TvHeaderAction[] =
+      !guest && hasLayers
+        ? [
+            {
+              id: "clear",
+              text: "🧹 مسح الرسومات",
+              title: "إزالة رسومات التحليل من الشارت",
+              onClick: handleClearLayers,
+            },
+          ]
+        : [];
+    const tradesAction: TvHeaderAction[] = !guest
+      ? [
+          {
+            id: "trades",
+            text:
+              openTradesCount > 0 ? `💼 صفقات (${openTradesCount})` : "💼 صفقات",
+            title: "الصفقات المفتوحة",
+            onClick: () => setTradesOpen(true),
+          },
+        ]
+      : [];
+    const capitalAction: TvHeaderAction[] =
+      !guest && capital.connected && capital.amount != null
+        ? [
+            {
+              id: "capital",
+              text: `$ ${Math.round(capital.amount).toLocaleString()} ${capital.currency ?? ""}`,
+              title: capital.label ?? "رصيد الحساب",
+            },
+          ]
+        : [];
+    const mtStatusAction: TvHeaderAction[] = !guest
+      ? [
+          {
+            id: "mt",
+            text: forexOnline ? "MT ✅" : "MT ⚠️",
+            title: forexOnline
+              ? "MetaTrader متصل"
+              : "MetaTrader غير متصل — اضغط للإعداد",
+            color: forexOnline ? "#71717a" : "#f59e0b",
+            onClick: () => router.push("/console/connect"),
+          },
+        ]
+      : [];
+    return [
+      analyzeAction,
+      ...clearAction,
+      ...tradesAction,
+      ...capitalAction,
+      ...mtStatusAction,
     ];
-    if (!guest) {
-      if (hasLayers) {
-        actions.push({
-          id: "clear",
-          text: "🧹 مسح الرسومات",
-          title: "إزالة رسومات التحليل من الشارت",
-          onClick: handleClearLayers,
-        });
-      }
-      actions.push({
-        id: "trades",
-        text:
-          openTradesCount > 0 ? `💼 صفقات (${openTradesCount})` : "💼 صفقات",
-        title: "الصفقات المفتوحة",
-        onClick: () => setTradesOpen(true),
-      });
-      if (capital.connected && capital.amount != null) {
-        actions.push({
-          id: "capital",
-          text: `$ ${Math.round(capital.amount).toLocaleString()} ${capital.currency ?? ""}`,
-          title: capital.label ?? "رصيد الحساب",
-        });
-      }
-      actions.push({
-        id: "mt",
-        text: forexOnline ? "MT ✅" : "MT ⚠️",
-        title: forexOnline ? "MetaTrader متصل" : "MetaTrader غير متصل — اضغط للإعداد",
-        color: forexOnline ? "#71717a" : "#f59e0b",
-        onClick: () => router.push("/console/connect"),
-      });
-    }
-    return actions;
   }, [
     chatEnabled,
     t,
@@ -531,6 +560,41 @@ export function SmartChartWorkspace({
     if (voice.active) void voice.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.activeChatId]);
+
+  // Dev/test-only read-only debug bridge for Playwright UI-sync assertions.
+  // Refreshes each render so the getter closes over the latest values; never
+  // exposes secrets, tokens, audio, or provider payloads. No-op in production.
+  useEffect(() => {
+    if (!debugBridgeEnabled()) return;
+    installAgentDebugBridge(() => {
+      const candle = chartRef.current?.latestCandle() ?? null;
+      const userDrawings = chartRef.current?.getUserDrawings() ?? [];
+      return {
+        symbol,
+        interval,
+        latestChartCandleTime: candle?.time ?? null,
+        latestChartClose: candle?.close ?? null,
+        visibleRange: chartRef.current?.visibleRange() ?? null,
+        agentDrawingCount: drawings.length,
+        userDrawingCount: userDrawings.length,
+        drawingCount: drawings.length + userDrawings.length,
+        activeRecommendation: recommendation
+          ? {
+              action: recommendation.action,
+              entry: recommendation.entry ?? null,
+              stop_loss: recommendation.stop_loss ?? null,
+              take_profit: recommendation.take_profit ?? null,
+            }
+          : null,
+        activeChatId: chat.activeChatId ?? null,
+        locale,
+        mobilePane,
+        voiceStatus: voice.status,
+        lastFinalResult: publicFinalResult(lastFinalResultRef.current),
+      };
+    });
+    return () => removeAgentDebugBridge();
+  });
 
   // Mobile shows exactly one pane (Chart or Chat); desktop shows both.
   const showMobileChat = chatEnabled && mobilePane === "chat";

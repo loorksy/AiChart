@@ -109,3 +109,40 @@ export async function trackRecommendations(
   }
   return { checked: active.length, updated, terminal };
 }
+
+export interface SweepRunResult extends TrackSweepResult {
+  durationMs: number;
+}
+
+/**
+ * Scheduled-sweep entry point: evaluates ALL non-terminal recommendations
+ * (across every user), timing the run and logging aggregate counts + failure
+ * classes. Idempotent (re-evaluating the same candles yields the same outcome),
+ * LLM-free, and never executes trades. Safe no-op when nothing is active. The
+ * caller (cron route) owns authentication and the distributed overlap lock.
+ */
+export async function runRecommendationSweep(opts: {
+  limit?: number;
+  logger?: { info: (msg: string, meta?: Record<string, unknown>) => void; warn: (msg: string, meta?: Record<string, unknown>) => void };
+} = {}): Promise<SweepRunResult> {
+  const startedAt = Date.now();
+  try {
+    const summary = await trackRecommendations({ limit: opts.limit });
+    const durationMs = Date.now() - startedAt;
+    opts.logger?.info("recommendation.sweep.done", {
+      checked: summary.checked,
+      updated: summary.updated,
+      terminal: summary.terminal,
+      durationMs,
+    });
+    return { ...summary, durationMs };
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    // A whole-sweep failure (e.g. warehouse/DB outage) is logged by class only.
+    opts.logger?.warn("recommendation.sweep.failed", {
+      error: err instanceof Error ? err.name : "unknown",
+      durationMs,
+    });
+    return { checked: 0, updated: 0, terminal: 0, durationMs };
+  }
+}

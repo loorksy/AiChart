@@ -17,8 +17,13 @@ describe("MCP TOOL_CATALOG", () => {
   it("every tool has §0.11-style description and annotations", () => {
     for (const tool of TOOL_CATALOG) {
       assert.ok(tool.description.length >= 20, `${tool.name}: description too short`);
+      // Every tool must carry a "when to use" hint. The catalog convention is
+      // an English "When:" prefix; read-only tools may instead say "read-only".
+      // ("متى:" is accepted for any Arabic-authored descriptions.)
       assert.ok(
-        tool.description.includes("متى:") || tool.description.includes("read-only"),
+        tool.description.includes("When:") ||
+          tool.description.includes("متى:") ||
+          tool.description.includes("read-only"),
         `${tool.name}: missing usage hint`,
       );
       assert.equal(typeof tool.annotations.readOnlyHint, "boolean", tool.name);

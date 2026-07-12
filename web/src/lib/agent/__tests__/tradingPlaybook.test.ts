@@ -51,6 +51,7 @@ const goodCandidate: TradeCandidate = {
   id: "tc-0",
   action: "buy",
   entry: 100,
+  entryType: "market",
   stop_loss: 99,
   targets: [102],
   poi: {
