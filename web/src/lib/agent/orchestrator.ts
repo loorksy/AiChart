@@ -12,6 +12,8 @@ import type {
 } from "./types";
 import type { TradingStyle } from "@/lib/types";
 import type { AppLocale } from "@/lib/i18n";
+import type { AgentConversationContext } from "./context";
+import { contextualizeIntentMessage } from "./context";
 import { newId } from "./activity";
 import {
   isGeneralOnly,
@@ -84,6 +86,8 @@ export interface UnifiedAgentInput {
   tradingStyle?: TradingStyle;
   /** UI locale — used to localize contextual follow-up options. */
   locale?: AppLocale;
+  /** Optional, bounded language context. It is never a market-data authority. */
+  conversationContext?: AgentConversationContext;
 }
 
 export async function runUnifiedChartAgent(
@@ -98,7 +102,7 @@ export async function runUnifiedChartAgent(
   const trackedCtx = ctx;
 
   const intents = routeIntent({
-    message: userMessage,
+    message: contextualizeIntentMessage(userMessage, input.conversationContext),
     chartContext,
     ctx: trackedCtx,
   });
@@ -219,7 +223,7 @@ export async function runUnifiedChartAgent(
   // "preparing a general answer".
   if (isGeneralOnly(intents)) {
     const summary = await withTimeout(
-      answerGeneralQuestion(userMessage),
+      answerGeneralQuestion(userMessage, input.conversationContext),
       AGENT_TIMEOUTS.general,
       "تعذّر إكمال الإجابة في الوقت المتاح.",
     );
@@ -260,7 +264,7 @@ export async function runUnifiedChartAgent(
   if (!wantMarket) {
     // Account-only or platform-help without market context.
     const summary = await withTimeout(
-      answerGeneralQuestion(userMessage),
+      answerGeneralQuestion(userMessage, input.conversationContext),
       AGENT_TIMEOUTS.general,
       "تعذّر إكمال الإجابة في الوقت المتاح.",
     );

@@ -371,6 +371,21 @@ const SCHEMA = `
     content         TEXT NOT NULL,
     embedding_json  TEXT,
     archived        INTEGER NOT NULL DEFAULT 0,
+    source          TEXT NOT NULL DEFAULT 'agent',
+    memory_type     TEXT NOT NULL DEFAULT 'conversation_summary',
+    confidence      REAL NOT NULL DEFAULT 0.8,
+    safety_classification TEXT NOT NULL DEFAULT 'untrusted_content',
+    expires_at      TEXT,
+    last_used_at    TEXT,
+    use_count       INTEGER NOT NULL DEFAULT 0,
+    source_chat_id  TEXT,
+    source_message_id TEXT,
+    source_recommendation_id TEXT,
+    source_trade_id TEXT,
+    locale          TEXT,
+    symbol          TEXT,
+    timeframe       TEXT,
+    strategy_id     TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -502,6 +517,33 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user
     ON agent_audit_logs (user_id, id DESC);
+
+  CREATE TABLE IF NOT EXISTS agent_runs (
+    run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
+    request_id TEXT NOT NULL, symbol TEXT, timeframe TEXT, intent TEXT,
+    status TEXT NOT NULL, started_at INTEGER NOT NULL, completed_at INTEGER, cancelled_at INTEGER,
+    decision TEXT, confidence REAL, risk_veto INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT, feature_flags TEXT NOT NULL DEFAULT '{}', context_version TEXT,
+    context_message_count INTEGER NOT NULL DEFAULT 0, recalled_memory_count INTEGER NOT NULL DEFAULT 0,
+    skill_names TEXT NOT NULL DEFAULT '[]', tool_names TEXT NOT NULL DEFAULT '[]', token_usage TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs (user_id, started_at DESC);
+  CREATE TABLE IF NOT EXISTS agent_run_steps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, user_id INTEGER NOT NULL,
+    step_type TEXT NOT NULL, status TEXT NOT NULL, summary TEXT,
+    evidence_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL,
+    FOREIGN KEY (run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run ON agent_run_steps (run_id, id);
+  CREATE TABLE IF NOT EXISTS agent_tool_calls (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, user_id INTEGER NOT NULL,
+    tool_name TEXT NOT NULL, tool_version TEXT, permission TEXT, status TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL DEFAULT 0, input_preview TEXT, output_preview TEXT,
+    error_code TEXT, retry_count INTEGER NOT NULL DEFAULT 0, started_at INTEGER NOT NULL, completed_at INTEGER,
+    FOREIGN KEY (run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_run ON agent_tool_calls (run_id, started_at);
 
   CREATE TABLE IF NOT EXISTS agent_chats (
     id                   TEXT PRIMARY KEY,
@@ -1088,6 +1130,63 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_semantic_memories_user ON semantic_memories (user_id, category);
     CREATE INDEX IF NOT EXISTS idx_semantic_memories_archive ON semantic_memories (archived);
+  `);
+  const semanticCols = db
+    .prepare("PRAGMA table_info(semantic_memories)")
+    .all() as { name: string }[];
+  const semanticMigrations: Array<[string, string]> = [
+    ["source", "TEXT NOT NULL DEFAULT 'agent'"],
+    ["memory_type", "TEXT NOT NULL DEFAULT 'conversation_summary'"],
+    ["confidence", "REAL NOT NULL DEFAULT 0.8"],
+    ["safety_classification", "TEXT NOT NULL DEFAULT 'untrusted_content'"],
+    ["expires_at", "TEXT"],
+    ["last_used_at", "TEXT"],
+    ["use_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["source_chat_id", "TEXT"],
+    ["source_message_id", "TEXT"],
+    ["source_recommendation_id", "TEXT"],
+    ["source_trade_id", "TEXT"],
+    ["locale", "TEXT"],
+    ["symbol", "TEXT"],
+    ["timeframe", "TEXT"],
+    ["strategy_id", "TEXT"],
+  ];
+  for (const [name, definition] of semanticMigrations) {
+    if (!semanticCols.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE semantic_memories ADD COLUMN ${name} ${definition}`);
+    }
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_semantic_memories_recall
+      ON semantic_memories (user_id, memory_type, symbol, timeframe, updated_at DESC);
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
+      request_id TEXT NOT NULL, symbol TEXT, timeframe TEXT, intent TEXT,
+      status TEXT NOT NULL, started_at INTEGER NOT NULL, completed_at INTEGER, cancelled_at INTEGER,
+      decision TEXT, confidence REAL, risk_veto INTEGER NOT NULL DEFAULT 0,
+      error_code TEXT, feature_flags TEXT NOT NULL DEFAULT '{}', context_version TEXT,
+      context_message_count INTEGER NOT NULL DEFAULT 0, recalled_memory_count INTEGER NOT NULL DEFAULT 0,
+      skill_names TEXT NOT NULL DEFAULT '[]', tool_names TEXT NOT NULL DEFAULT '[]', token_usage TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs (user_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS agent_run_steps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, user_id INTEGER NOT NULL,
+      step_type TEXT NOT NULL, status TEXT NOT NULL, summary TEXT,
+      evidence_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL,
+      FOREIGN KEY (run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run ON agent_run_steps (run_id, id);
+    CREATE TABLE IF NOT EXISTS agent_tool_calls (
+      id TEXT PRIMARY KEY, run_id TEXT NOT NULL, user_id INTEGER NOT NULL,
+      tool_name TEXT NOT NULL, tool_version TEXT, permission TEXT, status TEXT NOT NULL,
+      duration_ms INTEGER NOT NULL DEFAULT 0, input_preview TEXT, output_preview TEXT,
+      error_code TEXT, retry_count INTEGER NOT NULL DEFAULT 0, started_at INTEGER NOT NULL, completed_at INTEGER,
+      FOREIGN KEY (run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_run ON agent_tool_calls (run_id, started_at);
   `);
 
   // AI Copilot state & events migrations

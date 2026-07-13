@@ -1,5 +1,10 @@
 ---
 name: trading-strategies
+version: 1.0.0
+category: recommendation
+riskLevel: recommendation
+supportedLocales: ["ar", "en"]
+allowedMarkets: ["forex"]
 description: Universal Combinatorial Matrix of 10,000 Trading Strategy Configurations for Forex.
 metadata: {"aichart":{"requires":{"resources":["aichart://trading-strategies"]}}}
 ---

@@ -1,5 +1,10 @@
 ---
 name: trading-lexicon
+version: 1.0.0
+category: analysis
+riskLevel: analysis
+supportedLocales: ["ar", "en"]
+allowedMarkets: ["forex"]
 description: Comprehensive Trading Lexicon and analysis strategies (SMC, Wyckoff, Elliott Waves, Indicators) for Forex.
 metadata: {"aichart":{"requires":{"env":[]}}}
 ---
