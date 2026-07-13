@@ -747,6 +747,61 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS trading_dna_snapshots (
+    snapshot_id      TEXT PRIMARY KEY,
+    user_id          INTEGER NOT NULL,
+    version          INTEGER NOT NULL,
+    generated_at     INTEGER NOT NULL,
+    window_start     INTEGER,
+    window_end       INTEGER,
+    sample_size      INTEGER NOT NULL,
+    metrics_json     TEXT NOT NULL DEFAULT '[]',
+    conclusions_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json    TEXT NOT NULL DEFAULT '{}',
+    UNIQUE (user_id, version),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_trading_dna_snapshots_user
+    ON trading_dna_snapshots (user_id, version DESC);
+
+  CREATE TABLE IF NOT EXISTS trading_persona_versions (
+    persona_id    TEXT PRIMARY KEY,
+    user_id       INTEGER NOT NULL,
+    version       INTEGER NOT NULL,
+    snapshot_id   TEXT NOT NULL,
+    persona       TEXT NOT NULL,
+    confidence    REAL NOT NULL,
+    sample_size   INTEGER NOT NULL,
+    rationale     TEXT NOT NULL,
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    created_at    INTEGER NOT NULL,
+    UNIQUE (user_id, version),
+    UNIQUE (user_id, snapshot_id),
+    FOREIGN KEY (snapshot_id) REFERENCES trading_dna_snapshots(snapshot_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS shadow_recommendations (
+    shadow_recommendation_id TEXT PRIMARY KEY,
+    user_id                  INTEGER NOT NULL,
+    snapshot_id              TEXT NOT NULL,
+    source_recommendation_id INTEGER,
+    symbol                   TEXT NOT NULL,
+    timeframe                TEXT NOT NULL,
+    direction                TEXT NOT NULL CHECK (direction IN ('buy','sell','wait')),
+    confidence               REAL NOT NULL,
+    rationale_json           TEXT NOT NULL DEFAULT '[]',
+    evidence_json            TEXT NOT NULL DEFAULT '{}',
+    research_only            INTEGER NOT NULL DEFAULT 1 CHECK (research_only = 1),
+    execution_prohibited     INTEGER NOT NULL DEFAULT 1 CHECK (execution_prohibited = 1),
+    created_at               INTEGER NOT NULL,
+    FOREIGN KEY (snapshot_id) REFERENCES trading_dna_snapshots(snapshot_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_recommendation_id) REFERENCES recommendations(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_shadow_recommendations_user
+    ON shadow_recommendations (user_id, created_at DESC);
+
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_history_update
     BEFORE UPDATE ON recommendation_history
     BEGIN SELECT RAISE(ABORT, 'recommendation history is append-only'); END;
@@ -759,6 +814,15 @@ const SCHEMA = `
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_learning_events_update
     BEFORE UPDATE ON recommendation_learning_events
     BEGIN SELECT RAISE(ABORT, 'recommendation learning events are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_trading_dna_snapshots_update
+    BEFORE UPDATE ON trading_dna_snapshots
+    BEGIN SELECT RAISE(ABORT, 'trading dna snapshots are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_trading_persona_versions_update
+    BEFORE UPDATE ON trading_persona_versions
+    BEGIN SELECT RAISE(ABORT, 'trading persona versions are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_shadow_recommendations_update
+    BEFORE UPDATE ON shadow_recommendations
+    BEGIN SELECT RAISE(ABORT, 'shadow recommendations are append-only'); END;
 `;
 
 function migrate(db: Database.Database) {

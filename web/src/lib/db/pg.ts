@@ -651,6 +651,44 @@ const SCHEMA = `
     UNIQUE (user_id, strategy_id, version)
   );
 
+  CREATE TABLE IF NOT EXISTS trading_dna_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL, generated_at BIGINT NOT NULL,
+    window_start BIGINT, window_end BIGINT, sample_size INTEGER NOT NULL,
+    metrics_json TEXT NOT NULL DEFAULT '[]', conclusions_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json TEXT NOT NULL DEFAULT '{}', UNIQUE (user_id, version)
+  );
+  CREATE INDEX IF NOT EXISTS idx_trading_dna_snapshots_user
+    ON trading_dna_snapshots (user_id, version DESC);
+
+  CREATE TABLE IF NOT EXISTS trading_persona_versions (
+    persona_id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    snapshot_id TEXT NOT NULL REFERENCES trading_dna_snapshots(snapshot_id) ON DELETE CASCADE,
+    persona TEXT NOT NULL, confidence DOUBLE PRECISION NOT NULL,
+    sample_size INTEGER NOT NULL, rationale TEXT NOT NULL,
+    evidence_json TEXT NOT NULL DEFAULT '{}', created_at BIGINT NOT NULL,
+    UNIQUE (user_id, version), UNIQUE (user_id, snapshot_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS shadow_recommendations (
+    shadow_recommendation_id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    snapshot_id TEXT NOT NULL REFERENCES trading_dna_snapshots(snapshot_id) ON DELETE CASCADE,
+    source_recommendation_id INTEGER REFERENCES recommendations(id) ON DELETE SET NULL,
+    symbol TEXT NOT NULL, timeframe TEXT NOT NULL,
+    direction TEXT NOT NULL CHECK (direction IN ('buy','sell','wait')),
+    confidence DOUBLE PRECISION NOT NULL,
+    rationale_json TEXT NOT NULL DEFAULT '[]', evidence_json TEXT NOT NULL DEFAULT '{}',
+    research_only INTEGER NOT NULL DEFAULT 1 CHECK (research_only = 1),
+    execution_prohibited INTEGER NOT NULL DEFAULT 1 CHECK (execution_prohibited = 1),
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_shadow_recommendations_user
+    ON shadow_recommendations (user_id, created_at DESC);
+
   CREATE OR REPLACE FUNCTION reject_recommendation_history_update()
   RETURNS trigger AS $$
   BEGIN
@@ -678,6 +716,21 @@ const SCHEMA = `
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_recommendation_learning_events_update') THEN
       CREATE TRIGGER immutable_recommendation_learning_events_update
         BEFORE UPDATE ON recommendation_learning_events
+        FOR EACH ROW EXECUTE FUNCTION reject_recommendation_history_update();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_trading_dna_snapshots_update') THEN
+      CREATE TRIGGER immutable_trading_dna_snapshots_update
+        BEFORE UPDATE ON trading_dna_snapshots
+        FOR EACH ROW EXECUTE FUNCTION reject_recommendation_history_update();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_trading_persona_versions_update') THEN
+      CREATE TRIGGER immutable_trading_persona_versions_update
+        BEFORE UPDATE ON trading_persona_versions
+        FOR EACH ROW EXECUTE FUNCTION reject_recommendation_history_update();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_shadow_recommendations_update') THEN
+      CREATE TRIGGER immutable_shadow_recommendations_update
+        BEFORE UPDATE ON shadow_recommendations
         FOR EACH ROW EXECUTE FUNCTION reject_recommendation_history_update();
     END IF;
   END $$;

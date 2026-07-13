@@ -129,6 +129,43 @@ provided no recommendation state machine or code transferred into this implement
 
 Ingest MT5 trades, AiChart executions, recommendation outcomes, lessons and chart snapshots. Produce tenant-scoped behavioral analysis, a safe strategy specification, shadow backtests and HTML/PDF reports. This plane is analytical and cannot submit orders.
 
+### Phase 5 implementation scope (2026-07-14)
+
+- Trading DNA reuses canonical recommendations, outcomes, learning events,
+  validated Trade Lessons, real trades and tenant-verified Research Service
+  references. It does not duplicate their tables, engines or authority.
+- Eighteen deterministic metric contracts cover risk, R, holding time,
+  excursions, win/loss, preferences, trade management, scaling, drawdown,
+  calibration, execution consistency, concentration and backtest coverage.
+  Missing fields remain `insufficient_evidence`.
+- Immutable tenant-scoped snapshot and persona versions preserve every metric,
+  conclusion and bounded evidence reference with SQLite/PostgreSQL parity.
+- Shadow Trader is a research-only observer. It can emit only `buy`, `sell` or
+  `wait`, stores no executable order fields and has no execution/broker/runtime
+  imports.
+- JSON, escaped HTML and PDF reports use the same deterministic conclusions.
+  Replay merges the shadow record with canonical outcomes/learning; analytics
+  show behaviour, strategy, confidence, drawdown, risk, symbol, timeframe and
+  monthly evolution.
+- Public Phase 5 routes are authenticated `GET` operations only. Research
+  Service isolation, Risk Guard, Execution Guard and completed Phase 0–4
+  implementations remain unchanged.
+
+Phase 5 Vibe audit classification:
+
+| Reviewed area | Classification | Phase 5 decision |
+|---|---|---|
+| `agent/src/shadow_account/models.py`, extractor/reporter concepts | idea only; adapted and reimplemented | Evidence-linked AiChart profiles/reports; no source or formula transfer |
+| Shadow attribution and replay concepts | idea only; reimplemented | Deterministic canonical outcome/trade evidence; no generated engine |
+| `agent/src/shadow_account/codegen.py`, templates and backtester execution | rejected | No generated Python, arbitrary runtime or unrelated market baskets |
+| `agent/src/agent/trace.py` | idea only; reimplemented | Immutable database replay with IDs, not JSONL/files |
+| `agent/src/memory/persistent.py` | rejected | Tenant database remains authoritative; no Markdown memory |
+| `agent/backtest/` reports/metrics/evidence vocabulary | idea only | Existing isolated Phase 3 engine is referenced, never copied or duplicated |
+| `agent/src/swarm/` | deferred | No worker, task graph, preset or swarm runtime; Phase 6 remains blocked |
+| Shell, dynamic imports, unrestricted Python, factor zoo and unrelated markets | rejected | No Phase 5 equivalent |
+
+No Vibe code, templates, report prose, formula, test or dataset was copied.
+
 ## Phase 6 — research swarm
 
 Add research-only DAG runs with dependencies, upstream summaries, per-agent allowlisted tools/skills, time/token/cost/tool-call budgets, heartbeat, cancellation, partial results, grounded-data-only synthesis and complete structured traces.
