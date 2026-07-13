@@ -9,10 +9,8 @@ import { makeDecision } from "./decisionEngine";
 import { evaluateDrawdownControl } from "./drawdownController";
 import { averageExecutionQuality } from "./executionQuality";
 import { computeInstitutionalScore } from "./institutionalScore";
-import { learnFromTrade } from "./learning";
 import { analyzeMarket } from "./marketAnalysis";
 import { emptyMemory, updateMemoryFromTrade } from "./memory";
-import { runOptimizer } from "./optimizerEngine";
 import { emptyPerformance, updatePerformance } from "./performanceEngine";
 import { computeRegimeProbabilities, detectRegime } from "./regimeProbability";
 import { matchSetup, fingerprintSetup, type StoredSetup } from "./setupLibrary";
@@ -146,18 +144,6 @@ export async function runAgentXCycle(
     executionQualityAvg: execAvg,
   });
 
-  const optimizer = runOptimizer(
-    config,
-    state.tradesSinceOptimizer ?? 0,
-    [],
-    weights,
-    state.performance ?? emptyPerformance(),
-  );
-  if (optimizer.ran) {
-    state.adaptiveWeights = optimizer.weights;
-    state.tradesSinceOptimizer = 0;
-  }
-
   state = {
     ...state,
     regime: regime.dominant,
@@ -185,4 +171,4 @@ export async function runAgentXCycle(
   };
 }
 
-export { learnFromTrade, updateMemoryFromTrade, updatePerformance, emptyPerformance };
+export { updateMemoryFromTrade, updatePerformance, emptyPerformance };

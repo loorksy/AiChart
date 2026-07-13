@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
@@ -34,20 +34,7 @@ export default function RecommendationDetailsPage({
   const refresh = useCallback(async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/recommendations/tracked/${id}/status`, { method: "POST" });
-      if (res.ok) {
-        const json = (await res.json()) as { recommendation?: TrackedRecommendation };
-        if (json.recommendation) setRec(json.recommendation);
-      }
-    } finally {
-      setBusy(false);
-    }
-  }, [id]);
-
-  const cancel = useCallback(async () => {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/recommendations/tracked/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/recommendations/tracked/${id}`, { cache: "no-store" });
       if (res.ok) {
         const json = (await res.json()) as { recommendation?: TrackedRecommendation };
         if (json.recommendation) setRec(json.recommendation);
@@ -88,17 +75,6 @@ export default function RecommendationDetailsPage({
               <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
               {t("rec.page.refresh")}
             </button>
-            {rec.outcome === "pending" && (
-              <button
-                type="button"
-                onClick={() => void cancel()}
-                disabled={busy}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-red-500/40 bg-background px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-500/10 disabled:opacity-50"
-              >
-                <X className="h-3.5 w-3.5" />
-                {t("rec.page.cancel")}
-              </button>
-            )}
           </div>
         </>
       )}

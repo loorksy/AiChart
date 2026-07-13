@@ -60,3 +60,30 @@ Current classification totals:
 - deferred: unrelated engines, factor content, optimization, Shadow Trader, and swarm work.
 
 If a later change copies or substantially adapts source, this file must list the source path, destination path, commit/archive identity, classification, and required copyright/license notice.
+
+## Phase 4 classification update
+
+The local archive was reviewed again before Phase 4. No Vibe source code, tests, formulas,
+datasets, documentation or comments were copied or substantially adapted.
+
+| Concept | Vibe area reviewed | Classification |
+|---|---|---|
+| Append-only structured trace/event ordering | `agent/src/agent/trace.py`, `loop.py` | idea only; independently reimplemented in AiChart database records |
+| Replay from ordered public-safe evidence | agent trace/artifact flow | idea only; independently reimplemented with canonical history/transitions/outcomes/events |
+| Evidence/artifact references instead of mutable prose | trace and backtest models | idea only; reimplemented with outcome IDs and bounded JSON evidence |
+| Statistical sample/confidence gates | backtest metrics/validation | idea only; reimplemented without Vibe formulas |
+| Version retention and rollback audit | trace/run history concepts | idea only; reimplemented for Gold Agent X weights |
+| Markdown persistent memory | `agent/src/memory/persistent.py` | rejected |
+| Arbitrary Python/shell and dynamic imports | agent tool/runtime paths | rejected |
+| Generated Shadow Account code execution | `agent/src/shadow_account/` | rejected; Shadow Trader domain deferred to Phase 5 |
+| Swarm agents, DAG execution and presets | `agent/src/swarm/` | deferred to Phase 6; unrelated presets rejected |
+| Factor zoo, equities and crypto logic | backtest/factor/market material | rejected |
+
+Phase 4 classification totals:
+
+- idea only: append-only audit, replay, evidence references, statistical gates and version history;
+- reimplemented: all accepted concepts as typed AiChart-native TypeScript/SQL contracts;
+- adapted from Vibe: none;
+- copied with attribution: none;
+- rejected: Markdown memory, dynamic/local execution, generated code, factors and unrelated markets;
+- deferred: Shadow Trader concepts to Phase 5 and swarm concepts to Phase 6.

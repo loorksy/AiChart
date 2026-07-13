@@ -89,6 +89,42 @@ this snapshot.
 
 Define one persisted recommendation identity and lifecycle; adapt chat, chart and execution views to it. Outcomes create statistics and learning events. Trade lessons require sufficient evidence. Gold Agent X weight versions require minimum samples, decay, prior-version retention and rollback; Risk Guard limits are immutable to learning.
 
+### Phase 4 implementation scope (2026-07-13)
+
+- The existing numeric `recommendations.id` is the sole canonical identity and its status is the
+  sole current-state authority. Tracker/session/chart/result shapes are compatibility projections;
+  the session map is a rebuildable cache.
+- A strict state machine and append-only history, transition, outcome and learning-event records
+  are implemented with tenant ownership and SQLite/PostgreSQL parity.
+- The retired `tracked_recommendations` table is a non-destructive migration source only. Stable,
+  idempotent import preserves old rows while all new reads/writes use canonical persistence.
+- Evidence-backed lesson candidates enforce sample/confidence gates, stable duplicate detection
+  and explicit validation.
+- Gold Agent X consumes only explicitly validated canonical recommendation outcomes. Weight
+  proposals are versioned/offline with fixed gates, decay, activation history and rollback; the
+  live cycle cannot self-modify.
+- Replay and required analytics dimensions derive exclusively from immutable evidence. Public
+  browser mutation routes were removed; authenticated reads and secret-authenticated server sweep
+  remain.
+
+Phase 4 Vibe audit classification:
+
+| Reviewed concept/location | Classification | Phase 4 decision |
+|---|---|---|
+| `agent/src/agent/trace.py` append/flush sequence and sidecar evidence references | idea only; reimplemented | Database append-only events and deterministic replay; no JSONL/files copied |
+| `agent/src/agent/loop.py` trace/replay/artifact sequencing | idea only; reimplemented | Typed AiChart history/outcome/event timeline; no loop/tool code copied |
+| `agent/backtest/models.py`, `metrics.py`, `validation.py` evidence/metric naming | idea only; reimplemented | Canonical outcome measurements and descriptive analytics; no formulas copied |
+| `agent/src/memory/persistent.py` Markdown/YAML memory | rejected | Existing tenant database and Phase 1 safe memory remain authoritative |
+| `agent/src/agent/context.py`, `tools.py`, `skills.py` | rejected for Phase 4 authority | Cannot grant lifecycle, learning or execution permission |
+| `agent/src/shadow_account/` generated replay/code paths | deferred to Phase 5 and generated execution rejected | No Shadow Trader or generated-code execution in Phase 4 |
+| `agent/src/swarm/` event logs/task history | idea only for append-only audit; swarm deferred | No DAG, agents or swarm runtime imported; Phase 6 remains blocked |
+| Arbitrary Python/shell, dynamic imports, local unrestricted execution | rejected | No equivalent Phase 4 capability |
+| Factor zoo and unrelated equity/crypto content | rejected | No factors, datasets or market logic imported |
+
+The architecture audit kept AiChart-native deterministic Candle Warehouse evaluation, numeric
+execution linkage, tenant DBs, semantic/trade memory, chart ownership and guard boundaries. Vibe
+provided no recommendation state machine or code transferred into this implementation.
+
 ## Phase 5 — Trading DNA and Shadow Trader
 
 Ingest MT5 trades, AiChart executions, recommendation outcomes, lessons and chart snapshots. Produce tenant-scoped behavioral analysis, a safe strategy specification, shadow backtests and HTML/PDF reports. This plane is analytical and cannot submit orders.

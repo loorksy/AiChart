@@ -5,7 +5,6 @@ import {
   insertReturningId,
   query,
   queryOne,
-  transaction,
   getDbBackend,
 } from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
@@ -36,6 +35,10 @@ import {
   forexModeToBrokerKind,
   resolveForexBackendFromPref,
 } from "./brokers/forexBackend";
+import {
+  appendRecommendationHistory,
+  createCanonicalRecommendation,
+} from "./recommendations/canonical";
 
 /**
  * Broker kind for a user honoring their per-user forex backend choice (EA vs
@@ -639,36 +642,74 @@ export async function saveRecommendation(
     context_json?: string | null;
     source?: RecommendationSource;
     market?: MarketType | null;
+    analysis_id?: string | null;
+    session_id?: string | null;
+    chat_id?: string | null;
+    targets?: number[] | null;
+    risk?: Record<string, unknown> | null;
+    strategy_id?: string | null;
+    strategy_version?: string | null;
+    expires_at?: number | null;
+    entry_type?: string | null;
+    engine_version?: string | null;
   },
 ): Promise<Recommendation> {
-  const id = await insertReturningId(
-    `INSERT INTO recommendations
-       (user_id, symbol, action, confidence, entry, stop_loss, take_profit, timeframe, rationale, factors,
-        chart_drawings_json, pattern_name, analysis_tier, context_json, source, market)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      userId,
-      rec.symbol.toUpperCase(),
-      rec.action,
-      Math.round(rec.confidence) || 0,
-      rec.entry ?? null,
-      rec.stop_loss ?? null,
-      rec.take_profit ?? null,
-      rec.timeframe ?? null,
-      rec.rationale ?? null,
-      rec.factors && rec.factors.length ? JSON.stringify(rec.factors) : null,
-      rec.chart_drawings_json ?? null,
-      rec.pattern_name ?? null,
-      rec.analysis_tier ?? null,
-      rec.context_json ?? null,
-      rec.source ?? "web",
-      rec.market ?? null,
-    ],
-  );
+  const action = rec.action === "buy" || rec.action === "sell" ? rec.action : "wait";
+  const canonical = await createCanonicalRecommendation({
+    userId,
+    analysisId: rec.analysis_id ?? undefined,
+    sessionId: rec.session_id ?? undefined,
+    chatId: rec.chat_id ?? undefined,
+    symbol: rec.symbol,
+    market: rec.market ?? "forex",
+    timeframe: rec.timeframe ?? undefined,
+    direction: action,
+    entry: rec.entry,
+    stopLoss: rec.stop_loss,
+    targets: rec.targets?.length
+      ? rec.targets
+      : rec.take_profit == null
+        ? []
+        : [rec.take_profit],
+    risk: rec.risk ?? {},
+    confidence: rec.confidence,
+    strategyId: rec.strategy_id ?? rec.pattern_name ?? "unspecified",
+    strategyVersion: rec.strategy_version ?? "1",
+    expiresAt: rec.expires_at ?? undefined,
+    source: rec.source ?? "web",
+    engineVersion: rec.engine_version ?? "aichart-phase4-v1",
+    entryType: rec.entry_type ?? undefined,
+    rationale: rec.rationale ?? undefined,
+    factors: rec.factors ?? undefined,
+    chartDrawingsJson: rec.chart_drawings_json ?? undefined,
+    patternName: rec.pattern_name ?? undefined,
+    analysisTier: rec.analysis_tier ?? undefined,
+    contextJson: rec.context_json ?? undefined,
+  });
   return (await queryOne<Recommendation>(
     "SELECT * FROM recommendations WHERE id = ?",
-    [id],
+    [canonical.recommendationId],
   ))!;
+}
+
+async function appendLegacyRecommendationUpdate(
+  id: number,
+  kind: "updated" | "drawing_snapshot",
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const owner = await queryOne<{ user_id: number }>(
+    "SELECT user_id FROM recommendations WHERE id = ?",
+    [id],
+  );
+  if (!owner) return;
+  await appendRecommendationHistory({
+    userId: Number(owner.user_id),
+    recommendationId: id,
+    kind,
+    actor: "server",
+    source: "legacy-adapter",
+    payload,
+  });
 }
 
 export async function listRecommendations(
@@ -689,6 +730,9 @@ export async function updateRecommendationChartUrl(
     chartImageUrl,
     id,
   ]);
+  await appendLegacyRecommendationUpdate(id, "drawing_snapshot", {
+    chartImageUrl,
+  });
 }
 
 export async function updateRecommendationContext(
@@ -699,6 +743,9 @@ export async function updateRecommendationContext(
     contextJson,
     id,
   ]);
+  await appendLegacyRecommendationUpdate(id, "updated", {
+    contextUpdated: true,
+  });
 }
 
 export async function updateRecommendationLevels(
@@ -714,7 +761,8 @@ export async function updateRecommendationLevels(
   const fields: string[] = [];
   const params: unknown[] = [];
   if ("action" in patch) {
-    fields.push("action = ?");
+    fields.push("action = ?", "direction = ?");
+    params.push(patch.action ?? "wait");
     params.push(patch.action ?? "wait");
   }
   if ("entry" in patch) {
@@ -726,8 +774,9 @@ export async function updateRecommendationLevels(
     params.push(patch.stop_loss ?? null);
   }
   if ("take_profit" in patch) {
-    fields.push("take_profit = ?");
+    fields.push("take_profit = ?", "targets_json = ?");
     params.push(patch.take_profit ?? null);
+    params.push(JSON.stringify(patch.take_profit == null ? [] : [patch.take_profit]));
   }
   if ("rationale" in patch) {
     fields.push("rationale = ?");
@@ -739,6 +788,7 @@ export async function updateRecommendationLevels(
     `UPDATE recommendations SET ${fields.join(", ")} WHERE id = ?`,
     params,
   );
+  await appendLegacyRecommendationUpdate(id, "updated", { levels: patch });
 }
 
 export async function updateRecommendationIntelligence(
@@ -764,6 +814,12 @@ export async function updateRecommendationIntelligence(
     `UPDATE recommendations SET ${fields.join(", ")} WHERE id = ?`,
     params,
   );
+  await appendLegacyRecommendationUpdate(id, "updated", {
+    intelligence: {
+      committeeUpdated: "committee_json" in patch,
+      memoryRefsUpdated: "memory_refs_json" in patch,
+    },
+  });
 }
 
 function today(): string {
