@@ -326,6 +326,21 @@ const SCHEMA = `
     content         TEXT NOT NULL,
     embedding       vector(1536),
     archived        BOOLEAN NOT NULL DEFAULT FALSE,
+    source          TEXT NOT NULL DEFAULT 'agent',
+    memory_type     TEXT NOT NULL DEFAULT 'conversation_summary',
+    confidence      DOUBLE PRECISION NOT NULL DEFAULT 0.8,
+    safety_classification TEXT NOT NULL DEFAULT 'untrusted_content',
+    expires_at      TIMESTAMPTZ,
+    last_used_at    TIMESTAMPTZ,
+    use_count       INTEGER NOT NULL DEFAULT 0,
+    source_chat_id  TEXT,
+    source_message_id TEXT,
+    source_recommendation_id TEXT,
+    source_trade_id TEXT,
+    locale          TEXT,
+    symbol          TEXT,
+    timeframe       TEXT,
+    strategy_id     TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -457,6 +472,31 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user
     ON agent_audit_logs (user_id, id DESC);
+
+  CREATE TABLE IF NOT EXISTS agent_runs (
+    run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
+    request_id TEXT NOT NULL, symbol TEXT, timeframe TEXT, intent TEXT,
+    status TEXT NOT NULL, started_at BIGINT NOT NULL, completed_at BIGINT, cancelled_at BIGINT,
+    decision TEXT, confidence DOUBLE PRECISION, risk_veto INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT, feature_flags TEXT NOT NULL DEFAULT '{}', context_version TEXT,
+    context_message_count INTEGER NOT NULL DEFAULT 0, recalled_memory_count INTEGER NOT NULL DEFAULT 0,
+    skill_names TEXT NOT NULL DEFAULT '[]', tool_names TEXT NOT NULL DEFAULT '[]', token_usage TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs (user_id, started_at DESC);
+  CREATE TABLE IF NOT EXISTS agent_run_steps (
+    id BIGSERIAL PRIMARY KEY, run_id TEXT NOT NULL REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL, step_type TEXT NOT NULL, status TEXT NOT NULL,
+    summary TEXT, evidence_json TEXT NOT NULL DEFAULT '{}', created_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run ON agent_run_steps (run_id, id);
+  CREATE TABLE IF NOT EXISTS agent_tool_calls (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL, tool_name TEXT NOT NULL, tool_version TEXT,
+    permission TEXT, status TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0,
+    input_preview TEXT, output_preview TEXT, error_code TEXT, retry_count INTEGER NOT NULL DEFAULT 0,
+    started_at BIGINT NOT NULL, completed_at BIGINT
+  );
+  CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_run ON agent_tool_calls (run_id, started_at);
 
   CREATE TABLE IF NOT EXISTS agent_chats (
     id                   TEXT PRIMARY KEY,
@@ -966,6 +1006,57 @@ async function migratePg(client: PoolClient) {
 
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_semantic_memories_archive ON semantic_memories (archived)
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE semantic_memories
+      ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'agent',
+      ADD COLUMN IF NOT EXISTS memory_type TEXT NOT NULL DEFAULT 'conversation_summary',
+      ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION NOT NULL DEFAULT 0.8,
+      ADD COLUMN IF NOT EXISTS safety_classification TEXT NOT NULL DEFAULT 'untrusted_content',
+      ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS use_count INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS source_chat_id TEXT,
+      ADD COLUMN IF NOT EXISTS source_message_id TEXT,
+      ADD COLUMN IF NOT EXISTS source_recommendation_id TEXT,
+      ADD COLUMN IF NOT EXISTS source_trade_id TEXT,
+      ADD COLUMN IF NOT EXISTS locale TEXT,
+      ADD COLUMN IF NOT EXISTS symbol TEXT,
+      ADD COLUMN IF NOT EXISTS timeframe TEXT,
+      ADD COLUMN IF NOT EXISTS strategy_id TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_semantic_memories_recall
+      ON semantic_memories (user_id, memory_type, symbol, timeframe, updated_at DESC)
+  `).catch(() => {});
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
+      request_id TEXT NOT NULL, symbol TEXT, timeframe TEXT, intent TEXT,
+      status TEXT NOT NULL, started_at BIGINT NOT NULL, completed_at BIGINT, cancelled_at BIGINT,
+      decision TEXT, confidence DOUBLE PRECISION, risk_veto INTEGER NOT NULL DEFAULT 0,
+      error_code TEXT, feature_flags TEXT NOT NULL DEFAULT '{}', context_version TEXT,
+      context_message_count INTEGER NOT NULL DEFAULT 0, recalled_memory_count INTEGER NOT NULL DEFAULT 0,
+      skill_names TEXT NOT NULL DEFAULT '[]', tool_names TEXT NOT NULL DEFAULT '[]', token_usage TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs (user_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS agent_run_steps (
+      id BIGSERIAL PRIMARY KEY, run_id TEXT NOT NULL REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL, step_type TEXT NOT NULL, status TEXT NOT NULL,
+      summary TEXT, evidence_json TEXT NOT NULL DEFAULT '{}', created_at BIGINT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run ON agent_run_steps (run_id, id);
+    CREATE TABLE IF NOT EXISTS agent_tool_calls (
+      id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL, tool_name TEXT NOT NULL, tool_version TEXT, permission TEXT,
+      status TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0, input_preview TEXT,
+      output_preview TEXT, error_code TEXT, retry_count INTEGER NOT NULL DEFAULT 0,
+      started_at BIGINT NOT NULL, completed_at BIGINT
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_run ON agent_tool_calls (run_id, started_at)
   `).catch(() => {});
 
   // AI Copilot state & events migrations

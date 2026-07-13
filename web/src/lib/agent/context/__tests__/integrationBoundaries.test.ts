@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const orchestrator = readFileSync(new URL("../../orchestrator.ts", import.meta.url), "utf8");
+const route = readFileSync(new URL("../../../../app/api/agent/chat/stream/route.ts", import.meta.url), "utf8");
+const flags = readFileSync(new URL("../../featureFlags.ts", import.meta.url), "utf8");
+
+test("disabled flag preserves the legacy route path", () => {
+  assert.match(flags, /agentContextV2:\s*\(\)\s*=>\s*flag\("AGENT_CONTEXT_V2",\s*false\)/);
+  assert.ok(route.indexOf("if (FEATURES.agentContextV2())") < route.indexOf("getMessages(user.id, sessionId"));
+});
+
+test("context remains a language aid and is not passed to market or risk agents", () => {
+  assert.doesNotMatch(orchestrator, /runMarketDataAgent\([\s\S]*?conversationContext/);
+  assert.doesNotMatch(orchestrator, /runRiskAgent\([\s\S]*?conversationContext/);
+  assert.doesNotMatch(orchestrator, /runExecutionGuardAgent\([\s\S]*?conversationContext/);
+  assert.match(orchestrator, /contextualizeIntentMessage\(userMessage, input\.conversationContext\)/);
+  assert.match(orchestrator, /answerGeneralQuestion\(userMessage, input\.conversationContext\)/);
+});
+
+test("general and drawing-only paths still return before market analysis", () => {
+  const general = orchestrator.indexOf("if (isGeneralOnly(intents))");
+  const drawing = orchestrator.indexOf("if (isDrawingOnly(intents))");
+  const market = orchestrator.indexOf("runMarketDataAgent(");
+  assert.ok(general > 0 && general < market);
+  assert.ok(drawing > 0 && drawing < market);
+});
+
+test("market sync, risk and explicit execution guard remain in the orchestrator", () => {
+  assert.match(orchestrator, /runMarketDataAgent/);
+  assert.match(orchestrator, /runRiskAgent/);
+  assert.match(orchestrator, /runExecutionGuardAgent/);
+  assert.match(orchestrator, /requiresConfirmation/);
+});

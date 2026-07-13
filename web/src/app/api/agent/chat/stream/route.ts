@@ -5,7 +5,7 @@ import { getSettings, getLimits } from "@/lib/store";
 import { isLLMConfigured } from "@/lib/llm";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
-import { FEATURES } from "@/lib/agent/featureFlags";
+import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import {
   createActivityEvent,
   newId,
@@ -31,6 +31,16 @@ import { createLogger } from "@/lib/logger";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { tradingStyleForInterval } from "@/lib/analysisProfile";
 import type { AgentActivityEvent } from "@/lib/agent/types";
+import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
+import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
+import { getMessages } from "@/lib/agent/chatHistory/chatStore";
+import {
+  adaptAuthorizedChatHistory,
+  buildAgentConversationContext,
+  type AgentConversationContext,
+  type SafeRecommendationContext,
+  resolveActiveRecommendationContext,
+} from "@/lib/agent/context";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -188,6 +198,8 @@ const serializedUserDrawingSchema = z
 
 const chartRecommendationSchema = z
   .object({
+    id: z.string().max(96).optional(),
+    status: z.string().max(40).optional(),
     action: z.enum(["buy", "sell", "wait"]),
     entry: z.number().optional(),
     entryType: z
@@ -291,6 +303,49 @@ export async function POST(req: NextRequest) {
 
     const requestId = newId();
     const activityEvents: AgentActivityEvent[] = [];
+    let conversationContext: AgentConversationContext | undefined;
+    if (FEATURES.agentContextV2()) {
+      try {
+        const [persisted, recalled] = await Promise.all([
+          getMessages(user.id, sessionId, 160),
+          recallAgentMemoryForContext({
+            userId: user.id,
+            query: resolvedMessage,
+            symbol: body.chartContext?.symbol,
+            timeframe: body.chartContext?.interval,
+            locale: body.locale ?? "ar",
+            memoryLimit: 5,
+            lessonLimit: 3,
+          }),
+        ]);
+        const adapted = adaptAuthorizedChatHistory({
+          authenticatedUserId: user.id,
+          ownerUserId: user.id,
+          authorizedChatId: sessionId,
+          messages: persisted,
+        });
+        conversationContext = buildAgentConversationContext({
+          userId: user.id,
+          chatId: sessionId,
+          sessionId,
+          userMessage: resolvedMessage,
+          locale: body.locale ?? "ar",
+          chartContext: body.chartContext,
+          activeRecommendation: recommendationContextFromChart(body.chartContext),
+          persistedMessages: adapted,
+          recalledMemories: recalled.memories,
+          tradeLessons: recalled.tradeLessons,
+          tokenBudget: 2_400,
+          includeDiagnostics: process.env.NODE_ENV === "development",
+        });
+      } catch (error) {
+        // Context V2 is an optional language aid. Failure must not block the
+        // current route or weaken market/risk/execution controls.
+        log.warn("agent.context_v2.failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -327,6 +382,21 @@ export async function POST(req: NextRequest) {
           chartContext: body.chartContext,
           ctx: { requestId, emitActivity: () => {} },
         });
+        const traceRunId = FEATURES.agentRunTraceV1()
+          ? await startAgentRun({
+              userId: user.id,
+              chatId: sessionId,
+              sessionId,
+              requestId,
+              symbol: body.chartContext?.symbol,
+              timeframe: body.chartContext?.interval,
+              intents: previewIntents,
+              featureFlags: featureFlagSnapshot(),
+              contextVersion: conversationContext ? "v2" : "legacy",
+              contextMessageCount: conversationContext?.messages.length ?? 0,
+              recalledMemoryCount: conversationContext?.recalledMemoryIds.length ?? 0,
+            })
+          : null;
         const tickerTask = (async () => {
           try {
             const plan = await generateTickerPlan({
@@ -373,7 +443,31 @@ export async function POST(req: NextRequest) {
             account: null,
             canExecute,
             tradingStyle,
+            conversationContext,
           });
+
+          if (traceRunId) {
+            await addAgentRunStep({
+              userId: user.id,
+              runId: traceRunId,
+              type: "final_decision",
+              status: "completed",
+              summary: result.summary,
+              evidence: {
+                decision: result.decision,
+                confidence: result.confidence,
+                riskVeto: result.decision === "wait",
+              },
+            });
+            await finalizeAgentRun({
+              userId: user.id,
+              runId: traceRunId,
+              status: "completed",
+              decision: result.decision,
+              confidence: result.confidence,
+              riskVeto: result.decision === "wait",
+            });
+          }
 
           rememberContext(sessionId, {
             symbol: body.chartContext?.symbol,
@@ -433,8 +527,19 @@ export async function POST(req: NextRequest) {
           });
         } catch (error) {
           if (req.signal.aborted) {
+            if (traceRunId) {
+              await finalizeAgentRun({ userId: user.id, runId: traceRunId, status: "cancelled" });
+            }
             // Cancelled by the user — no partial result, no error badge.
           } else {
+            if (traceRunId) {
+              await finalizeAgentRun({
+                userId: user.id,
+                runId: traceRunId,
+                status: "failed",
+                errorCode: "AGENT_RUN_FAILED",
+              });
+            }
             const failed = createActivityEvent({
               type: "final",
               status: "failed",
@@ -478,4 +583,27 @@ export async function POST(req: NextRequest) {
     }
     return handleError(err);
   }
+}
+
+function recommendationContextFromChart(
+  chartContext: z.infer<typeof schema>["chartContext"],
+): SafeRecommendationContext | null {
+  const recommendation = chartContext?.recommendation;
+  if (!recommendation?.id || recommendation.action === "wait") return null;
+  const candidate: SafeRecommendationContext = {
+    id: recommendation.id,
+    source: "chart",
+    symbol: chartContext?.symbol ?? "",
+    timeframe: chartContext?.interval ?? "",
+    direction: recommendation.action,
+    status: recommendation.status ?? "pending_entry",
+    entry: recommendation.entry,
+    stopLoss: recommendation.stop_loss,
+    targets: recommendation.targets ?? (recommendation.take_profit ? [recommendation.take_profit] : []),
+  };
+  return resolveActiveRecommendationContext({
+    candidates: [candidate],
+    symbol: chartContext?.symbol,
+    timeframe: chartContext?.interval,
+  }) ?? null;
 }

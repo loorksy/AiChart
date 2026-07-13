@@ -1,5 +1,11 @@
 ---
 name: aichart-trading
+version: 1.0.0
+category: execution
+riskLevel: execution
+requiredTools: ["get_risk_status", "open_trade"]
+supportedLocales: ["ar", "en"]
+allowedMarkets: ["forex"]
 description: Trade via AiChart MCP — Claude Connectors, live forex data, MT5, chart recommendations, Risk Guard.
 metadata: {"aichart":{"requires":{"env":["AICHART_SERVICE_TOKEN"]}}}
 ---

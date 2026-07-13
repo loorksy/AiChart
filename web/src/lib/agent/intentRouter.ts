@@ -335,6 +335,13 @@ export function routeIntent(input: {
     "move_user_drawing",
     "delete_user_drawing",
   ]);
+  // A reference to a user-owned drawing is more specific than the generic
+  // chart-drawing explanation intent. The orchestrator has a dedicated safe
+  // user-drawing path, so keep one intent family and avoid a fake mixed request.
+  if (editsUserDrawing) {
+    const genericIndex = intents.indexOf("explain_chart_drawings");
+    if (genericIndex >= 0) intents.splice(genericIndex, 1);
+  }
 
   // Draw the STORED recommendation — checked before generic draw/trade so it
   // can never fall through to a new Buy/Sell analysis.
@@ -355,6 +362,11 @@ export function routeIntent(input: {
       "draw_trendline",
       "draw_support_resistance",
       "clear_agent_drawings",
+      "explain_chart_drawings",
+      "discuss_user_drawing",
+      "modify_user_drawing",
+      "move_user_drawing",
+      "delete_user_drawing",
     ])
   ) {
     intents.push("draw_on_chart");
@@ -394,11 +406,41 @@ export function routeIntent(input: {
   if (hasAny(text, ACCOUNT_WORDS)) intents.push("account_status");
 
   if (!intents.length) intents.push("general_question");
-  if (intents.length > 1) intents.push("mixed_request");
+  if (isCrossFamilyIntentSet(intents)) intents.push("mixed_request");
 
   input.ctx.emitDebug?.({ type: "intent", intents });
 
   return intents;
+}
+
+type IntentFamily =
+  | "analysis"
+  | "recommendation"
+  | "drawing"
+  | "market_news"
+  | "account"
+  | "execution"
+  | "general";
+
+function intentFamily(intent: AgentIntent): IntentFamily | null {
+  if (["new_trade_analysis", "scalp_recommendation", "chart_analysis", "analyze_with_user_drawings"].includes(intent)) return "analysis";
+  if (["draw_active_recommendation", "explain_active_recommendation", "track_active_recommendation", "cancel_active_recommendation", "modify_active_recommendation"].includes(intent)) return "recommendation";
+  if ([
+    "draw_on_chart", "draw_trendline", "draw_support_resistance", "draw_poi_zones",
+    "clear_agent_drawings", "explain_chart_drawings", "discuss_user_drawing",
+    "modify_user_drawing", "move_user_drawing", "delete_user_drawing",
+    "clarify_drawing_reference",
+  ].includes(intent)) return "drawing";
+  if (intent === "market_news") return "market_news";
+  if (intent === "account_status") return "account";
+  if (["trade_execution", "trade_management"].includes(intent)) return "execution";
+  if (["general_question", "platform_help"].includes(intent)) return "general";
+  return null;
+}
+
+export function isCrossFamilyIntentSet(intents: readonly AgentIntent[]): boolean {
+  const families = new Set(intents.map(intentFamily).filter((family): family is IntentFamily => family != null));
+  return families.size > 1;
 }
 
 export function isGeneralOnly(intents: AgentIntent[]): boolean {
@@ -447,6 +489,12 @@ export function isDrawingOnly(intents: AgentIntent[]): boolean {
       "draw_support_resistance",
       "draw_poi_zones",
       "clear_agent_drawings",
+      "explain_chart_drawings",
+      "discuss_user_drawing",
+      "modify_user_drawing",
+      "move_user_drawing",
+      "delete_user_drawing",
+      "clarify_drawing_reference",
     ]) &&
     !hasAnyIntent(intents, [
       "new_trade_analysis",

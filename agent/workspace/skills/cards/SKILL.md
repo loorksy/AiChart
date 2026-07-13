@@ -1,3 +1,13 @@
+---
+name: cards
+version: 1.0.0
+description: AiChart interactive-card selection and rendering guidance.
+category: presentation
+riskLevel: read_only
+supportedLocales: ["ar", "en"]
+requiredTools: ["render_cards"]
+---
+
 # Interactive Cards Skill
 
 Guide for when and how to show **interactive cards** (mini UI) in AiChart instead of dry text. **English instructions** — localize card **content** to the operator's language.

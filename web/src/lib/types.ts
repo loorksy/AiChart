@@ -330,6 +330,21 @@ export interface SemanticMemory {
   archived: number | boolean;
   created_at: string;
   updated_at: string;
+  source?: string | null;
+  memory_type?: string | null;
+  confidence?: number | null;
+  safety_classification?: string | null;
+  expires_at?: string | null;
+  last_used_at?: string | null;
+  use_count?: number | null;
+  source_chat_id?: string | null;
+  source_message_id?: string | null;
+  source_recommendation_id?: string | null;
+  source_trade_id?: string | null;
+  locale?: string | null;
+  symbol?: string | null;
+  timeframe?: string | null;
+  strategy_id?: string | null;
 }
 
 export interface Trade {

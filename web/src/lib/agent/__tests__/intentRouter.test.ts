@@ -85,14 +85,47 @@ describe("intentRouter", () => {
     assert.deepEqual(intents, ["track_active_recommendation"]);
   });
 
-  it("question about a user drawing routes to chart drawing explanation", () => {
+  it("question about a user drawing uses the specialized drawing discussion path", () => {
     const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
     const intents = routeIntent({
       message: "what is this zone I drew?",
       chartContext: { symbol: "EURUSD", interval: "15m" },
       ctx: fakeCtx(events),
     });
+    assert.deepEqual(intents, ["discuss_user_drawing"]);
+    assert.ok(isDrawingOnly(intents));
+  });
+
+  it("generic explanation of agent drawings stays on the generic path", () => {
+    const intents = routeIntent({
+      message: "explain drawings",
+      chartContext: { symbol: "EURUSD", interval: "15m" },
+      ctx: fakeCtx([]),
+    });
     assert.deepEqual(intents, ["explain_chart_drawings"]);
+    assert.ok(isDrawingOnly(intents));
+  });
+
+  it("selected user drawing question remains specialized and never mixed", () => {
+    const intents = routeIntent({
+      message: "what is this line I drew?",
+      chartContext: { symbol: "EURUSD", interval: "15m", selectedDrawingId: "d1" },
+      ctx: fakeCtx([]),
+    });
+    assert.deepEqual(intents, ["discuss_user_drawing"]);
+    assert.equal(intents.includes("mixed_request"), false);
+    assert.equal(intents.includes("new_trade_analysis"), false);
+  });
+
+  it("true cross-family request is marked mixed", () => {
+    const intents = routeIntent({
+      message: "analyze EURUSD and show account status",
+      chartContext: { symbol: "EURUSD", interval: "15m" },
+      ctx: fakeCtx([]),
+    });
+    assert.ok(intents.includes("new_trade_analysis"));
+    assert.ok(intents.includes("account_status"));
+    assert.ok(intents.includes("mixed_request"));
   });
 
   it("execution wording triggers trade_execution intent", () => {

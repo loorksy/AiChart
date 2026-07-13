@@ -27,6 +27,12 @@ export const FEATURES = {
   executionGuard: () => flag("FEATURE_AGENT_EXECUTION_GUARD", true),
   /** Route MCP run_market_analysis through the unified engine. ON by default. */
   mcpUnifiedEngine: () => flag("FEATURE_MCP_UNIFIED_ENGINE", true),
+  /** Bounded persisted conversation context. OFF until Phase 1 rollout is approved. */
+  agentContextV2: () => flag("AGENT_CONTEXT_V2", false),
+  /** Conservative memory candidate writes. OFF until explicit rollout. */
+  agentMemoryWriteV1: () => flag("AGENT_MEMORY_WRITE_V1", false),
+  /** Redacted run/step/tool-call persistence. OFF until storage rollout. */
+  agentRunTraceV1: () => flag("AGENT_RUN_TRACE_V1", false),
 };
 
 /** Snapshot of every feature flag's current runtime value (for /api/debug/features). */
@@ -38,5 +44,8 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     newsMacroAgent: FEATURES.newsMacroAgent(),
     mcpUnifiedEngine: FEATURES.mcpUnifiedEngine(),
     executionGuard: FEATURES.executionGuard(),
+    agentContextV2: FEATURES.agentContextV2(),
+    agentMemoryWriteV1: FEATURES.agentMemoryWriteV1(),
+    agentRunTraceV1: FEATURES.agentRunTraceV1(),
   };
 }

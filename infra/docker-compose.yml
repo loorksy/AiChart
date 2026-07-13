@@ -16,11 +16,50 @@ services:
       # Shared cache / rate-limit / EA-quote L2 + cross-instance lock backing.
       # Required once more than one web/worker replica runs.
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - RESEARCH_SERVICE_ENABLED=${RESEARCH_SERVICE_ENABLED:-0}
+      - RESEARCH_SERVICE_URL=http://research:8090
+      - RESEARCH_SERVICE_INTERNAL_TOKEN=${RESEARCH_SERVICE_INTERNAL_TOKEN:-}
     volumes:
       - aichart-data:/app/data
     depends_on:
       - redis
     restart: unless-stopped
+    networks:
+      - default
+      - research-internal
+
+  research:
+    profiles: ["research"]
+    build:
+      context: ../research-service
+      dockerfile: Dockerfile
+    expose:
+      - "8090"
+    environment:
+      - RESEARCH_SERVICE_ENV=production
+      - RESEARCH_SERVICE_INTERNAL_TOKEN=${RESEARCH_SERVICE_INTERNAL_TOKEN:-}
+      - RESEARCH_SERVICE_WORK_DIR=/var/lib/aichart-research/work
+      - RESEARCH_SERVICE_ARTIFACT_DIR=/var/lib/aichart-research/artifacts
+      - RESEARCH_SERVICE_MAX_CONCURRENT_JOBS=${RESEARCH_SERVICE_MAX_CONCURRENT_JOBS:-1}
+      - RESEARCH_SERVICE_MAX_REQUEST_BYTES=${RESEARCH_SERVICE_MAX_REQUEST_BYTES:-8388608}
+      - RESEARCH_SERVICE_MAX_ARTIFACT_BYTES=${RESEARCH_SERVICE_MAX_ARTIFACT_BYTES:-8388608}
+      - RESEARCH_SERVICE_NETWORK_MODE=isolated
+    volumes:
+      - research-artifacts:/var/lib/aichart-research/artifacts
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+      - /var/lib/aichart-research/work:size=64m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.00
+    restart: unless-stopped
+    networks:
+      - research-internal
 
   mt5:
     build:
@@ -78,3 +117,8 @@ services:
 volumes:
   aichart-data:
   mt5-data:
+  research-artifacts:
+
+networks:
+  research-internal:
+    internal: true
