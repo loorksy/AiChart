@@ -1,5 +1,5 @@
 import { closeSync, existsSync, openSync, readSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { parseSkillDocument } from "./frontmatter";
 import { validateSkillMetadata } from "./skillValidator";
 import type { AgentSkillDescriptor, AgentSkillIssue, AgentSkillTrust } from "./types";
@@ -8,9 +8,15 @@ const HEADER_BYTES = 16_384;
 
 export interface SkillRoot { path: string; trust: AgentSkillTrust; category?: string }
 
+/**
+ * True when `candidate` (already realpath'd) is contained inside `root`.
+ * A relative path that is empty, does not climb out (`..`), and is not
+ * absolute is contained. (The previous check used `resolve(rel)`, which is
+ * ALWAYS absolute on POSIX, so discovery rejected every skill directory.)
+ */
 function within(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
-  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !resolve(rel).startsWith(sep));
+  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
 }
 
 function readHeader(path: string): string {

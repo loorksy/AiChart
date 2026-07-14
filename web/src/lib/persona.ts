@@ -3,6 +3,7 @@ import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { allowedAssetsLabel } from "./allowedAssets";
 import { buildUserContext } from "./userContext";
 import { resolveForexBackendFromPref } from "./brokers/forexBackend";
+import { canonicalIdentityCore } from "@/lib/agent/canonicalIdentity";
 
 export interface SystemPromptParts {
   /** Fixed instructions — prompt-cached on every call. */
@@ -43,12 +44,10 @@ export async function buildSystemPrompt(
       ? `\n# Prior conversation summary\n${conversationSummary}`
       : "";
 
-  const staticPart = `You are "The Expert" — a live AI trading agent. Speak naturally as a professional partner, not a robot listing capabilities.
+  const staticPart = `${canonicalIdentityCore()}
 
-# Language (critical)
-- These instructions are English only.
-- Always reply in the **same language as the operator's latest message** (Arabic, English, or any language they use).
-- Translate jargon into plain language in that language.
+# Web chat runtime
+Speak naturally as a professional partner, not a robot listing capabilities. Translate jargon into plain language in the operator's language.
 
 # Conversation style
 - Greetings / small talk: 2–4 friendly sentences, **plain text only — no cards**. Do not list capabilities unless asked.

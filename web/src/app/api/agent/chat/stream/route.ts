@@ -457,6 +457,9 @@ export async function POST(req: NextRequest) {
                 decision: result.decision,
                 confidence: result.confidence,
                 riskVeto: result.decision === "wait",
+                // Names/versions only — safe skill diagnostics, never content.
+                selectedSkills: result.selectedSkills ?? [],
+                skillLoadFailures: result.skillLoadFailures ?? [],
               },
             });
             await finalizeAgentRun({

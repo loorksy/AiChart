@@ -70,6 +70,11 @@ import {
   composeRecommendationStatusAnswer,
 } from "./recommendation/followupAnswer";
 import { hashMarketSnapshot } from "./chartSnapshot";
+import {
+  buildAgentSkillContext,
+  EMPTY_SKILL_CONTEXT,
+  type AgentSkillContext,
+} from "./skills/skillContext";
 import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
@@ -233,6 +238,20 @@ export async function runUnifiedChartAgent(
   const wantMarket = needsMarketContext(intents);
   const educationalOnly = Boolean(ctx.session?.preferences.educationalOnly);
   const minRr = effectiveMinRr(input.profile ?? null, input.tradingStyle);
+
+  // Canonical skill catalogue: discover metadata, select by intent/locale/
+  // market, and lazily load only the relevant bodies. Read-only guidance —
+  // failure degrades to zero skills and never blocks the run.
+  const skillContext: AgentSkillContext =
+    wantMarket && FEATURES.agentSkillsV1()
+      ? buildAgentSkillContext({
+          request: userMessage,
+          intent: intents,
+          locale,
+          market: "forex",
+          availableTools: [],
+        })
+      : EMPTY_SKILL_CONTEXT;
 
   // News-only path (news requested but no chart context needed).
   if (!wantMarket && intents.includes("market_news")) {
@@ -433,6 +452,8 @@ export async function runUnifiedChartAgent(
       deterministic,
       candidates,
       narrative,
+      locale,
+      skillContextBlock: skillContext.block || null,
     }).catch(() => null),
     AGENT_TIMEOUTS.finalDecision,
     null,
@@ -693,6 +714,8 @@ export async function runUnifiedChartAgent(
     newsRisk: news ? { level: news.newsRisk, reason: news.reason } : undefined,
     activityEvents: collected,
     analysisId,
+    selectedSkills: skillContext.loaded.length ? skillContext.loaded : undefined,
+    skillLoadFailures: skillContext.failed.length ? skillContext.failed : undefined,
     recommendationId: storedRecommendation?.id,
     activeRecommendation: storedRecommendation
       ? {

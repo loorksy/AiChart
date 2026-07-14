@@ -12,6 +12,8 @@ const BOOTSTRAP_REL = "agent/onboarding/bootstrap.en.md";
 const SYSTEM_REL = "agent/workspace/SYSTEM.md";
 const CORE_START = "<!-- instructions-core-start -->";
 const CORE_END = "<!-- instructions-core-end -->";
+const MCP_CORE_START = "<!-- mcp-core-start -->";
+const MCP_CORE_END = "<!-- mcp-core-end -->";
 
 const MISSING_BOOTSTRAP =
   "Failed to load bootstrap from agent/onboarding/bootstrap.en.md.";
@@ -63,13 +65,25 @@ export function systemText(): string {
   return cachedSystem;
 }
 
-/** Extract the delimited core block from SYSTEM.md for MCP `instructions`. */
+function delimitedBlock(text: string, startMark: string, endMark: string): string | null {
+  const start = text.indexOf(startMark);
+  const end = text.indexOf(endMark);
+  if (start >= 0 && end > start) {
+    return text.slice(start + startMark.length, end).trim();
+  }
+  return null;
+}
+
+/**
+ * MCP `instructions` = the shared canonical identity core (same block the web
+ * runtime loads) + the MCP-specific session/skill/tool addendum from SYSTEM.md.
+ */
 export function instructionsCore(): string {
   const text = systemText();
-  const start = text.indexOf(CORE_START);
-  const end = text.indexOf(CORE_END);
-  if (start >= 0 && end > start) {
-    return text.slice(start + CORE_START.length, end).trim();
+  const core = delimitedBlock(text, CORE_START, CORE_END);
+  const mcpCore = delimitedBlock(text, MCP_CORE_START, MCP_CORE_END);
+  if (core) {
+    return mcpCore ? `${core}\n\n${mcpCore}` : core;
   }
   return [
     "AiChart Trading Agent — execution partner. Reply in the operator's language.",
