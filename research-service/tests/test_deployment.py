@@ -37,7 +37,10 @@ def test_compose_profile_is_opt_in_and_restrictive() -> None:
 def test_optional_capture_flags_and_redis_are_safe_by_default() -> None:
     root = Path(__file__).parents[2]
     dockerfile = (root / "infra" / "Dockerfile").read_text(encoding="utf-8")
+    mcp_dockerfile = (root / "infra" / "Dockerfile.mcp").read_text(encoding="utf-8")
     compose = (root / "infra" / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "USER 10001:10001" in dockerfile
+    assert "USER 10001:10001" in mcp_dockerfile
     assert "ENV BINANCE_CAPTURE_ENABLED=0" in dockerfile
     assert "ENV TRADINGVIEW_MCP_ENABLED=0" in dockerfile
     assert "BINANCE_CAPTURE_ENABLED=${BINANCE_CAPTURE_ENABLED:-0}" in compose
