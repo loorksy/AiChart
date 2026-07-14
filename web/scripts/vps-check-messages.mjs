@@ -11,7 +11,7 @@ const password = process.env.SSH_PASS;
 const privateKey = fs.existsSync(keyPath) ? fs.readFileSync(keyPath) : null;
 
 // Query last 5 chat messages and check if they contain image metadata
-const remoteCmd = `psql "postgresql://aichart:589e6a3c7f11cbe0b1ec6cd9c79be93849f178bad04fcd56@127.0.0.1:5432/aichart" -c "SELECT id, role, content, substring(metadata_json from 1 for 100) as meta_preview, length(metadata_json) as meta_len FROM chat_messages ORDER BY id DESC LIMIT 5"`;
+const remoteCmd = `sudo -u postgres psql -d aichart -c "SELECT id, role, content, substring(metadata_json from 1 for 100) as meta_preview, length(metadata_json) as meta_len FROM chat_messages ORDER BY id DESC LIMIT 5"`;
 
 function run() {
   return new Promise((resolve, reject) => {

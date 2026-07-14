@@ -57,5 +57,5 @@ async function test() {
   }
 }
 
-process.env.DATABASE_URL = "postgresql://aichart:589e6a3c7f11cbe0b1ec6cd9c79be93849f178bad04fcd56@127.0.0.1:5432/aichart";
+if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 test();

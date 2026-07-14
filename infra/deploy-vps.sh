@@ -69,9 +69,10 @@ write_env_if_missing() {
     return 0
   fi
   log "Creating web/.env with generated secrets..."
-  local enc app cron svc port ip
+  local enc app admin cron svc port ip
   enc="$(openssl rand -hex 32)"
   app="$(openssl rand -base64 48 | tr -d '\n')"
+  admin="$(openssl rand -base64 24 | tr -d '\n')"
   cron="$(openssl rand -base64 32 | tr -d '\n')"
   svc="$(openssl rand -hex 32)"
   port="$(cat "$INSTALL_DIR/.deploy-port" 2>/dev/null || pick_free_port)"
@@ -80,7 +81,7 @@ write_env_if_missing() {
 ENCRYPTION_KEY=$enc
 APP_SECRET=$app
 ADMIN_EMAIL=admin@aichart.local
-ADMIN_PASSWORD=change-this-password-now
+ADMIN_PASSWORD=$admin
 DB_PATH=data/aichart.db
 ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=
@@ -95,7 +96,8 @@ PORT=${port}
 NODE_ENV=production
 EOF
   chmod 600 "$env_file"
-  log "IMPORTANT: edit $env_file — set ADMIN_PASSWORD, ANTHROPIC_API_KEY, APP_URL (domain)"
+  log "Generated a unique bootstrap password in $env_file (mode 600)."
+  log "IMPORTANT: set ANTHROPIC_API_KEY and APP_URL (domain) before public use."
   log "Agent: install MCP (npm i -g aichart-mcp), run agent/scripts/sync-workspace.sh,"
   log "       export AICHART_SERVICE_TOKEN from web/.env, then: pm2 start aichart-mcp -- gateway"
 }

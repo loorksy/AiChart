@@ -29,4 +29,21 @@ def test_compose_profile_is_opt_in_and_restrictive() -> None:
     assert "research-work:/var/lib/aichart-research/work" in research
     assert "RESEARCH_SWARM_ENABLED=${RESEARCH_SWARM_ENABLED:-0}" in research
     assert "RESEARCH_SWARM_PRESETS_ENABLED=${RESEARCH_SWARM_PRESETS_ENABLED:-0}" in research
+    assert "RESEARCH_SERVICE_STORAGE=sqlite" in research
+    assert "RESEARCH_SERVICE_JOB_DB_PATH=/var/lib/aichart-research/work/" in research
     assert "/var/lib/aichart-research/work:size=" not in research
+
+
+def test_optional_capture_flags_and_redis_are_safe_by_default() -> None:
+    root = Path(__file__).parents[2]
+    dockerfile = (root / "infra" / "Dockerfile").read_text(encoding="utf-8")
+    compose = (root / "infra" / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "ENV BINANCE_CAPTURE_ENABLED=0" in dockerfile
+    assert "ENV TRADINGVIEW_MCP_ENABLED=0" in dockerfile
+    assert "BINANCE_CAPTURE_ENABLED=${BINANCE_CAPTURE_ENABLED:-0}" in compose
+    assert "TRADINGVIEW_MCP_ENABLED=${TRADINGVIEW_MCP_ENABLED:-0}" in compose
+    assert '"127.0.0.1:3000:3000"' in compose
+    redis = compose.split("  redis:\n", 1)[1].split("\nvolumes:\n", 1)[0]
+    assert "--appendonly yes" in redis
+    assert "redis-data:/data" in redis
+    assert "healthcheck:" in redis

@@ -1397,6 +1397,12 @@ async function migratePg(client: PoolClient) {
 }
 
 async function seedAdminPg(client: PoolClient) {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.warn(
+      "[db] Admin bootstrap skipped: ADMIN_EMAIL and ADMIN_PASSWORD must both be configured.",
+    );
+    return;
+  }
   const adminEmail = ADMIN_EMAIL.toLowerCase();
   const existing = await client.query<{ id: number }>(
     "SELECT id FROM users WHERE email = $1",

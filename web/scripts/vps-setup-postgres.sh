@@ -59,5 +59,4 @@ PORT=3010 pm2 restart aichart-web --update-env || PORT=3010 pm2 start npm --name
 
 echo ""
 echo "PostgreSQL ready."
-echo "DATABASE_URL=${DATABASE_URL}"
 echo "ADMIN_EMAIL=loorksy@gmail.com"

@@ -11,8 +11,8 @@ FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
-ENV BINANCE_CAPTURE_ENABLED=1
-ENV TRADINGVIEW_MCP_ENABLED=1
+ENV BINANCE_CAPTURE_ENABLED=0
+ENV TRADINGVIEW_MCP_ENABLED=0
 
 RUN apt-get update && apt-get install -y python3 python3-pip make g++ \
     && pip3 install --break-system-packages tradingview-ta \
