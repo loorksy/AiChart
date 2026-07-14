@@ -19,6 +19,8 @@ services:
       - RESEARCH_SERVICE_ENABLED=${RESEARCH_SERVICE_ENABLED:-0}
       - RESEARCH_SERVICE_URL=http://research:8090
       - RESEARCH_SERVICE_INTERNAL_TOKEN=${RESEARCH_SERVICE_INTERNAL_TOKEN:-}
+      - RESEARCH_SWARM_ENABLED=${RESEARCH_SWARM_ENABLED:-0}
+      - RESEARCH_SWARM_PRESETS_ENABLED=${RESEARCH_SWARM_PRESETS_ENABLED:-0}
     volumes:
       - aichart-data:/app/data
     depends_on:
@@ -44,12 +46,15 @@ services:
       - RESEARCH_SERVICE_MAX_REQUEST_BYTES=${RESEARCH_SERVICE_MAX_REQUEST_BYTES:-8388608}
       - RESEARCH_SERVICE_MAX_ARTIFACT_BYTES=${RESEARCH_SERVICE_MAX_ARTIFACT_BYTES:-8388608}
       - RESEARCH_SERVICE_NETWORK_MODE=isolated
+      - RESEARCH_SWARM_ENABLED=${RESEARCH_SWARM_ENABLED:-0}
+      - RESEARCH_SWARM_PRESETS_ENABLED=${RESEARCH_SWARM_PRESETS_ENABLED:-0}
+      - RESEARCH_SWARM_DB_PATH=/var/lib/aichart-research/work/research-swarm.sqlite3
     volumes:
       - research-artifacts:/var/lib/aichart-research/artifacts
+      - research-work:/var/lib/aichart-research/work
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid
-      - /var/lib/aichart-research/work:size=64m,noexec,nosuid
     cap_drop:
       - ALL
     security_opt:
@@ -118,6 +123,7 @@ volumes:
   aichart-data:
   mt5-data:
   research-artifacts:
+  research-work:
 
 networks:
   research-internal:

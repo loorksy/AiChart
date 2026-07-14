@@ -26,3 +26,7 @@ def test_compose_profile_is_opt_in_and_restrictive() -> None:
     assert "research-internal" in research
     assert "docker.sock" not in research
     assert "../web" not in research
+    assert "research-work:/var/lib/aichart-research/work" in research
+    assert "RESEARCH_SWARM_ENABLED=${RESEARCH_SWARM_ENABLED:-0}" in research
+    assert "RESEARCH_SWARM_PRESETS_ENABLED=${RESEARCH_SWARM_PRESETS_ENABLED:-0}" in research
+    assert "/var/lib/aichart-research/work:size=" not in research

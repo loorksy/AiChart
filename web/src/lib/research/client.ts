@@ -1,9 +1,14 @@
 import { ResearchServiceError } from "./errors";
 import type {
+  CreateResearchSwarmInput,
+  ResearchArtifactReference,
   ResearchCallerContext,
   ResearchJob,
   ResearchJobInput,
   ResearchProgressEvent,
+  ResearchSwarmEvent,
+  ResearchSwarmRun,
+  ResearchSwarmTask,
 } from "./types";
 
 if (typeof window !== "undefined") {
@@ -24,6 +29,24 @@ export function researchBacktestEnabled(): boolean {
 
 export function researchValidationEnabled(): boolean {
   return researchBacktestEnabled() && process.env.RESEARCH_VALIDATION_ENABLED === "1";
+}
+
+export function researchSwarmEnabled(): boolean {
+  return researchServiceEnabled() && process.env.RESEARCH_SWARM_ENABLED === "1";
+}
+
+export function researchSwarmPresetsEnabled(): boolean {
+  return researchSwarmEnabled() && process.env.RESEARCH_SWARM_PRESETS_ENABLED === "1";
+}
+
+function requireResearchSwarmEnabled(): void {
+  if (!researchSwarmEnabled() || !researchSwarmPresetsEnabled()) {
+    throw new ResearchServiceError(
+      "RESEARCH_SWARM_DISABLED",
+      "Research Swarm presets are disabled",
+      503,
+    );
+  }
 }
 
 export function requireResearchBacktestEnabled(): void {
@@ -192,4 +215,110 @@ export async function getResearchJobEvents(
     `/internal/research/jobs/${encodeURIComponent(jobId)}/events`,
   );
   return result.events;
+}
+
+function swarmBudgets(input: CreateResearchSwarmInput["budgets"]): Record<string, unknown> {
+  if (!input) return {};
+  return {
+    token_budget: input.tokenBudget,
+    cost_budget: input.costBudget,
+    tool_call_budget: input.toolCallBudget,
+    max_workers: input.maxWorkers,
+    max_tasks: input.maxTasks,
+    max_depth: input.maxDepth,
+    run_timeout_seconds: input.runTimeoutSeconds,
+    task_timeout_seconds: input.taskTimeoutSeconds,
+    artifact_count: input.artifactCount,
+    artifact_bytes: input.artifactBytes,
+    progress_event_count: input.progressEventCount,
+  };
+}
+
+export async function createResearchSwarmRun(
+  context: ResearchCallerContext,
+  input: CreateResearchSwarmInput,
+): Promise<{ run: ResearchSwarmRun; created: boolean }> {
+  requireResearchSwarmEnabled();
+  return serviceRequest(
+    context,
+    "/internal/research/swarms",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        preset: input.preset,
+        title: input.title,
+        objective: input.objective,
+        idempotency_key: input.idempotencyKey,
+        timeout_seconds: input.timeoutSeconds,
+        max_attempts: input.maxAttempts,
+        budgets: swarmBudgets(input.budgets),
+        evidence_refs: (input.evidenceRefs || []).map((reference) => ({
+          evidence_type: reference.evidenceType,
+          reference_id: reference.referenceId,
+          owner_user_id: context.userId,
+          artifact_id: reference.artifactId,
+        })),
+        parameters: input.parameters || {},
+      }),
+    },
+    input.idempotencyKey,
+  );
+}
+
+export async function getResearchSwarmRun(
+  context: ResearchCallerContext,
+  runId: string,
+): Promise<ResearchSwarmRun> {
+  requireResearchSwarmEnabled();
+  return await serviceRequest(context, `/internal/research/swarms/${encodeURIComponent(runId)}`);
+}
+
+export async function getResearchSwarmTasks(
+  context: ResearchCallerContext,
+  runId: string,
+): Promise<ResearchSwarmTask[]> {
+  requireResearchSwarmEnabled();
+  const result = await serviceRequest<{ tasks: ResearchSwarmTask[] }>(
+    context,
+    `/internal/research/swarms/${encodeURIComponent(runId)}/tasks`,
+  );
+  return result.tasks;
+}
+
+export async function getResearchSwarmEvents(
+  context: ResearchCallerContext,
+  runId: string,
+): Promise<ResearchSwarmEvent[]> {
+  requireResearchSwarmEnabled();
+  const result = await serviceRequest<{ events: ResearchSwarmEvent[] }>(
+    context,
+    `/internal/research/swarms/${encodeURIComponent(runId)}/events`,
+  );
+  return result.events;
+}
+
+export async function cancelResearchSwarmRun(
+  context: ResearchCallerContext,
+  runId: string,
+): Promise<ResearchSwarmRun> {
+  requireResearchSwarmEnabled();
+  return await serviceRequest(
+    context,
+    `/internal/research/swarms/${encodeURIComponent(runId)}/cancel`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export async function getResearchSwarmArtifacts(
+  context: ResearchCallerContext,
+  runId: string,
+): Promise<ResearchArtifactReference[]> {
+  requireResearchSwarmEnabled();
+  const result = await serviceRequest<{ artifacts: ResearchArtifactReference[] }>(
+    context,
+    `/internal/research/swarms/${encodeURIComponent(runId)}/artifacts`,
+  );
+  return result.artifacts;
 }

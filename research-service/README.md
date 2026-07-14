@@ -4,6 +4,10 @@ An isolated FastAPI process for bounded, tenant-scoped research work. The intern
 supports Phase 2 smoke jobs and Phase 3 strategy/data/backtest/validation jobs. It has no broker,
 MT5, account, approval, recommendation, public research API, or live-order capability.
 
+Phase 6 adds a disabled-default durable Research Swarm for reviewed presets. It reuses this
+process, authentication, tenant boundary, shutdown, and Artifact Store; it does not add a public
+server or unrestricted agent loop. See `docs/RESEARCH_SWARM*.md`.
+
 ## Local run
 
 ```powershell
@@ -55,6 +59,11 @@ The job store and strategy store are process-local and volatile. Restart loses s
 idempotency records. Production readiness remains false until least-privilege durable adapters are
 implemented.
 
+Research Swarm state is independently durable in a least-privilege SQLite file inside
+`RESEARCH_SERVICE_WORK_DIR` (or `RESEARCH_SWARM_DB_PATH`). Its run/task projections,
+dependencies, events, outputs, usage, idempotency, and queued-run recovery survive restart. Compose
+mounts the directory as `research-work`; no broad application database credential is reused.
+
 Artifacts are bounded text/JSON/CSV under a tenant/job-scoped root. Names and paths are controlled,
 writes are atomic, and SHA-256 is recorded. Dataset file loaders accept only controlled paths under
 an authorized root; no arbitrary URL or network loader exists.
@@ -69,6 +78,8 @@ AiChart's generic server client is disabled by default:
 
 ```text
 RESEARCH_SERVICE_ENABLED=0
+RESEARCH_SWARM_ENABLED=0
+RESEARCH_SWARM_PRESETS_ENABLED=0
 ```
 
 Dedicated `RESEARCH_BACKTEST_ENABLED` and `RESEARCH_VALIDATION_ENABLED` checks exist and require
@@ -77,6 +88,11 @@ the exact value `1`; otherwise they remain disabled. Both are listed with value 
 
 Rollback is disabling the service flag and stopping the standalone process. Existing AiChart
 chart, agent, recommendation, and execution behavior is unchanged.
+
+Both swarm flags must also be `1` in the Research Service. Otherwise its endpoints return
+`SWARM_DISABLED`, while the TypeScript client fails before network access. The reviewed presets
+and security boundaries are documented in `docs/RESEARCH_SWARM_PRESETS.md` and
+`docs/RESEARCH_SWARM_SECURITY.md`.
 
 ## Docker and limitations
 

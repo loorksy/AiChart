@@ -9,12 +9,15 @@ from fastapi.responses import JSONResponse, Response
 from app import __version__
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
+from app.api.swarms import router as swarms_router
 from app.config import Settings, load_settings
 from app.errors import error_body, install_error_handlers
 from app.jobs.manager import JobManager
 from app.logging import configure_logging
 from app.storage.artifacts import ArtifactStore
 from app.storage.memory import InMemoryJobStore
+from app.swarm.manager import ResearchSwarmManager
+from app.swarm.store import SwarmStore
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -23,14 +26,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     store = InMemoryJobStore()
     artifacts = ArtifactStore(resolved.artifact_dir, resolved.max_artifact_bytes)
     manager = JobManager(resolved, store, artifacts)
+    assert resolved.swarm_db_path is not None
+    swarm_store = SwarmStore(resolved.swarm_db_path, max_events=resolved.swarm_progress_event_count)
+    swarm_manager = ResearchSwarmManager(resolved, swarm_store, artifacts)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         resolved.work_dir.mkdir(parents=True, exist_ok=True)
         await manager.start()
+        await swarm_manager.start()
         try:
             yield
         finally:
+            await swarm_manager.stop()
             await manager.stop()
 
     app = FastAPI(
@@ -43,6 +51,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved
     app.state.manager = manager
+    app.state.swarm_manager = swarm_manager
 
     @app.middleware("http")
     async def request_size_limit(
@@ -63,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(jobs_router)
+    app.include_router(swarms_router)
     return app
 
 

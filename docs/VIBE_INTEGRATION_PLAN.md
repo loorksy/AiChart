@@ -170,6 +170,21 @@ No Vibe code, templates, report prose, formula, test or dataset was copied.
 
 Add research-only DAG runs with dependencies, upstream summaries, per-agent allowlisted tools/skills, time/token/cost/tool-call budgets, heartbeat, cancellation, partial results, grounded-data-only synthesis and complete structured traces.
 
+### Phase 6 implementation scope (2026-07-14)
+
+- Phase 5 was merged and pushed to `main` before `feat/research-swarm` was created.
+- TypeScript is a disabled-default authenticated client boundary and executes no worker.
+- The existing Python service owns seven reviewed DAG presets, nine research-only roles,
+  deterministic bounded scheduling, timeout, heartbeat/stale detection, cooperative cancellation,
+  retry classification, fail-fast/partial policy, budgets, grounding, and synthesis.
+- A least-privilege SQLite adapter persists task/run projections, dependencies, append-only events,
+  immutable outputs, and usage under the durable service work volume. Completed Phase 2/3 dispatch
+  and AiChart application database schemas are unchanged.
+- The safe Artifact Store supplies plan, graph, result, synthesis, evidence, limitation, usage, and
+  timeline JSON. Terminal cancellation prevents later writes.
+- No role/preset contains trading, chart write, shell, arbitrary Python/HTTP/filesystem/database,
+  broker, or MT5 authority. Phase 7 remains out of scope.
+
 ## First five implementation slices
 
 1. Bounded context and relevant-history selection integrated behind `AGENT_CONTEXT_V2`.
