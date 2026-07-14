@@ -72,7 +72,9 @@ async def get_artifact(
     context: CallerContext = Depends(require_caller),
     service: JobManager = Depends(manager),
 ) -> ArtifactReference:
-    item = await service.artifacts.get_for_user(artifact_id, job_id, context.user_id)
+    item = await service.store.get_artifact_for_user(artifact_id, job_id, context.user_id)
+    if item is None:
+        item = await service.artifacts.get_for_user(artifact_id, job_id, context.user_id)
     if item is None:
         raise ServiceError("JOB_NOT_FOUND", "research artifact not found", 404)
     return item

@@ -42,7 +42,9 @@ class JobArtifactService:
         expected_suffix: str,
         max_bytes: int,
     ) -> ResolvedInputArtifact:
-        reference = await self.artifacts.get_for_user(artifact_id, source_job_id, user_id)
+        reference = await self.jobs.get_artifact_for_user(artifact_id, source_job_id, user_id)
+        if reference is None:
+            reference = await self.artifacts.get_for_user(artifact_id, source_job_id, user_id)
         if reference is None:
             raise ServiceError("JOB_NOT_FOUND", "research input artifact not found", 404)
         if Path(reference.name).suffix.lower() != expected_suffix.lower():

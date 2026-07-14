@@ -24,7 +24,8 @@ class Settings(BaseModel):
     max_artifact_bytes: int = Field(default=8 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     network_mode: Literal["disabled", "isolated"] = "disabled"
-    durable_storage: bool = False
+    job_storage: Literal["memory", "sqlite"] | None = None
+    job_db_path: Path | None = None
     swarm_enabled: bool = False
     swarm_presets_enabled: bool = False
     swarm_db_path: Path | None = None
@@ -54,6 +55,15 @@ class Settings(BaseModel):
         self.artifact_dir = self._safe_root(self.artifact_dir, "artifact")
         if self.work_dir == self.artifact_dir:
             raise ValueError("work and artifact directories must be different")
+        self.job_storage = self.job_storage or (
+            "sqlite" if self.environment == "production" else "memory"
+        )
+        default_job_db = self.work_dir / "research-jobs.sqlite3"
+        self.job_db_path = (self.job_db_path or default_job_db).expanduser().resolve()
+        if self.job_db_path == Path(self.job_db_path.anchor):
+            raise ValueError("job database cannot be a filesystem root")
+        if self.work_dir not in self.job_db_path.parents:
+            raise ValueError("job database must remain inside the work directory")
         default_swarm_db = self.work_dir / "research-swarm.sqlite3"
         self.swarm_db_path = (self.swarm_db_path or default_swarm_db).expanduser().resolve()
         if self.swarm_db_path == Path(self.swarm_db_path.anchor):
@@ -61,6 +71,10 @@ class Settings(BaseModel):
         if self.work_dir not in self.swarm_db_path.parents:
             raise ValueError("swarm database must remain inside the work directory")
         return self
+
+    @property
+    def durable_storage(self) -> bool:
+        return self.job_storage == "sqlite"
 
     @staticmethod
     def _safe_root(value: Path, label: str) -> Path:
@@ -86,6 +100,8 @@ _ENV_MAP: dict[str, tuple[str, Callable[[str], object]]] = {
     "RESEARCH_SERVICE_MAX_ARTIFACT_BYTES": ("max_artifact_bytes", int),
     "RESEARCH_SERVICE_LOG_LEVEL": ("log_level", str),
     "RESEARCH_SERVICE_NETWORK_MODE": ("network_mode", str),
+    "RESEARCH_SERVICE_STORAGE": ("job_storage", str),
+    "RESEARCH_SERVICE_JOB_DB_PATH": ("job_db_path", Path),
     "RESEARCH_SWARM_ENABLED": ("swarm_enabled", lambda value: value == "1"),
     "RESEARCH_SWARM_PRESETS_ENABLED": (
         "swarm_presets_enabled",

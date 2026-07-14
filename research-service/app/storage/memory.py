@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -19,30 +17,7 @@ from app.models.jobs import (
     ProgressEvent,
     utc_now,
 )
-
-_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
-    JobStatus.QUEUED: {JobStatus.RUNNING, JobStatus.CANCELLED, JobStatus.CANCELLING},
-    JobStatus.RUNNING: {
-        JobStatus.SUCCEEDED,
-        JobStatus.FAILED,
-        JobStatus.TIMED_OUT,
-        JobStatus.CANCELLING,
-        JobStatus.CANCELLED,
-        JobStatus.RETRY_WAIT,
-    },
-    JobStatus.RETRY_WAIT: {JobStatus.RUNNING, JobStatus.CANCELLING, JobStatus.CANCELLED},
-    JobStatus.CANCELLING: {JobStatus.CANCELLED},
-    JobStatus.CANCELLED: set(),
-    JobStatus.SUCCEEDED: set(),
-    JobStatus.FAILED: set(),
-    JobStatus.TIMED_OUT: set(),
-}
-
-
-def _fingerprint(request: JobCreateRequest) -> str:
-    safe = request.model_dump(mode="json", exclude={"idempotency_key"})
-    canonical = json.dumps(safe, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(canonical).hexdigest()
+from app.storage.state import TRANSITIONS, request_fingerprint
 
 
 class InMemoryJobStore:
@@ -54,10 +29,13 @@ class InMemoryJobStore:
         self._idempotency: dict[tuple[int, str], tuple[str, str]] = {}
         self._lock = asyncio.Lock()
 
+    async def initialize(self) -> None:
+        return None
+
     async def create_or_get(
         self, request: JobCreateRequest, timeout_seconds: int, max_attempts: int
     ) -> tuple[JobRecord, bool]:
-        fingerprint = _fingerprint(request)
+        fingerprint = request_fingerprint(request)
         key = (request.user_id, request.idempotency_key)
         async with self._lock:
             existing = self._idempotency.get(key)
@@ -106,7 +84,7 @@ class InMemoryJobStore:
     async def transition(self, job_id: str, status: JobStatus, **updates: Any) -> JobRecord:
         async with self._lock:
             job = self._jobs[job_id]
-            if status != job.status and status not in _TRANSITIONS[job.status]:
+            if status != job.status and status not in TRANSITIONS[job.status]:
                 raise ServiceError("JOB_FAILED", "illegal job state transition", 409)
             job.status = status
             for key, value in updates.items():
@@ -172,6 +150,26 @@ class InMemoryJobStore:
             if job.user_id != artifact.user_id or artifact.job_id != job_id:
                 raise ServiceError("JOB_UNAUTHORIZED", "resource not found", 404)
             job.artifact_refs.append(artifact)
+
+    async def get_artifact_for_user(
+        self, artifact_id: str, job_id: str, user_id: int
+    ) -> ArtifactReference | None:
+        async with self._lock:
+            job = self._jobs.get(job_id)
+            if not job or job.user_id != user_id:
+                return None
+            item = next(
+                (
+                    reference
+                    for reference in job.artifact_refs
+                    if reference.artifact_id == artifact_id
+                ),
+                None,
+            )
+            return item.model_copy(deep=True) if item else None
+
+    async def recover_pending(self) -> list[str]:
+        return []
 
     async def available(self) -> bool:
         return True
