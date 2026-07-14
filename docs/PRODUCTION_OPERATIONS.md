@@ -55,6 +55,12 @@ restored volumes, verify authenticated `/health/ready`, retrieve an existing job
 its owning tenant, verify a different tenant receives not-found, then delete the disposable
 environment.
 
+Application containers run as UID/GID `10001:10001`. Before starting a restored SQLite volume,
+set ownership on the volume's entire writable root (not only the database file) to `10001:10001`;
+SQLite must be able to create its journal/WAL and temporary files beside the database. Verify the
+restored service still runs as UID `10001` and never solve an ownership failure by running it as
+root or widening the directory to world-writable.
+
 Redis is a cache/coordination layer rather than the canonical trading record. A Redis restore must
 prove `PING`, key readability, TTL behavior, and application recovery; canonical PostgreSQL or
 SQLite records remain authoritative.

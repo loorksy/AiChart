@@ -139,6 +139,6 @@ Backup, restore, restart, and release checks are defined in
 [PRODUCTION_OPERATIONS.md](PRODUCTION_OPERATIONS.md). Both `research-work` (SQLite state) and
 `research-artifacts` must be backed up as one recovery point.
 
-Local Docker build/container smoke remains unverified on the workstation documented during Phase
-2 because the Docker CLI was unavailable. A later report must state actual current validation and
-must not reuse a historical success claim.
+Docker build, container smoke, restart persistence, crash recovery, and volume restore must be
+revalidated for each release against the exact pushed image and recorded in that release's
+production-hardening report. Historical Phase validation is not evidence for a later image.
