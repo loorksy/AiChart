@@ -3,6 +3,8 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
     ports:
       - "127.0.0.1:3000:3000"
     env_file:
@@ -10,7 +12,6 @@ services:
     environment:
       - MT5_BRIDGE_URL=http://mt5:18812
       - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
-      - BINANCE_CAPTURE_ENABLED=${BINANCE_CAPTURE_ENABLED:-0}
       - TRADINGVIEW_MCP_ENABLED=${TRADINGVIEW_MCP_ENABLED:-0}
       - PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
       # Shared cache / rate-limit / EA-quote L2 + cross-instance lock backing.
@@ -85,6 +86,8 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.mcp
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
     ports:
       - "127.0.0.1:8787:8787"
     env_file:
@@ -102,6 +105,8 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      args:
+        - GIT_COMMIT=${GIT_COMMIT:-unknown}
     command: ["npm", "run", "worker"]
     env_file:
       - ../web/.env

@@ -5,6 +5,7 @@ import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
 import { discoverSkills, loadSkill } from "../skills/catalog.js";
+import { gitCommit } from "../version.js";
 import {
   chartInlineContent,
   chartTimeoutContent,
@@ -106,7 +107,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
                 {
                   ...(typeof model === "object" && model !== null ? model : {}),
                   mcpServerVersion: MCP_SERVER_VERSION,
-                  mcpGitCommit: process.env.GIT_COMMIT?.trim() || "unknown",
+                  mcpGitCommit: gitCommit(),
                   skills: (() => {
                     const { skills, root } = discoverSkills();
                     return {

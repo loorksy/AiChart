@@ -9,9 +9,10 @@ RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
-ENV BINANCE_CAPTURE_ENABLED=0
 ENV TRADINGVIEW_MCP_ENABLED=0
 
 RUN apt-get update && apt-get install -y python3 python3-pip make g++ \
@@ -30,6 +31,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./
 COPY web/src ./src
 COPY infra/tradingview ./infra/tradingview
+# Canonical agent content pack: SYSTEM.md constitution + skill catalogue.
+# Resolved at runtime via ./agent/workspace (defaultSkillRoot / canonicalIdentity).
+COPY agent/ ./agent/
 RUN mkdir -p data && chown -R 10001:10001 data
 
 EXPOSE 3000

@@ -22,6 +22,8 @@ import { wildcardPath } from "./http/wildcardPath.js";
 import { logPublicWidgetFetch, widgetHtmlByPublicPath } from "./ui/index.js";
 import { STATIC_ASSETS } from "./ui/runtime.js";
 import { normalizeWidgetPublicPath } from "./ui/publicPath.js";
+import { MCP_SERVER_VERSION } from "./tools/registry.js";
+import { gitCommit } from "./version.js";
 
 const MCP_UI_ASSETS = [
   ...Object.values(STATIC_ASSETS),
@@ -49,6 +51,8 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "aichart-mcp",
+    version: MCP_SERVER_VERSION,
+    commit: gitCommit(),
     authMode: cfg.authMode,
     mcpUrl: mcpServerUrl.href,
   });
