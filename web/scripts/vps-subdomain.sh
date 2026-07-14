@@ -11,7 +11,4 @@ echo "--- users ---"
 sqlite3 "$DB" "SELECT id,email,role,status FROM users;"
 echo "--- counts ---"
 sqlite3 "$DB" "SELECT 'conversations', COUNT(*) FROM conversations UNION ALL SELECT 'chat_messages', COUNT(*) FROM chat_messages UNION ALL SELECT 'recommendations', COUNT(*) FROM recommendations;"
-echo "--- api login test ---"
-CODE=$(curl -s -o /tmp/aichart-login.json -w "%{http_code}" -X POST https://aichart.lork.cloud/api/auth/login -H "Content-Type: application/json" -d '{"email":"admin@aichart.local","password":"change-this-password-now"}')
-echo "login HTTP $CODE"
-cat /tmp/aichart-login.json
+echo "Login smoke is intentionally omitted: credentials must not be embedded in scripts or process arguments."

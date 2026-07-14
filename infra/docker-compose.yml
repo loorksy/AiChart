@@ -4,14 +4,14 @@ services:
       context: ..
       dockerfile: infra/Dockerfile
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - ../web/.env
     environment:
       - MT5_BRIDGE_URL=http://mt5:18812
       - MT5_BRIDGE_TOKEN=${MT5_BRIDGE_TOKEN:-}
-      - BINANCE_CAPTURE_ENABLED=${BINANCE_CAPTURE_ENABLED:-1}
-      - TRADINGVIEW_MCP_ENABLED=${TRADINGVIEW_MCP_ENABLED:-1}
+      - BINANCE_CAPTURE_ENABLED=${BINANCE_CAPTURE_ENABLED:-0}
+      - TRADINGVIEW_MCP_ENABLED=${TRADINGVIEW_MCP_ENABLED:-0}
       - PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
       # Shared cache / rate-limit / EA-quote L2 + cross-instance lock backing.
       # Required once more than one web/worker replica runs.
@@ -24,7 +24,8 @@ services:
     volumes:
       - aichart-data:/app/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - default
@@ -42,6 +43,8 @@ services:
       - RESEARCH_SERVICE_INTERNAL_TOKEN=${RESEARCH_SERVICE_INTERNAL_TOKEN:-}
       - RESEARCH_SERVICE_WORK_DIR=/var/lib/aichart-research/work
       - RESEARCH_SERVICE_ARTIFACT_DIR=/var/lib/aichart-research/artifacts
+      - RESEARCH_SERVICE_STORAGE=sqlite
+      - RESEARCH_SERVICE_JOB_DB_PATH=/var/lib/aichart-research/work/research-jobs.sqlite3
       - RESEARCH_SERVICE_MAX_CONCURRENT_JOBS=${RESEARCH_SERVICE_MAX_CONCURRENT_JOBS:-1}
       - RESEARCH_SERVICE_MAX_REQUEST_BYTES=${RESEARCH_SERVICE_MAX_REQUEST_BYTES:-8388608}
       - RESEARCH_SERVICE_MAX_ARTIFACT_BYTES=${RESEARCH_SERVICE_MAX_ARTIFACT_BYTES:-8388608}
@@ -109,14 +112,22 @@ services:
     volumes:
       - aichart-data:/app/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     ports:
       - "127.0.0.1:6379:6379"
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
 volumes:
@@ -124,6 +135,7 @@ volumes:
   mt5-data:
   research-artifacts:
   research-work:
+  redis-data:
 
 networks:
   research-internal:

@@ -28,9 +28,15 @@ artifact, deployment, and failure-path validation matrix.
 
 ## Store, queue, and readiness
 
-`JobStore` is interface-backed but the selected implementation is in-memory. State, events,
-idempotency records, and attached references are lost on restart. Production readiness remains
-false until a least-privilege durable adapter is introduced.
+`JobStore` is interface-backed. Development and test default to the in-memory adapter; production
+defaults to the least-privilege SQLite adapter at `RESEARCH_SERVICE_JOB_DB_PATH`. Job state,
+idempotency, ordered progress, safe payloads, and artifact references persist on the dedicated
+research work volume. A queued job is rescheduled after restart. An interrupted running/retry job
+is terminalized as failed with `JOB_SERVICE_RESTARTED`; an interrupted cancellation is
+terminalized as cancelled. The service never guesses that interrupted work succeeded.
+
+Production may explicitly select `RESEARCH_SERVICE_STORAGE=memory`, but authenticated readiness
+then fails with HTTP 503. The default production selection is `sqlite`.
 
 The bounded `asyncio.Queue` runs outside request handlers with capped concurrency, cooperative
 cancellation, timeout, bounded retry, and graceful shutdown. Validation/input errors must not be
@@ -129,6 +135,10 @@ Rollback is disabling `RESEARCH_SERVICE_ENABLED`, stopping the standalone servic
 AiChart chart/agent/recommendation/execution paths unchanged. Future Phase 3 flags must be
 independently disableable.
 
-Local Docker build/container smoke remains unverified on the workstation documented during Phase
-2 because the Docker CLI was unavailable. A later report must state actual current validation and
-must not reuse a historical success claim.
+Backup, restore, restart, and release checks are defined in
+[PRODUCTION_OPERATIONS.md](PRODUCTION_OPERATIONS.md). Both `research-work` (SQLite state) and
+`research-artifacts` must be backed up as one recovery point.
+
+Docker build, container smoke, restart persistence, crash recovery, and volume restore must be
+revalidated for each release against the exact pushed image and recorded in that release's
+production-hardening report. Historical Phase validation is not evidence for a later image.

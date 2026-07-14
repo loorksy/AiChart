@@ -16,6 +16,7 @@ from app.jobs.manager import JobManager
 from app.logging import configure_logging
 from app.storage.artifacts import ArtifactStore
 from app.storage.memory import InMemoryJobStore
+from app.storage.sqlite import SqliteJobStore
 from app.swarm.manager import ResearchSwarmManager
 from app.swarm.store import SwarmStore
 
@@ -23,7 +24,13 @@ from app.swarm.store import SwarmStore
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or load_settings()
     configure_logging(resolved.log_level)
-    store = InMemoryJobStore()
+    assert resolved.job_storage is not None
+    assert resolved.job_db_path is not None
+    store = (
+        SqliteJobStore(resolved.job_db_path)
+        if resolved.job_storage == "sqlite"
+        else InMemoryJobStore()
+    )
     artifacts = ArtifactStore(resolved.artifact_dir, resolved.max_artifact_bytes)
     manager = JobManager(resolved, store, artifacts)
     assert resolved.swarm_db_path is not None

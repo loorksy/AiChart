@@ -3,7 +3,10 @@ WORKDIR /app/mcp
 COPY mcp/package*.json ./
 RUN npm ci
 COPY mcp/ ./
-RUN npm run build
+RUN npm run build \
+    && groupadd --system --gid 10001 aichart \
+    && useradd --system --uid 10001 --gid aichart --home-dir /nonexistent aichart
 ENV NODE_ENV=production
 EXPOSE 8787
+USER 10001:10001
 CMD ["node", "dist/index.js"]

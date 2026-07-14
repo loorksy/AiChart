@@ -10,7 +10,7 @@ const cmd = String.raw`set -e
 echo "==> VPS status"
 hostname
 pm2 list | grep -E "aichart|Name" || true
-test -f /opt/aichart/web/.env && grep -E '^(DATABASE_URL|ADMIN_EMAIL|APP_URL)=' /opt/aichart/web/.env || echo "no env"
+test -f /opt/aichart/web/.env && grep -E '^(ADMIN_EMAIL|APP_URL)=' /opt/aichart/web/.env || echo "no env"
 which psql || echo "no psql"
 test -f /opt/aichart/web/data/aichart.db && ls -la /opt/aichart/web/data/aichart.db || echo "no sqlite"
 

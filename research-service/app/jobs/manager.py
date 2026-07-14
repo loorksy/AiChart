@@ -47,13 +47,29 @@ class JobManager:
         self.accepting = False
 
     async def start(self) -> None:
+        await self.store.initialize()
         await self.artifacts.initialize()
-        self.accepting = True
-        self.started = True
+        recovered = await self.store.recover_pending()
         self.workers = [
             asyncio.create_task(self._worker(index), name=f"research-worker-{index}")
             for index in range(self.settings.max_concurrent_jobs)
         ]
+        for job_id in recovered:
+            try:
+                self.queue.put_nowait(job_id)
+            except asyncio.QueueFull:
+                await self.store.append_progress(
+                    job_id, 0, "failed", "recovered queue capacity exceeded"
+                )
+                await self.store.transition(
+                    job_id,
+                    JobStatus.FAILED,
+                    completed_at=utc_now(),
+                    error_code="JOB_QUEUE_FULL",
+                    error_message="recovered queue capacity exceeded",
+                )
+        self.accepting = True
+        self.started = True
 
     async def stop(self) -> None:
         self.accepting = False

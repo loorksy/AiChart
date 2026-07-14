@@ -1,8 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+
+test("admin bootstrap has no tracked default credentials", () => {
+  const constants = readFileSync(
+    join(process.cwd(), "src", "lib", "constants.ts"),
+    "utf8",
+  );
+  const example = readFileSync(join(process.cwd(), ".env.example"), "utf8");
+  assert.match(constants, /process\.env\.ADMIN_EMAIL\?\.trim\(\) \|\| ""/);
+  assert.match(constants, /process\.env\.ADMIN_PASSWORD \|\| ""/);
+  assert.match(example, /^ADMIN_PASSWORD=$/m);
+  assert.match(example, /^AICHART_GATE_PASSWORD=$/m);
+});
 
 /**
  * Defense-in-depth: id-only store helpers must honor an optional userId guard so

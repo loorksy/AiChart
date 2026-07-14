@@ -27,7 +27,7 @@ echo "==> Verify"
 pm2 list | grep aichart || true
 curl -s -o /dev/null -w "HTTPS %{http_code}\\n" https://aichart.lork.cloud/
 sudo -u postgres psql -d aichart -c "SELECT id,email,role,status FROM users ORDER BY id;"
-grep -E '^(DATABASE_URL|ADMIN_EMAIL)=' .env
+grep -E '^ADMIN_EMAIL=' .env
 `;
 
 const conn = new Client();

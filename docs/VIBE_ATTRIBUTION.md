@@ -151,3 +151,17 @@ LLM tool loop, HTML/PDF renderers, and unrelated connectors are deferred.
 
 No Vibe source, test, comment, prompt, formula, template, preset, dataset, factor definition or
 report prose was copied or substantially adapted in Phase 6.
+
+## Production-hardening audit
+
+The Vibe archive was reviewed again during release preparation across swarm, agent, memory,
+backtest, shadow-account, README, and available documentation paths. No additional Vibe idea was
+needed for the hardening changes. Durable generic job storage follows the already established
+AiChart Swarm restart policy and was independently implemented against AiChart's typed job
+contract. Secret cleanup, disabled Docker defaults, Redis persistence, readiness, and operational
+backup/restore guidance are AiChart operational work rather than Vibe-derived architecture.
+
+Classifications therefore remain unchanged: no copied source, tests, datasets, formulas, prompts,
+Markdown memory, shell execution, generated Python, dynamic imports, or unrestricted filesystem or
+network behavior was incorporated. File/Markdown state, ReAct loops, arbitrary tools, broker
+execution, factor-zoo content, and hidden reasoning remain rejected.

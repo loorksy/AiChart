@@ -62,4 +62,4 @@ The existing Artifact Store writes controlled, atomic, hashed tenant/run JSON. P
 
 Rollback sets both swarm flags to `0` and restarts services. SQLite/artifact volumes remain for retention/audit; rollback never deletes them.
 
-Known limitations: the Python service verifies evidence type/shape/declared owner but deliberately lacks broad AiChart DB credentials to re-query every canonical row; the initial deterministic worker consumes supplied evidence and service references rather than a general model tool loop; HTML/PDF renderers are deferred; the older generic Phase 2/3 job store remains volatile even though Swarm state is durable.
+Known limitations: the Python service verifies evidence type/shape/declared owner but deliberately lacks broad AiChart DB credentials to re-query every canonical row; the initial deterministic worker consumes supplied evidence and service references rather than a general model tool loop; HTML/PDF renderers are deferred. Generic Phase 2/3 jobs and Swarm state use separate durable SQLite files on the same restricted work volume.

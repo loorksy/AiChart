@@ -10,7 +10,7 @@ const keyPath = path.join(
 const password = process.env.SSH_PASS;
 const privateKey = fs.existsSync(keyPath) ? fs.readFileSync(keyPath) : null;
 
-const remoteCmd = `psql "postgresql://aichart:589e6a3c7f11cbe0b1ec6cd9c79be93849f178bad04fcd56@127.0.0.1:5432/aichart" -c "SELECT key, CASE WHEN key LIKE '%KEY%' OR key LIKE '%TOKEN%' THEN '[SET]' ELSE value END AS val FROM platform_config"`;
+const remoteCmd = `sudo -u postgres psql -d aichart -c "SELECT key, CASE WHEN key LIKE '%KEY%' OR key LIKE '%TOKEN%' THEN '[SET]' ELSE value END AS val FROM platform_config"`;
 
 function run() {
   return new Promise((resolve, reject) => {

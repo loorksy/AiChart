@@ -1563,6 +1563,12 @@ function dropLegacyBotAndScalpTables(db: import("better-sqlite3").Database) {
 }
 
 export function seedAdminSqlite(db: Database.Database) {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.warn(
+      "[db] Admin bootstrap skipped: ADMIN_EMAIL and ADMIN_PASSWORD must both be configured.",
+    );
+    return;
+  }
   const adminEmail = ADMIN_EMAIL.toLowerCase();
   const existingAdmin = db
     .prepare("SELECT id FROM users WHERE email = ?")

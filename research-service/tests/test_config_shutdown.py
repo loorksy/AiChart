@@ -25,6 +25,32 @@ def test_production_requires_a_strong_explicit_secret(tmp_path: Path) -> None:
         )
 
 
+def test_storage_defaults_and_paths_are_fail_closed(tmp_path: Path) -> None:
+    development = Settings(
+        internal_token="test-internal-token-with-32-characters",
+        work_dir=tmp_path / "dev-work",
+        artifact_dir=tmp_path / "dev-artifacts",
+    )
+    production = Settings(
+        internal_token="production-internal-token-32-characters",
+        environment="production",
+        work_dir=tmp_path / "prod-work",
+        artifact_dir=tmp_path / "prod-artifacts",
+    )
+    assert development.job_storage == "memory"
+    assert not development.durable_storage
+    assert production.job_storage == "sqlite"
+    assert production.durable_storage
+    with pytest.raises(ValueError, match="job database must remain inside"):
+        Settings(
+            internal_token="test-internal-token-with-32-characters",
+            work_dir=tmp_path / "work",
+            artifact_dir=tmp_path / "artifacts",
+            job_storage="sqlite",
+            job_db_path=tmp_path / "outside.sqlite3",
+        )
+
+
 async def test_graceful_shutdown_cancels_work_and_leaves_no_worker_tasks(
     tmp_path: Path,
 ) -> None:
