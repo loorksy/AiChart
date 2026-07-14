@@ -83,9 +83,8 @@ APP_SECRET=$app
 ADMIN_EMAIL=admin@aichart.local
 ADMIN_PASSWORD=$admin
 DB_PATH=data/aichart.db
-ANTHROPIC_API_KEY=
-ANTHROPIC_MODEL=
-ENABLE_BINANCE_CLI=0
+OPENAI_API_KEY=
+AI_MODEL=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_BOT_USERNAME=
 CRON_SECRET=$cron
@@ -97,29 +96,8 @@ NODE_ENV=production
 EOF
   chmod 600 "$env_file"
   log "Generated a unique bootstrap password in $env_file (mode 600)."
-  log "IMPORTANT: set ANTHROPIC_API_KEY and APP_URL (domain) before public use."
-  log "Agent: install MCP (npm i -g aichart-mcp), run agent/scripts/sync-workspace.sh,"
-  log "       export AICHART_SERVICE_TOKEN from web/.env, then: pm2 start aichart-mcp -- gateway"
-}
-
-merge_crypto_endpoints() {
-  local local_env="$INSTALL_DIR/infra/crypto-endpoints.local.env"
-  local web_env="$INSTALL_DIR/web/.env"
-  if [ ! -f "$local_env" ]; then
-    log "No infra/crypto-endpoints.local.env — set CRYPTO_* in web/.env manually"
-    return 0
-  fi
-  log "Merging crypto endpoint keys from crypto-endpoints.local.env"
-  while IFS= read -r line || [ -n "$line" ]; do
-    line="${line%%#*}"
-    line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-    [ -z "$line" ] && continue
-    key="${line%%=*}"
-    [ -z "$key" ] && continue
-    if ! grep -q "^${key}=" "$web_env" 2>/dev/null; then
-      echo "$line" >>"$web_env"
-    fi
-  done <"$local_env"
+  log "IMPORTANT: set OPENAI_API_KEY and APP_URL (domain) before public use."
+  log "MCP: deploy with infra/vps-mcp-deploy.sh (uses AICHART_SERVICE_TOKEN from web/.env)."
 }
 
 main() {
@@ -149,7 +127,6 @@ main() {
   log "Using port $PORT (other projects untouched)"
 
   write_env_if_missing
-  merge_crypto_endpoints
 
   cd "$INSTALL_DIR/web"
   mkdir -p data

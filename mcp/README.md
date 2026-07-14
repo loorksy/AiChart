@@ -69,7 +69,7 @@ pm2 restart aichart-web aichart-mcp
 Smoke:
 
 ```bash
-python3 infra/tmp-test-mcp-readiness.py
+curl -fsS https://<domain>/health   # {"ok":true,"service":"aichart-mcp",...}
 ```
 
 ## الأدوات (1.1 highlights)
