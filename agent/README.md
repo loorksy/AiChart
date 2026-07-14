@@ -15,7 +15,7 @@ User ←→ Claude (Connectors Interface)
 *   **Agent Rules**: [`workspace/AGENTS.md`](workspace/AGENTS.md) (served as resource `aichart://trading-rules`).
 *   **Trading Lexicon**: [`workspace/skills/trading-lexicon/SKILL.md`](workspace/skills/trading-lexicon/SKILL.md) (served as resource `aichart://trading-lexicon`).
 *   **Trading Strategies Matrix**: [`workspace/skills/trading-strategies/SKILL.md`](workspace/skills/trading-strategies/SKILL.md) (served as resource `aichart://trading-strategies`).
-*   **Connector Setup Guide**: [`docs/MCP_CLAUDE_SETUP.md`](../docs/MCP_CLAUDE_SETUP.md).
+*   **Connector Setup Guide**: [`mcp/README.md`](../mcp/README.md).
 
 ---
 
