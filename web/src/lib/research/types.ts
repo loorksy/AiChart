@@ -73,6 +73,144 @@ export interface ResearchProgressEvent {
   metadata: Record<string, unknown>;
 }
 
+export type ResearchSwarmPreset =
+  | "gold_strategy_lab"
+  | "forex_research_committee"
+  | "strategy_validation_team"
+  | "risk_review_committee"
+  | "performance_attribution_team"
+  | "shadow_trader_review"
+  | "weekly_market_research";
+
+export type ResearchSwarmRunStatus =
+  | "draft"
+  | "queued"
+  | "running"
+  | "cancelling"
+  | "cancelled"
+  | "partially_completed"
+  | "succeeded"
+  | "failed"
+  | "timed_out";
+
+export type ResearchSwarmTaskStatus =
+  | "pending"
+  | "blocked"
+  | "ready"
+  | "running"
+  | "retry_wait"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "skipped"
+  | "timed_out";
+
+export type ResearchEvidenceType =
+  | "canonical_recommendation"
+  | "trade"
+  | "learning_event"
+  | "trading_dna_snapshot"
+  | "shadow_recommendation"
+  | "research_job"
+  | "artifact"
+  | "dataset_hash"
+  | "strategy_hash"
+  | "backtest_run"
+  | "validation_artifact"
+  | "market_data_snapshot";
+
+export interface ResearchEvidenceReferenceInput {
+  evidenceType: ResearchEvidenceType;
+  referenceId: string;
+  artifactId?: string;
+}
+
+export interface ResearchSwarmBudgetInput {
+  tokenBudget?: number;
+  costBudget?: number;
+  toolCallBudget?: number;
+  maxWorkers?: number;
+  maxTasks?: number;
+  maxDepth?: number;
+  runTimeoutSeconds?: number;
+  taskTimeoutSeconds?: number;
+  artifactCount?: number;
+  artifactBytes?: number;
+  progressEventCount?: number;
+}
+
+export interface CreateResearchSwarmInput {
+  preset: ResearchSwarmPreset;
+  title: string;
+  objective: string;
+  idempotencyKey: string;
+  timeoutSeconds?: number;
+  maxAttempts?: number;
+  budgets?: ResearchSwarmBudgetInput;
+  evidenceRefs?: ResearchEvidenceReferenceInput[];
+  parameters?: Record<string, unknown>;
+}
+
+export interface ResearchSwarmRun {
+  swarm_run_id: string;
+  user_id: number;
+  request_id: string;
+  idempotency_key: string;
+  preset: ResearchSwarmPreset;
+  title: string;
+  objective: string;
+  status: ResearchSwarmRunStatus;
+  created_at: string;
+  queued_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
+  timeout_seconds: number;
+  max_attempts: number;
+  token_budget: number;
+  cost_budget: number;
+  tool_call_budget: number;
+  max_workers: number;
+  result_summary?: string | null;
+  error_code?: string | null;
+  warnings: string[];
+  artifact_refs: ResearchArtifactReference[];
+}
+
+export interface ResearchSwarmTask {
+  task_id: string;
+  swarm_run_id: string;
+  agent_role: string;
+  title: string;
+  objective: string;
+  dependencies: string[];
+  status: ResearchSwarmTaskStatus;
+  attempt: number;
+  max_attempts: number;
+  timeout_seconds: number;
+  required_skills: string[];
+  allowed_tools: string[];
+  input_refs: string[];
+  output_refs: string[];
+  progress: number;
+  heartbeat_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error_code?: string | null;
+  required: boolean;
+  retryable: boolean;
+}
+
+export interface ResearchSwarmEvent {
+  sequence: number;
+  swarm_run_id: string;
+  user_id: number;
+  event_type: string;
+  task_id?: string | null;
+  timestamp: string;
+  metadata: Record<string, unknown>;
+}
+
 export type ResearchJsonObject = Record<string, unknown>;
 
 export type ResearchTimeframe = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";

@@ -121,3 +121,33 @@ Phase 5 totals:
 
 No Vibe source, template, prose, formula, test, dataset or comment was copied or
 substantially adapted in Phase 5.
+
+## Phase 6 classification update
+
+The local archive was inspected again before Phase 6, especially `agent/src/swarm/`, preset YAML,
+`worker.py`, `runtime.py`, `models.py`, `task_store.py`, `store.py`, `grounding.py`, swarm API/tool
+adapters, agent context/loop/trace/tools/skills, backtest material, and `shadow_account/`. Requested
+swarm files `orchestrator.py`, `state.py`, and `storage.py` are absent; those responsibilities are
+distributed across the listed files.
+
+| Concept | Classification | Phase 6 decision |
+| --- | --- | --- |
+| DAG validation and dependency layers | idea only; reimplemented | Typed AiChart presets and deterministic order |
+| Bounded workers, heartbeat, cancellation, retry | idea only; reimplemented | Independent asyncio/SQLite contracts |
+| Upstream summaries and artifacts | idea only; reimplemented | Grounded typed outputs with strict caps |
+| Grounded-data-first policy | adapted at architecture level | AiChart evidence IDs and `insufficient_evidence`; no loader/prose transfer |
+| Roles and presets | idea only; reimplemented | Seven AiChart presets; no YAML copied |
+| Markdown/JSON production state | rejected | Least-privilege SQLite and append-only events |
+| ReAct/hidden reasoning | rejected | Public-safe deterministic handler outputs |
+| Bash, generated Python, dynamic import, file tools | rejected | No equivalent capability |
+| Arbitrary connectors, broker, MT5, execution | rejected | Closed research-only policy |
+| Factor zoo, unrelated markets, shadow code generation | rejected | Outside Phase 6 |
+| User DAGs and recursive spawning | deferred/rejected | Immutable presets only |
+
+Phase 6 totals: accepted ideas were independently reimplemented; grounding alone was adapted at a
+high-level architecture boundary; copied with attribution is none; arbitrary code/I/O/network,
+file state, broker/MT5/execution, factors, and hidden reasoning were rejected; user DAGs, a general
+LLM tool loop, HTML/PDF renderers, and unrelated connectors are deferred.
+
+No Vibe source, test, comment, prompt, formula, template, preset, dataset, factor definition or
+report prose was copied or substantially adapted in Phase 6.
