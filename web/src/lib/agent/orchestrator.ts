@@ -108,7 +108,7 @@ export async function runUnifiedChartAgent(
   });
   const sessionId = ctx.sessionId ?? "default";
   let activeRecommendation =
-    (await getActiveRecommendation(sessionId, chartContext?.symbol)) ??
+    (await getActiveRecommendation(sessionId, chartContext?.symbol, ctx.userId)) ??
     activeRecommendationFromChartContext(sessionId, chartContext);
 
   // "Cancel the previous AND analyze again" → cancel first, then fall through
@@ -119,7 +119,7 @@ export async function runUnifiedChartAgent(
       intents.includes("scalp_recommendation"));
 
   if (intents.includes("cancel_active_recommendation")) {
-    await clearActiveRecommendation(sessionId, chartContext?.symbol);
+    await clearActiveRecommendation(sessionId, chartContext?.symbol, ctx.userId);
     // The old recommendation is now terminal — drop it so the no-flip-flop
     // guard cannot block the fresh analysis the user explicitly asked for.
     activeRecommendation = null;
@@ -972,6 +972,7 @@ async function storeFinalRecommendation(input: {
   const createdCandleTime = input.market.currentTfCandles.at(-1)?.time;
   const active: ActiveRecommendation = {
     id,
+    userId: input.userId,
     analysisId: input.analysisId,
     sessionId: input.sessionId,
     layoutId: input.layoutId,

@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser, handleError, ApiError } from "@/lib/api";
-import {
-  cancelTrackedRecommendation,
-  getTrackedRecommendation,
-} from "@/lib/recommendations/recommendationStore";
+import { getTrackedRecommendation } from "@/lib/recommendations/recommendationStore";
 
-/** Recommendation details (owner-scoped). */
+/** Authenticated recommendation details. No browser mutation authority. */
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -14,23 +11,7 @@ export async function GET(
     const user = await requireUser();
     const { id } = await ctx.params;
     const recommendation = await getTrackedRecommendation(user.id, id);
-    if (!recommendation) throw new ApiError(404, "التوصية غير موجودة.");
-    return NextResponse.json({ recommendation });
-  } catch (err) {
-    return handleError(err);
-  }
-}
-
-/** Cancel a recommendation (terminal records stay as they are). */
-export async function DELETE(
-  _req: NextRequest,
-  ctx: { params: Promise<{ id: string }> },
-) {
-  try {
-    const user = await requireUser();
-    const { id } = await ctx.params;
-    const recommendation = await cancelTrackedRecommendation(user.id, id);
-    if (!recommendation) throw new ApiError(404, "التوصية غير موجودة.");
+    if (!recommendation) throw new ApiError(404, "Recommendation not found.");
     return NextResponse.json({ recommendation });
   } catch (err) {
     return handleError(err);

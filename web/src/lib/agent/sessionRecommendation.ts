@@ -1,4 +1,9 @@
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import {
+  cancelTrackedRecommendation,
+  listActiveTrackedRecommendations,
+  updateTrackedRecommendation,
+} from "@/lib/recommendations/recommendationStore";
 
 export type RecommendationStatus =
   | "pending_entry"
@@ -12,6 +17,8 @@ export type RecommendationStatus =
 
 export type ActiveRecommendation = {
   id: string;
+  /** Tenant owner. The in-memory object is a cache; canonical persistence is authoritative. */
+  userId?: number;
   analysisId: string;
   sessionId: string;
   layoutId?: string;
@@ -104,11 +111,56 @@ export async function rememberActiveRecommendation(
 export async function getActiveRecommendation(
   sessionId: string,
   symbol?: string,
+  userId?: number,
 ): Promise<ActiveRecommendation | null> {
-  const rec =
+  let rec =
     store.get(key(sessionId, symbol)) ??
     store.get(key(sessionId)) ??
     null;
+  if (!rec && userId != null) {
+    const tracked = await listActiveTrackedRecommendations({ userId, limit: 100 });
+    const match = tracked.find(
+      (item) =>
+        item.chatId === sessionId &&
+        (!symbol || normalizeSymbol(item.symbol) === normalizeSymbol(symbol)),
+    );
+    if (match) {
+      rec = {
+        id: match.id,
+        userId,
+        analysisId: match.analysisId ?? "canonical-replay",
+        sessionId,
+        symbol: match.symbol,
+        interval: match.interval,
+        createdAt: match.createdAt,
+        createdCandleTime: match.createdCandleTime,
+        expiresAt: match.expiresAt,
+        direction: match.direction,
+        entry: match.entry,
+        entryType:
+          match.entryType === "market"
+            ? "market"
+            : match.direction === "buy"
+              ? "buy_limit"
+              : "sell_limit",
+        stopLoss: match.stopLoss,
+        targets: match.targets,
+        takeProfit: match.targets[0],
+        rr: match.rr,
+        status: match.status as RecommendationStatus,
+        triggerCondition: "canonical recommendation entry condition",
+        invalidationLevel: match.invalidationLevel ?? match.stopLoss,
+        invalidationRule: "canonical recommendation invalidation rule",
+        setupType: match.setupType,
+        summary: "Canonical recommendation",
+        keyReasons: [],
+        riskWarnings: [],
+        publicReasoningSummary: [],
+        priceAtCreation: match.priceAtCreation,
+      };
+      await rememberActiveRecommendation(rec);
+    }
+  }
   if (!rec) return null;
   if (rec.expiresAt && Date.now() > rec.expiresAt && !isTerminal(rec.status)) {
     const expired = { ...rec, status: "expired" as const };
@@ -121,19 +173,51 @@ export async function getActiveRecommendation(
 export async function updateActiveRecommendationStatus(
   id: string,
   status: RecommendationStatus,
-  _reason: string,
+  reason: string,
 ): Promise<void> {
   const rec = store.get(id);
   if (!rec) return;
+  if (rec.userId != null) {
+    const now = Date.now();
+    const outcome =
+      status === "sl_hit"
+        ? "loss"
+        : status === "expired"
+          ? "expired"
+          : status === "cancelled"
+            ? "cancelled"
+            : status === "invalidated"
+              ? "invalidated"
+              : status === "tp2_hit"
+                ? "win_tp2"
+                : status === "tp1_hit"
+                  ? "win_tp1"
+                  : "pending";
+    await updateTrackedRecommendation(rec.userId, rec.id, {
+      status,
+      outcome,
+      triggeredAt: status === "triggered" ? now : undefined,
+      tp1HitAt: status === "tp1_hit" ? now : undefined,
+      tp2HitAt: status === "tp2_hit" ? now : undefined,
+      slHitAt: status === "sl_hit" ? now : undefined,
+      invalidatedAt: status === "invalidated" ? now : undefined,
+      expiredAt: status === "expired" ? now : undefined,
+      cancelledAt: status === "cancelled" ? now : undefined,
+      lastCheckedAt: now,
+      reason,
+    });
+  }
   await rememberActiveRecommendation({ ...rec, status });
 }
 
 export async function clearActiveRecommendation(
   sessionId: string,
   symbol?: string,
+  userId?: number,
 ): Promise<void> {
-  const rec = await getActiveRecommendation(sessionId, symbol);
+  const rec = await getActiveRecommendation(sessionId, symbol, userId);
   if (!rec) return;
+  if (rec.userId != null) await cancelTrackedRecommendation(rec.userId, rec.id);
   await rememberActiveRecommendation({ ...rec, status: "cancelled" });
 }
 

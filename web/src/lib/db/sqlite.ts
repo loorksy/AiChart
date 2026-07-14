@@ -8,6 +8,7 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD } from "../constants";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _db: Database.Database | null = null;
+let _transactionTail: Promise<void> = Promise.resolve();
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -142,13 +143,28 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS recommendations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL,
+    analysis_id     TEXT,
+    session_id      TEXT,
+    chat_id         TEXT,
     symbol          TEXT NOT NULL,
     action          TEXT NOT NULL,
+    direction       TEXT,
     confidence      INTEGER NOT NULL DEFAULT 0,
     entry           REAL,
     stop_loss       REAL,
     take_profit     REAL,
+    targets_json    TEXT NOT NULL DEFAULT '[]',
+    risk_json       TEXT NOT NULL DEFAULT '{}',
     timeframe       TEXT,
+    strategy_id     TEXT NOT NULL DEFAULT 'unspecified',
+    strategy_version TEXT NOT NULL DEFAULT '1',
+    expires_at      INTEGER NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'draft',
+    status_reason   TEXT NOT NULL DEFAULT '',
+    engine_version  TEXT NOT NULL DEFAULT 'legacy',
+    entry_type      TEXT,
+    legacy_tracking_id TEXT,
+    updated_at      INTEGER,
     rationale       TEXT,
     factors         TEXT,
     chart_image_url TEXT,
@@ -616,6 +632,197 @@ const SCHEMA = `
     ON tracked_recommendations (user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_tracked_recs_outcome
     ON tracked_recommendations (outcome);
+
+  CREATE TABLE IF NOT EXISTS recommendation_history (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_id INTEGER NOT NULL,
+    user_id           INTEGER NOT NULL,
+    kind              TEXT NOT NULL,
+    occurred_at       INTEGER NOT NULL,
+    actor             TEXT NOT NULL,
+    source            TEXT NOT NULL,
+    payload_json      TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_history_replay
+    ON recommendation_history (user_id, recommendation_id, occurred_at, id);
+
+  CREATE TABLE IF NOT EXISTS recommendation_transitions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_id INTEGER NOT NULL,
+    user_id           INTEGER NOT NULL,
+    from_status       TEXT,
+    to_status         TEXT NOT NULL,
+    occurred_at       INTEGER NOT NULL,
+    trigger_name      TEXT NOT NULL,
+    actor             TEXT NOT NULL,
+    source            TEXT NOT NULL,
+    reason            TEXT NOT NULL,
+    metadata_json     TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_transitions_replay
+    ON recommendation_transitions (user_id, recommendation_id, occurred_at, id);
+
+  CREATE TABLE IF NOT EXISTS recommendation_outcomes (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_id INTEGER NOT NULL,
+    user_id           INTEGER NOT NULL,
+    outcome_type      TEXT NOT NULL,
+    target_index      INTEGER,
+    price             REAL,
+    r_multiple        REAL,
+    pnl               REAL,
+    holding_ms        INTEGER,
+    mae               REAL,
+    mfe               REAL,
+    spread_cost       REAL,
+    slippage          REAL,
+    commission        REAL,
+    risk_used         REAL,
+    occurred_at       INTEGER NOT NULL,
+    source            TEXT NOT NULL,
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    dedupe_key        TEXT NOT NULL,
+    UNIQUE (recommendation_id, dedupe_key),
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_outcomes_replay
+    ON recommendation_outcomes (user_id, recommendation_id, occurred_at, id);
+
+  CREATE TABLE IF NOT EXISTS recommendation_learning_events (
+    event_id          TEXT PRIMARY KEY,
+    recommendation_id INTEGER NOT NULL,
+    user_id           INTEGER NOT NULL,
+    event_type        TEXT NOT NULL,
+    occurred_at       INTEGER NOT NULL,
+    source_outcome_id INTEGER,
+    payload_json      TEXT NOT NULL DEFAULT '{}',
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_learning_events_user
+    ON recommendation_learning_events (user_id, event_type, occurred_at);
+
+  CREATE TABLE IF NOT EXISTS trade_lesson_candidates (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                 INTEGER NOT NULL,
+    fingerprint             TEXT NOT NULL,
+    recommendation_id       INTEGER NOT NULL,
+    status                  TEXT NOT NULL DEFAULT 'candidate',
+    reason                  TEXT NOT NULL,
+    evidence_event_ids_json TEXT NOT NULL DEFAULT '[]',
+    strategy_id             TEXT NOT NULL,
+    market                  TEXT NOT NULL,
+    confidence              REAL NOT NULL,
+    affected_symbols_json   TEXT NOT NULL DEFAULT '[]',
+    sample_size             INTEGER NOT NULL,
+    created_at              INTEGER NOT NULL,
+    validated_at            INTEGER,
+    UNIQUE (user_id, fingerprint),
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS gold_agent_weight_versions (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                 INTEGER NOT NULL,
+    strategy_id             TEXT NOT NULL,
+    version                 INTEGER NOT NULL,
+    parent_version          INTEGER,
+    weights_json            TEXT NOT NULL,
+    sample_size             INTEGER NOT NULL,
+    confidence              REAL NOT NULL,
+    decay                   REAL NOT NULL,
+    status                  TEXT NOT NULL DEFAULT 'candidate',
+    evidence_event_ids_json TEXT NOT NULL DEFAULT '[]',
+    created_at              INTEGER NOT NULL,
+    activated_at            INTEGER,
+    rolled_back_at          INTEGER,
+    UNIQUE (user_id, strategy_id, version),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS trading_dna_snapshots (
+    snapshot_id      TEXT PRIMARY KEY,
+    user_id          INTEGER NOT NULL,
+    version          INTEGER NOT NULL,
+    generated_at     INTEGER NOT NULL,
+    window_start     INTEGER,
+    window_end       INTEGER,
+    sample_size      INTEGER NOT NULL,
+    metrics_json     TEXT NOT NULL DEFAULT '[]',
+    conclusions_json TEXT NOT NULL DEFAULT '[]',
+    evidence_json    TEXT NOT NULL DEFAULT '{}',
+    UNIQUE (user_id, version),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_trading_dna_snapshots_user
+    ON trading_dna_snapshots (user_id, version DESC);
+
+  CREATE TABLE IF NOT EXISTS trading_persona_versions (
+    persona_id    TEXT PRIMARY KEY,
+    user_id       INTEGER NOT NULL,
+    version       INTEGER NOT NULL,
+    snapshot_id   TEXT NOT NULL,
+    persona       TEXT NOT NULL,
+    confidence    REAL NOT NULL,
+    sample_size   INTEGER NOT NULL,
+    rationale     TEXT NOT NULL,
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    created_at    INTEGER NOT NULL,
+    UNIQUE (user_id, version),
+    UNIQUE (user_id, snapshot_id),
+    FOREIGN KEY (snapshot_id) REFERENCES trading_dna_snapshots(snapshot_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS shadow_recommendations (
+    shadow_recommendation_id TEXT PRIMARY KEY,
+    user_id                  INTEGER NOT NULL,
+    snapshot_id              TEXT NOT NULL,
+    source_recommendation_id INTEGER,
+    symbol                   TEXT NOT NULL,
+    timeframe                TEXT NOT NULL,
+    direction                TEXT NOT NULL CHECK (direction IN ('buy','sell','wait')),
+    confidence               REAL NOT NULL,
+    rationale_json           TEXT NOT NULL DEFAULT '[]',
+    evidence_json            TEXT NOT NULL DEFAULT '{}',
+    research_only            INTEGER NOT NULL DEFAULT 1 CHECK (research_only = 1),
+    execution_prohibited     INTEGER NOT NULL DEFAULT 1 CHECK (execution_prohibited = 1),
+    created_at               INTEGER NOT NULL,
+    FOREIGN KEY (snapshot_id) REFERENCES trading_dna_snapshots(snapshot_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_recommendation_id) REFERENCES recommendations(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_shadow_recommendations_user
+    ON shadow_recommendations (user_id, created_at DESC);
+
+  CREATE TRIGGER IF NOT EXISTS immutable_recommendation_history_update
+    BEFORE UPDATE ON recommendation_history
+    BEGIN SELECT RAISE(ABORT, 'recommendation history is append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_recommendation_transitions_update
+    BEFORE UPDATE ON recommendation_transitions
+    BEGIN SELECT RAISE(ABORT, 'recommendation transitions are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_recommendation_outcomes_update
+    BEFORE UPDATE ON recommendation_outcomes
+    BEGIN SELECT RAISE(ABORT, 'recommendation outcomes are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_recommendation_learning_events_update
+    BEFORE UPDATE ON recommendation_learning_events
+    BEGIN SELECT RAISE(ABORT, 'recommendation learning events are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_trading_dna_snapshots_update
+    BEFORE UPDATE ON trading_dna_snapshots
+    BEGIN SELECT RAISE(ABORT, 'trading dna snapshots are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_trading_persona_versions_update
+    BEFORE UPDATE ON trading_persona_versions
+    BEGIN SELECT RAISE(ABORT, 'trading persona versions are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_shadow_recommendations_update
+    BEFORE UPDATE ON shadow_recommendations
+    BEGIN SELECT RAISE(ABORT, 'shadow recommendations are append-only'); END;
 `;
 
 function migrate(db: Database.Database) {
@@ -747,6 +954,52 @@ function migrate(db: Database.Database) {
   if (!recCols.some((c) => c.name === "market")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN market TEXT");
   }
+  const canonicalRecColumns: Array<[string, string]> = [
+    ["analysis_id", "TEXT"],
+    ["session_id", "TEXT"],
+    ["chat_id", "TEXT"],
+    ["direction", "TEXT"],
+    ["targets_json", "TEXT NOT NULL DEFAULT '[]'"],
+    ["risk_json", "TEXT NOT NULL DEFAULT '{}'"],
+    ["strategy_id", "TEXT NOT NULL DEFAULT 'unspecified'"],
+    ["strategy_version", "TEXT NOT NULL DEFAULT '1'"],
+    ["expires_at", "INTEGER"],
+    ["status", "TEXT NOT NULL DEFAULT 'draft'"],
+    ["status_reason", "TEXT NOT NULL DEFAULT ''"],
+    ["engine_version", "TEXT NOT NULL DEFAULT 'legacy'"],
+    ["entry_type", "TEXT"],
+    ["legacy_tracking_id", "TEXT"],
+    ["updated_at", "INTEGER"],
+  ];
+  for (const [name, definition] of canonicalRecColumns) {
+    if (!recCols.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE recommendations ADD COLUMN ${name} ${definition}`);
+    }
+  }
+  db.exec(`
+    UPDATE recommendations
+       SET direction = COALESCE(direction, action),
+           targets_json = CASE
+             WHEN targets_json IS NULL OR targets_json = '[]'
+             THEN CASE WHEN take_profit IS NULL THEN '[]' ELSE '[' || take_profit || ']' END
+             ELSE targets_json
+           END,
+           status = CASE
+             WHEN status IS NULL OR status = 'draft'
+             THEN CASE
+               WHEN action IN ('buy','sell') AND entry IS NOT NULL AND stop_loss IS NOT NULL AND take_profit IS NOT NULL
+               THEN 'active' ELSE COALESCE(status, 'draft') END
+             ELSE status END,
+           expires_at = COALESCE(expires_at, (CAST(strftime('%s','now') AS INTEGER) + 14400) * 1000),
+           updated_at = COALESCE(updated_at, CAST(strftime('%s','now') AS INTEGER) * 1000)
+  `);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_recommendations_legacy_tracking
+      ON recommendations (user_id, legacy_tracking_id)
+      WHERE legacy_tracking_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_recommendations_lifecycle
+      ON recommendations (user_id, status, created_at DESC);
+  `);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS telegram_pending (
@@ -1406,7 +1659,24 @@ export async function sqliteTransaction<T>(
       return result.lastInsertId;
     },
   };
-  return fn(helpers);
+  const run = async (): Promise<T> => {
+    const db = getSqliteDb();
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = await fn(helpers);
+      db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  };
+  const result = _transactionTail.then(run, run);
+  _transactionTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
 }
 
 export async function sqliteLoadBootstrapKeys(): Promise<{

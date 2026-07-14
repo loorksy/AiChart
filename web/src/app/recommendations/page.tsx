@@ -39,7 +39,6 @@ export default function RecommendationsPage() {
   const sweep = useCallback(async () => {
     setBusy(true);
     try {
-      await fetch("/api/recommendations/tracked/sweep", { method: "POST" }).catch(() => {});
       await load();
     } finally {
       setBusy(false);

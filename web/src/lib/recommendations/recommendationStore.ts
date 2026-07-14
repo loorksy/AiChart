@@ -1,16 +1,29 @@
 /**
- * Persistent, tenant-scoped store for tracked recommendations. Backend-agnostic
- * (`?` placeholders; adaptSql rewrites for Postgres). Reads/writes are scoped by
- * userId so one tenant can never touch another's records.
+ * Backward-compatible tracker adapter over the canonical recommendations table.
+ * `tracked_recommendations` is retained only as a non-destructive legacy table;
+ * no Phase 4 write or read path uses it as authority.
  */
-import { execute, query, queryOne } from "@/lib/db";
+import { query } from "@/lib/db";
+import {
+  createCanonicalRecommendation,
+  getCanonicalRecommendationByReference,
+  listAllActiveCanonicalRecommendations,
+  listCanonicalRecommendations,
+  listRecommendationOutcomes,
+  listRecommendationTransitions,
+  recordRecommendationOutcome,
+  transitionRecommendation,
+  type CanonicalRecommendation,
+  type RecommendationOutcome,
+  type RecommendationStatus as CanonicalStatus,
+} from "./canonical";
 import type {
   TrackedRecommendation,
   TrackedRecommendationOutcome,
   TrackedRecommendationStatus,
 } from "./types";
 
-interface Row {
+interface LegacyTrackedRow {
   id: string;
   user_id: number;
   chat_id: string | null;
@@ -23,8 +36,8 @@ interface Row {
   stop_loss: number;
   targets: string;
   invalidation_level: number | null;
-  status: string;
-  outcome: string;
+  status: TrackedRecommendationStatus;
+  outcome: TrackedRecommendationOutcome;
   setup_type: string | null;
   rr: number | null;
   created_at: number;
@@ -42,20 +55,20 @@ interface Row {
   last_checked_at: number | null;
 }
 
-function num(v: number | null): number | undefined {
-  return v == null ? undefined : Number(v);
-}
+const migratedLegacyScopes = new Set<string>();
 
-function parseTargets(raw: string): number[] {
+function legacyTargets(raw: string): number[] {
   try {
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr.filter((n) => typeof n === "number") : [];
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value)
+      ? value.filter((item): item is number => typeof item === "number" && Number.isFinite(item))
+      : [];
   } catch {
     return [];
   }
 }
 
-function toRecord(row: Row): TrackedRecommendation {
+function legacyRowInput(row: LegacyTrackedRow): CreateTrackedRecommendationInput {
   return {
     id: row.id,
     userId: Number(row.user_id),
@@ -65,29 +78,58 @@ function toRecord(row: Row): TrackedRecommendation {
     interval: row.interval,
     direction: row.direction === "sell" ? "sell" : "buy",
     entryType:
-      row.entry_type === "limit" ? "limit" : row.entry_type === "pending" ? "pending" : "market",
+      row.entry_type === "market" ? "market" : row.entry_type === "limit" ? "limit" : "pending",
     entry: Number(row.entry),
     stopLoss: Number(row.stop_loss),
-    targets: parseTargets(row.targets),
-    invalidationLevel: num(row.invalidation_level),
-    status: row.status as TrackedRecommendationStatus,
-    outcome: (row.outcome || "pending") as TrackedRecommendationOutcome,
+    targets: legacyTargets(row.targets),
+    invalidationLevel: row.invalidation_level == null ? undefined : Number(row.invalidation_level),
+    status: row.status,
+    outcome: row.outcome,
     setupType: row.setup_type ?? undefined,
-    rr: num(row.rr),
+    rr: row.rr == null ? undefined : Number(row.rr),
     createdAt: Number(row.created_at),
     createdCandleTime: Number(row.created_candle_time),
     expiresAt: Number(row.expires_at),
-    triggeredAt: num(row.triggered_at),
-    tp1HitAt: num(row.tp1_hit_at),
-    tp2HitAt: num(row.tp2_hit_at),
-    tp3HitAt: num(row.tp3_hit_at),
-    slHitAt: num(row.sl_hit_at),
-    invalidatedAt: num(row.invalidated_at),
-    cancelledAt: num(row.cancelled_at),
-    expiredAt: num(row.expired_at),
-    priceAtCreation: num(row.price_at_creation),
-    lastCheckedAt: num(row.last_checked_at),
+    triggeredAt: row.triggered_at == null ? undefined : Number(row.triggered_at),
+    tp1HitAt: row.tp1_hit_at == null ? undefined : Number(row.tp1_hit_at),
+    tp2HitAt: row.tp2_hit_at == null ? undefined : Number(row.tp2_hit_at),
+    tp3HitAt: row.tp3_hit_at == null ? undefined : Number(row.tp3_hit_at),
+    slHitAt: row.sl_hit_at == null ? undefined : Number(row.sl_hit_at),
+    invalidatedAt: row.invalidated_at == null ? undefined : Number(row.invalidated_at),
+    cancelledAt: row.cancelled_at == null ? undefined : Number(row.cancelled_at),
+    expiredAt: row.expired_at == null ? undefined : Number(row.expired_at),
+    priceAtCreation: row.price_at_creation == null ? undefined : Number(row.price_at_creation),
+    lastCheckedAt: row.last_checked_at == null ? undefined : Number(row.last_checked_at),
   };
+}
+
+/** Non-destructive, idempotent import from the retired legacy table. */
+export async function migrateLegacyTrackedRecommendations(userId?: number): Promise<number> {
+  const scope = userId == null ? "all" : String(userId);
+  if (migratedLegacyScopes.has(scope)) return 0;
+  const rows = await query<LegacyTrackedRow>(
+    `SELECT t.* FROM tracked_recommendations t
+      LEFT JOIN recommendations r
+        ON r.user_id = t.user_id AND r.legacy_tracking_id = t.id
+      WHERE r.id IS NULL${userId == null ? "" : " AND t.user_id = ?"}
+      ORDER BY t.created_at ASC, t.id ASC`,
+    userId == null ? [] : [userId],
+  );
+  let imported = 0;
+  for (const row of rows) {
+    try {
+      await createTrackedRecommendation(legacyRowInput(row));
+      imported += 1;
+    } catch (error) {
+      const concurrent = await getCanonicalRecommendationByReference(
+        Number(row.user_id),
+        row.id,
+      );
+      if (!concurrent) throw error;
+    }
+  }
+  migratedLegacyScopes.add(scope);
+  return imported;
 }
 
 export type CreateTrackedRecommendationInput = Omit<
@@ -102,103 +144,224 @@ export type CreateTrackedRecommendationInput = Omit<
   | "expiredAt"
   | "lastCheckedAt"
 > &
-  Partial<Pick<TrackedRecommendation, "triggeredAt">>;
+  Partial<
+    Pick<
+      TrackedRecommendation,
+      | "triggeredAt"
+      | "tp1HitAt"
+      | "tp2HitAt"
+      | "tp3HitAt"
+      | "slHitAt"
+      | "invalidatedAt"
+      | "cancelledAt"
+      | "expiredAt"
+      | "lastCheckedAt"
+    >
+  >;
+
+function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unknown> {
+  return {
+    invalidationLevel: input.invalidationLevel,
+    setupType: input.setupType,
+    plannedRr: input.rr,
+    createdCandleTime: input.createdCandleTime,
+    priceAtCreation: input.priceAtCreation,
+    lastCheckedAt: input.lastCheckedAt,
+  };
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function targetTimestamp(outcomes: RecommendationOutcome[], target: 1 | 2 | 3): number | undefined {
+  return outcomes.find((item) => item.type === `TP${target}`)?.occurredAt;
+}
+
+function latestTimestamp(outcomes: RecommendationOutcome[], type: RecommendationOutcome["type"]): number | undefined {
+  return outcomes.findLast((item) => item.type === type)?.occurredAt;
+}
+
+function legacyStatus(
+  recommendation: CanonicalRecommendation,
+  outcomes: RecommendationOutcome[],
+): TrackedRecommendationStatus {
+  const highestTarget = targetTimestamp(outcomes, 3)
+    ? 3
+    : targetTimestamp(outcomes, 2)
+      ? 2
+      : targetTimestamp(outcomes, 1)
+        ? 1
+        : 0;
+  if (recommendation.status === "tp_hit") return "tp3_hit";
+  if (recommendation.status === "sl_hit") return "sl_hit";
+  if (recommendation.status === "expired") return "expired";
+  if (recommendation.status === "cancelled") return "cancelled";
+  if (recommendation.status === "invalidated") return "invalidated";
+  if (recommendation.status === "closed" && highestTarget > 0) {
+    return `tp${highestTarget}_hit` as TrackedRecommendationStatus;
+  }
+  if (recommendation.status === "partially_closed" && highestTarget > 0) {
+    return `tp${highestTarget}_hit` as TrackedRecommendationStatus;
+  }
+  if (recommendation.status === "triggered" || latestTimestamp(outcomes, "Trailing")) {
+    return "triggered";
+  }
+  return "pending_entry";
+}
+
+function legacyOutcome(
+  recommendation: CanonicalRecommendation,
+  outcomes: RecommendationOutcome[],
+): TrackedRecommendationOutcome {
+  if (recommendation.status === "sl_hit") return "loss";
+  if (recommendation.status === "expired") return "expired";
+  if (recommendation.status === "cancelled") return "cancelled";
+  if (recommendation.status === "invalidated") return "invalidated";
+  if (recommendation.status !== "tp_hit" && recommendation.status !== "closed") return "pending";
+  if (targetTimestamp(outcomes, 3)) return "win_tp3";
+  if (targetTimestamp(outcomes, 2)) return "win_tp2";
+  if (targetTimestamp(outcomes, 1)) return "win_tp1";
+  return recommendation.status === "tp_hit" ? "win_tp3" : "pending";
+}
+
+async function toTracked(recommendation: CanonicalRecommendation): Promise<TrackedRecommendation> {
+  const [outcomes, transitions] = await Promise.all([
+    listRecommendationOutcomes(recommendation.userId, recommendation.recommendationId),
+    listRecommendationTransitions(recommendation.userId, recommendation.recommendationId),
+  ]);
+  const risk = recommendation.risk;
+  const triggeredAt = transitions.find((item) => item.toStatus === "triggered")?.occurredAt;
+  return {
+    id: recommendation.legacyTrackingId ?? String(recommendation.recommendationId),
+    userId: recommendation.userId,
+    chatId: recommendation.chatId,
+    analysisId: recommendation.analysisId,
+    symbol: recommendation.symbol,
+    interval: recommendation.timeframe,
+    direction: recommendation.direction === "sell" ? "sell" : "buy",
+    entryType:
+      recommendation.entryType === "market"
+        ? "market"
+        : recommendation.entryType?.includes("limit")
+          ? "limit"
+          : "pending",
+    entry: recommendation.entry ?? 0,
+    stopLoss: recommendation.stopLoss ?? 0,
+    targets: recommendation.targets,
+    invalidationLevel: numberValue(risk.invalidationLevel),
+    status: legacyStatus(recommendation, outcomes),
+    outcome: legacyOutcome(recommendation, outcomes),
+    setupType: stringValue(risk.setupType) ?? recommendation.strategyId,
+    rr: numberValue(risk.plannedRr),
+    createdAt: recommendation.createdAt,
+    createdCandleTime: numberValue(risk.createdCandleTime) ?? recommendation.createdAt,
+    expiresAt: recommendation.expiresAt ?? recommendation.createdAt + 4 * 60 * 60 * 1000,
+    triggeredAt,
+    tp1HitAt: targetTimestamp(outcomes, 1),
+    tp2HitAt: targetTimestamp(outcomes, 2),
+    tp3HitAt: targetTimestamp(outcomes, 3),
+    slHitAt: latestTimestamp(outcomes, "SL"),
+    invalidatedAt: latestTimestamp(outcomes, "Invalidated"),
+    cancelledAt: latestTimestamp(outcomes, "Cancelled"),
+    expiredAt: latestTimestamp(outcomes, "Expired"),
+    priceAtCreation: numberValue(risk.priceAtCreation),
+    lastCheckedAt: numberValue(risk.lastCheckedAt),
+  };
+}
 
 export async function createTrackedRecommendation(
   input: CreateTrackedRecommendationInput,
 ): Promise<TrackedRecommendation> {
-  await execute(
-    `INSERT INTO tracked_recommendations
-       (id, user_id, chat_id, analysis_id, symbol, interval, direction, entry_type,
-        entry, stop_loss, targets, invalidation_level, status, outcome, setup_type, rr,
-        created_at, created_candle_time, expires_at, triggered_at, price_at_creation, last_checked_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    [
-      input.id,
-      input.userId,
-      input.chatId ?? null,
-      input.analysisId ?? null,
-      input.symbol,
-      input.interval,
-      input.direction,
-      input.entryType,
-      input.entry,
-      input.stopLoss,
-      JSON.stringify(input.targets ?? []),
-      input.invalidationLevel ?? null,
-      input.status,
-      input.outcome ?? "pending",
-      input.setupType ?? null,
-      input.rr ?? null,
-      input.createdAt,
-      input.createdCandleTime,
-      input.expiresAt,
-      input.triggeredAt ?? null,
-      input.priceAtCreation ?? null,
-      input.createdAt,
-    ],
-  );
-  const stored = await getTrackedRecommendationById(input.id);
-  return stored ?? { ...input, outcome: input.outcome ?? "pending" };
-}
-
-async function getTrackedRecommendationById(
-  id: string,
-): Promise<TrackedRecommendation | null> {
-  const row = await queryOne<Row>(
-    "SELECT * FROM tracked_recommendations WHERE id = ?",
-    [id],
-  );
-  return row ? toRecord(row) : null;
+  const recommendation = await createCanonicalRecommendation({
+    userId: input.userId,
+    analysisId: input.analysisId,
+    sessionId: input.chatId,
+    chatId: input.chatId,
+    symbol: input.symbol,
+    market: "forex",
+    timeframe: input.interval,
+    direction: input.direction,
+    entry: input.entry,
+    stopLoss: input.stopLoss,
+    targets: input.targets,
+    risk: legacyRisk(input),
+    confidence: 0,
+    strategyId: input.setupType ?? "unspecified",
+    strategyVersion: "1",
+    createdAt: input.createdAt,
+    expiresAt: input.expiresAt,
+    status: "active",
+    statusReason: "created through tracked recommendation adapter",
+    source: "agent-tracker",
+    engineVersion: "aichart-phase4-v1",
+    entryType: input.entryType,
+    legacyTrackingId: input.id,
+  });
+  if (
+    input.status !== "pending_entry" ||
+    input.outcome !== "pending" ||
+    input.triggeredAt != null ||
+    input.tp1HitAt != null ||
+    input.tp2HitAt != null ||
+    input.tp3HitAt != null
+  ) {
+    return (
+      (await updateTrackedRecommendation(input.userId, input.id, {
+        status: input.status,
+        outcome: input.outcome,
+        triggeredAt: input.triggeredAt,
+        tp1HitAt: input.tp1HitAt ?? (input.outcome === "win_tp1" ? input.createdAt : undefined),
+        tp2HitAt: input.tp2HitAt ?? (input.outcome === "win_tp2" ? input.createdAt : undefined),
+        tp3HitAt: input.tp3HitAt ?? (input.outcome === "win_tp3" ? input.createdAt : undefined),
+        slHitAt: input.slHitAt ?? (input.outcome === "loss" ? input.createdAt : undefined),
+        invalidatedAt:
+          input.invalidatedAt ?? (input.outcome === "invalidated" ? input.createdAt : undefined),
+        cancelledAt:
+          input.cancelledAt ?? (input.outcome === "cancelled" ? input.createdAt : undefined),
+        expiredAt: input.expiredAt ?? (input.outcome === "expired" ? input.createdAt : undefined),
+        lastCheckedAt: input.lastCheckedAt ?? input.createdAt,
+      })) ?? (await toTracked(recommendation))
+    );
+  }
+  return toTracked(recommendation);
 }
 
 export async function getTrackedRecommendation(
   userId: number,
   id: string,
 ): Promise<TrackedRecommendation | null> {
-  const row = await queryOne<Row>(
-    "SELECT * FROM tracked_recommendations WHERE id = ? AND user_id = ?",
-    [id, userId],
-  );
-  return row ? toRecord(row) : null;
+  await migrateLegacyTrackedRecommendations(userId);
+  const recommendation = await getCanonicalRecommendationByReference(userId, id);
+  return recommendation ? toTracked(recommendation) : null;
 }
 
 export async function listTrackedRecommendations(
   userId: number,
   opts: { limit?: number } = {},
 ): Promise<TrackedRecommendation[]> {
-  const rows = await query<Row>(
-    `SELECT * FROM tracked_recommendations
-      WHERE user_id = ?
-      ORDER BY created_at DESC
-      LIMIT ?`,
-    [userId, Math.max(1, Math.min(opts.limit ?? 500, 2000))],
-  );
-  return rows.map(toRecord);
+  await migrateLegacyTrackedRecommendations(userId);
+  const recommendations = await listCanonicalRecommendations(userId, { limit: opts.limit });
+  return Promise.all(recommendations.map(toTracked));
 }
 
-/** Non-terminal records (outcome = 'pending') to sweep. Optionally per-user. */
 export async function listActiveTrackedRecommendations(opts: {
   userId?: number;
   limit?: number;
 } = {}): Promise<TrackedRecommendation[]> {
-  const limit = Math.max(1, Math.min(opts.limit ?? 500, 5000));
-  if (opts.userId != null) {
-    const rows = await query<Row>(
-      `SELECT * FROM tracked_recommendations
-        WHERE outcome = 'pending' AND user_id = ?
-        ORDER BY created_at DESC LIMIT ?`,
-      [opts.userId, limit],
-    );
-    return rows.map(toRecord);
-  }
-  const rows = await query<Row>(
-    `SELECT * FROM tracked_recommendations
-      WHERE outcome = 'pending'
-      ORDER BY created_at DESC LIMIT ?`,
-    [limit],
-  );
-  return rows.map(toRecord);
+  await migrateLegacyTrackedRecommendations(opts.userId);
+  const recommendations =
+    opts.userId == null
+      ? await listAllActiveCanonicalRecommendations(opts.limit)
+      : await listCanonicalRecommendations(opts.userId, {
+          limit: opts.limit,
+          activeOnly: true,
+        });
+  return Promise.all(recommendations.map(toTracked));
 }
 
 export interface TrackedStatusPatch {
@@ -213,6 +376,68 @@ export interface TrackedStatusPatch {
   cancelledAt?: number;
   expiredAt?: number;
   lastCheckedAt?: number;
+  reason?: string;
+}
+
+async function move(
+  recommendation: CanonicalRecommendation,
+  status: CanonicalStatus,
+  timestamp: number,
+  reason: string,
+): Promise<CanonicalRecommendation> {
+  if (recommendation.status === status) return recommendation;
+  return transitionRecommendation({
+    userId: recommendation.userId,
+    recommendationId: recommendation.recommendationId,
+    toStatus: status,
+    timestamp,
+    trigger: "candle_warehouse",
+    actor: "recommendation_tracker",
+    source: "deterministic_tracker",
+    reason,
+  });
+}
+
+async function ensureTriggered(
+  recommendation: CanonicalRecommendation,
+  timestamp: number,
+  reason?: string,
+): Promise<CanonicalRecommendation> {
+  if (recommendation.status === "active") {
+    return move(recommendation, "triggered", timestamp, reason ?? "entry condition reached");
+  }
+  return recommendation;
+}
+
+function plannedR(recommendation: CanonicalRecommendation, targetIndex: 1 | 2 | 3): number | undefined {
+  const target = recommendation.targets[targetIndex - 1];
+  if (target == null || recommendation.entry == null || recommendation.stopLoss == null) return undefined;
+  const risk = Math.abs(recommendation.entry - recommendation.stopLoss);
+  return risk > 0 ? Math.abs(target - recommendation.entry) / risk : undefined;
+}
+
+async function appendTrackerOutcome(
+  recommendation: CanonicalRecommendation,
+  type: RecommendationOutcome["type"],
+  occurredAt: number,
+  targetIndex?: 1 | 2 | 3,
+): Promise<void> {
+  await recordRecommendationOutcome({
+    userId: recommendation.userId,
+    recommendationId: recommendation.recommendationId,
+    type,
+    occurredAt,
+    targetIndex,
+    price: targetIndex ? recommendation.targets[targetIndex - 1] : recommendation.stopLoss,
+    rMultiple: targetIndex ? plannedR(recommendation, targetIndex) : type === "SL" ? -1 : undefined,
+    source: "deterministic_tracker",
+    evidence: {
+      method: "complete_ohlc_candles",
+      direction: recommendation.direction,
+      validated: false,
+    },
+    dedupeKey: `tracker:${type}`,
+  });
 }
 
 export async function updateTrackedRecommendation(
@@ -220,32 +445,116 @@ export async function updateTrackedRecommendation(
   id: string,
   patch: TrackedStatusPatch,
 ): Promise<TrackedRecommendation | null> {
-  const existing = await getTrackedRecommendation(userId, id);
-  if (!existing) return null;
-  await execute(
-    `UPDATE tracked_recommendations SET
-       status = ?, outcome = ?,
-       triggered_at = ?, tp1_hit_at = ?, tp2_hit_at = ?, tp3_hit_at = ?,
-       sl_hit_at = ?, invalidated_at = ?, cancelled_at = ?, expired_at = ?,
-       last_checked_at = ?
-     WHERE id = ? AND user_id = ?`,
-    [
-      patch.status,
-      patch.outcome,
-      patch.triggeredAt ?? existing.triggeredAt ?? null,
-      patch.tp1HitAt ?? existing.tp1HitAt ?? null,
-      patch.tp2HitAt ?? existing.tp2HitAt ?? null,
-      patch.tp3HitAt ?? existing.tp3HitAt ?? null,
-      patch.slHitAt ?? existing.slHitAt ?? null,
-      patch.invalidatedAt ?? existing.invalidatedAt ?? null,
-      patch.cancelledAt ?? existing.cancelledAt ?? null,
-      patch.expiredAt ?? existing.expiredAt ?? null,
-      patch.lastCheckedAt ?? Date.now(),
-      id,
-      userId,
-    ],
-  );
-  return getTrackedRecommendation(userId, id);
+  let recommendation = await getCanonicalRecommendationByReference(userId, id);
+  if (!recommendation) return null;
+  const now = patch.lastCheckedAt ?? Date.now();
+  if (patch.triggeredAt || ["triggered", "tp1_hit", "tp2_hit", "tp3_hit"].includes(patch.status)) {
+    recommendation = await ensureTriggered(
+      recommendation,
+      patch.triggeredAt ?? now,
+      patch.reason,
+    );
+  }
+  if (patch.tp1HitAt) {
+    await appendTrackerOutcome(recommendation, "TP1", patch.tp1HitAt, 1);
+    if (recommendation.status === "triggered") {
+      recommendation = await move(
+        recommendation,
+        "partially_closed",
+        patch.tp1HitAt,
+        patch.reason ?? "TP1 reached",
+      );
+    }
+  }
+  if (patch.tp2HitAt) {
+    await appendTrackerOutcome(recommendation, "TP2", patch.tp2HitAt, 2);
+    if (recommendation.status === "triggered") {
+      recommendation = await move(
+        recommendation,
+        "partially_closed",
+        patch.tp2HitAt,
+        patch.reason ?? "TP2 reached",
+      );
+    }
+  }
+  if (patch.tp3HitAt || patch.status === "tp3_hit") {
+    const at = patch.tp3HitAt ?? now;
+    await appendTrackerOutcome(recommendation, "TP3", at, 3);
+    if (recommendation.status === "triggered") {
+      recommendation = await move(
+        recommendation,
+        "partially_closed",
+        at,
+        patch.reason ?? "targets reached",
+      );
+    }
+    if (recommendation.status === "partially_closed") {
+      recommendation = await move(
+        recommendation,
+        "tp_hit",
+        at,
+        patch.reason ?? "final target reached",
+      );
+    }
+  } else if (patch.status === "sl_hit") {
+    const at = patch.slHitAt ?? now;
+    await appendTrackerOutcome(recommendation, "SL", at);
+    recommendation = await move(
+      recommendation,
+      "sl_hit",
+      at,
+      patch.reason ?? "stop loss reached",
+    );
+  } else if (patch.status === "expired") {
+    const at = patch.expiredAt ?? now;
+    await appendTrackerOutcome(recommendation, "Expired", at);
+    recommendation = await move(
+      recommendation,
+      "expired",
+      at,
+      patch.reason ?? "recommendation expired",
+    );
+  } else if (patch.status === "cancelled") {
+    const at = patch.cancelledAt ?? now;
+    await appendTrackerOutcome(recommendation, "Cancelled", at);
+    recommendation = await move(
+      recommendation,
+      "cancelled",
+      at,
+      patch.reason ?? "recommendation cancelled",
+    );
+  } else if (patch.status === "invalidated") {
+    const at = patch.invalidatedAt ?? now;
+    await appendTrackerOutcome(recommendation, "Invalidated", at);
+    recommendation = await move(
+      recommendation,
+      "invalidated",
+      at,
+      patch.reason ?? "setup invalidated",
+    );
+  } else if (
+    (patch.outcome === "win_tp1" || patch.outcome === "win_tp2") &&
+    recommendation.status === "partially_closed"
+  ) {
+    if (patch.slHitAt) {
+      await recordRecommendationOutcome({
+        userId,
+        recommendationId: recommendation.recommendationId,
+        type: "ManualClose",
+        occurredAt: patch.slHitAt,
+        source: "deterministic_tracker",
+        evidence: { exitReason: "stop_after_partial_target" },
+        dedupeKey: "tracker:partial-close",
+      });
+    }
+    recommendation = await move(
+      recommendation,
+      "closed",
+      now,
+      patch.reason ?? `legacy partial outcome ${patch.outcome}`,
+    );
+  }
+  return toTracked(recommendation);
 }
 
 export async function cancelTrackedRecommendation(
@@ -254,7 +563,7 @@ export async function cancelTrackedRecommendation(
 ): Promise<TrackedRecommendation | null> {
   const existing = await getTrackedRecommendation(userId, id);
   if (!existing) return null;
-  if (existing.outcome !== "pending") return existing; // terminal stays terminal
+  if (existing.outcome !== "pending") return existing;
   return updateTrackedRecommendation(userId, id, {
     status: "cancelled",
     outcome: "cancelled",

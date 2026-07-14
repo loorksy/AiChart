@@ -187,13 +187,19 @@ export type RecommendationSource = "web" | "agent";
 export interface Recommendation {
   id: number;
   user_id: number;
+  analysis_id?: string | null;
+  session_id?: string | null;
+  chat_id?: string | null;
   symbol: string;
   action: RecommendationAction;
+  direction?: RecommendationAction | null;
   entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   confidence: number;
   entry: number | null;
   stop_loss: number | null;
   take_profit: number | null;
+  targets_json?: string | null;
+  risk_json?: string | null;
   timeframe: string | null;
   rationale: string | null;
   factors: string | null; // JSON array of short reason strings
@@ -209,6 +215,13 @@ export interface Recommendation {
   committee_json: string | null;
   /** IDs of trade_lessons referenced during analysis (JSON array). */
   memory_refs_json: string | null;
+  strategy_id?: string | null;
+  strategy_version?: string | null;
+  expires_at?: number | null;
+  status?: import("./recommendations/canonical/types").RecommendationStatus;
+  status_reason?: string | null;
+  engine_version?: string | null;
+  legacy_tracking_id?: string | null;
   created_at: string;
 }
 
