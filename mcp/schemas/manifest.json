@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-12T03:04:15.477Z",
-  "toolCount": 57,
+  "exportedAt": "2026-07-14T23:47:13.866Z",
+  "toolCount": 59,
   "tools": [
     {
       "name": "get_account_overview",
@@ -271,6 +271,26 @@
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": false
+      }
+    },
+    {
+      "name": "list_agent_skills",
+      "domain": "core",
+      "description": "When: session start (after get_agent_capabilities). Discovers the canonical skill catalogue — metadata only (name, version, category, riskLevel, description). Never loads content. read-only.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "load_agent_skill",
+      "domain": "core",
+      "description": "When: a request needs a specific skill (analysis→trading-lexicon, recommendation→trading-strategies, cards→cards). Loads the FULL skill content explicitly and traceably. Fails honestly if the skill is missing — never assume a skill was read without a successful load. Skills never grant permissions. read-only.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
       }
     },
     {
