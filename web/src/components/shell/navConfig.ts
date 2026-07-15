@@ -13,6 +13,7 @@ import {
   FileText,
   Cpu,
   Server,
+  Shield,
   Lock,
   type LucideIcon,
 } from "lucide-react";
@@ -39,6 +40,7 @@ export const APP_NAV: NavItem[] = [
   { href: "/console/recommendations", label: "سجل التوصيات", icon: History },
   { href: "/recommendations", label: "التوصيات المتتبعة", icon: Target },
   { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
+  { href: "/console/risk", label: "إعدادات المخاطر", icon: Shield },
   { href: "/console/connect", label: "الاتصالات", icon: Link2 },
   { href: "/console/settings", label: "الإعدادات", icon: Settings },
   { href: "/console/mcp", label: "Claude MCP", icon: Plug },

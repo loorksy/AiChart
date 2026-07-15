@@ -2,10 +2,17 @@
  * Builds the multi-timeframe market context the specialist agents reason on.
  * Candles come from the warehouse (current TF, higher TF, daily) so the agent
  * sees hundreds–thousands of bars, not the ~120 the legacy analyze path used.
- * Thin coverage triggers a background backfill and is reported via dataQuality.
+ *
+ * When coverage is thin, this path performs a bounded synchronous refill from
+ * the approved server-side source, re-reads the warehouse, then reports exact
+ * available/required counts. The chart viewport is never treated as the full
+ * analytical history.
  */
 import { getCandles } from "@/lib/candles/candleRepository";
-import { triggerBackfill } from "@/lib/candles/candleBackfillService";
+import {
+  backfillCandles,
+  triggerBackfill,
+} from "@/lib/candles/candleBackfillService";
 import {
   getHigherInterval,
   normalizeCanonicalInterval,
@@ -14,8 +21,12 @@ import {
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { isForexMarketOpen } from "@/lib/agent/marketSession";
 import {
+  CANDLE_COVERAGE_POLICY_VERSION,
   DATA_QUALITY_POLICY,
+  buildCandleCoverageReport,
   meetsDataQuality,
+  type CandleCoverageReport,
+  type CoverageAnalysisKind,
 } from "@/lib/agent/dataQualityPolicy";
 import {
   calculateAtr,
@@ -52,6 +63,8 @@ export interface AgentMarketContext {
     higherTfCount: number;
     dailyCount: number;
     sufficient: boolean;
+    coverage: CandleCoverageReport;
+    policyVersion: string;
   };
   freshness: DataFreshness;
   sync: MarketSyncStatus;
@@ -65,6 +78,28 @@ export interface AgentMarketContext {
   zones: ReturnType<typeof detectSupplyDemandZones>;
 }
 
+async function refillIfThin(input: {
+  symbol: string;
+  interval: string;
+  available: number;
+  required: number;
+  limit: number;
+}): Promise<{ attempted: boolean; inserted: number; failed: boolean }> {
+  if (input.available >= input.required) {
+    return { attempted: false, inserted: 0, failed: false };
+  }
+  const result = await backfillCandles({
+    symbol: input.symbol,
+    interval: input.interval,
+    limit: input.limit,
+  });
+  return {
+    attempted: true,
+    inserted: result.inserted,
+    failed: Boolean(result.reason === "oanda_error"),
+  };
+}
+
 export async function buildAgentMarketContext(input: {
   userId?: number;
   symbol: string;
@@ -73,12 +108,16 @@ export async function buildAgentMarketContext(input: {
   latestCandle?: AgentChartContext["latestCandle"];
   dataSource?: AgentChartContext["dataSource"];
   spread?: number | null;
+  analysisKind?: CoverageAnalysisKind;
 }): Promise<AgentMarketContext> {
   const symbol = forexCanonicalKey(input.symbol);
   const interval = normalizeCanonicalInterval(input.interval);
   const higherInterval = getHigherInterval(interval);
+  const analysisKind = input.analysisKind ?? "intraday";
+  const source =
+    input.dataSource === "ea" ? "ea+warehouse" : "warehouse+oanda";
 
-  const fresh = await getFreshAgentCandles({
+  let fresh = await getFreshAgentCandles({
     userId: input.userId,
     symbol,
     interval,
@@ -86,30 +125,97 @@ export async function buildAgentMarketContext(input: {
     limit: 1500,
   });
 
-  const [higherTfCandles, dailyCandles, visibleCandles] =
-    await Promise.all([
+  let [higherTfCandles, dailyCandles, visibleCandles] = await Promise.all([
+    getCandles({ symbol, interval: higherInterval, limit: 1000 }),
+    getCandles({ symbol, interval: "1d", limit: 500 }),
+    input.visibleRange
+      ? getCandles({
+          symbol,
+          interval,
+          fromMs: input.visibleRange.from,
+          toMs: input.visibleRange.to,
+          limit: 2000,
+        })
+      : Promise.resolve([] as AgentCandle[]),
+  ]);
+  let currentTfCandles = fresh.currentTfCandles;
+
+  // Bounded synchronous refill when any series is below the TRADE gate.
+  // Chart viewport alone is never enough for trade/drawing analysis.
+  const tradeGate = DATA_QUALITY_POLICY.trade;
+  const [currentRefill, higherRefill, dailyRefill] = await Promise.all([
+    refillIfThin({
+      symbol,
+      interval,
+      available: currentTfCandles.length,
+      required: tradeGate.currentTf,
+      limit: 5000,
+    }),
+    refillIfThin({
+      symbol,
+      interval: higherInterval,
+      available: higherTfCandles.length,
+      required: tradeGate.higherTf,
+      limit: 2000,
+    }),
+    refillIfThin({
+      symbol,
+      interval: "1d",
+      available: dailyCandles.length,
+      required: tradeGate.daily,
+      limit: 500,
+    }),
+  ]);
+
+  if (currentRefill.attempted || higherRefill.attempted || dailyRefill.attempted) {
+    if (currentRefill.inserted > 0) {
+      fresh = await getFreshAgentCandles({
+        userId: input.userId,
+        symbol,
+        interval,
+        dataSource: input.dataSource,
+        limit: 1500,
+      });
+      currentTfCandles = fresh.currentTfCandles;
+    }
+    [higherTfCandles, dailyCandles] = await Promise.all([
       getCandles({ symbol, interval: higherInterval, limit: 1000 }),
       getCandles({ symbol, interval: "1d", limit: 500 }),
-      input.visibleRange
-        ? getCandles({
-            symbol,
-            interval,
-            fromMs: input.visibleRange.from,
-            toMs: input.visibleRange.to,
-            limit: 2000,
-          })
-        : Promise.resolve([] as AgentCandle[]),
     ]);
-  const currentTfCandles = fresh.currentTfCandles;
+  }
 
-  // Thin coverage → background top-up (never blocks this request). Uses the
-  // TRADE gate so drawing/trade thresholds are proactively satisfied.
-  if (currentTfCandles.length < DATA_QUALITY_POLICY.trade.currentTf) {
+  // Background top-up beyond the sync refill (never blocks).
+  if (currentTfCandles.length < tradeGate.currentTf) {
     triggerBackfill({ symbol, interval, limit: 5000 });
   }
-  if (higherTfCandles.length < DATA_QUALITY_POLICY.trade.higherTf) {
+  if (higherTfCandles.length < tradeGate.higherTf) {
     triggerBackfill({ symbol, interval: higherInterval, limit: 2000 });
   }
+  if (dailyCandles.length < tradeGate.daily) {
+    triggerBackfill({ symbol, interval: "1d", limit: 500 });
+  }
+
+  const coverage = buildCandleCoverageReport({
+    analysisKind,
+    gate: "trade",
+    currentInterval: interval,
+    higherInterval,
+    currentTfCount: currentTfCandles.length,
+    higherTfCount: higherTfCandles.length,
+    dailyCount: dailyCandles.length,
+    currentOldest: currentTfCandles[0]?.time ?? null,
+    currentNewest: currentTfCandles.at(-1)?.time ?? null,
+    higherOldest: higherTfCandles[0]?.time ?? null,
+    higherNewest: higherTfCandles.at(-1)?.time ?? null,
+    dailyOldest: dailyCandles[0]?.time ?? null,
+    dailyNewest: dailyCandles.at(-1)?.time ?? null,
+    source,
+    refill: {
+      current: currentRefill,
+      higher: higherRefill,
+      daily: dailyRefill,
+    },
+  });
 
   const currentPrice = currentTfCandles.at(-1)?.close ?? null;
   const lastCandleTime = currentTfCandles.at(-1)?.time ?? null;
@@ -169,6 +275,8 @@ export async function buildAgentMarketContext(input: {
         },
         "analysis",
       ),
+      coverage,
+      policyVersion: CANDLE_COVERAGE_POLICY_VERSION,
     },
     freshness,
     sync,

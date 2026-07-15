@@ -69,4 +69,15 @@ describe("validateTradeSetup", () => {
     const r = validateTradeSetup({ ...base, trade: { action: "wait" } });
     assert.equal(r.accepted, true);
   });
+
+  it("rejects insufficient candle coverage with explicit detail when provided", () => {
+    const r = validateTradeSetup({
+      ...base,
+      dataSufficient: false,
+      coverageDetail: "WAIT — 15m: 64/500 (refill: +18, partial).",
+      trade: { action: "buy", entry: 100, stop_loss: 99, targets: [102] },
+    });
+    assert.equal(r.accepted, false);
+    assert.ok(r.reasons.some((x) => x.includes("64/500")));
+  });
 });

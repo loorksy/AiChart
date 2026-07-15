@@ -29,6 +29,11 @@ import { withTimeout, AGENT_TIMEOUTS } from "./timeout";
 import { buildInformationalResult, buildAgentFallbackResult } from "./fallback";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
+import {
+  collectBoundedResearchEvidence,
+  researchContributed,
+} from "./researchEvidence";
+import { buildInformationalConfidence } from "./confidenceSemantics";
 import { runMarketDataAgent } from "./agents/marketDataAgent";
 import { runStructureAgent } from "./agents/structureAgent";
 import { runLiquidityAgent } from "./agents/liquidityAgent";
@@ -272,6 +277,12 @@ export async function runUnifiedChartAgent(
     profile: input.profile ?? null,
   });
   const minRr = tradingMode.minRr;
+  const analysisKind =
+    tradingMode.style === "scalp"
+      ? ("scalp" as const)
+      : tradingMode.style === "swing" || tradingMode.style === "position"
+        ? ("swing" as const)
+        : ("intraday" as const);
 
   // Canonical skill catalogue: discover metadata, select by intent/locale/
   // market, and lazily load only the relevant bodies. Read-only guidance —
@@ -296,9 +307,13 @@ export async function runUnifiedChartAgent(
     );
     const level = news?.newsRisk ?? "unknown";
     const unknownNews = level === "unknown";
+    const newsSemantics = buildInformationalConfidence({
+      analysisConfidence: level === "high" ? 0.6 : unknownNews ? 0.5 : 0.75,
+    });
     return {
       decision: "informational",
-      confidence: level === "high" ? 0.6 : unknownNews ? 0.5 : 0.75,
+      confidence: 0,
+      confidenceSemantics: newsSemantics,
       summary: unknownNews
         ? bilingual(
             locale,
@@ -337,6 +352,7 @@ export async function runUnifiedChartAgent(
     runMarketDataAgent(trackedCtx, {
       ...chartContext,
       spread: input.spread,
+      analysisKind,
     }).catch(() => null),
     AGENT_TIMEOUTS.marketData,
     null,
@@ -764,6 +780,51 @@ export async function runUnifiedChartAgent(
     };
   }
 
+  // Bounded research: read existing Trading DNA only; never fabricate Backtest/Swarm.
+  const researchEvidence = await collectBoundedResearchEvidence({
+    userId: ctx.userId,
+    actionableCandidate:
+      finalDecision.decision === "buy" || finalDecision.decision === "sell",
+    latencyBudgetMs: 400,
+  });
+  if (
+    researchEvidence.recommendationConfidenceDelta !== 0 &&
+    finalDecision.confidenceSemantics.displayKind === "recommendation" &&
+    typeof finalDecision.confidenceSemantics.recommendationConfidence ===
+      "number"
+  ) {
+    const adjusted = Math.max(
+      0,
+      Math.min(
+        1,
+        finalDecision.confidenceSemantics.recommendationConfidence +
+          researchEvidence.recommendationConfidenceDelta,
+      ),
+    );
+    finalDecision.confidenceSemantics = {
+      ...finalDecision.confidenceSemantics,
+      recommendationConfidence: adjusted,
+      displayValue: adjusted,
+      factors: [
+        ...finalDecision.confidenceSemantics.factors,
+        {
+          factor: "trading_dna",
+          status: researchContributed(researchEvidence, "trading_dna")
+            ? "used"
+            : "skipped",
+          effect:
+            researchEvidence.recommendationConfidenceDelta > 0
+              ? "dna_strengthens"
+              : "dna_weakens",
+        },
+      ],
+    };
+    finalDecision.confidence = adjusted;
+    if (researchContributed(researchEvidence, "trading_dna")) {
+      finalDecision.summary = `${finalDecision.summary}\n\n${locale === "en" ? researchEvidence.summaryEn : researchEvidence.summaryAr}`;
+    }
+  }
+
   let storedRecommendation: ActiveRecommendation | null = null;
   if (
     finalDecision.decision === "buy" ||
@@ -786,6 +847,7 @@ export async function runUnifiedChartAgent(
   return {
     decision: finalDecision.decision,
     confidence: finalDecision.confidence,
+    confidenceSemantics: finalDecision.confidenceSemantics,
     summary: finalDecision.summary,
     keyReasons: finalDecision.keyReasons,
     riskWarnings: finalDecision.riskWarnings,
@@ -807,6 +869,8 @@ export async function runUnifiedChartAgent(
     selectedSkills: skillContext.loaded.length ? skillContext.loaded : undefined,
     skillLoadFailures: skillContext.failed.length ? skillContext.failed : undefined,
     tradingMode: { style: tradingMode.style, source: tradingMode.source },
+    researchEvidence,
+    candleCoverage: market.dataQuality.coverage,
     recommendationId: storedRecommendation?.id,
     activeRecommendation: storedRecommendation
       ? {

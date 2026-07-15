@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { getSettings, getLimits, updateSettings } from "@/lib/store";
+import { getSettings, getLimits, updateSettings, logAudit } from "@/lib/store";
 import {
   serializeMarketAssets,
   setMarketAssets,
@@ -9,6 +9,12 @@ import {
 } from "@/lib/allowedAssets";
 import { normalizeInterval } from "@/lib/intervals";
 import { resolveMaxOpenTrades } from "@/lib/riskLimits";
+import {
+  detectRiskIncreases,
+  resolveRiskLimits,
+  SAFE_RISK_DEFAULTS,
+  RISK_PRECEDENCE_VERSION,
+} from "@/lib/risk/riskPrecedence";
 
 const assetList = z.array(z.string().max(20)).max(200);
 
@@ -53,15 +59,23 @@ const schema = z
     execution_env_preference: z.enum(["demo", "live"]),
     futures_enabled: z.literal(false).optional(),
     default_leverage: z.number().min(1).max(125),
+    /** Required when the patch materially increases risk. */
+    confirm_risk_increase: z.boolean().optional(),
+    /** Reset user-editable risk fields to safe defaults. */
+    reset_to_safe_defaults: z.boolean().optional(),
   })
   .partial();
 
 export async function GET() {
   try {
     const user = await requirePlatformAccess();
+    const settings = await getSettings(user.id);
+    const limits = await getLimits(user.id);
     return NextResponse.json({
-      settings: await getSettings(user.id),
-      limits: await getLimits(user.id),
+      settings,
+      limits,
+      resolved: resolveRiskLimits(settings, limits),
+      precedenceVersion: RISK_PRECEDENCE_VERSION,
     });
   } catch (err) {
     return handleError(err);
@@ -73,12 +87,46 @@ export async function PUT(req: NextRequest) {
     const user = await requirePlatformAccess();
     const input = schema.parse(await req.json());
     const limits = await getLimits(user.id);
+    const before = await getSettings(user.id);
+
+    if (input.reset_to_safe_defaults) {
+      const safePatch: Record<string, unknown> = {
+        ...SAFE_RISK_DEFAULTS,
+        active_market: "forex",
+        futures_enabled: 0,
+      };
+      await updateSettings(user.id, safePatch);
+      await logAudit(
+        user.id,
+        "risk_settings_reset",
+        JSON.stringify({
+          source: "api/settings",
+          actor: user.id,
+          before: {
+            per_trade_pct: before.per_trade_pct,
+            max_open_trades: before.max_open_trades,
+            daily_loss_limit_pct: before.daily_loss_limit_pct,
+            min_rr: before.min_rr,
+            mode: before.mode,
+          },
+          after: SAFE_RISK_DEFAULTS,
+        }),
+      );
+      const settings = await getSettings(user.id);
+      return NextResponse.json({
+        settings,
+        resolved: resolveRiskLimits(settings, limits),
+        reset: true,
+      });
+    }
 
     const patch: Record<string, unknown> = {
       ...input,
       active_market: "forex",
       futures_enabled: 0,
     };
+    delete patch.confirm_risk_increase;
+    delete patch.reset_to_safe_defaults;
 
     // Hard caps enforced server-side regardless of what the user submits.
     if (typeof input.max_capital === "number") {
@@ -100,7 +148,7 @@ export async function PUT(req: NextRequest) {
       patch.mode = "approval";
     }
     if (input.allowed_assets !== undefined) {
-      const current = await getSettings(user.id);
+      const current = before;
       if (Array.isArray(input.allowed_assets)) {
         patch.allowed_assets = setMarketAssets(
           current.allowed_assets,
@@ -141,9 +189,49 @@ export async function PUT(req: NextRequest) {
       patch.default_leverage = Math.min(input.default_leverage, leverageCap);
     }
 
+    const increases = detectRiskIncreases(before, patch);
+    if (increases.length > 0 && input.confirm_risk_increase !== true) {
+      return NextResponse.json(
+        {
+          error:
+            "زيادة المخاطر تتطلب تأكيداً صريحاً. أعد الإرسال مع confirm_risk_increase=true.",
+          code: "RISK_INCREASE_CONFIRMATION_REQUIRED",
+          increases,
+        },
+        { status: 409 },
+      );
+    }
+
     await updateSettings(user.id, patch);
+
+    const changed: Record<string, { old: unknown; new: unknown }> = {};
+    const beforeRecord = before as unknown as Record<string, unknown>;
+    for (const key of Object.keys(patch)) {
+      if (key === "allowed_assets") continue;
+      const oldVal = beforeRecord[key];
+      const newVal = patch[key];
+      if (oldVal !== newVal) {
+        changed[key] = { old: oldVal, new: newVal };
+      }
+    }
+    if (Object.keys(changed).length > 0) {
+      await logAudit(
+        user.id,
+        "risk_settings_update",
+        JSON.stringify({
+          source: "api/settings",
+          actor: user.id,
+          confirm_risk_increase: Boolean(input.confirm_risk_increase),
+          increases,
+          changed,
+        }),
+      );
+    }
+
+    const settings = await getSettings(user.id);
     return NextResponse.json({
-      settings: await getSettings(user.id),
+      settings,
+      resolved: resolveRiskLimits(settings, limits),
       capped:
         input.mode === "auto" && limits.can_execute !== 1
           ? "وضع التنفيذ التلقائي يتطلب موافقة الإدارة. تم الإبقاء على وضع الموافقة اليدوية."

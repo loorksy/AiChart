@@ -162,6 +162,8 @@ export interface AgentOption {
 export interface AgentFinalResult {
   decision: AgentDecision;
   confidence: number;
+  /** Distinct confidence fields — UI must use displayKind/displayValue. */
+  confidenceSemantics?: import("./confidenceSemantics").ConfidenceSemantics;
   summary: string;
   keyReasons: string[];
   riskWarnings: string[];
@@ -193,6 +195,13 @@ export interface AgentFinalResult {
   skillLoadFailures?: Array<{ name: string; version: string; error: string }>;
   /** Resolved trading mode for this run (safe metadata, no prompt content). */
   tradingMode?: { style: string; source: string };
+  /**
+   * Research systems that actually contributed (or were explicitly skipped).
+   * Never claim Backtest/DNA/Shadow/Swarm influence unless status === "used".
+   */
+  researchEvidence?: import("./researchEvidence").ResearchEvidenceBundle;
+  /** Candle coverage report for this run (available/required/refill). */
+  candleCoverage?: import("./dataQualityPolicy").CandleCoverageReport;
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM or a
    *  deterministic fallback, ticker state, candle counts, and the drawing-plan
    *  decision. Never carries secrets or raw reasoning. */
