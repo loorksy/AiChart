@@ -53,8 +53,12 @@ describe("MCP canonical skill catalogue", () => {
 
 describe("MCP skill tools are part of the canonical tool catalog", async () => {
   const { TOOL_CATALOG } = await import("../../tools/schemas/index.js");
-  it("list_agent_skills and load_agent_skill are registered read-only tools", () => {
-    for (const name of ["list_agent_skills", "load_agent_skill"]) {
+  it("list/resolve/load agent skill tools are registered read-only", () => {
+    for (const name of [
+      "list_agent_skills",
+      "resolve_agent_skills",
+      "load_agent_skill",
+    ]) {
       const def = TOOL_CATALOG.find((t) => t.name === name);
       assert.ok(def, `${name} missing from TOOL_CATALOG`);
       assert.equal(def.annotations.readOnlyHint, true, `${name} must be read-only`);

@@ -5,6 +5,7 @@ category: recommendation
 riskLevel: recommendation
 supportedLocales: ["ar", "en"]
 allowedMarkets: ["forex"]
+tags: ["recommendation", "strategy", "setup", "matrix", "entry", "risk", "exit", "forex"]
 description: Universal Combinatorial Matrix of 10,000 Trading Strategy Configurations for Forex.
 metadata: {"aichart":{"requires":{"resources":["aichart://trading-strategies"]}}}
 ---

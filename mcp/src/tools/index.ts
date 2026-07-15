@@ -1,12 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { tradingRulesText, readWorkspaceFile } from "./helpers.js";
+import { readWorkspaceFile } from "./helpers.js";
 import { registerMarketTools } from "./market.js";
 import { registerCoreTools } from "./core.js";
 import { registerMt5Tools } from "./mt5.js";
 import { registerChartsTools } from "./charts.js";
 import { registerWidgets } from "../ui/index.js";
 import { bootstrapText } from "../onboarding/bootstrap.js";
+import { discoverSkills } from "../skills/catalog.js";
+import { skillResourceStub } from "../skills/select.js";
 
 export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
   // Bootstrap "first message" as an invocable prompt (slash command in hosts
@@ -16,7 +18,7 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
     {
       title: "AiChart — bootstrap message (agent setup)",
       description:
-        "Paste as the first message after connecting MCP: loads rules, reads skills, summarizes account.",
+        "Paste as the first message after connecting MCP: loads rules, discovers skills, summarizes account.",
     },
     () => ({
       messages: [
@@ -28,6 +30,7 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
     }),
   );
 
+  // Non-skill workspace resources (full documents — not skills).
   const resources = [
     {
       id: "system",
@@ -44,33 +47,12 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
       file: "AGENTS.md",
     },
     {
-      id: "trading-lexicon",
-      uri: "aichart://trading-lexicon",
-      title: "AiChart Trading Lexicon Skill",
-      description: "Smart money and market terminology guide",
-      file: "skills/trading-lexicon/SKILL.md",
-    },
-    {
-      id: "trading-strategies",
-      uri: "aichart://trading-strategies",
-      title: "AiChart Trading Strategies Skill",
-      description: "Combinatorial matrix of 10,000 trading strategy configurations (English)",
-      file: "skills/trading-strategies/SKILL.md",
-    },
-    {
       id: "execution-desk",
       uri: "aichart://execution-desk",
       title: "AiChart Execution Desk v3 (Disciplined)",
       description:
         "Institutional execution desk: four-agent committee (diagnostic scores) + objective quality gates + EXECUTE/NO TRADE decision",
       file: "EXECUTION_DESK_V3.md",
-    },
-    {
-      id: "cards",
-      uri: "aichart://cards",
-      title: "AiChart Interactive Cards Skill",
-      description: "When and how to show interactive cards (mini widgets) and full catalog",
-      file: "skills/cards/SKILL.md",
     },
     {
       id: "ea-troubleshooting",
@@ -133,8 +115,49 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
             text: readWorkspaceFile(res.file, `# ${res.title}\n\nFile not found or empty.`),
           },
         ],
-      })
+      }),
     );
+  }
+
+  // Skill catalogue resources: metadata stubs ONLY — driven by discoverSkills().
+  // Full bodies are available exclusively via load_agent_skill.
+  // Legacy URIs (aichart://trading-lexicon etc.) also return stubs — never bodies.
+  const LEGACY_SKILL_URIS: Record<string, string> = {
+    "trading-lexicon": "aichart://trading-lexicon",
+    "trading-strategies": "aichart://trading-strategies",
+    cards: "aichart://cards",
+  };
+  const { skills } = discoverSkills();
+  for (const { metadata } of skills) {
+    const stub = skillResourceStub(metadata);
+    const canonicalUri = `aichart://skill/${metadata.name}`;
+    server.registerResource(
+      `skill-${metadata.name}`,
+      canonicalUri,
+      {
+        title: `Skill catalogue: ${metadata.name}`,
+        description: `Metadata only for ${metadata.name}. Not a loaded skill — use load_agent_skill.`,
+        mimeType: "text/markdown",
+      },
+      async () => ({
+        contents: [{ uri: canonicalUri, mimeType: "text/markdown", text: stub }],
+      }),
+    );
+    const legacyUri = LEGACY_SKILL_URIS[metadata.name];
+    if (legacyUri) {
+      server.registerResource(
+        metadata.name,
+        legacyUri,
+        {
+          title: `Skill catalogue: ${metadata.name} (legacy URI)`,
+          description: `Metadata only — not a loaded skill. Prefer load_agent_skill("${metadata.name}").`,
+          mimeType: "text/markdown",
+        },
+        async () => ({
+          contents: [{ uri: legacyUri, mimeType: "text/markdown", text: stub }],
+        }),
+      );
+    }
   }
 
   registerCoreTools(server, bridge);

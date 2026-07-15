@@ -6,6 +6,7 @@ category: presentation
 riskLevel: read_only
 supportedLocales: ["ar", "en"]
 requiredTools: ["render_cards"]
+tags: ["presentation", "cards", "widget", "ui", "layout"]
 ---
 
 # Interactive Cards Skill

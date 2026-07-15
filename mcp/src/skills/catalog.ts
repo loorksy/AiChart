@@ -19,6 +19,8 @@ export interface McpSkillMetadata {
   supportedLocales?: string[];
   allowedMarkets?: string[];
   requiredTools?: string[];
+  /** Optional capability tags from frontmatter — used for scoring, not routing. */
+  tags?: string[];
   enabled: boolean;
 }
 
@@ -98,6 +100,7 @@ function toMetadata(raw: Record<string, unknown>): McpSkillMetadata | null {
     supportedLocales: strings(raw.supportedLocales),
     allowedMarkets: strings(raw.allowedMarkets),
     requiredTools: strings(raw.requiredTools),
+    tags: strings(raw.tags),
     enabled: raw.enabled !== false,
   };
 }
