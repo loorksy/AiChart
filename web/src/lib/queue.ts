@@ -18,6 +18,14 @@ export interface JobPayloads {
   trade_post_mortem: { userId: number; tradeId: number; pnl: number };
   opportunity_scan: { userId: number };
   memory_lifecycle: { userId: number; conversationId: number };
+  deep_analysis_poll: {
+    userId: number;
+    analysisId: string;
+    researchJobId: string;
+    sessionId: string;
+    recommendationId: number | null;
+    generation: number;
+  };
 }
 export type JobName = keyof JobPayloads;
 
@@ -85,8 +93,10 @@ async function getQueue(): Promise<import("bullmq").Queue> {
 export async function enqueue<N extends JobName>(
   name: N,
   payload: JobPayloads[N],
+  opts?: { delayMs?: number },
 ): Promise<void> {
   await ensureJobsRegistered();
+  const delayMs = Math.max(0, opts?.delayMs ?? 0);
   if (queueEnabled()) {
     try {
       const q = await getQueue();
@@ -95,6 +105,7 @@ export async function enqueue<N extends JobName>(
         backoff: { type: "exponential", delay: 5_000 },
         removeOnComplete: 1_000,
         removeOnFail: 5_000,
+        ...(delayMs > 0 ? { delay: delayMs } : {}),
       });
       return;
     } catch (err) {
@@ -104,6 +115,12 @@ export async function enqueue<N extends JobName>(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+  if (delayMs > 0) {
+    setTimeout(() => {
+      void runInline(name, payload);
+    }, delayMs);
+    return;
   }
   await runInline(name, payload);
 }

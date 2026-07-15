@@ -57,7 +57,7 @@ export async function runMarketDataAgent(
     ctx.emitActivity({
       type: "data",
       status: "completed",
-      message: `جهّزت بيانات ${symbol} على فريم ${interval} (${market.dataQuality.currentTfCount} شمعة، سياسة ${market.dataQuality.policyVersion}).`,
+      message: `جهّزت بيانات ${symbol} على فريم ${interval} (${market.dataQuality.currentTfCount} شمعة).`,
       metadata: market.dataQuality,
     });
   }

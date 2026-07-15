@@ -31,9 +31,23 @@ import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
 import {
   collectBoundedResearchEvidence,
-  formatResearchTransparency,
-  researchContributed,
 } from "./researchEvidence";
+import {
+  compositionFallback,
+  scanForInternalLeakage,
+  toUserSafeResearchProjection,
+} from "./userSafeOutbound";
+import {
+  classifyHardSafetyFailure,
+  decideDeepAnalysisTrigger,
+} from "./deepAnalysis/triggers";
+import { enqueueDeepAnalysis } from "./deepAnalysis/enqueue";
+import { composeDeepAnalysisUpdate } from "./deepAnalysis/composeUpdate";
+import { updateDeepAnalysisRun } from "./deepAnalysis/store";
+import {
+  researchBacktestEnabled,
+  researchServiceEnabled,
+} from "@/lib/research/client";
 import { buildInformationalConfidence } from "./confidenceSemantics";
 import { runMarketDataAgent } from "./agents/marketDataAgent";
 import { runStructureAgent } from "./agents/structureAgent";
@@ -295,7 +309,8 @@ export async function runUnifiedChartAgent(
           intent: intents,
           locale,
           market: "forex",
-          availableTools: [],
+          // Tools the chart agent can surface in this path (enables cards skill).
+          availableTools: ["render_cards", "detect_levels", "get_ohlc"],
         })
       : EMPTY_SKILL_CONTEXT;
 
@@ -781,8 +796,7 @@ export async function runUnifiedChartAgent(
     };
   }
 
-  // Intelligent research: DNA/Shadow when useful; Backtest/Validation/Swarm only
-  // when justified — never fabricate usage; never bypass Risk/Execution guards.
+  // Intelligent research: reliability-weighted influence only; never fabricate usage.
   const researchEvidence = await collectBoundedResearchEvidence({
     userId: ctx.userId,
     requestId: ctx.requestId,
@@ -805,11 +819,21 @@ export async function runUnifiedChartAgent(
     latencyBudgetMs: 900,
   });
   const researchFactors = researchEvidence.contributions
-    .filter((c) => c.status === "used" || c.confidenceDelta)
+    .filter((c) => c.status === "used" && c.confidenceDelta)
     .map((c) => ({
-      factor: c.system,
-      status: c.status,
-      effect: c.reasonDetail.slice(0, 160),
+      factor:
+        c.system === "trading_dna"
+          ? "historical_similarity"
+          : c.system === "shadow_trader"
+            ? "historical_agreement"
+            : c.system === "backtest"
+              ? "historical_performance"
+              : "historical_evidence",
+      status: "considered",
+      effect:
+        c.confidenceDelta! > 0
+          ? "Historical reliability nudged confidence up."
+          : "Historical reliability nudged confidence down.",
     }));
   if (
     researchEvidence.recommendationConfidenceDelta !== 0 &&
@@ -844,20 +868,49 @@ export async function runUnifiedChartAgent(
       ],
     };
   }
-  const transparency = formatResearchTransparency(researchEvidence, locale);
-  if (transparency.length) {
-    finalDecision.publicReasoningSummary = [
-      ...(finalDecision.publicReasoningSummary ?? []),
-      ...transparency.slice(0, 12),
-    ];
-  }
-  if (
-    researchContributed(researchEvidence, "trading_dna") ||
-    researchContributed(researchEvidence, "shadow_trader") ||
-    researchContributed(researchEvidence, "backtest")
-  ) {
-    finalDecision.summary = `${finalDecision.summary}\n\n${locale === "en" ? researchEvidence.summaryEn : researchEvidence.summaryAr}`;
-  }
+
+  // User-safe projection → model keeps natural summary; no module-name append.
+  const historicalInsufficient = researchEvidence.contributions.some(
+    (c) =>
+      c.system === "backtest" &&
+      (c.reason === "justified_but_no_completed_job_in_latency_budget" ||
+        c.reason === "insufficient_historical_metrics"),
+  );
+  const conflictingEvidence =
+    researchEvidence.recommendationConfidenceDelta < -0.04 ||
+    researchEvidence.contributions.some((c) =>
+      /disagree|conflict|weakness/i.test(c.reason),
+    );
+
+  const hard = classifyHardSafetyFailure({
+    syncOk: market.sync.ok,
+    stalePrice: !market.freshness.isFresh && market.marketOpen,
+    candleInsufficientUnrecoverable:
+      market.dataQuality.coverage?.status === "insufficient" &&
+      !market.dataQuality.coverage?.sufficientForTrade,
+    executionGuardRejected: false,
+  });
+
+  let deepAnalysisId: string | undefined;
+  let deeperVerification:
+    | "not_started"
+    | "started"
+    | "skipped_not_generalizable" = "not_started";
+
+  const deepTrigger = decideDeepAnalysisTrigger({
+    decision: finalDecision.decision,
+    confidence: finalDecision.confidence,
+    userMessage,
+    hardSafetyOrLiveDataFailure: hard.blocked || Boolean(finalDecision.riskVeto),
+    hardFailureCode: hard.code,
+    historicalConfirmationInsufficient: historicalInsufficient,
+    conflictingEvidence,
+    novelOrWeakSetup:
+      (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
+      finalDecision.confidence < 0.55,
+    researchServiceEnabled: researchServiceEnabled(),
+    researchBacktestEnabled: researchBacktestEnabled(),
+  });
 
   let storedRecommendation: ActiveRecommendation | null = null;
   if (
@@ -876,6 +929,103 @@ export async function runUnifiedChartAgent(
       drawings,
       chartSnapshotHash,
     });
+  }
+
+  if (deepTrigger.run && ctx.userId && deepTrigger.allowReason) {
+    const direction =
+      finalDecision.decision === "buy" || finalDecision.decision === "sell"
+        ? finalDecision.decision
+        : storedRecommendation?.direction ?? "buy";
+    const deepId = `deep-${analysisId}`;
+    deepAnalysisId = deepId;
+    const enqueued = await enqueueDeepAnalysis({
+      userId: ctx.userId,
+      analysisId: deepId,
+      sessionId,
+      chatId: sessionId,
+      recommendationId: null,
+      recommendationRef: storedRecommendation?.id ?? null,
+      locale,
+      allowReason: deepTrigger.allowReason,
+      strategyInput: {
+        symbol: market.symbol,
+        timeframe: market.interval,
+        direction,
+        marketRegime: typeof market.marketRegime === "string" ? market.marketRegime : null,
+        structureBias:
+          finalDecision.decision === "buy"
+            ? "bullish"
+            : finalDecision.decision === "sell"
+              ? "bearish"
+              : null,
+        zoneType:
+          risk.selectedCandidate?.poi.type === "demand" ||
+          risk.selectedCandidate?.poi.type === "supply"
+            ? risk.selectedCandidate.poi.type
+            : null,
+        confirmationRule: risk.selectedCandidate?.setupType ?? null,
+        atr: market.atr,
+        entry: finalDecision.recommendation.entry ?? storedRecommendation?.entry,
+        stopLoss:
+          finalDecision.recommendation.stop_loss ??
+          storedRecommendation?.stopLoss,
+        targets:
+          finalDecision.recommendation.targets ??
+          storedRecommendation?.targets,
+        invalidationLevel: storedRecommendation?.invalidationLevel,
+      },
+    }).catch((err) => {
+      return {
+        ok: false as const,
+        reason: "enqueue_error",
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    });
+
+    if (enqueued.ok) {
+      deeperVerification = "started";
+      const startCopy = composeDeepAnalysisUpdate({
+        locale,
+        phase: "start",
+      });
+      // Fold start notice into summary naturally (one start update).
+      if (!scanForInternalLeakage(finalDecision.summary).length) {
+        finalDecision.summary = `${finalDecision.summary.trim()}\n\n${startCopy.text}`;
+      }
+      await updateDeepAnalysisRun(ctx.userId, deepId, {
+        uxUpdateCount: 1,
+        recommendationId: null,
+      }).catch(() => null);
+    } else if (enqueued.reason === "setup_not_generalizable") {
+      deeperVerification = "skipped_not_generalizable";
+      // Internal only — recorded on researchEvidence path via runTrace callers.
+    }
+  }
+
+  const projection = toUserSafeResearchProjection(researchEvidence, {
+    deeperVerification,
+  });
+
+  // Final leakage scan on user-visible text; regenerate once via fallback if needed.
+  const leakHits = [
+    ...scanForInternalLeakage(finalDecision.summary),
+    ...(finalDecision.publicReasoningSummary ?? []).flatMap((l) =>
+      scanForInternalLeakage(l),
+    ),
+  ];
+  let compositionFallbackUsed = false;
+  if (leakHits.length) {
+    const fb = compositionFallback({
+      locale,
+      decision: finalDecision.decision,
+      projection,
+    });
+    finalDecision.summary = fb.text;
+    compositionFallbackUsed = true;
+    // Strip any leaked public reasoning lines.
+    finalDecision.publicReasoningSummary = (
+      finalDecision.publicReasoningSummary ?? []
+    ).filter((l) => scanForInternalLeakage(l).length === 0);
   }
 
   return {
@@ -903,7 +1053,40 @@ export async function runUnifiedChartAgent(
     selectedSkills: skillContext.loaded.length ? skillContext.loaded : undefined,
     skillLoadFailures: skillContext.failed.length ? skillContext.failed : undefined,
     tradingMode: { style: tradingMode.style, source: tradingMode.source },
-    researchEvidence,
+    // Full research kept for runTrace/admin — stripped before client SSE.
+    researchEvidence: {
+      ...researchEvidence,
+      // Attach projection + deep analysis meta for traces only.
+      timeline: [
+        ...researchEvidence.timeline,
+        {
+          step: "user_safe_projection",
+          status: "completed",
+          reason: projection.historicalAgreement,
+        },
+        ...(deepAnalysisId
+          ? [
+              {
+                step: "deep_analysis",
+                status:
+                  deeperVerification === "started"
+                    ? ("used" as const)
+                    : ("skipped" as const),
+                reason: deepTrigger.allowReason ?? deepTrigger.blockReason,
+              },
+            ]
+          : []),
+        ...(compositionFallbackUsed
+          ? [
+              {
+                step: "composition_fallback",
+                status: "completed" as const,
+                reason: "leakage_or_compose_failure",
+              },
+            ]
+          : []),
+      ],
+    },
     evidenceTimeline: researchEvidence.timeline,
     candleCoverage: market.dataQuality.coverage,
     recommendationId: storedRecommendation?.id,

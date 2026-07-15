@@ -24,7 +24,7 @@ import {
 import { collectTradingDnaEvidence } from "@/lib/tradingDna/evidence";
 import type { TradingDnaSnapshot } from "@/lib/tradingDna/types";
 
-export const RESEARCH_EVIDENCE_POLICY_VERSION = "1.1.0";
+export const RESEARCH_EVIDENCE_POLICY_VERSION = "1.2.0";
 
 export type ResearchSystem =
   | "trading_dna"
@@ -120,7 +120,7 @@ function detectDeepResearchIntent(message: string | undefined): {
       m,
     );
   const wantsSwarm =
-    /\bswarm\b|بحث\s*عميق|مقارنة\s*استراتيج|portfolio\s*analysis|deep\s*research/i.test(
+    /\bswarm\b|بحث\s*عميق|مقارنة\s*استراتيج|portfolio\s*analysis|deep\s*research|تحليل\s*معمق/i.test(
       m,
     );
   return {
@@ -131,20 +131,130 @@ function detectDeepResearchIntent(message: string | undefined): {
   };
 }
 
+export { detectDeepResearchIntent };
+
+function metricNumber(
+  snapshot: TradingDnaSnapshot,
+  key: TradingDnaSnapshot["metrics"][number]["key"],
+): { value: number | null; confidence: number; sampleSize: number; supported: boolean } {
+  const m = snapshot.metrics.find((x) => x.key === key);
+  if (!m || m.status !== "supported") {
+    return { value: null, confidence: 0, sampleSize: 0, supported: false };
+  }
+  const raw = m.value;
+  const value =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string" && Number.isFinite(Number(raw))
+        ? Number(raw)
+        : null;
+  return {
+    value,
+    confidence: Math.max(0, Math.min(1, m.confidence ?? 0)),
+    sampleSize: m.sampleSize ?? 0,
+    supported: true,
+  };
+}
+
+/**
+ * Evidence-reliability DNA influence. Presence of a snapshot alone does not raise confidence.
+ */
+export function scoreDnaReliability(snapshot: TradingDnaSnapshot): {
+  delta: number;
+  detail: string;
+} {
+  const n = snapshot.sampleSize;
+  if (n < MIN_DNA_SAMPLE) {
+    return {
+      delta: 0,
+      detail: `insufficient_historical_metrics n=${n}`,
+    };
+  }
+  // Sample-size reliability weight (not a presence bonus).
+  const sampleWeight = n < 20 ? 0.35 : n < 50 ? 0.7 : 1;
+
+  const strengths = snapshot.conclusions.filter((c) => c.type === "strength");
+  const weaknesses = snapshot.conclusions.filter((c) => c.type === "weakness");
+  const polarity =
+    strengths.length > weaknesses.length
+      ? 1
+      : weaknesses.length > strengths.length
+        ? -1
+        : 0;
+
+  const winLoss = metricNumber(snapshot, "win_loss_behavior");
+  const calibration = metricNumber(snapshot, "confidence_calibration");
+  const drawdown = metricNumber(snapshot, "drawdown_recovery");
+  const avgR = metricNumber(snapshot, "average_r");
+
+  const quality =
+    [
+      winLoss.supported ? winLoss.confidence : 0,
+      calibration.supported ? calibration.confidence : 0,
+      drawdown.supported ? drawdown.confidence : 0,
+      avgR.supported ? avgR.confidence : 0,
+    ].reduce((a, b) => a + b, 0) / 4;
+
+  // Require some metric support — conclusions alone with zero metric support → tiny/no boost.
+  const hasMetricSupport =
+    winLoss.supported ||
+    calibration.supported ||
+    drawdown.supported ||
+    avgR.supported;
+
+  let delta = 0;
+  if (polarity > 0 && hasMetricSupport) {
+    delta = 0.06 * sampleWeight * Math.max(0.25, quality);
+  } else if (polarity < 0) {
+    delta = -0.1 * sampleWeight * Math.max(0.35, quality || 0.5);
+  } else if (hasMetricSupport && avgR.value != null && avgR.value < 0) {
+    delta = -0.05 * sampleWeight;
+  } else {
+    delta = 0;
+  }
+
+  if (drawdown.supported && drawdown.value != null && drawdown.value < 0.4) {
+    delta -= 0.03 * sampleWeight;
+  }
+  if (calibration.supported && calibration.value != null && calibration.value < 0.45) {
+    delta -= 0.02 * sampleWeight;
+  }
+
+  delta = Math.max(-0.12, Math.min(0.08, delta));
+  return {
+    delta,
+    detail: `n=${n} polarity=${polarity} quality=${quality.toFixed(2)} strengths=${strengths.length} weaknesses=${weaknesses.length} delta=${delta.toFixed(3)}`,
+  };
+}
+
+/**
+ * Shadow influence scaled by shadow confidence — not a flat agree/disagree bonus.
+ */
+export function scoreShadowReliability(input: {
+  agrees: boolean;
+  shadowConfidencePct: number;
+}): { delta: number; detail: string } {
+  const conf = Math.max(0, Math.min(100, input.shadowConfidencePct)) / 100;
+  // Low-confidence shadow barely moves the needle.
+  if (conf < 0.35) {
+    return {
+      delta: 0,
+      detail: `shadow_confidence_too_low conf=${conf.toFixed(2)}`,
+    };
+  }
+  const delta = input.agrees ? 0.07 * conf : -0.09 * conf;
+  const clamped = Math.max(-0.12, Math.min(0.08, delta));
+  return {
+    delta: clamped,
+    detail: `agrees=${input.agrees} conf=${conf.toFixed(2)} delta=${clamped.toFixed(3)}`,
+  };
+}
+
 function summarizeDna(snapshot: TradingDnaSnapshot): {
   delta: number;
   detail: string;
 } {
-  const strengths = snapshot.conclusions.filter((c) => c.type === "strength");
-  const weaknesses = snapshot.conclusions.filter((c) => c.type === "weakness");
-  let delta = 0;
-  if (strengths.length > weaknesses.length) delta = 0.05;
-  else if (weaknesses.length > strengths.length) delta = -0.08;
-  else if (snapshot.sampleSize >= 20) delta = 0.02;
-  return {
-    delta,
-    detail: `DNA v${snapshot.version} n=${snapshot.sampleSize} strengths=${strengths.length} weaknesses=${weaknesses.length}`,
-  };
+  return scoreDnaReliability(snapshot);
 }
 
 /**
@@ -325,10 +435,10 @@ export async function collectBoundedResearchEvidence(
               confidenceDelta: delta,
             });
             summariesAr.push(
-              `Trading DNA (مولَّد تلقائياً، n=${sample}) عدّل الثقة بمقدار ${Math.round(delta * 100)} نقطة.`,
+              `سجلّ تاريخي للمشغّل (n=${sample}) أثّر على الثقة وفق موثوقية العينة.`,
             );
             summariesEn.push(
-              `Trading DNA (auto-generated, n=${sample}) adjusted confidence by ${Math.round(delta * 100)} pts.`,
+              `Operator history (n=${sample}) influenced confidence by evidence reliability.`,
             );
             timeline.push({ step: "trading_dna", status: "used" });
           } else {
@@ -370,10 +480,10 @@ export async function collectBoundedResearchEvidence(
           confidenceDelta: delta,
         });
         summariesAr.push(
-          `Trading DNA v${dnaSnapshot.version} (n=${dnaSnapshot.sampleSize}) عدّل ثقة التوصية بمقدار ${Math.round(delta * 100)} نقطة.`,
+          `سجلّ تاريخي للمشغّل (n=${dnaSnapshot.sampleSize}) أثّر على ثقة التوصية وفق موثوقية الدليل.`,
         );
         summariesEn.push(
-          `Trading DNA v${dnaSnapshot.version} (n=${dnaSnapshot.sampleSize}) adjusted recommendation confidence by ${Math.round(delta * 100)} pts.`,
+          `Operator history (n=${dnaSnapshot.sampleSize}) influenced recommendation confidence by evidence reliability.`,
         );
         timeline.push({ step: "trading_dna", status: "used" });
       }
@@ -454,29 +564,43 @@ export async function collectBoundedResearchEvidence(
         (input.decision === "buy" || input.decision === "sell")
       ) {
         const agrees = match.direction === input.decision;
-        const delta = agrees ? 0.04 : -0.06;
+        const { delta, detail } = scoreShadowReliability({
+          agrees,
+          shadowConfidencePct: match.confidence,
+        });
         recommendationConfidenceDelta += delta;
         contributions.push({
           system: "shadow_trader",
-          status: "used",
-          reason: agrees
-            ? "shadow_agrees_with_recommendation"
-            : "shadow_disagrees_with_recommendation",
-          reasonDetail: `Shadow ${match.shadowRecommendationId} directed ${match.direction} @ ${match.confidence}% vs agent ${input.decision}.`,
+          status: delta === 0 ? "skipped" : "used",
+          reason:
+            delta === 0
+              ? "insufficient_shadow_reliability"
+              : agrees
+                ? "shadow_agrees_with_recommendation"
+                : "shadow_disagrees_with_recommendation",
+          reasonDetail: detail,
           shadowId: match.shadowRecommendationId,
           confidenceDelta: delta,
         });
-        summariesAr.push(
-          agrees
-            ? `Shadow Trader وافق الاتجاه (${match.direction}) — تعزيز طفيف للثقة.`
-            : `Shadow Trader خالف الاتجاه (ظلّ: ${match.direction}) — خُفّضت الثقة.`,
-        );
-        summariesEn.push(
-          agrees
-            ? `Shadow Trader agreed (${match.direction}) — slight confidence boost.`
-            : `Shadow Trader disagreed (shadow: ${match.direction}) — confidence reduced.`,
-        );
-        timeline.push({ step: "shadow_trader", status: "used" });
+        if (delta !== 0) {
+          summariesAr.push(
+            agrees
+              ? `مقارنة تاريخية وافقت الاتجاه — تأثير محدود حسب موثوقية العينة.`
+              : `مقارنة تاريخية خالفت الاتجاه — خُفّضت الثقة وفق موثوقية العينة.`,
+          );
+          summariesEn.push(
+            agrees
+              ? `Historical comparison agreed with direction — limited reliability-weighted influence.`
+              : `Historical comparison disagreed — confidence reduced by reliability weight.`,
+          );
+          timeline.push({ step: "shadow_trader", status: "used" });
+        } else {
+          timeline.push({
+            step: "shadow_trader",
+            status: "skipped",
+            reason: "insufficient_shadow_reliability",
+          });
+        }
       } else {
         contributions.push({
           system: "shadow_trader",
@@ -545,24 +669,22 @@ export async function collectBoundedResearchEvidence(
       reason: "justified_but_no_completed_job_in_latency_budget",
     });
   } else {
-    // DNA already carries verified backtest references — influence lightly.
-    const delta = 0.03;
-    recommendationConfidenceDelta += delta;
+    // DNA may carry verified backtest IDs — influence ONLY when metrics exist.
+    // Presence of job IDs alone must not raise confidence.
+    const delta = 0;
     contributions.push({
       system: "backtest",
-      status: "used",
-      reason: "completed_jobs_referenced_in_dna",
-      reasonDetail: `Used ${backtestIds.length} completed backtest id(s) already verified in Trading DNA evidence.`,
+      status: "skipped",
+      reason: "insufficient_historical_metrics",
+      reasonDetail: `Found ${backtestIds.length} completed backtest id(s) in DNA evidence but no parsed reliability metrics in this sync path. Presence alone does not raise confidence.`,
       jobId: backtestIds[0],
       confidenceDelta: delta,
     });
-    summariesEn.push(
-      `Backtest evidence (${backtestIds.length} completed job(s) in DNA) supported the setup.`,
-    );
-    summariesAr.push(
-      `أدلة Backtest (${backtestIds.length} مهمة مكتملة في DNA) دعمت الإعداد.`,
-    );
-    timeline.push({ step: "backtest", status: "used" });
+    timeline.push({
+      step: "backtest",
+      status: "skipped",
+      reason: "insufficient_historical_metrics",
+    });
   }
 
   // ---- Validation (never raises confidence alone; only after backtest used) ----
