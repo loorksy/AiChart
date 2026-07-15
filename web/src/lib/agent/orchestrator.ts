@@ -31,6 +31,7 @@ import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
 import {
   collectBoundedResearchEvidence,
+  formatResearchTransparency,
   researchContributed,
 } from "./researchEvidence";
 import { buildInformationalConfidence } from "./confidenceSemantics";
@@ -780,13 +781,36 @@ export async function runUnifiedChartAgent(
     };
   }
 
-  // Bounded research: read existing Trading DNA only; never fabricate Backtest/Swarm.
+  // Intelligent research: DNA/Shadow when useful; Backtest/Validation/Swarm only
+  // when justified — never fabricate usage; never bypass Risk/Execution guards.
   const researchEvidence = await collectBoundedResearchEvidence({
     userId: ctx.userId,
+    requestId: ctx.requestId,
+    symbol: market.symbol,
+    interval: market.interval,
     actionableCandidate:
       finalDecision.decision === "buy" || finalDecision.decision === "sell",
-    latencyBudgetMs: 400,
+    decision:
+      finalDecision.decision === "buy" || finalDecision.decision === "sell"
+        ? finalDecision.decision
+        : "wait",
+    baseConfidence: finalDecision.confidence,
+    dataQualityScore:
+      typeof finalDecision.confidenceSemantics.dataQuality === "number"
+        ? finalDecision.confidenceSemantics.dataQuality
+        : undefined,
+    newsRisk: news?.newsRisk ?? "unknown",
+    tradingStyle: tradingMode.style,
+    userMessage,
+    latencyBudgetMs: 900,
   });
+  const researchFactors = researchEvidence.contributions
+    .filter((c) => c.status === "used" || c.confidenceDelta)
+    .map((c) => ({
+      factor: c.system,
+      status: c.status,
+      effect: c.reasonDetail.slice(0, 160),
+    }));
   if (
     researchEvidence.recommendationConfidenceDelta !== 0 &&
     finalDecision.confidenceSemantics.displayKind === "recommendation" &&
@@ -807,22 +831,32 @@ export async function runUnifiedChartAgent(
       displayValue: adjusted,
       factors: [
         ...finalDecision.confidenceSemantics.factors,
-        {
-          factor: "trading_dna",
-          status: researchContributed(researchEvidence, "trading_dna")
-            ? "used"
-            : "skipped",
-          effect:
-            researchEvidence.recommendationConfidenceDelta > 0
-              ? "dna_strengthens"
-              : "dna_weakens",
-        },
+        ...researchFactors,
       ],
     };
     finalDecision.confidence = adjusted;
-    if (researchContributed(researchEvidence, "trading_dna")) {
-      finalDecision.summary = `${finalDecision.summary}\n\n${locale === "en" ? researchEvidence.summaryEn : researchEvidence.summaryAr}`;
-    }
+  } else if (researchFactors.length) {
+    finalDecision.confidenceSemantics = {
+      ...finalDecision.confidenceSemantics,
+      factors: [
+        ...finalDecision.confidenceSemantics.factors,
+        ...researchFactors,
+      ],
+    };
+  }
+  const transparency = formatResearchTransparency(researchEvidence, locale);
+  if (transparency.length) {
+    finalDecision.publicReasoningSummary = [
+      ...(finalDecision.publicReasoningSummary ?? []),
+      ...transparency.slice(0, 12),
+    ];
+  }
+  if (
+    researchContributed(researchEvidence, "trading_dna") ||
+    researchContributed(researchEvidence, "shadow_trader") ||
+    researchContributed(researchEvidence, "backtest")
+  ) {
+    finalDecision.summary = `${finalDecision.summary}\n\n${locale === "en" ? researchEvidence.summaryEn : researchEvidence.summaryAr}`;
   }
 
   let storedRecommendation: ActiveRecommendation | null = null;
@@ -870,6 +904,7 @@ export async function runUnifiedChartAgent(
     skillLoadFailures: skillContext.failed.length ? skillContext.failed : undefined,
     tradingMode: { style: tradingMode.style, source: tradingMode.source },
     researchEvidence,
+    evidenceTimeline: researchEvidence.timeline,
     candleCoverage: market.dataQuality.coverage,
     recommendationId: storedRecommendation?.id,
     activeRecommendation: storedRecommendation

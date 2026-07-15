@@ -200,6 +200,8 @@ export interface AgentFinalResult {
    * Never claim Backtest/DNA/Shadow/Swarm influence unless status === "used".
    */
   researchEvidence?: import("./researchEvidence").ResearchEvidenceBundle;
+  /** Truthful runtime evidence timeline for this run. */
+  evidenceTimeline?: import("./researchEvidence").EvidenceTimelineStep[];
   /** Candle coverage report for this run (available/required/refill). */
   candleCoverage?: import("./dataQualityPolicy").CandleCoverageReport;
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM or a

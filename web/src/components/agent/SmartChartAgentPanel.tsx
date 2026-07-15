@@ -220,6 +220,41 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   </ul>
                 </div>
               ) : null}
+              {m.result?.confidenceSemantics?.factors?.length ? (
+                <div className="mt-2 rounded-md bg-background/50 p-2 text-[12px]">
+                  <p className="mb-1 font-medium text-muted-foreground">
+                    {t("agent.confidence_factors")}
+                  </p>
+                  <ul className="space-y-0.5 text-muted-foreground">
+                    {m.result.confidenceSemantics.factors
+                      .slice(0, 8)
+                      .map((f, i) => (
+                        <li key={i}>
+                          <span className="font-medium">{f.factor}</span>
+                          {" · "}
+                          {f.status}
+                          {" — "}
+                          {f.effect}
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              ) : null}
+              {m.result?.evidenceTimeline?.length ? (
+                <div className="mt-2 rounded-md bg-background/50 p-2 text-[12px]">
+                  <p className="mb-1 font-medium text-muted-foreground">
+                    {t("agent.evidence_timeline")}
+                  </p>
+                  <ul className="space-y-0.5 text-muted-foreground">
+                    {m.result.evidenceTimeline.map((step, i) => (
+                      <li key={i}>
+                        {step.step}: {step.status}
+                        {step.reason ? ` (${step.reason})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {m.options?.length ? (
                 <div className="mt-2 grid gap-1">
                   {m.options.map((option, index) => (

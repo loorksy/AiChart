@@ -104,6 +104,8 @@ export const ar: Record<TranslationKey, string> = {
   "agent.recommendation_confidence": "ثقة التوصية",
   "agent.no_actionable_setup": "لا إعداد قابل للتنفيذ",
   "agent.decision_reason": "سبب القرار:",
+  "agent.confidence_factors": "عوامل الثقة:",
+  "agent.evidence_timeline": "خطّ زمن الأدلة:",
   "agent.needs_confirmation": "تحتاج الصفقة تأكيدك قبل التنفيذ",
   "agent.account_live": "حساب LIVE",
   "agent.account_demo": "محاكاة/ديمو",

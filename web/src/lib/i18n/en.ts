@@ -105,6 +105,8 @@ export const en = {
   "agent.recommendation_confidence": "recommendation confidence",
   "agent.no_actionable_setup": "No actionable setup",
   "agent.decision_reason": "Reason for the decision:",
+  "agent.confidence_factors": "Confidence factors:",
+  "agent.evidence_timeline": "Evidence timeline:",
   "agent.needs_confirmation": "This trade needs your confirmation before execution",
   "agent.account_live": "LIVE account",
   "agent.account_demo": "demo / simulation",
