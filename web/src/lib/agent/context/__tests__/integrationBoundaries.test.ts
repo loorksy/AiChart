@@ -6,8 +6,8 @@ const orchestrator = readFileSync(new URL("../../orchestrator.ts", import.meta.u
 const route = readFileSync(new URL("../../../../app/api/agent/chat/stream/route.ts", import.meta.url), "utf8");
 const flags = readFileSync(new URL("../../featureFlags.ts", import.meta.url), "utf8");
 
-test("disabled flag preserves the legacy route path", () => {
-  assert.match(flags, /agentContextV2:\s*\(\)\s*=>\s*flag\("AGENT_CONTEXT_V2",\s*false\)/);
+test("context v2 stays flag-gated so an explicit 0 preserves the legacy route path", () => {
+  assert.match(flags, /agentContextV2:\s*\(\)\s*=>\s*flag\("AGENT_CONTEXT_V2",\s*true\)/);
   assert.ok(route.indexOf("if (FEATURES.agentContextV2())") < route.indexOf("getMessages(user.id, sessionId"));
 });
 

@@ -11,11 +11,12 @@ test("run trace tables stay in PostgreSQL/SQLite parity", () => {
   }
 });
 
-test("trace contracts contain no raw reasoning field and flag is disabled by default", () => {
+test("trace contracts contain no raw reasoning field and stay flag-gated", () => {
   const trace = readFileSync(new URL("../runTrace.ts", import.meta.url), "utf8");
   const flags = readFileSync(new URL("../featureFlags.ts", import.meta.url), "utf8");
   assert.doesNotMatch(trace, /chain.?of.?thought|rawReasoning|hiddenReasoning/i);
-  assert.match(flags, /agentRunTraceV1:\s*\(\)\s*=>\s*flag\("AGENT_RUN_TRACE_V1",\s*false\)/);
+  // Default ON (auditable skill/tool/routing decisions); explicit 0 disables.
+  assert.match(flags, /agentRunTraceV1:\s*\(\)\s*=>\s*flag\("AGENT_RUN_TRACE_V1",\s*true\)/);
 });
 
 test("route writes traces only behind AGENT_RUN_TRACE_V1", () => {

@@ -41,10 +41,16 @@ def test_optional_capture_flags_and_redis_are_safe_by_default() -> None:
     compose = (root / "infra" / "docker-compose.yml").read_text(encoding="utf-8")
     assert "USER 10001:10001" in dockerfile
     assert "USER 10001:10001" in mcp_dockerfile
-    assert "ENV BINANCE_CAPTURE_ENABLED=0" in dockerfile
+    # The crypto-era Binance capture flag was removed with the crypto surface.
+    assert "BINANCE_CAPTURE" not in dockerfile
+    assert "BINANCE_CAPTURE" not in compose
     assert "ENV TRADINGVIEW_MCP_ENABLED=0" in dockerfile
-    assert "BINANCE_CAPTURE_ENABLED=${BINANCE_CAPTURE_ENABLED:-0}" in compose
     assert "TRADINGVIEW_MCP_ENABLED=${TRADINGVIEW_MCP_ENABLED:-0}" in compose
+    # Images must carry the exact deployed commit and the agent content pack.
+    assert "ARG GIT_COMMIT" in dockerfile
+    assert "ARG GIT_COMMIT" in mcp_dockerfile
+    assert "COPY agent/ ./agent/" in dockerfile
+    assert "COPY agent/ /app/agent/" in mcp_dockerfile
     assert '"127.0.0.1:3000:3000"' in compose
     redis = compose.split("  redis:\n", 1)[1].split("\nvolumes:\n", 1)[0]
     assert "--appendonly yes" in redis
