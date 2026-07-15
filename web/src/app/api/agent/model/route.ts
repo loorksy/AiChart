@@ -7,6 +7,7 @@ import { refreshPlatformConfigCache } from "@/lib/platformConfig";
 import { getPublicAppUrl } from "@/lib/appUrl";
 import { APP_VERSION, gitCommit } from "@/lib/version";
 import { featureFlagSnapshot } from "@/lib/agent/featureFlags";
+import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
 
 /** Bridge: platform AI provider + model (Claude MCP reads via get_agent_capabilities). */
 export async function GET(req: NextRequest) {
@@ -30,6 +31,11 @@ export async function GET(req: NextRequest) {
       app_url: getPublicAppUrl(),
       serverVersion: APP_VERSION,
       gitCommit: gitCommit(),
+      // Identity provenance — hash + source only, never prompt content.
+      canonicalPrompt: {
+        hash: canonicalIdentityHash(),
+        source: canonicalIdentity().source,
+      },
       forex_backend: forexBackend,
       featureFlags: {
         confidenceGate: true,

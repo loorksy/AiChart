@@ -331,7 +331,9 @@ export async function runMarketAnalyze(
   }
   const style = opts?.tradingStyle ?? settings.trading_style ?? "day";
   const profile = profileForTradingStyle(style);
-  const minRr = Math.max(getEffectiveMinRr(settings), style === "scalp" || style === "day" ? 1.5 : 1);
+  // Same disciplined floor as the unified agent (effectiveMinRr): scalp/day
+  // recommendations never go below 1.8 — the two paths must not drift.
+  const minRr = Math.max(getEffectiveMinRr(settings), style === "scalp" || style === "day" ? 1.8 : 1);
   const styleHints = buildTradingStylePromptHints(style);
   const emit = (a: import("./agentActivity").AgentActivity) =>
     opts?.onActivity?.(a);

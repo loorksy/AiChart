@@ -1,7 +1,9 @@
 import type { AgentChartContext, AgentFinalResult, AgentIntent, AgentRunContext } from "../types";
+import type { AppLocale } from "@/lib/i18n";
 import { buildAgentMarketContext } from "../marketContext/buildAgentMarketContext";
 import { newId } from "../activity";
 import { sanitizeAgentDrawings } from "../drawings/drawingOwnership";
+import { bilingual, composeStatusReply } from "../statusReply";
 import { buildTrendlineDrawing } from "./buildTrendlineDrawing";
 import { buildSupportResistanceDrawing } from "./buildSupportResistanceDrawing";
 
@@ -9,20 +11,35 @@ export async function handleDrawingCommand(input: {
   intents: AgentIntent[];
   chartContext?: AgentChartContext;
   ctx: AgentRunContext;
+  locale?: AppLocale;
+  userMessage?: string;
 }): Promise<AgentFinalResult> {
   const { intents, chartContext, ctx } = input;
+  const locale: AppLocale = input.locale ?? "ar";
   const analysisId = newId();
 
   if (intents.includes("clear_agent_drawings")) {
     ctx.emitActivity({
       type: "drawing",
       status: "completed",
-      message: "مسحت رسومات الوكيل من الشارت.",
+      message: bilingual(locale, "مسحت رسومات الوكيل من الشارت.", "Cleared the agent's drawings from the chart."),
+    });
+    const summary = await composeStatusReply({
+      situation:
+        "The operator asked to clear the agent-owned drawings from the chart and they were cleared. No trade recommendation was requested or issued. Acknowledge briefly.",
+      facts: { clearedAgentDrawings: true, recommendationIssued: false },
+      locale,
+      userMessage: input.userMessage,
+      fallback: bilingual(
+        locale,
+        "مسحت رسومات الوكيل من الشارت. لم أُصدر توصية تداول.",
+        "Cleared my drawings from the chart. No trade recommendation was issued.",
+      ),
     });
     return {
       decision: "informational",
       confidence: 0.9,
-      summary: "مسحت رسومات الوكيل من الشارت. لم أُصدر توصية تداول لأن طلبك كان مسح الرسم فقط.",
+      summary,
       keyReasons: [],
       riskWarnings: [],
       activityEvents: [],
@@ -37,8 +54,8 @@ export async function handleDrawingCommand(input: {
     type: "drawing",
     status: "started",
     message: intents.includes("draw_trendline")
-      ? "أقرأ القمم والقيعان الواضحة لرسم خط الاتجاه."
-      : "أقرأ المستويات القوية لرسم الدعم والمقاومة.",
+      ? bilingual(locale, "أقرأ القمم والقيعان الواضحة لرسم خط الاتجاه.", "Reading clear swing highs/lows to draw the trend line.")
+      : bilingual(locale, "أقرأ المستويات القوية لرسم الدعم والمقاومة.", "Reading strong levels to draw support and resistance."),
     metadata: { symbol, interval },
   });
 
@@ -65,8 +82,11 @@ export async function handleDrawingCommand(input: {
     return {
       decision: "action_required",
       confidence: 0,
-      summary:
+      summary: bilingual(
+        locale,
         "لم أرسم شيئًا لأن بيانات الوكيل غير متزامنة مع الشارت الحالي. حدّث الشارت أو انتظر اكتمال مزامنة الشموع ثم أعد طلب الرسم.",
+        "I did not draw anything because my data is out of sync with the current chart. Refresh the chart or wait for candles to sync, then ask again.",
+      ),
       keyReasons: [market.sync.reason],
       riskWarnings: [],
       activityEvents: [],
@@ -87,18 +107,43 @@ export async function handleDrawingCommand(input: {
     type: "drawing",
     status: "completed",
     message: drawings.length
-      ? "رسمت المطلوب على الشارت دون إصدار توصية تداول."
-      : "لم أجد نقاطًا قوية كافية للرسم دون تضليل.",
+      ? bilingual(locale, "رسمت المطلوب على الشارت دون إصدار توصية تداول.", "Drew the requested objects without issuing a trade recommendation.")
+      : bilingual(locale, "لم أجد نقاطًا قوية كافية للرسم دون تضليل.", "No points strong enough to draw without being misleading."),
     metadata: { count: drawings.length },
+  });
+
+  const summary = await composeStatusReply({
+    situation: drawings.length
+      ? "The operator asked for a drawing-only action; the drawings were placed from real chart data. No risk evaluation or trade decision was run — describe briefly what was drawn."
+      : "The operator asked for a drawing-only action, but the available points were too weak to draw reliably, so nothing was drawn. Explain honestly.",
+    facts: {
+      request: intents.includes("draw_support_resistance") ? "support_resistance" : "trendline",
+      symbol,
+      interval,
+      drawingsPlaced: drawings.length,
+      drawingTypes: [...new Set(drawings.map((d) => d.type))],
+      recommendationIssued: false,
+    },
+    locale,
+    userMessage: input.userMessage,
+    fallback: drawings.length
+      ? bilingual(
+          locale,
+          "رسمت المطلوب بناءً على بيانات الشارت الحالية. لم أُصدر توصية تداول لأن طلبك كان رسمًا فقط.",
+          "Drew the requested objects from the current chart data. No trade recommendation was issued — the request was drawing only.",
+        )
+      : bilingual(
+          locale,
+          "لم أرسم شيئًا لأن النقاط المتاحة غير كافية لرسم موثوق. لم أُصدر توصية تداول.",
+          "I did not draw anything — the available points were not strong enough for a reliable drawing. No trade recommendation was issued.",
+        ),
   });
 
   return {
     decision: "informational",
     confidence: drawings.length ? 0.85 : 0.55,
-    summary: drawings.length
-      ? "رسمت المطلوب بناءً على بيانات الشارت الحالية. لم أُصدر توصية تداول لأن طلبك كان رسمًا فقط."
-      : "لم أرسم شيئًا لأن النقاط المتاحة غير كافية أو غير متزامنة بما يكفي لرسم موثوق. لم أُصدر توصية تداول.",
-    keyReasons: drawings.length ? ["طلبك كان رسمًا فقط، لذلك لم أشغّل تقييم المخاطر أو قرار شراء/بيع."] : [],
+    summary,
+    keyReasons: [],
     riskWarnings: [],
     activityEvents: [],
     drawings,

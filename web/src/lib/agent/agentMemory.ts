@@ -64,6 +64,33 @@ function memoryType(value: string | null | undefined): AgentMemoryType {
     : "user_preference";
 }
 
+const PREFERENCE_TYPES: ReadonlySet<AgentMemoryType> = new Set([
+  "user_preference",
+  "trading_preference",
+  "risk_preference",
+  "strategy_preference",
+  "chart_preference",
+  "platform_preference",
+]);
+
+/** Normalized token set for near-duplicate / contradiction comparison. */
+function tokenSet(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/)
+      .filter((token) => token.length > 1),
+  );
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / (a.size + b.size - shared);
+}
+
 export function safeMemoryMatches(input: {
   matches: readonly SearchSemanticMemoryMatch[];
   symbol?: string;
@@ -75,7 +102,7 @@ export function safeMemoryMatches(input: {
   const now = input.now ?? Date.now();
   const symbol = input.symbol?.toUpperCase();
   const timeframe = input.timeframe?.toLowerCase();
-  return input.matches
+  const ranked = input.matches
     .flatMap((match) => {
       const expiresAt = timestamp(match.expires_at);
       if (expiresAt && expiresAt <= now) return [];
@@ -90,12 +117,18 @@ export function safeMemoryMatches(input: {
       const symbolBoost = symbol && match.symbol?.toUpperCase() === symbol ? 0.08 : 0;
       const timeframeBoost = timeframe && match.timeframe?.toLowerCase() === timeframe ? 0.04 : 0;
       const localeBoost = input.locale && match.locale === input.locale ? 0.02 : 0;
-      const rank = match.score * 0.55 + confidence * 0.25 + recency * 0.1 + symbolBoost + timeframeBoost + localeBoost;
+      // Explicit user statements and corrections outrank inferred memories.
+      const type = memoryType(match.memory_type ?? match.category);
+      const provenanceBoost =
+        match.source === "explicit_user_preference" ? 0.08 : type === "feedback" ? 0.05 : 0;
+      const rank =
+        match.score * 0.55 + confidence * 0.25 + recency * 0.1 +
+        symbolBoost + timeframeBoost + localeBoost + provenanceBoost;
       const locale: "ar" | "en" | undefined =
         match.locale === "ar" || match.locale === "en" ? match.locale : undefined;
       return [{
         id: String(match.id),
-        type: memoryType(match.memory_type ?? match.category),
+        type,
         content: sanitized.text,
         confidence,
         source: match.source ?? "agent",
@@ -106,13 +139,42 @@ export function safeMemoryMatches(input: {
         timeframe: match.timeframe ?? undefined,
         locale,
         rank,
+        tokens: tokenSet(sanitized.text),
       }];
     })
-    .sort((a, b) => b.rank - a.rank || b.createdAt - a.createdAt || a.id.localeCompare(b.id))
+    .sort((a, b) => b.rank - a.rank || b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+
+  // Deduplicate near-identical memories and resolve contradictions: for two
+  // overlapping preference memories of the same type and symbol scope, the
+  // NEWER one wins (a user correction supersedes the older inferred value)
+  // even when the older one ranked higher on similarity alone.
+  const kept: typeof ranked = [];
+  for (const entry of ranked) {
+    let superseded = false;
+    for (let i = 0; i < kept.length; i += 1) {
+      const existing = kept[i]!;
+      const overlap = jaccard(entry.tokens, existing.tokens);
+      const sameScope =
+        entry.type === existing.type &&
+        (entry.symbol ?? "") === (existing.symbol ?? "");
+      const nearDuplicate = overlap >= 0.85;
+      const contradictionCandidate =
+        sameScope && PREFERENCE_TYPES.has(entry.type) && overlap >= 0.5;
+      if (nearDuplicate || contradictionCandidate) {
+        if (entry.createdAt > existing.createdAt) kept[i] = entry;
+        superseded = true;
+        break;
+      }
+    }
+    if (!superseded) kept.push(entry);
+  }
+
+  return kept
     .slice(0, Math.max(0, Math.min(input.limit ?? 5, 5)))
     .map((entry) => {
-      const memory = { ...entry } as SafeAgentMemory & { rank?: number };
+      const memory = { ...entry } as SafeAgentMemory & { rank?: number; tokens?: Set<string> };
       delete memory.rank;
+      delete memory.tokens;
       return memory;
     });
 }

@@ -7,7 +7,7 @@
  * without a real key or network. Tokens are never logged.
  */
 import type { VoiceServerConfig } from "./voiceSessionConfig";
-import { voiceSystemInstructions } from "./voiceSessionInstructions";
+import { voiceSystemInstructions } from "./voiceIdentity";
 import type { AppLocale } from "@/lib/i18n";
 
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
@@ -50,7 +50,20 @@ export async function createRealtimeClientSecret(
       type: "realtime",
       model: config.model,
       instructions: voiceSystemInstructions(locale),
-      audio: { output: { voice: config.voice } },
+      audio: {
+        // Disable auto-response from the FIRST moment of the session (the
+        // client re-applies this on session.update). The platform agent
+        // drives every substantive turn; without this there is a window
+        // before the data channel opens where the model could answer alone.
+        input: {
+          turn_detection: {
+            type: "server_vad",
+            create_response: false,
+            interrupt_response: true,
+          },
+        },
+        output: { voice: config.voice },
+      },
     },
   };
 

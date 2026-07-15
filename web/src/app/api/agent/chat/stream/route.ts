@@ -32,6 +32,7 @@ import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { tradingStyleForInterval } from "@/lib/analysisProfile";
 import type { AgentActivityEvent } from "@/lib/agent/types";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
+import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
 import { getMessages } from "@/lib/agent/chatHistory/chatStore";
 import {
@@ -391,7 +392,11 @@ export async function POST(req: NextRequest) {
               symbol: body.chartContext?.symbol,
               timeframe: body.chartContext?.interval,
               intents: previewIntents,
-              featureFlags: featureFlagSnapshot(),
+              featureFlags: {
+                ...featureFlagSnapshot(),
+                // Safe identity provenance: hash + source only, never content.
+                [`prompt:${canonicalIdentityHash()}`]: canonicalIdentity().source === "file",
+              },
               contextVersion: conversationContext ? "v2" : "legacy",
               contextMessageCount: conversationContext?.messages.length ?? 0,
               recalledMemoryCount: conversationContext?.recalledMemoryIds.length ?? 0,
@@ -460,6 +465,7 @@ export async function POST(req: NextRequest) {
                 // Names/versions only — safe skill diagnostics, never content.
                 selectedSkills: result.selectedSkills ?? [],
                 skillLoadFailures: result.skillLoadFailures ?? [],
+                tradingMode: result.tradingMode ?? null,
               },
             });
             await finalizeAgentRun({

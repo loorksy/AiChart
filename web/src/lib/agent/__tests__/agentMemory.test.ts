@@ -59,3 +59,68 @@ test("candidate classifier saves durable preferences only", () => {
   assert.equal(classifyAgentMemoryCandidate("أفضل دائماً مخاطرة واحد بالمئة")?.type, "risk_preference");
   assert.equal(classifyAgentMemoryCandidate("I prefer swing trading")?.type, "trading_preference");
 });
+
+test("newer preference supersedes an older contradicting one (user correction wins)", () => {
+  const now = Date.now();
+  const old = memory({
+    id: 10,
+    content: "أفضل التداول على الذهب بأسلوب سكالب سريع مع مخاطرة عالية",
+    memory_type: "trading_preference",
+    created_at: new Date(now - 90 * 86_400_000).toISOString(),
+    score: 0.95,
+  });
+  const corrected = memory({
+    id: 11,
+    content: "أفضل التداول على الذهب بأسلوب سوينغ هادئ مع مخاطرة منخفضة",
+    memory_type: "trading_preference",
+    created_at: new Date(now - 1 * 86_400_000).toISOString(),
+    score: 0.6,
+  });
+  const result = safeMemoryMatches({ matches: [old, corrected], now });
+  const ids = result.map((m) => m.id);
+  assert.ok(ids.includes("11"), "the newer correction must be recalled");
+  assert.ok(!ids.includes("10"), "the contradicted older preference must be superseded");
+});
+
+test("near-duplicate memories are deduplicated keeping the newest", () => {
+  const now = Date.now();
+  const a = memory({
+    id: 20,
+    content: "Prefer tight stop loss placement below structure",
+    memory_type: "risk_preference",
+    created_at: new Date(now - 30 * 86_400_000).toISOString(),
+    score: 0.9,
+  });
+  const b = memory({
+    id: 21,
+    content: "Prefer tight stop loss placement below structure always",
+    memory_type: "risk_preference",
+    created_at: new Date(now - 2 * 86_400_000).toISOString(),
+    score: 0.7,
+  });
+  const result = safeMemoryMatches({ matches: [a, b], now });
+  assert.equal(result.filter((m) => ["20", "21"].includes(m.id)).length, 1);
+  assert.equal(result.find((m) => ["20", "21"].includes(m.id))?.id, "21");
+});
+
+test("explicit user preferences outrank inferred memories of equal similarity", () => {
+  const now = Date.now();
+  const inferred = memory({
+    id: 30,
+    content: "يفضل المستخدم التحليل على فريم الساعة",
+    memory_type: "user_preference",
+    source: "agent",
+    created_at: new Date(now - 5 * 86_400_000).toISOString(),
+    score: 0.8,
+  });
+  const explicit = memory({
+    id: 31,
+    content: "أنا أفضل متابعة فريم الأربع ساعات دائماً",
+    memory_type: "user_preference",
+    source: "explicit_user_preference",
+    created_at: new Date(now - 5 * 86_400_000).toISOString(),
+    score: 0.8,
+  });
+  const result = safeMemoryMatches({ matches: [inferred, explicit], now });
+  assert.equal(result[0]?.id, "31");
+});

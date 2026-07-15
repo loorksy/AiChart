@@ -12,7 +12,7 @@ import {
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { CandlestickChart, MessageSquare } from "lucide-react";
+import { CandlestickChart, MessageSquare, PanelLeft, X } from "lucide-react";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 
 const TvChart = dynamic(() => import("@/components/chart/TvChart"), {
@@ -103,6 +103,9 @@ export function SmartChartWorkspace({
   // Last final agent result — surfaced read-only via the dev/test debug bridge.
   const lastFinalResultRef = useRef<AgentFinalResult | null>(null);
   const [mobilePane, setMobilePane] = useState<MobilePane>(DEFAULT_MOBILE_PANE);
+  // Mobile drawer for the SAME AgentChatSidebar the desktop column renders —
+  // one navigation implementation, adapted responsively (no legacy fallback).
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
   const chatEnabled = smartAgentEnabled && !guest;
 
   const { locale, t, dir } = useLocale();
@@ -655,6 +658,47 @@ export function SmartChartWorkspace({
           </div>
         )}
 
+        {/* Mobile: the SAME sidebar in an overlay drawer (never a legacy nav). */}
+        {chatEnabled && chatSidebarOpen && (
+          <div className="fixed inset-0 z-50 md:hidden" dir={dir}>
+            <button
+              type="button"
+              aria-label={t("agent.close")}
+              onClick={() => setChatSidebarOpen(false)}
+              className="absolute inset-0 bg-black/60"
+            />
+            <div className="absolute inset-y-0 start-0 flex w-[280px] max-w-[85vw] flex-col bg-card shadow-xl">
+              <div className="flex justify-end p-2">
+                <button
+                  type="button"
+                  aria-label={t("agent.close")}
+                  onClick={() => setChatSidebarOpen(false)}
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1">
+                <AgentChatSidebar
+                  sessions={chat.sessions}
+                  activeChatId={chat.activeChatId}
+                  onSelectChat={(id) => {
+                    chat.selectChat(id);
+                    setChatSidebarOpen(false);
+                    setMobilePane("chat");
+                  }}
+                  onNewChat={() => {
+                    void chat.newChat();
+                    setChatSidebarOpen(false);
+                    setMobilePane("chat");
+                  }}
+                  busy={!chat.ready}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className={chartPaneClass}>
           {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
               setResolution) — never remount, so drawings and chart state survive. */}
@@ -764,8 +808,17 @@ export function SmartChartWorkspace({
       {chatEnabled && (
         <div
           dir={dir}
-          className="grid shrink-0 grid-cols-2 border-t border-border/60 bg-card p-1 md:hidden"
+          className="grid shrink-0 grid-cols-[auto_1fr_1fr] border-t border-border/60 bg-card p-1 md:hidden"
         >
+          <button
+            type="button"
+            aria-label={t("nav.chats")}
+            aria-expanded={chatSidebarOpen}
+            onClick={() => setChatSidebarOpen(true)}
+            className="flex items-center justify-center rounded-md px-3 py-2 text-muted-foreground hover:bg-muted"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </button>
           <button
             type="button"
             aria-pressed={mobilePane === "chart"}

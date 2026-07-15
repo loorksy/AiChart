@@ -191,6 +191,8 @@ export interface AgentFinalResult {
   selectedSkills?: Array<{ name: string; version: string }>;
   /** Skills selected for this run whose load failed (reported honestly). */
   skillLoadFailures?: Array<{ name: string; version: string; error: string }>;
+  /** Resolved trading mode for this run (safe metadata, no prompt content). */
+  tradingMode?: { style: string; source: string };
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM or a
    *  deterministic fallback, ticker state, candle counts, and the drawing-plan
    *  decision. Never carries secrets or raw reasoning. */

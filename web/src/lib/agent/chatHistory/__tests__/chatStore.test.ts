@@ -119,3 +119,49 @@ test("deriveChatTitle: first meaningful line, trimmed and capped", async () => {
   assert.ok(title.length <= 48, "title is capped");
   assert.ok(title.endsWith("…"), "long title is ellipsized");
 });
+
+test("long histories stay bounded, deletion is tenant-scoped, and reopen restores context", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "lonora-chat2-"));
+  process.env.DB_PATH = join(dir, "test.db");
+  process.env.ENCRYPTION_KEY = "0".repeat(64);
+  process.env.APP_SECRET = "test-secret";
+  delete process.env.DATABASE_URL;
+
+  const db = await import("@/lib/db");
+  await db.initDb();
+  const owner = await db.insertReturningId(
+    "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+    ["owner2@test.com", "x", "user", "active"],
+  );
+  const attacker = await db.insertReturningId(
+    "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
+    ["attacker2@test.com", "x", "user", "active"],
+  );
+  const store = await import("@/lib/agent/chatHistory/chatStore");
+
+  const chat = await store.createChat({ userId: owner, symbol: "EURUSD", interval: "1h" });
+  for (let i = 0; i < 60; i += 1) {
+    await store.appendMessage(owner, chat.id, {
+      role: i % 2 === 0 ? "user" : "assistant",
+      content: `message ${i}`,
+    });
+  }
+
+  // Pagination limit is respected and returns the MOST RECENT window in order.
+  const limited = await store.getMessages(owner, chat.id, 20);
+  assert.equal(limited.length, 20);
+  assert.equal(limited.at(-1)?.content, "message 59");
+  assert.equal(limited[0]?.content, "message 40");
+
+  // Reopen restores chart/session context on the chat record.
+  const reopened = await store.getChat(owner, chat.id);
+  assert.equal(reopened?.symbol, "EURUSD");
+  assert.equal(reopened?.interval, "1h");
+
+  // Deletion: another tenant cannot delete; the owner can.
+  assert.equal(await store.deleteChat(attacker, chat.id), false);
+  assert.ok(await store.getChat(owner, chat.id), "chat survives foreign delete");
+  assert.equal(await store.deleteChat(owner, chat.id), true);
+  assert.equal(await store.getChat(owner, chat.id), null);
+  assert.equal((await store.getMessages(owner, chat.id)).length, 0);
+});

@@ -66,7 +66,7 @@ export function SidebarProfileMenu() {
       icon: UserIcon,
       onSelect: () => {
         setOpen(false);
-        router.push("/dashboard");
+        router.push("/console");
       },
     },
     {
@@ -75,7 +75,7 @@ export function SidebarProfileMenu() {
       icon: Sliders,
       onSelect: () => {
         setOpen(false);
-        router.push("/settings");
+        router.push("/console/settings");
       },
     },
     {
@@ -92,7 +92,7 @@ export function SidebarProfileMenu() {
       icon: Plug,
       onSelect: () => {
         setOpen(false);
-        router.push("/settings");
+        router.push("/console/connect");
       },
     },
     {
