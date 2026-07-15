@@ -20,17 +20,45 @@ function market(): AgentMarketContext {
     interval: "15m",
     currentPrice: 1.1,
     marketRegime: "range",
-    dataQuality: { currentTfCount: 600, higherTfCount: 250, dailyCount: 120, sufficient: true },
+    dataQuality: {
+      currentTfCount: 600,
+      higherTfCount: 250,
+      dailyCount: 120,
+      sufficient: true,
+      policyVersion: "1.1.0",
+      coverage: {
+        policyVersion: "1.1.0",
+        analysisKind: "intraday",
+        gate: "trade",
+        status: "sufficient",
+        sufficientForAnalysis: true,
+        sufficientForTrade: true,
+        sufficientForDrawing: true,
+        timeframes: [],
+        summaryAr: "كافٍ",
+        summaryEn: "sufficient",
+      },
+    },
     currentTfCandles: [],
     higherTfCandles: [],
     dailyCandles: [],
   } as unknown as AgentMarketContext;
 }
 
+import { buildWaitConfidence } from "@/lib/agent/confidenceSemantics";
+
 function det(over: Partial<FinalDecisionResult> = {}): FinalDecisionResult {
+  const confidenceSemantics = buildWaitConfidence({
+    decisionConfidence: 0.82,
+    dataQualityScore: 0.7,
+    setupQuality: null,
+    reasons: ["نسبة العائد/المخاطرة غير كافية."],
+    riskVeto: false,
+  });
   return {
     decision: "wait",
-    confidence: 0.6,
+    confidence: 0.82,
+    confidenceSemantics,
     summary: "انتظار: لا منطقة دخول.",
     keyReasons: ["نسبة العائد/المخاطرة غير كافية."],
     riskWarnings: [],

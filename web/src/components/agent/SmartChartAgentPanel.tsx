@@ -160,11 +160,27 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   >
                     {t(`decision.${m.result.decision}`)}
                   </span>
-                  {m.result.confidence > 0 && (
+                  {m.result.confidenceSemantics?.displayKind &&
+                  m.result.confidenceSemantics.displayKind !== "none" &&
+                  typeof m.result.confidenceSemantics.displayValue ===
+                    "number" ? (
                     <span className="text-muted-foreground">
-                      {t("agent.confidence")} {Math.round(m.result.confidence * 100)}%
+                      {t(m.result.confidenceSemantics.displayLabelKey)}{" "}
+                      {Math.round(
+                        m.result.confidenceSemantics.displayValue * 100,
+                      )}
+                      %
+                      {m.result.decision === "wait" &&
+                      m.result.confidenceSemantics.displayKind ===
+                        "decision"
+                        ? ` · ${t("agent.no_actionable_setup")}`
+                        : null}
                     </span>
-                  )}
+                  ) : m.result.decision === "wait" ? (
+                    <span className="text-muted-foreground">
+                      {t("agent.no_actionable_setup")}
+                    </span>
+                  ) : null}
                 </div>
               )}
               <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>

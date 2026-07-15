@@ -23,6 +23,10 @@ import type {
   FinalDecisionInput,
   FinalDecisionResult,
 } from "./finalDecisionAgent";
+import {
+  buildRecommendationConfidence,
+  buildWaitConfidence,
+} from "../confidenceSemantics";
 import type { DrawingCandidate } from "../drawings/buildDrawingPlan";
 import type { MarketNarrative } from "../marketContext/buildMarketNarrative";
 import { summarizeChartDrawings } from "../chartDrawingContext";
@@ -277,9 +281,51 @@ function applySafetyClamps(
     }
   }
 
+  // Preserve distinct confidence semantics — never silently swap fields.
+  const confidenceSemantics =
+    decision === "wait"
+      ? buildWaitConfidence({
+          decisionConfidence: Math.max(
+            confidence,
+            typeof det.confidenceSemantics.decisionConfidence === "number"
+              ? det.confidenceSemantics.decisionConfidence
+              : confidence,
+          ),
+          dataQualityScore:
+            typeof det.confidenceSemantics.dataQuality === "number"
+              ? det.confidenceSemantics.dataQuality
+              : 0.5,
+          setupQuality:
+            typeof det.confidenceSemantics.setupQuality === "number"
+              ? det.confidenceSemantics.setupQuality
+              : null,
+          reasons: keyReasons.length ? keyReasons : det.keyReasons,
+          riskVeto: det.riskVeto,
+        })
+      : buildRecommendationConfidence({
+          base: confidence,
+          dataQualityScore:
+            typeof det.confidenceSemantics.dataQuality === "number"
+              ? det.confidenceSemantics.dataQuality
+              : 0.8,
+          setupQuality:
+            typeof det.confidenceSemantics.setupQuality === "number"
+              ? det.confidenceSemantics.setupQuality
+              : confidence,
+          newsRisk,
+          dataSufficientForTrade:
+            typeof det.confidenceSemantics.recommendationConfidence === "number",
+        });
+
+  const displayConfidence =
+    typeof confidenceSemantics.displayValue === "number"
+      ? confidenceSemantics.displayValue
+      : 0;
+
   return {
     decision,
-    confidence,
+    confidence: displayConfidence,
+    confidenceSemantics,
     summary: sanitizePublicText(parsed.summary).slice(0, 900) || det.summary,
     keyReasons: keyReasons.length ? keyReasons : det.keyReasons,
     riskWarnings: clean(

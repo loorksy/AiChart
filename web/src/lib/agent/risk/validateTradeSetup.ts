@@ -20,6 +20,8 @@ export interface TradeValidationInput {
   htfConflict: boolean;
   newsRisk: "low" | "medium" | "high" | "unknown";
   dataSufficient: boolean;
+  /** Exact coverage explanation when data is insufficient (never invents counts). */
+  coverageDetail?: string;
   /** Minimum acceptable reward:risk (defaults to 1.5). */
   minRr?: number;
   /** Educational-only requests skip the RR gate. */
@@ -74,7 +76,10 @@ export function validateTradeSetup(
   }
 
   if (!input.dataSufficient) {
-    reasons.push("Candle coverage is insufficient.");
+    reasons.push(
+      input.coverageDetail?.trim() ||
+        "Candle coverage is insufficient — available/required counts were not supplied.",
+    );
   }
   if (!input.hasValidPoi) {
     reasons.push("Entry is not near a valid POI.");

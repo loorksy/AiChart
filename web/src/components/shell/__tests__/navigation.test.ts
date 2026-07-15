@@ -18,6 +18,7 @@ test("APP_NAV is the single navigation source and covers the agent product pages
     "/statistics",
     "/console/connect",
     "/console/settings",
+    "/console/risk",
     "/console/mcp",
   ]) {
     assert.ok(hrefs.includes(required), `APP_NAV missing ${required}`);

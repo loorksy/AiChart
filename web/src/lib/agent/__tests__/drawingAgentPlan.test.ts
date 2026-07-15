@@ -25,6 +25,18 @@ const market = {
 const finalDecision: FinalDecisionResult = {
   decision: "wait",
   confidence: 0.6,
+  confidenceSemantics: {
+    analysisConfidence: 0.6,
+    decisionConfidence: 0.6,
+    dataQuality: 1,
+    setupQuality: "not_applicable",
+    recommendationConfidence: "not_applicable",
+    executionReadiness: "not_applicable",
+    displayKind: "decision",
+    displayLabelKey: "agent.decision_confidence",
+    displayValue: 0.6,
+    factors: [],
+  },
   summary: "",
   keyReasons: [],
   riskWarnings: [],
