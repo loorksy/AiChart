@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   CandlestickChart,
   History,
   KeyRound,
@@ -6,6 +7,7 @@ import {
   Link2,
   Plug,
   Settings,
+  Target,
   TrendingUp,
   Users,
   FileText,
@@ -35,6 +37,8 @@ export const APP_NAV: NavItem[] = [
   { href: "/console", label: "نظرة", icon: LayoutDashboard, exact: true },
   { href: "/console/trades", label: "الصفقات", icon: TrendingUp },
   { href: "/console/recommendations", label: "سجل التوصيات", icon: History },
+  { href: "/recommendations", label: "التوصيات المتتبعة", icon: Target },
+  { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
   { href: "/console/connect", label: "الاتصالات", icon: Link2 },
   { href: "/console/settings", label: "الإعدادات", icon: Settings },
   { href: "/console/mcp", label: "Claude MCP", icon: Plug },

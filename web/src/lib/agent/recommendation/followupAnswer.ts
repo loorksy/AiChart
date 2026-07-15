@@ -1,5 +1,6 @@
 import { callLLM, isLLMConfigured } from "@/lib/llm";
 import { sanitizePublicText } from "../activity";
+import { canonicalIdentityCore } from "../canonicalIdentity";
 import type { ActiveRecommendation } from "../sessionRecommendation";
 import type { RecommendationStatusEvaluation } from "./evaluateRecommendationStatus";
 
@@ -9,7 +10,7 @@ export async function composeRecommendationExplanation(input: {
 }): Promise<string> {
   return compose({
     task:
-      "اشرح للمستخدم على ماذا بُنيت التوصية السابقة. كن طبيعيًا ومحددًا، واذكر المستويات والسبب والإبطال. لا تخترع سببًا غير موجود.",
+      "Explain to the operator what the previous recommendation was built on. Be natural and specific: levels, reasoning, and invalidation. Never invent a reason that is not in the data.",
     payload: {
       question: input.userMessage,
       recommendation: publicRecommendation(input.recommendation),
@@ -25,7 +26,7 @@ export async function composeRecommendationStatusAnswer(input: {
 }): Promise<string> {
   return compose({
     task:
-      "حدّث المستخدم بحالة التوصية السابقة الآن. اشرح هل ما زالت معلقة، تفعلت، ضربت هدفًا، ضربت الوقف، أو بطلت. كن مباشرًا ولا تعط توصية معاكسة جديدة.",
+      "Update the operator on the previous recommendation's current status: still pending, triggered, target hit, stop hit, or invalidated. Be direct; do not issue a new opposite recommendation.",
     payload: {
       question: input.userMessage,
       recommendation: publicRecommendation(input.recommendation),
@@ -45,8 +46,11 @@ async function compose(input: {
   if (!isLLMConfigured()) return input.fallback;
   try {
     const res = await callLLM({
-      system:
-        "أنت وكيل تداول داخل Lonora. اكتب إجابة عربية طبيعية ومختصرة من البيانات المعطاة فقط. لا تكشف تفكيرًا داخليًا، ولا تخترع مستويات أو أخبارًا، ولا تحوّل المتابعة إلى درس عام.",
+      system: [
+        canonicalIdentityCore(),
+        "",
+        "Write ONE short, natural follow-up reply grounded ONLY in the provided data. Mirror the language of the operator's question (Arabic question → Arabic reply, English → English). Do not reveal internal reasoning, do not invent levels or news, and do not turn a follow-up into a general lesson.",
+      ].join("\n"),
       messages: [
         {
           role: "user",

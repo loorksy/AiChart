@@ -1,4 +1,3 @@
-export { AppHeader } from "./AppHeader";
 export { PageLayout, SectionTitle } from "./PageLayout";
 export { NotificationPanel } from "./NotificationPanel";
 export { SurfaceCard } from "./SurfaceCard";

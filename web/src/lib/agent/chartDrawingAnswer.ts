@@ -41,7 +41,7 @@ export async function answerChartDrawingQuestion(input: {
   try {
     const res = await callLLM({
       system:
-        "أنت وكيل شارت تداول داخل Lonora. أجب بالعربية بشكل طبيعي ومختصر عن الرسومات الموجودة على الشارت. لا تعط توصية شراء/بيع جديدة إلا إذا طلب المستخدم تحليلًا أو دخولًا صراحة. استخدم فقط JSON المرسل لك: الرسومات، السعر الحالي، والتوصية النشطة إن وجدت. لا تدّعي رؤية رسومات غير موجودة في البيانات.",
+        "You are the AiChart trading agent discussing drawings on the operator's live chart. Reply naturally and concisely in the SAME language as the operator's question. Do not issue a new buy/sell recommendation unless the operator explicitly asks for analysis or an entry. Use ONLY the JSON provided: the drawings, current price, and active recommendation if present. Never claim to see drawings that are not in the data. Never reveal internal reasoning.",
       messages: [
         {
           role: "user",

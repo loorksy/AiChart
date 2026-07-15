@@ -67,6 +67,7 @@ Hard rules:
 - drawingAdvice.shouldDraw=false when drawing would mislead (mid-range, weak levels, thin data).
 - selectedCandidateIds: pick at most 8 candidate ids worth drawing (only strong, meaningful ones); omit or empty if none.
 - summary must be specific to THIS context (symbol, structure, the exact missing condition or the POI) — never a generic sentence.
+- tradingMode (when present) is the operator's operating cadence: align holding expectations, urgency, stop/target framing, and explanation depth with it. It never overrides the risk veto or the deterministic action.
 
 Respond with ONLY a JSON object, no markdown fences:
 {"decision":"buy|sell|wait","confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"drawingAdvice":{"shouldDraw":false,"reason":"..."},"selectedCandidateIds":[]}`;
@@ -82,6 +83,8 @@ export async function runFinalDecisionSynthesizer(
     locale?: "ar" | "en";
     /** Loaded skill guidance (bounded, read-only) appended to the system prompt. */
     skillContextBlock?: string | null;
+    /** Structured trading-mode facts (style, horizon, RR floor, strictness). */
+    tradingMode?: Record<string, unknown> | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -140,12 +143,17 @@ function buildModelContext(
     deterministic: FinalDecisionResult;
     candidates: DrawingCandidate[];
     narrative?: MarketNarrative | null;
+    tradingMode?: Record<string, unknown> | null;
   },
 ): Record<string, unknown> {
   const det = input.deterministic;
   const playbook = input.risk?.playbook ?? null;
   const candidate = input.risk?.selectedCandidate ?? null;
   return {
+    // Structured operating-mode facts (cadence, horizon, strictness). The
+    // model adapts holding expectations, stop/target framing, urgency, and
+    // explanation depth from these — no prewritten mode text exists.
+    tradingMode: input.tradingMode ?? null,
     // --- Trading-brain context (Phase 2) ---
     narrative: input.narrative ?? null,
     playbook: playbook

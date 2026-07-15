@@ -460,6 +460,7 @@ export async function POST(req: NextRequest) {
                 // Names/versions only — safe skill diagnostics, never content.
                 selectedSkills: result.selectedSkills ?? [],
                 skillLoadFailures: result.skillLoadFailures ?? [],
+                tradingMode: result.tradingMode ?? null,
               },
             });
             await finalizeAgentRun({

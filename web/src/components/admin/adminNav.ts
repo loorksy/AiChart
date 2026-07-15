@@ -1,24 +1,5 @@
-import {
-  Cpu,
-  KeyRound,
-  LayoutDashboard,
-  Lock,
-  Server,
-  Shield,
-  Users,
-  FileText,
-} from "lucide-react";
-
-export const ADMIN_NAV = [
-  { href: "/admin", label: "نظرة عامة", icon: LayoutDashboard, exact: true },
-  { href: "/admin/users", label: "المستخدمون", icon: Users },
-  { href: "/admin/pages", label: "إدارة الصفحات", icon: FileText },
-  { href: "/admin/usage", label: "استهلاك Claude", icon: Cpu },
-  { href: "/admin/limits", label: "حدود التداول", icon: Shield },
-  { href: "/admin/keys", label: "المفاتيح", icon: KeyRound },
-  { href: "/admin/system", label: "حالة النظام", icon: Server },
-  { href: "/admin/security", label: "الأمن والتدقيق", icon: Lock },
-] as const;
+// Legacy ADMIN_NAV was removed — admin destinations live in the unified
+// APP_NAV (components/shell/navConfig.ts) under /console/platform tabs.
 
 export const ADMIN_ACTION_LABELS: Record<string, string> = {
   injection_blocked: "حظر حقن برومبت",

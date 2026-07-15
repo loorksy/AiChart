@@ -49,10 +49,8 @@ import {
 } from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
-import {
-  effectiveMinRr,
-  type UserTradingProfile,
-} from "./risk/userTradingProfile";
+import { type UserTradingProfile } from "./risk/userTradingProfile";
+import { resolveTradingMode, tradingModeModelContext } from "./tradingMode";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
   clearActiveRecommendation,
@@ -75,6 +73,7 @@ import {
   EMPTY_SKILL_CONTEXT,
   type AgentSkillContext,
 } from "./skills/skillContext";
+import { bilingual, composeStatusReply } from "./statusReply";
 import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
@@ -124,15 +123,37 @@ export async function runUnifiedChartAgent(
       intents.includes("scalp_recommendation"));
 
   if (intents.includes("cancel_active_recommendation")) {
+    const cancelled = activeRecommendation;
     await clearActiveRecommendation(sessionId, chartContext?.symbol, ctx.userId);
     // The old recommendation is now terminal — drop it so the no-flip-flop
     // guard cannot block the fresh analysis the user explicitly asked for.
     activeRecommendation = null;
     if (!wantsReanalyzeAfterCancel) {
+      const summary = await composeStatusReply({
+        situation:
+          "The operator asked to cancel the active recommendation and it has been cancelled. Acknowledge naturally; no new analysis was run.",
+        facts: {
+          cancelled: cancelled
+            ? {
+                symbol: cancelled.symbol,
+                direction: cancelled.direction,
+                entry: cancelled.entry,
+                status: cancelled.status,
+              }
+            : null,
+        },
+        locale,
+        userMessage,
+        fallback: bilingual(
+          locale,
+          "ألغيت التوصية النشطة في هذه الجلسة.",
+          "The active recommendation in this session has been cancelled.",
+        ),
+      });
       return {
         decision: "informational",
         confidence: 0.9,
-        summary: "ألغيت التوصية النشطة في هذه الجلسة. إذا أردت تحليلًا جديدًا اطلبه صراحة.",
+        summary,
         keyReasons: [],
         riskWarnings: [],
         activityEvents: collected,
@@ -144,7 +165,7 @@ export async function runUnifiedChartAgent(
   // Draw the STORED recommendation (entry/SL/TP/invalidation) — never recompute
   // a new trade, never change direction, never run Risk/News agents.
   if (isDrawActiveRecommendation(intents)) {
-    return drawStoredRecommendation(activeRecommendation, collected, locale);
+    return drawStoredRecommendation(activeRecommendation, collected, locale, userMessage);
   }
 
   if (intents.includes("explain_active_recommendation")) {
@@ -185,7 +206,7 @@ export async function runUnifiedChartAgent(
         activeRecommendation,
       }),
       AGENT_TIMEOUTS.general,
-      "تعذّر شرح الرسومات في الوقت المتاح.",
+      bilingual(locale, "تعذّر شرح الرسومات في الوقت المتاح.", "Could not explain the drawings in time."),
     );
     return {
       decision: "informational",
@@ -216,6 +237,8 @@ export async function runUnifiedChartAgent(
       intents,
       chartContext,
       ctx: trackedCtx,
+      locale,
+      userMessage,
     });
     return {
       ...drawingResult,
@@ -230,14 +253,25 @@ export async function runUnifiedChartAgent(
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage, input.conversationContext),
       AGENT_TIMEOUTS.general,
-      "تعذّر إكمال الإجابة في الوقت المتاح.",
+      bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time."),
     );
     return buildInformationalResult(summary, collected);
   }
 
   const wantMarket = needsMarketContext(intents);
   const educationalOnly = Boolean(ctx.session?.preferences.educationalOnly);
-  const minRr = effectiveMinRr(input.profile ?? null, input.tradingStyle);
+
+  // Unified trading mode: one resolver combines explicit intent, in-session
+  // corrections, the chart timeframe, and persisted settings. The profile is
+  // structured evidence (horizon, RR floor, strictness) — never canned text —
+  // and can only tighten discipline, never bypass a guard.
+  const tradingMode = resolveTradingMode({
+    interval: chartContext?.interval,
+    scalpIntent: isScalpRecommendation(intents),
+    session: ctx.session ?? null,
+    profile: input.profile ?? null,
+  });
+  const minRr = tradingMode.minRr;
 
   // Canonical skill catalogue: discover metadata, select by intent/locale/
   // market, and lazily load only the relevant bodies. Read-only guidance —
@@ -266,12 +300,19 @@ export async function runUnifiedChartAgent(
       decision: "informational",
       confidence: level === "high" ? 0.6 : unknownNews ? 0.5 : 0.75,
       summary: unknownNews
-        ? "خطر الأخبار غير معروف لأن مزوّد الأخبار غير مفعّل، لا يمكن تأكيد خطر الأخبار حالياً."
+        ? bilingual(
+            locale,
+            "خطر الأخبار غير معروف لأن مزوّد الأخبار غير مفعّل، لا يمكن تأكيد خطر الأخبار حالياً.",
+            "News risk is unknown because no news provider is configured — I cannot confirm news risk right now.",
+          )
         : news?.reason
-          ? `مراجعة الأخبار: ${news.reason}`
-          : "تمت مراجعة الأخبار.",
+          ? news.reason
+          : bilingual(locale, "تمت مراجعة الأخبار.", "News review completed."),
       keyReasons: [],
-      riskWarnings: level === "high" ? ["خطر إخباري مرتفع قريب."] : [],
+      riskWarnings:
+        level === "high"
+          ? [bilingual(locale, "خطر إخباري مرتفع قريب.", "High-impact news risk is near.")]
+          : [],
       activityEvents: collected,
       newsRisk: {
         level,
@@ -285,7 +326,7 @@ export async function runUnifiedChartAgent(
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage, input.conversationContext),
       AGENT_TIMEOUTS.general,
-      "تعذّر إكمال الإجابة في الوقت المتاح.",
+      bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time."),
     );
     return buildInformationalResult(summary, collected);
   }
@@ -310,10 +351,15 @@ export async function runUnifiedChartAgent(
     return {
       decision: "action_required",
       confidence: 0,
-      summary:
+      summary: bilingual(
+        locale,
         "تعذّر تجهيز بيانات السوق من المخزن/OANDA. حاول مرة أخرى بعد قليل.",
+        "Could not prepare market data from the warehouse/OANDA. Try again shortly.",
+      ),
       keyReasons: ["Market data unavailable."],
-      riskWarnings: ["لم تصدر توصية بسبب نقص البيانات."],
+      riskWarnings: [
+        bilingual(locale, "لم تصدر توصية بسبب نقص البيانات.", "No recommendation was issued due to missing data."),
+      ],
       activityEvents: collected,
       recommendation: { action: "wait" },
       analysisId,
@@ -324,10 +370,19 @@ export async function runUnifiedChartAgent(
     return {
       decision: "action_required",
       confidence: 0,
-      summary:
+      summary: bilingual(
+        locale,
         "بيانات الوكيل غير متزامنة مع الشارت الحالي، لذلك لن أعطي توصية شراء/بيع ولن أرسم صفقة الآن. حدّث الشارت أو انتظر اكتمال مزامنة الشموع ثم أعد التحليل.",
+        "My market data is out of sync with the current chart, so I will not issue a buy/sell recommendation or draw a trade now. Refresh the chart or wait for candles to sync, then re-run the analysis.",
+      ),
       keyReasons: [market.sync.reason],
-      riskWarnings: ["تم حظر التوصية لأن آخر شمعة/سعر لا يطابق الشارت الحالي."],
+      riskWarnings: [
+        bilingual(
+          locale,
+          "تم حظر التوصية لأن آخر شمعة/سعر لا يطابق الشارت الحالي.",
+          "The recommendation was blocked because the latest candle/price does not match the current chart.",
+        ),
+      ],
       activityEvents: collected,
       recommendation: { action: "wait" },
       analysisId,
@@ -402,6 +457,7 @@ export async function runUnifiedChartAgent(
     return buildAgentFallbackResult(
       "Risk agent failed — defaulting to WAIT.",
       collected,
+      locale,
     );
   }
 
@@ -427,6 +483,7 @@ export async function runUnifiedChartAgent(
     return buildAgentFallbackResult(
       "Final decision agent timed out — defaulting to WAIT.",
       collected,
+      locale,
     );
   }
 
@@ -454,6 +511,7 @@ export async function runUnifiedChartAgent(
       narrative,
       locale,
       skillContextBlock: skillContext.block || null,
+      tradingMode: tradingModeModelContext(tradingMode),
     }).catch(() => null),
     AGENT_TIMEOUTS.finalDecision,
     null,
@@ -461,25 +519,38 @@ export async function runUnifiedChartAgent(
   const finalDecision = synth.result;
   const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
 
-  // Scalp mode is stricter: it demands a live session and fresh current-TF data.
-  // Anything less resolves to WAIT (a bad scalp is worse than no scalp).
+  // Scalp-class modes are stricter: they demand a live session and fresh
+  // current-TF data, whether the scalp came from explicit intent, a session
+  // correction, or a scalp timeframe. Anything less resolves to WAIT (a bad
+  // scalp is worse than no scalp).
   if (
-    isScalpRecommendation(intents) &&
+    (tradingMode.requiresFreshCurrentTf || tradingMode.requiresLiveSession) &&
     (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
-    (!market.freshness.isFresh || !market.marketOpen)
+    ((tradingMode.requiresFreshCurrentTf && !market.freshness.isFresh) ||
+      (tradingMode.requiresLiveSession && !market.marketOpen))
   ) {
     return {
       decision: "action_required",
       confidence: 0,
       summary: !market.marketOpen
-        ? "لا أعطي توصية سكالب والسوق خارج جلسة نشطة. السكالب يحتاج سيولة وحركة سعرية حية."
-        : "لا أعطي توصية سكالب لأن بيانات الفريم الحالي ليست حديثة بما يكفي للسكالب. حدّث الشارت ثم أعد الطلب.",
+        ? bilingual(
+            locale,
+            "لا أعطي توصية سكالب والسوق خارج جلسة نشطة. السكالب يحتاج سيولة وحركة سعرية حية.",
+            "I will not give a scalp recommendation while the market is outside an active session — scalping needs live liquidity and price movement.",
+          )
+        : bilingual(
+            locale,
+            "لا أعطي توصية سكالب لأن بيانات الفريم الحالي ليست حديثة بما يكفي للسكالب. حدّث الشارت ثم أعد الطلب.",
+            "I will not give a scalp recommendation because the current-timeframe data is not fresh enough for scalping. Refresh the chart and ask again.",
+          ),
       keyReasons: [
         !market.marketOpen
-          ? "السوق مغلق/هادئ — شروط السكالب غير متوفرة."
-          : "شموع الفريم الحالي متأخرة — دقة الدخول السريع غير مضمونة.",
+          ? bilingual(locale, "السوق مغلق/هادئ — شروط السكالب غير متوفرة.", "Market closed/quiet — scalp conditions are not met.")
+          : bilingual(locale, "شموع الفريم الحالي متأخرة — دقة الدخول السريع غير مضمونة.", "Current-timeframe candles are stale — fast-entry precision is not guaranteed."),
       ],
-      riskWarnings: ["تم حظر السكالب بسبب شروط الجلسة/الحداثة الصارمة."],
+      riskWarnings: [
+        bilingual(locale, "تم حظر السكالب بسبب شروط الجلسة/الحداثة الصارمة.", "Scalp blocked by strict session/freshness requirements."),
+      ],
       recommendation: { action: "wait" },
       activityEvents: collected,
       analysisId,
@@ -505,18 +576,24 @@ export async function runUnifiedChartAgent(
         market.marketOpen,
       );
     if (htfStale || dailyStale) {
-      const which = htfStale ? `الفريم الأعلى (${market.higherInterval})` : "الفريم اليومي";
+      const whichAr = htfStale ? `الفريم الأعلى (${market.higherInterval})` : "الفريم اليومي";
+      const whichEn = htfStale ? `the higher timeframe (${market.higherInterval})` : "the daily timeframe";
       return {
         decision: "action_required",
         confidence: 0,
-        summary:
-          `لن أعطي توصية ${recommendationDirectionAr(finalDecision.decision)} لأن بيانات ${which} غير محدّثة بما يكفي لقرار تداول موثوق. حدّث البيانات أو انتظر اكتمال شموع الفريم الأعلى ثم أعد التحليل.`,
+        summary: bilingual(
+          locale,
+          `لن أعطي توصية ${recommendationDirectionAr(finalDecision.decision)} لأن بيانات ${whichAr} غير محدّثة بما يكفي لقرار تداول موثوق. حدّث البيانات أو انتظر اكتمال شموع الفريم الأعلى ثم أعد التحليل.`,
+          `I will not issue a ${finalDecision.decision} recommendation because ${whichEn} data is not fresh enough for a reliable trading decision. Refresh the data or wait for the higher-timeframe candles to complete, then re-run the analysis.`,
+        ),
         keyReasons: [
           htfStale
-            ? `شموع ${market.higherInterval} متأخرة عن الزمن الحالي.`
-            : "الشموع اليومية متأخرة بينما تعتمد التوصية على تأكيد يومي.",
+            ? bilingual(locale, `شموع ${market.higherInterval} متأخرة عن الزمن الحالي.`, `${market.higherInterval} candles lag behind the current time.`)
+            : bilingual(locale, "الشموع اليومية متأخرة بينما تعتمد التوصية على تأكيد يومي.", "Daily candles are stale while the recommendation relies on daily confirmation."),
         ],
-        riskWarnings: ["تم حظر التوصية بسبب تقادم بيانات الفريم الأعلى/اليومي."],
+        riskWarnings: [
+          bilingual(locale, "تم حظر التوصية بسبب تقادم بيانات الفريم الأعلى/اليومي.", "Recommendation blocked due to stale higher-timeframe/daily data."),
+        ],
         recommendation: { action: "wait" },
         activityEvents: collected,
         analysisId,
@@ -533,13 +610,22 @@ export async function runUnifiedChartAgent(
     return {
       decision: "action_required",
       confidence: finalDecision.confidence,
-      summary:
+      summary: bilingual(
+        locale,
         `التوصية الحالية ${recommendationDirectionAr(activeRecommendation.direction)} على ${activeRecommendation.symbol} ولم تُلغَ أو تُبطَل بعد. لا أعطي توصية ${recommendationDirectionAr(finalDecision.decision)} معاكسة حتى تُلغى السابقة أو يكسر السعر مستوى الإبطال.`,
+        `The active recommendation on ${activeRecommendation.symbol} is ${activeRecommendation.direction} and has not been cancelled or invalidated. I will not issue an opposite ${finalDecision.decision} recommendation until the previous one is cancelled or price breaks the invalidation level.`,
+      ),
       keyReasons: [
-        `التوصية النشطة: ${recommendationDirectionAr(activeRecommendation.direction)} من ${activeRecommendation.entry}.`,
-        `الإبطال: ${activeRecommendation.invalidationRule}.`,
+        bilingual(
+          locale,
+          `التوصية النشطة: ${recommendationDirectionAr(activeRecommendation.direction)} من ${activeRecommendation.entry}.`,
+          `Active recommendation: ${activeRecommendation.direction} from ${activeRecommendation.entry}.`,
+        ),
+        bilingual(locale, `الإبطال: ${activeRecommendation.invalidationRule}.`, `Invalidation: ${activeRecommendation.invalidationRule}.`),
       ],
-      riskWarnings: ["تم منع الانقلاب بين شراء/بيع على نفس الشارت بدون إبطال واضح."],
+      riskWarnings: [
+        bilingual(locale, "تم منع الانقلاب بين شراء/بيع على نفس الشارت بدون إبطال واضح.", "Buy/sell flip-flop on the same chart is blocked without clear invalidation."),
+      ],
       recommendation: { action: "wait" },
       activityEvents: collected,
       analysisId,
@@ -631,7 +717,11 @@ export async function runUnifiedChartAgent(
       return {
         decision: "action_required",
         confidence: finalDecision.confidence,
-        summary: "تعذّر التحقق من شروط التنفيذ — لن يُنفّذ شيء دون تأكيد.",
+        summary: bilingual(
+          locale,
+          "تعذّر التحقق من شروط التنفيذ — لن يُنفّذ شيء دون تأكيد.",
+          "Could not verify execution conditions — nothing will be executed without confirmation.",
+        ),
         keyReasons: ["Execution guard failed."],
         riskWarnings: finalDecision.riskWarnings,
         activityEvents: collected,
@@ -684,7 +774,7 @@ export async function runUnifiedChartAgent(
       userId: ctx.userId,
       layoutId: chartContext?.layoutId,
       analysisId,
-      scalp: isScalpRecommendation(intents),
+      scalp: tradingMode.style === "scalp",
       market,
       finalDecision,
       risk,
@@ -716,6 +806,7 @@ export async function runUnifiedChartAgent(
     analysisId,
     selectedSkills: skillContext.loaded.length ? skillContext.loaded : undefined,
     skillLoadFailures: skillContext.failed.length ? skillContext.failed : undefined,
+    tradingMode: { style: tradingMode.style, source: tradingMode.source },
     recommendationId: storedRecommendation?.id,
     activeRecommendation: storedRecommendation
       ? {
@@ -753,15 +844,27 @@ function isTimeframeStale(
   return ageMs > tolerance;
 }
 
-function noStoredRecommendation(
+async function noStoredRecommendation(
   collected: AgentFinalResult["activityEvents"],
   locale: AppLocale = "ar",
-): AgentFinalResult {
+  userMessage?: string,
+): Promise<AgentFinalResult> {
+  const summary = await composeStatusReply({
+    situation:
+      "The operator referenced a saved recommendation, but no recommendation is stored in this session. Say so honestly and let them decide what to do next.",
+    facts: { storedRecommendation: null },
+    locale,
+    userMessage,
+    fallback: bilingual(
+      locale,
+      "لا توجد توصية محفوظة في هذه الجلسة حاليًا.",
+      "There is no saved recommendation in this session right now.",
+    ),
+  });
   return {
     decision: "informational",
     confidence: 0.75,
-    summary:
-      "لا توجد توصية محفوظة في هذه الجلسة حاليًا. اطلب تحليلًا جديدًا أو أرسل التوصية التي تريد مراجعتها.",
+    summary,
     keyReasons: [],
     riskWarnings: [],
     activityEvents: collected,
@@ -818,17 +921,29 @@ function activeRecommendationFromChartContext(
  * was created. It never recomputes a trade, changes direction, or runs any
  * market/risk agent — it only re-emits the saved overlay.
  */
-function drawStoredRecommendation(
+async function drawStoredRecommendation(
   rec: ActiveRecommendation | null,
   collected: AgentFinalResult["activityEvents"],
   locale: AppLocale = "ar",
-): AgentFinalResult {
+  userMessage?: string,
+): Promise<AgentFinalResult> {
   if (!isActiveRecommendationLive(rec)) {
+    const summary = await composeStatusReply({
+      situation:
+        "The operator asked to draw the active recommendation, but no live recommendation exists to draw. Say so honestly; a fresh analysis or recommendation is needed first.",
+      facts: { activeRecommendation: null },
+      locale,
+      userMessage,
+      fallback: bilingual(
+        locale,
+        "لا توجد توصية نشطة لأرسم تفاصيلها.",
+        "There is no active recommendation to draw.",
+      ),
+    });
     return {
       decision: "informational",
       confidence: 0.7,
-      summary:
-        "لا توجد توصية نشطة لأرسم تفاصيلها. اطلب تحليلًا جديدًا أو توصية أولًا، ثم يمكنني رسم الدخول والوقف والأهداف.",
+      summary,
       keyReasons: [],
       riskWarnings: [],
       activityEvents: collected,
@@ -836,15 +951,44 @@ function drawStoredRecommendation(
     };
   }
   const drawings = rec.drawings ?? [];
+  const summary = await composeStatusReply({
+    situation: drawings.length
+      ? "The stored active recommendation has been re-drawn on the chart (entry, stop, targets, invalidation). No new recommendation was created and no direction changed — describe what is now visible."
+      : "The active recommendation exists but has no saved drawings to re-display. Explain that honestly.",
+    facts: {
+      recommendation: {
+        symbol: rec.symbol,
+        interval: rec.interval,
+        direction: rec.direction,
+        entry: rec.entry,
+        stopLoss: rec.stopLoss,
+        targets: rec.targets,
+        status: rec.status,
+        invalidationRule: rec.invalidationRule,
+      },
+      drawingsRedrawn: drawings.length,
+    },
+    locale,
+    userMessage,
+    fallback: drawings.length
+      ? bilingual(
+          locale,
+          `رسمت تفاصيل التوصية النشطة (${recommendationDirectionAr(rec.direction)} على ${rec.symbol}): الدخول والوقف والأهداف. لم أُنشئ توصية جديدة.`,
+          `Re-drew the active ${rec.direction} recommendation on ${rec.symbol}: entry, stop, and targets. No new recommendation was created.`,
+        )
+      : bilingual(
+          locale,
+          "التوصية النشطة موجودة لكن لا توجد رسومات محفوظة لها لإعادة عرضها.",
+          "The active recommendation exists but has no saved drawings to re-display.",
+        ),
+  });
   return {
     decision: "informational",
     confidence: 0.85,
-    summary: drawings.length
-      ? `رسمت تفاصيل التوصية النشطة (${recommendationDirectionAr(rec.direction)} على ${rec.symbol}): الدخول والوقف والأهداف ومنطقة الإبطال. لم أُنشئ توصية جديدة.`
-      : "التوصية النشطة موجودة لكن لا توجد رسومات محفوظة لها لإعادة عرضها.",
+    summary,
     keyReasons: [
-      `التوصية: ${recommendationDirectionAr(rec.direction)} من ${rec.entry}.`,
-      `الوقف: ${rec.stopLoss} — الأهداف: ${rec.targets.join(", ")}.`,
+      `${rec.direction} ${rec.symbol} @ ${rec.entry}`,
+      `SL ${rec.stopLoss} → TP ${rec.targets.join(", ")}`,
     ],
     riskWarnings: [],
     activityEvents: collected,
@@ -868,7 +1012,7 @@ async function explainStoredRecommendation(
   userMessage?: string,
   locale: AppLocale = "ar",
 ): Promise<AgentFinalResult> {
-  if (!rec) return noStoredRecommendation(collected, locale);
+  if (!rec) return noStoredRecommendation(collected, locale, userMessage);
   const summary = await composeRecommendationExplanation({
     recommendation: rec,
     userMessage,
@@ -901,7 +1045,7 @@ async function trackStoredRecommendation(input: {
 }): Promise<AgentFinalResult> {
   const { activeRecommendation: rec, chartContext, ctx, collected } = input;
   const locale: AppLocale = input.locale ?? "ar";
-  if (!rec) return noStoredRecommendation(collected, locale);
+  if (!rec) return noStoredRecommendation(collected, locale, input.userMessage);
 
   ctx.emitActivity({
     type: "analysis",
@@ -921,8 +1065,11 @@ async function trackStoredRecommendation(input: {
     return {
       decision: "action_required",
       confidence: 0,
-      summary:
+      summary: bilingual(
+        locale,
         "لا أستطيع تحديث حالة التوصية لأن بيانات الوكيل غير متزامنة مع الشارت الحالي.",
+        "I cannot update the recommendation status because my data is out of sync with the current chart.",
+      ),
       keyReasons: [market.sync.reason],
       riskWarnings: [],
       activityEvents: collected,
