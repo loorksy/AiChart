@@ -7,7 +7,7 @@
  * without a real key or network. Tokens are never logged.
  */
 import type { VoiceServerConfig } from "./voiceSessionConfig";
-import { voiceSystemInstructions } from "./voiceSessionInstructions";
+import { voiceSystemInstructions } from "./voiceIdentity";
 import type { AppLocale } from "@/lib/i18n";
 
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";

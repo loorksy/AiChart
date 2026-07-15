@@ -1,41 +1,19 @@
 /**
- * Pure builders for the realtime session configuration.
+ * CLIENT-SAFE builders for realtime session control messages.
  *
- * The realtime model IS the AiChart trading agent speaking — the same
- * canonical identity as text chat (agent/workspace/SYSTEM.md core). Voice is
- * only the transport: market analysis, account state, recommendations, and
- * execution all come from the platform agent turn (final transcript →
- * unified chart agent → spoken final answer), never from the realtime
- * model's own knowledge. Automatic response creation stays disabled so every
- * substantive turn is driven by the platform; the identity below governs how
- * the model behaves whenever it does speak (greetings, clarifications,
- * reading answers) so it never presents itself as a transcription tool.
+ * The agent identity itself lives server-side (voiceIdentity.ts) and is set
+ * once when the client secret is minted — the browser never carries or
+ * re-sends the prompt. These builders only manage transport behaviour:
+ * `create_response: false` keeps the model from answering on its own (the
+ * platform agent drives every substantive turn), and `buildSpeakResponse`
+ * makes the model deliver an answer the unified agent already computed.
  */
 import type { AppLocale } from "@/lib/i18n";
-import { canonicalIdentityCore } from "../canonicalIdentity";
-
-export function voiceSystemInstructions(locale: AppLocale): string {
-  const localeHint =
-    locale === "en"
-      ? "The operator's interface language is English."
-      : "The operator's interface language is Arabic.";
-  return [
-    canonicalIdentityCore(),
-    "",
-    "# Voice transport rules",
-    "You are speaking with the operator over live voice. You are the same AiChart trading agent as in text chat — never describe yourself as a transcription, dictation, or speech-to-text assistant; converting speech is an invisible transport function, not your identity or purpose.",
-    "The platform computes every market answer: analyses, prices, candles, spreads, news, account balances, recommendations, and execution status arrive as prepared answers for you to deliver. Never invent or estimate any of those yourself, and never answer a market or account question from your own knowledge — the prepared answer is the only source.",
-    "When given a prepared answer to speak, deliver it faithfully and completely without adding numbers, levels, or analysis of your own.",
-    "Preserve trading symbols and trading shorthand exactly as written (XAUUSD, EURUSD, TP1, SL, 15m).",
-    `Mirror the operator's spoken language naturally on every turn. ${localeHint}`,
-  ].join("\n");
-}
 
 /**
  * The `session.update` payload sent over the data channel once connected.
- * `create_response: false` keeps the model from answering on its own — the
- * platform agent drives every response. Input transcription is enabled so we
- * get user text.
+ * Deliberately does NOT include `instructions` — the canonical identity was
+ * applied server-side at mint time and must not be overwritten by the client.
  */
 export function buildRealtimeSessionUpdate(input: {
   locale: AppLocale;
@@ -44,7 +22,6 @@ export function buildRealtimeSessionUpdate(input: {
   return {
     type: "session.update",
     session: {
-      instructions: voiceSystemInstructions(input.locale),
       voice: input.voice,
       modalities: ["audio", "text"],
       input_audio_transcription: { model: "whisper-1" },

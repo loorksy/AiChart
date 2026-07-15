@@ -182,14 +182,17 @@ export async function getMessages(
   // Scope through the chat's owner so a message read can't cross tenants.
   const chat = await getChat(userId, chatId);
   if (!chat) return [];
+  // Take the MOST RECENT window (a bounded read of a long conversation must
+  // keep the latest turns — the old ascending LIMIT silently dropped them),
+  // then restore chronological order for consumers.
   const rows = await query<MessageRow>(
     `SELECT * FROM agent_chat_messages
       WHERE chat_id = ?
-      ORDER BY created_at ASC, id ASC
+      ORDER BY created_at DESC, id DESC
       LIMIT ?`,
     [chatId, Math.max(1, Math.min(limit, 2000))],
   );
-  return rows.map(toMessage);
+  return rows.map(toMessage).reverse();
 }
 
 /**

@@ -11,6 +11,7 @@
  * disk, "builtin" when the packaged fallback (a reviewed copy of the same
  * core) had to be used — e.g. in a container image built without `agent/`.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -81,4 +82,12 @@ export function canonicalIdentity(force = false): CanonicalIdentity {
 /** Convenience: canonical core text for prompt composition. */
 export function canonicalIdentityCore(): string {
   return canonicalIdentity().text;
+}
+
+/**
+ * Short stable hash of the active identity core — safe observability metadata
+ * proving WHICH constitution served a request without logging prompt content.
+ */
+export function canonicalIdentityHash(): string {
+  return createHash("sha256").update(canonicalIdentity().text).digest("hex").slice(0, 12);
 }

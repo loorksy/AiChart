@@ -18,8 +18,8 @@ import {
 import {
   buildRealtimeSessionUpdate,
   buildSpeakResponse,
-  voiceSystemInstructions,
 } from "@/lib/agent/voice/voiceSessionInstructions";
+import { voiceSystemInstructions } from "@/lib/agent/voice/voiceIdentity";
 import { voiceStatusKey, voiceErrorKey } from "@/lib/agent/voice/voiceLabels";
 import { parseVoiceSessionRequest } from "@/lib/agent/voice/voiceSessionRequest";
 import { speakableFromResult } from "@/lib/agent/voice/speakableAnswer";
@@ -296,6 +296,15 @@ describe("realtime session config builders", () => {
       // Language mirroring stays dynamic, not forced by an old preference.
       assert.match(instructions, /Mirror the operator's spoken language/i);
     }
+  });
+
+  it("the browser session.update never overwrites the server-set identity", () => {
+    const upd = buildRealtimeSessionUpdate({ locale: "en", voice: "alloy" }) as {
+      session: Record<string, unknown>;
+    };
+    // Identity is applied server-side at mint; a reconnect re-mints with the
+    // same canonical instructions — the client must not carry prompt text.
+    assert.ok(!("instructions" in upd.session), "no client-side instructions");
   });
 
   it("client-secret mint disables auto-response from session start", async () => {
