@@ -326,6 +326,33 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     },
     annotations: DESTRUCTIVE,
   },
+  {
+    name: "list_agent_skills",
+    domain: "core",
+    description:
+      "When: session start (after get_agent_capabilities). Discovers the canonical skill catalogue — metadata only (name, version, category, riskLevel, description). Never loads content. read-only.",
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  {
+    name: "load_agent_skill",
+    domain: "core",
+    description:
+      "When: a request needs a specific skill (analysis→trading-lexicon, recommendation→trading-strategies, cards→cards). Loads the FULL skill content explicitly and traceably. Fails honestly if the skill is missing — never assume a skill was read without a successful load. Skills never grant permissions. read-only.",
+    inputSchema: {
+      name: z
+        .string()
+        .min(2)
+        .max(64)
+        .describe("Skill name from list_agent_skills"),
+      version: z
+        .string()
+        .max(32)
+        .optional()
+        .describe("Optional exact version (defaults to latest)"),
+    },
+    annotations: READ_ONLY,
+  },
 ];
 
 export const CORE_TOOL_BY_NAME = Object.fromEntries(

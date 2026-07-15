@@ -187,6 +187,10 @@ export interface AgentFinalResult {
   options?: AgentOption[];
   /** Concise public reasons behind the decision — never chain-of-thought. */
   publicReasoningSummary?: string[];
+  /** Skills whose content was actually loaded into this run's prompts. */
+  selectedSkills?: Array<{ name: string; version: string }>;
+  /** Skills selected for this run whose load failed (reported honestly). */
+  skillLoadFailures?: Array<{ name: string; version: string; error: string }>;
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM or a
    *  deterministic fallback, ticker state, candle counts, and the drawing-plan
    *  decision. Never carries secrets or raw reasoning. */

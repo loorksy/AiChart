@@ -14,7 +14,7 @@ metadata: {"aichart":{"requires":{"env":["AICHART_SERVICE_TOKEN"]}}}
 
 ## Primary Channel: MCP (Claude Connectors)
 
-**Use MCP Tools** — Refer to [`docs/MCP_CLAUDE_SETUP.md`](../../../docs/MCP_CLAUDE_SETUP.md).
+**Use MCP Tools** — Refer to [`mcp/README.md`](../../../mcp/README.md).
 
 | Purpose | MCP Tool |
 |---------|----------|

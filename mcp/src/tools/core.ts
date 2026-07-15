@@ -4,6 +4,8 @@ import { BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/c
 import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
+import { discoverSkills, loadSkill } from "../skills/catalog.js";
+import { gitCommit } from "../version.js";
 import {
   chartInlineContent,
   chartTimeoutContent,
@@ -105,6 +107,15 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
                 {
                   ...(typeof model === "object" && model !== null ? model : {}),
                   mcpServerVersion: MCP_SERVER_VERSION,
+                  mcpGitCommit: gitCommit(),
+                  skills: (() => {
+                    const { skills, root } = discoverSkills();
+                    return {
+                      catalogueAvailable: root != null,
+                      count: skills.length,
+                      names: skills.map(({ metadata }) => metadata.name),
+                    };
+                  })(),
                 },
                 null,
                 2,
@@ -114,6 +125,82 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         };
       } catch (e) {
         return formatBridgeError(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_agent_skills",
+    mcpToolConfig("list_agent_skills"),
+    async () => {
+      try {
+        const { skills, root } = discoverSkills();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  ok: root != null,
+                  catalogueRoot: root ? "agent/workspace/skills" : null,
+                  count: skills.length,
+                  skills: skills.map(({ metadata }) => metadata),
+                  note:
+                    "Metadata only. Load content explicitly with load_agent_skill — a listed skill does NOT count as loaded.",
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (e) {
+        return formatBridgeError(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "load_agent_skill",
+    mcpToolConfig("load_agent_skill"),
+    async (args) => {
+      const { name, version } = (args ?? {}) as { name: string; version?: string };
+      try {
+        const loaded = loadSkill(name, version);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  ok: true,
+                  skill: { name: loaded.metadata.name, version: loaded.metadata.version },
+                  riskLevel: loaded.metadata.riskLevel,
+                  truncated: loaded.truncated,
+                  content: loaded.content,
+                  note:
+                    "Advisory guidance only — this skill grants no permissions and never overrides Risk Guard or execution controls.",
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (e) {
+        // Honest failure: report the exact reason — never a fake success.
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : String(e),
+              }),
+            },
+          ],
+        };
       }
     },
   );

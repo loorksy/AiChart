@@ -2,7 +2,7 @@
 
 MCP Server يغلّف Bridge API (`/api/agent/*`) للربط مع **Claude.ai → Customize → Connectors → Add custom connector**.
 
-**Version:** 1.1.0 — see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/MCP_MIGRATION.md`](../docs/MCP_MIGRATION.md).
+**Version:** 1.1.0 — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## متغيرات البيئة
 
@@ -56,7 +56,7 @@ Health: `GET http://127.0.0.1:8787/health`
 3. OAuth Advanced: اتركه فارغاً (DCR تلقائي)
 4. عند أول اتصال: تسجيل دخول admin AiChart
 
-راجع [`docs/MCP_CLAUDE_SETUP.md`](../docs/MCP_CLAUDE_SETUP.md).
+راجع هذا الملف وقسم Claude MCP في [`README.md`](../README.md).
 
 ## VPS
 
@@ -69,7 +69,7 @@ pm2 restart aichart-web aichart-mcp
 Smoke:
 
 ```bash
-python3 infra/tmp-test-mcp-readiness.py
+curl -fsS https://<domain>/health   # {"ok":true,"service":"aichart-mcp",...}
 ```
 
 ## الأدوات (1.1 highlights)

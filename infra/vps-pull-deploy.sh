@@ -4,8 +4,8 @@ set -euo pipefail
 INSTALL_DIR="${INSTALL_DIR:-/opt/aichart}"
 BRANCH="${BRANCH:-main}"
 APP_WEB="${APP_WEB:-aichart-web}"
-APP_AGENT="${APP_AGENT:-aichart-agent}"
 APP_WORKER="${APP_WORKER:-aichart-worker}"
+APP_MCP="${APP_MCP:-aichart-mcp}"
 
 log() { echo "[vps-pull] $*"; }
 
@@ -37,14 +37,9 @@ else
   pm2 start npm --name "$APP_WORKER" --cwd "$INSTALL_DIR/web" -- run worker
 fi
 
-if [ -x "$INSTALL_DIR/agent/scripts/sync-workspace.sh" ]; then
-  log "Syncing MCP workspace..."
-  bash "$INSTALL_DIR/agent/scripts/sync-workspace.sh" || true
-fi
-
-if pm2 describe "$APP_AGENT" >/dev/null 2>&1; then
-  log "Restarting $APP_AGENT..."
-  pm2 restart "$APP_AGENT" --update-env
+if pm2 describe "$APP_MCP" >/dev/null 2>&1; then
+  log "Restarting $APP_MCP..."
+  pm2 restart "$APP_MCP" --update-env
 fi
 
 pm2 save

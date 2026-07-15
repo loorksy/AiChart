@@ -1,12 +1,19 @@
 FROM node:22-bookworm-slim
 WORKDIR /app/mcp
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
 COPY mcp/package*.json ./
 RUN npm ci
 COPY mcp/ ./
+# Canonical agent content pack (SYSTEM.md, bootstrap, skills) — resolved at
+# runtime via ../agent from /app/mcp (bootstrap.ts / skills catalog / resources).
+COPY agent/ /app/agent/
 RUN npm run build \
     && groupadd --system --gid 10001 aichart \
     && useradd --system --uid 10001 --gid aichart --home-dir /nonexistent aichart
 ENV NODE_ENV=production
 EXPOSE 8787
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 USER 10001:10001
 CMD ["node", "dist/index.js"]

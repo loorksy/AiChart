@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: false,
         delivered: false,
-        reason: "لا يوجد telegram_chat_id مرتبط — اربط الحساب من الموقع أو vps-link-telegram-admin.",
+        reason: "لا يوجد telegram_chat_id مرتبط — اربط الحساب من إعدادات الموقع أولاً.",
       });
     }
 

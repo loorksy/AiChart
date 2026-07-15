@@ -3,7 +3,7 @@
  * Export MCP tool JSON Schemas from TOOL_CATALOG.
  * Usage: tsx scripts/export-schemas.mts [--check]
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -86,6 +86,16 @@ function checkSchemas(): boolean {
       }
     } catch {
       console.error(`missing schema file: ${tool.name}.json`);
+      ok = false;
+    }
+  }
+
+  // Orphan detection: exported files for tools no longer in the catalog are
+  // stale debris and must be removed (they previously masked removed tools).
+  const catalogNames = new Set(TOOL_CATALOG.map((t) => `${t.name}.json`));
+  for (const file of readdirSync(TOOLS_DIR)) {
+    if (!catalogNames.has(file)) {
+      console.error(`orphan schema file (tool not in catalog): ${file} — delete it`);
       ok = false;
     }
   }

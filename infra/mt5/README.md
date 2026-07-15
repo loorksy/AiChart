@@ -2,7 +2,7 @@
 
 > **تنبيه (2026):** على **Linux + Wine** يفشل `mt5.initialize()` بـ `IPC timeout (-10005)`.
 > **الحل الموصى به:** `FOREX_BACKEND=ea` + MetaTrader على **VPS Windows** — راجع
-> [`docs/EA_WINDOWS_VPS.md`](../../docs/EA_WINDOWS_VPS.md). استخدم هذا الجسر فقط على
+> [`ea/README.md`](../../ea/README.md). استخدم هذا الجسر فقط على
 > **Windows VM** حيث يعمل IPC أصلياً.
 
 MetaTrader 5 حقيقي يعمل داخل حاوية Docker على سيرفرك (تحت Wine) مع واجهة

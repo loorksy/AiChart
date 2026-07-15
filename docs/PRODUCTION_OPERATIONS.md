@@ -15,13 +15,21 @@ RESEARCH_BACKTEST_ENABLED=0
 RESEARCH_VALIDATION_ENABLED=0
 RESEARCH_SWARM_ENABLED=0
 RESEARCH_SWARM_PRESETS_ENABLED=0
-AGENT_CONTEXT_V2=0
 AGENT_MEMORY_WRITE_V1=0
-AGENT_RUN_TRACE_V1=0
-BINANCE_CAPTURE_ENABLED=0
 TRADINGVIEW_MCP_ENABLED=0
 FEATURE_AGENT_EXECUTION_GUARD=1
 ```
+
+Runtime-integration defaults (safe aids that degrade gracefully — an explicit `0` disables):
+
+```text
+FEATURE_AGENT_SKILLS=1     # skill discovery + lazy loading into agent prompts
+AGENT_CONTEXT_V2=1         # bounded persisted conversation context
+AGENT_RUN_TRACE_V1=1       # redacted run/step/skill/tool trace persistence
+```
+
+Every deploy must set (or resolve from the git checkout) `GIT_COMMIT` so `/api/healthz`,
+`/api/agent/model`, and MCP `/health` report the exact serving commit.
 
 Enabling Research requires a 32-or-more-character internal token, an isolated Docker profile,
 `RESEARCH_SERVICE_STORAGE=sqlite`, and persistent `research-work` plus `research-artifacts`

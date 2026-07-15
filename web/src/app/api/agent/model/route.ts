@@ -5,6 +5,8 @@ import { getActiveModel, getActiveProvider, getProviderApiKey } from "@/lib/llm"
 import { buildFallbackRefs, modelRefFromPlatform } from "@/lib/agentModelConfig";
 import { refreshPlatformConfigCache } from "@/lib/platformConfig";
 import { getPublicAppUrl } from "@/lib/appUrl";
+import { APP_VERSION, gitCommit } from "@/lib/version";
+import { featureFlagSnapshot } from "@/lib/agent/featureFlags";
 
 /** Bridge: platform AI provider + model (Claude MCP reads via get_agent_capabilities). */
 export async function GET(req: NextRequest) {
@@ -26,7 +28,8 @@ export async function GET(req: NextRequest) {
       fallbacks: buildFallbackRefs(ref),
       providerConfigured,
       app_url: getPublicAppUrl(),
-      serverVersion: "1.1.1",
+      serverVersion: APP_VERSION,
+      gitCommit: gitCommit(),
       forex_backend: forexBackend,
       featureFlags: {
         confidenceGate: true,
@@ -39,6 +42,8 @@ export async function GET(req: NextRequest) {
         eaHeartbeatDebounce: true,
         redisCache: Boolean(process.env.REDIS_URL?.trim()),
       },
+      // Live runtime flag values (same source as /api/debug/features).
+      runtimeFeatureFlags: featureFlagSnapshot(),
       eaHeartbeat: {
         offlineAfterMissed: 3,
         heartbeatIntervalSec: 30,

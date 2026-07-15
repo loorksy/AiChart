@@ -57,7 +57,7 @@ export interface SynthesizerDeps {
 const SYNTH_SYSTEM_PROMPT = `You are the final-decision synthesizer of a chart-connected trading agent.
 You receive the REAL outputs of specialist agents (market data quality, structure, liquidity, supply/demand, multi-timeframe, news, risk validation) plus scored drawing candidates.
 
-Write the final user-facing decision in natural Arabic, grounded ONLY in the provided evidence.
+Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in the provided evidence.
 
 Hard rules:
 - If riskVeto is true you MUST output decision "wait" and include the provided rejection reasons.
@@ -78,6 +78,10 @@ export async function runFinalDecisionSynthesizer(
     candidates: DrawingCandidate[];
     /** Evidence-based chart story (built from real detector output). */
     narrative?: MarketNarrative | null;
+    /** Operator locale — the reply language mirrors the operator (SYSTEM.md §2). */
+    locale?: "ar" | "en";
+    /** Loaded skill guidance (bounded, read-only) appended to the system prompt. */
+    skillContextBlock?: string | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -87,6 +91,13 @@ export async function runFinalDecisionSynthesizer(
     return { result: det, usedLLM: false };
   }
 
+  const language = input.locale === "en" ? "English" : "Arabic";
+  const system = [
+    SYNTH_SYSTEM_PROMPT.replace("{{LANGUAGE}}", language),
+    input.skillContextBlock?.trim() || null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const user = JSON.stringify(buildModelContext(input));
   const callModel =
     deps.callModel ??
@@ -105,7 +116,7 @@ export async function runFinalDecisionSynthesizer(
 
   let parsed: z.infer<typeof FinalDecisionModelSchema>;
   try {
-    const raw = await callModel(SYNTH_SYSTEM_PROMPT, user);
+    const raw = await callModel(system, user);
     parsed = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
   } catch {
     // Model or schema failure → deterministic result (safety fallback).

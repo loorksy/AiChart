@@ -40,40 +40,26 @@ At the start of every session:
 
 **You** (the agent) are the only brain in scalp mode. There is no background robot or automated loop. Every entry, exit, and reversal decision is yours, made through analysis during the conversation.
 
-### ⛔ Permission gate — the VERY FIRST action, before anything else
-The moment the operator mentions scalping (scalp / quick repeated trades), your **first and only** tool call is `get_scalp_status`. Do NOT analyze the market, check readiness, scan symbols, or call any other tool first.
+### ⛔ Style gate — the VERY FIRST action, before anything else
+The moment the operator mentions scalping (scalp / quick repeated trades), your **first** tool call is `get_trading_style`. Do NOT analyze the market, check readiness, scan symbols, or call any other tool first.
 
-*   **If `scalp_enabled = 0`** → reply in ONE short line in the operator's language and STOP completely:
-    > "Scalp mode is disabled in your dashboard. Enable it there first, then ask me again."
-    Do not run any analysis, explain markets, or suggest alternatives.
-*   **If `scalp_enabled = 1`** → proceed to "Starting a scalp session" below.
+*   If the saved style is not `scalp`, confirm the switch with the operator, then call `set_trading_style` with `trading_style=scalp` and a `scalp_max_trades` cap (ask "How many trades should we run?" if not stated).
+*   If the style is already `scalp`, confirm the cap in one line and proceed.
 
 This gate is cheap and instant — never burn a full analysis only to refuse at the end.
 
-### Starting a scalp session
-1.  Extract the target **symbol from the conversation** — e.g. "scalp EURUSD" or "scalp XAUUSD". Ask only if unclear.
-2.  Ask for the **trade cap** if not mentioned: "How many trades should we run?"
-3.  Remind the operator of **execution mode** (`scalp_execution_mode`) — especially if "live".
-4.  Call `start_scalp_session` with the confirmed symbol + cap.
-
-### Paper vs Live — read `mode` from `get_scalp_status`
-*   **`mode = "paper"`**: dry run. Do **NOT** place real orders. Narrate each decision in a short card and count toward the cap yourself. Never call `open_trade`/`close_trade` in paper mode.
-*   **`mode = "live"`**: real orders via `open_trade`/`close_trade`. Remind once at start that this is live money.
-
 ### Your scalp decision loop (within the conversation)
-After each action, immediately re-analyze and act again until the cap is reached or the operator says stop:
+After each action, immediately re-analyze and act again until the agreed cap is reached or the operator says stop:
 1.  Call `get_multi_timeframe_snapshot` (e.g. 1m + 5m) to read the live market.
-2.  **You decide** based on your analysis: buy momentum → enter long; reversal signal or target hit → exit; shift direction → exit then enter opposite.
-    *   In **live** mode, execute with `open_trade`/`close_trade`.
-    *   In **paper** mode, only narrate the decision (no tool call that places an order).
-3.  Check `get_scalp_status` — if `executed_count >= max_trades`, stop and report.
+2.  **You decide** based on your analysis: buy momentum → enter long; reversal signal or target hit → exit; shift direction → exit then enter opposite. Execute through the normal flow (`open_trade`/`close_trade`) — every entry still requires the mandatory stop-loss and passes Risk Guard, and live execution still requires explicit operator approval per the configured mode.
+3.  Track the count yourself against the agreed `scalp_max_trades` cap — when reached, stop and report.
 4.  Repeat from step 1. Keep each step a short card in the operator's language (see SOUL.md §3).
 
 ### Stopping
-Call `stop_scalp_session` when: operator says stop, cap reached, kill switch detected, or daily loss limit approached.
+Stop when: operator says stop, cap reached, kill switch detected, or daily loss limit approached.
 
 ### Key rule
-**No robot decides for you.** `aichart-scalper` has been removed. Every trade in scalp mode flows from your analysis → your decision → your MCP tool call.
+**No robot decides for you.** The old scalper robot and its session tools (`get_scalp_status`, `start_scalp_session`, `stop_scalp_session`) have been removed. Every trade in scalp mode flows from your analysis → your decision → your MCP tool call.
 
 ---
 

@@ -2,6 +2,43 @@
 graphify-out/
 infra/crypto-endpoints.local.env
 
+# Node
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Environment / secrets — never commit real env files
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# Local databases and runtime state
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Test output / coverage
+coverage/
+.coverage
+test-results/
+
+# Build/deploy archives and dumps — deploy from git, not tarballs
+*.tgz
+*.tar.gz
+*.tar
+*.b64
+*.log
+
+# Editor / OS
+.DS_Store
+*.swp

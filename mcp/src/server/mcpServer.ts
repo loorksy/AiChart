@@ -6,12 +6,13 @@ import {
 import { BridgeClient } from "../bridge/client.js";
 import { registerAiChartTools } from "../tools/index.js";
 import { instructionsCore } from "../onboarding/bootstrap.js";
+import { MCP_SERVER_VERSION } from "../tools/registry.js";
 
 export function createAiChartMcpServer(bridge: BridgeClient): McpServer {
   const server = new McpServer(
     {
       name: "aichart-trading",
-      version: "1.0.0",
+      version: MCP_SERVER_VERSION,
       websiteUrl: "https://aichart.lork.cloud",
     },
     {

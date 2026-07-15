@@ -27,7 +27,6 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
     return `جلب لقطة فنية لـ ${symbol} · ${interval}`;
   },
   get_price: (input) => `جلب السعر اللحظي لـ ${String(input.symbol ?? "الرمز")}`,
-  get_account_balances: () => "قراءة أرصدة الحساب",
   record_recommendation: (input) => {
     const symbol = String(input.symbol ?? "");
     const action =

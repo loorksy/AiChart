@@ -57,7 +57,8 @@ import {
 } from "./agentActivity";
 import { emitAgentLlm, emitCompose } from "./agentActivityPipeline";
 
-const TOOLS: ToolDef[] = [
+/** Exported for contract-parity tests — the runtime uses it via runAgent only. */
+export const TOOLS: ToolDef[] = [
   {
     name: "resolve_symbol",
     description:
@@ -115,11 +116,6 @@ const TOOLS: ToolDef[] = [
       type: "object",
       properties: { limit: { type: "number" } },
     },
-  },
-  {
-    name: "get_account_balances",
-    description: "أرصدة الحساب غير متاحة هنا — استخدم get_account_overview أو get_live_account.",
-    input_schema: { type: "object", properties: {} },
   },
   {
     name: "get_market_context",
@@ -323,7 +319,9 @@ const TOOLS: ToolDef[] = [
           description: "true عندما يأمر المستخدم صراحةً بالتنفيذ",
         },
       },
-      required: ["symbol", "side"],
+      // stop_loss is server-enforced by Risk Guard; requiring it in the schema
+      // keeps the model contract aligned with MCP and the execution API.
+      required: ["symbol", "side", "stop_loss"],
     },
   },
   {
@@ -732,11 +730,6 @@ async function executeTool(
         const limit = input.limit ? Number(input.limit) : 10;
         const recs = await listRecommendations(ctx.userId, limit);
         return { content: JSON.stringify(recs) };
-      }
-      case "get_account_balances": {
-        return {
-          content: "المنصة تدعم الفوركس (MetaTrader) فقط — أرصدة الكريبتو غير متاحة.",
-        };
       }
       case "get_market_context": {
         const symbol = String(input.symbol ?? "");

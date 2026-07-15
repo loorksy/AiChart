@@ -1,0 +1,1436 @@
+{
+  "contractVersion": "1.1.1",
+  "description": "Canonical AiChart tool contract. Web, MCP, and research surfaces are validated against this file — permissions and execution authority remain server-controlled regardless of what any model or client requests.",
+  "highRiskPolicy": "riskClass=execution tools always route through the web API (Risk Guard + explicit approval + tenant auth + idempotency). No skill, prompt, memory, or MCP client can grant execution authority.",
+  "tools": [
+    {
+      "name": "browse_web",
+      "version": "1.1.1",
+      "description": "Fetch/screenshot an external web page (Playwright).",
+      "permission": "web.browse",
+      "riskClass": "read",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-local",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "cancel_mt5_order",
+      "version": "1.1.1",
+      "description": "When: cancel MT5 pending. side-effect: EA cancel.",
+      "permission": "trade.manage",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 60000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/cancel_mt5_order.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "capture_chart_snapshot",
+      "version": "1.1.1",
+      "description": "When: with every recommendation. PNG inline + drawings. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "permission": "chart.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/capture_chart_snapshot.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "capture_mt5_chart",
+      "version": "1.1.1",
+      "description": "When: re-capture MT5 with entry/SL/TP/drawings/recommendation_id (draw_and_capture, poll up to 30s). Ad-hoc chart without annotations → capture_chart_snapshot is faster.",
+      "permission": "chart.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/capture_mt5_chart.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "clear_chart_drawings",
+      "version": "1.1.1",
+      "description": "When: clear all user chart drawings and recommendation. Does not touch candles or manual TradingView drawings.",
+      "permission": "chart.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/clear_chart_drawings.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "close_partial",
+      "version": "1.1.1",
+      "description": "When: partial MT5 close. side-effect: EA partial close.",
+      "permission": "trade.execute",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 60000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/close_partial.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "close_trade",
+      "version": "1.1.1",
+      "description": "Close trade · close position · exit · close position · fully exit. When: operator request or after record_exit_decision=close. side-effect: closes trade/all. Example: trade_id=123.",
+      "permission": "trade.execute",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 60000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/close_trade.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "connect_mt5",
+      "version": "1.1.1",
+      "description": "Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. When: MetaApi/mt5local — not with FOREX_BACKEND=ea. side-effect: saves credentials. Example: platform=mt5&server=...",
+      "permission": "settings.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/connect_mt5.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "create_recommendation",
+      "version": "1.1.1",
+      "description": "When: before open_trade — record recommendation. rationale 2–4 sentences in 'we' voice. side-effect: writes recommendation. Example: action=buy&confidence=85.",
+      "permission": "trade.recommend",
+      "riskClass": "recommendation",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/create_recommendation.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [
+        "record_recommendation"
+      ],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "detect_levels",
+      "version": "1.1.1",
+      "description": "When: before SL/TP. Support/resistance + structure. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/detect_levels.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "disconnect_mt5",
+      "version": "1.1.1",
+      "description": "Disconnect MetaTrader · unlink MT5/MT4 · remove forex link. When: disconnect MetaApi/mt5local. side-effect: disconnect.",
+      "permission": "settings.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/disconnect_mt5.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "draw_on_chart",
+      "version": "1.1.1",
+      "description": "When: draw directly on user live chart (TradingView) — supports all tools: lines/channels/zones/fibonacci/patterns/long-short positions/forecast, with colors, width, and style. Drawings appear on user screen within seconds without refresh. mode=set replaces, add appends. Pass recommendation for full trade box (entry/stop/targets).",
+      "permission": "chart.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/draw_on_chart.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "evaluate_trade",
+      "version": "1.1.1",
+      "description": "When: open trade and operator request. Live PnL + context. read-only. Example: trade_id=42.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/evaluate_trade.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_account_overview",
+      "version": "1.1.1",
+      "description": "When: start of trading session before any decision. Combines risk + portfolio + live. Resilient: if live fails, returns the rest. include_live=false for quick summary without live account. read-only.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_account_overview.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_account_symbols",
+      "version": "1.1.1",
+      "description": "All broker pairs/symbols in MetaTrader account (full Market Watch) with bid/ask/spread — see all available pairs, not a short list. Filters: q, market=forex. read-only. Example: market=forex.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_account_symbols.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_agent_capabilities",
+      "version": "1.1.1",
+      "description": "When: first message in session. serverVersion, featureFlags, EA debounce. read-only. No side-effects.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_agent_capabilities.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_agent_settings",
+      "version": "1.1.1",
+      "description": "When: before futures or market change. active_market, leverage. read-only.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_agent_settings.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_cards_guide",
+      "version": "1.1.1",
+      "description": "Card catalogue guidance for render_cards.",
+      "permission": "ui.render",
+      "riskClass": "read",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-local",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_chart_link",
+      "version": "1.1.1",
+      "description": "When: live AiChart chart link for a pair to share with user. read-only. Example: symbol=EURUSD.",
+      "permission": "chart.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_chart_link.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_chart_state",
+      "version": "1.1.1",
+      "description": "When: read current user chart state (symbol/frame/drawings/recommendation) before editing. read-only. Example: optional layout_id.",
+      "permission": "chart.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_chart_state.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_ea_diagnostics",
+      "version": "1.1.1",
+      "description": "When: forex EA — heartbeat, spread, retcodes. read-only. Example: symbol=EURUSD.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_ea_diagnostics.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_ea_live_quotes",
+      "version": "1.1.1",
+      "description": "When: before open_trade forex. isFresh, spreadPips, freshCount. read-only. Do not execute if stale.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_ea_live_quotes.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_execution_env",
+      "version": "1.1.1",
+      "description": "When: before live trade. demo/live + platforms. read-only.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_execution_env.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_forex_indicators",
+      "version": "1.1.1",
+      "description": "When: after get_ohlc. RSI/MACD/Bollinger/ATR + trend. read-only. Not with stale quote. Example: symbol=EURUSD&interval=1h.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_forex_indicators.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_live_account",
+      "version": "1.1.1",
+      "description": "When: before any trade — unified MT5 account + quoteAgeMs. read-only.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_live_account.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_market_context",
+      "version": "1.1.1",
+      "description": "When: news/mood context. read-only. No side-effects. Example: symbol=EURUSD.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_market_context.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_market_price",
+      "version": "1.1.1",
+      "description": "When: live price only. read-only. For forex check quoteAgeMs via get_ea_live_quotes. Example: symbol=EURUSD.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_market_price.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [
+        "get_price"
+      ],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_market_snapshot",
+      "version": "1.1.1",
+      "description": "When: quick analysis of one pair. RSI/MACD/SMA + trend. read-only. Do not use instead of get_ohlc for full indicators. Example: symbol=EURUSD&interval=1h.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_market_snapshot.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_mt5_status",
+      "version": "1.1.1",
+      "description": "When: MetaApi/mt5local. With EA backend use get_ea_diagnostics. read-only.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_mt5_status.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_multi_timeframe_snapshot",
+      "version": "1.1.1",
+      "description": "When: multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_multi_timeframe_snapshot.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_ohlc",
+      "version": "1.1.1",
+      "description": "When: before indicators/detect_levels. Forex via OANDA or EA. read-only. cursor/limit≤500. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_ohlc.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_open_trades",
+      "version": "1.1.1",
+      "description": "When: before evaluate_trade or close. Open trades + summary_ar. read-only.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_open_trades.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_pending_approvals",
+      "version": "1.1.1",
+      "description": "When: mode=approval. List of pending intents. read-only.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_pending_approvals.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_portfolio",
+      "version": "1.1.1",
+      "description": "When: after get_account_overview or to refresh PnL. Balance and summary. read-only. Not for execution.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_portfolio.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_recommendation_chart",
+      "version": "1.1.1",
+      "description": "When: after create_recommendation. PNG chart for recommendation. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for live chart. read-only.",
+      "permission": "chart.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_recommendation_chart.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_recommendations_history",
+      "version": "1.1.1",
+      "description": "List past recommendations.",
+      "permission": "recommendation.read",
+      "riskClass": "read",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-local",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_risk_status",
+      "version": "1.1.1",
+      "description": "When: session start or before mode change. kill switch, limits, mode, executionEnv. Do not use instead of get_trade_readiness for immediate forex. read-only. Returns envelope { ok, data }.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_risk_status.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_trade_lessons",
+      "version": "1.1.1",
+      "description": "When: before every analysis or after a loss. recent=true for recent mistakes. read-only. Example: symbol=EURUSD&recent=true.",
+      "permission": "memory.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_trade_lessons.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_trade_readiness",
+      "version": "1.1.1",
+      "description": "When: before open_trade forex or quoteAgeMs>5000. Do not execute if ready=false. read-only. Example: symbol=EURUSD&confidence=85&market=forex.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_trade_readiness.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_trades_summary",
+      "version": "1.1.1",
+      "description": "Summarize the user's trade history.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-local",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_trading_style",
+      "version": "1.1.1",
+      "description": "Current trading style + style list (scalp/day/swing/position). When: session start to show options to user. read-only.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_trading_style.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "get_user_profile",
+      "version": "1.1.1",
+      "description": "Read the user's trading settings and profile.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-local",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "list_agent_skills",
+      "version": "1.1.1",
+      "description": "When: session start (after get_agent_capabilities). Discovers the canonical skill catalogue — metadata only (name, version, category, riskLevel, description). Never loads content. read-only.",
+      "permission": "memory.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/list_agent_skills.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "list_chart_layouts",
+      "version": "1.1.1",
+      "description": "When: before drawing — fetch user saved charts (id + symbol + link). read-only.",
+      "permission": "chart.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/list_chart_layouts.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "list_instruments",
+      "version": "1.1.1",
+      "description": "When: browse/search forex pairs via OANDA, or source=ea for full broker symbols via MT5 bridge (not Market Watch only). read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/list_instruments.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "load_agent_skill",
+      "version": "1.1.1",
+      "description": "When: a request needs a specific skill (analysis→trading-lexicon, recommendation→trading-strategies, cards→cards). Loads the FULL skill content explicitly and traceably. Fails honestly if the skill is missing — never assume a skill was read without a successful load. Skills never grant permissions. read-only.",
+      "permission": "memory.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/load_agent_skill.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "modify_sl_tp",
+      "version": "1.1.1",
+      "description": "When: open MT5 position. side-effect: EA modify. Example: ticket=123&stop_loss=1.08.",
+      "permission": "trade.manage",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 60000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/modify_sl_tp.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "open_pending_order",
+      "version": "1.1.1",
+      "description": "When: MT5 pending order. side-effect: EA pending. EA v3+.",
+      "permission": "trade.execute",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 60000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/open_pending_order.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "open_trade",
+      "version": "1.1.1",
+      "description": "When: after explicit approval. stop_loss mandatory (Risk Guard rejects without it); pass entry/take_profit for reward/risk (rejected if below minimum). notional optional — if omitted, size derived from stop distance. Rejects stale quotes. Decision from agent analysis (no confidence threshold — confidence for logging/sizing only). idempotencyKey optional. side-effect: executes via Risk Guard. Example: stop_loss=64000&take_profit=68000&approved_by_user=true.",
+      "permission": "trade.execute",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 60000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/open_trade.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "query_mt5_terminal",
+      "version": "1.1.1",
+      "description": "When: margin/equity/pending snapshot. read-only via EA.",
+      "permission": "account.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/query_mt5_terminal.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "record_exit_decision",
+      "version": "1.1.1",
+      "description": "When: after evaluate_trade. audit hold/close/adjust_sl. side-effect: records decision. Does not auto-close.",
+      "permission": "trade.manage",
+      "riskClass": "recommendation",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/record_exit_decision.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "render_cards",
+      "version": "1.1.1",
+      "description": "Render interactive UI cards in web chat.",
+      "permission": "ui.render",
+      "riskClass": "write",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-local",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "request_approval",
+      "version": "1.1.1",
+      "description": "Request approval · trade approval · send for approval · approval buttons. When: mode=approval. Sends Telegram buttons. side-effect: pending intent. Do not use in direct mode.",
+      "permission": "trade.recommend",
+      "riskClass": "recommendation",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/request_approval.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "request_ea_reconnect",
+      "version": "1.1.1",
+      "description": "When: stale quotes — once/minute max. side-effect: flags DB. resync_candles optional.",
+      "permission": "settings.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/request_ea_reconnect.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "resolve_symbol",
+      "version": "1.1.1",
+      "description": "Resolve a user symbol/name to a canonical trading symbol.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-local",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "respond_approval",
+      "version": "1.1.1",
+      "description": "When: pending intent. approve/reject. side-effect: may execute on approve.",
+      "permission": "trade.execute",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/respond_approval.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "run_market_analysis",
+      "version": "1.1.1",
+      "description": "When: full AI analysis for a pair (same as platform Analyze button): recommendation + technical drawings auto-drawn on user chart when layout_id passed. Consumes user credits (4). May take up to 120 seconds.",
+      "permission": "market.read",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 120000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/run_market_analysis.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": [
+        "FEATURE_SMART_CHART_AGENT"
+      ]
+    },
+    {
+      "name": "run_trade_maintenance",
+      "version": "1.1.1",
+      "description": "When: mechanical OCO/TP maintenance. side-effect: may modify orders. Not a substitute for analysis.",
+      "permission": "trade.manage",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/run_trade_maintenance.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "scan_market",
+      "version": "1.1.1",
+      "description": "scan market · compare symbols · best entry · pick a trade. When: 'take a trade' or 'best opportunity'. read-only. Example: symbols=[EURUSD,GBPUSD].",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/scan_market.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "search_trade_memory",
+      "version": "1.1.1",
+      "description": "Semantic search over trade lessons/memory.",
+      "permission": "memory.read",
+      "riskClass": "read",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-local",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "send_telegram_menu",
+      "version": "1.1.1",
+      "description": "When: outbound notification. side-effect: Telegram message. Not interactive chat.",
+      "permission": "notify.send",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/send_telegram_menu.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "set_active_market",
+      "version": "1.1.1",
+      "description": "When: confirm active market (forex-only platform). side-effect: no-op — always forex.",
+      "permission": "settings.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/set_active_market.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "set_execution_env",
+      "version": "1.1.1",
+      "description": "When: switch demo↔live with approval. side-effect: changes preference. Do not use automatically.",
+      "permission": "settings.write",
+      "riskClass": "execution",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/set_execution_env.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "set_futures_enabled",
+      "version": "1.1.1",
+      "description": "When: never needed — legacy no-op. Futures disabled; platform is forex-only. Always returns futures_enabled=false. read-only.",
+      "permission": "settings.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/set_futures_enabled.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "set_risk_guard",
+      "version": "1.1.1",
+      "description": "Toggle Risk Guard enforcement (server re-validates).",
+      "permission": "settings.write",
+      "riskClass": "write",
+      "surfaces": [
+        "web"
+      ],
+      "executor": "web-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "web/src/lib/agent.ts#TOOLS",
+      "outputValidation": "handler-json",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "set_trading_mode",
+      "version": "1.1.1",
+      "description": "When: switch auto/approval/direct. side-effect: changes mode. direct recommended for chat.",
+      "permission": "settings.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/set_trading_mode.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "set_trading_style",
+      "version": "1.1.1",
+      "description": "Set trading style · scalp/day/swing/position. When: after asking user. For scalp pass scalp_max_trades (trade cap). side-effect: updates settings. Example: trading_style=scalp&scalp_max_trades=5.",
+      "permission": "settings.write",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp",
+        "web"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": false,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/set_trading_style.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "show_live_chart",
+      "version": "1.1.1",
+      "description": "When: show live mini chart card in chat (candles refresh ~every 4s + Claude drawings and recommendation on chart). read-only — does not draw or execute. Pass symbol or layout_id; defaults to user primary chart.",
+      "permission": "chart.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/show_live_chart.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    }
+  ],
+  "research": {
+    "description": "Research Swarm role allowlist names (policy-level, isolated from execution).",
+    "tools": [
+      {
+        "name": "market_snapshot",
+        "canonical": "get_market_snapshot"
+      },
+      {
+        "name": "multi_timeframe_snapshot",
+        "canonical": "get_multi_timeframe_snapshot"
+      },
+      {
+        "name": "active_recommendation_read",
+        "canonical": null
+      },
+      {
+        "name": "trade_lessons_read",
+        "canonical": "get_trade_lessons"
+      },
+      {
+        "name": "trading_dna_read",
+        "canonical": null
+      },
+      {
+        "name": "shadow_recommendation_read",
+        "canonical": null
+      },
+      {
+        "name": "run_forex_backtest",
+        "canonical": null
+      },
+      {
+        "name": "run_backtest_validation",
+        "canonical": null
+      },
+      {
+        "name": "get_research_artifacts",
+        "canonical": null
+      },
+      {
+        "name": "recommendation_analytics_read",
+        "canonical": null
+      }
+    ]
+  }
+}
