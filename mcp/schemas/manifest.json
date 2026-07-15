@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-14T23:47:13.866Z",
-  "toolCount": 59,
+  "exportedAt": "2026-07-15T15:17:58.141Z",
+  "toolCount": 60,
   "tools": [
     {
       "name": "get_account_overview",
@@ -284,9 +284,19 @@
       }
     },
     {
+      "name": "resolve_agent_skills",
+      "domain": "core",
+      "description": "When: before answering a trading/analysis request. Discovers the catalogue, selects the most relevant skills for the user request, and returns metadata only (selected + rejected with reasons). Does NOT load bodies — follow with load_agent_skill for each selected name. Prefer this over manually attaching skill files. read-only.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
       "name": "load_agent_skill",
       "domain": "core",
-      "description": "When: a request needs a specific skill (analysis→trading-lexicon, recommendation→trading-strategies, cards→cards). Loads the FULL skill content explicitly and traceably. Fails honestly if the skill is missing — never assume a skill was read without a successful load. Skills never grant permissions. read-only.",
+      "description": "When: after resolve_agent_skills (or when a specific skill is clearly needed). Loads the FULL skill content explicitly and traceably. Fails honestly if missing — never assume a skill was read without a successful load. Skills never grant permissions. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

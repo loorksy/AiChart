@@ -14,22 +14,29 @@ import {
 
 const SYSTEM_MD = resolve(process.cwd(), "..", "agent", "workspace", "SYSTEM.md");
 
+/** Normalize EOL so Windows checkouts (CRLF) stay comparable to LF sources. */
+function normalizeEol(text: string): string {
+  return text.replace(/\r\n/g, "\n");
+}
+
 function systemMdCore(): string {
   const raw = readFileSync(SYSTEM_MD, "utf8");
   const start = raw.indexOf("<!-- instructions-core-start -->");
   const end = raw.indexOf("<!-- instructions-core-end -->");
   assert.ok(start >= 0 && end > start, "SYSTEM.md must contain the core block");
-  return raw.slice(start + "<!-- instructions-core-start -->".length, end).trim();
+  return normalizeEol(
+    raw.slice(start + "<!-- instructions-core-start -->".length, end).trim(),
+  );
 }
 
 test("canonical identity loads the SYSTEM.md core block from the repository", () => {
   const identity = canonicalIdentity(true);
   assert.equal(identity.source, "file");
-  assert.equal(identity.text, systemMdCore());
+  assert.equal(normalizeEol(identity.text), systemMdCore());
 });
 
 test("builtin fallback stays byte-identical to the SYSTEM.md core block", () => {
-  assert.equal(BUILTIN_IDENTITY_CORE, systemMdCore());
+  assert.equal(normalizeEol(BUILTIN_IDENTITY_CORE), systemMdCore());
 });
 
 test("canonical core carries the identity and the hard rules", () => {

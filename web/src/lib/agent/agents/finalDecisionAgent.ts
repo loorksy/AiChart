@@ -67,7 +67,7 @@ export async function runFinalDecisionAgent(
   ctx.emitActivity({
     type: "analysis",
     status: "started",
-    message: "أجمع نتائج الوكلاء في قرار نهائي واحد.",
+    message: "أجمع نتائج التحليل في قرار نهائي واحد.",
   });
 
   const risk = input.risk;

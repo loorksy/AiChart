@@ -27,6 +27,8 @@ export interface AgentSkillContext {
   loaded: LoadedSkillRef[];
   /** Skills that were selected but failed to load (reported, never faked). */
   failed: Array<LoadedSkillRef & { error: string }>;
+  /** Skills discovered but not selected (reason codes for diagnostics). */
+  rejected: Array<{ name: string; reason: string }>;
   /** Catalogue size discovered for this request (diagnostics). */
   catalogueSize: number;
 }
@@ -35,6 +37,7 @@ export const EMPTY_SKILL_CONTEXT: AgentSkillContext = {
   block: "",
   loaded: [],
   failed: [],
+  rejected: [],
   catalogueSize: 0,
 };
 
@@ -66,8 +69,22 @@ export function buildAgentSkillContext(
       allowExecutionSkills: false,
       ...selection,
     });
+    const selectedNames = new Set(selected.map((s) => s.metadata.name));
+    const rejected = descriptors
+      .filter((d) => !selectedNames.has(d.metadata.name))
+      .map((d) => ({
+        name: d.metadata.name,
+        reason:
+          d.metadata.riskLevel === "execution"
+            ? "execution_skill_not_authorized"
+            : "not_selected_for_request",
+      }));
     if (!selected.length) {
-      return { ...EMPTY_SKILL_CONTEXT, catalogueSize: descriptors.length };
+      return {
+        ...EMPTY_SKILL_CONTEXT,
+        catalogueSize: descriptors.length,
+        rejected,
+      };
     }
 
     const loader = new AgentSkillLoader(reg);
@@ -112,7 +129,7 @@ export function buildAgentSkillContext(
         ].join("\n\n")
       : "";
 
-    return { block, loaded, failed, catalogueSize: descriptors.length };
+    return { block, loaded, failed, rejected, catalogueSize: descriptors.length };
   } catch (error) {
     return {
       ...EMPTY_SKILL_CONTEXT,

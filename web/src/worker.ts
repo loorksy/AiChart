@@ -17,6 +17,18 @@ const log = createLogger("worker");
 async function main(): Promise<void> {
   await initDb();
   await startWorker();
+  // Resume or safely re-queue Deep Analysis polls after restart.
+  try {
+    const { reconcilePendingDeepAnalysis } = await import(
+      "./lib/agent/deepAnalysis/completion"
+    );
+    const n = await reconcilePendingDeepAnalysis();
+    if (n > 0) log.info("reconciled pending deep analysis runs", { count: n });
+  } catch (err) {
+    log.warn("deep analysis reconcile skipped", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   log.info("worker process ready");
 
   // Graceful shutdown: stop accepting jobs and drain in-flight ones so an
