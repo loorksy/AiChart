@@ -30,6 +30,8 @@ export const AGENT_TIMEOUTS = {
   news: 8_000,
   risk: 5_000,
   drawing: 5_000,
-  finalDecision: 15_000,
+  // gpt-5 family spends budget on reasoning before emitting JSON; 15s was
+  // aborting live XAUUSD decisions before any recommendation could land.
+  finalDecision: 60_000,
   general: 20_000,
 } as const;

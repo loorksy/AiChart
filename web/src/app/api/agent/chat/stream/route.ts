@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { getLimits } from "@/lib/store";
-import { isLLMConfigured } from "@/lib/llm";
+import { isLLMConfiguredAsync } from "@/lib/llm";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
@@ -251,7 +251,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
 
-    if (!isLLMConfigured()) {
+    if (!(await isLLMConfiguredAsync())) {
       return NextResponse.json(
         { error: "الذكاء الاصطناعي غير مُفعّل على الخادم." },
         { status: 503 },
