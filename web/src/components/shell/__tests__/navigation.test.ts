@@ -86,6 +86,24 @@ test("profile menu routes to unified console destinations, not legacy aliases", 
   assert.match(menu, /tab=appearance/);
 });
 
+test("canonical shell exposes ThemeToggle in sidebar and mobile drawer", () => {
+  const shell = read("components/shell/AppConsoleShell.tsx");
+  assert.match(shell, /ThemeToggle/);
+  assert.match(shell, /data-testid="theme-toggle"|<ThemeToggle/);
+  assert.match(shell, /glass-panel/);
+  // Single product nav source remains APP_NAV — no second competing drawer owner in workspace.
+  assert.match(read("components/ThemeToggle.tsx"), /data-testid="theme-toggle"/);
+  assert.match(read("components/ThemeToggle.tsx"), /setTheme/);
+});
+
+test("brand assets use transparent face-mark paths", () => {
+  const logo = read("components/AiChartLogo.tsx");
+  assert.match(logo, /\/brand\/aichart-mark/);
+  assert.doesNotMatch(logo, /lonora-logo/);
+  const avatar = read("components/AgentAvatar.tsx");
+  assert.match(avatar, /\/brand\/aichart-avatar/);
+});
+
 test("authenticated entry and technical MCP routes stay behind canonical destinations", () => {
   const home = read("app/page.tsx");
   assert.match(home, /redirect\("\/console"\)/);

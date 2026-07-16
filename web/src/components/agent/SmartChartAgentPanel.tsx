@@ -12,6 +12,7 @@ import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
+import { AgentAvatar } from "@/components/AgentAvatar";
 import {
   isDirectionalOpinionOnly,
   trackedRecommendationFromResult,
@@ -26,8 +27,8 @@ export interface SmartChartAgentHandle {
 }
 
 const DECISION_COLOR: Record<AgentFinalResult["decision"], string> = {
-  buy: "text-emerald-500",
-  sell: "text-red-500",
+  buy: "text-buy",
+  sell: "text-sell",
   wait: "text-amber-500",
   informational: "text-sky-500",
   action_required: "text-fuchsia-500",
@@ -153,7 +154,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
 
     return (
       <div
-        className="flex h-full min-h-0 w-full flex-col bg-card"
+        className="flex h-full min-h-0 w-full flex-col bg-background/40"
         dir={dir}
       >
         {/* No fixed agent header bar and NO static quick-action toolbar — the
@@ -163,6 +164,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           {messages.length === 0 && !running && (
             <div className="mx-auto flex h-full max-w-sm flex-col items-center justify-center gap-4 text-center">
+              <AgentAvatar size={28} className="opacity-90" />
               <p className="text-sm text-muted-foreground">
                 {emptyState.greeting ?? t("agent.empty")}
               </p>
@@ -173,7 +175,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                       key={suggestion.id}
                       type="button"
                       onClick={() => void sendMessage(suggestion.prompt)}
-                      className="min-h-10 rounded-full border border-border/60 bg-background px-3 text-xs text-foreground hover:bg-muted"
+                      className="min-h-10 rounded-full border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 text-xs text-foreground backdrop-blur-sm hover:border-primary/40 hover:bg-primary/5"
                     >
                       {suggestion.label}
                     </button>
@@ -188,8 +190,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               key={m.id}
               className={
                 m.role === "user"
-                  ? "ml-auto max-w-[85%] rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground"
-                  : "mr-auto max-w-[95%] rounded-xl border border-border/60 bg-card px-3 py-3 text-sm text-foreground shadow-sm"
+                  ? "ml-auto max-w-[85%] rounded-2xl bg-primary/10 px-3 py-2 text-sm text-foreground ring-1 ring-primary/15"
+                  : "glass-card mr-auto max-w-[95%] px-3 py-3 text-sm text-foreground"
               }
             >
               {/* Temporary assistant bubble: live thinking ticker while the run

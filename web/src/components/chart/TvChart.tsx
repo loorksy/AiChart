@@ -385,11 +385,11 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           ],
           enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
           overrides: {
-            "paneProperties.background": bootTheme === "dark" ? "#0f1115" : "#ffffff",
+            "paneProperties.background": bootTheme === "dark" ? "#050505" : "#f4f5f7",
             "paneProperties.backgroundType": "solid",
           },
           loading_screen: {
-            backgroundColor: bootTheme === "dark" ? "#0f1115" : "#ffffff",
+            backgroundColor: bootTheme === "dark" ? "#050505" : "#f4f5f7",
           },
         };
 
@@ -564,7 +564,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     if (w && readyRef.current) {
       void w.changeTheme(theme).then(() => {
         w.applyOverrides({
-          "paneProperties.background": theme === "dark" ? "#0f1115" : "#ffffff",
+          "paneProperties.background": theme === "dark" ? "#050505" : "#f4f5f7",
           "paneProperties.backgroundType": "solid",
         });
       }).catch(() => {});

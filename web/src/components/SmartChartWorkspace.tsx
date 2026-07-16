@@ -588,7 +588,7 @@ export function SmartChartWorkspace({
   }`;
   // Chat: full width through tablet (when active), persisted width on desktop.
   // It sits on the right (last column, dir="ltr" row) in both locales.
-  const chatPaneClass = `flex min-h-0 w-full flex-col border-border/60 xl:w-[var(--chat-w)] xl:shrink-0 ${
+  const chatPaneClass = `flex min-h-0 w-full flex-col border-border/40 xl:w-[var(--chat-w)] xl:shrink-0 ${
     mobilePane === "chart" ? "hidden xl:flex" : "flex"
   }`;
 
@@ -639,16 +639,16 @@ export function SmartChartWorkspace({
       {chatEnabled && (
         <div
           dir={dir}
-          className="grid shrink-0 grid-cols-2 gap-1 border-b border-border/60 bg-card/95 p-1.5 ps-14 backdrop-blur xl:hidden"
+          className="glass-panel grid shrink-0 grid-cols-2 gap-1 border-b border-border/50 p-1.5 ps-14 xl:hidden"
         >
           <button
             type="button"
             aria-pressed={mobilePane === "chart"}
             onClick={() => setMobilePane("chart")}
-            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${
               mobilePane === "chart"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-primary/10 hover:text-foreground"
             }`}
           >
             <CandlestickChart className="h-4 w-4" />
@@ -658,10 +658,10 @@ export function SmartChartWorkspace({
             type="button"
             aria-pressed={mobilePane === "chat"}
             onClick={() => setMobilePane("chat")}
-            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${
               mobilePane === "chat"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-primary/10 hover:text-foreground"
             }`}
           >
             <MessageSquare className="h-4 w-4" />

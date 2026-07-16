@@ -78,158 +78,164 @@ export default function AuthForm({
   }
 
   return (
-    <div className="flex min-h-dvh" dir={dir}>
-      <main className="flex w-full flex-col justify-center bg-background px-6 py-10 outline-none sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">
-        <div className="mb-10 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
-            <AiChartLogo size={20} showName nameClassName="text-lg" />
-          </Link>
-          <div aria-label={t("auth.switch_language")}>
-            <LanguageSwitcher />
-          </div>
-        </div>
+    <div className="relative flex min-h-dvh" dir={dir}>
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-background">
+        <div className="absolute inset-x-0 top-0 mx-auto h-[420px] w-[720px] rounded-full bg-primary/10 blur-[120px]" />
+      </div>
 
-        <h1 className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
-          {gateMode
-            ? t("auth.operator_title")
-            : isLogin
-              ? t("auth.login_title")
-              : t("auth.register_title")}
-        </h1>
-        <p className="mt-3 text-sm text-muted-foreground">
-          {gateMode
-            ? t("auth.operator_subtitle")
-            : isLogin
-              ? t("auth.login_subtitle")
-              : t("auth.register_subtitle")}
-        </p>
-
-        {canUseTelegram && (
-          <div className="mt-8 space-y-4">
-            <TelegramLoginButton
-              botUsername={botUsername!}
-              redirectTo={redirectTo}
-              onError={setError}
-            />
-            <div className="relative py-2">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border" />
-              </div>
-              <p className="relative mx-auto w-fit bg-background px-3 text-xs text-muted-foreground">
-                {isLogin ? t("auth.telegram_or_login") : t("auth.telegram_or_register")}
-              </p>
+      <main className="flex w-full flex-col justify-center px-6 py-10 outline-none sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">
+        <div className="glass-card p-6 sm:p-8">
+          <div className="mb-8 flex items-center justify-between gap-4">
+            <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
+              <AiChartLogo size={20} showName nameClassName="text-lg" />
+            </Link>
+            <div aria-label={t("auth.switch_language")}>
+              <LanguageSwitcher />
             </div>
           </div>
-        )}
 
-        {error && (
-          <p
-            role="alert"
-            aria-live="assertive"
-            className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            {error}
+          <h1 className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
+            {gateMode
+              ? t("auth.operator_title")
+              : isLogin
+                ? t("auth.login_title")
+                : t("auth.register_title")}
+          </h1>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {gateMode
+              ? t("auth.operator_subtitle")
+              : isLogin
+                ? t("auth.login_subtitle")
+                : t("auth.register_subtitle")}
           </p>
-        )}
 
-        <form onSubmit={submit} className="mt-4 space-y-4">
-          {!gateMode && !isLogin && (
-            <>
-              <div>
-                <label htmlFor="username">{t("auth.username")}</label>
-                <input
-                  id="username"
-                  name="username"
-                  required
-                  minLength={3}
-                  maxLength={32}
-                  pattern="[a-zA-Z0-9_.]+"
-                  autoComplete="username"
-                  className="input mt-1.5"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  dir="ltr"
-                  placeholder="ahmed_trader"
-                />
+          {canUseTelegram && (
+            <div className="mt-8 space-y-4">
+              <TelegramLoginButton
+                botUsername={botUsername!}
+                redirectTo={redirectTo}
+                onError={setError}
+              />
+              <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border" />
+                </div>
+                <p className="relative mx-auto w-fit bg-card/80 px-3 text-xs text-muted-foreground backdrop-blur-sm">
+                  {isLogin ? t("auth.telegram_or_login") : t("auth.telegram_or_register")}
+                </p>
               </div>
-              <div>
-                <label>{t("auth.whatsapp")}</label>
-                <div className="mt-1.5">
-                  <PhoneInput
-                    value={whatsapp}
-                    onChange={setWhatsapp}
-                    disabled={loading}
-                    defaultCountry={defaultCountry}
+            </div>
+          )}
+
+          {error && (
+            <p
+              role="alert"
+              aria-live="assertive"
+              className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {error}
+            </p>
+          )}
+
+          <form onSubmit={submit} className="mt-4 space-y-4">
+            {!gateMode && !isLogin && (
+              <>
+                <div>
+                  <label htmlFor="username">{t("auth.username")}</label>
+                  <input
+                    id="username"
+                    name="username"
+                    required
+                    minLength={3}
+                    maxLength={32}
+                    pattern="[a-zA-Z0-9_.]+"
+                    autoComplete="username"
+                    className="input mt-1.5 focus:border-primary focus:ring-2 focus:ring-primary/25"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    dir="ltr"
+                    placeholder="ahmed_trader"
                   />
                 </div>
+                <div>
+                  <label>{t("auth.whatsapp")}</label>
+                  <div className="mt-1.5">
+                    <PhoneInput
+                      value={whatsapp}
+                      onChange={setWhatsapp}
+                      disabled={loading}
+                      defaultCountry={defaultCountry}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+            {!gateMode && (
+              <div>
+                <label htmlFor="email">{t("auth.email")}</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  className="input mt-1.5 focus:border-primary focus:ring-2 focus:ring-primary/25"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  dir="ltr"
+                  placeholder="you@example.com"
+                />
               </div>
-            </>
-          )}
-          {!gateMode && (
+            )}
             <div>
-              <label htmlFor="email">{t("auth.email")}</label>
+              <label htmlFor="password">{t("auth.password")}</label>
               <input
-                id="email"
-                name="email"
-                type="email"
+                id="password"
+                name="password"
+                type="password"
                 required
-                autoComplete="email"
-                className="input mt-1.5"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                minLength={isLogin ? 1 : 8}
+                autoComplete={isLogin || gateMode ? "current-password" : "new-password"}
+                className="input mt-1.5 focus:border-primary focus:ring-2 focus:ring-primary/25"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 dir="ltr"
-                placeholder="you@example.com"
+                autoFocus={gateMode}
               />
             </div>
-          )}
-          <div>
-            <label htmlFor="password">{t("auth.password")}</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              minLength={isLogin ? 1 : 8}
-              autoComplete={isLogin || gateMode ? "current-password" : "new-password"}
-              className="input mt-1.5"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              dir="ltr"
-              autoFocus={gateMode}
-            />
-          </div>
-          <button
-            type="submit"
-            className="btn btn-primary w-full py-3"
-            disabled={loading}
-          >
-            {loading
-              ? t("auth.processing")
-              : gateMode
-                ? t("auth.operator_action")
-                : isLogin
-                  ? t("auth.login_action")
-                  : t("auth.register_action")}
-            {!loading && <ArrowUpRight className="h-4 w-4 rtl:-rotate-90" />}
-          </button>
-        </form>
+            <button
+              type="submit"
+              className="btn btn-primary w-full py-3"
+              disabled={loading}
+            >
+              {loading
+                ? t("auth.processing")
+                : gateMode
+                  ? t("auth.operator_action")
+                  : isLogin
+                    ? t("auth.login_action")
+                    : t("auth.register_action")}
+              {!loading && <ArrowUpRight className="h-4 w-4 rtl:-rotate-90" />}
+            </button>
+          </form>
 
-        {isLogin && allowRegister && (
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {t("auth.no_account")}{" "}
-            <Link href="/signup" className="text-link font-medium">
-              {t("auth.register_now")}
-            </Link>
-          </p>
-        )}
-        {!isLogin && (
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {t("auth.have_account")}{" "}
-            <Link href="/login" className="text-link font-medium">
-              {t("auth.sign_in")}
-            </Link>
-          </p>
-        )}
+          {isLogin && allowRegister && (
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              {t("auth.no_account")}{" "}
+              <Link href="/signup" className="text-link font-medium">
+                {t("auth.register_now")}
+              </Link>
+            </p>
+          )}
+          {!isLogin && (
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              {t("auth.have_account")}{" "}
+              <Link href="/login" className="text-link font-medium">
+                {t("auth.sign_in")}
+              </Link>
+            </p>
+          )}
+        </div>
       </main>
 
       <div className="relative hidden flex-1 lg:block">
@@ -237,10 +243,10 @@ export default function AuthForm({
           <div className="chart-bg-canvas absolute -inset-[15%]">
             <ChartBackdrop className="h-full" />
           </div>
-          <div className="absolute inset-0 bg-background/92" />
+          <div className="absolute inset-0 bg-background/80" />
         </div>
         <div className="relative flex h-full items-center justify-center p-8">
-          <div className="surface-card w-full max-w-2xl overflow-hidden">
+          <div className="glass-card w-full max-w-2xl overflow-hidden">
             <div className="border-b border-border px-4 py-3">
               <p className="text-sm font-semibold text-foreground">{BRAND_NAME}</p>
               <p className="text-xs text-muted-foreground">{t("auth.preview_subtitle")}</p>

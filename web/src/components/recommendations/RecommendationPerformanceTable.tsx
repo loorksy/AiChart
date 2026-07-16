@@ -16,7 +16,7 @@ export function RecommendationPerformanceTable({
   const { t } = useLocale();
   if (groups.length === 0) return null;
   return (
-    <div className="rounded-lg border border-border/60 bg-card p-3">
+    <div className="glass-card p-3">
       <h3 className="mb-2 text-sm font-semibold text-foreground">{t(titleKey)}</h3>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">

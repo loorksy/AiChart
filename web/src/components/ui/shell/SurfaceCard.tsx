@@ -21,7 +21,7 @@ export function SurfaceCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card text-card-foreground",
+        "surface-card text-card-foreground",
         pad,
         className,
       )}

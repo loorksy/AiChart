@@ -14,19 +14,21 @@ import { LandingFooter } from "@/components/landing/LandingFooter";
 export default function LandingPage() {
   return (
     <ChartBackground>
-      <LandingNav />
-      <main>
-        <LandingHero />
-        <LandingFeatures />
-        <LandingPerformance />
-        <LandingHowItWorks />
-        <LandingIntegrations />
-        <LandingSecurity />
-        <LandingAccess />
-        <LandingFaq />
-        <LandingCta />
-      </main>
-      <LandingFooter />
+      <div className="relative min-h-dvh text-foreground">
+        <LandingNav />
+        <main>
+          <LandingHero />
+          <LandingFeatures />
+          <LandingPerformance />
+          <LandingHowItWorks />
+          <LandingIntegrations />
+          <LandingSecurity />
+          <LandingAccess />
+          <LandingFaq />
+          <LandingCta />
+        </main>
+        <LandingFooter />
+      </div>
     </ChartBackground>
   );
 }

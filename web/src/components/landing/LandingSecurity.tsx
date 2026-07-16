@@ -5,7 +5,7 @@ export function LandingSecurity() {
   return (
     <section className="py-16 sm:py-20">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="flex flex-col items-center gap-8 rounded-2xl border border-primary/20 bg-primary/5 p-8 sm:flex-row sm:p-10">
+        <div className="glass-card flex flex-col items-center gap-8 border-primary/30 p-8 sm:flex-row sm:p-10">
           <Shield className="h-16 w-16 shrink-0 text-primary" />
           <div>
             <h2 className="text-2xl font-bold">{LANDING.security.title}</h2>

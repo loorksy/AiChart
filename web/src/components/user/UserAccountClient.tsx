@@ -115,8 +115,8 @@ export function UserAccountClient({ user }: { user: PublicUser }) {
       maxWidth="2xl"
     >
       <SurfaceCard padding="lg" className="overflow-visible">
-        <div className="mb-4 flex items-center gap-3 border-b border-border pb-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+        <div className="mb-4 flex items-center gap-3 border-b border-border/70 pb-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/15 text-primary">
             <User className="h-5 w-5" />
           </div>
           <div className="min-w-0">

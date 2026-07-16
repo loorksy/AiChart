@@ -93,8 +93,10 @@ export default function SettingsClient({
                 type="button"
                 onClick={() => setTab(item.id)}
                 className={cn(
-                  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-4 text-sm font-medium",
-                  tab === item.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-muted",
+                  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition-colors",
+                  tab === item.id
+                    ? "border-primary bg-primary text-primary-foreground shadow-[var(--glow-brand)]"
+                    : "glass-card hover:border-primary/40 hover:bg-primary/5",
                 )}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />
@@ -114,11 +116,11 @@ export default function SettingsClient({
             </p>
           </div>
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
-            <div className="rounded-xl bg-muted p-3">
+            <div className="rounded-xl border border-border/60 bg-muted/50 p-3">
               <dt className="text-muted-foreground">{t("settings.email")}</dt>
               <dd className="mt-1 font-medium" dir="ltr">{user.email}</dd>
             </div>
-            <div className="rounded-xl bg-muted p-3">
+            <div className="rounded-xl border border-border/60 bg-muted/50 p-3">
               <dt className="text-muted-foreground">{t("settings.status")}</dt>
               <dd className="mt-1 font-medium">
                 {user.status === "active"
@@ -131,7 +133,7 @@ export default function SettingsClient({
               </dd>
             </div>
           </dl>
-          <Link href="/console/account" className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-medium hover:bg-muted">
+          <Link href="/console/account" className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-primary/5">
             {t("settings.manage_account")}
           </Link>
         </SurfaceCard>
@@ -145,7 +147,7 @@ export default function SettingsClient({
           </p>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             {(["dark", "light", "system"] as ThemePreference[]).map((value) => (
-              <button key={value} type="button" onClick={() => setTheme(value)} className={cn("min-h-11 rounded-xl border px-4 text-sm font-medium", theme === value ? "border-primary bg-primary/10" : "border-border hover:bg-muted")}>
+              <button key={value} type="button" onClick={() => setTheme(value)} className={cn("min-h-11 rounded-xl border px-4 text-sm font-medium transition-colors", theme === value ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/35 hover:bg-primary/5")}>
                 {value === "dark" ? <Moon className="me-2 inline h-4 w-4" /> : <Sun className="me-2 inline h-4 w-4" />}
                 {value === "dark"
                   ? t("profile.theme.dark")
@@ -173,7 +175,7 @@ export default function SettingsClient({
             ["alert_trades", "settings.alerts.trades"],
             ["alert_signals", "settings.alerts.signals"],
           ] as const).map(([key, label]) => (
-            <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-xl border border-border px-4">
+            <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-xl border border-border px-4 transition-colors hover:border-primary/35">
               <span className="text-sm font-medium">{t(label)}</span>
               <input type="checkbox" className="h-5 w-5 accent-primary" checked={Boolean(settings[key])} onChange={(event) => setSettings((current) => ({ ...current, [key]: event.target.checked ? 1 : 0 }))} />
             </label>
@@ -196,7 +198,7 @@ export default function SettingsClient({
               {t("settings.trading.description")}
             </p>
           </div>
-          <div className="rounded-2xl bg-muted p-4">
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
             <div className="mb-4 flex items-end justify-between gap-4">
               <label htmlFor="risk-per-trade" className="font-medium">
                 {t("settings.trading.risk_label")}

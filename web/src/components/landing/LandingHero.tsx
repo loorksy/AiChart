@@ -45,63 +45,55 @@ export function LandingHero() {
     : "Try a prompt — register to save conversations and connect your trading account.";
 
   return (
-    <section className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28 overflow-hidden">
-      
-      {/* Top background radial lighting */}
+    <section className="relative mx-auto max-w-6xl overflow-hidden px-4 py-20 sm:px-6 sm:py-28">
       <div className="absolute inset-x-0 top-0 -z-10 flex justify-center">
-        <div className="h-[350px] w-[600px] rounded-full bg-violet-600/10 blur-[100px]" />
+        <div className="h-[350px] w-[600px] rounded-full bg-primary/10 blur-[100px]" />
       </div>
 
       <div className="grid items-center gap-12 lg:grid-cols-12">
-        
-        {/* Left/Right Text Content (7 columns on desktop) */}
         <motion.div
           initial={{ opacity: 0, x: isRtl ? 40 : -40 }}
           animate={mounted ? { opacity: 1, x: 0 } : {}}
           transition={{ duration: 0.6 }}
-          className="lg:col-span-7 space-y-6 text-center ltr:lg:text-left rtl:lg:text-right"
+          className="space-y-6 text-center ltr:lg:text-left rtl:lg:text-right lg:col-span-7"
         >
-          {/* Glowing Badge */}
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/5 px-3.5 py-1 text-xs font-semibold text-violet-400 tracking-wide uppercase">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/5 px-3.5 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
             </span>
             {tagline}
           </div>
 
-          {/* Headline */}
-          <h1 className="text-4xl font-extrabold leading-[1.15] sm:text-5xl lg:text-6xl text-white tracking-tight">
+          <h1 className="text-4xl font-extrabold leading-[1.15] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
             {titlePre}
-            <span className="bg-gradient-to-r from-violet-400 via-indigo-400 to-violet-500 bg-clip-text text-transparent drop-shadow-[0_0_15px_rgba(124,58,237,0.15)]">
+            <span className="bg-gradient-to-r from-primary via-primary to-primary/70 bg-clip-text text-transparent">
               {titleGlow}
             </span>
             {titlePost}
           </h1>
 
-          {/* Subtitle */}
-          <p className="text-sm text-white/50 sm:text-base leading-relaxed max-w-xl mx-auto lg:mx-0">
+          <p className="mx-auto max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base lg:mx-0">
             {subtitle}
           </p>
 
-          {/* Buttons */}
           <div className="flex flex-wrap justify-center gap-3.5 ltr:lg:justify-start rtl:lg:justify-end">
             <Link
               href="/signup"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-white px-5 py-3 text-xs font-semibold text-black hover:bg-white/90 transition-all duration-200 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-3 text-xs font-semibold text-primary-foreground shadow-[var(--glow-brand)] transition-all duration-200 hover:brightness-110"
             >
               {ctaPrimary}
               <ArrowUpRight className="h-4 w-4" />
             </Link>
             <Link
               href="/login"
-              className="rounded-xl border border-white/5 bg-white/5 px-5 py-3 text-xs font-semibold text-white/90 hover:text-white hover:border-white/10 hover:bg-white/10 transition-all duration-200"
+              className="rounded-xl border border-border bg-card/50 px-5 py-3 text-xs font-semibold text-foreground/90 transition-all duration-200 hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
             >
               {ctaSecondary}
             </Link>
             <Link
               href="/chart"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 px-5 py-3 text-xs font-semibold text-violet-200 hover:bg-violet-500/20 transition-all duration-200"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-5 py-3 text-xs font-semibold text-primary transition-all duration-200 hover:bg-primary/20"
             >
               {ctaChart}
               <ArrowUpRight className="h-4 w-4" />
@@ -109,12 +101,11 @@ export function LandingHero() {
           </div>
         </motion.div>
 
-        {/* Right Chat Sandbox (5 columns on desktop) */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={mounted ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="lg:col-span-5 rounded-2xl border border-white/5 bg-[#09090b]/40 p-2 backdrop-blur-md shadow-2xl shadow-violet-500/5 hover:border-white/10 transition-all duration-300"
+          className="glass-card lg:col-span-5 p-2 transition-all duration-300 hover:border-primary/35"
         >
           <VercelV0Chat
             title={chatTitle}
@@ -122,7 +113,6 @@ export function LandingHero() {
             onSend={handleSend}
           />
         </motion.div>
-
       </div>
     </section>
   );

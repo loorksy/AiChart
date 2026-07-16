@@ -83,24 +83,24 @@ export function RecommendationTrackerCard({
   const netLabels = [fmtR(rec.netRr), fmtR(rec.netRrTp2), null];
   const rows = [
     { labelKey: "rec.row.entry", value: rec.entry, color: "text-amber-500", extra: null as string | null },
-    { labelKey: "rec.row.stop_loss", value: rec.stopLoss, color: "text-red-500", extra: null },
+    { labelKey: "rec.row.stop_loss", value: rec.stopLoss, color: "text-sell", extra: null },
     ...rec.targets.slice(0, 3).map((v, i) => ({
       labelKey: `rec.row.target${i + 1}`,
       value: v,
-      color: "text-emerald-500",
+      color: "text-buy",
       extra: netLabels[i] ?? null,
     })),
   ];
 
-  const dirColor = rec.direction === "buy" ? "text-emerald-500" : "text-red-500";
+  const dirColor = rec.direction === "buy" ? "text-buy" : "text-sell";
 
   return (
     <div
       dir={dir}
-      className={`rounded-xl border p-3 text-sm shadow-sm ${
+      className={`glass-card p-3 text-sm ${
         waiting
           ? "border-amber-500/40 bg-amber-500/5"
-          : "border-border/60 bg-card"
+          : ""
       }`}
     >
       <div className="mb-3 flex items-center justify-between gap-2">

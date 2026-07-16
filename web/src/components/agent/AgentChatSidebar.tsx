@@ -32,7 +32,7 @@ export function AgentChatSidebar({
   return (
     <aside
       dir={dir}
-      className="flex h-full min-h-0 w-full flex-col border-s border-border/60 bg-card"
+      className="glass-panel flex h-full min-h-0 w-full flex-col border-s border-border/40"
     >
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-3">
         <span className="text-sm font-bold text-foreground">{BRAND_NAME}</span>
@@ -44,7 +44,7 @@ export function AgentChatSidebar({
           type="button"
           onClick={onNewChat}
           disabled={busy}
-          className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+          className="glass-card flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-foreground hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
         >
           <MessageSquarePlus className="h-4 w-4" />
           {t("nav.new_chat")}
@@ -68,10 +68,10 @@ export function AgentChatSidebar({
                 type="button"
                 aria-current={active ? "true" : undefined}
                 onClick={() => onSelectChat(s.id)}
-                className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-start text-xs ${
+                className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-start text-xs transition-colors ${
                   active
-                    ? "bg-primary/15 text-foreground ring-1 ring-primary/40"
-                    : "text-muted-foreground hover:bg-muted"
+                    ? "bg-primary/15 text-foreground ring-1 ring-primary/35"
+                    : "text-muted-foreground hover:bg-primary/5 hover:text-foreground"
                 }`}
               >
                 <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-70" />

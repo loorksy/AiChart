@@ -33,6 +33,9 @@ export const metadata: Metadata = {
     "منصة تداول ذكية، يتحدث فيها كل متداول مع وكيل خبير يراقب السوق ويتحرك عند الفرصة المناسبة فقط.",
 };
 
+/** Runs before paint to avoid wrong-theme flash (matches ThemeProvider storage key). */
+const THEME_BOOT_SCRIPT = `(function(){try{var k='aichart-theme';var s=localStorage.getItem(k);var d=document.documentElement;var dark=true;if(s==='light')dark=false;else if(s==='system')dark=window.matchMedia('(prefers-color-scheme: dark)').matches;else if(s==='dark')dark=true;d.classList.toggle('dark',dark);d.style.colorScheme=dark?'dark':'light';}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -46,6 +49,9 @@ export default function RootLayout({
       style={{ colorScheme: "dark" }}
       suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col bg-background">
         <LocaleProvider>
           <ThemeProvider>
@@ -63,4 +69,3 @@ export default function RootLayout({
     </html>
   );
 }
-
