@@ -490,6 +490,7 @@ export async function runUnifiedChartAgent(
 
   // The LLM chooses BUY, SELL, or WAIT and binds actionable choices to a real
   // candidate. Model failure produces a technical no-recommendation state.
+  let synthError: unknown = null;
   const synth = await withTimeout(
     runFinalDecisionSynthesizer(trackedCtx, {
       ...decisionInput,
@@ -497,13 +498,18 @@ export async function runUnifiedChartAgent(
       narrative,
       locale,
       skillContextBlock: skillContext.block || null,
-    }).catch(() => null),
+    }).catch((err) => {
+      synthError = err;
+      return null;
+    }),
     AGENT_TIMEOUTS.finalDecision,
     null,
   );
   if (!synth) {
     return buildAgentFallbackResult(
-      "Decision model timed out — no market recommendation was issued.",
+      synthError
+        ? "Decision model was unavailable — no market recommendation was issued."
+        : "Decision model timed out — no market recommendation was issued.",
       collected,
       locale,
     );

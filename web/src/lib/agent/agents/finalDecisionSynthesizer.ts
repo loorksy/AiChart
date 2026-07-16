@@ -5,7 +5,7 @@
  * failure returns a technical no-recommendation state.
  */
 import { z } from "zod";
-import { callLLM, isLLMConfigured } from "@/lib/llm";
+import { callLLM, isLLMConfiguredAsync } from "@/lib/llm";
 import { sanitizePublicText } from "../activity";
 import type { AgentRunContext } from "../types";
 import type {
@@ -82,7 +82,7 @@ export async function runFinalDecisionSynthesizer(
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
-  const configured = deps.configured ?? isLLMConfigured();
+  const configured = deps.configured ?? (await isLLMConfiguredAsync());
   if (!configured) {
     return { result: null, usedLLM: false };
   }
@@ -101,7 +101,8 @@ export async function runFinalDecisionSynthesizer(
       const res = await callLLM({
         system,
         messages: [{ role: "user", content: userMsg }],
-        maxTokens: 900,
+        // Leave headroom for gpt-5 reasoning tokens + the JSON decision payload.
+        maxTokens: 2048,
       });
       return res.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
