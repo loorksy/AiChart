@@ -21,10 +21,36 @@ function market(): AgentMarketContext {
 function candidate(id: string, action: "buy" | "sell"): TradeCandidate {
   const buy = action === "buy";
   return {
-    id, action, entry: 1.1, entryType: "market", stop_loss: buy ? 1.09 : 1.11,
-    targets: [buy ? 1.12 : 1.08], rr: 2, setupType: "trend_continuation",
-    poi: { type: buy ? "demand" : "supply", low: 1.09, high: 1.11, score: { score: 80, grade: "A", reasons: [], warnings: [], isTradable: true } },
-    evidence: ["real evidence"], warnings: [], invalidationReason: "structure invalidated",
+    id,
+    action,
+    entry: 1.1,
+    entryType: "market",
+    stop_loss: buy ? 1.09 : 1.11,
+    targets: [buy ? 1.125 : 1.075, buy ? 1.15 : 1.05],
+    rr: 2.5,
+    netRr: 2.5,
+    netRrTp2: 5,
+    activationClass: "immediate",
+    activationDistance: 0,
+    activationDistanceAtr: 0,
+    qualityScore: 0.8,
+    triggerCondition: "immediate",
+    setupType: "trend_continuation",
+    poi: {
+      type: buy ? "demand" : "supply",
+      low: 1.09,
+      high: 1.11,
+      score: {
+        score: 80,
+        grade: "A",
+        reasons: [],
+        warnings: [],
+        isTradable: true,
+      },
+    },
+    evidence: ["real evidence"],
+    warnings: [],
+    invalidationReason: "structure invalidated",
   };
 }
 
@@ -81,7 +107,7 @@ describe("AI final decision authority", () => {
     assert.equal(out.result?.decision, "sell");
     assert.equal(out.result?.recommendation.action, "sell");
     assert.equal(out.result?.recommendation.stop_loss, undefined);
-    assert.match(out.result?.riskWarnings[0] ?? "", /لا يمكن تجهيزه للتنفيذ/);
+    assert.match(out.result?.riskWarnings[0] ?? "", /قابلة للتنفيذ/);
   });
 
   it("model/schema failure returns no market decision", async () => {

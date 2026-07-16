@@ -8,6 +8,7 @@ import type { RangePosition } from "../marketContext/rangePosition";
 import type { TradeCandidate, TradeCandidatesResult } from "./buildTradeCandidates";
 import { meetsDataQuality } from "../dataQualityPolicy";
 import { isSpreadTooHigh } from "../risk/spreadCheck";
+import { SCALP_GEOMETRY } from "./scalpGeometry";
 
 export type TradingChecklistItem = {
   id: string;
@@ -182,12 +183,17 @@ export function runTradingPlaybook(
     6,
   );
 
-  // 10. Reward/risk.
+  // 10. Reward/risk — net geometry only; existence of a candidate is not enough.
+  const netOk = c != null && c.netRr + 1e-9 >= SCALP_GEOMETRY.minNetTp1R;
   add(
     "reward_risk",
-    "العائد/المخاطرة التقديري",
-    c ? "pass" : "unknown",
-    c ? `RR تقديري = ${c.rr.toFixed(2)}.` : "لا إعداد لحساب العائد/المخاطرة.",
+    "العائد/المخاطرة الصافي للسكالب",
+    c ? (netOk ? "pass" : "fail") : "unknown",
+    c
+      ? netOk
+        ? `صافي R للهدف الأول ≈ ${c.netRr.toFixed(2)} (إجمالي ${c.rr.toFixed(2)}).`
+        : `هندسة ضعيفة: صافي R≈${c.netRr.toFixed(2)} أقل من الحد الأدنى للسكالب.`
+      : "لا إعداد لحساب العائد/المخاطرة.",
     9,
   );
 

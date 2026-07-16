@@ -227,6 +227,10 @@ export const en = {
 
   // --- Parts 16-18: recommendation tracker + statistics ---
   "rec.status.pending_entry": "Pending entry",
+  "rec.lifecycle.waiting_entry": "Waiting for entry",
+  "rec.lifecycle.active_now": "Active trade now",
+  "rec.row.current_price": "Current",
+  "rec.market_view": "Market view — no executable levels yet",
   "rec.status.triggered": "Entered",
   "rec.status.tp1_hit": "TP1 hit",
   "rec.status.tp2_hit": "TP2 hit",

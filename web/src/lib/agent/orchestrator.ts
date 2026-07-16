@@ -1240,16 +1240,21 @@ async function storeFinalRecommendation(input: {
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],
     rr: rec.rr,
-    status: "pending_entry",
+    status:
+      rec.activationClass === "immediate" || rec.entryType === "market"
+        ? "triggered"
+        : "pending_entry",
     triggerCondition:
-      rec.action === "buy"
+      rec.triggerCondition ??
+      (rec.action === "buy"
         ? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`
-        : `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`,
+        : `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`),
     invalidationLevel: rec.stop_loss,
     invalidationRule:
-      rec.action === "buy"
+      rec.invalidationRule ??
+      (rec.action === "buy"
         ? `إغلاق شمعة تحت ${rec.stop_loss} يبطل السيناريو.`
-        : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`,
+        : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`),
     setupType: input.scalp ? "scalp" : candidate?.setupType,
     poi: candidate
       ? {
@@ -1304,7 +1309,10 @@ async function persistTrackedRecommendation(
     stopLoss: active.stopLoss,
     targets: active.targets,
     invalidationLevel: active.invalidationLevel,
-    status: entryType === "market" ? "triggered" : "pending_entry",
+    status:
+      active.status === "triggered" || entryType === "market"
+        ? "triggered"
+        : "pending_entry",
     outcome: "pending",
     setupType: active.setupType,
     rr: active.rr,

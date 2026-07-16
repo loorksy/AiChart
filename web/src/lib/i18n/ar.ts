@@ -226,6 +226,10 @@ export const ar: Record<TranslationKey, string> = {
 
   // --- Parts 16-18: recommendation tracker + statistics ---
   "rec.status.pending_entry": "بانتظار الدخول",
+  "rec.lifecycle.waiting_entry": "بانتظار الدخول",
+  "rec.lifecycle.active_now": "صفقة نشطة الآن",
+  "rec.row.current_price": "السعر الحالي",
+  "rec.market_view": "رؤية سوقية — لا مستويات قابلة للتنفيذ بعد",
   "rec.status.triggered": "دخلت الصفقة",
   "rec.status.tp1_hit": "تحقق TP1",
   "rec.status.tp2_hit": "تحقق TP2",

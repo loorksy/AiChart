@@ -12,7 +12,10 @@ import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
-import { trackedRecommendationFromResult } from "@/lib/recommendations/fromAgentResult";
+import {
+  isDirectionalOpinionOnly,
+  trackedRecommendationFromResult,
+} from "@/lib/recommendations/fromAgentResult";
 import { TriangleAlert } from "lucide-react";
 import type { AgentSuggestion } from "@/lib/agent/suggestions/types";
 
@@ -230,14 +233,23 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               )}
               <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
               {(() => {
-                const tracked = m.result
-                  ? trackedRecommendationFromResult(m.result)
-                  : null;
-                return tracked ? (
-                  <div className="mt-2">
-                    <RecommendationTrackerCard rec={tracked} />
-                  </div>
-                ) : null;
+                if (!m.result) return null;
+                const tracked = trackedRecommendationFromResult(m.result);
+                if (tracked) {
+                  return (
+                    <div className="mt-2">
+                      <RecommendationTrackerCard rec={tracked} />
+                    </div>
+                  );
+                }
+                if (isDirectionalOpinionOnly(m.result)) {
+                  return (
+                    <div className="mt-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      {t("rec.market_view")}
+                    </div>
+                  );
+                }
+                return null;
               })()}
               {m.result?.keyReasons?.length ? (
                 <ul className="mt-1 list-inside list-disc text-[12px] text-muted-foreground">

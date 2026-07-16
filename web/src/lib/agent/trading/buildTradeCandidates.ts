@@ -1,23 +1,35 @@
 /**
- * Trade-candidate builder — the trading brain's core. Replaces the old
- * "uptrend + nearest demand = buy" logic with disciplined, evidence-based
- * candidates:
+ * Trade-candidate builder — produces structurally valid, executable scalp
+ * geometry for the final AI model. Direction (BUY/SELL/WAIT) remains the
+ * model's sole authority; this module only supplies truthful levels.
  *
- *   trend_continuation  — HTF-aligned trend + grade A/B POI in the right part
- *                         of the range.
- *   reversal_after_sweep — liquidity sweep + CHoCH/MSS confirming the turn.
- *   range_boundary      — strong range extreme POI with rejection context.
- *
- * Hard rules: weak POI → no candidate; HTF conflict without reversal evidence
- * → no candidate; mid-range → no candidate (except confirmed reversal at a
- * swept extreme); RR below minimum → no candidate; price already ran away from
- * the entry → no candidate. WAIT is always preferred over a weak trade.
+ * Hard geometry rules (product contract, not user settings):
+ * - stop beyond real invalidation + bounded buffer;
+ * - TP1 must clear minimum net R after spread/slippage;
+ * - targets must come from real structure / liquidity / volatility evidence;
+ * - POI strength alone never overrides unusable geometry;
+ * - distant pending entries are classified as conditional, never "active now".
  */
 import type { AgentCandle, SupplyDemandZone, TrendLabel } from "../marketContext/detectors";
 import type { StructureEvent } from "../marketContext/structureEvents";
 import type { LiquiditySweep } from "../marketContext/liquiditySweeps";
 import type { RangePosition } from "../marketContext/rangePosition";
 import { scorePoi, type PoiScore, type ScorePoiInput } from "./scorePoi";
+import {
+  SCALP_GEOMETRY,
+  classifyActivation,
+  computeNetR,
+  inferTickSize,
+  meetsExecutableGeometry,
+  roundToTick,
+  scoreCandidateQuality,
+  type GeometryActivationClass,
+  type SymbolGeometryMeta,
+} from "./scalpGeometry";
+import {
+  analyzePathToEntry,
+  type PathToEntryAnalysis,
+} from "./pathToEntry";
 
 export type TradeCandidate = {
   id: string;
@@ -37,7 +49,17 @@ export type TradeCandidate = {
     high: number;
     score: PoiScore;
   };
+  /** Gross R for TP1 (pre-cost). */
   rr: number;
+  /** Net R for TP1 after spread/slippage. */
+  netRr: number;
+  netRrTp2?: number;
+  activationClass: GeometryActivationClass;
+  activationDistance: number;
+  activationDistanceAtr: number;
+  qualityScore: number;
+  triggerCondition: string;
+  pathToEntry?: PathToEntryAnalysis;
   setupType:
     | "trend_continuation"
     | "reversal_after_sweep"
@@ -62,9 +84,12 @@ export interface BuildTradeCandidatesInput {
   htfLevels: number[];
   newsRisk: "low" | "medium" | "high" | "unknown";
   spread?: number | null;
+  interval?: string;
+  symbolMeta?: SymbolGeometryMeta | null;
 }
 
 export interface TradeCandidatesResult {
+  /** Executable candidates only (immediate or conditional). */
   candidates: TradeCandidate[];
   best: TradeCandidate | null;
   rejectedReasons: string[];
@@ -78,6 +103,7 @@ export function buildTradeCandidates(
 ): TradeCandidatesResult {
   const rejectedReasons: string[] = [];
   const hasReversalEvidence = detectReversalEvidence(input);
+  const meta = input.symbolMeta ?? null;
 
   if (!(input.currentPrice > 0) || !input.zones.length) {
     return {
@@ -88,82 +114,208 @@ export function buildTradeCandidates(
     };
   }
 
+  const atr = input.atr && input.atr > 0 ? input.atr : approxAtr(input.candles);
+  const structuralPool = collectStructuralTargets(input);
   const candidates: TradeCandidate[] = [];
   let idSeq = 0;
 
   for (const zone of input.zones) {
     const action: "buy" | "sell" = zone.type === "demand" ? "buy" : "sell";
-
     const poiScore = scorePoi(buildScoreInput(input, zone));
-
-    // Direction discipline vs HTF and structure.
     const setup = classifySetup(input, action, hasReversalEvidence);
 
-    // Levels: entry at the zone edge, stop buffered beyond the POI. Never place
-    // SL exactly on the obvious zone boundary; that is where noise/liquidity
-    // commonly hits.
-    const entry = action === "buy" ? zone.high : zone.low;
-    const buffer = stopBuffer({
-      symbolPrice: input.currentPrice,
-      spread: input.spread,
-      atr: input.atr,
-    });
-    const stop = action === "buy" ? zone.low - buffer : zone.high + buffer;
-    const risk = Math.abs(entry - stop);
-    if (!(risk > 0)) continue;
-    const structuralTargets = [
-      ...input.htfLevels,
-      ...input.zones.flatMap((candidateZone) => [candidateZone.low, candidateZone.high]),
-    ].filter((level) => action === "buy" ? level > entry : level < entry);
-    const volatilityTarget = action === "buy"
-      ? entry + (input.atr && input.atr > 0 ? input.atr : risk)
-      : entry - (input.atr && input.atr > 0 ? input.atr : risk);
-    const target = action === "buy"
-      ? Math.min(...structuralTargets, volatilityTarget)
-      : Math.max(...structuralTargets, volatilityTarget);
-    const rr = Math.abs(target - entry) / risk;
-    const entryType = classifyEntryType({
+    if (!poiScore.isTradable) {
+      rejectedReasons.push(
+        `منطقة ${zone.type} غير قابلة للتنفيذ (درجة ${poiScore.grade}).`,
+      );
+      continue;
+    }
+
+    const entryOptions = buildEntryOptions({
       action,
-      entry,
+      zone,
       currentPrice: input.currentPrice,
-      tolerance: entryTolerance({
+      atr,
+      meta,
+      spread: input.spread,
+    });
+
+    let bestForZone: TradeCandidate | null = null;
+    let zoneReject = "لا هندسة أهداف كافية لهذه المنطقة.";
+
+    for (const entryOpt of entryOptions) {
+      const buffer = stopBuffer({
         symbolPrice: input.currentPrice,
         spread: input.spread,
-        atr: input.atr,
-      }),
-    });
+        atr,
+        meta,
+      });
+      const stopRaw =
+        action === "buy" ? zone.low - buffer : zone.high + buffer;
+      const stop = roundToTick(stopRaw, meta);
+      const entry = roundToTick(entryOpt.entry, meta);
+      const risk = Math.abs(entry - stop);
+      if (!(risk > 0)) continue;
 
-    const warnings = [...poiScore.warnings, ...(setup.warnings ?? [])];
-    if (!poiScore.isTradable) warnings.push(`درجة POI منخفضة (${poiScore.score}).`);
-    if (input.newsRisk === "high") warnings.push("حدث إخباري عالي التأثير قريب.");
-    if (input.htfConflict) warnings.push("يوجد تعارض مع الفريم الأعلى.");
-    if (input.spread && risk < input.spread * 5) warnings.push("الوقف قريب من السبريد.");
+      const targets = selectTargets({
+        action,
+        entry,
+        stop,
+        structuralPool,
+        atr,
+        spread: input.spread,
+        meta,
+      });
+      if (!targets.tp1) {
+        zoneReject = "لا هدف هيكلي حقيقي يحقق الحد الأدنى لهندسة السكالب.";
+        continue;
+      }
 
-    candidates.push({
-      id: `tc-${idSeq++}`,
-      action,
-      entry,
-      entryType,
-      stop_loss: stop,
-      targets: [target],
-      poi: { type: zone.type, low: zone.low, high: zone.high, score: poiScore },
-      rr,
-      setupType: setup.type,
-      evidence: [...setup.evidence, ...poiScore.reasons],
-      warnings,
-      invalidationReason:
-        action === "buy"
-          ? `إغلاق شمعة تحت ${stop.toFixed(5)} يُبطل السيناريو.`
-          : `إغلاق شمعة فوق ${stop.toFixed(5)} يُبطل السيناريو.`,
-    });
+      const targetList = [targets.tp1, ...(targets.tp2 != null ? [targets.tp2] : [])];
+      const geometry = meetsExecutableGeometry({
+        action,
+        entry,
+        stop,
+        targets: targetList,
+        spread: input.spread,
+        meta,
+      });
+      if (!geometry.ok) {
+        zoneReject =
+          geometry.reason === "tp1_net_r_below_minimum"
+            ? `هندسة الهدف ضعيفة (صافي R≈${geometry.netTp1R.toFixed(2)} أقل من ${SCALP_GEOMETRY.minNetTp1R}).`
+            : "ترتيب مستويات الدخول/الوقف/الهدف غير صالح.";
+        continue;
+      }
+
+      const entryType = classifyEntryType({
+        action,
+        entry,
+        currentPrice: input.currentPrice,
+        tolerance: entryTolerance({
+          symbolPrice: input.currentPrice,
+          spread: input.spread,
+          atr,
+          meta,
+        }),
+      });
+      const activationClass = classifyActivation({
+        entry,
+        currentPrice: input.currentPrice,
+        atr,
+        entryType,
+      });
+      if (activationClass === "non_executable") {
+        zoneReject = "منطقة الدخول بعيدة جداً عن السعر الحالي للتنفيذ الآمن.";
+        continue;
+      }
+
+      const activationDistance = Math.abs(entry - input.currentPrice);
+      const activationDistanceAtr = atr > 0 ? activationDistance / atr : 0;
+      const netRrTp2 =
+        targets.tp2 != null
+          ? computeNetR({
+              action,
+              entry,
+              stop,
+              target: targets.tp2,
+              spread: input.spread,
+              meta,
+            })
+          : undefined;
+      const qualityScore = scoreCandidateQuality({
+        poiScore: poiScore.score,
+        netTp1R: geometry.netTp1R,
+        netTp2R: netRrTp2 ?? null,
+        activationDistanceAtr,
+        structuralTargetCount: targets.structuralCount,
+      });
+
+      const warnings = [...poiScore.warnings, ...(setup.warnings ?? [])];
+      if (input.newsRisk === "high") warnings.push("حدث إخباري عالي التأثير قريب.");
+      if (input.htfConflict) warnings.push("يوجد تعارض مع الفريم الأعلى.");
+      if (input.spread && risk < input.spread * 5) {
+        warnings.push("الوقف قريب من السبريد.");
+      }
+      if (activationClass === "conditional") {
+        warnings.push("الدخول مشروط بعودة السعر إلى المنطقة.");
+      }
+
+      const pathToEntry =
+        activationClass === "conditional"
+          ? analyzePathToEntry({
+              action,
+              currentPrice: input.currentPrice,
+              entry,
+              atr,
+              independentTransitionEvidence: false,
+              zoneAlreadyBroken:
+                action === "buy"
+                  ? input.currentPrice < zone.low - atr * 0.25
+                  : input.currentPrice > zone.high + atr * 0.25,
+              driftingAway:
+                action === "buy"
+                  ? input.currentPrice > entry + atr * 0.75
+                  : input.currentPrice < entry - atr * 0.75,
+            })
+          : undefined;
+
+      const candidate: TradeCandidate = {
+        id: `tc-${idSeq++}`,
+        action,
+        entry,
+        entryType:
+          activationClass === "immediate" && entryType !== "market"
+            ? "market"
+            : entryType,
+        stop_loss: stop,
+        targets: targetList,
+        poi: { type: zone.type, low: zone.low, high: zone.high, score: poiScore },
+        rr: geometry.grossTp1R,
+        netRr: geometry.netTp1R,
+        netRrTp2,
+        activationClass,
+        activationDistance,
+        activationDistanceAtr,
+        qualityScore,
+        triggerCondition: buildTriggerCondition({
+          action,
+          activationClass,
+          entry,
+          zone,
+        }),
+        pathToEntry,
+        setupType: setup.type,
+        evidence: [
+          ...setup.evidence,
+          ...poiScore.reasons,
+          `دخول ${entryOpt.style}`,
+          `صافي R للهدف الأول ≈ ${geometry.netTp1R.toFixed(2)}`,
+          ...(pathToEntry ? [pathToEntry.summary] : []),
+        ],
+        warnings,
+        invalidationReason:
+          action === "buy"
+            ? `إغلاق شمعة تحت ${stop} يُبطل السيناريو.`
+            : `إغلاق شمعة فوق ${stop} يُبطل السيناريو.`,
+      };
+
+      if (!bestForZone || candidate.qualityScore > bestForZone.qualityScore) {
+        bestForZone = candidate;
+      }
+    }
+
+    if (bestForZone) candidates.push(bestForZone);
+    else rejectedReasons.push(zoneReject);
   }
 
-  // Best candidate: highest POI score, tie-broken by RR then proximity.
   const best =
     [...candidates].sort((a, b) => {
-      const byScore = b.poi.score.score - a.poi.score.score;
-      if (byScore !== 0) return byScore;
-      return b.rr - a.rr;
+      const byQuality = b.qualityScore - a.qualityScore;
+      if (Math.abs(byQuality) > 1e-9) return byQuality;
+      const byNet = b.netRr - a.netRr;
+      if (Math.abs(byNet) > 1e-9) return byNet;
+      return a.activationDistance - b.activationDistance;
     })[0] ?? null;
 
   return { candidates, best, rejectedReasons, hasReversalEvidence };
@@ -183,7 +335,12 @@ function classifySetup(
   input: BuildTradeCandidatesInput,
   action: "buy" | "sell",
   hasReversalEvidence: boolean,
-): { allowed: true; type: TradeCandidate["setupType"]; evidence: string[]; warnings?: string[] } {
+): {
+  allowed: true;
+  type: TradeCandidate["setupType"];
+  evidence: string[];
+  warnings?: string[];
+} {
   const wantBias = action === "buy" ? "bullish" : "bearish";
   const trendAligned =
     (action === "buy" && input.trend === "uptrend") ||
@@ -194,7 +351,6 @@ function classifySetup(
     input.htfBias !== "neutral" &&
     input.htfBias !== wantBias;
 
-  // HARD RULE: trading against the higher timeframe requires reversal evidence.
   if ((input.htfConflict || directionConflictsHtf) && !hasReversalEvidence) {
     return {
       allowed: true,
@@ -204,7 +360,6 @@ function classifySetup(
     };
   }
 
-  // Reversal setup: sweep + structure shift in this direction.
   const reversalConfirmed =
     input.sweeps.some(
       (s) =>
@@ -219,7 +374,6 @@ function classifySetup(
     );
 
   if (trendAligned && !directionConflictsHtf) {
-    // Continuation still needs structure on its side, not just "trend is up".
     const bosSupport = input.structureEvents.some(
       (ev) => ev.type === "BOS" && ev.direction === wantBias,
     );
@@ -235,7 +389,7 @@ function classifySetup(
       allowed: true,
       type: "trend_continuation",
       evidence: [
-        `الاتجاه ${action === "buy" ? "صاعد" : "هابط"} مدعوم بكسر هيكل ${wantBias === "bullish" ? "صاعد" : "هابط"}.`,
+        `الاتجاه ${action === "buy" ? "صاعد" : "هابط"} مدعوم بكسر هيكل.`,
         ...(htfAligned ? ["الفريم الأعلى متوافق مع الاتجاه."] : []),
       ],
     };
@@ -245,16 +399,12 @@ function classifySetup(
     return {
       allowed: true,
       type: "reversal_after_sweep",
-      evidence: [
-        "انعكاس مؤكد: سحب سيولة تبعه تحول هيكلي في اتجاه الصفقة.",
-      ],
+      evidence: ["انعكاس مؤكد: سحب سيولة تبعه تحول هيكلي في اتجاه الصفقة."],
       warnings: ["صفقة انعكاسية — إدارة مخاطرة أشد."],
     };
   }
 
   if (input.trend === "range") {
-    // Range boundary: only from the correct extreme (checked by caller via
-    // range-position discipline) and only with some rejection structure.
     const boundaryRejection = input.structureEvents.some(
       (ev) => ev.direction === wantBias,
     );
@@ -299,6 +449,168 @@ function buildScoreInput(
   };
 }
 
+function buildEntryOptions(input: {
+  action: "buy" | "sell";
+  zone: SupplyDemandZone;
+  currentPrice: number;
+  atr: number;
+  meta?: SymbolGeometryMeta | null;
+  spread?: number | null;
+}): Array<{ entry: number; style: string }> {
+  const { zone, action } = input;
+  const mid = (zone.low + zone.high) / 2;
+  const near = action === "buy" ? zone.high : zone.low;
+  const deep = action === "buy" ? zone.low + (zone.high - zone.low) * 0.25 : zone.high - (zone.high - zone.low) * 0.25;
+  const options = [
+    { entry: near, style: "near_edge" },
+    { entry: mid, style: "midpoint" },
+    { entry: deep, style: "deeper_zone" },
+  ];
+  const tol = entryTolerance({
+    symbolPrice: input.currentPrice,
+    spread: input.spread,
+    atr: input.atr,
+    meta: input.meta,
+  });
+  if (Math.abs(input.currentPrice - near) <= tol) {
+    options.unshift({ entry: input.currentPrice, style: "market_at_zone" });
+  }
+  // Deduplicate by rounded tick.
+  const seen = new Set<string>();
+  return options.filter((o) => {
+    const key = roundToTick(o.entry, input.meta).toFixed(8);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function collectStructuralTargets(input: BuildTradeCandidatesInput): number[] {
+  const swings = extractSwingLevels(input.candles);
+  const fromZones = input.zones.flatMap((z) => [z.low, z.high]);
+  const fromEvents = input.structureEvents.map((e) => e.brokenLevel);
+  return [...input.htfLevels, ...fromZones, ...swings, ...fromEvents].filter(
+    (n) => Number.isFinite(n) && n > 0,
+  );
+}
+
+function extractSwingLevels(candles: AgentCandle[]): number[] {
+  const out: number[] = [];
+  for (let i = 2; i < candles.length - 2; i++) {
+    const c = candles[i]!;
+    const left = candles.slice(i - 2, i);
+    const right = candles.slice(i + 1, i + 3);
+    if (
+      left.every((x) => x.high <= c.high) &&
+      right.every((x) => x.high <= c.high)
+    ) {
+      out.push(c.high);
+    }
+    if (
+      left.every((x) => x.low >= c.low) &&
+      right.every((x) => x.low >= c.low)
+    ) {
+      out.push(c.low);
+    }
+  }
+  return out;
+}
+
+function selectTargets(input: {
+  action: "buy" | "sell";
+  entry: number;
+  stop: number;
+  structuralPool: number[];
+  atr: number;
+  spread?: number | null;
+  meta?: SymbolGeometryMeta | null;
+}): { tp1: number | null; tp2: number | null; structuralCount: number } {
+  const side = input.action === "buy" ? 1 : -1;
+  const unique = [...new Set(input.structuralPool.map((p) => roundToTick(p, input.meta)))]
+    .filter((level) =>
+      input.action === "buy" ? level > input.entry : level < input.entry,
+    )
+    .sort((a, b) => (input.action === "buy" ? a - b : b - a));
+
+  const scored = unique.map((level) => {
+    const net = computeNetR({
+      action: input.action,
+      entry: input.entry,
+      stop: input.stop,
+      target: level,
+      spread: input.spread,
+      meta: input.meta,
+    });
+    return { level, net };
+  });
+
+  const tp1 =
+    scored.find((s) => s.net + 1e-9 >= SCALP_GEOMETRY.minNetTp1R)?.level ?? null;
+  if (tp1 == null) {
+    return { tp1: null, tp2: null, structuralCount: unique.length };
+  }
+
+  const tp2 =
+    scored.find(
+      (s) =>
+        s.level !== tp1 &&
+        s.net + 1e-9 >= SCALP_GEOMETRY.preferredTp2MinR &&
+        s.net <= SCALP_GEOMETRY.preferredTp2MaxR + 0.75,
+    )?.level ??
+    scored.find(
+      (s) =>
+        s.level !== tp1 &&
+        s.net + 1e-9 >= SCALP_GEOMETRY.preferredTp2MinR,
+    )?.level ??
+    null;
+
+  // Optional ATR projection only when it lands near an existing structural level.
+  if (tp2 == null && input.atr > 0) {
+    const projected = roundToTick(
+      input.entry + side * input.atr * SCALP_GEOMETRY.preferredTp2MinR,
+      input.meta,
+    );
+    const nearStructural = unique.find(
+      (level) => Math.abs(level - projected) <= input.atr * 0.35,
+    );
+    if (nearStructural && nearStructural !== tp1) {
+      const net = computeNetR({
+        action: input.action,
+        entry: input.entry,
+        stop: input.stop,
+        target: nearStructural,
+        spread: input.spread,
+        meta: input.meta,
+      });
+      if (net + 1e-9 >= SCALP_GEOMETRY.preferredTp2MinR) {
+        return {
+          tp1,
+          tp2: nearStructural,
+          structuralCount: unique.length,
+        };
+      }
+    }
+  }
+
+  return { tp1, tp2, structuralCount: unique.length };
+}
+
+function buildTriggerCondition(input: {
+  action: "buy" | "sell";
+  activationClass: GeometryActivationClass;
+  entry: number;
+  zone: SupplyDemandZone;
+}): string {
+  if (input.activationClass === "immediate") {
+    return input.action === "buy"
+      ? "الدخول متاح قرب منطقة الطلب الحالية مع استمرار الدليل الصاعد."
+      : "الدخول متاح قرب منطقة العرض الحالية مع استمرار الدليل الهابط.";
+  }
+  return input.action === "buy"
+    ? `فكرة الشراء تصبح قابلة للتنفيذ فقط إذا عاد السعر إلى منطقة الطلب حول ${input.entry} وأظهر رفضاً صاعداً أو تحولاً هيكلياً.`
+    : `فكرة البيع تصبح قابلة للتنفيذ فقط إذا عاد السعر إلى منطقة العرض حول ${input.entry} وأظهر رفضاً هابطاً أو تحولاً هيكلياً.`;
+}
+
 function classifyEntryType(input: {
   action: "buy" | "sell";
   entry: number;
@@ -317,8 +629,9 @@ function entryTolerance(input: {
   symbolPrice: number;
   spread?: number | null;
   atr?: number | null;
+  meta?: SymbolGeometryMeta | null;
 }): number {
-  const minTick = minTickForPrice(input.symbolPrice);
+  const minTick = inferTickSize(input.symbolPrice, input.meta);
   return Math.max(
     input.spread && input.spread > 0 ? input.spread : 0,
     input.atr && input.atr > 0 ? input.atr * 0.15 : 0,
@@ -326,22 +639,32 @@ function entryTolerance(input: {
   );
 }
 
-function minTickForPrice(price: number): number {
-  if (price > 100) return 0.01;
-  if (price > 10) return 0.001;
-  if (price > 2) return 0.0001;
-  return 0.00001;
-}
-
 export function stopBuffer(input: {
   symbolPrice: number;
   spread?: number | null;
   atr?: number | null;
+  meta?: SymbolGeometryMeta | null;
 }): number {
-  const minTick = minTickForPrice(input.symbolPrice);
+  const minTick = inferTickSize(input.symbolPrice, input.meta);
   return Math.max(
     input.spread && input.spread > 0 ? input.spread * 2 : 0,
     input.atr && input.atr > 0 ? input.atr * 0.1 : 0,
     minTick * MIN_TICK_MULTIPLIER,
   );
+}
+
+function approxAtr(candles: AgentCandle[]): number {
+  if (candles.length < 2) return 0;
+  const window = candles.slice(-14);
+  let sum = 0;
+  for (let i = 1; i < window.length; i++) {
+    const cur = window[i]!;
+    const prev = window[i - 1]!;
+    sum += Math.max(
+      cur.high - cur.low,
+      Math.abs(cur.high - prev.close),
+      Math.abs(cur.low - prev.close),
+    );
+  }
+  return sum / Math.max(1, window.length - 1);
 }

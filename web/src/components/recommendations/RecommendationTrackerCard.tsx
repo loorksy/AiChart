@@ -15,6 +15,11 @@ function fmtTime(ms?: number): string {
   }
 }
 
+function fmtR(value?: number): string | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return `${value.toFixed(1)}R`;
+}
+
 interface Step {
   key: string;
   labelKey: string;
@@ -44,9 +49,8 @@ function CopyPrice({ value }: { value: number }) {
 }
 
 /**
- * Professional, localized, responsive recommendation tracker card:
- * lifecycle bar (SL / Entered / TP1 / TP2 / TP3), entry type, copyable
- * Entry/SL/TP rows, and a deterministic Smart Tip.
+ * Professional, localized recommendation tracker card:
+ * lifecycle bar, entry type, copyable levels, net R, and trigger wording.
  */
 export function RecommendationTrackerCard({
   rec,
@@ -55,7 +59,11 @@ export function RecommendationTrackerCard({
 }) {
   const { t, dir } = useLocale();
 
-  const entered = Boolean(rec.triggeredAt) || rec.entryType === "market";
+  const waiting =
+    rec.activationClass === "conditional" ||
+    (rec.status === "pending_entry" && rec.entryType !== "market");
+  const entered =
+    !waiting && (Boolean(rec.triggeredAt) || rec.entryType === "market");
   const slReached = rec.outcome === "loss" || Boolean(rec.slHitAt);
   const steps: Step[] = [
     { key: "sl", labelKey: "rec.step.sl", at: rec.slHitAt, reached: slReached, tone: "sl" },
@@ -72,13 +80,15 @@ export function RecommendationTrackerCard({
     return "bg-emerald-500";
   };
 
+  const netLabels = [fmtR(rec.netRr), fmtR(rec.netRrTp2), null];
   const rows = [
-    { labelKey: "rec.row.entry", value: rec.entry, color: "text-amber-500" },
-    { labelKey: "rec.row.stop_loss", value: rec.stopLoss, color: "text-red-500" },
+    { labelKey: "rec.row.entry", value: rec.entry, color: "text-amber-500", extra: null as string | null },
+    { labelKey: "rec.row.stop_loss", value: rec.stopLoss, color: "text-red-500", extra: null },
     ...rec.targets.slice(0, 3).map((v, i) => ({
       labelKey: `rec.row.target${i + 1}`,
       value: v,
       color: "text-emerald-500",
+      extra: netLabels[i] ?? null,
     })),
   ];
 
@@ -87,7 +97,11 @@ export function RecommendationTrackerCard({
   return (
     <div
       dir={dir}
-      className="rounded-xl border border-border/60 bg-card p-3 text-sm shadow-sm"
+      className={`rounded-xl border p-3 text-sm shadow-sm ${
+        waiting
+          ? "border-amber-500/40 bg-amber-500/5"
+          : "border-border/60 bg-card"
+      }`}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className="font-semibold text-foreground" dir="ltr">
@@ -97,6 +111,16 @@ export function RecommendationTrackerCard({
           {rec.direction === "buy" ? t("decision.buy") : t("decision.sell")}
           {rec.setupType ? ` · ${rec.setupType}` : ""}
         </span>
+      </div>
+
+      <div
+        className={`mb-3 rounded-lg px-2 py-1.5 text-xs font-semibold ${
+          waiting
+            ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+            : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+        }`}
+      >
+        {waiting ? t("rec.lifecycle.waiting_entry") : t("rec.lifecycle.active_now")}
       </div>
 
       {/* Lifecycle bar */}
@@ -115,13 +139,25 @@ export function RecommendationTrackerCard({
       {/* Entry type */}
       <div className="mb-2 text-[11px] text-muted-foreground">
         {t(`rec.entry.${rec.entryType}`)}
+        {rec.priceAtCreation != null ? (
+          <span className="ms-2" dir="ltr">
+            · {t("rec.row.current_price")} {rec.priceAtCreation}
+          </span>
+        ) : null}
       </div>
 
       {/* Levels */}
       <div className="mb-3 divide-y divide-border/50 rounded-lg border border-border/50">
         {rows.map((r) => (
           <div key={r.labelKey} className="flex items-center justify-between px-3 py-1.5">
-            <span className="text-xs text-muted-foreground">{t(r.labelKey)}</span>
+            <span className="text-xs text-muted-foreground">
+              {t(r.labelKey)}
+              {r.extra ? (
+                <span className="ms-1 text-[10px] text-muted-foreground/80">
+                  ≈ {r.extra}
+                </span>
+              ) : null}
+            </span>
             <span className="flex items-center gap-2">
               <span className={`font-mono text-xs font-semibold ${r.color}`} dir="ltr">
                 {r.value}
@@ -131,6 +167,10 @@ export function RecommendationTrackerCard({
           </div>
         ))}
       </div>
+
+      {rec.triggerCondition ? (
+        <p className="mb-2 text-xs text-muted-foreground">{rec.triggerCondition}</p>
+      ) : null}
 
       {/* Smart Tip */}
       <div className="rounded-lg bg-background/60 p-2">

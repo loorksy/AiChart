@@ -46,6 +46,11 @@ export interface TrackedRecommendation {
   outcome: TrackedRecommendationOutcome;
   setupType?: string;
   rr?: number;
+  /** Net TP1 / TP2 R after modelled costs (display-only). */
+  netRr?: number;
+  netRrTp2?: number;
+  activationClass?: "immediate" | "conditional";
+  triggerCondition?: string;
   createdAt: number;
   createdCandleTime: number;
   expiresAt: number;
