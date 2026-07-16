@@ -11,12 +11,12 @@ const COPY: Record<
 > = {
   pending: {
     title: "بانتظار موافقة الإدارة",
-    hint: "سجّلت بنجاح. سيُفعَّل حسابك وMCP وتحميل EA بعد موافقة الأدmin.",
+    hint: "سجّلت بنجاح. سيُفعَّل حسابك والموصل وتحميل EA بعد موافقة الإدارة.",
     icon: Clock,
   },
   expired: {
     title: "انتهت صلاحية حسابك",
-    hint: "تواصل مع الإدارة لتجديد الوصول (MCP والكونسول).",
+    hint: "تواصل مع الإدارة لتجديد الوصول إلى المنصة والموصل.",
     icon: Clock,
   },
   suspended: {
@@ -39,7 +39,7 @@ export function AwaitingApprovalClient({
   const meta = COPY[reason];
   const Icon = meta.icon;
   const hint = viaTelegram && reason === "pending"
-    ? "تم ربط تليجرام بنجاح. بانتظار موافقة الإدارة لتفعيل MCP والكونسول."
+    ? "تم ربط تليجرام بنجاح. بانتظار موافقة الإدارة لتفعيل المنصة والموصل."
     : meta.hint;
 
   async function logout() {

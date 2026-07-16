@@ -5,10 +5,17 @@ import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { DB_PATH } from "../env";
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from "../constants";
+import {
+  buildSupportContactPage,
+  LEGACY_SEEDED_DYNAMIC_PAGE_SLUGS,
+  migrateLegacyDynamicPageBranding,
+  type DynamicPageBrandFields,
+} from "./dynamicPageBranding";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
+const SCHEMA_VERSION = "2026-07-16-aichart-simplification-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -22,119 +29,29 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS trading_settings (
     user_id                  INTEGER PRIMARY KEY,
-    mode                     TEXT NOT NULL DEFAULT 'approval',
-    approval                 TEXT NOT NULL DEFAULT 'manual',
-    experience               TEXT NOT NULL DEFAULT 'beginner',
-    style                    TEXT NOT NULL DEFAULT 'conservative',
-    max_capital              REAL NOT NULL DEFAULT 0,
-    per_trade_pct            REAL NOT NULL DEFAULT 10,
-    max_open_trades          INTEGER NOT NULL DEFAULT 1,
-    daily_profit_target_pct  REAL NOT NULL DEFAULT 3,
-    daily_profit_target_usd  REAL NOT NULL DEFAULT 0,
-    daily_loss_limit_pct     REAL NOT NULL DEFAULT 5,
-    monthly_loss_limit_pct   REAL NOT NULL DEFAULT 15,
-    auto_take_profit_usd     REAL NOT NULL DEFAULT 0,
+    per_trade_pct            REAL NOT NULL DEFAULT 1
+      CHECK (
+        per_trade_pct >= 0.1
+        AND per_trade_pct <= 5
+        AND ABS(per_trade_pct * 10 - ROUND(per_trade_pct * 10)) < 0.000000001
+      ),
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
-    active_market            TEXT NOT NULL DEFAULT 'forex',
     -- User-chosen forex connection: 'ea' (bridge installed on the user's MT5)
     -- or 'mt5local' (server-side, no download). NULL = operator's global default.
     forex_backend            TEXT,
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
-    kill_switch              INTEGER NOT NULL DEFAULT 0,
-    -- 1 = riskGuard enforces all risk/permission gates (safe default);
-    -- 0 = full-autonomous (agent + committee are the sole authority). Stored as
-    -- INTEGER on BOTH backends on purpose, to avoid the pg-BOOLEAN equality trap.
-    risk_guard_enabled       INTEGER NOT NULL DEFAULT 1,
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
     alerts_enabled           INTEGER NOT NULL DEFAULT 1,
     alert_trades             INTEGER NOT NULL DEFAULT 1,
     alert_signals            INTEGER NOT NULL DEFAULT 1,
-    alert_min_confidence     INTEGER NOT NULL DEFAULT 0,
-    min_confidence           INTEGER NOT NULL DEFAULT 80,
-    min_rr                   REAL NOT NULL DEFAULT 1,
-    trading_style            TEXT NOT NULL DEFAULT 'day',
-    scalp_max_trades         INTEGER NOT NULL DEFAULT 0,
-    scalp_enabled            INTEGER NOT NULL DEFAULT 0,
-    scalp_execution_mode     TEXT NOT NULL DEFAULT 'paper',
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
-  CREATE TABLE IF NOT EXISTS scalp_sessions (
-    user_id        INTEGER PRIMARY KEY,
-    active          INTEGER NOT NULL DEFAULT 0,
-    status          TEXT NOT NULL DEFAULT 'stopped',
-    symbol          TEXT NOT NULL DEFAULT '',
-    market          TEXT NOT NULL DEFAULT 'forex',
-    interval        TEXT NOT NULL DEFAULT '1m',
-    max_trades      INTEGER NOT NULL DEFAULT 0,
-    executed_count  INTEGER NOT NULL DEFAULT 0,
-    notional        REAL NOT NULL DEFAULT 0,
-    execution_mode  TEXT NOT NULL DEFAULT 'paper',
-    session_pnl     REAL NOT NULL DEFAULT 0,
-    day_key         TEXT,
-    daily_trade_count INTEGER NOT NULL DEFAULT 0,
-    stop_reason     TEXT,
-    started_at      TEXT,
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS bot_sessions (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         INTEGER NOT NULL,
-    strategy        TEXT NOT NULL DEFAULT 'grid',
-    symbol          TEXT NOT NULL,
-    market          TEXT NOT NULL DEFAULT 'forex',
-    side            TEXT NOT NULL DEFAULT 'sell',
-    config_json     TEXT NOT NULL DEFAULT '{}',
-    state_json      TEXT NOT NULL DEFAULT '{"levels":[]}',
-    status          TEXT NOT NULL DEFAULT 'active',
-    execution_mode  TEXT NOT NULL DEFAULT 'paper',
-    realized_pnl    REAL NOT NULL DEFAULT 0,
-    stop_reason     TEXT,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-  CREATE INDEX IF NOT EXISTS idx_bot_sessions_active ON bot_sessions (status, user_id);
-
-  CREATE TABLE IF NOT EXISTS gold_agent_journal (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    bot_id          INTEGER NOT NULL,
-    user_id         INTEGER NOT NULL,
-    payload_json    TEXT NOT NULL,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (bot_id) REFERENCES bot_sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-  CREATE INDEX IF NOT EXISTS idx_gold_agent_journal_bot ON gold_agent_journal (bot_id, created_at);
-
-  CREATE TABLE IF NOT EXISTS gold_agent_performance (
-    bot_id          INTEGER PRIMARY KEY,
-    user_id         INTEGER NOT NULL,
-    stats_json      TEXT NOT NULL DEFAULT '{}',
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (bot_id) REFERENCES bot_sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS gold_agent_setups (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    bot_id          INTEGER NOT NULL,
-    fingerprint     TEXT NOT NULL,
-    stats_json      TEXT NOT NULL DEFAULT '{}',
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (bot_id) REFERENCES bot_sessions(id) ON DELETE CASCADE
-  );
-  CREATE INDEX IF NOT EXISTS idx_gold_agent_setups_fp ON gold_agent_setups (bot_id, fingerprint);
-
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY,
     can_execute         INTEGER NOT NULL DEFAULT 1,
-    max_capital_cap     REAL NOT NULL DEFAULT 0,
-    max_open_trades_cap INTEGER NOT NULL DEFAULT 0,
     claude_quota        INTEGER NOT NULL DEFAULT 1000,
     updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -354,19 +271,6 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
-  CREATE TABLE IF NOT EXISTS copilot_events (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         INTEGER NOT NULL,
-    conversation_id INTEGER,
-    event_type      TEXT NOT NULL,
-    payload_json    TEXT,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type);
-
   CREATE TABLE IF NOT EXISTS chat_messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id INTEGER NOT NULL,
@@ -522,7 +426,6 @@ const SCHEMA = `
     intent                          TEXT,
     decision                        TEXT,
     confidence                      REAL,
-    risk_veto                       INTEGER NOT NULL DEFAULT 0,
     news_risk                       TEXT,
     execution_requires_confirmation INTEGER NOT NULL DEFAULT 0,
     execution_confirmed             INTEGER NOT NULL DEFAULT 0,
@@ -538,7 +441,7 @@ const SCHEMA = `
     run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
     request_id TEXT NOT NULL, symbol TEXT, timeframe TEXT, intent TEXT,
     status TEXT NOT NULL, started_at INTEGER NOT NULL, completed_at INTEGER, cancelled_at INTEGER,
-    decision TEXT, confidence REAL, risk_veto INTEGER NOT NULL DEFAULT 0,
+    decision TEXT, confidence REAL,
     error_code TEXT, feature_flags TEXT NOT NULL DEFAULT '{}', context_version TEXT,
     context_message_count INTEGER NOT NULL DEFAULT 0, recalled_memory_count INTEGER NOT NULL DEFAULT 0,
     skill_names TEXT NOT NULL DEFAULT '[]', tool_names TEXT NOT NULL DEFAULT '[]', token_usage TEXT,
@@ -840,60 +743,61 @@ function migrate(db: Database.Database) {
     );
   `);
 
-  // Support contacts are configurable (Lonora defaults). Seeded only into fresh
-  // DBs; existing rows are managed via the admin dynamic-pages editor.
-  const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL?.trim() || "support@lonora.ai";
-  const SUPPORT_TELEGRAM = process.env.SUPPORT_TELEGRAM?.trim() || "@LonoraSupportBot";
+  const supportContacts = {
+    email: process.env.SUPPORT_EMAIL,
+    telegram: process.env.SUPPORT_TELEGRAM,
+  };
+  const supportPage = buildSupportContactPage(supportContacts);
 
   const seedPages = [
     {
       slug: "privacy-policy",
       title_ar: "سياسة الخصوصية",
       title_en: "Privacy Policy",
-      content_ar: "# سياسة الخصوصية\n\nنحن في **Lonora** نلتزم بحماية خصوصيتك وأمان بياناتك المالية والشخصية.\n\n### 1. جمع المعلومات\nنقوم بجمع المعلومات اللازمة فقط لربط حسابات التداول الخاصة بك وتنفيذ صفقاتك بأمان. لا نقوم بمشاركة أي بيانات سرية مع أي طرف ثالث.\n\n### 2. حماية البيانات\nيتم تشفير جميع مفاتيح API وكلمات المرور الخاصة بك باستخدام خوارزميات تشفير متقدمة على مستوى الخادم.",
-      content_en: "# Privacy Policy\n\nAt **Lonora**, we are committed to protecting your privacy and the security of your financial and personal data.\n\n### 1. Data Collection\nWe collect only the information necessary to connect your trading accounts and execute trades securely. We never share sensitive data with third parties.\n\n### 2. Data Protection\nAll API keys and passwords are encrypted using state-of-the-art server-side encryption algorithms."
+      content_ar: "# سياسة الخصوصية\n\nنحن في **AiChart** نلتزم بحماية خصوصيتك وأمان بياناتك المالية والشخصية.\n\n### 1. جمع المعلومات\nنقوم بجمع المعلومات اللازمة فقط لربط حسابات التداول الخاصة بك وتنفيذ صفقاتك بأمان. لا نقوم بمشاركة أي بيانات سرية مع أي طرف ثالث.\n\n### 2. حماية البيانات\nيتم تشفير جميع مفاتيح API وكلمات المرور الخاصة بك باستخدام خوارزميات تشفير متقدمة على مستوى الخادم.",
+      content_en: "# Privacy Policy\n\nAt **AiChart**, we are committed to protecting your privacy and the security of your financial and personal data.\n\n### 1. Data Collection\nWe collect only the information necessary to connect your trading accounts and execute trades securely. We never share sensitive data with third parties.\n\n### 2. Data Protection\nAll API keys and passwords are encrypted using state-of-the-art server-side encryption algorithms."
     },
     {
       slug: "terms-of-service",
       title_ar: "الشروط والأحكام",
       title_en: "Terms of Service",
-      content_ar: "# الشروط والأحكام\n\nمرحباً بك في منصة **Lonora**. باستخدامك لخدماتنا، فإنك توافق على الالتزام بالشروط التالية.\n\n### 1. شروط الاستخدام\nيجب أن تكون مؤهلاً قانونياً للتداول واستخدام منصات التداول. المنصة تقدم خدمات اتخاذ القرارات والربط البرمجي فقط.\n\n### 2. المسؤولية\nأنت مسؤول بشكل كامل عن الصفقات والقرارات التي يتم تنفيذها من خلال المنصة.",
-      content_en: "# Terms of Service\n\nWelcome to **Lonora**. By using our services, you agree to comply with the following terms.\n\n### 1. Conditions of Use\nYou must be legally eligible to trade and use financial platforms. The platform provides decision support and programmatic connectivity only.\n\n### 2. Liability\nYou are fully responsible for the trades and decisions executed through the platform."
+      content_ar: "# الشروط والأحكام\n\nمرحباً بك في منصة **AiChart**. باستخدامك لخدماتنا، فإنك توافق على الالتزام بالشروط التالية.\n\n### 1. شروط الاستخدام\nيجب أن تكون مؤهلاً قانونياً للتداول واستخدام منصات التداول. المنصة تقدم خدمات اتخاذ القرارات والربط البرمجي فقط.\n\n### 2. المسؤولية\nأنت مسؤول بشكل كامل عن الصفقات والقرارات التي يتم تنفيذها من خلال المنصة.",
+      content_en: "# Terms of Service\n\nWelcome to **AiChart**. By using our services, you agree to comply with the following terms.\n\n### 1. Conditions of Use\nYou must be legally eligible to trade and use financial platforms. The platform provides decision support and programmatic connectivity only.\n\n### 2. Liability\nYou are fully responsible for the trades and decisions executed through the platform."
     },
     {
       slug: "user-agreement",
       title_ar: "اتفاقية الاستخدام",
       title_en: "User Agreement",
-      content_ar: "# اتفاقية الاستخدام\n\nتوضح هذه الاتفاقية الحقوق والالتزامات المتبادلة بين المستخدم ومنصة **Lonora**.\n\n### 1. ترخيص الخدمة\nتمنحك المنصة ترخيصاً محدداً وغير حصري للوصول إلى أدوات تحليل البيانات ووكيل التداول الذكي.\n\n### 2. الحسابات والاشتراكات\nيجب الحفاظ على سرية معلومات الدخول والتحقق الثنائي لضمان أمان حسابك.",
-      content_en: "# User Agreement\n\nThis agreement outlines the mutual rights and obligations between the user and the **Lonora** platform.\n\n### 1. Service License\nThe platform grants you a limited, non-exclusive license to access data analysis tools and the smart trading agent.\n\n### 2. Accounts and Subscriptions\nCredentials and two-factor authentication parameters must be kept confidential to ensure account safety."
+      content_ar: "# اتفاقية الاستخدام\n\nتوضح هذه الاتفاقية الحقوق والالتزامات المتبادلة بين المستخدم ومنصة **AiChart**.\n\n### 1. ترخيص الخدمة\nتمنحك المنصة ترخيصاً محدداً وغير حصري للوصول إلى أدوات تحليل البيانات ووكيل التداول الذكي.\n\n### 2. الحسابات والاشتراكات\nيجب الحفاظ على سرية معلومات الدخول والتحقق الثنائي لضمان أمان حسابك.",
+      content_en: "# User Agreement\n\nThis agreement outlines the mutual rights and obligations between the user and the **AiChart** platform.\n\n### 1. Service License\nThe platform grants you a limited, non-exclusive license to access data analysis tools and the smart trading agent.\n\n### 2. Accounts and Subscriptions\nCredentials and two-factor authentication parameters must be kept confidential to ensure account safety."
     },
     {
       slug: "risk-disclosure",
       title_ar: "إخلاء المسؤولية عن مخاطر التداول",
       title_en: "Risk Disclosure",
-      content_ar: "# إخلاء المسؤولية عن مخاطر التداول\n\n> [!WARNING]\n> التداول في أسواق الفوركس والرافعة المالية ينطوي على مخاطر خسارة مالية كبيرة.\n\n### 1. مخاطر السوق\nالأسعار متقلبة بشكل كبير والرافعة المالية قد تضاعف الخسائر كما تضاعف الأرباح.\n\n### 2. عدم وجود ضمانات\nلا تقدم منصة **Lonora** أي ضمانات بتحقيق أرباح. الأداء السابق لا يضمن الأداء المستقبلي.",
-      content_en: "# Risk Disclosure\n\n> [!WARNING]\n> Trading in forex and leveraged markets carries significant risk of financial loss.\n\n### 1. Market Risks\nPrices are highly volatile, and leverage can multiply losses just as it multiplies profits.\n\n### 2. No Guarantees\nThe **Lonora** platform makes no guarantees of profits. Past performance does not guarantee future results."
+      content_ar: "# إخلاء المسؤولية عن مخاطر التداول\n\n> [!WARNING]\n> التداول في أسواق الفوركس والرافعة المالية ينطوي على مخاطر خسارة مالية كبيرة.\n\n### 1. مخاطر السوق\nالأسعار متقلبة بشكل كبير والرافعة المالية قد تضاعف الخسائر كما تضاعف الأرباح.\n\n### 2. عدم وجود ضمانات\nلا تقدم منصة **AiChart** أي ضمانات بتحقيق أرباح. الأداء السابق لا يضمن الأداء المستقبلي.",
+      content_en: "# Risk Disclosure\n\n> [!WARNING]\n> Trading in forex and leveraged markets carries significant risk of financial loss.\n\n### 1. Market Risks\nPrices are highly volatile, and leverage can multiply losses just as it multiplies profits.\n\n### 2. No Guarantees\nThe **AiChart** platform makes no guarantees of profits. Past performance does not guarantee future results."
     },
     {
       slug: "about-us",
       title_ar: "من نحن",
       title_en: "About Us",
-      content_ar: "# من نحن\n\n**Lonora** هي منصة متكاملة تجمع بين أدوات تحليل الشارتات المتقدمة ووكيل الذكاء الاصطناعي الذكي لتوجيه صفقاتك بنقرة واحدة.\n\n### رؤيتنا\nتمكين المتداولين الأفراد من استخدام أدوات تداول مؤسساتية تعتمد على الذكاء الاصطناعي لإدارة المخاطر وتحسين الأداء.",
-      content_en: "# About Us\n\n**Lonora** is an integrated platform combining advanced charting tools and an intelligent AI agent to guide your trades in a single click.\n\n### Our Vision\nEmpowering retail traders to use institutional-grade AI-powered trading tools to manage risk and optimize performance."
+      content_ar: "# من نحن\n\n**AiChart** هي منصة متكاملة تجمع بين أدوات تحليل الشارتات المتقدمة ووكيل الذكاء الاصطناعي الذكي لتوجيه صفقاتك بنقرة واحدة.\n\n### رؤيتنا\nتمكين المتداولين الأفراد من استخدام أدوات تداول مؤسساتية تعتمد على الذكاء الاصطناعي لإدارة المخاطر وتحسين الأداء.",
+      content_en: "# About Us\n\n**AiChart** is an integrated platform combining advanced charting tools and an intelligent AI agent to guide your trades in a single click.\n\n### Our Vision\nEmpowering retail traders to use institutional-grade AI-powered trading tools to manage risk and optimize performance."
     },
     {
       slug: "blog",
       title_ar: "المدونة الرسمية",
       title_en: "Official Blog",
-      content_ar: "# المدونة الرسمية لمنصة Lonora\n\nتابع أحدث مقالاتنا وتحليلات السوق وتحديثات الذكاء الاصطناعي.\n\n- **كيف يعمل التداول الآلي بالذكاء الاصطناعي؟**\n- **استراتيجيات إدارة المخاطر وتجنب التصفية.**\n- **التحديثات الأخيرة لوكلاء التداول وكتابة السيناريوهات.**",
-      content_en: "# Lonora Official Blog\n\nFollow our latest articles, market analysis, and AI updates.\n\n- **How AI-Assisted Trading Works?**\n- **Risk Management Strategies and Avoiding Liquidation.**\n- **Latest Updates on Trading Agents and Scripting.**"
+      content_ar: "# المدونة الرسمية لمنصة AiChart\n\nتابع أحدث مقالاتنا وتحليلات السوق وتحديثات الذكاء الاصطناعي.\n\n- **كيف يعمل التداول الآلي بالذكاء الاصطناعي؟**\n- **استراتيجيات إدارة المخاطر وتجنب التصفية.**\n- **التحديثات الأخيرة لوكلاء التداول وكتابة السيناريوهات.**",
+      content_en: "# AiChart Official Blog\n\nFollow our latest articles, market analysis, and AI updates.\n\n- **How AI-Assisted Trading Works?**\n- **Risk Management Strategies and Avoiding Liquidation.**\n- **Latest Updates on Trading Agents and Scripting.**"
     },
     {
       slug: "contact-us",
       title_ar: "تواصل معنا",
       title_en: "Contact Us",
-      content_ar: `# تواصل معنا\n\nفريق الدعم الفني متواجد لمساعدتك على مدار الساعة.\n\n- **البريد الإلكتروني:** ${SUPPORT_EMAIL}\n- **التليجرام:** ${SUPPORT_TELEGRAM}\n- **الموقع:** مركز دبي المالي العالمي، دبي، الإمارات العربية المتحدة.`,
-      content_en: `# Contact Us\n\nOur technical support team is available 24/7 to assist you.\n\n- **Email:** ${SUPPORT_EMAIL}\n- **Telegram:** ${SUPPORT_TELEGRAM}\n- **Location:** DIFC, Dubai, United Arab Emirates.`
+      content_ar: supportPage.contentAr,
+      content_en: supportPage.contentEn,
     }
   ];
 
@@ -904,24 +808,35 @@ function migrate(db: Database.Database) {
     `).run(page.slug, page.title_ar, page.title_en, page.content_ar, page.content_en);
   }
 
-  const scalpCols = db
-    .prepare("PRAGMA table_info(scalp_sessions)")
-    .all() as { name: string }[];
-  const addScalpCol = (name: string, ddl: string) => {
-    if (!scalpCols.some((c) => c.name === name)) {
-      db.exec(`ALTER TABLE scalp_sessions ADD COLUMN ${ddl}`);
-    }
-  };
-  addScalpCol("status", "status TEXT NOT NULL DEFAULT 'stopped'");
-  addScalpCol("execution_mode", "execution_mode TEXT NOT NULL DEFAULT 'paper'");
-  addScalpCol("session_pnl", "session_pnl REAL NOT NULL DEFAULT 0");
-  addScalpCol("day_key", "day_key TEXT");
-  addScalpCol("daily_trade_count", "daily_trade_count INTEGER NOT NULL DEFAULT 0");
-  addScalpCol("stop_reason", "stop_reason TEXT");
-  // Backfill status from the legacy `active` flag.
-  if (!scalpCols.some((c) => c.name === "status")) {
-    db.exec(
-      "UPDATE scalp_sessions SET status = CASE WHEN active = 1 THEN 'active' ELSE 'stopped' END",
+  const selectLegacyPage = db.prepare(`
+    SELECT slug, title_ar, title_en, content_ar, content_en, metadata_json
+      FROM dynamic_pages
+     WHERE slug = ?
+  `);
+  const updateLegacyPage = db.prepare(`
+    UPDATE dynamic_pages
+       SET title_ar = ?,
+           title_en = ?,
+           content_ar = ?,
+           content_en = ?,
+           metadata_json = ?,
+           updated_at = datetime('now')
+     WHERE slug = ?
+  `);
+  for (const slug of LEGACY_SEEDED_DYNAMIC_PAGE_SLUGS) {
+    const current = selectLegacyPage.get(slug) as
+      | DynamicPageBrandFields
+      | undefined;
+    if (!current) continue;
+    const migrated = migrateLegacyDynamicPageBranding(current, supportContacts);
+    if (!migrated.changed) continue;
+    updateLegacyPage.run(
+      migrated.page.title_ar,
+      migrated.page.title_en,
+      migrated.page.content_ar,
+      migrated.page.content_en,
+      migrated.page.metadata_json,
+      migrated.page.slug,
     );
   }
 
@@ -1020,11 +935,6 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0",
     );
   }
-  if (!settingsCols.some((c) => c.name === "risk_guard_enabled")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN risk_guard_enabled INTEGER NOT NULL DEFAULT 1",
-    );
-  }
   if (!settingsCols.some((c) => c.name === "alerts_enabled")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN alerts_enabled INTEGER NOT NULL DEFAULT 1",
@@ -1040,79 +950,50 @@ function migrate(db: Database.Database) {
       "ALTER TABLE trading_settings ADD COLUMN alert_signals INTEGER NOT NULL DEFAULT 1",
     );
   }
-  if (!settingsCols.some((c) => c.name === "alert_min_confidence")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN alert_min_confidence INTEGER NOT NULL DEFAULT 0",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "daily_profit_target_usd")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN daily_profit_target_usd REAL NOT NULL DEFAULT 0",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "auto_take_profit_usd")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN auto_take_profit_usd REAL NOT NULL DEFAULT 0",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "active_market")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN active_market TEXT NOT NULL DEFAULT 'forex'",
-    );
-  }
   if (!settingsCols.some((c) => c.name === "forex_backend")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN forex_backend TEXT");
   }
-  if (!settingsCols.some((c) => c.name === "last_manual_scan_at")) {
-    db.exec("ALTER TABLE trading_settings ADD COLUMN last_manual_scan_at TEXT");
+  // Forward-only product simplification migration. Existing databases may
+  // still contain legacy policy columns; no runtime code reads them, and they
+  // are removed here after the remaining account/watchlist data is preserved.
+  const obsoleteSettingsColumns = [
+    "mode", "approval", "experience", "style", "max_capital",
+    "max_open_trades", "daily_profit_target_pct", "daily_profit_target_usd",
+    "daily_loss_limit_pct", "monthly_loss_limit_pct", "auto_take_profit_usd",
+    "kill_switch", "risk_guard_enabled", "alert_min_confidence",
+    "min_confidence", "min_rr", "last_manual_scan_at", "scan_poll_minutes",
+    "analysis_interval", "execution_env_preference", "futures_enabled",
+    "default_leverage", "trading_style", "scalp_max_trades", "scalp_enabled",
+    "scalp_execution_mode", "active_market",
+  ];
+  const currentSettingsColumns = db
+    .prepare("PRAGMA table_info(trading_settings)")
+    .all() as { name: string }[];
+  for (const name of obsoleteSettingsColumns) {
+    if (currentSettingsColumns.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE trading_settings DROP COLUMN ${name}`);
+    }
   }
-  if (!settingsCols.some((c) => c.name === "scan_poll_minutes")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN scan_poll_minutes INTEGER NOT NULL DEFAULT 0",
-    );
+
+  const currentAdminColumns = db
+    .prepare("PRAGMA table_info(admin_limits)")
+    .all() as { name: string }[];
+  for (const name of ["max_capital_cap", "max_open_trades_cap", "max_leverage_cap"]) {
+    if (currentAdminColumns.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE admin_limits DROP COLUMN ${name}`);
+    }
   }
-  if (!settingsCols.some((c) => c.name === "analysis_interval")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN analysis_interval TEXT NOT NULL DEFAULT '1h'",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "execution_env_preference")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN execution_env_preference TEXT NOT NULL DEFAULT 'demo'",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "min_confidence")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN min_confidence INTEGER NOT NULL DEFAULT 80",
-    );
-    db.exec("UPDATE trading_settings SET min_confidence = 80 WHERE min_confidence IS NULL");
-  }
-  if (!settingsCols.some((c) => c.name === "min_rr")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN min_rr REAL NOT NULL DEFAULT 1",
-    );
-    db.exec("UPDATE trading_settings SET min_rr = 1 WHERE min_rr IS NULL");
-  }
-  if (!settingsCols.some((c) => c.name === "trading_style")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN trading_style TEXT NOT NULL DEFAULT 'day'",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "scalp_max_trades")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN scalp_max_trades INTEGER NOT NULL DEFAULT 0",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "scalp_enabled")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN scalp_enabled INTEGER NOT NULL DEFAULT 0",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "scalp_execution_mode")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN scalp_execution_mode TEXT NOT NULL DEFAULT 'paper'",
-    );
-  }
+
+  db.exec(
+    `UPDATE trading_settings
+        SET per_trade_pct = CASE
+          WHEN per_trade_pct IS NULL
+            OR per_trade_pct < 0.1
+            OR per_trade_pct > 5
+          THEN 1
+          ELSE ROUND(per_trade_pct, 1)
+        END`,
+  );
 
   const tradeCols = db
     .prepare("PRAGMA table_info(trades)")
@@ -1183,26 +1064,6 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE trades ADD COLUMN limit_price REAL");
   }
 
-  // Futures is opt-in per user (settings) with an admin hard leverage cap.
-  if (!settingsCols.some((c) => c.name === "futures_enabled")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN futures_enabled INTEGER NOT NULL DEFAULT 0",
-    );
-  }
-  if (!settingsCols.some((c) => c.name === "default_leverage")) {
-    db.exec(
-      "ALTER TABLE trading_settings ADD COLUMN default_leverage REAL NOT NULL DEFAULT 3",
-    );
-  }
-  const limitCols = db
-    .prepare("PRAGMA table_info(admin_limits)")
-    .all() as { name: string }[];
-  if (!limitCols.some((c) => c.name === "max_leverage_cap")) {
-    db.exec(
-      "ALTER TABLE admin_limits ADD COLUMN max_leverage_cap REAL NOT NULL DEFAULT 10",
-    );
-  }
-
   const eaCols = db
     .prepare("PRAGMA table_info(ea_connections)")
     .all() as { name: string }[];
@@ -1268,11 +1129,24 @@ function migrate(db: Database.Database) {
       )
   `);
 
-  if (!recCols.some((c) => c.name === "committee_json")) {
-    db.exec("ALTER TABLE recommendations ADD COLUMN committee_json TEXT");
-  }
   if (!recCols.some((c) => c.name === "memory_refs_json")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN memory_refs_json TEXT");
+  }
+  if (recCols.some((c) => c.name === "committee_json")) {
+    db.exec("ALTER TABLE recommendations DROP COLUMN committee_json");
+  }
+
+  const auditCols = db
+    .prepare("PRAGMA table_info(agent_audit_logs)")
+    .all() as { name: string }[];
+  if (auditCols.some((c) => c.name === "risk_veto")) {
+    db.exec("ALTER TABLE agent_audit_logs DROP COLUMN risk_veto");
+  }
+  const runCols = db
+    .prepare("PRAGMA table_info(agent_runs)")
+    .all() as { name: string }[];
+  if (runCols.some((c) => c.name === "risk_veto")) {
+    db.exec("ALTER TABLE agent_runs DROP COLUMN risk_veto");
   }
 
   db.exec(`
@@ -1418,7 +1292,7 @@ function migrate(db: Database.Database) {
       run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
       request_id TEXT NOT NULL, symbol TEXT, timeframe TEXT, intent TEXT,
       status TEXT NOT NULL, started_at INTEGER NOT NULL, completed_at INTEGER, cancelled_at INTEGER,
-      decision TEXT, confidence REAL, risk_veto INTEGER NOT NULL DEFAULT 0,
+      decision TEXT, confidence REAL,
       error_code TEXT, feature_flags TEXT NOT NULL DEFAULT '{}', context_version TEXT,
       context_message_count INTEGER NOT NULL DEFAULT 0, recalled_memory_count INTEGER NOT NULL DEFAULT 0,
       skill_names TEXT NOT NULL DEFAULT '[]', tool_names TEXT NOT NULL DEFAULT '[]', token_usage TEXT,
@@ -1469,66 +1343,6 @@ function migrate(db: Database.Database) {
   );
 
   db.exec(`
-    CREATE TABLE IF NOT EXISTS copilot_events (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id         INTEGER NOT NULL,
-      conversation_id INTEGER,
-      event_type      TEXT NOT NULL,
-      payload_json    TEXT,
-      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_copilot_events_user ON copilot_events (user_id, event_type);
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS gold_agent_journal (
-      id                INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id           INTEGER NOT NULL,
-      bot_id            INTEGER NOT NULL,
-      side              TEXT NOT NULL,
-      entry_price       REAL NOT NULL,
-      exit_price        REAL NOT NULL,
-      lot               REAL NOT NULL,
-      pnl               REAL NOT NULL,
-      regime            TEXT NOT NULL,
-      session           TEXT NOT NULL,
-      confidence        REAL NOT NULL,
-      trade_quality     REAL NOT NULL,
-      trade_score       REAL NOT NULL,
-      danger_level      TEXT NOT NULL,
-      advisor_votes_json TEXT NOT NULL,
-      weights_json      TEXT NOT NULL,
-      exit_reason       TEXT NOT NULL,
-      duration_ms       INTEGER NOT NULL,
-      fingerprint       TEXT NOT NULL,
-      created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    CREATE INDEX IF NOT EXISTS idx_gold_agent_journal_bot ON gold_agent_journal (user_id, bot_id);
-
-    CREATE TABLE IF NOT EXISTS gold_agent_performance (
-      user_id     INTEGER NOT NULL,
-      bot_id      INTEGER NOT NULL,
-      stats_json  TEXT NOT NULL,
-      updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (user_id, bot_id),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS gold_agent_setups (
-      user_id       INTEGER NOT NULL,
-      bot_id        INTEGER NOT NULL,
-      fingerprint   TEXT NOT NULL,
-      win_rate      REAL NOT NULL DEFAULT 0,
-      profit_factor REAL NOT NULL DEFAULT 1,
-      samples       INTEGER NOT NULL DEFAULT 0,
-      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (user_id, bot_id, fingerprint),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
     CREATE TABLE IF NOT EXISTS chart_layouts (
       id         TEXT PRIMARY KEY,
       user_id    INTEGER NOT NULL,
@@ -1542,7 +1356,6 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_chart_layouts_user ON chart_layouts(user_id);
   `);
 
-  dropLegacyBotAndScalpTables(db);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS deep_analysis_runs (
@@ -1578,7 +1391,6 @@ function migrate(db: Database.Database) {
   `);
 
   db.exec(`
-    UPDATE trading_settings SET active_market = 'forex' WHERE active_market = 'crypto';
     UPDATE trades SET market = 'forex' WHERE market = 'crypto';
     UPDATE trade_intents SET market = 'forex' WHERE market = 'crypto';
     UPDATE recommendations SET market = 'forex' WHERE market = 'crypto';
@@ -1586,13 +1398,6 @@ function migrate(db: Database.Database) {
     UPDATE trade_intents SET broker = 'mt_ea' WHERE broker = 'binance';
     DROP TABLE IF EXISTS binance_accounts;
   `);
-}
-
-function dropLegacyBotAndScalpTables(db: import("better-sqlite3").Database) {
-  db.exec("PRAGMA foreign_keys = OFF");
-  db.exec("DROP TABLE IF EXISTS scalp_sessions");
-  db.exec("DROP TABLE IF EXISTS bot_sessions");
-  db.exec("PRAGMA foreign_keys = ON");
 }
 
 export function seedAdminSqlite(db: Database.Database) {
@@ -1612,7 +1417,7 @@ export function seedAdminSqlite(db: Database.Database) {
       "UPDATE users SET role = 'admin', status = 'active' WHERE id = ?",
     ).run(existingAdmin.id);
     db.prepare(
-      "INSERT INTO trading_settings (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING",
+      "INSERT INTO trading_settings (user_id, per_trade_pct) VALUES (?, 1) ON CONFLICT (user_id) DO NOTHING",
     ).run(existingAdmin.id);
     db.prepare(
       "INSERT INTO admin_limits (user_id, can_execute) VALUES (?, 1) ON CONFLICT (user_id) DO UPDATE SET can_execute = 1",
@@ -1627,7 +1432,9 @@ export function seedAdminSqlite(db: Database.Database) {
     )
     .run(adminEmail, hash);
   const userId = Number(info.lastInsertRowid);
-  db.prepare("INSERT INTO trading_settings (user_id) VALUES (?)").run(userId);
+  db.prepare(
+    "INSERT INTO trading_settings (user_id, per_trade_pct) VALUES (?, 1)",
+  ).run(userId);
   db.prepare(
     "INSERT INTO admin_limits (user_id, can_execute) VALUES (?, 1)",
   ).run(userId);
@@ -1642,6 +1449,11 @@ function initDb(db: Database.Database) {
   db.exec(SCHEMA);
   migrate(db);
   seedAdminSqlite(db);
+  db.prepare(
+    `INSERT INTO system_flags (key, value)
+     VALUES ('schema_version', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(SCHEMA_VERSION);
 }
 
 export function getSqliteDb(): Database.Database {

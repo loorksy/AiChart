@@ -47,7 +47,7 @@ echo "==> Cron check"
 CRON_SECRET=$(grep '^CRON_SECRET=' .env 2>/dev/null | cut -d= -f2- || true)
 if [ -n "$CRON_SECRET" ]; then
   CRON_FILE=/etc/cron.d/aichart
-  if [ ! -f "$CRON_FILE" ] || ! grep -q cron/bots "$CRON_FILE" 2>/dev/null; then
+  if [ ! -f "$CRON_FILE" ] || ! grep -q recommendation-sweep "$CRON_FILE" 2>/dev/null; then
     if [ -f /opt/aichart/infra/aichart.cron ]; then
       sed -e "s|YOUR_DOMAIN|aichart.lork.cloud|g" \
           -e "s|YOUR_CRON_SECRET|\${CRON_SECRET}|g" \
@@ -57,8 +57,7 @@ if [ -n "$CRON_SECRET" ]; then
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 */15 * * * * root curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" https://aichart.lork.cloud/api/cron/monitor >/dev/null 2>&1
-* * * * * root curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" https://aichart.lork.cloud/api/cron/scalp >/dev/null 2>&1
-* * * * * root curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" https://aichart.lork.cloud/api/cron/bots >/dev/null 2>&1
+*/5 * * * * root curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" https://aichart.lork.cloud/api/cron/recommendation-sweep >/dev/null 2>&1
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" https://aichart.lork.cloud/api/cron/daily-summary >/dev/null 2>&1
 CRON
     fi

@@ -16,7 +16,7 @@ export interface StartAgentRunInput {
 }
 export interface FinalizeAgentRunInput {
   userId: number; runId: string; status: Exclude<AgentRunStatus, "running">;
-  decision?: AgentDecision; confidence?: number; riskVeto?: boolean;
+  decision?: AgentDecision; confidence?: number;
   errorCode?: string; tokenUsage?: Record<string, number>; completedAt?: number;
   /** Skills actually loaded during the run (set at finalize — discovery is per-request). */
   skillNames?: string[];
@@ -84,20 +84,20 @@ export async function finalizeAgentRun(input: FinalizeAgentRunInput): Promise<bo
     const completedAt = input.completedAt ?? Date.now();
     if (input.skillNames !== undefined) {
       const result = await execute(
-        `UPDATE agent_runs SET status=?,completed_at=?,cancelled_at=?,decision=?,confidence=?,risk_veto=?,error_code=?,token_usage=?,skill_names=?
+        `UPDATE agent_runs SET status=?,completed_at=?,cancelled_at=?,decision=?,confidence=?,error_code=?,token_usage=?,skill_names=?
          WHERE run_id=? AND user_id=?`,
         [input.status, completedAt, input.status === "cancelled" ? completedAt : null,
-          input.decision ?? null, input.confidence ?? null, input.riskVeto ? 1 : 0,
+          input.decision ?? null, input.confidence ?? null,
           input.errorCode?.slice(0, 80) ?? null, json(input.tokenUsage ?? {}, 1_000),
           names(input.skillNames), input.runId, input.userId],
       );
       return result.changes > 0;
     }
     const result = await execute(
-      `UPDATE agent_runs SET status=?,completed_at=?,cancelled_at=?,decision=?,confidence=?,risk_veto=?,error_code=?,token_usage=?
+      `UPDATE agent_runs SET status=?,completed_at=?,cancelled_at=?,decision=?,confidence=?,error_code=?,token_usage=?
        WHERE run_id=? AND user_id=?`,
       [input.status, completedAt, input.status === "cancelled" ? completedAt : null,
-        input.decision ?? null, input.confidence ?? null, input.riskVeto ? 1 : 0,
+        input.decision ?? null, input.confidence ?? null,
         input.errorCode?.slice(0, 80) ?? null, json(input.tokenUsage ?? {}, 1_000), input.runId, input.userId],
     );
     return result.changes > 0;

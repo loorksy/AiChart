@@ -10,20 +10,19 @@ import { logAudit } from "@/lib/store";
 const schema = z.object({
   symbol: z.string().min(1),
   side: z.enum(["buy", "sell"]),
-  notional: z.number().positive().optional(),
   market: z.string().optional(),
   entry: z.number().nullish(),
-  stop_loss: z.number().nullish(),
+  stop_loss: z.number().positive(),
   take_profit: z.number().nullish(),
   confidence: z.number().min(0).max(100).default(0),
   rationale: z.string().nullish(),
   recommendation_id: z.number().nullish(),
   practice: z.boolean().default(false),
   kind: z
-    .enum(["trade", "practice", "env_switch", "mode_change"])
+    .enum(["trade", "practice"])
     .optional(),
   photo_url: z.string().nullish(),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,7 +38,6 @@ export async function POST(req: NextRequest) {
     const result = await createApprovalRequest(userId, {
       symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
-      notional: body.notional,
       market,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,

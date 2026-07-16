@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { WIDGETS } from "../widgets.js";
 import { RUNTIME_JS, widgetHtml } from "../runtime.js";
 
-/** Patterns that would indicate a Lonora-owned interactive control in a card. */
+/** Patterns that would indicate a AiChart-owned interactive control in a card. */
 const BUTTON_PATTERNS: RegExp[] = [
   /<button\b/i,
   /role\s*=\s*["']button["']/i,

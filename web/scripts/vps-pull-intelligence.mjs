@@ -52,7 +52,9 @@ sleep 4
 
 echo "==> Verify"
 test -f src/lib/tradePostMortem.ts && echo "tradePostMortem.ts OK"
-test -f src/lib/committee.ts && echo "committee.ts OK"
+test -f src/lib/productModel.ts && echo "productModel.ts OK"
+test -f src/lib/agent/agents/finalDecisionSynthesizer.ts && echo "canonical decision synthesizer OK"
+test ! -f src/lib/committee.ts && echo "legacy committee removed OK"
 test -f src/app/command/page.tsx && echo "command page OK"
 curl -fsS -o /dev/null -w "HTTPS %{http_code}\\n" https://aichart.lork.cloud/
 pm2 list | grep aichart || true

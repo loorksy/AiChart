@@ -3,7 +3,7 @@
 import { Loader2, Radio, X } from "lucide-react";
 import { LiveAnalysisLog } from "@/components/chart/LiveAnalysisLog";
 import type { ChartDrawing } from "@/lib/chartDrawings";
-import type { LiveReasoningEntry } from "@/lib/analysis/chartAnalyzeLlm";
+import type { LiveReasoningEntry } from "@/lib/analysis/types";
 import type { Recommendation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 

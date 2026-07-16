@@ -29,103 +29,12 @@ export interface PublicUser {
   created_at: string;
 }
 
-/**
- * Trading modes:
- * - auto:     the agent opens/closes trades on its own (Risk Guard gated).
- * - approval: the agent proposes; the operator approves each entry.
- * - direct:   the operator drives; the agent trades only on explicit command.
- * Legacy DB rows may still hold "advisory" — normalized to "approval" on read.
- */
-export const TRADING_MODES = ["auto", "approval", "direct"] as const;
-export type TradingMode = (typeof TRADING_MODES)[number];
-
-export function normalizeTradingMode(raw: string | null | undefined): TradingMode {
-  if (raw === "advisory") return "approval";
-  return (TRADING_MODES as readonly string[]).includes(raw ?? "")
-    ? (raw as TradingMode)
-    : "approval";
-}
-
-/**
- * Trading styles — the *cadence* of trading (distinct from `mode`, which is
- * execution authority). Each style bundles a default timeframe, loop speed,
- * trade cap, and TP/SL width. Used by the interactive MCP style selector and
- * the scalp worker.
- */
-export const TRADING_STYLES = ["scalp", "day", "swing", "position"] as const;
-export type TradingStyle = (typeof TRADING_STYLES)[number];
-
-export function normalizeTradingStyle(
-  raw: string | null | undefined,
-): TradingStyle {
-  return (TRADING_STYLES as readonly string[]).includes(raw ?? "")
-    ? (raw as TradingStyle)
-    : "day";
-}
-
-/** Default analysis interval per trading style. */
-export const STYLE_DEFAULT_INTERVAL: Record<TradingStyle, string> = {
-  scalp: "1m",
-  day: "15m",
-  swing: "4h",
-  position: "1d",
-};
-
-/** Active scalp session state (consumed by the scalp worker). */
-export type ScalpStatus = "active" | "paused" | "stopped";
-
-export interface ScalpSession {
-  user_id: number;
-  /** 1 = running, 0 = not running. Kept in sync with status for legacy reads. */
-  active: number;
-  /** Lifecycle state for the autonomous session loop. */
-  status: ScalpStatus;
-  symbol: string;
-  market: MarketType;
-  interval: string;
-  /** Cap on executed entries this session (0 = fall back to max_open_trades). */
-  max_trades: number;
-  executed_count: number;
-  /** Per-trade notional for entries. */
-  notional: number;
-  /** paper = record decisions only; live = real execution via Risk Guard. */
-  execution_mode: "paper" | "live";
-  /** Realized PnL accrued during this session (USD). */
-  session_pnl: number;
-  /** UTC day key (YYYY-MM-DD) for the daily trade counter. */
-  day_key: string | null;
-  /** Entries executed today (for daily caps). */
-  daily_trade_count: number;
-  /** Why the session auto-stopped (daily_limit / cap / broker…). */
-  stop_reason: string | null;
-  started_at: string | null;
-  updated_at: string;
-}
-
 export interface TradingSettings {
   user_id: number;
-  mode: TradingMode;
-  approval: "manual" | "delegate";
-  experience: "expert" | "beginner";
-  style: "conservative" | "balanced" | "aggressive";
-  /** Trading cadence (scalp/day/swing/position). Distinct from `mode`. */
-  trading_style: TradingStyle;
-  /** Max concurrent trades for scalp sessions (0 = use max_open_trades). */
-  scalp_max_trades: number;
-  /** 1 = agent is allowed to use scalp mode in conversations. */
-  scalp_enabled: number;
-  /** Execution mode for scalp: paper = log only, live = real orders. */
-  scalp_execution_mode: "paper" | "live";
-  max_capital: number;
+  /** Canonical Risk per Trade percentage. Used for position sizing only. */
   per_trade_pct: number;
-  max_open_trades: number;
-  daily_profit_target_pct: number;
-  daily_profit_target_usd: number;
-  daily_loss_limit_pct: number;
-  monthly_loss_limit_pct: number;
-  auto_take_profit_usd: number;
+  /** Stored watchlist/scan assets. Never an analytical or execution gate. */
   allowed_assets: string;
-  active_market: MarketType;
   /**
    * User-chosen forex execution backend: "ea" (bridge on the user's own MT5)
    * or "mt5local" (server-side, no download). null/undefined = the operator's
@@ -134,42 +43,18 @@ export interface TradingSettings {
   forex_backend?: "ea" | "mt5local" | "metaapi" | null;
   send_screenshot: number;
   telegram_chat_id: string | null;
-  /** 1 = riskGuard enforces all risk/permission gates; 0 = full-autonomous. */
-  risk_guard_enabled: number;
   onboarding_done: number;
   alerts_enabled: number;
   alert_trades: number;
   alert_signals: number;
-  alert_min_confidence: number;
-  /** Minimum trade confidence (0–100) enforced by Risk Guard on live execution. */
-  min_confidence: number;
-  /**
-   * Minimum reward:risk ratio enforced as an objective quality gate (e.g. 1 =
-   * reject any setup whose target is closer than its stop). This is NOT a
-   * confidence threshold — it is trade-quality discipline. Skipped when
-   * risk_guard_enabled=0 or when entry/SL/TP are not all known.
-   */
-  min_rr?: number;
-  last_manual_scan_at?: string | null;
-  scan_poll_minutes?: number;
-  analysis_interval?: string;
-  /** demo | live — preferred execution environment for agent + UI. */
-  execution_env_preference?: string;
-  /** Futures opt-in (legacy column — always disabled on forex-only platform). */
-  futures_enabled?: number;
-  /** Default leverage for futures intents (capped by admin max_leverage_cap). */
-  default_leverage?: number;
   updated_at: string;
 }
 
 export interface AdminLimits {
   user_id: number;
+  /** Technical authorization to submit orders. Not recommendation authority. */
   can_execute: number;
-  max_capital_cap: number;
-  max_open_trades_cap: number;
   claude_quota: number;
-  /** Admin hard cap on leverage for futures (default 10x). */
-  max_leverage_cap?: number;
   updated_at: string;
 }
 
@@ -211,8 +96,6 @@ export interface Recommendation {
   source: RecommendationSource;
   /** Market context when the recommendation was created (forex). */
   market: MarketType | null;
-  /** Multi-agent committee votes (JSON). */
-  committee_json: string | null;
   /** IDs of trade_lessons referenced during analysis (JSON array). */
   memory_refs_json: string | null;
   strategy_id?: string | null;
@@ -251,23 +134,6 @@ export interface TradeLesson {
 
 export interface TradeLessonMatch extends TradeLesson {
   score: number;
-}
-
-export type CommitteeVoteValue = "approve" | "reject" | "wait";
-
-export interface CommitteePersonaVote {
-  vote: CommitteeVoteValue;
-  confidence: number;
-  rationale_ar: string;
-}
-
-export interface CommitteeResult {
-  aggressive: CommitteePersonaVote;
-  riskOfficer: CommitteePersonaVote;
-  macro: CommitteePersonaVote;
-  summary_ar: string;
-  veto: boolean;
-  autoBlocked: boolean;
 }
 
 export type IntentStatus =

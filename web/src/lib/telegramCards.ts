@@ -1,16 +1,9 @@
 import { buildAccountProfile, accountFooterLines, type AccountProfile } from "./accountProfile";
 import { formatSpreadAr } from "./spread";
-import type { TradingSettings } from "./types";
 
 export const CARD_SEPARATOR = "─────────────────";
 
-const STYLE_EMOJI: Record<string, string> = {
-  conservative: "🟢",
-  balanced: "🟡",
-  aggressive: "🔴",
-};
-
-function envLine(profile: AccountProfile, settings?: TradingSettings): string {
+function envLine(profile: AccountProfile): string {
   const env = profile.accountType === "—" ? "—" : profile.accountType;
   const parts = [`البيئة: ${env}`];
   if (profile.hasLeverage && profile.leverage) {
@@ -42,7 +35,7 @@ export function formatAmount(notional: number, currency = "دولار"): string 
 
 export function sessionStartCard(profile: AccountProfile): string {
   return formatCard(
-    "👋 مرحباً — Lonora",
+    "👋 مرحباً — AiChart",
     [
       "🔹 اختر من الأزرار أو اكتب أمراً.",
       `🔹 السوق: ${profile.marketType === "forex" ? "فوركس" : "كربتو"}`,
@@ -60,15 +53,14 @@ export function analysisCard(input: {
   stop_loss?: number | null;
   take_profit?: number | null;
   signals?: string[];
-  notional?: number;
-  style?: string;
   profile: AccountProfile;
 }): string {
   const sideAr =
     input.side === "buy" ? "شراء 🟢" : input.side === "sell" ? "بيع 🔴" : "انتظار";
-  const styleKey = input.style ?? "balanced";
   const fields = [
-    `🔹 الاتجاه: ${sideAr} · الثقة: ${input.confidence}%`,
+    input.side === "buy" || input.side === "sell"
+      ? `🔹 الاتجاه: ${sideAr} · الثقة: ${input.confidence}%`
+      : `🔹 الاتجاه: ${sideAr}`,
   ];
   if (input.entry) {
     const sl = input.stop_loss ? ` · SL: ${input.stop_loss}` : "";
@@ -78,11 +70,8 @@ export function analysisCard(input: {
   if (input.signals?.length) {
     fields.push(`🔹 الإشارات: ${input.signals.slice(0, 3).join(" · ")}`);
   }
-  if (input.notional) {
-    fields.push(`🔹 المبلغ المقترح: ${formatAmount(input.notional, input.profile.accountCurrency === "USD" ? "دولار" : input.profile.accountCurrency)}`);
-  }
   fields.push(
-    `🔹 الاستراتيجية: ${styleKey} ${STYLE_EMOJI[styleKey] ?? "🟡"}`,
+    "🔹 الأسلوب: Scalping",
     `🔹 ${envLine(input.profile)}`,
   );
   return formatCard(`📊 تحليل ${input.symbol}`, fields.slice(0, 8), input.profile);
@@ -91,19 +80,22 @@ export function analysisCard(input: {
 export function approvalCard(input: {
   symbol: string;
   side: string;
-  notional: number;
+  riskAmount: number;
   confidence: number;
   entry?: number | null;
   stop_loss?: number | null;
   take_profit?: number | null;
   profile: AccountProfile;
-  style?: string;
 }): string {
   const sideAr = input.side === "buy" ? "شراء 🟢" : "بيع 🔴";
-  const styleKey = input.style ?? "balanced";
   const fields = [
     `🔹 الاتجاه: ${sideAr} · الثقة: ${input.confidence}%`,
-    `🔹 المبلغ: ${formatAmount(input.notional)}`,
+    `🔹 مبلغ المخاطرة المحسوب: ${formatAmount(
+      input.riskAmount,
+      input.profile.accountCurrency === "USD"
+        ? "دولار"
+        : input.profile.accountCurrency,
+    )}`,
   ];
   if (input.entry) {
     const sl = input.stop_loss ? ` · SL: ${input.stop_loss}` : "";
@@ -111,7 +103,7 @@ export function approvalCard(input: {
     fields.push(`🔹 الدخول: ${input.entry}${sl}${tp}`);
   }
   fields.push(
-    `🔹 الاستراتيجية: ${styleKey} ${STYLE_EMOJI[styleKey] ?? "🟡"}`,
+    "🔹 الأسلوب: Scalping",
     `🔹 ${envLine(input.profile)}`,
     "🔹 اضغط موافق أو رفض أدناه.",
   );
@@ -184,7 +176,6 @@ export function recommendationCard(rec: {
   profile?: AccountProfile;
   signals?: string[];
   notional?: number;
-  style?: string;
 }): string {
   const profile = rec.profile ?? {
     hasLeverage: false,
@@ -207,8 +198,6 @@ export function recommendationCard(rec: {
     stop_loss: rec.stop_loss,
     take_profit: rec.take_profit,
     signals: rec.signals,
-    notional: rec.notional,
-    style: rec.style,
     profile,
   });
 }

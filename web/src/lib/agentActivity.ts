@@ -34,7 +34,6 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
     return `تسجيل توصية ${action}${symbol ? ` · ${symbol}` : ""} + لقطة شارت`;
   },
   get_account_overview: () => "نظرة شاملة على الحساب والمخاطر",
-  get_risk_status: () => "فحص حالة المخاطر والحدود",
   get_open_trades: () => "قراءة الصفقات المفتوحة",
   get_account_symbols: (input) =>
     `قراءة أزواج الحساب${input.market ? ` · ${input.market}` : ""}`,
@@ -60,13 +59,8 @@ const TOOL_LABELS: Record<string, (input: Record<string, unknown>) => string> = 
     const side = input.side === "buy" ? "شراء" : "بيع";
     return `طلب موافقة على ${side} · ${String(input.symbol ?? "")}`;
   },
-  set_trading_mode: (input) => `تبديل وضع التنفيذ · ${String(input.mode ?? "")}`,
-  set_active_market: () => "تبديل السوق · فوركس",
-  set_trading_style: (input) =>
-    `ضبط أسلوب التداول · ${String(input.trading_style ?? "")}`,
   search_trade_memory: (input) =>
     `بحث في ذاكرة الصفقات${input.symbol ? ` · ${String(input.symbol)}` : ""}`,
-  set_risk_guard: () => "ضبط حارس المخاطر",
 };
 
 export function describeToolUse(

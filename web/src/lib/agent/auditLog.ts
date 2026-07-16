@@ -18,7 +18,6 @@ export interface AgentAuditEntry {
   intents?: AgentIntent[];
   decision?: AgentDecision;
   confidence?: number;
-  riskVeto?: boolean;
   newsRisk?: string;
   executionRequiresConfirmation?: boolean;
   executionConfirmed?: boolean;
@@ -31,9 +30,9 @@ export async function writeAgentAudit(entry: AgentAuditEntry): Promise<void> {
     await execute(
       `INSERT INTO agent_audit_logs
          (user_id, request_id, session_id, symbol, interval, intent, decision,
-          confidence, risk_veto, news_risk, execution_requires_confirmation,
+          confidence, news_risk, execution_requires_confirmation,
           execution_confirmed, summary, metadata)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         entry.userId ?? null,
         entry.requestId,
@@ -43,7 +42,6 @@ export async function writeAgentAudit(entry: AgentAuditEntry): Promise<void> {
         entry.intents?.join(",") ?? null,
         entry.decision ?? null,
         entry.confidence ?? null,
-        entry.riskVeto ? 1 : 0,
         entry.newsRisk ?? null,
         entry.executionRequiresConfirmation ? 1 : 0,
         entry.executionConfirmed ? 1 : 0,

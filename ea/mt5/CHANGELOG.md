@@ -1,5 +1,11 @@
 # AiChartBridge MT5 — Changelog
 
+## Unreleased — simplified execution contract
+
+- Removed legacy heartbeat `kill_switch` and `close_open_trades` handling.
+- Heartbeat flags now carry technical reconnect/resync requests only.
+- Order validity, authorization, freshness, idempotency, and broker checks remain active.
+
 ## Heartbeat payload (all versions)
 
 `POST /api/ea/heartbeat` → `symbols[]` stored as `symbol_specs_json` on the server.

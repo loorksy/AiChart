@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { Globe, ShieldCheck } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
-import { LonoraLogo } from "@/components/LonoraLogo";
+import { AiChartLogo } from "@/components/AiChartLogo";
 import { BRAND_NAME } from "@/lib/brand";
 
 export function LandingFooter() {
-  const { t, locale } = useLocale();
+  const { locale } = useLocale();
 
   return (
     <footer className="border-t border-border/80 bg-background/50 py-12 px-4 backdrop-blur-md">
@@ -19,12 +19,12 @@ export function LandingFooter() {
           {/* Column 1: Brand Info */}
           <div className="space-y-4">
             <Link href="/" className="flex items-center gap-2">
-              <LonoraLogo size={24} showName nameClassName="text-base font-bold tracking-tight text-foreground" />
+              <AiChartLogo size={24} showName nameClassName="text-base font-bold tracking-tight text-foreground" />
             </Link>
             <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
               {locale === "ar"
-                ? "منصة التداول الذكية المعتمدة على وكلاء الذكاء الاصطناعي لمراقبة الأسواق وتنفيذ الصفقات بأعلى كفاءة وأمان عبر MetaTrader 5."
-                : "The intelligent AI-powered trading platform designed to monitor markets and execute trades with peak efficiency and safety on MetaTrader 5."}
+                ? "مساحة شارت ومحادثة تساعدك على مراجعة قرار BUY أو SELL أو WAIT، ثم تنفيذ الصفقة على MetaTrader 5 بعد موافقتك واجتياز فحوص الأمان."
+                : "A chart-and-chat workspace for reviewing a BUY, SELL, or WAIT decision, then executing on MetaTrader 5 after your approval and safety checks."}
             </p>
           </div>
 
@@ -111,8 +111,8 @@ export function LandingFooter() {
           </div>
           <p className="text-[10px] text-muted-foreground leading-relaxed">
             {locale === "ar"
-              ? "تحذير: ينطوي التداول في الأسواق المالية والرافعة المالية (مثل صفقات الفيوتشرز) على مستويات عالية من المخاطر وقد يؤدي إلى خسارة كامل رأس المال. الأداء التاريخي لأي مؤشر أو بوت أو أداة لا يضمن ولا يتنبأ بالأداء المستقبلي. المنصة لا تقدم استشارات استثمارية."
-              : "Warning: Trading in financial markets and utilizing leverage (e.g. Futures trading) involves high levels of risk and may result in the complete loss of capital. Historical performance of any indicator, bot, or tool does not guarantee or predict future performance. The platform does not provide investment advice."}
+              ? "تحذير: ينطوي تداول الفوركس واستخدام الرافعة المالية على مخاطر مرتفعة وقد يؤدي إلى خسارة رأس المال. الأداء التاريخي لأي توصية أو أداة لا يضمن النتائج المستقبلية. المنصة لا تقدم ضماناً للربح أو بديلاً عن حكمك المستقل."
+              : "Warning: Forex trading and leverage involve substantial risk and may result in loss of capital. Historical performance of any recommendation or tool does not guarantee future results. The platform offers no profit guarantee and is not a substitute for independent judgment."}
           </p>
         </div>
 

@@ -15,13 +15,8 @@ const schema = z.object({
   access_days: z.number().int().min(1).max(3650).optional(),
   renew: z.boolean().optional(),
   can_execute: z.boolean().optional(),
-  max_capital_cap: z.number().min(0).optional(),
-  // 0 = UNLIMITED (the user's own max_open_trades governs); a positive value
-  // is a hard ceiling that can only lower the user's setting.
-  max_open_trades_cap: z.number().int().min(0).max(1_000_000).optional(),
   claude_quota: z.number().int().min(0).optional(),
-  max_leverage_cap: z.number().min(1).max(125).optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
@@ -71,14 +66,8 @@ export async function PATCH(
     const limitPatch: Record<string, unknown> = {};
     if (typeof input.can_execute === "boolean")
       limitPatch.can_execute = input.can_execute ? 1 : 0;
-    if (typeof input.max_capital_cap === "number")
-      limitPatch.max_capital_cap = input.max_capital_cap;
-    if (typeof input.max_open_trades_cap === "number")
-      limitPatch.max_open_trades_cap = input.max_open_trades_cap;
     if (typeof input.claude_quota === "number")
       limitPatch.claude_quota = input.claude_quota;
-    if (typeof input.max_leverage_cap === "number")
-      limitPatch.max_leverage_cap = input.max_leverage_cap;
     if (Object.keys(limitPatch).length > 0) {
       await updateAdminLimits(userId, limitPatch);
     }

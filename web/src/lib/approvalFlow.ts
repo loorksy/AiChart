@@ -6,12 +6,12 @@ import { getPlatformValue } from "./platformConfig";
 import {
   createIntent,
   getIntent,
-  getLimits,
   getRecommendation,
   getSettings,
+  resolveBrokerForMarket,
   updateIntentStatus,
 } from "./store";
-import { executeIntent } from "./execution";
+import { executeIntent, getRiskBudget } from "./execution";
 import { dispatchAlert } from "./alerts";
 import type { InlineButton } from "./telegram";
 import { resolveChartUrl } from "./recommendationChart";
@@ -23,7 +23,7 @@ import {
 } from "./intentRevalidate";
 import { approvalCard, cancelledTradeCard } from "./telegramCards";
 
-export type ApprovalKind = "trade" | "practice" | "env_switch" | "mode_change";
+export type ApprovalKind = "trade" | "practice";
 
 const ACTION_TTL_MS = 30 * 60 * 1000;
 
@@ -95,7 +95,6 @@ export function buildApprovalButtonsForIntent(
 export interface ApprovalRequestInput {
   symbol: string;
   side: "buy" | "sell";
-  notional?: number;
   market?: MarketType;
   entry?: number | null;
   stop_loss?: number | null;
@@ -113,26 +112,18 @@ export async function createApprovalRequest(
   input: ApprovalRequestInput,
 ): Promise<{ intentId: number; telegramDelivered: boolean; reasonAr?: string }> {
   const settings = await getSettings(userId);
-  if (settings.mode === "direct") {
-    throw new Error(
-      "وضع التنفيذ «مباشر» — لا بطاقات موافقة. نفّذ بأمر صريح من المستخدم.",
-    );
-  }
-  const limits = await getLimits(userId);
-  const market = input.market ?? settings.active_market ?? DEFAULT_MARKET;
-  const effectiveCapital =
-    limits.max_capital_cap > 0
-      ? Math.min(settings.max_capital, limits.max_capital_cap)
-      : settings.max_capital;
-  const notional =
-    input.notional ?? (effectiveCapital * settings.per_trade_pct) / 100;
+  const market = input.market ?? DEFAULT_MARKET;
+  const broker = await resolveBrokerForMarket(userId, market);
+  const budget = await getRiskBudget(userId, broker);
+  if (!budget) throw new Error("تعذّر التحقق من equity للحساب المتصل.");
 
   const intent = await createIntent(userId, {
     recommendation_id: input.recommendation_id ?? null,
     symbol: input.symbol,
     side: input.side,
-    notional,
+    notional: budget.riskAmount,
     market,
+    broker,
     entry: input.entry ?? null,
     stop_loss: input.stop_loss ?? null,
     take_profit: input.take_profit ?? null,
@@ -147,13 +138,12 @@ export async function createApprovalRequest(
   const caption = approvalCard({
     symbol: intent.symbol,
     side: intent.side,
-    notional: intent.notional,
-    confidence: intent.confidence,
+    riskAmount: intent.notional,
     entry: intent.entry,
     stop_loss: intent.stop_loss,
     take_profit: intent.take_profit,
+    confidence: input.confidence ?? 0,
     profile,
-    style: settings.style,
   });
   const buttons = buildApprovalButtonsForIntent(intent.id, kind);
 
@@ -168,10 +158,8 @@ export async function createApprovalRequest(
     title: `طلب ${intent.side === "buy" ? "شراء" : "بيع"} ${intent.symbol}`,
     text: caption,
     symbol: intent.symbol,
-    confidence: intent.confidence,
     photoUrl,
     buttons,
-    bypassConfidenceGate: true,
   });
 
   return {
@@ -223,7 +211,6 @@ export async function respondToApproval(
           profile,
         }),
         symbol: intent.symbol,
-        bypassConfidenceGate: true,
       });
       return {
         ok: false,

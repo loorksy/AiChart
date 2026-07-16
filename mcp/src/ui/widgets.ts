@@ -3,7 +3,7 @@ import { widgetHtml } from "./runtime.js";
 const PLATFORM_URL = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
 
 const accountOverview = widgetHtml(
-  "Lonora account overview",
+  "AiChart account overview",
   `<div class="card" id="acct-card">
     <div class="top">
       <div>
@@ -73,7 +73,7 @@ const accountOverview = widgetHtml(
 );
 
 const analysis = widgetHtml(
-  "Lonora analysis",
+  "AiChart analysis",
   `<div class="card" id="analysis-card">
     <div class="top">
       <div><div class="title" id="title">—</div></div>
@@ -208,7 +208,7 @@ const analysis = widgetHtml(
 
 function genericCard(titleKey: string, _subtitleKey: string) {
   return widgetHtml(
-    `Lonora ${titleKey}`,
+    `AiChart ${titleKey}`,
     `<div class="card">
       <div class="top">
         <div><div class="title" data-i18n="${titleKey}"></div></div>
@@ -245,10 +245,7 @@ function genericCard(titleKey: string, _subtitleKey: string) {
       if (Array.isArray(data.items)) add(AIC.t("items"), String(data.items.length));
       if (Array.isArray(data.candidates)) add(AIC.t("candidates"), String(data.candidates.length));
       if (Array.isArray(data.pending) || Array.isArray(data.approvals)) add(AIC.t("pending"), String((data.pending || data.approvals).length));
-      var cap = obj(data.capital);
       add(AIC.t("status"), data.status || data.mode || data.ready);
-      add(AIC.t("capital"), cap.effectiveCapital || data.effectiveCapital, 2);
-      add(AIC.t("perTradeMax"), cap.perTradeMaxUsd || data.perTradeMaxUsd || data.per_trade_max_usd, 2);
       add(AIC.t("todayPnl"), data.todayRealizedPnlUsd || data.today_pnl || data.pnl, 2);
       for (var k in data) {
         if (k === "trades" || k === "openTrades" || k === "open_trades" || k === "capital" ||
@@ -287,7 +284,7 @@ function genericCard(titleKey: string, _subtitleKey: string) {
 }
 
 const openTradesCard = widgetHtml(
-  "Lonora open trades",
+  "AiChart open trades",
   `<div class="card">
     <div class="top">
       <div><div class="title" id="trades-title">—</div></div>
@@ -355,7 +352,7 @@ const openTradesCard = widgetHtml(
  * from get_chart_state, refreshed every ~4s via host-mediated callTool.
  * Read-only — no toolbars; one button opens the full TradingView chart. */
 const liveChart = widgetHtml(
-  "Lonora live chart",
+  "AiChart live chart",
   `<div class="card">
     <div class="top">
       <div>
@@ -768,7 +765,7 @@ const liveChart = widgetHtml(
  * multi-opportunity payloads as a ranked list. Reads the recommendation from
  * many shapes (create_recommendation, run_market_analysis, scan_market). */
 const recommendationCard = widgetHtml(
-  "Lonora recommendation",
+  "AiChart recommendation",
   `<div class="card wait" id="rec-card">
     <div class="top">
       <div>

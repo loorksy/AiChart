@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, RefreshCw } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
+import { useLocale } from "@/hooks/useLocale";
 import type { EaConnectionMeta } from "@/lib/types";
 import type { MtPlatform } from "@/lib/markets/types";
 import { Download } from "lucide-react";
@@ -16,6 +17,8 @@ export function EaConnectCard({
   canDownloadEa?: boolean;
 }) {
   const router = useRouter();
+  const { locale, dir } = useLocale();
+  const isRtl = locale === "ar";
   const [platform, setPlatform] = useState<MtPlatform>(
     connection?.platform ?? "mt5",
   );
@@ -38,24 +41,38 @@ export function EaConnectCard({
       });
       const data = await res.json();
       if (!res.ok) {
-        setMsg({ type: "err", text: data.error ?? "تعذّر توليد الرمز." });
+        setMsg({
+          type: "err",
+          text: data.error ?? (isRtl ? "تعذّر توليد الرمز." : "Could not generate the token."),
+        });
         return;
       }
       setToken(data.token as string);
       setMsg({
         type: "ok",
-        text: "تم توليد الرمز. انسخه الآن — لن يُعرض مرة أخرى.",
+        text: isRtl
+          ? "تم توليد الرمز. انسخه الآن — لن يُعرض مرة أخرى."
+          : "Token generated. Copy it now — it will not be shown again.",
       });
       router.refresh();
     } catch {
-      setMsg({ type: "err", text: "تعذّر الاتصال بالخادم." });
+      setMsg({
+        type: "err",
+        text: isRtl ? "تعذّر الاتصال بالخادم." : "Could not connect to the server.",
+      });
     } finally {
       setBusy(false);
     }
   }
 
   async function revoke() {
-    if (!confirm("إلغاء ربط MetaTrader؟ سيتوقف التنفيذ على الفوركس.")) return;
+    if (
+      !confirm(
+        isRtl
+          ? "إلغاء ربط MetaTrader؟ سيتوقف التنفيذ على الفوركس."
+          : "Disconnect MetaTrader? Forex execution will stop.",
+      )
+    ) return;
     setBusy(true);
     try {
       await fetch("/api/ea/token", { method: "DELETE" });
@@ -78,20 +95,26 @@ export function EaConnectCard({
   }
 
   const statusLabel = connection?.online
-    ? "متصل"
+    ? (isRtl ? "متصل" : "Connected")
     : connection?.status === "revoked"
-      ? "ملغى"
+      ? (isRtl ? "ملغى" : "Revoked")
       : connection
-        ? "غير متصل"
-        : "غير مربوط";
+        ? (isRtl ? "غير متصل" : "Offline")
+        : (isRtl ? "غير مربوط" : "Not connected");
 
   return (
-    <SurfaceCard>
-      <h2 className="mb-1 text-xl font-semibold">ربط MetaTrader (فوركس)</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
-        ربط MetaTrader 5 عبر Expert Advisor على جهازك أو VPS — التنفيذ والأسعار
-        مباشرة من منصتك.
-      </p>
+    <div dir={dir}>
+      <SurfaceCard className="space-y-4">
+        <div>
+          <h2 className="mb-1 text-xl font-semibold">
+            {isRtl ? "ربط MetaTrader (فوركس)" : "Connect MetaTrader (Forex)"}
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {isRtl
+              ? "اربط MetaTrader 5 عبر Expert Advisor على جهازك أو VPS — التنفيذ والأسعار مباشرة من منصتك."
+              : "Connect MetaTrader 5 through an Expert Advisor on your computer or VPS — execution and prices come directly from your terminal."}
+          </p>
+        </div>
 
       {connection && (
         <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
@@ -107,17 +130,20 @@ export function EaConnectCard({
           <button
             onClick={revoke}
             disabled={busy}
-            className="btn btn-danger py-1.5 text-sm"
+            className="btn btn-danger min-h-11 text-sm"
           >
-            إلغاء
+            {isRtl ? "إلغاء" : "Disconnect"}
           </button>
         </div>
       )}
 
       <div className="space-y-4">
         <div>
-          <label className="text-sm font-medium">المنصّة</label>
+          <label htmlFor="ea-platform" className="text-sm font-medium">
+            {isRtl ? "المنصّة" : "Platform"}
+          </label>
           <select
+            id="ea-platform"
             className="input mt-1"
             value={platform}
             onChange={(e) => setPlatform(e.target.value as MtPlatform)}
@@ -130,7 +156,7 @@ export function EaConnectCard({
         {token && (
           <div className="rounded-xl border border-accent-gold/40 bg-secondary p-3">
             <p className="mb-1 text-xs text-muted-foreground">
-              رمز الربط (انسخه الآن):
+              {isRtl ? "رمز الربط (انسخه الآن):" : "Connection token (copy it now):"}
             </p>
             <div className="flex items-center gap-2">
               <code
@@ -142,10 +168,12 @@ export function EaConnectCard({
               <button
                 type="button"
                 onClick={() => void copyToken()}
-                className="btn btn-secondary shrink-0 gap-1 py-1.5 text-xs"
+                className="btn btn-secondary min-h-11 shrink-0 gap-1 text-xs"
               >
                 <Copy className="h-3.5 w-3.5" />
-                {copied ? "نُسخ" : "نسخ"}
+                {copied
+                  ? (isRtl ? "نُسخ" : "Copied")
+                  : (isRtl ? "نسخ" : "Copy")}
               </button>
             </div>
           </div>
@@ -153,6 +181,7 @@ export function EaConnectCard({
 
         {msg && (
           <p
+            role={msg.type === "err" ? "alert" : "status"}
             className={`rounded-lg px-3 py-2 text-sm ${
               msg.type === "ok"
                 ? "bg-secondary text-foreground"
@@ -167,48 +196,65 @@ export function EaConnectCard({
           type="button"
           onClick={() => void generate()}
           disabled={busy}
-          className="btn btn-primary gap-2"
+          className="btn btn-primary min-h-11 gap-2"
         >
           <RefreshCw className="h-4 w-4" />
           {busy
-            ? "جارٍ…"
+            ? (isRtl ? "جارٍ…" : "Working…")
             : connection
-              ? "توليد رمز جديد (تدوير)"
-              : "توليد رمز الربط"}
+              ? (isRtl ? "توليد رمز جديد (تدوير)" : "Generate a new token (rotate)")
+              : (isRtl ? "توليد رمز الربط" : "Generate connection token")}
         </button>
 
         {canDownloadEa ? (
           <a
             href="/api/ea/download"
-            className="btn btn-secondary inline-flex gap-2"
+            className="btn btn-secondary inline-flex min-h-11 gap-2"
             download="AiChartBridge.ex5"
           >
             <Download className="h-4 w-4" />
-            تحميل AiChartBridge.ex5
+            {isRtl ? "تحميل AiChartBridge.ex5" : "Download AiChartBridge.ex5"}
           </a>
         ) : (
           <p className="rounded-xl bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
-            تحميل ملف EA يتاح بعد موافقة الإدارة على حسابك.
+            {isRtl
+              ? "تحميل ملف EA يتاح بعد موافقة الإدارة على حسابك."
+              : "The EA download becomes available after an administrator approves your account."}
           </p>
         )}
 
         <ol className="list-decimal space-y-1 rounded-xl bg-secondary/60 p-4 ps-8 text-xs text-muted-foreground">
           <li>
             {canDownloadEa
-              ? "حمّل AiChartBridge.ex5 بالزر أعلاه، أو من المستودع:"
-              : "بعد الموافقة: حمّل AiChartBridge.ex5 من الزر أعلاه، أو من المستودع:"}{" "}
+              ? (isRtl
+                  ? "حمّل AiChartBridge.ex5 بالزر أعلاه، أو من المستودع:"
+                  : "Download AiChartBridge.ex5 above, or get it from the repository:")
+              : (isRtl
+                  ? "بعد الموافقة: حمّل AiChartBridge.ex5 من الزر أعلاه، أو من المستودع:"
+                  : "After approval, download AiChartBridge.ex5 above or from the repository:")}{" "}
             <code dir="ltr">ea/mt5/AiChartBridge.mq5</code>
-            {canDownloadEa ? "" : " (مصدر)"}.
+            {canDownloadEa ? "" : (isRtl ? " (مصدر)" : " (source)")}
+            .
           </li>
-          <li>ضعه في مجلد Experts ثم أعد الترجمة في MetaEditor.</li>
-          <li>اسحب EA على شارت، والصق الرمز في خانة <code dir="ltr">EaToken</code>.</li>
           <li>
-            MT4: أضف رابط الموقع في{" "}
+            {isRtl
+              ? "ضعه في مجلد Experts ثم أعد الترجمة في MetaEditor."
+              : "Place it in the Experts folder, then compile it in MetaEditor."}
+          </li>
+          <li>
+            {isRtl ? "اسحب EA على شارت، والصق الرمز في خانة " : "Attach the EA to a chart and paste the token into "}
+            <code dir="ltr">EaToken</code>.
+          </li>
+          <li>
+            {isRtl ? "MT4: أضف رابط الموقع في " : "MT4: add the site URL under "}
             <span dir="ltr">Tools → Options → Expert Advisors → WebRequest</span>.
           </li>
-          <li>فعّل AutoTrading (الزر الأخضر).</li>
+          <li>
+            {isRtl ? "فعّل AutoTrading (الزر الأخضر)." : "Enable AutoTrading (the green button)."}
+          </li>
         </ol>
       </div>
-    </SurfaceCard>
+      </SurfaceCard>
+    </div>
   );
 }

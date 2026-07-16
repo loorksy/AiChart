@@ -86,10 +86,10 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
   it("Execution request → execution selectable only when authorized; still no auto-approve", () => {
     const { skills } = discoverSkills();
     const blocked = selectMcpSkills(skills, {
-      request: "open a trade on EURUSD with Risk Guard",
+      request: "open a trade on EURUSD with technical execution safety",
       intents: ["execution", "trade"],
       market: "forex",
-      availableTools: ["get_risk_status", "open_trade", "render_cards"],
+      availableTools: ["get_trade_readiness", "open_trade", "render_cards"],
       allowExecutionSkills: false,
     });
     assert.ok(
@@ -101,10 +101,10 @@ describe("MCP intelligent skill selection — runtime evidence", () => {
     );
 
     const allowed = selectMcpSkills(skills, {
-      request: "open a trade on EURUSD with Risk Guard approval flow",
+      request: "open a trade on EURUSD with explicit approval",
       intents: ["execution", "trade"],
       market: "forex",
-      availableTools: ["get_risk_status", "open_trade", "render_cards"],
+      availableTools: ["get_trade_readiness", "open_trade", "render_cards"],
       allowExecutionSkills: true,
       maxSkills: 2,
     });

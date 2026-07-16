@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { DESTRUCTIVE, READ_ONLY } from "../registry.js";
 import type { ToolDefinition } from "./types.js";
-import { zChartDrawings, zInterval, zSide, zSymbol } from "./shapes.js";
+import { zChartDrawings, zInterval, zSymbol } from "./shapes.js";
 
 export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -95,22 +95,6 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       ticket: z.number().int().positive(),
       stop_loss: z.number().positive(),
-      take_profit: z.number().positive().optional(),
-    },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "open_pending_order",
-    domain: "mt5",
-    description:
-      "When: MT5 pending order. side-effect: EA pending. EA v3+.",
-    inputSchema: {
-      symbol: zSymbol,
-      side: zSide,
-      order_type: z.enum(["limit", "stop", "stop_limit"]),
-      lots: z.number().positive(),
-      price: z.number().positive(),
-      stop_loss: z.number().positive().optional(),
       take_profit: z.number().positive().optional(),
     },
     annotations: DESTRUCTIVE,

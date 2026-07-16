@@ -1,6 +1,6 @@
 "use client";
 
-import { useImperativeHandle, forwardRef, type ReactNode } from "react";
+import { useEffect, useImperativeHandle, useState, forwardRef, type ReactNode } from "react";
 import type { AgentChartContext, AgentFinalResult } from "@/lib/agent/types";
 import {
   useSmartChartAgent,
@@ -9,11 +9,12 @@ import {
 } from "@/hooks/useSmartChartAgent";
 import { useLocale } from "@/hooks/useLocale";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
-import { AgentActivityTimeline } from "./AgentActivityTimeline";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import { trackedRecommendationFromResult } from "@/lib/recommendations/fromAgentResult";
+import { TriangleAlert } from "lucide-react";
+import type { AgentSuggestion } from "@/lib/agent/suggestions/types";
 
 export interface SmartChartAgentHandle {
   /** Fire the Analyze quick prompt into the chat (used by the header button). */
@@ -50,8 +51,8 @@ interface Props {
     commands: NonNullable<AgentFinalResult["drawingMutations"]>,
   ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
-  /** Live voice conversation surface, rendered above the chat input. */
-  voiceSlot?: ReactNode;
+  voiceControl?: ReactNode;
+  voicePanel?: ReactNode;
 }
 
 /** Docked, chart-connected Smart Chart Agent chat — one visible agent. */
@@ -74,11 +75,16 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       onVoiceFinal,
       applyDrawingMutations,
       onPersistMessage,
-      voiceSlot,
+      voiceControl,
+      voicePanel,
     },
     ref,
   ) {
     const { t, dir, locale } = useLocale();
+    const [emptyState, setEmptyState] = useState<{
+      greeting: string | null;
+      suggestions: AgentSuggestion[];
+    }>({ greeting: null, suggestions: [] });
     const {
       messages,
       running,
@@ -104,6 +110,33 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         applyDrawingMutations,
         onPersistMessage,
       });
+    const drawingsCount = getDrawings?.()?.length ?? 0;
+
+    useEffect(() => {
+      if (messages.length || running) return;
+      const controller = new AbortController();
+      const params = new URLSearchParams({
+        symbol,
+        interval,
+        locale,
+        drawings: String(drawingsCount),
+      });
+      if (chatId) params.set("chatId", chatId);
+      void fetch(`/api/agent/suggestions?${params}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then((response) => response.ok ? response.json() : null)
+        .then((data: { greeting?: string | null; suggestions?: AgentSuggestion[] } | null) => {
+          if (!data) return;
+          setEmptyState({
+            greeting: data.greeting ?? null,
+            suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+          });
+        })
+        .catch(() => undefined);
+      return () => controller.abort();
+    }, [chatId, drawingsCount, interval, locale, messages.length, running, symbol]);
 
     useImperativeHandle(
       ref,
@@ -126,9 +159,25 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             Analysis is reachable from the chart's Analyze control and by typing. */}
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           {messages.length === 0 && !running && (
-            <p className="text-center text-xs text-muted-foreground">
-              {t("agent.empty")}
-            </p>
+            <div className="mx-auto flex h-full max-w-sm flex-col items-center justify-center gap-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                {emptyState.greeting ?? t("agent.empty")}
+              </p>
+              {emptyState.suggestions.length ? (
+                <div className="flex flex-wrap justify-center gap-2">
+                  {emptyState.suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.id}
+                      type="button"
+                      onClick={() => void sendMessage(suggestion.prompt)}
+                      className="min-h-10 rounded-full border border-border/60 bg-background px-3 text-xs text-foreground hover:bg-muted"
+                    >
+                      {suggestion.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           )}
 
           {messages.map((m) => (
@@ -137,7 +186,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               className={
                 m.role === "user"
                   ? "ml-auto max-w-[85%] rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground"
-                  : "mr-auto max-w-[95%] rounded-lg bg-muted/50 px-3 py-2 text-sm text-foreground"
+                  : "mr-auto max-w-[95%] rounded-xl border border-border/60 bg-card px-3 py-3 text-sm text-foreground shadow-sm"
               }
             >
               {/* Temporary assistant bubble: live thinking ticker while the run
@@ -160,7 +209,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   >
                     {t(`decision.${m.result.decision}`)}
                   </span>
-                  {m.result.confidenceSemantics?.displayKind &&
+                  {(m.result.decision === "buy" || m.result.decision === "sell") &&
+                  m.result.confidenceSemantics?.displayKind &&
                   m.result.confidenceSemantics.displayKind !== "none" &&
                   typeof m.result.confidenceSemantics.displayValue ===
                     "number" ? (
@@ -170,11 +220,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                         m.result.confidenceSemantics.displayValue * 100,
                       )}
                       %
-                      {m.result.decision === "wait" &&
-                      m.result.confidenceSemantics.displayKind ===
-                        "decision"
-                        ? ` · ${t("agent.no_actionable_setup")}`
-                        : null}
                     </span>
                   ) : m.result.decision === "wait" ? (
                     <span className="text-muted-foreground">
@@ -204,7 +249,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {m.result?.riskWarnings?.length ? (
                 <ul className="mt-1 space-y-0.5 text-[12px] text-amber-500">
                   {m.result.riskWarnings.map((w, i) => (
-                    <li key={i}>⚠ {w}</li>
+                    <li key={i} className="flex items-start gap-1.5">
+                      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>{w}</span>
+                    </li>
                   ))}
                 </ul>
               ) : null}
@@ -244,24 +292,9 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                       ? t("decision.buy")
                       : t("decision.sell")}{" "}
                     {m.result.confirmationPayload.symbol} ·{" "}
-                    {m.result.confirmationPayload.executionMode === "live"
-                      ? t("agent.account_live")
-                      : t("agent.account_demo")}
                   </p>
                 </div>
               )}
-              {/* Optional, collapsed-by-default run details — activity is kept
-                  for debugging but never shown as a noisy timeline by default. */}
-              {m.role === "assistant" && m.activityEvents?.length ? (
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-[11px] text-muted-foreground/70">
-                    {t("agent.run_details")}
-                  </summary>
-                  <div className="mt-1">
-                    <AgentActivityTimeline events={m.activityEvents} />
-                  </div>
-                </details>
-              ) : null}
                 </>
               )}
             </div>
@@ -274,9 +307,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
           )}
         </div>
 
-        {voiceSlot}
-
-        <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} />
+        {voicePanel}
+        <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} voiceControl={voiceControl} />
       </div>
     );
   },

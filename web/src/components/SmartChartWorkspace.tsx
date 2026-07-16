@@ -7,27 +7,32 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { CandlestickChart, MessageSquare, PanelLeft, X } from "lucide-react";
+import { CandlestickChart, MessageSquare } from "lucide-react";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
+
+function ChartLoading() {
+  const { t } = useLocale();
+  return (
+    <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-muted-foreground">
+      {t("layout.loading_chart")}
+    </div>
+  );
+}
 
 const TvChart = dynamic(() => import("@/components/chart/TvChart"), {
   ssr: false,
-  loading: () => (
-    <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-muted-foreground">
-      جاري تحميل الشارت…
-    </div>
-  ),
+  loading: () => <ChartLoading />,
 });
 
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
 import { OpenTradesDrawer } from "@/components/chart/OpenTradesDrawer";
-import { AnalysisResultModal } from "@/components/chart/AnalysisResultModal";
 import {
   SmartChartAgentPanel,
   type SmartChartAgentHandle,
@@ -39,8 +44,11 @@ import { useChatSessions } from "@/hooks/useChatSessions";
 import { useAgentVoiceSession } from "@/hooks/useAgentVoiceSession";
 import { useMe } from "@/hooks/useMe";
 import { useLocale } from "@/hooks/useLocale";
+import { useTheme } from "@/components/ThemeProvider";
 import {
   DEFAULT_MOBILE_PANE,
+  MAX_CHAT_WIDTH,
+  MIN_CHAT_WIDTH,
   clampChatWidth,
   loadChatWidth,
   saveChatWidth,
@@ -75,8 +83,6 @@ export interface ChartLayoutState extends ChartHydrateSnapshot {
 export function SmartChartWorkspace({
   recommendations = [],
   agentReady = true,
-  smartAgentEnabled = false,
-  onCreditsUsed,
   guest = false,
   initialSymbol,
   layoutId,
@@ -85,9 +91,6 @@ export function SmartChartWorkspace({
 }: {
   recommendations?: Recommendation[];
   agentReady?: boolean;
-  /** When true, the docked Smart Chart Agent replaces the legacy analyze path. */
-  smartAgentEnabled?: boolean;
-  onCreditsUsed?: () => void;
   /** Guest (not signed in): browse chart only; tools redirect to login. */
   guest?: boolean;
   /** Symbol from the URL — takes precedence over last-used. */
@@ -103,12 +106,10 @@ export function SmartChartWorkspace({
   // Last final agent result — surfaced read-only via the dev/test debug bridge.
   const lastFinalResultRef = useRef<AgentFinalResult | null>(null);
   const [mobilePane, setMobilePane] = useState<MobilePane>(DEFAULT_MOBILE_PANE);
-  // Mobile drawer for the SAME AgentChatSidebar the desktop column renders —
-  // one navigation implementation, adapted responsively (no legacy fallback).
-  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
-  const chatEnabled = smartAgentEnabled && !guest;
+  const chatEnabled = !guest;
 
   const { locale, t, dir } = useLocale();
+  const { resolved: chartTheme } = useTheme();
   const router = useRouter();
 
   // Desktop chat-panel width (persisted, clamped). Not used on mobile.
@@ -130,9 +131,7 @@ export function SmartChartWorkspace({
 
   const [dataSource, setDataSource] = useState<"oanda" | "ea">("oanda");
   const [tradesOpen, setTradesOpen] = useState(false);
-  const [resultOpen, setResultOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
-  const [executing, setExecuting] = useState(false);
   const [forexOnline, setForexOnline] = useState(false);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
 
@@ -145,7 +144,6 @@ export function SmartChartWorkspace({
 
   const {
     isAnalyzing,
-    analysisText,
     overlays,
     drawings,
     recommendation,
@@ -154,8 +152,6 @@ export function SmartChartWorkspace({
     liveAnalysis,
     analyzeError,
     liveReasoningLog,
-    intents,
-    analyze,
     clearLayers,
     stopLiveAnalysis,
     setHighlightDrawingIndex,
@@ -167,15 +163,7 @@ export function SmartChartWorkspace({
     interval,
     market,
     dataSource,
-    chartRef,
-    source: "smart_chart",
     hydrateSnapshot,
-    layoutId,
-    onAnalyzeDone: () => setResultOpen(true),
-    onCreditsUsed: () => {
-      onCreditsUsed?.();
-      void refreshCredits();
-    },
   });
 
   const refreshCredits = useCallback(async () => {
@@ -234,6 +222,7 @@ export function SmartChartWorkspace({
   // /chart/<SYMBOL> for guests. replaceState only — no page reload.
   useEffect(() => {
     if (typeof window === "undefined" || !symbol) return;
+    if (!window.location.pathname.startsWith("/chart/")) return;
     const src = "";
     const target = layoutId
       ? `/chart/${layoutId}?symbol=${encodeURIComponent(symbol)}${src}`
@@ -392,44 +381,16 @@ export function SmartChartWorkspace({
     [setDrawings, setRecommendation, symbol, interval],
   );
 
-  // Analyze button: with the Smart Chart Agent, open the docked chat and fire
-  // the quick prompt into the unified engine (no separate analysis path).
+  // Analyze always uses the same chat agent path; there is no parallel engine.
   const handleAnalyzeClick = useCallback(() => {
     if (guest) {
       router.push("/login?next=/chart");
       return;
     }
-    if (smartAgentEnabled) {
-      setMobilePane("chat");
-      // Defer so the panel mounts before the imperative call.
-      setTimeout(() => agentRef.current?.quickAnalyze(), 0);
-      return;
-    }
-    if (!isAnalyzing) void analyze();
-  }, [guest, smartAgentEnabled, isAnalyzing, analyze, router]);
-
-  const handleExecute = useCallback(async () => {
-    const pending = intents.find((i) => i.status === "pending");
-    if (!pending) return;
-    setExecuting(true);
-    try {
-      const res = await fetch(`/api/trades/intents/${pending.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve" }),
-      });
-      if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(err?.error ?? "تعذّر التنفيذ");
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setExecuting(false);
-    }
-  }, [intents]);
-
-  const canExecute = intents.some((i) => i.status === "pending");
+    setMobilePane("chat");
+    // Defer so the panel mounts before the imperative call.
+    setTimeout(() => agentRef.current?.quickAnalyze(), 0);
+  }, [guest, router]);
 
   const hasLayers =
     drawings.length > 0 || overlays.length > 0 || recommendation != null;
@@ -438,7 +399,7 @@ export function SmartChartWorkspace({
   const headerActions = useMemo<TvHeaderAction[]>(() => {
     const mtAction: TvHeaderAction = {
       id: "mt",
-      text: forexOnline ? "MT ✅" : "MT ⚠️",
+      text: forexOnline ? t("layout.mt_connected") : t("layout.mt_disconnected"),
       title: forexOnline ? t("layout.mt_connected") : t("layout.mt_disconnected"),
       color: forexOnline ? "#71717a" : "#f59e0b",
       onClick: () => router.push("/console/connect"),
@@ -454,15 +415,15 @@ export function SmartChartWorkspace({
     const analyzeAction: TvHeaderAction = {
       id: "analyze",
       text: guest
-        ? "🔒 دخول للتحليل"
+        ? t("layout.sign_in_to_analyze")
         : isAnalyzing
-          ? "… يُحلِّل"
+          ? t("layout.analyzing")
           : creditsRemaining != null
-            ? `✨ تحليل (${creditsRemaining})`
-            : "✨ تحليل",
+            ? t("layout.analyze_credits", { count: String(creditsRemaining) })
+            : t("layout.analyze"),
       title: guest
-        ? "سجّل الدخول لاستخدام التحليل بالذكاء الاصطناعي"
-        : "تحليل بالذكاء الاصطناعي",
+        ? t("layout.sign_in_analysis_title")
+        : t("layout.ai_analysis"),
       color: "#71717a",
       onClick: handleAnalyzeClick,
     };
@@ -471,8 +432,8 @@ export function SmartChartWorkspace({
         ? [
             {
               id: "clear",
-              text: "🧹 مسح الرسومات",
-              title: "إزالة رسومات التحليل من الشارت",
+              text: t("layout.clear_drawings"),
+              title: t("layout.clear_drawings_title"),
               onClick: handleClearLayers,
             },
           ]
@@ -482,8 +443,10 @@ export function SmartChartWorkspace({
           {
             id: "trades",
             text:
-              openTradesCount > 0 ? `💼 صفقات (${openTradesCount})` : "💼 صفقات",
-            title: "الصفقات المفتوحة",
+              openTradesCount > 0
+                ? t("layout.trades_count", { count: String(openTradesCount) })
+                : t("layout.trades"),
+            title: t("layout.open_trades"),
             onClick: () => setTradesOpen(true),
           },
         ]
@@ -494,7 +457,7 @@ export function SmartChartWorkspace({
             {
               id: "capital",
               text: `$ ${Math.round(capital.amount).toLocaleString()} ${capital.currency ?? ""}`,
-              title: capital.label ?? "رصيد الحساب",
+              title: capital.label ?? t("layout.account_balance"),
             },
           ]
         : [];
@@ -502,10 +465,10 @@ export function SmartChartWorkspace({
       ? [
           {
             id: "mt",
-            text: forexOnline ? "MT ✅" : "MT ⚠️",
+            text: forexOnline ? t("layout.mt_connected") : t("layout.mt_disconnected"),
             title: forexOnline
-              ? "MetaTrader متصل"
-              : "MetaTrader غير متصل — اضغط للإعداد",
+              ? t("layout.mt_connected")
+              : t("layout.mt_setup"),
             color: forexOnline ? "#71717a" : "#f59e0b",
             onClick: () => router.push("/console/connect"),
           },
@@ -542,6 +505,25 @@ export function SmartChartWorkspace({
     interval,
     locale,
   });
+
+  useEffect(() => {
+    const select = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id) return;
+      chat.selectChat(id);
+      setMobilePane("chat");
+    };
+    const create = () => {
+      void chat.newChat();
+      setMobilePane("chat");
+    };
+    window.addEventListener("aichart:select-chat", select);
+    window.addEventListener("aichart:new-chat", create);
+    return () => {
+      window.removeEventListener("aichart:select-chat", select);
+      window.removeEventListener("aichart:new-chat", create);
+    };
+  }, [chat.newChat, chat.selectChat]);
 
   // Live voice conversation. The realtime model is only the speech interface —
   // every final transcript is routed through the SAME agent flow as typed text
@@ -599,15 +581,15 @@ export function SmartChartWorkspace({
     return () => removeAgentDebugBridge();
   });
 
-  // Mobile shows exactly one pane (Chart or Chat); desktop shows both.
+  // Phones and tablets show exactly one pane; wide desktop shows both.
   const showMobileChat = chatEnabled && mobilePane === "chat";
   const chartPaneClass = `relative min-h-0 flex-1 overflow-hidden ${
-    showMobileChat ? "hidden md:block" : "block"
+    showMobileChat ? "hidden xl:block" : "block"
   }`;
-  // Chat: full width on mobile (when its tab is active), fixed persisted width
-  // on desktop. Sits on the right (last column, dir="ltr" row) in both locales.
-  const chatPaneClass = `flex min-h-0 w-full flex-col border-border/60 md:w-[var(--chat-w)] md:shrink-0 ${
-    mobilePane === "chart" ? "hidden md:flex" : "flex"
+  // Chat: full width through tablet (when active), persisted width on desktop.
+  // It sits on the right (last column, dir="ltr" row) in both locales.
+  const chatPaneClass = `flex min-h-0 w-full flex-col border-border/60 xl:w-[var(--chat-w)] xl:shrink-0 ${
+    mobilePane === "chart" ? "hidden xl:flex" : "flex"
   }`;
 
   // Desktop chat resize: chat is the right column, so dragging the handle left
@@ -627,11 +609,24 @@ export function SmartChartWorkspace({
     window.addEventListener("pointerup", onUp);
   };
 
+  const resizeChatWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    let next: number | null = null;
+    if (event.key === "ArrowLeft") next = chatWidth + 24;
+    if (event.key === "ArrowRight") next = chatWidth - 24;
+    if (event.key === "Home") next = MIN_CHAT_WIDTH;
+    if (event.key === "End") next = MAX_CHAT_WIDTH;
+    if (next == null) return;
+    event.preventDefault();
+    const clamped = clampChatWidth(next);
+    setChatWidth(clamped);
+    saveChatWidth(clamped);
+  };
+
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       {!guest && !agentReady && (
         <p className="pointer-events-none absolute inset-x-0 top-12 z-40 mx-auto w-fit max-w-[90%] rounded-md border border-amber-500/30 bg-amber-500/90 px-3 py-1 text-xs text-amber-950 shadow">
-          الذكاء الاصطناعي غير مُفعّل على الخادم — التحليل غير متاح.
+          {t("layout.agent_unavailable")}
         </p>
       )}
 
@@ -641,13 +636,47 @@ export function SmartChartWorkspace({
         </p>
       )}
 
+      {chatEnabled && (
+        <div
+          dir={dir}
+          className="grid shrink-0 grid-cols-2 gap-1 border-b border-border/60 bg-card/95 p-1.5 ps-14 backdrop-blur xl:hidden"
+        >
+          <button
+            type="button"
+            aria-pressed={mobilePane === "chart"}
+            onClick={() => setMobilePane("chart")}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${
+              mobilePane === "chart"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <CandlestickChart className="h-4 w-4" />
+            {t("layout.chart")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={mobilePane === "chat"}
+            onClick={() => setMobilePane("chat")}
+            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${
+              mobilePane === "chat"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <MessageSquare className="h-4 w-4" />
+            {t("layout.chat")}
+          </button>
+        </div>
+      )}
+
       <div
         className="flex min-h-0 flex-1 overflow-hidden"
         dir="ltr"
         style={{ "--chat-w": `${chatWidth}px` } as CSSProperties}
       >
         {chatEnabled && (
-          <div className="hidden w-[240px] shrink-0 md:block">
+          <div className="hidden w-[240px] shrink-0 xl:block">
             <AgentChatSidebar
               sessions={chat.sessions}
               activeChatId={chat.activeChatId}
@@ -655,47 +684,6 @@ export function SmartChartWorkspace({
               onNewChat={() => void chat.newChat()}
               busy={!chat.ready}
             />
-          </div>
-        )}
-
-        {/* Mobile: the SAME sidebar in an overlay drawer (never a legacy nav). */}
-        {chatEnabled && chatSidebarOpen && (
-          <div className="fixed inset-0 z-50 md:hidden" dir={dir}>
-            <button
-              type="button"
-              aria-label={t("agent.close")}
-              onClick={() => setChatSidebarOpen(false)}
-              className="absolute inset-0 bg-black/60"
-            />
-            <div className="absolute inset-y-0 start-0 flex w-[280px] max-w-[85vw] flex-col bg-card shadow-xl">
-              <div className="flex justify-end p-2">
-                <button
-                  type="button"
-                  aria-label={t("agent.close")}
-                  onClick={() => setChatSidebarOpen(false)}
-                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1">
-                <AgentChatSidebar
-                  sessions={chat.sessions}
-                  activeChatId={chat.activeChatId}
-                  onSelectChat={(id) => {
-                    chat.selectChat(id);
-                    setChatSidebarOpen(false);
-                    setMobilePane("chat");
-                  }}
-                  onNewChat={() => {
-                    void chat.newChat();
-                    setChatSidebarOpen(false);
-                    setMobilePane("chat");
-                  }}
-                  busy={!chat.ready}
-                />
-              </div>
-            </div>
           </div>
         )}
 
@@ -716,6 +704,9 @@ export function SmartChartWorkspace({
               headerActions={headerActions}
               eaEnabled={false}
               dataSource={dataSource}
+              locale={locale}
+              direction={dir}
+              theme={chartTheme}
               className="h-full min-h-0 w-full"
               onSymbolChange={handleSymbolChange}
               onIntervalChange={handleIntervalChange}
@@ -732,9 +723,6 @@ export function SmartChartWorkspace({
             drawings={drawings}
             onHighlightDrawing={setHighlightDrawingIndex}
             onStopLive={stopLiveAnalysis}
-            onExecute={canExecute ? () => void handleExecute() : undefined}
-            executing={executing}
-            executeLabel={canExecute ? "موافقة وتنفيذ" : undefined}
           />
         </div>
 
@@ -743,9 +731,16 @@ export function SmartChartWorkspace({
             role="separator"
             aria-orientation="vertical"
             aria-label={t("layout.resize_chat")}
+            aria-valuemin={MIN_CHAT_WIDTH}
+            aria-valuemax={MAX_CHAT_WIDTH}
+            aria-valuenow={chatWidth}
+            tabIndex={0}
             onPointerDown={startChatResize}
-            className="hidden w-1 shrink-0 cursor-col-resize bg-border/40 hover:bg-primary/50 md:block"
-          />
+            onKeyDown={resizeChatWithKeyboard}
+            className="group hidden w-3 shrink-0 cursor-col-resize items-stretch justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:flex"
+          >
+            <span className="w-px bg-border/50 transition-colors group-hover:bg-primary/70 group-focus-visible:bg-primary" />
+          </div>
         )}
 
         {chatEnabled && (
@@ -784,92 +779,15 @@ export function SmartChartWorkspace({
               onResult={handleAgentResult}
               onVoiceFinal={voice.handleAgentFinal}
               onPersistMessage={chat.persistMessage}
-              voiceSlot={
-                <div className="shrink-0">
-                  <div className="flex items-center gap-2 border-t border-border/60 px-2 py-1.5">
-                    <AgentVoiceButton
-                      voice={voice}
-                      disabled={!chat.activeChatId}
-                    />
-                    {!voice.active && (
-                      <span className="text-xs text-muted-foreground">
-                        {t("voice.start")}
-                      </span>
-                    )}
-                  </div>
-                  <AgentVoicePanel voice={voice} />
-                </div>
-              }
+              voiceControl={<AgentVoiceButton voice={voice} disabled={!chat.activeChatId} />}
+              voicePanel={<AgentVoicePanel voice={voice} />}
             />
           </div>
         )}
       </div>
 
-      {chatEnabled && (
-        <div
-          dir={dir}
-          className="grid shrink-0 grid-cols-[auto_1fr_1fr] border-t border-border/60 bg-card p-1 md:hidden"
-        >
-          <button
-            type="button"
-            aria-label={t("nav.chats")}
-            aria-expanded={chatSidebarOpen}
-            onClick={() => setChatSidebarOpen(true)}
-            className="flex items-center justify-center rounded-md px-3 py-2 text-muted-foreground hover:bg-muted"
-          >
-            <PanelLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            aria-pressed={mobilePane === "chart"}
-            onClick={() => setMobilePane("chart")}
-            className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold ${
-              mobilePane === "chart"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            <CandlestickChart className="h-4 w-4" />
-            {t("layout.chart")}
-          </button>
-          <button
-            type="button"
-            aria-pressed={mobilePane === "chat"}
-            onClick={() => setMobilePane("chat")}
-            className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold ${
-              mobilePane === "chat"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            <MessageSquare className="h-4 w-4" />
-            {t("layout.chat")}
-          </button>
-        </div>
-      )}
-
       <OpenTradesDrawer open={tradesOpen} onClose={() => setTradesOpen(false)} />
 
-      <AnalysisResultModal
-        open={resultOpen}
-        onClose={() => setResultOpen(false)}
-        symbol={symbol}
-        interval={interval}
-        recommendation={recommendation}
-        targets={targets}
-        riskReward={riskReward}
-        narrative={analysisText}
-        reasoningLog={liveReasoningLog}
-        onExecute={
-          canExecute
-            ? () => {
-                setResultOpen(false);
-                void handleExecute();
-              }
-            : undefined
-        }
-        executing={executing}
-      />
     </div>
   );
 }

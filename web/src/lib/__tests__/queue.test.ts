@@ -13,19 +13,29 @@ function delay(ms: number): Promise<void> {
 }
 
 test("inline fallback runs the handler when REDIS_URL is unset", async () => {
+  const configuredRedisUrl = process.env.REDIS_URL;
   delete process.env.REDIS_URL;
   const queue = await import("../queue");
 
-  // Register the spy FIRST; the auto-imported real registry is guarded by
-  // hasHandler() and will not overwrite it (so no real DB/LLM side effects).
-  let got: { userId: number; tradeId: number; pnl: number } | null = null;
-  queue.registerHandler("trade_post_mortem", async (p) => {
-    got = p;
-  });
+  try {
+    // Register the spy FIRST; the auto-imported real registry is guarded by
+    // hasHandler() and will not overwrite it (so no real DB/LLM side effects).
+    let got: { userId: number; tradeId: number; pnl: number } | null = null;
+    queue.registerHandler("trade_post_mortem", async (p) => {
+      got = p;
+    });
 
-  await queue.enqueue("trade_post_mortem", { userId: 7, tradeId: 42, pnl: 3.5 });
-  await delay(20); // inline dispatch is void-async
-  assert.deepEqual(got, { userId: 7, tradeId: 42, pnl: 3.5 });
+    await queue.enqueue("trade_post_mortem", {
+      userId: 7,
+      tradeId: 42,
+      pnl: 3.5,
+    });
+    await delay(20); // inline dispatch is void-async
+    assert.deepEqual(got, { userId: 7, tradeId: 42, pnl: 3.5 });
+  } finally {
+    if (configuredRedisUrl === undefined) delete process.env.REDIS_URL;
+    else process.env.REDIS_URL = configuredRedisUrl;
+  }
 });
 
 test("BullMQ round-trip: enqueue → worker processes the job", async (t) => {

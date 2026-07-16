@@ -15,8 +15,8 @@ function bundle(
   },
 ): ResearchEvidenceBundle {
   return {
-    policyVersion: "1.2.0",
-    recommendationConfidenceDelta: 0,
+    evidenceVersion: "1.2.0",
+    historicalEvidenceTendency: 0,
     summaryAr: "",
     summaryEn: "",
     timeline: [],
@@ -30,21 +30,21 @@ describe("userSafeOutbound", () => {
   it("projects internal evidence without module names", () => {
     const projection = toUserSafeResearchProjection(
       bundle({
-        recommendationConfidenceDelta: 0.04,
+        historicalEvidenceTendency: 0.04,
         contributions: [
           {
             system: "trading_dna",
             status: "used",
             reason: "strength_support",
             reasonDetail: "n=40 strengths=3",
-            confidenceDelta: 0.04,
+            evidenceTendency: 0.04,
           },
         ],
         usedSystems: ["trading_dna"],
       }),
     );
     assert.equal(projection.historicalAgreement, "supports");
-    assert.equal(projection.confidenceDirection, "up");
+    assert.equal(projection.evidenceDirection, "supports");
     const serialized = JSON.stringify(projection);
     assert.equal(scanForInternalLeakage(serialized).length, 0);
     assert.doesNotMatch(serialized, /Trading DNA|trading_dna/i);
@@ -74,7 +74,6 @@ describe("userSafeOutbound", () => {
       selectedSkills: [{ name: "x", version: "1" }],
       debugDecisionFlow: {
         usedLLM: true,
-        usedDeterministicFallback: false,
         tickerGenerated: false,
         candleCount: 1,
         htfCandleCount: 1,

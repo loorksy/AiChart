@@ -122,7 +122,7 @@ export function UserAccountClient({ user }: { user: PublicUser }) {
           <div className="min-w-0">
             <p className="truncate font-semibold">{displayName}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {needsCredentials ? "يلزم إكمال البريد لـ MCP" : user.email}
+              {needsCredentials ? "يلزم إكمال بيانات الدخول للموصل" : user.email}
             </p>
           </div>
         </div>
@@ -230,7 +230,7 @@ export function UserAccountClient({ user }: { user: PublicUser }) {
       </SurfaceCard>
 
       <p className="text-center text-xs text-muted-foreground">
-        {displayName} · Lonora
+        {displayName} · AiChart
       </p>
     </PageLayout>
   );

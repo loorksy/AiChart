@@ -40,7 +40,6 @@ export function adaptSql(sql: string, backend: DbBackend): string {
     "plain",
     "archived",
     "send_screenshot",
-    "kill_switch",
     "onboarding_done",
     "can_execute",
   ]) {

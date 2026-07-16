@@ -38,7 +38,6 @@ const PRIORITY_ORDER = [
   "binance_accounts",
   "trading_settings",
   "admin_limits",
-  "scalp_sessions",
   "claude_usage",
   "mt_accounts",
   "ea_connections",
@@ -50,7 +49,6 @@ const PRIORITY_ORDER = [
   "trade_lessons",
   "conversations",
   "chat_messages",
-  "copilot_events",
   "semantic_memories",
   "audit_logs",
   "scan_cooldowns",
@@ -63,7 +61,14 @@ const PRIORITY_ORDER = [
 ];
 
 // Ephemeral/runtime-only tables that must NOT be copied across.
-const SKIP_TABLES = new Set(["locks"]);
+const SKIP_TABLES = new Set([
+  "locks",
+  // Removed decision engines. Historical source databases may still contain
+  // these tables, but they must never be recreated in the simplified system.
+  "bot_sessions",
+  "scalp_sessions",
+  "copilot_events",
+]);
 
 // Resolved from the target's information_schema so booleans (PG) coming from
 // integers (SQLite) are coerced correctly without a brittle hand-maintained list.

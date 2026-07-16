@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { getSettings, getLimits, touchManualScan } from "@/lib/store";
+import { getSettings, getLimits } from "@/lib/store";
 import { runOpportunityScan } from "@/lib/opportunityScan";
 import { normalizeInterval } from "@/lib/intervals";
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     const settings = await getSettings(user.id);
     const limits = await getLimits(user.id);
-    const market = resolveActiveMarket(body.market ?? settings.active_market ?? DEFAULT_MARKET);
+    const market = resolveActiveMarket(body.market ?? DEFAULT_MARKET);
 
     const result = await runOpportunityScan(user.id, settings, limits, {
       deep: body.deep ?? false,
@@ -37,8 +37,6 @@ export async function POST(req: NextRequest) {
       market,
       focusOnly: body.focusOnly,
     });
-
-    await touchManualScan(user.id);
 
     return NextResponse.json(result);
   } catch (e) {

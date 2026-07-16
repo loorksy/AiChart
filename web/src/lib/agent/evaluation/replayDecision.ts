@@ -30,7 +30,6 @@ export interface ReplayDecisionInput {
   candles: AgentCandle[];
   /** Index of the decision candle — everything after it is hidden. */
   decisionIndex: number;
-  minRr?: number;
   htfBias?: "bullish" | "bearish" | "neutral" | "unknown";
   htfConflict?: boolean;
   newsRisk?: "low" | "medium" | "high" | "unknown";
@@ -85,7 +84,6 @@ export function replayDecision(input: ReplayDecisionInput): ReplayDecision {
     sweeps,
     rangePosition,
     htfLevels: [],
-    minRr: input.minRr ?? 1.5,
     newsRisk: input.newsRisk ?? "unknown",
     spread: input.spread ?? null,
   });

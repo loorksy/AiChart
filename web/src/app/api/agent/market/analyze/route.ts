@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
@@ -14,67 +13,45 @@ import {
   getChartLayoutById,
 } from "@/lib/store";
 import { isLLMConfigured } from "@/lib/llm";
-import { runMarketAnalyze, MARKET_ANALYZE_COST } from "@/lib/marketAnalyze";
-import { tradingStyleForInterval } from "@/lib/analysisProfile";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
-import { FEATURES } from "@/lib/agent/featureFlags";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
-import { buildUserTradingProfile } from "@/lib/agent/risk/userTradingProfile";
 import { newId } from "@/lib/agent/activity";
+import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import type { Recommendation } from "@/lib/types";
 
 export const maxDuration = 180;
+const ANALYSIS_COST = 4;
 
 const schema = z.object({
   symbol: z.string().min(3).max(20).optional(),
-  interval: z
-    .string()
-    .min(2)
-    .max(4)
-    .optional()
-    .refine((v) => v == null || INTERVAL_SET.has(v), "إطار زمني غير مدعوم"),
+  interval: z.string().min(2).max(4).optional().refine(
+    (value) => value == null || INTERVAL_SET.has(value),
+    "إطار زمني غير مدعوم",
+  ),
   market: z.string().optional(),
   data_source: z.enum(["oanda", "ea"]).optional(),
-  /** Chart layout to persist the finished analysis into (renders live on the chart). */
   layout_id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
 });
 
-/**
- * Bridge: full AI market analysis for MCP agents (Claude/ChatGPT). Same
- * engine, quota and burst guards as the user-facing route; non-streaming
- * JSON. When layout_id is provided the result (drawings/recommendation) is
- * persisted into the chart layout so the open chart picks it up live.
- */
+/** All authenticated connector analysis uses the same canonical chat agent. */
 export async function POST(req: NextRequest) {
   let release: (() => void) | null = null;
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
-
     if (!isLLMConfigured()) {
-      return NextResponse.json(
-        { error: "الذكاء الاصطناعي غير مُفعّل على الخادم." },
-        { status: 503 },
-      );
+      return NextResponse.json({ error: "الذكاء الاصطناعي غير مفعّل على الخادم." }, { status: 503 });
     }
 
     const limits = await getLimits(userId);
     const used = await getTodayUsage(userId);
-    if (
-      isDailyQuotaEnforced() &&
-      limits.claude_quota > 0 &&
-      used + MARKET_ANALYZE_COST > limits.claude_quota
-    ) {
+    if (isDailyQuotaEnforced() && limits.claude_quota > 0 && used + ANALYSIS_COST > limits.claude_quota) {
       return NextResponse.json(
-        {
-          error: "الرصيد غير كافٍ لتحليل جديد.",
-          code: "credits_required",
-          remaining: Math.max(0, limits.claude_quota - used),
-        },
+        { error: "الرصيد غير كافٍ لتحليل جديد.", code: "credits_required", remaining: Math.max(0, limits.claude_quota - used) },
         { status: 429 },
       );
     }
@@ -82,13 +59,7 @@ export async function POST(req: NextRequest) {
     const slot = acquireAnalyzeSlot(userId);
     if (!slot.ok) {
       return NextResponse.json(
-        {
-          error:
-            slot.reason === "in_flight"
-              ? "لديك تحليل قيد التنفيذ بالفعل — انتظر اكتماله."
-              : "المنصة تحت ضغط مرتفع حالياً — أعد المحاولة خلال ثوانٍ.",
-          code: slot.reason,
-        },
+        { error: slot.reason === "in_flight" ? "لديك تحليل قيد التنفيذ بالفعل." : "المنصة مشغولة حالياً؛ أعد المحاولة خلال ثوانٍ.", code: slot.reason },
         { status: slot.reason === "in_flight" ? 429 : 503 },
       );
     }
@@ -96,171 +67,90 @@ export async function POST(req: NextRequest) {
 
     const settings = await getSettings(userId);
     const layout = body.layout_id ? await getChartLayoutById(body.layout_id, userId) : null;
-    let layoutState: { dataSource?: "oanda" | "ea" } | null = null;
-    if (layout?.state_json) {
-      try {
-        const parsed = JSON.parse(layout.state_json) as { dataSource?: "oanda" | "ea" };
-        layoutState = parsed && typeof parsed === "object" ? parsed : null;
-      } catch {
-        layoutState = null;
-      }
+    let savedSource: "oanda" | "ea" | undefined;
+    try {
+      savedSource = layout?.state_json
+        ? (JSON.parse(layout.state_json) as { dataSource?: "oanda" | "ea" }).dataSource
+        : undefined;
+    } catch {
+      savedSource = undefined;
     }
+
     let symbol = (body.symbol ?? layout?.symbol ?? "").toUpperCase().trim();
-    if (!symbol) {
-      return NextResponse.json(
-        { error: "symbol is required when layout_id is missing or invalid." },
-        { status: 400 },
-      );
-    }
-    const interval = body.interval ?? layout?.interval ?? "1h";
-    const marketErr = rejectNonForexMarket(body.market);
-    if (marketErr) {
-      return NextResponse.json({ error: marketErr }, { status: 400 });
-    }
-    const market = resolveActiveMarket(body.market ?? settings.active_market ?? DEFAULT_MARKET);
-    const dataSource =
-      isOandaDataOnly() || body.data_source === "oanda"
-        ? "oanda"
-        : (body.data_source ?? layoutState?.dataSource ?? "oanda");
+    if (!symbol) return NextResponse.json({ error: "symbol is required." }, { status: 400 });
+    const interval = body.interval ?? layout?.interval ?? "5m";
+    const marketError = rejectNonForexMarket(body.market);
+    if (marketError) return NextResponse.json({ error: marketError }, { status: 400 });
+    resolveActiveMarket(body.market ?? DEFAULT_MARKET);
+
+    const dataSource = isOandaDataOnly() || body.data_source === "oanda"
+      ? "oanda"
+      : (body.data_source ?? savedSource ?? "oanda");
     if (dataSource === "oanda") {
       symbol = forexCanonicalKey(symbol);
     } else {
-      const resolved = await resolveMt5Symbol(userId, symbol);
-      if (resolved) symbol = resolved;
-    }
-    const tradingStyle = tradingStyleForInterval(interval);
-
-    // Opt-in: route MCP analysis through the unified Smart Chart Agent engine.
-    // OFF by default so the existing MCP contract is preserved byte-for-byte.
-    if (FEATURES.mcpUnifiedEngine() && FEATURES.smartChartAgent()) {
-      const unified = await runUnifiedChartAgent({
-        userMessage: `حلّل ${symbol} على فريم ${interval} وارسم أفضل سيناريو واشرح القرار.`,
-        chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
-        requestContext: {
-          requestId: newId(),
-          userId,
-          // MCP has no live UI stream — activity is kept in structuredContent.
-          emitActivity: () => {},
-        },
-        profile: buildUserTradingProfile(settings),
-        account: null,
-        canExecute: false,
-        tradingStyle,
-      });
-
-      const rec = unified.recommendation;
-      const mappedRec: Recommendation | null =
-        rec && (rec.action === "buy" || rec.action === "sell")
-          ? ({
-              symbol,
-              action: rec.action,
-              entry: rec.entry ?? null,
-              stop_loss: rec.stop_loss ?? null,
-              take_profit: rec.take_profit ?? rec.targets?.[0] ?? null,
-              confidence: Math.round(unified.confidence * 100),
-              timeframe: interval,
-            } as Recommendation)
-          : null;
-
-      await incrementUsage(userId, MARKET_ANALYZE_COST);
-      await logAudit(
-        userId,
-        "market_analyze",
-        `${symbol}@${interval} via=agent-unified decision=${unified.decision}`,
-      );
-
-      if (body.layout_id) {
-        await saveChartLayout(body.layout_id, userId, {
-          symbol,
-          interval,
-          state: {
-            drawings: unified.drawings ?? [],
-            overlays: [],
-            recommendation: mappedRec,
-            targets: rec?.targets ?? [],
-            dataSource,
-          },
-        }).catch(() => {});
-      }
-
-      return NextResponse.json({
-        reply: unified.summary,
-        recommendation: mappedRec,
-        targets: rec?.targets ?? [],
-        drawings: unified.drawings ?? [],
-        overlays: [],
-        // No raw reasoning is exposed — public activity events + summary only.
-        activityEvents: unified.activityEvents,
-        decision: unified.decision,
-        newsRisk: unified.newsRisk,
-        requiresConfirmation: unified.requiresConfirmation ?? false,
-        data_source: dataSource,
-        quota: {
-          used: used + MARKET_ANALYZE_COST,
-          limit: limits.claude_quota,
-          remaining: Math.max(0, limits.claude_quota - used - MARKET_ANALYZE_COST),
-        },
-        ...(body.layout_id
-          ? { layout_id: body.layout_id, applied_to_chart: true }
-          : {}),
-      });
+      symbol = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
     }
 
-    const result = await runMarketAnalyze(userId, settings, symbol, interval, {
-      telegramSession: false,
-      market,
-      dataSource,
-      tradingStyle,
+    const result = await runUnifiedChartAgent({
+      userMessage: `حلّل ${symbol} على إطار ${interval} كفرصة سكالب واشرح قرارك.`,
+      chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
+      requestContext: { requestId: newId(), userId, emitActivity: () => {} },
+      account: null,
+      canExecute: false,
     });
+    const recommendation = result.recommendation;
+    const mapped: Recommendation | null = recommendation && (recommendation.action === "buy" || recommendation.action === "sell")
+      ? ({
+          symbol,
+          action: recommendation.action,
+          entry: recommendation.entry ?? null,
+          stop_loss: recommendation.stop_loss ?? null,
+          take_profit: recommendation.take_profit ?? recommendation.targets?.[0] ?? null,
+          confidence: Math.round(result.confidence * 100),
+          timeframe: interval,
+        } as Recommendation)
+      : null;
 
-    await incrementUsage(userId, MARKET_ANALYZE_COST);
-    await logAudit(
-      userId,
-      "market_analyze",
-      `${symbol}@${interval} style=${tradingStyle} via=agent recs=${result.recommendation ? 1 : 0}`,
-    );
-
+    await incrementUsage(userId, ANALYSIS_COST);
+    await logAudit(userId, "market_analyze", `${symbol}@${interval} decision=${result.decision}`);
     if (body.layout_id) {
       await saveChartLayout(body.layout_id, userId, {
         symbol,
         interval,
         state: {
-          drawings: result.drawings,
-          overlays: result.overlays,
-          recommendation: result.recommendation,
-          targets: result.targets,
-          liveReasoningLog: result.liveReasoningLog,
+          drawings: result.drawings ?? [],
+          overlays: [],
+          recommendation: mapped,
+          targets: recommendation?.targets ?? [],
           dataSource,
         },
       }).catch(() => {});
     }
 
     return NextResponse.json({
-      reply: result.reply,
-      recommendation: result.recommendation,
-      targets: result.targets,
-      drawings: result.drawings,
-      overlays: result.overlays,
-      liveReasoningLog: result.liveReasoningLog,
-      profileLabel: result.profileLabel,
-      analysisTier: result.analysisTier,
-      contextSummary: result.contextSummary,
+      reply: result.summary,
+      recommendation: mapped,
+      targets: recommendation?.targets ?? [],
+      drawings: result.drawings ?? [],
+      overlays: [],
+      activityEvents: result.activityEvents,
+      decision: result.decision,
+      newsRisk: result.newsRisk,
+      requiresConfirmation: result.requiresConfirmation ?? false,
       data_source: dataSource,
       quota: {
-        used: used + MARKET_ANALYZE_COST,
+        used: used + ANALYSIS_COST,
         limit: limits.claude_quota,
-        remaining: Math.max(0, limits.claude_quota - used - MARKET_ANALYZE_COST),
+        remaining: Math.max(0, limits.claude_quota - used - ANALYSIS_COST),
       },
       ...(body.layout_id ? { layout_id: body.layout_id, applied_to_chart: true } : {}),
     });
-  } catch (e) {
-    if (e instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: e.issues[0]?.message ?? "بيانات غير صالحة." },
-        { status: 400 },
-      );
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.issues[0]?.message ?? "بيانات غير صالحة." }, { status: 400 });
     }
-    return handleError(e);
+    return handleError(error);
   } finally {
     release?.();
   }

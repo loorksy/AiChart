@@ -89,7 +89,6 @@ function baseInput(
     sweeps: [],
     rangePosition: computeRangePosition(candles, over.currentPrice ?? 100.5),
     htfLevels: [99.5],
-    minRr: 1.5,
     newsRisk: "low",
     spread: null,
     ...over,
@@ -155,7 +154,7 @@ describe("buildTradeCandidates", () => {
     assert.ok(result.best, "expected a candidate");
     assert.equal(result.best!.action, "buy");
     assert.equal(result.best!.setupType, "trend_continuation");
-    assert.ok(result.best!.rr >= 1.5);
+    assert.ok(result.best!.rr > 0);
     assert.ok(result.best!.invalidationReason.length > 0);
   });
 
@@ -170,38 +169,34 @@ describe("buildTradeCandidates", () => {
     assert.equal(result.best!.entryType, "buy_limit");
   });
 
-  it("rejects a setup once price has consumed too much distance to target", () => {
+  it("does not impose a consumed-distance veto", () => {
     const result = buildTradeCandidates(baseInput({ currentPrice: 100.75 }));
-    assert.equal(result.best, null);
-    assert.ok(
-      result.rejectedReasons.some(
-        (r) => r.includes("ثلث") || r.includes("ابتعد"),
-      ),
-    );
+    assert.ok(result.best);
+    assert.ok(result.best!.rr > 0);
   });
 
-  it("uptrend + WEAK (over-touched) demand = no candidate (WAIT)", () => {
+  it("keeps a weak over-touched zone as warned evidence", () => {
     const { candles, zone } = overTouchedScenario();
     const result = buildTradeCandidates(
       baseInput({ candles, zones: [zone], htfLevels: [] }),
     );
-    assert.equal(result.best, null);
-    assert.ok(result.rejectedReasons.some((r) => r.includes("قوة")));
+    assert.ok(result.best);
+    assert.ok(result.best!.warnings.length > 0);
   });
 
-  it("trend alone without structure support = no candidate", () => {
+  it("keeps trend-only context as warned evidence", () => {
     const result = buildTradeCandidates(baseInput({ structureEvents: [] }));
-    assert.equal(result.best, null);
-    assert.ok(result.rejectedReasons.some((r) => r.includes("كسر هيكل")));
+    assert.ok(result.best);
+    assert.ok(result.best!.warnings.length > 0);
   });
 
-  it("HTF conflict WITHOUT reversal evidence = no candidate (WAIT)", () => {
+  it("HTF conflict remains evidence and does not erase candidates", () => {
     const result = buildTradeCandidates(
       baseInput({ htfConflict: true, htfBias: "bearish", sweeps: [] }),
     );
-    assert.equal(result.best, null);
+    assert.ok(result.best);
     assert.equal(result.hasReversalEvidence, false);
-    assert.ok(result.rejectedReasons.some((r) => r.includes("تعارض")));
+    assert.ok(result.best!.warnings.length > 0);
   });
 
   it("HTF conflict WITH sweep + structure shift allows a reversal candidate", () => {
@@ -226,27 +221,26 @@ describe("buildTradeCandidates", () => {
       }),
     );
     assert.equal(result.hasReversalEvidence, false);
-    assert.equal(result.best, null);
+    assert.ok(result.best);
   });
 
-  it("mid-range price blocks a continuation candidate", () => {
+  it("mid-range position does not deterministically block a candidate", () => {
     const input = baseInput({ currentPrice: 102.5 });
     input.rangePosition = computeRangePosition(input.candles, 102.5);
     assert.equal(input.rangePosition?.label, "mid_range");
     const result = buildTradeCandidates(input);
-    assert.equal(result.best, null);
-    assert.ok(result.rejectedReasons.some((r) => r.includes("موضع السعر")));
+    assert.ok(result.best);
   });
 
-  it("high news risk blocks all candidates", () => {
+  it("high news risk is a warning and not a candidate veto", () => {
     const result = buildTradeCandidates(baseInput({ newsRisk: "high" }));
-    assert.equal(result.best, null);
-    assert.ok(result.rejectedReasons.some((r) => r.includes("إخباري")));
+    assert.ok(result.best);
+    assert.ok(result.best!.warnings.length > 0);
   });
 
-  it("stop inside spread noise blocks the candidate", () => {
+  it("spread noise is a warning and not a market-decision veto", () => {
     const result = buildTradeCandidates(baseInput({ spread: 0.6 }));
-    assert.equal(result.best, null);
-    assert.ok(result.rejectedReasons.some((r) => r.includes("السبريد")));
+    assert.ok(result.best);
+    assert.ok(result.best!.warnings.length > 0);
   });
 });

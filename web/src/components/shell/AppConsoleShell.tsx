@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { LogOut, PanelLeftClose, PanelLeft, Menu, X, ChevronRight } from "lucide-react";
-import { LonoraLogo } from "@/components/LonoraLogo";
+import { useEffect, useRef, useState } from "react";
+import { Languages, LogOut, PanelLeftClose, PanelLeft, Menu, X, ChevronRight, MessageSquarePlus, MessagesSquare, Settings, UserRound } from "lucide-react";
+import { AiChartLogo } from "@/components/AiChartLogo";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
+import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 import { GridPattern } from "@/components/ui/grid-pattern";
 
@@ -28,15 +30,63 @@ export function AppConsoleShell({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t, dir } = useLocale();
   const currentTab = searchParams.get("tab");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileDrawerRef = useRef<HTMLElement | null>(null);
+  const [recentChats, setRecentChats] = useState<Array<{ id: string; title: string }>>([]);
   const items = navForRole(role);
+  const workspaceNoPadding = noPadding || pathname === "/console";
 
   // Close the mobile drawer on navigation.
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileOpen || role === "admin") return;
+    void fetch("/api/agent/chats?limit=5")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data: { sessions?: Array<{ id: string; title: string }> } | null) =>
+        setRecentChats(data?.sessions ?? []),
+      )
+      .catch(() => setRecentChats([]));
+  }, [mobileOpen, role]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const drawer = mobileDrawerRef.current;
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusables = () => Array.from(drawer?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+    focusables()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const nodes = focusables();
+      if (!nodes.length) return;
+      const first = nodes[0]!;
+      const last = nodes[nodes.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previous?.focus();
+    };
+  }, [mobileOpen]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -45,19 +95,20 @@ export function AppConsoleShell({
   }
 
   /* ─── Nav list renderer ─── */
-  const navList = (onNavigate?: () => void) => (
-    <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-3">
+  const navList = (onNavigate?: () => void, embedded = false) => (
+    <nav className={cn("flex flex-col gap-0.5 px-2 py-3", !embedded && "flex-1 overflow-y-auto")}>
       {items.map((item) => {
         const active = activeNav(pathname, item, currentTab);
         const Icon = item.icon;
+        const label = t(item.labelKey);
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={onNavigate}
-            title={collapsed && !onNavigate ? item.label : undefined}
+            title={collapsed && !onNavigate ? label : undefined}
             className={cn(
-              "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 cursor-pointer border border-transparent",
+              "group relative flex min-h-11 items-center gap-3 rounded-lg border border-transparent px-3 text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
               collapsed && !onNavigate && "justify-center px-0",
               active
                 ? "bg-primary text-primary-foreground border-border"
@@ -72,16 +123,45 @@ export function AppConsoleShell({
               )}
             />
             {(!collapsed || onNavigate) && (
-              <span className="truncate">{item.label}</span>
+              <span className="truncate">{label}</span>
             )}
             {active && !collapsed && (
-              <ChevronRight className="ms-auto h-3.5 w-3.5 opacity-80 shrink-0" />
+              <ChevronRight className="ms-auto h-3.5 w-3.5 shrink-0 opacity-80 rtl:rotate-180" />
             )}
           </Link>
         );
       })}
     </nav>
   );
+
+  function selectMobileChat(id: string) {
+    localStorage.setItem("lonora_active_chat", id);
+    if (pathname === "/console") {
+      window.dispatchEvent(new CustomEvent("aichart:select-chat", { detail: { id } }));
+    } else {
+      router.push("/console");
+    }
+    setMobileOpen(false);
+  }
+
+  async function startMobileChat() {
+    if (pathname === "/console") {
+      window.dispatchEvent(new Event("aichart:new-chat"));
+      setMobileOpen(false);
+      return;
+    }
+    const res = await fetch("/api/agent/chats", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { session?: { id: string } };
+      if (data.session?.id) localStorage.setItem("lonora_active_chat", data.session.id);
+    }
+    router.push("/console");
+    setMobileOpen(false);
+  }
 
   /* ─── Sidebar header ─── */
   const sidebarHeader = (
@@ -93,7 +173,7 @@ export function AppConsoleShell({
     >
       {!collapsed && (
         <Link href="/console" className="flex items-center gap-2.5 group">
-          <LonoraLogo
+          <AiChartLogo
             size={28}
             showName
             nameClassName="font-bold tracking-tight text-foreground"
@@ -104,8 +184,8 @@ export function AppConsoleShell({
       <button
         type="button"
         onClick={() => setCollapsed((c) => !c)}
-        className="rounded-lg p-1.5 text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
-        aria-label={collapsed ? "توسيع القائمة" : "طيّ القائمة"}
+        className="flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={collapsed ? t("shell.expand_sidebar") : t("shell.collapse_sidebar")}
       >
         {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
       </button>
@@ -129,19 +209,19 @@ export function AppConsoleShell({
         type="button"
         onClick={() => void logout()}
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive cursor-pointer border border-transparent",
+          "flex min-h-11 w-full items-center gap-2.5 rounded-lg border border-transparent px-3 text-sm text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
           collapsed && "justify-center px-0",
         )}
-        title={collapsed ? "خروج" : undefined}
+        title={collapsed ? t("profile.logout") : undefined}
       >
         <LogOut className="h-4 w-4" />
-        {!collapsed && "خروج"}
+        {!collapsed && t("profile.logout")}
       </button>
     </div>
   );
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background lg:flex-row relative">
+    <div dir={dir} className="relative flex h-dvh overflow-hidden bg-background lg:flex-row">
       {/* ─── Desktop sidebar — fixed width; only main content grows on resize ─── */}
       <aside
         className={cn(
@@ -158,8 +238,10 @@ export function AppConsoleShell({
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed start-3 top-3 z-30 rounded-lg border border-border bg-sidebar p-2.5 text-foreground shadow backdrop-blur-md lg:hidden cursor-pointer"
-        aria-label="القائمة"
+        className="fixed start-3 top-3 z-30 flex size-11 items-center justify-center rounded-lg border border-border bg-sidebar text-foreground shadow backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden cursor-pointer"
+        aria-label={t("shell.open_menu")}
+        aria-expanded={mobileOpen}
+        aria-controls="mobile-navigation-drawer"
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -171,25 +253,66 @@ export function AppConsoleShell({
           <button
             type="button"
             className="absolute inset-0 bg-black/75 backdrop-blur-xs"
-            aria-label="إغلاق"
+            aria-label={t("shell.close")}
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 start-0 flex w-[min(80%,18rem)] flex-col border-e border-border bg-sidebar shadow-2xl">
+          <aside
+            ref={mobileDrawerRef}
+            id="mobile-navigation-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("shell.navigation_account")}
+            className="absolute inset-y-0 start-0 flex w-[min(80%,18rem)] flex-col border-e border-border bg-sidebar shadow-2xl"
+          >
             <div className="flex h-14 items-center justify-between border-b border-border px-4">
               <Link href="/console" className="flex items-center gap-2.5">
-                <LonoraLogo size={26} showName nameClassName="font-bold tracking-tight" />
+                <AiChartLogo size={26} showName nameClassName="font-bold tracking-tight" />
               </Link>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-                aria-label="إغلاق"
+                className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                aria-label={t("shell.close")}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            {navList(() => setMobileOpen(false))}
+            <div className="min-h-0 flex-1 overflow-y-auto py-2">
+              <p className="px-5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("shell.product")}
+              </p>
+              {navList(() => setMobileOpen(false), true)}
+              {role !== "admin" && (
+                <div className="border-t border-border px-2 pt-3">
+                  <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {t("shell.chat")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void startMobileChat()}
+                    className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <MessageSquarePlus className="h-4 w-4" />
+                    {t("nav.new_chat")}
+                  </button>
+                  {recentChats.map((session) => (
+                    <button
+                      type="button"
+                      key={session.id}
+                      onClick={() => selectMobileChat(session.id)}
+                      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-start text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <MessagesSquare className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{session.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="border-t border-border p-3 space-y-1">
+              <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("shell.account")}
+              </p>
               <div className="px-3 pb-2 flex items-center gap-2">
                 <div className="h-6 w-6 rounded-lg bg-accent text-accent-foreground border border-border flex items-center justify-center shrink-0">
                   <span className="text-[10px] font-bold">
@@ -198,13 +321,34 @@ export function AppConsoleShell({
                 </div>
                 <p className="truncate text-xs text-muted-foreground font-medium">{displayName}</p>
               </div>
+              <Link
+                href="/console/settings/profile"
+                onClick={() => setMobileOpen(false)}
+                className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <UserRound className="h-4 w-4" />
+                {t("profile.profile")}
+              </Link>
+              <div className="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm text-muted-foreground">
+                <Languages className="h-4 w-4 shrink-0" />
+                <span>{t("shell.language")}</span>
+                <div className="ms-auto"><LanguageSwitcher variant="inline" /></div>
+              </div>
+              <Link
+                href="/console/settings"
+                onClick={() => setMobileOpen(false)}
+                className="flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Settings className="h-4 w-4" />
+                {t("nav.settings")}
+              </Link>
               <button
                 type="button"
                 onClick={() => void logout()}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer border border-transparent"
+                className="flex min-h-11 w-full items-center gap-2.5 rounded-lg border border-transparent px-3 text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
               >
                 <LogOut className="h-4 w-4" />
-                خروج
+                {t("profile.logout")}
               </button>
             </div>
           </aside>
@@ -217,7 +361,7 @@ export function AppConsoleShell({
         <main
           className={cn(
             "flex min-h-0 flex-1 flex-col z-10",
-            noPadding
+            workspaceNoPadding
               ? "overflow-hidden"
               : "overflow-y-auto px-4 pb-6 pt-14 sm:px-6 sm:pb-8 lg:pt-6",
           )}

@@ -2,7 +2,7 @@
  * Prometheus metrics. A single process-wide registry (stashed on globalThis so
  * Next.js HMR / repeated imports never double-register a metric and throw).
  * Scraped at GET /api/metrics. Instrument the hot paths: cron cycles, queue
- * jobs, agent runs, Risk Guard denials, executed trades, broker connectivity.
+ * jobs, agent runs, technical execution denials, executed trades, broker connectivity.
  */
 import client from "prom-client";
 
@@ -11,7 +11,7 @@ type Store = {
   cronDuration: client.Histogram<string>;
   jobs: client.Counter<string>;
   agentRuns: client.Counter<string>;
-  riskDenials: client.Counter<string>;
+  executionDenials: client.Counter<string>;
   tradesExecuted: client.Counter<string>;
   brokerUp: client.Gauge<string>;
 };
@@ -42,9 +42,9 @@ function build(): Store {
     labelNames: ["mode", "status"],
     registers: [registry],
   });
-  const riskDenials = new client.Counter({
-    name: "aichart_risk_denials_total",
-    help: "Risk Guard denials by structured deny code",
+  const executionDenials = new client.Counter({
+    name: "aichart_execution_denials_total",
+    help: "Technical execution denials by structured deny code",
     labelNames: ["code"],
     registers: [registry],
   });
@@ -66,7 +66,7 @@ function build(): Store {
     cronDuration,
     jobs,
     agentRuns,
-    riskDenials,
+    executionDenials,
     tradesExecuted,
     brokerUp,
   };

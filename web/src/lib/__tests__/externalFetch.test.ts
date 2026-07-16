@@ -69,19 +69,21 @@ test("fetchWithTimeout propagates caller abort without masking as timeout", asyn
 });
 
 test("IdleWatchdog aborts only after inactivity, and kick() resets the timer", async () => {
-  const wd = new IdleWatchdog(60, "test");
+  // Leave enough headroom for a busy parallel test runner: this test verifies
+  // reset semantics, not the host scheduler's millisecond precision.
+  const wd = new IdleWatchdog(500, "test");
   const signal = wd.start();
   assert.equal(signal.aborted, false);
 
   // Keep kicking before the idle window elapses → must stay alive.
   for (let i = 0; i < 4; i++) {
-    await delay(30);
+    await delay(50);
     wd.kick();
   }
   assert.equal(wd.timedOut, false, "should not time out while progressing");
 
   // Stop kicking → should abort after idle window.
-  await delay(120);
+  await delay(650);
   assert.equal(wd.timedOut, true, "should time out after inactivity");
   assert.equal(signal.aborted, true);
   wd.clear();

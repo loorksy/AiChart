@@ -4,7 +4,7 @@ import {
   collectBoundedResearchEvidence,
   decideResearchJustification,
   researchContributed,
-  RESEARCH_EVIDENCE_POLICY_VERSION,
+  RESEARCH_EVIDENCE_VERSION,
 } from "@/lib/agent/researchEvidence";
 
 describe("researchEvidence", () => {
@@ -12,12 +12,12 @@ describe("researchEvidence", () => {
     const bundle = await collectBoundedResearchEvidence({
       actionableCandidate: false,
     });
-    assert.equal(bundle.policyVersion, RESEARCH_EVIDENCE_POLICY_VERSION);
+    assert.equal(bundle.evidenceVersion, RESEARCH_EVIDENCE_VERSION);
     assert.equal(researchContributed(bundle, "backtest"), false);
     assert.equal(researchContributed(bundle, "validation"), false);
     assert.equal(researchContributed(bundle, "research_swarm"), false);
     assert.equal(researchContributed(bundle, "shadow_trader"), false);
-    assert.equal(bundle.recommendationConfidenceDelta, 0);
+    assert.equal(bundle.historicalEvidenceTendency, 0);
     for (const c of bundle.contributions) {
       assert.ok(c.reason.length > 0);
       assert.ok(c.reasonDetail.length > 0);
@@ -35,12 +35,11 @@ describe("researchEvidence", () => {
     assert.equal(dna?.reason, "no_actionable_candidate");
   });
 
-  it("justifies backtest for mid-confidence swing, skips swarm for simple analysis", () => {
+  it("justifies backtest for mid-confidence evidence, skips swarm for simple analysis", () => {
     const mid = decideResearchJustification({
       actionableCandidate: true,
       baseConfidence: 0.62,
       dataQualityScore: 0.7,
-      tradingStyle: "swing",
       userMessage: "analyze EURUSD",
     });
     assert.equal(mid.backtestWorth, true);
@@ -51,7 +50,6 @@ describe("researchEvidence", () => {
       actionableCandidate: true,
       baseConfidence: 0.9,
       dataQualityScore: 0.95,
-      tradingStyle: "day",
       userMessage: "buy setup",
     });
     assert.equal(high.backtestWorth, false);
@@ -77,7 +75,6 @@ describe("researchEvidence", () => {
         decision: "buy",
         symbol: "EURUSD",
         baseConfidence: 0.6,
-        tradingStyle: "swing",
         userMessage: "please backtest this setup",
         latencyBudgetMs: 200,
       });

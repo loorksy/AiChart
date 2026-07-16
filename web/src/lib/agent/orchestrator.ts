@@ -10,7 +10,6 @@ import type {
   AgentFinalResult,
   AgentRunContext,
 } from "./types";
-import type { TradingStyle } from "@/lib/types";
 import type { AppLocale } from "@/lib/i18n";
 import type { AgentConversationContext } from "./context";
 import { contextualizeIntentMessage } from "./context";
@@ -19,7 +18,6 @@ import {
   isGeneralOnly,
   isDrawingOnly,
   isDrawActiveRecommendation,
-  isScalpRecommendation,
   isUserDrawingEdit,
   needsMarketContext,
   routeIntent,
@@ -60,7 +58,7 @@ import {
   type AccountRiskSnapshot,
   type RiskAgentResult,
 } from "./agents/riskAgent";
-import { runFinalDecisionAgent } from "./agents/finalDecisionAgent";
+import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
 import { runFinalDecisionSynthesizer } from "./agents/finalDecisionSynthesizer";
 import { runDrawingAgent } from "./agents/drawingAgent";
 import {
@@ -69,8 +67,6 @@ import {
 } from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
-import { type UserTradingProfile } from "./risk/userTradingProfile";
-import { resolveTradingMode, tradingModeModelContext } from "./tradingMode";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
   clearActiveRecommendation,
@@ -103,11 +99,9 @@ export interface UnifiedAgentInput {
   userMessage: string;
   chartContext?: AgentChartContext;
   requestContext: AgentRunContext;
-  profile?: UserTradingProfile | null;
   account?: AccountRiskSnapshot | null;
   canExecute?: boolean;
   spread?: number | null;
-  tradingStyle?: TradingStyle;
   /** UI locale — used to localize contextual follow-up options. */
   locale?: AppLocale;
   /** Optional, bounded language context. It is never a market-data authority. */
@@ -139,8 +133,7 @@ export async function runUnifiedChartAgent(
   // into a fresh analysis. A plain cancel stops here.
   const wantsReanalyzeAfterCancel =
     intents.includes("cancel_active_recommendation") &&
-    (intents.includes("new_trade_analysis") ||
-      intents.includes("scalp_recommendation"));
+    intents.includes("new_trade_analysis");
 
   if (intents.includes("cancel_active_recommendation")) {
     const cancelled = activeRecommendation;
@@ -208,7 +201,7 @@ export async function runUnifiedChartAgent(
   // it only reads the safe serialized user drawings and returns an answer or a
   // set of idempotent mutations the client applies after the final SSE. Checked
   // before explain_chart_drawings because "رأيك في رسمي" references the user's
-  // OWN manual drawing, not the agent's Lonora drawings.
+  // OWN manual drawing, not the agent's AiChart drawings.
   if (isUserDrawingEdit(intents)) {
     return handleUserDrawingCommand({
       intents,
@@ -281,23 +274,7 @@ export async function runUnifiedChartAgent(
   const wantMarket = needsMarketContext(intents);
   const educationalOnly = Boolean(ctx.session?.preferences.educationalOnly);
 
-  // Unified trading mode: one resolver combines explicit intent, in-session
-  // corrections, the chart timeframe, and persisted settings. The profile is
-  // structured evidence (horizon, RR floor, strictness) — never canned text —
-  // and can only tighten discipline, never bypass a guard.
-  const tradingMode = resolveTradingMode({
-    interval: chartContext?.interval,
-    scalpIntent: isScalpRecommendation(intents),
-    session: ctx.session ?? null,
-    profile: input.profile ?? null,
-  });
-  const minRr = tradingMode.minRr;
-  const analysisKind =
-    tradingMode.style === "scalp"
-      ? ("scalp" as const)
-      : tradingMode.style === "swing" || tradingMode.style === "position"
-        ? ("swing" as const)
-        : ("intraday" as const);
+  const analysisKind = "scalp" as const;
 
   // Canonical skill catalogue: discover metadata, select by intent/locale/
   // market, and lazily load only the relevant bodies. Read-only guidance —
@@ -393,7 +370,6 @@ export async function runUnifiedChartAgent(
         bilingual(locale, "لم تصدر توصية بسبب نقص البيانات.", "No recommendation was issued due to missing data."),
       ],
       activityEvents: collected,
-      recommendation: { action: "wait" },
       analysisId,
     };
   }
@@ -416,13 +392,11 @@ export async function runUnifiedChartAgent(
         ),
       ],
       activityEvents: collected,
-      recommendation: { action: "wait" },
       analysisId,
       debugDecisionFlow:
         process.env.NODE_ENV === "development"
           ? {
               usedLLM: false,
-              usedDeterministicFallback: true,
               tickerGenerated: false,
               candleCount: market.currentTfCandles.length,
               htfCandleCount: market.higherTfCandles.length,
@@ -446,18 +420,17 @@ export async function runUnifiedChartAgent(
   ]);
 
   // News is non-critical: failure → newsRisk unknown (handled inside agent).
-  const news = FEATURES.newsMacroAgent()
-    ? await withTimeout(
-        runNewsMacroAgent(trackedCtx, {
-          symbol: market.symbol,
-          message: userMessage,
-        }).catch(() => null),
-        AGENT_TIMEOUTS.news,
-        null,
-      )
-    : null;
+  const news = await withTimeout(
+    runNewsMacroAgent(trackedCtx, {
+      symbol: market.symbol,
+      message: userMessage,
+    }).catch(() => null),
+    AGENT_TIMEOUTS.news,
+    null,
+  );
 
-  // Risk is critical for a trade decision: failure → WAIT.
+  // The evidence builder prepares price-valid candidates for the model. It is
+  // not a policy gate and it does not own BUY/SELL/WAIT.
   let risk: RiskAgentResult | null = null;
   try {
     risk = await withTimeout(
@@ -468,9 +441,7 @@ export async function runUnifiedChartAgent(
         liquidity,
         mtf,
         news,
-        profile: input.profile ?? null,
         account: input.account ?? null,
-        minRr,
         educationalOnly,
         chartDrawings: chartContext?.drawings,
       }),
@@ -504,21 +475,6 @@ export async function runUnifiedChartAgent(
     chartDrawings: chartContext?.drawings,
   };
 
-  // Deterministic baseline first — it computes the trade skeleton, risk veto,
-  // and numeric levels, and is the safety fallback if the LLM fails.
-  const deterministic = await withTimeout(
-    runFinalDecisionAgent(trackedCtx, decisionInput),
-    AGENT_TIMEOUTS.finalDecision,
-    null,
-  );
-  if (!deterministic) {
-    return buildAgentFallbackResult(
-      "Final decision agent timed out — defaulting to WAIT.",
-      collected,
-      locale,
-    );
-  }
-
   // Detector output becomes candidates the synthesizer may select from —
   // detectors NEVER draw directly.
   const candidates = buildDrawingCandidates({
@@ -532,144 +488,35 @@ export async function runUnifiedChartAgent(
   // Evidence-based chart story for the synthesizer (real detector output only).
   const narrative = buildMarketNarrative({ market, structure, liquidity, mtf });
 
-  // LLM synthesizer: context-specific wording + candidate selection + drawing
-  // advice. Hard rules (risk veto, no invented trades) are clamped inside it;
-  // any failure falls back to the deterministic result.
-  const synth = (await withTimeout(
+  // The LLM chooses BUY, SELL, or WAIT and binds actionable choices to a real
+  // candidate. Model failure produces a technical no-recommendation state.
+  const synth = await withTimeout(
     runFinalDecisionSynthesizer(trackedCtx, {
       ...decisionInput,
-      deterministic,
       candidates,
       narrative,
       locale,
       skillContextBlock: skillContext.block || null,
-      tradingMode: tradingModeModelContext(tradingMode),
     }).catch(() => null),
     AGENT_TIMEOUTS.finalDecision,
     null,
-  )) ?? { result: deterministic, usedLLM: false };
+  );
+  if (!synth) {
+    return buildAgentFallbackResult(
+      "Decision model timed out — no market recommendation was issued.",
+      collected,
+      locale,
+    );
+  }
+  if (!synth.usedLLM || !synth.result) {
+    return buildAgentFallbackResult(
+      "Decision model was unavailable — no market recommendation was issued.",
+      collected,
+      locale,
+    );
+  }
   const finalDecision = synth.result;
   const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
-
-  // Scalp-class modes are stricter: they demand a live session and fresh
-  // current-TF data, whether the scalp came from explicit intent, a session
-  // correction, or a scalp timeframe. Anything less resolves to WAIT (a bad
-  // scalp is worse than no scalp).
-  if (
-    (tradingMode.requiresFreshCurrentTf || tradingMode.requiresLiveSession) &&
-    (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
-    ((tradingMode.requiresFreshCurrentTf && !market.freshness.isFresh) ||
-      (tradingMode.requiresLiveSession && !market.marketOpen))
-  ) {
-    return {
-      decision: "action_required",
-      confidence: 0,
-      summary: !market.marketOpen
-        ? bilingual(
-            locale,
-            "لا أعطي توصية سكالب والسوق خارج جلسة نشطة. السكالب يحتاج سيولة وحركة سعرية حية.",
-            "I will not give a scalp recommendation while the market is outside an active session — scalping needs live liquidity and price movement.",
-          )
-        : bilingual(
-            locale,
-            "لا أعطي توصية سكالب لأن بيانات الفريم الحالي ليست حديثة بما يكفي للسكالب. حدّث الشارت ثم أعد الطلب.",
-            "I will not give a scalp recommendation because the current-timeframe data is not fresh enough for scalping. Refresh the chart and ask again.",
-          ),
-      keyReasons: [
-        !market.marketOpen
-          ? bilingual(locale, "السوق مغلق/هادئ — شروط السكالب غير متوفرة.", "Market closed/quiet — scalp conditions are not met.")
-          : bilingual(locale, "شموع الفريم الحالي متأخرة — دقة الدخول السريع غير مضمونة.", "Current-timeframe candles are stale — fast-entry precision is not guaranteed."),
-      ],
-      riskWarnings: [
-        bilingual(locale, "تم حظر السكالب بسبب شروط الجلسة/الحداثة الصارمة.", "Scalp blocked by strict session/freshness requirements."),
-      ],
-      recommendation: { action: "wait" },
-      activityEvents: collected,
-      analysisId,
-      options: contextualOptionsFor({ decision: "informational", noActiveRecommendation: true, locale }),
-    };
-  }
-
-  // HTF / daily freshness gate: a Buy/Sell decision leans on higher-timeframe
-  // context, so it must not be issued on stale HTF data. Daily is only required
-  // when daily confluence was actually available to the decision (mtf ran).
-  if (finalDecision.decision === "buy" || finalDecision.decision === "sell") {
-    const htfStale = isTimeframeStale(
-      market.higherTfCandles.at(-1)?.time ?? null,
-      market.higherInterval,
-      market.marketOpen,
-    );
-    const dailyConfluenceUsed = Boolean(mtf);
-    const dailyStale =
-      dailyConfluenceUsed &&
-      isTimeframeStale(
-        market.dailyCandles.at(-1)?.time ?? null,
-        "1d",
-        market.marketOpen,
-      );
-    if (htfStale || dailyStale) {
-      const whichAr = htfStale ? `الفريم الأعلى (${market.higherInterval})` : "الفريم اليومي";
-      const whichEn = htfStale ? `the higher timeframe (${market.higherInterval})` : "the daily timeframe";
-      return {
-        decision: "action_required",
-        confidence: 0,
-        summary: bilingual(
-          locale,
-          `لن أعطي توصية ${recommendationDirectionAr(finalDecision.decision)} لأن بيانات ${whichAr} غير محدّثة بما يكفي لقرار تداول موثوق. حدّث البيانات أو انتظر اكتمال شموع الفريم الأعلى ثم أعد التحليل.`,
-          `I will not issue a ${finalDecision.decision} recommendation because ${whichEn} data is not fresh enough for a reliable trading decision. Refresh the data or wait for the higher-timeframe candles to complete, then re-run the analysis.`,
-        ),
-        keyReasons: [
-          htfStale
-            ? bilingual(locale, `شموع ${market.higherInterval} متأخرة عن الزمن الحالي.`, `${market.higherInterval} candles lag behind the current time.`)
-            : bilingual(locale, "الشموع اليومية متأخرة بينما تعتمد التوصية على تأكيد يومي.", "Daily candles are stale while the recommendation relies on daily confirmation."),
-        ],
-        riskWarnings: [
-          bilingual(locale, "تم حظر التوصية بسبب تقادم بيانات الفريم الأعلى/اليومي.", "Recommendation blocked due to stale higher-timeframe/daily data."),
-        ],
-        recommendation: { action: "wait" },
-        activityEvents: collected,
-        analysisId,
-      };
-    }
-  }
-
-  if (
-    isActiveRecommendationLive(activeRecommendation) &&
-    activeRecommendation.symbol.toUpperCase() === market.symbol.toUpperCase() &&
-    (finalDecision.decision === "buy" || finalDecision.decision === "sell") &&
-    finalDecision.decision !== activeRecommendation.direction
-  ) {
-    return {
-      decision: "action_required",
-      confidence: finalDecision.confidence,
-      summary: bilingual(
-        locale,
-        `التوصية الحالية ${recommendationDirectionAr(activeRecommendation.direction)} على ${activeRecommendation.symbol} ولم تُلغَ أو تُبطَل بعد. لا أعطي توصية ${recommendationDirectionAr(finalDecision.decision)} معاكسة حتى تُلغى السابقة أو يكسر السعر مستوى الإبطال.`,
-        `The active recommendation on ${activeRecommendation.symbol} is ${activeRecommendation.direction} and has not been cancelled or invalidated. I will not issue an opposite ${finalDecision.decision} recommendation until the previous one is cancelled or price breaks the invalidation level.`,
-      ),
-      keyReasons: [
-        bilingual(
-          locale,
-          `التوصية النشطة: ${recommendationDirectionAr(activeRecommendation.direction)} من ${activeRecommendation.entry}.`,
-          `Active recommendation: ${activeRecommendation.direction} from ${activeRecommendation.entry}.`,
-        ),
-        bilingual(locale, `الإبطال: ${activeRecommendation.invalidationRule}.`, `Invalidation: ${activeRecommendation.invalidationRule}.`),
-      ],
-      riskWarnings: [
-        bilingual(locale, "تم منع الانقلاب بين شراء/بيع على نفس الشارت بدون إبطال واضح.", "Buy/sell flip-flop on the same chart is blocked without clear invalidation."),
-      ],
-      recommendation: { action: "wait" },
-      activityEvents: collected,
-      analysisId,
-      activeRecommendation: {
-        id: activeRecommendation.id,
-        status: activeRecommendation.status,
-        direction: activeRecommendation.direction,
-        symbol: activeRecommendation.symbol,
-        interval: activeRecommendation.interval,
-      },
-    };
-  }
 
   // Build the drawing plan: the single source of truth for what may be drawn.
   // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
@@ -702,7 +549,6 @@ export async function runUnifiedChartAgent(
     process.env.NODE_ENV === "development"
       ? {
           usedLLM: synth.usedLLM,
-          usedDeterministicFallback: !synth.usedLLM,
           // Ticker state is owned by the SSE route; it overwrites these.
           tickerGenerated: false,
           candleCount: market.currentTfCandles.length,
@@ -729,16 +575,13 @@ export async function runUnifiedChartAgent(
   let requiresConfirmation: boolean | undefined;
   let confirmationPayload: AgentFinalResult["confirmationPayload"];
   if (
-    FEATURES.executionGuard() &&
-    (intents.includes("trade_execution") || intents.includes("trade_management"))
+    intents.includes("trade_execution") || intents.includes("trade_management")
   ) {
     const guard = await withTimeout(
       runExecutionGuardAgent(trackedCtx, {
         market,
         finalDecision,
-        risk,
         news,
-        profile: input.profile ?? null,
         canExecute: Boolean(input.canExecute),
       }).catch(() => null),
       AGENT_TIMEOUTS.risk,
@@ -814,61 +657,9 @@ export async function runUnifiedChartAgent(
         ? finalDecision.confidenceSemantics.dataQuality
         : undefined,
     newsRisk: news?.newsRisk ?? "unknown",
-    tradingStyle: tradingMode.style,
     userMessage,
     latencyBudgetMs: 900,
   });
-  const researchFactors = researchEvidence.contributions
-    .filter((c) => c.status === "used" && c.confidenceDelta)
-    .map((c) => ({
-      factor:
-        c.system === "trading_dna"
-          ? "historical_similarity"
-          : c.system === "shadow_trader"
-            ? "historical_agreement"
-            : c.system === "backtest"
-              ? "historical_performance"
-              : "historical_evidence",
-      status: "considered",
-      effect:
-        c.confidenceDelta! > 0
-          ? "Historical reliability nudged confidence up."
-          : "Historical reliability nudged confidence down.",
-    }));
-  if (
-    researchEvidence.recommendationConfidenceDelta !== 0 &&
-    finalDecision.confidenceSemantics.displayKind === "recommendation" &&
-    typeof finalDecision.confidenceSemantics.recommendationConfidence ===
-      "number"
-  ) {
-    const adjusted = Math.max(
-      0,
-      Math.min(
-        1,
-        finalDecision.confidenceSemantics.recommendationConfidence +
-          researchEvidence.recommendationConfidenceDelta,
-      ),
-    );
-    finalDecision.confidenceSemantics = {
-      ...finalDecision.confidenceSemantics,
-      recommendationConfidence: adjusted,
-      displayValue: adjusted,
-      factors: [
-        ...finalDecision.confidenceSemantics.factors,
-        ...researchFactors,
-      ],
-    };
-    finalDecision.confidence = adjusted;
-  } else if (researchFactors.length) {
-    finalDecision.confidenceSemantics = {
-      ...finalDecision.confidenceSemantics,
-      factors: [
-        ...finalDecision.confidenceSemantics.factors,
-        ...researchFactors,
-      ],
-    };
-  }
-
   // User-safe projection → model keeps natural summary; no module-name append.
   const historicalInsufficient = researchEvidence.contributions.some(
     (c) =>
@@ -877,7 +668,7 @@ export async function runUnifiedChartAgent(
         c.reason === "insufficient_historical_metrics"),
   );
   const conflictingEvidence =
-    researchEvidence.recommendationConfidenceDelta < -0.04 ||
+    researchEvidence.historicalEvidenceTendency < -0.04 ||
     researchEvidence.contributions.some((c) =>
       /disagree|conflict|weakness/i.test(c.reason),
     );
@@ -901,7 +692,7 @@ export async function runUnifiedChartAgent(
     decision: finalDecision.decision,
     confidence: finalDecision.confidence,
     userMessage,
-    hardSafetyOrLiveDataFailure: hard.blocked || Boolean(finalDecision.riskVeto),
+    hardSafetyOrLiveDataFailure: hard.blocked,
     hardFailureCode: hard.code,
     historicalConfirmationInsufficient: historicalInsufficient,
     conflictingEvidence,
@@ -922,7 +713,7 @@ export async function runUnifiedChartAgent(
       userId: ctx.userId,
       layoutId: chartContext?.layoutId,
       analysisId,
-      scalp: tradingMode.style === "scalp",
+      scalp: true,
       market,
       finalDecision,
       risk,
@@ -1052,7 +843,6 @@ export async function runUnifiedChartAgent(
     analysisId,
     selectedSkills: skillContext.loaded.length ? skillContext.loaded : undefined,
     skillLoadFailures: skillContext.failed.length ? skillContext.failed : undefined,
-    tradingMode: { style: tradingMode.style, source: tradingMode.source },
     // Full research kept for runTrace/admin — stripped before client SSE.
     researchEvidence: {
       ...researchEvidence,
@@ -1404,7 +1194,7 @@ async function storeFinalRecommendation(input: {
   analysisId: string;
   scalp?: boolean;
   market: Awaited<ReturnType<typeof runMarketDataAgent>>;
-  finalDecision: Awaited<ReturnType<typeof runFinalDecisionAgent>>;
+  finalDecision: FinalDecisionResult;
   risk: RiskAgentResult;
   drawings: AgentFinalResult["drawings"];
   chartSnapshotHash: string;

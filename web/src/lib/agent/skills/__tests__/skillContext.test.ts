@@ -61,7 +61,7 @@ test("execution skills never load without explicit execution authorization", () 
     locale: "en",
     market: "forex",
     // Even if execution tools were visible, allowExecutionSkills stays false.
-    availableTools: ["get_risk_status", "open_trade"],
+    availableTools: ["get_account_overview", "open_trade"],
   });
   assert.ok(
     !context.loaded.some(({ name }) => name === "aichart-trading"),

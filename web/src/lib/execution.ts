@@ -1,68 +1,55 @@
-import {
-  getSettings,
-  getLimits,
-  getIntent,
-  updateIntentDenied,
-  countOpenTrades,
-  todayRealizedPnlPct,
-  todayRealizedPnlUsd,
-  monthRealizedPnlPct,
-} from "./store";
-import { getResolvedExecutionEnv } from "./executionEnv";
-import {
-  BridgeErrorCode,
-  lowConfidenceFailure,
-  type BridgeFailure,
-} from "./bridge/errors";
-import { evaluateTrade } from "./riskGuard";
-import { brokerForMarket } from "./markets/types";
+import { getIntent, getLimits, getMtAccountMeta, getSettings, updateIntentDenied } from "./store";
+import { getEaConnection } from "./eaStore";
+import { BridgeErrorCode } from "./bridge/errors";
 import { getBrokerAdapter } from "./brokers";
 import { metrics } from "./metrics";
-import {
-  emitActivity,
-  type ActivityListener,
-  type AgentActivity,
-} from "./agentActivity";
+import { validateExecutionIntent } from "./executionSafety";
+import { emitActivity, type ActivityListener, type AgentActivity } from "./agentActivity";
+import type { BrokerKind } from "./markets/types";
 
 export interface ExecutionResult {
   ok: boolean;
   status: "executed" | "failed";
   reason: string;
   denyCode?: BridgeErrorCode;
-  denyDetails?: Record<string, unknown>;
   errorCode?: string;
   tradeId?: number;
-  trade?: {
-    symbol: string;
-    side: string;
-    qty: number;
-    avg_price: number;
-    env: string;
-  };
+  trade?: { symbol: string; side: string; qty: number; avg_price: number; env: string };
 }
 
-/** Map a Risk Guard LOW_CONFIDENCE denial to the bridge envelope (no broker call). */
-export function bridgeEnvelopeForExecutionDenial(
-  result: Pick<ExecutionResult, "ok" | "denyCode" | "denyDetails">,
-): BridgeFailure | null {
-  if (result.ok || result.denyCode !== BridgeErrorCode.LOW_CONFIDENCE) {
-    return null;
+export interface RiskBudget {
+  equity: number;
+  riskPct: number;
+  riskAmount: number;
+  currency: string | null;
+}
+
+/** Reads verified broker equity; browser-supplied capital is never accepted. */
+export async function getRiskBudget(
+  userId: number,
+  broker: BrokerKind,
+): Promise<RiskBudget | null> {
+  const settings = await getSettings(userId);
+  let equity = 0;
+  let currency: string | null = null;
+  if (broker === "mt_ea") {
+    const connection = await getEaConnection(userId);
+    equity = Number(connection?.equity);
+    currency = connection?.account_currency ?? null;
+  } else {
+    const account = await getMtAccountMeta(userId);
+    equity = Number(account?.equity);
+    currency = account?.currency ?? null;
   }
-  const details = result.denyDetails as
-    | { confidence: number; minConfidence: number }
-    | undefined;
-  if (!details) return null;
-  return lowConfidenceFailure(details.confidence, details.minConfidence);
+  if (!Number.isFinite(equity) || equity <= 0) return null;
+  const riskPct = settings.per_trade_pct;
+  const riskAmount = (equity * riskPct) / 100;
+  if (!Number.isFinite(riskAmount) || riskAmount <= 0) return null;
+  return { equity, riskPct, riskAmount, currency };
 }
 
-/**
- * Executes a pending/approved trade intent. The Risk Guard is the gate: no
- * order is sent unless every hard cap passes. Order placement is delegated to
- * the MetaTrader EA bridge for forex.
- */
 export interface ExecuteIntentOptions {
   onActivity?: ActivityListener;
-  /** The human operator explicitly ordered/approved this trade (agent bridge). */
   explicitApproval?: boolean;
   practiceMode?: boolean;
 }
@@ -72,13 +59,12 @@ export async function executeIntent(
   intentId: number,
   options?: ExecuteIntentOptions,
 ): Promise<ExecutionResult & { activities: AgentActivity[] }> {
-  const onActivity = options?.onActivity;
   const activities: AgentActivity[] = [];
   const push = (activity: AgentActivity) => {
-    const idx = activities.findIndex((a) => a.id === activity.id);
-    if (idx >= 0) activities[idx] = activity;
+    const index = activities.findIndex((item) => item.id === activity.id);
+    if (index >= 0) activities[index] = activity;
     else activities.push(activity);
-    emitActivity(onActivity, activity);
+    emitActivity(options?.onActivity, activity);
   };
 
   const intent = await getIntent(intentId, userId);
@@ -89,107 +75,33 @@ export async function executeIntent(
     return { ok: false, status: "failed", reason: "سبق تنفيذ هذا الطلب.", activities };
   }
 
-  push({
-    id: "risk",
-    label: `فحص حدود المخاطر · ${intent.symbol}`,
-    status: "running",
-  });
-
-  const settings = await getSettings(userId);
+  push({ id: "safety", label: `التحقق التقني · ${intent.symbol}`, status: "running" });
   const limits = await getLimits(userId);
+  const safety = validateExecutionIntent(intent, limits);
+  if (!safety.ok) {
+    push({ id: "safety", label: `التحقق التقني · ${intent.symbol}`, status: "error", detail: safety.reason });
+    await updateIntentDenied(intentId, safety.reason, safety.denyCode ?? null, userId);
+    metrics.executionDenials.inc({ code: safety.denyCode ?? "VALIDATION_ERROR" });
+    return { ok: false, status: "failed", reason: safety.reason, denyCode: safety.denyCode, activities };
+  }
 
-  const effectiveCapital =
-    limits.max_capital_cap > 0
-      ? Math.min(settings.max_capital, limits.max_capital_cap)
-      : settings.max_capital;
-
-  // 1) Risk Guard — the authority. Nothing executes if this denies.
-  // In approval/direct modes an "approved" intent means a human said yes.
-  const explicitApproval =
-    Boolean(options?.explicitApproval) ||
-    (settings.mode !== "auto" && intent.status === "approved");
-
-  const practiceMode =
-    Boolean(options?.practiceMode) || intent.practice === 1;
-  const resolvedEnv = await getResolvedExecutionEnv(userId, intent.market);
-  const envPreference =
-    settings.execution_env_preference === "live" ? "live" : "demo";
-
-  const marketType = intent.market_type === "futures" ? "futures" : "spot";
-  const decision = evaluateTrade(
-    settings,
-    limits,
-    {
-      symbol: intent.symbol,
-      side: intent.side,
-      notional: intent.notional,
-      market: intent.market,
-      marketType,
-      leverage: intent.leverage ?? 1,
-      entry: intent.entry,
-      stopLoss: intent.stop_loss,
-      takeProfit: intent.take_profit,
-      confidence: intent.confidence ?? 0,
-    },
-    {
-      openTradesCount: await countOpenTrades(userId),
-      todayRealizedPnlPct: await todayRealizedPnlPct(userId, effectiveCapital),
-      todayRealizedPnlUsd: await todayRealizedPnlUsd(userId),
-      monthRealizedPnlPct: await monthRealizedPnlPct(userId, effectiveCapital),
-      explicitApproval,
-      practiceMode,
-      resolvedEnv,
-      envPreference,
-    },
-  );
-
-  if (!decision.ok) {
-    push({
-      id: "risk",
-      label: `فحص حدود المخاطر · ${intent.symbol}`,
-      status: "error",
-      detail: decision.reason,
-    });
-    await updateIntentDenied(
-      intentId,
-      decision.reason,
-      decision.denyCode ?? null,
-      userId,
-    );
-    metrics.riskDenials.inc({ code: decision.denyCode ?? "UNKNOWN" });
-    return {
-      ok: false,
-      status: "failed",
-      reason: decision.reason,
-      denyCode: decision.denyCode,
-      denyDetails: decision.denyDetails,
-      activities,
-    };
+  const broker = intent.broker;
+  const budget = await getRiskBudget(userId, broker);
+  if (!budget) {
+    const reason = "تعذّر التحقق من رصيد equity للحساب المتصل؛ لم يُرسل أي أمر.";
+    push({ id: "safety", label: `حساب المخاطرة · ${intent.symbol}`, status: "error", detail: reason });
+    await updateIntentDenied(intentId, reason, BridgeErrorCode.VALIDATION_ERROR, userId);
+    return { ok: false, status: "failed", reason, denyCode: BridgeErrorCode.VALIDATION_ERROR, activities };
   }
   push({
-    id: "risk",
-    label: `فحص حدود المخاطر · ${intent.symbol}`,
+    id: "safety",
+    label: `Risk per Trade · ${budget.riskPct}%`,
     status: "done",
-    detail:
-      marketType === "futures"
-        ? `Futures · رافعة ${intent.leverage ?? 1}x · هامش معزول`
-        : undefined,
+    detail: `${budget.riskAmount.toFixed(2)} ${budget.currency ?? "account currency"}`,
   });
 
-  // 2) Delegate placement to the broker that owns this market.
-  const broker = intent.broker ?? brokerForMarket(intent.market);
-  const adapter = getBrokerAdapter(broker, marketType);
-  const result = await adapter.placeOrder(userId, {
-    intent,
-    settings,
-    limits,
-    effectiveCapital,
-    push,
-  });
-
-  if (result.ok) {
-    metrics.tradesExecuted.inc({ broker, market: intent.market });
-  }
-
+  const adapter = getBrokerAdapter(broker, "spot");
+  const result = await adapter.placeOrder(userId, { intent, riskAmount: budget.riskAmount, push });
+  if (result.ok) metrics.tradesExecuted.inc({ broker, market: intent.market });
   return { ...result, activities };
 }

@@ -4,7 +4,7 @@
  *
  * One contract describes every production tool across surfaces:
  *   - mcp:  registered MCP tools (derived from TOOL_CATALOG — single source)
- *   - web:  the in-app expert agent TOOLS loop (web/src/lib/agent.ts)
+ *   - web:  MCP-backed tools also exposed through the in-app agent API
  *   - research: policy allowlist names used by the Research Swarm
  *
  * Fields: name, version, description, permission, riskClass, surfaces,
@@ -45,15 +45,13 @@ interface Override {
  * High-risk execution tools MUST be listed here so the risk class is explicit.
  */
 const OVERRIDES: Record<string, Override> = {
-  // — execution (server-controlled; Risk Guard + explicit approval) —
+  // — execution (server-controlled technical safety + explicit approval) —
   open_trade: { permission: "trade.execute", riskClass: "execution", timeoutMs: 60_000 },
   close_trade: { permission: "trade.execute", riskClass: "execution", timeoutMs: 60_000 },
   close_partial: { permission: "trade.execute", riskClass: "execution", timeoutMs: 60_000 },
-  open_pending_order: { permission: "trade.execute", riskClass: "execution", timeoutMs: 60_000 },
   cancel_mt5_order: { permission: "trade.manage", riskClass: "execution", timeoutMs: 60_000 },
   modify_sl_tp: { permission: "trade.manage", riskClass: "execution", timeoutMs: 60_000 },
   respond_approval: { permission: "trade.execute", riskClass: "execution" },
-  run_trade_maintenance: { permission: "trade.manage", riskClass: "execution" },
   // — recommendation —
   create_recommendation: {
     permission: "trade.recommend",
@@ -65,11 +63,9 @@ const OVERRIDES: Record<string, Override> = {
   // — account / market reads —
   get_account_overview: { permission: "account.read" },
   get_portfolio: { permission: "account.read" },
-  get_risk_status: { permission: "account.read" },
   get_open_trades: { permission: "account.read" },
   get_trade_readiness: { permission: "account.read" },
   get_pending_approvals: { permission: "account.read" },
-  get_execution_env: { permission: "account.read" },
   get_agent_settings: { permission: "account.read" },
   get_agent_capabilities: { permission: "account.read" },
   get_live_account: { permission: "account.read" },
@@ -77,16 +73,10 @@ const OVERRIDES: Record<string, Override> = {
   get_ea_diagnostics: { permission: "account.read" },
   get_ea_live_quotes: { permission: "market.read" },
   get_account_symbols: { permission: "market.read" },
-  get_trading_style: { permission: "account.read" },
   evaluate_trade: { permission: "account.read" },
   get_trade_lessons: { permission: "memory.read" },
   get_market_price: { permission: "market.read", aliases: ["get_price"] },
   // — settings writes —
-  set_trading_mode: { permission: "settings.write", riskClass: "write" },
-  set_active_market: { permission: "settings.write", riskClass: "write" },
-  set_trading_style: { permission: "settings.write", riskClass: "write" },
-  set_futures_enabled: { permission: "settings.write", riskClass: "write" },
-  set_execution_env: { permission: "settings.write", riskClass: "execution" },
   connect_mt5: { permission: "settings.write", riskClass: "write" },
   disconnect_mt5: { permission: "settings.write", riskClass: "write" },
   request_ea_reconnect: { permission: "settings.write", riskClass: "write" },
@@ -111,27 +101,6 @@ const OVERRIDES: Record<string, Override> = {
   list_agent_skills: { permission: "memory.read" },
   load_agent_skill: { permission: "memory.read" },
 };
-
-/** Web-only tools (in-app expert loop) not present in the MCP catalogue. */
-const WEB_ONLY_TOOLS: Array<{
-  name: string;
-  description: string;
-  permission: Permission;
-  riskClass: RiskClass;
-  executor: string;
-  aliases?: string[];
-}> = [
-  { name: "resolve_symbol", description: "Resolve a user symbol/name to a canonical trading symbol.", permission: "market.read", riskClass: "read", executor: "web-local" },
-  { name: "get_market_snapshot", description: "(shared with MCP)", permission: "market.read", riskClass: "read", executor: "web-local" },
-  { name: "get_user_profile", description: "Read the user's trading settings and profile.", permission: "account.read", riskClass: "read", executor: "web-local" },
-  { name: "get_trades_summary", description: "Summarize the user's trade history.", permission: "account.read", riskClass: "read", executor: "web-local" },
-  { name: "get_recommendations_history", description: "List past recommendations.", permission: "recommendation.read", riskClass: "read", executor: "web-local" },
-  { name: "search_trade_memory", description: "Semantic search over trade lessons/memory.", permission: "memory.read", riskClass: "read", executor: "web-local" },
-  { name: "get_cards_guide", description: "Card catalogue guidance for render_cards.", permission: "ui.render", riskClass: "read", executor: "web-local" },
-  { name: "render_cards", description: "Render interactive UI cards in web chat.", permission: "ui.render", riskClass: "write", executor: "web-local" },
-  { name: "set_risk_guard", description: "Toggle Risk Guard enforcement (server re-validates).", permission: "settings.write", riskClass: "write", executor: "web-bridge" },
-  { name: "browse_web", description: "Fetch/screenshot an external web page (Playwright).", permission: "web.browse", riskClass: "read", executor: "web-local" },
-];
 
 /** Research Swarm policy allowlist names → canonical mapping. */
 const RESEARCH_TOOLS: Array<{ name: string; canonical: string | null }> = [
@@ -160,10 +129,9 @@ function buildContract() {
     const surfaces = ["mcp"];
     const webShared = new Set([
       "get_market_snapshot", "get_market_context", "get_account_overview",
-      "get_risk_status", "get_open_trades", "get_account_symbols",
+      "get_open_trades", "get_account_symbols",
       "get_multi_timeframe_snapshot", "scan_market", "get_trade_readiness",
       "open_trade", "close_trade", "modify_sl_tp", "request_approval",
-      "set_trading_mode", "set_active_market", "set_trading_style",
     ]);
     if (webShared.has(def.name) || OVERRIDES[def.name]?.aliases?.length) surfaces.push("web");
     return {
@@ -186,28 +154,6 @@ function buildContract() {
     };
   });
 
-  for (const tool of WEB_ONLY_TOOLS) {
-    if (tools.some((t) => t.name === tool.name)) continue;
-    tools.push({
-      name: tool.name,
-      version: MCP_SERVER_VERSION,
-      description: tool.description,
-      permission: tool.permission,
-      riskClass: tool.riskClass,
-      surfaces: ["web"],
-      executor: tool.executor,
-      serverControlled: true,
-      idempotent: tool.riskClass === "read",
-      cancellation: "http-abort",
-      timeoutMs: 30_000,
-      telemetry: "server-audit-log",
-      inputSchemaRef: "web/src/lib/agent.ts#TOOLS",
-      outputValidation: "handler-json",
-      aliases: [],
-      requiredFeatureFlags: [],
-    });
-  }
-
   tools.sort((a, b) => a.name.localeCompare(b.name));
 
   return {
@@ -215,7 +161,7 @@ function buildContract() {
     description:
       "Canonical AiChart tool contract. Web, MCP, and research surfaces are validated against this file — permissions and execution authority remain server-controlled regardless of what any model or client requests.",
     highRiskPolicy:
-      "riskClass=execution tools always route through the web API (Risk Guard + explicit approval + tenant auth + idempotency). No skill, prompt, memory, or MCP client can grant execution authority.",
+      "riskClass=execution tools always route through the web API (technical execution safety + explicit approval + tenant auth + idempotency). No skill, prompt, memory, or MCP client can grant execution authority.",
     tools,
     research: {
       description:

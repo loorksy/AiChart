@@ -50,9 +50,6 @@ export function makePlaybook(
   over: Partial<TradingPlaybookResult> = {},
 ): TradingPlaybookResult {
   return {
-    canTrade: false,
-    preferredAction: "wait",
-    confidenceAdjustment: 0,
     checklist: [],
     blockingReasons: [],
     warnings: [],
@@ -70,9 +67,7 @@ export function makeRisk(over: Partial<RiskAgentResult> = {}): RiskAgentResult {
   return {
     proposedTrade: { action: "wait" },
     validation: makeValidation(),
-    veto: false,
     accountWarnings: [],
-    accountBlocked: false,
     selectedCandidate: null,
     candidatesResult: makeCandidatesResult(),
     playbook: makePlaybook(),

@@ -75,9 +75,9 @@ export interface ResearchProgressEvent {
 
 export type ResearchSwarmPreset =
   | "gold_strategy_lab"
-  | "forex_research_committee"
+  | "forex_research_lab"
   | "strategy_validation_team"
-  | "risk_review_committee"
+  | "risk_evidence_review"
   | "performance_attribution_team"
   | "shadow_trader_review"
   | "weekly_market_research";

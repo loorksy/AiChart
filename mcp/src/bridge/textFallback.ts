@@ -5,7 +5,7 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     buy: "Buy",
     sell: "Sell",
     staleMark: " (stale — EA offline)",
-    accountTitle: "Account status — Lonora",
+    accountTitle: "Account status — AiChart",
     accountLine: "Account: #{login} · {broker}{mode}",
     liveMode: " · Live",
     demoMode: " · Demo",
@@ -13,11 +13,9 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     equity: "Equity: {val}{stale}",
     openPnl: "Open PnL: {val}",
     openPnlStale: "— / stale data",
-    perTradeMax: "Per-trade limit setting: {val} USD (configured limit, not balance)",
-    effectiveCapital: "Effective capital: {val} USD",
     openTrades: "Open trades: {val}",
     staleWarning: "Note: EA offline or quotes are stale.",
-    analysisTitle: "Analysis {symbol} — Lonora",
+    analysisTitle: "Analysis {symbol} — AiChart",
     trend: "Trend: {val}",
     price: "Price: {val}",
     rsi: "RSI: {val}",
@@ -38,7 +36,7 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     buy: "شراء",
     sell: "بيع",
     staleMark: " (قديم — EA غير متصل)",
-    accountTitle: "حالة الحساب — Lonora",
+    accountTitle: "حالة الحساب — AiChart",
     accountLine: "الحساب: #{login} · {broker}{mode}",
     liveMode: " · حقيقي",
     demoMode: " · تجريبي",
@@ -46,11 +44,9 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
     equity: "حقوق الملكية: {val}{stale}",
     openPnl: "PnL المفتوح: {val}",
     openPnlStale: "— / بيانات قديمة",
-    perTradeMax: "إعداد حد الصفقة: {val} USD (قيمة إعداد، ليست الرصيد)",
-    effectiveCapital: "رأس المال الفعّال: {val} USD",
     openTrades: "الصفقات المفتوحة: {val}",
     staleWarning: "تنبيه: EA غير متصل أو الأسعار قديمة.",
-    analysisTitle: "تحليل {symbol} — Lonora",
+    analysisTitle: "تحليل {symbol} — AiChart",
     trend: "الاتجاه: {val}",
     price: "السعر: {val}",
     rsi: "RSI: {val}",
@@ -214,10 +210,8 @@ function formatAccountOverview(data: Record<string, unknown>, locale: Locale): s
   if (!obj(data.live).forex && obj(data.forex).ea) {
     data = { ...data, live: data };
   }
-  const risk = unwrapBridge(data.risk);
   const portfolio = unwrapBridge(data.portfolio);
   const live = unwrapBridge(data.live);
-  const cap = obj(risk.capital);
   const liveForex = obj(live.forex);
   const dataForex = obj(data.forex);
   const portfolioForex = obj(portfolio.forex);
@@ -309,15 +303,6 @@ function formatAccountOverview(data: Record<string, unknown>, locale: Locale): s
     msg("openPnl", locale, {
       val: stale || openPnl == null ? msg("openPnlStale", locale) : fmtNum(openPnl),
     }),
-    msg("perTradeMax", locale, {
-      val: fmtNum(
-        first(cap.perTradeMaxUsd, risk.perTradeMaxUsd, risk.per_trade_max_usd, data.perTradeMaxUsd),
-        0,
-      ),
-    }),
-    cap.effectiveCapital != null
-      ? msg("effectiveCapital", locale, { val: fmtNum(cap.effectiveCapital, 0) })
-      : "",
     msg("openTrades", locale, { val: formatOpenTrades(openTrades, locale) }),
     stale ? msg("staleWarning", locale) : "",
   ];

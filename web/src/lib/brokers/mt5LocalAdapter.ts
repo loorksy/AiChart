@@ -27,7 +27,7 @@ export const mt5LocalAdapter: BrokerAdapter = {
 
   async placeOrder(
     userId: number,
-    { intent, push }: PlaceOrderContext,
+    { intent, riskAmount, push }: PlaceOrderContext,
   ): Promise<OrderResult> {
     push({ id: "creds", label: "التحقق من اتصال MT5", status: "running" });
     const meta = await getMtAccountMeta(userId);
@@ -66,7 +66,7 @@ export const mt5LocalAdapter: BrokerAdapter = {
       Number(spec.ask) ||
       Number(spec.bid) ||
       0;
-    const sizing = computeForexLots(intent.notional, refPrice, spec);
+    const sizing = computeForexLots(riskAmount, refPrice, intent.stop_loss, spec);
     if (!sizing.ok) {
       const reason = sizing.reason ?? "تعذّر حساب اللوت.";
       push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "error", detail: reason });
@@ -94,7 +94,7 @@ export const mt5LocalAdapter: BrokerAdapter = {
         lots: sizing.lots,
         sl: intent.stop_loss,
         tp: intent.take_profit,
-        comment: `Lonora #${intent.id}`,
+        comment: `AiChart #${intent.id}`,
       });
       if (!result.ok) {
         const reason = result.reason ?? "رفض MT5 الأمر.";

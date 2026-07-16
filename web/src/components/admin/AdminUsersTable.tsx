@@ -107,8 +107,6 @@ export function AdminUsersTable({
             {mode === "full" && <th className="p-3">صلاحية حتى</th>}
             {mode === "full" && <th className="p-3">أيام</th>}
             <th className="p-3">التنفيذ</th>
-            <th className="p-3">سقف رأس المال</th>
-            <th className="p-3">أقصى صفقات</th>
             <th className="p-3">حصة Claude</th>
             <th className="p-3"></th>
           </tr>
@@ -191,28 +189,6 @@ export function AdminUsersTable({
                   <input
                     type="number"
                     min={0}
-                    className="admin-input w-24 py-1 text-xs"
-                    value={u.max_capital_cap}
-                    onChange={(e) =>
-                      update(u.id, "max_capital_cap", Number(e.target.value))
-                    }
-                  />
-                </td>
-                <td className="p-3">
-                  <input
-                    type="number"
-                    min={1}
-                    className="admin-input w-16 py-1 text-xs"
-                    value={u.max_open_trades_cap}
-                    onChange={(e) =>
-                      update(u.id, "max_open_trades_cap", Number(e.target.value))
-                    }
-                  />
-                </td>
-                <td className="p-3">
-                  <input
-                    type="number"
-                    min={0}
                     className="admin-input w-20 py-1 text-xs"
                     value={u.claude_quota}
                     onChange={(e) =>
@@ -260,9 +236,7 @@ export function AdminUsersTable({
                         patch(u.id, {
                           ...(mode === "full" ? { status: u.status } : {}),
                           can_execute: Boolean(u.can_execute),
-                          max_capital_cap: Number(u.max_capital_cap),
-                          max_open_trades_cap: Number(u.max_open_trades_cap),
-                          claude_quota: Number(u.claude_quota),
+                           claude_quota: Number(u.claude_quota),
                         })
                       }
                     >

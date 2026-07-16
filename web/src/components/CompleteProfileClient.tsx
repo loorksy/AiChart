@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plug } from "lucide-react";
-import { LonoraLogo } from "@/components/LonoraLogo";
+import { AiChartLogo } from "@/components/AiChartLogo";
 import type { PublicUser } from "@/lib/types";
 
 export function CompleteProfileClient({ user }: { user: PublicUser }) {
@@ -46,15 +46,15 @@ export function CompleteProfileClient({ user }: { user: PublicUser }) {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
       <div className="mb-8">
-        <LonoraLogo size={22} showName nameClassName="text-lg font-semibold" />
+        <AiChartLogo size={22} showName nameClassName="text-lg font-semibold" />
       </div>
       <div className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-card p-8 shadow-lg">
         <div className="flex items-start gap-3">
           <Plug className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <div>
-            <h1 className="text-xl font-bold">أكمل بيانات MCP</h1>
+            <h1 className="text-xl font-bold">أكمل بيانات حسابك</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              سجّلت عبر Telegram — أدخل بريداً وكلمة مرور لربط Claude MCP لاحقاً.
+              سجّلت عبر Telegram — أدخل بريداً وكلمة مرور لإكمال حسابك وربط المساعد لاحقاً.
             </p>
           </div>
         </div>

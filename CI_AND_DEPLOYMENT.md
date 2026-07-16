@@ -1,4 +1,4 @@
-# Lonora — CI & Deployment Runbook
+# AiChart — CI & Deployment Runbook
 
 This document covers what CI needs, the required secrets, the scheduler, and the
 manual verification runbooks (Playwright + live voice) that require a running
@@ -9,10 +9,13 @@ preview environment.
 | Command | Scope | Services | Notes |
 |---|---|---|---|
 | `npm run lint` | ESLint | none | Exits 0. Experimental React-Compiler rules (`set-state-in-effect`, `purity`) and `no-explicit-any` are **warnings** by explicit policy in `eslint.config.mjs`; `rules-of-hooks`, `refs` (render-time ref access), `immutability` (render-time mutation) stay blocking. |
-| `npm run test:unit` | Deterministic unit suite (290 tests) | none | ~7s, exits cleanly (`--test-force-exit`). |
+| `npm run test:unit` | Deterministic unit suite | none | Includes product model, migrations, execution safety, navigation, voice, recommendations, and isolation checks. |
+| `npm run test:decision-authority` | Canonical BUY/SELL/WAIT authority regression suite | none | Proves market evidence is not converted into a policy veto. |
 | `npm run test:integration` | Redis-dependent (eaLiveState, queue/BullMQ) | Redis | Explicitly **skips** the BullMQ round-trip with a reason when `REDIS_URL` is unreachable. |
-| `npm run test:live` | Opt-in external-provider tests | provider keys | No-op by default; set provider env to run targeted suites. |
-| `npm run test:ci` | `test:unit` + `test:integration` | Redis | The CI aggregate. |
+| `npm run test:provider-release` | Safe, credentialed OpenAI/OANDA/execution probes | provider keys | Refuses trade/order/send mutations and logs no credentials or model output. |
+| `npm run test:postgres-release` | Isolated fresh/upgrade PostgreSQL contract | PostgreSQL | Refuses database names outside `aichart_rel*`. |
+| `npm run test:redis-release` | Authenticated network, queue, retry, isolation, persistence | Redis `:6380` | Refuses non-isolated ports. |
+| `npm run test:ci` | Full context, memory, skill, tool, trace, research, recommendation, Trading DNA, unit, authority, and integration suites | Redis | The CI aggregate. |
 | `npm run build` | `next build` | **licensed TradingView library** | Requires provisioning (below). |
 
 MCP: `npm run typecheck`, `npm run test:catalog`, `npm run schemas:check` — all green.
@@ -20,7 +23,8 @@ MCP: `npm run typecheck`, `npm run test:catalog`, `npm run schemas:check` — al
 ## TradingView library provisioning (required for build)
 
 The proprietary TradingView Advanced Charts library is **licensed and gitignored**
-— never committed. CI/deploy fetches it from a private source before building.
+— never committed. CI and first-time deployments fetch it from a private source
+before building.
 
 **Required secrets** (repository or organization level; never printed):
 
@@ -40,6 +44,20 @@ first and do not need the library.
 > The exact archive layout must resolve `@/vendor/tradingview/charting_library`
 > (typings) and serve `/charting_library/charting_library.standalone.js` (runtime).
 > Configure the licensed artifact accordingly; the verify step guards the build.
+
+The clean VPS redeploy flow in `infra/vps-clean-redeploy.sh` does not re-download
+the licensed artifact. Before stopping AiChart services, it verifies and copies
+both existing gitignored directories into the root-only release backup:
+
+```text
+web/src/vendor/tradingview/
+web/public/charting_library/
+```
+
+It restores and re-verifies both directories in the fresh clone before `npm ci`
+and `npm run build`. Missing, symlinked, empty, or incomplete asset directories
+fail the redeploy before service shutdown. The script logs neither asset contents
+nor source credentials.
 
 ## Recommendation-tracker scheduler
 
@@ -71,8 +89,8 @@ curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" \
 Voice: `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_VOICE`,
 `VOICE_SESSION_MAX_MINUTES`, `VOICE_IDLE_TIMEOUT_SECONDS`,
 `VOICE_MAX_RECONNECT_ATTEMPTS`, `VOICE_SAFETY_SALT`.
-Scheduler: `CRON_SECRET`. Support contacts: `SUPPORT_EMAIL`, `SUPPORT_TELEGRAM`
-(Lonora defaults). Build: `TRADINGVIEW_LIBRARY_URL` (+ `TRADINGVIEW_LIBRARY_TOKEN`).
+Scheduler: `CRON_SECRET`. Support contacts: `SUPPORT_EMAIL`, `SUPPORT_TELEGRAM`.
+Build: `TRADINGVIEW_LIBRARY_URL` (+ `TRADINGVIEW_LIBRARY_TOKEN`).
 Platform: DB (SQLite dev / Postgres prod via `DATABASE_URL`), `REDIS_URL`
 (optional worker tier), OANDA, MT5/EA bridge (`MT5_BRIDGE_URL`), news provider,
 `AICHART_SERVICE_TOKEN` (MCP↔web bridge), `MCP_AUTH_MODE`.

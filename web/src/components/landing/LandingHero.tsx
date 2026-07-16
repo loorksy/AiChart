@@ -25,24 +25,24 @@ export function LandingHero() {
   const isRtl = locale === "ar";
 
   const tagline = isRtl
-    ? "منصة تداول ذكية — Claude MCP · MetaTrader 5"
-    : "AI-Powered Trading Assistant — Claude MCP · MetaTrader 5";
+    ? "مساعد تداول ذكي · MetaTrader 5"
+    : "AI Trading Assistant · MetaTrader 5";
 
-  const titlePre = isRtl ? "تداول بذكاء عبر " : "Trade Smartly with ";
-  const titleGlow = "Claude MCP";
+  const titlePre = isRtl ? "تداول بذكاء مع " : "Trade Smartly with ";
+  const titleGlow = "AiChart";
   const titlePost = isRtl ? "" : "";
 
   const subtitle = isRtl
-    ? "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر MetaTrader — مع Risk Guard. استعرض الشارت الآن مجاناً بلا تسجيل."
-    : "Connect Claude Connectors, monitor markets, and execute trades on MetaTrader 5 — backed by Risk Guard. Browse the live chart free, no sign-up.";
+    ? "حلّل السوق بالمحادثة والشارت، ثم نفّذ عبر MetaTrader بعد موافقتك وبحماية تقنية. استعرض الشارت الآن مجاناً بلا تسجيل."
+    : "Analyze the market through chat and chart, then execute on MetaTrader 5 after approval with technical safeguards. Browse the live chart free, no sign-up.";
 
   const ctaPrimary = isRtl ? "ابدأ مجاناً" : "Start Free";
   const ctaSecondary = isRtl ? "تسجيل الدخول" : "Sign In";
   const ctaChart = isRtl ? "استعرض الشارت" : "Open the chart";
   const chatTitle = isRtl ? "ماذا ستتداول اليوم؟" : "What are we trading today?";
   const chatSubtitle = isRtl
-    ? "جرب سؤالاً — سجّل لربط Claude MCP والتداول الحقيقي."
-    : "Try a prompt — register to link Claude MCP and begin real trading.";
+    ? "جرّب سؤالاً — سجّل لحفظ محادثاتك وربط حساب التداول."
+    : "Try a prompt — register to save conversations and connect your trading account.";
 
   return (
     <section className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28 overflow-hidden">

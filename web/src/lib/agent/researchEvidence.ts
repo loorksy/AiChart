@@ -3,7 +3,7 @@
  *
  * Never fabricates Backtest / Validation / DNA / Shadow / Swarm contribution.
  * Only claims a system contributed when it actually ran successfully and its
- * result was incorporated into this recommendation's confidence.
+ * result was recorded as context without changing the model decision or its confidence.
  *
  * Expensive Research Service jobs are never blocked-on mid-request. When a
  * blocking run is justified but cannot finish inside the latency budget, the
@@ -24,7 +24,7 @@ import {
 import { collectTradingDnaEvidence } from "@/lib/tradingDna/evidence";
 import type { TradingDnaSnapshot } from "@/lib/tradingDna/types";
 
-export const RESEARCH_EVIDENCE_POLICY_VERSION = "1.2.0";
+export const RESEARCH_EVIDENCE_VERSION = "1.2.0";
 
 export type ResearchSystem =
   | "trading_dna"
@@ -43,7 +43,7 @@ export interface ResearchEvidenceContribution {
   snapshotId?: string;
   jobId?: string;
   shadowId?: string;
-  confidenceDelta?: number;
+  evidenceTendency?: number;
 }
 
 export interface EvidenceTimelineStep {
@@ -53,10 +53,10 @@ export interface EvidenceTimelineStep {
 }
 
 export interface ResearchEvidenceBundle {
-  policyVersion: string;
+  evidenceVersion: string;
   contributions: ResearchEvidenceContribution[];
   /** Net adjustment applied to recommendation confidence (−0.15 … +0.1). */
-  recommendationConfidenceDelta: number;
+  historicalEvidenceTendency: number;
   summaryAr: string;
   summaryEn: string;
   timeline: EvidenceTimelineStep[];
@@ -77,7 +77,6 @@ export interface ResearchSelectionInput {
   baseConfidence?: number;
   dataQualityScore?: number;
   newsRisk?: "low" | "medium" | "high" | "unknown";
-  tradingStyle?: string;
   userMessage?: string;
   latencyBudgetMs?: number;
 }
@@ -272,10 +271,8 @@ export function decideResearchJustification(input: ResearchSelectionInput): {
   const intent = detectDeepResearchIntent(input.userMessage);
   const conf = input.baseConfidence ?? 0.5;
   const dataQ = input.dataQualityScore ?? 0.5;
-  const style = (input.tradingStyle ?? "day").toLowerCase();
   const midUncertainty = conf >= 0.45 && conf <= 0.78;
   const alreadyHigh = conf >= 0.85 && dataQ >= 0.8;
-  const historicalStyle = style === "swing" || style === "position";
 
   const reasons: Record<string, string> = {};
 
@@ -302,14 +299,11 @@ export function decideResearchJustification(input: ResearchSelectionInput): {
   let backtestWorth = false;
   if (alreadyHigh && !intent.wantsBacktest) {
     reasons.backtest = "confidence_already_sufficient";
-  } else if (intent.wantsBacktest || (midUncertainty && historicalStyle)) {
+  } else if (intent.wantsBacktest || midUncertainty) {
     backtestWorth = true;
     reasons.backtest = intent.wantsBacktest
       ? "user_requested_historical_confirmation"
-      : "mid_confidence_with_swing_style_needs_history";
-  } else if (midUncertainty) {
-    backtestWorth = true;
-    reasons.backtest = "mid_confidence_uncertainty";
+      : "mid_confidence_uncertainty";
   } else {
     reasons.backtest = "not_justified_for_this_request";
   }
@@ -355,7 +349,7 @@ export async function collectBoundedResearchEvidence(
   const remaining = () => Math.max(50, budget - (Date.now() - started));
 
   const contributions: ResearchEvidenceContribution[] = [];
-  let recommendationConfidenceDelta = 0;
+  let historicalEvidenceTendency = 0;
   const summariesAr: string[] = [];
   const summariesEn: string[] = [];
   const timeline: EvidenceTimelineStep[] = [
@@ -425,20 +419,20 @@ export async function collectBoundedResearchEvidence(
           dnaSnapshot = generated?.snapshot ?? null;
           if (dnaSnapshot) {
             const { delta, detail } = summarizeDna(dnaSnapshot);
-            recommendationConfidenceDelta += delta;
+            historicalEvidenceTendency += delta;
             contributions.push({
               system: "trading_dna",
               status: "used",
               reason: "auto_generated_from_sufficient_evidence",
               reasonDetail: `Generated DNA from ${sample} recommendations. ${detail}`,
               snapshotId: dnaSnapshot.snapshotId,
-              confidenceDelta: delta,
+              evidenceTendency: delta,
             });
             summariesAr.push(
               `سجلّ تاريخي للمشغّل (n=${sample}) أثّر على الثقة وفق موثوقية العينة.`,
             );
             summariesEn.push(
-              `Operator history (n=${sample}) influenced confidence by evidence reliability.`,
+              `Operator history (n=${sample}) added reliability-weighted context.`,
             );
             timeline.push({ step: "trading_dna", status: "used" });
           } else {
@@ -470,20 +464,20 @@ export async function collectBoundedResearchEvidence(
         }
       } else {
         const { delta, detail } = summarizeDna(dnaSnapshot);
-        recommendationConfidenceDelta += delta;
+        historicalEvidenceTendency += delta;
         contributions.push({
           system: "trading_dna",
           status: "used",
           reason: "latest_snapshot",
           reasonDetail: detail,
           snapshotId: dnaSnapshot.snapshotId,
-          confidenceDelta: delta,
+          evidenceTendency: delta,
         });
         summariesAr.push(
           `سجلّ تاريخي للمشغّل (n=${dnaSnapshot.sampleSize}) أثّر على ثقة التوصية وفق موثوقية الدليل.`,
         );
         summariesEn.push(
-          `Operator history (n=${dnaSnapshot.sampleSize}) influenced recommendation confidence by evidence reliability.`,
+          `Operator history (n=${dnaSnapshot.sampleSize}) added reliability-weighted context.`,
         );
         timeline.push({ step: "trading_dna", status: "used" });
       }
@@ -568,7 +562,7 @@ export async function collectBoundedResearchEvidence(
           agrees,
           shadowConfidencePct: match.confidence,
         });
-        recommendationConfidenceDelta += delta;
+        historicalEvidenceTendency += delta;
         contributions.push({
           system: "shadow_trader",
           status: delta === 0 ? "skipped" : "used",
@@ -580,7 +574,7 @@ export async function collectBoundedResearchEvidence(
                 : "shadow_disagrees_with_recommendation",
           reasonDetail: detail,
           shadowId: match.shadowRecommendationId,
-          confidenceDelta: delta,
+          evidenceTendency: delta,
         });
         if (delta !== 0) {
           summariesAr.push(
@@ -678,7 +672,7 @@ export async function collectBoundedResearchEvidence(
       reason: "insufficient_historical_metrics",
       reasonDetail: `Found ${backtestIds.length} completed backtest id(s) in DNA evidence but no parsed reliability metrics in this sync path. Presence alone does not raise confidence.`,
       jobId: backtestIds[0],
-      confidenceDelta: delta,
+      evidenceTendency: delta,
     });
     timeline.push({
       step: "backtest",
@@ -737,7 +731,7 @@ export async function collectBoundedResearchEvidence(
       reason: "no_dedicated_validation_run_in_this_request",
       reasonDetail:
         "A Backtest reference existed, but no walk-forward/Monte Carlo/sensitivity Validation job was executed or verified in this request path. Validation never increases confidence by itself.",
-      confidenceDelta: 0,
+      evidenceTendency: 0,
     });
     timeline.push({
       step: "validation",
@@ -786,9 +780,9 @@ export async function collectBoundedResearchEvidence(
     });
   }
 
-  recommendationConfidenceDelta = Math.max(
+  historicalEvidenceTendency = Math.max(
     -0.15,
-    Math.min(0.1, recommendationConfidenceDelta),
+    Math.min(0.1, historicalEvidenceTendency),
   );
 
   const usedSystems = contributions
@@ -809,9 +803,9 @@ export async function collectBoundedResearchEvidence(
   });
 
   return {
-    policyVersion: RESEARCH_EVIDENCE_POLICY_VERSION,
+    evidenceVersion: RESEARCH_EVIDENCE_VERSION,
     contributions,
-    recommendationConfidenceDelta,
+    historicalEvidenceTendency,
     summaryAr:
       summariesAr.length > 0
         ? summariesAr.join(" ")

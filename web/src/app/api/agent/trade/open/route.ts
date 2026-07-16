@@ -4,12 +4,12 @@ import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   createIntent,
-  getLimits,
   getSettings,
   hasRecentTradeOpenFailure,
   logAudit,
+  resolveBrokerForMarket,
 } from "@/lib/store";
-import { executeIntent, bridgeEnvelopeForExecutionDenial } from "@/lib/execution";
+import { executeIntent, getRiskBudget } from "@/lib/execution";
 import {
   bridgeError,
   bridgeSuccess,
@@ -21,8 +21,6 @@ import {
   toBridgeResponse,
   type BridgeEnvelope,
 } from "@/lib/bridge";
-import { deriveDynamicNotional } from "@/lib/dynamicSizing";
-import { getEaSymbolSpec } from "@/lib/eaStore";
 import {
   NON_FOREX_MARKET_MESSAGE,
   DEFAULT_MARKET,
@@ -36,13 +34,9 @@ const schema = z
   .object({
     symbol: z.string().min(1),
     side: z.enum(["buy", "sell"]),
-    /** Quote amount (USD) — defaults to per-trade budget from settings. */
-    notional: z.number().positive().optional(),
-    /** Forex: explicit lot size — overrides notional-based sizing when set. */
-    lots: z.number().positive().max(100).optional(),
     market: z.literal("forex").optional(),
     entry: z.number().nullish(),
-    stop_loss: z.number().nullish(),
+    stop_loss: z.number().positive(),
     take_profit: z.number().nullish(),
     confidence: z.number().min(0).max(100).default(0),
     rationale: z.string().nullish(),
@@ -55,15 +49,7 @@ const schema = z
     limit_price: z.number().positive().optional(),
     idempotencyKey: z.string().max(128).optional(),
   })
-  .refine(
-    (b) =>
-      !b.approved_by_user ||
-      (b.notional != null && b.notional > 0),
-    {
-      message:
-        "notional مطلوب عند approved_by_user — اسأل المشغّل «بكم ندخل؟» ولا تستخدم الحد الافتراضي.",
-    },
-  )
+  .strict()
   .refine(
     (b) =>
       !b.approved_by_user ||
@@ -104,8 +90,8 @@ async function respondWithIdempotency(
 }
 
 /**
- * Bridge: opens a real trade. Every call runs the full intent → Risk Guard →
- * broker pipeline; the Risk Guard can deny regardless of who asked.
+ * Opens a trade using the account-level Risk per Trade setting. Callers cannot
+ * override lots or notional; sizing is recomputed from verified broker equity.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -125,7 +111,7 @@ export async function POST(req: NextRequest) {
 
     // Failure brake: if a recent attempt on this symbol was denied, reject
     // immediately with a clear reason instead of re-running the full
-    // intent → Risk Guard → broker pipeline (stops wasted AI retry loops).
+    // intent → technical execution safety → broker pipeline.
     // Explicit human approval bypasses the brake.
     if (
       !body.approved_by_user &&
@@ -145,8 +131,7 @@ export async function POST(req: NextRequest) {
     }
 
     const settings = await getSettings(userId);
-    const limits = await getLimits(userId);
-    const requestedMarket = body.market ?? settings.active_market ?? DEFAULT_MARKET;
+    const requestedMarket = body.market ?? DEFAULT_MARKET;
     const marketBlock = rejectNonForexMarket(requestedMarket);
     if (marketBlock) {
       const envelope = bridgeSuccess(
@@ -168,37 +153,15 @@ export async function POST(req: NextRequest) {
 
     const orderType = body.order_type ?? "market";
 
-    const effectiveCapital =
-      limits.max_capital_cap > 0
-        ? Math.min(settings.max_capital, limits.max_capital_cap)
-        : settings.max_capital;
-    // Risk-based sizing: when the caller doesn't pin a notional (e.g. auto
-    // mode), size from the STOP DISTANCE — a wider stop yields a smaller
-    // position — scaled by confidence and clamped to the per-trade budget.
-    // Risk Guard remains the final cap.
-    const baseNotional = (effectiveCapital * settings.per_trade_pct) / 100;
-    const riskFraction =
-      body.entry && body.stop_loss && body.entry > 0
-        ? Math.abs(body.entry - body.stop_loss) / body.entry
-        : 0.01;
-    let notional =
-      body.notional ??
-      deriveDynamicNotional({
-        baseNotional,
-        confidence: body.confidence,
-        riskFraction,
-        maxNotional: effectiveCapital,
-      });
-    // Explicit forex lot → equivalent notional (lots × contract size × price),
-    // so the agent/MCP can size a trade by lot. Risk Guard still gates it.
-    if (body.lots && body.lots > 0) {
-      const spec = await getEaSymbolSpec(
-        userId,
-        normalizeIntentSymbol(body.symbol, market),
+    const broker = await resolveBrokerForMarket(userId, market);
+    const budget = await getRiskBudget(userId, broker);
+    if (!budget) {
+      const envelope = bridgeError(
+        BridgeErrorCode.VALIDATION_ERROR,
+        "Verified broker equity is unavailable.",
+        "تعذّر التحقق من equity للحساب المتصل؛ لم يُرسل أي أمر.",
       );
-      const price = Number(spec?.ask) || Number(spec?.bid) || body.entry || 0;
-      const contractSize = Number(spec?.contract_size) || 100000;
-      if (price > 0) notional = body.lots * contractSize * price;
+      return respondWithIdempotency(userId, idempotencyKey, envelope);
     }
 
     const leverage = 1;
@@ -207,8 +170,9 @@ export async function POST(req: NextRequest) {
       recommendation_id: body.recommendation_id ?? null,
       symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
-      notional,
+      notional: budget.riskAmount,
       market,
+      broker,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,
       take_profit: body.take_profit ?? null,
@@ -226,16 +190,6 @@ export async function POST(req: NextRequest) {
       explicitApproval: body.approved_by_user,
       practiceMode: body.practice,
     });
-
-    const confidenceEnvelope = bridgeEnvelopeForExecutionDenial(result);
-    if (confidenceEnvelope) {
-      await logAudit(
-        userId,
-        "agent_trade_open",
-        `${intent.symbol} ${intent.side} denied LOW_CONFIDENCE (${body.confidence}% < threshold)`,
-      );
-      return respondWithIdempotency(userId, idempotencyKey, confidenceEnvelope);
-    }
 
     if (result.errorCode === BridgeErrorCode.UPSTREAM_TIMEOUT) {
       const timeoutEnvelope = bridgeError(
@@ -256,7 +210,7 @@ export async function POST(req: NextRequest) {
     await logAudit(
       userId,
       "agent_trade_open",
-      `${intent.symbol} ${intent.side} ${notional.toFixed(2)} USD → ${result.status}${result.ok ? "" : ` (${result.reason})`}`,
+      `${intent.symbol} ${intent.side} risk=${budget.riskAmount.toFixed(2)} ${budget.currency ?? "account"} → ${result.status}${result.ok ? "" : ` (${result.reason})`}`,
     );
 
     const envelope = bridgeSuccess(

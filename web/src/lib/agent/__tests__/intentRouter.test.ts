@@ -4,7 +4,6 @@ import {
   isDrawActiveRecommendation,
   isDrawingOnly,
   isGeneralOnly,
-  isScalpRecommendation,
   routeIntent,
 } from "@/lib/agent/intentRouter";
 import type { AgentActivityEvent, AgentRunContext } from "@/lib/agent/types";
@@ -154,18 +153,17 @@ describe("intentRouter", () => {
       ctx: fakeCtx(events),
     });
     assert.ok(intents.includes("new_trade_analysis"));
-    assert.equal(intents.includes("scalp_recommendation"), false);
+    assert.deepEqual(intents, ["new_trade_analysis"]);
   });
 
-  it("a scalp request routes to scalp mode, not standard analysis", () => {
+  it("a scalp request routes to the canonical analysis", () => {
     const events: Array<Omit<AgentActivityEvent, "id" | "timestamp">> = [];
     const intents = routeIntent({
       message: "توصية سكالب",
       chartContext: { symbol: "XAUUSD", interval: "1m" },
       ctx: fakeCtx(events),
     });
-    assert.ok(isScalpRecommendation(intents));
-    assert.equal(intents.includes("new_trade_analysis"), false);
+    assert.ok(intents.includes("new_trade_analysis"));
   });
 
   it("draw-the-recommendation wording never triggers a new trade analysis", () => {

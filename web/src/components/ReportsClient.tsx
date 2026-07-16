@@ -45,7 +45,7 @@ export default function ReportsClient({
         <>
           <button
             type="button"
-            onClick={() => exportTradesCsv(filtered, `lonora-${period}.csv`)}
+            onClick={() => exportTradesCsv(filtered, `aichart-${period}.csv`)}
             disabled={filtered.length === 0}
             className="btn btn-secondary py-2 text-sm disabled:opacity-50"
           >

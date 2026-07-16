@@ -3,6 +3,7 @@
 import { useLocale } from "@/hooks/useLocale";
 import type { AgentVoiceSession } from "@/hooks/useAgentVoiceSession";
 import { cn } from "@/lib/utils";
+import { Mic, Square } from "lucide-react";
 
 /** Start/stop toggle for the live voice conversation. Lives beside chat input. */
 export function AgentVoiceButton({
@@ -25,14 +26,14 @@ export function AgentVoiceButton({
       disabled={disabled}
       onClick={() => (active ? void voice.stop() : void voice.start())}
       className={cn(
-        "shrink-0 rounded-md px-3 py-2 text-xs font-semibold disabled:opacity-50",
+        "flex size-11 shrink-0 items-center justify-center rounded-lg disabled:opacity-50",
         active
           ? "bg-destructive/90 text-destructive-foreground hover:bg-destructive"
           : "bg-muted text-foreground hover:bg-muted/70",
         className,
       )}
     >
-      {active ? "■" : "🎙"}
+      {active ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-5 w-5" />}
     </button>
   );
 }

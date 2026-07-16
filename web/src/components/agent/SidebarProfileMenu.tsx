@@ -27,8 +27,7 @@ interface MenuItem {
 /**
  * Profile block pinned to the bottom of the sidebar. Clicking it opens a
  * compact, localized menu (Profile / Trading settings / Language / Theme /
- * Integrations / Logout). The Language row hosts the live Arabic/English
- * switcher; Theme is a placeholder until its tranche lands.
+ * Integrations / Logout). Language and appearance controls link to real state.
  */
 export function SidebarProfileMenu() {
   const router = useRouter();
@@ -66,7 +65,7 @@ export function SidebarProfileMenu() {
       icon: UserIcon,
       onSelect: () => {
         setOpen(false);
-        router.push("/console");
+        router.push("/console/account");
       },
     },
     {
@@ -82,9 +81,10 @@ export function SidebarProfileMenu() {
       id: "theme",
       label: t("profile.theme"),
       icon: SunMoon,
-      onSelect: () => {},
-      disabled: true,
-      hint: t("profile.coming_soon"),
+      onSelect: () => {
+        setOpen(false);
+        router.push("/console/settings?tab=appearance");
+      },
     },
     {
       id: "integrations",

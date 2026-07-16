@@ -5,7 +5,7 @@ import { toOandaForexSymbol } from "../lib/forexSymbol.js";
 import { bridgeCall } from "./helpers.js";
 import { mcpToolConfig } from "./schemas/index.js";
 
-/** Full AI analysis can take ~2 minutes (LLM + vision + committee). */
+/** Full AI analysis can take ~2 minutes (model reasoning + chart vision). */
 const ANALYZE_TIMEOUT_MS = 150_000;
 /** Drawing needs one candles fetch for time anchoring. */
 const DRAW_TIMEOUT_MS = 30_000;

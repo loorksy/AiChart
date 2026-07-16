@@ -8,7 +8,7 @@
  * - readOnlyHint tools: called with canned args, must not return isError
  *   (an explicit "EA offline / not connected" style message counts as DEGRADED,
  *   not FAIL — the tool works; the user's terminal is simply off).
- * - Safe mutators (style/market/env): round-trip — set, then restore.
+ * - Safe mutators, when present: round-trip — set, then restore.
  * - Trade-executing tools: SKIPPED (listed for manual testing).
  */
 import { mintAccessToken } from "../src/auth/jwt.js";
@@ -40,24 +40,17 @@ const SAMPLE_ARGS: Record<string, Record<string, unknown>> = {
 };
 
 /** set → restore pairs (safe mutators). */
-const ROUNDTRIP: Record<string, { probe: Record<string, unknown>; restoreFrom: string }> = {
-  set_trading_style: { probe: { trading_style: "day" }, restoreFrom: "get_trading_style" },
-  set_active_market: { probe: { active_market: "forex" }, restoreFrom: "get_agent_settings" },
-};
+const ROUNDTRIP: Record<string, { probe: Record<string, unknown>; restoreFrom: string }> = {};
 
 const SKIP_EXEC = new Set([
   "open_trade", "close_trade", "close_partial", "modify_sl_tp",
-  "modify_futures_sl_tp", "cancel_futures_order", "cancel_mt5_order",
-  "open_pending_order", "respond_approval", "request_approval",
+  "cancel_mt5_order", "respond_approval", "request_approval",
   "disconnect_mt5", "connect_mt5",
-  "set_execution_env", "set_trading_mode",
-  "set_futures_enabled", "set_kill_switch", "run_trade_maintenance",
   "send_telegram_menu", "request_ea_reconnect", "record_exit_decision",
-  "create_recommendation", "start_scalp_session", "stop_scalp_session",
+  "create_recommendation",
   "evaluate_trade", "get_recommendation_chart", // data-dependent (need live trade/rec id)
   "run_market_analysis", // consumes user credits — manual
   "draw_on_chart", "clear_chart_drawings", // mutate the user's live chart — manual
-  "set_trading_style", "set_active_market", // handled by ROUNDTRIP
 ]);
 
 const DEGRADED_HINTS = [/EA/i, /غير متصل/, /MetaTrader/i, /offline/i, /heartbeat/i, /لم يستجب/, /انتهت مهلة/, /API-key/i, /permissions for action/i];

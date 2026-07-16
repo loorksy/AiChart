@@ -22,7 +22,7 @@ export function McpBootstrapPanel({ text }: { text: string }) {
         <div>
           <h2 className="font-semibold">رسالة البدء</h2>
           <p className="text-xs text-muted-foreground">
-            الصقها كأول رسالة بعد ربط الـMCP
+            الصقها كأول رسالة بعد ربط المساعد
           </p>
         </div>
         <button

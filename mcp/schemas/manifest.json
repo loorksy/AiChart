@@ -1,22 +1,12 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-15T15:17:58.141Z",
-  "toolCount": 60,
+  "exportedAt": "2026-07-16T11:24:59.725Z",
+  "toolCount": 50,
   "tools": [
     {
       "name": "get_account_overview",
       "domain": "core",
-      "description": "When: start of trading session before any decision. Combines risk + portfolio + live. Resilient: if live fails, returns the rest. include_live=false for quick summary without live account. read-only.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "get_risk_status",
-      "domain": "core",
-      "description": "When: session start or before mode change. kill switch, limits, mode, executionEnv. Do not use instead of get_trade_readiness for immediate forex. read-only. Returns envelope { ok, data }.",
+      "description": "When: inspect the connected account. Combines technical connection status, portfolio, and live broker data. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -26,7 +16,7 @@
     {
       "name": "get_trade_readiness",
       "domain": "core",
-      "description": "When: before open_trade forex or quoteAgeMs>5000. Do not execute if ready=false. read-only. Example: symbol=EURUSD&confidence=85&market=forex.",
+      "description": "Technical preflight before open_trade: authorization, connection, session, heartbeat, quote freshness, and spread. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -86,7 +76,7 @@
     {
       "name": "open_trade",
       "domain": "core",
-      "description": "When: after explicit approval. stop_loss mandatory (Risk Guard rejects without it); pass entry/take_profit for reward/risk (rejected if below minimum). notional optional — if omitted, size derived from stop distance. Rejects stale quotes. Decision from agent analysis (no confidence threshold — confidence for logging/sizing only). idempotencyKey optional. side-effect: executes via Risk Guard. Example: stop_loss=64000&take_profit=68000&approved_by_user=true.",
+      "description": "When: after explicit approval. stop_loss is mandatory. Position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata. Rejects unsafe technical execution state. confidence is audit-only.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -154,73 +144,13 @@
       }
     },
     {
-      "name": "get_execution_env",
-      "domain": "core",
-      "description": "When: before live trade. demo/live + platforms. read-only.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "set_execution_env",
-      "domain": "core",
-      "description": "When: switch demo↔live with approval. side-effect: changes preference. Do not use automatically.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
-      "name": "set_trading_mode",
-      "domain": "core",
-      "description": "When: switch auto/approval/direct. side-effect: changes mode. direct recommended for chat.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
       "name": "get_agent_settings",
       "domain": "core",
-      "description": "When: before futures or market change. active_market, leverage. read-only.",
+      "description": "Current fixed product settings: Forex, scalping, and Risk per Trade. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true
-      }
-    },
-    {
-      "name": "set_active_market",
-      "domain": "core",
-      "description": "When: confirm active market (forex-only platform). side-effect: no-op — always forex.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
-      "name": "set_futures_enabled",
-      "domain": "core",
-      "description": "When: never needed — legacy no-op. Futures disabled; platform is forex-only. Always returns futures_enabled=false. read-only.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
-      "name": "run_trade_maintenance",
-      "domain": "core",
-      "description": "When: mechanical OCO/TP maintenance. side-effect: may modify orders. Not a substitute for analysis.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
       }
     },
     {
@@ -251,26 +181,6 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true
-      }
-    },
-    {
-      "name": "get_trading_style",
-      "domain": "core",
-      "description": "Current trading style + style list (scalp/day/swing/position). When: session start to show options to user. read-only.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "set_trading_style",
-      "domain": "core",
-      "description": "Set trading style · scalp/day/swing/position. When: after asking user. For scalp pass scalp_max_trades (trade cap). side-effect: updates settings. Example: trading_style=scalp&scalp_max_trades=5.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
       }
     },
     {
@@ -487,16 +397,6 @@
       "name": "modify_sl_tp",
       "domain": "mt5",
       "description": "When: open MT5 position. side-effect: EA modify. Example: ticket=123&stop_loss=1.08.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
-      "name": "open_pending_order",
-      "domain": "mt5",
-      "description": "When: MT5 pending order. side-effect: EA pending. EA v3+.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,

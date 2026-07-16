@@ -3,75 +3,81 @@ import type { EaSymbolSpec } from "../types";
 export interface LotSizingResult {
   ok: boolean;
   lots: number;
+  riskAmount: number;
+  lossPerLot?: number;
   reason?: string;
 }
 
-function roundToStep(value: number, step: number): number {
-  if (step <= 0) return value;
-  const rounded = Math.floor(value / step) * step;
-  // Avoid binary float noise (e.g. 0.30000000004).
+function floorToStep(value: number, step: number): number {
+  const floored = Math.floor((value + Number.EPSILON) / step) * step;
   const decimals = (step.toString().split(".")[1] || "").length;
-  return Number(rounded.toFixed(decimals));
+  return Number(floored.toFixed(decimals));
 }
 
 /**
- * Converts a desired notional risk (quote currency) into MetaTrader lots using
- * the EA-reported symbol spec. Falls back to a safe denial when the spec is
- * missing so the agent never sends an unsized order to the broker.
+ * True stop-distance sizing using broker-provided tick economics:
+ *   lossPerLot = |entry-stop| / tickSize * tickValue
+ *   lots       = riskAmount / lossPerLot
+ *
+ * The result is always rounded down. If the broker minimum would exceed the
+ * risk budget, execution fails instead of silently increasing risk.
  */
 export function computeForexLots(
-  notional: number,
-  price: number,
+  riskAmount: number,
+  entryPrice: number,
+  stopLoss: number | null | undefined,
   spec: EaSymbolSpec | null,
 ): LotSizingResult {
-  if (notional <= 0) {
-    return { ok: false, lots: 0, reason: "قيمة الصفقة غير صالحة." };
+  const fail = (reason: string): LotSizingResult => ({
+    ok: false,
+    lots: 0,
+    riskAmount,
+    reason,
+  });
+  if (!Number.isFinite(riskAmount) || riskAmount <= 0) {
+    return fail("قيمة المخاطرة المحسوبة غير صالحة.");
+  }
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
+    return fail("سعر الدخول غير متاح لحساب المخاطرة.");
+  }
+  if (stopLoss == null || !Number.isFinite(stopLoss) || stopLoss <= 0) {
+    return fail("وقف الخسارة مطلوب لحساب حجم المركز.");
   }
   if (!spec) {
-    return {
-      ok: false,
-      lots: 0,
-      reason: "مواصفات الرمز غير متاحة بعد من MetaTrader. انتظر تحديث الاتصال.",
-    };
+    return fail("مواصفات الرمز غير متاحة من MetaTrader.");
   }
 
-  const contractSize = Number(spec.contract_size) || 0;
-  const minLot = Number(spec.min_lot) || 0.01;
-  const maxLot = Number(spec.max_lot) || 100;
-  const lotStep = Number(spec.lot_step) || 0.01;
-  const effPrice = price > 0 ? price : Number(spec.ask) || Number(spec.bid) || 0;
+  const tickSize = Number(spec.tick_size);
+  const tickValue = Number(spec.tick_value);
+  const minLot = Number(spec.min_lot);
+  const maxLot = Number(spec.max_lot);
+  const lotStep = Number(spec.lot_step);
+  const stopDistance = Math.abs(entryPrice - stopLoss);
 
-  if (contractSize <= 0 || effPrice <= 0) {
-    return {
-      ok: false,
-      lots: 0,
-      reason: "تعذّر حساب حجم اللوت (مواصفات ناقصة).",
-    };
+  if (
+    !Number.isFinite(tickSize) || tickSize <= 0 ||
+    !Number.isFinite(tickValue) || tickValue <= 0 ||
+    !Number.isFinite(minLot) || minLot <= 0 ||
+    !Number.isFinite(maxLot) || maxLot < minLot ||
+    !Number.isFinite(lotStep) || lotStep <= 0 ||
+    !Number.isFinite(stopDistance) || stopDistance <= 0
+  ) {
+    return fail("بيانات tick أو حدود اللوت غير مكتملة؛ أُلغي التنفيذ بأمان.");
   }
 
-  // Notional value of 1.0 lot in quote currency ≈ contractSize * price.
-  const valuePerLot = contractSize * effPrice;
-  let lots = roundToStep(notional / valuePerLot, lotStep);
+  const lossPerLot = (stopDistance / tickSize) * tickValue;
+  if (!Number.isFinite(lossPerLot) || lossPerLot <= 0) {
+    return fail("تعذّر حساب الخسارة المتوقعة لكل لوت.");
+  }
 
+  const lots = floorToStep(Math.min(riskAmount / lossPerLot, maxLot), lotStep);
   if (lots < minLot) {
-    // Allow the broker minimum if the user's per-trade budget is small but
-    // positive; this keeps a tradeable order while respecting min lot.
-    lots = minLot;
+    return fail("الحد الأدنى للوت يتجاوز Risk per Trade؛ لم يُرسل أي أمر.");
   }
-  if (lots > maxLot) lots = maxLot;
-
-  if (lots <= 0) {
-    return { ok: false, lots: 0, reason: "حجم اللوت المحسوب صفر." };
-  }
-  return { ok: true, lots };
+  return { ok: true, lots, riskAmount, lossPerLot };
 }
 
-/** Inverse of computeForexLots — notional exposure for a target lot size. */
-export function lotsToNotional(
-  lot: number,
-  price: number,
-  contractSize: number,
-): number {
+export function lotsToNotional(lot: number, price: number, contractSize: number): number {
   if (lot <= 0 || price <= 0 || contractSize <= 0) return 0;
   return lot * price * contractSize;
 }

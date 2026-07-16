@@ -87,7 +87,7 @@ export function instructionsCore(): string {
   }
   return [
     "AiChart Trading Agent — execution partner. Reply in the operator's language.",
-    "Read aichart://system at session start. Respect Risk Guard. Direction is yours, not the operator's.",
+    "Read aichart://system at session start. The model owns BUY/SELL/WAIT; execution uses explicit approval and technical safety.",
     text.slice(0, 4000),
   ].join("\n\n");
 }

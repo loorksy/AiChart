@@ -16,7 +16,7 @@ export async function answerChartDrawingQuestion(input: {
   );
 
   if (!drawings.length) {
-    return "لا أرى رسومات محفوظة داخل حالة هذا الشارت الآن. إذا رسمت بأدوات TradingView الأصلية ولم تُحفظ داخل Lonora فقد لا تصلني كبيانات؛ ارسمها من أدوات Lonora/الوكيل أو احفظ التخطيط ثم اسألني عنها.";
+    return "لا أرى رسومات محفوظة داخل حالة هذا الشارت الآن. إذا رسمت بأدوات TradingView الأصلية ولم تُحفظ داخل AiChart فقد لا تصلني كبيانات؛ ارسمها من أدوات AiChart/الوكيل أو احفظ التخطيط ثم اسألني عنها.";
   }
 
   const context = {

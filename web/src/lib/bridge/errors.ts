@@ -5,8 +5,7 @@ import { ApiError } from "@/lib/api";
 export enum BridgeErrorCode {
   STALE_QUOTE = "STALE_QUOTE",
   EA_OFFLINE = "EA_OFFLINE",
-  RISK_LIMIT_EXCEEDED = "RISK_LIMIT_EXCEEDED",
-  LOW_CONFIDENCE = "LOW_CONFIDENCE",
+  EXECUTION_UNAUTHORIZED = "EXECUTION_UNAUTHORIZED",
   RATE_LIMITED = "RATE_LIMITED",
   VALIDATION_ERROR = "VALIDATION_ERROR",
   UPSTREAM_TIMEOUT = "UPSTREAM_TIMEOUT",
@@ -43,8 +42,7 @@ const DEFAULT_RETRIABLE: Partial<Record<BridgeErrorCode, boolean>> = {
   [BridgeErrorCode.RATE_LIMITED]: true,
   [BridgeErrorCode.UPSTREAM_TIMEOUT]: true,
   [BridgeErrorCode.SPREAD_TOO_WIDE]: true,
-  [BridgeErrorCode.RISK_LIMIT_EXCEEDED]: false,
-  [BridgeErrorCode.LOW_CONFIDENCE]: false,
+  [BridgeErrorCode.EXECUTION_UNAUTHORIZED]: false,
   [BridgeErrorCode.VALIDATION_ERROR]: false,
   [BridgeErrorCode.MARKET_CLOSED]: false,
 };
@@ -52,8 +50,7 @@ const DEFAULT_RETRIABLE: Partial<Record<BridgeErrorCode, boolean>> = {
 const HTTP_STATUS: Partial<Record<BridgeErrorCode, number>> = {
   [BridgeErrorCode.STALE_QUOTE]: 409,
   [BridgeErrorCode.EA_OFFLINE]: 503,
-  [BridgeErrorCode.RISK_LIMIT_EXCEEDED]: 403,
-  [BridgeErrorCode.LOW_CONFIDENCE]: 403,
+  [BridgeErrorCode.EXECUTION_UNAUTHORIZED]: 403,
   [BridgeErrorCode.RATE_LIMITED]: 429,
   [BridgeErrorCode.VALIDATION_ERROR]: 400,
   [BridgeErrorCode.UPSTREAM_TIMEOUT]: 504,
@@ -122,7 +119,7 @@ function mapApiError(err: ApiError): BridgeFailure {
   }
   if (status === 403) {
     return bridgeError(
-      BridgeErrorCode.RISK_LIMIT_EXCEEDED,
+      BridgeErrorCode.EXECUTION_UNAUTHORIZED,
       err.message,
       err.message,
     );
@@ -198,16 +195,4 @@ export function toBridgeResponse(
 
   const status = httpStatusForEnvelope(envelope);
   return NextResponse.json(envelope, { status });
-}
-
-export function lowConfidenceFailure(
-  confidence: number,
-  minConfidence: number,
-): BridgeFailure {
-  return bridgeError(
-    BridgeErrorCode.LOW_CONFIDENCE,
-    `Trade confidence below minimum threshold (${minConfidence}). Wait for a higher-confidence setup.`,
-    `الثقة أقل من الحد الأدنى (${minConfidence}%) — لا ننفّذ. ننتظر فرصة أوضح.`,
-    { confidence, minConfidence: minConfidence },
-  );
 }

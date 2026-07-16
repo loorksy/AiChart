@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import type { MarketContext } from "@/lib/marketContext";
-import type { Recommendation, TradeLesson } from "@/lib/types";
+import type { TradeLesson } from "@/lib/types";
 import { HeatmapGrid, type HeatmapCell } from "./HeatmapGrid";
 import { WhaleBubbles } from "./WhaleBubbles";
 import { MacroTicker } from "./MacroTicker";
-import { CommitteeFeed } from "./CommitteeFeed";
 import { MemoryHighlights } from "./MemoryHighlights";
 
 export default function CommandCenterClient() {
@@ -16,7 +15,6 @@ export default function CommandCenterClient() {
     null,
   );
   const [macro, setMacro] = useState<MarketContext | null>(null);
-  const [recs, setRecs] = useState<Recommendation[]>([]);
   const [lessons, setLessons] = useState<TradeLesson[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -56,20 +54,6 @@ export default function CommandCenterClient() {
   useEffect(() => {
     void (async () => {
       try {
-        const recRes = await fetch("/api/recommendations?limit=8");
-        if (recRes.ok) {
-          const data = (await recRes.json()) as { recommendations?: Recommendation[] };
-          setRecs(data.recommendations ?? []);
-        }
-      } catch {
-        /* optional endpoint */
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    void (async () => {
-      try {
         const res = await fetch("/api/command/memory");
         if (res.ok) {
           const data = (await res.json()) as { lessons?: TradeLesson[] };
@@ -82,7 +66,7 @@ export default function CommandCenterClient() {
   }, []);
 
   return (
-    <PageLayout title="مركز القيادة" subtitle="heatmap · تدفّق · لجنة · ذاكرة">
+    <PageLayout title="مركز القيادة" subtitle="heatmap · تدفّق · ذاكرة">
       <div className="grid gap-4 lg:grid-cols-3">
         <SurfaceCard className="lg:col-span-2">
           <h2 className="mb-3 text-sm font-medium">Heatmap الأداء</h2>
@@ -104,11 +88,6 @@ export default function CommandCenterClient() {
             آخر تحديث: {flow?.updatedAt ?? "—"}
           </p>
           <WhaleBubbles signalsRaw={flow?.signals} />
-        </SurfaceCard>
-
-        <SurfaceCard>
-          <h2 className="mb-3 text-sm font-medium">لجنة التداول</h2>
-          <CommitteeFeed recommendations={recs} />
         </SurfaceCard>
 
         <SurfaceCard className="lg:col-span-3">

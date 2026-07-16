@@ -69,8 +69,10 @@ curl -s -H "X-Bridge-Token: $MT5_TOKEN" http://127.0.0.1:18812/status | head -c 
 echo ""
 echo "=== web health ==="
 curl -fsS -o /dev/null -w "HTTP / -> %{http_code}\n" "http://127.0.0.1:${PORT}/"
-echo "=== mt/status bridge ==="
-curl -s -H "Authorization: Bearer $SVC" "http://127.0.0.1:${PORT}/api/agent/risk/status" | head -c 150
+echo "=== trade/readiness bridge ==="
+curl -s -H "Authorization: Bearer $SVC" \
+  "http://127.0.0.1:${PORT}/api/agent/trade/readiness?market=forex&symbol=EURUSD&practice=true" |
+  head -c 150
 echo ""
 docker compose ps mt5
 pm2 list | grep -E 'aichart|NAME'

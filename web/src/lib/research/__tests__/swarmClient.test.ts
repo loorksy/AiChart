@@ -44,7 +44,7 @@ test("both disabled-default swarm flags gate every network call", async () => {
     createResearchSwarmRun(
       { userId: 7, requestId: "req-swarm" },
       {
-        preset: "forex_research_committee",
+        preset: "forex_research_lab",
         title: "Disabled swarm",
         objective: "No network call",
         idempotencyKey: "disabled-swarm-key",

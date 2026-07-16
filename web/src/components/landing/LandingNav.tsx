@@ -38,7 +38,7 @@ export function LandingNav() {
               href={item.href}
               className="transition-colors hover:text-white relative py-1 after:absolute after:bottom-0 after:left-0 after:h-[1px] after:w-0 after:bg-violet-500 after:transition-all hover:after:w-full"
             >
-              {item.label}
+              {isRtl ? item.labelAr : item.labelEn}
             </a>
           ))}
         </nav>
@@ -50,7 +50,8 @@ export function LandingNav() {
           <button
             type="button"
             onClick={toggleLocale}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/5 bg-white/5 text-white/70 hover:text-white hover:border-white/10 transition-all"
+            className="flex size-11 items-center justify-center rounded-xl border border-white/5 bg-white/5 text-white/70 transition-all hover:border-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+            aria-label={isRtl ? "Switch to English" : "التبديل إلى العربية"}
             title={isRtl ? "Switch to English" : "تغيير إلى العربية"}
           >
             <Globe className="h-4 w-4" />
@@ -59,7 +60,7 @@ export function LandingNav() {
           {/* Login Button */}
           <Link
             href="/login"
-            className="rounded-xl border border-white/5 bg-white/5 px-4 py-2 text-xs font-medium text-white/80 hover:text-white hover:border-white/10 hover:bg-white/10 transition-all duration-200"
+            className="hidden min-h-11 items-center rounded-xl border border-white/5 bg-white/5 px-4 text-xs font-medium text-white/80 transition-all duration-200 hover:border-white/10 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 sm:inline-flex"
           >
             {loginText}
           </Link>
@@ -67,7 +68,7 @@ export function LandingNav() {
           {/* Call to Action Button */}
           <Link
             href="/signup"
-            className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 text-xs font-medium text-white shadow-[0_0_15px_rgba(99,102,241,0.2)] hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] hover:brightness-110 transition-all duration-200"
+            className="inline-flex min-h-11 items-center rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 text-xs font-medium text-white shadow-[0_0_15px_rgba(99,102,241,0.2)] transition-all duration-200 hover:brightness-110 hover:shadow-[0_0_20px_rgba(99,102,241,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
           >
             {startFreeText}
           </Link>

@@ -12,7 +12,6 @@ export interface McpSkillSelectionInput {
   intents?: string[];
   locale?: string;
   market?: string;
-  tradingMode?: string;
   availableTools?: string[];
   maxSkills?: number;
   allowExecutionSkills?: boolean;
@@ -88,7 +87,6 @@ export function requestCapabilityTokens(input: McpSkillSelectionInput): string[]
   const parts = [
     input.request ?? "",
     ...(input.intents ?? []),
-    input.tradingMode ?? "",
   ];
   return unique(parts.flatMap((p) => capabilityTokens(p)));
 }
@@ -183,16 +181,6 @@ export function selectMcpSkills(
       matchReasons.push(`intent_category:${metadata.category}`);
     }
 
-    // Trading-mode affinity against description/category tokens only.
-    if (input.tradingMode) {
-      const modeTokens = capabilityTokens(input.tradingMode);
-      const modeOverlap = overlapScore(modeTokens, skillTokens);
-      if (modeOverlap.score > 0 && score > 0) {
-        score += modeOverlap.score;
-        matchReasons.push(`trading_mode_overlap`);
-      }
-    }
-
     // Market affinity is a soft boost only after some request overlap exists.
     if (input.market && score > 0) {
       const marketToks = capabilityTokens(input.market);
@@ -267,7 +255,7 @@ export function skillResourceStub(metadata: McpSkillMetadata): string {
       ? `- **requiredTools**: ${metadata.requiredTools.join(", ")}`
       : null,
     "",
-    "Skills never grant permissions and never override Risk Guard.",
+    "Skills provide evidence only; they never override the model's market decision or technical execution authorization.",
   ]
     .filter((line) => line != null)
     .join("\n");

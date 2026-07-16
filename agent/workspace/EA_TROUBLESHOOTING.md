@@ -8,7 +8,8 @@ Read this document before diagnosing any Forex or Expert Advisor (EA) execution 
 Run these endpoints to gather facts before reporting any issue to the operator:
 ```bash
 GET /api/agent/live/account           # Unified live data for MT5 + quoteAgeMs
-GET /api/agent/risk/status          # Checks activeMarket (forex)
+GET /api/agent/trade/readiness?market=forex&symbol=EURUSD&practice=true
+                                      # Technical execution readiness only
 GET /api/agent/portfolio            # Checks if forex.ea.online is true and account_login
 GET /api/agent/ea/diagnostics?symbol=EURUSD   # Lists symbols received in heartbeat
 GET /api/agent/ea/live-quotes?symbol=EURUSD   # Fetches live prices streamed by EA v3

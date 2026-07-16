@@ -1,226 +1,128 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Activity, ShieldCheck, TrendingUp, Cpu, Coins } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Activity, CheckCircle2, Scale, ShieldCheck } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
-import { motion, AnimatePresence } from "framer-motion";
-
-interface LogEntry {
-  id: string;
-  time: string;
-  platform: "MT5";
-  type: string;
-  symbol: string;
-  detail: string;
-  status: "success" | "pending" | "info";
-}
 
 export function LandingPerformance() {
   const { locale } = useLocale();
-  const [mounted, setMounted] = useState(false);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [activeAgents, setActiveAgents] = useState(148);
-  const [totalExecutions, setTotalExecutions] = useState(12480);
-  const [livePnL, setLivePnL] = useState(3.42);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const isRtl = locale === "ar";
 
-  // Generate simulated logs in real time
-  useEffect(() => {
-    const initialLogs: LogEntry[] = [
-      {
-        id: "1",
-        time: "03:45:10",
-        platform: "MT5",
-        type: "BUY",
-        symbol: "EURUSD",
-        detail: "ستوب لوز: 1.07900 · تيك بروفيت: 1.08900",
-        status: "success",
-      },
-      {
-        id: "2",
-        time: "03:46:12",
-        platform: "MT5",
-        type: "BUY",
-        symbol: "EURUSD",
-        detail: "ستوب لوز: 1.07900 · تيك بروفيت: 1.08900",
-        status: "success",
-      },
-      {
-        id: "3",
-        time: "03:47:55",
-        platform: "MT5",
-        type: "TP TARGET",
-        symbol: "XAUUSD",
-        detail: "تيك بروفيت منفّذ تلقائياً (+2.85%)",
-        status: "info",
-      },
-    ];
-    setLogs(initialLogs);
+  const checks = isRtl
+    ? [
+        "موافقة صريحة من المستخدم",
+        "اتصال حساب MetaTrader",
+        "سعر حديث صالح للتنفيذ",
+        "منع تكرار طلب التنفيذ",
+      ]
+    : [
+        "Explicit user approval",
+        "Connected MetaTrader account",
+        "Fresh executable price",
+        "Duplicate-execution protection",
+      ];
 
-    const logPool = [
-      { platform: "MT5", type: "BUY", symbol: "EURUSD", detail: "ستوب لوز: 1.07900 · تيك بروفيت: 1.08900" },
-      { platform: "MT5", type: "SELL", symbol: "GBPUSD", detail: "ستوب لوز: 1.27500 · تيك بروفيت: 1.25800" },
-      { platform: "MT5", type: "BUY", symbol: "USDJPY", detail: "ستوب لوز: 149.200 · تيك بروفيت: 150.100" },
-      { platform: "MT5", type: "TP TARGET", symbol: "XAUUSD", detail: "تيك بروفيت منفّذ على الذهب (+3.20%)" },
-      { platform: "MT5", type: "SL HIT", symbol: "AUDUSD", detail: "ستوب لوز مفعّل لحماية رأس المال (-1.5%)" },
-    ] as const;
-
-    const interval = setInterval(() => {
-      // Rotate metrics slightly
-      setActiveAgents((prev) => prev + (Math.random() > 0.5 ? 1 : -1));
-      setTotalExecutions((prev) => prev + 1);
-      setLivePnL((prev) => prev + (Math.random() > 0.45 ? 0.05 : -0.03));
-
-      // Append new log entry
-      const randomSeed = logPool[Math.floor(Math.random() * logPool.length)];
-      const now = new Date();
-      const timeStr = now.toTimeString().split(" ")[0];
-      const newLog: LogEntry = {
-        id: String(Date.now()),
-        time: timeStr,
-        platform: randomSeed.platform,
-        type: randomSeed.type,
-        symbol: randomSeed.symbol,
-        detail: isRtl ? randomSeed.detail : randomSeed.detail
-          .replace("ستوب لوز", "SL")
-          .replace("تيك بروفيت", "TP")
-          .replace("منفّذ تلقائياً", "Auto Executed")
-          .replace("منفّذ على الذهب", "Executed on Gold")
-          .replace("مفعّل لحماية رأس المال", "Triggered to protect capital"),
-        status: randomSeed.type.includes("TP") ? "info" : randomSeed.type.includes("SL") ? "pending" : "success",
-      };
-
-      setLogs((prev) => [newLog, ...prev.slice(0, 5)]);
-    }, 4500);
-
-    return () => clearInterval(interval);
-  }, [isRtl]);
+  const trace = isRtl
+    ? [
+        { label: "سياق التحليل", value: "EURUSD · 15m · بيانات حديثة" },
+        { label: "القرار المرجعي", value: "WAIT — لا توجد صفقة قابلة للتنفيذ" },
+        { label: "حجم المخاطرة", value: "لا يُحسب إلا عند وجود صفقة مؤكدة" },
+        { label: "التنفيذ", value: "متوقف — لا يمكن للحماية تحويل WAIT إلى صفقة" },
+      ]
+    : [
+        { label: "Analysis context", value: "EURUSD · 15m · fresh data" },
+        { label: "Canonical decision", value: "WAIT — no executable setup" },
+        { label: "Risk sizing", value: "Calculated only for a confirmed trade" },
+        { label: "Execution", value: "Stopped — safety cannot turn WAIT into a trade" },
+      ];
 
   return (
-    <section className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 overflow-hidden">
-      
-      {/* Background soft glow */}
-      <div className="absolute top-1/2 left-1/2 -z-10 h-[300px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/5 blur-[80px]" />
+    <section className="relative mx-auto max-w-6xl overflow-hidden px-4 py-16 sm:px-6">
+      <div className="absolute left-1/2 top-1/2 -z-10 h-[300px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/5 blur-[80px]" />
 
-      <div className="grid gap-8 lg:grid-cols-5 items-center">
-        
-        {/* Metric Cards - 2 Columns on desktop */}
-        <div className="lg:col-span-2 space-y-5">
+      <div className="grid items-center gap-8 lg:grid-cols-5">
+        <div className="space-y-5 lg:col-span-2">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1 text-xs font-semibold text-emerald-400">
-              <Activity className="h-3.5 w-3.5 text-emerald-500" />
-              <span>{isRtl ? "بث الأداء المباشر" : "Live Performance Stream"}</span>
+              <Activity className="h-3.5 w-3.5" />
+              <span>{isRtl ? "مسار قرار قابل للمراجعة" : "Reviewable Decision Flow"}</span>
             </div>
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl text-white">
-              {isRtl ? "تنفيذ فوركس مباشر عبر MT5" : "Live Forex Execution on MT5"}
+            <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              {isRtl ? "من التحليل إلى التنفيذ بدون ادعاءات أداء" : "From Analysis to Execution, Without Performance Claims"}
             </h2>
-            <p className="text-xs text-white/50 leading-relaxed">
+            <p className="text-xs leading-relaxed text-white/50">
               {isRtl
-                ? "شاهد وكلاء الذكاء الاصطناعي يراقبون مستويات الأسعار، ويفحصون إعدادات المخاطر (Risk Guard) وينفذون الصفقات على MetaTrader 5."
-                : "Watch AI agents monitor price action, verify Risk Guard constraints, and execute forex trades on MetaTrader 5."}
+                ? "يعرض AiChart القرار وأسبابه وحالة فحوص التنفيذ. الإحصاءات داخل حسابك مبنية على نتائجك المسجلة، وليست أرقاماً تسويقية مصطنعة."
+                : "AiChart shows the decision, its reasons, and execution-check status. Account statistics come from your recorded outcomes, not invented marketing numbers."}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            
-            {/* Card 1: Active Agents */}
-            <div className="rounded-xl border border-white/5 bg-[#09090b]/60 p-4 transition duration-200 hover:border-white/10 hover:bg-[#09090b]/80 relative overflow-hidden group">
+            <div className="rounded-xl border border-white/5 bg-[#09090b]/60 p-4">
               <div className="flex items-center justify-between text-white/40">
-                <span className="text-[10px] font-mono tracking-wider uppercase">{isRtl ? "الوكلاء النشطون" : "Active Agents"}</span>
-                <Cpu className="h-4 w-4 text-violet-400" />
+                <span className="text-[10px] font-mono uppercase tracking-wider">
+                  {isRtl ? "سلطة القرار" : "Decision authority"}
+                </span>
+                <ShieldCheck className="h-4 w-4 text-violet-400" />
               </div>
-              <p className="text-2xl font-bold mt-1 text-white tracking-tight tabular-nums">
-                {activeAgents}
-              </p>
-              <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-violet-500/0 via-violet-500/30 to-violet-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <p className="mt-2 text-lg font-bold text-white">BUY · SELL · WAIT</p>
             </div>
 
-            {/* Card 2: Win Rate */}
-            <div className="rounded-xl border border-white/5 bg-[#09090b]/60 p-4 transition duration-200 hover:border-white/10 hover:bg-[#09090b]/80 relative overflow-hidden group">
+            <div className="rounded-xl border border-white/5 bg-[#09090b]/60 p-4">
               <div className="flex items-center justify-between text-white/40">
-                <span className="text-[10px] font-mono tracking-wider uppercase">{isRtl ? "نسبة النجاح" : "Win Rate"}</span>
-                <TrendingUp className="h-4 w-4 text-emerald-400" />
+                <span className="text-[10px] font-mono uppercase tracking-wider">
+                  {isRtl ? "إعداد المخاطرة" : "Risk setting"}
+                </span>
+                <Scale className="h-4 w-4 text-emerald-400" />
               </div>
-              <p className="text-2xl font-bold mt-1 text-emerald-400 tracking-tight">
-                78.4%
-              </p>
-              <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-emerald-500/0 via-emerald-500/30 to-emerald-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <p className="mt-2 text-lg font-bold text-emerald-400">Risk per Trade</p>
             </div>
+          </div>
 
-            {/* Card 3: Total Executions */}
-            <div className="rounded-xl border border-white/5 bg-[#09090b]/60 p-4 col-span-2 transition duration-200 hover:border-white/10 hover:bg-[#09090b]/80 relative overflow-hidden group">
-              <div className="flex items-center justify-between text-white/40">
-                <span className="text-[10px] font-mono tracking-wider uppercase">{isRtl ? "إجمالي الصفقات المنفّذة" : "Total Executions"}</span>
-                <Coins className="h-4 w-4 text-amber-400" />
-              </div>
-              <p className="text-2xl font-bold mt-1 text-white tracking-tight tabular-nums">
-                {totalExecutions.toLocaleString()}
-              </p>
-              <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-amber-500/0 via-amber-500/30 to-amber-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-
+          <div className="rounded-xl border border-white/5 bg-[#09090b]/60 p-4">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-white/40">
+              {isRtl ? "فحوص التنفيذ" : "Execution checks"}
+            </p>
+            <ul className="mt-3 grid gap-2 text-xs text-white/70">
+              {checks.map((check) => (
+                <li key={check} className="flex items-start gap-2">
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                  <span>{check}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 
-        {/* Live Logs Stream Display - 3 Columns on desktop */}
-        <div className="lg:col-span-3 rounded-2xl border border-white/5 bg-[#050507] p-5 shadow-2xl shadow-emerald-500/5 backdrop-blur-md">
-          <div className="flex items-center justify-between border-b border-white/5 pb-3.5 mb-4">
+        <div className="rounded-2xl border border-white/5 bg-[#050507] p-5 shadow-2xl shadow-emerald-500/5 backdrop-blur-md lg:col-span-3">
+          <div className="mb-4 flex items-center justify-between border-b border-white/5 pb-3.5">
             <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-[10px] font-mono tracking-wider uppercase text-white/80">
-                {isRtl ? "شاشة المراقبة المباشرة للوكيل" : "Live Agent Monitor Terminal"}
+              <span className="h-2 w-2 rounded-full bg-violet-400" />
+              <span className="text-[10px] font-mono uppercase tracking-wider text-white/80">
+                {isRtl ? "مثال توضيحي لمسار القرار" : "Illustrative decision trace"}
               </span>
             </div>
-            <span className="text-[9px] font-mono text-white/30 uppercase tracking-widest">
-              MetaTrader 5 Bridge
+            <span className="text-[9px] font-mono uppercase tracking-widest text-white/30">
+              {isRtl ? "ليس أداءً مباشراً" : "Not live performance"}
             </span>
           </div>
 
-          <div className="space-y-2.5 min-h-[220px] max-h-[280px] overflow-y-auto pr-1">
-            <AnimatePresence initial={false}>
-              {logs.map((log) => (
-                <motion.div
-                  key={log.id}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="flex items-start justify-between gap-3 text-xs p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 hover:bg-white/[0.04] transition duration-150"
-                >
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <span
-                      className="inline-flex shrink-0 items-center justify-center rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                    >
-                      {log.platform}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-white flex items-center gap-1.5">
-                        <span className={cn(
-                          log.type.includes("BUY") ? "text-emerald-400" : log.type.includes("SELL") ? "text-rose-400" : "text-violet-400"
-                        )}>
-                          {log.type}
-                        </span>
-                        <span>{log.symbol}</span>
-                      </p>
-                      <p className="text-[10px] text-white/40 mt-0.5 leading-relaxed">{log.detail}</p>
-                    </div>
-                  </div>
-                  <span className="font-mono text-[9px] text-white/30 shrink-0 mt-0.5">{log.time}</span>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+          <div className="space-y-2.5">
+            {trace.map((row, index) => (
+              <div
+                key={row.label}
+                className="flex items-start gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3"
+              >
+                <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-violet-500/20 bg-violet-500/10 font-mono text-[10px] font-bold text-violet-300">
+                  {index + 1}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-wider text-white/35">{row.label}</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-white/80">{row.value}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-
       </div>
     </section>
   );

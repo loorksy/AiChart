@@ -2,26 +2,26 @@ import { BRAND_NAME } from "@/lib/brand";
 
 export const LANDING = {
   brand: BRAND_NAME,
-  tagline: "منصة تداول ذكية — Claude MCP · MetaTrader 5",
+  tagline: "مساعد تداول ذكي · MetaTrader 5",
   hero: {
-    title: "تداول بذكاء عبر Claude MCP",
+    title: "تداول بذكاء مع AiChart",
     subtitle:
-      "اربط Claude Connectors بحسابك، راقب السوق، ونفّذ الصفقات عبر MetaTrader — مع Risk Guard وموافقة إدارية.",
+      "حلّل السوق بالمحادثة والشارت، ثم نفّذ عبر MetaTrader بعد موافقتك واجتياز الفحوص التقنية.",
     ctaPrimary: "ابدأ مجاناً",
     ctaSecondary: "تسجيل الدخول",
     chatTitle: "ماذا ستتداول اليوم؟",
-    chatSubtitle: "جرب سؤالاً — سجّل لربط Claude MCP والتداول الحقيقي.",
+    chatSubtitle: "جرّب سؤالاً — سجّل لحفظ محادثاتك وربط حساب التداول.",
   },
   features: {
     title: "مزايا المنصة",
     items: [
       {
-        title: "Claude MCP",
-        desc: "أدوات تداول مباشرة داخل محادثة Claude — بدون واجهة معقدة.",
+        title: "محادثة ذكية",
+        desc: "حلّل الشارت والسوق بمحادثة واحدة واضحة وبدون واجهة معقدة.",
       },
       {
-        title: "Risk Guard",
-        desc: "حدود رأس المال، سقف الصفقات، وKill Switch قبل أي تنفيذ.",
+        title: "حماية التنفيذ",
+        desc: "موافقة صريحة، تحقق من الحساب والسعر والاتصال، وحجم محسوب من المخاطرة.",
       },
       {
         title: "MetaTrader 5",
@@ -46,20 +46,20 @@ export const LANDING = {
     steps: [
       { n: "1", title: "سجّل", desc: "اسم مستخدم، واتساب، بريد، وكلمة مرور — أو Telegram." },
       { n: "2", title: "موافقة", desc: "الإدارة تفعّل حسابك وتمنح صلاحية الوصول." },
-      { n: "3", title: "اربط Claude", desc: `أضف ${BRAND_NAME} كـ MCP Connector في Claude.` },
-      { n: "4", title: "تداول", desc: "اربط MetaTrader وابدأ بقراراتك — التنفيذ محمي." },
+      { n: "3", title: "حلّل", desc: `افتح شارت ${BRAND_NAME} وناقش القرار في المحادثة.` },
+      { n: "4", title: "نفّذ بأمان", desc: "اربط MetaTrader ونفّذ بعد موافقتك واجتياز الفحوص." },
     ],
   },
   integrations: {
     title: "تكاملات",
-    items: ["Claude MCP", "MetaTrader 5 / EA", "MetaApi", "Telegram"],
+    items: ["MetaTrader 5 / EA", "MetaApi", "Telegram", "AI Chart + Chat"],
   },
   security: {
     title: "ثقة وحماية",
     items: [
       "موافقة إدارية قبل التفعيل",
       "صلاحية زمنية قابلة للتجديد",
-      "حدود مخاطر لكل مستخدم",
+      "حجم صفقة محسوب من Risk per Trade",
       "سجل تدقيق للعمليات الحساسة",
     ],
   },
@@ -71,12 +71,12 @@ export const LANDING = {
     title: "أسئلة شائعة",
     items: [
       {
-        q: "هل أحتاج Claude Pro؟",
-        a: "تحتاج حساب Claude يدعم Connectors. ربط MCP يتم من إعدادات Claude.",
+        q: "هل تنفّذ المنصة صفقات من تلقاء نفسها؟",
+        a: "لا. قرار التنفيذ يتطلب موافقتك الصريحة، كما يجب أن تجتاز الصفقة فحوص الحساب والاتصال والسعر.",
       },
       {
         q: "متى أستطيع التداول؟",
-        a: "بعد موافقة الإدارة وتفعيل صلاحيتك — ستصلك لوحة المستخدم ودليل MCP.",
+        a: "بعد موافقة الإدارة وتفعيل صلاحيتك — ستصلك لوحة المستخدم ودليل الربط.",
       },
       {
         q: "هل Telegram بديل عن البريد؟",
@@ -101,8 +101,8 @@ export const LANDING = {
     ],
   },
   nav: [
-    { label: "المزايا", href: "#features" },
-    { label: "كيف يعمل", href: "#how" },
-    { label: "الأسئلة", href: "#faq" },
+    { labelAr: "المزايا", labelEn: "Features", href: "#features" },
+    { labelAr: "كيف يعمل", labelEn: "How it works", href: "#how" },
+    { labelAr: "الأسئلة", labelEn: "FAQ", href: "#faq" },
   ],
 } as const;

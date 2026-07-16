@@ -3,7 +3,6 @@ import { getExecutionEnvSnapshot, type ExecutionEnv } from "./executionEnv";
 import { DEFAULT_MARKET, resolveActiveMarket } from "./marketPolicy";
 import type { MarketType } from "./markets/types";
 import { spreadFromBidAsk } from "./spread";
-import { getSettings } from "./store";
 
 export interface AccountProfile {
   hasLeverage: boolean;
@@ -37,9 +36,8 @@ export async function buildAccountProfile(
   userId: number,
   symbol?: string,
 ): Promise<AccountProfile> {
-  const settings = await getSettings(userId);
   const envSnap = await getExecutionEnvSnapshot(userId);
-  const market = resolveActiveMarket(settings.active_market ?? DEFAULT_MARKET);
+  const market = resolveActiveMarket(DEFAULT_MARKET);
   const eaConn = await getEaConnection(userId);
   const forexOnline =
     Boolean(eaConn) &&

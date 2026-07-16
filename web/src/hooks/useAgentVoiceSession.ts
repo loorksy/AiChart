@@ -32,7 +32,7 @@ export interface UseAgentVoiceSessionOptions {
 const DEFAULT_MAX_RECONNECT = 3;
 
 /**
- * Drives a real-time WebRTC voice conversation with Lonora. The realtime model
+ * Drives a real-time WebRTC voice conversation with AiChart. The realtime model
  * is only the speech interface: every final user transcript is routed through
  * the existing text-agent flow (`sendAgentMessage`), and the agent's final
  * public answer is spoken back via `handleAgentFinal`. Fully cleans up mic,
