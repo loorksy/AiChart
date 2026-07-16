@@ -1,38 +1,42 @@
 "use client";
 
-import Image from "next/image";
-import { useTheme } from "@/components/ThemeProvider";
-import { cn } from "@/lib/utils";
-import { BRAND_NAME } from "@/lib/brand";
+import {
+  AnimatedAgentAvatar,
+  type AgentAvatarState,
+} from "@/components/AnimatedAgentAvatar";
+
+export type { AgentAvatarState };
 
 type AgentAvatarProps = {
   className?: string;
   size?: number;
   /** Decorative (default) — hide from AT when paired with visible text. */
   decorative?: boolean;
+  /** Animation state. Defaults to idle breathing. */
+  state?: AgentAvatarState;
+  /** Optional 0–1 amplitude for speaking. */
+  audioLevel?: number;
+  /** Accessible label when decorative is false. */
+  label?: string;
 };
 
-/** Small theme-aware agent face mark for chat, voice, and empty states. */
+/** Theme-aware animated agent face mark for chat, voice, and empty states. */
 export function AgentAvatar({
   className,
   size = 28,
   decorative = true,
+  state = "idle",
+  audioLevel,
+  label,
 }: AgentAvatarProps) {
-  const { resolved } = useTheme();
-  const src =
-    resolved === "light"
-      ? "/brand/aichart-avatar-light-64.png"
-      : "/brand/aichart-avatar-64.png";
-
   return (
-    <Image
-      src={src}
-      alt={decorative ? "" : BRAND_NAME}
-      width={size}
-      height={size}
-      className={cn("shrink-0 object-contain", className)}
-      aria-hidden={decorative ? true : undefined}
-      priority={false}
+    <AnimatedAgentAvatar
+      state={state}
+      size={size}
+      audioLevel={audioLevel}
+      className={className}
+      decorative={decorative}
+      label={label}
     />
   );
 }

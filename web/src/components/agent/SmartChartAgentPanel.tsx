@@ -164,7 +164,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           {messages.length === 0 && !running && (
             <div className="mx-auto flex h-full max-w-sm flex-col items-center justify-center gap-4 text-center">
-              <AgentAvatar size={28} className="opacity-90" />
+              <AgentAvatar size={40} state="idle" className="opacity-90" />
               <p className="text-sm text-muted-foreground">
                 {emptyState.greeting ?? t("agent.empty")}
               </p>
@@ -197,14 +197,17 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               {/* Temporary assistant bubble: live thinking ticker while the run
                   is in flight. Replaced in place by the final answer. */}
               {m.pending ? (
-                m.ticker ? (
-                  <AgentThinkingTicker item={m.ticker} />
-                ) : (
-                  <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                    <span>{t("agent.processing")}</span>
-                  </div>
-                )
+                <div className="flex items-start gap-2.5">
+                  <AgentAvatar size={22} state="thinking" className="mt-0.5" />
+                  {m.ticker ? (
+                    <AgentThinkingTicker item={m.ticker} />
+                  ) : (
+                    <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                      <span>{t("agent.processing")}</span>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
               {m.role === "assistant" && m.result && (

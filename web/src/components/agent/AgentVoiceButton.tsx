@@ -4,6 +4,7 @@ import { useLocale } from "@/hooks/useLocale";
 import type { AgentVoiceSession } from "@/hooks/useAgentVoiceSession";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/AgentAvatar";
+import { voiceStatusToAvatarState } from "@/lib/agent/voice/avatarState";
 import { Mic, Square } from "lucide-react";
 
 /** Start/stop toggle for the live voice conversation. Lives beside chat input. */
@@ -42,7 +43,10 @@ export function AgentVoiceButton({
     >
       {active ? (
         liveFace ? (
-          <AgentAvatar size={18} className="motion-safe:animate-pulse-soft" />
+          <AgentAvatar
+            size={18}
+            state={voiceStatusToAvatarState(voice.status)}
+          />
         ) : (
           <Square className="h-3.5 w-3.5 fill-current" />
         )

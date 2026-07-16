@@ -101,7 +101,10 @@ test("brand assets use transparent face-mark paths", () => {
   assert.match(logo, /\/brand\/aichart-mark/);
   assert.doesNotMatch(logo, /lonora-logo/);
   const avatar = read("components/AgentAvatar.tsx");
-  assert.match(avatar, /\/brand\/aichart-avatar/);
+  assert.match(avatar, /AnimatedAgentAvatar/);
+  const animated = read("components/AnimatedAgentAvatar.tsx");
+  assert.match(animated, /data-state=\{state\}/);
+  assert.match(animated, /agent-eye-left/);
 });
 
 test("authenticated entry and technical MCP routes stay behind canonical destinations", () => {

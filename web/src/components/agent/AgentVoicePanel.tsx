@@ -6,6 +6,7 @@ import { useLocale } from "@/hooks/useLocale";
 import type { AgentVoiceSession } from "@/hooks/useAgentVoiceSession";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { VoiceStatusIndicator } from "./VoiceStatusIndicator";
+import { voiceStatusToAvatarState } from "@/lib/agent/voice/avatarState";
 import { voiceErrorKey } from "@/lib/agent/voice/voiceLabels";
 
 /** Immersive voice mode: one focused conversation surface, then back to chat. */
@@ -76,7 +77,10 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
           {voice.muted ? (
             <MicOff className="h-12 w-12 text-muted-foreground" />
           ) : (
-            <AgentAvatar size={64} className="motion-safe:animate-pulse-soft" />
+            <AgentAvatar
+              size={64}
+              state={voiceStatusToAvatarState(voice.status)}
+            />
           )}
         </div>
         {voice.partialTranscript ? (
