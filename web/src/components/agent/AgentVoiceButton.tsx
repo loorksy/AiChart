@@ -3,6 +3,8 @@
 import { useLocale } from "@/hooks/useLocale";
 import type { AgentVoiceSession } from "@/hooks/useAgentVoiceSession";
 import { cn } from "@/lib/utils";
+import { AgentAvatar } from "@/components/AgentAvatar";
+import { voiceStatusToAvatarState } from "@/lib/agent/voice/avatarState";
 import { Mic, Square } from "lucide-react";
 
 /** Start/stop toggle for the live voice conversation. Lives beside chat input. */
@@ -17,6 +19,10 @@ export function AgentVoiceButton({
 }) {
   const { t } = useLocale();
   const active = voice.active;
+  const liveFace =
+    voice.status === "connecting" ||
+    voice.status === "listening" ||
+    voice.status === "requesting_permission";
 
   return (
     <button
@@ -26,14 +32,27 @@ export function AgentVoiceButton({
       disabled={disabled}
       onClick={() => (active ? void voice.stop() : void voice.start())}
       className={cn(
-        "flex size-11 shrink-0 items-center justify-center rounded-lg disabled:opacity-50",
+        "flex size-9 shrink-0 items-center justify-center rounded-full disabled:opacity-50",
         active
-          ? "bg-destructive/90 text-destructive-foreground hover:bg-destructive"
-          : "bg-muted text-foreground hover:bg-muted/70",
+          ? liveFace
+            ? "bg-primary/15 text-primary ring-1 ring-primary/30"
+            : "bg-destructive/90 text-destructive-foreground hover:bg-destructive"
+          : "bg-muted/80 text-foreground hover:bg-muted",
         className,
       )}
     >
-      {active ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-5 w-5" />}
+      {active ? (
+        liveFace ? (
+          <AgentAvatar
+            size={18}
+            state={voiceStatusToAvatarState(voice.status)}
+          />
+        ) : (
+          <Square className="h-3.5 w-3.5 fill-current" />
+        )
+      ) : (
+        <Mic className="h-4 w-4" />
+      )}
     </button>
   );
 }

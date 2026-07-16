@@ -92,6 +92,9 @@ export const en = {
   "shell.chat": "Chat",
   "shell.account": "Account",
   "shell.language": "Language",
+  "shell.theme_to_light": "Switch to light mode",
+  "shell.theme_to_dark": "Switch to dark mode",
+  "shell.theme": "Theme",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",

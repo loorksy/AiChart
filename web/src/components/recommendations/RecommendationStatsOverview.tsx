@@ -5,7 +5,7 @@ import type { RecommendationStats } from "@/lib/recommendations/recommendationSt
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="rounded-lg border border-border/60 bg-card p-3">
+    <div className="glass-card p-3 hover:border-primary/35">
       <p className="text-[11px] text-muted-foreground">{label}</p>
       <p className={`text-lg font-bold ${tone ?? "text-foreground"}`}>{value}</p>
     </div>

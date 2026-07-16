@@ -1,0 +1,322 @@
+/*
+  AnimatedAgentAvatar — theme tokens
+  Light: charcoal face on light UI. Dark (html.dark): near-white face.
+  Accent uses brand purple for thinking sweep / glow in dark.
+*/
+.root {
+  --agent-avatar-fill: #171717;
+  --agent-avatar-glow: rgba(23, 23, 23, 0.08);
+  --agent-avatar-shadow: rgba(23, 23, 23, 0.14);
+  --agent-avatar-opacity: 1;
+  --agent-avatar-accent: #bc00ff;
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+:global(html.dark) .root {
+  --agent-avatar-fill: #f5f5f5;
+  --agent-avatar-glow: rgba(188, 0, 255, 0.22);
+  --agent-avatar-shadow: rgba(188, 0, 255, 0);
+  --agent-avatar-accent: #bc00ff;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
+}
+
+.shape {
+  fill: var(--agent-avatar-fill);
+  opacity: var(--agent-avatar-opacity);
+  transform-box: fill-box;
+  transform-origin: center;
+  filter: drop-shadow(0 1px 1px var(--agent-avatar-shadow));
+  transition:
+    fill 320ms ease,
+    opacity 320ms ease;
+}
+
+.eyeLeft {
+  transform-origin: 99.95px 159.95px;
+}
+.eyeRight {
+  transform-origin: 299.95px 159.95px;
+}
+.core {
+  transform-origin: 200px 280px;
+}
+
+.glow {
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    var(--agent-avatar-glow) 0%,
+    transparent 68%
+  );
+  z-index: 0;
+  transition:
+    opacity 400ms ease,
+    background 400ms ease;
+  pointer-events: none;
+}
+
+/* IDLE */
+.root[data-state="idle"] .eyeLeft {
+  animation: breatheL 4.2s ease-in-out infinite;
+}
+.root[data-state="idle"] .eyeRight {
+  animation: breatheR 4.2s ease-in-out infinite;
+  animation-delay: -0.35s;
+}
+.root[data-state="idle"] .core {
+  animation: floatCore 4.2s ease-in-out infinite;
+}
+.root[data-state="idle"] .glow {
+  animation: glowPulse 4.2s ease-in-out infinite;
+}
+
+@keyframes breatheL {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+@keyframes breatheR {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.025);
+  }
+}
+@keyframes floatCore {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(1.5deg);
+  }
+}
+@keyframes glowPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* CONNECTING */
+.root[data-state="connecting"] .eyeLeft {
+  animation: connectPulse 2.4s ease-in-out infinite;
+}
+.root[data-state="connecting"] .eyeRight {
+  animation: connectPulse 2.4s ease-in-out infinite;
+  animation-delay: -0.5s;
+}
+.root[data-state="connecting"] .core {
+  animation: connectCore 2.4s ease-in-out infinite;
+}
+.root[data-state="connecting"] .glow {
+  animation: glowPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes connectPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.045);
+  }
+}
+@keyframes connectCore {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.04);
+  }
+}
+
+/* LISTENING */
+.root[data-state="listening"] .eyeLeft {
+  animation: listenAlt 1.7s ease-in-out infinite;
+}
+.root[data-state="listening"] .eyeRight {
+  animation: listenAlt 1.7s ease-in-out infinite;
+  animation-delay: -0.85s;
+}
+.root[data-state="listening"] .core {
+  animation: floatCore 4.2s ease-in-out infinite;
+}
+.root[data-state="listening"] .glow {
+  animation: glowPulse 1.7s ease-in-out infinite;
+}
+
+@keyframes listenAlt {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* THINKING */
+.root[data-state="thinking"] .eyeLeft {
+  animation: breatheL 5s ease-in-out infinite;
+}
+.root[data-state="thinking"] .eyeRight {
+  animation: breatheR 5s ease-in-out infinite;
+  animation-delay: -0.35s;
+}
+.root[data-state="thinking"] .core {
+  animation: thinkCore 2.6s ease-in-out infinite;
+}
+.root[data-state="thinking"] .glow {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    var(--agent-avatar-accent) 12%,
+    transparent 30%
+  );
+  opacity: 0.35;
+  animation: thinkSweep 3.6s linear infinite;
+}
+
+@keyframes thinkCore {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: var(--agent-avatar-opacity);
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
+}
+@keyframes thinkSweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* SPEAKING */
+.root[data-state="speaking"] .eyeLeft {
+  animation: speakPulse 1.1s ease-in-out infinite;
+  transform: scale(calc(1 + var(--audio-level, 0) * 0.06));
+}
+.root[data-state="speaking"] .eyeRight {
+  animation: speakPulse 1.1s ease-in-out infinite;
+  animation-delay: -0.55s;
+  transform: scale(calc(1 + var(--audio-level, 0) * 0.06));
+}
+.root[data-state="speaking"] .core {
+  animation: speakCore 1.1s ease-in-out infinite;
+}
+.root[data-state="speaking"] .glow {
+  animation: glowPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes speakPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+@keyframes speakCore {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* RECONNECTING */
+.root[data-state="reconnecting"] .eyeLeft {
+  animation: reconnectDim 2.8s ease-in-out infinite;
+}
+.root[data-state="reconnecting"] .eyeRight {
+  animation: reconnectDim 2.8s ease-in-out infinite;
+  animation-delay: -1.4s;
+}
+.root[data-state="reconnecting"] .core {
+  animation: floatCore 2.8s ease-in-out infinite;
+}
+.root[data-state="reconnecting"] .glow {
+  animation: glowPulse 2.8s ease-in-out infinite;
+}
+
+@keyframes reconnectDim {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ERROR */
+.root[data-state="error"] .shape {
+  fill: #d97757;
+}
+.root[data-state="error"] .glow {
+  background: radial-gradient(
+    circle,
+    rgba(217, 119, 87, 0.24) 0%,
+    transparent 68%
+  );
+  opacity: 0.7;
+  animation: errorBreathe 3.2s ease-in-out infinite;
+}
+
+@keyframes errorBreathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root [class*="eyeLeft"],
+  .root [class*="eyeRight"],
+  .root [class*="core"],
+  .glow {
+    animation: none !important;
+  }
+  .root[data-state="thinking"] .glow,
+  .root[data-state="error"] .glow {
+    opacity: 0.5;
+  }
+}

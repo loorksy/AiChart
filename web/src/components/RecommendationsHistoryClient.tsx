@@ -65,7 +65,7 @@ export default function RecommendationsHistoryClient({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="بحث بالزوج…"
-              className="w-40 rounded-lg border border-border bg-card px-3 py-1.5 pe-8 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/60"
+              className="w-40 rounded-lg border border-border bg-card px-3 py-1.5 pe-8 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/25"
             />
           </div>
           <div className="flex overflow-hidden rounded-lg border border-border text-xs">
@@ -96,7 +96,7 @@ export default function RecommendationsHistoryClient({
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/70 bg-card/50 px-6 py-16 text-center">
+        <div className="glass-card border-dashed px-6 py-16 text-center">
           <History className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" />
           <p className="text-sm text-muted-foreground">
             لا توصيات بعد — افتح الشارت واضغط «تحليل» لتبدأ.
@@ -118,7 +118,7 @@ export default function RecommendationsHistoryClient({
             return (
               <div
                 key={r.id}
-                className="rounded-xl border border-border/70 bg-card/80 p-3.5 transition hover:border-border"
+                className="glass-card p-3.5 transition hover:border-primary/35"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5">
@@ -144,7 +144,7 @@ export default function RecommendationsHistoryClient({
                       </span>
                     )}
                     {r.pattern_name && (
-                      <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-300">
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
                         {r.pattern_name}
                       </span>
                     )}

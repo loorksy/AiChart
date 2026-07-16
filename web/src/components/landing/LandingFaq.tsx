@@ -9,24 +9,30 @@ export function LandingFaq() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="bg-card/30 py-16 sm:py-20">
+    <section id="faq" className="py-16 sm:py-20">
       <div className="mx-auto max-w-2xl px-4 sm:px-6">
         <h2 className="mb-8 text-center text-2xl font-bold">{LANDING.faq.title}</h2>
         <div className="space-y-2">
           {LANDING.faq.items.map((item, i) => {
             const isOpen = open === i;
             return (
-              <div key={item.q} className="rounded-xl border border-border bg-card">
+              <div
+                key={item.q}
+                className={cn(
+                  "glass-card overflow-hidden transition-colors",
+                  isOpen && "border-primary/35",
+                )}
+              >
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-4 p-4 text-right text-sm font-medium"
+                  className="flex w-full items-center justify-between gap-4 p-4 text-right text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   onClick={() => setOpen(isOpen ? null : i)}
                 >
                   {item.q}
                   <ChevronDown
                     className={cn(
                       "h-4 w-4 shrink-0 text-muted-foreground transition",
-                      isOpen && "rotate-180",
+                      isOpen && "rotate-180 text-primary",
                     )}
                   />
                 </button>

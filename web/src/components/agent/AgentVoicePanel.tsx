@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Hand, Mic, MicOff, PhoneOff, RotateCcw, Waves } from "lucide-react";
+import { Hand, Mic, MicOff, PhoneOff, RotateCcw } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import type { AgentVoiceSession } from "@/hooks/useAgentVoiceSession";
+import { AgentAvatar } from "@/components/AgentAvatar";
 import { VoiceStatusIndicator } from "./VoiceStatusIndicator";
+import { voiceStatusToAvatarState } from "@/lib/agent/voice/avatarState";
 import { voiceErrorKey } from "@/lib/agent/voice/voiceLabels";
 
 /** Immersive voice mode: one focused conversation surface, then back to chat. */
@@ -51,7 +53,7 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
       role="dialog"
       aria-modal="true"
       aria-label={t("voice.start")}
-      className="fixed inset-0 z-[70] flex flex-col items-center justify-between bg-background px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-foreground"
+      className="fixed inset-0 z-[70] flex flex-col items-center justify-between bg-background/95 px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-foreground backdrop-blur-sm"
     >
       <div className="flex w-full max-w-xl items-center justify-between">
         <VoiceStatusIndicator status={voice.status} muted={voice.muted} />
@@ -66,9 +68,20 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
       </div>
 
       <div className="flex w-full max-w-xl flex-1 flex-col items-center justify-center gap-7 text-center">
-        <div className="relative flex size-36 items-center justify-center rounded-full border border-primary/30 bg-primary/10 shadow-[0_0_80px_-20px_hsl(var(--primary))]">
-          <span className="absolute inset-3 rounded-full border border-primary/20 motion-safe:animate-pulse" />
-          {voice.muted ? <MicOff className="h-12 w-12 text-muted-foreground" /> : <Waves className="h-12 w-12 text-primary" />}
+        <div className="relative flex size-36 items-center justify-center rounded-full border border-primary/25 bg-[var(--glass-bg)] shadow-[0_0_80px_-24px_color-mix(in_srgb,var(--primary)_55%,transparent)] backdrop-blur-sm">
+          {(voice.status === "connecting" ||
+            voice.status === "listening" ||
+            voice.status === "assistant_speaking") && (
+            <span className="absolute inset-3 rounded-full border border-primary/20 motion-safe:animate-pulse-soft" />
+          )}
+          {voice.muted ? (
+            <MicOff className="h-12 w-12 text-muted-foreground" />
+          ) : (
+            <AgentAvatar
+              size={64}
+              state={voiceStatusToAvatarState(voice.status)}
+            />
+          )}
         </div>
         {voice.partialTranscript ? (
           <p className="max-h-40 overflow-y-auto text-balance text-xl leading-relaxed">
@@ -99,7 +112,7 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
             <button
               type="button"
               onClick={voice.toggleMute}
-              className="flex size-12 items-center justify-center rounded-full border border-border bg-card hover:bg-muted"
+              className="flex size-12 items-center justify-center rounded-full border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm hover:border-primary/40 hover:bg-primary/5"
               aria-label={voice.muted ? t("voice.unmute") : t("voice.mute")}
             >
               {voice.muted ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
@@ -108,7 +121,7 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
               <button
                 type="button"
                 onClick={voice.interrupt}
-                className="flex min-h-12 items-center gap-2 rounded-full border border-border bg-card px-5 text-sm hover:bg-muted"
+                className="flex min-h-12 items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[var(--glass-bg)] px-5 text-sm backdrop-blur-sm hover:border-primary/40 hover:bg-primary/5"
               >
                 <Hand className="h-5 w-5" />
                 {t("voice.interrupt")}

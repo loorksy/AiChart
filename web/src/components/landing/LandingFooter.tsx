@@ -10,13 +10,9 @@ export function LandingFooter() {
   const { locale } = useLocale();
 
   return (
-    <footer className="border-t border-border/80 bg-background/50 py-12 px-4 backdrop-blur-md">
+    <footer className="glass-panel border-t border-border/60 px-4 py-12">
       <div className="mx-auto max-w-6xl space-y-10">
-        
-        {/* Top Section - Multi-Column */}
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-          
-          {/* Column 1: Brand Info */}
           <div className="space-y-4">
             <Link href="/" className="flex items-center gap-2">
               <AiChartLogo size={24} showName nameClassName="text-base font-bold tracking-tight text-foreground" />
@@ -103,10 +99,9 @@ export function LandingFooter() {
 
         </div>
 
-        {/* Middle Section - Risk Disclaimer Disclaimer block */}
-        <div className="rounded-xl border border-border bg-card/30 p-4 space-y-2">
+        <div className="glass-card space-y-2 p-4">
           <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-            <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
+            <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
             <span>{locale === "ar" ? "إخلاء مسؤولية المخاطر للتداول" : "Trading Risk Disclosure Disclaimer"}</span>
           </div>
           <p className="text-[10px] text-muted-foreground leading-relaxed">

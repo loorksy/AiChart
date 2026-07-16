@@ -39,13 +39,13 @@ export default function StatisticsPage() {
     <div dir={dir} className="mx-auto max-w-5xl space-y-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-bold text-foreground">{t("stats.title")}</h1>
-        <div className="inline-flex rounded-lg border border-border/60 bg-background p-0.5">
+        <div className="glass-card inline-flex p-0.5">
           {PERIODS.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => setPeriod(p.id)}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-semibold ${
+              className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                 period === p.id
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -58,7 +58,7 @@ export default function StatisticsPage() {
       </div>
 
       {empty && (
-        <p className="rounded-lg border border-border/60 bg-card p-6 text-center text-sm text-muted-foreground">
+        <p className="glass-card p-6 text-center text-sm text-muted-foreground">
           {t("stats.empty")}
         </p>
       )}

@@ -11,9 +11,9 @@ export function LandingHowItWorks() {
           {LANDING.how.steps.map((s) => (
             <div
               key={s.n}
-              className="rounded-2xl border border-border bg-card p-5 text-center"
+              className="glass-card p-5 text-center transition-colors hover:border-primary/35"
             >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-lg font-bold text-primary">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-primary/25 bg-primary/15 text-lg font-bold text-primary">
                 {s.n}
               </span>
               <h3 className="mt-4 font-semibold">{s.title}</h3>

@@ -91,6 +91,9 @@ export const ar: Record<TranslationKey, string> = {
   "shell.chat": "المحادثة",
   "shell.account": "الحساب",
   "shell.language": "اللغة",
+  "shell.theme_to_light": "التبديل إلى الوضع الفاتح",
+  "shell.theme_to_dark": "التبديل إلى الوضع الداكن",
+  "shell.theme": "المظهر",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",

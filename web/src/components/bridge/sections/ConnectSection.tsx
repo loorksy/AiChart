@@ -11,9 +11,9 @@ type Props = Omit<
 export function ConnectSection(props: Props) {
   return (
     <div className="space-y-4">
-      <div>
+      <div className="glass-card border-primary/25 p-4">
         <h2 className="text-xl font-bold">الاتصالات</h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           MetaTrader · Telegram
         </p>
       </div>

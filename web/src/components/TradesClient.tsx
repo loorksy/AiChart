@@ -122,7 +122,7 @@ export default function TradesClient({
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {pending.map((i) => (
-              <div key={i.id} className="surface-card p-4">
+              <div key={i.id} className="glass-card p-4 hover:border-primary/35">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-bold text-foreground" dir="ltr">
                     {i.symbol}
@@ -185,7 +185,7 @@ export default function TradesClient({
           <SectionTitle>صفقات مفتوحة ({openTrades.length})</SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2">
             {openTrades.map((t) => (
-              <div key={t.id} className="surface-card p-4">
+              <div key={t.id} className="glass-card p-4 hover:border-primary/35">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-bold text-foreground" dir="ltr">
                     {t.symbol}
@@ -215,7 +215,7 @@ export default function TradesClient({
         {closedTrades.length === 0 ? (
           <p className="text-sm text-muted-foreground">لا توجد صفقات مغلقة بعد.</p>
         ) : (
-          <div className="surface-card overflow-x-auto">
+          <div className="glass-card overflow-x-auto">
             <table className="w-full text-right text-sm">
               <thead className="border-b border-border text-muted-foreground">
                 <tr>
@@ -264,7 +264,7 @@ export default function TradesClient({
             {history.map((i) => (
               <div
                 key={i.id}
-                className="surface-card flex items-center justify-between p-3 text-sm"
+                className="glass-card flex items-center justify-between p-3 text-sm hover:border-primary/35"
               >
                 <span dir="ltr">
                   {i.symbol} · {i.side === "buy" ? "شراء" : "بيع"}

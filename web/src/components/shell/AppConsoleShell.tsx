@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Languages, LogOut, PanelLeftClose, PanelLeft, Menu, X, ChevronRight, MessageSquarePlus, MessagesSquare, Settings, UserRound } from "lucide-react";
 import { AiChartLogo } from "@/components/AiChartLogo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
 import { useLocale } from "@/hooks/useLocale";
@@ -12,9 +13,8 @@ import { cn } from "@/lib/utils";
 import { GridPattern } from "@/components/ui/grid-pattern";
 
 /**
- * Premium OLED-dark console shell with collapsible glassmorphism sidebar,
- * green active indicators, and smooth Framer-style transitions.
- * Replaces UserShell / BridgeShell / AppShell / AdminShell.
+ * Canonical console shell — glass sidebar, single mobile drawer,
+ * and sidebar theme toggle. Replaces UserShell / BridgeShell / AppShell / AdminShell.
  */
 export function AppConsoleShell({
   role,
@@ -108,10 +108,10 @@ export function AppConsoleShell({
             onClick={onNavigate}
             title={collapsed && !onNavigate ? label : undefined}
             className={cn(
-              "group relative flex min-h-11 items-center gap-3 rounded-lg border border-transparent px-3 text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+              "group relative flex min-h-11 items-center gap-3 rounded-lg border border-transparent px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
               collapsed && !onNavigate && "justify-center px-0",
               active
-                ? "bg-primary text-primary-foreground border-border"
+                ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] shadow-[inset_2px_0_0_var(--primary)]"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
@@ -119,14 +119,14 @@ export function AppConsoleShell({
               className={cn(
                 "shrink-0 transition-colors",
                 collapsed && !onNavigate ? "h-5 w-5" : "h-4 w-4",
-                active ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground",
+                active ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
               )}
             />
             {(!collapsed || onNavigate) && (
               <span className="truncate">{label}</span>
             )}
             {active && !collapsed && (
-              <ChevronRight className="ms-auto h-3.5 w-3.5 shrink-0 opacity-80 rtl:rotate-180" />
+              <ChevronRight className="ms-auto h-3.5 w-3.5 shrink-0 text-primary opacity-80 rtl:rotate-180" />
             )}
           </Link>
         );
@@ -192,12 +192,13 @@ export function AppConsoleShell({
     </div>
   );
 
-  /* ─── Sidebar footer (user + logout) ─── */
+  /* ─── Sidebar footer (theme + user + logout) ─── */
   const sidebarFooter = (
     <div className="border-t border-border p-3 space-y-1">
+      <ThemeToggle collapsed={collapsed} />
       {!collapsed && (
         <div className="px-3 pb-2 flex items-center gap-2">
-          <div className="h-6 w-6 rounded-lg bg-accent text-accent-foreground border border-border flex items-center justify-center shrink-0">
+          <div className="h-6 w-6 rounded-lg bg-primary/15 text-primary border border-border flex items-center justify-center shrink-0">
             <span className="text-[10px] font-bold">
               {displayName.charAt(0).toUpperCase()}
             </span>
@@ -209,7 +210,7 @@ export function AppConsoleShell({
         type="button"
         onClick={() => void logout()}
         className={cn(
-          "flex min-h-11 w-full items-center gap-2.5 rounded-lg border border-transparent px-3 text-sm text-muted-foreground transition-all hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+          "flex min-h-11 w-full items-center gap-2.5 rounded-lg border border-transparent px-3 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
           collapsed && "justify-center px-0",
         )}
         title={collapsed ? t("profile.logout") : undefined}
@@ -225,7 +226,7 @@ export function AppConsoleShell({
       {/* ─── Desktop sidebar — fixed width; only main content grows on resize ─── */}
       <aside
         className={cn(
-          "hidden h-full shrink-0 flex-col border-e border-border bg-sidebar transition-[width] duration-200 ease-in-out lg:flex z-10",
+          "glass-panel hidden h-full shrink-0 flex-col border-e border-border transition-[width] duration-200 ease-in-out lg:flex z-10",
           collapsed ? "w-[3.75rem]" : "w-60",
         )}
       >
@@ -238,7 +239,7 @@ export function AppConsoleShell({
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed start-3 top-3 z-30 flex size-11 items-center justify-center rounded-lg border border-border bg-sidebar text-foreground shadow backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden cursor-pointer"
+        className="glass-panel fixed start-3 top-3 z-30 flex size-11 items-center justify-center rounded-lg border border-border text-foreground shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden cursor-pointer"
         aria-label={t("shell.open_menu")}
         aria-expanded={mobileOpen}
         aria-controls="mobile-navigation-drawer"
@@ -262,7 +263,7 @@ export function AppConsoleShell({
             role="dialog"
             aria-modal="true"
             aria-label={t("shell.navigation_account")}
-            className="absolute inset-y-0 start-0 flex w-[min(80%,18rem)] flex-col border-e border-border bg-sidebar shadow-2xl"
+            className="glass-panel absolute inset-y-0 start-0 flex w-[min(80%,18rem)] flex-col border-e border-border shadow-2xl"
           >
             <div className="flex h-14 items-center justify-between border-b border-border px-4">
               <Link href="/console" className="flex items-center gap-2.5">
@@ -342,6 +343,7 @@ export function AppConsoleShell({
                 <Settings className="h-4 w-4" />
                 {t("nav.settings")}
               </Link>
+              <ThemeToggle />
               <button
                 type="button"
                 onClick={() => void logout()}

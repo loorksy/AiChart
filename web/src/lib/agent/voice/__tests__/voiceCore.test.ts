@@ -21,6 +21,7 @@ import {
 } from "@/lib/agent/voice/voiceSessionInstructions";
 import { voiceSystemInstructions } from "@/lib/agent/voice/voiceIdentity";
 import { voiceStatusKey, voiceErrorKey } from "@/lib/agent/voice/voiceLabels";
+import { voiceStatusToAvatarState } from "@/lib/agent/voice/avatarState";
 import { parseVoiceSessionRequest } from "@/lib/agent/voice/voiceSessionRequest";
 import { speakableFromResult } from "@/lib/agent/voice/speakableAnswer";
 import type { VoiceErrorCode, VoiceSessionStatus } from "@/lib/agent/voice/types";
@@ -350,6 +351,17 @@ describe("voice labels", () => {
     for (const c of codes) assert.ok(voiceErrorKey(c).startsWith("voice."));
     assert.equal(isRecoverableVoiceError("network_lost"), true);
     assert.equal(isRecoverableVoiceError("mic_permission_denied"), false);
+  });
+
+  it("maps voice status to animated avatar state", () => {
+    assert.equal(voiceStatusToAvatarState("connecting"), "connecting");
+    assert.equal(voiceStatusToAvatarState("listening"), "listening");
+    assert.equal(voiceStatusToAvatarState("user_speaking"), "listening");
+    assert.equal(voiceStatusToAvatarState("processing"), "thinking");
+    assert.equal(voiceStatusToAvatarState("assistant_speaking"), "speaking");
+    assert.equal(voiceStatusToAvatarState("reconnecting"), "reconnecting");
+    assert.equal(voiceStatusToAvatarState("error"), "error");
+    assert.equal(voiceStatusToAvatarState("idle"), "idle");
   });
 });
 

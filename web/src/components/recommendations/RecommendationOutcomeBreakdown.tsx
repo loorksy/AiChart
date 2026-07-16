@@ -21,7 +21,7 @@ export function RecommendationOutcomeBreakdown({
     { labelKey: "stats.invalidated", value: b.invalidated, tone: "text-muted-foreground" },
   ];
   return (
-    <div className="rounded-lg border border-border/60 bg-card p-3">
+    <div className="glass-card p-3">
       <h3 className="mb-2 text-sm font-semibold text-foreground">
         {t("stats.breakdown")}
       </h3>

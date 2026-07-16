@@ -12,7 +12,7 @@ type AiChartLogoProps = {
   nameClassName?: string;
 };
 
-/** Theme-aware AiChart mark — dark logo on light UI, light logo on dark UI. */
+/** Theme-aware AiChart face mark — transparent SVG with PNG fallback. */
 export function AiChartLogo({
   className,
   size = 20,
@@ -20,8 +20,11 @@ export function AiChartLogo({
   nameClassName,
 }: AiChartLogoProps) {
   const { resolved } = useTheme();
+  // Transparent PNG fallbacks (SVG sources live beside them in /public/brand).
   const src =
-    resolved === "light" ? "/lonora-logo-light.png" : "/lonora-logo-dark.png";
+    resolved === "light"
+      ? "/brand/aichart-mark-light.png"
+      : "/brand/aichart-mark-dark.png";
 
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>

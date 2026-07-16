@@ -1,87 +1,113 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   AiChart design tokens — intentional dark + light themes
+   Controlled glassmorphism; AA-oriented contrast on glass surfaces.
+   ========================================================================== */
+
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-gold: #f59e0b;
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --surface-elevated: oklch(0.985 0 0);
-  --bento-card: rgba(0, 0, 0, 0.015);
-  --bento-card-border: oklch(0.922 0 0);
-  --bento-card-hover-border: oklch(0.708 0 0);
-  --glow-green: 0 0 24px rgba(0, 0, 0, 0.08);
+  --radius: 0.75rem;
+  --radius-lg: 1rem;
+
+  /* Light theme — intentional (not inverted neon) */
+  --background: #f4f5f7;
+  --foreground: #0a0a0a;
+  --card: rgba(255, 255, 255, 0.82);
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --primary: #8b00c4;
+  --primary-foreground: #ffffff;
+  --secondary: #e8eaee;
+  --secondary-foreground: #1a1a1a;
+  --muted: #e8eaee;
+  --muted-foreground: #5c5c5c;
+  --accent: #e8f9fc;
+  --accent-foreground: #0a4a52;
+  --accent-gold: #d97706;
+  --destructive: #e11d2e;
+  --destructive-foreground: #ffffff;
+  --border: rgba(10, 10, 10, 0.1);
+  --input: #ffffff;
+  --ring: #8b00c4;
+  --sidebar: rgba(255, 255, 255, 0.78);
+  --sidebar-foreground: #0a0a0a;
+  --sidebar-primary: #8b00c4;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(139, 0, 196, 0.08);
+  --sidebar-accent-foreground: #0a0a0a;
+  --sidebar-border: rgba(10, 10, 10, 0.08);
+  --sidebar-ring: #8b00c4;
+  --sidebar-active-bg: rgba(139, 0, 196, 0.12);
+  --sidebar-active-text: #6b0096;
+  --surface-elevated: #ffffff;
+  --bento-card: rgba(255, 255, 255, 0.7);
+  --bento-card-border: rgba(10, 10, 10, 0.08);
+  --bento-card-hover-border: rgba(139, 0, 196, 0.35);
+  --glow-brand: 0 0 24px rgba(139, 0, 196, 0.12);
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(10, 10, 10, 0.1);
+  --buy: #00a844;
+  --sell: #e11d2e;
+  --info: #0891b2;
+  --warning: #d97706;
+  --chart-1: #8b00c4;
+  --chart-2: #0891b2;
+  --chart-3: #00a844;
+  --chart-4: #d97706;
+  --chart-5: #e11d2e;
+  --chat-input: #ffffff;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  /* Deep Obsidian + controlled brand accents */
+  --background: #050505;
+  --foreground: #ffffff;
+  --card: rgba(18, 18, 20, 0.72);
+  --card-foreground: #ffffff;
+  --popover: #121214;
+  --popover-foreground: #ffffff;
+  --primary: #bc00ff;
+  --primary-foreground: #ffffff;
+  --secondary: #1a1a1e;
+  --secondary-foreground: #f5f5f5;
+  --muted: #1a1a1e;
+  --muted-foreground: #a0a0a0;
+  --accent: rgba(0, 240, 255, 0.08);
+  --accent-foreground: #00f0ff;
   --accent-gold: #f59e0b;
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-  --sidebar-active-bg: rgba(255, 255, 255, 0.05);
-  --sidebar-active-text: oklch(0.985 0 0);
-  --surface-elevated: oklch(0.205 0 0);
-  --bento-card: rgba(255,255,255,0.024);
-  --bento-card-border: rgba(255,255,255,0.07);
-  --bento-card-hover-border: rgba(255,255,255,0.25);
-  --glow-green: 0 0 24px rgba(255,255,255,0.18);
-  --chat-input: oklch(0.145 0 0);
+  --destructive: #ff4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: #bc00ff;
+  --sidebar: rgba(12, 12, 14, 0.82);
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #bc00ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(188, 0, 255, 0.12);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #bc00ff;
+  --sidebar-active-bg: rgba(188, 0, 255, 0.18);
+  --sidebar-active-text: #ffffff;
+  --surface-elevated: #121214;
+  --bento-card: rgba(255, 255, 255, 0.03);
+  --bento-card-border: rgba(255, 255, 255, 0.08);
+  --bento-card-hover-border: rgba(188, 0, 255, 0.4);
+  --glow-brand: 0 0 28px rgba(188, 0, 255, 0.18);
+  --glass-bg: rgba(18, 18, 20, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --buy: #00c853;
+  --sell: #ff4444;
+  --info: #00f0ff;
+  --warning: #f59e0b;
+  --chart-1: #bc00ff;
+  --chart-2: #00f0ff;
+  --chart-3: #00c853;
+  --chart-4: #f59e0b;
+  --chart-5: #ff4444;
+  --chat-input: #0c0c0e;
 }
 
 @theme inline {
@@ -95,6 +121,8 @@
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --color-primary: var(--primary);
   --color-sidebar: var(--sidebar);
   --color-secondary: var(--secondary);
@@ -112,9 +140,13 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-surface-elevated: var(--surface-elevated);
+  --color-buy: var(--buy);
+  --color-sell: var(--sell);
+  --color-info: var(--info);
+  --color-warning: var(--warning);
   --font-sans: var(--font-cairo), Inter, sans-serif;
   --font-serif: var(--font-fraunces), "Playfair Display", Georgia, serif;
-  --font-mono: JetBrains Mono, monospace;
+  --font-mono: var(--font-jetbrains), JetBrains Mono, monospace;
 }
 
 body {
@@ -126,22 +158,59 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Smooth theme transitions for comfortable switching */
-body,
-.surface-card,
-.surface-prompt,
-.card,
-.btn,
-.input {
-  transition: background-color 0.25s ease, border-color 0.25s ease,
-    color 0.25s ease;
+@media (prefers-reduced-motion: no-preference) {
+  body,
+  .surface-card,
+  .surface-prompt,
+  .card,
+  .btn,
+  .input,
+  .glass-panel,
+  .glass-card {
+    transition: background-color 0.2s ease, border-color 0.2s ease,
+      color 0.2s ease, box-shadow 0.2s ease;
+  }
 }
 
 .font-serif {
   font-family: var(--font-fraunces), "Playfair Display", Georgia, serif;
 }
 
-/* Admin/Console shared card and input styles */
+.font-financial {
+  font-family: var(--font-jetbrains), JetBrains Mono, ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Controlled glass — blur capped for readability & performance */
+.glass-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.glass-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.dark .glass-card {
+  box-shadow: var(--glow-brand);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-panel,
+  .glass-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 .admin-card {
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -158,7 +227,7 @@ body,
 }
 .admin-input:focus {
   border-color: var(--ring);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring) 15%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring) 20%, transparent);
 }
 
 .chart-bg-canvas {
@@ -173,16 +242,15 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .dark .surface-card {
   box-shadow: none;
+  background: var(--glass-bg);
 }
 
 .dark .surface-card:hover {
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
 .surface-prompt {
@@ -200,12 +268,8 @@ body,
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 1rem;
+  border-radius: var(--radius-lg);
   color: var(--card-foreground);
-}
-
-.dark .card {
-  background: var(--surface-elevated);
 }
 
 .page-shell {
@@ -222,7 +286,7 @@ body,
 }
 
 .page-title {
-  font-size: 1.375rem;
+  font-size: 1.25rem;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--foreground);
@@ -256,15 +320,19 @@ body,
   padding: 0.5rem 1rem;
   font-weight: 500;
   font-size: 0.875rem;
-  transition: all 0.15s ease;
+  min-height: 2.75rem;
+  transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
   cursor: pointer;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 .btn-primary {
   background: var(--primary);
   color: var(--primary-foreground);
 }
 .btn-primary:hover {
-  opacity: 0.9;
+  opacity: 0.92;
 }
 .btn-secondary {
   background: var(--secondary);
@@ -273,6 +341,14 @@ body,
 }
 .btn-secondary:hover {
   filter: brightness(0.97);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.btn-ghost:hover {
+  background: var(--muted);
+  color: var(--foreground);
 }
 .btn-danger {
   background: var(--destructive);
@@ -289,13 +365,13 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.5rem 0.75rem;
-  min-height: 38px;
+  min-height: 2.75rem;
   color: var(--foreground);
   outline: none;
 }
 .input:focus {
   border-color: var(--ring);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring) 15%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 25%, transparent);
 }
 
 label {
@@ -305,7 +381,7 @@ label {
 }
 
 .text-link {
-  color: var(--accent-gold);
+  color: var(--primary);
 }
 .text-link:hover {
   text-decoration: underline;
@@ -317,9 +393,61 @@ label {
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 55%;
+  height: 1.25rem;
   border-radius: 999px;
-  background: var(--accent-gold);
+  background: var(--primary);
+}
+
+.sidebar-nav-item {
+  position: relative;
+}
+
+.bento-card {
+  background: var(--bento-card);
+  border: 1px solid var(--bento-card-border);
+  border-radius: var(--radius-lg);
+}
+.bento-card:hover {
+  border-color: var(--bento-card-hover-border);
+}
+
+.chat-gpt-input {
+  background: var(--chat-input);
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+}
+
+.text-buy {
+  color: var(--buy);
+}
+.text-sell {
+  color: var(--sell);
+}
+.bg-buy\/15 {
+  background-color: color-mix(in srgb, var(--buy) 15%, transparent);
+}
+.bg-sell\/15 {
+  background-color: color-mix(in srgb, var(--sell) 15%, transparent);
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-soft {
+    animation: none;
+  }
 }
 
 .bottom-nav {
@@ -327,19 +455,17 @@ label {
 }
 
 .chat-gpt-input {
-  background: rgba(12, 12, 14, 0.45) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--chat-input) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
   border-radius: 1.25rem;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
 }
 
 .chat-gpt-input:focus-within {
-  border-color: rgba(34, 197, 94, 0.35); /* Green theme accent */
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1), 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
-  background: rgba(12, 12, 14, 0.65) !important;
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .sidebar-nav-item {
@@ -358,7 +484,8 @@ label {
 }
 
 .sidebar-nav-item[data-active="true"] {
-  background: var(--sidebar-accent);
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text);
 }
 
 .sidebar-conv-item {
@@ -384,10 +511,13 @@ label {
   gap: 0;
 }
 
-/* ─── Skeleton shimmer overlay ─── */
 @keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .animate-pulse {
@@ -400,51 +530,43 @@ label {
     transparent 100%
   );
   background-size: 200% 100%;
-  animation: skeleton-shimmer 2s ease-in-out infinite, pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: skeleton-shimmer 2s ease-in-out infinite,
+    pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
 }
 
-/* ─── Console / Bento Design System ─── */
-
-/* Animated status dot */
 @keyframes status-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
-  50%  { opacity: 0.7; box-shadow: 0 0 0 4px transparent; }
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 4px transparent;
+  }
 }
 
-/* Green glow pulse for connected indicators */
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(34,197,94,0.3); }
-  50%       { box-shadow: 0 0 18px rgba(34,197,94,0.6); }
-}
-
-/* Subtle float for hero stats */
-@keyframes float-y {
-  0%, 100% { transform: translateY(0); }
-  50%       { transform: translateY(-4px); }
-}
-
-/* Bento card — base */
 .bento-card {
-  background: var(--bento-card, rgba(255,255,255,0.024));
-  border: 1px solid var(--bento-card-border, rgba(255,255,255,0.07));
+  background: var(--bento-card);
+  border: 1px solid var(--bento-card-border);
   border-radius: 1rem;
   backdrop-filter: blur(12px);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .dark .bento-card:hover {
-  border-color: var(--bento-card-hover-border, rgba(34,197,94,0.25));
-  box-shadow: var(--glow-green, 0 0 24px rgba(34,197,94,0.18));
+  border-color: var(--bento-card-hover-border);
+  box-shadow: var(--glow-brand);
 }
 
-/* Status dot — colored pulsing dot */
 .status-dot {
   display: inline-block;
   width: 7px;
@@ -454,17 +576,17 @@ label {
 }
 
 .status-dot-ok {
-  background: #22c55e;
+  background: var(--buy);
   animation: status-pulse 2s ease-in-out infinite;
 }
 
 .status-dot-warn {
-  background: #f59e0b;
+  background: var(--warning);
   animation: status-pulse 1.5s ease-in-out infinite;
 }
 
 .status-dot-error {
-  background: #ef4444;
+  background: var(--sell);
   animation: status-pulse 1s ease-in-out infinite;
 }
 
@@ -472,7 +594,6 @@ label {
   background: #52525b;
 }
 
-/* Console stat number — big bold value */
 .console-stat-value {
   font-size: 2rem;
   font-weight: 700;
@@ -481,7 +602,6 @@ label {
   color: var(--foreground);
 }
 
-/* Console section header */
 .console-section-label {
   font-size: 0.6875rem;
   font-weight: 600;
@@ -490,20 +610,25 @@ label {
   color: var(--muted-foreground);
 }
 
-/* Sidebar active nav item for console */
 .dark .console-nav-active {
   background: var(--sidebar-active-bg);
   color: var(--sidebar-active-text);
-  box-shadow: inset 2px 0 0 var(--sidebar-active-text);
+  box-shadow: inset 2px 0 0 var(--primary);
 }
 
-
-/* Smart Chart Agent — live thinking ticker animated dots */
 @keyframes thinkingDots {
-  0% { width: 0ch; }
-  33% { width: 1ch; }
-  66% { width: 2ch; }
-  100% { width: 3ch; }
+  0% {
+    width: 0ch;
+  }
+  33% {
+    width: 1ch;
+  }
+  66% {
+    width: 2ch;
+  }
+  100% {
+    width: 3ch;
+  }
 }
 
 .animate-thinking-dots {
@@ -512,3 +637,4 @@ label {
   white-space: nowrap;
   animation: thinkingDots 1.1s steps(3, end) infinite;
 }
+
