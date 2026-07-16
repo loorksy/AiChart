@@ -5,6 +5,7 @@ import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
 import { discoverSkills, loadSkill } from "../skills/catalog.js";
+import { selectMcpSkills } from "../skills/select.js";
 import { gitCommit } from "../version.js";
 import {
   chartInlineContent,
@@ -146,7 +147,83 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
                   count: skills.length,
                   skills: skills.map(({ metadata }) => metadata),
                   note:
-                    "Metadata only. Load content explicitly with load_agent_skill — a listed skill does NOT count as loaded.",
+                    "Metadata only. Load content explicitly with load_agent_skill — a listed skill does NOT count as loaded. Prefer resolve_agent_skills to select which to load for a request.",
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (e) {
+        return formatBridgeError(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "resolve_agent_skills",
+    mcpToolConfig("resolve_agent_skills"),
+    async (args) => {
+      const {
+        request,
+        intents,
+        locale,
+        market,
+        trading_mode: tradingMode,
+        max_skills: maxSkills,
+        allow_execution_skills: allowExecutionSkills,
+      } = (args ?? {}) as {
+        request: string;
+        intents?: string[];
+        locale?: "ar" | "en";
+        market?: string;
+        trading_mode?: string;
+        max_skills?: number;
+        allow_execution_skills?: boolean;
+      };
+      try {
+        const discoverStarted = Date.now();
+        const { skills, root } = discoverSkills();
+        const discoveryMs = Date.now() - discoverStarted;
+        const selection = selectMcpSkills(skills, {
+          request,
+          intents,
+          locale,
+          market: market ?? "forex",
+          tradingMode,
+          availableTools: ["render_cards"],
+          maxSkills: maxSkills ?? 2,
+          allowExecutionSkills: allowExecutionSkills === true,
+        });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  ok: root != null,
+                  catalogueRoot: root ? "agent/workspace/skills" : null,
+                  discovered: selection.discovered,
+                  selected: selection.selected.map((s) => ({
+                    name: s.name,
+                    version: s.version,
+                    category: s.category,
+                    riskLevel: s.riskLevel,
+                  })),
+                  rejected: selection.rejected,
+                  nextStep:
+                    selection.selected.length > 0
+                      ? "Call load_agent_skill once per selected.name. Do not claim a skill was used until load succeeds."
+                      : "No skill load required for this request.",
+                  note:
+                    "Capability-scored selection (metadata only). Manual skill-file attachment is unnecessary. Do not show skill names, scores, or diagnostics to the operator.",
+                  // Internal diagnostics for the host model / runtraces — not for operator chat.
+                  diagnostics: {
+                    discoveryMs,
+                    selectionMs: selection.selectionMs,
+                    candidates: selection.candidates,
+                  },
                 },
                 null,
                 2,

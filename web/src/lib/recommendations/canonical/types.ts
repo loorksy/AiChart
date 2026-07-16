@@ -187,7 +187,9 @@ export interface RecommendationLearningEvent {
 export type RecommendationHistoryKind =
   | "created"
   | "updated"
-  | "drawing_snapshot";
+  | "drawing_snapshot"
+  | "research_revision"
+  | "research_completion";
 
 export interface RecommendationHistoryEntry {
   id: number;

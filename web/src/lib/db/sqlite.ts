@@ -1545,6 +1545,39 @@ function migrate(db: Database.Database) {
   dropLegacyBotAndScalpTables(db);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS deep_analysis_runs (
+      analysis_id            TEXT PRIMARY KEY,
+      user_id                INTEGER NOT NULL,
+      session_id             TEXT,
+      chat_id                TEXT,
+      message_id             TEXT,
+      recommendation_id      INTEGER,
+      recommendation_ref     TEXT,
+      symbol                 TEXT NOT NULL,
+      interval               TEXT NOT NULL,
+      generation             INTEGER NOT NULL DEFAULT 1,
+      research_job_id        TEXT,
+      validation_job_id      TEXT,
+      status                 TEXT NOT NULL,
+      internal_progress      TEXT NOT NULL,
+      ux_update_count        INTEGER NOT NULL DEFAULT 0,
+      allow_reason           TEXT,
+      failure_reason         TEXT,
+      strategy_fingerprint   TEXT,
+      result_projection_json TEXT,
+      locale                 TEXT NOT NULL DEFAULT 'ar',
+      created_at             INTEGER NOT NULL,
+      updated_at             INTEGER NOT NULL,
+      completed_at           INTEGER,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_deep_analysis_user_session
+      ON deep_analysis_runs (user_id, session_id, symbol, generation DESC);
+    CREATE INDEX IF NOT EXISTS idx_deep_analysis_pending
+      ON deep_analysis_runs (status, updated_at);
+  `);
+
+  db.exec(`
     UPDATE trading_settings SET active_market = 'forex' WHERE active_market = 'crypto';
     UPDATE trades SET market = 'forex' WHERE market = 'crypto';
     UPDATE trade_intents SET market = 'forex' WHERE market = 'crypto';

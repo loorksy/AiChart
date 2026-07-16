@@ -5,6 +5,10 @@
  * static) but they still respect the operator's language.
  */
 import type { AppLocale } from "@/lib/i18n";
+import {
+  buildInformationalConfidence,
+  buildWaitConfidence,
+} from "./confidenceSemantics";
 import type { AgentActivityEvent, AgentFinalResult } from "./types";
 
 /** Generic partial-failure fallback: informational, WAIT, no drawings. */
@@ -13,9 +17,19 @@ export function buildAgentFallbackResult(
   activityEvents: AgentActivityEvent[] = [],
   locale: AppLocale = "ar",
 ): AgentFinalResult {
+  const confidenceSemantics = buildWaitConfidence({
+    decisionConfidence: 0.9,
+    dataQualityScore: 0.3,
+    reasons: [reason],
+    riskVeto: true,
+  });
   return {
     decision: "informational",
-    confidence: 0,
+    confidence:
+      typeof confidenceSemantics.displayValue === "number"
+        ? confidenceSemantics.displayValue
+        : 0,
+    confidenceSemantics,
     summary:
       locale === "en"
         ? "The agent could not complete this run safely. Please try again shortly."
@@ -37,9 +51,13 @@ export function buildInformationalResult(
   summary: string,
   activityEvents: AgentActivityEvent[] = [],
 ): AgentFinalResult {
+  const confidenceSemantics = buildInformationalConfidence({
+    analysisConfidence: 0.75,
+  });
   return {
     decision: "informational",
-    confidence: 0.8,
+    confidence: 0,
+    confidenceSemantics,
     summary,
     keyReasons: [],
     riskWarnings: [],

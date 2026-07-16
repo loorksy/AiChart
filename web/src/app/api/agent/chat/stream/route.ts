@@ -35,6 +35,7 @@ import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
 import { addAgentRunStep, finalizeAgentRun, startAgentRun } from "@/lib/agent/runTrace";
 import { getMessages } from "@/lib/agent/chatHistory/chatStore";
+import { stripInternalFieldsFromClientResult } from "@/lib/agent/userSafeOutbound";
 import {
   adaptAuthorizedChatHistory,
   buildAgentConversationContext,
@@ -466,6 +467,10 @@ export async function POST(req: NextRequest) {
                 selectedSkills: result.selectedSkills ?? [],
                 skillLoadFailures: result.skillLoadFailures ?? [],
                 tradingMode: result.tradingMode ?? null,
+                // Full research transparency stays in runTrace only (not SSE).
+                researchEvidence: result.researchEvidence ?? null,
+                evidenceTimeline: result.evidenceTimeline ?? null,
+                skillNames: (result.selectedSkills ?? []).map((s) => s.name),
               },
             });
             await finalizeAgentRun({
@@ -475,6 +480,7 @@ export async function POST(req: NextRequest) {
               decision: result.decision,
               confidence: result.confidence,
               riskVeto: result.decision === "wait",
+              skillNames: (result.selectedSkills ?? []).map((s) => s.name),
             });
           }
 
@@ -523,16 +529,17 @@ export async function POST(req: NextRequest) {
           }
 
           send("final", {
-            ...result,
+            ...stripInternalFieldsFromClientResult(result),
             sessionId,
             activityEvents,
             // Replace static contextual options with the dynamic suggestions.
             options: suggestions,
             suggestions,
-            // Accurate ticker state in dev diagnostics.
-            debugDecisionFlow: result.debugDecisionFlow
-              ? { ...result.debugDecisionFlow, ...tickerDebug }
-              : undefined,
+            // Accurate ticker state in dev diagnostics only.
+            debugDecisionFlow:
+              process.env.NODE_ENV === "development" && result.debugDecisionFlow
+                ? { ...result.debugDecisionFlow, ...tickerDebug }
+                : undefined,
           });
         } catch (error) {
           if (req.signal.aborted) {

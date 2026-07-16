@@ -27,3 +27,12 @@ if (!hasHandler("memory_lifecycle")) {
     await runMemoryLifecycle(userId, conversationId);
   });
 }
+
+if (!hasHandler("deep_analysis_poll")) {
+  registerHandler("deep_analysis_poll", async (payload) => {
+    const { pollDeepAnalysisOnce } = await import(
+      "./agent/deepAnalysis/completion"
+    );
+    await pollDeepAnalysisOnce(payload);
+  });
+}

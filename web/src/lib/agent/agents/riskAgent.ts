@@ -183,6 +183,7 @@ export async function runRiskAgent(
     htfConflict: Boolean(input.mtf?.conflict),
     newsRisk: input.news?.newsRisk ?? "unknown",
     dataSufficient: meetsDataQuality(market.dataQuality, "trade"),
+    coverageDetail: market.dataQuality.coverage?.summaryEn,
     minRr: input.minRr,
     educationalOnly: input.educationalOnly,
     hasReversalEvidence: candidatesResult.hasReversalEvidence,

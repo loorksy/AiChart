@@ -335,16 +335,47 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: READ_ONLY,
   },
   {
+    name: "resolve_agent_skills",
+    domain: "core",
+    description:
+      "When: before answering a trading/analysis request. Discovers the catalogue, selects the most relevant skills for the user request, and returns metadata only (selected + rejected with reasons). Does NOT load bodies — follow with load_agent_skill for each selected name. Prefer this over manually attaching skill files. read-only.",
+    inputSchema: {
+      request: z
+        .string()
+        .min(1)
+        .max(4000)
+        .describe("The operator's current request / message"),
+      intents: z
+        .array(z.string().min(1).max(64))
+        .max(12)
+        .optional()
+        .describe("Optional soft intent hints (e.g. analysis, recommendation)"),
+      locale: z.enum(["ar", "en"]).optional(),
+      market: z.string().max(32).optional().describe("Defaults to forex"),
+      trading_mode: z
+        .string()
+        .max(32)
+        .optional()
+        .describe("Optional trading style hint (scalp/day/swing/position)"),
+      max_skills: z.number().int().min(1).max(4).optional(),
+      allow_execution_skills: z
+        .boolean()
+        .optional()
+        .describe("Only true when execution tools are authorized; still subject to Risk/Execution Guard"),
+    },
+    annotations: READ_ONLY,
+  },
+  {
     name: "load_agent_skill",
     domain: "core",
     description:
-      "When: a request needs a specific skill (analysis→trading-lexicon, recommendation→trading-strategies, cards→cards). Loads the FULL skill content explicitly and traceably. Fails honestly if the skill is missing — never assume a skill was read without a successful load. Skills never grant permissions. read-only.",
+      "When: after resolve_agent_skills (or when a specific skill is clearly needed). Loads the FULL skill content explicitly and traceably. Fails honestly if missing — never assume a skill was read without a successful load. Skills never grant permissions. read-only.",
     inputSchema: {
       name: z
         .string()
         .min(2)
         .max(64)
-        .describe("Skill name from list_agent_skills"),
+        .describe("Skill name from list_agent_skills or resolve_agent_skills"),
       version: z
         .string()
         .max(32)

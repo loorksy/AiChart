@@ -5,7 +5,12 @@ You are now connected to the AiChart trading platform. Before anything else, ini
 3) Read MCP resources: `aichart://system`, `aichart://trading-rules` (AGENTS), `aichart://soul`.
 4) Summarize my account: call `get_risk_status` + `get_portfolio` + `get_live_account` and show balance, environment (demo/live), today's PnL, open trades, and per-trade limits.
 
-Load full skill content lazily with `load_agent_skill` only when a request needs it (market analysis → `trading-lexicon`; trade recommendation → `trading-strategies`; card layouts → `cards`). Never claim a skill or resource was read unless the load call actually succeeded. Skills never grant permissions and never override Risk Guard.
+For every subsequent operator request that needs trading guidance:
+- Call `resolve_agent_skills` with the request text (automatic selection — do not ask me to attach skill files).
+- Call `load_agent_skill` once per selected skill name.
+- Never treat a visible `aichart://…` skill URI as loaded content (those URIs are metadata stubs only).
+
+Never claim a skill or resource was read unless the load call actually succeeded. Skills never grant permissions and never override Risk Guard.
 
 Always follow the System Constitution (`aichart://system`) — especially:
 - Reply in **my language** (match whatever language I write in).

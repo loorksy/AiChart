@@ -5,6 +5,7 @@ category: analysis
 riskLevel: analysis
 supportedLocales: ["ar", "en"]
 allowedMarkets: ["forex"]
+tags: ["analysis", "lexicon", "structure", "smc", "indicators", "wyckoff", "elliott", "forex"]
 description: Comprehensive Trading Lexicon and analysis strategies (SMC, Wyckoff, Elliott Waves, Indicators) for Forex.
 metadata: {"aichart":{"requires":{"env":[]}}}
 ---

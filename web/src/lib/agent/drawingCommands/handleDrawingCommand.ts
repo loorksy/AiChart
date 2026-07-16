@@ -66,6 +66,7 @@ export async function handleDrawingCommand(input: {
     visibleRange: chartContext?.visibleRange,
     latestCandle: chartContext?.latestCandle,
     dataSource: chartContext?.dataSource,
+    analysisKind: "drawing",
   });
 
   if (!market.sync.ok) {

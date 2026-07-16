@@ -5,6 +5,7 @@ import {
   Link2,
   Bell,
   BrainCircuit,
+  Shield,
   ChevronLeft,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
@@ -23,6 +24,12 @@ const CARDS: SettingsCard[] = [
     title: "الملف والمظهر",
     desc: "بياناتك، اللغة، والثيم الفاتح/الداكن",
     icon: User,
+  },
+  {
+    href: "/console/risk",
+    title: "إعدادات المخاطر",
+    desc: "حدود الصفقة، العائد/المخاطرة، وحارس المخاطر",
+    icon: Shield,
   },
   {
     href: "/console/connect",

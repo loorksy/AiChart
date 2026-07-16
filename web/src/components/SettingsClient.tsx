@@ -633,45 +633,92 @@ function TradingCard({
     e.preventDefault();
     setBusy(true);
     setMsg(null);
+    const body = {
+      mode: s.mode,
+      approval: effectiveApproval,
+      experience: s.experience,
+      style: s.style,
+      max_capital: Number(s.max_capital),
+      per_trade_pct: Number(s.per_trade_pct),
+      max_open_trades: Number(s.max_open_trades),
+      daily_profit_target_pct: Number(s.daily_profit_target_pct),
+      daily_profit_target_usd: Number(s.daily_profit_target_usd ?? 0),
+      daily_loss_limit_pct: Number(s.daily_loss_limit_pct),
+      monthly_loss_limit_pct: Number(s.monthly_loss_limit_pct),
+      auto_take_profit_usd: Number(s.auto_take_profit_usd ?? 0),
+      allowed_assets: {
+        forex: forexOpen ? [] : parseCsv(forexAssets),
+        watchlist: [],
+      },
+      send_screenshot: Boolean(s.send_screenshot),
+      scan_poll_minutes: Number(s.scan_poll_minutes ?? 0),
+      analysis_interval: s.analysis_interval ?? "1h",
+      execution_env_preference:
+        s.execution_env_preference === "live" ? "live" : "demo",
+      telegram_chat_id: s.telegram_chat_id || null,
+      futures_enabled: false,
+      default_leverage: Number(s.default_leverage ?? 3),
+      min_confidence: Number(s.min_confidence ?? 80),
+      min_rr: Number(s.min_rr ?? 1),
+    };
     try {
-      const res = await fetch("/api/settings", {
+      let res = await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: s.mode,
-          approval: effectiveApproval,
-          experience: s.experience,
-          style: s.style,
-          max_capital: Number(s.max_capital),
-          per_trade_pct: Number(s.per_trade_pct),
-          max_open_trades: Number(s.max_open_trades),
-          daily_profit_target_pct: Number(s.daily_profit_target_pct),
-          daily_profit_target_usd: Number(s.daily_profit_target_usd ?? 0),
-          daily_loss_limit_pct: Number(s.daily_loss_limit_pct),
-          monthly_loss_limit_pct: Number(s.monthly_loss_limit_pct),
-          auto_take_profit_usd: Number(s.auto_take_profit_usd ?? 0),
-          allowed_assets: {
-            forex: forexOpen ? [] : parseCsv(forexAssets),
-            watchlist: [],
-          },
-          send_screenshot: Boolean(s.send_screenshot),
-          scan_poll_minutes: Number(s.scan_poll_minutes ?? 0),
-          analysis_interval: s.analysis_interval ?? "1h",
-          execution_env_preference:
-            s.execution_env_preference === "live" ? "live" : "demo",
-          telegram_chat_id: s.telegram_chat_id || null,
-          futures_enabled: false,
-          default_leverage: Number(s.default_leverage ?? 3),
-          min_confidence: Number(s.min_confidence ?? 80),
-          min_rr: Number(s.min_rr ?? 1),
-        }),
+        body: JSON.stringify(body),
       });
-      const data = await res.json();
+      let data = await res.json();
+      if (res.status === 409 && data.code === "RISK_INCREASE_CONFIRMATION_REQUIRED") {
+        const ok = confirm(
+          "أنت على وشك زيادة المخاطر (حجم صفقة أعلى، حد خسارة أوسع، أو تقليل الحد الأدنى لـ R:R). هل تؤكد؟",
+        );
+        if (!ok) {
+          setMsg({ type: "err", text: "تم إلغاء زيادة المخاطر." });
+          return;
+        }
+        res = await fetch("/api/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, confirm_risk_increase: true }),
+        });
+        data = await res.json();
+      }
       if (!res.ok) {
         setMsg({ type: "err", text: data.error ?? "فشل الحفظ." });
         return;
       }
       setMsg({ type: "ok", text: data.capped ?? "تم حفظ الإعدادات." });
+      router.refresh();
+    } catch {
+      setMsg({ type: "err", text: "تعذّر الاتصال بالخادم." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetSafe() {
+    if (
+      !confirm(
+        "إعادة تعيين حدود المخاطر إلى القيم الآمنة الافتراضية؟",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset_to_safe_defaults: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg({ type: "err", text: data.error ?? "فشل إعادة التعيين." });
+        return;
+      }
+      if (data.settings) setS(data.settings);
+      setMsg({ type: "ok", text: "تمت إعادة التعيين إلى الحدود الآمنة." });
       router.refresh();
     } catch {
       setMsg({ type: "err", text: "تعذّر الاتصال بالخادم." });
@@ -966,9 +1013,19 @@ function TradingCard({
               {msg.text}
             </p>
           )}
-          <button className="btn btn-primary" disabled={busy}>
-            {busy ? "جارٍ الحفظ…" : "حفظ"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn btn-primary" disabled={busy}>
+              {busy ? "جارٍ الحفظ…" : "حفظ"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={() => void resetSafe()}
+            >
+              إعادة تعيين آمنة
+            </button>
+          </div>
         </div>
       </form>
     </SurfaceCard>

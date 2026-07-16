@@ -243,11 +243,21 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
                 for (const m of fresh) appliedMutationsRef.current.add(m.mutationId);
                 opts.applyDrawingMutations?.(fresh);
               }
-              // Persist the assistant turn with its result + references.
+  // Persist a user-safe result subset (no research transparency / internals).
               opts.onPersistMessage?.(chatId, {
                 role: "assistant",
                 content: result.summary,
-                result,
+                result: (() => {
+                  const {
+                    researchEvidence: _r,
+                    evidenceTimeline: _e,
+                    selectedSkills: _s,
+                    skillLoadFailures: _f,
+                    debugDecisionFlow: _d,
+                    ...safe
+                  } = result;
+                  return safe;
+                })(),
                 recommendationId:
                   result.recommendationId ?? result.activeRecommendation?.id,
                 analysisId: result.analysisId,
