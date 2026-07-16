@@ -55,7 +55,7 @@ export const eaAdapter: BrokerAdapter = {
 
   async placeOrder(
     userId: number,
-    { intent, push }: PlaceOrderContext,
+    { intent, riskAmount, push }: PlaceOrderContext,
   ): Promise<OrderResult> {
     push({ id: "creds", label: "التحقق من اتصال MetaTrader", status: "running" });
     const conn = await getEaConnection(userId);
@@ -98,7 +98,7 @@ export const eaAdapter: BrokerAdapter = {
           Number(spec?.ask) ||
           Number(spec?.bid) ||
           0;
-      const sizing = computeForexLots(intent.notional, refPrice, spec);
+      const sizing = computeForexLots(riskAmount, refPrice, intent.stop_loss, spec);
       if (!sizing.ok) {
         const reason = sizing.reason ?? "تعذّر حساب اللوت.";
         push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "error", detail: reason });

@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 interface ConnectionStatus {
   mt5: { connected: boolean; online: boolean };
   telegram: { linked: boolean };
-  executionEnv: { label: string; mismatch: boolean };
+  executionEnv: { label: string; available: boolean };
 }
 
 /* ─── Connection status card (Bento-style) ─── */
@@ -160,10 +160,10 @@ export function BridgeOverviewClient({
               title="بيئة التنفيذ"
               chip={{
                 label: execLabel,
-                tone: conn?.executionEnv.mismatch ? "warn" : "ok",
+                tone: conn?.executionEnv.available ? "ok" : "warn",
               }}
               href="/console/connect"
-              icon={conn?.executionEnv.mismatch ? AlertTriangle : Zap}
+              icon={conn?.executionEnv.available ? Zap : AlertTriangle}
             />
           </div>
         </div>

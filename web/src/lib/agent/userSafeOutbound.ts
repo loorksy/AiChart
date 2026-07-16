@@ -39,8 +39,8 @@ export interface UserSafeResearchProjection {
   historicalAgreement: HistoricalAgreement;
   sampleSizeBand: SampleSizeBand;
   historicalStability: HistoricalStability;
-  /** Direction of confidence influence after reliability scoring — not a module name. */
-  confidenceDirection: "up" | "down" | "unchanged";
+  /** Direction of historical context — never an instruction to change the live decision. */
+  evidenceDirection: "supports" | "weakens" | "neutral";
   deeperVerification: DeeperVerificationState;
   /** Short semantic notes for the model — never module names or job IDs. */
   notes: string[];
@@ -98,9 +98,9 @@ export function toUserSafeResearchProjection(
   },
 ): UserSafeResearchProjection {
   const used = bundle.contributions.filter((c) => c.status === "used");
-  const delta = bundle.recommendationConfidenceDelta;
-  const confidenceDirection: UserSafeResearchProjection["confidenceDirection"] =
-    delta > 0.005 ? "up" : delta < -0.005 ? "down" : "unchanged";
+  const delta = bundle.historicalEvidenceTendency;
+  const evidenceDirection: UserSafeResearchProjection["evidenceDirection"] =
+    delta > 0.005 ? "supports" : delta < -0.005 ? "weakens" : "neutral";
 
   let agreement: HistoricalAgreement = "none";
   const reasons = used.map((c) => c.reason);
@@ -132,7 +132,7 @@ export function toUserSafeResearchProjection(
   let historicalStability: HistoricalStability = "not_evaluated";
   if (used.some((c) => /instab|unstable|drawdown/i.test(c.reasonDetail))) {
     historicalStability = "unstable";
-  } else if (used.length > 0 && confidenceDirection !== "down") {
+  } else if (used.length > 0 && evidenceDirection !== "weakens") {
     historicalStability = "stable";
   } else if (used.length > 0) {
     historicalStability = "unknown";
@@ -148,9 +148,9 @@ export function toUserSafeResearchProjection(
   } else if (agreement === "mixed") {
     notes.push("Historical signals were mixed for this kind of setup.");
   }
-  if (confidenceDirection === "up") {
+  if (evidenceDirection === "supports") {
     notes.push("Historical reliability nudged confidence slightly higher.");
-  } else if (confidenceDirection === "down") {
+  } else if (evidenceDirection === "weakens") {
     notes.push("Historical reliability nudged confidence slightly lower.");
   }
 
@@ -159,7 +159,7 @@ export function toUserSafeResearchProjection(
     historicalAgreement: agreement,
     sampleSizeBand: sampleBand(sampleHint),
     historicalStability,
-    confidenceDirection,
+    evidenceDirection,
     deeperVerification: opts?.deeperVerification ?? "not_started",
     notes,
   };

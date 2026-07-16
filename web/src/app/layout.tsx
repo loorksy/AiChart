@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Cairo, Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { LocaleProvider } from "@/components/LocaleProvider";
+import { SkipLink } from "@/components/SkipLink";
 import "./globals.css";
 
 const cairo = Cairo({
@@ -47,7 +48,16 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background">
         <LocaleProvider>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <SkipLink />
+            <div
+              id="main-content"
+              tabIndex={-1}
+              className="flex min-h-full flex-1 flex-col outline-none"
+            >
+              {children}
+            </div>
+          </ThemeProvider>
         </LocaleProvider>
       </body>
     </html>

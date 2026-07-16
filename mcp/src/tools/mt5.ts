@@ -186,13 +186,6 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
-    "open_pending_order",
-    mcpToolConfig("open_pending_order"),
-    async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/ea/pending-order", body)),
-  );
-
-  server.registerTool(
     "cancel_mt5_order",
     mcpToolConfig("cancel_mt5_order"),
     async (body) =>

@@ -27,7 +27,7 @@ export function readWorkspaceFile(relativePath: string, defaultText = ""): strin
 export function tradingRulesText(): string {
   return readWorkspaceFile(
     "AGENTS.md",
-    "قواعد AiChart: تحقق من get_risk_status قبل أي صفقة. Risk Guard يرفض تجاوز الحدود."
+    "قواعد AiChart: الذكاء الاصطناعي يختار BUY/SELL/WAIT. استخدم get_trade_readiness قبل التنفيذ، والحجم يُحسب من Risk per Trade."
   );
 }
 

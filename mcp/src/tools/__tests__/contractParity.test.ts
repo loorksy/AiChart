@@ -43,8 +43,8 @@ describe("MCP catalogue ↔ canonical tool contract parity", () => {
 
   it("high-risk tools are explicitly execution-classed and server controlled", () => {
     for (const name of [
-      "open_trade", "close_trade", "close_partial", "open_pending_order",
-      "cancel_mt5_order", "modify_sl_tp", "respond_approval", "set_execution_env",
+      "open_trade", "close_trade", "close_partial",
+      "cancel_mt5_order", "modify_sl_tp", "respond_approval",
     ]) {
       const entry = byName.get(name);
       assert.ok(entry, `${name} missing from contract`);

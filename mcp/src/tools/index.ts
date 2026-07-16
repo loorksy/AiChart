@@ -51,7 +51,7 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
       uri: "aichart://execution-desk",
       title: "AiChart Execution Desk v3 (Disciplined)",
       description:
-        "Institutional execution desk: four-agent committee (diagnostic scores) + objective quality gates + EXECUTE/NO TRADE decision",
+        "AI-led execution guidance with broker-verified sizing and technical authorization checks",
       file: "EXECUTION_DESK_V3.md",
     },
     {

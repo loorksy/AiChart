@@ -100,7 +100,6 @@ const waitDecision: FinalDecisionResult = {
   riskWarnings: [],
   recommendation: { action: "wait" },
   publicReasoningSummary: [],
-  riskVeto: false,
 };
 
 function baseInput(over: Partial<DrawingPlanInput> = {}): DrawingPlanInput {

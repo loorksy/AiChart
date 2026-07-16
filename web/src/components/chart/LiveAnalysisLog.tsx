@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, Layers, Shield, Sparkles, Target, TrendingUp } from "lucide-react";
-import type { LiveReasoningEntry } from "@/lib/analysis/chartAnalyzeLlm";
+import type { LiveReasoningEntry } from "@/lib/analysis/types";
 import { cn } from "@/lib/utils";
 
 const TYPE_ICON: Record<

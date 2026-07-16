@@ -24,7 +24,7 @@ import type {
   UserRow,
   UserStatus,
 } from "./types";
-import { normalizeTradingMode, normalizeTradingStyle } from "./types";
+import { normalizeRiskPerTrade } from "./productModel";
 import { PUBLIC_USER_COLUMNS } from "./userSelect";
 import {
   computeAccessExpiresAt,
@@ -157,7 +157,7 @@ function nowExpr(): string {
 
 export async function ensureUserDefaults(userId: number) {
   await execute(
-    "INSERT INTO trading_settings (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING",
+    "INSERT INTO trading_settings (user_id, per_trade_pct) VALUES (?, 1) ON CONFLICT (user_id) DO NOTHING",
     [userId],
   );
   // New accounts start on the free tier; existing rows are untouched (DO NOTHING).
@@ -170,79 +170,36 @@ export async function ensureUserDefaults(userId: number) {
 export async function getSettings(userId: number): Promise<TradingSettings> {
   await ensureUserDefaults(userId);
   const row = (await queryOne<TradingSettings>(
-    "SELECT * FROM trading_settings WHERE user_id = ?",
+    `SELECT user_id, per_trade_pct, allowed_assets,
+            forex_backend, send_screenshot, telegram_chat_id, onboarding_done,
+            alerts_enabled, alert_trades, alert_signals, updated_at
+       FROM trading_settings
+      WHERE user_id = ?`,
     [userId],
   ))!;
-  // Legacy rows store mode='advisory' — map to the new three-mode model.
-  row.mode = normalizeTradingMode(row.mode);
-  if (!row.execution_env_preference) {
-    row.execution_env_preference = "demo";
-  }
-  if (row.min_confidence == null || Number.isNaN(Number(row.min_confidence))) {
-    row.min_confidence = 80;
-  }
-  if (row.min_rr == null || Number.isNaN(Number(row.min_rr))) {
-    row.min_rr = 1;
-  }
-  row.trading_style = normalizeTradingStyle(row.trading_style);
-  if (
-    row.scalp_max_trades == null ||
-    Number.isNaN(Number(row.scalp_max_trades))
-  ) {
-    row.scalp_max_trades = 0;
-  }
-  if (row.scalp_enabled == null) row.scalp_enabled = 0;
-  if (row.scalp_execution_mode !== "live") row.scalp_execution_mode = "paper";
-  if (!row.analysis_interval) {
-    row.analysis_interval = "1h";
-  }
+  row.per_trade_pct = normalizeRiskPerTrade(row.per_trade_pct);
   return row;
 }
 
 export async function getLimits(userId: number): Promise<AdminLimits> {
   await ensureUserDefaults(userId);
   return (await queryOne<AdminLimits>(
-    "SELECT * FROM admin_limits WHERE user_id = ?",
+    `SELECT user_id, can_execute, claude_quota, updated_at
+       FROM admin_limits WHERE user_id = ?`,
     [userId],
   ))!;
 }
 
 const SETTABLE_FIELDS = [
-  "mode",
-  "approval",
-  "experience",
-  "style",
-  "max_capital",
   "per_trade_pct",
-  "max_open_trades",
-  "daily_profit_target_pct",
-  "daily_profit_target_usd",
-  "daily_loss_limit_pct",
-  "monthly_loss_limit_pct",
-  "auto_take_profit_usd",
   "allowed_assets",
-  "active_market",
   "forex_backend",
   "send_screenshot",
   "telegram_chat_id",
-  "risk_guard_enabled",
   "onboarding_done",
   "alerts_enabled",
   "alert_trades",
   "alert_signals",
-  "alert_min_confidence",
-  "min_confidence",
-  "min_rr",
-  "last_manual_scan_at",
-  "scan_poll_minutes",
-  "analysis_interval",
-  "execution_env_preference",
-  "futures_enabled",
-  "default_leverage",
-  "trading_style",
-  "scalp_max_trades",
-  "scalp_enabled",
-  "scalp_execution_mode",
 ] as const;
 
 export async function updateSettings(
@@ -261,7 +218,6 @@ export async function updateSettings(
         f === "alerts_enabled" ||
         f === "alert_trades" ||
         f === "alert_signals" ||
-        f === "futures_enabled" ||
         f === "send_screenshot"
       ) {
         if (val === 1 || val === "1") return true;
@@ -510,8 +466,6 @@ export async function updateUserCredentials(
 export interface AdminUserView extends PublicUser {
   has_mt5: number;
   can_execute: number;
-  max_capital_cap: number;
-  max_open_trades_cap: number;
   claude_quota: number;
   signup_via: "telegram" | "email";
 }
@@ -526,8 +480,6 @@ export async function listUsersForAdmin(): Promise<AdminUserView[]> {
               WHERE ec.user_id = u.id AND ec.status != 'revoked'
             ) AS has_mt5,
             COALESCE(a.can_execute, FALSE) AS can_execute,
-            COALESCE(a.max_capital_cap, 0) AS max_capital_cap,
-            COALESCE(a.max_open_trades_cap, 0) AS max_open_trades_cap,
             COALESCE(a.claude_quota, 1000) AS claude_quota
      FROM users u
      LEFT JOIN admin_limits a ON a.user_id = u.id
@@ -591,10 +543,7 @@ export async function setUserStatus(userId: number, status: string) {
 
 const ADMIN_LIMIT_FIELDS = [
   "can_execute",
-  "max_capital_cap",
-  "max_open_trades_cap",
   "claude_quota",
-  "max_leverage_cap",
 ] as const;
 
 export async function updateAdminLimits(
@@ -794,16 +743,11 @@ export async function updateRecommendationLevels(
 export async function updateRecommendationIntelligence(
   id: number,
   patch: {
-    committee_json?: string | null;
     memory_refs_json?: string | null;
   },
 ): Promise<void> {
   const fields: string[] = [];
   const params: unknown[] = [];
-  if ("committee_json" in patch) {
-    fields.push("committee_json = ?");
-    params.push(patch.committee_json ?? null);
-  }
   if ("memory_refs_json" in patch) {
     fields.push("memory_refs_json = ?");
     params.push(patch.memory_refs_json ?? null);
@@ -816,7 +760,6 @@ export async function updateRecommendationIntelligence(
   );
   await appendLegacyRecommendationUpdate(id, "updated", {
     intelligence: {
-      committeeUpdated: "committee_json" in patch,
       memoryRefsUpdated: "memory_refs_json" in patch,
     },
   });
@@ -966,7 +909,7 @@ export async function updateIntentStatus(
 }
 
 /**
- * Mark an intent failed AND persist the structured Risk Guard deny code, so
+ * Mark an intent failed and persist the structured technical deny code, so
  * "which rule blocked execution?" is queryable across every path (chat, scalp,
  * monitor) — not only readable from the localized Arabic reason text.
  */
@@ -1313,13 +1256,6 @@ export async function recordAlert(
   );
 }
 
-export async function touchManualScan(userId: number): Promise<void> {
-  await execute(
-    "UPDATE trading_settings SET last_manual_scan_at = datetime('now') WHERE user_id = ?",
-    [userId],
-  );
-}
-
 export async function listAlerts(
   userId: number,
   limit = 50,
@@ -1359,39 +1295,6 @@ export async function markAlertsRead(
     "UPDATE alert_log SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL",
     [userId],
   );
-}
-
-export interface TradeMaintenanceUser {
-  id: number;
-  settings: TradingSettings;
-  limits: AdminLimits;
-}
-
-/** Active users eligible for OCO sync / auto take-profit cron tasks. */
-export async function listUsersForTradeMaintenance(
-  limit = 10,
-): Promise<TradeMaintenanceUser[]> {
-  const rows = await query<{ id: number }>(
-    `SELECT u.id
-     FROM users u
-     JOIN trading_settings s ON s.user_id = u.id
-     JOIN admin_limits a ON a.user_id = u.id
-     WHERE u.status = 'active' AND u.role IN ('user', 'admin')
-       AND a.can_execute = 1 AND s.onboarding_done = 1
-       AND (s.mode = 'auto' OR s.auto_take_profit_usd > 0)
-     ORDER BY u.id ASC
-     LIMIT ?`,
-    [limit],
-  );
-  const out: TradeMaintenanceUser[] = [];
-  for (const r of rows) {
-    out.push({
-      id: r.id,
-      settings: await getSettings(r.id),
-      limits: await getLimits(r.id),
-    });
-  }
-  return out;
 }
 
 /** Agent-originated audit entries (bridge actions) for the activity timeline. */

@@ -38,7 +38,7 @@ export async function attachChartToRecommendation(
   if (rec.action === "wait") return { rec };
 
   const settings = await getSettings(userId);
-  const market = (rec.market ?? settings.active_market ?? DEFAULT_MARKET) as MarketType;
+  const market = (rec.market ?? DEFAULT_MARKET) as MarketType;
   const overlays = overlaysFromRecommendation(rec);
   const drawings =
     options.drawings ?? parseChartDrawingsJson(rec.chart_drawings_json);
@@ -92,7 +92,6 @@ export async function notifyRecommendation(
     stop_loss: rec.stop_loss,
     take_profit: rec.take_profit,
     profile,
-    style: settings.style,
   });
 
   const imageUrl = rec.chart_image_url;
@@ -102,7 +101,6 @@ export async function notifyRecommendation(
     title: `توصية ${rec.action === "buy" ? "شراء" : "بيع"} ${rec.symbol}`,
     text: caption,
     symbol: rec.symbol,
-    confidence: rec.confidence,
     photoUrl: settings.send_screenshot === 1 ? imageUrl : null,
     buttons: options.buttons,
   });

@@ -10,12 +10,6 @@
       "type": "string",
       "const": "forex"
     },
-    "confidence": {
-      "description": "Proposed confidence — advisory estimate for the agent",
-      "type": "number",
-      "minimum": 0,
-      "maximum": 100
-    },
     "practice": {
       "type": "boolean"
     }

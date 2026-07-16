@@ -24,10 +24,9 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         include_live?: boolean;
       };
       return bridgeCall(async () => {
-        // allSettled so a slow/failing live account never sinks the whole
-        // overview — risk + portfolio still return. live gets a bounded 10s.
+        // A slow/failing live account never sinks the technical overview.
         const settled = await Promise.allSettled([
-          bridge.get("/api/agent/risk/status"),
+          bridge.get("/api/agent/status"),
           bridge.get("/api/agent/portfolio"),
           include_live
             ? bridge.get("/api/agent/live/account", undefined, 10000)
@@ -45,7 +44,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           return unwrapBridgePayload(r.value);
         };
         return {
-          risk: val(settled[0]),
+          connection: val(settled[0]),
           portfolio: val(settled[1]),
           live: include_live ? val(settled[2]) : { skipped: true },
         };
@@ -54,26 +53,18 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
-    "get_risk_status",
-    mcpToolConfig("get_risk_status"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/risk/status")),
-  );
-
-  server.registerTool(
     "get_trade_readiness",
     mcpToolConfig("get_trade_readiness"),
     async (args) => {
-      const { symbol, market, confidence, practice } = args as {
+      const { symbol, market, practice } = args as {
         symbol?: string;
         market?: "forex";
-        confidence?: number;
         practice?: boolean;
       };
       return bridgeCall(() =>
         bridge.get("/api/agent/trade/readiness", {
           symbol,
           market,
-          confidence,
           practice: practice ? "true" : undefined,
         }),
       );
@@ -170,7 +161,6 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         intents,
         locale,
         market,
-        trading_mode: tradingMode,
         max_skills: maxSkills,
         allow_execution_skills: allowExecutionSkills,
       } = (args ?? {}) as {
@@ -178,7 +168,6 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         intents?: string[];
         locale?: "ar" | "en";
         market?: string;
-        trading_mode?: string;
         max_skills?: number;
         allow_execution_skills?: boolean;
       };
@@ -191,7 +180,6 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           intents,
           locale,
           market: market ?? "forex",
-          tradingMode,
           availableTools: ["render_cards"],
           maxSkills: maxSkills ?? 2,
           allowExecutionSkills: allowExecutionSkills === true,
@@ -256,7 +244,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
                   truncated: loaded.truncated,
                   content: loaded.content,
                   note:
-                    "Advisory guidance only — this skill grants no permissions and never overrides Risk Guard or execution controls.",
+                    "Evidence guidance only — this skill never overrides the model's market decision or technical execution controls.",
                 },
                 null,
                 2,
@@ -379,102 +367,9 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
-    "get_execution_env",
-    mcpToolConfig("get_execution_env"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/execution/env")),
-  );
-
-  server.registerTool(
-    "set_execution_env",
-    mcpToolConfig("set_execution_env"),
-    async (args) => {
-      const { preference } = args as { preference: string };
-      return bridgeCall(() =>
-        bridge.post("/api/agent/execution/env", { preference }),
-      );
-    },
-  );
-
-  server.registerTool(
-    "set_trading_mode",
-    mcpToolConfig("set_trading_mode"),
-    async (args) => {
-      const { mode } = args as { mode: string };
-      return bridgeCall(() => bridge.post("/api/agent/mode", { mode }));
-    },
-  );
-
-  server.registerTool(
     "get_agent_settings",
     mcpToolConfig("get_agent_settings"),
     bridgeWrap(bridge, () => bridge.get("/api/agent/settings")),
-  );
-
-  server.registerTool(
-    "set_active_market",
-    mcpToolConfig("set_active_market"),
-    async (args) => {
-      const { active_market } = args as { active_market?: string };
-      if (active_market && active_market !== "forex") {
-        return bridgeCall(async () => ({
-          ok: false,
-          error: "Platform is forex-only.",
-        }));
-      }
-      return bridgeCall(() =>
-        bridge.patch("/api/agent/settings", { active_market: "forex" }),
-      );
-    },
-  );
-
-  server.registerTool(
-    "get_trading_style",
-    mcpToolConfig("get_trading_style"),
-    async () => bridgeCall(() => bridge.get("/api/agent/style")),
-  );
-
-  server.registerTool(
-    "set_trading_style",
-    mcpToolConfig("set_trading_style"),
-    async (args) => {
-      const { trading_style, scalp_max_trades, sync_interval } = args as {
-        trading_style: string;
-        scalp_max_trades?: number;
-        sync_interval?: boolean;
-      };
-      return bridgeCall(() =>
-        bridge.post("/api/agent/style", {
-          trading_style,
-          scalp_max_trades,
-          sync_interval,
-        }),
-      );
-    },
-  );
-
-  server.registerTool(
-    "set_futures_enabled",
-    mcpToolConfig("set_futures_enabled"),
-    async (args) => {
-      const { futures_enabled } = args as { futures_enabled?: boolean };
-      if (futures_enabled) {
-        return bridgeCall(async () => ({
-          ok: false,
-          error: "Platform is forex-only.",
-        }));
-      }
-      return bridgeCall(() =>
-        bridge.patch("/api/agent/settings", {
-          futures_enabled: false,
-        }),
-      );
-    },
-  );
-
-  server.registerTool(
-    "run_trade_maintenance",
-    mcpToolConfig("run_trade_maintenance"),
-    bridgeWrap(bridge, () => bridge.post("/api/agent/maintenance")),
   );
 
   server.registerTool(

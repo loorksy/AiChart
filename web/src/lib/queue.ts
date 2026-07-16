@@ -11,6 +11,7 @@
 import { captureError } from "./errorReporting";
 import { createLogger } from "./logger";
 import { metrics } from "./metrics";
+import crypto from "node:crypto";
 
 const log = createLogger("queue");
 
@@ -93,18 +94,25 @@ async function getQueue(): Promise<import("bullmq").Queue> {
 export async function enqueue<N extends JobName>(
   name: N,
   payload: JobPayloads[N],
-  opts?: { delayMs?: number },
+  opts?: { delayMs?: number; idempotencyKey?: string },
 ): Promise<void> {
   await ensureJobsRegistered();
   const delayMs = Math.max(0, opts?.delayMs ?? 0);
   if (queueEnabled()) {
     try {
       const q = await getQueue();
+      const jobId = opts?.idempotencyKey
+        ? crypto
+            .createHash("sha256")
+            .update(`${name}:${opts.idempotencyKey}`)
+            .digest("hex")
+        : undefined;
       await q.add(name, payload, {
         attempts: 3,
         backoff: { type: "exponential", delay: 5_000 },
         removeOnComplete: 1_000,
         removeOnFail: 5_000,
+        ...(jobId ? { jobId } : {}),
         ...(delayMs > 0 ? { delay: delayMs } : {}),
       });
       return;

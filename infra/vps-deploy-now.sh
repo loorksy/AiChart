@@ -79,7 +79,7 @@ test -f src/lib/tradePostMortem.ts && log "tradePostMortem.ts OK"
 test -f src/lib/monitorRunner.ts && log "monitorRunner.ts OK"
 test -f src/app/api/cron/event-monitor/route.ts && log "event-monitor OK"
 grep -q event-monitor /etc/cron.d/aichart 2>/dev/null && log "cron event-monitor OK"
-grep -q cron/bots /etc/cron.d/aichart 2>/dev/null && log "cron bots OK"
+grep -q recommendation-sweep /etc/cron.d/aichart 2>/dev/null && log "cron recommendation-sweep OK"
 curl -fsS -o /dev/null -w "HTTPS %{http_code}\n" https://aichart.lork.cloud/ || true
 pm2 list | grep aichart || true
 log "Done"

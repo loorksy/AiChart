@@ -400,7 +400,7 @@ export function routeIntent(input: {
     !hasAnyIntent(intents, tradeExclusions) &&
     !cancelBlocksTrade
   ) {
-    intents.push(wantsScalp ? "scalp_recommendation" : "new_trade_analysis");
+    intents.push("new_trade_analysis");
   }
   if (hasAny(text, NEWS_WORDS)) intents.push("market_news");
   if (hasAny(text, ACCOUNT_WORDS)) intents.push("account_status");
@@ -423,7 +423,7 @@ type IntentFamily =
   | "general";
 
 function intentFamily(intent: AgentIntent): IntentFamily | null {
-  if (["new_trade_analysis", "scalp_recommendation", "chart_analysis", "analyze_with_user_drawings"].includes(intent)) return "analysis";
+  if (["new_trade_analysis", "chart_analysis", "analyze_with_user_drawings"].includes(intent)) return "analysis";
   if (["draw_active_recommendation", "explain_active_recommendation", "track_active_recommendation", "cancel_active_recommendation", "modify_active_recommendation"].includes(intent)) return "recommendation";
   if ([
     "draw_on_chart", "draw_trendline", "draw_support_resistance", "draw_poi_zones",
@@ -469,7 +469,6 @@ export function isUserDrawingMutation(intents: AgentIntent[]): boolean {
 export function needsMarketContext(intents: AgentIntent[]): boolean {
   return (
     intents.includes("new_trade_analysis") ||
-    intents.includes("scalp_recommendation") ||
     intents.includes("analyze_with_user_drawings") ||
     intents.includes("chart_analysis") ||
     intents.includes("draw_on_chart") ||
@@ -480,7 +479,6 @@ export function needsMarketContext(intents: AgentIntent[]): boolean {
     intents.includes("trade_management")
   );
 }
-
 export function isDrawingOnly(intents: AgentIntent[]): boolean {
   return (
     hasAnyIntent(intents, [
@@ -498,28 +496,20 @@ export function isDrawingOnly(intents: AgentIntent[]): boolean {
     ]) &&
     !hasAnyIntent(intents, [
       "new_trade_analysis",
-      "scalp_recommendation",
       "chart_analysis",
       "trade_execution",
       "trade_management",
     ])
   );
 }
-
 /** True when the user wants the STORED recommendation drawn (never recomputed). */
 export function isDrawActiveRecommendation(intents: AgentIntent[]): boolean {
   return (
     intents.includes("draw_active_recommendation") &&
     !hasAnyIntent(intents, [
       "new_trade_analysis",
-      "scalp_recommendation",
       "trade_execution",
       "trade_management",
     ])
   );
-}
-
-/** True when the message is a scalp recommendation request. */
-export function isScalpRecommendation(intents: AgentIntent[]): boolean {
-  return intents.includes("scalp_recommendation");
 }

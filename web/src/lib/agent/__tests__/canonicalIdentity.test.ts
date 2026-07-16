@@ -41,11 +41,11 @@ test("builtin fallback stays byte-identical to the SYSTEM.md core block", () => 
 
 test("canonical core carries the identity and the hard rules", () => {
   const core = canonicalIdentityCore();
-  assert.match(core, /The Expert/);
-  assert.match(core, /AiChart Trading Agent/);
-  assert.match(core, /Risk Guard is absolute/);
-  assert.match(core, /mandatory stop-loss/);
-  assert.match(core, /same language as the operator/);
+  assert.match(core, /chat-first Forex scalping assistant/);
+  assert.match(core, /sole authority for BUY, SELL, or WAIT/);
+  assert.match(core, /Risk per Trade is the only trading setting/);
+  assert.match(core, /valid stop-loss/);
+  assert.match(core, /operator's language/);
 });
 
 test("Smart Chart Agent prompt derives from the canonical core", () => {
@@ -55,22 +55,7 @@ test("Smart Chart Agent prompt derives from the canonical core", () => {
   );
   // The chart specialization keeps its methodology but never redefines identity.
   assert.match(SMART_CHART_AGENT_SYSTEM_PROMPT, /Chart runtime role/);
-  assert.doesNotMatch(SMART_CHART_AGENT_SYSTEM_PROMPT, /You are Lonora Smart Chart Agent/);
-});
-
-test("expert persona derives from the canonical core", async () => {
-  const { buildSystemPrompt } = await import("@/lib/persona");
-  const parts = await buildSystemPrompt({
-    mode: "approval",
-    style: "balanced",
-    experience: "expert",
-    daily_loss_limit_pct: 5,
-    daily_profit_target_pct: 5,
-  } as never);
-  assert.ok(
-    parts.static.startsWith(canonicalIdentityCore()),
-    "expert persona must start with the canonical identity core",
-  );
+  assert.doesNotMatch(SMART_CHART_AGENT_SYSTEM_PROMPT, /You are AiChart Smart Chart Agent/);
 });
 
 test("old V1 identities and analysis-only instructions are absent", () => {

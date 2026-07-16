@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import {
-  featureFlagSnapshot,
-  FEATURES,
-} from "@/lib/agent/featureFlags";
+import { featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import { isLLMConfigured } from "@/lib/llm";
 import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
 
@@ -22,7 +19,6 @@ export async function GET() {
       runtime: {
         llmConfigured: isLLMConfigured(),
         newsProviderConfigured: newsProviderConfigured(),
-        smartChartAgent: FEATURES.smartChartAgent(),
         nodeEnv: process.env.NODE_ENV ?? "production",
       },
     });

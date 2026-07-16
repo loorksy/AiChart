@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
-import { getSettings } from "@/lib/store";
 import { getUnifiedSnapshot } from "@/lib/markets";
 
 const MAX_INTERVALS = 5;
@@ -33,8 +32,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const settings = await getSettings(userId);
-    const rawMarket = searchParams.get("market") ?? settings.active_market;
+    const rawMarket = searchParams.get("market") ?? DEFAULT_MARKET;
     const marketErr = rejectNonForexMarket(rawMarket);
     if (marketErr) {
       return NextResponse.json({ error: marketErr }, { status: 400 });

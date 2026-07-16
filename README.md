@@ -12,8 +12,8 @@
 
 | المجلد | المحتوى |
 |--------|---------|
-| [`web/`](web) | تطبيق Next.js كامل: الواجهة + `/api/*` + وكيل الشارت الذكي + Risk Guard + مستودع الشموع |
-| [`mcp/`](mcp) | خادم MCP بعيد (Claude Connectors) — 59 أداة + مهارات + موارد |
+| [`web/`](web) | تطبيق Next.js كامل: الواجهة + `/api/*` + وكيل الشارت الذكي + حماية التنفيذ التقنية + مستودع الشموع |
+| [`mcp/`](mcp) | خادم MCP بعيد (Claude Connectors) — 50 أداة + مهارات + موارد |
 | [`agent/`](agent) | حزمة المحتوى القانوني: الدستور، المهارات، bootstrap، عقد الأدوات |
 | [`research-service/`](research-service) | خدمة أبحاث Python معزولة: باكتيست حتمي، تحقق إحصائي، Research Swarm |
 | [`ea/`](ea) | MetaTrader Expert Advisors (جسر التنفيذ) |

@@ -3,6 +3,7 @@ import { requirePlatformAccess, handleError } from "@/lib/api";
 import { parseAllowedAssets, isOpenAssetsPolicy } from "@/lib/allowedAssets";
 import { buildSymbolPerformance } from "@/lib/analytics";
 import { getSettings, listTrades } from "@/lib/store";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 
 type TickerRow = {
   symbol: string;
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
     const openPolicy = isOpenAssetsPolicy(settings.allowed_assets);
     const symbols = openPolicy
       ? performance.map((p) => p.symbol)
-      : parseAllowedAssets(settings.allowed_assets, settings.active_market);
+      : parseAllowedAssets(settings.allowed_assets, DEFAULT_MARKET);
 
     const tickers: Record<string, { price: number; changePct: number }> = {};
 

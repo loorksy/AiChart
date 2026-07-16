@@ -103,29 +103,25 @@ function baseInput(over: Partial<TradingPlaybookInput> = {}): TradingPlaybookInp
     },
     candidatesResult: makeCandidatesResult({ best: goodCandidate }),
     candidate: goodCandidate,
-    minRr: 1.5,
     ...over,
   };
 }
 
 describe("tradingPlaybook", () => {
-  it("passes a clean setup (canTrade=true, preferredAction=buy)", () => {
+  it("describes a clean setup without owning the decision", () => {
     const result = runTradingPlaybook(baseInput());
-    assert.equal(result.canTrade, true);
-    assert.equal(result.preferredAction, "buy");
     assert.equal(result.blockingReasons.length, 0);
-    assert.ok(result.checklist.length >= 13);
+    assert.ok(result.checklist.length >= 10);
   });
 
-  it("no candidate → canTrade=false, WAIT", () => {
+  it("describes missing candidates without producing a market decision", () => {
     const result = runTradingPlaybook(
       baseInput({ candidate: null, candidatesResult: makeCandidatesResult() }),
     );
-    assert.equal(result.canTrade, false);
-    assert.equal(result.preferredAction, "wait");
+    assert.equal(result.blockingReasons.length, 0);
   });
 
-  it("high news risk blocks the trade", () => {
+  it("high news risk remains evidence and never blocks", () => {
     const result = runTradingPlaybook(
       baseInput({
         news: {
@@ -138,11 +134,11 @@ describe("tradingPlaybook", () => {
         },
       }),
     );
-    assert.equal(result.canTrade, false);
-    assert.ok(result.blockingReasons.some((r) => r.includes("عالي التأثير")));
+    assert.equal(result.blockingReasons.length, 0);
+    assert.equal(result.checklist.find((i) => i.id === "news_risk")?.status, "warning");
   });
 
-  it("insufficient trade-gate data blocks the trade", () => {
+  it("insufficient data is a warning for the model", () => {
     const result = runTradingPlaybook(
       baseInput({
         market: makeMarket({
@@ -168,13 +164,12 @@ describe("tradingPlaybook", () => {
         }),
       }),
     );
-    assert.equal(result.canTrade, false);
     assert.ok(
-      result.checklist.find((i) => i.id === "data_quality")?.status === "fail",
+      result.checklist.find((i) => i.id === "data_quality")?.status === "warning",
     );
   });
 
-  it("mid-range position blocks the trade", () => {
+  it("mid-range position is evidence, not a decision gate", () => {
     const result = runTradingPlaybook(
       baseInput({
         rangePosition: {
@@ -188,7 +183,8 @@ describe("tradingPlaybook", () => {
         },
       }),
     );
-    assert.equal(result.canTrade, false);
+    assert.equal(result.blockingReasons.length, 0);
+    assert.equal(result.checklist.find((i) => i.id === "range_position")?.status, "warning");
   });
 
   it("HTF conflict with reversal evidence is a warning, not a block", () => {
@@ -201,9 +197,6 @@ describe("tradingPlaybook", () => {
         }),
       }),
     );
-    assert.equal(result.canTrade, true);
     assert.ok(result.warnings.some((r) => r.includes("انعكاس")));
-    // Warnings reduce confidence.
-    assert.ok(result.confidenceAdjustment < 0);
   });
 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/hooks/useLocale";
 import type { TelegramLoginPayload } from "@/lib/telegramAuth";
 
 declare global {
@@ -20,6 +21,7 @@ export function TelegramLoginButton({
   onError?: (msg: string) => void;
 }) {
   const router = useRouter();
+  const { t } = useLocale();
   const ref = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,13 +39,13 @@ export function TelegramLoginButton({
         });
         const data = await res.json();
         if (!res.ok) {
-          onError?.(data.error ?? "فشل تسجيل الدخول عبر تليجرام.");
+          onError?.(data.error ?? t("auth.telegram_error"));
           return;
         }
         router.push(data.redirect ?? "/console");
         router.refresh();
       } catch {
-        onError?.("تعذّر الاتصال بالخادم.");
+        onError?.(t("auth.network_error"));
       } finally {
         setBusy(false);
       }
@@ -64,7 +66,7 @@ export function TelegramLoginButton({
       delete window.onTelegramAuth;
       container.innerHTML = "";
     };
-  }, [botUsername, redirectTo, onError, router]);
+  }, [botUsername, redirectTo, onError, router, t]);
 
   return (
     <div className="space-y-2">
@@ -75,7 +77,7 @@ export function TelegramLoginButton({
       />
       {busy && (
         <p className="text-center text-xs text-muted-foreground">
-          جارٍ تسجيل الدخول وربط البوت…
+          {t("auth.telegram_busy")}
         </p>
       )}
     </div>

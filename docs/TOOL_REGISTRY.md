@@ -15,9 +15,8 @@ No shell, arbitrary HTTP/Python/file/database tool or live execution tool was in
 
 ## Canonical tool contract (live)
 
-`agent/tools/contract.json` is the canonical cross-surface contract: every production tool with name, version, description, permission, risk class, surfaces (web/mcp/research), executor mapping, idempotency, cancellation, timeout, telemetry, aliases and required feature flags. It is generated from the MCP `TOOL_CATALOG` plus the web-only tool table (`npm run contract:export` in `mcp/`; `schemas:check` fails on drift). Parity tests enforce it on both sides:
+`agent/tools/contract.json` is the canonical cross-surface contract: every production tool with name, version, description, permission, risk class, surfaces (web/mcp), executor mapping, idempotency, cancellation, timeout, telemetry, aliases and required feature flags. It is generated from the MCP `TOOL_CATALOG`; tools served through the in-app API carry the `web` surface marker (`npm run contract:export` in `mcp/`; `schemas:check` fails on drift).
 
 - `mcp/src/tools/__tests__/contractParity.test.ts` — every registered MCP tool exists in the contract; read-only tools are never execution-classed; high-risk tools are explicitly `execution` + server controlled.
-- `web/src/lib/__tests__/toolContractParity.test.ts` — every web `TOOLS` entry maps to the contract (name or alias, e.g. `get_price`→`get_market_price`, `record_recommendation`→`create_recommendation`); `open_trade` requires `stop_loss`; execution tools never use a web-local executor.
 
-Execution authority remains server-side (Risk Guard + explicit approval + tenant auth + idempotency) regardless of what any model, skill, or MCP client requests.
+Execution authority remains server-side (technical execution safety + explicit approval + tenant auth + idempotency) regardless of what any model, skill, or MCP client requests.

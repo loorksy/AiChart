@@ -16,10 +16,7 @@
 import type { AgentCandle, SupplyDemandZone, TrendLabel } from "../marketContext/detectors";
 import type { StructureEvent } from "../marketContext/structureEvents";
 import type { LiquiditySweep } from "../marketContext/liquiditySweeps";
-import {
-  positionDisfavorsAction,
-  type RangePosition,
-} from "../marketContext/rangePosition";
+import type { RangePosition } from "../marketContext/rangePosition";
 import { scorePoi, type PoiScore, type ScorePoiInput } from "./scorePoi";
 
 export type TradeCandidate = {
@@ -63,7 +60,6 @@ export interface BuildTradeCandidatesInput {
   sweeps: LiquiditySweep[];
   rangePosition: RangePosition | null;
   htfLevels: number[];
-  minRr: number;
   newsRisk: "low" | "medium" | "high" | "unknown";
   spread?: number | null;
 }
@@ -75,8 +71,6 @@ export interface TradeCandidatesResult {
   hasReversalEvidence: boolean;
 }
 
-const MAX_ENTRY_DISTANCE_ATR = 1.5;
-const CONSUMED_PROGRESS = 0.33;
 const MIN_TICK_MULTIPLIER = 8;
 
 export function buildTradeCandidates(
@@ -85,15 +79,6 @@ export function buildTradeCandidates(
   const rejectedReasons: string[] = [];
   const hasReversalEvidence = detectReversalEvidence(input);
 
-  // Global gates that make ANY candidate invalid.
-  if (input.newsRisk === "high") {
-    return {
-      candidates: [],
-      best: null,
-      rejectedReasons: ["خطر إخباري مرتفع يمنع أي صفقة الآن."],
-      hasReversalEvidence,
-    };
-  }
   if (!(input.currentPrice > 0) || !input.zones.length) {
     return {
       candidates: [],
@@ -109,39 +94,10 @@ export function buildTradeCandidates(
   for (const zone of input.zones) {
     const action: "buy" | "sell" = zone.type === "demand" ? "buy" : "sell";
 
-    // Zone must be on the actionable side of price (retest entry, no chasing).
-    if (action === "buy" && zone.high > input.currentPrice) continue;
-    if (action === "sell" && zone.low < input.currentPrice) continue;
-
     const poiScore = scorePoi(buildScoreInput(input, zone));
-    if (!poiScore.isTradable) {
-      rejectedReasons.push(
-        `منطقة ${zone.type === "demand" ? "طلب" : "عرض"} رُفضت: قوة ${poiScore.score} أقل من الحد.`,
-      );
-      continue;
-    }
 
     // Direction discipline vs HTF and structure.
     const setup = classifySetup(input, action, hasReversalEvidence);
-    if (!setup.allowed) {
-      rejectedReasons.push(setup.reason);
-      continue;
-    }
-
-    // Range-position discipline: no buys from premium, no sells from discount,
-    // and nothing from mid-range unless this is a confirmed reversal.
-    if (
-      input.rangePosition &&
-      positionDisfavorsAction(input.rangePosition.label, action) &&
-      setup.type !== "reversal_after_sweep"
-    ) {
-      rejectedReasons.push(
-        action === "buy"
-          ? "موضع السعر داخل النطاق لا يناسب الشراء (منطقة عالية/وسط النطاق)."
-          : "موضع السعر داخل النطاق لا يناسب البيع (منطقة منخفضة/وسط النطاق).",
-      );
-      continue;
-    }
 
     // Levels: entry at the zone edge, stop buffered beyond the POI. Never place
     // SL exactly on the obvious zone boundary; that is where noise/liquidity
@@ -155,10 +111,16 @@ export function buildTradeCandidates(
     const stop = action === "buy" ? zone.low - buffer : zone.high + buffer;
     const risk = Math.abs(entry - stop);
     if (!(risk > 0)) continue;
-    const target =
-      action === "buy"
-        ? entry + risk * Math.max(input.minRr, 2)
-        : entry - risk * Math.max(input.minRr, 2);
+    const structuralTargets = [
+      ...input.htfLevels,
+      ...input.zones.flatMap((candidateZone) => [candidateZone.low, candidateZone.high]),
+    ].filter((level) => action === "buy" ? level > entry : level < entry);
+    const volatilityTarget = action === "buy"
+      ? entry + (input.atr && input.atr > 0 ? input.atr : risk)
+      : entry - (input.atr && input.atr > 0 ? input.atr : risk);
+    const target = action === "buy"
+      ? Math.min(...structuralTargets, volatilityTarget)
+      : Math.max(...structuralTargets, volatilityTarget);
     const rr = Math.abs(target - entry) / risk;
     const entryType = classifyEntryType({
       action,
@@ -171,41 +133,11 @@ export function buildTradeCandidates(
       }),
     });
 
-    // Spread sanity: SL must not sit inside spread noise.
-    if (input.spread && risk < input.spread * 5) {
-      rejectedReasons.push("وقف الخسارة أقرب من هامش السبريد الآمن.");
-      continue;
-    }
-
-    // Entry distance: if price already ran too far, the entry is missed.
-    const atr = input.atr && input.atr > 0 ? input.atr : risk;
-    if (input.atr && risk > input.atr * 4) {
-      rejectedReasons.push("توسيع وقف الخسارة بالبافر أضعف الإعداد وجعل المخاطرة كبيرة جداً.");
-      continue;
-    }
-    const entryDistanceAtr = Math.abs(input.currentPrice - entry) / atr;
-    if (entryDistanceAtr > MAX_ENTRY_DISTANCE_ATR) {
-      rejectedReasons.push("السعر ابتعد كثيراً عن منطقة الدخول — الدخول فات.");
-      continue;
-    }
-
-    const consumed = consumedSetupState({
-      action,
-      entry,
-      target,
-      currentPrice: input.currentPrice,
-    });
-    if (!consumed.ok) {
-      rejectedReasons.push(consumed.reason);
-      continue;
-    }
-
-    if (rr < input.minRr) {
-      rejectedReasons.push(
-        `العائد/المخاطرة ${rr.toFixed(2)} أقل من الحد الأدنى ${input.minRr}.`,
-      );
-      continue;
-    }
+    const warnings = [...poiScore.warnings, ...(setup.warnings ?? [])];
+    if (!poiScore.isTradable) warnings.push(`درجة POI منخفضة (${poiScore.score}).`);
+    if (input.newsRisk === "high") warnings.push("حدث إخباري عالي التأثير قريب.");
+    if (input.htfConflict) warnings.push("يوجد تعارض مع الفريم الأعلى.");
+    if (input.spread && risk < input.spread * 5) warnings.push("الوقف قريب من السبريد.");
 
     candidates.push({
       id: `tc-${idSeq++}`,
@@ -218,7 +150,7 @@ export function buildTradeCandidates(
       rr,
       setupType: setup.type,
       evidence: [...setup.evidence, ...poiScore.reasons],
-      warnings: [...poiScore.warnings, ...(setup.warnings ?? [])],
+      warnings,
       invalidationReason:
         action === "buy"
           ? `إغلاق شمعة تحت ${stop.toFixed(5)} يُبطل السيناريو.`
@@ -251,9 +183,7 @@ function classifySetup(
   input: BuildTradeCandidatesInput,
   action: "buy" | "sell",
   hasReversalEvidence: boolean,
-):
-  | { allowed: true; type: TradeCandidate["setupType"]; evidence: string[]; warnings?: string[] }
-  | { allowed: false; reason: string } {
+): { allowed: true; type: TradeCandidate["setupType"]; evidence: string[]; warnings?: string[] } {
   const wantBias = action === "buy" ? "bullish" : "bearish";
   const trendAligned =
     (action === "buy" && input.trend === "uptrend") ||
@@ -267,9 +197,10 @@ function classifySetup(
   // HARD RULE: trading against the higher timeframe requires reversal evidence.
   if ((input.htfConflict || directionConflictsHtf) && !hasReversalEvidence) {
     return {
-      allowed: false,
-      reason:
-        "تعارض مع الفريم الأعلى دون دليل انعكاس (سحب سيولة + CHoCH/MSS) — لا صفقة.",
+      allowed: true,
+      type: "breakout_retest",
+      evidence: ["منطقة سعرية قابلة للتقييم."],
+      warnings: ["تعارض مع الفريم الأعلى دون دليل انعكاس مؤكد."],
     };
   }
 
@@ -294,8 +225,10 @@ function classifySetup(
     );
     if (!bosSupport && !reversalConfirmed) {
       return {
-        allowed: false,
-        reason: "الاتجاه وحده لا يكفي — لا يوجد كسر هيكل يدعم الاستمرار.",
+        allowed: true,
+        type: "trend_continuation",
+        evidence: [`اتجاه ${action === "buy" ? "صاعد" : "هابط"}.`],
+        warnings: ["لا يوجد كسر هيكل حديث يدعم الاستمرار."],
       };
     }
     return {
@@ -334,17 +267,18 @@ function classifySetup(
       };
     }
     return {
-      allowed: false,
-      reason: "سوق عرضي دون رفض واضح عند حد النطاق — لا صفقة.",
+      allowed: true,
+      type: "range_boundary",
+      evidence: ["منطقة عند نطاق عرضي."],
+      warnings: ["لا يوجد رفض هيكلي واضح عند حد النطاق."],
     };
   }
 
   return {
-    allowed: false,
-    reason:
-      action === "buy"
-        ? "لا دليل هيكلي يدعم الشراء هنا (لا استمرار مؤكد ولا انعكاس مؤكد)."
-        : "لا دليل هيكلي يدعم البيع هنا (لا استمرار مؤكد ولا انعكاس مؤكد).",
+    allowed: true,
+    type: "breakout_retest",
+    evidence: [`منطقة ${action === "buy" ? "طلب" : "عرض"} قابلة للتقييم.`],
+    warnings: ["الدليل الهيكلي محدود."],
   };
 }
 
@@ -377,32 +311,6 @@ function classifyEntryType(input: {
     return input.entry < input.currentPrice ? "buy_limit" : "buy_stop";
   }
   return input.entry > input.currentPrice ? "sell_limit" : "sell_stop";
-}
-
-function consumedSetupState(input: {
-  action: "buy" | "sell";
-  entry: number;
-  target: number;
-  currentPrice: number;
-}): { ok: true } | { ok: false; reason: string } {
-  if (input.action === "buy") {
-    if (input.currentPrice >= input.target) {
-      return { ok: false, reason: "السعر وصل إلى الهدف أو تجاوزه قبل الدخول — الإعداد انتهى." };
-    }
-    const progress = (input.currentPrice - input.entry) / (input.target - input.entry);
-    if (progress >= CONSUMED_PROGRESS) {
-      return { ok: false, reason: "السعر قطع أكثر من ثلث الطريق نحو الهدف — لا نطارد الدخول." };
-    }
-    return { ok: true };
-  }
-  if (input.currentPrice <= input.target) {
-    return { ok: false, reason: "السعر وصل إلى الهدف أو تجاوزه قبل الدخول — الإعداد انتهى." };
-  }
-  const progress = (input.entry - input.currentPrice) / (input.entry - input.target);
-  if (progress >= CONSUMED_PROGRESS) {
-    return { ok: false, reason: "السعر قطع أكثر من ثلث الطريق نحو الهدف — لا نطارد الدخول." };
-  }
-  return { ok: true };
 }
 
 function entryTolerance(input: {

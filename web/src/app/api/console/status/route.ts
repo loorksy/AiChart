@@ -10,8 +10,6 @@ import {
 
 } from "@/lib/executionEnv";
 
-import { DEFAULT_MARKET } from "@/lib/marketPolicy";
-
 import { getSettings } from "@/lib/store";
 
 import { getForexConnectionView } from "@/lib/forexConnection";
@@ -60,11 +58,9 @@ export async function GET() {
 
         label: executionEnvLabelAr(activeEnv),
 
-        mismatch: Boolean(executionEnv.mismatch),
+        available: executionEnv.forex.online,
 
       },
-
-      active_market: DEFAULT_MARKET,
 
     });
 

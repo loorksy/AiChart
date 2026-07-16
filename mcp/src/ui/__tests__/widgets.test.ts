@@ -26,7 +26,7 @@ describe("MCP UI resources", () => {
     assert.equal((meta.ui as { resourceUri: string }).resourceUri, uri);
     assert.equal(meta[RESOURCE_URI_META_KEY], uri);
     assert.equal(meta["openai/outputTemplate"], skybridgeUri("analysis"));
-    assert.equal(meta["openai/toolInvocation/invoking"], "تشغيل Lonora...");
+    assert.equal(meta["openai/toolInvocation/invoking"], "تشغيل AiChart...");
     const origin = publicAssetOrigin();
     assert.deepEqual(meta["openai/widgetCSP"], {
       connect_domains: [origin],
@@ -60,13 +60,11 @@ describe("MCP UI resources", () => {
 });
 
 describe("structured tool text fallback", () => {
-  it("formats account overview with bridge risk envelope", () => {
+  it("formats account overview from verified broker facts", () => {
     const text = formatToolTextFallback({
       risk: {
         ok: true,
         data: {
-          mode: "auto",
-          capital: { perTradeMaxUsd: 250, effectiveCapital: 5000 },
         },
       },
       portfolio: { forex: { ea: { balance: 86.4, equity: 84.62, online: true } }, openTrades: [] },
@@ -81,8 +79,6 @@ describe("structured tool text fallback", () => {
     });
     assert.ok(text?.includes("86.4"));
     assert.ok(text?.includes("84.62"));
-    assert.ok(text?.includes("250"));
-    assert.ok(text?.includes("5000"));
   });
 
   it("marks stale EA open PnL as unavailable", () => {

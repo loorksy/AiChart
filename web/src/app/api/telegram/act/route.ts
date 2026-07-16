@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   }
 
   return new NextResponse(
-    htmlPage("فشل التنفيذ", result.reason ?? "رفض Risk Guard أو الوسيط.", false),
+    htmlPage("فشل التنفيذ", result.reason ?? "تعذّر اجتياز فحوص التنفيذ أو رفض الوسيط الطلب.", false),
     { status: 422, headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
 }

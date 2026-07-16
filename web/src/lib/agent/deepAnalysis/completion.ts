@@ -8,7 +8,6 @@ import { getResearchJob } from "@/lib/research/client";
 import {
   appendRecommendationHistory,
   getCanonicalRecommendation,
-  transitionRecommendation,
 } from "@/lib/recommendations/canonical/repository";
 import { isTerminalRecommendationStatus } from "@/lib/recommendations/canonical/stateMachine";
 import {
@@ -48,7 +47,7 @@ function emptyBundle(
   agreementNote: string,
 ): ResearchEvidenceBundle {
   return {
-    policyVersion: "1.1.0",
+    evidenceVersion: "1.1.0",
     contributions: [
       {
         system: "backtest",
@@ -58,10 +57,10 @@ function emptyBundle(
             ? "insufficient_historical_metrics"
             : "deep_analysis_completed",
         reasonDetail: agreementNote,
-        confidenceDelta: delta,
+        evidenceTendency: delta,
       },
     ],
-    recommendationConfidenceDelta: delta,
+    historicalEvidenceTendency: delta,
     summaryAr: "",
     summaryEn: "",
     timeline: [],
@@ -80,8 +79,8 @@ function emptyBundle(
 }
 
 /**
- * Score completed research job into a reliability-based confidence delta.
- * Presence of a job alone must not raise confidence.
+ * Score completed research into a bounded evidence tendency for context only.
+ * Presence of a job alone never changes the recommendation or its confidence.
  */
 export function scoreCompletedResearchJob(job: {
   status?: string;
@@ -375,7 +374,6 @@ async function finalizeSuccess(
     { deeperVerification: "completed" },
   );
 
-  let suspendRecommendation = false;
   const recommendationId =
     run.recommendationId ??
     (await resolveCanonicalRecommendationId(run.userId, run.recommendationRef));
@@ -405,7 +403,7 @@ async function finalizeSuccess(
           status: "completed_ignored_terminal",
           originalStatus: rec.status,
           originalDecisionPreserved: true,
-          confidenceDelta: scored.delta,
+          historicalEvidenceTendency: scored.delta,
           executionTriggered: false,
         },
       });
@@ -421,46 +419,21 @@ async function finalizeSuccess(
           status: "completed",
           originalDirection: rec.direction,
           originalConfidence: rec.confidence,
-          confidenceDelta: scored.delta,
+          historicalEvidenceTendency: scored.delta,
           agreement: scored.agreement,
           metricsPresent: scored.metricsPresent,
           executionTriggered: false,
         },
       });
 
-      // If historical evidence conflicts strongly, suspend via state machine.
-      if (scored.delta <= -0.05) {
-        suspendRecommendation = true;
-        try {
-          await transitionRecommendation({
-            userId: run.userId,
-            recommendationId,
-            toStatus: "invalidated",
-            trigger: "deep_analysis_conflict",
-            actor: "deep_analysis",
-            source: "research_service",
-            reason:
-              "Historical verification conflicted with the setup; recommendation suspended.",
-            metadata: {
-              analysisId: run.analysisId,
-              confidenceDelta: scored.delta,
-              executionTriggered: false,
-            },
-          });
-        } catch (err) {
-          log.info("invalidation skipped", {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
     }
   }
 
-  if (suspendRecommendation) {
+  if (scored.delta < 0) {
     projection.historicalAgreement = "conflicts";
     projection.notes = [
       ...projection.notes,
-      "Recommendation suspended after conflicting historical evidence.",
+      "Historical evidence conflicts with the live thesis; the original analytical decision remains unchanged.",
     ];
   }
 

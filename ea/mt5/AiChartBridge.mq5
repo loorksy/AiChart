@@ -35,7 +35,6 @@ long    g_acked_ids[32];
 int     g_acked_count = 0;
 int     g_hb_failures = 0;
 int     g_quote_failures = 0;
-bool    g_trading_halted = false;
 datetime g_last_sync_hb = 0;
 datetime g_last_hb_time = 0;
 datetime g_last_quote_flush = 0;
@@ -724,12 +723,6 @@ void HandleCommand(string obj)
 
    if(type == "open_market")
    {
-      // FIX: 6 — reject new trades while kill switch active
-      if(g_trading_halted)
-      {
-         AckCommand(id, "failed", 0, 0, 0, "kill switch active");
-         return;
-      }
       string symRaw = PayloadStrVal(payload, obj, "symbol");
       string sym  = ResolveBrokerSymbol(symRaw);
       string side = PayloadStrVal(payload, obj, "side");
@@ -767,11 +760,6 @@ void HandleCommand(string obj)
    }
    else if(type == "open_pending")
    {
-      if(g_trading_halted)
-      {
-         AckCommand(id, "failed", 0, 0, 0, "kill switch active");
-         return;
-      }
       string symRaw = PayloadStrVal(payload, obj, "symbol");
       string sym = ResolveBrokerSymbol(symRaw);
       string side = PayloadStrVal(payload, obj, "side");
@@ -1608,19 +1596,7 @@ void SendTradeEvent(string eventType, string sym, long dealId)
    HttpPost("/api/ea/event", body, resp);
 }
 
-// FIX: 6 — close every open position (kill switch)
-void CloseAllPositions()
-{
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      uint retcode = 0;
-      TryPositionClose(ticket, retcode);
-   }
-}
-
-// FIX: 6 — parse server flags from heartbeat JSON (kill switch + reconnect)
+// Parse technical reconnect/resync flags from heartbeat JSON.
 void ProcessHeartbeatFlags(string resp)
 {
    int fi = StringFind(resp, "\"flags\"");
@@ -1646,27 +1622,8 @@ void ProcessHeartbeatFlags(string resp)
    }
    if(flagsBlock == "") return;
 
-   bool killOn = JsonBool(flagsBlock, "kill_switch");
-   bool closeOpen = JsonBool(flagsBlock, "close_open_trades");
    bool reconnect = JsonBool(flagsBlock, "reconnect");
    bool resyncCandles = JsonBool(flagsBlock, "resync_candles");
-
-   if(killOn && !g_trading_halted)
-   {
-      g_trading_halted = true;
-      Print("AiChartBridge: KILL SWITCH active — new trades blocked.");
-   }
-   else if(!killOn && g_trading_halted)
-   {
-      g_trading_halted = false;
-      Print("AiChartBridge: Kill switch cleared — trading resumed.");
-   }
-
-   if(closeOpen)
-   {
-      Print("AiChartBridge: Kill switch requested close of all open positions.");
-      CloseAllPositions();
-   }
 
    if(reconnect || resyncCandles)
       HandleServerReconnect(reconnect, resyncCandles);

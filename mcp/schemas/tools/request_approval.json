@@ -12,10 +12,6 @@
         "sell"
       ]
     },
-    "notional": {
-      "type": "number",
-      "exclusiveMinimum": 0
-    },
     "market": {
       "type": "string",
       "const": "forex"
@@ -46,7 +42,8 @@
   },
   "required": [
     "symbol",
-    "side"
+    "side",
+    "stop_loss"
   ],
   "additionalProperties": false
 }

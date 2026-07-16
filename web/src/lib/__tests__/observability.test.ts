@@ -3,11 +3,14 @@ import { test } from "node:test";
 
 test("metrics registry renders incremented counters in Prometheus format", async () => {
   const { metrics, renderMetrics } = await import("../metrics");
-  metrics.riskDenials.inc({ code: "RISK_LIMIT" });
+  metrics.executionDenials.inc({ code: "VALIDATION_ERROR" });
   metrics.tradesExecuted.inc({ broker: "mt5_local", market: "forex" });
   metrics.jobs.inc({ name: "opportunity_scan", status: "completed" });
   const out = await renderMetrics();
-  assert.match(out, /aichart_risk_denials_total\{[^}]*code="RISK_LIMIT"[^}]*\}\s+1/);
+  assert.match(
+    out,
+    /aichart_execution_denials_total\{[^}]*code="VALIDATION_ERROR"[^}]*\}\s+1/,
+  );
   assert.match(out, /aichart_trades_executed_total/);
   assert.match(out, /aichart_jobs_total/);
   // default process metrics are registered too

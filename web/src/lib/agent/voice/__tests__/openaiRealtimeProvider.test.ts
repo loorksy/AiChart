@@ -23,7 +23,7 @@ interface Spies {
   sentAuth?: string;
 }
 
-function installBrowserMocks(spies: Spies) {
+function installBrowserMocks(spies: Spies, { autoOpen = true }: { autoOpen?: boolean } = {}) {
   const track = {
     kind: "audio",
     enabled: true,
@@ -36,7 +36,7 @@ function installBrowserMocks(spies: Spies) {
     getTracks: () => [track],
   };
   const dc = {
-    readyState: "connecting",
+    readyState: "connecting" as RTCDataChannelState,
     listeners: {} as Record<string, (e: unknown) => void>,
     addEventListener(type: string, cb: (e: unknown) => void) {
       this.listeners[type] = cb;
@@ -57,7 +57,12 @@ function installBrowserMocks(spies: Spies) {
       return { sdp: "v=0-offer", type: "offer" };
     }
     async setLocalDescription() {}
-    async setRemoteDescription() {}
+    async setRemoteDescription() {
+      if (autoOpen) {
+        dc.readyState = "open";
+        dc.listeners.open?.({});
+      }
+    }
     getSenders() {
       return [{ track }];
     }
@@ -147,5 +152,25 @@ describe("openaiRealtimeProvider lifecycle + cleanup", () => {
     });
     await assert.rejects(() => provider.start());
     assert.ok(events.some((e) => e.kind === "error" && e.code === "unsupported_browser"));
+  });
+
+  it("fails within a finite timeout when the data channel never opens", async () => {
+    const spies: Spies = { trackStopped: 0, pcClosed: 0, dcClosed: 0, audioPaused: 0 };
+    const { restore } = installBrowserMocks(spies, { autoOpen: false });
+    restoreFn = restore;
+    const events: VoiceProviderEvent[] = [];
+    const provider = createOpenAIRealtimeProvider({
+      credential,
+      locale: "en",
+      onEvent: (e) => events.push(e),
+      connectTimeoutMs: 10,
+    });
+
+    await assert.rejects(
+      () => provider.start(),
+      (error: unknown) => (error as { code?: string }).code === "webrtc_failed",
+    );
+    assert.ok(events.some((event) => event.kind === "status" && event.status === "connecting"));
+    await provider.stop();
   });
 });

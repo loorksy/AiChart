@@ -42,7 +42,6 @@ const finalDecision: FinalDecisionResult = {
   riskWarnings: [],
   recommendation: { action: "wait" },
   publicReasoningSummary: [],
-  riskVeto: false,
 };
 
 describe("drawingAgent (plan-only)", () => {

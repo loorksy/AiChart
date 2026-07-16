@@ -1,7 +1,7 @@
 /**
  * Voice trading-safety guard. Voice never weakens execution confirmation: a
  * spoken affirmation only counts as a confirmation when it is bound to a pending
- * action that the authoritative Lonora agent actually proposed (requires
+ * action that the authoritative AiChart agent actually proposed (requires
  * confirmation) for THIS user + chat, and only within a short expiry, and only
  * once per transcript event.
  *
@@ -51,7 +51,7 @@ export class VoiceConfirmationGuard {
   private pending: PendingConfirmation | null = null;
   private readonly consumedTranscriptIds = new Set<string>();
 
-  /** Arm a pending confirmation because Lonora asked the user to confirm. */
+  /** Arm a pending confirmation because AiChart asked the user to confirm. */
   arm(input: {
     userId: number;
     chatId: string;

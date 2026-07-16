@@ -75,8 +75,6 @@
         "ok": true,
         "server_time": "ISO8601",
         "flags": {
-          "kill_switch": false,
-          "close_open_trades": false,
           "reconnect": "optional — server requests EA bridge re-sync",
           "resync_candles": "optional — force candle push on next heartbeat"
         },

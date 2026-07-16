@@ -32,12 +32,12 @@ source "$ENV_FILE"
 set +a
 
 psql "$DATABASE_URL" -t -c "
-SELECT active_market, allowed_assets
+SELECT allowed_assets
 FROM trading_settings ts
 JOIN users u ON u.id = ts.user_id
 WHERE u.role = 'admin'
 ORDER BY u.id LIMIT 1;
-" | grep -q forex && ok "active_market=forex" || fail "active_market not forex"
+" | grep -Eq 'EURUSD|GBPUSD|USDJPY|XAUUSD' && ok "forex watchlist configured" || fail "forex watchlist missing"
 
 if [[ -x "$INSTALL_DIR/infra/vps-ea-api-test.sh" ]]; then
   bash "$INSTALL_DIR/infra/vps-ea-api-test.sh" | head -c 1200

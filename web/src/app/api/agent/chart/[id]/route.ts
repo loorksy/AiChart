@@ -27,7 +27,7 @@ export async function GET(
     }
 
     const settings = await getSettings(userId);
-    const market = (rec.market ?? settings.active_market ?? DEFAULT_MARKET) as MarketType;
+    const market = (rec.market ?? DEFAULT_MARKET) as MarketType;
 
     const buffer = await buildChartSnapshotBufferForMarket(
       userId,

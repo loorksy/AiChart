@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/lib/cronAuth";
 import { withLock } from "@/lib/locks";
-import {
-  getLimits,
-  getSettings,
-  listUsersForDailySummary,
-  logAudit,
-} from "@/lib/store";
+import { listUsersForDailySummary, logAudit } from "@/lib/store";
 import { sendDailySummary } from "@/lib/dailySummary";
 
 export const maxDuration = 120;
@@ -25,13 +20,7 @@ export async function POST(req: NextRequest) {
 
   for (const { id, chatId } of users) {
     try {
-      const settings = await getSettings(id);
-      const limits = await getLimits(id);
-      const capital =
-        limits.max_capital_cap > 0
-          ? Math.min(settings.max_capital, limits.max_capital_cap)
-          : settings.max_capital;
-      await sendDailySummary(chatId, id, capital);
+      await sendDailySummary(chatId, id, 0);
       sent++;
     } catch (e) {
       errors.push(

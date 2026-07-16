@@ -37,6 +37,13 @@ import type { ChatImagePayload } from "@/lib/chatImage";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { Recommendation } from "@/lib/types";
+import {
+  LOCALE_STORAGE_KEY,
+  dirForLocale,
+  isAppLocale,
+  type AppLocale,
+  type Direction,
+} from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 declare global {
@@ -152,6 +159,10 @@ interface Props {
   eaEnabled?: boolean;
   /** Active data source for the current symbol. */
   dataSource?: "oanda" | "ea";
+  /** TradingView language is selected when the widget is created. */
+  locale?: AppLocale;
+  direction?: Direction;
+  theme?: "light" | "dark";
   className?: string;
   onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
   onIntervalChange?: (interval: string) => void;
@@ -191,6 +202,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     headerActions,
     eaEnabled = false,
     dataSource = "oanda",
+    locale = "ar",
+    direction = "rtl",
+    theme = "dark",
     className,
     onSymbolChange,
     onIntervalChange,
@@ -204,7 +218,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const [ready, setReady] = useState(false);
   const headerButtonsRef = useRef<Map<string, HTMLElement>>(new Map());
   const headerActionsRef = useRef<TvHeaderAction[] | undefined>(headerActions);
+  const directionRef = useRef<Direction>(direction);
   headerActionsRef.current = headerActions;
+  directionRef.current = direction;
   // Stable indirection so the mount effect can call the latest applyDrawings.
   const applyDrawingsRef = useRef<() => void>(() => {});
   const pushSyncRef = useRef(false);
@@ -324,6 +340,10 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     const bootInterval = interval;
     const bootMarket = market;
     const bootEa = eaEnabled;
+    const persistedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    const bootLocale = isAppLocale(persistedLocale) ? persistedLocale : locale;
+    const bootDirection = dirForLocale(bootLocale);
+    const bootTheme = theme;
 
     void (async () => {
       try {
@@ -348,8 +368,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           }),
           symbol: bootSymbol,
           interval: toResolution(bootInterval),
-          locale: "ar",
-          theme: "dark",
+          locale: bootLocale,
+          theme: bootTheme,
           autosize: true,
           timezone: "Etc/UTC",
           disabled_features: [
@@ -365,10 +385,12 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           ],
           enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
           overrides: {
-            "paneProperties.background": "#0f1115",
+            "paneProperties.background": bootTheme === "dark" ? "#0f1115" : "#ffffff",
             "paneProperties.backgroundType": "solid",
           },
-          loading_screen: { backgroundColor: "#0f1115" },
+          loading_screen: {
+            backgroundColor: bootTheme === "dark" ? "#0f1115" : "#ffffff",
+          },
         };
 
         const w = new window.TradingView.widget(options);
@@ -381,7 +403,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             const el = w.createButton();
             el.textContent = a.text;
             if (a.title) el.setAttribute("title", a.title);
-            el.style.direction = "rtl";
+            el.dir = bootDirection;
+            el.style.direction = bootDirection;
             el.style.fontWeight = "600";
             el.style.whiteSpace = "nowrap";
             el.style.cursor = a.onClick ? "pointer" : "default";
@@ -534,8 +557,26 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     }
   }, [headerActions]);
 
+  // Theme and header direction can change without remounting the widget, so
+  // drawings and the user's current chart state remain intact.
+  useEffect(() => {
+    const w = widgetRef.current;
+    if (w && readyRef.current) {
+      void w.changeTheme(theme).then(() => {
+        w.applyOverrides({
+          "paneProperties.background": theme === "dark" ? "#0f1115" : "#ffffff",
+          "paneProperties.backgroundType": "solid",
+        });
+      }).catch(() => {});
+    }
+    for (const el of headerButtonsRef.current.values()) {
+      el.dir = directionRef.current;
+      el.style.direction = directionRef.current;
+    }
+  }, [theme, direction, ready]);
+
   return (
-    <div className={cn("relative h-full w-full", className)}>
+    <div dir={direction} className={cn("relative h-full w-full", className)}>
       <div ref={containerRef} data-symbol={symbol} className="h-full w-full" />
       <ChartScanOverlay active={analyzing} />
     </div>

@@ -26,7 +26,7 @@ export const metaApiAdapter: BrokerAdapter = {
 
   async placeOrder(
     userId: number,
-    { intent, push }: PlaceOrderContext,
+    { intent, riskAmount, push }: PlaceOrderContext,
   ): Promise<OrderResult> {
     push({ id: "creds", label: "التحقق من اتصال MetaTrader", status: "running" });
     const account = await getMtAccount(userId);
@@ -76,7 +76,7 @@ export const metaApiAdapter: BrokerAdapter = {
       Number(spec.ask) ||
       Number(spec.bid) ||
       0;
-    const sizing = computeForexLots(intent.notional, refPrice, spec);
+    const sizing = computeForexLots(riskAmount, refPrice, intent.stop_loss, spec);
     if (!sizing.ok) {
       push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "error", detail: sizing.reason });
       await updateIntentStatus(intent.id, "failed", sizing.reason ?? "تعذّر حساب اللوت.");
@@ -106,14 +106,14 @@ export const metaApiAdapter: BrokerAdapter = {
               sizing.lots,
               sl,
               tp,
-              { comment: `Lonora #${intent.id}` },
+              { comment: `AiChart #${intent.id}` },
             )
           : await conn.createMarketSellOrder(
               intent.symbol,
               sizing.lots,
               sl,
               tp,
-              { comment: `Lonora #${intent.id}` },
+              { comment: `AiChart #${intent.id}` },
             );
 
       const ticket =

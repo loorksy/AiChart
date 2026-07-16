@@ -19,11 +19,11 @@ export function LanguageSwitcher({
 }: {
   variant?: "segmented" | "inline";
 }) {
-  const { locale, setLocale } = useLocale();
+  const { locale, setLocale, t } = useLocale();
 
   if (variant === "inline") {
     return (
-      <div className="flex gap-1" role="radiogroup" aria-label={LABEL[locale]}>
+      <div className="flex gap-1" role="radiogroup" aria-label={t("profile.select_language")}>
         {APP_LOCALES.map((lng) => {
           const active = lng === locale;
           return (
@@ -33,7 +33,7 @@ export function LanguageSwitcher({
               role="radio"
               aria-checked={active}
               onClick={() => setLocale(lng)}
-              className={`flex-1 rounded-md px-2 py-1 text-[11px] font-medium ${
+              className={`min-h-11 flex-1 rounded-md px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 active
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:bg-muted/70"
@@ -48,7 +48,11 @@ export function LanguageSwitcher({
   }
 
   return (
-    <div className="inline-flex rounded-lg border border-border/60 bg-background p-0.5">
+    <div
+      className="inline-flex rounded-lg border border-border/60 bg-background p-0.5"
+      role="group"
+      aria-label={t("profile.select_language")}
+    >
       {APP_LOCALES.map((lng) => {
         const active = lng === locale;
         return (
@@ -57,7 +61,7 @@ export function LanguageSwitcher({
             type="button"
             aria-pressed={active}
             onClick={() => setLocale(lng)}
-            className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+            className={`min-h-11 rounded-md px-2.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               active
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground"

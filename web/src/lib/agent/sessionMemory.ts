@@ -40,10 +40,6 @@ export function updateSessionFromMessage(
   if (/لا ترسم كثير|رسومات أقل|قلل الرسم|minimal draw/.test(t)) {
     prefs.preferMinimalDrawings = true;
   }
-  if (/سكالب|scalp/.test(t)) prefs.tradingStyle = "scalping";
-  else if (/سوينغ|swing/.test(t)) prefs.tradingStyle = "swing";
-  else if (/انترادي|يومي|intraday/.test(t)) prefs.tradingStyle = "intraday";
-
   if (/لا تنفذ|راقب فقط|بدون تنفيذ|monitor only|do not execute/.test(t)) {
     prefs.allowExecution = false;
   } else if (/فعّل التنفيذ|allow execution/.test(t)) {

@@ -6,16 +6,9 @@ import {
 import { parseEaPositions, type EaBrokerPosition } from "./executionEnv";
 import { checkSlTpProximity } from "./monitor";
 import { queryOne } from "./db";
-import {
-  getLimits,
-  getSettings,
-  listOpenTrades,
-  todayRealizedPnlPct,
-} from "./store";
-import type { TradingSettings, AdminLimits } from "./types";
+import { listOpenTrades } from "./store";
 
 const PROXIMITY_PCT = 1.5;
-const DAILY_LOSS_WARN_RATIO = 0.8;
 
 async function intentStopsForTrade(
   intentId: number | null,
@@ -68,7 +61,7 @@ export async function watchAichartOpenTrades(
         source: "aichart",
         hits,
         detail:
-          `صفقة Lonora #${trade.id} ${trade.symbol} ${trade.side} @ ${trade.avg_price} — ` +
+          `صفقة AiChart #${trade.id} ${trade.symbol} ${trade.side} @ ${trade.avg_price} — ` +
           hits
             .map(
               (h) =>
@@ -112,34 +105,6 @@ export async function watchMt5Positions(
     });
   }
   return alerts;
-}
-
-export async function watchDailyLossProximity(
-  userId: number,
-  settings?: TradingSettings,
-  limits?: AdminLimits,
-): Promise<string | null> {
-  const s = settings ?? (await getSettings(userId));
-  const l = limits ?? (await getLimits(userId));
-  const limitPct = s.daily_loss_limit_pct;
-  if (limitPct <= 0) return null;
-
-  const capital =
-    l.max_capital_cap > 0
-      ? Math.min(s.max_capital, l.max_capital_cap)
-      : s.max_capital;
-  if (capital <= 0) return null;
-
-  const todayPct = await todayRealizedPnlPct(userId, capital);
-  if (todayPct >= 0) return null;
-
-  const usedRatio = Math.abs(todayPct) / limitPct;
-  if (usedRatio < DAILY_LOSS_WARN_RATIO) return null;
-
-  return (
-    `خسارة اليوم ${todayPct.toFixed(2)}% من أصل حد −${limitPct}% ` +
-    `(${(usedRatio * 100).toFixed(0)}% من الحد).`
-  );
 }
 
 export async function watchFuturesLiquidationProximity(

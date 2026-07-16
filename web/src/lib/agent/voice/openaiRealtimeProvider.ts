@@ -19,11 +19,14 @@ import {
 } from "./voiceSessionInstructions";
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
+export const DEFAULT_VOICE_CONNECT_TIMEOUT_MS = 15_000;
 
 export interface OpenAIRealtimeProviderOptions {
   credential: VoiceSessionCredential;
   locale: AppLocale;
   onEvent: (event: VoiceProviderEvent) => void;
+  /** Test override; production uses a bounded 15-second data-channel timeout. */
+  connectTimeoutMs?: number;
 }
 
 export function createOpenAIRealtimeProvider(
@@ -157,49 +160,100 @@ export function createOpenAIRealtimeProvider(
 
     // 4. Event data channel.
     dc = pc.createDataChannel("oai-events");
+    let openSettled = false;
+    let openTimer: ReturnType<typeof setTimeout> | null = null;
+    let resolveOpen!: () => void;
+    let rejectOpen!: (error: Error) => void;
+    const connectAbort = new AbortController();
+    const opened = new Promise<void>((resolve, reject) => {
+      resolveOpen = resolve;
+      rejectOpen = reject;
+    });
+    // The SDP request may still be unwinding when the deadline fires. Mark the
+    // channel promise handled immediately; `await opened` below still receives
+    // the same rejection once the handshake unwinds.
+    void opened.catch(() => {});
+    const settleOpen = (code?: "network_lost" | "webrtc_failed" | "datachannel_closed") => {
+      if (openSettled) return;
+      openSettled = true;
+      if (openTimer) clearTimeout(openTimer);
+      openTimer = null;
+      if (code) {
+        rejectOpen(Object.assign(new Error(code), { code }));
+      } else {
+        resolveOpen();
+      }
+    };
+    openTimer = setTimeout(() => {
+      connectAbort.abort();
+      settleOpen("webrtc_failed");
+    }, opts.connectTimeoutMs ?? DEFAULT_VOICE_CONNECT_TIMEOUT_MS);
+
     dc.addEventListener("message", (e) => handleServerEvent(String(e.data)));
     dc.addEventListener("open", () => {
+      settleOpen();
       send(buildRealtimeSessionUpdate({ locale: opts.locale, voice: opts.credential.voice }));
       emit({ kind: "status", status: "connected" });
       emit({ kind: "status", status: "listening" });
     });
     dc.addEventListener("close", () => {
       emit({ kind: "error", code: "datachannel_closed" });
+      settleOpen("datachannel_closed");
     });
 
     pc.addEventListener("connectionstatechange", () => {
       const s = pc?.connectionState;
-      if (s === "failed") emit({ kind: "error", code: "webrtc_failed" });
-      else if (s === "disconnected") emit({ kind: "error", code: "network_lost" });
+      if (s === "failed") {
+        emit({ kind: "error", code: "webrtc_failed" });
+        settleOpen("webrtc_failed");
+      } else if (s === "disconnected") {
+        emit({ kind: "error", code: "network_lost" });
+        settleOpen("network_lost");
+      }
     });
 
     // 5. SDP offer/answer with the ephemeral client secret (never the API key).
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    let sdpRes: Response;
     try {
-      sdpRes = await fetch(`${REALTIME_CALLS_URL}?model=${encodeURIComponent(opts.credential.model)}`, {
-        method: "POST",
-        body: offer.sdp,
-        headers: {
-          Authorization: `Bearer ${opts.credential.clientSecret}`,
-          "Content-Type": "application/sdp",
-        },
-      });
-    } catch {
-      emit({ kind: "error", code: "network_lost" });
-      throw new Error("sdp_exchange_failed");
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      let sdpRes: Response;
+      try {
+        sdpRes = await fetch(`${REALTIME_CALLS_URL}?model=${encodeURIComponent(opts.credential.model)}`, {
+          method: "POST",
+          body: offer.sdp,
+          headers: {
+            Authorization: `Bearer ${opts.credential.clientSecret}`,
+            "Content-Type": "application/sdp",
+          },
+          signal: connectAbort.signal,
+        });
+      } catch {
+        if (connectAbort.signal.aborted) {
+          throw Object.assign(new Error("connection_timeout"), { code: "webrtc_failed" });
+        }
+        emit({ kind: "error", code: "network_lost" });
+        throw Object.assign(new Error("sdp_exchange_failed"), { code: "network_lost" });
+      }
+      if (!sdpRes.ok) {
+        const code = sdpRes.status === 401 ? "credential_expired" : "webrtc_failed";
+        emit({ kind: "error", code });
+        throw Object.assign(new Error("sdp_exchange_failed"), { code });
+      }
+      const answerSdp = await sdpRes.text();
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    } catch (error) {
+      if (!openSettled) {
+        openSettled = true;
+        if (openTimer) clearTimeout(openTimer);
+        openTimer = null;
+      }
+      throw error;
     }
-    if (!sdpRes.ok) {
-      emit({
-        kind: "error",
-        code: sdpRes.status === 401 ? "credential_expired" : "webrtc_failed",
-      });
-      throw new Error("sdp_exchange_failed");
-    }
-    const answerSdp = await sdpRes.text();
-    await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+    // SDP completion alone is not a usable session. Wait for the event data
+    // channel, but only for a finite period so the UI cannot hang forever.
+    await opened;
   }
 
   async function stop(): Promise<void> {
@@ -272,7 +326,7 @@ export function createOpenAIRealtimeProvider(
       });
     },
     async speakText(text: string) {
-      // Speak Lonora's authoritative final answer verbatim.
+      // Speak AiChart's authoritative final answer verbatim.
       send(buildSpeakResponse(text, opts.locale));
     },
   };

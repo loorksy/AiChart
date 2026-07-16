@@ -1,7 +1,6 @@
 import { withBridge } from "@/lib/bridge";
 import { ApiError } from "@/lib/api";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
-import { getSettings } from "@/lib/store";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { detectStructureLevels } from "@/lib/ohlc/structure";
 
@@ -13,8 +12,7 @@ export const GET = withBridge(async ({ req, userId }) => {
     throw new ApiError(400, "symbol مطلوب.");
   }
 
-  const settings = await getSettings(userId);
-  const rawMarket = searchParams.get("market") ?? settings.active_market;
+  const rawMarket = searchParams.get("market") ?? DEFAULT_MARKET;
   const marketErr = rejectNonForexMarket(rawMarket);
   if (marketErr) throw new ApiError(400, marketErr);
   const market = resolveActiveMarket(rawMarket ?? DEFAULT_MARKET);

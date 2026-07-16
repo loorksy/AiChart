@@ -1,6 +1,6 @@
 import type { AgentActivity } from "../agentActivity";
 import type { BrokerKind } from "../markets/types";
-import type { AdminLimits, TradeIntent, TradingSettings } from "../types";
+import type { TradeIntent } from "../types";
 
 export interface OrderResult {
   ok: boolean;
@@ -19,15 +19,13 @@ export interface OrderResult {
 
 export interface PlaceOrderContext {
   intent: TradeIntent;
-  settings: TradingSettings;
-  limits: AdminLimits;
-  /** Effective capital after applying the admin cap. */
-  effectiveCapital: number;
+  /** Verified broker equity multiplied by Risk per Trade. */
+  riskAmount: number;
   push: (activity: AgentActivity) => void;
 }
 
 /**
- * Unified execution backend. `executeIntent` (the risk-gated authority) selects
+ * Unified execution backend. `executeIntent` (the technical authority) selects
  * an adapter by the intent's broker and delegates the actual order placement.
  */
 export interface BrokerAdapter {

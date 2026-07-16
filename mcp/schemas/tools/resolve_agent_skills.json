@@ -30,11 +30,6 @@
       "type": "string",
       "maxLength": 32
     },
-    "trading_mode": {
-      "description": "Optional trading style hint (scalp/day/swing/position)",
-      "type": "string",
-      "maxLength": 32
-    },
     "max_skills": {
       "type": "integer",
       "minimum": 1,

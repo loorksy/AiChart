@@ -16,11 +16,10 @@ set +a
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
 UPDATE trading_settings
-SET active_market = 'forex',
-    allowed_assets = '${FOREX_ASSETS}'
+SET allowed_assets = '${FOREX_ASSETS}'
 WHERE user_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1);
 
-SELECT u.id, u.email, ts.active_market, ts.allowed_assets
+SELECT u.id, u.email, ts.allowed_assets
 FROM trading_settings ts
 JOIN users u ON u.id = ts.user_id
 WHERE u.role = 'admin'

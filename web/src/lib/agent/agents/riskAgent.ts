@@ -11,7 +11,6 @@ import {
   type TradeValidationResult,
 } from "../risk/validateTradeSetup";
 import { isSpreadTooHigh } from "../risk/spreadCheck";
-import type { UserTradingProfile } from "../risk/userTradingProfile";
 import {
   computeRangePosition,
   type RangePosition,
@@ -45,9 +44,7 @@ export interface RiskAgentInput {
   liquidity: LiquidityResult | null;
   mtf: MultiTimeframeResult | null;
   news: NewsMacroResult | null;
-  profile?: UserTradingProfile | null;
   account?: AccountRiskSnapshot | null;
-  minRr: number;
   educationalOnly?: boolean;
   chartDrawings?: ChartDrawing[];
 }
@@ -55,10 +52,7 @@ export interface RiskAgentInput {
 export interface RiskAgentResult {
   proposedTrade: ProposedTrade;
   validation: TradeValidationResult;
-  veto: boolean;
   accountWarnings: string[];
-  /** Account-level block (limits exceeded / data unavailable). */
-  accountBlocked: boolean;
   // --- Phase-2 trading-brain context ---
   selectedCandidate: TradeCandidate | null;
   candidatesResult: TradeCandidatesResult;
@@ -67,11 +61,8 @@ export interface RiskAgentResult {
 }
 
 /**
- * The disciplined trade gate. Builds evidence-based trade candidates (POI
- * scoring, structure events, sweeps, range position, HTF discipline), runs the
- * deterministic trading playbook, then validates the selected candidate.
- * A rejected setup, a failing checklist, or a breached account limit forces
- * the final decision to WAIT — this can never be overridden downstream.
+ * Builds structured evidence candidates for the final model. It annotates
+ * risk and data concerns but never forces BUY/SELL/WAIT.
  */
 export async function runRiskAgent(
   ctx: AgentRunContext,
@@ -118,7 +109,6 @@ export async function runRiskAgent(
     sweeps,
     rangePosition,
     htfLevels,
-    minRr: input.minRr,
     newsRisk: input.news?.newsRisk ?? "unknown",
     spread: market.spread,
   });
@@ -134,7 +124,7 @@ export async function runRiskAgent(
       }
     : { action: "wait" };
 
-  // Deterministic playbook checklist — runs BEFORE any Buy/Sell is allowed.
+  // Evidence checklist for the final model.
   const playbook = runTradingPlaybook({
     market,
     structure: input.structure,
@@ -144,9 +134,6 @@ export async function runRiskAgent(
     rangePosition,
     candidatesResult,
     candidate,
-    minRr: input.minRr,
-    profile: input.profile,
-    account: input.account,
     educationalOnly: input.educationalOnly,
   });
 
@@ -177,65 +164,25 @@ export async function runRiskAgent(
   const validation = validateTradeSetup({
     trade: proposedTrade,
     currentPrice: price,
-    atr: market.atr,
-    spread: market.spread,
-    hasValidPoi: Boolean(candidate),
     htfConflict: Boolean(input.mtf?.conflict),
     newsRisk: input.news?.newsRisk ?? "unknown",
     dataSufficient: meetsDataQuality(market.dataQuality, "trade"),
     coverageDetail: market.dataQuality.coverage?.summaryEn,
-    minRr: input.minRr,
-    educationalOnly: input.educationalOnly,
-    hasReversalEvidence: candidatesResult.hasReversalEvidence,
     poiScore: candidate?.poi.score.score,
-    rangePosition: rangePosition?.label ?? "unknown",
-    setupType: candidate?.setupType,
     entryDistanceState,
     spreadState,
-    marketOpen: market.marketOpen,
   });
 
   // Account-level gate (separate from single-trade validation).
   const accountWarnings: string[] = [];
-  let accountBlocked = false;
   if (proposedTrade.action !== "wait" && input.account) {
     if (!input.account.available) {
-      accountBlocked = true;
-      accountWarnings.push("بيانات المخاطر للحساب غير متاحة — لا تنفيذ.");
-    } else {
-      if (
-        input.profile?.maxOpenTrades != null &&
-        input.profile.maxOpenTrades > 0 &&
-        input.account.openTradesCount >= input.profile.maxOpenTrades
-      ) {
-        accountBlocked = true;
-        accountWarnings.push("تم بلوغ الحد الأقصى للصفقات المفتوحة.");
-      }
-      if (
-        input.profile?.maxDailyLossPct != null &&
-        input.profile.maxDailyLossPct > 0 &&
-        input.account.todayRealizedPnlPct <= -Math.abs(input.profile.maxDailyLossPct)
-      ) {
-        accountBlocked = true;
-        accountWarnings.push("تم بلوغ حد الخسارة اليومي.");
-      }
-      if (input.account.openTradesOnSymbol > 0) {
-        accountWarnings.push("توجد صفقة مفتوحة على نفس الرمز — انتبه للتعرّض المزدوج.");
-      }
+      accountWarnings.push("بيانات الحساب غير متاحة لحساب الحجم حالياً.");
+    } else if (input.account.openTradesOnSymbol > 0) {
+      accountWarnings.push("توجد صفقة مفتوحة على الرمز نفسه؛ هذا سياق تعرّض للقرار.");
     }
   }
 
-  const veto =
-    !validation.accepted ||
-    accountBlocked ||
-    (proposedTrade.action !== "wait" && !playbook.canTrade);
-
-  // If the playbook blocked a proposed trade, surface its reasons.
-  if (proposedTrade.action !== "wait" && !playbook.canTrade) {
-    for (const r of playbook.blockingReasons) {
-      if (!validation.reasons.includes(r)) validation.reasons.push(r);
-    }
-  }
   // If there is no candidate at all, surface the strongest rejection reasons.
   if (!candidate && candidatesResult.rejectedReasons.length) {
     for (const r of candidatesResult.rejectedReasons.slice(0, 3)) {
@@ -245,15 +192,11 @@ export async function runRiskAgent(
 
   ctx.emitActivity({
     type: "risk",
-    status: veto ? "warning" : "completed",
-    message: veto
-      ? "قائمة الفحص أو المخاطرة رفضت الإعداد — القرار انتظار."
-      : `اجتاز الإعداد قائمة الفحص (${playbook.checklist.filter((i) => i.status === "pass").length}/${playbook.checklist.length}).`,
+    status: validation.accepted ? "completed" : "warning",
+    message: `اكتمل تجهيز أدلة القرار (${candidatesResult.candidates.length} مرشح).`,
     metadata: {
       accepted: validation.accepted,
       rr: validation.rr,
-      accountBlocked,
-      canTrade: playbook.canTrade,
       candidates: candidatesResult.candidates.length,
     },
   });
@@ -261,9 +204,7 @@ export async function runRiskAgent(
   return {
     proposedTrade,
     validation,
-    veto,
     accountWarnings,
-    accountBlocked,
     selectedCandidate: candidate,
     candidatesResult,
     playbook,

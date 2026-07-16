@@ -84,7 +84,7 @@ export function voiceSessionReducer(
     case "user_speech_started":
       return { ...state, status: "user_speaking" };
     case "user_speech_stopped":
-      // After the user stops, we wait for transcript + Lonora → processing.
+      // After the user stops, we wait for transcript + AiChart → processing.
       return { ...state, status: "processing" };
     case "processing":
       return { ...state, status: "processing" };

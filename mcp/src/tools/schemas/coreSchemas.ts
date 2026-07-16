@@ -6,7 +6,6 @@ import {
   zConfidence,
   zInterval,
   zMarket,
-  zOptionalConfidence,
   zSide,
   zSymbol,
   zTradeId,
@@ -17,7 +16,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_account_overview",
     domain: "core",
     description:
-      "When: start of trading session before any decision. Combines risk + portfolio + live. Resilient: if live fails, returns the rest. include_live=false for quick summary without live account. read-only.",
+      "When: inspect the connected account. Combines technical connection status, portfolio, and live broker data. read-only.",
     inputSchema: {
       include_live: z
         .boolean()
@@ -28,23 +27,13 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     ui: { widget: "account-overview" },
   },
   {
-    name: "get_risk_status",
-    domain: "core",
-    description:
-      "When: session start or before mode change. kill switch, limits, mode, executionEnv. Do not use instead of get_trade_readiness for immediate forex. read-only. Returns envelope { ok, data }.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-    ui: { widget: "risk-status" },
-  },
-  {
     name: "get_trade_readiness",
     domain: "core",
     description:
-      "When: before open_trade forex or quoteAgeMs>5000. Do not execute if ready=false. read-only. Example: symbol=EURUSD&confidence=85&market=forex.",
+      "Technical preflight before open_trade: authorization, connection, session, heartbeat, quote freshness, and spread. read-only.",
     inputSchema: {
       symbol: z.string().optional().describe("Pair symbol — for quote/spread check"),
       market: zMarket,
-      confidence: zOptionalConfidence.describe("Proposed confidence — advisory estimate for the agent"),
       practice: z.boolean().optional(),
     },
     annotations: READ_ONLY,
@@ -115,12 +104,10 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_trade",
     domain: "core",
     description:
-      "When: after explicit approval. stop_loss mandatory (Risk Guard rejects without it); pass entry/take_profit for reward/risk (rejected if below minimum). notional optional — if omitted, size derived from stop distance. Rejects stale quotes. Decision from agent analysis (no confidence threshold — confidence for logging/sizing only). idempotencyKey optional. side-effect: executes via Risk Guard. Example: stop_loss=64000&take_profit=68000&approved_by_user=true.",
+      "When: after explicit approval. stop_loss is mandatory. Position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata. Rejects unsafe technical execution state. confidence is audit-only.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
-      notional: z.number().positive().optional(),
-      lots: z.number().positive().max(100).optional().describe("forex: explicit lot size (overrides notional)"),
       market: zMarket,
       entry: z.number().optional(),
       stop_loss: z.number().describe("Stop loss — mandatory, rejected without it"),
@@ -130,8 +117,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       recommendation_id: z.number().optional(),
       approved_by_user: z.boolean().optional(),
       practice: z.boolean().optional(),
-      market_type: z.enum(["spot", "futures"]).optional(),
-      leverage: z.number().min(1).max(125).optional(),
+      market_type: z.literal("spot").optional(),
       order_type: z.enum(["market", "limit"]).optional(),
       limit_price: z.number().positive().optional(),
       idempotencyKey: z.string().max(128).optional().describe("idempotency 24h"),
@@ -178,12 +164,11 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
-      notional: z.number().positive().optional(),
       market: zMarket,
       entry: z.number().optional(),
-      stop_loss: z.number().optional(),
+      stop_loss: z.number(),
       take_profit: z.number().optional(),
-      confidence: zOptionalConfidence,
+      confidence: zConfidence.optional(),
       rationale: z.string().optional(),
       recommendation_id: z.number().optional(),
       practice: z.boolean().optional(),
@@ -210,62 +195,12 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     ui: { widget: "pending-approvals" },
   },
   {
-    name: "get_execution_env",
-    domain: "core",
-    description: "When: before live trade. demo/live + platforms. read-only.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-  },
-  {
-    name: "set_execution_env",
-    domain: "core",
-    description:
-      "When: switch demo↔live with approval. side-effect: changes preference. Do not use automatically.",
-    inputSchema: { preference: z.enum(["demo", "live"]) },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "set_trading_mode",
-    domain: "core",
-    description:
-      "When: switch auto/approval/direct. side-effect: changes mode. direct recommended for chat.",
-    inputSchema: { mode: z.enum(["auto", "approval", "direct"]) },
-    annotations: DESTRUCTIVE,
-  },
-  {
     name: "get_agent_settings",
     domain: "core",
     description:
-      "When: before futures or market change. active_market, leverage. read-only.",
+      "Current fixed product settings: Forex, scalping, and Risk per Trade. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
-  },
-  {
-    name: "set_active_market",
-    domain: "core",
-    description:
-      "When: confirm active market (forex-only platform). side-effect: no-op — always forex.",
-    inputSchema: { active_market: z.literal("forex") },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "set_futures_enabled",
-    domain: "core",
-    description:
-      "When: never needed — legacy no-op. Futures disabled; platform is forex-only. Always returns futures_enabled=false. read-only.",
-    inputSchema: {
-      futures_enabled: z.boolean(),
-      default_leverage: z.number().min(1).max(125).optional(),
-    },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "run_trade_maintenance",
-    domain: "core",
-    description:
-      "When: mechanical OCO/TP maintenance. side-effect: may modify orders. Not a substitute for analysis.",
-    inputSchema: {},
-    annotations: DESTRUCTIVE,
   },
   {
     name: "send_telegram_menu",
@@ -298,35 +233,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     annotations: READ_ONLY,
   },
   {
-    name: "get_trading_style",
-    domain: "core",
-    description:
-      "Current trading style + style list (scalp/day/swing/position). When: session start to show options to user. read-only.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-  },
-  {
-    name: "set_trading_style",
-    domain: "core",
-    description:
-      "Set trading style · scalp/day/swing/position. When: after asking user. For scalp pass scalp_max_trades (trade cap). side-effect: updates settings. Example: trading_style=scalp&scalp_max_trades=5.",
-    inputSchema: {
-      trading_style: z.enum(["scalp", "day", "swing", "position"]),
-      scalp_max_trades: z
-        .number()
-        .int()
-        .min(0)
-        .max(100)
-        .optional()
-        .describe("Concurrent trade cap — required for scalp"),
-      sync_interval: z
-        .boolean()
-        .optional()
-        .describe("Auto-set timeframe based on style"),
-    },
-    annotations: DESTRUCTIVE,
-  },
-  {
     name: "list_agent_skills",
     domain: "core",
     description:
@@ -352,11 +258,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         .describe("Optional soft intent hints (e.g. analysis, recommendation)"),
       locale: z.enum(["ar", "en"]).optional(),
       market: z.string().max(32).optional().describe("Defaults to forex"),
-      trading_mode: z
-        .string()
-        .max(32)
-        .optional()
-        .describe("Optional trading style hint (scalp/day/swing/position)"),
       max_skills: z.number().int().min(1).max(4).optional(),
       allow_execution_skills: z
         .boolean()

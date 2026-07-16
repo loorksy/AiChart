@@ -44,7 +44,11 @@ function computePnl(
 function afterTradeClosed(userId: number, tradeId: number, pnl: number): void {
   // Offload the LLM + embedding post-mortem to the worker tier (or inline when
   // no queue is configured) so it never delays the close response.
-  void enqueue("trade_post_mortem", { userId, tradeId, pnl }).catch((err) => {
+  void enqueue(
+    "trade_post_mortem",
+    { userId, tradeId, pnl },
+    { idempotencyKey: `${userId}:${tradeId}` },
+  ).catch((err) => {
     console.error("[tradeClose] post-mortem enqueue failed", tradeId, err);
   });
 }
@@ -195,7 +199,7 @@ export async function closeOpenTrade(
   };
 }
 
-/** Closes every open trade for a user (e.g. kill switch). */
+/** Closes every open trade after an explicit authenticated user request. */
 export async function closeAllOpenTrades(userId: number): Promise<{
   closed: number;
   failed: number;
@@ -240,12 +244,4 @@ export async function closeAllOpenTrades(userId: number): Promise<{
   }
 
   return { closed, failed, totalPnl, errors };
-}
-
-/** Closes open trades when unrealized profit reaches the user's threshold. */
-export async function scanOpenTradesForTakeProfit(
-  _userId: number,
-  _maxTrades = 5,
-): Promise<{ closed: number; errors: string[] }> {
-  return { closed: 0, errors: [] };
 }

@@ -3,10 +3,6 @@ import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
-  evaluateCommittee,
-  committeeSummaryTelegram,
-} from "@/lib/committee";
-import {
   logAudit,
   getSettings,
   saveRecommendation,
@@ -26,9 +22,9 @@ import {
   searchSimilarLessons,
   formatLessonsForPrompt,
 } from "@/lib/tradeMemory";
-import { notifyUser } from "@/lib/telegram";
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
 import type { Recommendation } from "@/lib/types";
+import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 
 const schema = z.object({
   symbol: z.string().min(1),
@@ -74,7 +70,7 @@ export async function POST(req: NextRequest) {
         : body.rationale;
 
     const rec = await saveRecommendation(userId, {
-      symbol: normalizeIntentSymbol(body.symbol, settings.active_market),
+      symbol: normalizeIntentSymbol(body.symbol, DEFAULT_MARKET),
       action: body.action,
       confidence: body.confidence,
       entry: body.entry ?? null,
@@ -87,12 +83,10 @@ export async function POST(req: NextRequest) {
       chart_drawings_json: drawings.length ? JSON.stringify(drawings) : null,
       analysis_tier: profile.tier,
       source: "agent",
-      market: settings.active_market,
+      market: DEFAULT_MARKET,
     });
 
-    const committee = await evaluateCommittee(userId, rec, similarLessons);
     await updateRecommendationIntelligence(rec.id, {
-      committee_json: JSON.stringify(committee),
       memory_refs_json: similarLessons.length
         ? JSON.stringify(similarLessons.map((l) => l.id))
         : null,
@@ -104,18 +98,9 @@ export async function POST(req: NextRequest) {
       `${rec.symbol} ${rec.action} ${rec.confidence}% (#${rec.id})`,
     );
 
-    const committeeNote = committeeSummaryTelegram({
-      ...rec,
-      committee_json: JSON.stringify(committee),
-    });
-    if (committeeNote && settings.telegram_chat_id) {
-      void notifyUser(userId, committeeNote).catch(() => {});
-    }
-
     const mt5 = await canUseMt5ChartCapture(userId, body.symbol);
     let enriched: Recommendation = {
       ...rec,
-      committee_json: JSON.stringify(committee),
       memory_refs_json: similarLessons.length
         ? JSON.stringify(similarLessons.map((l) => l.id))
         : null,
@@ -149,7 +134,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       recommendation: enriched,
-      committee,
       similar_lessons: similarLessons,
       ...agentChartUrls(chartUrl),
       mt5_pending: mt5Pending,

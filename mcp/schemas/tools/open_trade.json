@@ -12,16 +12,6 @@
         "sell"
       ]
     },
-    "notional": {
-      "type": "number",
-      "exclusiveMinimum": 0
-    },
-    "lots": {
-      "description": "forex: explicit lot size (overrides notional)",
-      "type": "number",
-      "exclusiveMinimum": 0,
-      "maximum": 100
-    },
     "market": {
       "type": "string",
       "const": "forex"
@@ -56,15 +46,7 @@
     },
     "market_type": {
       "type": "string",
-      "enum": [
-        "spot",
-        "futures"
-      ]
-    },
-    "leverage": {
-      "type": "number",
-      "minimum": 1,
-      "maximum": 125
+      "const": "spot"
     },
     "order_type": {
       "type": "string",

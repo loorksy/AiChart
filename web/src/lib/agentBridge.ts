@@ -6,7 +6,7 @@ import { getPublicUser } from "./store";
  * Internal bridge client — lets the in-process web chat agent call the SAME
  * `/api/agent/*` routes the MCP server uses, with zero logic duplication. It
  * authenticates exactly like the MCP bridge (service token + user email + HMAC
- * sig), so every Risk Guard / idempotency / mode check runs identically.
+ * sig), so technical execution safety and idempotency run identically.
  */
 function selfBaseUrl(): string {
   const override = process.env.AICHART_SELF_URL?.trim();

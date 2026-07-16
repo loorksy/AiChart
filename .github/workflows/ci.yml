@@ -20,15 +20,15 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Lint
         run: npm run lint
-      - name: Unit tests (no external services)
-        run: npm run test:unit
-      - name: Integration tests (Redis service)
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Full web test matrix
         env:
           REDIS_URL: redis://localhost:6379
-        run: npm run test:integration
+        run: npm run test:ci
       # Provision the LICENSED TradingView library from a private source before
       # building. Requires the repository/organization secrets below; the build
       # cannot compile the chart module without the real files. If the secret is
@@ -67,7 +67,7 @@ jobs:
           cache: npm
           cache-dependency-path: mcp/package-lock.json
       - name: Install MCP dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
       - name: Catalog test

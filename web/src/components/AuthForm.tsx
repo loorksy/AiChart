@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowUpRight, ChevronDown, Sparkles } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { ChartBackdrop } from "@/components/chart/ChartBackdrop";
 import { TelegramLoginButton } from "@/components/TelegramLoginButton";
 import type { CountryCode } from "libphonenumber-js";
 import { PhoneInput } from "@/components/PhoneInput";
-import { LonoraLogo } from "@/components/LonoraLogo";
+import { AiChartLogo } from "@/components/AiChartLogo";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useLocale } from "@/hooks/useLocale";
 import { BRAND_NAME } from "@/lib/brand";
 
 export default function AuthForm({
@@ -29,6 +31,7 @@ export default function AuthForm({
   defaultCountry?: CountryCode;
 }) {
   const router = useRouter();
+  const { t, dir } = useLocale();
   const [username, setUsername] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
@@ -56,7 +59,7 @@ export default function AuthForm({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "حدث خطأ.");
+        setError(data.error ?? t("auth.generic_error"));
         return;
       }
       const dest =
@@ -68,32 +71,37 @@ export default function AuthForm({
       router.push(dest);
       router.refresh();
     } catch {
-      setError("تعذّر الاتصال بالخادم.");
+      setError(t("auth.network_error"));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-dvh">
-      <div className="flex w-full flex-col justify-center bg-background px-6 py-10 sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">
-        <Link href="/" className="mb-10 flex items-center gap-2 text-lg font-semibold">
-          <LonoraLogo size={20} showName nameClassName="text-lg" />
-        </Link>
+    <div className="flex min-h-dvh" dir={dir}>
+      <main className="flex w-full flex-col justify-center bg-background px-6 py-10 outline-none sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">
+        <div className="mb-10 flex items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
+            <AiChartLogo size={20} showName nameClassName="text-lg" />
+          </Link>
+          <div aria-label={t("auth.switch_language")}>
+            <LanguageSwitcher />
+          </div>
+        </div>
 
         <h1 className="text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
           {gateMode
-            ? "دخول المشغّل"
+            ? t("auth.operator_title")
             : isLogin
-              ? "تسجيل الدخول"
-              : "إنشاء حساب"}
+              ? t("auth.login_title")
+              : t("auth.register_title")}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
           {gateMode
-            ? "أدخل كلمة المرور للوصول إلى منصتك"
+            ? t("auth.operator_subtitle")
             : isLogin
-              ? "أدخل بريدك وكلمة المرور"
-              : "سجّل بياناتك — التفعيل بعد موافقة الإدارة"}
+              ? t("auth.login_subtitle")
+              : t("auth.register_subtitle")}
         </p>
 
         {canUseTelegram && (
@@ -108,14 +116,18 @@ export default function AuthForm({
                 <div className="w-full border-t border-border" />
               </div>
               <p className="relative mx-auto w-fit bg-background px-3 text-xs text-muted-foreground">
-                {isLogin ? "أو الدخول بالبريد" : "أو التسجيل بالبريد"}
+                {isLogin ? t("auth.telegram_or_login") : t("auth.telegram_or_register")}
               </p>
             </div>
           </div>
         )}
 
         {error && (
-          <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <p
+            role="alert"
+            aria-live="assertive"
+            className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
             {error}
           </p>
         )}
@@ -124,13 +136,15 @@ export default function AuthForm({
           {!gateMode && !isLogin && (
             <>
               <div>
-                <label htmlFor="username">اسم المستخدم</label>
+                <label htmlFor="username">{t("auth.username")}</label>
                 <input
                   id="username"
+                  name="username"
                   required
                   minLength={3}
                   maxLength={32}
                   pattern="[a-zA-Z0-9_.]+"
+                  autoComplete="username"
                   className="input mt-1.5"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -139,7 +153,7 @@ export default function AuthForm({
                 />
               </div>
               <div>
-                <label>رقم واتساب</label>
+                <label>{t("auth.whatsapp")}</label>
                 <div className="mt-1.5">
                   <PhoneInput
                     value={whatsapp}
@@ -153,11 +167,13 @@ export default function AuthForm({
           )}
           {!gateMode && (
             <div>
-              <label htmlFor="email">البريد الإلكتروني</label>
+              <label htmlFor="email">{t("auth.email")}</label>
               <input
                 id="email"
+                name="email"
                 type="email"
                 required
+                autoComplete="email"
                 className="input mt-1.5"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -167,12 +183,14 @@ export default function AuthForm({
             </div>
           )}
           <div>
-            <label htmlFor="password">كلمة المرور</label>
+            <label htmlFor="password">{t("auth.password")}</label>
             <input
               id="password"
+              name="password"
               type="password"
               required
               minLength={isLogin ? 1 : 8}
+              autoComplete={isLogin || gateMode ? "current-password" : "new-password"}
               className="input mt-1.5"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -186,33 +204,33 @@ export default function AuthForm({
             disabled={loading}
           >
             {loading
-              ? "جارٍ المعالجة…"
+              ? t("auth.processing")
               : gateMode
-                ? "دخول"
+                ? t("auth.operator_action")
                 : isLogin
-                  ? "تسجيل الدخول"
-                  : "إنشاء حساب"}
-            {!loading && <ArrowUpRight className="h-4 w-4" />}
+                  ? t("auth.login_action")
+                  : t("auth.register_action")}
+            {!loading && <ArrowUpRight className="h-4 w-4 rtl:-rotate-90" />}
           </button>
         </form>
 
         {isLogin && allowRegister && (
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            ليس لديك حساب؟{" "}
+            {t("auth.no_account")}{" "}
             <Link href="/signup" className="text-link font-medium">
-              سجّل الآن
+              {t("auth.register_now")}
             </Link>
           </p>
         )}
         {!isLogin && (
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            لديك حساب؟{" "}
+            {t("auth.have_account")}{" "}
             <Link href="/login" className="text-link font-medium">
-              دخول
+              {t("auth.sign_in")}
             </Link>
           </p>
         )}
-      </div>
+      </main>
 
       <div className="relative hidden flex-1 lg:block">
         <div className="absolute inset-0 overflow-hidden">
@@ -225,7 +243,7 @@ export default function AuthForm({
           <div className="surface-card w-full max-w-2xl overflow-hidden">
             <div className="border-b border-border px-4 py-3">
               <p className="text-sm font-semibold text-foreground">{BRAND_NAME}</p>
-              <p className="text-xs text-muted-foreground">Claude MCP · MT5 · تحليل فني</p>
+              <p className="text-xs text-muted-foreground">{t("auth.preview_subtitle")}</p>
             </div>
             <ChartBackdrop className="h-[360px]" />
           </div>

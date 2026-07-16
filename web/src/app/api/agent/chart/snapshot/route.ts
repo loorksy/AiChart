@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     if (marketErr) {
       return NextResponse.json({ error: marketErr }, { status: 400 });
     }
-    const market = resolveActiveMarket(body.market ?? settings.active_market ?? DEFAULT_MARKET);
+    const market = resolveActiveMarket(body.market ?? DEFAULT_MARKET);
 
     const drawings = validateChartDrawings(
       (body.chart_drawings ?? []) as unknown as ChartDrawing[],

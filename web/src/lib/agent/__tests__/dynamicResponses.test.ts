@@ -70,7 +70,7 @@ test("follow-up and drawing composers mirror the operator language (no forced Ar
 test("no transcription or analysis-only identity anywhere in agent prompts", () => {
   for (const rel of [
     "lib/agent/systemPrompt.ts",
-    "lib/persona.ts",
+    "lib/agent/canonicalIdentity.ts",
     "lib/agent/voice/voiceSessionInstructions.ts",
     "lib/agent/statusReply.ts",
   ]) {

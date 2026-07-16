@@ -4,11 +4,12 @@
 # Implements the runtime-integration redeploy flow:
 #   1. INVENTORY   — record services, processes, containers, images, volumes,
 #                    project copies, env files, and the current commit.
-#   2. BACKUP      — database + env files + PM2 dump into a root-only dir.
+#   2. BACKUP      — database + env files + PM2 dump + licensed TradingView
+#                    directories into a root-only dir.
 #   3. CLEANUP     — stop AiChart apps, remove old AiChart containers/images
 #                    and stale project copies (AiChart-only; never system-wide).
 #   4. FRESH CLONE — deploy verified origin/main into a new directory, restore
-#                    protected env, build, migrate, start.
+#                    protected env and licensed assets, build, migrate, start.
 #   5. VERIFY      — health endpoints must report the exact deployed commit.
 #
 # Safe by design: refuses to run without an explicit "GO" argument, never
@@ -24,9 +25,36 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="$BACKUP_ROOT/$STAMP"
 NEW_DIR="${NEW_DIR:-/opt/aichart-$STAMP}"
 PORT_DEFAULT=3010
+TRADINGVIEW_PUBLIC_REL="web/public/charting_library"
+TRADINGVIEW_VENDOR_REL="web/src/vendor/tradingview"
+TRADINGVIEW_BACKUP_DIR="$BACKUP_DIR/licensed-tradingview"
 
 log() { echo "[clean-redeploy] $*"; }
 die() { echo "[clean-redeploy] FATAL: $*" >&2; exit 1; }
+
+verify_nonempty_asset_dir() {
+  local dir="$1" label="$2"
+  local first_file=""
+  [ -d "$dir" ] || die "$label is missing."
+  [ ! -L "$dir" ] || die "$label must be a real directory, not a symlink."
+  first_file="$(find "$dir" -type f -size +0c -print -quit 2>/dev/null || true)"
+  [ -n "$first_file" ] || die "$label contains no non-empty files."
+}
+
+verify_tradingview_assets() {
+  local root="$1" context="$2"
+  local public_dir="$root/$TRADINGVIEW_PUBLIC_REL"
+  local vendor_dir="$root/$TRADINGVIEW_VENDOR_REL"
+
+  verify_nonempty_asset_dir "$public_dir" "$context TradingView runtime directory"
+  verify_nonempty_asset_dir "$vendor_dir" "$context TradingView typings directory"
+  [ -s "$public_dir/charting_library.standalone.js" ] ||
+    die "$context TradingView runtime bundle is missing or empty."
+  if [ ! -s "$vendor_dir/charting_library.d.ts" ] &&
+    [ ! -s "$vendor_dir/charting_library/charting_library.d.ts" ]; then
+    die "$context TradingView typings are missing or empty."
+  fi
+}
 
 [ "${1:-}" = "GO" ] || die "Dry-run protection: run with 'GO' after reviewing this script."
 [ "$(id -u)" -eq 0 ] || die "Run as root."
@@ -53,12 +81,28 @@ log "Inventory → $BACKUP_DIR/inventory.txt"
 } >"$BACKUP_DIR/inventory.txt" 2>&1
 
 # ── 2. Backup ──────────────────────────────────────────────────────────────
-log "Backing up env files, PM2 dump, and database"
+log "Backing up env files, PM2 dump, database, and licensed TradingView assets"
 for f in "$INSTALL_DIR/web/.env" "$INSTALL_DIR/mcp/.env" "$INSTALL_DIR/research-service/.env"; do
   [ -f "$f" ] && cp -a "$f" "$BACKUP_DIR/$(echo "$f" | tr '/' '_')"
 done
 pm2 save 2>/dev/null || true
 [ -f /root/.pm2/dump.pm2 ] && cp -a /root/.pm2/dump.pm2 "$BACKUP_DIR/dump.pm2" || true
+
+# These directories are licensed and gitignored, so a fresh clone cannot
+# recreate them. Fail before stopping services if the installed copy is not
+# complete, then keep a root-only backup without printing asset contents.
+verify_tradingview_assets "$INSTALL_DIR" "Installed"
+mkdir -p \
+  "$TRADINGVIEW_BACKUP_DIR/$TRADINGVIEW_PUBLIC_REL" \
+  "$TRADINGVIEW_BACKUP_DIR/$TRADINGVIEW_VENDOR_REL"
+cp -a -- \
+  "$INSTALL_DIR/$TRADINGVIEW_PUBLIC_REL/." \
+  "$TRADINGVIEW_BACKUP_DIR/$TRADINGVIEW_PUBLIC_REL/"
+cp -a -- \
+  "$INSTALL_DIR/$TRADINGVIEW_VENDOR_REL/." \
+  "$TRADINGVIEW_BACKUP_DIR/$TRADINGVIEW_VENDOR_REL/"
+verify_tradingview_assets "$TRADINGVIEW_BACKUP_DIR" "Backed-up"
+log "Licensed TradingView assets backed up and verified."
 
 DATABASE_URL="$(grep '^DATABASE_URL=' "$INSTALL_DIR/web/.env" 2>/dev/null | cut -d= -f2- || true)"
 if [ -n "$DATABASE_URL" ]; then
@@ -83,13 +127,22 @@ pm2 save --force 2>/dev/null || true
 
 if command -v docker >/dev/null 2>&1; then
   log "Removing AiChart application containers (never volumes, never other projects)"
-  docker ps -a --format '{{.Names}}' | grep -Ei '^(aichart|infra)[-_](web|mcp|worker|research|mt5|redis)' | while read -r name; do
+  while IFS= read -r name; do
     docker rm -f "$name" || true
-  done
-  log "Removing obsolete AiChart images (dangling AiChart builds only)"
-  docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -Ei '^(aichart|infra)[-_]' | awk '{print $2}' | while read -r img; do
+  done < <(
+    docker ps -a --format '{{.Names}}' |
+      grep -Ei '^(aichart|infra)[-_](web|mcp|worker|research|mt5|redis)([-_][0-9]+)?$' ||
+      true
+  )
+  log "Removing obsolete AiChart application images"
+  while IFS= read -r img; do
     docker rmi "$img" 2>/dev/null || true
-  done
+  done < <(
+    docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' |
+      grep -Ei '^(aichart|infra)[-_](web|mcp|worker|research|mt5):[^[:space:]]+[[:space:]]' |
+      awk '{print $2}' ||
+      true
+  )
   # NOTE: no docker system prune / volume prune — persistent data stays.
 fi
 
@@ -106,6 +159,19 @@ for f in web mcp research-service; do
 done
 grep -q '^GIT_COMMIT=' "$NEW_DIR/web/.env" 2>/dev/null || echo "GIT_COMMIT=$DEPLOY_COMMIT" >>"$NEW_DIR/web/.env"
 sed -i "s/^GIT_COMMIT=.*/GIT_COMMIT=$DEPLOY_COMMIT/" "$NEW_DIR/web/.env"
+
+log "Restoring licensed TradingView assets into the fresh clone"
+mkdir -p \
+  "$NEW_DIR/$TRADINGVIEW_PUBLIC_REL" \
+  "$NEW_DIR/$TRADINGVIEW_VENDOR_REL"
+cp -a -- \
+  "$TRADINGVIEW_BACKUP_DIR/$TRADINGVIEW_PUBLIC_REL/." \
+  "$NEW_DIR/$TRADINGVIEW_PUBLIC_REL/"
+cp -a -- \
+  "$TRADINGVIEW_BACKUP_DIR/$TRADINGVIEW_VENDOR_REL/." \
+  "$NEW_DIR/$TRADINGVIEW_VENDOR_REL/"
+verify_tradingview_assets "$NEW_DIR" "Restored"
+log "Licensed TradingView assets restored and verified."
 
 log "Building web"
 cd "$NEW_DIR/web" && npm ci && npm run build

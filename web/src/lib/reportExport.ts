@@ -112,7 +112,7 @@ export function exportReportPdf({
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="utf-8" />
-<title>تقرير الأداء — Lonora</title>
+<title>تقرير الأداء — AiChart</title>
 <style>
   * { font-family: -apple-system, "Segoe UI", Tahoma, sans-serif; }
   body { padding: 32px; color: #1a1a1a; }
@@ -128,7 +128,7 @@ export function exportReportPdf({
 </style>
 </head>
 <body>
-  <h1>تقرير الأداء — Lonora</h1>
+  <h1>تقرير الأداء — AiChart</h1>
   <p class="muted">${userEmail} · الفترة: ${periodLabel} · صدر في ${generatedAt}</p>
 
   <h2>ملخص الإحصائيات</h2>

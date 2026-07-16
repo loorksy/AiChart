@@ -25,7 +25,7 @@ export async function buildOpenTradesSummary(
   }
 
   if (aichartTrades.length > 0) {
-    lines.push(`<b>Lonora (${aichartTrades.length})</b>`);
+    lines.push(`<b>AiChart (${aichartTrades.length})</b>`);
     for (const t of aichartTrades) {
       lines.push(
         `• ${t.symbol} ${t.side === "buy" ? "شراء" : "بيع"} · ${t.qty} @ ${t.avg_price} · ${t.env}`,
@@ -41,10 +41,6 @@ export async function buildOpenTradesSummary(
         `• #${p.ticket} ${p.symbol} ${p.side} · ${p.lots} لوت · ربح ${p.profit.toFixed(2)}`,
       );
     }
-  }
-
-  if (env.mismatch && env.mismatchDetailAr) {
-    lines.push("", `⚠️ ${env.mismatchDetailAr}`);
   }
 
   return lines.join("\n");

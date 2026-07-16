@@ -10,7 +10,6 @@ export interface CardContext {
   hasActionableRecommendation: boolean;
   hasPendingIntent: boolean;
   toolNames: string[];
-  executionMode?: "auto" | "approval" | "direct";
 }
 
 /** Components redundant when a recommendation card is already shown. */
@@ -29,12 +28,6 @@ const RECOMMENDATION_DUPLICATES = new Set([
   "pattern_card",
   "confidence_meter",
   "signal_strength",
-]);
-
-/** Components not shown in direct execution mode. */
-const DIRECT_MODE_BLOCKED = new Set([
-  "trade_confirm",
-  "order_ticket",
 ]);
 
 /** Components redundant when a pending trade intent exists. */
@@ -93,12 +86,6 @@ function isTradeProposal(ctx: CardContext): boolean {
 }
 
 function priorityFor(component: string, ctx: CardContext): number {
-  if (ctx.executionMode === "direct" && DIRECT_MODE_BLOCKED.has(component)) {
-    return -1;
-  }
-  if (ctx.executionMode === "direct" && component === "risk_reward") {
-    return -1;
-  }
   if (ctx.hasActionableRecommendation && RECOMMENDATION_DUPLICATES.has(component)) {
     return -1;
   }
@@ -182,7 +169,6 @@ export function buildCardContext(
   toolNames: string[],
   recommendations: { action?: string }[],
   hasPendingIntent = false,
-  executionMode?: "auto" | "approval" | "direct",
 ): CardContext {
   const actionable = recommendations.some(
     (r) => r.action === "buy" || r.action === "sell",
@@ -192,7 +178,6 @@ export function buildCardContext(
     hasActionableRecommendation: actionable,
     hasPendingIntent,
     toolNames,
-    executionMode,
   };
 }
 
@@ -204,7 +189,6 @@ export function filterMessageCards(
   opts: {
     hasActionableRecommendation?: boolean;
     hasPendingIntent?: boolean;
-    executionMode?: "auto" | "approval" | "direct";
   },
 ): ComposedUISchema | null {
   if (!schema?.layout?.length) return null;
@@ -214,7 +198,6 @@ export function filterMessageCards(
     hasActionableRecommendation: Boolean(opts.hasActionableRecommendation),
     hasPendingIntent: Boolean(opts.hasPendingIntent),
     toolNames: [],
-    executionMode: opts.executionMode,
   };
 
   return applyCardPolicy(schema, ctx);

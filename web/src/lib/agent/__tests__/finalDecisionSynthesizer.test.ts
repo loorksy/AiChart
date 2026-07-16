@@ -1,204 +1,92 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { runFinalDecisionSynthesizer } from "@/lib/agent/agents/finalDecisionSynthesizer";
-import type {
-  FinalDecisionInput,
-  FinalDecisionResult,
-} from "@/lib/agent/agents/finalDecisionAgent";
+import type { FinalDecisionInput } from "@/lib/agent/agents/finalDecisionAgent";
 import type { AgentMarketContext } from "@/lib/agent/marketContext/buildAgentMarketContext";
 import type { AgentRunContext } from "@/lib/agent/types";
 import type { RiskAgentResult } from "@/lib/agent/agents/riskAgent";
-import { makeStructure } from "./helpers";
+import type { TradeCandidate } from "@/lib/agent/trading/buildTradeCandidates";
+import { makeRisk, makeStructure } from "./helpers";
 
-function fakeCtx(): AgentRunContext {
-  return { requestId: "t", emitActivity: () => {} };
-}
+const ctx: AgentRunContext = { requestId: "test", emitActivity: () => {} };
 
 function market(): AgentMarketContext {
   return {
-    symbol: "EURUSD",
-    interval: "15m",
-    currentPrice: 1.1,
-    marketRegime: "range",
-    dataQuality: {
-      currentTfCount: 600,
-      higherTfCount: 250,
-      dailyCount: 120,
-      sufficient: true,
-      policyVersion: "1.1.0",
-      coverage: {
-        policyVersion: "1.1.0",
-        analysisKind: "intraday",
-        gate: "trade",
-        status: "sufficient",
-        sufficientForAnalysis: true,
-        sufficientForTrade: true,
-        sufficientForDrawing: true,
-        timeframes: [],
-        summaryAr: "كافٍ",
-        summaryEn: "sufficient",
-      },
-    },
-    currentTfCandles: [],
-    higherTfCandles: [],
-    dailyCandles: [],
+    symbol: "EURUSD", interval: "5m", currentPrice: 1.1, marketRegime: "range",
+    dataQuality: { currentTfCount: 600, higherTfCount: 250, dailyCount: 120, sufficient: true, policyVersion: "1.1.0" },
+    currentTfCandles: [], higherTfCandles: [], dailyCandles: [],
   } as unknown as AgentMarketContext;
 }
 
-import { buildWaitConfidence } from "@/lib/agent/confidenceSemantics";
-
-function det(over: Partial<FinalDecisionResult> = {}): FinalDecisionResult {
-  const confidenceSemantics = buildWaitConfidence({
-    decisionConfidence: 0.82,
-    dataQualityScore: 0.7,
-    setupQuality: null,
-    reasons: ["نسبة العائد/المخاطرة غير كافية."],
-    riskVeto: false,
-  });
+function candidate(id: string, action: "buy" | "sell"): TradeCandidate {
+  const buy = action === "buy";
   return {
-    decision: "wait",
-    confidence: 0.82,
-    confidenceSemantics,
-    summary: "انتظار: لا منطقة دخول.",
-    keyReasons: ["نسبة العائد/المخاطرة غير كافية."],
-    riskWarnings: [],
-    recommendation: { action: "wait" },
-    publicReasoningSummary: ["لا POI قريبة."],
-    riskVeto: false,
-    ...over,
+    id, action, entry: 1.1, entryType: "market", stop_loss: buy ? 1.09 : 1.11,
+    targets: [buy ? 1.12 : 1.08], rr: 2, setupType: "trend_continuation",
+    poi: { type: buy ? "demand" : "supply", low: 1.09, high: 1.11, score: { score: 80, grade: "A", reasons: [], warnings: [], isTradable: true } },
+    evidence: ["real evidence"], warnings: [], invalidationReason: "structure invalidated",
   };
 }
 
-function baseInput(
-  deterministic: FinalDecisionResult,
-  risk: RiskAgentResult | null = null,
-): FinalDecisionInput & { deterministic: FinalDecisionResult; candidates: [] } {
-  return {
-    userMessage: "حلل",
-    risk,
-    news: null,
-    market: market(),
-    structure: makeStructure(),
-    supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null },
-    mtf: null,
-    deterministic,
-    candidates: [],
-  };
+function evidence(...candidates: TradeCandidate[]): RiskAgentResult {
+  return makeRisk({ candidatesResult: { candidates, best: candidates[0] ?? null, rejectedReasons: [], hasReversalEvidence: false }, selectedCandidate: candidates[0] ?? null });
 }
 
-const modelJson = (over: Record<string, unknown> = {}) =>
-  JSON.stringify({
-    decision: "wait",
-    confidence: 0.6,
-    summary: "انتظار على اليورو دولار: السعر وسط النطاق ولا ميزة للدخول الآن.",
-    keyReasons: ["السعر وسط النطاق."],
-    riskWarnings: [],
-    publicReasoningSummary: ["السعر بعيد عن أي POI قوية."],
-    drawingAdvice: { shouldDraw: false, reason: "لا مستويات قوية." },
-    ...over,
-  });
+function input(risk: RiskAgentResult | null): FinalDecisionInput & { candidates: [] } {
+  return { userMessage: "analyze", risk, news: null, market: market(), structure: makeStructure(), supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null }, mtf: null, candidates: [] };
+}
 
-describe("finalDecisionSynthesizer", () => {
-  it("LLM success sets usedLLM=true and uses model wording", async () => {
-    const out = await runFinalDecisionSynthesizer(fakeCtx(), baseInput(det()), {
-      configured: true,
-      callModel: async () => modelJson(),
-    });
+function model(over: Record<string, unknown> = {}) {
+  return JSON.stringify({ decision: "wait", selectedTradeCandidateId: null, confidence: 0.6, summary: "Specific EURUSD market decision from the supplied evidence.", keyReasons: ["evidence"], riskWarnings: [], publicReasoningSummary: ["public evidence"], drawingAdvice: { shouldDraw: false, reason: "none" }, ...over });
+}
+
+describe("AI final decision authority", () => {
+  it("uses model wording and decision", async () => {
+    const out = await runFinalDecisionSynthesizer(ctx, input(null), { configured: true, callModel: async () => model() });
     assert.equal(out.usedLLM, true);
-    assert.ok(out.result.summary.includes("وسط النطاق"));
-    assert.equal(out.drawingAdvice?.shouldDraw, false);
+    assert.equal(out.result?.decision, "wait");
+    assert.match(out.result?.summary ?? "", /EURUSD/);
   });
 
-  it("risk veto cannot be overridden: model buy is forced to WAIT with real reasons", async () => {
-    const vetoDet = det({
-      riskVeto: true,
-      keyReasons: ["السبريد مرتفع جداً."],
-    });
-    const out = await runFinalDecisionSynthesizer(fakeCtx(), baseInput(vetoDet), {
+  it("may choose either side from real opposing candidates", async () => {
+    const buy = candidate("buy-1", "buy");
+    const sell = candidate("sell-1", "sell");
+    const out = await runFinalDecisionSynthesizer(ctx, input(evidence(buy, sell)), {
       configured: true,
-      callModel: async () =>
-        modelJson({ decision: "buy", confidence: 0.95, keyReasons: [] }),
+      callModel: async () => model({ decision: "sell", selectedTradeCandidateId: "sell-1", confidence: 0.9 }),
     });
-    assert.equal(out.result.decision, "wait");
-    assert.equal(out.result.recommendation.action, "wait");
-    assert.ok(out.result.keyReasons.includes("السبريد مرتفع جداً."));
+    assert.equal(out.result?.decision, "sell");
+    assert.equal(out.result?.recommendation.stop_loss, sell.stop_loss);
   });
 
-  it("model cannot invent a trade the deterministic engine did not propose", async () => {
-    const out = await runFinalDecisionSynthesizer(fakeCtx(), baseInput(det()), {
-      configured: true,
-      callModel: async () => modelJson({ decision: "sell", confidence: 0.9 }),
-    });
-    // deterministic proposed wait → sell is rejected → wait, no invented levels.
-    assert.equal(out.result.decision, "wait");
-    assert.equal(out.result.recommendation.action, "wait");
+  it("lets the model select a real candidate from risk evidence", async () => {
+    const buy = candidate("buy-1", "buy");
+    const risk = evidence(buy);
+    const out = await runFinalDecisionSynthesizer(ctx, input(risk), { configured: true, callModel: async () => model({ decision: "buy", selectedTradeCandidateId: "buy-1" }) });
+    assert.equal(out.result?.decision, "buy");
   });
 
-  it("model may confirm the deterministic trade with its numbers preserved", async () => {
-    const buyDet = det({
-      decision: "buy",
-      recommendation: { action: "buy", entry: 1.1, stop_loss: 1.09, targets: [1.13] },
-    });
-    const out = await runFinalDecisionSynthesizer(fakeCtx(), baseInput(buyDet), {
+  it("high news remains evidence and does not force WAIT", async () => {
+    const buy = candidate("buy-1", "buy");
+    const base = input(evidence(buy));
+    const out = await runFinalDecisionSynthesizer(ctx, { ...base, news: { newsRisk: "high", biasImpact: "unknown", affectedCurrencies: [], upcomingEvents: [], tradeAllowed: false, reason: "event" } }, {
       configured: true,
-      callModel: async () => modelJson({ decision: "buy", confidence: 0.8 }),
+      callModel: async () => model({ decision: "buy", selectedTradeCandidateId: "buy-1", confidence: 0.95 }),
     });
-    assert.equal(out.result.decision, "buy");
-    assert.equal(out.result.recommendation.entry, 1.1);
-    assert.equal(out.result.recommendation.stop_loss, 1.09);
+    assert.equal(out.result?.decision, "buy");
   });
 
-  it("high news risk caps confidence", async () => {
-    const buyDet = det({
-      decision: "buy",
-      recommendation: { action: "buy", entry: 1.1, stop_loss: 1.09, targets: [1.13] },
-    });
-    const input = {
-      ...baseInput(buyDet),
-      news: {
-        newsRisk: "high" as const,
-        biasImpact: "unknown" as const,
-        affectedCurrencies: [],
-        upcomingEvents: [],
-        tradeAllowed: false,
-        reason: "High-impact event soon.",
-      },
-    };
-    const out = await runFinalDecisionSynthesizer(fakeCtx(), input, {
-      configured: true,
-      callModel: async () => modelJson({ decision: "buy", confidence: 0.95 }),
-    });
-    assert.ok(out.result.confidence <= 0.55);
+  it("keeps the model direction when no matching level candidate exists", async () => {
+    const out = await runFinalDecisionSynthesizer(ctx, input(null), { configured: true, callModel: async () => model({ decision: "sell", selectedTradeCandidateId: "invented" }) });
+    assert.equal(out.result?.decision, "sell");
+    assert.equal(out.result?.recommendation.action, "sell");
+    assert.equal(out.result?.recommendation.stop_loss, undefined);
+    assert.match(out.result?.riskWarnings[0] ?? "", /لا يمكن تجهيزه للتنفيذ/);
   });
 
-  it("schema failure falls back to deterministic (usedDeterministicFallback)", async () => {
-    const d = det();
-    const out = await runFinalDecisionSynthesizer(fakeCtx(), baseInput(d), {
-      configured: true,
-      callModel: async () => "totally invalid",
-    });
+  it("model/schema failure returns no market decision", async () => {
+    const out = await runFinalDecisionSynthesizer(ctx, input(null), { configured: true, callModel: async () => "invalid" });
     assert.equal(out.usedLLM, false);
-    assert.equal(out.result, d);
-  });
-
-  it("LLM not configured falls back to deterministic", async () => {
-    const d = det();
-    const out = await runFinalDecisionSynthesizer(fakeCtx(), baseInput(d), {
-      configured: false,
-    });
-    assert.equal(out.usedLLM, false);
-    assert.equal(out.result, d);
-  });
-
-  it("chain-of-thought phrasing is stripped from model output", async () => {
-    const out = await runFinalDecisionSynthesizer(fakeCtx(), baseInput(det()), {
-      configured: true,
-      callModel: async () =>
-        modelJson({
-          summary:
-            "chain of thought: انتظار على اليورو دولار لأن السعر وسط النطاق.",
-        }),
-    });
-    assert.ok(!out.result.summary.toLowerCase().includes("chain of thought"));
+    assert.equal(out.result, null);
   });
 });

@@ -5,7 +5,6 @@ import {
   resampleOhlc,
 } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
-import { getSettings } from "@/lib/store";
 import { getCached, setCached } from "@/lib/bridge/cache";
 import { freshnessMeta, type FreshnessMeta } from "@/lib/bridge/freshness";
 import {
@@ -120,8 +119,7 @@ async function fetchForexOhlcLive(
 /** Fetches OHLC with bridge cache (45s) — forex via OANDA or EA. */
 export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcResult> {
   const interval = normalizeInterval(options.interval ?? "1h");
-  const settings = options.userId > 0 ? await getSettings(options.userId) : null;
-  const market = options.market ?? settings?.active_market ?? DEFAULT_MARKET;
+  const market = options.market ?? DEFAULT_MARKET;
   const marketBlock = rejectNonForexMarket(market);
   if (marketBlock) {
     throw new Error(marketBlock);

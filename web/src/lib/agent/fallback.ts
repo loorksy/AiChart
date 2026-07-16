@@ -7,22 +7,16 @@
 import type { AppLocale } from "@/lib/i18n";
 import {
   buildInformationalConfidence,
-  buildWaitConfidence,
 } from "./confidenceSemantics";
 import type { AgentActivityEvent, AgentFinalResult } from "./types";
 
-/** Generic partial-failure fallback: informational, WAIT, no drawings. */
+/** Generic partial-failure fallback: informational, no market decision. */
 export function buildAgentFallbackResult(
   reason: string,
   activityEvents: AgentActivityEvent[] = [],
   locale: AppLocale = "ar",
 ): AgentFinalResult {
-  const confidenceSemantics = buildWaitConfidence({
-    decisionConfidence: 0.9,
-    dataQualityScore: 0.3,
-    reasons: [reason],
-    riskVeto: true,
-  });
+  const confidenceSemantics = buildInformationalConfidence({ analysisConfidence: 0 });
   return {
     decision: "informational",
     confidence:
@@ -41,7 +35,6 @@ export function buildAgentFallbackResult(
         : "لم يتم إصدار توصية تداول بسبب فشل جزئي في النظام.",
     ],
     activityEvents,
-    recommendation: { action: "wait" },
     drawings: [],
   };
 }
@@ -52,7 +45,7 @@ export function buildInformationalResult(
   activityEvents: AgentActivityEvent[] = [],
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({
-    analysisConfidence: 0.75,
+    analysisConfidence: 0,
   });
   return {
     decision: "informational",

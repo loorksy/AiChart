@@ -62,7 +62,6 @@ export function buildWaitConfidence(input: {
   dataQualityScore: number;
   setupQuality?: number | null;
   reasons: string[];
-  riskVeto: boolean;
 }): ConfidenceSemantics {
   const decision = clamp01(input.decisionConfidence);
   const dataQuality = clamp01(input.dataQualityScore);
@@ -75,11 +74,6 @@ export function buildWaitConfidence(input: {
       factor: "data_quality",
       status: dataQuality >= 0.8 ? "ok" : dataQuality >= 0.5 ? "degraded" : "insufficient",
       effect: "supports WAIT when incomplete",
-    },
-    {
-      factor: "safety_policy",
-      status: input.riskVeto ? "blocking" : "clear",
-      effect: input.riskVeto ? "forces WAIT" : "no hard veto",
     },
   ];
   for (const reason of input.reasons.slice(0, 3)) {
@@ -96,9 +90,9 @@ export function buildWaitConfidence(input: {
     setupQuality: setup,
     recommendationConfidence: "not_applicable",
     executionReadiness: "not_applicable",
-    displayKind: "decision",
+    displayKind: "none",
     displayLabelKey: "agent.decision_confidence",
-    displayValue: decision,
+    displayValue: "not_applicable",
     factors,
   };
 }
@@ -106,40 +100,35 @@ export function buildWaitConfidence(input: {
 export function buildRecommendationConfidence(input: {
   base: number;
   dataQualityScore: number;
-  setupQuality: number;
+  setupQuality: number | null;
   newsRisk: "low" | "medium" | "high" | "unknown";
   dataSufficientForTrade: boolean;
 }): ConfidenceSemantics {
-  let recommendation = clamp01(input.base);
-  // Unknown news and insufficient candles must not produce high recommendation confidence.
-  if (!input.dataSufficientForTrade) {
-    recommendation = Math.min(recommendation, 0.35);
-  }
-  if (input.newsRisk === "unknown") {
-    recommendation = Math.min(recommendation, 0.65);
-  }
-  if (input.newsRisk === "high") {
-    recommendation = Math.min(recommendation, 0.55);
-  }
-  recommendation = Math.min(recommendation, clamp01(input.setupQuality + 0.1));
-  recommendation = Math.min(recommendation, clamp01(input.dataQualityScore + 0.15));
+  // The decision model already receives these evidence fields and owns the
+  // resulting confidence. Preserve its value; never apply a hidden policy cap.
+  const recommendation = clamp01(input.base);
 
   return {
     analysisConfidence: clamp01(input.base),
     decisionConfidence: clamp01(input.base),
     dataQuality: clamp01(input.dataQualityScore),
-    setupQuality: clamp01(input.setupQuality),
+    setupQuality:
+      input.setupQuality == null
+        ? "not_applicable"
+        : clamp01(input.setupQuality),
     recommendationConfidence: recommendation,
     executionReadiness: "not_applicable",
     displayKind: "recommendation",
     displayLabelKey: "agent.recommendation_confidence",
     displayValue: recommendation,
     factors: [
-      {
-        factor: "setup_quality",
-        status: input.setupQuality >= 0.75 ? "strong" : "moderate",
-        effect: `setup quality ${Math.round(input.setupQuality * 100)}%`,
-      },
+      ...(input.setupQuality == null
+        ? []
+        : [{
+            factor: "setup_quality",
+            status: input.setupQuality >= 0.75 ? "strong" : "moderate",
+            effect: `setup quality ${Math.round(input.setupQuality * 100)}%`,
+          }]),
       {
         factor: "data_quality",
         status: input.dataSufficientForTrade ? "ok" : "insufficient",

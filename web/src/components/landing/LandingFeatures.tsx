@@ -11,8 +11,8 @@ import {
   Shield,
   Activity,
   BarChart3,
-  Cpu,
-  Bot,
+  MessageSquareText,
+  Scale,
 } from "lucide-react";
 
 interface BentoItem {
@@ -207,27 +207,27 @@ export function LandingFeatures() {
     {
       id: "1",
       colSpan: 3,
-      title: isRtl ? "ربط كلاود MCP" : "Claude MCP Integration",
+      title: isRtl ? "قرار ذكاء واحد" : "One AI Decision",
       description: isRtl
-        ? "تحليل ذكي متطور للسوق باستخدام بروتوكول Claude Model Context للحصول على رؤى تداول فورية وتحليلات تنبؤية."
-        : "Advanced AI-powered market analysis using Claude's Model Context Protocol for real-time trading insights and predictive analytics.",
+        ? "يحلّل AiChart سياق الشارت ويصدر قراراً واضحاً واحداً: BUY أو SELL أو WAIT، مع الأسباب ومستوى الثقة."
+        : "AiChart analyzes the chart context and returns one clear decision: BUY, SELL, or WAIT, with reasons and confidence.",
       icon: <Brain className="w-5 h-5" />,
-      status: isRtl ? "مباشر" : "Live",
-      tags: isRtl ? ["ذكاء_اصطناعي", "MCP", "تحليل"] : ["AI", "MCP", "Analysis"],
-      meta: "v3.2.1",
+      status: isRtl ? "مرجعي" : "Canonical",
+      tags: isRtl ? ["قرار", "أسباب", "ثقة"] : ["Decision", "Reasons", "Confidence"],
+      meta: "Scalping",
       hasPersistentHover: true,
       accentColor: "#8b5cf6",
-      bigStat: { value: "99.7%", label: isRtl ? "الدقة" : "Accuracy" },
+      bigStat: { value: "1", label: isRtl ? "سلطة القرار" : "Decision authority" },
     },
     {
       id: "2",
       colSpan: 3,
       title: isRtl ? "اتصالات MetaTrader 5" : "MetaTrader 5 Connectors",
       description: isRtl
-        ? "ربط وتكامل سلس مع MetaTrader 5 عبر EA أو MetaApi. نفّذ الصفقات بزمن استجابة منخفض."
-        : "Seamless MetaTrader 5 integration via EA or MetaApi. Execute trades with low latency.",
+        ? "اربط حساب MetaTrader 5 عبر EA أو MetaApi، ثم نفّذ القرار بعد موافقتك واجتياز فحوص الاتصال والسعر."
+        : "Connect MetaTrader 5 through EA or MetaApi, then execute after your approval and connection and price checks.",
       icon: <TrendingUp className="w-5 h-5" />,
-      status: isRtl ? "نشط" : "Active",
+      status: isRtl ? "متاح" : "Available",
       tags: isRtl ? ["MT5", "EA", "MetaApi"] : ["MT5", "EA", "MetaApi"],
       meta: isRtl ? "فوركس" : "Forex",
       accentColor: "#f59e0b",
@@ -235,13 +235,13 @@ export function LandingFeatures() {
     {
       id: "3",
       colSpan: 2,
-      title: isRtl ? "الوكلاء المستقلون" : "Autonomous Agents",
+      title: isRtl ? "مساحة عمل موحّدة" : "Unified Workspace",
       description: isRtl
-        ? "روبوتات تداول ذاتية التعلم تتكيف مع ظروف السوق المتغيرة في الوقت الفعلي."
-        : "Self-learning trading bots that adapt to market conditions in real-time.",
-      icon: <Bot className="w-5 h-5" />,
-      tags: isRtl ? ["أتمتة", "تعلم_الآلة"] : ["Automation", "ML"],
-      meta: "24/7",
+        ? "الشارت والمحادثة والرسومات وسجل التوصيات في سياق واحد يمكنك مراجعته قبل أي تنفيذ."
+        : "Chart, chat, drawings, and recommendation history stay in one reviewable context before execution.",
+      icon: <MessageSquareText className="w-5 h-5" />,
+      tags: isRtl ? ["شارت", "محادثة"] : ["Chart", "Chat"],
+      meta: isRtl ? "سياق واحد" : "One context",
       accentColor: "#10b981",
     },
     {
@@ -249,48 +249,48 @@ export function LandingFeatures() {
       colSpan: 2,
       title: isRtl ? "إدارة المخاطر" : "Risk Management",
       description: isRtl
-        ? "حماية متقدمة للمحفظة الاستثمارية باستخدام خوارزميات تحديد حجم الصفقات ووقف الخسارة الديناميكي."
-        : "Advanced portfolio protection with dynamic stop-loss and position sizing algorithms.",
-      icon: <Shield className="w-5 h-5" />,
-      status: isRtl ? "محمي" : "Protected",
-      tags: isRtl ? ["أمان", "مخاطر"] : ["Security", "Risk"],
+        ? "إعداد Risk per Trade يحدّد حجم الصفقة فقط وفق Equity ووقف الخسارة، ولا يغيّر رأي السوق."
+        : "Risk per Trade sizes the position from equity and stop distance only; it never changes the market opinion.",
+      icon: <Scale className="w-5 h-5" />,
+      status: isRtl ? "محدود" : "Bounded",
+      tags: isRtl ? ["حجم_الصفقة", "مخاطرة"] : ["Position size", "Risk"],
       accentColor: "#ef4444",
     },
     {
       id: "5",
       colSpan: 2,
-      title: isRtl ? "التحليلات الفورية" : "Real-time Analytics",
+      title: isRtl ? "سياق سوق حديث" : "Fresh Market Context",
       description: isRtl
-        ? "معالجة بيانات السوق الحية بزمن استجابة يقل عن الثانية مع النمذجة التنبؤية."
-        : "Live market data processing with sub-second latency and predictive modeling.",
+        ? "يستخدم التحليل بيانات الشارت والسعر والحساب المتاحة لحظة الطلب، مع توضيح النقص بدلاً من اختلاق يقين."
+        : "Analysis uses the chart, price, and account context available at request time, and exposes missing context instead of inventing certainty.",
       icon: <Activity className="w-5 h-5" />,
-      tags: isRtl ? ["بيانات", "بث"] : ["Data", "Streaming"],
-      meta: "< 100ms",
+      tags: isRtl ? ["بيانات", "شفافية"] : ["Data", "Transparency"],
+      meta: isRtl ? "عند الطلب" : "On request",
       accentColor: "#06b6d4",
     },
     {
       id: "6",
       colSpan: 3,
-      title: isRtl ? "مؤشرات الأداء" : "Performance Metrics",
+      title: isRtl ? "أداء موثّق" : "Tracked Performance",
       description: isRtl
-        ? "لوحة تحليلات تداول شاملة مع تتبع الأرباح والخسائر ونسب النجاح ورؤى تحسين الاستراتيجية."
-        : "Comprehensive trading analytics dashboard with P&L tracking, win rates, and strategy optimization insights.",
+        ? "تُحفظ التوصيات ونتائجها لبناء إحصاءات تاريخية قابلة للمراجعة؛ الأداء السابق ليس وعداً للمستقبل."
+        : "Recommendations and outcomes build reviewable historical statistics; past performance is never a promise of future results.",
       icon: <BarChart3 className="w-5 h-5" />,
-      status: isRtl ? "مراقبة" : "Monitoring",
-      tags: isRtl ? ["تحليلات", "تقارير", "أداء"] : ["Analytics", "Reports", "KPI"],
-      meta: isRtl ? "مباشر" : "Live",
+      status: isRtl ? "تاريخي" : "Historical",
+      tags: isRtl ? ["إحصاءات", "نتائج", "مراجعة"] : ["Statistics", "Outcomes", "Review"],
+      meta: isRtl ? "بدون ضمان" : "No guarantee",
       accentColor: "#3b82f6",
     },
     {
       id: "7",
       colSpan: 3,
-      title: isRtl ? "محرك الشبكة العصبية" : "Neural Network Engine",
+      title: isRtl ? "حماية التنفيذ" : "Execution Safety",
       description: isRtl
-        ? "نماذج تعلم عميق مدربة على البيانات التاريخية لتحديد الأنماط وتحسين استراتيجيات التداول عبر ظروف السوق المختلفة."
-        : "Deep learning models trained on historical data to identify patterns and optimize trading strategies across market conditions.",
-      icon: <Cpu className="w-5 h-5" />,
-      tags: isRtl ? ["ذكاء_اصطناعي", "تعلم_عميق"] : ["AI", "Deep Learning"],
-      meta: isRtl ? "تسريع GPU" : "GPU Accelerated",
+        ? "المصادقة والموافقة الصريحة وفحص السعر الحديث ومنع تكرار الطلب تحمي التنفيذ من دون تعديل القرار التحليلي."
+        : "Authentication, explicit confirmation, fresh-price checks, and idempotency protect execution without altering the analysis decision.",
+      icon: <Shield className="w-5 h-5" />,
+      tags: isRtl ? ["موافقة", "سعر_حديث", "منع_التكرار"] : ["Approval", "Fresh price", "Idempotency"],
+      meta: isRtl ? "قبل التنفيذ" : "Pre-execution",
       accentColor: "#ec4899",
     },
   ];
@@ -342,8 +342,8 @@ export function LandingFeatures() {
           </h2>
           <p className="text-sm text-white/50 max-w-2xl mx-auto leading-relaxed">
             {isRtl
-              ? "استفد من قوة وكلاء التداول الموجهين بالذكاء الاصطناعي مع ربط Claude MCP المتقدم والتنفيذ الفوري بين المنصات."
-              : "Harness the power of AI-driven trading agents with Claude MCP integration, multi-exchange connectivity, and autonomous execution."}
+              ? "استخدم مساعد تداول واحداً يجمع المحادثة والشارت والاتصال بحسابك في تجربة واضحة."
+              : "Use one trading assistant that combines chat, chart, and account connectivity in a clear experience."}
           </p>
         </motion.div>
 

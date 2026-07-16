@@ -1,8 +1,8 @@
 import { BRAND_DOMAIN, BRAND_NAME } from "@/lib/brand";
 
 export const metadata = {
-  title: "سياسة الخصوصية — Lonora",
-  description: "كيف تتعامل Lonora مع بياناتك عبر المنصة وتكاملات الذكاء الاصطناعي.",
+  title: "سياسة الخصوصية — AiChart",
+  description: "كيف تتعامل AiChart مع بياناتك عبر المنصة وتكاملات الذكاء الاصطناعي.",
 };
 
 /** Privacy policy — required for the ChatGPT Apps store listing. */
@@ -13,7 +13,7 @@ export default function PrivacyPage() {
       <p className="mb-4 text-sm leading-7 text-slate-400">
         آخر تحديث: يوليو 2026 — تنطبق هذه السياسة على منصة {BRAND_NAME}
         {" "}({BRAND_DOMAIN}) وتكاملاتها مع مساعدي الذكاء الاصطناعي (Claude،
-        ChatGPT) عبر بروتوكول MCP.
+        ChatGPT) عبر موصل آمن.
       </p>
       <section className="space-y-5 text-sm leading-7">
         <div>
@@ -30,7 +30,7 @@ export default function PrivacyPage() {
             التكامل مع مساعدي الذكاء الاصطناعي
           </h2>
           <p>
-            عند ربط حسابك بـ Claude أو ChatGPT عبر MCP، يُمنح المساعد وصولاً
+            عند ربط حسابك بـ Claude أو ChatGPT عبر الموصل، يُمنح المساعد وصولاً
             بحدود حسابك فقط (أسعار، شارتات، صفقاتك، رصيدك) بعد تسجيل دخولك
             وموافقتك عبر OAuth. يمكنك إلغاء الوصول في أي وقت من إعدادات
             المساعد أو من صفحة الاتصالات في المنصة.

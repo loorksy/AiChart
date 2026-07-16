@@ -11,7 +11,6 @@ import type {
 
 export type AgentIntent =
   | "new_trade_analysis"
-  | "scalp_recommendation"
   | "chart_analysis"
   | "draw_on_chart"
   | "draw_active_recommendation"
@@ -103,8 +102,6 @@ export interface AgentChartContext {
 export interface AgentSessionMemory {
   sessionId: string;
   preferences: {
-    tradingStyle?: "scalping" | "intraday" | "swing";
-    riskMode?: "low" | "medium" | "high";
     allowExecution?: boolean;
     preferMinimalDrawings?: boolean;
     educationalOnly?: boolean;
@@ -193,8 +190,6 @@ export interface AgentFinalResult {
   selectedSkills?: Array<{ name: string; version: string }>;
   /** Skills selected for this run whose load failed (reported honestly). */
   skillLoadFailures?: Array<{ name: string; version: string; error: string }>;
-  /** Resolved trading mode for this run (safe metadata, no prompt content). */
-  tradingMode?: { style: string; source: string };
   /**
    * Research systems that actually contributed (or were explicitly skipped).
    * Never claim Backtest/DNA/Shadow/Swarm influence unless status === "used".
@@ -204,15 +199,14 @@ export interface AgentFinalResult {
   evidenceTimeline?: import("./researchEvidence").EvidenceTimelineStep[];
   /** Candle coverage report for this run (available/required/refill). */
   candleCoverage?: import("./dataQualityPolicy").CandleCoverageReport;
-  /** Dev-only diagnostics: whether the run used the synthesizer/LLM or a
-   *  deterministic fallback, ticker state, candle counts, and the drawing-plan
+  /** Dev-only diagnostics: whether the run used the synthesizer/LLM,
+   *  ticker state, candle counts, and the drawing-plan
    *  decision. Never carries secrets or raw reasoning. */
   debugDecisionFlow?: AgentDebugDecisionFlow;
 }
 
 export interface AgentDebugDecisionFlow {
   usedLLM: boolean;
-  usedDeterministicFallback: boolean;
   tickerGenerated: boolean;
   tickerHiddenReason?: string;
   candleCount: number;
@@ -240,12 +234,10 @@ export interface AgentDebugDecisionFlow {
 export interface AgentConfirmationPayload {
   symbol: string;
   direction: "buy" | "sell";
-  volume?: number;
   entry?: number;
   stop_loss?: number;
   targets?: number[];
   estimatedRR?: number;
-  executionMode?: "demo" | "live" | "simulation";
   newsWarning?: string;
   spreadWarning?: string;
 }

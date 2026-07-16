@@ -5,7 +5,7 @@
  *
  * Two alert families are supported:
  *  - trade alerts  (executed / closed / failed)
- *  - signal alerts (new agent recommendations), gated by a confidence floor
+ *  - signal alerts (new agent recommendations)
  */
 
 import { getSettings, getRecommendation, recordAlert, getTelegramChatId } from "./store";
@@ -26,7 +26,6 @@ export type DeliveryReason =
   | "alerts_disabled"
   | "trade_alerts_disabled"
   | "signal_alerts_disabled"
-  | "confidence_below_threshold"
   | "telegram_not_linked"
   | "bot_not_configured"
   | "delivery_failed"
@@ -43,7 +42,6 @@ const REASON_AR: Record<DeliveryReason, string> = {
   alerts_disabled: "التنبيهات معطّلة في الإعدادات",
   trade_alerts_disabled: "تنبيهات الصفقات معطّلة",
   signal_alerts_disabled: "تنبيهات الإشارات معطّلة",
-  confidence_below_threshold: "الثقة أقل من الحد الأدنى",
   telegram_not_linked: "تليجرام غير مربوط",
   bot_not_configured: "بوت تليجرام غير مُعدّ",
   delivery_failed: "فشل الإرسال إلى تليجرام",
@@ -62,13 +60,9 @@ export interface DispatchAlertOptions {
   /** Telegram message body (HTML). Falls back to title when omitted. */
   text?: string;
   symbol?: string | null;
-  /** Signal-only: recommendation confidence used for threshold gating. */
-  confidence?: number;
   /** Optional chart image to send instead of a plain message. */
   photoUrl?: string | null;
   buttons?: InlineButton[][];
-  /** Skip signal confidence floor (e.g. technical preview / wait summary). */
-  bypassConfidenceGate?: boolean;
 }
 
 function isTradeAlert(type: AlertType): boolean {
@@ -116,17 +110,6 @@ export async function evaluateDelivery(
         allowed: false,
         reason: "signal_alerts_disabled",
         reasonAr: REASON_AR.signal_alerts_disabled,
-      };
-    }
-    if (
-      !opts.bypassConfidenceGate &&
-      typeof opts.confidence === "number" &&
-      opts.confidence < settings.alert_min_confidence
-    ) {
-      return {
-        allowed: false,
-        reason: "confidence_below_threshold",
-        reasonAr: `${REASON_AR.confidence_below_threshold} (${settings.alert_min_confidence}%)`,
       };
     }
   }

@@ -1,5 +1,4 @@
 import { buildForexSnapshot, type MarketSnapshot } from "./market";
-import type { TradingSettings } from "./types";
 
 export interface OpportunityCandidate {
   symbol: string;
@@ -9,19 +8,12 @@ export interface OpportunityCandidate {
   snapshot: MarketSnapshot;
 }
 
-function thresholdForStyle(style: TradingSettings["style"]): number {
-  if (style === "conservative") return 3;
-  if (style === "balanced") return 2;
-  return 1;
-}
-
 /**
  * Cheap 24/7 monitoring layer — pure code, no LLM. Returns a candidate
  * only when multiple technical signals align (per the user's style).
  */
 export function scoreOpportunity(
   snap: MarketSnapshot,
-  style: TradingSettings["style"],
 ): OpportunityCandidate | null {
   const signals: string[] = [];
   let score = 0;
@@ -60,7 +52,7 @@ export function scoreOpportunity(
     score += 1;
   }
 
-  if (score < thresholdForStyle(style)) return null;
+  if (score < 2) return null;
 
   return {
     symbol: snap.symbol,
@@ -77,11 +69,10 @@ export { parseAllowedAssets, isOpenAssetsPolicy } from "./allowedAssets";
 export async function scanForexSymbol(
   userId: number,
   symbol: string,
-  style: TradingSettings["style"],
   interval = "1h",
 ): Promise<OpportunityCandidate | null> {
   const snap = await buildForexSnapshot(userId, symbol, interval);
-  return scoreOpportunity(snap, style);
+  return scoreOpportunity(snap);
 }
 
 export type ProximityKind = "sl" | "tp" | "entry";

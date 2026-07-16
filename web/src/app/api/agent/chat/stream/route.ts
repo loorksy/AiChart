@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { getSettings, getLimits } from "@/lib/store";
+import { getLimits } from "@/lib/store";
 import { isLLMConfigured } from "@/lib/llm";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
@@ -12,7 +12,6 @@ import {
   shouldShowActivity,
 } from "@/lib/agent/activity";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
-import { buildUserTradingProfile } from "@/lib/agent/risk/userTradingProfile";
 import {
   updateSessionFromMessage,
   rememberContext,
@@ -29,7 +28,6 @@ import { streamTicker } from "@/lib/agent/ticker/streamTicker";
 import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
 import { createLogger } from "@/lib/logger";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
-import { tradingStyleForInterval } from "@/lib/analysisProfile";
 import type { AgentActivityEvent } from "@/lib/agent/types";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
@@ -253,12 +251,6 @@ export async function POST(req: NextRequest) {
   try {
     const user = await requirePlatformAccess();
 
-    if (!FEATURES.smartChartAgent()) {
-      return NextResponse.json(
-        { error: "الوكيل الذكي غير مُفعّل حالياً." },
-        { status: 503 },
-      );
-    }
     if (!isLLMConfigured()) {
       return NextResponse.json(
         { error: "الذكاء الاصطناعي غير مُفعّل على الخادم." },
@@ -282,11 +274,7 @@ export async function POST(req: NextRequest) {
     }
     release = slot.release;
 
-    const [settings, limits] = await Promise.all([
-      getSettings(user.id),
-      getLimits(user.id),
-    ]);
-    const profile = buildUserTradingProfile(settings);
+    const limits = await getLimits(user.id);
     const canExecute = limits.can_execute !== 0;
 
     const sessionId = body.sessionId ?? newId();
@@ -299,9 +287,6 @@ export async function POST(req: NextRequest) {
 
     // Fold any preference directives into session memory before the run.
     const session = updateSessionFromMessage(sessionId, resolvedMessage);
-    const tradingStyle = tradingStyleForInterval(
-      body.chartContext?.interval ?? "15m",
-    );
 
     const requestId = newId();
     const activityEvents: AgentActivityEvent[] = [];
@@ -445,10 +430,8 @@ export async function POST(req: NextRequest) {
               signal: req.signal,
               session,
             },
-            profile,
             account: null,
             canExecute,
-            tradingStyle,
             conversationContext,
           });
 
@@ -462,11 +445,9 @@ export async function POST(req: NextRequest) {
               evidence: {
                 decision: result.decision,
                 confidence: result.confidence,
-                riskVeto: result.decision === "wait",
                 // Names/versions only — safe skill diagnostics, never content.
                 selectedSkills: result.selectedSkills ?? [],
                 skillLoadFailures: result.skillLoadFailures ?? [],
-                tradingMode: result.tradingMode ?? null,
                 // Full research transparency stays in runTrace only (not SSE).
                 researchEvidence: result.researchEvidence ?? null,
                 evidenceTimeline: result.evidenceTimeline ?? null,
@@ -479,7 +460,6 @@ export async function POST(req: NextRequest) {
               status: "completed",
               decision: result.decision,
               confidence: result.confidence,
-              riskVeto: result.decision === "wait",
               skillNames: (result.selectedSkills ?? []).map((s) => s.name),
             });
           }
@@ -498,7 +478,6 @@ export async function POST(req: NextRequest) {
             interval: body.chartContext?.interval,
             decision: result.decision,
             confidence: result.confidence,
-            riskVeto: result.decision === "wait",
             newsRisk: result.newsRisk?.level,
             executionRequiresConfirmation: result.requiresConfirmation,
             executionConfirmed: false,

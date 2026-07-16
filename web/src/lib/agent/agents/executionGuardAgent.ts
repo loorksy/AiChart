@@ -1,9 +1,7 @@
 import type { AgentRunContext, AgentConfirmationPayload } from "../types";
 import type { AgentMarketContext } from "../marketContext/buildAgentMarketContext";
 import type { FinalDecisionResult } from "./finalDecisionAgent";
-import type { RiskAgentResult } from "./riskAgent";
 import type { NewsMacroResult } from "./newsMacroAgent";
-import type { UserTradingProfile } from "../risk/userTradingProfile";
 import { getForexSessionStatus } from "../marketSession";
 import { isSpreadTooHigh, slippageRisk } from "../risk/spreadCheck";
 
@@ -19,18 +17,16 @@ export interface ExecutionGuardResult {
 export interface ExecutionGuardInput {
   market: AgentMarketContext;
   finalDecision: FinalDecisionResult | null;
-  risk: RiskAgentResult | null;
   news: NewsMacroResult | null;
-  profile?: UserTradingProfile | null;
   /** Whether the user has permission to execute trades at all. */
   canExecute: boolean;
 }
 
 /**
  * The Execution Guard NEVER executes — it prepares an explicit confirmation and
- * always returns allowed:false. It blocks when the market is closed, risk vetoed,
- * permission is missing, or slippage risk is extreme; otherwise it emits a
- * confirmation payload (symbol, direction, levels, RR, mode, warnings) for the
+ * always returns allowed:false. It blocks only on technical execution conditions
+ * (permission, market session, or extreme slippage); otherwise it emits a
+ * confirmation payload (symbol, direction, levels, RR, warnings) for the
  * user to approve before anything reaches MT5/EA.
  */
 export async function runExecutionGuardAgent(
@@ -48,23 +44,6 @@ export async function runExecutionGuardAgent(
     return block(ctx, "لا تملك صلاحية تنفيذ الصفقات على هذا الحساب.", [
       "Execution permission missing.",
     ]);
-  }
-
-  // Session preference: monitor-only.
-  if (ctx.session?.preferences.allowExecution === false) {
-    return block(ctx, "الوضع الحالي: مراقبة فقط دون تنفيذ (بحسب تفضيلك).", [
-      "Session set to monitor-only.",
-    ]);
-  }
-
-  // Risk veto.
-  if (input.risk?.veto) {
-    return block(
-      ctx,
-      "لا يمكن تنفيذ الصفقة لأن وكيل المخاطر رفض الإعداد.",
-      input.risk.validation.reasons,
-      input.risk.validation.warnings,
-    );
   }
 
   const rec = input.finalDecision?.recommendation;
@@ -110,7 +89,6 @@ export async function runExecutionGuardAgent(
   }
   if (slip === "warn") warnings.push("احتمال انزلاق سعري — راقب التنفيذ.");
 
-  const executionMode = input.profile?.executionMode ?? "simulation";
   const newsWarning =
     input.news && input.news.newsRisk !== "low" && input.news.newsRisk !== "unknown"
       ? `خطر إخباري: ${input.news.newsRisk}`
@@ -123,22 +101,15 @@ export async function runExecutionGuardAgent(
     stop_loss: rec.stop_loss,
     targets: rec.targets,
     estimatedRR: rec.rr,
-    executionMode,
     newsWarning,
     spreadWarning: spreadHigh ? "السبريد مرتفع" : undefined,
   };
-
-  const modeWarn =
-    executionMode === "live"
-      ? "تنبيه: هذا تنفيذ على حساب LIVE وليس Demo."
-      : undefined;
-  if (modeWarn) warnings.unshift(modeWarn);
 
   ctx.emitActivity({
     type: "execution",
     status: "warning",
     message: "التنفيذ يحتاج تأكيداً صريحاً منك قبل الإرسال إلى MT5.",
-    metadata: { direction: rec.action, executionMode },
+    metadata: { direction: rec.action },
   });
 
   return {

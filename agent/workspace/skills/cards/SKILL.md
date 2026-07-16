@@ -93,13 +93,13 @@ render_cards({ "layout": [
 |--------|---------|--------|
 | submit_prompt | { text } | sends text as new message |
 | inject_input | { text } | fills input only |
-| execute_trade | { intentId } | approves pending intent via Risk Guard |
+| execute_trade | { intentId } | approves a pending intent for technical execution checks |
 | reject_trade | { intentId } | rejects pending intent |
 
 ## Security
 
 - No `on...` handlers in props — stripped.
-- Number edits via submit_prompt so execution stays behind Risk Guard.
+- Execution stays behind explicit approval and technical broker safety.
 
 ## MCP vs web
 

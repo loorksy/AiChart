@@ -8,6 +8,7 @@ import {
   getCountryCallingCode,
   parsePhoneNumberFromString,
 } from "libphonenumber-js";
+import { useLocale } from "@/hooks/useLocale";
 import { detectCountryFromBrowser } from "@/lib/geoCountry";
 import { cn } from "@/lib/utils";
 
@@ -39,8 +40,12 @@ const LABELS: Partial<Record<CountryCode, string>> = {
   IQ: "العراق",
 };
 
-function countryLabel(c: CountryCode, displayNames: Intl.DisplayNames | null): string {
-  return LABELS[c] ?? displayNames?.of(c) ?? c;
+function countryLabel(
+  c: CountryCode,
+  displayNames: Intl.DisplayNames | null,
+  useArabicLabels: boolean,
+): string {
+  return (useArabicLabels ? LABELS[c] : undefined) ?? displayNames?.of(c) ?? c;
 }
 
 function initialCountry(defaultCountry?: CountryCode): CountryCode {
@@ -61,15 +66,23 @@ export function PhoneInput({
   defaultCountry?: CountryCode;
   className?: string;
 }) {
+  const { locale, t } = useLocale();
   const [country, setCountry] = useState<CountryCode>(() => initialCountry(defaultCountry));
   const [local, setLocal] = useState("");
+  const [mounted, setMounted] = useState(false);
 
   const displayNames = useMemo(() => {
+    if (!mounted) return null;
     try {
-      return new Intl.DisplayNames(["ar"], { type: "region" });
+      return new Intl.DisplayNames([locale], { type: "region" });
     } catch {
       return null;
     }
+  }, [locale, mounted]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -131,6 +144,7 @@ export function PhoneInput({
       >
         <div className="relative shrink-0 border-e border-border sm:w-[10.5rem]">
           <select
+            name="country-code"
             className={cn(
               "h-11 w-full appearance-none bg-transparent py-2 pl-3 pr-8 text-sm",
               "text-foreground outline-none",
@@ -138,7 +152,7 @@ export function PhoneInput({
             )}
             value={country}
             disabled={disabled}
-            aria-label="رمز الدولة"
+            aria-label={t("auth.country_code")}
             onChange={(e) => {
               const c = e.target.value as CountryCode;
               setCountry(c);
@@ -147,7 +161,7 @@ export function PhoneInput({
           >
             {countries.map((c) => {
               const dial = getCountryCallingCode(c);
-              const label = countryLabel(c, displayNames);
+              const label = countryLabel(c, displayNames, locale === "ar");
               return (
                 <option key={c} value={c}>
                   {label} +{dial}
@@ -166,6 +180,7 @@ export function PhoneInput({
             +{dialCode}
           </span>
           <input
+            name="whatsapp"
             type="tel"
             inputMode="numeric"
             autoComplete="tel-national"
@@ -173,7 +188,7 @@ export function PhoneInput({
             placeholder="9xxxxxxxx"
             value={local}
             disabled={disabled}
-            aria-label="رقم الهاتف"
+            aria-label={t("auth.phone_number")}
             onChange={(e) => {
               const v = e.target.value;
               setLocal(v);
@@ -187,7 +202,7 @@ export function PhoneInput({
         <p className="text-end text-xs tabular-nums text-muted-foreground">{value}</p>
       ) : (
         <p className="text-end text-xs text-muted-foreground">
-          أدخل رقم واتساب بدون صفر في البداية
+          {t("auth.phone_hint")}
         </p>
       )}
     </div>

@@ -16,15 +16,11 @@ function flag(name: string, defaultOn: boolean): boolean {
 
 export const FEATURES = {
   /** The docked Smart Chart Agent chat + unified orchestrator. ON by default. */
-  smartChartAgent: () => flag("FEATURE_SMART_CHART_AGENT", true),
   /** Warehouse-first /api/market/klines reads. ON by default. */
   candleWarehouse: () => flag("FEATURE_CANDLE_WAREHOUSE", true),
   /** News & Macro Risk agent participation. */
-  newsMacroAgent: () => flag("FEATURE_NEWS_MACRO_AGENT", true),
   /** Execution Guard — ON by default; only an explicit "false" disables it. */
-  executionGuard: () => flag("FEATURE_AGENT_EXECUTION_GUARD", true),
   /** Route MCP run_market_analysis through the unified engine. ON by default. */
-  mcpUnifiedEngine: () => flag("FEATURE_MCP_UNIFIED_ENGINE", true),
   /** Intent-based skill discovery + lazy loading into agent prompts. ON by
    *  default — read-only prompt guidance that never grants permissions. */
   agentSkillsV1: () => flag("FEATURE_AGENT_SKILLS", true),
@@ -41,11 +37,7 @@ export const FEATURES = {
 /** Snapshot of every feature flag's current runtime value (for /api/debug/features). */
 export function featureFlagSnapshot(): Record<string, boolean> {
   return {
-    smartChartAgent: FEATURES.smartChartAgent(),
     candleWarehouse: FEATURES.candleWarehouse(),
-    newsMacroAgent: FEATURES.newsMacroAgent(),
-    mcpUnifiedEngine: FEATURES.mcpUnifiedEngine(),
-    executionGuard: FEATURES.executionGuard(),
     agentSkillsV1: FEATURES.agentSkillsV1(),
     agentContextV2: FEATURES.agentContextV2(),
     agentMemoryWriteV1: FEATURES.agentMemoryWriteV1(),

@@ -1,75 +1,38 @@
-import {
-  BarChart3,
-  CandlestickChart,
-  History,
-  KeyRound,
-  LayoutDashboard,
-  Link2,
-  Plug,
-  Settings,
-  Target,
-  TrendingUp,
-  Users,
-  FileText,
-  Cpu,
-  Server,
-  Shield,
-  Lock,
-  type LucideIcon,
-} from "lucide-react";
+import { BarChart3, Bot, History, Link2, Settings, TrendingUp, UserRound, Users, type LucideIcon } from "lucide-react";
+import type { TranslationKey } from "@/lib/i18n";
 
 export type NavRole = "user" | "admin";
 
 export interface NavItem {
   href: string;
-  label: string;
+  labelKey: TranslationKey;
   icon: LucideIcon;
   exact?: boolean;
-  /** Roles allowed to see this item. Undefined = visible to all. */
   roles?: NavRole[];
 }
 
-/**
- * Single source of truth for the console/chat sidebar. Replaces the duplicated
- * USER_NAV / BRIDGE_NAV / ChatGptSidebar tabs. Filtered by role at render time.
- */
+/** Canonical daily-use navigation. Internal MCP/status and duplicate views stay hidden. */
 export const APP_NAV: NavItem[] = [
-  { href: "/chart", label: "الشارت", icon: CandlestickChart },
-  { href: "/console", label: "نظرة", icon: LayoutDashboard, exact: true },
-  { href: "/console/trades", label: "الصفقات", icon: TrendingUp },
-  { href: "/console/recommendations", label: "سجل التوصيات", icon: History },
-  { href: "/recommendations", label: "التوصيات المتتبعة", icon: Target },
-  { href: "/statistics", label: "الإحصائيات", icon: BarChart3 },
-  { href: "/console/risk", label: "إعدادات المخاطر", icon: Shield },
-  { href: "/console/connect", label: "الاتصالات", icon: Link2 },
-  { href: "/console/settings", label: "الإعدادات", icon: Settings },
-  { href: "/console/mcp", label: "Claude MCP", icon: Plug },
-  
-  // Admin-only direct console routes
-  { href: "/console/platform?tab=users", label: "المستخدمون", icon: Users, roles: ["admin"] },
-  { href: "/console/pages", label: "إدارة الصفحات", icon: FileText, roles: ["admin"] },
-  { href: "/console/platform?tab=usage", label: "استهلاك Claude", icon: Cpu, roles: ["admin"] },
-  { href: "/console/platform?tab=keys", label: "المفاتيح", icon: KeyRound, roles: ["admin"] },
-  { href: "/console/platform?tab=system", label: "حالة النظام", icon: Server, roles: ["admin"] },
-  { href: "/console/platform?tab=security", label: "الأمن والتدقيق", icon: Lock, roles: ["admin"] },
+  { href: "/console", labelKey: "nav.workspace", icon: Bot, exact: true },
+  { href: "/console/recommendations", labelKey: "nav.recommendations", icon: History },
+  { href: "/statistics", labelKey: "nav.statistics", icon: BarChart3 },
+  { href: "/console/trades", labelKey: "nav.trades", icon: TrendingUp },
+  { href: "/console/account", labelKey: "nav.account", icon: UserRound },
+  { href: "/console/connect", labelKey: "nav.integrations", icon: Link2 },
+  { href: "/console/settings", labelKey: "nav.settings", icon: Settings },
+  { href: "/console/platform", labelKey: "nav.platform", icon: Users, roles: ["admin"] },
 ];
 
 export function navForRole(role: NavRole): NavItem[] {
-  return APP_NAV.filter((i) => !i.roles || i.roles.includes(role));
+  return APP_NAV.filter((item) => !item.roles || item.roles.includes(role));
 }
 
 export function activeNav(pathname: string, item: NavItem, currentTab?: string | null): boolean {
-  if (item.exact) {
-    return pathname === item.href;
-  }
-  
+  if (item.exact) return pathname === item.href;
   const baseHref = item.href.split("?")[0];
   const basePathname = pathname.split("?")[0];
-  
   if (item.href.includes("?tab=")) {
-    const itemTab = item.href.split("?tab=")[1];
-    return basePathname === baseHref && currentTab === itemTab;
+    return basePathname === baseHref && currentTab === item.href.split("?tab=")[1];
   }
-  
   return basePathname.startsWith(baseHref);
 }
