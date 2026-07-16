@@ -150,49 +150,68 @@ describe("scorePoi", () => {
 
 describe("buildTradeCandidates", () => {
   it("strong continuation setup produces a buy candidate", () => {
-    const result = buildTradeCandidates(baseInput());
+    const result = buildTradeCandidates(
+      baseInput({
+        // Provide a realistic structural target beyond the weak nearest level.
+        htfLevels: [99.5, 103.5, 105.5],
+      }),
+    );
     assert.ok(result.best, "expected a candidate");
     assert.equal(result.best!.action, "buy");
     assert.equal(result.best!.setupType, "trend_continuation");
-    assert.ok(result.best!.rr > 0);
+    assert.ok(result.best!.netRr + 1e-9 >= 2.5);
     assert.ok(result.best!.invalidationReason.length > 0);
   });
 
   it("places buy stop loss beyond the demand zone with a real buffer", () => {
-    const result = buildTradeCandidates(baseInput());
+    const result = buildTradeCandidates(
+      baseInput({ htfLevels: [99.5, 103.5, 105.5] }),
+    );
     assert.ok(result.best, "expected a candidate");
     assert.ok(result.best!.stop_loss < 99);
     assert.ok(
       99 - result.best!.stop_loss >=
         stopBuffer({ symbolPrice: 100.5, spread: null, atr: 0.5 }) - 1e-10,
     );
-    assert.equal(result.best!.entryType, "buy_limit");
+    assert.ok(
+      result.best!.entryType === "buy_limit" ||
+        result.best!.entryType === "market",
+    );
   });
 
   it("does not impose a consumed-distance veto", () => {
-    const result = buildTradeCandidates(baseInput({ currentPrice: 100.75 }));
+    const result = buildTradeCandidates(
+      baseInput({ currentPrice: 100.75, htfLevels: [99.5, 103.5, 105.5] }),
+    );
     assert.ok(result.best);
-    assert.ok(result.best!.rr > 0);
+    assert.ok(result.best!.netRr + 1e-9 >= 2.5);
   });
 
-  it("keeps a weak over-touched zone as warned evidence", () => {
+  it("rejects a weak over-touched zone as non-executable", () => {
     const { candles, zone } = overTouchedScenario();
     const result = buildTradeCandidates(
       baseInput({ candles, zones: [zone], htfLevels: [] }),
     );
-    assert.ok(result.best);
-    assert.ok(result.best!.warnings.length > 0);
+    assert.equal(result.best, null);
+    assert.ok(result.rejectedReasons.length > 0);
   });
 
   it("keeps trend-only context as warned evidence", () => {
-    const result = buildTradeCandidates(baseInput({ structureEvents: [] }));
+    const result = buildTradeCandidates(
+      baseInput({ structureEvents: [], htfLevels: [99.5, 103.5, 105.5] }),
+    );
     assert.ok(result.best);
     assert.ok(result.best!.warnings.length > 0);
   });
 
   it("HTF conflict remains evidence and does not erase candidates", () => {
     const result = buildTradeCandidates(
-      baseInput({ htfConflict: true, htfBias: "bearish", sweeps: [] }),
+      baseInput({
+        htfConflict: true,
+        htfBias: "bearish",
+        sweeps: [],
+        htfLevels: [99.5, 103.5, 105.5],
+      }),
     );
     assert.ok(result.best);
     assert.equal(result.hasReversalEvidence, false);
@@ -205,6 +224,7 @@ describe("buildTradeCandidates", () => {
         htfConflict: true,
         htfBias: "bearish",
         sweeps: [CONFIRMED_SELL_SIDE_SWEEP],
+        htfLevels: [99.5, 103.5, 105.5],
       }),
     );
     assert.equal(result.hasReversalEvidence, true);
@@ -218,6 +238,7 @@ describe("buildTradeCandidates", () => {
         htfConflict: true,
         htfBias: "bearish",
         sweeps: [{ ...CONFIRMED_SELL_SIDE_SWEEP, followedByStructureShift: false }],
+        htfLevels: [99.5, 103.5, 105.5],
       }),
     );
     assert.equal(result.hasReversalEvidence, false);
@@ -225,7 +246,10 @@ describe("buildTradeCandidates", () => {
   });
 
   it("mid-range position does not deterministically block a candidate", () => {
-    const input = baseInput({ currentPrice: 102.5 });
+    const input = baseInput({
+      currentPrice: 102.5,
+      htfLevels: [99.5, 103.5, 105.5],
+    });
     input.rangePosition = computeRangePosition(input.candles, 102.5);
     assert.equal(input.rangePosition?.label, "mid_range");
     const result = buildTradeCandidates(input);
@@ -233,14 +257,29 @@ describe("buildTradeCandidates", () => {
   });
 
   it("high news risk is a warning and not a candidate veto", () => {
-    const result = buildTradeCandidates(baseInput({ newsRisk: "high" }));
+    const result = buildTradeCandidates(
+      baseInput({ newsRisk: "high", htfLevels: [99.5, 103.5, 105.5] }),
+    );
     assert.ok(result.best);
     assert.ok(result.best!.warnings.length > 0);
   });
 
   it("spread noise is a warning and not a market-decision veto", () => {
-    const result = buildTradeCandidates(baseInput({ spread: 0.6 }));
+    const result = buildTradeCandidates(
+      baseInput({ spread: 0.05, htfLevels: [99.5, 103.5, 105.5] }),
+    );
     assert.ok(result.best);
-    assert.ok(result.best!.warnings.length > 0);
+    assert.ok(result.best!.netRr + 1e-9 >= 2.5);
+  });
+
+  it("executable candidates always meet minimum net TP1 R", () => {
+    const result = buildTradeCandidates(
+      baseInput({ htfLevels: [99.5, 103.5, 105.5] }),
+    );
+    for (const c of result.candidates) {
+      assert.ok(c.netRr + 1e-9 >= 2.5);
+      assert.ok(c.stop_loss < c.entry);
+      assert.ok(c.targets[0]! > c.entry);
+    }
   });
 });

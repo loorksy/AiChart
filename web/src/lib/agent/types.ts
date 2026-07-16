@@ -135,6 +135,11 @@ export interface AgentRecommendation {
   take_profit?: number;
   targets?: number[];
   rr?: number;
+  /** Net TP1 R after modelled spread/slippage. */
+  netRr?: number;
+  netRrTp2?: number;
+  /** immediate | conditional — never machine codes in user copy. */
+  activationClass?: "immediate" | "conditional";
   id?: string;
   status?: string;
   triggerCondition?: string;

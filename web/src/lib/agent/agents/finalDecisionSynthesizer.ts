@@ -20,6 +20,7 @@ import type { DrawingCandidate } from "../drawings/buildDrawingPlan";
 import type { MarketNarrative } from "../marketContext/buildMarketNarrative";
 import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
+import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 
 const FinalDecisionModelSchema = z.object({
   decision: z.enum(["buy", "sell", "wait"]),
@@ -58,8 +59,10 @@ Hard rules:
 - Choose BUY, SELL, or WAIT yourself from the specialist evidence and all tradeCandidates.
 - Your decision field is the sole market direction authority.
 - For BUY/SELL, select a same-direction trade candidate when one truthfully represents usable entry/stop/target levels. If none does, leave selectedTradeCandidateId null; keep your market decision but do not invent levels.
+- A valid directional opinion may exist without executable levels. Do not change BUY/SELL to WAIT merely because levels are unavailable.
+- Conditional (pending) candidates require a future retest/confirmation — say so clearly in natural language. Never present a distant pending entry as an immediate trade.
 - Never invent numbers, levels, or news. Never claim news was checked when newsRisk is "unknown".
-- Do not reveal chain-of-thought, hidden reasoning, or scratchpad. publicReasoningSummary is a short list of evidence-based points only.
+- Do not reveal chain-of-thought, hidden reasoning, scratchpad, POI scores, ATR ratios, or machine ranking labels.
 - drawingAdvice.shouldDraw=false when drawing would mislead (mid-range, weak levels, thin data).
 - selectedCandidateIds: pick at most 8 candidate ids worth drawing (only strong, meaningful ones); omit or empty if none.
 - summary must be specific to THIS context (symbol, structure, the exact missing condition or the POI) — never a generic sentence.
@@ -154,13 +157,18 @@ function buildModelContext(
           })),
         }
       : null,
-    selectedCandidate: candidate ? { id: candidate.id,
+    selectedCandidate: candidate
+      ? {
+          id: candidate.id,
           action: candidate.action,
           entryType: candidate.entryType,
           setupType: candidate.setupType,
           rr: candidate.rr,
-          poiGrade: candidate.poi.score.grade,
-          poiScore: candidate.poi.score.score,
+          netRr: candidate.netRr,
+          netRrTp2: candidate.netRrTp2,
+          activationClass: candidate.activationClass,
+          triggerCondition: candidate.triggerCondition,
+          pathSummary: candidate.pathToEntry?.summary,
           evidence: candidate.evidence,
           warnings: candidate.warnings,
           invalidationReason: candidate.invalidationReason,
@@ -174,9 +182,13 @@ function buildModelContext(
       stop_loss: tradeCandidate.stop_loss,
       targets: tradeCandidate.targets,
       rr: tradeCandidate.rr,
+      netRr: tradeCandidate.netRr,
+      netRrTp2: tradeCandidate.netRrTp2,
+      activationClass: tradeCandidate.activationClass,
+      activationDistance: tradeCandidate.activationDistance,
+      triggerCondition: tradeCandidate.triggerCondition,
+      pathSummary: tradeCandidate.pathToEntry?.summary,
       setupType: tradeCandidate.setupType,
-      poiGrade: tradeCandidate.poi.score.grade,
-      poiScore: tradeCandidate.poi.score.score,
       evidence: tradeCandidate.evidence,
       warnings: tradeCandidate.warnings,
       invalidationReason: tradeCandidate.invalidationReason,
@@ -251,9 +263,16 @@ function applyModelDecision(
   const decision: FinalDecisionResult["decision"] = parsed.decision;
   if (!selected && parsed.decision !== "wait") {
     riskWarnings.unshift(
-      "قرار السوق لا يملك مستويات دخول/وقف/هدف موثقة حالياً؛ لا يمكن تجهيزه للتنفيذ.",
+      "اتجاه السوق واضح من الدليل، لكن لا توجد مستويات دخول/وقف/هدف قابلة للتنفيذ حالياً.",
     );
   }
+  const geometryQuality = selected
+    ? Math.min(
+        1,
+        selected.netRr / SCALP_GEOMETRY.minNetTp1R,
+        selected.qualityScore,
+      )
+    : null;
   const confidenceSemantics =
     decision === "wait"
       ? buildWaitConfidence({
@@ -262,17 +281,32 @@ function applyModelDecision(
           setupQuality: null,
           reasons: keyReasons,
         })
-      : buildRecommendationConfidence({
-          base: confidence,
-          dataQualityScore: input.market.dataQuality.sufficient ? 1 : 0.5,
-          setupQuality: selected ? selected.poi.score.score / 100 : null,
-          newsRisk: input.news?.newsRisk ?? "unknown",
-          dataSufficientForTrade: input.market.dataQuality.sufficient,
-        });
+      : !selected
+        ? buildWaitConfidence({
+            decisionConfidence: confidence,
+            dataQualityScore: input.market.dataQuality.sufficient ? 1 : 0.5,
+            setupQuality: null,
+            reasons: keyReasons,
+          })
+        : buildRecommendationConfidence({
+            base: Math.min(confidence, 0.55 + 0.45 * (geometryQuality ?? 0)),
+            dataQualityScore: input.market.dataQuality.sufficient ? 1 : 0.5,
+            setupQuality: Math.min(
+              selected.poi.score.score / 100,
+              geometryQuality ?? 0,
+            ),
+            newsRisk: input.news?.newsRisk ?? "unknown",
+            dataSufficientForTrade: input.market.dataQuality.sufficient,
+          });
   const displayConfidence =
     typeof confidenceSemantics.displayValue === "number"
       ? confidenceSemantics.displayValue
       : 0;
+  const activationClass =
+    selected?.activationClass === "immediate" ||
+    selected?.activationClass === "conditional"
+      ? selected.activationClass
+      : undefined;
   return {
     decision,
     confidence: displayConfidence,
@@ -289,6 +323,14 @@ function applyModelDecision(
           targets: selected.targets,
           take_profit: selected.targets[0],
           rr: selected.rr,
+          netRr: selected.netRr,
+          netRrTp2: selected.netRrTp2,
+          activationClass,
+          triggerCondition: selected.triggerCondition,
+          invalidationLevel: selected.stop_loss,
+          invalidationRule: selected.invalidationReason,
+          status:
+            activationClass === "immediate" ? "triggered" : "pending_entry",
         }
       : { action: decision },
     publicReasoningSummary: clean(parsed.publicReasoningSummary, 5),

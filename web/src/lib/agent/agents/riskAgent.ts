@@ -28,6 +28,8 @@ import {
 } from "../trading/tradingPlaybook";
 import { meetsDataQuality } from "../dataQualityPolicy";
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import { getEaSymbolSpec } from "@/lib/eaStore";
+import type { SymbolGeometryMeta } from "../trading/scalpGeometry";
 
 export interface AccountRiskSnapshot {
   openTradesCount: number;
@@ -97,6 +99,12 @@ export async function runRiskAgent(
     lastCandleTime: market.currentTfCandles.at(-1)?.time,
   });
 
+  const symbolMeta = await resolveSymbolGeometryMeta({
+    userId: ctx.userId,
+    symbol: market.symbol,
+    spread: market.spread,
+  });
+
   const candidatesResult = buildTradeCandidates({
     candles: market.currentTfCandles,
     currentPrice: price,
@@ -111,6 +119,8 @@ export async function runRiskAgent(
     htfLevels,
     newsRisk: input.news?.newsRisk ?? "unknown",
     spread: market.spread,
+    interval: market.interval,
+    symbolMeta,
   });
 
   const candidate = candidatesResult.best;
@@ -137,17 +147,15 @@ export async function runRiskAgent(
     educationalOnly: input.educationalOnly,
   });
 
-  // Entry-distance state for validation.
+  // Entry-distance state for validation (informational — not a market veto).
   const atr = market.atr ?? 0;
   const entryDistanceState = !candidate
     ? "unknown"
-    : atr > 0
-      ? Math.abs(price - candidate.entry) / atr > 1.5
-        ? "missed"
-        : Math.abs(price - candidate.entry) / atr > 1
-          ? "far"
-          : "near"
-      : "unknown";
+    : candidate.activationClass === "conditional"
+      ? candidate.activationDistanceAtr > 1.5
+        ? "far"
+        : "near"
+      : "near";
 
   const spreadState =
     market.spread == null
@@ -171,6 +179,12 @@ export async function runRiskAgent(
     poiScore: candidate?.poi.score.score,
     entryDistanceState,
     spreadState,
+    spread: market.spread,
+    netRr: candidate?.netRr,
+    activationClass:
+      candidate?.activationClass === "non_executable"
+        ? "non_executable"
+        : candidate?.activationClass,
   });
 
   // Account-level gate (separate from single-trade validation).
@@ -210,4 +224,27 @@ export async function runRiskAgent(
     playbook,
     rangePosition,
   };
+}
+
+async function resolveSymbolGeometryMeta(input: {
+  userId?: number;
+  symbol: string;
+  spread?: number | null;
+}): Promise<SymbolGeometryMeta | null> {
+  if (input.userId == null) {
+    return input.spread != null ? { spread: input.spread } : null;
+  }
+  try {
+    const spec = await getEaSymbolSpec(input.userId, input.symbol);
+    if (!spec) {
+      return input.spread != null ? { spread: input.spread } : null;
+    }
+    return {
+      tickSize: Number(spec.tick_size) > 0 ? Number(spec.tick_size) : null,
+      digits: Number.isFinite(Number(spec.digits)) ? Number(spec.digits) : null,
+      spread: input.spread,
+    };
+  } catch {
+    return input.spread != null ? { spread: input.spread } : null;
+  }
 }
