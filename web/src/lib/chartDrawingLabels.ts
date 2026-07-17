@@ -58,7 +58,7 @@ export const DRAWING_TYPE_COLORS: Record<SemanticDrawingType, string> = {
   risk_reward_box: "#3b82f6",
   neckline: "#ef4444",
   breakout_arrow: "#22c55e",
-  retest_zone: "#8b5cf6",
+  retest_zone: "#0284c7",
   pattern_label: "#eab308",
   range_box: "#6366f1",
   supply_zone: "#ef4444",

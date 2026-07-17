@@ -20,7 +20,8 @@ export function AgentChatInput({
 
   return (
     <form
-      className="border-t border-border bg-background px-3 pt-2 pb-[max(.5rem,env(safe-area-inset-bottom))]"
+      data-testid="chat-composer"
+      className="chat-composer-shell relative bg-transparent px-3 pt-3 pb-[max(.5rem,env(safe-area-inset-bottom))]"
       dir={dir}
       onSubmit={(e) => {
         e.preventDefault();
@@ -56,7 +57,7 @@ export function AgentChatInput({
             disabled={!value.trim()}
             aria-label={t("agent.send")}
             title={t("agent.send")}
-            className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+            className="mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
           >
             <Send className="h-3.5 w-3.5 rtl:rotate-180" />
           </button>

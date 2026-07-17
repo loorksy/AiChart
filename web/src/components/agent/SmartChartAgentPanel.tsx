@@ -161,7 +161,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             chat panel is clean. All follow-up prompts are dynamic, model-
             generated suggestions rendered per turn (never hardcoded buttons).
             Analysis is reachable from the chart's Analyze control and by typing. */}
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        <div className="chat-scroll-region aichart-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           {messages.length === 0 && !running && (
             <div className="mx-auto flex h-full max-w-sm flex-col items-center justify-center gap-4 text-center">
               <AgentAvatar size={40} state="idle" className="opacity-90" />
@@ -203,7 +203,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                     <AgentThinkingTicker item={m.ticker} />
                   ) : (
                     <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-foreground/70" />
                       <span>{t("agent.processing")}</span>
                     </div>
                   )}

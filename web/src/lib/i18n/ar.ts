@@ -73,6 +73,7 @@ export const ar: Record<TranslationKey, string> = {
   "nav.new_chat": "محادثة جديدة",
   "nav.no_chats": "لا توجد محادثات بعد",
   "nav.chats": "المحادثات",
+  "nav.chat_history": "سجل المحادثات",
   "nav.statistics": "الإحصائيات",
   "nav.recommendations": "التوصيات",
   "nav.settings": "الإعدادات",
@@ -81,6 +82,10 @@ export const ar: Record<TranslationKey, string> = {
   "nav.trades": "الصفقات",
   "nav.account": "الحساب",
   "nav.platform": "إدارة المنصة",
+  "nav.delete_chat": "حذف المحادثة",
+  "chats.title": "سجل المحادثات",
+  "chats.search_placeholder": "ابحث في المحادثات",
+  "chats.open": "فتح المحادثة",
 
   "shell.expand_sidebar": "توسيع القائمة الجانبية",
   "shell.collapse_sidebar": "طيّ القائمة الجانبية",

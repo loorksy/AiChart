@@ -93,9 +93,9 @@ export default function SettingsClient({
                 type="button"
                 onClick={() => setTab(item.id)}
                 className={cn(
-                  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition-colors",
+                  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-4 text-sm font-medium transition-colors",
                   tab === item.id
-                    ? "border-primary bg-primary text-primary-foreground"
+                    ? "border-foreground bg-foreground text-background"
                     : "border border-border bg-card hover:bg-muted",
                 )}
               >
@@ -133,7 +133,7 @@ export default function SettingsClient({
               </dd>
             </div>
           </dl>
-          <Link href="/console/account" className="inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-primary/5">
+          <Link href="/console/account" className="inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-medium transition-colors hover:bg-muted">
             {t("settings.manage_account")}
           </Link>
         </SurfaceCard>
@@ -147,7 +147,7 @@ export default function SettingsClient({
           </p>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             {(["dark", "light", "system"] as ThemePreference[]).map((value) => (
-              <button key={value} type="button" onClick={() => setTheme(value)} className={cn("min-h-11 rounded-xl border px-4 text-sm font-medium transition-colors", theme === value ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/35 hover:bg-primary/5")}>
+              <button key={value} type="button" onClick={() => setTheme(value)} className={cn("min-h-11 rounded-lg border px-4 text-sm font-medium transition-colors", theme === value ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}>
                 {value === "dark" ? <Moon className="me-2 inline h-4 w-4" /> : <Sun className="me-2 inline h-4 w-4" />}
                 {value === "dark"
                   ? t("profile.theme.dark")
@@ -175,12 +175,12 @@ export default function SettingsClient({
             ["alert_trades", "settings.alerts.trades"],
             ["alert_signals", "settings.alerts.signals"],
           ] as const).map(([key, label]) => (
-            <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-xl border border-border px-4 transition-colors hover:border-primary/35">
+            <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-border px-4 transition-colors hover:bg-muted/40">
               <span className="text-sm font-medium">{t(label)}</span>
-              <input type="checkbox" className="h-5 w-5 accent-primary" checked={Boolean(settings[key])} onChange={(event) => setSettings((current) => ({ ...current, [key]: event.target.checked ? 1 : 0 }))} />
+              <input type="checkbox" className="h-5 w-5 accent-foreground" checked={Boolean(settings[key])} onChange={(event) => setSettings((current) => ({ ...current, [key]: event.target.checked ? 1 : 0 }))} />
             </label>
           ))}
-          <button type="button" disabled={saving} onClick={() => void save({ alerts_enabled: Boolean(settings.alerts_enabled), alert_trades: Boolean(settings.alert_trades), alert_signals: Boolean(settings.alert_signals) })} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+          <button type="button" disabled={saving} onClick={() => void save({ alerts_enabled: Boolean(settings.alerts_enabled), alert_trades: Boolean(settings.alert_trades), alert_signals: Boolean(settings.alert_signals) })} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-foreground px-4 text-sm font-semibold text-background disabled:opacity-60">
             <Save className="h-4 w-4" />
             {t("settings.alerts.save")}
           </button>
@@ -190,7 +190,7 @@ export default function SettingsClient({
       {tab === "trading" && (
         <SurfaceCard className="space-y-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t("settings.trading.only_setting")}
             </p>
             <h2 className="mt-1 text-xl font-semibold">Risk per Trade</h2>
@@ -198,17 +198,17 @@ export default function SettingsClient({
               {t("settings.trading.description")}
             </p>
           </div>
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="rounded-lg border border-border bg-muted/30 p-4">
             <div className="mb-4 flex items-end justify-between gap-4">
               <label htmlFor="risk-per-trade" className="font-medium">
                 {t("settings.trading.risk_label")}
               </label>
               <output htmlFor="risk-per-trade" className="text-3xl font-semibold tabular-nums">{settings.per_trade_pct.toFixed(1)}%</output>
             </div>
-            <input id="risk-per-trade" type="range" min={RISK_PER_TRADE.min} max={RISK_PER_TRADE.max} step={RISK_PER_TRADE.step} value={settings.per_trade_pct} onChange={(event) => setSettings((current) => ({ ...current, per_trade_pct: Number(event.target.value) }))} className="h-11 w-full cursor-pointer accent-primary" />
+            <input id="risk-per-trade" type="range" min={RISK_PER_TRADE.min} max={RISK_PER_TRADE.max} step={RISK_PER_TRADE.step} value={settings.per_trade_pct} onChange={(event) => setSettings((current) => ({ ...current, per_trade_pct: Number(event.target.value) }))} className="h-11 w-full cursor-pointer accent-foreground" />
             <div className="flex justify-between text-xs text-muted-foreground"><span>{RISK_PER_TRADE.min}%</span><span>{RISK_PER_TRADE.max}%</span></div>
           </div>
-          <button type="button" disabled={saving} onClick={() => void save({ per_trade_pct: settings.per_trade_pct })} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+          <button type="button" disabled={saving} onClick={() => void save({ per_trade_pct: settings.per_trade_pct })} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-foreground px-5 text-sm font-semibold text-background disabled:opacity-60">
             <Save className="h-4 w-4" />
             {saving ? t("settings.saving") : t("settings.save")}
           </button>

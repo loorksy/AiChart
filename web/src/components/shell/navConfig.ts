@@ -1,4 +1,4 @@
-import { BarChart3, Bot, History, Link2, Settings, TrendingUp, UserRound, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, Bot, MessageSquareText, TrendingUp, Users, type LucideIcon } from "lucide-react";
 import type { TranslationKey } from "@/lib/i18n";
 
 export type NavRole = "user" | "admin";
@@ -11,15 +11,15 @@ export interface NavItem {
   roles?: NavRole[];
 }
 
-/** Canonical daily-use navigation. Internal MCP/status and duplicate views stay hidden. */
+/**
+ * Canonical primary navigation — four daily destinations (+ admin platform).
+ * Account / Integrations / Settings live only in the profile popover.
+ */
 export const APP_NAV: NavItem[] = [
   { href: "/console", labelKey: "nav.workspace", icon: Bot, exact: true },
-  { href: "/console/recommendations", labelKey: "nav.recommendations", icon: History },
+  { href: "/console/chats", labelKey: "nav.chat_history", icon: MessageSquareText },
   { href: "/statistics", labelKey: "nav.statistics", icon: BarChart3 },
   { href: "/console/trades", labelKey: "nav.trades", icon: TrendingUp },
-  { href: "/console/account", labelKey: "nav.account", icon: UserRound },
-  { href: "/console/connect", labelKey: "nav.integrations", icon: Link2 },
-  { href: "/console/settings", labelKey: "nav.settings", icon: Settings },
   { href: "/console/platform", labelKey: "nav.platform", icon: Users, roles: ["admin"] },
 ];
 
@@ -29,8 +29,8 @@ export function navForRole(role: NavRole): NavItem[] {
 
 export function activeNav(pathname: string, item: NavItem, currentTab?: string | null): boolean {
   if (item.exact) return pathname === item.href;
-  const baseHref = item.href.split("?")[0];
-  const basePathname = pathname.split("?")[0];
+  const baseHref = item.href.split("?")[0]!;
+  const basePathname = pathname.split("?")[0]!;
   if (item.href.includes("?tab=")) {
     return basePathname === baseHref && currentTab === item.href.split("?tab=")[1];
   }

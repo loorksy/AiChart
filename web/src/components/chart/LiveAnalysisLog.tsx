@@ -9,7 +9,7 @@ const TYPE_ICON: Record<
   { icon: typeof Eye; className: string }
 > = {
   observation: { icon: Eye, className: "text-sky-500" },
-  structure: { icon: Layers, className: "text-violet-500" },
+  structure: { icon: Layers, className: "text-sky-500" },
   pattern: { icon: Sparkles, className: "text-amber-500" },
   risk: { icon: Shield, className: "text-red-400" },
   decision: { icon: Target, className: "text-primary" },

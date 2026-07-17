@@ -5,6 +5,11 @@
  * scoped by userId so one tenant can never touch another's chats.
  */
 import { execute, query, queryOne } from "@/lib/db";
+import {
+  DEFAULT_CHAT_TITLE_AR,
+  defaultChatTitle,
+  isDefaultChatTitle,
+} from "./composeChatMeta";
 import type {
   AgentChatLanguage,
   AgentChatMessageRecord,
@@ -12,7 +17,8 @@ import type {
   AppendAgentChatMessageInput,
 } from "./types";
 
-const DEFAULT_TITLE = "محادثة جديدة";
+/** @deprecated Prefer defaultChatTitle(language) — kept for legacy callers/tests. */
+const DEFAULT_TITLE = DEFAULT_CHAT_TITLE_AR;
 const MAX_TITLE_LEN = 48;
 const PREVIEW_LEN = 120;
 
@@ -121,6 +127,7 @@ export async function createChat(input: {
   const now = monotonicNow();
   const id = uuid();
   const language: AgentChatLanguage = input.language === "en" ? "en" : "ar";
+  const title = input.title?.trim() || defaultChatTitle(language);
   await execute(
     `INSERT INTO agent_chats
        (id, user_id, title, symbol, interval, language, created_at, updated_at, last_message_preview)
@@ -128,7 +135,7 @@ export async function createChat(input: {
     [
       id,
       input.userId,
-      input.title?.trim() || DEFAULT_TITLE,
+      title,
       input.symbol ?? null,
       input.interval ?? null,
       language,
@@ -140,7 +147,7 @@ export async function createChat(input: {
   return {
     id,
     userId: input.userId,
-    title: input.title?.trim() || DEFAULT_TITLE,
+    title,
     symbol: input.symbol,
     interval: input.interval,
     language,
@@ -196,8 +203,9 @@ export async function getMessages(
 }
 
 /**
- * Append a message to a chat the user owns. Updates the chat's updatedAt and
- * preview, and auto-titles the chat from the first meaningful user message.
+ * Append a message to a chat the user owns. Updates updatedAt and a temporary
+ * preview. AI title/hook generation runs asynchronously after assistant turns
+ * (see refreshChatMetaAfterAssistantTurn) — never from the raw first message.
  * Returns the stored record, or null if the chat does not belong to the user.
  */
 export async function appendMessage(
@@ -231,21 +239,14 @@ export async function appendMessage(
     ],
   );
 
-  // Auto-title from the first meaningful user message (only while still default).
-  const shouldTitle =
-    input.role === "user" &&
-    chat.title === DEFAULT_TITLE &&
-    input.content.trim().length > 0;
-  const nextTitle = shouldTitle ? deriveChatTitle(input.content) : chat.title;
-
+  // Keep existing title; preview is a temporary line until AI hook lands.
   await execute(
     `UPDATE agent_chats
-        SET updated_at = ?, last_message_preview = ?, title = ?, symbol = COALESCE(?, symbol), interval = COALESCE(?, interval)
+        SET updated_at = ?, last_message_preview = ?, symbol = COALESCE(?, symbol), interval = COALESCE(?, interval)
       WHERE id = ? AND user_id = ?`,
     [
       now,
       previewOf(input.content),
-      nextTitle,
       input.symbol ?? null,
       input.interval ?? null,
       chatId,
@@ -266,6 +267,28 @@ export async function appendMessage(
     interval: input.interval,
   };
 }
+
+/** Persist AI (or fallback) title + hook. Tenant-scoped. */
+export async function updateChatMeta(
+  userId: number,
+  chatId: string,
+  meta: { title: string; hook: string },
+): Promise<AgentChatSession | null> {
+  const chat = await getChat(userId, chatId);
+  if (!chat) return null;
+  const title = meta.title.replace(/\s+/g, " ").trim().slice(0, MAX_TITLE_LEN) || chat.title;
+  const hook = meta.hook.replace(/\s+/g, " ").trim().slice(0, PREVIEW_LEN) || chat.lastMessagePreview || "";
+  const now = monotonicNow();
+  await execute(
+    `UPDATE agent_chats
+        SET title = ?, last_message_preview = ?, updated_at = ?
+      WHERE id = ? AND user_id = ?`,
+    [title, hook || null, now, chatId, userId],
+  );
+  return getChat(userId, chatId);
+}
+
+export { isDefaultChatTitle };
 
 export async function deleteChat(userId: number, chatId: string): Promise<boolean> {
   const chat = await getChat(userId, chatId);

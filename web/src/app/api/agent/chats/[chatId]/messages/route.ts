@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser, handleError, ApiError } from "@/lib/api";
 import { appendMessage, getMessages } from "@/lib/agent/chatHistory/chatStore";
+import { refreshChatMetaAfterAssistantTurn } from "@/lib/agent/chatHistory/refreshChatMeta";
 
 const appendSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -39,6 +40,10 @@ export async function POST(
     const body = appendSchema.parse(await req.json());
     const message = await appendMessage(user.id, chatId, body);
     if (!message) throw new ApiError(404, "المحادثة غير موجودة.");
+    // AI title/hook after assistant turns — never delay the response.
+    if (body.role === "assistant") {
+      void refreshChatMetaAfterAssistantTurn(user.id, chatId);
+    }
     return NextResponse.json({ message }, { status: 201 });
   } catch (err) {
     return handleError(err);
