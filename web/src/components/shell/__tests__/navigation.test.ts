@@ -7,18 +7,29 @@ import { activeNav, APP_NAV, navForRole } from "@/components/shell/navConfig";
 const root = resolve(process.cwd(), "src");
 const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
 
-test("APP_NAV is the single navigation source and covers the agent product pages", () => {
-  const hrefs = APP_NAV.map((i) => i.href);
-  for (const required of [
+test("APP_NAV is the single primary source with four destinations in order", () => {
+  const userHrefs = navForRole("user").map((i) => i.href);
+  assert.deepEqual(userHrefs, [
     "/console",
-    "/console/trades",
-    "/console/recommendations",
+    "/console/chats",
     "/statistics",
+    "/console/trades",
+  ]);
+  assert.deepEqual(
+    navForRole("user").map((i) => i.labelKey),
+    ["nav.workspace", "nav.chat_history", "nav.statistics", "nav.trades"],
+  );
+});
+
+test("Account, Integrations, and Settings are not primary sidebar destinations", () => {
+  const hrefs = new Set(APP_NAV.map((i) => i.href));
+  for (const hidden of [
     "/console/account",
     "/console/connect",
     "/console/settings",
+    "/console/recommendations",
   ]) {
-    assert.ok(hrefs.includes(required), `APP_NAV missing ${required}`);
+    assert.equal(hrefs.has(hidden), false, hidden);
   }
 });
 
@@ -33,10 +44,12 @@ test("admin items are hidden from regular users and visible to admins", () => {
 test("activeNav highlights exact, prefix, and tabbed routes correctly", () => {
   const overview = APP_NAV.find((i) => i.href === "/console")!;
   const trades = APP_NAV.find((i) => i.href === "/console/trades")!;
+  const chats = APP_NAV.find((i) => i.href === "/console/chats")!;
 
   assert.equal(activeNav("/console", overview), true);
   assert.equal(activeNav("/console/trades", overview), false, "exact item must not match children");
   assert.equal(activeNav("/console/trades", trades), true);
+  assert.equal(activeNav("/console/chats", chats), true);
 });
 
 test("legacy and internal destinations are absent from daily navigation", () => {
@@ -57,18 +70,18 @@ test("legacy navigation shells are removed from the tree", () => {
   ]) {
     assert.ok(!existsSync(resolve(root, legacy)), `${legacy} must be deleted`);
   }
-  // The old ADMIN_NAV constant is gone; only audit labels remain.
   assert.doesNotMatch(read("components/admin/adminNav.ts"), /ADMIN_NAV\s*=/);
 });
 
 test("workspace has no second chat-history sidebar; compact Chart/Chat switcher only", () => {
   const workspace = read("components/SmartChartWorkspace.tsx");
   const sidebarMounts = workspace.match(/<AgentChatSidebar/g) ?? [];
-  assert.equal(sidebarMounts.length, 0, "chat history lives in the canonical shell sidebar");
+  assert.equal(sidebarMounts.length, 0, "chat history is a dedicated destination");
   assert.doesNotMatch(workspace, /hidden w-\[240px\] shrink-0 xl:block/);
   assert.doesNotMatch(workspace, /chatSidebarOpen/);
   assert.match(workspace, /data-testid="chart-chat-switcher"/);
-  assert.match(workspace, /h-11 shrink-0/);
+  assert.match(workspace, /h-10 shrink-0/);
+  assert.match(workspace, /justify-center/);
   assert.doesNotMatch(workspace, /bg-primary text-primary-foreground shadow-sm/);
   assert.doesNotMatch(workspace, /UserShell|BridgeShell|ChatGptSidebar/);
 });
@@ -78,53 +91,94 @@ test("shell-less agent pages now use the unified AppConsoleShell", () => {
   assert.match(read("app/statistics/layout.tsx"), /AppConsoleShell/);
 });
 
-test("profile menu routes to unified console destinations, not legacy aliases", () => {
+test("profile menu contains Profile, Language, Theme, Settings, Logout with icon language/theme", () => {
   const menu = read("components/agent/SidebarProfileMenu.tsx");
-  assert.doesNotMatch(menu, /router\.push\("\/dashboard"\)/);
-  assert.doesNotMatch(menu, /router\.push\("\/settings"\)/);
   assert.match(menu, /router\.push\("\/console\/account"\)/);
   assert.match(menu, /router\.push\("\/console\/settings"\)/);
-  assert.match(menu, /tab=appearance/);
+  assert.match(menu, /data-testid="profile-language"/);
+  assert.match(menu, /data-testid="theme-toggle"/);
+  assert.match(menu, /<Globe/);
+  assert.match(menu, /<Sun|<Moon|Sun className|Moon className/);
+  assert.match(menu, /profile\.logout|t\("profile\.logout"\)/);
+  assert.doesNotMatch(menu, /Switch to light mode/);
+  assert.doesNotMatch(menu, /router\.push\("\/dashboard"\)/);
 });
 
-test("canonical shell exposes ThemeToggle and one opaque sidebar architecture", () => {
+test("canonical shell exposes one opaque sidebar and profile menu — no chats column", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
-  assert.match(shell, /ThemeToggle/);
-  assert.match(shell, /data-testid="theme-toggle"|<ThemeToggle/);
+  assert.match(shell, /SidebarProfileMenu/);
   assert.match(shell, /data-testid="canonical-desktop-sidebar"/);
   assert.match(shell, /data-testid="canonical-mobile-drawer"/);
-  assert.match(shell, /data-testid="canonical-chats-section"/);
   assert.match(shell, /data-testid="mobile-menu-trigger"/);
+  assert.match(shell, /data-testid="canonical-product-nav"/);
   assert.match(shell, /bg-sidebar/);
   assert.doesNotMatch(shell, /glass-panel/);
+  assert.doesNotMatch(shell, /canonical-chats-section/);
   assert.equal((shell.match(/data-testid="canonical-desktop-sidebar"/g) ?? []).length, 1);
   assert.equal((shell.match(/data-testid="mobile-menu-trigger"/g) ?? []).length, 1);
-  assert.match(read("components/ThemeToggle.tsx"), /data-testid="theme-toggle"/);
-  assert.match(read("components/ThemeToggle.tsx"), /setTheme/);
+  assert.equal((shell.match(/data-testid="canonical-mobile-drawer"/g) ?? []).length, 1);
 });
 
-test("corrective tokens remove purple glow and keep restrained accent", () => {
+test("chat history page exists as a dedicated destination", () => {
+  assert.ok(existsSync(resolve(root, "app/console/chats/page.tsx")));
+  const page = read("app/console/chats/page.tsx");
+  assert.match(page, /chats\.title/);
+  assert.match(page, /nav\.new_chat/);
+});
+
+test("settings stay on one canonical destination with internal tabs only", () => {
+  const settings = read("components/SettingsClient.tsx");
+  assert.match(settings, /settings\.tab\.account/);
+  assert.match(settings, /settings\.tab\.appearance/);
+  assert.match(settings, /settings\.tab\.connections/);
+  assert.doesNotMatch(settings, /APP_NAV/);
+  assert.doesNotMatch(settings, /canonical-product-nav/);
+  assert.ok(existsSync(resolve(root, "app/console/settings/page.tsx")));
+});
+
+test("corrective tokens remove purple from normal UI", () => {
   const css = read("app/globals.css");
   assert.match(css, /--glow-brand:\s*none/);
   assert.match(css, /\.glass-panel\s*\{[\s\S]*backdrop-filter:\s*none/);
-  assert.match(css, /\.dark \.glass-card\s*\{[\s\S]*box-shadow:\s*none/);
   assert.doesNotMatch(css, /#bc00ff/);
+  assert.doesNotMatch(css, /#7c3aed/);
+  assert.doesNotMatch(css, /#8b5cf6/);
+  assert.match(css, /--primary:\s*#18181b/);
+  assert.match(css, /\.aichart-scroll/);
+  assert.match(css, /::-webkit-scrollbar-button/);
+  assert.match(css, /\.chat-composer-shell/);
   const chat = read("components/agent/SmartChartAgentPanel.tsx");
   assert.doesNotMatch(chat, /bg-primary\/10/);
-  assert.doesNotMatch(chat, /glass-card mr-auto/);
   assert.match(chat, /--user-bubble/);
+  assert.match(chat, /chat-scroll-region/);
+  const composer = read("components/agent/AgentChatInput.tsx");
+  assert.match(composer, /chat-composer-shell/);
+  assert.doesNotMatch(composer, /border-t border-border bg-background/);
 });
 
-test("brand assets use transparent face-mark paths", () => {
+test("statistics dashboard uses a responsive summary grid", () => {
+  const overview = read("components/recommendations/RecommendationStatsOverview.tsx");
+  assert.match(overview, /stats-summary-grid/);
+  assert.match(overview, /xl:grid-cols-4/);
+  assert.match(overview, /sm:grid-cols-2/);
+  const page = read("app/statistics/page.tsx");
+  assert.match(page, /max-w-7xl/);
+  assert.doesNotMatch(page, /bg-primary text-primary-foreground/);
+});
+
+test("brand mark SVG viewBox contains the full face (eyes + diamond)", () => {
+  const mark = readFileSync(resolve(process.cwd(), "public/brand/aichart-mark.svg"), "utf8");
+  const light = readFileSync(resolve(process.cwd(), "public/brand/aichart-mark-light.svg"), "utf8");
+  for (const svg of [mark, light]) {
+    assert.match(svg, /viewBox="100 250 900 670"/);
+    assert.match(svg, /M258\.63 274\.35/);
+    assert.match(svg, /M805\.76 274\.41/);
+    assert.match(svg, /M542\.79 642\.35/);
+  }
   const logo = read("components/AiChartLogo.tsx");
-  assert.match(logo, /\/brand\/aichart-mark/);
   assert.match(logo, /object-contain/);
-  assert.doesNotMatch(logo, /lonora-logo/);
-  const avatar = read("components/AgentAvatar.tsx");
-  assert.match(avatar, /AnimatedAgentAvatar/);
-  const animated = read("components/AnimatedAgentAvatar.tsx");
-  assert.match(animated, /data-state=\{state\}/);
-  assert.match(animated, /agent-eye-left/);
+  assert.match(logo, /overflow-visible/);
+  assert.doesNotMatch(logo, /object-cover/);
 });
 
 test("favicon and PWA metadata point at current AiChart mark", () => {
@@ -157,4 +211,14 @@ test("workspace exposes a keyboard-operable desktop separator", () => {
   assert.match(workspace, /onKeyDown=\{resizeChatWithKeyboard\}/);
   assert.match(workspace, /event\.key === "ArrowLeft"/);
   assert.match(workspace, /event\.key === "ArrowRight"/);
+});
+
+test("AI chat meta composer exists and messages route schedules refresh", () => {
+  assert.ok(existsSync(resolve(root, "lib/agent/chatHistory/composeChatMeta.ts")));
+  assert.ok(existsSync(resolve(root, "lib/agent/chatHistory/refreshChatMeta.ts")));
+  const route = read("app/api/agent/chats/[chatId]/messages/route.ts");
+  assert.match(route, /refreshChatMetaAfterAssistantTurn/);
+  const store = read("lib/agent/chatHistory/chatStore.ts");
+  assert.match(store, /updateChatMeta/);
+  assert.doesNotMatch(store, /shouldTitle \? deriveChatTitle/);
 });

@@ -639,16 +639,16 @@ export function SmartChartWorkspace({
         <div
           dir={dir}
           data-testid="chart-chat-switcher"
-          className="flex h-11 shrink-0 items-center gap-1 border-b border-border bg-background ps-14 pe-2 xl:hidden"
+          className="relative flex h-10 shrink-0 items-center justify-center bg-transparent xl:hidden"
         >
-          <div className="inline-flex h-8 items-center rounded-md border border-border bg-muted/50 p-0.5">
+          <div className="inline-flex h-9 items-center gap-0.5 rounded-lg bg-muted/70 p-0.5">
             <button
               type="button"
               aria-pressed={mobilePane === "chart"}
               onClick={() => setMobilePane("chart")}
-              className={`flex h-7 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${
+              className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
                 mobilePane === "chart"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -659,9 +659,9 @@ export function SmartChartWorkspace({
               type="button"
               aria-pressed={mobilePane === "chat"}
               onClick={() => setMobilePane("chat")}
-              className={`flex h-7 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${
+              className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
                 mobilePane === "chat"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >

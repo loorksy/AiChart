@@ -1,14 +1,14 @@
 /*
   AnimatedAgentAvatar — theme tokens
   Light: charcoal face on light UI. Dark (html.dark): near-white face.
-  Accent uses brand purple for thinking sweep / glow in dark.
+  Accent uses neutral zinc for thinking sweep — no purple.
 */
 .root {
   --agent-avatar-fill: #171717;
   --agent-avatar-glow: rgba(23, 23, 23, 0.08);
   --agent-avatar-shadow: rgba(23, 23, 23, 0.14);
   --agent-avatar-opacity: 1;
-  --agent-avatar-accent: #7c3aed;
+  --agent-avatar-accent: #52525b;
 
   position: relative;
   display: inline-flex;
@@ -20,9 +20,9 @@
 
 :global(html.dark) .root {
   --agent-avatar-fill: #f5f5f5;
-  --agent-avatar-glow: rgba(139, 92, 246, 0.1);
+  --agent-avatar-glow: rgba(255, 255, 255, 0.06);
   --agent-avatar-shadow: transparent;
-  --agent-avatar-accent: #8b5cf6;
+  --agent-avatar-accent: #a1a1aa;
 }
 
 .svg {

@@ -4,6 +4,7 @@
  */
 import { createLogger } from "@/lib/logger";
 import { appendMessage } from "@/lib/agent/chatHistory/chatStore";
+import { refreshChatMetaAfterAssistantTurn } from "@/lib/agent/chatHistory/refreshChatMeta";
 import { getResearchJob } from "@/lib/research/client";
 import {
   appendRecommendationHistory,
@@ -304,6 +305,7 @@ async function appendChatUpdate(
       symbol: run.symbol,
       interval: run.interval,
     });
+    void refreshChatMetaAfterAssistantTurn(run.userId, run.chatId);
   } catch (err) {
     // Session deleted — handle safely.
     log.info("chat update skipped (session missing or unauthorized)", {

@@ -101,7 +101,7 @@ export async function runDrawingAgent(
       level.type === "resistance"
         ? "#ef4444"
         : level.type === "liquidity"
-          ? "#a855f7"
+          ? "#0284c7"
           : "#22c55e";
     const role =
       level.type === "resistance"
@@ -172,7 +172,7 @@ function annotationDrawing(
       };
     case "sweep":
       return {
-        ...priceLine(ann.label, ann.price, ann.time, "liquidity_sweep", "#a855f7"),
+        ...priceLine(ann.label, ann.price, ann.time, "liquidity_sweep", "#0284c7"),
         confidence: Math.round(ann.strength),
         style: "dashed",
         meta: { annotation: ann.type },

@@ -6,9 +6,8 @@ import { test } from "node:test";
 
 /**
  * Persistent chat history: sessions and messages survive on the real SQLite
- * backend, are auto-titled from the first user message, and are strictly
- * scoped by userId. The db layer is a module singleton, so one setup drives
- * all assertions.
+ * backend. Titles are not copied from the raw first user message; AI meta is
+ * applied via updateChatMeta. Strictly scoped by userId.
  */
 test("agent chat history store persists, loads, titles, and scopes chats", async () => {
   const dir = mkdtempSync(join(tmpdir(), "lonora-chat-"));
@@ -77,10 +76,28 @@ test("agent chat history store persists, loads, titles, and scopes chats", async
     summary: "توصية شراء على الذهب.",
   });
 
-  // --- Auto-title comes from the first meaningful user message ---
+  // --- Raw first user message is NOT used as the title ---
   const reloaded = await store.getChat(owner, chat.id);
-  assert.equal(reloaded?.title, "أعطني توصية جديدة على الذهب");
+  assert.equal(reloaded?.title, "محادثة جديدة");
+  assert.notEqual(reloaded?.title, "أعطني توصية جديدة على الذهب");
   assert.ok(reloaded?.lastMessagePreview, "preview is set");
+
+  // --- AI / fallback meta can be stored without breaking chat ---
+  const withMeta = await store.updateChatMeta(owner, chat.id, {
+    title: "تحليل فرصة الذهب",
+    hook: "انتظار عودة السعر إلى منطقة البيع",
+  });
+  assert.equal(withMeta?.title, "تحليل فرصة الذهب");
+  assert.equal(withMeta?.lastMessagePreview, "انتظار عودة السعر إلى منطقة البيع");
+  assert.equal(
+    await store.updateChatMeta(attacker, chat.id, {
+      title: "leak",
+      hook: "leak",
+    }),
+    null,
+    "another tenant cannot update chat meta",
+  );
+  assert.equal((await store.getChat(owner, chat.id))?.title, "تحليل فرصة الذهب");
 
   // --- Strict user scoping: another tenant cannot read or append ---
   assert.equal(await store.getChat(attacker, chat.id), null);
