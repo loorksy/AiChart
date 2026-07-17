@@ -33,10 +33,10 @@ export function LanguageSwitcher({
               role="radio"
               aria-checked={active}
               onClick={() => setLocale(lng)}
-              className={`min-h-11 flex-1 rounded-md px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`min-h-9 flex-1 rounded-md px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 active
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/70"
+                  ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {LABEL[lng]}
@@ -61,9 +61,9 @@ export function LanguageSwitcher({
             type="button"
             aria-pressed={active}
             onClick={() => setLocale(lng)}
-            className={`min-h-11 rounded-md px-2.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`min-h-8 rounded-md px-2.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               active
-                ? "bg-primary text-primary-foreground"
+                ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >

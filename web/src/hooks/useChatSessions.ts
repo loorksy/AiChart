@@ -59,6 +59,9 @@ export function useChatSessions(opts: {
     if (!res.ok) return;
     const json = (await res.json()) as { sessions?: AgentChatSession[] };
     setSessions(json.sessions ?? []);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("aichart:chats-updated"));
+    }
   }, []);
 
   const fetchMessages = useCallback(
@@ -153,6 +156,9 @@ export function useChatSessions(opts: {
     setSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
     setActiveMessages([]);
     setActiveChatId(session.id);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("aichart:chats-updated"));
+    }
   }, [createChat]);
 
   const persistMessage = useCallback(

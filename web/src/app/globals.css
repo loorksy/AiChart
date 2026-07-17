@@ -1,113 +1,115 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   AiChart design tokens — intentional dark + light themes
-   Controlled glassmorphism; AA-oriented contrast on glass surfaces.
+   AiChart design tokens — calm neutral surfaces, restrained purple accent.
+   No neon/glassmorphism as the default product language.
    ========================================================================== */
 
 :root {
-  --radius: 0.75rem;
-  --radius-lg: 1rem;
+  --radius: 0.625rem;
+  --radius-lg: 0.875rem;
 
-  /* Light theme — intentional (not inverted neon) */
-  --background: #f4f5f7;
-  --foreground: #0a0a0a;
-  --card: rgba(255, 255, 255, 0.82);
-  --card-foreground: #0a0a0a;
+  /* Light — clean off-white, opaque surfaces, AA text */
+  --background: #f7f7f8;
+  --foreground: #0d0d0d;
+  --card: #ffffff;
+  --card-foreground: #0d0d0d;
   --popover: #ffffff;
-  --popover-foreground: #0a0a0a;
-  --primary: #8b00c4;
+  --popover-foreground: #0d0d0d;
+  --primary: #7c3aed;
   --primary-foreground: #ffffff;
-  --secondary: #e8eaee;
+  --secondary: #ececef;
   --secondary-foreground: #1a1a1a;
-  --muted: #e8eaee;
-  --muted-foreground: #5c5c5c;
-  --accent: #e8f9fc;
-  --accent-foreground: #0a4a52;
+  --muted: #ececef;
+  --muted-foreground: #52525b;
+  --accent: #ececef;
+  --accent-foreground: #18181b;
   --accent-gold: #d97706;
-  --destructive: #e11d2e;
+  --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: rgba(10, 10, 10, 0.1);
+  --border: #e4e4e7;
   --input: #ffffff;
-  --ring: #8b00c4;
-  --sidebar: rgba(255, 255, 255, 0.78);
-  --sidebar-foreground: #0a0a0a;
-  --sidebar-primary: #8b00c4;
+  --ring: #7c3aed;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #18181b;
+  --sidebar-primary: #7c3aed;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(139, 0, 196, 0.08);
-  --sidebar-accent-foreground: #0a0a0a;
-  --sidebar-border: rgba(10, 10, 10, 0.08);
-  --sidebar-ring: #8b00c4;
-  --sidebar-active-bg: rgba(139, 0, 196, 0.12);
-  --sidebar-active-text: #6b0096;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #7c3aed;
+  --sidebar-active-bg: #f4f4f5;
+  --sidebar-active-text: #18181b;
   --surface-elevated: #ffffff;
-  --bento-card: rgba(255, 255, 255, 0.7);
-  --bento-card-border: rgba(10, 10, 10, 0.08);
-  --bento-card-hover-border: rgba(139, 0, 196, 0.35);
-  --glow-brand: 0 0 24px rgba(139, 0, 196, 0.12);
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(10, 10, 10, 0.1);
-  --buy: #00a844;
-  --sell: #e11d2e;
-  --info: #0891b2;
+  --bento-card: #ffffff;
+  --bento-card-border: #e4e4e7;
+  --bento-card-hover-border: #d4d4d8;
+  --glow-brand: none;
+  --glass-bg: #ffffff;
+  --glass-border: #e4e4e7;
+  --buy: #16a34a;
+  --sell: #dc2626;
+  --info: #0284c7;
   --warning: #d97706;
-  --chart-1: #8b00c4;
-  --chart-2: #0891b2;
-  --chart-3: #00a844;
+  --chart-1: #7c3aed;
+  --chart-2: #0284c7;
+  --chart-3: #16a34a;
   --chart-4: #d97706;
-  --chart-5: #e11d2e;
+  --chart-5: #dc2626;
   --chat-input: #ffffff;
+  --user-bubble: #f4f4f5;
 }
 
 .dark {
-  /* Deep Obsidian + controlled brand accents */
-  --background: #050505;
-  --foreground: #ffffff;
-  --card: rgba(18, 18, 20, 0.72);
-  --card-foreground: #ffffff;
-  --popover: #121214;
-  --popover-foreground: #ffffff;
-  --primary: #bc00ff;
+  /* Near-black neutrals — purple only as limited accent */
+  --background: #0a0a0a;
+  --foreground: #ececec;
+  --card: #141414;
+  --card-foreground: #ececec;
+  --popover: #141414;
+  --popover-foreground: #ececec;
+  --primary: #8b5cf6;
   --primary-foreground: #ffffff;
-  --secondary: #1a1a1e;
-  --secondary-foreground: #f5f5f5;
-  --muted: #1a1a1e;
-  --muted-foreground: #a0a0a0;
-  --accent: rgba(0, 240, 255, 0.08);
-  --accent-foreground: #00f0ff;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #ececec;
+  --muted: #1a1a1a;
+  --muted-foreground: #a1a1aa;
+  --accent: #1a1a1a;
+  --accent-foreground: #ececec;
   --accent-gold: #f59e0b;
-  --destructive: #ff4444;
+  --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.06);
-  --ring: #bc00ff;
-  --sidebar: rgba(12, 12, 14, 0.82);
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #bc00ff;
+  --border: #262626;
+  --input: #141414;
+  --ring: #8b5cf6;
+  --sidebar: #111111;
+  --sidebar-foreground: #ececec;
+  --sidebar-primary: #8b5cf6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(188, 0, 255, 0.12);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #bc00ff;
-  --sidebar-active-bg: rgba(188, 0, 255, 0.18);
-  --sidebar-active-text: #ffffff;
-  --surface-elevated: #121214;
-  --bento-card: rgba(255, 255, 255, 0.03);
-  --bento-card-border: rgba(255, 255, 255, 0.08);
-  --bento-card-hover-border: rgba(188, 0, 255, 0.4);
-  --glow-brand: 0 0 28px rgba(188, 0, 255, 0.18);
-  --glass-bg: rgba(18, 18, 20, 0.65);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --buy: #00c853;
-  --sell: #ff4444;
-  --info: #00f0ff;
+  --sidebar-accent: #1a1a1a;
+  --sidebar-accent-foreground: #ececec;
+  --sidebar-border: #262626;
+  --sidebar-ring: #8b5cf6;
+  --sidebar-active-bg: #1f1f1f;
+  --sidebar-active-text: #fafafa;
+  --surface-elevated: #171717;
+  --bento-card: #141414;
+  --bento-card-border: #262626;
+  --bento-card-hover-border: #3f3f46;
+  --glow-brand: none;
+  --glass-bg: #141414;
+  --glass-border: #262626;
+  --buy: #22c55e;
+  --sell: #ef4444;
+  --info: #38bdf8;
   --warning: #f59e0b;
-  --chart-1: #bc00ff;
-  --chart-2: #00f0ff;
-  --chart-3: #00c853;
+  --chart-1: #8b5cf6;
+  --chart-2: #38bdf8;
+  --chart-3: #22c55e;
   --chart-4: #f59e0b;
-  --chart-5: #ff4444;
-  --chat-input: #0c0c0e;
+  --chart-5: #ef4444;
+  --chat-input: #1a1a1a;
+  --user-bubble: #1f1f1f;
 }
 
 @theme inline {
@@ -182,33 +184,31 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Controlled glass — blur capped for readability & performance */
+/* Opaque surfaces — keep class names for compatibility, no blur/glow */
 .glass-panel {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: var(--sidebar);
+  border: 1px solid var(--sidebar-border);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .glass-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
 }
 
 .dark .glass-card {
-  box-shadow: var(--glow-brand);
+  box-shadow: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .glass-panel,
-  .glass-card {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
+.surface-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .admin-card {
@@ -414,7 +414,10 @@ label {
 .chat-gpt-input {
   background: var(--chat-input);
   border: 1px solid var(--border);
-  border-radius: 1.25rem;
+  border-radius: 1.5rem;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .text-buy {
@@ -454,18 +457,9 @@ label {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.chat-gpt-input {
-  background: var(--chat-input) !important;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--border);
-  border-radius: 1.25rem;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
-}
-
 .chat-gpt-input:focus-within {
-  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 25%, transparent);
 }
 
 .sidebar-nav-item {
@@ -558,13 +552,13 @@ label {
 .bento-card {
   background: var(--bento-card);
   border: 1px solid var(--bento-card-border);
-  border-radius: 1rem;
-  backdrop-filter: blur(12px);
+  border-radius: var(--radius-lg);
+  backdrop-filter: none;
 }
 
 .dark .bento-card:hover {
   border-color: var(--bento-card-hover-border);
-  box-shadow: var(--glow-brand);
+  box-shadow: none;
 }
 
 .status-dot {

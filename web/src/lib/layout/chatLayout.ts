@@ -9,7 +9,7 @@ export const DEFAULT_MOBILE_PANE: MobilePane = "chart";
 
 export const MIN_CHAT_WIDTH = 320;
 export const MAX_CHAT_WIDTH = 560;
-export const DEFAULT_CHAT_WIDTH = 380;
+export const DEFAULT_CHAT_WIDTH = 400;
 
 export const CHAT_WIDTH_STORAGE_KEY = "lonora_chat_width";
 

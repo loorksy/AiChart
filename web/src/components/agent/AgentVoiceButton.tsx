@@ -35,9 +35,9 @@ export function AgentVoiceButton({
         "flex size-9 shrink-0 items-center justify-center rounded-full disabled:opacity-50",
         active
           ? liveFace
-            ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-            : "bg-destructive/90 text-destructive-foreground hover:bg-destructive"
-          : "bg-muted/80 text-foreground hover:bg-muted",
+            ? "bg-muted text-foreground ring-1 ring-border"
+            : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          : "bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
         className,
       )}
     >

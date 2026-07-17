@@ -37,7 +37,6 @@ import {
   SmartChartAgentPanel,
   type SmartChartAgentHandle,
 } from "@/components/agent/SmartChartAgentPanel";
-import { AgentChatSidebar } from "@/components/agent/AgentChatSidebar";
 import { AgentVoiceButton } from "@/components/agent/AgentVoiceButton";
 import { AgentVoicePanel } from "@/components/agent/AgentVoicePanel";
 import { useChatSessions } from "@/hooks/useChatSessions";
@@ -639,34 +638,37 @@ export function SmartChartWorkspace({
       {chatEnabled && (
         <div
           dir={dir}
-          className="glass-panel grid shrink-0 grid-cols-2 gap-1 border-b border-border/50 p-1.5 ps-14 xl:hidden"
+          data-testid="chart-chat-switcher"
+          className="flex h-11 shrink-0 items-center gap-1 border-b border-border bg-background ps-14 pe-2 xl:hidden"
         >
-          <button
-            type="button"
-            aria-pressed={mobilePane === "chart"}
-            onClick={() => setMobilePane("chart")}
-            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${
-              mobilePane === "chart"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-primary/10 hover:text-foreground"
-            }`}
-          >
-            <CandlestickChart className="h-4 w-4" />
-            {t("layout.chart")}
-          </button>
-          <button
-            type="button"
-            aria-pressed={mobilePane === "chat"}
-            onClick={() => setMobilePane("chat")}
-            className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${
-              mobilePane === "chat"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-primary/10 hover:text-foreground"
-            }`}
-          >
-            <MessageSquare className="h-4 w-4" />
-            {t("layout.chat")}
-          </button>
+          <div className="inline-flex h-8 items-center rounded-md border border-border bg-muted/50 p-0.5">
+            <button
+              type="button"
+              aria-pressed={mobilePane === "chart"}
+              onClick={() => setMobilePane("chart")}
+              className={`flex h-7 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${
+                mobilePane === "chart"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <CandlestickChart className="h-3.5 w-3.5" />
+              {t("layout.chart")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={mobilePane === "chat"}
+              onClick={() => setMobilePane("chat")}
+              className={`flex h-7 items-center gap-1.5 rounded px-2.5 text-xs font-medium transition-colors ${
+                mobilePane === "chat"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              {t("layout.chat")}
+            </button>
+          </div>
         </div>
       )}
 
@@ -675,18 +677,6 @@ export function SmartChartWorkspace({
         dir="ltr"
         style={{ "--chat-w": `${chatWidth}px` } as CSSProperties}
       >
-        {chatEnabled && (
-          <div className="hidden w-[240px] shrink-0 xl:block">
-            <AgentChatSidebar
-              sessions={chat.sessions}
-              activeChatId={chat.activeChatId}
-              onSelectChat={chat.selectChat}
-              onNewChat={() => void chat.newChat()}
-              busy={!chat.ready}
-            />
-          </div>
-        )}
-
         <div className={chartPaneClass}>
           {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
               setResolution) — never remount, so drawings and chart state survive. */}

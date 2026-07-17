@@ -80,7 +80,7 @@ export default function AuthForm({
   return (
     <div className="relative flex min-h-dvh" dir={dir}>
       <div className="pointer-events-none absolute inset-0 -z-10 bg-background">
-        <div className="absolute inset-x-0 top-0 mx-auto h-[420px] w-[720px] rounded-full bg-primary/10 blur-[120px]" />
+        <div className="absolute inset-x-0 top-0 mx-auto h-[280px] w-[480px] rounded-full bg-muted/40 blur-[80px]" />
       </div>
 
       <main className="flex w-full flex-col justify-center px-6 py-10 outline-none sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">

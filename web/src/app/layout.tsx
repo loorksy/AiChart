@@ -31,6 +31,20 @@ export const metadata: Metadata = {
   title: `${BRAND_NAME} — ${BRAND_TAGLINE_AR}`,
   description:
     "منصة تداول ذكية، يتحدث فيها كل متداول مع وكيل خبير يراقب السوق ويتحرك عند الفرصة المناسبة فقط.",
+  applicationName: BRAND_NAME,
+  manifest: "/site.webmanifest",
+  icons: {
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f7f8" },
+  ],
 };
 
 /** Runs before paint to avoid wrong-theme flash (matches ThemeProvider storage key). */

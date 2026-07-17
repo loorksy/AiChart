@@ -175,7 +175,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                       key={suggestion.id}
                       type="button"
                       onClick={() => void sendMessage(suggestion.prompt)}
-                      className="min-h-10 rounded-full border border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 text-xs text-foreground backdrop-blur-sm hover:border-primary/40 hover:bg-primary/5"
+                      className="min-h-9 rounded-full border border-border bg-background px-3 text-xs text-foreground hover:bg-muted"
                     >
                       {suggestion.label}
                     </button>
@@ -190,8 +190,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               key={m.id}
               className={
                 m.role === "user"
-                  ? "ml-auto max-w-[85%] rounded-2xl bg-primary/10 px-3 py-2 text-sm text-foreground ring-1 ring-primary/15"
-                  : "glass-card mr-auto max-w-[95%] px-3 py-3 text-sm text-foreground"
+                  ? "ml-auto max-w-[min(85%,36rem)] rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm text-foreground"
+                  : "mr-auto max-w-[min(95%,42rem)] px-1 py-2 text-sm text-foreground"
               }
             >
               {/* Temporary assistant bubble: live thinking ticker while the run
@@ -286,22 +286,22 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 </div>
               ) : null}
               {m.options?.length ? (
-                <div className="mt-2 grid gap-1">
-                  {m.options.map((option, index) => (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {m.options.map((option) => (
                     <button
                       key={option.id}
                       onClick={() => void sendMessage(option.prompt)}
                       disabled={running}
-                      className="rounded-md border border-border/60 bg-background px-2 py-1 text-start text-xs hover:bg-muted disabled:opacity-50"
+                      className="min-h-8 rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
                     >
-                      {index + 1}. {option.label}
+                      {option.label}
                     </button>
                   ))}
                 </div>
               ) : null}
               {m.result?.requiresConfirmation && m.result.confirmationPayload && (
-                <div className="mt-2 rounded-md border border-fuchsia-500/40 bg-fuchsia-500/10 p-2 text-[12px]">
-                  <p className="font-semibold text-fuchsia-500">
+                <div className="mt-2 rounded-lg border border-amber-500/35 bg-amber-500/[0.06] p-2 text-[12px]">
+                  <p className="font-semibold text-amber-700 dark:text-amber-300">
                     {t("agent.needs_confirmation")}
                   </p>
                   <p className="text-muted-foreground">

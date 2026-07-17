@@ -97,10 +97,8 @@ export function RecommendationTrackerCard({
   return (
     <div
       dir={dir}
-      className={`glass-card p-3 text-sm ${
-        waiting
-          ? "border-amber-500/40 bg-amber-500/5"
-          : ""
+      className={`rounded-xl border border-border bg-card p-3 text-sm shadow-none ${
+        waiting ? "border-amber-500/35 bg-amber-500/[0.04]" : ""
       }`}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
