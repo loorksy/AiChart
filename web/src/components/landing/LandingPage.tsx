@@ -6,6 +6,7 @@ import { LandingWorkspace } from "@/components/landing/LandingWorkspace";
 import { LandingTrust } from "@/components/landing/LandingTrust";
 import { LandingIntegrations } from "@/components/landing/LandingIntegrations";
 import { LandingHistory } from "@/components/landing/LandingHistory";
+import { LandingPricing } from "@/components/landing/LandingPricing";
 import { LandingFaq } from "@/components/landing/LandingFaq";
 import { LandingCta } from "@/components/landing/LandingCta";
 import { LandingFooter } from "@/components/landing/LandingFooter";
@@ -29,6 +30,7 @@ export default function LandingPage() {
         <LandingTrust />
         <LandingIntegrations />
         <LandingHistory />
+        <LandingPricing />
         <LandingFaq />
         <LandingCta />
       </main>

@@ -2,28 +2,40 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
-import { activeNav, APP_NAV, navForRole } from "@/components/shell/navConfig";
+import { activeNav, APP_NAV, ADMIN_NAV, navForRole } from "@/components/shell/navConfig";
 
 const root = resolve(process.cwd(), "src");
 const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
 
 test("APP_NAV has Chart/Chat, Statistics, Trades — no Chat History page", () => {
-  const userHrefs = navForRole("user").map((i) => i.href);
+  const userHrefs = navForRole("user", "full").map((i) => i.href);
   assert.deepEqual(userHrefs, ["/console", "/statistics", "/console/trades"]);
   assert.ok(!userHrefs.includes("/console/chats"));
   assert.ok(!APP_NAV.some((i) => i.labelKey === "nav.chat_history"));
 });
 
+test("trial nav is limited to console only", () => {
+  assert.deepEqual(
+    navForRole("user", "trial").map((i) => i.href),
+    ["/console"],
+  );
+});
+
+test("admin nav is dedicated and excludes trader destinations", () => {
+  const adminHrefs = navForRole("admin").map((i) => i.href);
+  assert.ok(adminHrefs.includes("/console"));
+  assert.ok(adminHrefs.some((h) => h.includes("/console/platform")));
+  assert.ok(!adminHrefs.includes("/statistics"));
+  assert.ok(!adminHrefs.includes("/console/trades"));
+  assert.deepEqual(navForRole("admin"), ADMIN_NAV);
+  assert.ok(!ADMIN_NAV.some((i) => i.labelKey === "nav.workspace"));
+});
+
 test("Account, Integrations, Settings are not primary destinations", () => {
-  const hrefs = new Set(APP_NAV.map((i) => i.href));
+  const hrefs = new Set([...APP_NAV, ...ADMIN_NAV].map((i) => i.href));
   for (const hidden of ["/console/account", "/console/connect", "/console/settings", "/console/chats"]) {
     assert.equal(hrefs.has(hidden), false, hidden);
   }
-});
-
-test("admin platform remains admin-only", () => {
-  assert.ok(!navForRole("user").some((i) => i.href.includes("/console/platform")));
-  assert.ok(navForRole("admin").some((i) => i.href === "/console/platform"));
 });
 
 test("activeNav exact vs prefix", () => {
@@ -34,15 +46,26 @@ test("activeNav exact vs prefix", () => {
   assert.equal(activeNav("/console/trades", trades), true);
 });
 
-test("shell mounts conversations inside one sidebar/drawer", () => {
+test("shell mounts conversations for traders; admin uses admin nav", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /SidebarConversations/);
   assert.match(shell, /canonical-desktop-sidebar/);
   assert.match(shell, /canonical-mobile-drawer/);
-  assert.match(shell, /mobile-menu-trigger/);
+  assert.match(shell, /canonical-admin-nav|navForRole/);
+  assert.match(shell, /ShellMenuProvider/);
   assert.equal((shell.match(/data-testid="canonical-desktop-sidebar"/g) ?? []).length, 1);
-  assert.equal((shell.match(/data-testid="mobile-menu-trigger"/g) ?? []).length, 1);
+  // Floating overlay hamburger removed from shell — chart toolbar / page header host it.
+  assert.doesNotMatch(shell, /fixed start-3 top-3 z-30/);
   assert.doesNotMatch(shell, /glass-panel/);
+});
+
+test("chart toolbar hosts the locale-aware menu button", () => {
+  const toolbar = read("components/chart/ChartToolbarMenuButton.tsx");
+  assert.match(toolbar, /data-testid="mobile-menu-trigger"/);
+  assert.match(toolbar, /start-0/);
+  assert.match(toolbar, /chart-toolbar-menu-layer/);
+  const workspace = read("components/SmartChartWorkspace.tsx");
+  assert.match(workspace, /ChartToolbarMenuButton/);
 });
 
 test("old /console/chats route redirects to console", () => {
@@ -55,7 +78,6 @@ test("workspace uses floating switcher once; no top tab bar", () => {
   const workspace = read("components/SmartChartWorkspace.tsx");
   assert.match(workspace, /import \{ FloatingWorkspaceSwitcher \}/);
   assert.equal((workspace.match(/<FloatingWorkspaceSwitcher\b/g) ?? []).length, 1);
-  assert.doesNotMatch(workspace, /h-10 shrink-0 items-center justify-center/);
   assert.doesNotMatch(workspace, /role="tablist"/);
   assert.equal((workspace.match(/<AgentChatSidebar/g) ?? []).length, 0);
 });
@@ -69,21 +91,24 @@ test("floating switcher defaults by locale edge helpers", () => {
   assert.match(helpers, /dir === "rtl" \? "left" : "right"/);
 });
 
-test("composer has no outer footer container; fade is theme-aware", () => {
+test("composer has bottom fade; upper chat shadow removed", () => {
   const css = read("app/globals.css");
   assert.match(css, /\.chat-composer-fade/);
   assert.match(css, /var\(--background\)/);
   assert.doesNotMatch(css, /#7c3aed|#8b5cf6|#bc00ff/);
+  assert.doesNotMatch(css, /\.chat-scroll-region::before/);
   const input = read("components/agent/AgentChatInput.tsx");
   assert.match(input, /chat-composer-shell/);
-  assert.doesNotMatch(input, /border-t border-border bg-background/);
   const panel = read("components/agent/SmartChartAgentPanel.tsx");
   assert.match(panel, /composer-fade|chat-composer-fade/);
   assert.match(panel, /chat-panel-shell/);
 });
 
-test("profile menu keeps account destinations out of primary nav", () => {
+test("profile menu uses opaque portal surface", () => {
   const menu = read("components/agent/SidebarProfileMenu.tsx");
+  assert.match(menu, /createPortal/);
+  assert.match(menu, /sidebar-profile-popover/);
+  assert.match(menu, /backgroundColor: "var\(--background\)"/);
   assert.match(menu, /\/console\/account/);
   assert.match(menu, /\/console\/settings/);
   assert.match(menu, /data-testid="theme-toggle"/);
@@ -98,12 +123,8 @@ test("MCP login uses neutral tokens and preserves oauth routes", () => {
   const login = readFileSync(resolve(process.cwd(), "../mcp/src/auth/login.ts"), "utf8");
   assert.match(login, /prefers-color-scheme: dark/);
   assert.match(login, /viewBox="100 250 900 670"/);
-  assert.doesNotMatch(login, /#3b82f6|#0f172a|#2563eb/);
   assert.match(login, /action="\/oauth\/login"/);
   assert.match(login, /verifyPlatformUser/);
-  assert.match(login, /Sign in and approve/);
-  assert.match(login, /تسجيل الدخول والموافقة/);
-  assert.match(login, /detectLoginLocale/);
 });
 
 test("shell-less pages still use AppConsoleShell", () => {

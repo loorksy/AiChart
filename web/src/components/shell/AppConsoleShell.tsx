@@ -2,40 +2,63 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Menu, PanelLeft, PanelLeftClose, X } from "lucide-react";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { SidebarConversations } from "@/components/shell/SidebarConversations";
+import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
 import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
 import { useLocale } from "@/hooks/useLocale";
+import { useMe } from "@/hooks/useMe";
 import { cn } from "@/lib/utils";
 
 /**
- * Canonical console shell — one opaque sidebar / one mobile drawer.
- * Primary nav + conversation section + profile control.
+ * Canonical console shell — role-aware sidebar / one mobile drawer.
+ * Trader shell includes conversations; admin shell is admin destinations only.
  */
 export function AppConsoleShell({
   role,
   displayName,
   children,
   noPadding = false,
+  showConversations,
 }: {
   role: NavRole;
   displayName: string;
   children: React.ReactNode;
   noPadding?: boolean;
+  /** Override conversation section (default: traders only). */
+  showConversations?: boolean;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t, dir } = useLocale();
+  const { data: me } = useMe();
   const currentTab = searchParams.get("tab");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [navPath, setNavPath] = useState(pathname);
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
-  const items = navForRole(role);
-  const workspaceNoPadding = noPadding || pathname === "/console";
+  const isAdmin = role === "admin";
+  // Until /api/me resolves, keep non-admin nav conservative (trial-sized).
+  const access =
+    me?.entitlement?.access ?? (isAdmin ? "admin" : "trial");
+  const items = navForRole(role, access);
+  const paidWorkspace = access === "full" || access === "admin";
+  const conversationsEnabled =
+    showConversations ?? (!isAdmin && paidWorkspace);
+  const showChartMenu =
+    !isAdmin &&
+    paidWorkspace &&
+    (pathname === "/console" || pathname.startsWith("/chart"));
+  const workspaceNoPadding =
+    noPadding ||
+    pathname === "/console" ||
+    pathname.startsWith("/chart") ||
+    pathname === "/subscribe";
+  /** Chart pages host the menu in the chart toolbar; other pages use a page header. */
+  const needsPageMenu = !showChartMenu;
 
   if (pathname !== navPath) {
     setNavPath(pathname);
@@ -80,9 +103,18 @@ export function AppConsoleShell({
     };
   }, [mobileOpen]);
 
+  const menuApi = useMemo(
+    () => ({
+      openMobileMenu: () => setMobileOpen(true),
+      closeMobileMenu: () => setMobileOpen(false),
+      mobileOpen,
+    }),
+    [mobileOpen],
+  );
+
   const navList = (onNavigate?: () => void) => (
     <nav
-      data-testid="canonical-product-nav"
+      data-testid={isAdmin ? "canonical-admin-nav" : "canonical-product-nav"}
       className="flex shrink-0 flex-col gap-0.5 px-2 py-2"
     >
       {items.map((item) => {
@@ -118,6 +150,8 @@ export function AppConsoleShell({
     </nav>
   );
 
+  const brandHref = isAdmin ? "/console" : "/console";
+
   const sidebarHeader = (
     <div
       className={cn(
@@ -127,7 +161,7 @@ export function AppConsoleShell({
     >
       {!collapsed ? (
         <Link
-          href="/console"
+          href={brandHref}
           className="flex min-w-0 items-center gap-2 overflow-visible"
           data-testid="sidebar-brand"
         >
@@ -138,7 +172,7 @@ export function AppConsoleShell({
           />
         </Link>
       ) : (
-        <Link href="/console" className="flex items-center justify-center overflow-visible">
+        <Link href={brandHref} className="flex items-center justify-center overflow-visible">
           <AiChartLogo size={30} />
         </Link>
       )}
@@ -154,84 +188,99 @@ export function AppConsoleShell({
   );
 
   return (
-    <div
-      dir={dir}
-      data-testid="app-console-shell"
-      className="relative flex h-dvh overflow-hidden bg-background lg:flex-row"
-    >
-      <aside
-        data-testid="canonical-desktop-sidebar"
-        className={cn(
-          "z-20 hidden h-full shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex",
-          collapsed ? "w-[3.75rem]" : "w-[260px]",
-        )}
+    <ShellMenuProvider value={menuApi}>
+      <div
+        dir={dir}
+        data-testid="app-console-shell"
+        data-shell-role={role}
+        className="relative flex h-dvh overflow-hidden bg-background lg:flex-row"
       >
-        {sidebarHeader}
-        {navList()}
-        <SidebarConversations collapsed={collapsed} />
-        <SidebarProfileMenu collapsed={collapsed} displayName={displayName} />
-      </aside>
-
-      <button
-        type="button"
-        data-testid="mobile-menu-trigger"
-        onClick={() => setMobileOpen(true)}
-        className="fixed start-3 top-3 z-30 flex size-10 items-center justify-center rounded-lg border border-border bg-background text-foreground shadow-sm lg:hidden"
-        aria-label={t("shell.open_menu")}
-        aria-expanded={mobileOpen}
-        aria-controls="mobile-navigation-drawer"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
-
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden" data-testid="canonical-mobile-drawer">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/60"
-            aria-label={t("shell.close")}
-            onClick={() => setMobileOpen(false)}
-          />
-          <aside
-            ref={mobileDrawerRef}
-            id="mobile-navigation-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("shell.navigation_account")}
-            className="absolute inset-y-0 start-0 flex w-[min(86%,17.5rem)] flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl"
-          >
-            <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
-              <Link href="/console" className="flex min-w-0 items-center overflow-visible">
-                <AiChartLogo size={32} showName nameClassName="truncate text-[15px] font-semibold" />
-              </Link>
-              <button
-                type="button"
-                onClick={() => setMobileOpen(false)}
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-                aria-label={t("shell.close")}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            {navList(() => setMobileOpen(false))}
-            <SidebarConversations onNavigate={() => setMobileOpen(false)} />
-            <SidebarProfileMenu displayName={displayName} />
-          </aside>
-        </div>
-      )}
-
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <main
+        <aside
+          data-testid="canonical-desktop-sidebar"
           className={cn(
-            "aichart-scroll flex min-h-0 flex-1 flex-col",
-            workspaceNoPadding
-              ? "overflow-hidden"
-              : "overflow-y-auto px-4 pb-6 pt-14 sm:px-6 sm:pb-8 lg:pt-6",
+            "z-20 hidden h-full shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex",
+            collapsed ? "w-[3.75rem]" : "w-[260px]",
           )}
         >
-          {children}
-        </main>
+          {sidebarHeader}
+          {navList()}
+          {conversationsEnabled ? <SidebarConversations collapsed={collapsed} /> : (
+            <div className="flex-1" />
+          )}
+          <SidebarProfileMenu collapsed={collapsed} displayName={displayName} />
+        </aside>
+
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden" data-testid="canonical-mobile-drawer">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/60"
+              aria-label={t("shell.close")}
+              onClick={() => setMobileOpen(false)}
+            />
+            <aside
+              ref={mobileDrawerRef}
+              id="mobile-navigation-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("shell.navigation_account")}
+              className="absolute inset-y-0 start-0 flex w-[min(86%,17.5rem)] flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl"
+            >
+              <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
+                <Link href={brandHref} className="flex min-w-0 items-center overflow-visible">
+                  <AiChartLogo size={32} showName nameClassName="truncate text-[15px] font-semibold" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+                  aria-label={t("shell.close")}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              {navList(() => setMobileOpen(false))}
+              {conversationsEnabled ? (
+                <SidebarConversations onNavigate={() => setMobileOpen(false)} />
+              ) : (
+                <div className="flex-1" />
+              )}
+              <SidebarProfileMenu displayName={displayName} />
+            </aside>
+          </div>
+        )}
+
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+          {needsPageMenu ? (
+            <div
+              data-testid="page-toolbar-menu"
+              className="flex h-12 shrink-0 items-center border-b border-border px-3 lg:hidden"
+            >
+              <button
+                type="button"
+                data-testid="mobile-menu-trigger"
+                onClick={() => setMobileOpen(true)}
+                className="flex size-10 items-center justify-center rounded-lg border border-border bg-background text-foreground"
+                aria-label={t("shell.open_menu")}
+                aria-expanded={mobileOpen}
+                aria-controls="mobile-navigation-drawer"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+            </div>
+          ) : null}
+          <main
+            className={cn(
+              "aichart-scroll flex min-h-0 flex-1 flex-col",
+              workspaceNoPadding
+                ? "overflow-hidden"
+                : "overflow-y-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 lg:pt-6",
+            )}
+          >
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </ShellMenuProvider>
   );
 }

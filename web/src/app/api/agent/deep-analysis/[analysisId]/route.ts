@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePlatformAccess, handleError } from "@/lib/api";
+import { requirePaidAccess, handleError } from "@/lib/api";
 import { getDeepAnalysisRun } from "@/lib/agent/deepAnalysis/store";
 import {
   composeDeepAnalysisUpdate,
@@ -16,7 +16,7 @@ export async function GET(
   ctx: { params: Promise<{ analysisId: string }> },
 ) {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     const { analysisId } = await ctx.params;
     if (!analysisId || analysisId.length > 128) {
       return NextResponse.json({ error: "invalid_analysis_id" }, { status: 400 });

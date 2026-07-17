@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { z } from "zod";
-import { requirePlatformAccess, handleError } from "@/lib/api";
+import { requirePaidAccess, handleError } from "@/lib/api";
 import { getSettings, getLimits } from "@/lib/store";
 import { runOpportunityScan } from "@/lib/opportunityScan";
 import { normalizeInterval } from "@/lib/intervals";
@@ -17,7 +17,7 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     const body = schema.parse(await req.json().catch(() => ({})));
 
     const marketErr = rejectNonForexMarket(body.market);

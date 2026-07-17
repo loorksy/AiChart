@@ -172,6 +172,13 @@ export async function resolveBridgeUserId(req: NextRequest): Promise<number> {
     throw new ApiError(403, accessBlockMessage(reason));
   }
 
+  const { getEntitlementForUser } = await import("@/lib/subscription/entitlement");
+  const { subscriptionRequiredMessage } = await import("@/lib/subscription/trialQuota");
+  const entitlement = await getEntitlementForUser(user);
+  if (!entitlement.isAdmin && !entitlement.hasPaidAccess) {
+    throw new ApiError(403, subscriptionRequiredMessage("ar"));
+  }
+
   touchAgentLastSeen(user.id);
   return user.id;
 }

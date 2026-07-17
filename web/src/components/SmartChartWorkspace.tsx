@@ -15,6 +15,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 import { FloatingWorkspaceSwitcher } from "@/components/workspace/FloatingWorkspaceSwitcher";
+import { ChartToolbarMenuButton } from "@/components/chart/ChartToolbarMenuButton";
 
 function ChartLoading() {
   const { t } = useLocale();
@@ -672,6 +673,7 @@ export function SmartChartWorkspace({
         }}
       >
         <div className={chartPaneClass}>
+          {!guest ? <ChartToolbarMenuButton /> : null}
           {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
               setResolution) — never remount, so drawings and chart state survive. */}
           <ChartErrorBoundary key="tv">

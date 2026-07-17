@@ -3,7 +3,8 @@ export type McpAccessReason =
   | "pending"
   | "suspended"
   | "expired"
-  | "needs_credentials";
+  | "needs_credentials"
+  | "subscription_required";
 
 export interface PlatformVerifyResult {
   ok: boolean;
@@ -43,6 +44,10 @@ export function mcpLoginErrorMessage(
       return en
         ? "Complete MCP email and password from AiChart (/complete-profile)."
         : "أكمل بريد وكلمة مرور MCP من لوحة AiChart (/complete-profile).";
+    case "subscription_required":
+      return en
+        ? "Full AiChart access is required for MCP. Contact @aswadtr on Telegram to subscribe."
+        : "الوصول الكامل مطلوب لـ MCP. تواصل عبر تيليجرام @aswadtr لتفعيل الاشتراك.";
     case "invalid":
     default:
       return en ? "Invalid sign-in details." : "بيانات الدخول غير صحيحة.";

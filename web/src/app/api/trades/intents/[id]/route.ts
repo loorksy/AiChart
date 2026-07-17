@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireActiveUser, handleError, ApiError } from "@/lib/api";
+import { requirePaidAccess, handleError, ApiError } from "@/lib/api";
 import { getIntent, updateIntentStatus } from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
 import { notifyUser } from "@/lib/telegram";
@@ -16,7 +16,7 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireActiveUser();
+    const user = await requirePaidAccess();
     const { id } = await ctx.params;
     const intentId = Number(id);
     if (!Number.isInteger(intentId)) throw new ApiError(400, "معرّف غير صالح.");

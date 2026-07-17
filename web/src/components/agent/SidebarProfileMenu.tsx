@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   ChevronUp,
@@ -22,10 +23,11 @@ const LOCALE_LABEL: Record<AppLocale, string> = {
   en: "English",
 };
 
+type MenuPos = { top: number; left: number; width: number; maxHeight: number };
+
 /**
  * Compact profile control for the canonical sidebar footer.
- * Popover order: Profile → Language → Theme → Settings → Logout.
- * Language and Theme are icon-first with localized tooltip / aria-label.
+ * Popover renders via portal on an opaque elevated surface above conversations.
  */
 export function SidebarProfileMenu({
   collapsed = false,
@@ -40,22 +42,61 @@ export function SidebarProfileMenu({
   const { resolved, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<MenuPos | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+
+  useEffect(() => setMounted(true), []);
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) {
+      setPos(null);
+      return;
+    }
+    const place = () => {
+      const rect = triggerRef.current!.getBoundingClientRect();
+      const width = Math.min(Math.max(rect.width, 220), 280);
+      const gutter = 8;
+      let left = dir === "rtl" ? rect.right - width : rect.left;
+      left = Math.max(gutter, Math.min(left, window.innerWidth - width - gutter));
+      const estimatedHeight = 280;
+      const spaceAbove = rect.top - gutter;
+      const spaceBelow = window.innerHeight - rect.bottom - gutter;
+      const placeAbove = spaceAbove >= estimatedHeight || spaceAbove >= spaceBelow;
+      const maxHeight = Math.max(160, placeAbove ? spaceAbove : spaceBelow);
+      const top = placeAbove
+        ? Math.max(gutter, rect.top - Math.min(estimatedHeight, maxHeight) - 6)
+        : rect.bottom + 6;
+      setPos({ top, left, width, maxHeight });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, dir, langOpen]);
 
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setLangOpen(false);
-      }
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
+      setLangOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         if (langOpen) setLangOpen(false);
-        else setOpen(false);
+        else {
+          setOpen(false);
+          triggerRef.current?.focus();
+        }
       }
     };
     document.addEventListener("mousedown", onPointer);
@@ -79,123 +120,137 @@ export function SidebarProfileMenu({
     router.refresh();
   }
 
-  return (
-    <div
-      ref={rootRef}
-      dir={dir}
-      data-testid="sidebar-profile-menu"
-      className="relative border-t border-sidebar-border p-2"
-    >
-      {open && (
-        <div
-          id={menuId}
-          role="menu"
-          aria-label={t("profile.account_menu")}
-          className="absolute bottom-full inset-x-2 z-40 mb-2 overflow-hidden rounded-lg border border-border bg-popover shadow-md"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-foreground hover:bg-muted"
-            onClick={() => {
-              setOpen(false);
-              router.push("/console/account");
+  const menu =
+    mounted && open && pos
+      ? createPortal(
+          <div
+            ref={menuRef}
+            id={menuId}
+            role="menu"
+            aria-label={t("profile.account_menu")}
+            data-testid="sidebar-profile-popover"
+            dir={dir}
+            className="fixed z-[200] overflow-y-auto rounded-lg border border-border bg-background text-foreground opacity-100 shadow-lg"
+            style={{
+              top: pos.top,
+              left: pos.left,
+              width: pos.width,
+              maxHeight: pos.maxHeight,
+              backgroundColor: "var(--background)",
             }}
           >
-            <UserIcon className="h-4 w-4 shrink-0" />
-            {t("profile.profile")}
-          </button>
-
-          <div className="relative">
             <button
               type="button"
               role="menuitem"
-              aria-haspopup="menu"
-              aria-expanded={langOpen}
-              aria-label={t("profile.language")}
-              title={t("profile.language")}
-              data-testid="profile-language"
               className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-foreground hover:bg-muted"
-              onClick={() => setLangOpen((v) => !v)}
+              onClick={() => {
+                setOpen(false);
+                router.push("/console/account");
+              }}
             >
-              <Globe className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="sr-only">{t("profile.language")}</span>
-              <span className="ms-auto text-[11px] tabular-nums text-muted-foreground">
-                {LOCALE_LABEL[locale]}
-              </span>
+              <UserIcon className="h-4 w-4 shrink-0" />
+              {t("profile.profile")}
             </button>
-            {langOpen && (
-              <div
-                role="menu"
-                className="mx-2 mb-1 overflow-hidden rounded-md border border-border bg-background"
+
+            <div className="relative">
+              <button
+                type="button"
+                role="menuitem"
+                aria-haspopup="menu"
+                aria-expanded={langOpen}
+                aria-label={t("profile.language")}
+                title={t("profile.language")}
+                data-testid="profile-language"
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-foreground hover:bg-muted"
+                onClick={() => setLangOpen((v) => !v)}
               >
-                {APP_LOCALES.map((lng) => (
-                  <button
-                    key={lng}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={lng === locale}
-                    className={cn(
-                      "flex w-full px-3 py-2 text-start text-xs hover:bg-muted",
-                      lng === locale ? "font-semibold text-foreground" : "text-muted-foreground",
-                    )}
-                    onClick={() => {
-                      setLocale(lng);
-                      setLangOpen(false);
-                    }}
-                  >
-                    {LOCALE_LABEL[lng]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+                <Globe className="h-4 w-4 shrink-0" aria-hidden />
+                <span className="sr-only">{t("profile.language")}</span>
+                <span className="ms-auto text-[11px] tabular-nums text-muted-foreground">
+                  {LOCALE_LABEL[locale]}
+                </span>
+              </button>
+              {langOpen && (
+                <div
+                  role="menu"
+                  className="mx-2 mb-1 overflow-hidden rounded-md border border-border bg-background"
+                  style={{ backgroundColor: "var(--background)" }}
+                >
+                  {APP_LOCALES.map((lng) => (
+                    <button
+                      key={lng}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={lng === locale}
+                      className={cn(
+                        "flex w-full px-3 py-2 text-start text-xs hover:bg-muted",
+                        lng === locale
+                          ? "font-semibold text-foreground"
+                          : "text-muted-foreground",
+                      )}
+                      onClick={() => {
+                        setLocale(lng);
+                        setLangOpen(false);
+                      }}
+                    >
+                      {LOCALE_LABEL[lng]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          <button
-            type="button"
-            role="menuitem"
-            data-testid="theme-toggle"
-            aria-label={themeLabel}
-            title={themeLabel}
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-foreground hover:bg-muted"
-            onClick={() => setTheme(isDark ? "light" : "dark")}
-          >
-            {isDark ? (
-              <Sun className="h-4 w-4 shrink-0" aria-hidden />
-            ) : (
-              <Moon className="h-4 w-4 shrink-0" aria-hidden />
-            )}
-            <span className="sr-only">{themeLabel}</span>
-          </button>
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="theme-toggle"
+              aria-label={themeLabel}
+              title={themeLabel}
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-foreground hover:bg-muted"
+              onClick={() => setTheme(isDark ? "light" : "dark")}
+            >
+              {isDark ? (
+                <Sun className="h-4 w-4 shrink-0" aria-hidden />
+              ) : (
+                <Moon className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              <span className="sr-only">{themeLabel}</span>
+            </button>
 
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-foreground hover:bg-muted"
-            onClick={() => {
-              setOpen(false);
-              router.push("/console/settings");
-            }}
-          >
-            <Settings className="h-4 w-4 shrink-0" />
-            {t("nav.settings")}
-          </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-foreground hover:bg-muted"
+              onClick={() => {
+                setOpen(false);
+                router.push("/console/settings");
+              }}
+            >
+              <Settings className="h-4 w-4 shrink-0" />
+              {t("nav.settings")}
+            </button>
 
-          <div className="h-px bg-border" />
+            <div className="h-px bg-border" />
 
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-destructive hover:bg-destructive/10"
-            onClick={() => void logout()}
-          >
-            <LogOut className="h-4 w-4 shrink-0" />
-            {t("profile.logout")}
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm text-destructive hover:bg-destructive/10"
+              onClick={() => void logout()}
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              {t("profile.logout")}
+            </button>
+          </div>,
+          document.body,
+        )
+      : null;
 
+  return (
+    <div dir={dir} data-testid="sidebar-profile-menu" className="relative border-t border-sidebar-border p-2">
+      {menu}
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}

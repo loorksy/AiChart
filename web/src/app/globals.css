@@ -498,21 +498,7 @@ label {
   z-index: 0;
   padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
 }
-.chat-scroll-region::before {
-  content: "";
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: block;
-  height: 14px;
-  margin-bottom: -14px;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--background) 75%, transparent),
-    transparent
-  );
-}
+/* Upper chat fade intentionally removed — content scrolls cleanly under the header. */
 
 /* Thin overlay scrollbars — hide arrow buttons / thick tracks */
 .aichart-scroll {

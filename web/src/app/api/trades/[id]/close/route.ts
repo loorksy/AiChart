@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePlatformAccess, handleError } from "@/lib/api";
+import { requirePaidAccess, handleError } from "@/lib/api";
 import { closeOpenTrade } from "@/lib/tradeClose";
 
 export async function POST(
@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     const { id } = await params;
     const tradeId = Number(id);
     if (!Number.isFinite(tradeId) || tradeId <= 0) {

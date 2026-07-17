@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requirePlatformAccess, handleError } from "@/lib/api";
+import { requirePaidAccess, handleError } from "@/lib/api";
 import {
   connectMtAccount,
   disconnectMtAccount,
@@ -17,7 +17,7 @@ export const maxDuration = 180;
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     const body = mtConnectSchema.parse(await req.json());
     const result = await connectMtAccount(user.id, body);
     return NextResponse.json(result);
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 /** Disconnect MetaTrader account from MetaApi. */
 export async function DELETE() {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     return NextResponse.json(await disconnectMtAccount(user.id));
   } catch (err) {
     return handleError(err);

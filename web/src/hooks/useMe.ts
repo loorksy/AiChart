@@ -10,6 +10,15 @@ export interface QuotaInfo {
   remaining: number;
 }
 
+export interface EntitlementInfo {
+  access: "admin" | "full" | "trial" | "blocked";
+  planStatus: string;
+  trialUsed: number;
+  trialRemaining: number;
+  trialLimit: number;
+  expiresAt: string | null;
+}
+
 export interface MeData {
   user: PublicUser;
   settings: { telegram_chat_id: string | null };
@@ -18,6 +27,7 @@ export interface MeData {
   displayName: string;
   pendingIntents: number;
   unreadAlerts: number;
+  entitlement?: EntitlementInfo;
 }
 
 export function useMe(refreshKey = 0) {
@@ -47,6 +57,16 @@ export function useMe(refreshKey = 0) {
         displayName: displayNameFromEmail(json.user.email),
         pendingIntents: json.pendingIntents ?? 0,
         unreadAlerts: json.unreadAlerts ?? 0,
+        entitlement: json.entitlement
+          ? {
+              access: json.entitlement.access,
+              planStatus: json.entitlement.planStatus,
+              trialUsed: json.entitlement.trialUsed ?? 0,
+              trialRemaining: json.entitlement.trialRemaining ?? 0,
+              trialLimit: json.entitlement.trialLimit ?? 3,
+              expiresAt: json.entitlement.expiresAt ?? null,
+            }
+          : undefined,
       });
     } catch {
       setData(null);

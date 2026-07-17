@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { requirePlatformAccess, handleError } from "@/lib/api";
+import { requirePaidAccess, handleError } from "@/lib/api";
 import { getEaConnectionMeta } from "@/lib/eaStore";
 
 /** Live EA connection status (used by the market UI live badge). */
 export async function GET() {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     const meta = await getEaConnectionMeta(user.id);
     return NextResponse.json({
       connected: Boolean(meta && meta.status !== "revoked"),
