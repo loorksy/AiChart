@@ -154,7 +154,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
 
     return (
       <div
-        className="flex h-full min-h-0 w-full flex-col bg-background/40"
+        className="chat-panel-shell h-full w-full bg-transparent"
         dir={dir}
       >
         {/* No fixed agent header bar and NO static quick-action toolbar — the
@@ -325,6 +325,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         </div>
 
         {voicePanel}
+        <div className="chat-composer-fade" aria-hidden data-testid="composer-fade" />
         <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} voiceControl={voiceControl} />
       </div>
     );

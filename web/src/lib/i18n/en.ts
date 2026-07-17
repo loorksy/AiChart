@@ -100,6 +100,9 @@ export const en = {
   "shell.theme_to_light": "Switch to light mode",
   "shell.theme_to_dark": "Switch to dark mode",
   "shell.theme": "Theme",
+  "layout.workspace_switcher": "Chart and Chat switcher",
+  "layout.drag_switcher": "Drag to reposition switcher",
+  "layout.reset_switcher": "Reset switcher position",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",
