@@ -47,7 +47,7 @@ export function LandingHero() {
   return (
     <section className="relative mx-auto max-w-6xl overflow-hidden px-4 py-20 sm:px-6 sm:py-28">
       <div className="absolute inset-x-0 top-0 -z-10 flex justify-center">
-        <div className="h-[350px] w-[600px] rounded-full bg-primary/10 blur-[100px]" />
+        <div className="h-[280px] w-[480px] rounded-full bg-muted/50 blur-[80px]" />
       </div>
 
       <div className="grid items-center gap-12 lg:grid-cols-12">
@@ -80,7 +80,7 @@ export function LandingHero() {
           <div className="flex flex-wrap justify-center gap-3.5 ltr:lg:justify-start rtl:lg:justify-end">
             <Link
               href="/signup"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-3 text-xs font-semibold text-primary-foreground shadow-[var(--glow-brand)] transition-all duration-200 hover:brightness-110"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-3 text-xs font-semibold text-primary-foreground transition-all duration-200 hover:brightness-110"
             >
               {ctaPrimary}
               <ArrowUpRight className="h-4 w-4" />

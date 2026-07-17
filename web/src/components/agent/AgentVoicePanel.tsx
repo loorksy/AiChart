@@ -68,12 +68,7 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
       </div>
 
       <div className="flex w-full max-w-xl flex-1 flex-col items-center justify-center gap-7 text-center">
-        <div className="relative flex size-36 items-center justify-center rounded-full border border-primary/25 bg-[var(--glass-bg)] shadow-[0_0_80px_-24px_color-mix(in_srgb,var(--primary)_55%,transparent)] backdrop-blur-sm">
-          {(voice.status === "connecting" ||
-            voice.status === "listening" ||
-            voice.status === "assistant_speaking") && (
-            <span className="absolute inset-3 rounded-full border border-primary/20 motion-safe:animate-pulse-soft" />
-          )}
+        <div className="relative flex size-32 items-center justify-center rounded-full border border-border bg-card">
           {voice.muted ? (
             <MicOff className="h-12 w-12 text-muted-foreground" />
           ) : (
@@ -112,7 +107,7 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
             <button
               type="button"
               onClick={voice.toggleMute}
-              className="flex size-12 items-center justify-center rounded-full border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm hover:border-primary/40 hover:bg-primary/5"
+              className="flex size-12 items-center justify-center rounded-full border border-border bg-card hover:bg-muted"
               aria-label={voice.muted ? t("voice.unmute") : t("voice.mute")}
             >
               {voice.muted ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}

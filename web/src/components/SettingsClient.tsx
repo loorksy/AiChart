@@ -95,8 +95,8 @@ export default function SettingsClient({
                 className={cn(
                   "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition-colors",
                   tab === item.id
-                    ? "border-primary bg-primary text-primary-foreground shadow-[var(--glow-brand)]"
-                    : "glass-card hover:border-primary/40 hover:bg-primary/5",
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border border-border bg-card hover:bg-muted",
                 )}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />

@@ -61,14 +61,15 @@ test("legacy navigation shells are removed from the tree", () => {
   assert.doesNotMatch(read("components/admin/adminNav.ts"), /ADMIN_NAV\s*=/);
 });
 
-test("the chart workspace uses the app's single mobile drawer and a top Chart/Chat switch", () => {
+test("workspace has no second chat-history sidebar; compact Chart/Chat switcher only", () => {
   const workspace = read("components/SmartChartWorkspace.tsx");
   const sidebarMounts = workspace.match(/<AgentChatSidebar/g) ?? [];
-  assert.equal(sidebarMounts.length, 1, "desktop chat history only; app shell owns the mobile drawer");
-  assert.match(workspace, /hidden w-\[240px\] shrink-0 xl:block/);
-  assert.doesNotMatch(workspace, /chatSidebarOpen|PanelLeft/);
-  assert.match(workspace, /xl:hidden/);
-  // No legacy shells imported anywhere in the workspace.
+  assert.equal(sidebarMounts.length, 0, "chat history lives in the canonical shell sidebar");
+  assert.doesNotMatch(workspace, /hidden w-\[240px\] shrink-0 xl:block/);
+  assert.doesNotMatch(workspace, /chatSidebarOpen/);
+  assert.match(workspace, /data-testid="chart-chat-switcher"/);
+  assert.match(workspace, /h-11 shrink-0/);
+  assert.doesNotMatch(workspace, /bg-primary text-primary-foreground shadow-sm/);
   assert.doesNotMatch(workspace, /UserShell|BridgeShell|ChatGptSidebar/);
 });
 
@@ -86,25 +87,56 @@ test("profile menu routes to unified console destinations, not legacy aliases", 
   assert.match(menu, /tab=appearance/);
 });
 
-test("canonical shell exposes ThemeToggle in sidebar and mobile drawer", () => {
+test("canonical shell exposes ThemeToggle and one opaque sidebar architecture", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /ThemeToggle/);
   assert.match(shell, /data-testid="theme-toggle"|<ThemeToggle/);
-  assert.match(shell, /glass-panel/);
-  // Single product nav source remains APP_NAV — no second competing drawer owner in workspace.
+  assert.match(shell, /data-testid="canonical-desktop-sidebar"/);
+  assert.match(shell, /data-testid="canonical-mobile-drawer"/);
+  assert.match(shell, /data-testid="canonical-chats-section"/);
+  assert.match(shell, /data-testid="mobile-menu-trigger"/);
+  assert.match(shell, /bg-sidebar/);
+  assert.doesNotMatch(shell, /glass-panel/);
+  assert.equal((shell.match(/data-testid="canonical-desktop-sidebar"/g) ?? []).length, 1);
+  assert.equal((shell.match(/data-testid="mobile-menu-trigger"/g) ?? []).length, 1);
   assert.match(read("components/ThemeToggle.tsx"), /data-testid="theme-toggle"/);
   assert.match(read("components/ThemeToggle.tsx"), /setTheme/);
+});
+
+test("corrective tokens remove purple glow and keep restrained accent", () => {
+  const css = read("app/globals.css");
+  assert.match(css, /--glow-brand:\s*none/);
+  assert.match(css, /\.glass-panel\s*\{[\s\S]*backdrop-filter:\s*none/);
+  assert.match(css, /\.dark \.glass-card\s*\{[\s\S]*box-shadow:\s*none/);
+  assert.doesNotMatch(css, /#bc00ff/);
+  const chat = read("components/agent/SmartChartAgentPanel.tsx");
+  assert.doesNotMatch(chat, /bg-primary\/10/);
+  assert.doesNotMatch(chat, /glass-card mr-auto/);
+  assert.match(chat, /--user-bubble/);
 });
 
 test("brand assets use transparent face-mark paths", () => {
   const logo = read("components/AiChartLogo.tsx");
   assert.match(logo, /\/brand\/aichart-mark/);
+  assert.match(logo, /object-contain/);
   assert.doesNotMatch(logo, /lonora-logo/);
   const avatar = read("components/AgentAvatar.tsx");
   assert.match(avatar, /AnimatedAgentAvatar/);
   const animated = read("components/AnimatedAgentAvatar.tsx");
   assert.match(animated, /data-state=\{state\}/);
   assert.match(animated, /agent-eye-left/);
+});
+
+test("favicon and PWA metadata point at current AiChart mark", () => {
+  const layout = read("app/layout.tsx");
+  assert.match(layout, /site\.webmanifest/);
+  assert.match(layout, /favicon-32x32\.png/);
+  assert.match(layout, /apple-touch-icon\.png/);
+  assert.doesNotMatch(layout, /lonora-logo/);
+  assert.ok(existsSync(resolve(process.cwd(), "public", "favicon-32x32.png")));
+  assert.ok(existsSync(resolve(process.cwd(), "public", "site.webmanifest")));
+  assert.ok(existsSync(resolve(process.cwd(), "src", "app", "icon.png")));
+  assert.ok(existsSync(resolve(process.cwd(), "src", "app", "apple-icon.png")));
 });
 
 test("authenticated entry and technical MCP routes stay behind canonical destinations", () => {

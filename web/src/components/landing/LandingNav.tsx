@@ -60,7 +60,7 @@ export function LandingNav() {
 
           <Link
             href="/signup"
-            className="inline-flex min-h-11 items-center rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground shadow-[var(--glow-brand)] transition-all duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="inline-flex min-h-11 items-center rounded-xl bg-primary px-4 text-xs font-medium text-primary-foreground transition-all duration-200 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {startFreeText}
           </Link>
