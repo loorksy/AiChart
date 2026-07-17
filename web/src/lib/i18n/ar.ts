@@ -99,6 +99,9 @@ export const ar: Record<TranslationKey, string> = {
   "shell.theme_to_light": "التبديل إلى الوضع الفاتح",
   "shell.theme_to_dark": "التبديل إلى الوضع الداكن",
   "shell.theme": "المظهر",
+  "layout.workspace_switcher": "مبدّل الشارت والمحادثة",
+  "layout.drag_switcher": "اسحب لإعادة موضع المبدّل",
+  "layout.reset_switcher": "إعادة موضع المبدّل الافتراضي",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",

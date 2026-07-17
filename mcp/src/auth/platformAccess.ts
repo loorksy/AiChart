@@ -23,18 +23,28 @@ export function accessTtlDays(
   return Math.max(1, Math.min(maxDays, days));
 }
 
-export function mcpLoginErrorMessage(reason?: McpAccessReason): string {
+export function mcpLoginErrorMessage(
+  reason?: McpAccessReason,
+  locale: "ar" | "en" = "ar",
+): string {
+  const en = locale === "en";
   switch (reason) {
     case "pending":
-      return "حسابك بانتظار موافقة الإدارة.";
+      return en
+        ? "Your account is awaiting admin approval."
+        : "حسابك بانتظار موافقة الإدارة.";
     case "suspended":
-      return "حسابك موقوف.";
+      return en ? "Your account is suspended." : "حسابك موقوف.";
     case "expired":
-      return "انتهت صلاحية حسابك. تواصل مع الإدارة للتجديد.";
+      return en
+        ? "Your account access expired. Contact admin to renew."
+        : "انتهت صلاحية حسابك. تواصل مع الإدارة للتجديد.";
     case "needs_credentials":
-      return "أكمل بريد وكلمة مرور MCP من لوحة AiChart (/complete-profile).";
+      return en
+        ? "Complete MCP email and password from AiChart (/complete-profile)."
+        : "أكمل بريد وكلمة مرور MCP من لوحة AiChart (/complete-profile).";
     case "invalid":
     default:
-      return "بيانات الدخول غير صحيحة.";
+      return en ? "Invalid sign-in details." : "بيانات الدخول غير صحيحة.";
   }
 }

@@ -1,4 +1,4 @@
-import { BarChart3, Bot, MessageSquareText, TrendingUp, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, Bot, TrendingUp, Users, type LucideIcon } from "lucide-react";
 import type { TranslationKey } from "@/lib/i18n";
 
 export type NavRole = "user" | "admin";
@@ -12,12 +12,12 @@ export interface NavItem {
 }
 
 /**
- * Canonical primary navigation — four daily destinations (+ admin platform).
+ * Canonical primary navigation — Chart/Chat, Statistics, Trades (+ admin).
+ * Chat History lives inside the sidebar conversation section, not as a page.
  * Account / Integrations / Settings live only in the profile popover.
  */
 export const APP_NAV: NavItem[] = [
   { href: "/console", labelKey: "nav.workspace", icon: Bot, exact: true },
-  { href: "/console/chats", labelKey: "nav.chat_history", icon: MessageSquareText },
   { href: "/statistics", labelKey: "nav.statistics", icon: BarChart3 },
   { href: "/console/trades", labelKey: "nav.trades", icon: TrendingUp },
   { href: "/console/platform", labelKey: "nav.platform", icon: Users, roles: ["admin"] },

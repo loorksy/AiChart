@@ -21,7 +21,7 @@ export function AgentChatInput({
   return (
     <form
       data-testid="chat-composer"
-      className="chat-composer-shell relative bg-transparent px-3 pt-3 pb-[max(.5rem,env(safe-area-inset-bottom))]"
+      className="chat-composer-shell relative px-3 pt-1 pb-[max(.5rem,env(safe-area-inset-bottom))]"
       dir={dir}
       onSubmit={(e) => {
         e.preventDefault();

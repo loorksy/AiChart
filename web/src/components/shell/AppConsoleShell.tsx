@@ -6,13 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import { Menu, PanelLeft, PanelLeftClose, X } from "lucide-react";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
+import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
 /**
  * Canonical console shell — one opaque sidebar / one mobile drawer.
- * Primary nav is APP_NAV only; account controls live in SidebarProfileMenu.
+ * Primary nav + conversation section + profile control.
  */
 export function AppConsoleShell({
   role,
@@ -34,10 +35,8 @@ export function AppConsoleShell({
   const [navPath, setNavPath] = useState(pathname);
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const items = navForRole(role);
-  const workspaceNoPadding =
-    noPadding || pathname === "/console" || pathname === "/console/chats";
+  const workspaceNoPadding = noPadding || pathname === "/console";
 
-  // Close the mobile drawer when the route changes (render-time adjust).
   if (pathname !== navPath) {
     setNavPath(pathname);
     if (mobileOpen) setMobileOpen(false);
@@ -50,7 +49,7 @@ export function AppConsoleShell({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const drawer = mobileDrawerRef.current;
     const selector =
-      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const focusables = () =>
       Array.from(drawer?.querySelectorAll<HTMLElement>(selector) ?? []);
     focusables()[0]?.focus();
@@ -84,7 +83,7 @@ export function AppConsoleShell({
   const navList = (onNavigate?: () => void) => (
     <nav
       data-testid="canonical-product-nav"
-      className="flex flex-1 flex-col gap-0.5 overflow-y-auto aichart-scroll px-2 py-2"
+      className="flex shrink-0 flex-col gap-0.5 px-2 py-2"
     >
       {items.map((item) => {
         const active = activeNav(pathname, item, currentTab);
@@ -163,12 +162,13 @@ export function AppConsoleShell({
       <aside
         data-testid="canonical-desktop-sidebar"
         className={cn(
-          "hidden h-full shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex z-20",
+          "z-20 hidden h-full shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex",
           collapsed ? "w-[3.75rem]" : "w-[260px]",
         )}
       >
         {sidebarHeader}
         {navList()}
+        <SidebarConversations collapsed={collapsed} />
         <SidebarProfileMenu collapsed={collapsed} displayName={displayName} />
       </aside>
 
@@ -214,6 +214,7 @@ export function AppConsoleShell({
               </button>
             </div>
             {navList(() => setMobileOpen(false))}
+            <SidebarConversations onNavigate={() => setMobileOpen(false)} />
             <SidebarProfileMenu displayName={displayName} />
           </aside>
         </div>
@@ -222,7 +223,7 @@ export function AppConsoleShell({
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <main
           className={cn(
-            "flex min-h-0 flex-1 flex-col aichart-scroll",
+            "aichart-scroll flex min-h-0 flex-1 flex-col",
             workspaceNoPadding
               ? "overflow-hidden"
               : "overflow-y-auto px-4 pb-6 pt-14 sm:px-6 sm:pb-8 lg:pt-6",

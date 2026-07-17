@@ -13,8 +13,8 @@ import {
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { CandlestickChart, MessageSquare } from "lucide-react";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
+import { FloatingWorkspaceSwitcher } from "@/components/workspace/FloatingWorkspaceSwitcher";
 
 function ChartLoading() {
   const { t } = useLocale();
@@ -635,47 +635,41 @@ export function SmartChartWorkspace({
         </p>
       )}
 
-      {chatEnabled && (
-        <div
-          dir={dir}
-          data-testid="chart-chat-switcher"
-          className="relative flex h-10 shrink-0 items-center justify-center bg-transparent xl:hidden"
-        >
-          <div className="inline-flex h-9 items-center gap-0.5 rounded-lg bg-muted/70 p-0.5">
-            <button
-              type="button"
-              aria-pressed={mobilePane === "chart"}
-              onClick={() => setMobilePane("chart")}
-              className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
-                mobilePane === "chart"
-                  ? "bg-background text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <CandlestickChart className="h-3.5 w-3.5" />
-              {t("layout.chart")}
-            </button>
-            <button
-              type="button"
-              aria-pressed={mobilePane === "chat"}
-              onClick={() => setMobilePane("chat")}
-              className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
-                mobilePane === "chat"
-                  ? "bg-background text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-              {t("layout.chat")}
-            </button>
-          </div>
-        </div>
-      )}
+      {chatEnabled ? (
+        <FloatingWorkspaceSwitcher pane={mobilePane} onChange={setMobilePane} />
+      ) : null}
 
       <div
         className="flex min-h-0 flex-1 overflow-hidden"
         dir="ltr"
         style={{ "--chat-w": `${chatWidth}px` } as CSSProperties}
+        onTouchStart={(e) => {
+          if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
+            return;
+          }
+          const touch = e.changedTouches[0];
+          if (!touch) return;
+          (e.currentTarget as HTMLElement & { __swipe?: { x: number; y: number } }).__swipe = {
+            x: touch.clientX,
+            y: touch.clientY,
+          };
+        }}
+        onTouchEnd={(e) => {
+          if (!chatEnabled) return;
+          if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
+            return;
+          }
+          const el = e.currentTarget as HTMLElement & { __swipe?: { x: number; y: number } };
+          const start = el.__swipe;
+          el.__swipe = undefined;
+          const touch = e.changedTouches[0];
+          if (!start || !touch) return;
+          const dx = touch.clientX - start.x;
+          const dy = touch.clientY - start.y;
+          if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+          if (dx < 0) setMobilePane(dir === "rtl" ? "chart" : "chat");
+          else setMobilePane(dir === "rtl" ? "chat" : "chart");
+        }}
       >
         <div className={chartPaneClass}>
           {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
