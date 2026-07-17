@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
-import { handleError, requirePlatformAccess } from "@/lib/api";
+import { handleError, requirePaidAccess } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -22,7 +22,7 @@ function resolveEaBinaryPath(): string | null {
 
 export async function GET(_req: NextRequest) {
   try {
-    await requirePlatformAccess();
+    await requirePaidAccess();
     const filePath = resolveEaBinaryPath();
     if (!filePath) {
       return NextResponse.json(

@@ -97,6 +97,19 @@ export async function requireAdmin(): Promise<PublicUser> {
   return user;
 }
 
+/**
+ * Full paid (or admin) access — protects premium APIs and downloads.
+ * Opening Telegram never grants this; only administrator activation does.
+ */
+export async function requirePaidAccess(): Promise<PublicUser> {
+  const user = await requirePlatformAccess();
+  const { getEntitlementForUser } = await import("@/lib/subscription/entitlement");
+  const { subscriptionRequiredMessage } = await import("@/lib/subscription/trialQuota");
+  const ent = await getEntitlementForUser(user);
+  if (ent.isAdmin || ent.hasPaidAccess) return user;
+  throw new ApiError(403, subscriptionRequiredMessage("ar"));
+}
+
 export function handleError(err: unknown): NextResponse {
   if (err instanceof ApiError) {
     return NextResponse.json({ error: err.message }, { status: err.status });

@@ -15,7 +15,7 @@ import type { DbRow, ExecuteResult } from "./types";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
-const SCHEMA_VERSION = "2026-07-16-aichart-simplification-v1";
+const SCHEMA_VERSION = "2026-07-18-nav-admin-subscription-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -1398,6 +1398,54 @@ function migrate(db: Database.Database) {
     UPDATE trade_intents SET broker = 'mt_ea' WHERE broker = 'binance';
     DROP TABLE IF EXISTS binance_accounts;
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_entitlements (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      plan_status TEXT NOT NULL DEFAULT 'trial',
+      trial_interactions_used INTEGER NOT NULL DEFAULT 0,
+      trial_in_flight INTEGER NOT NULL DEFAULT 0,
+      subscription_expires_at TEXT,
+      activated_at TEXT,
+      activated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      note TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS trial_interaction_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      committed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_trial_ledger_user
+      ON trial_interaction_ledger(user_id, status);
+  `);
+
+  const entFlag = db
+    .prepare("SELECT value FROM system_flags WHERE key = 'entitlement_migration_v1'")
+    .get() as { value?: string } | undefined;
+  if (!entFlag) {
+    db.exec(`
+      INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
+      SELECT u.id,
+             CASE
+               WHEN u.role = 'admin' THEN 'active'
+               WHEN u.access_expires_at IS NOT NULL AND datetime(u.access_expires_at) > datetime('now') THEN 'active'
+               WHEN u.access_expires_at IS NOT NULL AND datetime(u.access_expires_at) <= datetime('now') THEN 'expired'
+               ELSE 'trial'
+             END,
+             0, 0,
+             CASE WHEN u.role = 'admin' THEN NULL ELSE u.access_expires_at END
+        FROM users u
+      WHERE NOT EXISTS (SELECT 1 FROM user_entitlements e WHERE e.user_id = u.id)
+    `);
+    db.prepare(
+      `INSERT INTO system_flags (key, value) VALUES ('entitlement_migration_v1', 'applied')
+       ON CONFLICT(key) DO NOTHING`,
+    ).run();
+  }
 }
 
 export function seedAdminSqlite(db: Database.Database) {

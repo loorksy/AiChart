@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ApiError, handleError, requireUser } from "@/lib/api";
+import { ApiError, handleError, requirePaidAccess } from "@/lib/api";
 import {
   getLatestTradingDnaSnapshot,
   getPersonaForSnapshot,
@@ -9,7 +9,7 @@ import {
 /** Authenticated, tenant-scoped, read-only Trading DNA view. */
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePaidAccess();
     const requested = request.nextUrl.searchParams.get("snapshotId");
     const snapshot = requested
       ? await getTradingDnaSnapshot(user.id, requested)

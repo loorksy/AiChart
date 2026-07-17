@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ApiError, handleError, requireUser } from "@/lib/api";
+import { ApiError, handleError, requirePaidAccess } from "@/lib/api";
 import {
   buildTradingDnaReport,
   getLatestTradingDnaSnapshot,
@@ -12,7 +12,7 @@ import {
 /** Read-only evidence report export. Supported formats: json, html and pdf. */
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requirePaidAccess();
     const snapshot = await getLatestTradingDnaSnapshot(user.id);
     if (!snapshot) throw new ApiError(404, "Trading DNA snapshot not found.");
     const persona = await getPersonaForSnapshot(user.id, snapshot.snapshotId);

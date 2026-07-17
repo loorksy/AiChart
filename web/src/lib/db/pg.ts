@@ -11,7 +11,7 @@ import { adaptSql, normalizeRow } from "./sql";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _pool: Pool | null = null;
-const SCHEMA_VERSION = "2026-07-16-aichart-simplification-v1";
+const SCHEMA_VERSION = "2026-07-18-nav-admin-subscription-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -1255,6 +1255,61 @@ async function migratePg(client: PoolClient) {
   await client.query(
     "CREATE INDEX IF NOT EXISTS idx_chart_layouts_user ON chart_layouts(user_id)",
   ).catch(() => {});
+
+  // Subscription entitlements + account-wide trial interaction ledger.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS user_entitlements (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      plan_status TEXT NOT NULL DEFAULT 'trial',
+      trial_interactions_used INTEGER NOT NULL DEFAULT 0,
+      trial_in_flight INTEGER NOT NULL DEFAULT 0,
+      subscription_expires_at TIMESTAMPTZ,
+      activated_at TIMESTAMPTZ,
+      activated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      note TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS trial_interaction_ledger (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      committed_at TIMESTAMPTZ
+    )
+  `).catch(() => {});
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_trial_ledger_user ON trial_interaction_ledger(user_id, status)",
+  ).catch(() => {});
+
+  // Idempotent entitlement backfill (counts only; no private payloads).
+  const entFlag = await client.query(
+    `SELECT value FROM system_flags WHERE key = 'entitlement_migration_v1'`,
+  );
+  if (entFlag.rowCount === 0) {
+    await client.query(`
+      INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at)
+      SELECT u.id,
+             CASE
+               WHEN u.role = 'admin' THEN 'active'
+               WHEN u.access_expires_at IS NOT NULL AND u.access_expires_at > NOW() THEN 'active'
+               WHEN u.access_expires_at IS NOT NULL AND u.access_expires_at <= NOW() THEN 'expired'
+               ELSE 'trial'
+             END,
+             0, 0,
+             CASE WHEN u.role = 'admin' THEN NULL ELSE u.access_expires_at END
+        FROM users u
+      ON CONFLICT (user_id) DO NOTHING
+    `).catch((err) => {
+      console.warn("[db] entitlement backfill skipped:", err.message);
+    });
+    await client.query(
+      `INSERT INTO system_flags (key, value) VALUES ('entitlement_migration_v1', 'applied')
+       ON CONFLICT (key) DO NOTHING`,
+    ).catch(() => {});
+  }
 
 
   await client.query(`

@@ -8,11 +8,13 @@ import { AdminSystemPanel } from "@/components/admin/AdminSystemPanel";
 import { AdminSecurityPanel } from "@/components/admin/AdminSecurityPanel";
 import { AdminUsagePanel } from "@/components/admin/AdminUsagePanel";
 import { AdminUsersTable } from "@/components/admin/AdminUsersTable";
+import { AdminSubscriptionsPanel } from "@/components/admin/AdminSubscriptionsPanel";
 import { ProfileSection } from "@/components/bridge/sections/ProfileSection";
 import type { ComponentProps } from "react";
 
 const TABS = [
   { id: "users", label: "المستخدمون" },
+  { id: "subscriptions", label: "الاشتراكات" },
   { id: "keys", label: "المفاتيح" },
   { id: "system", label: "النظام" },
   { id: "security", label: "الأمن" },
@@ -88,6 +90,7 @@ export function PlatformSection({
           mode="full"
         />
       )}
+      {tab === "subscriptions" && isAdmin && <AdminSubscriptionsPanel />}
       {tab === "keys" && isAdmin && <AdminKeysPanel />}
       {tab === "system" && isAdmin && <AdminSystemPanel />}
       {tab === "security" && isAdmin && (

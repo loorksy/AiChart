@@ -165,6 +165,13 @@ export async function ensureUserDefaults(userId: number) {
     "INSERT INTO admin_limits (user_id, claude_quota) VALUES (?, ?) ON CONFLICT (user_id) DO NOTHING",
     [userId, FREE_TIER_QUOTA],
   );
+  // Canonical subscription trial row — never resets used count on conflict.
+  await execute(
+    `INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight)
+     VALUES (?, 'trial', 0, 0)
+     ON CONFLICT (user_id) DO NOTHING`,
+    [userId],
+  );
 }
 
 export async function getSettings(userId: number): Promise<TradingSettings> {

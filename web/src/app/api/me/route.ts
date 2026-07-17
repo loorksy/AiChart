@@ -12,6 +12,8 @@ import {
   countPendingIntents,
   countUnreadAlerts,
 } from "@/lib/store";
+import { getEntitlementForUser } from "@/lib/subscription/entitlement";
+import { AICHART_PLAN } from "@/lib/subscription/plan";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -26,11 +28,28 @@ export async function GET() {
   const limit = limits.claude_quota;
   const platformAccess = hasPlatformAccess(user);
   const accessBlockReason = platformAccess ? null : getAccessBlockReason(user);
+  const entitlement = await getEntitlementForUser(user);
   return NextResponse.json({
     user,
     needs_mcp_credentials: needsMcpCredentials(user),
     platform_access: platformAccess,
     access_block_reason: accessBlockReason,
+    entitlement: {
+      access: entitlement.access,
+      planStatus: entitlement.planStatus,
+      trialUsed: entitlement.trialUsed,
+      trialRemaining: entitlement.trialRemaining,
+      trialLimit: entitlement.trialLimit,
+      expiresAt: entitlement.expiresAt,
+      plan: {
+        titleEn: AICHART_PLAN.titleEn,
+        titleAr: AICHART_PLAN.titleAr,
+        regularPriceUsd: AICHART_PLAN.regularPriceUsd,
+        promotionalPriceUsd: AICHART_PLAN.promotionalPriceUsd,
+        telegramUrl: AICHART_PLAN.telegramUrl,
+        telegramHandle: AICHART_PLAN.telegramHandle,
+      },
+    },
     settings: await getSettings(user.id),
     limits,
     quota: {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePlatformAccess, handleError, checkRateLimit, clientKey } from "@/lib/api";
+import { requirePaidAccess, handleError, checkRateLimit, clientKey } from "@/lib/api";
 import { getChat } from "@/lib/agent/chatHistory/chatStore";
 import { newId } from "@/lib/agent/activity";
 import { createLogger } from "@/lib/logger";
@@ -25,7 +25,7 @@ const log = createLogger("agent.voice.session");
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
 
     if (!(await isVoiceConfigured())) {
       return NextResponse.json(

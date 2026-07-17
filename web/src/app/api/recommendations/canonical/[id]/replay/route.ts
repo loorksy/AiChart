@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ApiError, handleError, requireUser } from "@/lib/api";
+import { ApiError, handleError, requirePaidAccess } from "@/lib/api";
 import { replayRecommendation } from "@/lib/recommendations/canonical";
 
 /** Authenticated, tenant-scoped immutable recommendation replay. */
@@ -8,7 +8,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requirePaidAccess();
     const { id } = await context.params;
     const recommendationId = Number(id);
     if (!Number.isInteger(recommendationId) || recommendationId <= 0) {

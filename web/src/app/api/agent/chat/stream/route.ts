@@ -7,6 +7,12 @@ import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import {
+  claimTrialInteraction,
+  commitTrialInteraction,
+  releaseTrialInteraction,
+  subscriptionRequiredMessage,
+} from "@/lib/subscription/trialQuota";
+import {
   createActivityEvent,
   newId,
   shouldShowActivity,
@@ -259,10 +265,23 @@ export async function POST(req: NextRequest) {
     }
 
     const body = schema.parse(await req.json());
+    const locale = body.locale ?? "ar";
+    const requestId = newId();
+
+    // Trial / subscription gate — blocks before any model-provider work.
+    const trialClaim = await claimTrialInteraction(user, requestId);
+    if (!trialClaim.ok) {
+      return NextResponse.json(
+        { error: subscriptionRequiredMessage(locale) },
+        { status: 403 },
+      );
+    }
+    const trialMetered = trialClaim.mode === "trial";
 
     // Burst guard: one heavy agent run per user + global cap (rate limiting).
     const slot = acquireAnalyzeSlot(user.id);
     if (!slot.ok) {
+      if (trialMetered) await releaseTrialInteraction(user.id, requestId);
       const msg =
         slot.reason === "in_flight"
           ? "يوجد تحليل قيد التشغيل. انتظر قليلاً ثم حاول مرة أخرى."
@@ -287,8 +306,6 @@ export async function POST(req: NextRequest) {
 
     // Fold any preference directives into session memory before the run.
     const session = updateSessionFromMessage(sessionId, resolvedMessage);
-
-    const requestId = newId();
     const activityEvents: AgentActivityEvent[] = [];
     let conversationContext: AgentConversationContext | undefined;
     if (FEATURES.agentContextV2()) {
@@ -507,6 +524,10 @@ export async function POST(req: NextRequest) {
             clearOptions(sessionId);
           }
 
+          if (trialMetered) {
+            await commitTrialInteraction(user.id, requestId);
+          }
+
           send("final", {
             ...stripInternalFieldsFromClientResult(result),
             sessionId,
@@ -521,6 +542,9 @@ export async function POST(req: NextRequest) {
                 : undefined,
           });
         } catch (error) {
+          if (trialMetered) {
+            await releaseTrialInteraction(user.id, requestId);
+          }
           if (req.signal.aborted) {
             if (traceRunId) {
               await finalizeAgentRun({ userId: user.id, runId: traceRunId, status: "cancelled" });
@@ -558,6 +582,9 @@ export async function POST(req: NextRequest) {
       cancel() {
         // Client aborted the fetch — release the slot promptly.
         release?.();
+        if (trialMetered) {
+          void releaseTrialInteraction(user.id, requestId);
+        }
       },
     });
 

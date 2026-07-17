@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requirePlatformAccess, handleError } from "@/lib/api";
+import { requirePaidAccess, handleError } from "@/lib/api";
 import { generateEaToken } from "@/lib/eaAuth";
 import {
   deleteEaConnection,
@@ -17,7 +17,7 @@ const schema = z.object({
 /** Generates (or rotates) the user's EA bridge token. Shown only once. */
 export async function POST(req: NextRequest) {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     const { platform, label } = schema.parse(await req.json().catch(() => ({})));
     const { token, tokenHash } = generateEaToken();
     await upsertEaConnection(user.id, platform, tokenHash, label ?? null);
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 /** Returns the non-secret EA connection status for the UI. */
 export async function GET() {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     const meta = await getEaConnectionMeta(user.id);
     return NextResponse.json({ connection: meta });
   } catch (err) {
@@ -48,7 +48,7 @@ export async function GET() {
 /** Revokes / removes the EA connection. */
 export async function DELETE() {
   try {
-    const user = await requirePlatformAccess();
+    const user = await requirePaidAccess();
     await deleteEaConnection(user.id);
     await logAudit(user.id, "ea_token_revoked", null);
     return NextResponse.json({ ok: true });
