@@ -1,125 +1,116 @@
 "use client";
 
 import Link from "next/link";
-import { Globe, ShieldCheck } from "lucide-react";
-import { useLocale } from "@/components/LocaleProvider";
 import { AiChartLogo } from "@/components/AiChartLogo";
-import { BRAND_NAME } from "@/lib/brand";
+import { useLocale } from "@/components/LocaleProvider";
+import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
 
 export function LandingFooter() {
   const { locale } = useLocale();
+  const c = getLandingCopy(locale).footer;
 
   return (
-    <footer className="glass-panel border-t border-border/60 px-4 py-12">
-      <div className="mx-auto max-w-6xl space-y-10">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-          <div className="space-y-4">
-            <Link href="/" className="flex items-center gap-2">
-              <AiChartLogo size={24} showName nameClassName="text-base font-bold tracking-tight text-foreground" />
-            </Link>
-            <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
-              {locale === "ar"
-                ? "مساحة شارت ومحادثة تساعدك على مراجعة قرار BUY أو SELL أو WAIT، ثم تنفيذ الصفقة على MetaTrader 5 بعد موافقتك واجتياز فحوص الأمان."
-                : "A chart-and-chat workspace for reviewing a BUY, SELL, or WAIT decision, then executing on MetaTrader 5 after your approval and safety checks."}
-            </p>
-          </div>
-
-          {/* Column 2: Company & Legal */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-              {locale === "ar" ? "الشركة والقانون" : "Company & Legal"}
-            </h4>
-            <ul className="space-y-2 text-xs">
-              <li>
-                <Link href="/p/privacy-policy" className="text-muted-foreground hover:text-primary transition-colors">
-                  {locale === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}
-                </Link>
-              </li>
-              <li>
-                <Link href="/p/terms-of-service" className="text-muted-foreground hover:text-primary transition-colors">
-                  {locale === "ar" ? "الشروط والأحكام" : "Terms of Service"}
-                </Link>
-              </li>
-              <li>
-                <Link href="/p/user-agreement" className="text-muted-foreground hover:text-primary transition-colors">
-                  {locale === "ar" ? "اتفاقية الاستخدام" : "User Agreement"}
-                </Link>
-              </li>
-              <li>
-                <Link href="/p/risk-disclosure" className="text-muted-foreground hover:text-primary transition-colors">
-                  {locale === "ar" ? "إخلاء المسؤولية عن المخاطر" : "Risk Disclosure"}
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 3: Resources & Community */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-              {locale === "ar" ? "المصادر والمجتمع" : "Resources & Community"}
-            </h4>
-            <ul className="space-y-2 text-xs">
-              <li>
-                <Link href="/p/about-us" className="text-muted-foreground hover:text-primary transition-colors">
-                  {locale === "ar" ? "من نحن" : "About Us"}
-                </Link>
-              </li>
-              <li>
-                <Link href="/p/blog" className="text-muted-foreground hover:text-primary transition-colors">
-                  {locale === "ar" ? "المدونة الرسمية" : "Official Blog"}
-                </Link>
-              </li>
-              <li>
-                <Link href="/p/contact-us" className="text-muted-foreground hover:text-primary transition-colors">
-                  {locale === "ar" ? "تواصل معنا" : "Contact Us"}
-                </Link>
-              </li>
-              <li>
-                <a
-                  href="https://discord.gg"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-primary transition-colors"
-                >
-                  Discord Community
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://reddit.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-primary transition-colors"
-                >
-                  Reddit Community
-                </a>
-              </li>
-            </ul>
-          </div>
-
-        </div>
-
-        <div className="glass-card space-y-2 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-            <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
-            <span>{locale === "ar" ? "إخلاء مسؤولية المخاطر للتداول" : "Trading Risk Disclosure Disclaimer"}</span>
-          </div>
-          <p className="text-[10px] text-muted-foreground leading-relaxed">
-            {locale === "ar"
-              ? "تحذير: ينطوي تداول الفوركس واستخدام الرافعة المالية على مخاطر مرتفعة وقد يؤدي إلى خسارة رأس المال. الأداء التاريخي لأي توصية أو أداة لا يضمن النتائج المستقبلية. المنصة لا تقدم ضماناً للربح أو بديلاً عن حكمك المستقل."
-              : "Warning: Forex trading and leverage involve substantial risk and may result in loss of capital. Historical performance of any recommendation or tool does not guarantee future results. The platform offers no profit guarantee and is not a substitute for independent judgment."}
+    <footer
+      data-testid="landing-footer"
+      className="border-t border-border bg-background"
+    >
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-4">
+        <div className="md:col-span-1">
+          <Link
+            href={LANDING_ROUTES.home}
+            className="inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <AiChartLogo
+              size={28}
+              showName
+              nameClassName="text-sm font-semibold tracking-tight"
+            />
+          </Link>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            {c.blurb}
           </p>
         </div>
 
-        {/* Bottom Section - Copyright */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-border/40 text-xs text-muted-foreground">
-          <p>© {new Date().getFullYear()} {BRAND_NAME}. {locale === "ar" ? "جميع الحقوق محفوظة." : "All rights reserved."}</p>
-          <div className="flex items-center gap-1.5 font-medium text-foreground">
-            <Globe className="h-3.5 w-3.5 text-primary" />
-            <span>{locale === "ar" ? "العربية (RTL)" : "English (LTR)"}</span>
-          </div>
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {c.product}
+          </h3>
+          <ul className="mt-3 space-y-2 text-sm">
+            <li>
+              <Link href={LANDING_ROUTES.signup} className="text-foreground/90 hover:underline">
+                {c.openPlatform}
+              </Link>
+            </li>
+            <li>
+              <Link href={LANDING_ROUTES.login} className="text-foreground/90 hover:underline">
+                {getLandingCopy(locale).nav.signIn}
+              </Link>
+            </li>
+            <li>
+              <a href="#features" className="text-foreground/90 hover:underline">
+                {c.features}
+              </a>
+            </li>
+            <li>
+              <a href="#how" className="text-foreground/90 hover:underline">
+                {c.how}
+              </a>
+            </li>
+          </ul>
         </div>
 
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {c.legal}
+          </h3>
+          <ul className="mt-3 space-y-2 text-sm">
+            <li>
+              <Link href={LANDING_ROUTES.privacy} className="text-foreground/90 hover:underline">
+                {c.privacy}
+              </Link>
+            </li>
+            <li>
+              <Link href={LANDING_ROUTES.terms} className="text-foreground/90 hover:underline">
+                {c.terms}
+              </Link>
+            </li>
+            <li>
+              <Link href={LANDING_ROUTES.agreement} className="text-foreground/90 hover:underline">
+                {c.agreement}
+              </Link>
+            </li>
+            <li>
+              <Link href={LANDING_ROUTES.risk} className="text-foreground/90 hover:underline">
+                {c.risk}
+              </Link>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {c.company}
+          </h3>
+          <ul className="mt-3 space-y-2 text-sm">
+            <li>
+              <Link href={LANDING_ROUTES.about} className="text-foreground/90 hover:underline">
+                {c.about}
+              </Link>
+            </li>
+            <li>
+              <Link href={LANDING_ROUTES.contact} className="text-foreground/90 hover:underline">
+                {c.contact}
+              </Link>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="border-t border-border">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-6 text-xs text-muted-foreground sm:px-6 sm:flex-row sm:items-center sm:justify-between">
+          <p>{c.disclaimer}</p>
+          <p className="shrink-0">{c.rights}</p>
+        </div>
       </div>
     </footer>
   );

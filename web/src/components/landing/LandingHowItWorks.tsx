@@ -1,26 +1,38 @@
-import { LANDING } from "@/components/landing/landingContent";
+"use client";
+
+import { useLocale } from "@/components/LocaleProvider";
+import { getLandingCopy } from "@/components/landing/landingCopy";
 
 export function LandingHowItWorks() {
+  const { locale } = useLocale();
+  const c = getLandingCopy(locale).how;
+
   return (
-    <section id="how" className="py-16 sm:py-20">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 className="mb-10 text-center text-2xl font-bold sm:text-3xl">
-          {LANDING.how.title}
-        </h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {LANDING.how.steps.map((s) => (
-            <div
-              key={s.n}
-              className="glass-card p-5 text-center transition-colors hover:border-primary/35"
-            >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-primary/25 bg-primary/15 text-lg font-bold text-primary">
-                {s.n}
-              </span>
-              <h3 className="mt-4 font-semibold">{s.title}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{s.desc}</p>
-            </div>
-          ))}
+    <section
+      id="how"
+      data-testid="landing-how"
+      className="scroll-mt-20 border-b border-border bg-muted/30"
+    >
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            {c.title}
+          </h2>
+          <p className="mt-3 text-muted-foreground">{c.subtitle}</p>
         </div>
+        <ol className="mx-auto mt-12 grid max-w-4xl gap-8 sm:grid-cols-3">
+          {c.steps.map((step) => (
+            <li key={step.n} className="text-center sm:text-start">
+              <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background sm:mx-0">
+                {step.n}
+              </div>
+              <h3 className="text-base font-semibold text-foreground">{step.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {step.body}
+              </p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );
