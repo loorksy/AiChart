@@ -45,9 +45,25 @@ describe("createRealtimeClientSecret", () => {
     assert.equal(sentAuth, "Bearer sk-standard-secret");
     // …but never appears in the returned object.
     assert.ok(!JSON.stringify(minted).includes("sk-standard-secret"));
-    // Regression guard: the GA client_secrets endpoint rejects
-    // `safety_identifier` (400 unknown_parameter), so we must never send one.
+    // Body must never include safety_identifier (400 unknown_parameter).
+    // The header form is the documented binding path.
     assert.ok(!sentBody!.includes("safety_identifier"));
+  });
+
+  it("sends OpenAI-Safety-Identifier as a header when provided", async () => {
+    let sentHeaders: Record<string, string> | undefined;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      sentHeaders = init?.headers as Record<string, string>;
+      return jsonResponse({ value: "ek_ephemeral_123", expires_at: 1_000 });
+    }) as unknown as typeof fetch;
+
+    await createRealtimeClientSecret({
+      config,
+      locale: "en",
+      safetyIdentifier: "abc123hashed",
+      fetchImpl,
+    });
+    assert.equal(sentHeaders?.["OpenAI-Safety-Identifier"], "abc123hashed");
   });
 
   it("maps 401 to a credential error", async () => {

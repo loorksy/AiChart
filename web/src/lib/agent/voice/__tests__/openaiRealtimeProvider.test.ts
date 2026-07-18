@@ -21,6 +21,7 @@ interface Spies {
   dcClosed: number;
   audioPaused: number;
   sentAuth?: string;
+  sentUrl?: string;
 }
 
 function installBrowserMocks(spies: Spies, { autoOpen = true }: { autoOpen?: boolean } = {}) {
@@ -94,7 +95,8 @@ function installBrowserMocks(spies: Spies, { autoOpen = true }: { autoOpen?: boo
   (globalThis as Record<string, unknown>).document = {
     createElement: () => audioEl,
   };
-  globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    spies.sentUrl = String(url);
     spies.sentAuth = (init?.headers as Record<string, string>)?.Authorization;
     return { ok: true, status: 200, text: async () => "v=0-answer" } as unknown as Response;
   }) as unknown as typeof fetch;
@@ -129,6 +131,7 @@ describe("openaiRealtimeProvider lifecycle + cleanup", () => {
 
     // The SDP handshake authenticates with the short-lived client secret only.
     assert.equal(spies.sentAuth, "Bearer ek_test");
+    assert.equal(spies.sentUrl, "https://api.openai.com/v1/realtime/calls");
     assert.ok(events.some((e) => e.kind === "status" && e.status === "connecting"));
 
     await provider.stop();

@@ -260,19 +260,33 @@ describe("voiceConfirmationGuard", () => {
 });
 
 describe("realtime session config builders", () => {
-  it("disables auto-response and enables input transcription", () => {
+  it("disables auto-response and enables input transcription (GA shape)", () => {
     const upd = buildRealtimeSessionUpdate({ locale: "ar", voice: "alloy" }) as {
-      session: { turn_detection: { create_response: boolean }; input_audio_transcription: unknown };
+      session: {
+        type: string;
+        output_modalities: string[];
+        audio: {
+          input: {
+            transcription: unknown;
+            turn_detection: { create_response: boolean };
+          };
+          output: { voice: string };
+        };
+      };
     };
-    assert.equal(upd.session.turn_detection.create_response, false);
-    assert.ok(upd.session.input_audio_transcription);
+    assert.equal(upd.session.type, "realtime");
+    assert.deepEqual(upd.session.output_modalities, ["audio"]);
+    assert.equal(upd.session.audio.input.turn_detection.create_response, false);
+    assert.ok(upd.session.audio.input.transcription);
+    assert.equal(upd.session.audio.output.voice, "alloy");
   });
 
   it("speak payload carries the exact answer text", () => {
     const payload = buildSpeakResponse("Buy XAUUSD at 2400", "en") as {
-      response: { instructions: string };
+      response: { instructions: string; output_modalities: string[] };
     };
     assert.ok(payload.response.instructions.includes("Buy XAUUSD at 2400"));
+    assert.deepEqual(payload.response.output_modalities, ["audio"]);
   });
 
   it("instructions forbid inventing data and differ by locale", () => {

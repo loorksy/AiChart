@@ -46,7 +46,7 @@ test("default position stays inside viewport", () => {
   assert.equal(pos.dock, "free");
   assert.ok(pos.x >= 4);
   assert.ok(pos.y >= 4);
-  assert.ok(pos.y + 96 <= 700);
+  assert.ok(pos.y + 140 <= 700);
 });
 
 test("bottom zone docks to composer; top zone docks to top", () => {

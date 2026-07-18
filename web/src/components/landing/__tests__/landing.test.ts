@@ -87,12 +87,15 @@ describe("landing redesign", () => {
     }
   });
 
-  test("header exposes theme, locale, unique mobile drawer, and real CTAs", () => {
+  test("header exposes theme, locale, opaque mobile modal portal, and real CTAs", () => {
     const nav = read("components/landing/LandingNav.tsx");
     assert.match(nav, /landing-theme-toggle/);
     assert.match(nav, /landing-locale-toggle/);
     assert.match(nav, /landing-mobile-drawer/);
     assert.match(nav, /landing-menu-trigger/);
+    assert.match(nav, /createPortal/);
+    assert.match(nav, /animate-landing-modal/);
+    assert.match(nav, /backgroundColor: "var\(--background\)"/);
     assert.match(nav, /href=\{LANDING_ROUTES\.signup\}/);
     assert.match(nav, /href=\{LANDING_ROUTES\.login\}/);
     assert.match(nav, /Escape/);

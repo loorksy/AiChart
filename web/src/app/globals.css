@@ -447,8 +447,41 @@ label {
   animation: pulse-soft 1.6s ease-in-out infinite;
 }
 
+@keyframes landing-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes landing-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-landing-backdrop {
+  animation: landing-backdrop-in 0.18s ease-out;
+}
+
+.animate-landing-modal {
+  animation: landing-modal-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse-soft {
+    animation: none;
+  }
+
+  .animate-landing-backdrop,
+  .animate-landing-modal {
     animation: none;
   }
 }

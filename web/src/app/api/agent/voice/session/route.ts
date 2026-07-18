@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requirePaidAccess, handleError, checkRateLimit, clientKey } from "@/lib/api";
 import { getChat } from "@/lib/agent/chatHistory/chatStore";
@@ -13,6 +14,10 @@ import {
   VoiceProviderError,
 } from "@/lib/agent/voice/realtimeClientSecret";
 import type { VoiceSessionCredential } from "@/lib/agent/voice/types";
+
+function voiceSafetyIdentifier(userId: number): string {
+  return createHash("sha256").update(`aichart-voice-user-${userId}`).digest("hex");
+}
 
 export const runtime = "nodejs";
 
@@ -62,6 +67,7 @@ export async function POST(req: NextRequest) {
       minted = await createRealtimeClientSecret({
         config,
         locale,
+        safetyIdentifier: voiceSafetyIdentifier(user.id),
       });
     } catch (err) {
       const code = err instanceof VoiceProviderError ? err.code : "provider_unavailable";

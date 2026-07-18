@@ -1,12 +1,14 @@
 /**
  * CLIENT-SAFE builders for realtime session control messages.
  *
- * The agent identity itself lives server-side (voiceIdentity.ts) and is set
- * once when the client secret is minted — the browser never carries or
- * re-sends the prompt. These builders only manage transport behaviour:
- * `create_response: false` keeps the model from answering on its own (the
- * platform agent drives every substantive turn), and `buildSpeakResponse`
- * makes the model deliver an answer the unified agent already computed.
+ * Shapes follow OpenAI Realtime GA (`session.type`, `audio.input` /
+ * `audio.output`, `output_modalities`). The agent identity lives server-side
+ * (voiceIdentity.ts) at client-secret mint time — the browser must not
+ * overwrite `instructions`.
+ *
+ * `create_response: false` keeps the model from answering on its own; the
+ * platform agent drives every substantive turn, then `buildSpeakResponse`
+ * delivers that answer as audio.
  */
 import type { AppLocale } from "@/lib/i18n";
 
@@ -19,20 +21,28 @@ export function buildRealtimeSessionUpdate(input: {
   locale: AppLocale;
   voice: string;
 }): Record<string, unknown> {
+  void input.locale;
   return {
     type: "session.update",
     session: {
-      voice: input.voice,
-      modalities: ["audio", "text"],
-      input_audio_transcription: { model: "whisper-1" },
-      turn_detection: {
-        type: "server_vad",
-        threshold: 0.5,
-        silence_duration_ms: 500,
-        // We route the final transcript through the unified agent and speak
-        // the result — the model must not auto-generate its own answer.
-        create_response: false,
-        interrupt_response: true,
+      type: "realtime",
+      output_modalities: ["audio"],
+      audio: {
+        input: {
+          transcription: { model: "gpt-4o-mini-transcribe" },
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.5,
+            silence_duration_ms: 500,
+            // Route final transcript through the unified agent; do not let the
+            // realtime model invent its own trading answer.
+            create_response: false,
+            interrupt_response: true,
+          },
+        },
+        output: {
+          voice: input.voice,
+        },
       },
     },
   };
@@ -51,7 +61,7 @@ export function buildSpeakResponse(text: string, locale: AppLocale): Record<stri
   return {
     type: "response.create",
     response: {
-      modalities: ["audio", "text"],
+      output_modalities: ["audio"],
       instructions: `${preface}\n\n${text}`,
     },
   };

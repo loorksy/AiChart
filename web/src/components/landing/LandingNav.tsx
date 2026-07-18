@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Globe, Menu, Moon, Sun, X } from "lucide-react";
 import { AiChartLogo } from "@/components/AiChartLogo";
@@ -21,20 +22,25 @@ export function LandingNav() {
   const { resolved, setTheme } = useTheme();
   const c = getLandingCopy(locale);
   const [open, setOpen] = useState(false);
-  const drawerRef = useRef<HTMLElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   const isDark = resolved === "dark";
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     document.body.style.overflow = "hidden";
     const previous =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const drawer = drawerRef.current;
+    const panel = panelRef.current;
     const selector =
       'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const focusables = () =>
-      Array.from(drawer?.querySelectorAll<HTMLElement>(selector) ?? []);
+      Array.from(panel?.querySelectorAll<HTMLElement>(selector) ?? []);
     focusables()[0]?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -70,13 +76,102 @@ export function LandingNav() {
           key={item.href}
           href={item.href}
           onClick={() => setOpen(false)}
-          className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {c.nav[item.key]}
         </a>
       ))}
     </>
   );
+
+  const mobileMenu =
+    mounted && open
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[100] md:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+          >
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/55 animate-landing-backdrop"
+              aria-label={c.nav.closeMenu}
+              onClick={() => setOpen(false)}
+            />
+            <div className="pointer-events-none absolute inset-0 flex items-end justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4">
+              <div
+                ref={panelRef}
+                id={titleId}
+                data-testid="landing-mobile-drawer"
+                className={cn(
+                  "pointer-events-auto flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border shadow-xl animate-landing-modal",
+                )}
+                style={{
+                  backgroundColor: "var(--background)",
+                  color: "var(--foreground)",
+                }}
+              >
+                <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+                  <AiChartLogo
+                    size={28}
+                    showName
+                    nameClassName="text-sm font-semibold"
+                  />
+                  <button
+                    type="button"
+                    className="inline-flex size-10 items-center justify-center rounded-lg hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={c.nav.closeMenu}
+                    onClick={() => setOpen(false)}
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <nav className="flex flex-col gap-0.5 p-3" aria-label="Mobile">
+                  {navLinks}
+                </nav>
+                <div className="space-y-2 border-t border-border p-3">
+                  <button
+                    type="button"
+                    onClick={() => setTheme(isDark ? "light" : "dark")}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {isDark ? (
+                      <Sun className="h-4 w-4" />
+                    ) : (
+                      <Moon className="h-4 w-4" />
+                    )}
+                    {c.nav.theme}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Globe className="h-4 w-4" />
+                    {c.nav.language}
+                  </button>
+                  <Link
+                    href={LANDING_ROUTES.login}
+                    onClick={() => setOpen(false)}
+                    className="flex min-h-11 w-full items-center justify-center rounded-lg border border-border text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {c.nav.signIn}
+                  </Link>
+                  <Link
+                    href={LANDING_ROUTES.signup}
+                    onClick={() => setOpen(false)}
+                    className="flex min-h-11 w-full items-center justify-center rounded-lg bg-foreground text-sm font-medium text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {c.nav.primaryCta}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <header
@@ -86,7 +181,7 @@ export function LandingNav() {
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
         <Link
           href={LANDING_ROUTES.home}
-          className="flex shrink-0 items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+          className="flex shrink-0 items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <AiChartLogo
             size={32}
@@ -149,77 +244,7 @@ export function LandingNav() {
           </button>
         </div>
       </div>
-
-      {open ? (
-        <div
-          className="fixed inset-0 z-50 md:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={titleId}
-        >
-          <button
-            type="button"
-            className="absolute inset-0 bg-background/70"
-            aria-label={c.nav.closeMenu}
-            onClick={() => setOpen(false)}
-          />
-          <aside
-            ref={drawerRef}
-            id={titleId}
-            data-testid="landing-mobile-drawer"
-            className={cn(
-              "absolute inset-y-0 end-0 flex w-[min(20rem,88vw)] flex-col border-s border-border bg-background shadow-lg",
-            )}
-          >
-            <div className="flex h-14 items-center justify-between border-b border-border px-4">
-              <AiChartLogo size={28} showName nameClassName="text-sm font-semibold" />
-              <button
-                type="button"
-                className="inline-flex size-10 items-center justify-center rounded-lg hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={c.nav.closeMenu}
-                onClick={() => setOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <nav className="flex flex-col gap-0.5 p-3" aria-label="Mobile">
-              {navLinks}
-            </nav>
-            <div className="mt-auto space-y-2 border-t border-border p-3">
-              <button
-                type="button"
-                onClick={() => setTheme(isDark ? "light" : "dark")}
-                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                {c.nav.theme}
-              </button>
-              <button
-                type="button"
-                onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
-                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Globe className="h-4 w-4" />
-                {c.nav.language}
-              </button>
-              <Link
-                href={LANDING_ROUTES.login}
-                onClick={() => setOpen(false)}
-                className="flex min-h-11 w-full items-center justify-center rounded-lg border border-border text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {c.nav.signIn}
-              </Link>
-              <Link
-                href={LANDING_ROUTES.signup}
-                onClick={() => setOpen(false)}
-                className="flex min-h-11 w-full items-center justify-center rounded-lg bg-foreground text-sm font-medium text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {c.nav.primaryCta}
-              </Link>
-            </div>
-          </aside>
-        </div>
-      ) : null}
+      {mobileMenu}
     </header>
   );
 }
