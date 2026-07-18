@@ -39,6 +39,8 @@ const expectedSettingsColumns = [
   "alert_trades",
   "alert_signals",
   "updated_at",
+  "preferred_model",
+  "preferred_reasoning_effort",
 ];
 
 const expectedAdminColumns = [

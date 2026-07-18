@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
         currentPrice = fresh?.currentTfCandles.at(-1)?.close ?? null;
       }
 
-      let validated = validateModelTradePlan({
+      const validated = validateModelTradePlan({
         plan,
         currentPrice,
         tickSize: body.tick_size,

@@ -1,4 +1,4 @@
-# Complete Trade Candidate System Removal
+﻿# Complete Trade Candidate System Removal
 
 **Branch:** `fix/candidate-free-model-authority`
 **Actual PR base:** `d995fdf52ab2983bc116407999777048ee9396e8`
@@ -10,18 +10,18 @@
 
 ## 1. Previous candidate architecture
 
-Market evidence → `buildTradeCandidates` / `scorePoi` / `runTradingPlaybook` → `runRiskAgent` → `runFinalDecisionSynthesizer` (bind `selectedTradeCandidateId`) → recommendation / drawings / persistence.
+Market evidence â†’ `buildTradeCandidates` / `scorePoi` / `runTradingPlaybook` â†’ `runRiskAgent` â†’ `runFinalDecisionSynthesizer` (bind `selectedTradeCandidateId`) â†’ recommendation / drawings / persistence.
 
 Dual mode via `MODEL_FIRST_MODE` (`live` | `shadow` | `off`) could reactivate the candidate engine.
 
-## 2–10. Deleted modules, types, schemas, APIs
+## 2â€“10. Deleted modules, types, schemas, APIs
 
 | Deleted | Role |
 |---|---|
 | `web/src/lib/agent/trading/buildTradeCandidates.ts` | Trade proposal builder |
 | `web/src/lib/agent/trading/scorePoi.ts` | POI / setup scorer |
 | `web/src/lib/agent/trading/tradingPlaybook.ts` | Directional playbook gate |
-| `web/src/lib/agent/trading/chartDrawingZones.ts` | User-drawing → trade zone converter |
+| `web/src/lib/agent/trading/chartDrawingZones.ts` | User-drawing â†’ trade zone converter |
 | `web/src/lib/agent/agents/riskAgent.ts` | Pre-decision analytical Risk Agent |
 | `web/src/lib/agent/agents/finalDecisionSynthesizer.ts` | Candidate-binding synthesizer |
 | Candidate-focused tests | `tradeBrain`, `tradingPlaybook`, `finalDecisionSynthesizer`, `chartDrawingZones` |
@@ -37,47 +37,47 @@ Deleted runtime concepts: `TradeCandidate`, `selectedTradeCandidateId`, `candida
 | Account snapshot type | Moved to `accountRiskSnapshot.ts` (post-decision only) |
 | Spread / news / quote facts | Remain as neutral evidence via market/news agents |
 
-## 12–13. Runtime flags and fallbacks removed
+## 12â€“13. Runtime flags and fallbacks removed
 
 - No `MODEL_FIRST_MODE` / shadow / off / legacy live toggle.
-- Model timeout / invalid JSON / missing data → technical decisions (`model_timeout`, `invalid_model_output`, `data_unavailable`, …) — **never WAIT**.
+- Model timeout / invalid JSON / missing data â†’ technical decisions (`model_timeout`, `invalid_model_output`, `data_unavailable`, â€¦) â€” **never WAIT**.
 - No candidate-engine fallback under any failure.
 
 ## 14. Final free-model architecture
 
 ```
 User-selected symbol + timeframe
-→ immutable snapshot + raw OHLCV + neutral facts + Vision
-→ selected model (Responses Structured Outputs)
-→ BUY | SELL | WAIT + model-owned plan
-→ validateModelTradePlan
-→ one repair pass (direction locked)
-→ Risk per Trade sizing + explicit approval + broker guards
-→ execution
+â†’ immutable snapshot + raw OHLCV + neutral facts + Vision
+â†’ selected model (Responses Structured Outputs)
+â†’ BUY | SELL | WAIT + model-owned plan
+â†’ validateModelTradePlan
+â†’ one repair pass (direction locked)
+â†’ Risk per Trade sizing + explicit approval + broker guards
+â†’ execution
 ```
 
-## 15–16. Model I/O
+## 15â€“16. Model I/O
 
 - **Input:** `NeutralMarketEvidence` (candles, quote, structure facts, S/D locations as facts, news metadata, Vision metas). Leak detector blocks proposal authority keys.
-- **Output:** `ModelTradePlan` (`decision`, `activation`, `marketRegime`, thesis, timeframe analysis, entry zone, invalidation, stop, targets, confirmation, path, alternative, confidence, summary, …). No candidate ID fields.
+- **Output:** `ModelTradePlan` (`decision`, `activation`, `marketRegime`, thesis, timeframe analysis, entry zone, invalidation, stop, targets, confirmation, path, alternative, confidence, summary, â€¦). No candidate ID fields.
 
-## 17–18. WAIT and technical errors
+## 17â€“18. WAIT and technical errors
 
 - **WAIT** only when the model successfully returns `decision: "wait"`.
 - Technical states: `data_unavailable`, `model_unavailable`, `model_timeout`, `invalid_model_output`, `analysis_failed`, `execution_unavailable`, `reanalysis_required`.
 
-## 19–20. Validator and repair
+## 19â€“20. Validator and repair
 
 - `validateModelTradePlan` (alias of technical validator): geometry / freshness / tick alignment only; **never** changes direction.
 - One repair pass with technical errors only; direction immutable; failed repair keeps BUY/SELL with `executionReadiness: technically_unavailable`.
 
-## 21–22. Platform + MCP
+## 21â€“22. Platform + MCP
 
 - Platform primary timeframe remains user-selected chart TF; context TFs are evidence.
 - MCP skill search found no trade-candidate binding instructions in trading skills.
 - Neutral market shortlists for discovery remain allowed; they must not pre-decide BUY/SELL levels.
 
-## 23–24. Persistence / history
+## 23â€“24. Persistence / history
 
 - New recommendations persist a versioned `context_json` envelope (`kind=model_owned_plan`)
   via `modelPlanPersistence.ts` with decision, activation, regime, thesis, entry zone,
@@ -88,16 +88,16 @@ User-selected symbol + timeframe
 - New recommendations no longer populate `poi` / `poi.score`.
 - Historical rows remain readable via `mapHistoricalRecommendationContext` (including old
   Candidate-backed `risk.poi.score` rows).
-- Rollback for the envelope: `UPDATE recommendations SET context_json = NULL WHERE … kind=model_owned_plan`
+- Rollback for the envelope: `UPDATE recommendations SET context_json = NULL WHERE â€¦ kind=model_owned_plan`
   (documented on the existing `context_json` column migration comments).
 
-## 25–26. Architecture tests
+## 25â€“26. Architecture tests
 
 - `freeModelAuthority.test.ts`: repository scan + decision-distribution fixtures.
 - `integrationBoundaries.test.ts`: orchestrator must not import Risk Agent / candidate builders / dual mode.
 - Model-first / drawing / evaluation tests updated.
 
-## 27–30. Delivery status
+## 27â€“30. Delivery status
 
 | Item | Value |
 |---|---|
@@ -115,7 +115,7 @@ User-selected symbol + timeframe
 | Market analysis | Risk Agent + candidates + synthesizer | `runModelFirstDecision` | freeModelAuthority, safetyContracts |
 | Recommendation drawings | POI / selectedCandidate | `buildDrawingsFromValidatedModelPlan` / model entry zone in `buildDrawingPlan` | buildDrawingPlan, freeModelAuthority |
 | Recommendation persistence | `risk.selectedCandidate` | Partial model recommendation mapping; full plan/provenance not persisted | canonical/tracker tests only |
-| Deep analysis enqueue | candidate POI type | Model direction → demand/supply | orchestrator |
+| Deep analysis enqueue | candidate POI type | Model direction â†’ demand/supply | orchestrator |
 | Execution approval | Candidate levels | Model recommendation levels | execution guard unchanged |
 | Historical replay | `buildTradeCandidates` action | Neutral market facts only | evaluation.test |
 | Chart / MT5 / MCP / voice / subs | N/A | Untouched | existing suites |
@@ -135,11 +135,11 @@ User-selected symbol + timeframe
 | Model receives only neutral evidence? | **Yes** |
 | Model independently chooses BUY/SELL/WAIT + levels? | **Yes** |
 | WAIT only from successful model decision? | **Yes** |
-| Technical failure / conditional → WAIT? | **No** |
+| Technical failure / conditional â†’ WAIT? | **No** |
 | Validator can change direction? | **No** |
 | Platform TF still binding? | **Yes** |
-| MCP host still free? | **Partial** — no candidate binding in trading skills, but schema drift and direct recommendation validation remain open |
-| Exact candidate-free commit in production? | **Not yet** — deploy only after reviewed merge |
+| MCP host still free? | **Partial** â€” no candidate binding in trading skills, but schema drift and direct recommendation validation remain open |
+| Exact candidate-free commit in production? | **Not yet** â€” deploy only after reviewed merge |
 
 ## GO / NO-GO
 
@@ -152,7 +152,7 @@ User-selected symbol + timeframe
 
 | Evidence | Verified result |
 |---|---|
-| Exact PR head | `2b9a8ef...` — documentation-only follow-up |
+| Exact PR head | `2b9a8ef...` â€” documentation-only follow-up |
 | Actual implementation | `690d7df...` |
 | Actual base / `origin/main` | `d995fdf...` |
 | PR state | OPEN, non-draft, `UNSTABLE` |
@@ -171,8 +171,8 @@ User-selected symbol + timeframe
 - Deleted/replaced: principal Candidate fixtures and tests.
 - Removed: `MODEL_FIRST_MODE`, shadow/off legacy branch, selected Candidate ID binding,
   and Candidate-engine failure fallback.
-- Verified: `runUnifiedChartAgent` now calls neutral evidence → selected model →
-  `validateModelTradePlan` → at most one repair pass. Timeout and invalid model output
+- Verified: `runUnifiedChartAgent` now calls neutral evidence â†’ selected model â†’
+  `validateModelTradePlan` â†’ at most one repair pass. Timeout and invalid model output
   are technical outcomes, not WAIT.
 
 ### Remaining Candidate references
@@ -300,25 +300,25 @@ PR-head run was completed.
 Detailed changed-file, test, decision-fixture, security, deployment, and 41-question
 evidence is recorded in `docs/CANDIDATE_REMOVAL_RELEASE_EVIDENCE.md`.
 
-## Completion pass (2026-07-19) — code blockers closed; release gates still open
+## Completion pass (2026-07-19) â€” code blockers closed; release gates still open
 
 The following audit blockers were fixed on `fix/candidate-free-model-authority`
 (this completion commit). Historical claims above remain as audit trail.
 
 | Blocker | Status after completion pass |
 |---|---|
-| `OpportunityCandidate` / scan auto top-pick | **Fixed** — `MarketScreeningItem` + `screeningItems`; deep scan supplies full shortlist to the model |
-| Recommendation-context / research Candidate names | **Fixed** — `recommendationSources`, `actionableDecision` |
-| Architecture scan misses screening authority | **Expanded** — prohibits `OpportunityCandidate` and authority-leak patterns |
-| Incomplete model-plan persistence / `poi.score` | **Fixed** — `modelPlanPersistence` envelope; no new `poi`/`poi.score` |
-| Draw invalid levels when not execution-ready | **Fixed** — drawings only when `executionReady`; note annotation otherwise |
-| Incomplete `NeutralMarketEvidence` | **Fixed** — broker/source, quote timestamps, precision, tick, market-open, ATR, S/R, BOS/CHoCH, swings, sweeps, TF freshness |
-| MCP `create_recommendation` validation + schema drift | **Fixed** — `validateModelTradePlan` + regenerated schemas/contract (`schemas:check` OK) |
-| Missing decision fixtures | **Fixed** — stale quote/snapshot, vision, repair, cancel, unavailable, min-stop |
-| Local model-first suite | **PASS** — 54/54 |
-| MCP catalog | **PASS** — 70/70 |
+| `OpportunityCandidate` / scan auto top-pick | **Fixed** â€” `MarketScreeningItem` + `screeningItems`; deep scan supplies full shortlist to the model |
+| Recommendation-context / research Candidate names | **Fixed** â€” `recommendationSources`, `actionableDecision` |
+| Architecture scan misses screening authority | **Expanded** â€” prohibits `OpportunityCandidate` and authority-leak patterns |
+| Incomplete model-plan persistence / `poi.score` | **Fixed** â€” `modelPlanPersistence` envelope; no new `poi`/`poi.score` |
+| Draw invalid levels when not execution-ready | **Fixed** â€” drawings only when `executionReady`; note annotation otherwise |
+| Incomplete `NeutralMarketEvidence` | **Fixed** â€” broker/source, quote timestamps, precision, tick, market-open, ATR, S/R, BOS/CHoCH, swings, sweeps, TF freshness |
+| MCP `create_recommendation` validation + schema drift | **Fixed** â€” `validateModelTradePlan` + regenerated schemas/contract (`schemas:check` OK) |
+| Missing decision fixtures | **Fixed** â€” stale quote/snapshot, vision, repair, cancel, unavailable, min-stop |
+| Local model-first suite | **PASS** â€” 54/54 |
+| MCP catalog | **PASS** â€” 70/70 |
 | Web TypeScript | **PASS** |
-| GitHub CI / PR review / browser / deploy | **Still open** — billing-locked CI; no review; no browser qualification; production unchanged |
+| GitHub CI / PR review / browser / deploy | **Still open** â€” billing-locked CI; no review; no browser qualification; production unchanged |
 
 **Rollback target:** `d995fdf52ab2983bc116407999777048ee9396e8`
 

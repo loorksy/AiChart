@@ -1,9 +1,9 @@
-# Candidate System Removal — Implementation and Release Evidence
+﻿# Candidate System Removal â€” Implementation and Release Evidence
 
-Audit date: 2026-07-19  
-Repository: `loorksy/AiChart`  
-Pull request: https://github.com/loorksy/AiChart/pull/66  
-Audited PR head: `2b9a8efcd1d03dcf91717205a3aea2e7473d3b2a`  
+Audit date: 2026-07-19
+Repository: `loorksy/AiChart`
+Pull request: https://github.com/loorksy/AiChart/pull/66
+Audited PR head: `2b9a8efcd1d03dcf91717205a3aea2e7473d3b2a`
 Release decision: **NO-GO**
 
 This document records repository, GitHub, test, runtime, and production evidence. It distinguishes verified behavior from unverified claims. No defect found during this audit was silently repaired.
@@ -16,7 +16,7 @@ PR #66 does delete the former core Trade Candidate engine and removes it from `r
 
 The release is nevertheless incomplete:
 
-1. Active runtime still contains Candidate-named domains and ranking/selection in `monitor.ts`, `opportunityScan.ts`, `researchEvidence.ts`, the chat recommendation resolver, Trading DNA, Trade Lesson learning, and MCP UI/skill internals. Most are not the deleted Trade Candidate engine, but the repository-wide “no active Candidate concepts” completion criterion is not met.
+1. Active runtime still contains Candidate-named domains and ranking/selection in `monitor.ts`, `opportunityScan.ts`, `researchEvidence.ts`, the chat recommendation resolver, Trading DNA, Trade Lesson learning, and MCP UI/skill internals. Most are not the deleted Trade Candidate engine, but the repository-wide â€œno active Candidate conceptsâ€‌ completion criterion is not met.
 2. The broad scan is direction-neutral in its returned evidence, but it still defines `OpportunityCandidate`, stores `candidates`, sorts them by score, and selects `top`; the architecture scan test does not catch this.
 3. New recommendation persistence does not store the full model-owned plan or required provenance. It loses the entry-zone object in canonical persistence, activation, thesis, path-to-entry, alternative scenario, confirmation, model ID, reasoning effort, snapshot ID/fingerprint, quote timestamp, context timeframes, validation errors/state, and execution-readiness state. It also populates the legacy in-memory `poi.score` from model confidence.
 4. `buildDrawingsFromValidatedModelPlan` can draw non-null model levels even when `executionReady` is false; the levels are model-owned but not necessarily technically valid.
@@ -61,15 +61,15 @@ The supplied references required correction:
 
 ```text
 Market data and deterministic detectors
-→ POI scoring
-→ buildTradeCandidates
-→ candidate ranking / best selection
-→ trading playbook
-→ runRiskAgent
-→ runFinalDecisionSynthesizer
-→ model selects selectedTradeCandidateId
-→ bind Candidate direction and levels
-→ recommendation / drawings / persistence / execution preparation
+â†’ POI scoring
+â†’ buildTradeCandidates
+â†’ candidate ranking / best selection
+â†’ trading playbook
+â†’ runRiskAgent
+â†’ runFinalDecisionSynthesizer
+â†’ model selects selectedTradeCandidateId
+â†’ bind Candidate direction and levels
+â†’ recommendation / drawings / persistence / execution preparation
 ```
 
 `MODEL_FIRST_MODE=off|shadow|live` allowed dual behavior. Off/legacy could run the Candidate-first path, while shadow/live could execute model-first behavior alongside or instead of it. Candidate existence, score, quality, geometry, selected POI, and selected ID constrained what the model could return. The model was therefore not a free analytical authority: application code narrowed direction and levels before the final call and the synthesizer bound model output back to a generated object.
@@ -77,7 +77,7 @@ Market data and deterministic detectors
 Former Candidate stages were:
 
 - `scorePoi`: deterministic POI/setup scoring.
-- `buildTradeCandidates`: BUY/SELL proposal construction, geometry, ranking, and “best”.
+- `buildTradeCandidates`: BUY/SELL proposal construction, geometry, ranking, and â€œbestâ€‌.
 - `runTradingPlaybook`: checklist/playbook gating.
 - `runRiskAgent`: selected proposal and proposed trade before the model.
 - `runFinalDecisionSynthesizer`: Candidate-aware prompt and `selectedTradeCandidateId` binding.
@@ -90,23 +90,23 @@ Former Candidate stages were:
 
 ```text
 User-selected chart symbol and primary timeframe
-→ runUnifiedChartAgent
-→ runMarketDataAgent / fresh context candles
-→ buildMarketSnapshot
-→ buildCandleEnvelope (raw bounded OHLCV)
-→ structure/liquidity/supply-demand/MTF/news factual agents
-→ captureNeutralDecisionCharts (+ optional labeled user-context image)
-→ buildNeutralEvidence
-→ runModelFirstDecision using selected registry model/reasoning
-→ ModelTradePlan BUY | SELL | WAIT and model-owned levels
-→ validateModelTradePlan
-→ at most one repair call with direction locked
-→ buildDrawingsFromValidatedModelPlan
-→ storeFinalRecommendation when executable
-→ runExecutionGuardAgent / explicit approval
-→ trade-open preflight
-→ getRiskBudget + computeForexLots
-→ broker/EA execution safeguards
+â†’ runUnifiedChartAgent
+â†’ runMarketDataAgent / fresh context candles
+â†’ buildMarketSnapshot
+â†’ buildCandleEnvelope (raw bounded OHLCV)
+â†’ structure/liquidity/supply-demand/MTF/news factual agents
+â†’ captureNeutralDecisionCharts (+ optional labeled user-context image)
+â†’ buildNeutralEvidence
+â†’ runModelFirstDecision using selected registry model/reasoning
+â†’ ModelTradePlan BUY | SELL | WAIT and model-owned levels
+â†’ validateModelTradePlan
+â†’ at most one repair call with direction locked
+â†’ buildDrawingsFromValidatedModelPlan
+â†’ storeFinalRecommendation when executable
+â†’ runExecutionGuardAgent / explicit approval
+â†’ trade-open preflight
+â†’ getRiskBudget + computeForexLots
+â†’ broker/EA execution safeguards
 ```
 
 | Stage | Code |
@@ -299,7 +299,7 @@ Tests cover successful WAIT, timeout, invalid output, conditional BUY/SELL, and 
 
 - trade activation present for BUY/SELL;
 - finite/preferred entry and entry-zone availability;
-- low ≤ high and preferred entry inside zone;
+- low â‰¤ high and preferred entry inside zone;
 - stop, invalidation, and at least two targets;
 - BUY stop/invalidation below entry and targets above entry;
 - SELL stop/invalidation above entry and targets below entry;
@@ -327,13 +327,13 @@ The first parsed decision is captured as `lockedDecision`. Only one guarded seco
 - `store:false`;
 - same strict output schema.
 
-The appended repair text contains the technical error identifiers and instructions to preserve direction and correct the model’s own levels. It supplies no replacement level, Candidate level, preferred POI, preferred side, stop, or target. After the response, code overwrites `decision` with `lockedDecision` and validates again. If the call throws, the first validation result remains. No loop or third call exists.
+The appended repair text contains the technical error identifiers and instructions to preserve direction and correct the modelâ€™s own levels. It supplies no replacement level, Candidate level, preferred POI, preferred side, stop, or target. After the response, code overwrites `decision` with `lockedDecision` and validates again. If the call throws, the first validation result remains. No loop or third call exists.
 
 ## 12. Recommendation drawings
 
 The unified new-analysis path calls only `buildDrawingsFromValidatedModelPlan`, then `runDrawingAgent`. Inputs are `FinalDecisionResult`, `ValidatedTradePlan`, and last candle time. Output is a `DrawingPlan` containing an entry-zone drawing, invalidation annotation, and forecast path to the first target. It uses model-owned entry zone, preferred entry, stop, targets, and invalidation. It cannot alter direction and has no Candidate/POI input.
 
-Defect: when `executionReady` is false, the builder falls back to non-null raw plan levels and may draw them. It does not invent price values, but the “validated” drawing path can display technically invalid model levels. Historical drawing rendering was covered only by existing unit/storage tests, not a browser fixture with an old Candidate-backed row.
+Defect: when `executionReady` is false, the builder falls back to non-null raw plan levels and may draw them. It does not invent price values, but the â€œvalidatedâ€‌ drawing path can display technically invalid model levels. Historical drawing rendering was covered only by existing unit/storage tests, not a browser fixture with an old Candidate-backed row.
 
 ## 13. Recommendation persistence
 
@@ -416,7 +416,7 @@ PR #66 changes no MCP source. Active behavior:
 - MCP catalog tests pass, but `schemas:check` fails because `manifest.json` and `scan_market` schemas drifted.
 - No authenticated live MCP analysis or execution-safety test was run against PR #66.
 
-Scope behavior is statically verified for explicit symbol, timeframe list, and bounded market scan. “Current chart” is supported by `run_market_analysis` optional symbol/interval plus layout resolution. Host-model comparison across broad shortlist items is required by the tool description.
+Scope behavior is statically verified for explicit symbol, timeframe list, and bounded market scan. â€œCurrent chartâ€‌ is supported by `run_market_analysis` optional symbol/interval plus layout resolution. Host-model comparison across broad shortlist items is required by the tool description.
 
 ## 17. Functional preservation matrix
 
@@ -553,7 +553,7 @@ Critical skipped tests are not counted as successful.
 | Model timeout | No model result | Not run | No analytical decision; `model_timeout` | none |
 | Invalid model output | No parsed result | Not run | No analytical decision; `invalid_model_output` | none |
 | Stale snapshot | No dedicated fixture | Quote precheck/age rules only | NOT VERIFIED as full snapshot fixture | withheld by applicable data/quote rule |
-| Missing Vision | No end-to-end fixture | Numeric sufficiency branch | Model still decides if ≥40 candles; otherwise `data_unavailable` | depends on model/validation |
+| Missing Vision | No end-to-end fixture | Numeric sufficiency branch | Model still decides if â‰¥40 candles; otherwise `data_unavailable` | depends on model/validation |
 | Invalid BUY levels | BUY | Not ready | BUY | technically unavailable |
 | Invalid SELL levels | SELL | Not ready | SELL | technically unavailable |
 | Failed repair | No dedicated fixture | Code retains first validation | Direction locked by inspection | technically unavailable |
@@ -647,53 +647,53 @@ Deployment blockers are the open/unreviewed PR, red CI, active defects, missing 
 
 ## 26. Required explicit answers
 
-1. **YES** — `buildTradeCandidates.ts` is deleted in PR #66.
-2. **YES** — `scorePoi.ts` is deleted.
-3. **YES** — `tradingPlaybook.ts` is deleted.
-4. **YES** — `riskAgent.ts` is deleted from active analysis.
-5. **YES** — `finalDecisionSynthesizer.ts` is deleted.
-6. **YES** — principal Candidate tests were deleted and free-model tests added; coverage is incomplete for several required fixtures.
-7. **NO** — no active source defines the exact `TradeCandidate` type.
-8. **YES** — active source builds `OpportunityCandidate`; it is a neutral scanner item, not the deleted Trade Candidate plan.
-9. **YES** — `opportunityScan.ts` sorts active scanner Candidates by score; Trade Candidate ranking itself is deleted.
-10. **YES** — the scanner selects `top` Candidate items for analysis; the unified model does not select a Trade Candidate.
-11. **YES** — Trade Lesson Candidates are validated in the learning subsystem; no Trade Candidate plan validator remains.
-12. **NO** — no active unified-analysis source binds a model response to a Trade Candidate.
-13. **NO** — new recommendations do not require a Trade Candidate ID.
-14. **NO** — new drawings do not require a Trade Candidate ID.
-15. **NO** — canonical recommendation persistence does not require a Trade Candidate ID; full model-plan persistence is incomplete.
-16. **NO** — execution does not require a Trade Candidate ID.
-17. **NO** — the active model system prompt has no Candidate-binding instruction.
-18. **NO** — active trading skills do not require Candidate selection; MCP internals/UI still contain unrelated Candidate terminology.
-19. **NO** — no environment flag can reactivate the deleted Trade Candidate engine.
-20. **NO** — no unified-analysis fallback can invoke deleted Candidate logic.
-21. **YES** — `runUnifiedChartAgent` has one active market-decision architecture; separate research/MCP host paths remain.
-22. **PARTIAL** — no proposal/Candidate authority is sent, but the requested neutral evidence fields are not all present explicitly.
-23. **YES** — the selected model independently returns BUY/SELL/WAIT in the unified path.
-24. **YES** — the model independently generates all trade levels; technical code can reject but not replace them.
-25. **YES** — in the unified market path, WAIT comes only from a successful model WAIT.
-26. **NO** — timeout maps to `model_timeout`.
-27. **NO** — invalid output maps to `invalid_model_output`.
-28. **NO** — unavailable/stale required data maps to `data_unavailable` or execution refresh state.
-29. **NO** — missing Vision continues with sufficient numeric candles or becomes `data_unavailable`.
-30. **NO** — invalid levels retain BUY/SELL and withhold execution.
-31. **NO** — tested conditional BUY remains BUY.
-32. **NO** — tested conditional SELL remains SELL.
-33. **NO** — technical validation cannot alter direction.
-34. **YES** — one repair call is the maximum.
-35. **YES** — platform Risk per Trade sizing occurs in execution after a validated/stored plan; MCP direct execution still relies on execution preflight.
-36. **YES** — platform primary timeframe is bound to the selected chart timeframe by code and unit test.
-37. **PARTIAL** — MCP trading guidance preserves host-model authority, but authenticated runtime tests and schema parity are not complete.
-38. **PARTIAL** — broad automated suites pass, but lint, browser, PG/Redis release, historical runtime, and authenticated MCP evidence are incomplete.
-39. **NO** — PR #66 has no review and both CI checks are red.
-40. **NO** — production runs `d995fdf`, not the reviewed/corrective head.
-41. **NO-GO** — blockers are listed above.
+1. **YES** â€” `buildTradeCandidates.ts` is deleted in PR #66.
+2. **YES** â€” `scorePoi.ts` is deleted.
+3. **YES** â€” `tradingPlaybook.ts` is deleted.
+4. **YES** â€” `riskAgent.ts` is deleted from active analysis.
+5. **YES** â€” `finalDecisionSynthesizer.ts` is deleted.
+6. **YES** â€” principal Candidate tests were deleted and free-model tests added; coverage is incomplete for several required fixtures.
+7. **NO** â€” no active source defines the exact `TradeCandidate` type.
+8. **YES** â€” active source builds `OpportunityCandidate`; it is a neutral scanner item, not the deleted Trade Candidate plan.
+9. **YES** â€” `opportunityScan.ts` sorts active scanner Candidates by score; Trade Candidate ranking itself is deleted.
+10. **YES** â€” the scanner selects `top` Candidate items for analysis; the unified model does not select a Trade Candidate.
+11. **YES** â€” Trade Lesson Candidates are validated in the learning subsystem; no Trade Candidate plan validator remains.
+12. **NO** â€” no active unified-analysis source binds a model response to a Trade Candidate.
+13. **NO** â€” new recommendations do not require a Trade Candidate ID.
+14. **NO** â€” new drawings do not require a Trade Candidate ID.
+15. **NO** â€” canonical recommendation persistence does not require a Trade Candidate ID; full model-plan persistence is incomplete.
+16. **NO** â€” execution does not require a Trade Candidate ID.
+17. **NO** â€” the active model system prompt has no Candidate-binding instruction.
+18. **NO** â€” active trading skills do not require Candidate selection; MCP internals/UI still contain unrelated Candidate terminology.
+19. **NO** â€” no environment flag can reactivate the deleted Trade Candidate engine.
+20. **NO** â€” no unified-analysis fallback can invoke deleted Candidate logic.
+21. **YES** â€” `runUnifiedChartAgent` has one active market-decision architecture; separate research/MCP host paths remain.
+22. **PARTIAL** â€” no proposal/Candidate authority is sent, but the requested neutral evidence fields are not all present explicitly.
+23. **YES** â€” the selected model independently returns BUY/SELL/WAIT in the unified path.
+24. **YES** â€” the model independently generates all trade levels; technical code can reject but not replace them.
+25. **YES** â€” in the unified market path, WAIT comes only from a successful model WAIT.
+26. **NO** â€” timeout maps to `model_timeout`.
+27. **NO** â€” invalid output maps to `invalid_model_output`.
+28. **NO** â€” unavailable/stale required data maps to `data_unavailable` or execution refresh state.
+29. **NO** â€” missing Vision continues with sufficient numeric candles or becomes `data_unavailable`.
+30. **NO** â€” invalid levels retain BUY/SELL and withhold execution.
+31. **NO** â€” tested conditional BUY remains BUY.
+32. **NO** â€” tested conditional SELL remains SELL.
+33. **NO** â€” technical validation cannot alter direction.
+34. **YES** â€” one repair call is the maximum.
+35. **YES** â€” platform Risk per Trade sizing occurs in execution after a validated/stored plan; MCP direct execution still relies on execution preflight.
+36. **YES** â€” platform primary timeframe is bound to the selected chart timeframe by code and unit test.
+37. **PARTIAL** â€” MCP trading guidance preserves host-model authority, but authenticated runtime tests and schema parity are not complete.
+38. **PARTIAL** â€” broad automated suites pass, but lint, browser, PG/Redis release, historical runtime, and authenticated MCP evidence are incomplete.
+39. **NO** â€” PR #66 has no review and both CI checks are red.
+40. **NO** â€” production runs `d995fdf`, not the reviewed/corrective head.
+41. **NO-GO** â€” blockers are listed above.
 
 ## 27. Report-file status
 
 This audit updates `docs/COMPLETE_CANDIDATE_SYSTEM_REMOVAL.md` and adds this evidence file. The documentation edits are intentionally left uncommitted because no commit was requested. Any later corrective code must be described explicitly and all affected checks rerun on the new PR head.
 
-## 28. Completion pass (2026-07-19) — corrective code
+## 28. Completion pass (2026-07-19) â€” corrective code
 
 Baseline re-verified before coding:
 
@@ -702,21 +702,21 @@ Baseline re-verified before coding:
 | Repository | `loorksy/AiChart` |
 | PR | #66 |
 | Branch | `fix/candidate-free-model-authority` |
-| Implementation commit | `690d7df…` |
-| Prior PR head | `2b9a8ef…` |
-| Actual PR base / `origin/main` | `d995fdf…` |
+| Implementation commit | `690d7dfâ€¦` |
+| Prior PR head | `2b9a8efâ€¦` |
+| Actual PR base / `origin/main` | `d995fdfâ€¦` |
 | Rollback target | `d995fdf52ab2983bc116407999777048ee9396e8` |
 | Production | Unchanged on rollback target (health probe of public URLs was unavailable from this workstation; prior audit recorded `d995fdf`) |
 
 ### Code blockers closed
 
-1. **Screening rename + shortlist authority** — `MarketScreeningItem` / `screeningItems` / `activityScore`; deep scan passes the complete bounded shortlist to `runUnifiedChartAgent` (no auto top recommendation).
-2. **Terminology isolation** — `recommendationSources`, `actionableDecision`; expanded architecture scan.
-3. **Model-plan persistence** — `modelPlanPersistence.ts` + orchestrator/`saveRecommendation`/`createTrackedRecommendation` wiring; historical mapper; no new `poi.score`.
-4. **Drawing safety** — only technically accepted geometry; invalid → non-executable note.
-5. **Neutral evidence** — broker/source, quote timestamps, precision, tick, market-open, ATR/volatility, S/R, BOS/CHoCH history, swings, sweeps, TF freshness.
-6. **MCP parity** — `create_recommendation` validates host model plans; `schemas:check` and `contract:check` OK after export.
-7. **Fixtures** — stale quote/snapshot, vision insufficiency, failed repair, cancel, model/execution unavailable, broker min-stop.
+1. **Screening rename + shortlist authority** â€” `MarketScreeningItem` / `screeningItems` / `activityScore`; deep scan passes the complete bounded shortlist to `runUnifiedChartAgent` (no auto top recommendation).
+2. **Terminology isolation** â€” `recommendationSources`, `actionableDecision`; expanded architecture scan.
+3. **Model-plan persistence** â€” `modelPlanPersistence.ts` + orchestrator/`saveRecommendation`/`createTrackedRecommendation` wiring; historical mapper; no new `poi.score`.
+4. **Drawing safety** â€” only technically accepted geometry; invalid â†’ non-executable note.
+5. **Neutral evidence** â€” broker/source, quote timestamps, precision, tick, market-open, ATR/volatility, S/R, BOS/CHoCH history, swings, sweeps, TF freshness.
+6. **MCP parity** â€” `create_recommendation` validates host model plans; `schemas:check` and `contract:check` OK after export.
+7. **Fixtures** â€” stale quote/snapshot, vision insufficiency, failed repair, cancel, model/execution unavailable, broker min-stop.
 
 ### Local verification after completion pass
 
@@ -749,6 +749,6 @@ Baseline re-verified before coding:
 | Does MCP validate host-model plans before persistence? | **Yes** |
 | Are MCP schemas synchronized? | **Yes** (local `schemas:check` OK) |
 | Was an old Candidate-backed row tested? | **Yes** (historical mapper unit test) |
-| Are PostgreSQL, Redis, MCP auth, browser, lint, build, and CI gates green? | **No** — incomplete / CI billing-locked |
+| Are PostgreSQL, Redis, MCP auth, browser, lint, build, and CI gates green? | **No** â€” incomplete / CI billing-locked |
 | Was the reviewed merge commit deployed exactly? | **No** |
 | Final decision | **NO-GO** |
