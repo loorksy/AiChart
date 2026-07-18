@@ -49,7 +49,7 @@ import {
 } from "@/lib/agent/context";
 
 export const runtime = "nodejs";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const log = createLogger("agent.chat.stream");
 

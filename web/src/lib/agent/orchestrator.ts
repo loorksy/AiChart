@@ -557,7 +557,10 @@ export async function runUnifiedChartAgent(
       captureTimestamps: {} as Record<string, number>,
       failures: ["vision_unavailable"],
     }));
-    if (vision.failures.length || vision.images.length !== snapshot.envelopes.length) {
+    const primaryVisionOk = vision.images.some(
+      (img) => img.meta.role === "primary" || img.meta.timeframe === snapshot.primaryTimeframe,
+    );
+    if (!primaryVisionOk || vision.images.length === 0) {
       return buildAgentFallbackResult(
         "The synchronized chart images could not be verified, so no market recommendation was issued.",
         collected,
@@ -642,7 +645,14 @@ export async function runUnifiedChartAgent(
       };
     }
     if (modelFirstMode === "live") {
-      if (!mf?.usedLLM || !mf.result) {
+      if (!mf) {
+        return buildAgentFallbackResult(
+          "The decision model timed out under the current reasoning setting. Try again, or lower reasoning effort if the wait is too long.",
+          collected,
+          locale,
+        );
+      }
+      if (!mf.usedLLM || !mf.result) {
         return buildAgentFallbackResult(
           "Decision model was unavailable — no market recommendation was issued.",
           collected,

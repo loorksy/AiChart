@@ -30,8 +30,8 @@ export const AGENT_TIMEOUTS = {
   news: 8_000,
   risk: 5_000,
   drawing: 5_000,
-  // gpt-5 family spends budget on reasoning before emitting JSON; 15s was
-  // aborting live XAUUSD decisions before any recommendation could land.
-  finalDecision: 60_000,
+  // Model-first GPT-5.x with High/xhigh + Vision + Structured Outputs regularly
+  // exceeds 60–120s. Keep below Next maxDuration/nginx /api budget (300s).
+  finalDecision: 210_000,
   general: 20_000,
 } as const;
