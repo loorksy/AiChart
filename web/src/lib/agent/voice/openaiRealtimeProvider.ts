@@ -21,6 +21,38 @@ import {
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 export const DEFAULT_VOICE_CONNECT_TIMEOUT_MS = 15_000;
 
+/** Normalize WebRTC data-channel payloads (string | Blob | ArrayBuffer). */
+export async function decodeDataChannelPayload(
+  data: unknown,
+): Promise<string | null> {
+  if (typeof data === "string") return data;
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    try {
+      return await data.text();
+    } catch {
+      return null;
+    }
+  }
+  if (data instanceof ArrayBuffer) {
+    try {
+      return new TextDecoder().decode(data);
+    } catch {
+      return null;
+    }
+  }
+  if (ArrayBuffer.isView(data)) {
+    try {
+      const view = data as ArrayBufferView;
+      return new TextDecoder().decode(
+        new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+      );
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export interface OpenAIRealtimeProviderOptions {
   credential: VoiceSessionCredential;
   locale: AppLocale;
@@ -100,6 +132,13 @@ export function createOpenAIRealtimeProvider(
         });
         break;
       }
+      case "conversation.item.input_audio_transcription.failed":
+        emit({
+          kind: "error",
+          code: "provider_unavailable",
+          message: "transcription_failed",
+        });
+        break;
       case "output_audio_buffer.started":
       case "response.output_audio.delta":
       case "response.audio.delta":
@@ -118,7 +157,15 @@ export function createOpenAIRealtimeProvider(
         }
         break;
       case "error":
-        emit({ kind: "error", code: "provider_unavailable", message: "provider_error" });
+        emit({
+          kind: "error",
+          code: "provider_unavailable",
+          message: String(
+            (msg.error as { message?: string } | undefined)?.message ??
+              msg.message ??
+              "provider_error",
+          ),
+        });
         break;
       default:
         break;
@@ -166,6 +213,7 @@ export function createOpenAIRealtimeProvider(
 
     // 4. Event data channel.
     dc = pc.createDataChannel("oai-events");
+    dc.binaryType = "arraybuffer";
     let openSettled = false;
     let openTimer: ReturnType<typeof setTimeout> | null = null;
     let resolveOpen!: () => void;
@@ -195,7 +243,19 @@ export function createOpenAIRealtimeProvider(
       settleOpen("webrtc_failed");
     }, opts.connectTimeoutMs ?? DEFAULT_VOICE_CONNECT_TIMEOUT_MS);
 
-    dc.addEventListener("message", (e) => handleServerEvent(String(e.data)));
+    const onChannelMessage = (e: MessageEvent) => {
+      void decodeDataChannelPayload(e.data).then((raw) => {
+        if (raw) handleServerEvent(raw);
+      });
+    };
+    dc.addEventListener("message", onChannelMessage);
+    // Some browsers deliver the remote peer's channel instead of/in addition to
+    // the locally created one — attach the same decoder either way.
+    pc.addEventListener("datachannel", (event) => {
+      const remote = event.channel;
+      remote.binaryType = "arraybuffer";
+      remote.addEventListener("message", onChannelMessage);
+    });
     dc.addEventListener("open", () => {
       settleOpen();
       send(buildRealtimeSessionUpdate({ locale: opts.locale, voice: opts.credential.voice }));

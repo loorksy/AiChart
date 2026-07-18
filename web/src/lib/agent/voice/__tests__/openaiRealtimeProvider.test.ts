@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { createOpenAIRealtimeProvider } from "@/lib/agent/voice/openaiRealtimeProvider";
+import {
+  createOpenAIRealtimeProvider,
+  decodeDataChannelPayload,
+} from "@/lib/agent/voice/openaiRealtimeProvider";
 import type {
   VoiceProviderEvent,
   VoiceSessionCredential,
@@ -113,6 +116,15 @@ let restoreFn: (() => void) | null = null;
 afterEach(() => {
   restoreFn?.();
   restoreFn = null;
+});
+
+describe("decodeDataChannelPayload", () => {
+  it("decodes string, ArrayBuffer, and Uint8Array payloads", async () => {
+    assert.equal(await decodeDataChannelPayload('{"type":"x"}'), '{"type":"x"}');
+    const bytes = new TextEncoder().encode('{"ok":true}');
+    assert.equal(await decodeDataChannelPayload(bytes.buffer), '{"ok":true}');
+    assert.equal(await decodeDataChannelPayload(bytes), '{"ok":true}');
+  });
 });
 
 describe("openaiRealtimeProvider lifecycle + cleanup", () => {

@@ -414,6 +414,7 @@ export const en = {
   "voice.requesting_permission": "Requesting microphone access",
   "voice.connecting": "Connecting",
   "voice.listening": "Listening",
+  "voice.speak_prompt": "Speak now — AiChart is listening",
   "voice.user_speaking": "You are speaking",
   "voice.thinking": "AiChart is thinking",
   "voice.speaking": "AiChart is speaking",
