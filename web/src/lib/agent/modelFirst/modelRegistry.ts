@@ -41,6 +41,26 @@ export interface ModelCapabilityRecord {
   probeErrors: string[];
 }
 
+export const ModelCapabilityRecordSchema = z.object({
+  id: z.string().min(1).max(120),
+  displayName: z.string().min(1).max(160),
+  available: z.boolean(),
+  enabled: z.boolean(),
+  responsesApi: z.boolean(),
+  vision: z.boolean(),
+  structuredOutputs: z.boolean(),
+  reasoning: z.boolean(),
+  supportedReasoningValues: z.array(ReasoningEffortSchema).max(3),
+  streaming: z.boolean(),
+  tools: z.boolean(),
+  contextTokens: z.number().int().positive().nullable(),
+  deprecated: z.boolean(),
+  costTier: z.enum(["standard", "premium", "unknown"]),
+  eligibleAsDefault: z.boolean(),
+  lastVerifiedAt: z.number().int().positive().nullable(),
+  probeErrors: z.array(z.string().min(1).max(120)).max(32),
+});
+
 export interface PublicModelProjection {
   id: string;
   displayName: string;
@@ -148,14 +168,18 @@ export function validateReasoningForModel(
   record: ModelCapabilityRecord,
 ): { ok: true; effort: ReasoningEffort | null } | { ok: false; error: string } {
   if (!record.reasoning || record.supportedReasoningValues.length === 0) {
-    return { ok: true, effort: null };
+    return effort == null || effort === ""
+      ? { ok: true, effort: null }
+      : { ok: false, error: "reasoning_unsupported" };
   }
-  const preferred =
-    effort && ReasoningEffortSchema.safeParse(effort).success
-      ? (effort as ReasoningEffort)
-      : record.supportedReasoningValues.includes("high")
-        ? "high"
-        : record.supportedReasoningValues[0]!;
+  if (effort != null && !ReasoningEffortSchema.safeParse(effort).success) {
+    return { ok: false, error: "reasoning_unsupported" };
+  }
+  const preferred = effort
+    ? (effort as ReasoningEffort)
+    : record.supportedReasoningValues.includes("high")
+      ? "high"
+      : record.supportedReasoningValues[0]!;
   if (!record.supportedReasoningValues.includes(preferred)) {
     return { ok: false, error: "reasoning_unsupported" };
   }

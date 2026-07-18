@@ -1,6 +1,6 @@
 /**
  * Canonical OpenAI Responses API adapter for trading analysis.
- * Always uses store: false unless an approved retention policy overrides.
+ * Always uses store: false. Trading callers cannot override provider retention.
  */
 import {
   ExternalTimeoutError,
@@ -34,8 +34,8 @@ export interface CallResponsesParams {
   reasoningEffort?: ReasoningEffort | null;
   maxOutputTokens?: number;
   schema?: ResponsesStructuredSchema;
-  /** Must remain false for trading analysis (default). */
-  store?: boolean;
+  /** Optional only for call-site clarity; `true` is rejected by the type system. */
+  store?: false;
   signal?: AbortSignal;
   timeoutMs?: number;
 }
@@ -60,6 +60,7 @@ export class ResponsesApiError extends Error {
       | "rate_limited"
       | "timeout"
       | "invalid_request"
+      | "model_substitution"
       | "provider_error"
       | "empty_response",
     public readonly status?: number,
@@ -104,16 +105,14 @@ function extractOutputText(payload: Record<string, unknown>): string {
 }
 
 /**
- * Canonical trading Responses call. Forces store:false unless caller
- * explicitly passes store:true under an approved retention policy.
+ * Canonical trading Responses call. Provider retention is fail-closed.
  */
 export async function callOpenAIResponses(
   params: CallResponsesParams,
 ): Promise<CallResponsesResult> {
-  const store = params.store === true ? true : false;
   const body: Record<string, unknown> = {
     model: params.model,
-    store,
+    store: false,
     input: buildInput(params),
     max_output_tokens: Math.min(params.maxOutputTokens ?? 4096, 8192),
   };
@@ -180,6 +179,16 @@ export async function callOpenAIResponses(
     throw new ResponsesApiError("responses_provider_error", "provider_error", res.status);
   }
 
+  const resolvedModel = typeof json.model === "string" ? json.model : params.model;
+  const normalizeModelId = (value: string) => value.replace(/^openai\//, "").trim();
+  if (normalizeModelId(resolvedModel) !== normalizeModelId(params.model)) {
+    throw new ResponsesApiError(
+      "responses_model_substitution",
+      "model_substitution",
+      res.status,
+    );
+  }
+
   const text = extractOutputText(json);
   if (!text) {
     throw new ResponsesApiError("responses_empty", "empty_response", res.status);
@@ -189,7 +198,7 @@ export async function callOpenAIResponses(
   return {
     text,
     responseId: typeof json.id === "string" ? json.id : null,
-    model: typeof json.model === "string" ? json.model : params.model,
+    model: resolvedModel,
     usage: {
       inputTokens: typeof usage.input_tokens === "number" ? usage.input_tokens : null,
       outputTokens: typeof usage.output_tokens === "number" ? usage.output_tokens : null,
@@ -203,10 +212,9 @@ export async function callOpenAIResponses(
 export function buildTradingResponsesBody(
   params: Omit<CallResponsesParams, "apiKey" | "signal" | "timeoutMs">,
 ): Record<string, unknown> {
-  const store = params.store === true ? true : false;
   const body: Record<string, unknown> = {
     model: params.model,
-    store,
+    store: false,
     input: buildInput(params as CallResponsesParams),
   };
   if (params.reasoningEffort) {

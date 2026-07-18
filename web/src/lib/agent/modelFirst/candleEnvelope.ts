@@ -13,6 +13,10 @@ export type OhlcvBar = {
 export type CandleEnvelope = {
   timeframe: string;
   role: "primary" | "context";
+  source: string;
+  capturedAt: number;
+  freshnessAgeMs: number | null;
+  fresh: boolean;
   requestedCount: number;
   availableCount: number;
   includedCount: number;
@@ -37,16 +41,33 @@ export function buildCandleEnvelope(input: {
     volume?: number;
   }>;
   requestedCount?: number;
+  source: string;
+  capturedAt?: number;
 }): CandleEnvelope {
   const requested =
     input.requestedCount ??
     (input.role === "primary" ? DEFAULT_PRIMARY : DEFAULT_CONTEXT);
+  for (let index = 1; index < input.candles.length; index += 1) {
+    if (input.candles[index]!.time <= input.candles[index - 1]!.time) {
+      throw new Error(`candles_not_chronological_${input.timeframe}`);
+    }
+  }
   const available = input.candles.length;
   const slice = input.candles.slice(-requested);
   const included = slice.length;
+  const capturedAt = input.capturedAt ?? Date.now();
+  const lastTime = slice.at(-1)?.time ?? null;
+  const lastTimeMs =
+    lastTime == null ? null : lastTime < 1_000_000_000_000 ? lastTime * 1000 : lastTime;
+  const freshnessAgeMs =
+    lastTimeMs == null ? null : Math.max(0, capturedAt - lastTimeMs);
   return {
     timeframe: input.timeframe,
     role: input.role,
+    source: input.source,
+    capturedAt,
+    freshnessAgeMs,
+    fresh: freshnessAgeMs != null && freshnessAgeMs <= 24 * 60 * 60 * 1000,
     requestedCount: requested,
     availableCount: available,
     includedCount: included,

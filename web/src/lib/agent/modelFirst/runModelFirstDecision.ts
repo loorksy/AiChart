@@ -12,13 +12,12 @@ import {
 } from "../confidenceSemantics";
 import type { AppLocale } from "@/lib/i18n";
 import {
-  getCachedModelRegistry,
   pickDefaultModelId,
   type ReasoningEffort,
   validateReasoningForModel,
   validateUserModelSelection,
 } from "./modelRegistry";
-import { stubProbedRegistry } from "./probeModels";
+import { loadModelRegistry } from "./modelRegistryStore";
 import {
   callOpenAIResponses,
   type ResponsesImageInput,
@@ -59,6 +58,12 @@ export interface ModelFirstDecisionOutcome {
   visionUsed: boolean;
   candidateLeakKeys: string[];
   shadowOnly: boolean;
+  responseIds?: string[];
+  tokenUsage?: {
+    inputTokens: number | null;
+    outputTokens: number | null;
+    totalTokens: number | null;
+  };
 }
 
 function extractJson(raw: string): string {
@@ -77,7 +82,7 @@ function toFinalResult(
     arr.map((s) => sanitizePublicText(s).slice(0, 240)).filter(Boolean).slice(0, max);
   const keyReasons = clean(plan.keyReasons, 6);
   const riskWarnings = clean(
-    [...plan.warnings, ...validated.technicalErrors.map((e) => `technical:${e}`)],
+    plan.warnings,
     6,
   );
   if (!validated.executionReady && plan.decision !== "wait") {
@@ -147,12 +152,8 @@ async function resolveModel(
   modelId: string;
   effort: ReasoningEffort | null;
 }> {
-  let records = getCachedModelRegistry();
-  if (!records?.length) {
-    // Without a prior probe, fall back to allowlisted stubs for local/dev;
-    // production must call discoverAndProbeModels at admin refresh / boot.
-    records = stubProbedRegistry(["gpt-4.1", "o3-mini", "o4-mini"]);
-  }
+  const records = await loadModelRegistry();
+  if (!records?.length) throw new Error("model_registry_unavailable");
   const selectedId =
     preferredModelId ??
     pickDefaultModelId(records) ??
@@ -165,7 +166,7 @@ async function resolveModel(
     throw new Error(validated.error);
   }
   const effortCheck = validateReasoningForModel(
-    preferredEffort ?? "high",
+    preferredEffort ?? undefined,
     validated.record,
   );
   if (!effortCheck.ok) {
@@ -235,6 +236,25 @@ export async function runModelFirstDecision(
   const instructions = `${MODEL_FIRST_SYSTEM_PROMPT}\n\nWrite summary/keyReasons/warnings in ${language}.`;
   const evidencePayload = input.evidence;
   const candidateLeakKeys = assertNoCandidateAuthority(evidencePayload);
+  if (candidateLeakKeys.length > 0) {
+    ctx.emitDebug?.({
+      type: "model_first_payload_rejected",
+      code: "candidate_authority_leak",
+      paths: candidateLeakKeys,
+    });
+    return {
+      result: null,
+      validated: null,
+      usedLLM: false,
+      modelId,
+      reasoningEffort: effort,
+      responseId: null,
+      repaired: false,
+      visionUsed: input.images.length > 0,
+      candidateLeakKeys,
+      shadowOnly,
+    };
+  }
   const userText = JSON.stringify({
     evidence: evidencePayload,
     visionNote:
@@ -249,6 +269,13 @@ export async function runModelFirstDecision(
     schema: MODEL_TRADE_PLAN_JSON_SCHEMA,
     strict: true as const,
   };
+  const responseIds: string[] = [];
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  let hasInputTokens = false;
+  let hasOutputTokens = false;
+  let hasTotalTokens = false;
 
   async function once(extraRepair?: string): Promise<{
     plan: ModelTradePlan;
@@ -266,7 +293,21 @@ export async function runModelFirstDecision(
       maxOutputTokens: 4096,
       store: false,
       schema,
+      signal: ctx.signal,
     });
+    if (res.responseId) responseIds.push(res.responseId);
+    if (res.usage.inputTokens != null) {
+      inputTokens += res.usage.inputTokens;
+      hasInputTokens = true;
+    }
+    if (res.usage.outputTokens != null) {
+      outputTokens += res.usage.outputTokens;
+      hasOutputTokens = true;
+    }
+    if (res.usage.totalTokens != null) {
+      totalTokens += res.usage.totalTokens;
+      hasTotalTokens = true;
+    }
     const parsed = ModelTradePlanSchema.parse(JSON.parse(extractJson(res.text)));
     return { plan: parsed, responseId: res.responseId };
   }
@@ -301,6 +342,12 @@ export async function runModelFirstDecision(
       visionUsed: input.images.length > 0,
       candidateLeakKeys,
       shadowOnly,
+      responseIds,
+      tokenUsage: {
+        inputTokens: hasInputTokens ? inputTokens : null,
+        outputTokens: hasOutputTokens ? outputTokens : null,
+        totalTokens: hasTotalTokens ? totalTokens : null,
+      },
     };
   }
 
@@ -368,5 +415,11 @@ export async function runModelFirstDecision(
     visionUsed: input.images.length > 0,
     candidateLeakKeys,
     shadowOnly,
+    responseIds,
+    tokenUsage: {
+      inputTokens: hasInputTokens ? inputTokens : null,
+      outputTokens: hasOutputTokens ? outputTokens : null,
+      totalTokens: hasTotalTokens ? totalTokens : null,
+    },
   };
 }

@@ -6,23 +6,22 @@ import { ensureUserDefaults } from "@/lib/store";
 import {
   type ReasoningEffort,
   ReasoningEffortSchema,
-  getCachedModelRegistry,
   pickDefaultModelId,
   validateReasoningForModel,
   validateUserModelSelection,
 } from "./modelRegistry";
-import { stubProbedRegistry } from "./probeModels";
+import { loadModelRegistry } from "./modelRegistryStore";
 
 export type UserModelPreferences = {
   modelId: string | null;
   reasoningEffort: ReasoningEffort | null;
+  selectionRequired: boolean;
+  selectionError: "model_unavailable" | "reasoning_unsupported" | null;
 };
 
-function registryOrStub() {
-  let records = getCachedModelRegistry();
-  if (!records?.length) {
-    records = stubProbedRegistry(["gpt-4.1", "o3-mini", "o4-mini"]);
-  }
+async function requireRegistry() {
+  const records = await loadModelRegistry();
+  if (!records?.length) throw new Error("model_registry_unavailable");
   return records;
 }
 
@@ -39,26 +38,53 @@ export async function getUserModelPreferences(
     [userId],
   ).catch(() => null);
 
-  const records = registryOrStub();
+  const records = await requireRegistry();
   const savedModel = row?.preferred_model?.trim() || null;
   let modelId: string | null = null;
   if (savedModel) {
     const v = validateUserModelSelection(savedModel, records);
-    modelId = v.ok ? v.record.id : null;
+    if (!v.ok) {
+      return {
+        modelId: null,
+        reasoningEffort: null,
+        selectionRequired: true,
+        selectionError: "model_unavailable",
+      };
+    }
+    modelId = v.record.id;
   }
   if (!modelId) modelId = pickDefaultModelId(records);
 
   const savedEffortRaw = row?.preferred_reasoning_effort?.trim();
-  const savedEffort = ReasoningEffortSchema.safeParse(savedEffortRaw).success
-    ? (savedEffortRaw as ReasoningEffort)
-    : "high";
+  if (savedEffortRaw && !ReasoningEffortSchema.safeParse(savedEffortRaw).success) {
+    return {
+      modelId,
+      reasoningEffort: null,
+      selectionRequired: true,
+      selectionError: "reasoning_unsupported",
+    };
+  }
+  const savedEffort = savedEffortRaw as ReasoningEffort | undefined;
   const record = modelId ? records.find((r) => r.id === modelId) : undefined;
   let reasoningEffort: ReasoningEffort | null = null;
   if (record) {
     const v = validateReasoningForModel(savedEffort, record);
-    reasoningEffort = v.ok ? v.effort : null;
+    if (!v.ok) {
+      return {
+        modelId,
+        reasoningEffort: null,
+        selectionRequired: true,
+        selectionError: "reasoning_unsupported",
+      };
+    }
+    reasoningEffort = v.effort;
   }
-  return { modelId, reasoningEffort };
+  return {
+    modelId,
+    reasoningEffort,
+    selectionRequired: !modelId,
+    selectionError: modelId ? null : "model_unavailable",
+  };
 }
 
 export async function saveUserModelPreferences(
@@ -66,7 +92,7 @@ export async function saveUserModelPreferences(
   input: { modelId?: string; reasoningEffort?: string },
 ): Promise<UserModelPreferences> {
   await ensureUserDefaults(userId);
-  const records = registryOrStub();
+  const records = await requireRegistry();
   const current = await getUserModelPreferences(userId);
   let modelId = current.modelId;
   if (input.modelId != null) {
@@ -74,13 +100,14 @@ export async function saveUserModelPreferences(
     if (!v.ok) throw new Error(v.error);
     modelId = v.record.id;
   }
+  if (!modelId) throw new Error("model_selection_required");
   const record = records.find((r) => r.id === modelId);
   if (!record) throw new Error("model_unavailable");
 
   let reasoningEffort = current.reasoningEffort;
   if (input.reasoningEffort != null || input.modelId != null) {
     const v = validateReasoningForModel(
-      input.reasoningEffort ?? reasoningEffort ?? "high",
+      input.reasoningEffort ?? (input.modelId != null ? undefined : reasoningEffort ?? undefined),
       record,
     );
     if (!v.ok) throw new Error(v.error);
@@ -95,5 +122,10 @@ export async function saveUserModelPreferences(
       WHERE user_id = ?`,
     [modelId, reasoningEffort, userId],
   );
-  return { modelId, reasoningEffort };
+  return {
+    modelId,
+    reasoningEffort,
+    selectionRequired: false,
+    selectionError: null,
+  };
 }

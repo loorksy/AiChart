@@ -7,12 +7,12 @@ requiredTools: ["get_trade_readiness", "open_trade"]
 supportedLocales: ["ar", "en"]
 allowedMarkets: ["forex"]
 tags: ["execution", "trade", "mt5", "approval", "scalping"]
-description: Execute an AI-selected Forex scalp candidate through AiChart's technical broker safety flow.
+description: Execute an AI-generated Forex scalp plan through AiChart's technical broker safety flow.
 ---
 
 # AiChart Trading
 
-The model is the sole authority for BUY, SELL, or WAIT. Use fresh market tools and bind BUY/SELL to a real candidate with entry, mandatory stop-loss, and targets.
+The model is the sole authority for BUY, SELL, or WAIT. Use fresh market tools to generate BUY/SELL entry, mandatory stop-loss, and target levels; technical validation may reject execution but never select or rewrite direction.
 
 Before execution:
 

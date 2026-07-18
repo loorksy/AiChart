@@ -4,10 +4,11 @@
  * User-context: optional, labeled, only when drawings are required.
  */
 import {
-  buildChartSnapshotBufferForMarket,
+  buildChartSnapshotBufferFromCandles,
   bufferToChatImage,
 } from "@/lib/chartSnapshot";
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import type { SerializedChartDrawing } from "@/lib/chart/drawings/types";
 import type { ChatImagePayload } from "@/lib/chatImage";
 import type { MarketSnapshot } from "./marketSnapshot";
 import { assertSnapshotImageFreshness } from "./marketSnapshot";
@@ -67,20 +68,23 @@ export async function captureNeutralDecisionCharts(input: {
   const captureTimestamps: Record<string, number> = {};
   const failures: string[] = [];
 
-  const market = input.market ?? "forex";
   for (const tf of timeframes) {
     try {
-      const buffer = await buildChartSnapshotBufferForMarket(
-        input.userId,
-        input.snapshot.symbol,
-        tf,
-        market,
+      const envelope = input.snapshot.envelopes.find((item) => item.timeframe === tf);
+      if (!envelope?.candles.length) {
+        failures.push(`missing_snapshot_candles_${tf}`);
+        continue;
+      }
+      const buffer = await buildChartSnapshotBufferFromCandles(
         {
+          symbol: input.snapshot.symbol,
+          interval: tf,
           // Explicitly omit overlays / drawings — neutral decision image.
           limit: 80,
           overlays: [],
           drawings: [],
         },
+        envelope.candles,
       );
       if (!buffer || buffer.length < 200) {
         failures.push(`blank_or_small_${tf}`);
@@ -124,6 +128,7 @@ export async function captureNeutralDecisionCharts(input: {
   const freshness = assertSnapshotImageFreshness(input.snapshot, captureTimestamps);
   if (!freshness.ok) {
     failures.push(freshness.reason);
+    return { images: [], captureTimestamps: {}, failures };
   }
 
   return { images, captureTimestamps, failures };
@@ -134,20 +139,33 @@ export async function captureUserContextChart(input: {
   userId: number;
   snapshot: MarketSnapshot;
   market?: "forex";
-  drawings: ChartDrawing[];
+  drawings: Array<ChartDrawing | SerializedChartDrawing>;
 }): Promise<CapturedVisionImage | null> {
   if (!input.drawings.length) return null;
   const tf = input.snapshot.primaryTimeframe;
-  const buffer = await buildChartSnapshotBufferForMarket(
-    input.userId,
-    input.snapshot.symbol,
-    tf,
-    input.market ?? "forex",
+  const envelope = input.snapshot.envelopes.find((item) => item.timeframe === tf);
+  if (!envelope?.candles.length) return null;
+  const drawings: ChartDrawing[] = input.drawings.map((drawing) => {
+    if ("confidence" in drawing) return drawing;
+    return {
+      type: drawing.type as ChartDrawing["type"],
+      confidence: 1,
+      label: drawing.label,
+      color: drawing.color,
+      points: drawing.points
+        .filter((point) => typeof point.price === "number")
+        .map((point) => ({ price: point.price!, time: point.time })),
+    };
+  });
+  const buffer = await buildChartSnapshotBufferFromCandles(
     {
+      symbol: input.snapshot.symbol,
+      interval: tf,
       limit: 80,
       overlays: [],
-      drawings: input.drawings,
+      drawings,
     },
+    envelope.candles,
   );
   if (!buffer) return null;
   const chatImage = bufferToChatImage(buffer);

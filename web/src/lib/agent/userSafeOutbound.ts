@@ -229,6 +229,7 @@ export function stripInternalFieldsFromClientResult(
     selectedSkills: _sk,
     skillLoadFailures: _sf,
     debugDecisionFlow: _dbg,
+    modelRun: _modelRun,
     ...safe
   } = result;
   const factors = safe.confidenceSemantics?.factors;

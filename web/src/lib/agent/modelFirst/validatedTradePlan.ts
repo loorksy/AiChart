@@ -44,6 +44,8 @@ export function validateTradePlanTechnically(input: {
     };
   }
 
+  if (plan.activation === "none") errors.push("trade_activation_missing");
+
   const preferred = plan.entryZone.preferred;
   const low = plan.entryZone.low;
   const high = plan.entryZone.high;
@@ -60,8 +62,12 @@ export function validateTradePlanTechnically(input: {
   const targets = plan.targets.map((t) => t.price).filter(finite);
 
   if (entry == null) errors.push("entry_missing");
+  if (!finite(preferred)) errors.push("preferred_entry_missing");
   if (stopLoss == null) errors.push("stop_missing");
-  if (!targets.length) errors.push("targets_missing");
+  if (targets.length < 2) errors.push("two_targets_required");
+  if (!finite(plan.invalidation)) errors.push("invalidation_missing");
+  if (input.currentPrice == null) errors.push("quote_missing");
+  if (input.quoteAgeMs == null) errors.push("quote_age_unknown");
 
   if (entry != null && stopLoss != null) {
     if (decision === "buy" && !(stopLoss < entry)) {
@@ -79,10 +85,32 @@ export function validateTradePlanTechnically(input: {
     if (decision === "sell" && targets.some((t) => t >= entry)) {
       errors.push("sell_targets_must_be_below_entry");
     }
+    for (let index = 1; index < targets.length; index += 1) {
+      if (decision === "buy" && targets[index]! <= targets[index - 1]!) {
+        errors.push("buy_targets_not_ascending");
+        break;
+      }
+      if (decision === "sell" && targets[index]! >= targets[index - 1]!) {
+        errors.push("sell_targets_not_descending");
+        break;
+      }
+    }
   }
 
   if (finite(low) && finite(high) && low > high) {
     errors.push("entry_zone_low_above_high");
+  }
+  if (!finite(low) || !finite(high)) errors.push("entry_zone_missing");
+  if (finite(low) && finite(high) && entry != null && (entry < low || entry > high)) {
+    errors.push("preferred_entry_outside_zone");
+  }
+  if (entry != null && finite(plan.invalidation)) {
+    if (decision === "buy" && plan.invalidation >= entry) {
+      errors.push("buy_invalidation_must_be_below_entry");
+    }
+    if (decision === "sell" && plan.invalidation <= entry) {
+      errors.push("sell_invalidation_must_be_above_entry");
+    }
   }
 
   const tick = input.tickSize;
@@ -90,6 +118,15 @@ export function validateTradePlanTechnically(input: {
     const align = (n: number) => Math.abs(n / tick - Math.round(n / tick)) > 1e-6;
     if (align(entry)) errors.push("entry_not_tick_aligned");
     if (stopLoss != null && align(stopLoss)) errors.push("stop_not_tick_aligned");
+    if (finite(low) && align(low)) errors.push("entry_zone_low_not_tick_aligned");
+    if (finite(high) && align(high)) errors.push("entry_zone_high_not_tick_aligned");
+    if (finite(plan.invalidation) && align(plan.invalidation)) {
+      errors.push("invalidation_not_tick_aligned");
+    }
+    if (targets.some(align)) errors.push("target_not_tick_aligned");
+    if (stopLoss != null && Math.abs(entry - stopLoss) < tick) {
+      errors.push("stop_distance_below_tick");
+    }
   }
 
   const maxAge = input.maxQuoteAgeMs ?? 120_000;
@@ -114,7 +151,7 @@ export function validateTradePlanTechnically(input: {
 
   return {
     decision,
-    activation: plan.activation === "none" ? "conditional" : plan.activation,
+    activation: plan.activation,
     executionReady: errors.length === 0,
     plan,
     entry,

@@ -78,10 +78,12 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "scan_market",
     domain: "market",
     description:
-      "scan market · compare symbols · best entry · pick a trade. When: 'take a trade' or 'best opportunity'. read-only. Example: symbols=[EURUSD,GBPUSD].",
+      "When: broad, bounded market screening. read-only. The host model must compare returned evidence and choose BUY/SELL/WAIT; scores never imply direction. Explicit scope is required. Example: scope=market_scan&symbols=EURUSD,GBPUSD&interval=5m.",
     inputSchema: {
-      symbols: z.array(z.string()).max(30).optional(),
+      scope: z.enum(["symbol_scan", "timeframe_scan", "market_scan"]),
+      symbols: z.array(z.string()).max(12).optional(),
       interval: zInterval,
+      intervals: z.array(z.string()).min(2).max(4).optional(),
       market: zMarket,
     },
     annotations: READ_ONLY,

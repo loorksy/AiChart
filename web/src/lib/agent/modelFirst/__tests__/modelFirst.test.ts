@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   clearCachedModelRegistry,
+  getCachedModelRegistry,
   isAllowlistedModelId,
   pickDefaultModelId,
   projectPublicModels,
@@ -30,6 +31,7 @@ describe("model registry", () => {
   it("rejects unavailable selections and does not silently substitute", () => {
     clearCachedModelRegistry();
     const records = stubProbedRegistry(["gpt-4.1", "o3-mini"]);
+    assert.equal(getCachedModelRegistry(), null);
     const bad = validateUserModelSelection("o4-mini", records);
     assert.equal(bad.ok, false);
     const good = validateUserModelSelection("gpt-4.1", records);
@@ -51,6 +53,15 @@ describe("model registry", () => {
       supportedReasoningValues: ["low"],
     });
     assert.equal(unsupported.ok, false);
+    const nonReasoning = validateReasoningForModel("high", gpt);
+    assert.deepEqual(nonReasoning, {
+      ok: false,
+      error: "reasoning_unsupported",
+    });
+    assert.deepEqual(validateReasoningForModel(undefined, gpt), {
+      ok: true,
+      effort: null,
+    });
   });
 
   it("picks non-premium default when eligible", () => {
@@ -74,13 +85,12 @@ describe("Responses store:false contract", () => {
     assert.deepEqual(body.reasoning, { effort: "high" });
   });
 
-  it("only enables store when explicitly requested", () => {
+  it("cannot enable provider storage through the trading body helper", () => {
     const body = buildTradingResponsesBody({
       model: "o3-mini",
       inputText: "analyze",
-      store: true,
     });
-    assert.equal(body.store, true);
+    assert.equal(body.store, false);
   });
 });
 
@@ -94,6 +104,13 @@ describe("authority: no candidate fields in model evidence", () => {
     assert.ok(leaks.includes("selectedCandidate"));
     assert.ok(leaks.includes("tradeCandidates"));
     assert.ok(leaks.includes("playbook"));
+  });
+
+  it("reports nested candidate authority paths", () => {
+    const leaks = assertNoCandidateAuthority({
+      safe: { nested: [{ candidate_score: 0.9 }] },
+    });
+    assert.deepEqual(leaks, ["safe.nested[0].candidate_score"]);
   });
 
   it("allows null markers and clean evidence", () => {

@@ -468,6 +468,7 @@ export async function POST(req: NextRequest) {
                 // Full research transparency stays in runTrace only (not SSE).
                 researchEvidence: result.researchEvidence ?? null,
                 evidenceTimeline: result.evidenceTimeline ?? null,
+                modelRun: result.modelRun ?? null,
                 skillNames: (result.selectedSkills ?? []).map((s) => s.name),
               },
             });
@@ -477,6 +478,13 @@ export async function POST(req: NextRequest) {
               status: "completed",
               decision: result.decision,
               confidence: result.confidence,
+              tokenUsage: result.modelRun
+                ? Object.fromEntries(
+                    Object.entries(result.modelRun.tokenUsage).filter(
+                      (entry): entry is [string, number] => typeof entry[1] === "number",
+                    ),
+                  )
+                : undefined,
               skillNames: (result.selectedSkills ?? []).map((s) => s.name),
             });
           }

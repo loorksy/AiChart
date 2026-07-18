@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { handleError, requirePlatformAccess } from "@/lib/api";
 import { getProviderApiKey } from "@/lib/llm";
 import {
-  getCachedModelRegistry,
   pickDefaultModelId,
   projectPublicModels,
 } from "@/lib/agent/modelFirst/modelRegistry";
-import { stubProbedRegistry } from "@/lib/agent/modelFirst/probeModels";
+import { loadModelRegistry } from "@/lib/agent/modelFirst/modelRegistryStore";
 import { getUserModelPreferences } from "@/lib/agent/modelFirst/userModelPreferences";
 
 /**
@@ -16,21 +15,25 @@ import { getUserModelPreferences } from "@/lib/agent/modelFirst/userModelPrefere
 export async function GET() {
   try {
     const user = await requirePlatformAccess();
-    let records = getCachedModelRegistry();
-    if (!records?.length) {
-      // Until admin refresh probes under the production key, expose a safe stub
-      // allowlist so the composer is usable. Probe replaces this in-process.
-      records = stubProbedRegistry(["gpt-4.1", "o3-mini", "o4-mini"]);
-    }
+    const records = (await loadModelRegistry()) ?? [];
     const models = projectPublicModels(records);
-    const prefs = await getUserModelPreferences(user.id);
+    const prefs = records.length
+      ? await getUserModelPreferences(user.id)
+      : {
+          modelId: null,
+          reasoningEffort: null,
+          selectionRequired: true,
+          selectionError: "model_registry_unavailable" as const,
+        };
     const defaultModelId = pickDefaultModelId(records);
     return NextResponse.json({
       models,
       preferredModelId: prefs.modelId,
       preferredReasoningEffort: prefs.reasoningEffort,
+      selectionRequired: prefs.selectionRequired,
+      selectionError: prefs.selectionError,
       defaultModelId,
-      probed: Boolean(getCachedModelRegistry()?.length),
+      probed: records.length > 0,
       keyConfigured: Boolean(getProviderApiKey("openai")),
       note:
         "Platform model preference applies to AiChart trading analysis only. MCP hosts (Claude, ChatGPT, Cursor) keep their own model authority.",

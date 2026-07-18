@@ -77,6 +77,8 @@ import {
 import { resolveContextTimeframes } from "./modelFirst/contextTimeframes";
 import type { ReasoningEffort } from "./modelFirst/modelRegistry";
 import { getUserModelPreferences } from "./modelFirst/userModelPreferences";
+import { getFreshAgentCandles } from "./marketContext/getFreshAgentCandles";
+import { resolveDecisionQuote } from "./modelFirst/decisionQuote";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
@@ -275,11 +277,18 @@ export async function runUnifiedChartAgent(
   // "preparing a general answer".
   if (isGeneralOnly(intents)) {
     const summary = await withTimeout(
-      answerGeneralQuestion(userMessage, input.conversationContext),
+      answerGeneralQuestion(userMessage, input.conversationContext, {
+        userId: ctx.userId,
+        signal: ctx.signal,
+      }),
       AGENT_TIMEOUTS.general,
-      bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time."),
+      { text: bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time.") },
     );
-    return buildInformationalResult(summary, collected);
+    return buildInformationalResult(
+      typeof summary === "string" ? summary : summary.text,
+      collected,
+      typeof summary === "string" ? undefined : summary.modelRun,
+    );
   }
 
   const wantMarket = needsMarketContext(intents);
@@ -343,11 +352,18 @@ export async function runUnifiedChartAgent(
   if (!wantMarket) {
     // Account-only or platform-help without market context.
     const summary = await withTimeout(
-      answerGeneralQuestion(userMessage, input.conversationContext),
+      answerGeneralQuestion(userMessage, input.conversationContext, {
+        userId: ctx.userId,
+        signal: ctx.signal,
+      }),
       AGENT_TIMEOUTS.general,
-      bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time."),
+      { text: bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time.") },
     );
-    return buildInformationalResult(summary, collected);
+    return buildInformationalResult(
+      typeof summary === "string" ? summary : summary.text,
+      collected,
+      typeof summary === "string" ? undefined : summary.modelRun,
+    );
   }
 
   // --- Market fleet ---
@@ -478,26 +494,58 @@ export async function runUnifiedChartAgent(
   let selectedCandidateIds: string[] | undefined;
   let drawingAdvice: { shouldDraw: boolean; reason: string } | null = null;
   let usedLLM = false;
+  let modelRun: AgentFinalResult["modelRun"];
 
   if (modelFirstMode === "live" || modelFirstMode === "shadow") {
     const { context: contextTfs } = resolveContextTimeframes(market.interval);
-    const contextCandles: Record<string, typeof market.currentTfCandles> = {};
-    if (market.higherTfCandles?.length) {
-      contextCandles[market.higherInterval] = market.higherTfCandles;
+    const contextEntries = await Promise.all(
+      contextTfs.map(async (tf) => {
+        if (tf === market.higherInterval && market.higherTfCandles.length) {
+          return [tf, market.higherTfCandles] as const;
+        }
+        if (tf === "1d" && market.dailyCandles.length) {
+          return [tf, market.dailyCandles] as const;
+        }
+        const fresh = await getFreshAgentCandles({
+          userId: ctx.userId,
+          symbol: market.symbol,
+          interval: tf,
+          dataSource: chartContext?.dataSource,
+          limit: 300,
+        });
+        return fresh.currentTfCandles.length
+          ? ([tf, fresh.currentTfCandles] as const)
+          : null;
+      }),
+    );
+    if (contextEntries.some((entry) => entry == null)) {
+      return buildAgentFallbackResult(
+        "Required multi-timeframe candles are incomplete, so no market recommendation was issued.",
+        collected,
+        locale,
+      );
     }
-    if (market.dailyCandles?.length) {
-      contextCandles["1d"] = market.dailyCandles;
-    }
-    for (const tf of contextTfs) {
-      if (!contextCandles[tf] && tf === market.higherInterval) {
-        contextCandles[tf] = market.higherTfCandles;
-      }
+    const contextCandles = Object.fromEntries(
+      contextEntries as Array<readonly [string, typeof market.currentTfCandles]>,
+    );
+    const decisionQuote = await resolveDecisionQuote({
+      userId: ctx.userId ?? 0,
+      symbol: market.symbol,
+      dataSource: chartContext?.dataSource,
+    });
+    if (!decisionQuote || decisionQuote.quoteAgeMs > 120_000) {
+      return buildAgentFallbackResult(
+        "A fresh bid/ask quote is unavailable, so no market recommendation was issued.",
+        collected,
+        locale,
+      );
     }
     const snapshot = buildMarketSnapshot({
       userId: ctx.userId ?? 0,
       market,
       contextCandles,
       newsDataState: news?.newsRisk ?? "unknown",
+      quote: decisionQuote,
     });
     const vision = await captureNeutralDecisionCharts({
       userId: ctx.userId ?? 0,
@@ -509,17 +557,24 @@ export async function runUnifiedChartAgent(
       captureTimestamps: {} as Record<string, number>,
       failures: ["vision_unavailable"],
     }));
+    if (vision.failures.length || vision.images.length !== snapshot.envelopes.length) {
+      return buildAgentFallbackResult(
+        "The synchronized chart images could not be verified, so no market recommendation was issued.",
+        collected,
+        locale,
+      );
+    }
     snapshot.chartImageCaptureTimestamps = vision.captureTimestamps;
     let userCtxImage = null as Awaited<ReturnType<typeof captureUserContextChart>>;
     if (
       intents.some((i) => needsUserContextVision(i)) &&
-      (chartContext?.userDrawings?.length || chartContext?.drawings?.length)
+      chartContext?.userDrawings?.length
     ) {
       userCtxImage = await captureUserContextChart({
         userId: ctx.userId ?? 0,
         snapshot,
         market: "forex",
-        drawings: chartContext?.drawings ?? [],
+        drawings: chartContext.userDrawings,
       }).catch(() => null);
     }
     const visionMetas = [
@@ -543,6 +598,13 @@ export async function runUnifiedChartAgent(
       ctx.userId != null
         ? await getUserModelPreferences(ctx.userId).catch(() => null)
         : null;
+    if (prefs?.selectionRequired) {
+      return buildAgentFallbackResult(
+        "Your saved analysis model or reasoning setting is no longer available. Select a currently verified option before requesting a market recommendation.",
+        collected,
+        locale,
+      );
+    }
     const mf = await withTimeout(
       runModelFirstDecision(trackedCtx, {
         evidence,
@@ -553,12 +615,32 @@ export async function runUnifiedChartAgent(
         locale,
         preferredModelId: prefs?.modelId ?? undefined,
         preferredReasoning: prefs?.reasoningEffort as ReasoningEffort | null,
-        currentPrice: market.currentPrice,
+        currentPrice: snapshot.mid,
         quoteAgeMs: snapshot.quoteAgeMs,
+        tickSize: snapshot.tickSize,
       }).catch(() => null),
       AGENT_TIMEOUTS.finalDecision,
       null,
     );
+    if (mf?.modelId) {
+      modelRun = {
+        provider: "openai",
+        modelId: mf.modelId,
+        reasoningEffort: mf.reasoningEffort,
+        responseIds: mf.responseIds ?? (mf.responseId ? [mf.responseId] : []),
+        tokenUsage: mf.tokenUsage ?? {
+          inputTokens: null,
+          outputTokens: null,
+          totalTokens: null,
+        },
+        snapshotId: snapshot.snapshotId,
+        snapshotFingerprint: snapshot.fingerprint,
+        imageTimeframes: visionMetas.map((meta) => meta.timeframe),
+        decision: mf.validated?.decision ?? null,
+        validatorErrors: mf.validated?.technicalErrors ?? [],
+        repaired: mf.repaired,
+      };
+    }
     if (modelFirstMode === "live") {
       if (!mf?.usedLLM || !mf.result) {
         return buildAgentFallbackResult(
@@ -1054,6 +1136,7 @@ export async function runUnifiedChartAgent(
     },
     evidenceTimeline: researchEvidence.timeline,
     candleCoverage: market.dataQuality.coverage,
+    modelRun,
     recommendationId: storedRecommendation?.id,
     activeRecommendation: storedRecommendation
       ? {

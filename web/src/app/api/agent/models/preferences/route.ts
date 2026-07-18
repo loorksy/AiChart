@@ -46,6 +46,8 @@ export async function PATCH(request: NextRequest) {
       if (
         code === "model_not_allowed" ||
         code === "model_unavailable" ||
+        code === "model_registry_unavailable" ||
+        code === "model_selection_required" ||
         code === "model_capabilities_insufficient" ||
         code === "reasoning_unsupported"
       ) {

@@ -9,8 +9,8 @@ import {
   eligibleAsDefaultFromCapabilities,
   inferCostTier,
   isAllowlistedModelId,
-  setCachedModelRegistry,
 } from "./modelRegistry";
+import { persistModelRegistry } from "./modelRegistryStore";
 import { callOpenAIResponses, ResponsesApiError } from "./openaiResponses";
 
 async function listProviderModelIds(apiKey: string): Promise<string[]> {
@@ -39,7 +39,8 @@ async function probeOne(
   let structuredOutputs = false;
   let reasoning = false;
   let supportedReasoningValues: ModelCapabilityRecord["supportedReasoningValues"] = [];
-  const streaming = true;
+  // Fail closed: do not claim capabilities this bounded probe does not exercise.
+  const streaming = false;
 
   try {
     await callOpenAIResponses({
@@ -142,7 +143,7 @@ async function probeOne(
     reasoning,
     supportedReasoningValues,
     streaming,
-    tools: true,
+    tools: false,
     contextTokens: null,
     deprecated: false,
     costTier: inferCostTier(modelId),
@@ -172,11 +173,11 @@ export async function discoverAndProbeModels(apiKey: string): Promise<ModelCapab
     return a.id.localeCompare(b.id);
   });
 
-  setCachedModelRegistry(records);
+  await persistModelRegistry(records);
   return records;
 }
 
-/** Test stub without network — assumes full capabilities for allowlisted IDs. */
+/** Test-only fixture factory. Production code must never import this helper. */
 export function stubProbedRegistry(ids: string[]): ModelCapabilityRecord[] {
   const records = ids.filter(isAllowlistedModelId).map((id) => {
     const supportedReasoningValues: ModelCapabilityRecord["supportedReasoningValues"] =
@@ -203,6 +204,5 @@ export function stubProbedRegistry(ids: string[]): ModelCapabilityRecord[] {
     base.eligibleAsDefault = eligibleAsDefaultFromCapabilities(base);
     return base;
   });
-  setCachedModelRegistry(records);
   return records;
 }

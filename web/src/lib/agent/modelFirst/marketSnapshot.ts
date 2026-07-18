@@ -9,6 +9,7 @@ import {
   type AnalysisScope,
 } from "./contextTimeframes";
 import { buildCandleEnvelope, type CandleEnvelope } from "./candleEnvelope";
+import type { DecisionQuote } from "./decisionQuote";
 
 export type MarketSnapshot = {
   snapshotId: string;
@@ -45,8 +46,15 @@ export function buildMarketSnapshot(input: {
   newsDataState?: string;
   tickSize?: number | null;
   pricePrecision?: number | null;
+  quote?: DecisionQuote | null;
 }): MarketSnapshot {
   const primary = input.market.interval;
+  const serverTimestamp = Date.now();
+  const brokerOrSource =
+    input.quote?.source ??
+    input.market.dataQuality.coverage.timeframes.find((item) => item.interval === primary)
+      ?.source ??
+    "unknown";
   const scope = platformChartBoundScope({
     symbol: input.market.symbol,
     timeframe: primary,
@@ -57,6 +65,8 @@ export function buildMarketSnapshot(input: {
       timeframe: primary,
       role: "primary",
       candles: input.market.currentTfCandles,
+      source: brokerOrSource,
+      capturedAt: serverTimestamp,
     }),
   ];
   for (const tf of context) {
@@ -67,20 +77,18 @@ export function buildMarketSnapshot(input: {
         timeframe: tf,
         role: "context",
         candles: series,
+        source: brokerOrSource,
+        capturedAt: serverTimestamp,
       }),
     );
   }
 
-  const mid = input.market.currentPrice;
-  const spread = input.market.spread ?? null;
-  const bid =
-    mid != null && spread != null ? mid - spread / 2 : mid;
-  const ask =
-    mid != null && spread != null ? mid + spread / 2 : mid;
-  const marketTimestamp = envelopes[0]?.lastCandleTime ?? null;
-  const serverTimestamp = Date.now();
-  const quoteAgeMs =
-    marketTimestamp != null ? Math.max(0, serverTimestamp - marketTimestamp * 1000) : null;
+  const mid = input.quote?.mid ?? input.market.currentPrice;
+  const spread = input.quote?.spread ?? input.market.spread ?? null;
+  const bid = input.quote?.bid ?? null;
+  const ask = input.quote?.ask ?? null;
+  const marketTimestamp = input.quote?.marketTimestamp ?? null;
+  const quoteAgeMs = input.quote?.quoteAgeMs ?? null;
 
   const candleCoverage: MarketSnapshot["candleCoverage"] = {};
   const candleCloseTimes: MarketSnapshot["candleCloseTimes"] = {};
@@ -111,7 +119,7 @@ export function buildMarketSnapshot(input: {
     symbol: input.market.symbol.toUpperCase(),
     primaryTimeframe: primary,
     scope,
-    brokerOrSource: "warehouse",
+    brokerOrSource,
     bid,
     ask,
     mid: mid ?? null,
@@ -119,14 +127,17 @@ export function buildMarketSnapshot(input: {
     marketTimestamp,
     serverTimestamp,
     quoteAgeMs,
-    pricePrecision: input.pricePrecision ?? null,
-    tickSize: input.tickSize ?? null,
+    pricePrecision: input.quote?.pricePrecision ?? input.pricePrecision ?? null,
+    tickSize: input.quote?.tickSize ?? input.tickSize ?? null,
     candleCoverage,
     candleCloseTimes,
-    marketOpen: null,
+    marketOpen: input.market.marketOpen,
     newsDataState: input.newsDataState ?? "unknown",
     chartImageCaptureTimestamps: {},
-    sourceHealth: input.market.dataQuality?.sufficient ? "ok" : "degraded",
+    sourceHealth:
+      input.quote && input.market.dataQuality?.sufficient && input.market.sync.ok
+        ? "ok"
+        : "degraded",
     envelopes,
     fingerprint,
   };
