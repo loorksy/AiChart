@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { resolveBridgeUserId } from "@/lib/agentAuth";
-import { handleError } from "@/lib/api";
+import { handleError, requirePlatformAccess } from "@/lib/api";
 import { logAudit } from "@/lib/store";
 import { ReasoningEffortSchema } from "@/lib/agent/modelFirst/modelRegistry";
 import { saveUserModelPreferences } from "@/lib/agent/modelFirst/userModelPreferences";
@@ -16,16 +15,17 @@ const patchSchema = z
     message: "empty_patch",
   });
 
+/** Persist composer model/reasoning prefs for the signed-in user. */
 export async function PATCH(request: NextRequest) {
   try {
-    const userId = await resolveBridgeUserId(request);
+    const user = await requirePlatformAccess();
     const input = patchSchema.parse(await request.json());
-    const prefs = await saveUserModelPreferences(userId, {
+    const prefs = await saveUserModelPreferences(user.id, {
       modelId: input.modelId,
       reasoningEffort: input.reasoningEffort,
     });
     await logAudit(
-      userId,
+      user.id,
       "model_preference_update",
       `model=${prefs.modelId};reasoning=${prefs.reasoningEffort ?? "none"}`,
     );

@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { resolveBridgeUserId } from "@/lib/agentAuth";
-import { handleError } from "@/lib/api";
+import { NextResponse } from "next/server";
+import { handleError, requirePlatformAccess } from "@/lib/api";
 import { getProviderApiKey } from "@/lib/llm";
 import {
   getCachedModelRegistry,
@@ -12,19 +11,19 @@ import { getUserModelPreferences } from "@/lib/agent/modelFirst/userModelPrefere
 
 /**
  * User-facing trading model catalogue (safe projection only).
- * Does not expose API keys, probe errors, or unrestricted provider catalogue.
+ * Session-auth for the in-app composer (not MCP bridge token).
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const userId = await resolveBridgeUserId(request);
+    const user = await requirePlatformAccess();
     let records = getCachedModelRegistry();
     if (!records?.length) {
       // Until admin refresh probes under the production key, expose a safe stub
-      // allowlist so the composer is usable in local/dev. Probe replaces this.
+      // allowlist so the composer is usable. Probe replaces this in-process.
       records = stubProbedRegistry(["gpt-4.1", "o3-mini", "o4-mini"]);
     }
     const models = projectPublicModels(records);
-    const prefs = await getUserModelPreferences(userId);
+    const prefs = await getUserModelPreferences(user.id);
     const defaultModelId = pickDefaultModelId(records);
     return NextResponse.json({
       models,

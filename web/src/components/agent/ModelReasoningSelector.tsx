@@ -29,19 +29,30 @@ const EFFORT_LABEL: Record<"high" | "medium" | "low", { ar: string; en: string }
 export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
   const { t, locale } = useLocale();
   const [data, setData] = useState<ModelsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetch("/api/agent/models", { cache: "no-store" });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setLoadError(t("agent.model_load_failed"));
+        setData(null);
+        return;
+      }
       const json = (await res.json()) as ModelsResponse;
       setData(json);
     } catch {
-      /* ignore */
+      setLoadError(t("agent.model_load_failed"));
+      setData(null);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -88,7 +99,34 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
     }
   }
 
-  if (!data?.models.length || !selected) return null;
+  if (loading) {
+    return (
+      <div
+        className="mb-1 px-1 text-[11px] text-muted-foreground"
+        data-testid="model-reasoning-selector-loading"
+      >
+        {t("agent.model_loading")}
+      </div>
+    );
+  }
+
+  if (loadError || !data?.models.length || !selected) {
+    return (
+      <div
+        className="mb-1 flex flex-wrap items-center gap-2 px-1 text-[11px] text-muted-foreground"
+        data-testid="model-reasoning-selector-empty"
+      >
+        <span>{loadError ?? t("agent.model_unavailable")}</span>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="underline hover:text-foreground"
+        >
+          {t("agent.model_retry")}
+        </button>
+      </div>
+    );
+  }
 
   const efforts = selected.supportedReasoningValues;
   const showReasoning = selected.reasoningAdjustable && efforts.length > 0;
@@ -99,10 +137,13 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
 
   return (
     <div
-      className="mb-1 flex max-w-full flex-wrap items-center gap-1.5 px-1"
+      className="mb-1.5 flex max-w-full flex-wrap items-center gap-2 px-1"
       data-testid="model-reasoning-selector"
     >
-      <label className="sr-only" htmlFor="composer-model">
+      <label
+        className="text-[11px] text-muted-foreground"
+        htmlFor="composer-model"
+      >
         {t("agent.model_label")}
       </label>
       <select
@@ -111,8 +152,8 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
         value={selected.id}
         onChange={(e) => void persist({ modelId: e.target.value })}
         className={cn(
-          "max-w-[9.5rem] truncate rounded-md border border-white/10 bg-transparent px-1.5 py-0.5 text-[11px] text-muted-foreground outline-none",
-          "hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50",
+          "max-w-[11rem] truncate rounded-md border border-border bg-background px-2 py-1 text-[12px] text-foreground outline-none",
+          "hover:border-foreground/30 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50",
         )}
         aria-label={t("agent.model_label")}
         title={t("agent.model_hint")}
@@ -126,7 +167,10 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
 
       {showReasoning && (
         <>
-          <label className="sr-only" htmlFor="composer-reasoning">
+          <label
+            className="text-[11px] text-muted-foreground"
+            htmlFor="composer-reasoning"
+          >
             {t("agent.reasoning_label")}
           </label>
           <select
@@ -146,8 +190,8 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
               })
             }
             className={cn(
-              "rounded-md border border-white/10 bg-transparent px-1.5 py-0.5 text-[11px] text-muted-foreground outline-none",
-              "hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50",
+              "rounded-md border border-border bg-background px-2 py-1 text-[12px] text-foreground outline-none",
+              "hover:border-foreground/30 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50",
             )}
             aria-label={t("agent.reasoning_label")}
           >
@@ -163,19 +207,19 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
       )}
 
       {fixedHigh && (
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-[11px] text-muted-foreground">
           {locale === "en" ? "High" : "عالي"}
         </span>
       )}
 
       {!efforts.length && (
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-[11px] text-muted-foreground">
           {t("agent.reasoning_fixed")}
         </span>
       )}
 
       {error && (
-        <span className="text-[10px] text-destructive" role="alert">
+        <span className="text-[11px] text-destructive" role="alert">
           {error}
         </span>
       )}
