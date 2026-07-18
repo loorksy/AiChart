@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
       notes: {
         chart_media:
           "POST chart snapshot ثم MEDIA:<chart_url_telegram> (توكن مدمج). لا تستخدم localhost ولا ?token= يدوياً.",
+        model_authority:
+          "MCP host model (Claude/ChatGPT/Cursor) remains the decision authority for MCP sessions. Platform composer model prefs apply only to AiChart in-app trading analysis.",
       },
     });
   } catch (e) {

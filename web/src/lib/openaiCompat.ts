@@ -143,11 +143,17 @@ function tokenLimitBody(
 }
 
 /**
- * Reasoning-family models (o-series, gpt-5) "think" before answering. Pin the
- * effort low on the interactive path so first-byte latency stays well under the
- * TTFT budget instead of stalling for tens of seconds.
+ * Reasoning-family models (o-series, gpt-5) "think" before answering.
+ * Auxiliary Chat Completions default to low for latency. Trading analysis
+ * uses the Responses adapter with user-selected effort (never this default).
+ * Explicit reasoningEffort is never silently downgraded.
  */
-function reasoningBody(model: string): Record<string, unknown> {
+function reasoningBody(
+  model: string,
+  reasoningEffort?: "high" | "medium" | "low" | null,
+): Record<string, unknown> {
+  if (reasoningEffort === null) return {};
+  if (reasoningEffort) return { reasoning_effort: reasoningEffort };
   const id = bareModelId(model);
   if (/^o\d/.test(id) || /^gpt-5/.test(id)) return { reasoning_effort: "low" };
   return {};
@@ -234,6 +240,8 @@ export async function callOpenAICompat(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
+    /** When set, sent as-is (no silent downgrade). Trading path uses Responses. */
+    reasoningEffort?: "high" | "medium" | "low" | null;
   },
 ): Promise<AnthropicResponse> {
   const res = await fetchWithTimeout(
@@ -248,7 +256,7 @@ export async function callOpenAICompat(
       body: JSON.stringify({
         model: target.model,
         ...tokenLimitBody(target.model, params.maxTokens),
-        ...reasoningBody(target.model),
+        ...reasoningBody(target.model, params.reasoningEffort),
         messages: toOAMessages(params.system, params.messages),
         ...(params.tools ? { tools: toOATools(params.tools) } : {}),
       }),
@@ -287,6 +295,7 @@ export async function callOpenAICompatStream(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
+    reasoningEffort?: "high" | "medium" | "low" | null;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
@@ -320,6 +329,7 @@ async function streamOnce(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
+    reasoningEffort?: "high" | "medium" | "low" | null;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
@@ -338,7 +348,7 @@ async function streamOnce(
     body: JSON.stringify({
       model: target.model,
       ...tokenLimitBody(target.model, params.maxTokens),
-      ...reasoningBody(target.model),
+      ...reasoningBody(target.model, params.reasoningEffort),
       messages: toOAMessages(params.system, params.messages),
       stream: true,
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),
@@ -478,6 +488,7 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
     schemaName: string;
     schema: Record<string, unknown>;
     maxTokens?: number;
+    reasoningEffort?: "high" | "medium" | "low" | null;
   },
   handlers?: Pick<StreamHandlers, "onTextDelta">,
 ): Promise<{
@@ -496,7 +507,7 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
       body: JSON.stringify({
         model: target.model,
         ...tokenLimitBody(target.model, params.maxTokens ?? 4096),
-        ...reasoningBody(target.model),
+        ...reasoningBody(target.model, params.reasoningEffort),
         messages: toOAMessages(params.system, params.messages),
         response_format: {
           type: "json_schema",

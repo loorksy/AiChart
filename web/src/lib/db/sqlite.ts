@@ -953,6 +953,14 @@ function migrate(db: Database.Database) {
   if (!settingsCols.some((c) => c.name === "forex_backend")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN forex_backend TEXT");
   }
+  if (!settingsCols.some((c) => c.name === "preferred_model")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN preferred_model TEXT");
+  }
+  if (!settingsCols.some((c) => c.name === "preferred_reasoning_effort")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN preferred_reasoning_effort TEXT",
+    );
+  }
   // Forward-only product simplification migration. Existing databases may
   // still contain legacy policy columns; no runtime code reads them, and they
   // are removed here after the remaining account/watchlist data is preserved.
