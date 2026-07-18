@@ -323,3 +323,14 @@ The following audit blockers were fixed on `fix/candidate-free-model-authority`
 **Rollback target:** `d995fdf52ab2983bc116407999777048ee9396e8`
 
 **Final decision:** **NO-GO** (code blockers for the listed Critical items are addressed locally; required release gates are not all verified).
+
+## Manual VPS release attempt (2026-07-18/19)
+
+GitHub CI bypass was authorized (billing lock). Isolated RC qualification on VPS
+`srv1150752` against `2a06170` is recorded in
+`docs/MANUAL_VPS_RELEASE_QUALIFICATION_PR66.md`. Several mandatory gates passed
+(`test:ci` with real Redis round-trip, Redis release, builds, MCP catalog/schemas),
+but OpenAI/MCP auth/browser/historical-adapter gates failed or were not verified.
+Production remained on `d995fdf`. **No merge. No deploy.**
+Follow-up commit `29e0559` records evidence and small gate fixes; it changes the
+PR head and was **not** fully re-qualified.
