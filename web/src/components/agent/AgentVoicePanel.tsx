@@ -7,13 +7,20 @@ import type { AgentVoiceSession } from "@/hooks/useAgentVoiceSession";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { VoiceStatusIndicator } from "./VoiceStatusIndicator";
 import { voiceStatusToAvatarState } from "@/lib/agent/voice/avatarState";
-import { voiceErrorKey } from "@/lib/agent/voice/voiceLabels";
+import { voiceErrorKey, voiceStatusKey } from "@/lib/agent/voice/voiceLabels";
 
 /** Immersive voice mode: one focused conversation surface, then back to chat. */
 export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
   const { t, dir } = useLocale();
   const dialogRef = useRef<HTMLElement | null>(null);
   const { active, status, stop } = voice;
+
+  const centerHint =
+    voice.muted && status === "listening"
+      ? t("voice.muted")
+      : status === "listening" || status === "connected"
+        ? t("voice.speak_prompt")
+        : t(voiceStatusKey(status));
 
   useEffect(() => {
     if (!active && status !== "error") return;
@@ -53,7 +60,8 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
       role="dialog"
       aria-modal="true"
       aria-label={t("voice.start")}
-      className="fixed inset-0 z-[70] flex flex-col items-center justify-between bg-background/95 px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-foreground backdrop-blur-sm"
+      className="fixed inset-0 z-[70] flex flex-col items-center justify-between bg-background px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] text-foreground"
+      style={{ backgroundColor: "var(--background)" }}
     >
       <div className="flex w-full max-w-xl items-center justify-between">
         <VoiceStatusIndicator status={voice.status} muted={voice.muted} />
@@ -83,7 +91,7 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
             {voice.partialTranscript}
           </p>
         ) : (
-          <p className="text-sm text-muted-foreground">{t("voice.start")}</p>
+          <p className="text-sm text-muted-foreground">{centerHint}</p>
         )}
         {voice.status === "error" && voice.error ? (
           <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -109,8 +117,9 @@ export function AgentVoicePanel({ voice }: { voice: AgentVoiceSession }) {
               onClick={voice.toggleMute}
               className="flex size-12 items-center justify-center rounded-full border border-border bg-card hover:bg-muted"
               aria-label={voice.muted ? t("voice.unmute") : t("voice.mute")}
+              aria-pressed={voice.muted}
             >
-              {voice.muted ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+              {voice.muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             </button>
             {voice.status === "assistant_speaking" ? (
               <button

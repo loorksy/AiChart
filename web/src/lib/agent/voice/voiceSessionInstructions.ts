@@ -21,7 +21,7 @@ export function buildRealtimeSessionUpdate(input: {
   locale: AppLocale;
   voice: string;
 }): Record<string, unknown> {
-  void input.locale;
+  const language = input.locale === "ar" ? "ar" : "en";
   return {
     type: "session.update",
     session: {
@@ -29,11 +29,14 @@ export function buildRealtimeSessionUpdate(input: {
       output_modalities: ["audio"],
       audio: {
         input: {
-          transcription: { model: "gpt-4o-mini-transcribe" },
+          // Required for conversation.item.input_audio_transcription.* events.
+          // Without this, VAD can fire while create_response:false yields silence.
+          transcription: {
+            model: "gpt-4o-mini-transcribe",
+            language,
+          },
           turn_detection: {
             type: "server_vad",
-            threshold: 0.5,
-            silence_duration_ms: 500,
             // Route final transcript through the unified agent; do not let the
             // realtime model invent its own trading answer.
             create_response: false,

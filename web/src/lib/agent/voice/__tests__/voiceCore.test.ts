@@ -267,7 +267,7 @@ describe("realtime session config builders", () => {
         output_modalities: string[];
         audio: {
           input: {
-            transcription: unknown;
+            transcription: { model: string; language: string };
             turn_detection: { create_response: boolean };
           };
           output: { voice: string };
@@ -277,7 +277,8 @@ describe("realtime session config builders", () => {
     assert.equal(upd.session.type, "realtime");
     assert.deepEqual(upd.session.output_modalities, ["audio"]);
     assert.equal(upd.session.audio.input.turn_detection.create_response, false);
-    assert.ok(upd.session.audio.input.transcription);
+    assert.equal(upd.session.audio.input.transcription.language, "ar");
+    assert.ok(upd.session.audio.input.transcription.model);
     assert.equal(upd.session.audio.output.voice, "alloy");
   });
 

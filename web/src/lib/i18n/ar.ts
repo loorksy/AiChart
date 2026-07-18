@@ -413,6 +413,7 @@ export const ar: Record<TranslationKey, string> = {
   "voice.requesting_permission": "جاري طلب إذن الميكروفون",
   "voice.connecting": "جاري الاتصال",
   "voice.listening": "أستمع إليك",
+  "voice.speak_prompt": "تحدّث الآن — AiChart تستمع",
   "voice.user_speaking": "أنت تتحدث",
   "voice.thinking": "AiChart تفكر",
   "voice.speaking": "AiChart تتحدث",

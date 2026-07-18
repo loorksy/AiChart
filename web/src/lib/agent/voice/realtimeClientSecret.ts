@@ -60,7 +60,10 @@ export async function createRealtimeClientSecret(
         // drives every substantive turn; without this there is a window
         // before the data channel opens where the model could answer alone.
         input: {
-          transcription: { model: "gpt-4o-mini-transcribe" },
+          transcription: {
+            model: "gpt-4o-mini-transcribe",
+            language: locale === "ar" ? "ar" : "en",
+          },
           turn_detection: {
             type: "server_vad",
             create_response: false,
