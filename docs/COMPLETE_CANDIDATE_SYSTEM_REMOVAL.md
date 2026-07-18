@@ -2,7 +2,9 @@
 
 **Branch:** `fix/candidate-free-model-authority`  
 **Base commit:** `d995fdf52ab2983bc116407999777048ee9396e8` (`origin/main`)  
-**Status:** Implementation complete pending PR merge + production deploy verification.
+**Implementation commit:** `690d7df37ff07b2766ae5aea6d74a5bd976af888`  
+**PR:** https://github.com/loorksy/AiChart/pull/66  
+**Status:** Implementation complete pending PR review, CI, merge, and production deploy verification.
 
 ## 1. Previous candidate architecture
 
@@ -89,8 +91,9 @@ User-selected symbol + timeframe
 
 | Item | Value |
 |---|---|
-| PR | Pending create after push |
-| CI | Pending |
+| PR | https://github.com/loorksy/AiChart/pull/66 |
+| Implementation commit | `690d7df` |
+| CI | Pending on PR |
 | Merge commit | Not yet |
 | Deployed commit | Not yet (do not deploy until PR review GO) |
 | Rollback | `git revert <merge>` or redeploy previous `d995fdf` |
