@@ -117,3 +117,10 @@ Repository-wide `npm run lint` remains non-green because the vendored `realtime-
 - The visible drawing count changed from one to zero during the failed analysis. Because the test also created a new conversation, this is recorded as a high-severity unresolved chart-invariance signal rather than conclusive attribution to Vision capture. The corrected build must test drawing identity/count before and after both success and failure without switching conversations.
 
 These are branch-only facts. Production still exposes the pre-correction fallback registry until a reviewed, green deployment occurs; therefore the release decision remains **NO-GO**.
+
+### Approved model policy update (2026-07-18)
+
+- The branch now accepts exactly `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, and `gpt-5.5-pro`, in that display/default priority order. Previous model IDs are rejected even when stale registry rows still exist.
+- Reasoning effort is capability-driven and can represent `high`, `xhigh`, `max`, `medium`, `low`, `minimal`, and `none`; users see only values that pass the bounded production-key probe for the selected model.
+- The selector remains fail-closed: an approved model is shown only after it passes Responses API, strict structured-output, and Vision checks. Admin diagnostics identify approved IDs missing from the provider catalogue without exposing credentials or full provider payloads.
+- This source change does not convert the release decision to GO. A successful production-key probe, green CI, exact merge SHA, clean deployment, and post-deploy browser/health verification are still required.

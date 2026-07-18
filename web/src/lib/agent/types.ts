@@ -8,6 +8,7 @@ import type {
   SerializedChartDrawing,
   UserDrawingMutationCommand,
 } from "@/lib/chart/drawings/types";
+import type { ReasoningEffort } from "./modelFirst/modelRegistry";
 
 export type AgentIntent =
   | "new_trade_analysis"
@@ -215,7 +216,7 @@ export interface AgentFinalResult {
 export interface AgentModelRunMetadata {
   provider: "openai";
   modelId: string;
-  reasoningEffort: "high" | "medium" | "low" | null;
+  reasoningEffort: ReasoningEffort | null;
   responseIds: string[];
   tokenUsage: {
     inputTokens: number | null;

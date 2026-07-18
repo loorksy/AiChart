@@ -28,8 +28,8 @@ function candles(count = 90, start = 1_700_000_000) {
 
 function registryRecord(): ModelCapabilityRecord {
   return {
-    id: "o3-mini",
-    displayName: "O3 Mini",
+    id: "gpt-5.6-sol",
+    displayName: "GPT-5.6 Sol",
     available: true,
     enabled: true,
     responsesApi: true,
@@ -165,7 +165,7 @@ describe("model-first outbound safety", () => {
       {
         evidence: { selectedCandidate: { id: "forbidden" } } as unknown as NeutralMarketEvidence,
         images: [],
-        preferredModelId: "o3-mini",
+        preferredModelId: "gpt-5.6-sol",
         preferredReasoning: "high",
         currentPrice: 1.1002,
         quoteAgeMs: 0,
@@ -194,7 +194,7 @@ describe("model-first outbound safety", () => {
       {
         evidence: { snapshot: { symbol: "EURUSD" } } as unknown as NeutralMarketEvidence,
         images: [],
-        preferredModelId: "o3-mini",
+        preferredModelId: "gpt-5.6-sol",
         preferredReasoning: "high",
         currentPrice: 1.1005,
         quoteAgeMs: 0,
@@ -230,7 +230,7 @@ describe("model-first outbound safety", () => {
       new Response(
         JSON.stringify({
           id: "resp_substitution",
-          model: "gpt-4.1",
+          model: "gpt-5.5",
           output_text: '{"ok":true}',
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
@@ -240,7 +240,7 @@ describe("model-first outbound safety", () => {
         () =>
           callOpenAIResponses({
             apiKey: "test-key",
-            model: "o3-mini",
+            model: "gpt-5.6-sol",
             inputText: "test",
             store: false,
           }),

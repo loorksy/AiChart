@@ -20,6 +20,7 @@ import {
   llmTotalTimeoutMs,
   llmTtftTimeoutMs,
 } from "./externalFetch";
+import type { ReasoningEffort } from "./agent/modelFirst/modelRegistry";
 
 export interface OpenAICompatTarget {
   baseUrl: string;
@@ -150,7 +151,7 @@ function tokenLimitBody(
  */
 function reasoningBody(
   model: string,
-  reasoningEffort?: "high" | "medium" | "low" | null,
+  reasoningEffort?: ReasoningEffort | null,
 ): Record<string, unknown> {
   if (reasoningEffort === null) return {};
   if (reasoningEffort) return { reasoning_effort: reasoningEffort };
@@ -241,7 +242,7 @@ export async function callOpenAICompat(
     tools?: ToolDef[];
     maxTokens?: number;
     /** When set, sent as-is (no silent downgrade). Trading path uses Responses. */
-    reasoningEffort?: "high" | "medium" | "low" | null;
+    reasoningEffort?: ReasoningEffort | null;
   },
 ): Promise<AnthropicResponse> {
   const res = await fetchWithTimeout(
@@ -295,7 +296,7 @@ export async function callOpenAICompatStream(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
-    reasoningEffort?: "high" | "medium" | "low" | null;
+    reasoningEffort?: ReasoningEffort | null;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
@@ -329,7 +330,7 @@ async function streamOnce(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
-    reasoningEffort?: "high" | "medium" | "low" | null;
+    reasoningEffort?: ReasoningEffort | null;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
@@ -488,7 +489,7 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
     schemaName: string;
     schema: Record<string, unknown>;
     maxTokens?: number;
-    reasoningEffort?: "high" | "medium" | "low" | null;
+    reasoningEffort?: ReasoningEffort | null;
   },
   handlers?: Pick<StreamHandlers, "onTextDelta">,
 ): Promise<{

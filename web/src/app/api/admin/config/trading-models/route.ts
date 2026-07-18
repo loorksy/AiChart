@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError } from "@/lib/api";
 import { getProviderApiKey, providerKeyField } from "@/lib/llm";
-import {
-  projectPublicModels,
-} from "@/lib/agent/modelFirst/modelRegistry";
+import { projectPublicModels } from "@/lib/agent/modelFirst/modelRegistry";
 import { loadModelRegistry } from "@/lib/agent/modelFirst/modelRegistryStore";
-import { discoverAndProbeModels } from "@/lib/agent/modelFirst/probeModels";
+import {
+  discoverAndProbeModels,
+  missingApprovedModelIds,
+} from "@/lib/agent/modelFirst/probeModels";
 
 const bodySchema = z.object({
   apiKey: z.string().min(10).optional(),
@@ -36,6 +37,9 @@ export async function GET() {
         probeErrorCodes: r.probeErrors,
       })),
       probed: records.length > 0,
+      missingApprovedModelIds: missingApprovedModelIds(
+        records.map((record) => record.id),
+      ),
     });
   } catch (err) {
     return handleError(err);
@@ -66,6 +70,9 @@ export async function POST(req: NextRequest) {
         lastVerifiedAt: r.lastVerifiedAt,
         probeErrorCodes: r.probeErrors,
       })),
+      missingApprovedModelIds: missingApprovedModelIds(
+        records.map((record) => record.id),
+      ),
       note: "Users select models in the chat composer. AI_MODEL is not used as a trading-model fallback.",
     });
   } catch (err) {

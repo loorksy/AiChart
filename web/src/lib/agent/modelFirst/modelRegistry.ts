@@ -7,19 +7,43 @@
  */
 import { z } from "zod";
 
-export const ReasoningEffortSchema = z.enum(["high", "medium", "low"]);
+export const REASONING_EFFORT_VALUES = [
+  "high",
+  "xhigh",
+  "max",
+  "medium",
+  "low",
+  "minimal",
+  "none",
+] as const;
+export const ReasoningEffortSchema = z.enum(REASONING_EFFORT_VALUES);
 export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>;
 
 export type ModelCostTier = "standard" | "premium" | "unknown";
 
-/** Review allowlist patterns — matched against live /v1/models IDs. */
-export const AICART_MODEL_ALLOWLIST_PATTERNS: RegExp[] = [
-  /^gpt-5(\.\d+)?(-pro|-mini|-nano)?$/i,
-  /^gpt-5(\.\d+)?-(sol|terra|luna)$/i,
-  /^gpt-4\.1(-mini|-nano)?$/i,
-  /^o3(-mini|-pro)?$/i,
-  /^o4-mini$/i,
-];
+/** Product-approved trading models, in selector/default priority order. */
+export const AICART_APPROVED_MODEL_IDS = [
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "gpt-5.5",
+  "gpt-5.5-pro",
+] as const;
+
+export type AiChartApprovedModelId = (typeof AICART_APPROVED_MODEL_IDS)[number];
+
+const APPROVED_MODEL_SET = new Set<string>(AICART_APPROVED_MODEL_IDS);
+const APPROVED_MODEL_PRIORITY = new Map<string, number>(
+  AICART_APPROVED_MODEL_IDS.map((id, index) => [id, index]),
+);
+
+const APPROVED_DISPLAY_NAMES: Record<AiChartApprovedModelId, string> = {
+  "gpt-5.6-sol": "GPT-5.6 Sol",
+  "gpt-5.6-terra": "GPT-5.6 Terra",
+  "gpt-5.6-luna": "GPT-5.6 Luna",
+  "gpt-5.5": "GPT-5.5",
+  "gpt-5.5-pro": "GPT-5.5 Pro",
+};
 
 export interface ModelCapabilityRecord {
   id: string;
@@ -50,7 +74,9 @@ export const ModelCapabilityRecordSchema = z.object({
   vision: z.boolean(),
   structuredOutputs: z.boolean(),
   reasoning: z.boolean(),
-  supportedReasoningValues: z.array(ReasoningEffortSchema).max(3),
+  supportedReasoningValues: z
+    .array(ReasoningEffortSchema)
+    .max(REASONING_EFFORT_VALUES.length),
   streaming: z.boolean(),
   tools: z.boolean(),
   contextTokens: z.number().int().positive().nullable(),
@@ -86,11 +112,21 @@ const EXCLUDE_PATTERNS: RegExp[] = [
 export function isAllowlistedModelId(id: string): boolean {
   const bare = id.replace(/^openai\//, "");
   if (EXCLUDE_PATTERNS.some((p) => p.test(bare))) return false;
-  return AICART_MODEL_ALLOWLIST_PATTERNS.some((p) => p.test(bare));
+  return APPROVED_MODEL_SET.has(bare);
+}
+
+export function compareApprovedModelIds(a: string, b: string): number {
+  return (
+    (APPROVED_MODEL_PRIORITY.get(a) ?? Number.MAX_SAFE_INTEGER) -
+    (APPROVED_MODEL_PRIORITY.get(b) ?? Number.MAX_SAFE_INTEGER)
+  );
 }
 
 export function displayNameForModelId(id: string): string {
   const bare = id.replace(/^openai\//, "");
+  if (isAllowlistedModelId(bare)) {
+    return APPROVED_DISPLAY_NAMES[bare as AiChartApprovedModelId];
+  }
   return bare
     .split("-")
     .map((part) => {
@@ -104,6 +140,7 @@ export function displayNameForModelId(id: string): string {
 export function inferCostTier(id: string): ModelCostTier {
   const bare = id.toLowerCase();
   if (bare.includes("pro") || bare.includes("o3-pro")) return "premium";
+  if (APPROVED_MODEL_SET.has(bare)) return "standard";
   if (bare.includes("mini") || bare.includes("nano")) return "standard";
   return "unknown";
 }
@@ -111,11 +148,19 @@ export function inferCostTier(id: string): ModelCostTier {
 export function eligibleAsDefaultFromCapabilities(
   record: Pick<
     ModelCapabilityRecord,
-    "available" | "enabled" | "responsesApi" | "vision" | "structuredOutputs" | "costTier" | "deprecated" | "supportedReasoningValues"
+    | "available"
+    | "enabled"
+    | "responsesApi"
+    | "vision"
+    | "structuredOutputs"
+    | "costTier"
+    | "deprecated"
+    | "supportedReasoningValues"
   >,
 ): boolean {
   if (!record.available || !record.enabled || record.deprecated) return false;
-  if (!record.responsesApi || !record.vision || !record.structuredOutputs) return false;
+  if (!record.responsesApi || !record.vision || !record.structuredOutputs)
+    return false;
   if (record.costTier === "premium") return false;
   return (
     record.supportedReasoningValues.includes("high") ||
@@ -126,8 +171,17 @@ export function eligibleAsDefaultFromCapabilities(
 export function projectPublicModels(
   records: ModelCapabilityRecord[],
 ): PublicModelProjection[] {
-  return records
-    .filter((r) => r.available && r.enabled && r.responsesApi && r.vision && r.structuredOutputs)
+  return [...records]
+    .filter(
+      (r) =>
+        isAllowlistedModelId(r.id) &&
+        r.available &&
+        r.enabled &&
+        r.responsesApi &&
+        r.vision &&
+        r.structuredOutputs,
+    )
+    .sort((a, b) => compareApprovedModelIds(a.id, b.id))
     .slice(0, 5)
     .map((r) => ({
       id: r.id,
@@ -139,7 +193,9 @@ export function projectPublicModels(
     }));
 }
 
-export function pickDefaultModelId(records: ModelCapabilityRecord[]): string | null {
+export function pickDefaultModelId(
+  records: ModelCapabilityRecord[],
+): string | null {
   const publics = projectPublicModels(records);
   const preferred = publics.find((m) => m.eligibleAsDefault);
   return preferred?.id ?? publics[0]?.id ?? null;
