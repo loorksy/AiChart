@@ -1,0 +1,56 @@
+"use client";
+
+/** Slim entry for AiChart — controller + tools + WebRTC transport only. */
+export { defineVoiceTool } from "./defineVoiceTool";
+export { useVoiceControl } from "./useVoiceControl";
+export { createVoiceControlController } from "./voiceControlController";
+export { createWebRtcRealtimeTransport } from "./transport/webRtcRealtimeTransport";
+export type { RealtimeTransport } from "./transport/types";
+export type {
+  ActivationMode,
+  JsonSchema,
+  KnownRealtimeModel,
+  KnownRealtimeTranscriptionModel,
+  KnownRealtimeVoice,
+  OutputMode,
+  RealtimeAudioConfig,
+  RealtimeAudioFormat,
+  RealtimeAudioInputConfig,
+  RealtimeAudioOutputConfig,
+  RealtimeClientEvent,
+  RealtimeInputAudioNoiseReduction,
+  RealtimeInputAudioTranscription,
+  RealtimeModel,
+  RealtimeNoiseReductionType,
+  RealtimePrompt,
+  RealtimeServerEvent,
+  RealtimeSemanticVadTurnDetection,
+  RealtimeServerVadTurnDetection,
+  RealtimeSessionInclude,
+  RealtimeToolChoice,
+  RealtimeTracing,
+  RealtimeTranscriptionModel,
+  RealtimeTruncation,
+  RealtimeTurnDetection,
+  RealtimeVoice,
+  ToolCallStatus,
+  ToolCallErrorEvent,
+  ToolCallEvent,
+  ToolCallResultEvent,
+  UseVoiceControlInput,
+  UseVoiceControlOptions,
+  UseVoiceControlReturn,
+  VoiceControlController,
+  VoiceControlActivity,
+  VoiceControlError,
+  VoiceControlErrorCode,
+  VoiceControlEvent,
+  VoiceControlRealtimeSessionOptions,
+  VoiceControlRealtimeSessionPatch,
+  VoiceControlResolvedSessionConfig,
+  VoiceControlSnapshot,
+  VoiceControlStatus,
+  VoiceToolCallRecord,
+  VoiceTool,
+  VoiceToolDefinition,
+} from "./types";
