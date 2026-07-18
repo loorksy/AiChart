@@ -148,19 +148,37 @@ export function buildNeutralEvidence(input: {
 
 /** Assert no candidate-authority keys leaked into the model payload. */
 export function assertNoCandidateAuthority(payload: unknown): string[] {
-  const forbidden = [
-    "selectedCandidate",
-    "selectedTradeCandidateId",
-    "tradeCandidates",
-    "rejectedCandidateReasons",
-    "candidatesResult",
+  const forbidden = new Set([
+    "candidate",
+    "candidates",
+    "selectedcandidate",
+    "selectedtradecandidateid",
+    "tradecandidates",
+    "rejectedcandidatereasons",
+    "candidatesresult",
+    "candidatedirection",
+    "candidatescore",
+    "candidaterank",
+    "preferreddirection",
+    "selectedlevels",
+    "rulebasedrecommendation",
     "playbook",
-    "proposedTrade",
-  ];
-  const text = JSON.stringify(payload);
-  return forbidden.filter((key) => {
-    // Allow explicit undefined markers like "tradeCandidates":null only if value is null/undefined
-    const re = new RegExp(`"${key}"\\s*:\\s*(?!null|undefined)[^\\sn]`);
-    return re.test(text) && !new RegExp(`"${key}"\\s*:\\s*null`).test(text);
-  });
+    "proposedtrade",
+  ]);
+  const leaks: string[] = [];
+  const visit = (value: unknown, path: string): void => {
+    if (value == null || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`));
+      return;
+    }
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const childPath = path ? `${path}.${key}` : key;
+      const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (child != null && forbidden.has(normalized)) leaks.push(childPath);
+      visit(child, childPath);
+    }
+  };
+  visit(payload, "");
+  return [...new Set(leaks)];
 }

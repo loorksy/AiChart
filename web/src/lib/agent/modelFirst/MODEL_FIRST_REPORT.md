@@ -15,9 +15,17 @@ Base: `ed8d529` (`origin/main`). Feature flag: `MODEL_FIRST_MODE=off|shadow|live
 
 ## Production model IDs
 
-Exact IDs are **not hardcoded**. After deploy, admin must run **تحديث الفحص** (`POST /api/admin/config/trading-models`) under the production OpenAI key. Record probe results (id, available, supportedReasoningValues) in ops notes before treating the selector as finalized.
+The product allowlist is exact and ordered:
 
-Until probe cache is warm, composer falls back to allowlisted stub IDs (`gpt-4.1`, `o3-mini`, `o4-mini`) for local/dev only.
+1. `gpt-5.6-sol`
+2. `gpt-5.6-terra`
+3. `gpt-5.6-luna`
+4. `gpt-5.5`
+5. `gpt-5.5-pro`
+
+Old or arbitrary IDs are rejected even if they remain in a persisted registry. The composer fails closed until the admin runs **تحديث الفحص** (`POST /api/admin/config/trading-models`) with the production OpenAI key. Only models that pass Responses API, structured-output, and Vision probes are shown. The admin response also lists any approved IDs absent from the provider catalogue.
+
+No production or local fallback fabricates capability records. Record only safe diagnostics (`id`, availability, supported reasoning values, timestamps, and error codes) in the deployment notes; never record the API key or full provider responses.
 
 ## Rollback
 

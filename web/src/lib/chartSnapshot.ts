@@ -549,6 +549,34 @@ export async function buildChartSnapshotBufferForMarket(
   }
 }
 
+/** Render an off-screen chart from the exact immutable candle snapshot. */
+export async function buildChartSnapshotBufferFromCandles(
+  input: ChartSnapshotInput,
+  candles: Array<{
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+  }>,
+): Promise<Buffer | null> {
+  try {
+    const limit = input.limit ?? 80;
+    const snapshotCandles: SnapshotCandle[] = candles.slice(-limit).map((candle) => ({
+      ...candle,
+      time:
+        candle.time < 1_000_000_000_000
+          ? Math.round(candle.time * 1000)
+          : Math.round(candle.time),
+    }));
+    const chart = buildChartJson(input, snapshotCandles);
+    if (!chart) return null;
+    return renderChartPng(chart);
+  } catch {
+    return null;
+  }
+}
+
 export function bufferToChatImage(buffer: Buffer): ChatImagePayload | null {
   const validated = validateChatImage("image/png", buffer.toString("base64"));
   return validated.ok ? validated.image : null;

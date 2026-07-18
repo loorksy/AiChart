@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
+import type { ReasoningEffort } from "@/lib/agent/modelFirst/modelRegistry";
 
 type PublicModel = {
   id: string;
   displayName: string;
-  supportedReasoningValues: Array<"high" | "medium" | "low">;
+  supportedReasoningValues: ReasoningEffort[];
   vision: boolean;
   eligibleAsDefault: boolean;
   reasoningAdjustable: boolean;
@@ -16,14 +17,18 @@ type PublicModel = {
 type ModelsResponse = {
   models: PublicModel[];
   preferredModelId: string | null;
-  preferredReasoningEffort: "high" | "medium" | "low" | null;
+  preferredReasoningEffort: ReasoningEffort | null;
   defaultModelId: string | null;
 };
 
-const EFFORT_LABEL: Record<"high" | "medium" | "low", { ar: string; en: string }> = {
+const EFFORT_LABEL: Record<ReasoningEffort, { ar: string; en: string }> = {
   high: { ar: "عالي", en: "High" },
+  xhigh: { ar: "عالي جداً", en: "Extra high" },
+  max: { ar: "أقصى", en: "Maximum" },
   medium: { ar: "متوسط", en: "Medium" },
   low: { ar: "منخفض", en: "Low" },
+  minimal: { ar: "أدنى", en: "Minimal" },
+  none: { ar: "بدون", en: "None" },
 };
 
 export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
@@ -65,7 +70,7 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
 
   async function persist(patch: {
     modelId?: string;
-    reasoningEffort?: "high" | "medium" | "low";
+    reasoningEffort?: ReasoningEffort;
   }) {
     setSaving(true);
     setError(null);
@@ -186,7 +191,7 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
             }
             onChange={(e) =>
               void persist({
-                reasoningEffort: e.target.value as "high" | "medium" | "low",
+                reasoningEffort: e.target.value as ReasoningEffort,
               })
             }
             className={cn(

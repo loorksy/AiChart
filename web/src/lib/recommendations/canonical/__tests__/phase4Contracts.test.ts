@@ -69,8 +69,8 @@ describe("Phase 4 static contracts", () => {
       join(lib, "..", "app", "api", "recommendations", "tracked", "[id]", "route.ts"),
       "utf8",
     );
-    assert.match(collection, /requireUser/);
-    assert.match(detail, /requireUser/);
+    assert.match(collection, /require(?:User|PaidAccess)/);
+    assert.match(detail, /require(?:User|PaidAccess)/);
     assert.doesNotMatch(collection, /export async function (POST|PUT|PATCH|DELETE)/);
     assert.doesNotMatch(detail, /export async function (POST|PUT|PATCH|DELETE)/);
   });

@@ -16,7 +16,7 @@ test("context remains a language aid and is not passed to market or risk agents"
   assert.doesNotMatch(orchestrator, /runRiskAgent\([\s\S]*?conversationContext/);
   assert.doesNotMatch(orchestrator, /runExecutionGuardAgent\([\s\S]*?conversationContext/);
   assert.match(orchestrator, /contextualizeIntentMessage\(userMessage, input\.conversationContext\)/);
-  assert.match(orchestrator, /answerGeneralQuestion\(userMessage, input\.conversationContext\)/);
+  assert.match(orchestrator, /answerGeneralQuestion\(userMessage, input\.conversationContext(?:,|\))/);
 });
 
 test("general and drawing-only paths still return before market analysis", () => {

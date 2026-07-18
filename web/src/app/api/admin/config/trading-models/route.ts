@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError } from "@/lib/api";
 import { getProviderApiKey, providerKeyField } from "@/lib/llm";
+import { projectPublicModels } from "@/lib/agent/modelFirst/modelRegistry";
+import { loadModelRegistry } from "@/lib/agent/modelFirst/modelRegistryStore";
 import {
-  getCachedModelRegistry,
-  projectPublicModels,
-} from "@/lib/agent/modelFirst/modelRegistry";
-import { discoverAndProbeModels } from "@/lib/agent/modelFirst/probeModels";
+  discoverAndProbeModels,
+  missingApprovedModelIds,
+} from "@/lib/agent/modelFirst/probeModels";
 
 const bodySchema = z.object({
   apiKey: z.string().min(10).optional(),
@@ -20,7 +21,7 @@ function missingKeyError(): string {
 export async function GET() {
   try {
     await requireAdmin();
-    const records = getCachedModelRegistry() ?? [];
+    const records = (await loadModelRegistry()) ?? [];
     return NextResponse.json({
       models: projectPublicModels(records),
       diagnostics: records.map((r) => ({
@@ -36,6 +37,9 @@ export async function GET() {
         probeErrorCodes: r.probeErrors,
       })),
       probed: records.length > 0,
+      missingApprovedModelIds: missingApprovedModelIds(
+        records.map((record) => record.id),
+      ),
     });
   } catch (err) {
     return handleError(err);
@@ -66,7 +70,10 @@ export async function POST(req: NextRequest) {
         lastVerifiedAt: r.lastVerifiedAt,
         probeErrorCodes: r.probeErrors,
       })),
-      note: "Users select models in the chat composer. AI_MODEL is seed/fallback only.",
+      missingApprovedModelIds: missingApprovedModelIds(
+        records.map((record) => record.id),
+      ),
+      note: "Users select models in the chat composer. AI_MODEL is not used as a trading-model fallback.",
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

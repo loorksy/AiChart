@@ -4,13 +4,16 @@
  */
 import { fetchWithTimeout, httpTimeoutMs } from "@/lib/externalFetch";
 import {
+  AICART_APPROVED_MODEL_IDS,
+  REASONING_EFFORT_VALUES,
+  compareApprovedModelIds,
   type ModelCapabilityRecord,
   displayNameForModelId,
   eligibleAsDefaultFromCapabilities,
   inferCostTier,
   isAllowlistedModelId,
-  setCachedModelRegistry,
 } from "./modelRegistry";
+import { persistModelRegistry } from "./modelRegistryStore";
 import { callOpenAIResponses, ResponsesApiError } from "./openaiResponses";
 
 async function listProviderModelIds(apiKey: string): Promise<string[]> {
@@ -38,15 +41,17 @@ async function probeOne(
   let vision = false;
   let structuredOutputs = false;
   let reasoning = false;
-  let supportedReasoningValues: ModelCapabilityRecord["supportedReasoningValues"] = [];
-  const streaming = true;
+  let supportedReasoningValues: ModelCapabilityRecord["supportedReasoningValues"] =
+    [];
+  // Fail closed: do not claim capabilities this bounded probe does not exercise.
+  const streaming = false;
 
   try {
     await callOpenAIResponses({
       apiKey,
       model: modelId,
       inputText: 'Reply with JSON only: {"ok":true}',
-      maxOutputTokens: 64,
+      maxOutputTokens: 512,
       store: false,
       schema: {
         name: "probe_ok",
@@ -77,7 +82,7 @@ async function probeOne(
         model: modelId,
         inputText: 'Looking at the image, reply JSON {"ok":true}',
         images: [{ mediaType: "image/png", base64: tinyPng, detail: "low" }],
-        maxOutputTokens: 64,
+        maxOutputTokens: 512,
         store: false,
         schema: {
           name: "probe_vision",
@@ -101,14 +106,14 @@ async function probeOne(
 
   if (responsesApi) {
     const found: ModelCapabilityRecord["supportedReasoningValues"] = [];
-    for (const effort of ["high", "medium", "low"] as const) {
+    for (const effort of REASONING_EFFORT_VALUES) {
       try {
         await callOpenAIResponses({
           apiKey,
           model: modelId,
           inputText: 'Reply JSON {"ok":true}',
           reasoningEffort: effort,
-          maxOutputTokens: 64,
+          maxOutputTokens: 512,
           store: false,
           schema: {
             name: "probe_reason",
@@ -142,7 +147,7 @@ async function probeOne(
     reasoning,
     supportedReasoningValues,
     streaming,
-    tools: true,
+    tools: false,
     contextTokens: null,
     deprecated: false,
     costTier: inferCostTier(modelId),
@@ -154,12 +159,13 @@ async function probeOne(
   return base;
 }
 
-export async function discoverAndProbeModels(apiKey: string): Promise<ModelCapabilityRecord[]> {
+export async function discoverAndProbeModels(
+  apiKey: string,
+): Promise<ModelCapabilityRecord[]> {
   const ids = await listProviderModelIds(apiKey);
   const candidates = [...new Set(ids.map((id) => id.replace(/^openai\//, "")))]
     .filter(isAllowlistedModelId)
-    .sort((a, b) => a.localeCompare(b))
-    .slice(0, 12);
+    .sort(compareApprovedModelIds);
 
   const records: ModelCapabilityRecord[] = [];
   for (const id of candidates) {
@@ -168,15 +174,14 @@ export async function discoverAndProbeModels(apiKey: string): Promise<ModelCapab
 
   records.sort((a, b) => {
     if (a.available !== b.available) return a.available ? -1 : 1;
-    if (a.eligibleAsDefault !== b.eligibleAsDefault) return a.eligibleAsDefault ? -1 : 1;
-    return a.id.localeCompare(b.id);
+    return compareApprovedModelIds(a.id, b.id);
   });
 
-  setCachedModelRegistry(records);
+  await persistModelRegistry(records);
   return records;
 }
 
-/** Test stub without network — assumes full capabilities for allowlisted IDs. */
+/** Test-only fixture factory. Production code must never import this helper. */
 export function stubProbedRegistry(ids: string[]): ModelCapabilityRecord[] {
   const records = ids.filter(isAllowlistedModelId).map((id) => {
     const supportedReasoningValues: ModelCapabilityRecord["supportedReasoningValues"] =
@@ -203,6 +208,12 @@ export function stubProbedRegistry(ids: string[]): ModelCapabilityRecord[] {
     base.eligibleAsDefault = eligibleAsDefaultFromCapabilities(base);
     return base;
   });
-  setCachedModelRegistry(records);
   return records;
+}
+
+export function missingApprovedModelIds(providerIds: string[]): string[] {
+  const available = new Set(
+    providerIds.map((id) => id.replace(/^openai\//, "")),
+  );
+  return AICART_APPROVED_MODEL_IDS.filter((id) => !available.has(id));
 }

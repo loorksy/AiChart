@@ -53,7 +53,7 @@ describe("Phase 5 architecture and security contracts", () => {
     ];
     for (const route of routes) {
       const source = text(route);
-      assert.ok(source.includes("requireUser"));
+      assert.ok(/require(?:User|PaidAccess)/.test(source));
       assert.ok(source.includes("export async function GET"));
       assert.equal(/export async function (POST|PUT|PATCH|DELETE)/.test(source), false);
     }

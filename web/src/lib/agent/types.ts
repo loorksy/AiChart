@@ -8,6 +8,7 @@ import type {
   SerializedChartDrawing,
   UserDrawingMutationCommand,
 } from "@/lib/chart/drawings/types";
+import type { ReasoningEffort } from "./modelFirst/modelRegistry";
 
 export type AgentIntent =
   | "new_trade_analysis"
@@ -204,10 +205,30 @@ export interface AgentFinalResult {
   evidenceTimeline?: import("./researchEvidence").EvidenceTimelineStep[];
   /** Candle coverage report for this run (available/required/refill). */
   candleCoverage?: import("./dataQualityPolicy").CandleCoverageReport;
+  /** Redacted model-first provenance for internal run traces only. */
+  modelRun?: AgentModelRunMetadata;
   /** Dev-only diagnostics: whether the run used the synthesizer/LLM,
    *  ticker state, candle counts, and the drawing-plan
    *  decision. Never carries secrets or raw reasoning. */
   debugDecisionFlow?: AgentDebugDecisionFlow;
+}
+
+export interface AgentModelRunMetadata {
+  provider: "openai";
+  modelId: string;
+  reasoningEffort: ReasoningEffort | null;
+  responseIds: string[];
+  tokenUsage: {
+    inputTokens: number | null;
+    outputTokens: number | null;
+    totalTokens: number | null;
+  };
+  snapshotId: string | null;
+  snapshotFingerprint: string | null;
+  imageTimeframes: string[];
+  decision: "buy" | "sell" | "wait" | null;
+  validatorErrors: string[];
+  repaired: boolean;
 }
 
 export interface AgentDebugDecisionFlow {

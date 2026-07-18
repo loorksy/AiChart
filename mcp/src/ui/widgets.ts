@@ -789,13 +789,13 @@ const recommendationCard = widgetHtml(
   function pickRec(data){
     if (data.recommendation) return obj(data.recommendation);
     if (data.action || data.side) return data;
-    var lists = [data.opportunities, data.results, data.candidates, data.picks, data.scan, data.top];
+    var lists = [data.screeningItems, data.opportunities, data.results, data.candidates, data.picks, data.scan, data.top];
     for (var i=0;i<lists.length;i++){ if (Array.isArray(lists[i]) && lists[i].length) return obj(lists[i][0]); }
     if (data.best || data.pick) return obj(data.best || data.pick);
     return {};
   }
   function pickList(data){
-    var lists = [data.opportunities, data.results, data.candidates, data.picks, data.scan];
+    var lists = [data.screeningItems, data.opportunities, data.results, data.candidates, data.picks, data.scan];
     for (var i=0;i<lists.length;i++){ if (Array.isArray(lists[i]) && lists[i].length > 1) return lists[i]; }
     return null;
   }
@@ -823,7 +823,7 @@ const recommendationCard = widgetHtml(
   function listFrom(data){
     data = unwrapPayload(data);
     var lists = [
-      data.opportunities, data.results, data.candidates, data.picks,
+      data.screeningItems, data.opportunities, data.results, data.candidates, data.picks,
       data.scan, data.top, data.recommendations
     ];
     if (Array.isArray(data.recommendation)) lists.push(data.recommendation);

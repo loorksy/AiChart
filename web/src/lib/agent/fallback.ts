@@ -43,6 +43,7 @@ export function buildAgentFallbackResult(
 export function buildInformationalResult(
   summary: string,
   activityEvents: AgentActivityEvent[] = [],
+  modelRun?: AgentFinalResult["modelRun"],
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({
     analysisConfidence: 0,
@@ -55,5 +56,6 @@ export function buildInformationalResult(
     keyReasons: [],
     riskWarnings: [],
     activityEvents,
+    modelRun,
   };
 }

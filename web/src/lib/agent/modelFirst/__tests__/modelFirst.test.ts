@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  AICART_APPROVED_MODEL_IDS,
   clearCachedModelRegistry,
+  getCachedModelRegistry,
   isAllowlistedModelId,
   pickDefaultModelId,
   projectPublicModels,
   validateReasoningForModel,
   validateUserModelSelection,
 } from "../modelRegistry";
-import { stubProbedRegistry } from "../probeModels";
+import { missingApprovedModelIds, stubProbedRegistry } from "../probeModels";
 import { buildTradingResponsesBody } from "../openaiResponses";
 import { assertNoCandidateAuthority } from "../buildNeutralEvidence";
 import { validateTradePlanTechnically } from "../validatedTradePlan";
@@ -20,8 +22,19 @@ import {
 import { getTempCaptureRetentionMs } from "../neutralVision";
 
 describe("model registry", () => {
-  it("rejects invented / arbitrary model IDs", () => {
-    assert.equal(isAllowlistedModelId("gpt-5.6-sol"), true); // pattern ok until probe
+  it("accepts only the exact approved product model IDs", () => {
+    assert.deepEqual(AICART_APPROVED_MODEL_IDS, [
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+      "gpt-5.5-pro",
+    ]);
+    for (const id of AICART_APPROVED_MODEL_IDS) {
+      assert.equal(isAllowlistedModelId(id), true);
+    }
+    assert.equal(isAllowlistedModelId("gpt-4.1"), false);
+    assert.equal(isAllowlistedModelId("o4-mini"), false);
     assert.equal(isAllowlistedModelId("totally-made-up-model"), false);
     assert.equal(isAllowlistedModelId("text-embedding-3-large"), false);
     assert.equal(isAllowlistedModelId("whisper-1"), false);
@@ -29,44 +42,74 @@ describe("model registry", () => {
 
   it("rejects unavailable selections and does not silently substitute", () => {
     clearCachedModelRegistry();
-    const records = stubProbedRegistry(["gpt-4.1", "o3-mini"]);
-    const bad = validateUserModelSelection("o4-mini", records);
+    const records = stubProbedRegistry(["gpt-5.6-sol", "gpt-5.6-terra"]);
+    assert.equal(getCachedModelRegistry(), null);
+    const bad = validateUserModelSelection("gpt-5.6-luna", records);
     assert.equal(bad.ok, false);
-    const good = validateUserModelSelection("gpt-4.1", records);
+    const good = validateUserModelSelection("gpt-5.6-sol", records);
     assert.equal(good.ok, true);
-    if (good.ok) assert.equal(good.record.id, "gpt-4.1");
+    if (good.ok) assert.equal(good.record.id, "gpt-5.6-sol");
   });
 
   it("maps reasoning options per model capabilities", () => {
-    const records = stubProbedRegistry(["gpt-4.1", "o3-mini"]);
-    const gpt = records.find((r) => r.id === "gpt-4.1")!;
-    const o3 = records.find((r) => r.id === "o3-mini")!;
-    assert.deepEqual(gpt.supportedReasoningValues, []);
-    assert.ok(o3.supportedReasoningValues.includes("high"));
-    const high = validateReasoningForModel("high", o3);
+    const [sol] = stubProbedRegistry(["gpt-5.6-sol"]);
+    assert.ok(sol.supportedReasoningValues.includes("high"));
+    const high = validateReasoningForModel("high", sol);
     assert.equal(high.ok, true);
     if (high.ok) assert.equal(high.effort, "high");
     const unsupported = validateReasoningForModel("high", {
-      ...o3,
-      supportedReasoningValues: ["low"],
+      ...sol,
+      supportedReasoningValues: ["xhigh"],
     });
     assert.equal(unsupported.ok, false);
+    const nonReasoningRecord = {
+      ...sol,
+      reasoning: false,
+      supportedReasoningValues: [],
+    };
+    const nonReasoning = validateReasoningForModel("high", nonReasoningRecord);
+    assert.deepEqual(nonReasoning, {
+      ok: false,
+      error: "reasoning_unsupported",
+    });
+    assert.deepEqual(validateReasoningForModel(undefined, nonReasoningRecord), {
+      ok: true,
+      effort: null,
+    });
   });
 
-  it("picks non-premium default when eligible", () => {
-    const records = stubProbedRegistry(["o3-pro", "gpt-4.1", "o3-mini"]);
+  it("uses approved product order and a non-premium default", () => {
+    const records = stubProbedRegistry([
+      "gpt-5.5-pro",
+      "gpt-5.6-terra",
+      "gpt-5.6-sol",
+    ]);
     const id = pickDefaultModelId(records);
-    assert.ok(id === "gpt-4.1" || id === "o3-mini");
-    assert.notEqual(id, "o3-pro");
-    const publics = projectPublicModels(records);
-    assert.ok(publics.length <= 5);
+    assert.equal(id, "gpt-5.6-sol");
+    const staleOldRecord = {
+      ...records[0]!,
+      id: "gpt-4.1",
+      displayName: "GPT-4.1",
+    };
+    const publics = projectPublicModels([staleOldRecord, ...records]);
+    assert.deepEqual(
+      publics.map((record) => record.id),
+      ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5-pro"],
+    );
+  });
+
+  it("reports approved IDs absent from the provider model catalog", () => {
+    assert.deepEqual(
+      missingApprovedModelIds(["openai/gpt-5.6-sol", "gpt-5.5"]),
+      ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5-pro"],
+    );
   });
 });
 
 describe("Responses store:false contract", () => {
   it("defaults store to false for trading bodies", () => {
     const body = buildTradingResponsesBody({
-      model: "o3-mini",
+      model: "gpt-5.6-sol",
       inputText: "analyze",
       reasoningEffort: "high",
     });
@@ -74,13 +117,12 @@ describe("Responses store:false contract", () => {
     assert.deepEqual(body.reasoning, { effort: "high" });
   });
 
-  it("only enables store when explicitly requested", () => {
+  it("cannot enable provider storage through the trading body helper", () => {
     const body = buildTradingResponsesBody({
-      model: "o3-mini",
+      model: "gpt-5.6-sol",
       inputText: "analyze",
-      store: true,
     });
-    assert.equal(body.store, true);
+    assert.equal(body.store, false);
   });
 });
 
@@ -94,6 +136,13 @@ describe("authority: no candidate fields in model evidence", () => {
     assert.ok(leaks.includes("selectedCandidate"));
     assert.ok(leaks.includes("tradeCandidates"));
     assert.ok(leaks.includes("playbook"));
+  });
+
+  it("reports nested candidate authority paths", () => {
+    const leaks = assertNoCandidateAuthority({
+      safe: { nested: [{ candidate_score: 0.9 }] },
+    });
+    assert.deepEqual(leaks, ["safe.nested[0].candidate_score"]);
   });
 
   it("allows null markers and clean evidence", () => {

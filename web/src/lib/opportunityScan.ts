@@ -133,7 +133,7 @@ export async function runOpportunityScan(
       await logAudit(userId, "opportunity_scan_ai", `${candidate.symbol}@${candidate.interval} decision=${decision.decision}`);
       reply = decision.summary;
       const rec = decision.recommendation;
-      if (!best && rec && (rec.action === "buy" || rec.action === "sell")) {
+      if (!best && top.length === 1 && rec && (rec.action === "buy" || rec.action === "sell")) {
         best = {
           symbol: candidate.symbol,
           action: rec.action,
@@ -154,6 +154,12 @@ export async function runOpportunityScan(
     } catch (error) {
       result.errors.push(`deep/${candidate.symbol}: ${error instanceof Error ? error.message : "error"}`);
     }
+  }
+
+  if (top.length > 1) {
+    best = null;
+    reply = "Several neutral opportunities passed the screen. A single host-model comparison is required before selecting one.";
+    result.errors.push("deep_comparison_required");
   }
 
   if (!best && reply) {
