@@ -8,10 +8,11 @@ import {
   type DynamicPageBrandFields,
 } from "./dynamicPageBranding";
 import { adaptSql, normalizeRow } from "./sql";
+import { AICHART_SCHEMA_VERSION } from "./schemaVersion";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _pool: Pool | null = null;
-const SCHEMA_VERSION = "2026-07-18-nav-admin-subscription-v1";
+const SCHEMA_VERSION = AICHART_SCHEMA_VERSION;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (

@@ -21,6 +21,8 @@ import {
 } from "./pg";
 
 export type { DbBackend, DbRow, ExecuteResult };
+export { AICHART_SCHEMA_VERSION } from "./schemaVersion";
+export type { AichartSchemaVersion } from "./schemaVersion";
 
 let _backend: DbBackend | null = null;
 let _initPromise: Promise<void> | null = null;

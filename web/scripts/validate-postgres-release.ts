@@ -15,6 +15,7 @@ import {
   replayRecommendation,
   transitionRecommendation,
 } from "../src/lib/recommendations/canonical";
+import { AICHART_SCHEMA_VERSION } from "../src/lib/db/schemaVersion";
 import { ensureUserDefaults } from "../src/lib/store";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -177,7 +178,8 @@ async function run(): Promise<void> {
   );
   assert.equal(
     schemaVersion?.value,
-    "2026-07-16-aichart-simplification-v1",
+    AICHART_SCHEMA_VERSION,
+    "persisted schema_version must match canonical AICHART_SCHEMA_VERSION",
   );
 
   const suffix = crypto.randomUUID();
