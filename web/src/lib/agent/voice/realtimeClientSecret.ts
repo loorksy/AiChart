@@ -22,6 +22,11 @@ export interface MintedClientSecret {
 export interface MintOptions {
   config: VoiceServerConfig;
   locale: AppLocale;
+  /**
+   * Stable privacy-preserving end-user identifier for OpenAI's
+   * `OpenAI-Safety-Identifier` header (set only on this server mint call).
+   */
+  safetyIdentifier?: string;
   ttlSeconds?: number;
   fetchImpl?: typeof fetch;
 }
@@ -40,22 +45,22 @@ export async function createRealtimeClientSecret(
   const ttl = Math.max(60, Math.min(opts.ttlSeconds ?? 600, 3600));
   const doFetch = opts.fetchImpl ?? fetch;
 
-  // Note: the GA `client_secrets` endpoint does NOT accept a `safety_identifier`
-  // — it rejects the request with 400 `unknown_parameter` whether the field is
-  // nested under `session` or placed at the top level. So we do not send one. If
-  // OpenAI adds support later, re-introduce it here.
+  // Do not put `safety_identifier` in the JSON body — GA rejects that as
+  // `unknown_parameter`. OpenAI docs bind it via the request header instead.
   const body = {
     expires_after: { anchor: "created_at", seconds: ttl },
     session: {
       type: "realtime",
       model: config.model,
       instructions: voiceSystemInstructions(locale),
+      output_modalities: ["audio"],
       audio: {
         // Disable auto-response from the FIRST moment of the session (the
         // client re-applies this on session.update). The platform agent
         // drives every substantive turn; without this there is a window
         // before the data channel opens where the model could answer alone.
         input: {
+          transcription: { model: "gpt-4o-mini-transcribe" },
           turn_detection: {
             type: "server_vad",
             create_response: false,
@@ -67,14 +72,19 @@ export async function createRealtimeClientSecret(
     },
   };
 
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${config.apiKey}`,
+    "Content-Type": "application/json",
+  };
+  if (opts.safetyIdentifier?.trim()) {
+    headers["OpenAI-Safety-Identifier"] = opts.safetyIdentifier.trim();
+  }
+
   let res: Response;
   try {
     res = await doFetch(CLIENT_SECRETS_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
   } catch {

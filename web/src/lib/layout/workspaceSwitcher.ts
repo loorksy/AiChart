@@ -19,7 +19,8 @@ export const SWITCHER_STORAGE_KEY = "aichart_workspace_switcher_pos_v2";
 export const SWITCHER_STORAGE_KEY_LEGACY = "aichart_workspace_switcher_pos";
 export const SWITCHER_DRAG_THRESHOLD_PX = 8;
 export const SWITCHER_WIDTH = 52;
-export const SWITCHER_HEIGHT = 96;
+/** Free vertical chrome: grip + menu + chart + chat + collapse (+ optional reset). */
+export const SWITCHER_HEIGHT = 140;
 export const SWITCHER_COLLAPSED_SIZE = 40;
 export const SWITCHER_COMPOSER_ZONE_PX = 108;
 export const SWITCHER_TOP_ZONE_PX = 72;
@@ -80,10 +81,13 @@ export function resolveDockFromPoint(
   viewportWidth: number,
   viewportHeight: number,
 ): SwitcherDock {
-  const centerY = y + SWITCHER_HEIGHT / 2;
-  if (centerY >= viewportHeight - SWITCHER_COMPOSER_ZONE_PX) return "composer";
-  if (centerY <= SWITCHER_TOP_ZONE_PX) return "top";
+  void x;
   void viewportWidth;
+  // Use the control's top/bottom edges so taller chrome still docks reliably.
+  if (y + SWITCHER_HEIGHT >= viewportHeight - SWITCHER_COMPOSER_ZONE_PX) {
+    return "composer";
+  }
+  if (y <= SWITCHER_TOP_ZONE_PX) return "top";
   return "free";
 }
 
@@ -93,7 +97,7 @@ export function positionForDock(
   viewportHeight: number,
   collapsed: boolean,
 ): Pick<SwitcherPosition, "x" | "y"> {
-  const w = collapsed ? SWITCHER_COLLAPSED_SIZE : dock === "free" ? SWITCHER_WIDTH : 132;
+  const w = collapsed ? SWITCHER_COLLAPSED_SIZE : dock === "free" ? SWITCHER_WIDTH : 176;
   const h = collapsed ? SWITCHER_COLLAPSED_SIZE : dock === "free" ? SWITCHER_HEIGHT : 44;
   if (dock === "composer") {
     return clampSwitcherPoint(
@@ -156,7 +160,7 @@ export function parseSwitcherPosition(
       ? { w: SWITCHER_COLLAPSED_SIZE, h: SWITCHER_COLLAPSED_SIZE }
       : dock === "free"
         ? { w: SWITCHER_WIDTH, h: SWITCHER_HEIGHT }
-        : { w: 132, h: 44 };
+        : { w: 176, h: 44 };
     const point = clampSwitcherPoint(
       typeof obj.x === "number" ? obj.x : fallback.x,
       typeof obj.y === "number" ? obj.y : fallback.y,
@@ -201,7 +205,7 @@ export function saveSwitcherPosition(
     ? { w: SWITCHER_COLLAPSED_SIZE, h: SWITCHER_COLLAPSED_SIZE }
     : pos.dock === "free"
       ? { w: SWITCHER_WIDTH, h: SWITCHER_HEIGHT }
-      : { w: 132, h: 44 };
+      : { w: 176, h: 44 };
   const point = clampSwitcherPoint(pos.x, pos.y, viewportWidth, viewportHeight, size);
   window.localStorage.setItem(
     SWITCHER_STORAGE_KEY,

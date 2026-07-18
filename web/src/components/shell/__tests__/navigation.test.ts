@@ -59,13 +59,13 @@ test("shell mounts conversations for traders; admin uses admin nav", () => {
   assert.doesNotMatch(shell, /glass-panel/);
 });
 
-test("chart toolbar hosts the locale-aware menu button", () => {
-  const toolbar = read("components/chart/ChartToolbarMenuButton.tsx");
-  assert.match(toolbar, /data-testid="mobile-menu-trigger"/);
-  assert.match(toolbar, /start-0/);
-  assert.match(toolbar, /chart-toolbar-menu-layer/);
+test("floating switcher hosts the mobile menu trigger on chart workspace", () => {
+  const switcher = read("components/workspace/FloatingWorkspaceSwitcher.tsx");
+  assert.match(switcher, /data-testid="mobile-menu-trigger"/);
+  assert.match(switcher, /useShellMenu/);
+  assert.match(switcher, /shell\.open_menu/);
   const workspace = read("components/SmartChartWorkspace.tsx");
-  assert.match(workspace, /ChartToolbarMenuButton/);
+  assert.doesNotMatch(workspace, /ChartToolbarMenuButton/);
 });
 
 test("old /console/chats route redirects to console", () => {

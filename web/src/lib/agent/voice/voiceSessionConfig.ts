@@ -10,8 +10,8 @@
 import { getPlatformValueAsync } from "@/lib/platformConfig";
 import type { VoiceSessionLimits } from "./types";
 
-/** GA Realtime defaults (overridable via env). */
-const DEFAULT_MODEL = "gpt-realtime";
+/** GA Realtime defaults (overridable via env). See OpenAI Realtime docs. */
+const DEFAULT_MODEL = "gpt-realtime-2.1";
 const DEFAULT_VOICE = "alloy";
 
 const DEFAULT_MAX_MINUTES = 10;

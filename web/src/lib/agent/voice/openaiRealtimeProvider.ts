@@ -146,11 +146,17 @@ export function createOpenAIRealtimeProvider(
 
     pc = new RTCPeerConnection();
 
-    // 2. Remote assistant audio sink.
+    // 2. Remote assistant audio sink (WebRTC media track — see OpenAI WebRTC guide).
     audioEl = document.createElement("audio");
     audioEl.autoplay = true;
+    // Helps iOS Safari treat remote WebRTC audio as inline playback.
+    (audioEl as HTMLAudioElement & { playsInline?: boolean }).playsInline = true;
     pc.ontrack = (e) => {
-      if (audioEl) audioEl.srcObject = e.streams[0] ?? null;
+      if (!audioEl) return;
+      audioEl.srcObject = e.streams[0] ?? null;
+      void audioEl.play().catch(() => {
+        /* autoplay may be blocked until a gesture; user already tapped Start */
+      });
     };
 
     // 3. Microphone track.
@@ -217,9 +223,12 @@ export function createOpenAIRealtimeProvider(
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
+      // GA WebRTC handshake: POST SDP to /v1/realtime/calls with the ephemeral
+      // client secret. Model/voice are already bound on the client_secret mint;
+      // do not append ?model= (not part of the current documented flow).
       let sdpRes: Response;
       try {
-        sdpRes = await fetch(`${REALTIME_CALLS_URL}?model=${encodeURIComponent(opts.credential.model)}`, {
+        sdpRes = await fetch(REALTIME_CALLS_URL, {
           method: "POST",
           body: offer.sdp,
           headers: {

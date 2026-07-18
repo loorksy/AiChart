@@ -6,9 +6,11 @@ import {
   CandlestickChart,
   ChevronDown,
   GripVertical,
+  Menu,
   MessageSquare,
   RotateCcw,
 } from "lucide-react";
+import { useShellMenu } from "@/components/shell/ShellMenuContext";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n";
 import type { MobilePane } from "@/lib/layout/chatLayout";
@@ -39,6 +41,7 @@ export function FloatingWorkspaceSwitcher({
   onChange: (pane: MobilePane) => void;
 }) {
   const { t, dir } = useLocale();
+  const shellMenu = useShellMenu();
   const labelId = useId();
   const localeDir = dir === "rtl" ? "rtl" : "ltr";
   const [pos, setPos] = useState<SwitcherPosition>(() =>
@@ -196,6 +199,8 @@ export function FloatingWorkspaceSwitcher({
         toggleCollapsed();
       }}
       onNudge={nudge}
+      onOpenMenu={shellMenu ? () => shellMenu.openMobileMenu() : undefined}
+      menuOpen={shellMenu?.mobileOpen ?? false}
       t={t}
     />
   );
@@ -255,7 +260,7 @@ function sizeFor(pos: Pick<SwitcherPosition, "dock" | "collapsed">) {
   if (pos.dock === "free") {
     return { w: SWITCHER_WIDTH, h: SWITCHER_HEIGHT };
   }
-  return { w: 148, h: 40 };
+  return { w: 176, h: 40 };
 }
 
 function SwitcherChrome({
@@ -272,6 +277,8 @@ function SwitcherChrome({
   onReset,
   onToggleCollapsed,
   onNudge,
+  onOpenMenu,
+  menuOpen,
   t,
 }: {
   pane: MobilePane;
@@ -287,6 +294,8 @@ function SwitcherChrome({
   onReset: () => void;
   onToggleCollapsed: () => void;
   onNudge: (dx: number, dy: number) => void;
+  onOpenMenu?: () => void;
+  menuOpen: boolean;
   t: (key: TranslationKey) => string;
 }) {
   if (collapsed) {
@@ -372,6 +381,25 @@ function SwitcherChrome({
       >
         <GripVertical className="h-3.5 w-3.5" />
       </button>
+
+      {onOpenMenu ? (
+        <button
+          type="button"
+          data-testid="mobile-menu-trigger"
+          aria-label={t("shell.open_menu")}
+          title={t("shell.open_menu")}
+          aria-expanded={menuOpen}
+          aria-controls="mobile-navigation-drawer"
+          onClick={onOpenMenu}
+          className={cn(
+            "flex items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            horizontal ? "h-8 w-8 rounded-full" : "h-9 rounded-xl",
+            menuOpen && "bg-muted text-foreground",
+          )}
+        >
+          <Menu className="h-4 w-4" />
+        </button>
+      ) : null}
 
       <button
         type="button"
