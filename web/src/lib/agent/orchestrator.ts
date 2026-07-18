@@ -100,6 +100,7 @@ import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
 import { createTrackedRecommendation } from "@/lib/recommendations/recommendationStore";
+import { saveRecommendation } from "@/lib/store";
 
 export interface UnifiedAgentInput {
   userMessage: string;
@@ -458,6 +459,13 @@ export async function runUnifiedChartAgent(
   let modelRun: AgentFinalResult["modelRun"];
   let liveValidatedPlan: import("./modelFirst/validatedTradePlan").ValidatedTradePlan | null =
     null;
+  let decisionSnapshotMeta: {
+    snapshotId: string;
+    fingerprint: string;
+    brokerOrSource: string;
+    marketTimestamp: number | null;
+    quoteAgeMs: number | null;
+  } | null = null;
 
   {
     const { context: contextTfs } = resolveContextTimeframes(market.interval);
@@ -512,6 +520,13 @@ export async function runUnifiedChartAgent(
       newsDataState: news?.newsRisk ?? "unknown",
       quote: decisionQuote,
     });
+    decisionSnapshotMeta = {
+      snapshotId: snapshot.snapshotId,
+      fingerprint: snapshot.fingerprint,
+      brokerOrSource: snapshot.brokerOrSource,
+      marketTimestamp: snapshot.marketTimestamp,
+      quoteAgeMs: snapshot.quoteAgeMs,
+    };
     const vision = await captureNeutralDecisionCharts({
       userId: ctx.userId ?? 0,
       snapshot,
@@ -762,7 +777,7 @@ export async function runUnifiedChartAgent(
     requestId: ctx.requestId,
     symbol: market.symbol,
     interval: market.interval,
-    actionableCandidate:
+    actionableDecision:
       finalDecision.decision === "buy" || finalDecision.decision === "sell",
     decision:
       finalDecision.decision === "buy" || finalDecision.decision === "sell"
@@ -835,6 +850,19 @@ export async function runUnifiedChartAgent(
       finalDecision,
       drawings,
       chartSnapshotHash,
+      validated: liveValidatedPlan,
+      modelId: modelRun?.modelId ?? null,
+      reasoningEffort: modelRun?.reasoningEffort ?? null,
+      snapshotId: modelRun?.snapshotId ?? decisionSnapshotMeta?.snapshotId,
+      snapshotFingerprint:
+        modelRun?.snapshotFingerprint ?? decisionSnapshotMeta?.fingerprint,
+      quoteSource: decisionSnapshotMeta?.brokerOrSource,
+      quoteTimestamp: decisionSnapshotMeta?.marketTimestamp,
+      quoteAgeMs: decisionSnapshotMeta?.quoteAgeMs,
+      repairAttempted: Boolean(modelRun?.repaired),
+      repairImproved: Boolean(
+        modelRun?.repaired && liveValidatedPlan?.executionReady,
+      ),
     });
   }
 
@@ -1316,21 +1344,173 @@ async function storeFinalRecommendation(input: {
   finalDecision: FinalDecisionResult;
   drawings: AgentFinalResult["drawings"];
   chartSnapshotHash: string;
+  validated: import("./modelFirst/validatedTradePlan").ValidatedTradePlan | null;
+  modelId?: string | null;
+  reasoningEffort?: string | null;
+  snapshotId?: string | null;
+  snapshotFingerprint?: string | null;
+  quoteSource?: string | null;
+  quoteTimestamp?: number | null;
+  quoteAgeMs?: number | null;
+  repairAttempted?: boolean;
+  repairImproved?: boolean;
 }): Promise<ActiveRecommendation | null> {
   const rec = input.finalDecision.recommendation;
+  if (rec.action !== "buy" && rec.action !== "sell") {
+    return null;
+  }
+
+  const {
+    buildModelPlanPersistence,
+    serializeModelPlanPersistence,
+  } = await import("./modelFirst/modelPlanPersistence");
+
+  const plan =
+    input.validated?.plan ??
+    ({
+      decision: rec.action,
+      activation:
+        rec.activationClass === "conditional"
+          ? "conditional"
+          : rec.activationClass === "immediate"
+            ? "immediate"
+            : "none",
+      marketRegime: "mixed",
+      marketThesis: input.finalDecision.summary,
+      primaryTimeframe: input.market.interval,
+      contextTimeframes: [],
+      timeframeAnalysis: [],
+      entryZone: {
+        low: rec.entryZone?.low ?? null,
+        high: rec.entryZone?.high ?? null,
+        preferred: rec.entryZone?.preferred ?? rec.entry ?? null,
+      },
+      invalidation: rec.invalidationLevel ?? null,
+      stopLoss: rec.stop_loss ?? null,
+      targets: (rec.targets ?? []).map((price) => ({
+        price,
+        reason: "model target",
+      })),
+      requiredConfirmation: rec.triggerCondition ?? null,
+      pathToEntry: null,
+      alternativeScenario: "See summary.",
+      confidence: input.finalDecision.confidence,
+      summary: input.finalDecision.summary,
+      keyReasons: input.finalDecision.keyReasons,
+      warnings: input.finalDecision.riskWarnings,
+      dataTimestamp: new Date().toISOString(),
+    } as import("./modelFirst/modelTradePlan").ModelTradePlan);
+
+  const persistence = buildModelPlanPersistence({
+    plan,
+    validated: input.validated,
+    modelId: input.modelId,
+    reasoningEffort: input.reasoningEffort,
+    snapshotId: input.snapshotId,
+    snapshotFingerprint: input.snapshotFingerprint,
+    quoteSource: input.quoteSource,
+    quoteTimestamp: input.quoteTimestamp,
+    quoteAgeMs: input.quoteAgeMs,
+    repairAttempted: input.repairAttempted,
+    repairImproved: input.repairImproved,
+    executionReadiness: rec.executionReadiness,
+  });
+  const contextJson = serializeModelPlanPersistence(persistence);
+  const executionReady = Boolean(input.validated?.executionReady);
+  const id = newId();
+  const createdCandleTime = input.market.currentTfCandles.at(-1)?.time;
+
+  // Persist analytical direction even when levels are not executable.
+  if (input.userId != null) {
+    const riskExtras = {
+      modelPlanVersion: persistence.version,
+      validationState: persistence.validationState,
+      executionReadiness: persistence.executionReadiness,
+      repairAttempted: persistence.repairAttempted,
+      repairResult: persistence.repairResult,
+      snapshotId: persistence.snapshotId,
+      // Never store Trade Candidate IDs or poi.score for new rows.
+      poiScoreCompat: false,
+    };
+    if (executionReady && rec.entry != null && rec.stop_loss != null) {
+      const entryType: "market" | "limit" | "pending" =
+        rec.entryType === "market"
+          ? "market"
+          : rec.entryType?.includes("limit")
+            ? "limit"
+            : "pending";
+      await createTrackedRecommendation({
+        id,
+        userId: input.userId,
+        chatId: input.sessionId,
+        analysisId: input.analysisId,
+        symbol: input.market.symbol,
+        interval: input.market.interval,
+        direction: rec.action,
+        entryType,
+        entry: input.validated?.entry ?? rec.entry,
+        stopLoss: input.validated?.stopLoss ?? rec.stop_loss,
+        targets: input.validated?.targets ?? rec.targets ?? [],
+        invalidationLevel: rec.invalidationLevel ?? undefined,
+        status:
+          rec.activationClass === "immediate" || entryType === "market"
+            ? "triggered"
+            : "pending_entry",
+        outcome: "pending",
+        setupType: input.scalp ? "scalp" : undefined,
+        rr: rec.rr,
+        createdAt: Date.now(),
+        createdCandleTime: createdCandleTime ?? Date.now(),
+        expiresAt: computeRecommendationExpiry({
+          interval: input.market.interval,
+          scalp: input.scalp,
+          from: Date.now(),
+        }),
+        triggeredAt: entryType === "market" ? Date.now() : undefined,
+        priceAtCreation: input.market.currentPrice ?? undefined,
+        contextJson,
+        confidence: Math.round(input.finalDecision.confidence * 100),
+        riskExtras,
+      }).catch(() => {});
+    } else {
+      // Direction preserved; executable columns stay null until levels refresh.
+      await saveRecommendation(input.userId, {
+        symbol: input.market.symbol,
+        action: rec.action,
+        confidence: Math.round(input.finalDecision.confidence * 100),
+        entry: null,
+        stop_loss: null,
+        take_profit: null,
+        targets: [],
+        timeframe: input.market.interval,
+        rationale: input.finalDecision.summary,
+        factors: input.finalDecision.keyReasons,
+        analysis_id: input.analysisId,
+        session_id: input.sessionId,
+        chat_id: input.sessionId,
+        context_json: contextJson,
+        risk: riskExtras,
+        source: "agent",
+        engine_version: "aichart-model-plan-v1",
+        expires_at: computeRecommendationExpiry({
+          interval: input.market.interval,
+          scalp: input.scalp,
+          from: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+  }
+
+  // In-memory active tracking only for technically accepted executable levels.
   if (
-    rec.action !== "buy" &&
-    rec.action !== "sell"
+    !executionReady ||
+    rec.entry == null ||
+    rec.stop_loss == null ||
+    !rec.targets?.length
   ) {
     return null;
   }
-  if (rec.entry == null || rec.stop_loss == null || !rec.targets?.length) {
-    return null;
-  }
-  const id = newId();
-  const createdCandleTime = input.market.currentTfCandles.at(-1)?.time;
-  const zoneLow = rec.entryZone?.low ?? rec.entry;
-  const zoneHigh = rec.entryZone?.high ?? rec.entry;
+
   const active: ActiveRecommendation = {
     id,
     userId: input.userId,
@@ -1359,9 +1539,7 @@ async function storeFinalRecommendation(input: {
         : "pending_entry",
     triggerCondition:
       rec.triggerCondition ??
-      (rec.action === "buy"
-        ? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`
-        : `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`),
+      `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`,
     invalidationLevel: rec.invalidationLevel ?? rec.stop_loss,
     invalidationRule:
       rec.invalidationRule ??
@@ -1369,17 +1547,8 @@ async function storeFinalRecommendation(input: {
         ? `إغلاق شمعة تحت ${rec.stop_loss} يبطل السيناريو.`
         : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`),
     setupType: input.scalp ? "scalp" : undefined,
-    // Display zone from the model-owned entry zone (not a pre-model proposal).
-    poi:
-      zoneLow != null && zoneHigh != null
-        ? {
-            type: rec.action === "buy" ? "demand" : "supply",
-            low: zoneLow,
-            high: zoneHigh,
-            score: Math.round((input.finalDecision.confidence ?? 0) * 100),
-            grade: "model",
-          }
-        : undefined,
+    // New recommendations do not use poi / poi.score compatibility.
+    poi: undefined,
     summary: input.finalDecision.summary,
     keyReasons: input.finalDecision.keyReasons,
     riskWarnings: input.finalDecision.riskWarnings,
@@ -1389,52 +1558,5 @@ async function storeFinalRecommendation(input: {
     priceAtCreation: input.market.currentPrice ?? undefined,
   };
   await rememberActiveRecommendation(active);
-  // Persist a server-side tracked record (monitoring only — never executes).
-  // Best-effort: a storage failure must not break the agent's reply.
-  if (input.userId != null) {
-    await persistTrackedRecommendation(active, input.userId, input.sessionId).catch(
-      () => {},
-    );
-  }
   return active;
-}
-
-/** Map the in-memory recommendation to a persisted tracker record. */
-async function persistTrackedRecommendation(
-  active: ActiveRecommendation,
-  userId: number,
-  chatId: string,
-): Promise<void> {
-  const entryType: "market" | "limit" | "pending" =
-    active.entryType === "market"
-      ? "market"
-      : active.entryType?.includes("limit")
-        ? "limit"
-        : "pending";
-  await createTrackedRecommendation({
-    id: active.id,
-    userId,
-    chatId,
-    analysisId: active.analysisId,
-    symbol: active.symbol,
-    interval: active.interval,
-    direction: active.direction,
-    entryType,
-    entry: active.entry,
-    stopLoss: active.stopLoss,
-    targets: active.targets,
-    invalidationLevel: active.invalidationLevel,
-    status:
-      active.status === "triggered" || entryType === "market"
-        ? "triggered"
-        : "pending_entry",
-    outcome: "pending",
-    setupType: active.setupType,
-    rr: active.rr,
-    createdAt: Date.now(),
-    createdCandleTime: active.createdCandleTime ?? active.createdAt,
-    expiresAt: active.expiresAt ?? Date.now() + 4 * 60 * 60 * 1000,
-    triggeredAt: entryType === "market" ? Date.now() : undefined,
-    priceAtCreation: active.priceAtCreation,
-  });
 }

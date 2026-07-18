@@ -39,6 +39,13 @@
     "take_profit": {
       "type": "number"
     },
+    "targets": {
+      "maxItems": 3,
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
     "timeframe": {
       "type": "string"
     },
@@ -54,14 +61,253 @@
         },
         "additionalProperties": {}
       }
+    },
+    "model_plan": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell",
+            "wait"
+          ]
+        },
+        "activation": {
+          "type": "string",
+          "enum": [
+            "immediate",
+            "conditional",
+            "none"
+          ]
+        },
+        "marketRegime": {
+          "type": "string",
+          "enum": [
+            "trend",
+            "range",
+            "breakout",
+            "reversal",
+            "mixed"
+          ]
+        },
+        "marketThesis": {
+          "type": "string",
+          "minLength": 8
+        },
+        "primaryTimeframe": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contextTimeframes": {
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeframeAnalysis": {
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timeframe": {
+                "type": "string"
+              },
+              "bias": {
+                "type": "string",
+                "enum": [
+                  "bullish",
+                  "bearish",
+                  "neutral",
+                  "mixed"
+                ]
+              },
+              "evidence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "timeframe",
+              "bias",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "entryZone": {
+          "type": "object",
+          "properties": {
+            "low": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "high": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "preferred": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "low",
+            "high",
+            "preferred"
+          ],
+          "additionalProperties": false
+        },
+        "invalidation": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stopLoss": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targets": {
+          "maxItems": 3,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "price": {
+                "type": "number"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "price",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "requiredConfirmation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pathToEntry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alternativeScenario": {
+          "type": "string",
+          "minLength": 4
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 10
+        },
+        "keyReasons": {
+          "minItems": 1,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dataTimestamp": {
+          "type": "string",
+          "minLength": 4
+        }
+      },
+      "required": [
+        "decision",
+        "activation",
+        "marketRegime",
+        "marketThesis",
+        "primaryTimeframe",
+        "alternativeScenario",
+        "confidence",
+        "summary",
+        "keyReasons",
+        "dataTimestamp"
+      ],
+      "additionalProperties": false
+    },
+    "snapshot_id": {
+      "type": "string"
+    },
+    "current_price": {
+      "type": "number"
+    },
+    "quote_age_ms": {
+      "type": "number"
+    },
+    "tick_size": {
+      "type": "number"
+    },
+    "model_id": {
+      "type": "string"
+    },
+    "reasoning_effort": {
+      "type": "string"
+    },
+    "allow_repair": {
+      "type": "boolean"
     }
   },
   "required": [
-    "symbol",
-    "action",
-    "confidence",
-    "rationale",
-    "factors"
+    "symbol"
   ],
   "additionalProperties": false
 }

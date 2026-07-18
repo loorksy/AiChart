@@ -33,7 +33,9 @@ export type DrawingAnnotation = {
     | "range_high"
     | "range_low"
     | "premium_discount"
-    | "invalidation";
+    | "invalidation"
+    /** Non-executable status marker — never represents trade geometry. */
+    | "note";
   price: number;
   /** Second price for bands (premium_discount, invalidation zone). */
   price2?: number;

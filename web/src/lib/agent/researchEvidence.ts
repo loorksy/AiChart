@@ -70,8 +70,13 @@ export interface ResearchSelectionInput {
   requestId?: string;
   symbol?: string;
   interval?: string;
-  /** buy/sell candidate exists — research may influence recommendation confidence. */
-  actionableCandidate: boolean;
+  /**
+   * True when the model already produced buy/sell — research may influence
+   * confidence only. Never a Trade Candidate presence flag.
+   */
+  actionableDecision: boolean;
+  /** @deprecated Prefer actionableDecision. */
+  actionableCandidate?: boolean;
   decision?: "buy" | "sell" | "wait";
   /** Pre-research recommendation confidence 0–1. */
   baseConfidence?: number;
@@ -276,7 +281,7 @@ export function decideResearchJustification(input: ResearchSelectionInput): {
 
   const reasons: Record<string, string> = {};
 
-  if (!input.actionableCandidate) {
+  if (!(input.actionableDecision ?? input.actionableCandidate)) {
     reasons.dna = "no_actionable_candidate";
     reasons.shadow = "no_actionable_candidate";
     reasons.backtest = "no_actionable_candidate";
@@ -799,7 +804,9 @@ export async function collectBoundedResearchEvidence(
   timeline.push({
     step: "final_recommendation",
     status: "completed",
-    reason: input.decision ?? (input.actionableCandidate ? "pending" : "wait"),
+    reason:
+      input.decision ??
+      ((input.actionableDecision ?? input.actionableCandidate) ? "pending" : "wait"),
   });
 
   return {

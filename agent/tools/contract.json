@@ -147,7 +147,7 @@
     {
       "name": "create_recommendation",
       "version": "1.1.1",
-      "description": "When: before open_trade — record recommendation. rationale 2–4 sentences in 'we' voice. side-effect: writes recommendation. Example: action=buy&confidence=85.",
+      "description": "When: after the host model independently chooses BUY/SELL/WAIT and builds its own plan — record recommendation. Pass model_plan for validation via validateModelTradePlan. Never bind a Trade Candidate. Executable levels persist only when technically accepted. open_trade still requires explicit approval.",
       "permission": "trade.recommend",
       "riskClass": "recommendation",
       "surfaces": [
@@ -965,7 +965,7 @@
     {
       "name": "scan_market",
       "version": "1.1.1",
-      "description": "scan market · compare symbols · best entry · pick a trade. When: 'take a trade' or 'best opportunity'. read-only. Example: symbols=[EURUSD,GBPUSD].",
+      "description": "When: broad, bounded market screening. read-only. The host model must compare returned evidence and choose BUY/SELL/WAIT; scores never imply direction. Explicit scope is required. Example: scope=market_scan&symbols=EURUSD,GBPUSD&interval=5m.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [

@@ -2,8 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "scope": {
+      "type": "string",
+      "enum": [
+        "symbol_scan",
+        "timeframe_scan",
+        "market_scan"
+      ]
+    },
     "symbols": {
-      "maxItems": 30,
+      "maxItems": 12,
       "type": "array",
       "items": {
         "type": "string"
@@ -12,10 +20,21 @@
     "interval": {
       "type": "string"
     },
+    "intervals": {
+      "minItems": 2,
+      "maxItems": 4,
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "market": {
       "type": "string",
       "const": "forex"
     }
   },
+  "required": [
+    "scope"
+  ],
   "additionalProperties": false
 }

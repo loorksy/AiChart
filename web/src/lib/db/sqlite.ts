@@ -859,6 +859,8 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE recommendations ADD COLUMN analysis_tier TEXT");
   }
   if (!recCols.some((c) => c.name === "context_json")) {
+    // Stores model-owned plan envelope (kind=model_owned_plan). No Trade Candidate ID.
+    // Rollback: SET context_json = NULL for rows where json_extract(context_json,'$.kind')='model_owned_plan'.
     db.exec("ALTER TABLE recommendations ADD COLUMN context_json TEXT");
   }
   if (!recCols.some((c) => c.name === "source")) {

@@ -621,7 +621,7 @@ function recommendationContextFromChart(
 ): SafeRecommendationContext | null {
   const recommendation = chartContext?.recommendation;
   if (!recommendation?.id || recommendation.action === "wait") return null;
-  const candidate: SafeRecommendationContext = {
+  const source: SafeRecommendationContext = {
     id: recommendation.id,
     source: "chart",
     symbol: chartContext?.symbol ?? "",
@@ -633,7 +633,7 @@ function recommendationContextFromChart(
     targets: recommendation.targets ?? (recommendation.take_profit ? [recommendation.take_profit] : []),
   };
   return resolveActiveRecommendationContext({
-    candidates: [candidate],
+    recommendationSources: [source],
     symbol: chartContext?.symbol,
     timeframe: chartContext?.interval,
   }) ?? null;

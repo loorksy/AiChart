@@ -1,110 +1,87 @@
 import { buildForexSnapshot, type MarketSnapshot } from "./market";
 
-export interface OpportunityCandidate {
+/**
+ * Neutral market screening item for discovery paths.
+ * Never contains BUY/SELL, entry, stop, targets, or trade confidence.
+ */
+export interface MarketScreeningItem {
   symbol: string;
   interval: string;
-  signals: string[];
-  score: number;
+  /** Neutral activity/evidence labels — never directional trade advice. */
+  neutralEvidence: string[];
+  /** Non-directional activity score for shortlist ranking only. */
+  activityScore: number;
+  sourceHealth: "ok" | "degraded" | "unknown";
+  quoteFreshnessMs: number | null;
+  spread: number | null;
+  volatilityActivityPct: number | null;
+  candleCoverage: number | null;
+  structuralActivity: string | null;
+  neutralSummary: string;
   snapshot: MarketSnapshot;
-}
-
-/**
- * Cheap 24/7 monitoring layer — pure code, no LLM. Returns a candidate
- * only when multiple technical signals align (per the user's style).
- */
-export function scoreOpportunity(
-  snap: MarketSnapshot,
-): OpportunityCandidate | null {
-  const signals: string[] = [];
-  let score = 0;
-
-  if (snap.rsi14 !== null) {
-    if (snap.rsi14 <= 30) {
-      signals.push(`RSI ${snap.rsi14.toFixed(1)} تشبّع بيعي`);
-      score += 2;
-    } else if (snap.rsi14 >= 70) {
-      signals.push(`RSI ${snap.rsi14.toFixed(1)} تشبّع شرائي`);
-      score += 2;
-    }
-  }
-
-  if (snap.macd) {
-    if (snap.macd.histogram > 0 && snap.macd.macd > snap.macd.signal) {
-      signals.push("MACD صعودي");
-      score += 1;
-    } else if (snap.macd.histogram < 0 && snap.macd.macd < snap.macd.signal) {
-      signals.push("MACD هبوطي");
-      score += 1;
-    }
-  }
-
-  if (snap.trend === "uptrend" && snap.rsi14 !== null && snap.rsi14 < 45) {
-    signals.push("اتجاه صاعد مع تصحيح");
-    score += 1;
-  }
-  if (snap.trend === "downtrend" && snap.rsi14 !== null && snap.rsi14 > 55) {
-    signals.push("اتجاه هابط مع ارتداد");
-    score += 1;
-  }
-
-  if (Math.abs(snap.change24hPct) >= 5) {
-    signals.push(`تغيّر 24س ${snap.change24hPct.toFixed(1)}%`);
-    score += 1;
-  }
-
-  if (score < 2) return null;
-
-  return {
-    symbol: snap.symbol,
-    interval: snap.interval,
-    signals,
-    score,
-    snapshot: snap,
-  };
 }
 
 /**
  * Direction-neutral activity screen used by live discovery paths. Scores only
  * data quality and movement magnitude; labels never recommend BUY or SELL.
  */
-export function scoreNeutralOpportunity(
+export function scoreNeutralScreening(
   snap: MarketSnapshot,
-): OpportunityCandidate | null {
-  const signals: string[] = [];
-  let score = 0;
+): MarketScreeningItem | null {
+  const neutralEvidence: string[] = [];
+  let activityScore = 0;
+  let volatilityActivityPct: number | null = null;
 
   if (snap.rsi14 !== null && Math.abs(snap.rsi14 - 50) >= 15) {
-    signals.push(`RSI distance from neutral ${Math.abs(snap.rsi14 - 50).toFixed(1)}`);
-    score += 1;
+    neutralEvidence.push(
+      `RSI distance from neutral ${Math.abs(snap.rsi14 - 50).toFixed(1)}`,
+    );
+    activityScore += 1;
   }
   if (snap.macd && Math.abs(snap.macd.histogram) > 0) {
-    signals.push(`MACD momentum magnitude ${Math.abs(snap.macd.histogram).toPrecision(3)}`);
-    score += 1;
+    neutralEvidence.push(
+      `MACD momentum magnitude ${Math.abs(snap.macd.histogram).toPrecision(3)}`,
+    );
+    activityScore += 1;
   }
   if (snap.price > 0 && snap.atr14 != null) {
     const atrPct = (Math.abs(snap.atr14) / snap.price) * 100;
+    volatilityActivityPct = atrPct;
     if (atrPct >= 0.03) {
-      signals.push(`ATR activity ${atrPct.toFixed(3)}%`);
-      score += 2;
+      neutralEvidence.push(`ATR activity ${atrPct.toFixed(3)}%`);
+      activityScore += 2;
     }
   }
   if (snap.price > 0 && snap.high24h > 0 && snap.low24h > 0) {
     const rangePct = (Math.abs(snap.high24h - snap.low24h) / snap.price) * 100;
     if (rangePct >= 0.15) {
-      signals.push(`24h range ${rangePct.toFixed(3)}%`);
-      score += 2;
+      neutralEvidence.push(`24h range ${rangePct.toFixed(3)}%`);
+      activityScore += 2;
     }
   }
   if (Math.abs(snap.change24hPct) >= 0.2) {
-    signals.push(`24h absolute movement ${Math.abs(snap.change24hPct).toFixed(2)}%`);
-    score += 1;
+    neutralEvidence.push(
+      `24h absolute movement ${Math.abs(snap.change24hPct).toFixed(2)}%`,
+    );
+    activityScore += 1;
   }
-  if (score < 2) return null;
+  if (activityScore < 2) return null;
+
+  const structuralActivity =
+    snap.trend === "sideways" ? "range_activity" : "trend_activity";
+
   return {
     symbol: snap.symbol,
     interval: snap.interval,
-    signals,
-    score,
+    neutralEvidence,
+    activityScore,
+    sourceHealth: "unknown",
+    quoteFreshnessMs: null,
+    spread: null,
+    volatilityActivityPct,
+    candleCoverage: null,
+    structuralActivity,
+    neutralSummary: snap.summary,
     snapshot: snap,
   };
 }
@@ -116,9 +93,9 @@ export async function scanForexSymbol(
   userId: number,
   symbol: string,
   interval = "1h",
-): Promise<OpportunityCandidate | null> {
+): Promise<MarketScreeningItem | null> {
   const snap = await buildForexSnapshot(userId, symbol, interval);
-  return scoreNeutralOpportunity(snap);
+  return scoreNeutralScreening(snap);
 }
 
 export type ProximityKind = "sl" | "tp" | "entry";

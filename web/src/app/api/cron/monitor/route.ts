@@ -31,8 +31,11 @@ export async function POST(req: NextRequest) {
       return { users: users.length, dispatched: users.length, post };
     }
 
-    const scans: Array<{ userId: number; candidates: number; errors: string[] }> =
-      [];
+    const scans: Array<{
+      userId: number;
+      screeningItems: number;
+      errors: string[];
+    }> = [];
     for (const { id, settings, limits } of users) {
       try {
         const scan = await runOpportunityScan(id, settings, limits, {
@@ -40,13 +43,13 @@ export async function POST(req: NextRequest) {
         });
         scans.push({
           userId: id,
-          candidates: scan.candidates.length,
+          screeningItems: scan.screeningItems.length,
           errors: scan.errors,
         });
       } catch (e) {
         scans.push({
           userId: id,
-          candidates: 0,
+          screeningItems: 0,
           errors: [e instanceof Error ? e.message : "error"],
         });
       }

@@ -1,6 +1,6 @@
 /**
  * Convert a validated model trade plan into chart drawings.
- * Model-owned plan only — no pre-model trade proposal authority.
+ * Model-owned plan only — draw executable geometry only when technically ready.
  */
 import type { FinalDecisionResult } from "../agents/finalDecisionAgent";
 import type { DrawingPlan } from "../drawings/buildDrawingPlan";
@@ -12,7 +12,8 @@ export function buildDrawingsFromValidatedModelPlan(input: {
   lastCandleTime?: number;
 }): DrawingPlan {
   const rec = input.decision.recommendation;
-  const plan = input.validated?.plan;
+  const validated = input.validated;
+  const plan = validated?.plan;
   const time = input.lastCandleTime ?? Date.now();
 
   if (rec.action !== "buy" && rec.action !== "sell") {
@@ -26,28 +27,35 @@ export function buildDrawingsFromValidatedModelPlan(input: {
     };
   }
 
-  const zoneLow =
-    plan?.entryZone.low ??
-    rec.entryZone?.low ??
-    (rec.entry != null ? rec.entry : null);
-  const zoneHigh =
-    plan?.entryZone.high ??
-    rec.entryZone?.high ??
-    (rec.entry != null ? rec.entry : null);
-  const entry =
-    input.validated?.executionReady
-      ? input.validated.entry
-      : (rec.entry ?? plan?.entryZone.preferred ?? null);
-  const stop =
-    input.validated?.executionReady
-      ? input.validated.stopLoss
-      : (rec.stop_loss ?? plan?.stopLoss ?? null);
-  const targets =
-    input.validated?.executionReady
-      ? input.validated.targets
-      : (rec.targets ?? plan?.targets.map((t) => t.price) ?? []);
-  const invalidation =
-    rec.invalidationLevel ?? plan?.invalidation ?? stop;
+  // Never fall back to raw/unvalidated model levels as executable geometry.
+  if (!validated?.executionReady) {
+    return {
+      shouldDraw: false,
+      reason:
+        "الرأي الاتجاهي محفوظ، لكن المستويات غير صالحة تقنياً — يلزم تحديث المستويات.",
+      drawingIntent: "none",
+      selectedLevels: [],
+      selectedZones: [],
+      selectedAnnotations: [
+        {
+          type: "note",
+          price: plan?.entryZone.preferred ?? rec.entryZone?.preferred ?? null,
+          time,
+          label: "Levels require refresh",
+          strength: 40,
+          direction:
+            rec.action === "buy" ? ("bullish" as const) : ("bearish" as const),
+        },
+      ].filter((a) => a.price != null) as DrawingPlan["selectedAnnotations"],
+    };
+  }
+
+  const entry = validated.entry;
+  const stop = validated.stopLoss;
+  const targets = validated.targets;
+  const zoneLow = plan?.entryZone.low ?? entry;
+  const zoneHigh = plan?.entryZone.high ?? entry;
+  const invalidation = plan?.invalidation ?? rec.invalidationLevel ?? stop;
 
   if (entry == null || stop == null || targets.length === 0) {
     return {
@@ -77,7 +85,10 @@ export function buildDrawingsFromValidatedModelPlan(input: {
             type: "invalidation" as const,
             price: invalidation,
             time,
-            label: "إبطال",
+            label:
+              plan?.activation === "conditional" && plan.requiredConfirmation
+                ? `إبطال · ${plan.requiredConfirmation.slice(0, 48)}`
+                : "إبطال",
             strength: 80,
             direction:
               rec.action === "buy"

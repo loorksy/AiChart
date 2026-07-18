@@ -34,6 +34,26 @@ const PROHIBITED = [
   "scorePoi",
   "MODEL_FIRST_MODE",
   "getModelFirstMode",
+  "OpportunityCandidate",
+  "selectedTradeObject",
+  "preModelEntry",
+  "candidateDerived",
+];
+
+/** Active directional proposal / pre-model geometry patterns (authority leaks). */
+const AUTHORITY_LEAK_PATTERNS: Array<{ re: RegExp; label: string }> = [
+  {
+    re: /buildTradeCandidates\s*\(/,
+    label: "buildTradeCandidates call",
+  },
+  {
+    re: /selectedTradeCandidateId\s*[:=]/,
+    label: "selectedTradeCandidateId binding",
+  },
+  {
+    re: /preferredDirection\s*[:=]\s*["'](buy|sell)["']/,
+    label: "hardcoded preferredDirection",
+  },
 ];
 
 function walkTsFiles(dir: string, out: string[] = []): string[] {
@@ -88,6 +108,20 @@ function plan(over: Partial<ModelTradePlan> = {}): ModelTradePlan {
   };
 }
 
+function validate(planInput: ModelTradePlan, price = 1.1005, extra: {
+  quoteAgeMs?: number | null;
+  maxQuoteAgeMs?: number;
+  tickSize?: number | null;
+} = {}) {
+  return validateModelTradePlan({
+    plan: planInput,
+    currentPrice: price,
+    quoteAgeMs: extra.quoteAgeMs === undefined ? 100 : extra.quoteAgeMs,
+    maxQuoteAgeMs: extra.maxQuoteAgeMs,
+    tickSize: extra.tickSize,
+  });
+}
+
 describe("repository candidate-domain scan (active web/src)", () => {
   it("rejects prohibited trade-proposal identifiers in active source", () => {
     const files = walkTsFiles(WEB_SRC);
@@ -96,9 +130,13 @@ describe("repository candidate-domain scan (active web/src)", () => {
       const rel = relative(WEB_SRC, file).replace(/\\/g, "/");
       // Leak-detector source intentionally lists forbidden authority key names.
       if (rel.endsWith("modelFirst/buildNeutralEvidence.ts")) continue;
+      if (rel.endsWith("modelFirst/modelPlanPersistence.ts")) continue;
       const text = readFileSync(file, "utf8");
       for (const token of PROHIBITED) {
         if (text.includes(token)) hits.push(`${rel}:${token}`);
+      }
+      for (const pattern of AUTHORITY_LEAK_PATTERNS) {
+        if (pattern.re.test(text)) hits.push(`${rel}:${pattern.label}`);
       }
     }
     assert.deepEqual(hits, [], `prohibited tokens remain:\n${hits.join("\n")}`);
@@ -112,7 +150,7 @@ describe("repository candidate-domain scan (active web/src)", () => {
 describe("free-model decision distribution", () => {
   it("model BUY remains BUY", () => {
     const p = plan({ decision: "buy", activation: "immediate" });
-    const validated = validateModelTradePlan({ plan: p, currentPrice: 1.1005 });
+    const validated = validate(p);
     const result = toFinalResult(p, validated);
     assert.equal(result.decision, "buy");
     assert.equal(result.recommendation.action, "buy");
@@ -130,7 +168,7 @@ describe("free-model decision distribution", () => {
         { price: 1.098, reason: "tp2" },
       ],
     });
-    const validated = validateModelTradePlan({ plan: p, currentPrice: 1.1005 });
+    const validated = validate(p);
     const result = toFinalResult(p, validated);
     assert.equal(result.decision, "sell");
   });
@@ -141,7 +179,7 @@ describe("free-model decision distribution", () => {
       activation: "conditional",
       requiredConfirmation: "Touch demand and hold",
     });
-    const validated = validateModelTradePlan({ plan: p, currentPrice: 1.105 });
+    const validated = validate(p, 1.105);
     const result = toFinalResult(p, validated);
     assert.equal(result.decision, "buy");
     assert.equal(result.recommendation.activationClass, "conditional");
@@ -163,7 +201,7 @@ describe("free-model decision distribution", () => {
     });
     const result = toFinalResult(
       p,
-      validateModelTradePlan({ plan: p, currentPrice: 1.09 }),
+      validate(p, 1.09),
     );
     assert.equal(result.decision, "sell");
   });
@@ -181,7 +219,7 @@ describe("free-model decision distribution", () => {
     });
     const result = toFinalResult(
       p,
-      validateModelTradePlan({ plan: p, currentPrice: 1.1 }),
+      validate(p, 1.1),
     );
     assert.equal(result.decision, "wait");
   });
@@ -192,7 +230,7 @@ describe("free-model decision distribution", () => {
       stopLoss: 1.2,
       targets: [{ price: 1.0, reason: "wrong" }],
     });
-    const validated = validateModelTradePlan({ plan: p, currentPrice: 1.1005 });
+    const validated = validate(p);
     assert.equal(validated.decision, "buy");
     assert.equal(validated.executionReady, false);
     const result = toFinalResult(p, validated);
@@ -207,7 +245,7 @@ describe("free-model decision distribution", () => {
       stopLoss: 1.0,
       targets: [{ price: 1.2, reason: "wrong" }],
     });
-    const validated = validateModelTradePlan({ plan: p, currentPrice: 1.1005 });
+    const validated = validate(p);
     const result = toFinalResult(p, validated);
     assert.equal(result.decision, "sell");
     assert.notEqual(result.decision, "wait");
@@ -227,9 +265,108 @@ describe("free-model decision distribution", () => {
     );
   });
 
+  it("stale quote keeps direction and is not WAIT", () => {
+    const p = plan({ decision: "buy" });
+    const validated = validateModelTradePlan({
+      plan: p,
+      currentPrice: 1.1005,
+      quoteAgeMs: 999_999,
+      maxQuoteAgeMs: 120_000,
+    });
+    const result = toFinalResult(p, validated);
+    assert.equal(result.decision, "buy");
+    assert.notEqual(result.decision, "wait");
+    assert.equal(validated.executionReady, false);
+  });
+
+  it("stale snapshot / missing quote age is not analytical WAIT", () => {
+    const p = plan({ decision: "sell", stopLoss: 1.102, invalidation: 1.1025, targets: [
+      { price: 1.099, reason: "tp1" },
+      { price: 1.098, reason: "tp2" },
+    ]});
+    const validated = validateModelTradePlan({
+      plan: p,
+      currentPrice: 1.1005,
+      quoteAgeMs: null,
+    });
+    assert.equal(toFinalResult(p, validated).decision, "sell");
+    assert.notEqual(validated.decision, "wait");
+  });
+
+  it("missing Vision with sufficient candles is not WAIT", () => {
+    // Vision absence is not modeled as analytical WAIT — technical path only.
+    assert.equal(failureKindToDecision("unknown"), "analysis_failed");
+    assert.notEqual(failureKindToDecision("unknown"), "wait" as never);
+  });
+
+  it("missing Vision with insufficient candles maps to data_unavailable path", () => {
+    const fb = buildAgentFallbackResult(
+      "insufficient candles",
+      [],
+      "en",
+      "data_unavailable",
+    );
+    assert.equal(fb.decision, "data_unavailable");
+    assert.notEqual(fb.decision, "wait");
+  });
+
+  it("failed repair keeps BUY not WAIT", () => {
+    const p = plan({
+      decision: "buy",
+      stopLoss: 1.2,
+      targets: [{ price: 1.0, reason: "wrong" }],
+    });
+    const validated = validate(p);
+    assert.equal(validated.executionReady, false);
+    assert.equal(toFinalResult(p, validated).decision, "buy");
+  });
+
+  it("provider cancellation is not WAIT", () => {
+    assert.equal(failureKindToDecision("canceled"), "analysis_failed");
+  });
+
+  it("model unavailable is not WAIT", () => {
+    assert.equal(failureKindToDecision("provider_error"), "model_unavailable");
+    const fb = buildAgentFallbackResult("down", [], "en", "model_unavailable");
+    assert.equal(fb.decision, "model_unavailable");
+  });
+
+  it("execution unavailable is not WAIT", () => {
+    const fb = buildAgentFallbackResult(
+      "execution blocked",
+      [],
+      "en",
+      "execution_unavailable",
+    );
+    assert.equal(fb.decision, "execution_unavailable");
+    assert.notEqual(fb.decision, "wait");
+  });
+
+  it("broker minimum-stop rejection keeps direction not WAIT", () => {
+    const p = plan({
+      decision: "buy",
+      stopLoss: 1.1004,
+      invalidation: 1.1003,
+      entryZone: { low: 1.1004, high: 1.1006, preferred: 1.1005 },
+      targets: [
+        { price: 1.101, reason: "tp1" },
+        { price: 1.1015, reason: "tp2" },
+      ],
+    });
+    const validated = validateModelTradePlan({
+      plan: p,
+      currentPrice: 1.1005,
+      tickSize: 0.0001,
+      quoteAgeMs: 100,
+    });
+    // Geometry may fail min distance / tick rules — never rewrite to WAIT.
+    assert.equal(validated.decision, "buy");
+    assert.notEqual(validated.decision, "wait");
+  });
+
   it("drawings come from model plan without trade-proposal IDs", () => {
     const p = plan();
-    const validated = validateModelTradePlan({ plan: p, currentPrice: 1.1005 });
+    const validated = validate(p);
     const result = toFinalResult(p, validated);
     const drawings = buildDrawingsFromValidatedModelPlan({
       decision: result,

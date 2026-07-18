@@ -67,8 +67,15 @@ export async function POST(req: NextRequest) {
             screeningItems.push({
               symbol: item.symbol,
               interval: item.interval,
-              activityScore: item.score,
-              neutralEvidence: item.signals,
+              activityScore: item.activityScore,
+              neutralEvidence: item.neutralEvidence,
+              sourceHealth: item.sourceHealth,
+              quoteFreshnessMs: item.quoteFreshnessMs,
+              spread: item.spread,
+              volatilityActivityPct: item.volatilityActivityPct,
+              candleCoverage: item.candleCoverage,
+              structuralActivity: item.structuralActivity,
+              neutralSummary: item.neutralSummary,
               summary: item.snapshot.summary,
               price: item.snapshot.price,
             });

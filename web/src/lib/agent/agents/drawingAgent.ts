@@ -156,6 +156,13 @@ function annotationDrawing(
   lastTime: number,
 ): ChartDrawing {
   switch (ann.type) {
+    case "note":
+      return {
+        ...priceLine(ann.label, ann.price, ann.time, "pattern", "#94a3b8"),
+        confidence: Math.round(ann.strength),
+        style: "dotted",
+        meta: { annotation: ann.type, executable: false },
+      };
     case "invalidation":
       return {
         type: "decision_zone",

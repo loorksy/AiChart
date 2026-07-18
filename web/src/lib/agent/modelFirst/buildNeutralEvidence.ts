@@ -14,6 +14,13 @@ import { SCALPING_CONTEXT } from "@/lib/productModel";
 import type { MarketSnapshot } from "./marketSnapshot";
 import type { VisionImageMeta } from "./neutralVision";
 
+const BOUND = {
+  levels: 8,
+  events: 12,
+  swings: 16,
+  sweeps: 10,
+} as const;
+
 export type NeutralMarketEvidence = {
   scalpingContext: typeof SCALPING_CONTEXT;
   snapshot: {
@@ -22,23 +29,60 @@ export type NeutralMarketEvidence = {
     primaryTimeframe: string;
     timeframeSelectionSource: string;
     contextTimeframes: string[];
+    brokerOrSource: string;
     bid: number | null;
     ask: number | null;
     mid: number | null;
     spread: number | null;
+    quoteMarketTimestamp: number | null;
+    quoteServerReceiveTimestamp: number;
     quoteAgeMs: number | null;
+    pricePrecision: number | null;
+    tickSize: number | null;
+    marketOpen: boolean | null;
     serverTimestamp: number;
     sourceHealth: string;
     fingerprint: string;
+    candleCoverage: MarketSnapshot["candleCoverage"];
+    candleCloseTimes: MarketSnapshot["candleCloseTimes"];
   };
   candleEnvelopes: MarketSnapshot["envelopes"];
+  atr: number | null;
+  volatility: {
+    atr: number | null;
+    atrPctOfPrice: number | null;
+  };
   narrative: MarketNarrative | null;
   structure: {
     trend: string | null;
-    swings: unknown;
+    supportResistance: {
+      support: Array<{ price: number; time?: number }>;
+      resistance: Array<{ price: number; time?: number }>;
+    };
+    structureEvents: Array<{
+      type: string;
+      direction: string;
+      brokenLevel: number;
+      breakCandleTime: number;
+      strength: number;
+    }>;
+    swings: Array<{
+      type: string;
+      price: number;
+      time: number;
+    }>;
   } | null;
   liquidity: {
     recentSweepCount: number;
+    sweeps: Array<{
+      side: string;
+      sweptLevel: number;
+      candleTime: number;
+      wickExtreme: number;
+      closeBackInside: boolean;
+      strength: number;
+      followedByStructureShift: boolean;
+    }>;
   } | null;
   supplyDemand: {
     nearestDemand: unknown;
@@ -54,8 +98,22 @@ export type NeutralMarketEvidence = {
   news: {
     newsRisk: string;
     reason: string;
-    upcomingEvents: Array<{ title: string; time: string; impact: string; currency: string }>;
+    upcomingEvents: Array<{
+      title: string;
+      time: string;
+      impact: string;
+      currency: string;
+    }>;
   };
+  timeframeFreshness: Array<{
+    timeframe: string;
+    role: string;
+    source: string;
+    availableCount: number;
+    includedCount: number;
+    lastCandleTime: number | null;
+    capturedAt: number;
+  }>;
   chartDrawingsSummary: ReturnType<typeof summarizeChartDrawings>;
   visionImages: VisionImageMeta[];
   userMessage: string;
@@ -77,6 +135,11 @@ export function buildNeutralEvidence(input: {
   userMessage: string;
   educationalOnly?: boolean;
 }): NeutralMarketEvidence {
+  const mid = input.snapshot.mid;
+  const atr = input.market.atr ?? null;
+  const atrPctOfPrice =
+    atr != null && mid != null && mid > 0 ? (atr / mid) * 100 : null;
+
   return {
     scalpingContext: SCALPING_CONTEXT,
     snapshot: {
@@ -85,34 +148,77 @@ export function buildNeutralEvidence(input: {
       primaryTimeframe: input.snapshot.primaryTimeframe,
       timeframeSelectionSource: input.snapshot.scope.selectionSource,
       contextTimeframes: input.snapshot.scope.contextTimeframes,
+      brokerOrSource: input.snapshot.brokerOrSource,
       bid: input.snapshot.bid,
       ask: input.snapshot.ask,
       mid: input.snapshot.mid,
       spread: input.snapshot.spread,
+      quoteMarketTimestamp: input.snapshot.marketTimestamp,
+      quoteServerReceiveTimestamp: input.snapshot.serverTimestamp,
       quoteAgeMs: input.snapshot.quoteAgeMs,
+      pricePrecision: input.snapshot.pricePrecision,
+      tickSize: input.snapshot.tickSize,
+      marketOpen: input.snapshot.marketOpen,
       serverTimestamp: input.snapshot.serverTimestamp,
       sourceHealth: input.snapshot.sourceHealth,
       fingerprint: input.snapshot.fingerprint,
+      candleCoverage: input.snapshot.candleCoverage,
+      candleCloseTimes: input.snapshot.candleCloseTimes,
     },
     candleEnvelopes: input.snapshot.envelopes,
+    atr,
+    volatility: { atr, atrPctOfPrice },
     narrative: input.narrative,
     structure: input.structure
       ? {
           trend: input.structure.trend,
-          swings: {
-            count: input.structure.swings?.length ?? 0,
-            latestEvent: input.structure.latestStructureEvent
-              ? {
-                  type: input.structure.latestStructureEvent.type,
-                  direction: input.structure.latestStructureEvent.direction,
-                  brokenLevel: input.structure.latestStructureEvent.brokenLevel,
-                }
-              : null,
+          supportResistance: {
+            support: (input.structure.support ?? [])
+              .slice(0, BOUND.levels)
+              .map((level) => ({
+                price: level.price,
+                time: level.time,
+              })),
+            resistance: (input.structure.resistance ?? [])
+              .slice(0, BOUND.levels)
+              .map((level) => ({
+                price: level.price,
+                time: level.time,
+              })),
           },
+          structureEvents: (input.structure.structureEvents ?? [])
+            .slice(-BOUND.events)
+            .map((event) => ({
+              type: event.type,
+              direction: event.direction,
+              brokenLevel: event.brokenLevel,
+              breakCandleTime: event.breakCandleTime,
+              strength: event.strength,
+            })),
+          swings: (input.structure.swings ?? [])
+            .slice(-BOUND.swings)
+            .map((swing) => ({
+              type: swing.type,
+              price: swing.price,
+              time: swing.time,
+            })),
         }
       : null,
     liquidity: input.liquidity
-      ? { recentSweepCount: input.liquidity.sweeps?.length ?? 0 }
+      ? {
+          recentSweepCount: input.liquidity.sweeps?.length ?? 0,
+          sweeps: (input.liquidity.sweeps ?? [])
+            .slice(-BOUND.sweeps)
+            .map((sweep) => ({
+              side: sweep.side,
+              sweptLevel: sweep.sweptLevel,
+              candleTime: sweep.candleTime,
+              wickExtreme: sweep.wickExtreme,
+              closeBackInside: sweep.closeBackInside,
+              strength: sweep.strength,
+              followedByStructureShift: sweep.followedByStructureShift,
+            })),
+        }
       : null,
     supplyDemand: input.supplyDemand
       ? {
@@ -140,6 +246,15 @@ export function buildNeutralEvidence(input: {
           currency: e.currency ?? "",
         })) ?? [],
     },
+    timeframeFreshness: input.snapshot.envelopes.map((env) => ({
+      timeframe: env.timeframe,
+      role: env.role,
+      source: env.source,
+      availableCount: env.availableCount,
+      includedCount: env.includedCount,
+      lastCandleTime: env.lastCandleTime,
+      capturedAt: env.capturedAt,
+    })),
     chartDrawingsSummary: summarizeChartDrawings(
       input.chartDrawings,
       input.market.currentPrice,
@@ -168,6 +283,9 @@ export function assertNoCandidateAuthority(payload: unknown): string[] {
     "rulebasedrecommendation",
     "playbook",
     "proposedtrade",
+    "opportunitycandidate",
+    "actionablecandidate",
+    "topcandidate",
   ]);
   const leaks: string[] = [];
   const visit = (value: unknown, path: string): void => {
@@ -176,7 +294,9 @@ export function assertNoCandidateAuthority(payload: unknown): string[] {
       value.forEach((item, index) => visit(item, `${path}[${index}]`));
       return;
     }
-    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, child] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
       const childPath = path ? `${path}.${key}` : key;
       const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
       if (child != null && forbidden.has(normalized)) leaks.push(childPath);

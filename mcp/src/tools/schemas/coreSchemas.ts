@@ -83,19 +83,79 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: before open_trade — record recommendation. rationale 2–4 sentences in 'we' voice. side-effect: writes recommendation. Example: action=buy&confidence=85.",
+      "When: after the host model independently chooses BUY/SELL/WAIT and builds its own plan — record recommendation. Pass model_plan for validation via validateModelTradePlan. Never bind a Trade Candidate. Executable levels persist only when technically accepted. open_trade still requires explicit approval.",
     inputSchema: {
       symbol: zSymbol,
-      action: z.enum(["buy", "sell", "wait"]),
-      confidence: zConfidence,
-      rationale: z.string().min(10),
-      factors: z.array(z.string()).min(1).max(8),
+      action: z.enum(["buy", "sell", "wait"]).optional(),
+      confidence: zConfidence.optional(),
+      rationale: z.string().min(10).optional(),
+      factors: z.array(z.string()).min(1).max(8).optional(),
       entry: z.number().optional(),
       stop_loss: z.number().optional(),
       take_profit: z.number().optional(),
+      targets: z.array(z.number()).max(3).optional(),
       timeframe: z.string().optional(),
       pattern_name: z.string().optional(),
       chart_drawings: zChartDrawings,
+      model_plan: z
+        .object({
+          decision: z.enum(["buy", "sell", "wait"]),
+          activation: z.enum(["immediate", "conditional", "none"]),
+          marketRegime: z.enum([
+            "trend",
+            "range",
+            "breakout",
+            "reversal",
+            "mixed",
+          ]),
+          marketThesis: z.string().min(8),
+          primaryTimeframe: z.string().min(1),
+          contextTimeframes: z.array(z.string()).max(8).optional(),
+          timeframeAnalysis: z
+            .array(
+              z.object({
+                timeframe: z.string(),
+                bias: z.enum(["bullish", "bearish", "neutral", "mixed"]),
+                evidence: z.string(),
+              }),
+            )
+            .max(8)
+            .optional(),
+          entryZone: z
+            .object({
+              low: z.number().nullable(),
+              high: z.number().nullable(),
+              preferred: z.number().nullable(),
+            })
+            .optional(),
+          invalidation: z.number().nullable().optional(),
+          stopLoss: z.number().nullable().optional(),
+          targets: z
+            .array(
+              z.object({
+                price: z.number(),
+                reason: z.string(),
+              }),
+            )
+            .max(3)
+            .optional(),
+          requiredConfirmation: z.string().nullable().optional(),
+          pathToEntry: z.string().nullable().optional(),
+          alternativeScenario: z.string().min(4),
+          confidence: z.number().min(0).max(1),
+          summary: z.string().min(10),
+          keyReasons: z.array(z.string()).min(1).max(6),
+          warnings: z.array(z.string()).max(6).optional(),
+          dataTimestamp: z.string().min(4),
+        })
+        .optional(),
+      snapshot_id: z.string().optional(),
+      current_price: z.number().optional(),
+      quote_age_ms: z.number().optional(),
+      tick_size: z.number().optional(),
+      model_id: z.string().optional(),
+      reasoning_effort: z.string().optional(),
+      allow_repair: z.boolean().optional(),
     },
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },

@@ -157,7 +157,13 @@ export type CreateTrackedRecommendationInput = Omit<
       | "expiredAt"
       | "lastCheckedAt"
     >
-  >;
+  > & {
+    /** Full model-owned plan envelope (context_json). Never a Trade Candidate ID. */
+    contextJson?: string;
+    /** Extra risk_json fields (validation/provenance) without poi.score. */
+    riskExtras?: Record<string, unknown>;
+    confidence?: number;
+  };
 
 function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unknown> {
   return {
@@ -167,6 +173,7 @@ function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unk
     createdCandleTime: input.createdCandleTime,
     priceAtCreation: input.priceAtCreation,
     lastCheckedAt: input.lastCheckedAt,
+    ...(input.riskExtras ?? {}),
   };
 }
 
@@ -290,7 +297,7 @@ export async function createTrackedRecommendation(
     stopLoss: input.stopLoss,
     targets: input.targets,
     risk: legacyRisk(input),
-    confidence: 0,
+    confidence: input.confidence ?? 0,
     strategyId: input.setupType ?? "unspecified",
     strategyVersion: "1",
     createdAt: input.createdAt,
@@ -301,6 +308,7 @@ export async function createTrackedRecommendation(
     engineVersion: "aichart-phase4-v1",
     entryType: input.entryType,
     legacyTrackingId: input.id,
+    contextJson: input.contextJson,
   });
   if (
     input.status !== "pending_entry" ||

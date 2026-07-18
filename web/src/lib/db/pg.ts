@@ -913,6 +913,7 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS chart_drawings_json TEXT,
       ADD COLUMN IF NOT EXISTS pattern_name TEXT,
       ADD COLUMN IF NOT EXISTS analysis_tier TEXT,
+      -- model-owned plan envelope (kind=model_owned_plan). Rollback: NULL out matching rows.
       ADD COLUMN IF NOT EXISTS context_json TEXT,
       ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'web',
       ADD COLUMN IF NOT EXISTS market TEXT,

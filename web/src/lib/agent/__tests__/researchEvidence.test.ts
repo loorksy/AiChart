@@ -10,7 +10,7 @@ import {
 describe("researchEvidence", () => {
   it("never claims expensive research ran without justification", async () => {
     const bundle = await collectBoundedResearchEvidence({
-      actionableCandidate: false,
+      actionableDecision: false,
     });
     assert.equal(bundle.evidenceVersion, RESEARCH_EVIDENCE_VERSION);
     assert.equal(researchContributed(bundle, "backtest"), false);
@@ -28,7 +28,7 @@ describe("researchEvidence", () => {
   it("skips DNA when there is no actionable candidate", async () => {
     const bundle = await collectBoundedResearchEvidence({
       userId: 1,
-      actionableCandidate: false,
+      actionableDecision: false,
     });
     const dna = bundle.contributions.find((c) => c.system === "trading_dna");
     assert.equal(dna?.status, "skipped");
@@ -37,7 +37,7 @@ describe("researchEvidence", () => {
 
   it("justifies backtest for mid-confidence evidence, skips swarm for simple analysis", () => {
     const mid = decideResearchJustification({
-      actionableCandidate: true,
+      actionableDecision: true,
       baseConfidence: 0.62,
       dataQualityScore: 0.7,
       userMessage: "analyze EURUSD",
@@ -47,7 +47,7 @@ describe("researchEvidence", () => {
     assert.equal(mid.reasons.swarm, "simple_chart_analysis");
 
     const high = decideResearchJustification({
-      actionableCandidate: true,
+      actionableDecision: true,
       baseConfidence: 0.9,
       dataQualityScore: 0.95,
       userMessage: "buy setup",
@@ -56,7 +56,7 @@ describe("researchEvidence", () => {
     assert.equal(high.reasons.backtest, "confidence_already_sufficient");
 
     const deep = decideResearchJustification({
-      actionableCandidate: true,
+      actionableDecision: true,
       baseConfidence: 0.7,
       userMessage: "run deep research swarm comparison",
     });
@@ -71,7 +71,7 @@ describe("researchEvidence", () => {
     try {
       const bundle = await collectBoundedResearchEvidence({
         userId: 999999,
-        actionableCandidate: true,
+        actionableDecision: true,
         decision: "buy",
         symbol: "EURUSD",
         baseConfidence: 0.6,

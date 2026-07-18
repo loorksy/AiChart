@@ -17,18 +17,24 @@ export function isTerminalContextRecommendation(recommendation: SafeRecommendati
 /**
  * Canonical persistence wins, followed by session, chart restore and history.
  * Terminal/history-only records are never promoted to an active recommendation.
+ *
+ * `recommendationSources` is a generic programming selection list of already
+ * persisted recommendation contexts — never Trade Candidate proposals.
  */
 export function resolveActiveRecommendationContext(input: {
-  candidates: readonly SafeRecommendationContext[];
+  recommendationSources: readonly SafeRecommendationContext[];
+  /** @deprecated Prefer recommendationSources. */
+  candidates?: readonly SafeRecommendationContext[];
   symbol?: string;
   timeframe?: string;
 }): SafeRecommendationContext | undefined {
+  const sources = input.recommendationSources ?? input.candidates ?? [];
   const symbol = input.symbol?.toUpperCase().trim();
   const timeframe = input.timeframe?.toLowerCase().trim();
-  return input.candidates
-    .filter((candidate) => !isTerminalContextRecommendation(candidate))
-    .filter((candidate) => !symbol || candidate.symbol.toUpperCase() === symbol)
-    .filter((candidate) => !timeframe || candidate.timeframe.toLowerCase() === timeframe)
+  return sources
+    .filter((item) => !isTerminalContextRecommendation(item))
+    .filter((item) => !symbol || item.symbol.toUpperCase() === symbol)
+    .filter((item) => !timeframe || item.timeframe.toLowerCase() === timeframe)
     .sort((a, b) =>
       SOURCE_RANK[b.source] - SOURCE_RANK[a.source] ||
       (b.createdAt ?? 0) - (a.createdAt ?? 0) ||

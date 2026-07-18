@@ -137,17 +137,17 @@ export function OpportunityScanCard({
         <div className="space-y-2 text-sm">
           <p className="text-muted-foreground">
             إطار {result.interval} · فوركس — فُحص{" "}
-            {result.symbolsChecked} زوج — {result.candidates.length} فرصة
+            {result.symbolsChecked} زوج — {result.screeningItems.length} عنصر محايد
           </p>
-          {result.candidates.length > 0 && (
+          {result.screeningItems.length > 0 && (
             <ul className="space-y-1 rounded-lg border border-border/50 bg-secondary/30 p-2">
-              {result.candidates.slice(0, 8).map((c) => (
-                <li key={`${c.symbol}-${c.interval}`} className="flex justify-between gap-2">
+              {result.screeningItems.slice(0, 8).map((item) => (
+                <li key={`${item.symbol}-${item.interval}`} className="flex justify-between gap-2">
                   <span dir="ltr" className="font-medium">
-                    {c.symbol} · {c.interval}
+                    {item.symbol} · {item.interval}
                   </span>
                   <span className="text-muted-foreground">
-                    نقاط {c.score} · {c.signals[0]}
+                    نشاط {item.activityScore} · {item.neutralEvidence[0] ?? item.neutralSummary}
                   </span>
                 </li>
               ))}
