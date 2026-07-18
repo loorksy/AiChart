@@ -19,9 +19,22 @@ type ConfigField = {
   secret?: boolean;
 };
 
+type ProbeDiagnostic = {
+  id: string;
+  available: boolean;
+  responsesApi: boolean;
+  vision: boolean;
+  structuredOutputs: boolean;
+  supportedReasoningValues: string[];
+  eligibleAsDefault: boolean;
+  costTier: string;
+  lastVerifiedAt: number | null;
+  probeErrorCodes: string[];
+};
+
 const GROUPS: { id: ConfigField["group"]; title: string }[] = [
   { id: "core", title: "الأساس والأمان" },
-  { id: "ai", title: "OpenAI — المفتاح والنموذج" },
+  { id: "ai", title: "OpenAI — المفتاح ونماذج التداول" },
   { id: "telegram", title: "تليجرام" },
   { id: "ops", title: "التشغيل والمراقبة" },
 ];
@@ -31,21 +44,19 @@ export function AdminKeysPanel() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [probing, setProbing] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [agentModel, setAgentModel] = useState<{
-    platformRef: string;
-    fallbacks: string[];
-  } | null>(null);
+  const [diagnostics, setDiagnostics] = useState<ProbeDiagnostic[]>([]);
 
-  const loadAgentModelStatus = useCallback(async () => {
+  const loadProbes = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/agent-model-status", {
+      const res = await fetch("/api/admin/config/trading-models", {
         cache: "no-store",
       });
       const data = await res.json();
-      if (res.ok) setAgentModel(data);
+      if (res.ok) setDiagnostics(data.diagnostics ?? []);
     } catch {
-      setAgentModel(null);
+      setDiagnostics([]);
     }
   }, []);
 
@@ -54,14 +65,14 @@ export function AdminKeysPanel() {
     try {
       const [configRes] = await Promise.all([
         fetch("/api/admin/config"),
-        loadAgentModelStatus(),
+        loadProbes(),
       ]);
       const data = await configRes.json();
       if (configRes.ok) setFields(data.fields);
     } finally {
       setLoading(false);
     }
-  }, [loadAgentModelStatus]);
+  }, [loadProbes]);
 
   useEffect(() => {
     void load();
@@ -95,21 +106,47 @@ export function AdminKeysPanel() {
       }
       setFields(data.fields);
       setDraft({});
-      await loadAgentModelStatus();
       setMsg({
         type: "ok",
-        text: "تم حفظ المفاتيح — المنصة و Claude MCP يستخدمان نموذج OpenAI من هنا.",
+        text: "تم حفظ المفاتيح. اختيار نموذج التحليل يتم من محادثة المستخدم.",
       });
     } finally {
       setSaving(false);
     }
   }
 
+  async function refreshTradingModels() {
+    setProbing(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/admin/config/trading-models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: draft.OPENAI_API_KEY?.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg({ type: "err", text: data.error ?? "فشل فحص النماذج." });
+        return;
+      }
+      setDiagnostics(data.diagnostics ?? []);
+      const available = (data.diagnostics ?? []).filter(
+        (d: ProbeDiagnostic) => d.available,
+      ).length;
+      setMsg({
+        type: "ok",
+        text: `تم فحص النماذج — ${available} نموذج جاهز للتداول. المستخدم يختار من المحادثة.`,
+      });
+    } finally {
+      setProbing(false);
+    }
+  }
+
   const configuredCount = fields.filter((f) => f.configured).length;
 
   const apiKeyField = fields.find((f) => f.key === "OPENAI_API_KEY");
-  const aiModelField = fields.find((f) => f.key === "AI_MODEL");
-  const currentAiModel = aiModelField?.value ?? "gpt-4.1";
   const realtimeModelField = fields.find(
     (f) => f.key === "OPENAI_REALTIME_MODEL",
   );
@@ -132,8 +169,9 @@ export function AdminKeysPanel() {
             المفاتيح والإعدادات
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            ضع مفتاح OpenAI والنموذج من لوحة الإدارة — تُخزَّن مشفّرة في قاعدة
-            البيانات. القيم من <code dir="ltr">.env</code> تبقى احتياطاً.
+            ضع مفتاح OpenAI هنا — اختيار نموذج تحليل التداول يتم من محادثة
+            المستخدم بعد فحص القدرات. القيم من <code dir="ltr">.env</code> تبقى
+            احتياطاً.
           </p>
         </div>
         <button
@@ -171,13 +209,68 @@ export function AdminKeysPanel() {
                     draft={draft}
                     setDraftValue={setDraftValue}
                   />
-                  <OpenAIModelPicker
-                    apiKeyDraft={draft.OPENAI_API_KEY ?? ""}
-                    apiKeyConfigured={apiKeyField.configured}
-                    currentModel={currentAiModel}
-                    draftModel={draft.AI_MODEL ?? ""}
-                    onSelectModel={(id) => setDraftValue("AI_MODEL", id)}
-                  />
+                  <div className="rounded-lg border border-white/10 p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">
+                          نماذج تحليل التداول (مُتحقَّقة)
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          فحص Responses + Vision + Structured Outputs. لا تُخزَّن
+                          أخطاء المزوّد الخام. الاختيار النهائي للمستخدم في
+                          المحادثة.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void refreshTradingModels()}
+                        disabled={probing || !apiKeyField.configured}
+                        className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs hover:text-foreground disabled:opacity-50"
+                      >
+                        <RefreshCw
+                          className={cn(
+                            "h-3.5 w-3.5",
+                            probing && "animate-spin",
+                          )}
+                        />
+                        {probing ? "جارٍ الفحص…" : "تحديث الفحص"}
+                      </button>
+                    </div>
+                    {diagnostics.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        لم يُجرَ فحص بعد — احفظ المفتاح ثم اضغط «تحديث الفحص».
+                      </p>
+                    ) : (
+                      <ul className="space-y-1.5 text-xs" dir="ltr">
+                        {diagnostics.map((d) => (
+                          <li
+                            key={d.id}
+                            className="flex flex-wrap items-center gap-2 rounded bg-secondary/60 px-2 py-1"
+                          >
+                            <code>{d.id}</code>
+                            <span
+                              className={
+                                d.available
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              {d.available ? "available" : "unavailable"}
+                            </span>
+                            {d.supportedReasoningValues.length > 0 && (
+                              <span className="text-muted-foreground">
+                                reasoning:{" "}
+                                {d.supportedReasoningValues.join("/")}
+                              </span>
+                            )}
+                            {d.eligibleAsDefault && (
+                              <span className="text-primary">default-eligible</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                   <OpenAIModelPicker
                     apiKeyDraft={draft.OPENAI_API_KEY ?? ""}
                     apiKeyConfigured={apiKeyField.configured}
@@ -191,21 +284,6 @@ export function AdminKeysPanel() {
                     emptyHint="أدخل مفتاح OpenAI أعلاه لعرض نماذج المحادثة الصوتية المتاحة."
                     loadingHint="جارٍ جلب نماذج المحادثة الصوتية من OpenAI…"
                   />
-                  {agentModel && (
-                    <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">
-                      نموذج المنصة (MCP):{" "}
-                      <code dir="ltr">{agentModel.platformRef}</code>
-                      {agentModel.fallbacks.length > 0 && (
-                        <>
-                          {" · "}
-                          fallbacks:{" "}
-                          <code dir="ltr">
-                            {agentModel.fallbacks.join(", ")}
-                          </code>
-                        </>
-                      )}
-                    </p>
-                  )}
                 </>
               )}
               {groupFields.map((f) => (

@@ -66,6 +66,17 @@ import {
   buildDrawingCandidates,
 } from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
+import { getModelFirstMode, runModelFirstDecision } from "./modelFirst/runModelFirstDecision";
+import { buildMarketSnapshot } from "./modelFirst/marketSnapshot";
+import { buildNeutralEvidence } from "./modelFirst/buildNeutralEvidence";
+import {
+  captureNeutralDecisionCharts,
+  captureUserContextChart,
+  needsUserContextVision,
+} from "./modelFirst/neutralVision";
+import { resolveContextTimeframes } from "./modelFirst/contextTimeframes";
+import type { ReasoningEffort } from "./modelFirst/modelRegistry";
+import { getUserModelPreferences } from "./modelFirst/userModelPreferences";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
@@ -429,54 +440,8 @@ export async function runUnifiedChartAgent(
     null,
   );
 
-  // The evidence builder prepares price-valid candidates for the model. It is
-  // not a policy gate and it does not own BUY/SELL/WAIT.
-  let risk: RiskAgentResult | null = null;
-  try {
-    risk = await withTimeout(
-      runRiskAgent(trackedCtx, {
-        market,
-        structure,
-        supplyDemand,
-        liquidity,
-        mtf,
-        news,
-        account: input.account ?? null,
-        educationalOnly,
-        chartDrawings: chartContext?.drawings,
-      }),
-      AGENT_TIMEOUTS.risk,
-      null,
-    );
-  } catch {
-    risk = null;
-  }
-  if (!risk) {
-    trackedCtx.emitActivity({
-      type: "risk",
-      status: "failed",
-      message: "تعذّر إكمال فحص المخاطر — القرار انتظار احترازياً.",
-    });
-    return buildAgentFallbackResult(
-      "Risk agent failed — defaulting to WAIT.",
-      collected,
-      locale,
-    );
-  }
-
-  const decisionInput = {
-    userMessage,
-    risk,
-    news,
-    market,
-    structure,
-    supplyDemand,
-    mtf,
-    chartDrawings: chartContext?.drawings,
-  };
-
-  // Detector output becomes candidates the synthesizer may select from —
-  // detectors NEVER draw directly.
+  const modelFirstMode = getModelFirstMode();
+  const narrative = buildMarketNarrative({ market, structure, liquidity, mtf });
   const candidates = buildDrawingCandidates({
     market,
     structure,
@@ -485,47 +450,250 @@ export async function runUnifiedChartAgent(
     mtf,
   });
 
-  // Evidence-based chart story for the synthesizer (real detector output only).
-  const narrative = buildMarketNarrative({ market, structure, liquidity, mtf });
+  // Legacy risk/candidate path — only for MODEL_FIRST_MODE=off or shadow compare.
+  let risk: RiskAgentResult | null = null;
+  if (modelFirstMode === "off" || modelFirstMode === "shadow") {
+    try {
+      risk = await withTimeout(
+        runRiskAgent(trackedCtx, {
+          market,
+          structure,
+          supplyDemand,
+          liquidity,
+          mtf,
+          news,
+          account: input.account ?? null,
+          educationalOnly,
+          chartDrawings: chartContext?.drawings,
+        }),
+        AGENT_TIMEOUTS.risk,
+        null,
+      );
+    } catch {
+      risk = null;
+    }
+  }
 
-  // The LLM chooses BUY, SELL, or WAIT and binds actionable choices to a real
-  // candidate. Model failure produces a technical no-recommendation state.
-  let synthError: unknown = null;
-  const synth = await withTimeout(
-    runFinalDecisionSynthesizer(trackedCtx, {
-      ...decisionInput,
-      candidates,
+  let finalDecision: FinalDecisionResult;
+  let selectedCandidateIds: string[] | undefined;
+  let drawingAdvice: { shouldDraw: boolean; reason: string } | null = null;
+  let usedLLM = false;
+
+  if (modelFirstMode === "live" || modelFirstMode === "shadow") {
+    const { context: contextTfs } = resolveContextTimeframes(market.interval);
+    const contextCandles: Record<string, typeof market.currentTfCandles> = {};
+    if (market.higherTfCandles?.length) {
+      contextCandles[market.higherInterval] = market.higherTfCandles;
+    }
+    if (market.dailyCandles?.length) {
+      contextCandles["1d"] = market.dailyCandles;
+    }
+    for (const tf of contextTfs) {
+      if (!contextCandles[tf] && tf === market.higherInterval) {
+        contextCandles[tf] = market.higherTfCandles;
+      }
+    }
+    const snapshot = buildMarketSnapshot({
+      userId: ctx.userId ?? 0,
+      market,
+      contextCandles,
+      newsDataState: news?.newsRisk ?? "unknown",
+    });
+    const vision = await captureNeutralDecisionCharts({
+      userId: ctx.userId ?? 0,
+      snapshot,
+      market: "forex",
+      maxImages: 4,
+    }).catch(() => ({
+      images: [],
+      captureTimestamps: {} as Record<string, number>,
+      failures: ["vision_unavailable"],
+    }));
+    snapshot.chartImageCaptureTimestamps = vision.captureTimestamps;
+    let userCtxImage = null as Awaited<ReturnType<typeof captureUserContextChart>>;
+    if (
+      intents.some((i) => needsUserContextVision(i)) &&
+      (chartContext?.userDrawings?.length || chartContext?.drawings?.length)
+    ) {
+      userCtxImage = await captureUserContextChart({
+        userId: ctx.userId ?? 0,
+        snapshot,
+        market: "forex",
+        drawings: chartContext?.drawings ?? [],
+      }).catch(() => null);
+    }
+    const visionMetas = [
+      ...vision.images.map((i) => i.meta),
+      ...(userCtxImage ? [userCtxImage.meta] : []),
+    ];
+    const evidence = buildNeutralEvidence({
+      snapshot,
+      market,
+      structure,
+      supplyDemand,
+      liquidity,
+      mtf,
+      news,
       narrative,
-      locale,
-      skillContextBlock: skillContext.block || null,
-    }).catch((err) => {
-      synthError = err;
-      return null;
-    }),
-    AGENT_TIMEOUTS.finalDecision,
-    null,
-  );
-  if (!synth) {
-    return buildAgentFallbackResult(
-      synthError
-        ? "Decision model was unavailable — no market recommendation was issued."
-        : "Decision model timed out — no market recommendation was issued.",
-      collected,
-      locale,
+      chartDrawings: chartContext?.drawings,
+      visionMetas,
+      userMessage,
+    });
+    const prefs =
+      ctx.userId != null
+        ? await getUserModelPreferences(ctx.userId).catch(() => null)
+        : null;
+    const mf = await withTimeout(
+      runModelFirstDecision(trackedCtx, {
+        evidence,
+        images: [
+          ...vision.images.map((i) => i.responsesInput),
+          ...(userCtxImage ? [userCtxImage.responsesInput] : []),
+        ],
+        locale,
+        preferredModelId: prefs?.modelId ?? undefined,
+        preferredReasoning: prefs?.reasoningEffort as ReasoningEffort | null,
+        currentPrice: market.currentPrice,
+        quoteAgeMs: snapshot.quoteAgeMs,
+      }).catch(() => null),
+      AGENT_TIMEOUTS.finalDecision,
+      null,
     );
-  }
-  if (!synth.usedLLM || !synth.result) {
-    return buildAgentFallbackResult(
-      "Decision model was unavailable — no market recommendation was issued.",
-      collected,
-      locale,
+    if (modelFirstMode === "live") {
+      if (!mf?.usedLLM || !mf.result) {
+        return buildAgentFallbackResult(
+          "Decision model was unavailable — no market recommendation was issued.",
+          collected,
+          locale,
+        );
+      }
+      finalDecision = mf.result;
+      usedLLM = true;
+      drawingAdvice = {
+        shouldDraw: finalDecision.decision !== "wait",
+        reason: "model_first",
+      };
+    } else {
+      // Shadow: run legacy synthesizer for user-facing result; keep model-first internal.
+      if (!risk) {
+        return buildAgentFallbackResult(
+          "Risk agent failed — defaulting to WAIT.",
+          collected,
+          locale,
+        );
+      }
+      const synth = await withTimeout(
+        runFinalDecisionSynthesizer(trackedCtx, {
+          userMessage,
+          risk,
+          news,
+          market,
+          structure,
+          supplyDemand,
+          mtf,
+          chartDrawings: chartContext?.drawings,
+          candidates,
+          narrative,
+          locale,
+          skillContextBlock: skillContext.block || null,
+        }).catch(() => null),
+        AGENT_TIMEOUTS.finalDecision,
+        null,
+      );
+      if (!synth?.usedLLM || !synth.result) {
+        return buildAgentFallbackResult(
+          "Decision model was unavailable — no market recommendation was issued.",
+          collected,
+          locale,
+        );
+      }
+      finalDecision = synth.result;
+      selectedCandidateIds = synth.selectedCandidateIds;
+      drawingAdvice = synth.drawingAdvice ?? null;
+      usedLLM = synth.usedLLM;
+      if (mf?.result) {
+        trackedCtx.emitActivity({
+          type: "analysis",
+          status: "completed",
+          message: "مقارنة ظلّية model-first سُجّلت داخلياً.",
+          visible: false,
+          metadata: {
+            shadowDecision: mf.result.decision,
+            liveDecision: finalDecision.decision,
+            modelId: mf.modelId,
+            candidateLeaks: mf.candidateLeakKeys,
+          },
+        });
+      }
+    }
+  } else {
+    if (!risk) {
+      trackedCtx.emitActivity({
+        type: "risk",
+        status: "failed",
+        message: "تعذّر إكمال فحص المخاطر — القرار انتظار احترازياً.",
+      });
+      return buildAgentFallbackResult(
+        "Risk agent failed — defaulting to WAIT.",
+        collected,
+        locale,
+      );
+    }
+    const synth = await withTimeout(
+      runFinalDecisionSynthesizer(trackedCtx, {
+        userMessage,
+        risk,
+        news,
+        market,
+        structure,
+        supplyDemand,
+        mtf,
+        chartDrawings: chartContext?.drawings,
+        candidates,
+        narrative,
+        locale,
+        skillContextBlock: skillContext.block || null,
+      }).catch(() => null),
+      AGENT_TIMEOUTS.finalDecision,
+      null,
     );
+    if (!synth?.usedLLM || !synth.result) {
+      return buildAgentFallbackResult(
+        "Decision model was unavailable — no market recommendation was issued.",
+        collected,
+        locale,
+      );
+    }
+    finalDecision = synth.result;
+    selectedCandidateIds = synth.selectedCandidateIds;
+    drawingAdvice = synth.drawingAdvice ?? null;
+    usedLLM = synth.usedLLM;
   }
-  const finalDecision = synth.result;
+
+  // Stub risk for persistence/deep-analysis when live model-first skips candidates.
+  if (!risk) {
+    risk = {
+      proposedTrade: { action: "wait" },
+      validation: { accepted: true, reasons: [], warnings: [] },
+      accountWarnings: [],
+      selectedCandidate: null,
+      candidatesResult: {
+        candidates: [],
+        best: null,
+        rejectedReasons: [],
+        hasReversalEvidence: false,
+      },
+      playbook: {
+        warnings: [],
+        checklist: [],
+        blockingReasons: [],
+      },
+      rangePosition: null,
+    };
+  }
+
   const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
 
-  // Build the drawing plan: the single source of truth for what may be drawn.
-  // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
   const drawingPlan = buildDrawingPlan({
     decision: finalDecision,
     market,
@@ -534,9 +702,10 @@ export async function runUnifiedChartAgent(
     liquidity,
     mtf,
     preferMinimalDrawings: ctx.session?.preferences.preferMinimalDrawings,
-    selectedCandidateIds: synth.selectedCandidateIds,
-    drawingAdvice: synth.drawingAdvice ?? null,
+    selectedCandidateIds,
+    drawingAdvice,
   });
+  void usedLLM;
 
   // Drawings are non-critical: failure → return text result without drawings.
   let drawings = await withTimeout(
@@ -554,7 +723,7 @@ export async function runUnifiedChartAgent(
   const debugDecisionFlow: AgentFinalResult["debugDecisionFlow"] =
     process.env.NODE_ENV === "development"
       ? {
-          usedLLM: synth.usedLLM,
+          usedLLM,
           // Ticker state is owned by the SSE route; it overwrites these.
           tickerGenerated: false,
           candleCount: market.currentTfCandles.length,

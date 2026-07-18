@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { ModelReasoningSelector } from "@/components/agent/ModelReasoningSelector";
 
 export function AgentChatInput({
   running,
@@ -31,6 +32,7 @@ export function AgentChatInput({
         onSend(v);
       }}
     >
+      <ModelReasoningSelector disabled={running} />
       <div className="chat-gpt-input flex items-end gap-1 px-2 py-1">
         <div
           data-switcher-dock="composer"

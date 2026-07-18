@@ -1,7 +1,8 @@
 /**
- * Unified LLM layer. The platform standardizes on OpenAI: every chat/analysis
- * call routes through the OpenAI-compatible client (openaiCompat.ts). AI_MODEL
- * stays configurable, but only within OpenAI.
+ * Unified LLM layer. The platform standardizes on OpenAI.
+ * Trading analysis uses the Responses adapter + user model preferences.
+ * AI_MODEL remains a seed/fallback for non-trading Chat Completions callers
+ * and emergency rollback — not dual authority for trading decisions.
  */
 
 import {
@@ -35,7 +36,10 @@ export function getActiveProvider(): LLMProvider {
   return "openai";
 }
 
-/** Active OpenAI model (AI_MODEL, with a safe default). */
+/**
+ * Active OpenAI model for non-trading Chat Completions callers.
+ * Trading decisions use per-user preferences + probed registry instead.
+ */
 export function getActiveModel(): string {
   return getPlatformValue("AI_MODEL")?.trim() || DEFAULT_MODEL;
 }

@@ -838,6 +838,12 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS preferred_model TEXT,
+      ADD COLUMN IF NOT EXISTS preferred_reasoning_effort TEXT
+  `).catch(() => {});
+
+  await client.query(`
     ALTER TABLE trades ADD COLUMN IF NOT EXISTS oco_order_list_id TEXT
   `).catch(() => {});
 

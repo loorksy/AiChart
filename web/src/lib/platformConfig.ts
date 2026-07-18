@@ -34,8 +34,8 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
   },
   {
     key: "AI_MODEL",
-    label: "نموذج OpenAI",
-    labelEn: "AI_MODEL",
+    label: "نموذج احتياطي (بذرة فقط — الاختيار من المحادثة)",
+    labelEn: "AI_MODEL (seed/fallback)",
     group: "ai",
     secret: false,
     plainStorage: false,
