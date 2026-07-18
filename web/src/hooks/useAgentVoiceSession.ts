@@ -1,22 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import type { AgentFinalResult } from "@/lib/agent/types";
-import type {
-  VoiceProviderEvent,
-  VoiceProviderSession,
-  VoiceSessionCredential,
-  VoiceErrorCode,
-} from "@/lib/agent/voice/types";
-import { isRecoverableVoiceError } from "@/lib/agent/voice/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { z } from "zod";
 import {
-  voiceSessionReducer,
-  initialVoiceState,
-} from "@/lib/agent/voice/voiceSessionReducer";
-import { TranscriptTracker } from "@/lib/agent/voice/transcriptTracker";
+  createVoiceControlController,
+  createWebRtcRealtimeTransport,
+  defineVoiceTool,
+  type RealtimeTransport,
+  type VoiceControlController,
+  type VoiceControlError,
+  type VoiceTool,
+} from "realtime-voice-component";
+import type { AgentFinalResult } from "@/lib/agent/types";
+import type { VoiceErrorCode, VoiceSessionStatus } from "@/lib/agent/voice/types";
 import { VoiceConfirmationGuard } from "@/lib/agent/voice/voiceConfirmationGuard";
 import { speakableFromResult } from "@/lib/agent/voice/speakableAnswer";
-import { createOpenAIRealtimeProvider } from "@/lib/agent/voice/openaiRealtimeProvider";
+import { voiceBridgeInstructions } from "@/lib/agent/voice/voiceBridgeInstructions";
+import { readVoiceLimits } from "@/lib/agent/voice/voiceClientLimits";
+
+const INITIAL_VOICE_OPTIONS = {
+  activationMode: "vad" as const,
+  outputMode: "text+audio" as const,
+  postToolResponse: true,
+  auth: {
+    sessionEndpoint: "/api/agent/voice/realtime-session",
+    sessionRequestInit: { credentials: "include" as RequestCredentials },
+  },
+  instructions: voiceBridgeInstructions("ar"),
+  tools: [] as VoiceTool[],
+};
 
 export interface UseAgentVoiceSessionOptions {
   chatId?: string;
@@ -29,36 +41,85 @@ export interface UseAgentVoiceSessionOptions {
   sendAgentMessage: (text: string) => void;
 }
 
-const DEFAULT_MAX_RECONNECT = 3;
+type PendingAgent = {
+  resolve: (answer: string) => void;
+  reject: (error: Error) => void;
+};
+
+type MuteableTransport = RealtimeTransport & {
+  setMicEnabled?: (enabled: boolean) => void;
+};
+
+function mapVoiceError(error: VoiceControlError | undefined): VoiceErrorCode {
+  switch (error?.code) {
+    case "permission_denied":
+      return "mic_permission_denied";
+    case "device_unavailable":
+      return "mic_unavailable";
+    case "unsupported_browser":
+    case "insecure_context":
+      return "unsupported_browser";
+    case "network_error":
+    case "media_timeout":
+      return "network_lost";
+    case "aborted":
+      return "unknown";
+    default:
+      return "webrtc_failed";
+  }
+}
+
+function mapControllerStatus(input: {
+  connected: boolean;
+  activity: string;
+  status: string;
+  muted: boolean;
+  awaitingAgent: boolean;
+  assistantSpeaking: boolean;
+  error: VoiceErrorCode | null;
+}): VoiceSessionStatus {
+  if (input.error) return "error";
+  if (input.status === "connecting" || input.activity === "connecting") return "connecting";
+  if (input.assistantSpeaking) return "assistant_speaking";
+  if (input.awaitingAgent || input.activity === "executing" || input.activity === "processing") {
+    return "processing";
+  }
+  if (input.connected && (input.status === "listening" || input.activity === "listening")) {
+    return "listening";
+  }
+  if (input.connected) return "connected";
+  if (input.status === "idle" || input.activity === "idle") return "idle";
+  return "idle";
+}
 
 /**
- * Drives a real-time WebRTC voice conversation with AiChart. The realtime model
- * is only the speech interface: every final user transcript is routed through
- * the existing text-agent flow (`sendAgentMessage`), and the agent's final
- * public answer is spoken back via `handleAgentFinal`. Fully cleans up mic,
- * peer connection, data channel, timers, and reconnects on stop/unmount.
+ * Live voice via the official OpenAI realtime-voice-component controller.
+ * Realtime is speech I/O only: ask_aichart routes every utterance through the
+ * same text agent, then the model speaks the prepared answer.
  */
 export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
   const { sendAgentMessage } = opts;
-  const [state, dispatch] = useReducer(
-    voiceSessionReducer,
-    DEFAULT_MAX_RECONNECT,
-    initialVoiceState,
-  );
-  const [partialTranscript, setPartialTranscript] = useState("");
+  const limits = readVoiceLimits();
 
-  const providerRef = useRef<VoiceProviderSession | null>(null);
-  const credentialRef = useRef<VoiceSessionCredential | null>(null);
-  const trackerRef = useRef(new TranscriptTracker());
-  const guardRef = useRef(new VoiceConfirmationGuard());
+  const [status, setStatus] = useState<VoiceSessionStatus>("idle");
+  const [muted, setMuted] = useState(false);
+  const [error, setError] = useState<VoiceErrorCode | null>(null);
+  const [interrupted, setInterrupted] = useState(false);
+  const [partialTranscript, setPartialTranscript] = useState("");
+  const [assistantSpeaking, setAssistantSpeaking] = useState(false);
+
+  const [controller] = useState<VoiceControlController>(() =>
+    createVoiceControlController(INITIAL_VOICE_OPTIONS),
+  );
+  const transportRef = useRef<MuteableTransport | null>(null);
+  const pendingAgentRef = useRef<PendingAgent | null>(null);
   const awaitingAgentRef = useRef(false);
+  const guardRef = useRef(new VoiceConfirmationGuard());
+  const stoppedRef = useRef(true);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stoppedRef = useRef(false);
-  // Refs break the mutual recursion between event handling, reconnect, and
-  // connect (each references the next) without stale-closure lint violations.
-  const handleProviderEventRef = useRef<(event: VoiceProviderEvent) => void>(() => {});
-  const handleErrorRef = useRef<(code: VoiceErrorCode) => void>(() => {});
+  const sendAgentMessageRef = useRef(sendAgentMessage);
+  sendAgentMessageRef.current = sendAgentMessage;
 
   const clearTimers = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
@@ -67,204 +128,252 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
     maxTimerRef.current = null;
   }, []);
 
-  const teardownProvider = useCallback(async () => {
-    const provider = providerRef.current;
-    providerRef.current = null;
-    if (provider) {
-      try {
-        await provider.stop();
-      } catch {
-        /* already gone */
-      }
-    }
-  }, []);
-
   const stop = useCallback(async () => {
     stoppedRef.current = true;
-    dispatch({ type: "stop" });
     clearTimers();
-    await teardownProvider();
-    trackerRef.current.reset();
-    guardRef.current.reset();
+    if (pendingAgentRef.current) {
+      pendingAgentRef.current.reject(new Error("voice_stopped"));
+      pendingAgentRef.current = null;
+    }
     awaitingAgentRef.current = false;
+    setAssistantSpeaking(false);
     setPartialTranscript("");
-    dispatch({ type: "stopped" });
-  }, [clearTimers, teardownProvider]);
+    setMuted(false);
+    setInterrupted(false);
+    setError(null);
+    controller.disconnect();
+    transportRef.current = null;
+    setStatus("stopped");
+    // Return to idle so the panel can dismiss after a brief stop flash.
+    setTimeout(() => {
+      if (stoppedRef.current) setStatus("idle");
+    }, 0);
+  }, [clearTimers, controller]);
 
   const armIdleTimer = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    const seconds = credentialRef.current?.limits.idleTimeoutSeconds ?? 45;
     idleTimerRef.current = setTimeout(() => {
       void stop();
-    }, seconds * 1000);
-  }, [stop]);
+    }, limits.idleTimeoutSeconds * 1000);
+  }, [limits.idleTimeoutSeconds, stop]);
 
-  const handleProviderEvent = useCallback(
-    (event: VoiceProviderEvent) => {
-      if (stoppedRef.current) return;
-      switch (event.kind) {
-        case "status":
-          if (event.status === "listening") armIdleTimer();
-          dispatch({
-            type:
-              event.status === "connecting"
-                ? "connecting"
-                : event.status === "connected"
-                  ? "connected"
-                  : event.status === "listening"
-                    ? "listening"
-                    : "connected",
-          });
-          break;
-        case "user_speech_started":
-          armIdleTimer();
-          // Barge-in: if the assistant is speaking, cut it off and keep listening.
-          if (providerRef.current) providerRef.current.interrupt();
-          dispatch({ type: "interrupt" });
-          dispatch({ type: "user_speech_started" });
-          break;
-        case "user_speech_stopped":
-          dispatch({ type: "user_speech_stopped" });
-          break;
-        case "transcript": {
-          const outcome = trackerRef.current.handle(event.transcript);
-          if (event.transcript.role === "user" && outcome.display !== undefined) {
-            setPartialTranscript(outcome.display);
-          }
-          if (outcome.submit) {
-            setPartialTranscript("");
-            armIdleTimer();
-            awaitingAgentRef.current = true;
-            dispatch({ type: "processing" });
-            // Route the final transcript through the SAME agent flow as text.
-            sendAgentMessage(outcome.submit);
-          }
-          break;
-        }
-        case "assistant_audio_started":
-          dispatch({ type: "assistant_speaking" });
-          break;
-        case "assistant_audio_stopped":
-          dispatch({ type: "assistant_stopped" });
-          armIdleTimer();
-          break;
-        case "error":
-          handleErrorRef.current(event.code);
-          break;
-      }
-    },
-    [armIdleTimer, sendAgentMessage],
-  );
-
-  const mintCredential = useCallback(async (): Promise<VoiceSessionCredential> => {
-    const res = await fetch("/api/agent/voice/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chatId: opts.chatId,
-        locale: opts.locale,
-        symbol: opts.symbol,
-        interval: opts.interval,
+  const syncFromController = useCallback(() => {
+    if (stoppedRef.current) return;
+    const snap = controller.getSnapshot();
+    setPartialTranscript(snap.transcript || "");
+    setStatus(
+      mapControllerStatus({
+        connected: snap.connected,
+        activity: snap.activity,
+        status: snap.status,
+        muted,
+        awaitingAgent: awaitingAgentRef.current,
+        assistantSpeaking,
+        error,
       }),
-    });
-    if (!res.ok) {
-      const code: VoiceErrorCode = res.status === 429 ? "provider_unavailable" : "credential_failed";
-      throw Object.assign(new Error("credential"), { code });
-    }
-    return (await res.json()) as VoiceSessionCredential;
-  }, [opts.chatId, opts.locale, opts.symbol, opts.interval]);
-
-  const connect = useCallback(async () => {
-    const credential = await mintCredential();
-    credentialRef.current = credential;
-    const provider = createOpenAIRealtimeProvider({
-      credential,
-      locale: opts.locale,
-      onEvent: (event) => handleProviderEventRef.current(event),
-    });
-    providerRef.current = provider;
-    await provider.start();
-    // Hard cap on total session duration (cost guard).
-    if (maxTimerRef.current) clearTimeout(maxTimerRef.current);
-    maxTimerRef.current = setTimeout(
-      () => void stop(),
-      credential.limits.maxMinutes * 60 * 1000,
     );
-  }, [mintCredential, opts.locale, stop]);
+    if (snap.connected) armIdleTimer();
+  }, [armIdleTimer, assistantSpeaking, controller, error, muted]);
 
-  const handleError = useCallback(
-    (code: VoiceErrorCode) => {
-      if (stoppedRef.current) return;
-      if (isRecoverableVoiceError(code) && state.reconnectAttempts < state.maxReconnectAttempts) {
-        dispatch({ type: "disconnected", recoverable: true });
-        void teardownProvider().then(async () => {
-          if (stoppedRef.current) return;
-          try {
-            await connect();
-            dispatch({ type: "reconnected" });
-          } catch {
-            dispatch({ type: "error", code: "credential_failed" });
-          }
-        });
-      } else {
-        dispatch({ type: "error", code });
-        clearTimers();
-        void teardownProvider();
-      }
-    },
-    [state.reconnectAttempts, state.maxReconnectAttempts, connect, teardownProvider, clearTimers],
-  );
+  const askAichartTool = useMemo((): VoiceTool<{ message: string }> => {
+    return defineVoiceTool({
+      name: "ask_aichart",
+      description:
+        "Send the operator's spoken request to AiChart's trading agent and return the public answer to speak aloud.",
+      parameters: z.object({
+        message: z.string().min(1).describe("The operator's full spoken request."),
+      }),
+      execute: async ({ message }) => {
+        const text = message.trim();
+        if (!text) {
+          return {
+            ok: false,
+            answer:
+              opts.locale === "en"
+                ? "I did not catch that. Please try again."
+                : "لم أفهم الطلب. حاول مرة أخرى.",
+          };
+        }
 
-  // Keep the indirection refs pointing at the latest callbacks (updated in an
-  // effect, never during render).
+        awaitingAgentRef.current = true;
+        setStatus("processing");
+        armIdleTimer();
+
+        try {
+          const answer = await new Promise<string>((resolve, reject) => {
+            if (pendingAgentRef.current) {
+              pendingAgentRef.current.reject(new Error("superseded"));
+            }
+            const timeout = setTimeout(() => {
+              if (pendingAgentRef.current) {
+                pendingAgentRef.current = null;
+                reject(new Error("agent_timeout"));
+              }
+            }, 90_000);
+            pendingAgentRef.current = {
+              resolve: (value) => {
+                clearTimeout(timeout);
+                pendingAgentRef.current = null;
+                resolve(value);
+              },
+              reject: (err) => {
+                clearTimeout(timeout);
+                pendingAgentRef.current = null;
+                reject(err);
+              },
+            };
+            try {
+              sendAgentMessageRef.current(text);
+            } catch (err) {
+              clearTimeout(timeout);
+              pendingAgentRef.current = null;
+              reject(err instanceof Error ? err : new Error("send_failed"));
+            }
+          });
+          return { ok: true, answer };
+        } catch {
+          awaitingAgentRef.current = false;
+          return {
+            ok: false,
+            answer:
+              opts.locale === "en"
+                ? "I could not complete that request. Please try typing instead."
+                : "تعذّر إكمال الطلب. يمكنك الكتابة بدل الصوت.",
+          };
+        }
+      },
+    });
+  }, [armIdleTimer, opts.locale]);
+
   useEffect(() => {
-    handleProviderEventRef.current = handleProviderEvent;
-    handleErrorRef.current = handleError;
-  }, [handleProviderEvent, handleError]);
+    const sessionEndpoint = opts.chatId
+      ? `/api/agent/voice/realtime-session?chatId=${encodeURIComponent(opts.chatId)}&locale=${opts.locale}`
+      : "/api/agent/voice/realtime-session";
+
+    controller.configure({
+      activationMode: "vad",
+      outputMode: "text+audio",
+      postToolResponse: true,
+      auth: {
+        sessionEndpoint,
+        sessionRequestInit: { credentials: "include" },
+      },
+      instructions: voiceBridgeInstructions(opts.locale),
+      tools: [askAichartTool],
+      model: "gpt-realtime-2.1",
+      audio: {
+        output: { voice: "alloy" },
+        input: {
+          transcription: {
+            model: "gpt-4o-mini-transcribe",
+            language: opts.locale === "ar" ? "ar" : "en",
+          },
+        },
+      },
+      transportFactory: () => {
+        const transport = createWebRtcRealtimeTransport() as MuteableTransport;
+        transportRef.current = transport;
+        return transport;
+      },
+      onError: (voiceError) => {
+        if (stoppedRef.current) return;
+        const code = mapVoiceError(voiceError);
+        setError(code);
+        setStatus("error");
+        clearTimers();
+        controller.disconnect();
+      },
+      onEvent: (event) => {
+        if (stoppedRef.current) return;
+        if (!("type" in event) || typeof event.type !== "string") return;
+        if (event.type === "input_audio_buffer.speech_started") {
+          setInterrupted(true);
+          setAssistantSpeaking(false);
+          controller.sendClientEvent({ type: "response.cancel" });
+          armIdleTimer();
+        } else if (event.type === "response.output_audio.delta") {
+          setAssistantSpeaking(true);
+          setStatus("assistant_speaking");
+        } else if (event.type === "response.done" || event.type === "response.cancelled") {
+          setAssistantSpeaking(false);
+          armIdleTimer();
+        } else if (event.type === "voice.tool.started") {
+          awaitingAgentRef.current = true;
+          setStatus("processing");
+        }
+      },
+    });
+  }, [askAichartTool, armIdleTimer, clearTimers, controller, opts.chatId, opts.locale]);
+
+  useEffect(() => {
+    return controller.subscribe(() => {
+      syncFromController();
+    });
+  }, [controller, syncFromController]);
+
+  useEffect(() => {
+    return () => {
+      stoppedRef.current = true;
+      clearTimers();
+      if (pendingAgentRef.current) {
+        pendingAgentRef.current.reject(new Error("unmounted"));
+        pendingAgentRef.current = null;
+      }
+      controller.destroy();
+      transportRef.current = null;
+    };
+  }, [clearTimers, controller]);
 
   const start = useCallback(async () => {
     if (!opts.enabled || !opts.chatId) return;
     stoppedRef.current = false;
-    trackerRef.current.reset();
-    dispatch({ type: "request_permission" });
+    setError(null);
+    setMuted(false);
+    setInterrupted(false);
+    setAssistantSpeaking(false);
+    setPartialTranscript("");
+    setStatus("requesting_permission");
     try {
-      await connect();
+      setStatus("connecting");
+      await controller.connect();
+      if (stoppedRef.current) return;
+      setStatus("listening");
+      armIdleTimer();
+      if (maxTimerRef.current) clearTimeout(maxTimerRef.current);
+      maxTimerRef.current = setTimeout(() => {
+        void stop();
+      }, limits.maxMinutes * 60 * 1000);
     } catch (err) {
       const code =
-        (err as { code?: VoiceErrorCode }).code ??
-        (err instanceof DOMException && err.name === "NotAllowedError"
+        err instanceof DOMException && err.name === "NotAllowedError"
           ? "mic_permission_denied"
-          : "unknown");
-      dispatch({ type: "error", code: code as VoiceErrorCode });
-      await teardownProvider();
+          : "webrtc_failed";
+      setError(code);
+      setStatus("error");
+      controller.disconnect();
     }
-  }, [opts.enabled, opts.chatId, connect, teardownProvider]);
+  }, [opts.enabled, opts.chatId, armIdleTimer, controller, limits.maxMinutes, stop]);
 
   const toggleMute = useCallback(() => {
-    const provider = providerRef.current;
-    if (!provider) return;
-    if (state.muted) {
-      provider.unmute();
-      dispatch({ type: "unmute" });
-    } else {
-      provider.mute();
-      dispatch({ type: "mute" });
-    }
-  }, [state.muted]);
+    const next = !muted;
+    setMuted(next);
+    transportRef.current?.setMicEnabled?.(!next);
+  }, [muted]);
 
   const interrupt = useCallback(() => {
-    providerRef.current?.interrupt();
-    dispatch({ type: "interrupt" });
-  }, []);
+    controller.sendClientEvent({ type: "response.cancel" });
+    setAssistantSpeaking(false);
+    setInterrupted(true);
+    setStatus("listening");
+  }, [controller]);
 
   /**
-   * Called by the workspace when the agent turn (initiated by voice) finalizes.
-   * Speaks ONLY the public final answer — never activity, debug, or reasoning —
-   * and arms the confirmation guard if the agent requested confirmation.
+   * Called when the agent turn (initiated by voice tool) finalizes.
+   * Resolves ask_aichart so the realtime model can speak the answer.
    */
   const handleAgentFinal = useCallback(
     (result: AgentFinalResult) => {
-      if (!awaitingAgentRef.current) return; // a typed turn — don't speak it
+      if (!awaitingAgentRef.current && !pendingAgentRef.current) return;
       awaitingAgentRef.current = false;
       if (result.requiresConfirmation && opts.chatId) {
         const p = result.confirmationPayload;
@@ -275,47 +384,25 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
           now: Date.now(),
         });
       }
-      const speakable = speakableFromResult(result);
-      if (speakable) {
-        dispatch({ type: "assistant_speaking" });
-        void providerRef.current?.speakText(speakable);
-      } else {
-        dispatch({ type: "assistant_stopped" });
-      }
+      const speakable =
+        speakableFromResult(result) ??
+        (opts.locale === "en"
+          ? "I finished processing, but there was no spoken answer."
+          : "انتهيت من المعالجة لكن لا توجد إجابة صوتية.");
+      pendingAgentRef.current?.resolve(speakable);
+      pendingAgentRef.current = null;
       armIdleTimer();
     },
-    [opts.userId, opts.chatId, armIdleTimer],
+    [opts.userId, opts.chatId, opts.locale, armIdleTimer],
   );
 
-  // Stop cleanly on unmount and when the bound chat changes (rebind safely).
-  useEffect(() => {
-    return () => {
-      stoppedRef.current = true;
-      clearTimers();
-      void teardownProvider();
-    };
-  }, [clearTimers, teardownProvider]);
-
-  // Pause a background session that stays hidden too long (cost guard).
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const onHidden = () => {
-      if (document.visibilityState === "hidden" && state.status !== "idle" && state.status !== "stopped") {
-        // Give the tab a grace period; if still hidden, the idle timer stops it.
-        armIdleTimer();
-      }
-    };
-    document.addEventListener("visibilitychange", onHidden);
-    return () => document.removeEventListener("visibilitychange", onHidden);
-  }, [state.status, armIdleTimer]);
-
   return {
-    status: state.status,
-    muted: state.muted,
-    error: state.error,
-    interrupted: state.interrupted,
+    status,
+    muted,
+    error,
+    interrupted,
     partialTranscript,
-    active: state.status !== "idle" && state.status !== "stopped" && state.status !== "error",
+    active: status !== "idle" && status !== "stopped" && status !== "error",
     start,
     stop,
     toggleMute,
