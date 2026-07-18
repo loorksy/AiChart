@@ -1,6 +1,6 @@
 # AiChart Execution Desk
 
-The execution desk does not decide the market side. It receives an AI-selected BUY/SELL candidate and performs technical order safety only.
+The execution desk does not decide the market side. It receives an AI-selected BUY/SELL model trade plan and performs technical order safety only.
 
 Required before sending an order:
 

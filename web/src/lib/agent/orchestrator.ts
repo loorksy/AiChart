@@ -25,6 +25,8 @@ import {
 import { handleUserDrawingCommand } from "./drawingCommands/handleUserDrawingCommand";
 import { withTimeout, AGENT_TIMEOUTS } from "./timeout";
 import { buildInformationalResult, buildAgentFallbackResult } from "./fallback";
+import { failureKindToDecision } from "./modelFirst/technicalOutcome";
+import { buildDrawingsFromValidatedModelPlan } from "./modelFirst/buildDrawingsFromValidatedModelPlan";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
 import {
@@ -53,20 +55,11 @@ import { runLiquidityAgent } from "./agents/liquidityAgent";
 import { runSupplyDemandAgent } from "./agents/supplyDemandAgent";
 import { runMultiTimeframeAgent } from "./agents/multiTimeframeAgent";
 import { runNewsMacroAgent } from "./agents/newsMacroAgent";
-import {
-  runRiskAgent,
-  type AccountRiskSnapshot,
-  type RiskAgentResult,
-} from "./agents/riskAgent";
+import type { AccountRiskSnapshot } from "./accountRiskSnapshot";
 import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
-import { runFinalDecisionSynthesizer } from "./agents/finalDecisionSynthesizer";
 import { runDrawingAgent } from "./agents/drawingAgent";
-import {
-  buildDrawingPlan,
-  buildDrawingCandidates,
-} from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
-import { getModelFirstMode, runModelFirstDecision } from "./modelFirst/runModelFirstDecision";
+import { runModelFirstDecision } from "./modelFirst/runModelFirstDecision";
 import { buildMarketSnapshot } from "./modelFirst/marketSnapshot";
 import { buildNeutralEvidence } from "./modelFirst/buildNeutralEvidence";
 import {
@@ -456,47 +449,17 @@ export async function runUnifiedChartAgent(
     null,
   );
 
-  const modelFirstMode = getModelFirstMode();
+  // Sole analytical path: neutral evidence → free model → technical validation.
+  // There is no trade-proposal engine, Risk Agent direction, or dual mode.
   const narrative = buildMarketNarrative({ market, structure, liquidity, mtf });
-  const candidates = buildDrawingCandidates({
-    market,
-    structure,
-    supplyDemand,
-    liquidity,
-    mtf,
-  });
-
-  // Legacy risk/candidate path — only for MODEL_FIRST_MODE=off or shadow compare.
-  let risk: RiskAgentResult | null = null;
-  if (modelFirstMode === "off" || modelFirstMode === "shadow") {
-    try {
-      risk = await withTimeout(
-        runRiskAgent(trackedCtx, {
-          market,
-          structure,
-          supplyDemand,
-          liquidity,
-          mtf,
-          news,
-          account: input.account ?? null,
-          educationalOnly,
-          chartDrawings: chartContext?.drawings,
-        }),
-        AGENT_TIMEOUTS.risk,
-        null,
-      );
-    } catch {
-      risk = null;
-    }
-  }
 
   let finalDecision: FinalDecisionResult;
-  let selectedCandidateIds: string[] | undefined;
-  let drawingAdvice: { shouldDraw: boolean; reason: string } | null = null;
   let usedLLM = false;
   let modelRun: AgentFinalResult["modelRun"];
+  let liveValidatedPlan: import("./modelFirst/validatedTradePlan").ValidatedTradePlan | null =
+    null;
 
-  if (modelFirstMode === "live" || modelFirstMode === "shadow") {
+  {
     const { context: contextTfs } = resolveContextTimeframes(market.interval);
     const contextEntries = await Promise.all(
       contextTfs.map(async (tf) => {
@@ -523,6 +486,7 @@ export async function runUnifiedChartAgent(
         "Required multi-timeframe candles are incomplete, so no market recommendation was issued.",
         collected,
         locale,
+        "data_unavailable",
       );
     }
     const contextCandles = Object.fromEntries(
@@ -538,6 +502,7 @@ export async function runUnifiedChartAgent(
         "A fresh bid/ask quote is unavailable, so no market recommendation was issued.",
         collected,
         locale,
+        "data_unavailable",
       );
     }
     const snapshot = buildMarketSnapshot({
@@ -558,14 +523,27 @@ export async function runUnifiedChartAgent(
       failures: ["vision_unavailable"],
     }));
     const primaryVisionOk = vision.images.some(
-      (img) => img.meta.role === "primary" || img.meta.timeframe === snapshot.primaryTimeframe,
+      (img) =>
+        img.meta.role === "primary" ||
+        img.meta.timeframe === snapshot.primaryTimeframe,
     );
-    if (!primaryVisionOk || vision.images.length === 0) {
+    const primaryEnvelope = snapshot.envelopes.find((e) => e.role === "primary");
+    const numericSufficient = (primaryEnvelope?.includedCount ?? 0) >= 40;
+    if ((!primaryVisionOk || vision.images.length === 0) && !numericSufficient) {
       return buildAgentFallbackResult(
-        "The synchronized chart images could not be verified, so no market recommendation was issued.",
+        "Chart images and numeric candle coverage were both insufficient, so no market recommendation was issued.",
         collected,
         locale,
+        "data_unavailable",
       );
+    }
+    if (!primaryVisionOk || vision.images.length === 0) {
+      trackedCtx.emitActivity({
+        type: "analysis",
+        status: "warning",
+        message:
+          "صور الشارت غير متاحة — سأكمل التحليل بالشموع والأرقام فقط.",
+      });
     }
     snapshot.chartImageCaptureTimestamps = vision.captureTimestamps;
     let userCtxImage = null as Awaited<ReturnType<typeof captureUserContextChart>>;
@@ -596,6 +574,7 @@ export async function runUnifiedChartAgent(
       chartDrawings: chartContext?.drawings,
       visionMetas,
       userMessage,
+      educationalOnly,
     });
     const prefs =
       ctx.userId != null
@@ -606,11 +585,9 @@ export async function runUnifiedChartAgent(
         "Your saved analysis model or reasoning setting is no longer available. Select a currently verified option before requesting a market recommendation.",
         collected,
         locale,
+        "model_unavailable",
       );
     }
-    // Do not race-cut model-first: OpenAI reasoning (especially high/xhigh)
-    // must be allowed to finish. Bound only by AbortSignal + effort-aware
-    // LLM trading timeout (see llmTradingTimeoutMs).
     const mf = await runModelFirstDecision(trackedCtx, {
       evidence,
       images: [
@@ -643,153 +620,34 @@ export async function runUnifiedChartAgent(
         repaired: mf.repaired,
       };
     }
-    if (modelFirstMode === "live") {
-      if (!mf?.usedLLM || !mf.result) {
-        return buildAgentFallbackResult(
-          "Decision model was unavailable — no market recommendation was issued.",
-          collected,
-          locale,
-        );
-      }
-      finalDecision = mf.result;
-      usedLLM = true;
-      drawingAdvice = {
-        shouldDraw: finalDecision.decision !== "wait",
-        reason: "model_first",
-      };
-    } else {
-      // Shadow: run legacy synthesizer for user-facing result; keep model-first internal.
-      if (!risk) {
-        return buildAgentFallbackResult(
-          "Risk agent failed — defaulting to WAIT.",
-          collected,
-          locale,
-        );
-      }
-      const synth = await withTimeout(
-        runFinalDecisionSynthesizer(trackedCtx, {
-          userMessage,
-          risk,
-          news,
-          market,
-          structure,
-          supplyDemand,
-          mtf,
-          chartDrawings: chartContext?.drawings,
-          candidates,
-          narrative,
-          locale,
-          skillContextBlock: skillContext.block || null,
-        }).catch(() => null),
-        AGENT_TIMEOUTS.finalDecision,
-        null,
-      );
-      if (!synth?.usedLLM || !synth.result) {
-        return buildAgentFallbackResult(
-          "Decision model was unavailable — no market recommendation was issued.",
-          collected,
-          locale,
-        );
-      }
-      finalDecision = synth.result;
-      selectedCandidateIds = synth.selectedCandidateIds;
-      drawingAdvice = synth.drawingAdvice ?? null;
-      usedLLM = synth.usedLLM;
-      if (mf?.result) {
-        trackedCtx.emitActivity({
-          type: "analysis",
-          status: "completed",
-          message: "مقارنة ظلّية model-first سُجّلت داخلياً.",
-          visible: false,
-          metadata: {
-            shadowDecision: mf.result.decision,
-            liveDecision: finalDecision.decision,
-            modelId: mf.modelId,
-            candidateLeaks: mf.candidateLeakKeys,
-          },
-        });
-      }
-    }
-  } else {
-    if (!risk) {
-      trackedCtx.emitActivity({
-        type: "risk",
-        status: "failed",
-        message: "تعذّر إكمال فحص المخاطر — القرار انتظار احترازياً.",
-      });
+    if (!mf?.usedLLM || !mf.result) {
+      const technical = failureKindToDecision(mf?.failureKind ?? "unknown");
       return buildAgentFallbackResult(
-        "Risk agent failed — defaulting to WAIT.",
+        mf?.failureKind === "timeout"
+          ? "The analysis model did not complete the request (timeout)."
+          : mf?.failureKind === "invalid_model_output" ||
+              mf?.failureKind === "empty_response"
+            ? "No market recommendation was issued because the model response was invalid."
+            : "Decision model was unavailable — no market recommendation was issued.",
         collected,
         locale,
+        technical,
       );
     }
-    const synth = await withTimeout(
-      runFinalDecisionSynthesizer(trackedCtx, {
-        userMessage,
-        risk,
-        news,
-        market,
-        structure,
-        supplyDemand,
-        mtf,
-        chartDrawings: chartContext?.drawings,
-        candidates,
-        narrative,
-        locale,
-        skillContextBlock: skillContext.block || null,
-      }).catch(() => null),
-      AGENT_TIMEOUTS.finalDecision,
-      null,
-    );
-    if (!synth?.usedLLM || !synth.result) {
-      return buildAgentFallbackResult(
-        "Decision model was unavailable — no market recommendation was issued.",
-        collected,
-        locale,
-      );
-    }
-    finalDecision = synth.result;
-    selectedCandidateIds = synth.selectedCandidateIds;
-    drawingAdvice = synth.drawingAdvice ?? null;
-    usedLLM = synth.usedLLM;
-  }
-
-  // Stub risk for persistence/deep-analysis when live model-first skips candidates.
-  if (!risk) {
-    risk = {
-      proposedTrade: { action: "wait" },
-      validation: { accepted: true, reasons: [], warnings: [] },
-      accountWarnings: [],
-      selectedCandidate: null,
-      candidatesResult: {
-        candidates: [],
-        best: null,
-        rejectedReasons: [],
-        hasReversalEvidence: false,
-      },
-      playbook: {
-        warnings: [],
-        checklist: [],
-        blockingReasons: [],
-      },
-      rangePosition: null,
-    };
+    finalDecision = mf.result;
+    liveValidatedPlan = mf.validated;
+    usedLLM = true;
   }
 
   const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
 
-  const drawingPlan = buildDrawingPlan({
+  const drawingPlan = buildDrawingsFromValidatedModelPlan({
     decision: finalDecision,
-    market,
-    structure,
-    supplyDemand,
-    liquidity,
-    mtf,
-    preferMinimalDrawings: ctx.session?.preferences.preferMinimalDrawings,
-    selectedCandidateIds,
-    drawingAdvice,
+    validated: liveValidatedPlan,
+    lastCandleTime: market.currentTfCandles.at(-1)?.time,
   });
   void usedLLM;
+  void input.account;
 
   // Drawings are non-critical: failure → return text result without drawings.
   let drawings = await withTimeout(
@@ -975,7 +833,6 @@ export async function runUnifiedChartAgent(
       scalp: true,
       market,
       finalDecision,
-      risk,
       drawings,
       chartSnapshotHash,
     });
@@ -1009,11 +866,13 @@ export async function runUnifiedChartAgent(
               ? "bearish"
               : null,
         zoneType:
-          risk.selectedCandidate?.poi.type === "demand" ||
-          risk.selectedCandidate?.poi.type === "supply"
-            ? risk.selectedCandidate.poi.type
-            : null,
-        confirmationRule: risk.selectedCandidate?.setupType ?? null,
+          finalDecision.decision === "buy"
+            ? "demand"
+            : finalDecision.decision === "sell"
+              ? "supply"
+              : null,
+        confirmationRule:
+          finalDecision.recommendation.triggerCondition ?? null,
         atr: market.atr,
         entry: finalDecision.recommendation.entry ?? storedRecommendation?.entry,
         stopLoss:
@@ -1455,7 +1314,6 @@ async function storeFinalRecommendation(input: {
   scalp?: boolean;
   market: Awaited<ReturnType<typeof runMarketDataAgent>>;
   finalDecision: FinalDecisionResult;
-  risk: RiskAgentResult;
   drawings: AgentFinalResult["drawings"];
   chartSnapshotHash: string;
 }): Promise<ActiveRecommendation | null> {
@@ -1469,9 +1327,10 @@ async function storeFinalRecommendation(input: {
   if (rec.entry == null || rec.stop_loss == null || !rec.targets?.length) {
     return null;
   }
-  const candidate = input.risk.selectedCandidate;
   const id = newId();
   const createdCandleTime = input.market.currentTfCandles.at(-1)?.time;
+  const zoneLow = rec.entryZone?.low ?? rec.entry;
+  const zoneHigh = rec.entryZone?.high ?? rec.entry;
   const active: ActiveRecommendation = {
     id,
     userId: input.userId,
@@ -1503,22 +1362,24 @@ async function storeFinalRecommendation(input: {
       (rec.action === "buy"
         ? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`
         : `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`),
-    invalidationLevel: rec.stop_loss,
+    invalidationLevel: rec.invalidationLevel ?? rec.stop_loss,
     invalidationRule:
       rec.invalidationRule ??
       (rec.action === "buy"
         ? `إغلاق شمعة تحت ${rec.stop_loss} يبطل السيناريو.`
         : `إغلاق شمعة فوق ${rec.stop_loss} يبطل السيناريو.`),
-    setupType: input.scalp ? "scalp" : candidate?.setupType,
-    poi: candidate
-      ? {
-          type: candidate.poi.type,
-          low: candidate.poi.low,
-          high: candidate.poi.high,
-          score: candidate.poi.score.score,
-          grade: candidate.poi.score.grade,
-        }
-      : undefined,
+    setupType: input.scalp ? "scalp" : undefined,
+    // Display zone from the model-owned entry zone (not a pre-model proposal).
+    poi:
+      zoneLow != null && zoneHigh != null
+        ? {
+            type: rec.action === "buy" ? "demand" : "supply",
+            low: zoneLow,
+            high: zoneHigh,
+            score: Math.round((input.finalDecision.confidence ?? 0) * 100),
+            grade: "model",
+          }
+        : undefined,
     summary: input.finalDecision.summary,
     keyReasons: input.finalDecision.keyReasons,
     riskWarnings: input.finalDecision.riskWarnings,

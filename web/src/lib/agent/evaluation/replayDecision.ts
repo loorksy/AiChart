@@ -1,8 +1,7 @@
 /**
- * Replay harness — runs the SAME deterministic decision pipeline on a frozen
- * historical window ("current time" = the decision candle), so the trading
- * brain can be evaluated on past data. Pure: no I/O, no LLM, no warehouse —
- * candles in, decision out.
+ * Historical market-fact replay — freezes candles at a decision index and
+ * extracts neutral detectors only. Does NOT produce BUY/SELL/WAIT and does
+ * not run any trade-proposal engine.
  */
 import {
   calculateAtr,
@@ -19,11 +18,6 @@ import {
   enrichSweepsWithStructure,
 } from "../marketContext/liquiditySweeps";
 import { computeRangePosition } from "../marketContext/rangePosition";
-import {
-  buildTradeCandidates,
-  type TradeCandidate,
-  type TradeCandidatesResult,
-} from "../trading/buildTradeCandidates";
 
 export interface ReplayDecisionInput {
   /** Full candle history (oldest → newest). */
@@ -36,19 +30,25 @@ export interface ReplayDecisionInput {
   spread?: number | null;
 }
 
-export interface ReplayDecision {
+export interface ReplayMarketFacts {
   decisionTime: number;
   decisionPrice: number;
-  action: "buy" | "sell" | "wait";
-  candidate: TradeCandidate | null;
-  candidatesResult: TradeCandidatesResult;
-  /** Candles AFTER the decision point (for outcome scoring). */
+  atr: number | null;
+  trend: string | null;
+  regime: string | null;
+  zoneCount: number;
+  structureEventCount: number;
+  sweepCount: number;
+  rangeLabel: string | null;
+  /** Candles AFTER the decision point (for outcome scoring of model plans). */
   futureCandles: AgentCandle[];
 }
 
-export function replayDecision(input: ReplayDecisionInput): ReplayDecision {
+/** @deprecated Use ReplayMarketFacts — kept name for import stability in tests. */
+export type ReplayDecision = ReplayMarketFacts;
+
+export function replayDecision(input: ReplayDecisionInput): ReplayMarketFacts {
   const idx = Math.max(1, Math.min(input.decisionIndex, input.candles.length - 1));
-  // Freeze time: the pipeline sees ONLY candles up to the decision candle.
   const visible = input.candles.slice(0, idx + 1);
   const future = input.candles.slice(idx + 1);
   const decisionCandle = visible.at(-1)!;
@@ -72,28 +72,16 @@ export function replayDecision(input: ReplayDecisionInput): ReplayDecision {
   );
   const rangePosition = computeRangePosition(visible, price);
 
-  const candidatesResult = buildTradeCandidates({
-    candles: visible,
-    currentPrice: price,
-    atr,
-    trend: regime === "unknown" ? trend : trend,
-    htfBias: input.htfBias ?? "unknown",
-    htfConflict: input.htfConflict ?? false,
-    zones,
-    structureEvents,
-    sweeps,
-    rangePosition,
-    htfLevels: [],
-    newsRisk: input.newsRisk ?? "unknown",
-    spread: input.spread ?? null,
-  });
-
   return {
     decisionTime: decisionCandle.time,
     decisionPrice: price,
-    action: candidatesResult.best?.action ?? "wait",
-    candidate: candidatesResult.best,
-    candidatesResult,
+    atr,
+    trend,
+    regime,
+    zoneCount: zones.length,
+    structureEventCount: structureEvents.length,
+    sweepCount: sweeps.length,
+    rangeLabel: rangePosition?.label ?? null,
     futureCandles: future,
   };
 }

@@ -43,7 +43,14 @@ export type AgentDecision =
   | "sell"
   | "wait"
   | "informational"
-  | "action_required";
+  | "action_required"
+  | "data_unavailable"
+  | "model_unavailable"
+  | "model_timeout"
+  | "invalid_model_output"
+  | "analysis_failed"
+  | "execution_unavailable"
+  | "reanalysis_required";
 
 export type AgentActivityType =
   | "data"
@@ -141,6 +148,15 @@ export interface AgentRecommendation {
   netRrTp2?: number;
   /** immediate | conditional — never machine codes in user copy. */
   activationClass?: "immediate" | "conditional";
+  /** Model-authored entry zone (candidate-free). */
+  entryZone?: { low?: number | null; high?: number | null; preferred?: number | null };
+  /** Distinct from analytical WAIT — readiness for broker execution. */
+  executionReadiness?:
+    | "ready_for_approval"
+    | "waiting_for_confirmation"
+    | "levels_require_refresh"
+    | "technically_unavailable"
+    | "none";
   id?: string;
   status?: string;
   triggerCondition?: string;

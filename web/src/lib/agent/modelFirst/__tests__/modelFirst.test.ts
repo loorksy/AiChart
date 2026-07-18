@@ -159,11 +159,13 @@ describe("ValidatedTradePlan never flips direction", () => {
   const basePlan = (decision: "buy" | "sell"): ModelTradePlan => ({
     decision,
     activation: "immediate",
+    marketRegime: "trend",
     confidence: 0.7,
     summary: "Invalid geometry on purpose for technical checks.",
     marketThesis: "Directional thesis preserved under technical failure.",
-    currentPriceContext: "Price near zone.",
-    timeframeAlignment: [],
+    primaryTimeframe: "5m",
+    contextTimeframes: ["15m"],
+    timeframeAnalysis: [],
     keyReasons: ["structure"],
     warnings: [],
     entryZone: { low: 1.1, high: 1.11, preferred: 1.105 },
@@ -171,7 +173,7 @@ describe("ValidatedTradePlan never flips direction", () => {
     targets: [
       {
         price: decision === "buy" ? 1.0 : 1.2,
-        rationale: "wrong side",
+        reason: "wrong side",
       },
     ],
     invalidation: null,
@@ -179,8 +181,6 @@ describe("ValidatedTradePlan never flips direction", () => {
     pathToEntry: null,
     alternativeScenario: "Wait for cleaner structure.",
     dataTimestamp: new Date().toISOString(),
-    visionTimeframesUsed: ["5m"],
-    numericTimeframesUsed: ["5m", "15m"],
   });
 
   it("keeps buy decision when levels are invalid", () => {

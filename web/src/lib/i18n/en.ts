@@ -213,6 +213,13 @@ export const en = {
   "decision.wait": "Wait",
   "decision.informational": "Info",
   "decision.action_required": "Action required",
+  "decision.data_unavailable": "Data unavailable",
+  "decision.model_unavailable": "Model unavailable",
+  "decision.model_timeout": "Model timeout",
+  "decision.invalid_model_output": "Invalid model output",
+  "decision.analysis_failed": "Analysis failed",
+  "decision.execution_unavailable": "Execution unavailable",
+  "decision.reanalysis_required": "Reanalysis required",
 
   "language.arabic": "العربية",
   "language.english": "English",

@@ -1,8 +1,10 @@
 /**
  * Model-first final decision: Responses API + Structured Outputs + repair pass.
  * No candidate binding. Direction is never rewritten by validation.
+ * Technical failures never become analytical WAIT.
  */
 import { getPlatformValueAsync } from "@/lib/platformConfig";
+import { ExternalTimeoutError } from "@/lib/externalFetch";
 import { sanitizePublicText } from "../activity";
 import type { AgentRunContext } from "../types";
 import type { FinalDecisionResult } from "../agents/finalDecisionAgent";
@@ -21,6 +23,7 @@ import { loadModelRegistry } from "./modelRegistryStore";
 import { llmTradingTimeoutMs } from "@/lib/externalFetch";
 import {
   callOpenAIResponses,
+  ResponsesApiError,
   type ResponsesImageInput,
 } from "./openaiResponses";
 import {
@@ -29,17 +32,10 @@ import {
   ModelTradePlanSchema,
   type ModelTradePlan,
 } from "./modelTradePlan";
-import { validateTradePlanTechnically, type ValidatedTradePlan } from "./validatedTradePlan";
+import { validateModelTradePlan, type ValidatedTradePlan } from "./validatedTradePlan";
 import type { NeutralMarketEvidence } from "./buildNeutralEvidence";
 import { assertNoCandidateAuthority } from "./buildNeutralEvidence";
-
-export type ModelFirstMode = "off" | "shadow" | "live";
-
-export function getModelFirstMode(): ModelFirstMode {
-  const raw = (process.env.MODEL_FIRST_MODE ?? "live").trim().toLowerCase();
-  if (raw === "off" || raw === "shadow" || raw === "live") return raw;
-  return "live";
-}
+import type { ModelFirstFailureKind } from "./technicalOutcome";
 
 export interface ModelFirstDecisionDeps {
   apiKey?: string;
@@ -58,7 +54,7 @@ export interface ModelFirstDecisionOutcome {
   repaired: boolean;
   visionUsed: boolean;
   candidateLeakKeys: string[];
-  shadowOnly: boolean;
+  failureKind?: ModelFirstFailureKind;
   responseIds?: string[];
   tokenUsage?: {
     inputTokens: number | null;
@@ -74,25 +70,56 @@ function extractJson(raw: string): string {
   return match?.[0] ?? trimmed;
 }
 
-function toFinalResult(
+function classifyCallFailure(err: unknown): ModelFirstFailureKind {
+  if (err instanceof ExternalTimeoutError) return "timeout";
+  if (err instanceof ResponsesApiError) {
+    if (err.code === "timeout") return "timeout";
+    if (err.code === "empty_response") return "empty_response";
+    if (err.code === "invalid_request") return "invalid_model_output";
+    return "provider_error";
+  }
+  if (err instanceof Error && /abort|cancel/i.test(err.message)) return "canceled";
+  if (err instanceof SyntaxError) return "invalid_model_output";
+  if (err && typeof err === "object" && "name" in err && err.name === "ZodError") {
+    return "invalid_model_output";
+  }
+  return "unknown";
+}
+
+function executionReadinessFor(
   plan: ModelTradePlan,
   validated: ValidatedTradePlan,
-  marketPrice: number | null,
+): NonNullable<FinalDecisionResult["recommendation"]["executionReadiness"]> {
+  if (plan.decision === "wait") return "none";
+  if (validated.executionReady) {
+    return plan.activation === "conditional"
+      ? "waiting_for_confirmation"
+      : "ready_for_approval";
+  }
+  if (validated.technicalErrors.includes("quote_stale")) {
+    return "levels_require_refresh";
+  }
+  return "technically_unavailable";
+}
+
+export function toFinalResult(
+  plan: ModelTradePlan,
+  validated: ValidatedTradePlan,
 ): FinalDecisionResult {
   const clean = (arr: string[], max: number) =>
     arr.map((s) => sanitizePublicText(s).slice(0, 240)).filter(Boolean).slice(0, max);
   const keyReasons = clean(plan.keyReasons, 6);
-  const riskWarnings = clean(
-    plan.warnings,
-    6,
-  );
+  const riskWarnings = clean(plan.warnings, 6);
   if (!validated.executionReady && plan.decision !== "wait") {
     riskWarnings.unshift(
       "اتجاه السوق محفوظ من التحليل، لكن مستويات التنفيذ غير صالحة حالياً وتحتاج تحديثاً.",
     );
   }
+
+  // WAIT confidence only for analytical WAIT — never for directional opinions
+  // that merely lack executable levels.
   const confidenceSemantics =
-    plan.decision === "wait" || !validated.executionReady
+    plan.decision === "wait"
       ? buildWaitConfidence({
           decisionConfidence: plan.confidence,
           dataQualityScore: 1,
@@ -104,8 +131,10 @@ function toFinalResult(
           dataQualityScore: 1,
           setupQuality: plan.confidence,
           newsRisk: "unknown",
-          dataSufficientForTrade: true,
+          dataSufficientForTrade: validated.executionReady,
         });
+
+  const readiness = executionReadinessFor(plan, validated);
 
   return {
     decision: plan.decision,
@@ -118,6 +147,11 @@ function toFinalResult(
     recommendation: {
       action: plan.decision,
       entry: validated.executionReady ? validated.entry ?? undefined : undefined,
+      entryZone: {
+        low: plan.entryZone.low,
+        high: plan.entryZone.high,
+        preferred: plan.entryZone.preferred,
+      },
       entryType:
         plan.activation === "immediate"
           ? "market"
@@ -139,6 +173,7 @@ function toFinalResult(
         plan.activation === "immediate" || plan.activation === "conditional"
           ? plan.activation
           : undefined,
+      executionReadiness: readiness,
       triggerCondition: plan.requiredConfirmation ?? undefined,
       invalidationLevel: plan.invalidation ?? undefined,
       invalidationRule: plan.requiredConfirmation ?? undefined,
@@ -176,6 +211,25 @@ async function resolveModel(
   return { modelId: validated.record.id, effort: effortCheck.effort };
 }
 
+function emptyFailure(
+  partial: Partial<ModelFirstDecisionOutcome> & {
+    failureKind: ModelFirstFailureKind;
+    visionUsed: boolean;
+  },
+): ModelFirstDecisionOutcome {
+  return {
+    result: null,
+    validated: null,
+    usedLLM: false,
+    modelId: null,
+    reasoningEffort: null,
+    responseId: null,
+    repaired: false,
+    candidateLeakKeys: [],
+    ...partial,
+  };
+}
+
 export async function runModelFirstDecision(
   ctx: AgentRunContext,
   input: {
@@ -190,23 +244,14 @@ export async function runModelFirstDecision(
   },
   deps: ModelFirstDecisionDeps = {},
 ): Promise<ModelFirstDecisionOutcome> {
-  const mode = getModelFirstMode();
-  const shadowOnly = mode === "shadow";
+  const visionUsed = input.images.length > 0;
   const apiKey =
     deps.apiKey ?? (await getPlatformValueAsync("OPENAI_API_KEY"))?.trim();
   if (!apiKey) {
-    return {
-      result: null,
-      validated: null,
-      usedLLM: false,
-      modelId: null,
-      reasoningEffort: null,
-      responseId: null,
-      repaired: false,
-      visionUsed: input.images.length > 0,
-      candidateLeakKeys: [],
-      shadowOnly,
-    };
+    return emptyFailure({
+      failureKind: "missing_api_key",
+      visionUsed,
+    });
   }
 
   let modelId: string;
@@ -219,18 +264,10 @@ export async function runModelFirstDecision(
     modelId = resolved.modelId;
     effort = resolved.effort;
   } catch {
-    return {
-      result: null,
-      validated: null,
-      usedLLM: false,
-      modelId: null,
-      reasoningEffort: null,
-      responseId: null,
-      repaired: false,
-      visionUsed: input.images.length > 0,
-      candidateLeakKeys: [],
-      shadowOnly,
-    };
+    return emptyFailure({
+      failureKind: "model_selection_invalid",
+      visionUsed,
+    });
   }
 
   const language = input.locale === "en" ? "English" : "Arabic";
@@ -243,25 +280,20 @@ export async function runModelFirstDecision(
       code: "candidate_authority_leak",
       paths: candidateLeakKeys,
     });
-    return {
-      result: null,
-      validated: null,
-      usedLLM: false,
+    return emptyFailure({
+      failureKind: "candidate_authority_leak",
       modelId,
       reasoningEffort: effort,
-      responseId: null,
-      repaired: false,
-      visionUsed: input.images.length > 0,
       candidateLeakKeys,
-      shadowOnly,
-    };
+      visionUsed,
+    });
   }
   const userText = JSON.stringify({
     evidence: evidencePayload,
     visionNote:
       input.images.length > 0
         ? "Chart images are attached in order matching visionImages metadata."
-        : "No chart images attached; use numeric candles only.",
+        : "No chart images attached; numeric OHLCV candles are sufficient authority. Do not choose WAIT solely because images are missing.",
   });
 
   const call = deps.callResponses ?? callOpenAIResponses;
@@ -293,7 +325,6 @@ export async function runModelFirstDecision(
         : userText,
       images: input.images,
       reasoningEffort: effort,
-      // Leave headroom for visible JSON after hidden reasoning tokens.
       maxOutputTokens: 8192,
       store: false,
       schema,
@@ -312,6 +343,9 @@ export async function runModelFirstDecision(
     if (res.usage.totalTokens != null) {
       totalTokens += res.usage.totalTokens;
       hasTotalTokens = true;
+    }
+    if (!res.text?.trim()) {
+      throw new ResponsesApiError("empty_response", "empty_response");
     }
     const parsed = ModelTradePlanSchema.parse(JSON.parse(extractJson(res.text)));
     return { plan: parsed, responseId: res.responseId };
@@ -336,11 +370,15 @@ export async function runModelFirstDecision(
     const first = await once();
     plan = first.plan;
     responseId = first.responseId;
-  } catch {
+  } catch (err) {
+    const failureKind = classifyCallFailure(err);
     ctx.emitActivity({
       type: "analysis",
       status: "failed",
-      message: "تعذّر إكمال قرار النموذج.",
+      message:
+        failureKind === "timeout"
+          ? "انتهت مهلة نموذج التحليل قبل اكتمال القرار."
+          : "تعذّر إكمال قرار النموذج.",
     });
     return {
       result: null,
@@ -350,9 +388,9 @@ export async function runModelFirstDecision(
       reasoningEffort: effort,
       responseId: null,
       repaired: false,
-      visionUsed: input.images.length > 0,
+      visionUsed,
       candidateLeakKeys,
-      shadowOnly,
+      failureKind,
       responseIds,
       tokenUsage: {
         inputTokens: hasInputTokens ? inputTokens : null,
@@ -362,7 +400,10 @@ export async function runModelFirstDecision(
     };
   }
 
-  let validated = validateTradePlanTechnically({
+  // Immutable analytical decision after successful parse.
+  const lockedDecision = plan.decision;
+
+  let validated = validateModelTradePlan({
     plan,
     currentPrice: input.currentPrice,
     tickSize: input.tickSize,
@@ -370,7 +411,7 @@ export async function runModelFirstDecision(
   });
 
   if (
-    plan.decision !== "wait" &&
+    lockedDecision !== "wait" &&
     !validated.executionReady &&
     validated.technicalErrors.length
   ) {
@@ -379,40 +420,43 @@ export async function runModelFirstDecision(
         .map((e) => `- ${e}`)
         .join("\n");
       const second = await once(
-        `Preserve decision=${plan.decision}. Fix ONLY technical level errors:\n${repairHint}\nDo not change market direction.`,
+        `Preserve decision=${lockedDecision}. Fix ONLY technical level errors:\n${repairHint}\nDo not change market direction. Correct your own levels from the numeric evidence.`,
       );
-      plan = { ...second.plan, decision: plan.decision };
+      plan = { ...second.plan, decision: lockedDecision };
       responseId = second.responseId ?? responseId;
       repaired = true;
-      validated = validateTradePlanTechnically({
+      validated = validateModelTradePlan({
         plan,
         currentPrice: input.currentPrice,
         tickSize: input.tickSize,
         quoteAgeMs: input.quoteAgeMs,
       });
-      // Direction lock after repair
-      if (validated.decision !== plan.decision) {
+      if (validated.decision !== lockedDecision) {
         validated = {
           ...validated,
-          decision: plan.decision,
+          decision: lockedDecision,
           directionPreserved: true,
         };
       }
     } catch {
-      /* keep first validated */
+      /* keep first validated; direction remains lockedDecision */
     }
   }
 
-  const result = toFinalResult(plan, validated, input.currentPrice);
+  // Hard lock: never allow post-parse mutation of analytical enum.
+  plan = { ...plan, decision: lockedDecision };
+  validated = { ...validated, decision: lockedDecision, directionPreserved: true };
+
+  const result = toFinalResult(plan, validated);
   ctx.emitActivity({
     type: "final",
     status: validated.executionReady ? "completed" : "warning",
     message:
-      plan.decision === "wait"
-        ? "النتيجة: انتظار — لا توجد أفضلية كافية الآن."
+      lockedDecision === "wait"
+        ? "النتيجة: انتظار — النموذج لم يجد أفضلية كافية."
         : validated.executionReady
-          ? `النتيجة: ${plan.decision === "buy" ? "شراء" : "بيع"} مع مستويات قابلة للتنفيذ.`
-          : `النتيجة: ${plan.decision === "buy" ? "شراء" : "بيع"} (الرأي محفوظ؛ المستويات تحتاج تحديثاً).`,
+          ? `النتيجة: ${lockedDecision === "buy" ? "شراء" : "بيع"} مع مستويات قابلة للتنفيذ.`
+          : `النتيجة: ${lockedDecision === "buy" ? "شراء" : "بيع"} (الرأي محفوظ؛ المستويات تحتاج تحديثاً).`,
   });
 
   return {
@@ -423,9 +467,8 @@ export async function runModelFirstDecision(
     reasoningEffort: effort,
     responseId,
     repaired,
-    visionUsed: input.images.length > 0,
+    visionUsed,
     candidateLeakKeys,
-    shadowOnly,
     responseIds,
     tokenUsage: {
       inputTokens: hasInputTokens ? inputTokens : null,

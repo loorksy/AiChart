@@ -1,14 +1,17 @@
 /**
  * Structured model-first trade plan schema (Responses Structured Outputs).
+ * Candidate-free: the model independently chooses direction and levels.
  */
 import { z } from "zod";
 
 export const ModelTradePlanSchema = z.object({
   decision: z.enum(["buy", "sell", "wait"]),
   activation: z.enum(["immediate", "conditional", "none"]),
+  marketRegime: z.enum(["trend", "range", "breakout", "reversal", "mixed"]),
   marketThesis: z.string().min(8).max(1200),
-  currentPriceContext: z.string().min(4).max(600),
-  timeframeAlignment: z
+  primaryTimeframe: z.string().min(1).max(16),
+  contextTimeframes: z.array(z.string().max(16)).max(8).default([]),
+  timeframeAnalysis: z
     .array(
       z.object({
         timeframe: z.string(),
@@ -31,7 +34,7 @@ export const ModelTradePlanSchema = z.object({
     .array(
       z.object({
         price: z.number(),
-        rationale: z.string().max(240),
+        reason: z.string().max(240),
       }),
     )
     .max(3)
@@ -40,12 +43,10 @@ export const ModelTradePlanSchema = z.object({
   pathToEntry: z.string().nullable(),
   alternativeScenario: z.string().min(4).max(800),
   confidence: z.number().min(0).max(1),
-  dataTimestamp: z.string().min(4).max(64),
-  visionTimeframesUsed: z.array(z.string()).max(8).default([]),
-  numericTimeframesUsed: z.array(z.string()).max(8).default([]),
   summary: z.string().min(10).max(900),
   keyReasons: z.array(z.string().max(240)).max(6),
   warnings: z.array(z.string().max(240)).max(6).default([]),
+  dataTimestamp: z.string().min(4).max(64),
 });
 
 export type ModelTradePlan = z.infer<typeof ModelTradePlanSchema>;
@@ -56,9 +57,11 @@ export const MODEL_TRADE_PLAN_JSON_SCHEMA: Record<string, unknown> = {
   required: [
     "decision",
     "activation",
+    "marketRegime",
     "marketThesis",
-    "currentPriceContext",
-    "timeframeAlignment",
+    "primaryTimeframe",
+    "contextTimeframes",
+    "timeframeAnalysis",
     "entryZone",
     "invalidation",
     "stopLoss",
@@ -67,19 +70,22 @@ export const MODEL_TRADE_PLAN_JSON_SCHEMA: Record<string, unknown> = {
     "pathToEntry",
     "alternativeScenario",
     "confidence",
-    "dataTimestamp",
-    "visionTimeframesUsed",
-    "numericTimeframesUsed",
     "summary",
     "keyReasons",
     "warnings",
+    "dataTimestamp",
   ],
   properties: {
     decision: { type: "string", enum: ["buy", "sell", "wait"] },
     activation: { type: "string", enum: ["immediate", "conditional", "none"] },
+    marketRegime: {
+      type: "string",
+      enum: ["trend", "range", "breakout", "reversal", "mixed"],
+    },
     marketThesis: { type: "string" },
-    currentPriceContext: { type: "string" },
-    timeframeAlignment: {
+    primaryTimeframe: { type: "string" },
+    contextTimeframes: { type: "array", items: { type: "string" } },
+    timeframeAnalysis: {
       type: "array",
       items: {
         type: "object",
@@ -87,7 +93,10 @@ export const MODEL_TRADE_PLAN_JSON_SCHEMA: Record<string, unknown> = {
         required: ["timeframe", "bias", "evidence"],
         properties: {
           timeframe: { type: "string" },
-          bias: { type: "string", enum: ["bullish", "bearish", "neutral", "mixed"] },
+          bias: {
+            type: "string",
+            enum: ["bullish", "bearish", "neutral", "mixed"],
+          },
           evidence: { type: "string" },
         },
       },
@@ -109,10 +118,10 @@ export const MODEL_TRADE_PLAN_JSON_SCHEMA: Record<string, unknown> = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["price", "rationale"],
+        required: ["price", "reason"],
         properties: {
           price: { type: "number" },
-          rationale: { type: "string" },
+          reason: { type: "string" },
         },
       },
     },
@@ -120,25 +129,39 @@ export const MODEL_TRADE_PLAN_JSON_SCHEMA: Record<string, unknown> = {
     pathToEntry: { type: ["string", "null"] },
     alternativeScenario: { type: "string" },
     confidence: { type: "number" },
-    dataTimestamp: { type: "string" },
-    visionTimeframesUsed: { type: "array", items: { type: "string" } },
-    numericTimeframesUsed: { type: "array", items: { type: "string" } },
     summary: { type: "string" },
     keyReasons: { type: "array", items: { type: "string" } },
     warnings: { type: "array", items: { type: "string" } },
+    dataTimestamp: { type: "string" },
   },
 };
 
-export const MODEL_FIRST_SYSTEM_PROMPT = `You are the sole analytical market authority for AiChart (Forex scalping).
+export const MODEL_FIRST_SYSTEM_PROMPT = `You are the sole analytical authority for AiChart (Forex scalping on MetaTrader).
 
-Independently evaluate bullish, bearish, and WAIT scenarios from the neutral live evidence, raw candles, and chart images. Then choose ONE final analytical outcome: BUY, SELL, or WAIT (with activation immediate|conditional|none).
+You receive live numeric market evidence and neutral chart images.
+Application code has not generated a trade proposal for you.
+
+Independently analyze market structure, price action, momentum, liquidity, volatility, supply/demand, support/resistance, multi-timeframe context, news evidence, and applicable trading strategies.
+Compare bullish, bearish, conditional, and waiting scenarios.
+Choose BUY, SELL, or WAIT based solely on your own analysis.
+
+For BUY or SELL, create your own entry zone, preferred entry, invalidation, stop loss, targets, confirmation requirement, path to entry, and alternative scenario.
+A conditional trade remains BUY or SELL — use activation=conditional with requiredConfirmation.
+WAIT is appropriate only when your own analysis concludes that no sufficient edge currently exists.
 
 Hard rules:
-- You alone decide direction. No prebuilt trade candidate exists. Generate your own entry zone, invalidation, stop, and targets when BUY/SELL.
-- WAIT only when you genuinely conclude there is no sufficient edge — never because a candidate engine failed.
-- Numeric OHLCV and quote fields are the source of truth for exact prices. Chart images improve structure recognition; do not invent prices from pixels when numbers are provided.
-- User-annotated chart context (if present) is operator context, NOT verified market truth.
-- Higher timeframes are context only; the primary timeframe is where entry timing is evaluated.
-- Never invent news, account balances, or broker facts absent from evidence.
-- Do not reveal chain-of-thought. Respond ONLY with the structured JSON schema.
-- Risk per Trade is absent on purpose — sizing happens after your decision.`;
+- Higher-timeframe disagreement is evidence, not a veto.
+- Unknown or missing news must be disclosed in warnings — never automatically converted to WAIT.
+- A pullback entry, pending touch, or future confirmation is NOT WAIT.
+- Primary timeframe is evidence.snapshot.primaryTimeframe (user-selected). Context timeframes support the thesis only.
+- Numeric OHLCV and quote fields are authoritative for exact prices.
+- Never invent news, account balances, leverage, or broker facts absent from evidence.
+- Risk per Trade is intentionally absent — sizing happens after your decision.
+- Do not reveal chain-of-thought. Return only the required structured result.
+
+When WAIT: activation must be none; levels should normally be null/empty; describe the exact condition that would justify reanalysis.
+
+Activation:
+- immediate: price is already in/near your entry zone.
+- conditional: direction is clear but entry waits for a defined touch/confirmation.
+- none: only with WAIT.`;

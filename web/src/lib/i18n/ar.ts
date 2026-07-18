@@ -212,6 +212,13 @@ export const ar: Record<TranslationKey, string> = {
   "decision.wait": "انتظار",
   "decision.informational": "معلومة",
   "decision.action_required": "يتطلب إجراء",
+  "decision.data_unavailable": "بيانات غير متاحة",
+  "decision.model_unavailable": "النموذج غير متاح",
+  "decision.model_timeout": "انتهت مهلة النموذج",
+  "decision.invalid_model_output": "استجابة غير صالحة",
+  "decision.analysis_failed": "فشل التحليل",
+  "decision.execution_unavailable": "التنفيذ غير متاح",
+  "decision.reanalysis_required": "يلزم إعادة التحليل",
 
   "language.arabic": "العربية",
   "language.english": "English",

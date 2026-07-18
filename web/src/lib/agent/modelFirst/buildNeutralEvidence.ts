@@ -59,6 +59,8 @@ export type NeutralMarketEvidence = {
   chartDrawingsSummary: ReturnType<typeof summarizeChartDrawings>;
   visionImages: VisionImageMeta[];
   userMessage: string;
+  /** Session preference fact — never forces WAIT or direction. */
+  educationalOnly: boolean;
 };
 
 export function buildNeutralEvidence(input: {
@@ -73,6 +75,7 @@ export function buildNeutralEvidence(input: {
   chartDrawings?: ChartDrawing[];
   visionMetas: VisionImageMeta[];
   userMessage: string;
+  educationalOnly?: boolean;
 }): NeutralMarketEvidence {
   return {
     scalpingContext: SCALPING_CONTEXT,
@@ -143,6 +146,7 @@ export function buildNeutralEvidence(input: {
     ),
     visionImages: input.visionMetas,
     userMessage: input.userMessage.slice(0, 500),
+    educationalOnly: Boolean(input.educationalOnly),
   };
 }
 

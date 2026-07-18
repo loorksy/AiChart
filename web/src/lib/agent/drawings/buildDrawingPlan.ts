@@ -84,19 +84,18 @@ export interface DrawingPlanInput {
   liquidity: LiquidityResult | null;
   mtf: MultiTimeframeResult | null;
   preferMinimalDrawings?: boolean;
-  /** LLM-selected candidate ids (subset filter). The LLM can only SHRINK the
-   *  candidate set — every selection is still strength-validated here. */
-  selectedCandidateIds?: string[];
-  /** LLM drawing veto. `shouldDraw:false` suppresses drawings; `true` cannot
+  /** Optional subset filter of evidence-item ids for WAIT annotations. */
+  selectedEvidenceIds?: string[];
+  /** Drawing veto. `shouldDraw:false` suppresses drawings; `true` cannot
    *  force weak levels through — validation still applies. */
   drawingAdvice?: { shouldDraw: boolean; reason: string } | null;
 }
 
 /**
- * Detector output packaged as CANDIDATES — never drawn directly. The LLM
- * synthesizer may pick meaningful ids; the plan then validates each pick.
+ * Detector output packaged as drawing evidence — never drawn without strength
+ * validation. Not a trade proposal.
  */
-export type DrawingCandidate = {
+export type DrawingEvidenceItem = {
   id: string;
   type:
     | "support"
@@ -120,7 +119,7 @@ export type DrawingCandidate = {
   evidence: string[];
 };
 
-export interface DrawingCandidateInput {
+export interface DrawingEvidenceInput {
   market: AgentMarketContext;
   structure: StructureResult | null;
   supplyDemand: SupplyDemandResult | null;
@@ -129,14 +128,14 @@ export interface DrawingCandidateInput {
 }
 
 /**
- * Builds the scored candidate list from detector output. Deterministic and
+ * Builds the scored evidence shortlist from detector output. Deterministic and
  * stable: the same inputs yield the same ids, so the synthesizer's selected
  * ids match what the plan re-derives.
  */
-export function buildDrawingCandidates(
-  input: DrawingCandidateInput,
-): DrawingCandidate[] {
-  const out: DrawingCandidate[] = [];
+export function buildDrawingEvidenceShortlist(
+  input: DrawingEvidenceInput,
+): DrawingEvidenceItem[] {
+  const out: DrawingEvidenceItem[] = [];
 
   (input.structure?.support ?? []).forEach((l, i) => {
     const strength = scoreLevel(l, input);
@@ -173,7 +172,7 @@ export function buildDrawingCandidates(
     });
   });
 
-  // Structure events (BOS/CHoCH/MSS) as annotation candidates.
+  // Structure events (BOS/CHoCH/MSS) as annotation EVIDENCE.
   (input.structure?.structureEvents ?? []).forEach((ev, i) => {
     out.push({
       id: `ev-${i}`,
@@ -185,7 +184,7 @@ export function buildDrawingCandidates(
     });
   });
 
-  // Liquidity sweeps as annotation candidates.
+  // Liquidity sweeps as annotation EVIDENCE.
   (input.liquidity?.sweeps ?? []).forEach((s, i) => {
     out.push({
       id: `sweep-${i}`,
@@ -244,37 +243,45 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
     );
   }
 
-  // --- Valid trade setup → POI + invalidation + evidence + scenario path. ---
+  // --- Valid trade setup → model entry zone + invalidation + path. ---
+  // Never require detector POI or pre-model trade geometry for drawings.
   if (rec.action === "buy" || rec.action === "sell") {
-    const zone =
-      rec.action === "buy"
-        ? input.supplyDemand?.nearestDemand
-        : input.supplyDemand?.nearestSupply;
-
-    if (
-      !zone ||
-      rec.entry == null ||
-      rec.stop_loss == null ||
-      !rec.targets?.length
-    ) {
+    const entry =
+      rec.entry ??
+      rec.entryZone?.preferred ??
+      (rec.entryZone?.low != null && rec.entryZone?.high != null
+        ? (rec.entryZone.low + rec.entryZone.high) / 2
+        : null);
+    const stop = rec.stop_loss;
+    const targets = rec.targets ?? [];
+    if (entry == null || stop == null || !targets.length) {
       return noDrawPlan(
-        "خطة الصفقة تفتقد منطقة POI صالحة أو مستويات دخول/وقف/هدف.",
+        "خطة الصفقة تفتقد مستويات دخول/وقف/هدف من النموذج.",
       );
     }
 
-    // Evidence annotations: invalidation zone + the strongest supporting
-    // structure event / confirmed sweep. Kept small — no clutter.
+    const zoneLow =
+      rec.entryZone?.low != null && rec.entryZone?.high != null
+        ? Math.min(rec.entryZone.low, rec.entryZone.high)
+        : entry;
+    const zoneHigh =
+      rec.entryZone?.low != null && rec.entryZone?.high != null
+        ? Math.max(rec.entryZone.low, rec.entryZone.high)
+        : entry;
+    const lastTime = input.market.currentTfCandles.at(-1)?.time ?? Date.now();
+
     const annotations: DrawingAnnotation[] = [];
-    const atr = input.market.atr ?? Math.abs(rec.entry - rec.stop_loss);
-    const bandWidth = Math.min(Math.abs(rec.entry - rec.stop_loss) * 0.5, atr);
+    const atr = input.market.atr ?? Math.abs(entry - stop);
+    const bandWidth = Math.min(Math.abs(entry - stop) * 0.5, atr);
+    const invalidation = rec.invalidationLevel ?? stop;
     annotations.push({
       type: "invalidation",
-      price: rec.stop_loss,
+      price: invalidation,
       price2:
         rec.action === "buy"
-          ? rec.stop_loss - bandWidth
-          : rec.stop_loss + bandWidth,
-      time: input.market.currentTfCandles.at(-1)?.time ?? Date.now(),
+          ? invalidation - bandWidth
+          : invalidation + bandWidth,
+      time: lastTime,
       label: "منطقة إبطال السيناريو",
       strength: 80,
     });
@@ -282,39 +289,39 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
 
     return {
       shouldDraw: true,
-      reason: "خطة صفقة صالحة: منطقة POI + دخول + وقف + أهداف + إبطال.",
+      reason: "خطة صفقة من مستويات النموذج: منطقة دخول + وقف + أهداف + إبطال.",
       drawingIntent: "trade_setup",
       selectedLevels: [],
       selectedZones: [
         {
           type: rec.action === "buy" ? "demand" : "supply",
-          low: zone.low,
-          high: zone.high,
-          time: zone.time,
-          strength: Math.max(scoreZone(zone, input), 70),
-          reason: "منطقة POI المختارة للصفقة النهائية.",
+          low: zoneLow,
+          high: zoneHigh,
+          time: lastTime,
+          strength: 85,
+          reason: "منطقة دخول من خطة النموذج.",
         },
       ],
       selectedAnnotations: annotations.slice(0, 3),
       forecastPath: buildForecastPathFromTrade(input.market, {
-        entry: rec.entry,
-        target: rec.targets[0]!,
+        entry,
+        target: targets[0]!,
       }),
     };
   }
 
   // --- WAIT → draw ONLY strong, validated zones/levels (or nothing). ---
-  // Detector output becomes CANDIDATES; the LLM may pre-select meaningful ids
-  // (shrink only), then every survivor is still strength-gated here.
-  let candidates = buildDrawingCandidates(input);
-  if (input.selectedCandidateIds?.length) {
-    const selected = new Set(input.selectedCandidateIds);
-    candidates = candidates.filter((c) => selected.has(c.id));
+  // Detector output becomes a drawing-evidence shortlist; every survivor is
+  // still strength-gated here. This is not a trade proposal.
+  let evidenceItems = buildDrawingEvidenceShortlist(input);
+  if (input.selectedEvidenceIds?.length) {
+    const selected = new Set(input.selectedEvidenceIds);
+    evidenceItems = evidenceItems.filter((c) => selected.has(c.id));
   }
 
-  const levels = candidates
+  const levels = evidenceItems
     .filter(
-      (c): c is DrawingCandidate & { price: number } =>
+      (c): c is DrawingEvidenceItem & { price: number } =>
         (c.type === "support" || c.type === "resistance" || c.type === "liquidity") &&
         c.price != null,
     )
@@ -329,9 +336,9 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 3);
 
-  const zones = candidates
+  const zones = evidenceItems
     .filter(
-      (c): c is DrawingCandidate & { low: number; high: number } =>
+      (c): c is DrawingEvidenceItem & { low: number; high: number } =>
         (c.type === "supply" || c.type === "demand") &&
         c.low != null &&
         c.high != null,
@@ -420,7 +427,7 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
  * Weak or unconfirmed evidence is never drawn.
  */
 function pickEvidenceAnnotations(
-  input: DrawingCandidateInput,
+  input: DrawingEvidenceInput,
   max: number,
 ): DrawingAnnotation[] {
   const out: DrawingAnnotation[] = [];
@@ -470,7 +477,7 @@ function pickEvidenceAnnotations(
  */
 export function scoreLevel(
   level: PriceLevel,
-  input: DrawingCandidateInput,
+  input: DrawingEvidenceInput,
 ): number {
   const candles = input.market.currentTfCandles;
   const atr = input.market.atr ?? approxAtr(candles) ?? level.price * 0.001;
@@ -492,7 +499,7 @@ export function scoreLevel(
 /** Score a supply/demand zone 0–100: freshness, reaction, HTF confluence. */
 export function scoreZone(
   zone: { low: number; high: number; time: number },
-  input: DrawingCandidateInput,
+  input: DrawingEvidenceInput,
 ): number {
   const candles = input.market.currentTfCandles;
   const atr = input.market.atr ?? approxAtr(candles) ?? 0;

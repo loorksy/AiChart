@@ -191,18 +191,26 @@ describe("buildDrawingPlan", () => {
     assert.equal(plan.forecastPath?.length, 3);
   });
 
-  it("buy decision with no POI does not draw", () => {
+  it("buy decision draws from model levels without detector POI", () => {
     const plan = buildDrawingPlan(
       baseInput({
         decision: {
           ...waitDecision,
           decision: "buy",
-          recommendation: { action: "buy", entry: 100, stop_loss: 99, targets: [103] },
+          recommendation: {
+            action: "buy",
+            entry: 100,
+            stop_loss: 99,
+            targets: [103],
+            entryZone: { low: 99.5, high: 100.2, preferred: 100 },
+          },
         },
         supplyDemand: { zones: [], nearestDemand: null, nearestSupply: null },
       }),
     );
-    assert.equal(plan.shouldDraw, false);
-    assert.equal(plan.drawingIntent, "none");
+    assert.equal(plan.shouldDraw, true);
+    assert.equal(plan.drawingIntent, "trade_setup");
+    assert.equal(plan.selectedZones[0]!.type, "demand");
+    assert.equal(plan.selectedZones[0]!.low, 99.5);
   });
 });

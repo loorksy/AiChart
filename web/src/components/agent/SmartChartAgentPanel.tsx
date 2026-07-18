@@ -32,6 +32,13 @@ const DECISION_COLOR: Record<AgentFinalResult["decision"], string> = {
   wait: "text-amber-500",
   informational: "text-sky-500",
   action_required: "text-fuchsia-500",
+  data_unavailable: "text-sky-500",
+  model_unavailable: "text-sky-500",
+  model_timeout: "text-sky-500",
+  invalid_model_output: "text-sky-500",
+  analysis_failed: "text-sky-500",
+  execution_unavailable: "text-amber-500",
+  reanalysis_required: "text-amber-500",
 };
 
 interface Props {

@@ -183,15 +183,13 @@ export function meetsExecutableGeometry(input: {
   return { ok: true, netTp1R, grossTp1R };
 }
 
-/** Balanced quality score — POI alone cannot dominate weak geometry. */
-export function scoreCandidateQuality(input: {
-  poiScore: number;
+/** Post-decision geometry quality helper — never chooses market direction. */
+export function scorePlanGeometryQuality(input: {
   netTp1R: number;
   netTp2R: number | null;
   activationDistanceAtr: number;
   structuralTargetCount: number;
 }): number {
-  const poi = Math.max(0, Math.min(1, input.poiScore / 100));
   const tp1 = Math.max(
     0,
     Math.min(1, input.netTp1R / (SCALP_GEOMETRY.minNetTp1R * 1.6)),
@@ -211,11 +209,5 @@ export function scoreCandidateQuality(input: {
     0,
     Math.min(1, input.structuralTargetCount / 3),
   );
-  return (
-    0.22 * poi +
-    0.38 * tp1 +
-    0.15 * tp2 +
-    0.15 * proximity +
-    0.1 * structure
-  );
+  return 0.45 * tp1 + 0.2 * tp2 + 0.2 * proximity + 0.15 * structure;
 }

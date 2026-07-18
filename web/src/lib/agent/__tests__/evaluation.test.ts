@@ -24,7 +24,10 @@ describe("replayDecision", () => {
     assert.equal(replay.decisionTime, candles[49]!.time);
     assert.equal(replay.futureCandles.length, 50);
     assert.equal(replay.futureCandles[0]!.time, candles[50]!.time);
-    assert.ok(["buy", "sell", "wait"].includes(replay.action));
+    assert.ok(typeof replay.decisionPrice === "number");
+    assert.ok(replay.zoneCount >= 0);
+    assert.ok(!("action" in replay));
+    assert.ok(!("candidate" in replay));
   });
 });
 

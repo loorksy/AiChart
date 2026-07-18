@@ -1,5 +1,6 @@
 /**
- * Post-decision technical validation. Never changes BUY/SELL/WAIT direction.
+ * Post-decision technical validation of a model-owned trade plan.
+ * Never changes BUY/SELL/WAIT direction. Not a trade-proposal engine.
  */
 import type { ModelTradePlan } from "./modelTradePlan";
 
@@ -19,6 +20,18 @@ function finite(n: unknown): n is number {
   return typeof n === "number" && Number.isFinite(n);
 }
 
+/** Canonical name for post-decision model-plan validation. */
+export function validateModelTradePlan(input: {
+  plan: ModelTradePlan;
+  currentPrice: number | null;
+  tickSize?: number | null;
+  quoteAgeMs?: number | null;
+  maxQuoteAgeMs?: number;
+}): ValidatedTradePlan {
+  return validateTradePlanTechnically(input);
+}
+
+/** @deprecated Prefer validateModelTradePlan */
 export function validateTradePlanTechnically(input: {
   plan: ModelTradePlan;
   currentPrice: number | null;
