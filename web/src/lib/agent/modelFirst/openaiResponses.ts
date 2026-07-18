@@ -5,7 +5,7 @@
 import {
   ExternalTimeoutError,
   fetchWithTimeout,
-  llmTotalTimeoutMs,
+  llmTradingTimeoutMs,
 } from "@/lib/externalFetch";
 import type { ReasoningEffort } from "./modelRegistry";
 
@@ -147,7 +147,9 @@ export async function callOpenAIResponses(
         signal: params.signal,
       },
       {
-        timeoutMs: params.timeoutMs ?? llmTotalTimeoutMs(),
+        timeoutMs:
+          params.timeoutMs ??
+          llmTradingTimeoutMs(params.reasoningEffort ?? null),
         label: "OpenAI Responses",
       },
     );

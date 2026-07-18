@@ -30,8 +30,9 @@ export const AGENT_TIMEOUTS = {
   news: 8_000,
   risk: 5_000,
   drawing: 5_000,
-  // Model-first GPT-5.x with High/xhigh + Vision + Structured Outputs regularly
-  // exceeds 60–120s. Keep below Next maxDuration/nginx /api budget (300s).
-  finalDecision: 210_000,
+  // Legacy synthesizer budget. Model-first trading calls do NOT use this race —
+  // they wait for OpenAI (effort-aware LLM_TRADING_TIMEOUT_*). Kept only as a
+  // safety ceiling for non-model-first paths.
+  finalDecision: 600_000,
   general: 20_000,
 } as const;

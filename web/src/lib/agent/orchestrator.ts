@@ -608,23 +608,22 @@ export async function runUnifiedChartAgent(
         locale,
       );
     }
-    const mf = await withTimeout(
-      runModelFirstDecision(trackedCtx, {
-        evidence,
-        images: [
-          ...vision.images.map((i) => i.responsesInput),
-          ...(userCtxImage ? [userCtxImage.responsesInput] : []),
-        ],
-        locale,
-        preferredModelId: prefs?.modelId ?? undefined,
-        preferredReasoning: prefs?.reasoningEffort as ReasoningEffort | null,
-        currentPrice: snapshot.mid,
-        quoteAgeMs: snapshot.quoteAgeMs,
-        tickSize: snapshot.tickSize,
-      }).catch(() => null),
-      AGENT_TIMEOUTS.finalDecision,
-      null,
-    );
+    // Do not race-cut model-first: OpenAI reasoning (especially high/xhigh)
+    // must be allowed to finish. Bound only by AbortSignal + effort-aware
+    // LLM trading timeout (see llmTradingTimeoutMs).
+    const mf = await runModelFirstDecision(trackedCtx, {
+      evidence,
+      images: [
+        ...vision.images.map((i) => i.responsesInput),
+        ...(userCtxImage ? [userCtxImage.responsesInput] : []),
+      ],
+      locale,
+      preferredModelId: prefs?.modelId ?? undefined,
+      preferredReasoning: prefs?.reasoningEffort as ReasoningEffort | null,
+      currentPrice: snapshot.mid,
+      quoteAgeMs: snapshot.quoteAgeMs,
+      tickSize: snapshot.tickSize,
+    }).catch(() => null);
     if (mf?.modelId) {
       modelRun = {
         provider: "openai",
@@ -645,14 +644,7 @@ export async function runUnifiedChartAgent(
       };
     }
     if (modelFirstMode === "live") {
-      if (!mf) {
-        return buildAgentFallbackResult(
-          "The decision model timed out under the current reasoning setting. Try again, or lower reasoning effort if the wait is too long.",
-          collected,
-          locale,
-        );
-      }
-      if (!mf.usedLLM || !mf.result) {
+      if (!mf?.usedLLM || !mf.result) {
         return buildAgentFallbackResult(
           "Decision model was unavailable — no market recommendation was issued.",
           collected,

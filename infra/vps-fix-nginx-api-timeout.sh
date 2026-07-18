@@ -29,4 +29,4 @@ fi
 
 nginx -t
 systemctl reload nginx
-echo "nginx reloaded — /api/ proxy_read_timeout=180s"
+echo "nginx reloaded — /api/ proxy_read_timeout=900s"

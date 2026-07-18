@@ -18,6 +18,35 @@ export function llmTotalTimeoutMs(): number {
 }
 
 /**
+ * OpenAI SDK default client timeout is 10 minutes; for high/xhigh reasoning
+ * they recommend raising it further (often 15+ minutes) so the model can
+ * finish thinking instead of failing mid-request.
+ * @see https://developers.openai.com/api/docs/guides/flex-processing
+ * @see https://developers.openai.com/api/docs/guides/reasoning
+ */
+export function llmTradingTimeoutMs(
+  effort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | null,
+): number {
+  const override = envInt("LLM_TRADING_TIMEOUT_MS", 0);
+  if (override > 0) return override;
+  switch (effort) {
+    case "xhigh":
+    case "max":
+      return envInt("LLM_TRADING_TIMEOUT_XHIGH_MS", 900_000); // 15m
+    case "high":
+      return envInt("LLM_TRADING_TIMEOUT_HIGH_MS", 600_000); // 10m
+    case "medium":
+      return envInt("LLM_TRADING_TIMEOUT_MEDIUM_MS", 300_000); // 5m
+    case "low":
+    case "minimal":
+    case "none":
+      return envInt("LLM_TRADING_TIMEOUT_LOW_MS", 180_000); // 3m
+    default:
+      return envInt("LLM_TRADING_TIMEOUT_DEFAULT_MS", 600_000);
+  }
+}
+
+/**
  * Time-to-first-byte budget for streaming generations. Reasoning-style models
  * "think" for a while before emitting any token, so the first-byte wait must be
  * far more generous than the steady-state inter-chunk gap. This is what the old

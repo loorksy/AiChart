@@ -49,7 +49,8 @@ import {
 } from "@/lib/agent/context";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+/** Allow high/xhigh reasoning to finish (OpenAI SDK default is ~10 minutes). */
+export const maxDuration = 900;
 
 const log = createLogger("agent.chat.stream");
 

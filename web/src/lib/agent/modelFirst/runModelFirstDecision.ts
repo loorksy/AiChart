@@ -18,6 +18,7 @@ import {
   validateUserModelSelection,
 } from "./modelRegistry";
 import { loadModelRegistry } from "./modelRegistryStore";
+import { llmTradingTimeoutMs } from "@/lib/externalFetch";
 import {
   callOpenAIResponses,
   type ResponsesImageInput,
@@ -277,6 +278,8 @@ export async function runModelFirstDecision(
   let hasOutputTokens = false;
   let hasTotalTokens = false;
 
+  const tradingTimeoutMs = llmTradingTimeoutMs(effort);
+
   async function once(extraRepair?: string): Promise<{
     plan: ModelTradePlan;
     responseId: string | null;
@@ -290,10 +293,12 @@ export async function runModelFirstDecision(
         : userText,
       images: input.images,
       reasoningEffort: effort,
-      maxOutputTokens: 4096,
+      // Leave headroom for visible JSON after hidden reasoning tokens.
+      maxOutputTokens: 8192,
       store: false,
       schema,
       signal: ctx.signal,
+      timeoutMs: tradingTimeoutMs,
     });
     if (res.responseId) responseIds.push(res.responseId);
     if (res.usage.inputTokens != null) {
@@ -312,10 +317,16 @@ export async function runModelFirstDecision(
     return { plan: parsed, responseId: res.responseId };
   }
 
+  const effortHint =
+    effort === "xhigh" || effort === "max"
+      ? " مستوى التفكير مرتفع جداً — قد يستغرق عدة دقائق حتى يكتمل التفكير."
+      : effort === "high"
+        ? " مستوى التفكير عالٍ — انتظر حتى يُكمل النموذج تحليله."
+        : "";
   ctx.emitActivity({
     type: "analysis",
     status: "started",
-    message: "أحلّل السوق بالأدلة الحية والشموع والرسوم — القرار للنموذج فقط.",
+    message: `أحلّل السوق بالأدلة الحية والشموع والرسوم — القرار للنموذج فقط.${effortHint}`,
   });
 
   let plan: ModelTradePlan;

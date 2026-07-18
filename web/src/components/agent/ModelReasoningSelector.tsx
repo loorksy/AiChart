@@ -199,6 +199,7 @@ export function ModelReasoningSelector({ disabled }: { disabled?: boolean }) {
               "hover:border-foreground/30 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50",
             )}
             aria-label={t("agent.reasoning_label")}
+            title={t("agent.reasoning_hint")}
           >
             {efforts.map((effort) => (
               <option key={effort} value={effort}>
