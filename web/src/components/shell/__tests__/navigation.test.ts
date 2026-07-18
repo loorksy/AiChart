@@ -123,6 +123,14 @@ test("brand mark viewBox remains unclipped", () => {
   assert.match(mark, /viewBox="100 250 900 670"/);
 });
 
+test("auth form prevents mobile horizontal overflow", () => {
+  const auth = read("components/AuthForm.tsx");
+  assert.match(auth, /max-w-\[100vw\]/);
+  assert.match(auth, /overflow-x-hidden/);
+  assert.match(auth, /overflow-hidden bg-background/);
+  assert.match(auth, /min-w-0 max-w-full/);
+});
+
 test("MCP login uses neutral tokens and preserves oauth routes", () => {
   const login = readFileSync(resolve(process.cwd(), "../mcp/src/auth/login.ts"), "utf8");
   assert.match(login, /prefers-color-scheme: dark/);

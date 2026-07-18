@@ -78,18 +78,24 @@ export default function AuthForm({
   }
 
   return (
-    <div className="relative flex min-h-dvh" dir={dir}>
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-background">
-        <div className="absolute inset-x-0 top-0 mx-auto h-[280px] w-[480px] rounded-full bg-muted/40 blur-[80px]" />
+    <div
+      className="relative flex min-h-dvh w-full max-w-[100vw] overflow-x-hidden"
+      dir={dir}
+    >
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden bg-background">
+        <div className="absolute left-1/2 top-0 h-[280px] w-[480px] max-w-full -translate-x-1/2 rounded-full bg-muted/40 blur-[80px]" />
       </div>
 
-      <main className="flex w-full flex-col justify-center px-6 py-10 outline-none sm:px-10 lg:w-[42%] lg:max-w-lg lg:px-14">
-        <div className="glass-card p-6 sm:p-8">
-          <div className="mb-8 flex items-center justify-between gap-4">
-            <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
-              <AiChartLogo size={20} showName nameClassName="text-lg" />
+      <main className="mx-auto flex w-full min-w-0 max-w-lg flex-col justify-center px-4 py-8 outline-none sm:px-8 sm:py-10 lg:mx-0 lg:w-[42%] lg:max-w-lg lg:px-14">
+        <div className="glass-card min-w-0 max-w-full overflow-hidden p-5 sm:p-8">
+          <div className="mb-8 flex min-w-0 items-center justify-between gap-3">
+            <Link
+              href="/"
+              className="flex min-w-0 items-center gap-2 text-lg font-semibold"
+            >
+              <AiChartLogo size={20} showName nameClassName="truncate text-lg" />
             </Link>
-            <div aria-label={t("auth.switch_language")}>
+            <div className="shrink-0" aria-label={t("auth.switch_language")}>
               <LanguageSwitcher />
             </div>
           </div>
