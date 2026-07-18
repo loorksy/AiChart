@@ -82,13 +82,17 @@ test("workspace uses floating switcher once; no top tab bar", () => {
   assert.equal((workspace.match(/<AgentChatSidebar/g) ?? []).length, 0);
 });
 
-test("floating switcher defaults by locale edge helpers", () => {
+test("floating switcher supports free drag and composer dock", () => {
   const switcher = read("components/workspace/FloatingWorkspaceSwitcher.tsx");
   assert.match(switcher, /data-testid="chart-chat-switcher"/);
   assert.match(switcher, /defaultSwitcherPosition|loadSwitcherPosition/);
   assert.match(switcher, /SWITCHER_DRAG_THRESHOLD/);
+  assert.match(switcher, /resolveDockFromPoint|data-switcher-dock/);
   const helpers = read("lib/layout/workspaceSwitcher.ts");
   assert.match(helpers, /dir === "rtl" \? "left" : "right"/);
+  assert.match(helpers, /SwitcherDock/);
+  const input = read("components/agent/AgentChatInput.tsx");
+  assert.match(input, /data-switcher-dock="composer"/);
 });
 
 test("composer has bottom fade; upper chat shadow removed", () => {
