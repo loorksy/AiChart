@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Bell, Cable, Moon, Save, SlidersHorizontal, Sun, User } from "lucide-react";
 import { EaConnectCard } from "@/components/settings/EaConnectCard";
+import { McpConnectCard } from "@/components/settings/McpConnectCard";
+
 import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { useLocale } from "@/hooks/useLocale";
@@ -160,7 +162,12 @@ export default function SettingsClient({
         </SurfaceCard>
       )}
 
-      {tab === "integrations" && <EaConnectCard connection={ea} canDownloadEa={canDownloadEa} />}
+      {tab === "integrations" && (
+        <div className="space-y-4">
+          <EaConnectCard connection={ea} canDownloadEa={canDownloadEa} />
+          <McpConnectCard />
+        </div>
+      )}
 
       {tab === "alerts" && (
         <SurfaceCard className="space-y-4">

@@ -32,6 +32,11 @@ export function AgentChatInput({
       }}
     >
       <div className="chat-gpt-input flex items-end gap-1 px-2 py-1">
+        <div
+          data-switcher-dock="composer"
+          data-testid="switcher-composer-dock"
+          className="mb-0.5 flex shrink-0 items-center empty:hidden xl:hidden"
+        />
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}

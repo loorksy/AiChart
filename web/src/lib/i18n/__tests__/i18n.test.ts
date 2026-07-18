@@ -43,6 +43,10 @@ describe("i18n core", () => {
     assert.equal(t("ar", "layout.mt_connected"), "MT متصل");
     assert.equal(t("en", "layout.mt_disconnected"), "MT disconnected");
     assert.equal(t("ar", "layout.resize_chat"), "تغيير حجم الشات");
+    assert.equal(t("ar", "trades.title"), "الصفقات");
+    assert.equal(t("en", "trades.title"), "Trades");
+    assert.equal(t("ar", "connect.mcp.title"), "Claude MCP");
+    assert.equal(t("en", "connect.mcp.title"), "Claude MCP");
   });
 
   it("has the Parts 16-18 tracker + stats labels in both dictionaries", () => {

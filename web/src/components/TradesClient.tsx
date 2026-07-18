@@ -7,15 +7,17 @@ import type { Trade, TradeIntent } from "@/lib/types";
 import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
 import { useAgentActivities } from "@/hooks/useAgentActivities";
 import { MessageLoading } from "@/components/ui/message-loading";
-import { PageLayout, SectionTitle } from "@/components/ui/shell";
+import { PageLayout, SectionTitle, SurfaceCard } from "@/components/ui/shell";
 import { consumeSse } from "@/lib/sse";
+import { useLocale } from "@/hooks/useLocale";
+import type { TranslationKey } from "@/lib/i18n";
 
-const STATUS_AR: Record<string, string> = {
-  pending: "بانتظار موافقتك",
-  approved: "موافق",
-  rejected: "مرفوض",
-  executed: "نُفّذت",
-  failed: "فشل",
+const STATUS_KEY: Record<string, TranslationKey> = {
+  pending: "trades.status.pending",
+  approved: "trades.status.approved",
+  rejected: "trades.status.rejected",
+  executed: "trades.status.executed",
+  failed: "trades.status.failed",
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -34,6 +36,7 @@ export default function TradesClient({
   initialTrades: Trade[];
 }) {
   const router = useRouter();
+  const { t, dir } = useLocale();
   const [intents, setIntents] = useState(initialIntents);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [executingId, setExecutingId] = useState<number | null>(null);
@@ -45,8 +48,8 @@ export default function TradesClient({
 
   const pending = intents.filter((i) => i.status === "pending");
   const history = intents.filter((i) => i.status !== "pending");
-  const openTrades = trades.filter((t) => t.status === "open");
-  const closedTrades = trades.filter((t) => t.status !== "open");
+  const openTrades = trades.filter((trade) => trade.status === "open");
+  const closedTrades = trades.filter((trade) => trade.status !== "open");
 
   async function closeTrade(id: number) {
     setClosingId(id);
@@ -54,7 +57,7 @@ export default function TradesClient({
       const res = await fetch(`/api/trades/${id}/close`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.reason ?? data.error ?? "تعذّر إغلاق الصفقة.");
+        alert(data.reason ?? data.error ?? t("trades.err.close"));
         return;
       }
       const r = await fetch("/api/trades");
@@ -83,22 +86,28 @@ export default function TradesClient({
       if (isApprove) {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          alert(
-            `لم تُنفّذ: ${(data as { reason?: string; error?: string }).reason ?? (data as { error?: string }).error ?? "سبب غير معروف"}`,
-          );
+          const reason =
+            (data as { reason?: string; error?: string }).reason ??
+            (data as { error?: string }).error ??
+            t("trades.err.unknown");
+          alert(t("trades.err.execute", { reason }));
         } else {
           const data = await consumeSse<{ ok: boolean; reason?: string }>(res, {
             onActivity: upsertActivity,
             onError: (msg) => alert(msg),
           });
           if (data && !data.ok) {
-            alert(`لم تُنفّذ: ${data.reason ?? "سبب غير معروف"}`);
+            alert(
+              t("trades.err.execute", {
+                reason: data.reason ?? t("trades.err.unknown"),
+              }),
+            );
           }
         }
       } else {
         const data = await res.json();
         if (!res.ok) {
-          alert(data.error ?? "تعذّر رفض الطلب.");
+          alert(data.error ?? t("trades.err.reject"));
         }
       }
 
@@ -113,167 +122,191 @@ export default function TradesClient({
     }
   }
 
+  const sideLabel = (side: string) =>
+    side === "buy" ? t("trades.buy") : t("trades.sell");
+
   return (
-    <PageLayout title="الصفقات" subtitle="موافقة، تنفيذ، وإغلاق الصفقات">
-      <section className="mb-8">
-        <SectionTitle>بانتظار موافقتك ({pending.length})</SectionTitle>
+    <PageLayout title={t("trades.title")} subtitle={t("trades.subtitle")}>
+      <section className="space-y-3">
+        <SectionTitle>
+          {t("trades.pending", { count: String(pending.length) })}
+        </SectionTitle>
         {pending.length === 0 ? (
-          <p className="text-sm text-muted-foreground">لا توجد صفقات بانتظار موافقتك.</p>
+          <p className="text-sm text-muted-foreground">{t("trades.pending_empty")}</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {pending.map((i) => (
-              <div key={i.id} className="glass-card p-4 hover:border-primary/35">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="font-bold text-foreground" dir="ltr">
-                    {i.symbol}
+            {pending.map((intent) => (
+              <SurfaceCard key={intent.id} className="space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-base font-semibold tracking-tight" dir="ltr">
+                    {intent.symbol}
                   </span>
                   <span
                     className={cn(
-                      "rounded-full px-2.5 py-0.5 text-xs font-bold",
-                      i.side === "buy"
-                        ? "bg-sidebar-accent text-primary"
-                        : "bg-destructive/15 text-destructive",
+                      "shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold",
+                      intent.side === "buy"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-destructive/10 text-destructive",
                     )}
                   >
-                    {i.side === "buy" ? "شراء" : "بيع"} · ثقة {i.confidence}%
+                    {sideLabel(intent.side)} ·{" "}
+                    {t("trades.confidence", { pct: String(intent.confidence) })}
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  الحجم: <span dir="ltr">{i.notional.toFixed(2)} USD</span>
+                  {t("trades.size")}:{" "}
+                  <span dir="ltr">{intent.notional.toFixed(2)} USD</span>
                 </p>
-                {i.rationale && (
-                  <p className="mt-1 text-xs text-muted-foreground">{i.rationale}</p>
+                {intent.rationale && (
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {intent.rationale}
+                  </p>
                 )}
-                {executingId === i.id && activities.length > 0 && (
-                  <div className="mt-3">
-                    <AgentActivityFeed
-                      activities={activities}
-                      title="تنفيذ الصفقة"
-                    />
-                  </div>
+                {executingId === intent.id && activities.length > 0 && (
+                  <AgentActivityFeed
+                    activities={activities}
+                    title={t("trades.executing")}
+                  />
                 )}
-                <div className="mt-3 flex gap-2">
+                <div className="flex gap-2 pt-1">
                   <button
-                    className="btn btn-primary flex-1 py-1.5 text-sm"
-                    disabled={busyId === i.id}
-                    onClick={() => act(i.id, "approve")}
+                    type="button"
+                    className="btn btn-primary flex-1 py-2 text-sm"
+                    disabled={busyId === intent.id}
+                    onClick={() => void act(intent.id, "approve")}
                   >
-                    {busyId === i.id ? (
+                    {busyId === intent.id && executingId === intent.id ? (
                       <span className="inline-flex items-center justify-center gap-2">
                         <MessageLoading />
                       </span>
                     ) : (
-                      "موافقة وتنفيذ"
+                      t("trades.approve_execute")
                     )}
                   </button>
                   <button
-                    className="btn btn-danger flex-1 py-1.5 text-sm"
-                    disabled={busyId === i.id}
-                    onClick={() => act(i.id, "reject")}
+                    type="button"
+                    className="btn btn-danger flex-1 py-2 text-sm"
+                    disabled={busyId === intent.id}
+                    onClick={() => void act(intent.id, "reject")}
                   >
-                    رفض
+                    {t("trades.reject")}
                   </button>
                 </div>
-              </div>
+              </SurfaceCard>
             ))}
           </div>
         )}
       </section>
 
       {openTrades.length > 0 && (
-        <section className="mb-8">
-          <SectionTitle>صفقات مفتوحة ({openTrades.length})</SectionTitle>
+        <section className="space-y-3">
+          <SectionTitle>
+            {t("trades.open", { count: String(openTrades.length) })}
+          </SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2">
-            {openTrades.map((t) => (
-              <div key={t.id} className="glass-card p-4 hover:border-primary/35">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="font-bold text-foreground" dir="ltr">
-                    {t.symbol}
+            {openTrades.map((trade) => (
+              <SurfaceCard key={trade.id} className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold" dir="ltr">
+                    {trade.symbol}
                   </span>
-                  <span className="text-xs text-chart-1">مفتوحة</span>
+                  <span className="text-xs font-medium text-chart-1">
+                    {t("trades.status_open")}
+                  </span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {t.side === "buy" ? "شراء" : "بيع"} ·{" "}
-                  <span dir="ltr">{t.qty}</span> @{" "}
-                  <span dir="ltr">{t.avg_price}</span>
+                  {sideLabel(trade.side)} · <span dir="ltr">{trade.qty}</span> @{" "}
+                  <span dir="ltr">{trade.avg_price}</span>
                 </p>
                 <button
-                  className="btn btn-secondary mt-3 w-full py-1.5 text-sm"
-                  disabled={closingId === t.id}
-                  onClick={() => void closeTrade(t.id)}
+                  type="button"
+                  className="btn btn-secondary w-full py-2 text-sm"
+                  disabled={closingId === trade.id}
+                  onClick={() => void closeTrade(trade.id)}
                 >
-                  {closingId === t.id ? "جاري الإغلاق…" : "إغلاق الصفقة"}
+                  {closingId === trade.id ? t("trades.closing") : t("trades.close")}
                 </button>
-              </div>
+              </SurfaceCard>
             ))}
           </div>
         </section>
       )}
 
-      <section className="mb-8">
-        <SectionTitle>سجل الصفقات</SectionTitle>
+      <section className="space-y-3">
+        <SectionTitle>{t("trades.history")}</SectionTitle>
         {closedTrades.length === 0 ? (
-          <p className="text-sm text-muted-foreground">لا توجد صفقات مغلقة بعد.</p>
+          <p className="text-sm text-muted-foreground">{t("trades.history_empty")}</p>
         ) : (
-          <div className="glass-card overflow-x-auto">
-            <table className="w-full text-right text-sm">
+          <SurfaceCard padding="none" className="overflow-x-auto">
+            <table className="w-full text-sm" dir={dir}>
               <thead className="border-b border-border text-muted-foreground">
                 <tr>
-                  <th className="p-3">الرمز</th>
-                  <th className="p-3">الاتجاه</th>
-                  <th className="p-3">الكمية</th>
-                  <th className="p-3">السعر</th>
-                  <th className="p-3">PnL</th>
-                  <th className="p-3">البيئة</th>
-                  <th className="p-3">الوقت</th>
+                  <th className="p-3 font-medium">{t("trades.col.symbol")}</th>
+                  <th className="p-3 font-medium">{t("trades.col.side")}</th>
+                  <th className="p-3 font-medium">{t("trades.col.qty")}</th>
+                  <th className="p-3 font-medium">{t("trades.col.price")}</th>
+                  <th className="p-3 font-medium">{t("trades.col.pnl")}</th>
+                  <th className="p-3 font-medium">{t("trades.col.env")}</th>
+                  <th className="p-3 font-medium">{t("trades.col.time")}</th>
                 </tr>
               </thead>
               <tbody>
-                {closedTrades.map((t) => (
-                  <tr key={t.id} className="border-b border-border/50">
-                    <td className="p-3" dir="ltr">{t.symbol}</td>
-                    <td className="p-3">{t.side === "buy" ? "شراء" : "بيع"}</td>
-                    <td className="p-3 font-mono" dir="ltr">{t.qty}</td>
-                    <td className="p-3 font-mono" dir="ltr">{t.avg_price}</td>
+                {closedTrades.map((trade) => (
+                  <tr key={trade.id} className="border-b border-border/60 last:border-0">
+                    <td className="p-3" dir="ltr">
+                      {trade.symbol}
+                    </td>
+                    <td className="p-3">{sideLabel(trade.side)}</td>
+                    <td className="p-3 font-mono" dir="ltr">
+                      {trade.qty}
+                    </td>
+                    <td className="p-3 font-mono" dir="ltr">
+                      {trade.avg_price}
+                    </td>
                     <td
                       className={cn(
                         "p-3 font-mono",
-                        t.pnl >= 0 ? "text-primary" : "text-destructive",
+                        trade.pnl >= 0 ? "text-primary" : "text-destructive",
                       )}
                       dir="ltr"
                     >
-                      {t.pnl >= 0 ? "+" : ""}
-                      {t.pnl.toFixed(2)}
+                      {trade.pnl >= 0 ? "+" : ""}
+                      {trade.pnl.toFixed(2)}
                     </td>
-                    <td className="p-3">{t.env === "testnet" ? "تجريبي" : "حقيقي"}</td>
+                    <td className="p-3">
+                      {trade.env === "testnet"
+                        ? t("trades.env.testnet")
+                        : t("trades.env.live")}
+                    </td>
                     <td className="p-3 text-xs text-muted-foreground" dir="ltr">
-                      {(t.closed_at ?? t.created_at).slice(0, 16)}
+                      {(trade.closed_at ?? trade.created_at).slice(0, 16)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </SurfaceCard>
         )}
       </section>
 
       {history.length > 0 && (
-        <section>
-          <SectionTitle>سجلّ الطلبات</SectionTitle>
+        <section className="space-y-3">
+          <SectionTitle>{t("trades.intents_history")}</SectionTitle>
           <div className="space-y-2">
-            {history.map((i) => (
-              <div
-                key={i.id}
-                className="glass-card flex items-center justify-between p-3 text-sm hover:border-primary/35"
+            {history.map((intent) => (
+              <SurfaceCard
+                key={intent.id}
+                padding="sm"
+                className="flex items-center justify-between gap-3 text-sm"
               >
                 <span dir="ltr">
-                  {i.symbol} · {i.side === "buy" ? "شراء" : "بيع"}
+                  {intent.symbol} · {sideLabel(intent.side)}
                 </span>
-                <span className={STATUS_CLASS[i.status] ?? "text-foreground"}>
-                  {STATUS_AR[i.status]}
-                  {i.reason ? ` — ${i.reason}` : ""}
+                <span className={STATUS_CLASS[intent.status] ?? "text-foreground"}>
+                  {t(STATUS_KEY[intent.status] ?? "trades.status.failed")}
+                  {intent.reason ? ` — ${intent.reason}` : ""}
                 </span>
-              </div>
+              </SurfaceCard>
             ))}
           </div>
         </section>
