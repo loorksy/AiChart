@@ -28,6 +28,8 @@ export const SAMPLE_ARGS: Record<string, Record<string, unknown>> = {
   capture_chart_snapshot: { symbol: "EURUSD", interval: "15m" },
   capture_mt5_chart: { symbol: "EURUSD", timeframe: "15m" },
   get_chart_state: {},
+  // Isolated RC users often have no saved primary layout — pass an explicit symbol.
+  show_live_chart: { symbol: "EURUSD", interval: "15m", market: "forex" },
   query_mt5_terminal: {},
   get_account_symbols: {},
   get_ea_live_quotes: {},

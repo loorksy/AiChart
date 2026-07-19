@@ -110,10 +110,10 @@ import fs from 'fs';
   const v=(await getPlatformValueAsync('OPENAI_API_KEY'))?.trim();
   if(!v){console.log('OPENAI_INJECT=missing'); process.exit(2);}
   const p='${RC_DIR}/web/.env';
-  let lines=fs.readFileSync(p,'utf8').split(/\\r?\\n/).filter(l=>!l.startsWith('OPENAI_API_KEY='));
+  let lines=fs.readFileSync(p,'utf8').split(/\r?\n/).filter(l=>!l.startsWith('OPENAI_API_KEY='));
   while(lines.length&&lines.at(-1)==='') lines.pop();
   lines.push('OPENAI_API_KEY='+v);
-  fs.writeFileSync(p, lines.join('\\n')+'\\n', {mode:0o600});
+  fs.writeFileSync(p, lines.join('\n')+'\n', {mode:0o600});
   console.log('OPENAI_INJECT=configured');
 })().catch(()=>{console.log('OPENAI_INJECT=failed'); process.exit(1);});
 "
@@ -141,7 +141,7 @@ if secret.exists():
   for line in secret.read_text().splitlines():
     if line.startswith('MCP_TEST_') or line.startswith('WEB_TEST_'):
       lines.append(line)
-mcp.write_text('\\n'.join(lines)+'\\n'); mcp.chmod(0o600)
+mcp.write_text('\n'.join(lines)+'\n'); mcp.chmod(0o600)
 print('MCP_ENV_OK')
 PY
 
@@ -183,9 +183,10 @@ npx tsx --test --test-force-exit src/lib/recommendations/__tests__/historicalCan
 npx tsx --test --test-force-exit src/lib/agent/__tests__/confidenceSemantics.test.ts src/lib/recommendations/__tests__/fromAgentResult.test.ts >>"$LOG" 2>&1 && pass "authority-smoke" || fail "authority-smoke"
 env -u OPENAI_API_KEY npm run test:ci >>"$LOG" 2>&1 && pass "web-test-ci" || fail "web-test-ci"
 
-npm run test:provider-release > "/tmp/prov-${SHORT}.out" 2>&1 || true
-# kill hung provider validator
+timeout 180 npm run test:provider-release > "/tmp/prov-${SHORT}.out" 2>&1 || true
+# kill hung provider validator (often stalls after printing JSON)
 pkill -f 'validate-provider-release' 2>/dev/null || true
+sleep 1
 python3 - <<PY | tee -a "$SUM" "$LOG"
 from pathlib import Path
 import json,re

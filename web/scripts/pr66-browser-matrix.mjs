@@ -45,19 +45,25 @@ function record(results, name, ok, detail = "") {
 }
 
 async function login(page) {
-  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
-  // Prefer labeled inputs; fall back to type/name selectors.
+  await page.goto(`${BASE}/login`, { waitUntil: "networkidle", timeout: 60000 });
   const email = page.locator('input[type="email"], input[name="email"]').first();
   const password = page.locator('input[type="password"], input[name="password"]').first();
+  await email.waitFor({ state: "visible", timeout: 30000 });
   await email.fill(EMAIL);
   await password.fill(PASSWORD);
-  await Promise.all([
-    page.waitForURL(/\/(chat|dashboard|signals|plan)/, { timeout: 60000 }).catch(() => null),
-    page.locator('button[type="submit"], button:has-text("Login"), button:has-text("تسجيل")').first().click(),
-  ]);
-  // Cookie / token presence via authenticated API
+  await page.locator('button[type="submit"]').first().click();
+  // SaaS login redirects to /console (or /awaiting-approval) — not /chat.
+  await page
+    .waitForURL(/\/(console|awaiting-approval|chat|dashboard|signals|plan)/, {
+      timeout: 60000,
+    })
+    .catch(() => null);
+  await page.waitForTimeout(500);
   const me = await page.request.get(`${BASE}/api/auth/me`).catch(() => null);
-  return Boolean(me && me.ok());
+  if (me && me.ok()) return true;
+  // Cookie may still be present even if /api/auth/me shape differs.
+  const cookies = await page.context().cookies();
+  return cookies.some((c) => /session|token|auth/i.test(c.name) && c.value);
 }
 
 async function setLocaleTheme(page, locale) {
@@ -147,7 +153,7 @@ async function run() {
     `keys=${Object.keys(me).slice(0, 8).join(",")}`,
   );
 
-  for (const pathName of ["/chat", "/signals", "/dashboard", "/reports"]) {
+  for (const pathName of ["/console", "/chat", "/signals", "/dashboard", "/reports"]) {
     const { status, hasCrash } = await checkPage(page, pathName);
     record(results, `route${pathName.replaceAll("/", "-")}`, status < 500 && !hasCrash, `status=${status}`);
   }

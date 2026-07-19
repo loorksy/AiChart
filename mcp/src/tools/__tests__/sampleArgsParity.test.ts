@@ -11,6 +11,7 @@ describe("MCP SAMPLE_ARGS ↔ TOOL_CATALOG schema parity", () => {
       "load_agent_skill",
       "scan_market",
       "create_recommendation",
+      "show_live_chart",
     ] as const) {
       const def = TOOL_CATALOG.find((t) => t.name === name);
       assert.ok(def, `${name} missing from TOOL_CATALOG`);
@@ -63,5 +64,11 @@ describe("MCP SAMPLE_ARGS ↔ TOOL_CATALOG schema parity", () => {
       decision: string;
     };
     assert.equal(plan.decision, "wait");
+  });
+
+  it("show_live_chart SAMPLE_ARGS includes an explicit symbol for empty-layout RC users", () => {
+    const args = SAMPLE_ARGS.show_live_chart!;
+    assert.equal(typeof args.symbol, "string");
+    assert.ok(String(args.symbol).length > 0);
   });
 });
