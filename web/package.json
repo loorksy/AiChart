@@ -13,6 +13,8 @@
     "playwright:install": "playwright install chromium",
     "playwright:deps": "playwright install-deps chromium",
     "playwright:setup": "playwright install-deps chromium && playwright install chromium",
+    "test:pr66-browser-matrix": "node scripts/pr66-browser-matrix.mjs",
+    "test:pr66-historical-http": "tsx scripts/pr66-historical-http-e2e.mjs",
     "test:bridge": "npm run test:unit",
     "test:context": "tsx --test --test-force-exit src/lib/agent/context/__tests__/*.test.ts",
     "test:memory": "tsx --test --test-force-exit src/lib/agent/__tests__/agentMemory.test.ts src/lib/agent/__tests__/agentMemorySchema.test.ts && tsx --test --test-force-exit src/lib/agent/__tests__/agentMemoryDb.test.ts",
