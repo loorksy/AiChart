@@ -145,11 +145,15 @@ async function main() {
         confidence: 0.4,
       }),
     });
+    const validation = (body.validation ?? {}) as Record<string, unknown>;
     const ok =
       !r.error &&
       !r.result?.isError &&
+      body.ok === true &&
+      validation.requires_explicit_approval === true &&
       !/TradeCandidate|poi\.score|selectedTradeCandidateId/i.test(JSON.stringify(body));
-    if (assertCase("create_recommendation_wait", ok, r.error?.message ?? "")) passed++;
+    if (assertCase("create_recommendation_wait", ok, r.error?.message ?? JSON.stringify(validation)))
+      passed++;
     else failed++;
   }
 
@@ -168,16 +172,24 @@ async function main() {
       model_plan: basePlan({ decision: "buy", activation: "immediate" }),
     });
     const text = JSON.stringify(body);
+    const validation = (body.validation ?? {}) as Record<string, unknown>;
     const keepsBuy =
       /"action"\s*:\s*"buy"|decision"\s*:\s*"buy"|BUY/i.test(text) ||
       !r.result?.isError;
-    const noCandidate = !/TradeCandidate|selectedTradeCandidateId/i.test(text);
-    const ok = !r.error && keepsBuy && noCandidate;
+    const noCandidate = !/TradeCandidate|selectedTradeCandidateId|poi\.score/i.test(text);
+    const ok =
+      !r.error &&
+      body.ok === true &&
+      keepsBuy &&
+      noCandidate &&
+      validation.requires_explicit_approval === true &&
+      !/tradesExecuted|order_placed|ticket/i.test(text);
     if (
       assertCase(
         "create_recommendation_buy_host_plan",
         ok,
-        r.error?.message ?? `keys=${Object.keys(body).slice(0, 8).join(",")}`,
+        r.error?.message ??
+          `keys=${Object.keys(body).slice(0, 8).join(",")} validation=${JSON.stringify(validation)}`,
       )
     )
       passed++;
