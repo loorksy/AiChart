@@ -93,7 +93,7 @@ if secret.exists():
 for k,v in [('GIT_COMMIT',sha),('PORT','3019'),('AICHART_DISABLE_LIVE_ORDERS','1'),('FEATURE_AGENT_EXECUTION_GUARD','1'),('HOSTNAME','0.0.0.0')]:
     lines=[l for l in lines if not l.startswith(k+'=')]
     lines.append(f'{k}={v}')
-p=Path(rc_dir)/'web'/'.env'; p.write_text('\\n'.join(lines)+'\\n'); p.chmod(0o600)
+p=Path(rc_dir)/'web'/'.env'; p.write_text('\n'.join(lines)+'\n'); p.chmod(0o600)
 print('RC_ENV_OK')
 PY
 
