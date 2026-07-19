@@ -9,11 +9,12 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test:catalog": "tsx --test src/tools/__tests__/catalog.test.ts src/tools/__tests__/contractParity.test.ts src/skills/__tests__/skillsCatalog.test.ts src/skills/__tests__/skillRuntimeProof.test.ts src/skills/__tests__/skillIntelligentSelection.test.ts src/ui/__tests__/widgets.test.ts src/ui/__tests__/cardTools.integration.test.ts src/ui/__tests__/publicPath.test.ts src/ui/__tests__/cardButtons.test.ts src/lib/i18n/__tests__/mcpLocale.test.ts src/http/__tests__/wildcardPath.test.ts",
+    "test:catalog": "tsx --test src/tools/__tests__/catalog.test.ts src/tools/__tests__/contractParity.test.ts src/tools/__tests__/sampleArgsParity.test.ts src/skills/__tests__/skillsCatalog.test.ts src/skills/__tests__/skillRuntimeProof.test.ts src/skills/__tests__/skillIntelligentSelection.test.ts src/ui/__tests__/widgets.test.ts src/ui/__tests__/cardTools.integration.test.ts src/ui/__tests__/publicPath.test.ts src/ui/__tests__/cardButtons.test.ts src/lib/i18n/__tests__/mcpLocale.test.ts src/http/__tests__/wildcardPath.test.ts",
     "schemas:export": "tsx scripts/export-schemas.mts",
     "schemas:check": "tsx scripts/export-schemas.mts --check && tsx scripts/export-contract.mts --check",
     "contract:export": "tsx scripts/export-contract.mts",
-    "test:tools": "tsx scripts/test-all-tools.mts"
+    "test:tools": "tsx scripts/test-all-tools.mts",
+    "test:create-recommendation": "tsx scripts/test-create-recommendation.mts"
   },
   "dependencies": {
     "@mcp-ui/server": "^6.1.0",

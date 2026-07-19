@@ -10,50 +10,30 @@
  *   not FAIL — the tool works; the user's terminal is simply off).
  * - Safe mutators, when present: round-trip — set, then restore.
  * - Trade-executing tools: SKIPPED (listed for manual testing).
+ * - create_recommendation is exercised with a non-executing WAIT model_plan.
  */
 import { mintAccessToken } from "../src/auth/jwt.js";
 import { loadConfig } from "../src/config.js";
+import { SAMPLE_ARGS, SKIP_EXEC_TOOLS } from "../src/tools/sampleArgs.js";
 import { TOOL_CATALOG } from "../src/tools/schemas/index.js";
 
 const URL_ = process.env.MCP_TEST_URL ?? "http://127.0.0.1:8787/mcp";
 const EMAIL = process.env.MCP_TEST_EMAIL ?? "";
 
-const SAMPLE_ARGS: Record<string, Record<string, unknown>> = {
-  get_market_snapshot: { symbol: "EURUSD", interval: "15m", market: "forex" },
-  get_multi_timeframe_snapshot: { symbol: "EURUSD", intervals: ["1h", "15m"], market: "forex" },
-  get_market_price: { symbol: "EURUSD", market: "forex" },
-  list_instruments: { market: "forex", q: "EUR" },
-  get_chart_link: { symbol: "EURUSD" },
-  get_market_context: { symbol: "EURUSD" },
-  scan_market: { symbols: ["EURUSD", "GBPUSD"], market: "forex" },
-  get_ohlc: { symbol: "EURUSD", interval: "1h", limit: 50, market: "forex" },
-  get_forex_indicators: { symbol: "EURUSD", interval: "1h" },
-  detect_levels: { symbol: "EURUSD", interval: "1h", market: "forex" },
-  get_trade_lessons: { limit: 3 },
-  capture_chart_snapshot: { symbol: "EURUSD", interval: "15m" },
-  capture_mt5_chart: { symbol: "EURUSD", timeframe: "15m" },
-  get_chart_state: {},
-  query_mt5_terminal: {},
-  get_account_symbols: {},
-  get_ea_live_quotes: {},
-  get_ea_diagnostics: {},
-};
-
 /** set → restore pairs (safe mutators). */
 const ROUNDTRIP: Record<string, { probe: Record<string, unknown>; restoreFrom: string }> = {};
 
-const SKIP_EXEC = new Set([
-  "open_trade", "close_trade", "close_partial", "modify_sl_tp",
-  "cancel_mt5_order", "respond_approval", "request_approval",
-  "disconnect_mt5", "connect_mt5",
-  "send_telegram_menu", "request_ea_reconnect", "record_exit_decision",
-  "create_recommendation",
-  "evaluate_trade", "get_recommendation_chart", // data-dependent (need live trade/rec id)
-  "run_market_analysis", // consumes user credits — manual
-  "draw_on_chart", "clear_chart_drawings", // mutate the user's live chart — manual
-]);
-
-const DEGRADED_HINTS = [/EA/i, /غير متصل/, /MetaTrader/i, /offline/i, /heartbeat/i, /لم يستجب/, /انتهت مهلة/, /API-key/i, /permissions for action/i];
+const DEGRADED_HINTS = [
+  /EA/i,
+  /غير متصل/,
+  /MetaTrader/i,
+  /offline/i,
+  /heartbeat/i,
+  /لم يستجب/,
+  /انتهت مهلة/,
+  /API-key/i,
+  /permissions for action/i,
+];
 
 let sessionId = "";
 let msgId = 0;
@@ -72,7 +52,6 @@ async function rpc(method: string, params: unknown, token: string): Promise<any>
   const sid = res.headers.get("mcp-session-id");
   if (sid) sessionId = sid;
   const text = await res.text();
-  // Streamable HTTP may answer as SSE — take the last data: line.
   const dataLines = text.split("\n").filter((l) => l.startsWith("data:"));
   const raw = dataLines.length ? dataLines[dataLines.length - 1].slice(5) : text;
   try {
@@ -95,11 +74,15 @@ async function main() {
   );
   const token = minted.token;
 
-  const init = await rpc("initialize", {
-    protocolVersion: "2025-06-18",
-    capabilities: {},
-    clientInfo: { name: "test-all-tools", version: "1.0.0" },
-  }, token);
+  const init = await rpc(
+    "initialize",
+    {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "test-all-tools", version: "1.0.0" },
+    },
+    token,
+  );
   if (init.error) throw new Error(`initialize failed: ${init.error.message}`);
   await rpc("notifications/initialized", {}, token).catch(() => {});
 
@@ -117,7 +100,7 @@ async function main() {
       rows.push([name, "❌ FAIL", "-", "غير معلنة من الخادم!"]);
       continue;
     }
-    if (SKIP_EXEC.has(name) && !ROUNDTRIP[name]) {
+    if (SKIP_EXEC_TOOLS.has(name) && !ROUNDTRIP[name]) {
       rows.push([name, "⏭️ SKIP", "-", "تنفيذية/تستهلك رصيداً — اختبار يدوي"]);
       continue;
     }
