@@ -11,7 +11,7 @@ cd "$MCP_DIR"
 if [[ -f "$WEB_ENV" ]]; then
   set -a
   # shellcheck disable=SC1090
-  source <(grep -E '^(AICHART_API_URL|AICHART_SERVICE_TOKEN|MCP_|PORT=|DB_PATH=|DATABASE_URL=|BRIDGE_FETCH_TIMEOUT_MS=)' "$WEB_ENV" 2>/dev/null | sed 's/\r$//')
+  source <(grep -E '^(AICHART_API_URL|AICHART_SERVICE_TOKEN|GIT_COMMIT=|MCP_|PORT=|DB_PATH=|DATABASE_URL=|BRIDGE_FETCH_TIMEOUT_MS=)' "$WEB_ENV" 2>/dev/null | sed 's/\r$//')
   set +a
   PORT="${PORT:-3010}"
   export AICHART_API_URL="${AICHART_API_URL:-http://127.0.0.1:${PORT}}"
