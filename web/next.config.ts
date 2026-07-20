@@ -1,6 +1,25 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: "/logo.png",
+        destination: "/brand/aichart-mark-dark.png",
+        permanent: true,
+      },
+      {
+        source: "/lonora-logo-light.png",
+        destination: "/brand/aichart-mark-light.png",
+        permanent: true,
+      },
+      {
+        source: "/lonora-logo-dark.png",
+        destination: "/brand/aichart-mark-dark.png",
+        permanent: true,
+      },
+    ];
+  },
   // better-sqlite3 is a native module and must not be bundled by Next.
   serverExternalPackages: ["better-sqlite3", "pg", "metaapi.cloud-sdk", "playwright"],
   // Vendored OpenAI realtime-voice-component ships TypeScript source.

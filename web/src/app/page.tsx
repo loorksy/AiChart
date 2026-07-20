@@ -23,12 +23,14 @@ export const metadata: Metadata = {
     type: "website",
     locale: "ar_SA",
     alternateLocale: ["en_US"],
+    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: BRAND_NAME }],
   },
   twitter: {
     card: "summary",
     title: `${BRAND_NAME} — AI Chart and Trading Conversation`,
     description:
       "Analyze the market, discuss the setup, and execute with clarity through MetaTrader after approval.",
+    images: ["/icon-512.png"],
   },
 };
 

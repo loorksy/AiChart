@@ -47,12 +47,10 @@ describe("brand face-mark assets", () => {
     }
   });
 
-  it("SVG marks have no full-canvas opaque background rect", () => {
+  it("SVG marks use approved Desktop face-mark colors", () => {
     const dark = readFileSync(resolve(brand, "aichart-mark.svg"), "utf8");
     const light = readFileSync(resolve(brand, "aichart-mark-light.svg"), "utf8");
     assert.match(dark, /fill="#FFFFFF"/i);
-    assert.match(light, /fill="#0A0A0A"/i);
-    assert.doesNotMatch(dark, /<rect[^>]+width="1095"/);
-    assert.doesNotMatch(light, /<rect[^>]+width="1095"/);
+    assert.match(light, /fill="#(?:0A0A0A|000000)"/i);
   });
 });

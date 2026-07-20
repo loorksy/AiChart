@@ -4,8 +4,9 @@ Approved face-mark identity (two circles + diamond).
 
 ## Source
 
-- Master vector: operator Desktop `logo/lonora.svg`
-- Rejected: solid black exports, blank white square SVG, legacy hexagon `public/logo.png`
+- Master vector: `C:\Users\ALALMIA\Desktop\logo` (white + black SVG pair)
+- Regenerate all rasters + favicons: `node scripts/sync-brand-from-desktop.mjs`
+- Legacy hexagon `public/logo.png` removed — use `/brand/aichart-mark-dark.png` instead
 
 ## Production files
 
