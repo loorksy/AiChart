@@ -118,6 +118,7 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
   const stoppedRef = useRef(true);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const assistantSpeakingRef = useRef(false);
   const sendAgentMessageRef = useRef(sendAgentMessage);
   sendAgentMessageRef.current = sendAgentMessage;
 
@@ -136,6 +137,7 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
       pendingAgentRef.current = null;
     }
     awaitingAgentRef.current = false;
+    assistantSpeakingRef.current = false;
     setAssistantSpeaking(false);
     setPartialTranscript("");
     setMuted(false);
@@ -287,14 +289,19 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
         if (stoppedRef.current) return;
         if (!("type" in event) || typeof event.type !== "string") return;
         if (event.type === "input_audio_buffer.speech_started") {
-          setInterrupted(true);
-          setAssistantSpeaking(false);
-          controller.sendClientEvent({ type: "response.cancel" });
           armIdleTimer();
+          if (assistantSpeakingRef.current) {
+            assistantSpeakingRef.current = false;
+            setAssistantSpeaking(false);
+            setInterrupted(true);
+            controller.sendClientEvent({ type: "response.cancel" });
+          }
         } else if (event.type === "response.output_audio.delta") {
+          assistantSpeakingRef.current = true;
           setAssistantSpeaking(true);
           setStatus("assistant_speaking");
         } else if (event.type === "response.done" || event.type === "response.cancelled") {
+          assistantSpeakingRef.current = false;
           setAssistantSpeaking(false);
           armIdleTimer();
         } else if (event.type === "voice.tool.started") {
@@ -330,6 +337,7 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
     setError(null);
     setMuted(false);
     setInterrupted(false);
+    assistantSpeakingRef.current = false;
     setAssistantSpeaking(false);
     setPartialTranscript("");
     setStatus("requesting_permission");
@@ -362,6 +370,7 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
 
   const interrupt = useCallback(() => {
     controller.sendClientEvent({ type: "response.cancel" });
+    assistantSpeakingRef.current = false;
     setAssistantSpeaking(false);
     setInterrupted(true);
     setStatus("listening");

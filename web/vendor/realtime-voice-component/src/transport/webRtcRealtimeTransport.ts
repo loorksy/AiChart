@@ -13,6 +13,36 @@ type RealtimePeerState = {
 
 const DATA_CHANNEL_OPEN_TIMEOUT_MS = 15_000;
 
+/** Normalize WebRTC data-channel payloads (string | Blob | ArrayBuffer). */
+async function decodeDataChannelPayload(data: unknown): Promise<string | null> {
+  if (typeof data === "string") return data;
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    try {
+      return await data.text();
+    } catch {
+      return null;
+    }
+  }
+  if (data instanceof ArrayBuffer) {
+    try {
+      return new TextDecoder().decode(data);
+    } catch {
+      return null;
+    }
+  }
+  if (ArrayBuffer.isView(data)) {
+    try {
+      const view = data as ArrayBufferView;
+      return new TextDecoder().decode(
+        new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+      );
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 type TransportError = Error & {
   code?: string;
 };
@@ -249,6 +279,23 @@ export class WebRtcRealtimeTransport implements RealtimeTransport {
   private isDisconnecting = false;
   private hasOpenedDataChannel = false;
 
+  private handleDataChannelMessage = (event: MessageEvent) => {
+    void decodeDataChannelPayload(event.data).then((raw) => {
+      if (!raw?.trim()) return;
+      try {
+        const payload = JSON.parse(raw) as RealtimeServerEvent;
+        this.onServerEvent?.(payload);
+      } catch {
+        // Ignore malformed frames — one bad packet must not tear down the session.
+      }
+    });
+  };
+
+  private attachDataChannel(channel: RTCDataChannel): void {
+    channel.binaryType = "arraybuffer";
+    channel.addEventListener("message", this.handleDataChannelMessage);
+  }
+
   async connect(options: TransportConnectOptions): Promise<void> {
     if (typeof window !== "undefined" && window.isSecureContext === false) {
       throw createTransportError(
@@ -291,16 +338,10 @@ export class WebRtcRealtimeTransport implements RealtimeTransport {
 
       const dataChannel = peerConnection.createDataChannel("oai-events");
       this.state.dataChannel = dataChannel;
+      this.attachDataChannel(dataChannel);
 
-      dataChannel.addEventListener("message", (event) => {
-        try {
-          const payload = JSON.parse(String(event.data)) as RealtimeServerEvent;
-          this.onServerEvent?.(payload);
-        } catch (error) {
-          this.onError?.(
-            error instanceof Error ? error : new Error("Invalid Realtime event payload."),
-          );
-        }
+      peerConnection.addEventListener("datachannel", (event) => {
+        this.attachDataChannel(event.channel);
       });
 
       dataChannel.addEventListener("error", () => {
