@@ -43,10 +43,20 @@ export async function getFreshAgentCandles(input: {
     liveError = error instanceof Error ? error.message : String(error);
   }
 
-  const currentTfCandles =
-    source === "oanda"
-      ? ((await getCandles({ symbol, interval, limit })) as AgentCandle[])
-      : liveCandles;
+  const currentTfCandles = await (async () => {
+    if (source !== "oanda") return liveCandles;
+    const warehouse = (await getCandles({ symbol, interval, limit })) as AgentCandle[];
+    if (!liveCandles.length || !warehouse.length) return warehouse.length ? warehouse : liveCandles;
+    const liveLast = liveCandles[liveCandles.length - 1]!;
+    const aligned = warehouse.slice();
+    const whLast = aligned[aligned.length - 1]!;
+    if (whLast.time === liveLast.time) {
+      aligned[aligned.length - 1] = liveLast;
+    } else if (whLast.time < liveLast.time) {
+      aligned.push(liveLast);
+    }
+    return aligned;
+  })();
 
   return { currentTfCandles, liveCandles, liveError };
 }

@@ -130,6 +130,11 @@ export function evaluateMarketSync(input: {
   }
 
   if (chart) {
+    const sameBarAsLive =
+      status.chartLastTime != null &&
+      status.liveLastTime != null &&
+      Math.abs(status.chartLastTime - status.liveLastTime) <= timeTolerance;
+
     if (
       status.chartLastTime != null &&
       status.liveLastTime != null &&
@@ -138,6 +143,7 @@ export function evaluateMarketSync(input: {
       return fail("بيانات الوكيل غير متزامنة مع الشارت الحالي: آخر شمعة في الشارت تختلف عن آخر شمعة حية.");
     }
     if (
+      !sameBarAsLive &&
       status.chartClose != null &&
       status.liveClose != null &&
       Math.abs(status.chartClose - status.liveClose) > priceTolerance

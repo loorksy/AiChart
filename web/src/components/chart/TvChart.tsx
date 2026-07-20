@@ -225,6 +225,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const applyDrawingsRef = useRef<() => void>(() => {});
   const pushSyncRef = useRef(false);
   const latestCandleRef = useRef<TvLatestCandle | null>(null);
+  const clearLatestCandle = () => {
+    latestCandleRef.current = null;
+  };
   const onSymbolChangeRef = useRef(onSymbolChange);
   const onIntervalChangeRef = useRef(onIntervalChange);
   onSymbolChangeRef.current = onSymbolChange;
@@ -433,6 +436,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           });
           chart.onSymbolChanged().subscribe(null, () => {
             if (pushSyncRef.current) return;
+            clearLatestCandle();
             const s = chart.symbol();
             // "EA:EURUSDm" / "MT5:EURUSDm" → broker source; else OANDA.
             const viaEa = isEaTicker(s) || s.startsWith("MT5:");
@@ -441,6 +445,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           });
           chart.onIntervalChanged().subscribe(null, (res: ResolutionString) => {
             if (pushSyncRef.current) return;
+            clearLatestCandle();
             onIntervalChangeRef.current?.(fromResolution(res));
           });
         });
@@ -477,6 +482,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       ).toUpperCase();
       const wantEa = dataSource === "ea";
       if (currentBare !== symbol.toUpperCase() || currentEa !== wantEa) {
+        clearLatestCandle();
         pushSyncRef.current = true;
         const target = wantEa
           ? `${EA_TICKER_PREFIX}${stripEaPrefix(symbol)}`
@@ -498,6 +504,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       const chart = w.activeChart();
       const target = toResolution(interval);
       if (chart.resolution() !== target) {
+        clearLatestCandle();
         pushSyncRef.current = true;
         chart.setResolution(target, () => {
           pushSyncRef.current = false;

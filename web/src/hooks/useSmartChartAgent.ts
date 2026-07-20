@@ -14,6 +14,7 @@ import {
   applyTicker,
   dropPending,
 } from "@/hooks/agentChatReducer";
+import { resolveLatestChartCandle } from "@/lib/agent/marketContext/resolveLatestChartCandle";
 
 export interface AgentChatMessage {
   id: string;
@@ -150,7 +151,12 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
         layoutId: opts.layoutId,
         dataSource: opts.dataSource,
         visibleRange: opts.getVisibleRange?.(),
-        latestCandle: opts.getLatestCandle?.(),
+        latestCandle: await resolveLatestChartCandle({
+          symbol: opts.symbol,
+          interval: opts.interval,
+          dataSource: opts.dataSource,
+          fromChart: opts.getLatestCandle?.(),
+        }),
         drawings: opts.getDrawings?.(),
         userDrawings: opts.getUserDrawings?.(),
         selectedDrawingId: opts.getSelectedDrawingId?.(),

@@ -54,13 +54,24 @@ describe("marketSyncGuard", () => {
     assert.equal(status.liveClose, 1.144);
   });
 
-  it("blocks chart/live close mismatch beyond tolerance", () => {
+  it("allows chart/live close drift on the same forming bar", () => {
+    const status = evaluateMarketSync({
+      symbol: "XAUUSD",
+      interval: "15m",
+      warehouseCandles: [candle(T, 2650)],
+      liveCandles: [candle(T, 2650.8)],
+      chartLatestCandle: { symbol: "XAUUSD", interval: "15m", time: T, close: 2650.2 },
+    });
+    assert.equal(status.ok, true);
+  });
+
+  it("blocks chart/live close mismatch on different bars", () => {
     const status = evaluateMarketSync({
       symbol: "EURUSD",
       interval: "1m",
       warehouseCandles: [candle(T, 1.144)],
       liveCandles: [candle(T, 1.144)],
-      chartLatestCandle: { time: T, close: 1.145 },
+      chartLatestCandle: { time: T - 3 * 60_000, close: 1.145 },
     });
     assert.equal(status.ok, false);
     assert.equal(status.chartClose, 1.145);
