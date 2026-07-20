@@ -380,15 +380,15 @@ export async function runUnifiedChartAgent(
       confidence: 0,
       summary: bilingual(
         locale,
-        "بيانات الوكيل غير متزامنة مع الشارت الحالي، لذلك لن أعطي توصية شراء/بيع ولن أرسم صفقة الآن. حدّث الشارت أو انتظر اكتمال مزامنة الشموع ثم أعد التحليل.",
-        "My market data is out of sync with the current chart, so I will not issue a buy/sell recommendation or draw a trade now. Refresh the chart or wait for candles to sync, then re-run the analysis.",
+        "تعذّر تأكيد أحدث أسعار OANDA الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
+        "Could not confirm the latest OANDA prices right now. Wait a few seconds and ask again — no page refresh needed.",
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [
         bilingual(
           locale,
-          "تم حظر التوصية لأن آخر شمعة/سعر لا يطابق الشارت الحالي.",
-          "The recommendation was blocked because the latest candle/price does not match the current chart.",
+          "تعذّر تأكيد أحدث الأسعار — لم تُصدر توصية.",
+          "Latest prices could not be confirmed — no recommendation was issued.",
         ),
       ],
       activityEvents: collected,
@@ -1145,8 +1145,8 @@ async function trackStoredRecommendation(input: {
       confidence: 0,
       summary: bilingual(
         locale,
-        "لا أستطيع تحديث حالة التوصية لأن بيانات الوكيل غير متزامنة مع الشارت الحالي.",
-        "I cannot update the recommendation status because my data is out of sync with the current chart.",
+        "تعذّر تأكيد أحدث أسعار OANDA الآن. انتظر بضع ثوانٍ ثم أعد السؤال — لا حاجة لتحديث الصفحة.",
+        "Could not confirm the latest OANDA prices right now. Wait a few seconds and ask again — no page refresh needed.",
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [],

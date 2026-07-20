@@ -41,7 +41,7 @@ State-aware examples (do NOT copy verbatim — adapt to the actual state and loc
 - after a buy/sell recommendation: track it, explain why, draw its details, cancel it.
 - after a drawing-only command: adjust the drawing, clear agent drawings, analyze based on the drawing.
 - when there is no active recommendation: analyze the current chart, ask for a buy/sell/wait opinion.
-- when data is out of sync / action required: retry after refreshing the chart, check the data status.
+- when data is out of sync / action required: wait a few seconds and ask again, check the data status.
 
 Respond with ONLY a JSON object, no markdown fences:
 {"suggestions":[{"label":"<short>","prompt":"<natural user message>"}]}`;

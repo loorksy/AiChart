@@ -25,22 +25,27 @@ export async function getFreshAgentCandles(input: {
 
   let liveCandles: AgentCandle[] = [];
   let liveError: string | null = null;
-  try {
-    const live = await fetchOhlc({
-      userId: input.userId ?? 0,
-      symbol,
-      interval,
-      market: "forex",
-      limit: Math.min(limit, 1500),
-      skipCache: true,
-      source,
-    });
-    liveCandles = live.candles as AgentCandle[];
-    if (source === "oanda" && liveCandles.length) {
-      await upsertCandles(symbol, interval, liveCandles);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const live = await fetchOhlc({
+        userId: input.userId ?? 0,
+        symbol,
+        interval,
+        market: "forex",
+        limit: Math.min(limit, 1500),
+        skipCache: true,
+        source,
+      });
+      liveCandles = live.candles as AgentCandle[];
+      liveError = null;
+      if (source === "oanda" && liveCandles.length) {
+        await upsertCandles(symbol, interval, liveCandles);
+      }
+      break;
+    } catch (error) {
+      liveError = error instanceof Error ? error.message : String(error);
+      if (attempt === 0) continue;
     }
-  } catch (error) {
-    liveError = error instanceof Error ? error.message : String(error);
   }
 
   const currentTfCandles = await (async () => {

@@ -27,17 +27,6 @@ function last(candles: AgentCandle[]): AgentCandle | null {
   return candles.length ? candles[candles.length - 1]! : null;
 }
 
-/** Loose, comparison-only normalization (strips namespace + case + spaces). */
-function normLoose(value: string | null | undefined): string {
-  return (value ?? "")
-    .toString()
-    .split(":")
-    .pop()!
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
-}
-
 function symbolFallbackTolerance(symbol: string): number {
   const s = symbol.toUpperCase();
   if (s.includes("JPY")) return 0.03;
@@ -55,6 +44,18 @@ export function marketSyncPriceTolerance(input: {
   return Math.max(fromSpread, fromAtr, symbolFallbackTolerance(input.symbol));
 }
 
+function warehouseRecentEnough(candle: AgentCandle, interval: string): boolean {
+  const t = asMs(candle.time);
+  if (t == null) return false;
+  const maxAge = (barDurationMs(interval) || 60_000) * 3;
+  return Date.now() - t <= maxAge;
+}
+
+/**
+ * Validates agent OHLC readiness from warehouse + live OANDA fetches.
+ * The TradingView chart tail is informational only — it must never block
+ * analysis or force the operator to refresh the page.
+ */
 export function evaluateMarketSync(input: {
   symbol: string;
   interval: string;
@@ -68,7 +69,8 @@ export function evaluateMarketSync(input: {
   const warehouse = last(input.warehouseCandles);
   const live = last(input.liveCandles);
   const chart = input.chartLatestCandle;
-  const timeTolerance = barDurationMs(input.interval) || 60_000;
+  const barMs = barDurationMs(input.interval) || 60_000;
+  const timeTolerance = barMs * 2;
   const priceTolerance = marketSyncPriceTolerance(input);
 
   const status: MarketSyncStatus = {
@@ -89,28 +91,25 @@ export function evaluateMarketSync(input: {
     reason,
   });
 
-  // Reject if the chart's latest candle belongs to a different symbol or
-  // timeframe than the one the agent is analyzing — a Buy/Sell decision must
-  // never be built on data from a chart the user has since switched away from.
-  if (chart?.symbol && normLoose(chart.symbol) !== normLoose(input.symbol)) {
-    return fail(
-      "بيانات الوكيل غير متزامنة مع الشارت الحالي: رمز الشارت يختلف عن الرمز الذي يحلّله الوكيل.",
-    );
-  }
-  if (chart?.interval && normLoose(chart.interval) !== normLoose(input.interval)) {
-    return fail(
-      "بيانات الوكيل غير متزامنة مع الشارت الحالي: فريم الشارت يختلف عن الفريم الذي يحلّله الوكيل.",
-    );
-  }
-
-  if (input.liveError) {
-    return fail("تعذّر جلب شمعة حية لمزامنة الوكيل مع الشارت الحالي.");
-  }
   if (!warehouse) {
     return fail("لا توجد شموع مخزنة للوكيل بعد.");
   }
-  if (!live) {
-    return fail("لا توجد شمعة حية للمقارنة مع بيانات الوكيل.");
+
+  if (input.liveError || !live) {
+    if (warehouseRecentEnough(warehouse, input.interval)) {
+      return {
+        ...status,
+        ok: true,
+        reason: input.liveError
+          ? "using recent warehouse candles; live OANDA refresh deferred"
+          : "using recent warehouse candles",
+      };
+    }
+    return fail(
+      input.liveError
+        ? "تعذّر جلب أحدث أسعار OANDA الآن."
+        : "لا توجد شمعة حية للمقارنة مع بيانات الوكيل.",
+    );
   }
 
   if (
@@ -118,7 +117,14 @@ export function evaluateMarketSync(input: {
     status.liveLastTime != null &&
     Math.abs(status.liveLastTime - status.warehouseLastTime) > timeTolerance
   ) {
-    return fail("بيانات الوكيل غير متزامنة مع الشارت الحالي: آخر شمعة في المخزن تختلف عن آخر شمعة حية.");
+    if (warehouseRecentEnough(warehouse, input.interval)) {
+      return {
+        ...status,
+        ok: true,
+        reason: "warehouse tail accepted; live window slightly ahead",
+      };
+    }
+    return fail("آخر شمعة في المخزن أقدم من آخر شمعة حية من OANDA.");
   }
 
   if (
@@ -126,32 +132,19 @@ export function evaluateMarketSync(input: {
     status.liveClose != null &&
     Math.abs(status.liveClose - status.warehouseClose) > priceTolerance
   ) {
-    return fail("بيانات الوكيل غير متزامنة مع الشارت الحالي: إغلاق المخزن يختلف عن الإغلاق الحي.");
-  }
-
-  if (chart) {
-    const sameBarAsLive =
-      status.chartLastTime != null &&
+    const sameBar =
+      status.warehouseLastTime != null &&
       status.liveLastTime != null &&
-      Math.abs(status.chartLastTime - status.liveLastTime) <= timeTolerance;
-
-    if (
-      status.chartLastTime != null &&
-      status.liveLastTime != null &&
-      Math.abs(status.chartLastTime - status.liveLastTime) > timeTolerance
-    ) {
-      return fail("بيانات الوكيل غير متزامنة مع الشارت الحالي: آخر شمعة في الشارت تختلف عن آخر شمعة حية.");
+      Math.abs(status.liveLastTime - status.warehouseLastTime) <= barMs;
+    if (sameBar) {
+      return {
+        ...status,
+        ok: true,
+        reason: "forming bar close drift accepted",
+      };
     }
-    if (
-      !sameBarAsLive &&
-      status.chartClose != null &&
-      status.liveClose != null &&
-      Math.abs(status.chartClose - status.liveClose) > priceTolerance
-    ) {
-      return fail("بيانات الوكيل غير متزامنة مع الشارت الحالي: سعر الشارت الحالي يختلف عن السعر الحي.");
-    }
+    return fail("إغلاق المخزن يختلف عن الإغلاق الحي من OANDA.");
   }
 
   return status;
 }
-

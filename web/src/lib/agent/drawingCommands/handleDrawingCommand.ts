@@ -85,8 +85,8 @@ export async function handleDrawingCommand(input: {
       confidence: 0,
       summary: bilingual(
         locale,
-        "لم أرسم شيئًا لأن بيانات الوكيل غير متزامنة مع الشارت الحالي. حدّث الشارت أو انتظر اكتمال مزامنة الشموع ثم أعد طلب الرسم.",
-        "I did not draw anything because my data is out of sync with the current chart. Refresh the chart or wait for candles to sync, then ask again.",
+        "تعذّر تأكيد أحدث أسعار OANDA للرسم الآن. انتظر بضع ثوانٍ ثم أعد الطلب — لا حاجة لتحديث الصفحة.",
+        "Could not confirm the latest OANDA prices for drawing right now. Wait a few seconds and ask again — no page refresh needed.",
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [],
