@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-16T11:24:59.725Z",
-  "toolCount": 50,
+  "exportedAt": "2026-07-22T23:05:42.146Z",
+  "toolCount": 53,
   "tools": [
     {
       "name": "get_account_overview",
@@ -56,7 +56,27 @@
     {
       "name": "get_trade_lessons",
       "domain": "core",
-      "description": "When: before every analysis or after a loss. recent=true for recent mistakes. read-only. Example: symbol=EURUSD&recent=true.",
+      "description": "When: before every analysis or after a loss. Returns structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar. recent=true for latest lessons. read-only. Example: symbol=EURUSD&recent=true.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "run_backtest",
+      "domain": "core",
+      "description": "When: before trusting a catalog strategy live. Runs deterministic historical backtest for strategy_id/symbol/timeframe/date_range and records server evidence. read-only research write of evidence only — not trade execution. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get_strategy_performance",
+      "domain": "core",
+      "description": "When: after run_backtest or before create_recommendation. Compares live outcomes vs backtest expectation and reports deployment state (shadow/active/suspended). read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -66,7 +86,7 @@
     {
       "name": "create_recommendation",
       "domain": "core",
-      "description": "When: before open_trade — record recommendation. rationale 2–4 sentences in 'we' voice. side-effect: writes recommendation. Example: action=buy&confidence=85.",
+      "description": "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. side-effect: writes recommendation.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -306,7 +326,17 @@
     {
       "name": "detect_levels",
       "domain": "market",
-      "description": "When: before SL/TP. Support/resistance + structure. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "description": "When: before SL/TP. Support/resistance + structure with volume-weighted strength scoring. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "detect_market_regime",
+      "domain": "market",
+      "description": "When: before choosing a backtested strategy. Numeric regime from ATR/ADX/Bollinger/volume (trend/range/high_volatility/low_liquidity) — not a textual guess. read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

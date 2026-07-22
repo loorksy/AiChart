@@ -60,6 +60,11 @@ export interface CanonicalRecommendation {
   targets: number[];
   risk: Record<string, unknown>;
   confidence: number;
+  backtestedConfidence?: number;
+  confidenceLow?: number;
+  confidenceHigh?: number;
+  backtestId?: number;
+  marketRegime?: string;
   strategyId: string;
   strategyVersion: string;
   createdAt: number;
@@ -86,6 +91,11 @@ export interface CreateCanonicalRecommendationInput {
   targets?: number[];
   risk?: Record<string, unknown>;
   confidence?: number;
+  backtestedConfidence?: number;
+  confidenceLow?: number;
+  confidenceHigh?: number;
+  backtestId?: number;
+  marketRegime?: string;
   strategyId?: string;
   strategyVersion?: string;
   createdAt?: number;

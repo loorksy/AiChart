@@ -204,4 +204,25 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       );
     },
   );
+
+  server.registerTool(
+    "detect_market_regime",
+    mcpToolConfig("detect_market_regime"),
+    async (args) => {
+      const { symbol, interval, market, limit } = args as {
+        symbol: string;
+        interval?: string;
+        market?: "forex";
+        limit?: number;
+      };
+      return bridgeCall(() =>
+        bridge.get("/api/agent/market/detect-regime", {
+          symbol: bridgeSymbol(symbol),
+          interval,
+          market: market ?? "forex",
+          limit,
+        }),
+      );
+    },
+  );
 }

@@ -6,6 +6,7 @@ import {
   buildCandleCoverageReport,
   meetsDataQuality,
   resolveCoverageThresholds,
+  summarizeCandleGaps,
 } from "@/lib/agent/dataQualityPolicy";
 
 describe("candle coverage policy", () => {
@@ -64,5 +65,61 @@ describe("candle coverage policy", () => {
       ),
       true,
     );
+  });
+
+  it("tolerates one isolated missing bar", () => {
+    const gaps = summarizeCandleGaps([{ missingBars: 1 }]);
+    assert.equal(gaps.gapCount, 1);
+    assert.equal(gaps.missingBars, 1);
+    assert.equal(gaps.hasCriticalGaps, false);
+    assert.equal(
+      meetsDataQuality(
+        {
+          currentTfCount: 600,
+          higherTfCount: 250,
+          dailyCount: 120,
+          hasCriticalGaps: gaps.hasCriticalGaps,
+        },
+        "trade",
+      ),
+      true,
+    );
+  });
+
+  it("treats consecutive or repeated open-market gaps as significant", () => {
+    assert.equal(
+      summarizeCandleGaps([{ missingBars: 2 }]).hasCriticalGaps,
+      true,
+    );
+    assert.equal(
+      summarizeCandleGaps([
+        { missingBars: 1 },
+        { missingBars: 1 },
+        { missingBars: 1 },
+      ]).hasCriticalGaps,
+      true,
+    );
+  });
+
+  it("blocks every coverage gate when row counts hide a significant gap", () => {
+    const report = buildCandleCoverageReport({
+      analysisKind: "intraday",
+      currentInterval: "15m",
+      higherInterval: "1h",
+      currentTfCount: 600,
+      higherTfCount: 250,
+      dailyCount: 120,
+      gaps: {
+        current: [{ missingBars: 2 }],
+      },
+    });
+
+    assert.equal(report.status, "gapped");
+    assert.equal(report.hasCriticalGaps, true);
+    assert.equal(report.sufficientForAnalysis, false);
+    assert.equal(report.sufficientForTrade, false);
+    assert.equal(report.sufficientForDrawing, false);
+    assert.equal(report.timeframes[0]?.missingBars, 2);
+    assert.match(report.summaryEn, /blocked.*repaired/i);
   });
 });

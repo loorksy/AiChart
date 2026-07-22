@@ -65,7 +65,7 @@ describe("strategySpec", () => {
     if (!bad.ok) assert.equal(bad.reason, "setup_not_generalizable");
   });
 
-  it("builds reusable relative ATR conditions", () => {
+  it("builds a Research-valid catalog strategy with relative ATR risk", () => {
     const ok = buildGeneralizableStrategySpec({
       symbol: "EURUSD",
       timeframe: "15m",
@@ -80,12 +80,20 @@ describe("strategySpec", () => {
     });
     assert.equal(ok.ok, true);
     if (ok.ok) {
-      assert.equal(ok.strategySpec.spec_version, "aichart-generalizable-v1");
+      assert.equal(ok.strategySpec.spec_version, "1.0.0");
+      assert.equal(ok.strategySpec.direction, "long");
+      assert.ok(ok.strategyId);
       assert.ok(ok.fingerprint.includes("EURUSD"));
+      assert.ok(ok.strategySpec.entry_conditions);
+      assert.equal(ok.strategySpec.long_entry_conditions, undefined);
+      assert.equal(ok.strategySpec.short_entry_conditions, undefined);
       assert.equal(
-        (ok.strategySpec.risk as { stop_loss: { type: string } }).stop_loss.type,
+        (ok.strategySpec.stop_loss as { type: string }).type,
         "atr_multiple",
       );
+      assert.ok(Array.isArray(ok.strategySpec.targets));
+      assert.ok(Array.isArray(ok.strategySpec.symbols));
+      assert.equal(ok.strategySpec.market, "forex");
     }
   });
 });
@@ -105,6 +113,21 @@ describe("confidence reliability", () => {
     });
     assert.ok(withMetrics.delta > 0);
     assert.equal(withMetrics.metricsPresent, true);
+  });
+
+  it("prefers structured metrics.json fields over summary text", () => {
+    const scored = scoreCompletedResearchJob({
+      status: "succeeded",
+      result_summary: "forex backtest completed: 12 trades",
+      metrics: {
+        win_rate: 0.62,
+        expectancy: 0.35,
+        maximum_drawdown_percent: 9,
+        trade_count: 40,
+      },
+    });
+    assert.equal(scored.metricsPresent, true);
+    assert.ok(scored.delta > 0);
   });
 
   it("scores DNA from reliability dimensions", () => {

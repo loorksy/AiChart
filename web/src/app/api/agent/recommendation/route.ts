@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
-import { handleError } from "@/lib/api";
+import { ApiError, handleError } from "@/lib/api";
 import {
   logAudit,
-  getSettings,
   saveRecommendation,
   updateRecommendationChartUrl,
   updateRecommendationIntelligence,
@@ -25,20 +24,69 @@ import {
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
 import type { Recommendation } from "@/lib/types";
 import { DEFAULT_MARKET } from "@/lib/marketPolicy";
+import {
+  getStrategyBacktest,
+  requireRecommendationEvidence,
+} from "@/lib/strategies/evidence";
+import { isBacktestStrategyId } from "@/lib/strategies/catalog";
 
-const schema = z.object({
-  symbol: z.string().min(1),
-  action: z.enum(["buy", "sell", "wait"]),
-  confidence: z.number().min(0).max(100),
-  entry: z.number().nullish(),
-  stop_loss: z.number().nullish(),
-  take_profit: z.number().nullish(),
-  timeframe: z.string().default("1h"),
-  rationale: z.string().min(1),
-  factors: z.array(z.string()).min(1).max(8),
-  pattern_name: z.string().nullish(),
-  chart_drawings: z.array(z.record(z.string(), z.unknown())).optional(),
-});
+const schema = z
+  .object({
+    symbol: z.string().min(1),
+    action: z.enum(["buy", "sell", "wait"]),
+    // Retained for WAIT/backward compatibility. BUY/SELL confidence is always
+    // replaced by server-owned calibrated evidence below.
+    confidence: z.number().min(0).max(100).optional(),
+    strategy_id: z.string().min(3).max(128).nullish(),
+    strategy_version: z.string().min(1).max(64).nullish(),
+    backtested_confidence: z.number().min(0).max(100).nullish(),
+    market_regime: z.string().min(3).max(64).nullish(),
+    entry: z.number().positive().nullish(),
+    stop_loss: z.number().positive().nullish(),
+    take_profit: z.number().positive().nullish(),
+    timeframe: z.string().default("1h"),
+    rationale: z.string().min(1),
+    factors: z.array(z.string()).min(1).max(8),
+    pattern_name: z.string().nullish(),
+    chart_drawings: z.array(z.record(z.string(), z.unknown())).optional(),
+  })
+  .strict()
+  .superRefine((body, ctx) => {
+    if (body.action === "wait") return;
+    for (const field of [
+      "strategy_id",
+      "backtested_confidence",
+      "market_regime",
+      "entry",
+      "stop_loss",
+      "take_profit",
+    ] as const) {
+      if (body[field] == null) {
+        ctx.addIssue({
+          code: "custom",
+          path: [field],
+          message: `${field} is required for BUY/SELL recommendations`,
+        });
+      }
+    }
+    if (
+      body.entry != null &&
+      body.stop_loss != null &&
+      body.take_profit != null
+    ) {
+      const valid =
+        body.action === "buy"
+          ? body.stop_loss < body.entry && body.entry < body.take_profit
+          : body.take_profit < body.entry && body.entry < body.stop_loss;
+      if (!valid) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["entry"],
+          message: "Entry, stop loss, and take profit geometry is invalid for the action",
+        });
+      }
+    }
+  });
 
 /**
  * Bridge: records a structured recommendation and renders its annotated
@@ -48,13 +96,41 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
-    const settings = await getSettings(userId);
+    const normalizedSymbol = normalizeIntentSymbol(body.symbol, DEFAULT_MARKET);
+
+    let deployment: Awaited<ReturnType<typeof requireRecommendationEvidence>> | null = null;
+    let backtest: Awaited<ReturnType<typeof getStrategyBacktest>> = null;
+    if (body.action !== "wait") {
+      if (!body.strategy_id || !isBacktestStrategyId(body.strategy_id)) {
+        throw new ApiError(409, "strategy_id is not present in the backtested strategy catalog");
+      }
+      try {
+        deployment = await requireRecommendationEvidence({
+          userId,
+          strategyId: body.strategy_id,
+          symbol: normalizedSymbol,
+          timeframe: body.timeframe,
+          claimedBacktestedConfidence: body.backtested_confidence!,
+        });
+      } catch (error) {
+        throw new ApiError(
+          409,
+          error instanceof Error ? error.message : "Backtest evidence is invalid",
+        );
+      }
+      backtest = await getStrategyBacktest(userId, deployment.backtestId);
+      if (!backtest || backtest.status !== "eligible") {
+        throw new ApiError(409, "Backtest is not eligible for recommendations");
+      }
+    }
+    const calibratedConfidence =
+      deployment?.calibratedConfidence ?? Math.max(0, Math.min(100, body.confidence ?? 0));
 
     const profile = profileForInterval(body.timeframe);
     const drawings = validateChartDrawings(
       (body.chart_drawings ?? []) as unknown as ChartDrawing[],
       body.action,
-      body.confidence,
+      calibratedConfidence,
       profile,
     );
 
@@ -70,9 +146,9 @@ export async function POST(req: NextRequest) {
         : body.rationale;
 
     const rec = await saveRecommendation(userId, {
-      symbol: normalizeIntentSymbol(body.symbol, DEFAULT_MARKET),
+      symbol: normalizedSymbol,
       action: body.action,
-      confidence: body.confidence,
+      confidence: calibratedConfidence,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,
       take_profit: body.take_profit ?? null,
@@ -82,6 +158,19 @@ export async function POST(req: NextRequest) {
       pattern_name: body.pattern_name ?? null,
       chart_drawings_json: drawings.length ? JSON.stringify(drawings) : null,
       analysis_tier: profile.tier,
+      context_json: JSON.stringify({
+        evidence_source: deployment ? "validated_backtest" : "wait_decision",
+        deployment_state: deployment?.state ?? null,
+        market_regime: body.market_regime ?? null,
+      }),
+      backtested_confidence: deployment?.calibratedConfidence ?? null,
+      confidence_low: deployment?.confidenceLow ?? null,
+      confidence_high: deployment?.confidenceHigh ?? null,
+      backtest_id: deployment?.backtestId ?? null,
+      market_regime: body.market_regime ?? null,
+      strategy_id: body.strategy_id ?? null,
+      strategy_version:
+        body.strategy_version ?? backtest?.strategyVersion ?? null,
       source: "agent",
       market: DEFAULT_MARKET,
     });
@@ -95,7 +184,7 @@ export async function POST(req: NextRequest) {
     await logAudit(
       userId,
       "agent_recommendation",
-      `${rec.symbol} ${rec.action} ${rec.confidence}% (#${rec.id})`,
+      `${rec.symbol} ${rec.action} ${rec.confidence}% strategy=${body.strategy_id ?? "none"} backtest=${deployment?.backtestId ?? "none"} regime=${body.market_regime ?? "none"} (#${rec.id})`,
     );
 
     const mt5 = await canUseMt5ChartCapture(userId, body.symbol);
@@ -139,6 +228,16 @@ export async function POST(req: NextRequest) {
       mt5_pending: mt5Pending,
       mt5_symbol: mt5.mt5Symbol ?? null,
       mt5_unavailable_reason: mt5.ok ? null : mt5.reason ?? null,
+      backtest_evidence:
+        deployment == null
+          ? null
+          : {
+              backtest_id: deployment.backtestId,
+              calibrated_confidence: deployment.calibratedConfidence,
+              confidence_interval: [deployment.confidenceLow, deployment.confidenceHigh],
+              deployment_state: deployment.state,
+              execution_eligible: deployment.state === "active",
+            },
     });
   } catch (e) {
     return handleError(e);

@@ -5,6 +5,7 @@ export {
 export { buildGeneralizableStrategySpec } from "./strategySpec";
 export { enqueueDeepAnalysis } from "./enqueue";
 export {
+  loadResearchJobMetrics,
   pollDeepAnalysisOnce,
   reconcilePendingDeepAnalysis,
   scoreCompletedResearchJob,

@@ -5,7 +5,11 @@
 import { createLogger } from "@/lib/logger";
 import { appendMessage } from "@/lib/agent/chatHistory/chatStore";
 import { refreshChatMetaAfterAssistantTurn } from "@/lib/agent/chatHistory/refreshChatMeta";
-import { getResearchJob } from "@/lib/research/client";
+import {
+  getResearchJob,
+  getResearchJsonArtifact,
+} from "@/lib/research/client";
+import type { ResearchArtifactReference, ResearchJob } from "@/lib/research/types";
 import {
   appendRecommendationHistory,
   getCanonicalRecommendation,
@@ -79,15 +83,41 @@ function emptyBundle(
   };
 }
 
-/**
- * Score completed research into a bounded evidence tendency for context only.
- * Presence of a job alone never changes the recommendation or its confidence.
- */
-export function scoreCompletedResearchJob(job: {
+function finiteNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function artifactRef(
+  refs: ResearchArtifactReference[] | undefined,
+  name: string,
+): ResearchArtifactReference | null {
+  return refs?.find((item) => item.name === name) ?? null;
+}
+
+export interface ResearchMetricsScoreInput {
   status?: string;
   result_summary?: string | null;
   error?: string | null;
-}): { delta: number; agreement: string; metricsPresent: boolean } {
+  /** Preferred: parsed metrics.json artifact fields. */
+  metrics?: {
+    win_rate?: unknown;
+    expectancy?: unknown;
+    maximum_drawdown_percent?: unknown;
+    trade_count?: unknown;
+  } | null;
+}
+
+/**
+ * Score completed research into a bounded evidence tendency for context only.
+ * Presence of a job alone never changes the recommendation or its confidence.
+ * Prefer structured metrics.json; fall back to summary tokens only if needed.
+ */
+export function scoreCompletedResearchJob(job: ResearchMetricsScoreInput): {
+  delta: number;
+  agreement: string;
+  metricsPresent: boolean;
+} {
   if (job.status !== "succeeded") {
     return {
       delta: 0,
@@ -95,8 +125,52 @@ export function scoreCompletedResearchJob(job: {
       metricsPresent: false,
     };
   }
+
+  const fromArtifact = job.metrics
+    ? {
+        winRate: finiteNumber(job.metrics.win_rate),
+        expectancy: finiteNumber(job.metrics.expectancy),
+        maxDd: finiteNumber(job.metrics.maximum_drawdown_percent),
+        trades: finiteNumber(job.metrics.trade_count),
+      }
+    : null;
+
   const summary = (job.result_summary ?? "").trim();
-  if (!summary) {
+  // Artifact win_rate is 0..1; legacy summary tokens may be percent (55) or ratio.
+  let winRatePct: number | null = null;
+  let expectancy: number | null = fromArtifact?.expectancy ?? null;
+  let maxDd: number | null = fromArtifact?.maxDd ?? null;
+  let sample = fromArtifact?.trades != null ? Math.floor(fromArtifact.trades) : 0;
+
+  if (fromArtifact?.winRate != null) {
+    winRatePct =
+      fromArtifact.winRate <= 1
+        ? fromArtifact.winRate * 100
+        : fromArtifact.winRate;
+  } else if (summary) {
+    const winRate = summary.match(/win[_\s-]?rate[^0-9]*([0-9]+(?:\.[0-9]+)?)/i);
+    const expectancyMatch = summary.match(
+      /expectancy[^0-9\-]*(-?[0-9]+(?:\.[0-9]+)?)/i,
+    );
+    const maxDdMatch = summary.match(
+      /max[_\s-]?drawdown[^0-9]*([0-9]+(?:\.[0-9]+)?)/i,
+    );
+    const trades = summary.match(/(?:trades|sample|n)[^0-9]*([0-9]{1,5})/i);
+    if (winRate) {
+      const wr = Number(winRate[1]);
+      winRatePct = wr <= 1 ? wr * 100 : wr;
+    }
+    if (expectancyMatch) expectancy = Number(expectancyMatch[1]);
+    if (maxDdMatch) maxDd = Number(maxDdMatch[1]);
+    if (trades) sample = Number(trades[1]);
+  }
+
+  if (
+    winRatePct == null &&
+    expectancy == null &&
+    maxDd == null &&
+    sample <= 0
+  ) {
     return {
       delta: 0,
       agreement: "insufficient_historical_metrics",
@@ -104,17 +178,6 @@ export function scoreCompletedResearchJob(job: {
     };
   }
 
-  // Best-effort parse of common metric tokens from verified summaries only.
-  const winRate = summary.match(/win[_\s-]?rate[^0-9]*([0-9]+(?:\.[0-9]+)?)/i);
-  const expectancy = summary.match(
-    /expectancy[^0-9\-]*(-?[0-9]+(?:\.[0-9]+)?)/i,
-  );
-  const maxDd = summary.match(
-    /max[_\s-]?drawdown[^0-9]*([0-9]+(?:\.[0-9]+)?)/i,
-  );
-  const trades = summary.match(/(?:trades|sample|n)[^0-9]*([0-9]{1,5})/i);
-
-  const sample = trades ? Number(trades[1]) : 0;
   if (sample > 0 && sample < 10) {
     return {
       delta: 0,
@@ -125,23 +188,20 @@ export function scoreCompletedResearchJob(job: {
 
   let delta = 0;
   let metricsPresent = false;
-  if (winRate) {
+  if (winRatePct != null) {
     metricsPresent = true;
-    const wr = Number(winRate[1]);
-    if (wr >= 55) delta += 0.04;
-    else if (wr < 45) delta -= 0.05;
+    if (winRatePct >= 55) delta += 0.04;
+    else if (winRatePct < 45) delta -= 0.05;
   }
-  if (expectancy) {
+  if (expectancy != null) {
     metricsPresent = true;
-    const exp = Number(expectancy[1]);
-    if (exp > 0) delta += 0.03;
-    else if (exp < 0) delta -= 0.04;
+    if (expectancy > 0) delta += 0.03;
+    else if (expectancy < 0) delta -= 0.04;
   }
-  if (maxDd) {
+  if (maxDd != null) {
     metricsPresent = true;
-    const dd = Number(maxDd[1]);
-    if (dd > 25) delta -= 0.05;
-    else if (dd > 15) delta -= 0.02;
+    if (maxDd > 25) delta -= 0.05;
+    else if (maxDd > 15) delta -= 0.02;
   }
 
   if (!metricsPresent) {
@@ -163,6 +223,26 @@ export function scoreCompletedResearchJob(job: {
           : "Historical metrics were neutral.",
     metricsPresent: true,
   };
+}
+
+/** Load metrics.json for a succeeded research job when the artifact exists. */
+export async function loadResearchJobMetrics(
+  userId: number,
+  requestId: string,
+  job: Pick<ResearchJob, "job_id" | "artifact_refs" | "status">,
+): Promise<ResearchMetricsScoreInput["metrics"]> {
+  if (job.status !== "succeeded") return null;
+  const metricsRef = artifactRef(job.artifact_refs, "metrics.json");
+  if (!metricsRef) return null;
+  try {
+    return await getResearchJsonArtifact(
+      { userId, requestId },
+      job.job_id,
+      metricsRef.artifact_id,
+    );
+  } catch {
+    return null;
+  }
 }
 
 export async function pollDeepAnalysisOnce(payload: {
@@ -359,17 +439,23 @@ async function finalizeFailure(
 
 async function finalizeSuccess(
   run: DeepAnalysisRun,
-  job: {
-    status?: string;
-    result_summary?: string | null;
-    job_id?: string;
-  },
+  job: ResearchJob,
 ): Promise<void> {
   // Tenant ownership recheck
   const owned = await getDeepAnalysisRun(run.userId, run.analysisId);
   if (!owned || owned.userId !== run.userId) return;
 
-  const scored = scoreCompletedResearchJob(job);
+  const metrics = await loadResearchJobMetrics(
+    run.userId,
+    run.analysisId,
+    job,
+  );
+  const scored = scoreCompletedResearchJob({
+    status: job.status,
+    result_summary: job.result_summary,
+    error: job.error_message,
+    metrics,
+  });
   const bundle = emptyBundle(scored.delta, scored.agreement);
   const projection: UserSafeResearchProjection = toUserSafeResearchProjection(
     bundle,

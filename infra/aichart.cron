@@ -11,6 +11,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # run is skipped rather than double-processed.
 */5 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep >/dev/null 2>&1
 
+# Candle-warehouse maintenance — every 10 min. Incrementally backfills OANDA
+# history, repairs open-market gaps, and applies retention. Overlap-safe via the
+# route's distributed lease, so a long run is skipped instead of duplicated.
+*/10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/candle-warehouse >/dev/null 2>&1
+
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 

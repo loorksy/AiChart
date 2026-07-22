@@ -117,7 +117,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "detect_levels",
     domain: "market",
     description:
-      "When: before SL/TP. Support/resistance + structure. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "When: before SL/TP. Support/resistance + structure with volume-weighted strength scoring. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -126,6 +126,19 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     },
     annotations: READ_ONLY,
     ui: { widget: "levels-card" },
+  },
+  {
+    name: "detect_market_regime",
+    domain: "market",
+    description:
+      "When: before choosing a backtested strategy. Numeric regime from ATR/ADX/Bollinger/volume (trend/range/high_volatility/low_liquidity) — not a textual guess. read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
+    inputSchema: {
+      symbol: zSymbol,
+      interval: zInterval,
+      market: zMarket,
+      limit: z.number().int().min(120).max(500).optional(),
+    },
+    annotations: READ_ONLY,
   },
 ];
 

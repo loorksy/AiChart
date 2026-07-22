@@ -1,11 +1,18 @@
 import { runCronPostScan } from "./cronPostScan";
+import { monitorEaBridgeHealth } from "./eaHealthMonitor";
 import { collectTradeWatchAlerts } from "./tradeWatch";
 import { listUsersForMonitor } from "./store";
 import { notifyUser } from "./telegram";
+import { refreshAllStrategyDecay } from "./strategies/evidence";
 
 export interface MonitorCycleEvent {
   userId: number;
-  type: "trade_alert";
+  type:
+    | "trade_alert"
+    | "ea_offline"
+    | "ea_recovered"
+    | "strategy_promoted"
+    | "strategy_suspended";
   detail: string;
   delivered: boolean;
 }
@@ -28,16 +35,50 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
   };
   for (const { id: userId } of users) {
     try {
-      const alerts = await collectTradeWatchAlerts(userId);
-      if (!alerts.length) continue;
-      const detail = alerts.map((alert) => alert.detail).join("\n");
-      let delivered = true;
-      try {
-        await notifyUser(userId, detail);
-      } catch {
-        delivered = false;
+      const eaEvent = await monitorEaBridgeHealth(userId);
+      if (eaEvent) {
+        let delivered = true;
+        try {
+          await notifyUser(userId, eaEvent.detail);
+        } catch {
+          delivered = false;
+        }
+        result.events.push({ userId, ...eaEvent, delivered });
       }
-      result.events.push({ userId, type: "trade_alert", detail, delivered });
+      const strategyEvents = await refreshAllStrategyDecay(userId);
+      for (const strategyEvent of strategyEvents) {
+        const deployment = strategyEvent.deployment;
+        const detail =
+          strategyEvent.event === "suspended"
+            ? `تم تعليق الاستراتيجية ${deployment.strategyId} على ${deployment.symbol} ${deployment.timeframe}: ${deployment.suspendedReason ?? "انحراف الأداء الحي عن الاختبار التاريخي"}.`
+            : `انتقلت الاستراتيجية ${deployment.strategyId} على ${deployment.symbol} ${deployment.timeframe} من الظل إلى الحالة النشطة بعد ${deployment.liveSampleSize} نتيجة مراقبة.`;
+        let delivered = true;
+        try {
+          await notifyUser(userId, detail);
+        } catch {
+          delivered = false;
+        }
+        result.events.push({
+          userId,
+          type:
+            strategyEvent.event === "suspended"
+              ? "strategy_suspended"
+              : "strategy_promoted",
+          detail,
+          delivered,
+        });
+      }
+      const alerts = await collectTradeWatchAlerts(userId);
+      if (alerts.length) {
+        const detail = alerts.map((alert) => alert.detail).join("\n");
+        let delivered = true;
+        try {
+          await notifyUser(userId, detail);
+        } catch {
+          delivered = false;
+        }
+        result.events.push({ userId, type: "trade_alert", detail, delivered });
+      }
     } catch (error) {
       result.errors.push(`user ${userId}: ${error instanceof Error ? error.message : "error"}`);
     }

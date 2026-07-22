@@ -40,7 +40,7 @@ export function uiMeta(widget: string): Record<string, unknown> {
 /** Build registerTool config from catalog entry. */
 export function toolConfig(def: {
   description: string;
-  inputSchema: import("zod").ZodRawShape;
+  inputSchema: import("zod").ZodRawShape | import("zod").ZodType;
   annotations: ToolAnnotations;
   ui?: { widget: string };
 }) {

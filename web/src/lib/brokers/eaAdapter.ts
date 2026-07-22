@@ -10,7 +10,7 @@ import {
   type EaCommandAckResult,
 } from "../eaCommandWait";
 import { recordTrade, updateIntentStatus } from "../store";
-import { computeForexLots } from "./lotSizing";
+import { computeForexLots, resolveSizingReferencePrice } from "./lotSizing";
 import { normalizeMt5Stops } from "./mt5Stops";
 import {
   formatEaSymbolHint,
@@ -91,13 +91,14 @@ export const eaAdapter: BrokerAdapter = {
         intent.order_type === "limit" &&
         intent.limit_price != null &&
         intent.limit_price > 0;
-      const refPrice = isLimit
-        ? intent.limit_price!
-        : (intent.entry ?? 0) ||
-          sideQuotePrice(intent.side, spec) ||
-          Number(spec?.ask) ||
-          Number(spec?.bid) ||
-          0;
+      const refPrice = resolveSizingReferencePrice({
+        orderType: isLimit ? "limit" : "market",
+        limitPrice: intent.limit_price,
+        analysedEntry: intent.entry,
+        sideQuote: sideQuotePrice(intent.side, spec),
+        ask: Number(spec?.ask),
+        bid: Number(spec?.bid),
+      });
       const sizing = computeForexLots(riskAmount, refPrice, intent.stop_loss, spec);
       if (!sizing.ok) {
         const reason = sizing.reason ?? "تعذّر حساب اللوت.";

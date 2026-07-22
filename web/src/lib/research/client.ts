@@ -197,6 +197,19 @@ export function getResearchJob(
   return serviceRequest(context, `/internal/research/jobs/${encodeURIComponent(jobId)}`);
 }
 
+/** Read a bounded, tenant-owned JSON artifact after a research job completes. */
+export function getResearchJsonArtifact(
+  context: ResearchCallerContext,
+  jobId: string,
+  artifactId: string,
+): Promise<Record<string, unknown>> {
+  requireResearchBacktestEnabled();
+  return serviceRequest(
+    context,
+    `/internal/research/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(artifactId)}/content`,
+  );
+}
+
 export function cancelResearchJob(
   context: ResearchCallerContext,
   jobId: string,

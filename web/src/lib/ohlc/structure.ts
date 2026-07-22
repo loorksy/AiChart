@@ -5,6 +5,10 @@ export interface DetectedLevel {
   type: "support" | "resistance";
   touches: number;
   lastIndex: number;
+  /** Average swing-candle volume relative to the series median (1 = typical). */
+  volumeScore: number | null;
+  /** Deterministic 0-100 score from touches, relative volume, and recency. */
+  strengthScore: number;
 }
 
 export interface StructureAnalysis {
@@ -24,6 +28,35 @@ export interface StructureAnalysis {
 const SWING_LOOKBACK = 2;
 const LEVEL_TOLERANCE_PCT = 0.0008;
 const MAX_LEVELS = 8;
+
+interface MutableLevelCluster extends DetectedLevel {
+  volumeWeightSum: number;
+  volumeSamples: number;
+}
+
+function round(value: number, digits = 4): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function medianPositiveVolume(candles: OhlcCandle[]): number | null {
+  const values = candles
+    .map((candle) => candle.volume)
+    .filter(
+      (volume): volume is number =>
+        volume != null && Number.isFinite(volume) && volume > 0,
+    )
+    .sort((a, b) => a - b);
+  if (!values.length) return null;
+  const middle = Math.floor(values.length / 2);
+  return values.length % 2
+    ? values[middle]!
+    : (values[middle - 1]! + values[middle]!) / 2;
+}
 
 function isSwingHigh(candles: OhlcCandle[], index: number, lookback: number): boolean {
   const high = candles[index]!.high;
@@ -48,12 +81,25 @@ function clusterLevels(
   type: "support" | "resistance",
   indices: number[],
   currentPrice: number,
+  candles: OhlcCandle[],
 ): DetectedLevel[] {
+  const baselineVolume = medianPositiveVolume(candles);
   const sorted = prices
-    .map((price, i) => ({ price, index: indices[i]! }))
+    .map((price, i) => {
+      const index = indices[i]!;
+      const volume = candles[index]?.volume;
+      const volumeWeight =
+        baselineVolume != null &&
+        volume != null &&
+        Number.isFinite(volume) &&
+        volume > 0
+          ? volume / baselineVolume
+          : null;
+      return { price, index, volumeWeight };
+    })
     .sort((a, b) => a.price - b.price);
 
-  const clusters: DetectedLevel[] = [];
+  const clusters: MutableLevelCluster[] = [];
 
   for (const point of sorted) {
     const tol = Math.max(point.price * LEVEL_TOLERANCE_PCT, 1e-8);
@@ -64,20 +110,61 @@ function clusterLevels(
       existing.touches += 1;
       existing.price = (existing.price + point.price) / 2;
       existing.lastIndex = Math.max(existing.lastIndex, point.index);
+      if (point.volumeWeight != null) {
+        existing.volumeWeightSum += point.volumeWeight;
+        existing.volumeSamples += 1;
+      }
     } else {
       clusters.push({
         price: point.price,
         type,
         touches: 1,
         lastIndex: point.index,
+        volumeScore:
+          point.volumeWeight == null ? null : round(point.volumeWeight),
+        strengthScore: 0,
+        volumeWeightSum: point.volumeWeight ?? 0,
+        volumeSamples: point.volumeWeight == null ? 0 : 1,
       });
     }
   }
 
-  return clusters
+  const maxTouches = Math.max(1, ...clusters.map((cluster) => cluster.touches));
+  const scored: DetectedLevel[] = clusters.map((cluster) => {
+    const volumeScore =
+      cluster.volumeSamples > 0
+        ? cluster.volumeWeightSum / cluster.volumeSamples
+        : null;
+    const touchComponent = clamp01(cluster.touches / maxTouches);
+    const recencyComponent =
+      candles.length > 1 ? clamp01(cluster.lastIndex / (candles.length - 1)) : 0;
+    const strengthScore =
+      volumeScore == null
+        ? 100 * touchComponent
+        : 100 *
+          (0.55 * touchComponent +
+            0.3 * clamp01(volumeScore / 2) +
+            0.15 * recencyComponent);
+    return {
+      price: cluster.price,
+      type: cluster.type,
+      touches: cluster.touches,
+      lastIndex: cluster.lastIndex,
+      volumeScore: volumeScore == null ? null : round(volumeScore),
+      strengthScore: round(strengthScore, 2),
+    };
+  });
+
+  return scored
     .sort((a, b) => {
       const distA = Math.abs(a.price - currentPrice);
       const distB = Math.abs(b.price - currentPrice);
+      if (
+        baselineVolume != null &&
+        b.strengthScore !== a.strengthScore
+      ) {
+        return b.strengthScore - a.strengthScore;
+      }
       if (b.touches !== a.touches) return b.touches - a.touches;
       return distA - distB;
     })
@@ -162,12 +249,14 @@ export function detectStructureLevels(
     "resistance",
     swingHighIdx,
     currentPrice,
+    candles,
   );
   const supports = clusterLevels(
     swingLows,
     "support",
     swingLowIdx,
     currentPrice,
+    candles,
   );
 
   const nearestSupport =

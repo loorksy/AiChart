@@ -8,7 +8,7 @@ import {
   getRpcConnection,
   metaApiSpecToEaSpec,
 } from "../metaapi/client";
-import { computeForexLots } from "./lotSizing";
+import { computeForexLots, resolveSizingReferencePrice } from "./lotSizing";
 import type { BrokerAdapter, OrderResult, PlaceOrderContext } from "./types";
 
 /** MetaTrader execution via MetaApi cloud (mobile-friendly, no EA). */
@@ -70,12 +70,13 @@ export const metaApiAdapter: BrokerAdapter = {
     const spec = metaApiSpecToEaSpec(intent.symbol, rawSpec, priceQuote);
     const sideQuote =
       intent.side === "buy" ? Number(spec.ask) : Number(spec.bid);
-    const refPrice =
-      (intent.entry ?? 0) ||
-      sideQuote ||
-      Number(spec.ask) ||
-      Number(spec.bid) ||
-      0;
+    const refPrice = resolveSizingReferencePrice({
+      orderType: "market",
+      analysedEntry: intent.entry,
+      sideQuote,
+      ask: Number(spec.ask),
+      bid: Number(spec.bid),
+    });
     const sizing = computeForexLots(riskAmount, refPrice, intent.stop_loss, spec);
     if (!sizing.ok) {
       push({ id: "quote", label: `حساب حجم اللوت · ${intent.symbol}`, status: "error", detail: sizing.reason });

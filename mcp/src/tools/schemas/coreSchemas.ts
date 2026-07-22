@@ -2,6 +2,8 @@ import { z } from "zod";
 import { DESTRUCTIVE, IDEMPOTENT_WRITE, READ_ONLY } from "../registry.js";
 import type { ToolDefinition } from "./types.js";
 import {
+  zBacktestStrategyId,
+  zBacktestTimeframe,
   zChartDrawings,
   zConfidence,
   zInterval,
@@ -10,6 +12,51 @@ import {
   zSymbol,
   zTradeId,
 } from "./shapes.js";
+
+const recommendationSharedFields = {
+  symbol: zSymbol,
+  // Optional for BUY/SELL — server replaces with calibrated backtest evidence.
+  confidence: zConfidence.optional(),
+  rationale: z.string().min(10),
+  factors: z.array(z.string()).min(1).max(8),
+  timeframe: z.string().optional(),
+  pattern_name: z.string().optional(),
+  strategy_version: z.string().min(1).max(64).optional(),
+  chart_drawings: zChartDrawings,
+};
+
+const createRecommendationInput = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("wait"),
+    ...recommendationSharedFields,
+    entry: z.number().positive().optional(),
+    stop_loss: z.number().positive().optional(),
+    take_profit: z.number().positive().optional(),
+    strategy_id: zBacktestStrategyId.optional(),
+    backtested_confidence: zConfidence.optional(),
+    market_regime: z.string().min(3).max(64).optional(),
+  }),
+  z.object({
+    action: z.literal("buy"),
+    ...recommendationSharedFields,
+    strategy_id: zBacktestStrategyId,
+    backtested_confidence: zConfidence,
+    market_regime: z.string().min(3).max(64),
+    entry: z.number().positive(),
+    stop_loss: z.number().positive(),
+    take_profit: z.number().positive(),
+  }),
+  z.object({
+    action: z.literal("sell"),
+    ...recommendationSharedFields,
+    strategy_id: zBacktestStrategyId,
+    backtested_confidence: zConfidence,
+    market_regime: z.string().min(3).max(64),
+    entry: z.number().positive(),
+    stop_loss: z.number().positive(),
+    take_profit: z.number().positive(),
+  }),
+]);
 
 export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -69,7 +116,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_lessons",
     domain: "core",
     description:
-      "When: before every analysis or after a loss. recent=true for recent mistakes. read-only. Example: symbol=EURUSD&recent=true.",
+      "When: before every analysis or after a loss. Returns structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar. recent=true for latest lessons. read-only. Example: symbol=EURUSD&recent=true.",
     inputSchema: {
       symbol: z.string().optional(),
       pattern: z.string().optional(),
@@ -80,23 +127,41 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     ui: { widget: "lessons-card" },
   },
   {
+    name: "run_backtest",
+    domain: "core",
+    description:
+      "When: before trusting a catalog strategy live. Runs deterministic historical backtest for strategy_id/symbol/timeframe/date_range and records server evidence. read-only research write of evidence only — not trade execution. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+    inputSchema: {
+      strategy_id: zBacktestStrategyId,
+      symbol: zSymbol,
+      timeframe: zBacktestTimeframe,
+      date_range: z
+        .object({
+          from: z.string().datetime({ offset: true }),
+          to: z.string().datetime({ offset: true }),
+        })
+        .strict(),
+    },
+    annotations: IDEMPOTENT_WRITE,
+  },
+  {
+    name: "get_strategy_performance",
+    domain: "core",
+    description:
+      "When: after run_backtest or before create_recommendation. Compares live outcomes vs backtest expectation and reports deployment state (shadow/active/suspended). read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+    inputSchema: {
+      strategy_id: zBacktestStrategyId,
+      symbol: z.string().optional(),
+      timeframe: zBacktestTimeframe.optional(),
+    },
+    annotations: READ_ONLY,
+  },
+  {
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: before open_trade — record recommendation. rationale 2–4 sentences in 'we' voice. side-effect: writes recommendation. Example: action=buy&confidence=85.",
-    inputSchema: {
-      symbol: zSymbol,
-      action: z.enum(["buy", "sell", "wait"]),
-      confidence: zConfidence,
-      rationale: z.string().min(10),
-      factors: z.array(z.string()).min(1).max(8),
-      entry: z.number().optional(),
-      stop_loss: z.number().optional(),
-      take_profit: z.number().optional(),
-      timeframe: z.string().optional(),
-      pattern_name: z.string().optional(),
-      chart_drawings: zChartDrawings,
-    },
+      "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. side-effect: writes recommendation.",
+    inputSchema: createRecommendationInput,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
   },

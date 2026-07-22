@@ -61,6 +61,11 @@ const SCHEMA = `
     action          TEXT NOT NULL,
     direction       TEXT,
     confidence      INTEGER NOT NULL DEFAULT 0,
+    backtested_confidence DOUBLE PRECISION,
+    confidence_low  DOUBLE PRECISION,
+    confidence_high DOUBLE PRECISION,
+    backtest_id     BIGINT,
+    market_regime   TEXT,
     entry           DOUBLE PRECISION,
     stop_loss       DOUBLE PRECISION,
     take_profit     DOUBLE PRECISION,
@@ -559,6 +564,37 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_recommendation_learning_events_user
     ON recommendation_learning_events (user_id, event_type, occurred_at);
 
+  CREATE TABLE IF NOT EXISTS strategy_backtests (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    strategy_id TEXT NOT NULL, strategy_version TEXT NOT NULL DEFAULT '1',
+    symbol TEXT NOT NULL, timeframe TEXT NOT NULL, job_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', trade_count INTEGER NOT NULL DEFAULT 0,
+    win_rate DOUBLE PRECISION, expectancy DOUBLE PRECISION, sharpe_ratio DOUBLE PRECISION,
+    max_drawdown_pct DOUBLE PRECISION, profit_factor DOUBLE PRECISION,
+    calibrated_confidence DOUBLE PRECISION, confidence_low DOUBLE PRECISION,
+    confidence_high DOUBLE PRECISION, metrics_json TEXT NOT NULL DEFAULT '{}',
+    validation_json TEXT NOT NULL DEFAULT '{}', error_message TEXT,
+    created_at BIGINT NOT NULL, completed_at BIGINT, updated_at BIGINT NOT NULL,
+    UNIQUE (user_id, job_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_strategy_backtests_lookup
+    ON strategy_backtests (user_id, strategy_id, symbol, timeframe, status, completed_at);
+
+  CREATE TABLE IF NOT EXISTS strategy_deployments (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    strategy_id TEXT NOT NULL, symbol TEXT NOT NULL, timeframe TEXT NOT NULL,
+    backtest_id BIGINT NOT NULL REFERENCES strategy_backtests(id) ON DELETE RESTRICT,
+    state TEXT NOT NULL DEFAULT 'shadow', expected_win_rate DOUBLE PRECISION NOT NULL,
+    calibrated_confidence DOUBLE PRECISION NOT NULL,
+    confidence_low DOUBLE PRECISION NOT NULL, confidence_high DOUBLE PRECISION NOT NULL,
+    live_sample_size INTEGER NOT NULL DEFAULT 0, live_win_rate DOUBLE PRECISION,
+    suspended_reason TEXT, updated_at BIGINT NOT NULL,
+    PRIMARY KEY (user_id, strategy_id, symbol, timeframe)
+  );
+  CREATE INDEX IF NOT EXISTS idx_strategy_deployments_state
+    ON strategy_deployments (user_id, state, strategy_id);
+
   CREATE TABLE IF NOT EXISTS trade_lesson_candidates (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -918,6 +954,11 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS risk_json TEXT NOT NULL DEFAULT '{}',
       ADD COLUMN IF NOT EXISTS strategy_id TEXT NOT NULL DEFAULT 'unspecified',
       ADD COLUMN IF NOT EXISTS strategy_version TEXT NOT NULL DEFAULT '1',
+      ADD COLUMN IF NOT EXISTS backtested_confidence DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS confidence_low DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS confidence_high DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS backtest_id BIGINT,
+      ADD COLUMN IF NOT EXISTS market_regime TEXT,
       ADD COLUMN IF NOT EXISTS expires_at BIGINT,
       ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft',
       ADD COLUMN IF NOT EXISTS status_reason TEXT NOT NULL DEFAULT '',

@@ -411,6 +411,49 @@ export async function runUnifiedChartAgent(
     };
   }
 
+  if (market.dataQuality.coverage.status === "gapped") {
+    trackedCtx.emitActivity({
+      type: "data",
+      status: "failed",
+      message: market.dataQuality.coverage.summaryAr,
+      metadata: { ...market.dataQuality.coverage },
+    });
+    return {
+      decision: "action_required",
+      confidence: 0,
+      summary: bilingual(
+        locale,
+        market.dataQuality.coverage.summaryAr,
+        market.dataQuality.coverage.summaryEn,
+      ),
+      keyReasons: [market.dataQuality.coverage.summaryEn],
+      riskWarnings: [
+        bilingual(
+          locale,
+          "أُوقف التحليل لأن سلسلة الأسعار تحتوي فجوات مهمة أثناء فتح السوق.",
+          "Analysis was stopped because the price series contains significant open-market gaps.",
+        ),
+      ],
+      activityEvents: collected,
+      analysisId,
+      debugDecisionFlow:
+        process.env.NODE_ENV === "development"
+          ? {
+              usedLLM: false,
+              tickerGenerated: false,
+              candleCount: market.currentTfCandles.length,
+              htfCandleCount: market.higherTfCandles.length,
+              dailyCandleCount: market.dailyCandles.length,
+              selectedLevelsCount: 0,
+              rejectedLevelsCount: 0,
+              drawingPlanReason: "significant open-market candle gaps",
+              dataSource: chartContext?.dataSource ?? "oanda",
+              marketSync: market.sync,
+            }
+          : undefined,
+    };
+  }
+
   // Structure / liquidity / S&D / MTF run concurrently; each degrades to null.
   const [structure, liquidity, supplyDemand, mtf] = await Promise.all([
     withTimeout(runStructureAgent(trackedCtx, market).catch(() => null), AGENT_TIMEOUTS.structure, null),
@@ -1150,6 +1193,40 @@ async function trackStoredRecommendation(input: {
       ),
       keyReasons: [market.sync.reason],
       riskWarnings: [],
+      activityEvents: collected,
+      activeRecommendation: {
+        id: rec.id,
+        status: rec.status,
+        direction: rec.direction,
+        symbol: rec.symbol,
+        interval: rec.interval,
+      },
+    };
+  }
+
+  if (market.dataQuality.coverage.status === "gapped") {
+    ctx.emitActivity({
+      type: "data",
+      status: "failed",
+      message: market.dataQuality.coverage.summaryAr,
+      metadata: { ...market.dataQuality.coverage },
+    });
+    return {
+      decision: "action_required",
+      confidence: 0,
+      summary: bilingual(
+        locale,
+        market.dataQuality.coverage.summaryAr,
+        market.dataQuality.coverage.summaryEn,
+      ),
+      keyReasons: [market.dataQuality.coverage.summaryEn],
+      riskWarnings: [
+        bilingual(
+          locale,
+          "أُوقف تحديث التوصية لأن سلسلة الأسعار تحتوي فجوات مهمة أثناء فتح السوق.",
+          "Recommendation status was not updated because the price series contains significant open-market gaps.",
+        ),
+      ],
       activityEvents: collected,
       activeRecommendation: {
         id: rec.id,

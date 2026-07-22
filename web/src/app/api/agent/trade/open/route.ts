@@ -4,7 +4,6 @@ import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import {
   createIntent,
-  getSettings,
   hasRecentTradeOpenFailure,
   logAudit,
   resolveBrokerForMarket,
@@ -29,6 +28,7 @@ import {
 } from "@/lib/marketPolicy";
 import type { MarketType } from "@/lib/markets/types";
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
+import { checkRecommendationExecutionEligibility } from "@/lib/strategies/evidence";
 
 const schema = z
   .object({
@@ -130,7 +130,44 @@ export async function POST(req: NextRequest) {
       return respondWithIdempotency(userId, idempotencyKey, envelope);
     }
 
-    const settings = await getSettings(userId);
+    // Autonomous execution is only allowed from a recommendation whose
+    // validated strategy has completed shadow trading and is currently active.
+    // A human's explicit order remains possible and is separately audited.
+    if (!body.approved_by_user) {
+      if (body.recommendation_id == null) {
+        const envelope = bridgeSuccess(
+          tradeOpenPayload(
+            false,
+            "denied",
+            "A backtest-gated active recommendation_id is required for autonomous execution",
+            null,
+            null,
+            null,
+          ),
+        );
+        return respondWithIdempotency(userId, idempotencyKey, envelope);
+      }
+      const eligibility = await checkRecommendationExecutionEligibility({
+        userId,
+        recommendationId: body.recommendation_id,
+        symbol: normalizeIntentSymbol(body.symbol, DEFAULT_MARKET),
+        side: body.side,
+      });
+      if (!eligibility.ok) {
+        const envelope = bridgeSuccess(
+          tradeOpenPayload(
+            false,
+            "denied",
+            eligibility.reason,
+            null,
+            null,
+            null,
+          ),
+        );
+        return respondWithIdempotency(userId, idempotencyKey, envelope);
+      }
+    }
+
     const requestedMarket = body.market ?? DEFAULT_MARKET;
     const marketBlock = rejectNonForexMarket(requestedMarket);
     if (marketBlock) {

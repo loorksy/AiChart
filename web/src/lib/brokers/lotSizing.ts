@@ -8,6 +8,41 @@ export interface LotSizingResult {
   reason?: string;
 }
 
+/**
+ * Selects the price used for stop-distance sizing.
+ *
+ * Market orders must use the latest executable side quote (ask for buys, bid
+ * for sells).  The analysed OANDA entry is only a last-resort fallback because
+ * sizing from it can silently exceed the configured risk after broker spread
+ * or price movement.  Pending orders are sized from their explicit limit.
+ */
+export function resolveSizingReferencePrice(input: {
+  orderType: "market" | "limit";
+  limitPrice?: number | null;
+  analysedEntry?: number | null;
+  sideQuote?: number | null;
+  ask?: number | null;
+  bid?: number | null;
+}): number {
+  const positive = (...values: Array<number | null | undefined>): number => {
+    for (const value of values) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    }
+    return 0;
+  };
+
+  if (input.orderType === "limit") {
+    return positive(input.limitPrice);
+  }
+  return positive(
+    input.sideQuote,
+    input.ask,
+    input.bid,
+    input.analysedEntry,
+  );
+}
+
 function floorToStep(value: number, step: number): number {
   const floored = Math.floor((value + Number.EPSILON) / step) * step;
   const decimals = (step.toString().split(".")[1] || "").length;

@@ -8,7 +8,7 @@ import {
   mt5Order,
   mt5Spec,
 } from "../mt5local/client";
-import { computeForexLots } from "./lotSizing";
+import { computeForexLots, resolveSizingReferencePrice } from "./lotSizing";
 import type { BrokerAdapter, OrderResult, PlaceOrderContext } from "./types";
 
 /** MetaTrader 5 execution via the self-hosted bridge container (no cloud). */
@@ -60,12 +60,13 @@ export const mt5LocalAdapter: BrokerAdapter = {
 
     const sideQuote =
       intent.side === "buy" ? Number(spec.ask) : Number(spec.bid);
-    const refPrice =
-      (intent.entry ?? 0) ||
-      sideQuote ||
-      Number(spec.ask) ||
-      Number(spec.bid) ||
-      0;
+    const refPrice = resolveSizingReferencePrice({
+      orderType: "market",
+      analysedEntry: intent.entry,
+      sideQuote,
+      ask: Number(spec.ask),
+      bid: Number(spec.bid),
+    });
     const sizing = computeForexLots(riskAmount, refPrice, intent.stop_loss, spec);
     if (!sizing.ok) {
       const reason = sizing.reason ?? "تعذّر حساب اللوت.";

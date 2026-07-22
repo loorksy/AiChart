@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { computeForexLots } from "@/lib/brokers/lotSizing";
+import {
+  computeForexLots,
+  resolveSizingReferencePrice,
+} from "@/lib/brokers/lotSizing";
 import type { EaSymbolSpec } from "@/lib/types";
 
 const spec: EaSymbolSpec = {
@@ -13,6 +16,40 @@ const spec: EaSymbolSpec = {
 };
 
 describe("verified stop-distance lot sizing", () => {
+  it("uses the executable broker quote before the analysed entry for market orders", () => {
+    assert.equal(
+      resolveSizingReferencePrice({
+        orderType: "market",
+        analysedEntry: 1.1,
+        sideQuote: 1.1012,
+        ask: 1.1012,
+        bid: 1.101,
+      }),
+      1.1012,
+    );
+  });
+
+  it("uses only the explicit limit for pending-order sizing", () => {
+    assert.equal(
+      resolveSizingReferencePrice({
+        orderType: "limit",
+        limitPrice: 1.095,
+        analysedEntry: 1.1,
+        sideQuote: 1.1012,
+      }),
+      1.095,
+    );
+    assert.equal(
+      resolveSizingReferencePrice({
+        orderType: "limit",
+        limitPrice: null,
+        analysedEntry: 1.1,
+        sideQuote: 1.1012,
+      }),
+      0,
+    );
+  });
+
   it("reduces lots when the stop is wider", () => {
     const tight = computeForexLots(100, 1.1, 1.095, spec);
     const wide = computeForexLots(100, 1.1, 1.09, spec);

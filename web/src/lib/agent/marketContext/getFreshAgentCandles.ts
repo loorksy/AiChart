@@ -21,7 +21,10 @@ export async function getFreshAgentCandles(input: {
   const symbol = forexCanonicalKey(input.symbol);
   const interval = normalizeCanonicalInterval(input.interval);
   const limit = Math.min(Math.max(input.limit ?? 1500, 10), 5000);
-  const source = input.dataSource ?? "oanda";
+  // Analysis is intentionally source-locked to OANDA. The chart may display
+  // broker candles, but EA/MT5 data is execution evidence (spread/fills), not
+  // an alternate analytical history.
+  const source = "oanda" as const;
 
   let liveCandles: AgentCandle[] = [];
   let liveError: string | null = null;
@@ -38,7 +41,7 @@ export async function getFreshAgentCandles(input: {
       });
       liveCandles = live.candles as AgentCandle[];
       liveError = null;
-      if (source === "oanda" && liveCandles.length) {
+      if (liveCandles.length) {
         await upsertCandles(symbol, interval, liveCandles);
       }
       break;
@@ -49,7 +52,6 @@ export async function getFreshAgentCandles(input: {
   }
 
   const currentTfCandles = await (async () => {
-    if (source !== "oanda") return liveCandles;
     const warehouse = (await getCandles({ symbol, interval, limit })) as AgentCandle[];
     if (!liveCandles.length || !warehouse.length) return warehouse.length ? warehouse : liveCandles;
     const liveLast = liveCandles[liveCandles.length - 1]!;
@@ -65,4 +67,3 @@ export async function getFreshAgentCandles(input: {
 
   return { currentTfCandles, liveCandles, liveError };
 }
-

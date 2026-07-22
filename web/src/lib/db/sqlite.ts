@@ -67,6 +67,11 @@ const SCHEMA = `
     action          TEXT NOT NULL,
     direction       TEXT,
     confidence      INTEGER NOT NULL DEFAULT 0,
+    backtested_confidence REAL,
+    confidence_low  REAL,
+    confidence_high REAL,
+    backtest_id     INTEGER,
+    market_regime   TEXT,
     entry           REAL,
     stop_loss       REAL,
     take_profit     REAL,
@@ -611,6 +616,58 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_recommendation_learning_events_user
     ON recommendation_learning_events (user_id, event_type, occurred_at);
 
+  CREATE TABLE IF NOT EXISTS strategy_backtests (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id               INTEGER NOT NULL,
+    strategy_id           TEXT NOT NULL,
+    strategy_version      TEXT NOT NULL DEFAULT '1',
+    symbol                TEXT NOT NULL,
+    timeframe             TEXT NOT NULL,
+    job_id                TEXT NOT NULL,
+    status                TEXT NOT NULL DEFAULT 'pending',
+    trade_count           INTEGER NOT NULL DEFAULT 0,
+    win_rate              REAL,
+    expectancy            REAL,
+    sharpe_ratio          REAL,
+    max_drawdown_pct      REAL,
+    profit_factor         REAL,
+    calibrated_confidence REAL,
+    confidence_low        REAL,
+    confidence_high       REAL,
+    metrics_json          TEXT NOT NULL DEFAULT '{}',
+    validation_json       TEXT NOT NULL DEFAULT '{}',
+    error_message         TEXT,
+    created_at            INTEGER NOT NULL,
+    completed_at          INTEGER,
+    updated_at            INTEGER NOT NULL,
+    UNIQUE (user_id, job_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_strategy_backtests_lookup
+    ON strategy_backtests (user_id, strategy_id, symbol, timeframe, status, completed_at);
+
+  CREATE TABLE IF NOT EXISTS strategy_deployments (
+    user_id               INTEGER NOT NULL,
+    strategy_id           TEXT NOT NULL,
+    symbol                TEXT NOT NULL,
+    timeframe             TEXT NOT NULL,
+    backtest_id           INTEGER NOT NULL,
+    state                 TEXT NOT NULL DEFAULT 'shadow',
+    expected_win_rate     REAL NOT NULL,
+    calibrated_confidence REAL NOT NULL,
+    confidence_low        REAL NOT NULL,
+    confidence_high       REAL NOT NULL,
+    live_sample_size      INTEGER NOT NULL DEFAULT 0,
+    live_win_rate         REAL,
+    suspended_reason      TEXT,
+    updated_at            INTEGER NOT NULL,
+    PRIMARY KEY (user_id, strategy_id, symbol, timeframe),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (backtest_id) REFERENCES strategy_backtests(id) ON DELETE RESTRICT
+  );
+  CREATE INDEX IF NOT EXISTS idx_strategy_deployments_state
+    ON strategy_deployments (user_id, state, strategy_id);
+
   CREATE TABLE IF NOT EXISTS trade_lesson_candidates (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id                 INTEGER NOT NULL,
@@ -878,6 +935,11 @@ function migrate(db: Database.Database) {
     ["risk_json", "TEXT NOT NULL DEFAULT '{}'"],
     ["strategy_id", "TEXT NOT NULL DEFAULT 'unspecified'"],
     ["strategy_version", "TEXT NOT NULL DEFAULT '1'"],
+    ["backtested_confidence", "REAL"],
+    ["confidence_low", "REAL"],
+    ["confidence_high", "REAL"],
+    ["backtest_id", "INTEGER"],
+    ["market_regime", "TEXT"],
     ["expires_at", "INTEGER"],
     ["status", "TEXT NOT NULL DEFAULT 'draft'"],
     ["status_reason", "TEXT NOT NULL DEFAULT ''"],

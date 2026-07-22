@@ -17,6 +17,8 @@ export interface OandaCandle {
   low: number;
   close: number;
   volume?: number;
+  /** OANDA's authoritative closed/forming-bar marker. */
+  complete: boolean;
 }
 
 function token(): string | undefined {
@@ -147,7 +149,15 @@ export async function fetchOandaCandles(
     const low = Number(r.mid.l);
     const close = Number(r.mid.c);
     if (!Number.isFinite(t) || ![open, high, low, close].every(Number.isFinite)) continue;
-    out.push({ time: t, open, high, low, close, volume: r.volume });
+    out.push({
+      time: t,
+      open,
+      high,
+      low,
+      close,
+      volume: r.volume,
+      complete: r.complete === true,
+    });
   }
   out.sort((a, b) => a.time - b.time);
 

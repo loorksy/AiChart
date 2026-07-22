@@ -8,7 +8,10 @@
  * available/required counts. The chart viewport is never treated as the full
  * analytical history.
  */
-import { getCandles } from "@/lib/candles/candleRepository";
+import {
+  detectCandleGaps,
+  getCandles,
+} from "@/lib/candles/candleRepository";
 import {
   backfillCandles,
   triggerBackfill,
@@ -24,7 +27,6 @@ import {
   CANDLE_COVERAGE_POLICY_VERSION,
   DATA_QUALITY_POLICY,
   buildCandleCoverageReport,
-  meetsDataQuality,
   type CandleCoverageReport,
   type CoverageAnalysisKind,
 } from "@/lib/agent/dataQualityPolicy";
@@ -63,6 +65,7 @@ export interface AgentMarketContext {
     higherTfCount: number;
     dailyCount: number;
     sufficient: boolean;
+    hasCriticalGaps: boolean;
     coverage: CandleCoverageReport;
     policyVersion: string;
   };
@@ -114,8 +117,7 @@ export async function buildAgentMarketContext(input: {
   const interval = normalizeCanonicalInterval(input.interval);
   const higherInterval = getHigherInterval(interval);
   const analysisKind = input.analysisKind ?? "intraday";
-  const source =
-    input.dataSource === "ea" ? "ea+warehouse" : "warehouse+oanda";
+  const source = "warehouse+oanda";
 
   let fresh = await getFreshAgentCandles({
     userId: input.userId,
@@ -195,6 +197,26 @@ export async function buildAgentMarketContext(input: {
     triggerBackfill({ symbol, interval: "1d", limit: 500 });
   }
 
+  // Gap checks are scoped to the recent windows that can influence a trade
+  // decision. detectCandleGaps already excludes the normal Forex weekend.
+  const gaps = {
+    current: detectCandleGaps(
+      symbol,
+      interval,
+      currentTfCandles.slice(-tradeGate.currentTf),
+    ),
+    higher: detectCandleGaps(
+      symbol,
+      higherInterval,
+      higherTfCandles.slice(-tradeGate.higherTf),
+    ),
+    daily: detectCandleGaps(
+      symbol,
+      "1d",
+      dailyCandles.slice(-tradeGate.daily),
+    ),
+  };
+
   const coverage = buildCandleCoverageReport({
     analysisKind,
     gate: "trade",
@@ -210,6 +232,7 @@ export async function buildAgentMarketContext(input: {
     dailyOldest: dailyCandles[0]?.time ?? null,
     dailyNewest: dailyCandles.at(-1)?.time ?? null,
     source,
+    gaps,
     refill: {
       current: currentRefill,
       higher: higherRefill,
@@ -265,16 +288,10 @@ export async function buildAgentMarketContext(input: {
       currentTfCount: currentTfCandles.length,
       higherTfCount: higherTfCandles.length,
       dailyCount: dailyCandles.length,
-      // "sufficient" = the ANALYSIS gate; trade/drawing gates are stricter and
-      // enforced by the playbook + drawing plan via the same central policy.
-      sufficient: meetsDataQuality(
-        {
-          currentTfCount: currentTfCandles.length,
-          higherTfCount: higherTfCandles.length,
-          dailyCount: dailyCandles.length,
-        },
-        "analysis",
-      ),
+      // "sufficient" = the ANALYSIS gate. Critical open-market gaps override
+      // otherwise adequate row counts and stop downstream market analysis.
+      sufficient: coverage.sufficientForAnalysis,
+      hasCriticalGaps: coverage.hasCriticalGaps === true,
       coverage,
       policyVersion: CANDLE_COVERAGE_POLICY_VERSION,
     },

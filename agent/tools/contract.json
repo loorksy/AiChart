@@ -147,7 +147,7 @@
     {
       "name": "create_recommendation",
       "version": "1.1.1",
-      "description": "When: before open_trade — record recommendation. rationale 2–4 sentences in 'we' voice. side-effect: writes recommendation. Example: action=buy&confidence=85.",
+      "description": "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. side-effect: writes recommendation.",
       "permission": "trade.recommend",
       "riskClass": "recommendation",
       "surfaces": [
@@ -170,7 +170,7 @@
     {
       "name": "detect_levels",
       "version": "1.1.1",
-      "description": "When: before SL/TP. Support/resistance + structure. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "description": "When: before SL/TP. Support/resistance + structure with volume-weighted strength scoring. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -183,6 +183,26 @@
       "timeoutMs": 30000,
       "telemetry": "server-audit-log",
       "inputSchemaRef": "mcp/schemas/tools/detect_levels.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "detect_market_regime",
+      "version": "1.1.1",
+      "description": "When: before choosing a backtested strategy. Numeric regime from ATR/ADX/Bollinger/volume (trend/range/high_volatility/low_liquidity) — not a textual guess. read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/detect_market_regime.json",
       "outputValidation": "bridge-envelope",
       "aliases": [],
       "requiredFeatureFlags": []
@@ -657,9 +677,29 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "get_strategy_performance",
+      "version": "1.1.1",
+      "description": "When: after run_backtest or before create_recommendation. Compares live outcomes vs backtest expectation and reports deployment state (shadow/active/suspended). read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "permission": "recommendation.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/get_strategy_performance.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "get_trade_lessons",
       "version": "1.1.1",
-      "description": "When: before every analysis or after a loss. recent=true for recent mistakes. read-only. Example: symbol=EURUSD&recent=true.",
+      "description": "When: before every analysis or after a loss. Returns structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar. recent=true for latest lessons. read-only. Example: symbol=EURUSD&recent=true.",
       "permission": "memory.read",
       "riskClass": "read",
       "surfaces": [
@@ -936,6 +976,26 @@
       "timeoutMs": 30000,
       "telemetry": "server-audit-log",
       "inputSchemaRef": "mcp/schemas/tools/respond_approval.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
+      "name": "run_backtest",
+      "version": "1.1.1",
+      "description": "When: before trusting a catalog strategy live. Runs deterministic historical backtest for strategy_id/symbol/timeframe/date_range and records server evidence. read-only research write of evidence only — not trade execution. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "permission": "research.run",
+      "riskClass": "write",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 120000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/run_backtest.json",
       "outputValidation": "bridge-envelope",
       "aliases": [],
       "requiredFeatureFlags": []

@@ -33,3 +33,13 @@ test("market sync, risk and explicit execution guard remain in the orchestrator"
   assert.match(orchestrator, /runExecutionGuardAgent/);
   assert.match(orchestrator, /requiresConfirmation/);
 });
+
+test("significant candle gaps stop the market fleet before specialist analysis", () => {
+  const gapGate = orchestrator.indexOf(
+    'market.dataQuality.coverage.status === "gapped"',
+  );
+  const specialistFleet = orchestrator.indexOf(
+    "withTimeout(runStructureAgent",
+  );
+  assert.ok(gapGate > 0 && gapGate < specialistFleet);
+});

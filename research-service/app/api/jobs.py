@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Header, Request
 
@@ -78,3 +78,22 @@ async def get_artifact(
     if item is None:
         raise ServiceError("JOB_NOT_FOUND", "research artifact not found", 404)
     return item
+
+
+@router.get("/{job_id}/artifacts/{artifact_id}/content")
+async def get_json_artifact_content(
+    job_id: str,
+    artifact_id: str,
+    context: CallerContext = Depends(require_caller),
+    service: JobManager = Depends(manager),
+) -> dict[str, Any]:
+    """Tenant-scoped, integrity-checked JSON artifact content for web orchestration."""
+    job = await service.store.get_for_user(job_id, context.user_id)
+    if job is None:
+        raise ServiceError("JOB_NOT_FOUND", "research job not found", 404)
+    return await service.artifacts.read_json_object(
+        user_id=context.user_id,
+        source_job_id=job_id,
+        artifact_id=artifact_id,
+        max_bytes=2 * 1024 * 1024,
+    )

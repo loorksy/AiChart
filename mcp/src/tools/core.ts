@@ -310,6 +310,32 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   );
 
   server.registerTool(
+    "run_backtest",
+    mcpToolConfig("run_backtest"),
+    async (body) =>
+      bridgeCall(() => bridge.post("/api/agent/backtest", body)),
+  );
+
+  server.registerTool(
+    "get_strategy_performance",
+    mcpToolConfig("get_strategy_performance"),
+    async (args) => {
+      const { strategy_id, symbol, timeframe } = args as {
+        strategy_id: string;
+        symbol?: string;
+        timeframe?: string;
+      };
+      return bridgeCall(() =>
+        bridge.get("/api/agent/strategy/performance", {
+          strategy_id,
+          symbol,
+          timeframe,
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
     "create_recommendation",
     mcpToolConfig("create_recommendation"),
     async (body) =>

@@ -603,6 +603,11 @@ export async function saveRecommendation(
     chat_id?: string | null;
     targets?: number[] | null;
     risk?: Record<string, unknown> | null;
+    backtested_confidence?: number | null;
+    confidence_low?: number | null;
+    confidence_high?: number | null;
+    backtest_id?: number | null;
+    market_regime?: string | null;
     strategy_id?: string | null;
     strategy_version?: string | null;
     expires_at?: number | null;
@@ -629,6 +634,11 @@ export async function saveRecommendation(
         : [rec.take_profit],
     risk: rec.risk ?? {},
     confidence: rec.confidence,
+    backtestedConfidence: rec.backtested_confidence ?? undefined,
+    confidenceLow: rec.confidence_low ?? undefined,
+    confidenceHigh: rec.confidence_high ?? undefined,
+    backtestId: rec.backtest_id ?? undefined,
+    marketRegime: rec.market_regime ?? undefined,
     strategyId: rec.strategy_id ?? rec.pattern_name ?? "unspecified",
     strategyVersion: rec.strategy_version ?? "1",
     expiresAt: rec.expires_at ?? undefined,
