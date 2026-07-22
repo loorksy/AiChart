@@ -22,6 +22,8 @@ export type LandingCopy = {
     how: string;
     trust: string;
     faq: string;
+    stats: string;
+    pricing: string;
     signIn: string;
     primaryCta: string;
     openMenu: string;
@@ -35,6 +37,16 @@ export type LandingCopy = {
     subtitle: string;
     primaryCta: string;
     secondaryCta: string;
+    quickPrompts: string[];
+    highlights: {
+      icon: "chart" | "chat" | "approval";
+      label: string;
+      detail: string;
+    }[];
+  };
+  partners: {
+    eyebrow: string;
+    note: string;
   };
   preview: {
     label: string;
@@ -54,6 +66,52 @@ export type LandingCopy = {
     title: string;
     subtitle: string;
     items: { title: string; body: string }[];
+    workspaceLabel: string;
+    workspacePoints: string[];
+    panelTitle: string;
+    panelBody: string;
+    panelCta: string;
+    executionLabel: string;
+    executionTitle: string;
+    executionBody: string;
+    executionBadge: string;
+  };
+  stats: {
+    title: string;
+    subtitle: string;
+    disclaimer: string;
+    items: {
+      eyebrow: string;
+      value: string;
+      title: string;
+      body: string;
+      note: string;
+      linkLabel: string;
+      href: string;
+      icon: "chart" | "approval" | "trial";
+    }[];
+  };
+  testimonials: {
+    title: string;
+    subtitle: string;
+    disclaimer: string;
+    items: {
+      quote: string;
+      name: string;
+      role: string;
+      initials: string;
+    }[];
+  };
+  pricing: {
+    eyebrow: string;
+    subtitle: string;
+    trialTitle: string;
+    trialBody: string;
+    trialPoints: string[];
+    priceNote: string;
+    features: string[];
+    cta: string;
+    activationNote: string;
   };
   how: {
     title: string;
@@ -83,6 +141,9 @@ export type LandingCopy = {
   };
   faq: {
     title: string;
+    subtitle: string;
+    contactLead: string;
+    contactLink: string;
     items: { q: string; a: string }[];
   };
   cta: {
@@ -116,6 +177,8 @@ const ar: LandingCopy = {
     how: "كيف يعمل",
     trust: "الثقة",
     faq: "الأسئلة",
+    stats: "حقائق",
+    pricing: "الأسعار",
     signIn: "تسجيل الدخول",
     primaryCta: "ابدأ مجاناً",
     openMenu: "فتح القائمة",
@@ -130,6 +193,32 @@ const ar: LandingCopy = {
       "يجمع AiChart بين الشارت الحي ومحادثة تداول ذكية، ثم يجهّز سيناريوهات واضحة للمراجعة قبل التنفيذ عبر MetaTrader.",
     primaryCta: "افتح AiChart",
     secondaryCta: "جرّب الشارت",
+    quickPrompts: [
+      "حلّل EURUSD",
+      "اقترح سيناريو WAIT",
+      "راجع مستويات الدخول",
+    ],
+    highlights: [
+      {
+        icon: "chart",
+        label: "شارت حي",
+        detail: "الرمز والإطار الزمني يبقيان أمامك أثناء المحادثة.",
+      },
+      {
+        icon: "chat",
+        label: "محادثة سوقية",
+        detail: "اطلب تحليلاً أو فرصة أو مستويات مهمة بصياغة طبيعية.",
+      },
+      {
+        icon: "approval",
+        label: "تنفيذ بموافقتك",
+        detail: "لا يُرسل أمر حي إلا بعد موافقتك الصريحة.",
+      },
+    ],
+  },
+  partners: {
+    eyebrow: "تكاملات وشركاء تقنيون",
+    note: "شعارات توضيحية للتكاملات المدعومة أو المستخدمة في مساحة AiChart — وليست ادّعاء شراكة تجارية.",
   },
   preview: {
     label: "معاينة مساحة العمل",
@@ -162,6 +251,126 @@ const ar: LandingCopy = {
         body: "لا يُرسل أمر حي إلا بعد موافقتك الصريحة واجتياز الفحوص التقنية الصالحة.",
       },
     ],
+    workspaceLabel: "مساحة العمل",
+    workspacePoints: [
+      "شارت حي مع الرمز والإطار الزمني",
+      "محادثة مع وكيل AiChart",
+      "بطاقة توصية بمستويات الدخول والوقف والأهداف",
+    ],
+    panelTitle: "معاينة توضيحية",
+    panelBody: "شاهد كيف تبدو مساحة العمل قبل التسجيل — بيانات توضيحية وليست توصية حية.",
+    panelCta: "افتح الشارت",
+    executionLabel: "قرار السوق",
+    executionTitle: "BUY · SELL · WAIT بقرار واحد واضح",
+    executionBody:
+      "Risk per Trade يضبط حجم الصفقة فقط ولا يغيّر قرار السوق.",
+    executionBadge: "النتيجة",
+  },
+  stats: {
+    title: "أرقام المنتج — لا أرقام تسويقية",
+    subtitle: "حقائق تشغيلية عن AiChart، وليست ادّعاءات أداء.",
+    disclaimer: "هذه الأرقام تصف قدرات المنصة الحالية، وليست نتائج تداول.",
+    items: [
+      {
+        eyebrow: "تجربة",
+        value: "3",
+        title: "تفاعلات مجانية",
+        body: "عدد التفاعلات المجانية المتاحة في التجربة قبل التفعيل اليدوي.",
+        note: "بدون ادّعاء مدة فوترة",
+        linkLabel: "ابدأ",
+        href: LANDING_ROUTES.signup,
+        icon: "trial",
+      },
+      {
+        eyebrow: "قرار",
+        value: "3",
+        title: "نتائج واضحة",
+        body: "BUY أو SELL أو WAIT — قرار واحد مع أسباب ومستويات عند توفرها.",
+        note: "بدون تنفيذ تلقائي",
+        linkLabel: "كيف يعمل",
+        href: "#how",
+        icon: "approval",
+      },
+      {
+        eyebrow: "مساحة",
+        value: "1",
+        title: "مساحة عمل موحّدة",
+        body: "شارت، محادثة، توصيات، وسجل في واجهة واحدة.",
+        note: "عربي وإنجليزي",
+        linkLabel: "المزايا",
+        href: "#features",
+        icon: "chart",
+      },
+    ],
+  },
+  testimonials: {
+    title: "آراء توضيحية عن سير العمل",
+    subtitle: "سيناريوهات استخدام شائعة — وليست شهادات أداء.",
+    disclaimer: "أسماء واقتباسات توضيحية لشرح تجربة المنتج، وليست نتائج مضمونة.",
+    items: [
+      {
+        quote:
+          "أخيراً أرى الشارت والمحادثة معاً بدل التنقل بين نوافذ متفرقة.",
+        name: "مراجع A",
+        role: "سيناريو توضيحي — متداول فوركس",
+        initials: "A",
+      },
+      {
+        quote:
+          "أحب أن التنفيذ لا يحدث إلا بعد موافقتي، حتى عندما يكون السيناريو جاهزاً.",
+        name: "مراجع B",
+        role: "سيناريو توضيحي — مستخدم MT5",
+        initials: "B",
+      },
+      {
+        quote:
+          "WAIT كقرار واضح أفضل لي من إشارات BUY/SELL متسرعة بدون سياق.",
+        name: "مراجع C",
+        role: "سيناريو توضيحي — مراجعة يومية",
+        initials: "C",
+      },
+      {
+        quote:
+          "التبديل بين العربية والإنجليزية يجعل المراجعة أسهل مع فريق مختلط.",
+        name: "مراجع D",
+        role: "سيناريو توضيحي — فريق صغير",
+        initials: "D",
+      },
+      {
+        quote:
+          "بطاقة التوصية بمستويات الدخول والوقف أوضح من نص طويل في الدردشة.",
+        name: "مراجع E",
+        role: "سيناريو توضيحي — سكالبينج",
+        initials: "E",
+      },
+      {
+        quote:
+          "أستخدم AiChart للمراجعة قبل التنفيذ، وليس كزر تنفيذ تلقائي.",
+        name: "مراجع F",
+        role: "سيناريو توضيحي — انضباط تنفيذ",
+        initials: "F",
+      },
+    ],
+  },
+  pricing: {
+    eyebrow: "الاشتراك",
+    subtitle: "خطة واحدة للوصول الكامل إلى مساحة AiChart. التفعيل يدوي بعد التواصل.",
+    trialTitle: "ابدأ بتجربة محدودة",
+    trialBody: "جرّب المحادثة والشارت قبل تفعيل الوصول الكامل.",
+    trialPoints: [
+      "3 تفاعلات مجانية",
+      "بدون ادّعاء مدة فوترة",
+      "تفعيل يدوي بعد التواصل",
+    ],
+    priceNote:
+      "السعر الحالي والسعر المعتاد — دون ادّعاء مدة فوترة غير مُعدّة.",
+    features: [
+      "الشارت ومساحة المحادثة",
+      "توصيات وسجل وإحصائيات",
+      "تنفيذ MetaTrader بعد الموافقة",
+    ],
+    cta: "تواصل لتفعيل الاشتراك",
+    activationNote: "التفعيل يتم يدوياً بعد التواصل عبر Telegram.",
   },
   how: {
     title: "كيف يعمل",
@@ -224,6 +433,9 @@ const ar: LandingCopy = {
   },
   faq: {
     title: "أسئلة شائعة",
+    subtitle: "إجابات مختصرة عن AiChart، التنفيذ، واللغات المدعومة.",
+    contactLead: "لم تجد إجابتك؟",
+    contactLink: "تواصل معنا",
     items: [
       {
         q: "هل ينفّذ AiChart الصفقات تلقائياً؟",
@@ -287,6 +499,8 @@ const en: LandingCopy = {
     how: "How it works",
     trust: "Trust",
     faq: "FAQ",
+    stats: "Facts",
+    pricing: "Pricing",
     signIn: "Sign in",
     primaryCta: "Start free",
     openMenu: "Open menu",
@@ -301,6 +515,32 @@ const en: LandingCopy = {
       "AiChart combines a live chart with an intelligent trading conversation, then prepares clear trade scenarios for review before MetaTrader execution.",
     primaryCta: "Open AiChart",
     secondaryCta: "View the chart",
+    quickPrompts: [
+      "Analyze EURUSD",
+      "Suggest a WAIT scenario",
+      "Review entry levels",
+    ],
+    highlights: [
+      {
+        icon: "chart",
+        label: "Live chart",
+        detail: "Symbol and timeframe stay visible while you chat.",
+      },
+      {
+        icon: "chat",
+        label: "Market conversation",
+        detail: "Ask for analysis, opportunity, or key levels in plain language.",
+      },
+      {
+        icon: "approval",
+        label: "Approval-first execution",
+        detail: "Live orders are sent only after your explicit approval.",
+      },
+    ],
+  },
+  partners: {
+    eyebrow: "Integrations and technology partners",
+    note: "Illustrative logos for supported or used integrations in AiChart — not a commercial partnership claim.",
   },
   preview: {
     label: "Workspace preview",
@@ -333,6 +573,126 @@ const en: LandingCopy = {
         body: "Live orders are sent only after your explicit approval and valid technical checks.",
       },
     ],
+    workspaceLabel: "Workspace",
+    workspacePoints: [
+      "Live chart with symbol and timeframe",
+      "Conversation with the AiChart agent",
+      "Recommendation card with entry, stop, and targets",
+    ],
+    panelTitle: "Illustrative preview",
+    panelBody: "See how the workspace feels before signup — illustrative data, not a live recommendation.",
+    panelCta: "Open the chart",
+    executionLabel: "Market decision",
+    executionTitle: "BUY · SELL · WAIT in one clear outcome",
+    executionBody:
+      "Risk per Trade controls position size only and does not force the market decision.",
+    executionBadge: "Outcome",
+  },
+  stats: {
+    title: "Product facts — not marketing metrics",
+    subtitle: "Operational truths about AiChart, not performance claims.",
+    disclaimer: "These numbers describe current product capabilities, not trading results.",
+    items: [
+      {
+        eyebrow: "Trial",
+        value: "3",
+        title: "Free interactions",
+        body: "The number of free trial interactions before manual activation.",
+        note: "No fabricated billing period",
+        linkLabel: "Start",
+        href: LANDING_ROUTES.signup,
+        icon: "trial",
+      },
+      {
+        eyebrow: "Decision",
+        value: "3",
+        title: "Clear outcomes",
+        body: "BUY, SELL, or WAIT — one decision with reasons and levels when available.",
+        note: "No auto execution",
+        linkLabel: "How it works",
+        href: "#how",
+        icon: "approval",
+      },
+      {
+        eyebrow: "Workspace",
+        value: "1",
+        title: "Unified workspace",
+        body: "Chart, chat, recommendations, and history in one interface.",
+        note: "Arabic and English",
+        linkLabel: "Features",
+        href: "#features",
+        icon: "chart",
+      },
+    ],
+  },
+  testimonials: {
+    title: "Illustrative workflow feedback",
+    subtitle: "Common usage scenarios — not performance testimonials.",
+    disclaimer: "Names and quotes are illustrative product scenarios, not guaranteed outcomes.",
+    items: [
+      {
+        quote:
+          "I finally see the chart and conversation together instead of juggling separate windows.",
+        name: "Reviewer A",
+        role: "Illustrative scenario — forex reviewer",
+        initials: "A",
+      },
+      {
+        quote:
+          "I like that execution only happens after I approve, even when the scenario is ready.",
+        name: "Reviewer B",
+        role: "Illustrative scenario — MT5 user",
+        initials: "B",
+      },
+      {
+        quote:
+          "WAIT as a clear outcome beats rushed BUY/SELL signals without context.",
+        name: "Reviewer C",
+        role: "Illustrative scenario — daily review",
+        initials: "C",
+      },
+      {
+        quote:
+          "Switching between Arabic and English makes review easier for a mixed team.",
+        name: "Reviewer D",
+        role: "Illustrative scenario — small team",
+        initials: "D",
+      },
+      {
+        quote:
+          "The recommendation card with entry and stop is clearer than a long chat paragraph.",
+        name: "Reviewer E",
+        role: "Illustrative scenario — scalping review",
+        initials: "E",
+      },
+      {
+        quote:
+          "I use AiChart to review before execution, not as an auto-trade button.",
+        name: "Reviewer F",
+        role: "Illustrative scenario — execution discipline",
+        initials: "F",
+      },
+    ],
+  },
+  pricing: {
+    eyebrow: "Pricing",
+    subtitle: "One plan for full AiChart access. Activation is manual after contact.",
+    trialTitle: "Start with a limited trial",
+    trialBody: "Try chat and chart before full access is activated.",
+    trialPoints: [
+      "3 free interactions",
+      "No fabricated billing period",
+      "Manual activation after contact",
+    ],
+    priceNote:
+      "Current price and regular price — no fabricated billing period.",
+    features: [
+      "Chart and conversation workspace",
+      "Recommendations, history, and statistics",
+      "MetaTrader execution after approval",
+    ],
+    cta: "Contact to subscribe",
+    activationNote: "Activation is manual after contact via Telegram.",
   },
   how: {
     title: "How it works",
@@ -395,6 +755,9 @@ const en: LandingCopy = {
   },
   faq: {
     title: "FAQ",
+    subtitle: "Short answers about AiChart, execution, and supported languages.",
+    contactLead: "Can't find your answer?",
+    contactLink: "Contact us",
     items: [
       {
         q: "Does AiChart execute trades automatically?",
@@ -469,6 +832,8 @@ export const LANDING_CTA_HREFS = [
   LANDING_ROUTES.contact,
   "#features",
   "#how",
+  "#stats",
   "#trust",
+  "#pricing",
   "#faq",
 ] as const;

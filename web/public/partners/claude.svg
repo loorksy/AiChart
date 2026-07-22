@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32" role="img" aria-label="Claude">
+  <rect width="120" height="32" rx="6" fill="none"/>
+  <path d="M16 8.5c4.2 0 7.5 3.1 7.5 7s-3.3 7-7.5 7c-1.2 0-2.3-.3-3.3-.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M16 8.5c-4.2 0-7.5 3.1-7.5 7s3.3 7 7.5 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.55"/>
+  <text x="30" y="21" font-family="system-ui,Segoe UI,sans-serif" font-size="13" font-weight="700" fill="currentColor">Claude</text>
+</svg>

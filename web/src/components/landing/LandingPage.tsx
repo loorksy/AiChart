@@ -1,10 +1,12 @@
 import { LandingNav } from "@/components/landing/LandingNav";
 import { LandingHero } from "@/components/landing/LandingHero";
+import { LandingPartners } from "@/components/landing/LandingPartners";
 import { LandingBenefits } from "@/components/landing/LandingBenefits";
 import { LandingHowItWorks } from "@/components/landing/LandingHowItWorks";
+import { LandingStats } from "@/components/landing/LandingStats";
 import { LandingWorkspace } from "@/components/landing/LandingWorkspace";
 import { LandingTrust } from "@/components/landing/LandingTrust";
-import { LandingIntegrations } from "@/components/landing/LandingIntegrations";
+import { LandingTestimonials } from "@/components/landing/LandingTestimonials";
 import { LandingHistory } from "@/components/landing/LandingHistory";
 import { LandingPricing } from "@/components/landing/LandingPricing";
 import { LandingFaq } from "@/components/landing/LandingFaq";
@@ -13,7 +15,7 @@ import { LandingFooter } from "@/components/landing/LandingFooter";
 
 /**
  * Public landing — neutral AiChart marketing surface.
- * No TradingView runtime, no candlestick backdrop, no authenticated app shell.
+ * Redesigned with 21st.dev community blocks and bilingual copy.
  */
 export default function LandingPage() {
   return (
@@ -24,11 +26,13 @@ export default function LandingPage() {
       <LandingNav />
       <main id="main">
         <LandingHero />
+        <LandingPartners />
         <LandingBenefits />
         <LandingHowItWorks />
+        <LandingStats />
         <LandingWorkspace />
         <LandingTrust />
-        <LandingIntegrations />
+        <LandingTestimonials />
         <LandingHistory />
         <LandingPricing />
         <LandingFaq />

@@ -13,7 +13,9 @@ import { cn } from "@/lib/utils";
 const ANCHORS = [
   { href: "#features", key: "features" as const },
   { href: "#how", key: "how" as const },
+  { href: "#stats", key: "stats" as const },
   { href: "#trust", key: "trust" as const },
+  { href: "#pricing", key: "pricing" as const },
   { href: "#faq", key: "faq" as const },
 ];
 

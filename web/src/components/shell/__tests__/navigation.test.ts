@@ -120,7 +120,7 @@ test("profile menu uses opaque portal surface", () => {
 
 test("brand mark viewBox remains unclipped", () => {
   const mark = readFileSync(resolve(process.cwd(), "public/brand/aichart-mark.svg"), "utf8");
-  assert.match(mark, /viewBox="100 250 900 670"/);
+  assert.match(mark, /viewBox="0 350 3000 2250"/);
 });
 
 test("auth form prevents mobile horizontal overflow", () => {

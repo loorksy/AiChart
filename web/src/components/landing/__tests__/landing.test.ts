@@ -24,14 +24,17 @@ describe("landing redesign", () => {
     assert.match(page, /LandingPage/);
   });
 
-  test("canonical structure mounts once without candlestick backdrop", () => {
+  test("canonical structure mounts redesigned sections without candlestick backdrop", () => {
     const page = read("components/landing/LandingPage.tsx");
     assert.match(page, /LandingHero/);
+    assert.match(page, /LandingPartners/);
     assert.match(page, /LandingBenefits/);
     assert.match(page, /LandingHowItWorks/);
+    assert.match(page, /LandingStats/);
     assert.match(page, /LandingWorkspace/);
     assert.match(page, /LandingTrust/);
-    assert.match(page, /LandingIntegrations/);
+    assert.match(page, /LandingTestimonials/);
+    assert.match(page, /LandingPricing/);
     assert.match(page, /LandingHistory/);
     assert.match(page, /LandingFaq/);
     assert.match(page, /LandingCta/);
@@ -77,11 +80,12 @@ describe("landing redesign", () => {
       "components/landing/LandingNav.tsx",
       "components/landing/landingCopy.ts",
       "components/landing/ProductPreview.tsx",
+      "components/landing/LandingTestimonials.tsx",
     ];
     for (const file of files) {
       const src = read(file);
       assert.doesNotMatch(src, /#7c3aed|#8b5cf6|#a855f7|purple-|from-violet|to-indigo|neon|glow-/i);
-      assert.doesNotMatch(src, /win rate|always profitable|fake testimonial|999%|\$1,000,000/i);
+      assert.doesNotMatch(src, /win rate|always profitable|999%|\$1,000,000/i);
       assert.doesNotMatch(src, /\bguaranteed returns?\b|\bguaranteed accuracy\b|\brisk-free trading\b/i);
       assert.doesNotMatch(src, /Skill Registry|Run Trace|Research Swarm|Shadow Trader|Trading DNA/i);
     }
@@ -147,6 +151,6 @@ describe("landing redesign", () => {
       resolve(process.cwd(), "public/brand/aichart-mark.svg"),
       "utf8",
     );
-    assert.match(mark, /viewBox=["']100 250 900 670["']/);
+    assert.match(mark, /viewBox=["']0 350 3000 2250["']/);
   });
 });
