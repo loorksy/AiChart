@@ -4,6 +4,7 @@ import { BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/c
 import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
+import { createRecommendationInput } from "./schemas/coreSchemas.js";
 import { discoverSkills, loadSkill } from "../skills/catalog.js";
 import { selectMcpSkills } from "../skills/select.js";
 import { gitCommit } from "../version.js";
@@ -338,8 +339,21 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "create_recommendation",
     mcpToolConfig("create_recommendation"),
-    async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/recommendation", body)),
+    async (body) => {
+      const parsed = createRecommendationInput.safeParse(body);
+      if (!parsed.success) {
+        return formatBridgeError(
+          new Error(
+            parsed.error.issues
+              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+              .join("; ") || "Invalid create_recommendation payload",
+          ),
+        );
+      }
+      return bridgeCall(() =>
+        bridge.post("/api/agent/recommendation", parsed.data),
+      );
+    },
   );
 
   server.registerTool(

@@ -1,20 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { z } from "zod";
+import { createRecommendationInput } from "../schemas/coreSchemas.js";
 import { getToolDef } from "../schemas/index.js";
-
-function parseRecommendation(input: unknown) {
-  const def = getToolDef("create_recommendation");
-  const schema =
-    def.inputSchema instanceof z.ZodType
-      ? def.inputSchema
-      : z.object(def.inputSchema);
-  return schema.safeParse(input);
-}
 
 describe("create_recommendation structural gate", () => {
   it("accepts WAIT without strategy evidence", () => {
-    const parsed = parseRecommendation({
+    const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "wait",
       rationale: "No clear setup yet — we wait for confirmation.",
@@ -24,7 +15,7 @@ describe("create_recommendation structural gate", () => {
   });
 
   it("rejects BUY without strategy_id and backtested_confidence", () => {
-    const parsed = parseRecommendation({
+    const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
       confidence: 80,
@@ -38,7 +29,7 @@ describe("create_recommendation structural gate", () => {
   });
 
   it("accepts BUY with catalog strategy evidence and levels", () => {
-    const parsed = parseRecommendation({
+    const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
       strategy_id: "ema_trend_follow_v1",
@@ -55,7 +46,7 @@ describe("create_recommendation structural gate", () => {
   });
 
   it("rejects unknown strategy_id for SELL", () => {
-    const parsed = parseRecommendation({
+    const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "sell",
       strategy_id: "invented_edge_v9",

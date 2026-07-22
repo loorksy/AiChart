@@ -25,7 +25,8 @@ const recommendationSharedFields = {
   chart_drawings: zChartDrawings,
 };
 
-const createRecommendationInput = z.discriminatedUnion("action", [
+/** Structural BUY/SELL gate used by the MCP handler and unit tests. */
+export const createRecommendationInput = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("wait"),
     ...recommendationSharedFields,
@@ -57,6 +58,25 @@ const createRecommendationInput = z.discriminatedUnion("action", [
     take_profit: z.number().positive(),
   }),
 ]);
+
+/** Catalog shape stays a ZodRawShape so MCP SDK handler inference remains intact. */
+const createRecommendationCatalogShape = {
+  symbol: zSymbol,
+  action: z.enum(["buy", "sell", "wait"]),
+  confidence: zConfidence.optional(),
+  rationale: z.string().min(10),
+  factors: z.array(z.string()).min(1).max(8),
+  timeframe: z.string().optional(),
+  pattern_name: z.string().optional(),
+  strategy_version: z.string().min(1).max(64).optional(),
+  chart_drawings: zChartDrawings,
+  strategy_id: zBacktestStrategyId.optional(),
+  backtested_confidence: zConfidence.optional(),
+  market_regime: z.string().min(3).max(64).optional(),
+  entry: z.number().positive().optional(),
+  stop_loss: z.number().positive().optional(),
+  take_profit: z.number().positive().optional(),
+};
 
 export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -161,7 +181,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     domain: "core",
     description:
       "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. side-effect: writes recommendation.",
-    inputSchema: createRecommendationInput,
+    inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
   },
