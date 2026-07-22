@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -15,6 +16,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 import { FloatingWorkspaceSwitcher } from "@/components/workspace/FloatingWorkspaceSwitcher";
+import { useConsoleChatUrl } from "@/hooks/useConsoleChatUrl";
 
 function ChartLoading() {
   const { t } = useLocale();
@@ -79,7 +81,27 @@ export interface ChartLayoutState extends ChartHydrateSnapshot {
   dataSource?: "oanda" | "ea";
 }
 
-export function SmartChartWorkspace({
+export function SmartChartWorkspace(props: {
+  recommendations?: Recommendation[];
+  agentReady?: boolean;
+  /** Guest (not signed in): browse chart only; tools redirect to login. */
+  guest?: boolean;
+  /** Symbol from the URL — takes precedence over last-used. */
+  initialSymbol?: string;
+  /** Per-user chart layout id (TradingView-style /chart/<id> URL). */
+  layoutId?: string;
+  initialInterval?: string;
+  /** Saved drawings/recommendation restored on load (no re-analysis). */
+  initialState?: ChartLayoutState | null;
+}) {
+  return (
+    <Suspense fallback={<ChartLoading />}>
+      <SmartChartWorkspaceInner {...props} />
+    </Suspense>
+  );
+}
+
+function SmartChartWorkspaceInner({
   recommendations = [],
   agentReady = true,
   guest = false,
@@ -498,31 +520,46 @@ export function SmartChartWorkspace({
     handleClearLayers,
   ]);
 
+  const { urlChatId, syncChatUrl } = useConsoleChatUrl({ enabled: chatEnabled });
+
   const chat = useChatSessions({
     enabled: chatEnabled,
     symbol,
     interval,
     locale,
+    urlChatId,
+    syncChatUrl,
   });
 
+  const didInitialUrlSync = useRef(false);
+  const lastUrlChatId = useRef<string | null | undefined>(undefined);
+
   useEffect(() => {
-    const select = (event: Event) => {
-      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (!id) return;
-      chat.selectChat(id);
+    if (!chatEnabled || !chat.ready || !chat.activeChatId || didInitialUrlSync.current) return;
+    didInitialUrlSync.current = true;
+    if (urlChatId !== chat.activeChatId) {
+      syncChatUrl(chat.activeChatId, "replace");
+    }
+  }, [chatEnabled, chat.ready, chat.activeChatId, urlChatId, syncChatUrl]);
+
+  useEffect(() => {
+    if (!chatEnabled || !chat.ready) return;
+    if (lastUrlChatId.current === urlChatId) return;
+    lastUrlChatId.current = urlChatId;
+    if (urlChatId && urlChatId !== chat.activeChatId) {
+      chat.selectChat(urlChatId, { skipUrlSync: true });
       setMobilePane("chat");
-    };
+    }
+  }, [chatEnabled, chat.ready, urlChatId, chat.activeChatId, chat.selectChat]);
+
+  useEffect(() => {
     const create = () => {
       void chat.newChat();
       setMobilePane("chat");
     };
-    window.addEventListener("aichart:select-chat", select);
     window.addEventListener("aichart:new-chat", create);
-    return () => {
-      window.removeEventListener("aichart:select-chat", select);
-      window.removeEventListener("aichart:new-chat", create);
-    };
-  }, [chat.newChat, chat.selectChat]);
+    return () => window.removeEventListener("aichart:new-chat", create);
+  }, [chat.newChat]);
 
   // Live voice conversation. The realtime model is only the speech interface —
   // every final transcript is routed through the SAME agent flow as typed text

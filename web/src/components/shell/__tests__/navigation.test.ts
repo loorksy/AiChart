@@ -74,6 +74,25 @@ test("old /console/chats route redirects to console", () => {
   assert.doesNotMatch(page, /SidebarConversations|ChatHistoryPage/);
 });
 
+test("chat share route redirects to console with chat query", () => {
+  const page = read("app/console/chats/[chatId]/page.tsx");
+  assert.match(page, /chatConsoleHref/);
+  assert.match(page, /isValidChatId/);
+});
+
+test("workspace syncs chat selection to URL", () => {
+  const workspace = read("components/SmartChartWorkspace.tsx");
+  assert.match(workspace, /useConsoleChatUrl/);
+  assert.match(workspace, /syncChatUrl/);
+  assert.match(workspace, /skipUrlSync/);
+});
+
+test("sidebar opens chats via chatConsoleHref", () => {
+  const sidebar = read("components/shell/SidebarConversations.tsx");
+  assert.match(sidebar, /chatConsoleHref/);
+  assert.match(sidebar, /useSearchParams/);
+});
+
 test("workspace uses floating switcher once; no top tab bar", () => {
   const workspace = read("components/SmartChartWorkspace.tsx");
   assert.match(workspace, /import \{ FloatingWorkspaceSwitcher \}/);

@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageSquare, MessageSquarePlus, Search, Trash2 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import type { AgentChatSession } from "@/lib/agent/chatHistory/types";
+import {
+  chatConsoleHref,
+  LS_ACTIVE_CHAT,
+  parseChatIdFromSearchParams,
+} from "@/lib/chatUrl";
 import { cn } from "@/lib/utils";
-
-const LS_ACTIVE = "lonora_active_chat";
 
 function formatUpdated(ts: number, locale: string): string {
   try {
@@ -33,14 +36,31 @@ export function SidebarConversations({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
+  return (
+    <Suspense fallback={null}>
+      <SidebarConversationsInner collapsed={collapsed} onNavigate={onNavigate} />
+    </Suspense>
+  );
+}
+
+function SidebarConversationsInner({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   const { t, dir, locale } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlChatId = parseChatIdFromSearchParams(searchParams);
   const [sessions, setSessions] = useState<AgentChatSession[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
+
+  const activeId = urlChatId;
 
   const refresh = useCallback((signal?: AbortSignal) => {
     return fetch("/api/agent/chats", { signal })
@@ -56,21 +76,10 @@ export function SidebarConversations({
     const ac = new AbortController();
     void refresh(ac.signal);
     const onUpdated = () => void refresh();
-    const onSelect = (event: Event) => {
-      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-      if (id) setActiveId(id);
-    };
     window.addEventListener("aichart:chats-updated", onUpdated);
-    window.addEventListener("aichart:select-chat", onSelect);
-    try {
-      setActiveId(localStorage.getItem(LS_ACTIVE));
-    } catch {
-      /* ignore */
-    }
     return () => {
       ac.abort();
       window.removeEventListener("aichart:chats-updated", onUpdated);
-      window.removeEventListener("aichart:select-chat", onSelect);
     };
   }, [refresh]);
 
@@ -96,22 +105,28 @@ export function SidebarConversations({
   }
 
   function openChat(id: string) {
-    try {
-      localStorage.setItem(LS_ACTIVE, id);
-    } catch {
-      /* ignore */
-    }
-    setActiveId(id);
-    window.dispatchEvent(new CustomEvent("aichart:select-chat", { detail: { id } }));
-    if (pathname !== "/console") router.push("/console");
+    router.push(chatConsoleHref(id), { scroll: false });
     onNavigate?.();
   }
 
   async function removeChat(id: string) {
     const res = await fetch(`/api/agent/chats/${id}`, { method: "DELETE" });
     if (!res.ok) return;
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    if (activeId === id) setActiveId(null);
+    const nextSessions = sessions.filter((s) => s.id !== id);
+    setSessions(nextSessions);
+    if (activeId === id) {
+      const fallback = nextSessions[0];
+      if (fallback) router.replace(chatConsoleHref(fallback.id), { scroll: false });
+      else {
+        router.replace("/console", { scroll: false });
+        window.dispatchEvent(new Event("aichart:new-chat"));
+      }
+      try {
+        localStorage.removeItem(LS_ACTIVE_CHAT);
+      } catch {
+        /* ignore */
+      }
+    }
     window.dispatchEvent(new Event("aichart:chats-updated"));
   }
 

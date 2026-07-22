@@ -7,8 +7,9 @@ import type {
   AgentChatMessageRecord,
   AgentChatSession,
 } from "@/lib/agent/chatHistory/types";
+import { LS_ACTIVE_CHAT } from "@/lib/chatUrl";
 
-const LS_ACTIVE_CHAT = "lonora_active_chat";
+export type ChatUrlSyncMode = "push" | "replace";
 
 /** Map a persisted record to the panel's in-memory message shape. Activity
  *  timelines are intentionally dropped on reload (kept hidden by default). */
@@ -29,7 +30,7 @@ export interface UseChatSessions {
   activeMessages: AgentChatMessage[];
   ready: boolean;
   loadingMessages: boolean;
-  selectChat: (id: string) => void;
+  selectChat: (id: string, opts?: { skipUrlSync?: boolean }) => void;
   newChat: () => Promise<void>;
   persistMessage: (chatId: string, message: AgentPersistPayload) => void;
   refreshSessions: () => Promise<void>;
@@ -46,8 +47,12 @@ export function useChatSessions(opts: {
   interval?: string;
   /** Current UI locale — new chats inherit it (stored on the session). */
   locale?: "ar" | "en";
+  /** Active chat from `/console?chat=` — wins over localStorage on first load. */
+  urlChatId?: string | null;
+  /** Keep the browser URL aligned with the active chat. */
+  syncChatUrl?: (chatId: string, mode: ChatUrlSyncMode) => void;
 }): UseChatSessions {
-  const { enabled, symbol, interval, locale } = opts;
+  const { enabled, symbol, interval, locale, urlChatId, syncChatUrl } = opts;
   const [sessions, setSessions] = useState<AgentChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeMessages, setActiveMessages] = useState<AgentChatMessage[]>([]);
@@ -104,7 +109,10 @@ export function useChatSessions(opts: {
           ? localStorage.getItem(LS_ACTIVE_CHAT)
           : null;
       let active: AgentChatSession | null =
-        list.find((s) => s.id === stored) ?? list[0] ?? null;
+        list.find((s) => s.id === urlChatId) ??
+        list.find((s) => s.id === stored) ??
+        list[0] ??
+        null;
       if (!active) {
         active = await createChat();
         if (active && !cancelled) setSessions([active]);
@@ -133,8 +141,9 @@ export function useChatSessions(opts: {
   }, [activeChatId]);
 
   const selectChat = useCallback(
-    (id: string) => {
+    (id: string, selectOpts?: { skipUrlSync?: boolean }) => {
       if (id === activeChatId) return;
+      if (!selectOpts?.skipUrlSync) syncChatUrl?.(id, "push");
       void (async () => {
         setLoadingMessages(true);
         try {
@@ -147,7 +156,7 @@ export function useChatSessions(opts: {
         }
       })();
     },
-    [activeChatId, fetchMessages],
+    [activeChatId, fetchMessages, syncChatUrl],
   );
 
   const newChat = useCallback(async () => {
@@ -156,10 +165,11 @@ export function useChatSessions(opts: {
     setSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
     setActiveMessages([]);
     setActiveChatId(session.id);
+    syncChatUrl?.(session.id, "push");
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("aichart:chats-updated"));
     }
-  }, [createChat]);
+  }, [createChat, syncChatUrl]);
 
   const persistMessage = useCallback(
     (chatId: string, message: AgentPersistPayload) => {
