@@ -20,6 +20,8 @@ export function isBacktestStrategyId(value: string): value is BacktestStrategyId
 
 function conditionTrees(strategyId: BacktestStrategyId, timeframe: ResearchTimeframe) {
   if (strategyId === "ema_trend_follow_v1") {
+    // Pure EMA cross — RSI confirmation previously discarded many valid crosses
+    // and kept year-long XAUUSD/1h samples just under the 100-trade evidence gate.
     return {
       long_entry_conditions: {
         all: [
@@ -29,13 +31,6 @@ function conditionTrees(strategyId: BacktestStrategyId, timeframe: ResearchTimef
             fast_period: 20,
             slow_period: 50,
             operator: "crosses_above",
-          },
-          {
-            type: "rsi_threshold",
-            timeframe,
-            period: 14,
-            operator: "above",
-            value: 50,
           },
         ],
       },
@@ -47,13 +42,6 @@ function conditionTrees(strategyId: BacktestStrategyId, timeframe: ResearchTimef
             fast_period: 20,
             slow_period: 50,
             operator: "crosses_below",
-          },
-          {
-            type: "rsi_threshold",
-            timeframe,
-            period: 14,
-            operator: "below",
-            value: 50,
           },
         ],
       },
