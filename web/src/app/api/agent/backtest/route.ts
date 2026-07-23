@@ -13,6 +13,7 @@ import {
 import type { ResearchTimeframe } from "@/lib/research";
 import {
   BACKTEST_STRATEGY_IDS,
+  CATALOG_SPEC_REVISION,
   buildBacktestStrategySpec,
 } from "@/lib/strategies/catalog";
 import {
@@ -112,10 +113,17 @@ export async function POST(req: NextRequest) {
       costs,
     });
     const requestId = req.headers.get("x-request-id")?.trim() || randomUUID();
+    // Include catalog revision so engine/catalog fixes never replay an old
+    // succeeded job that still has trade_count=1 under the same date range.
+    const strategyVersion =
+      typeof strategySpec.version_id === "string"
+        ? strategySpec.version_id
+        : `${body.strategy_id}.${CATALOG_SPEC_REVISION}`;
     const idempotencyKey = [
       "strategy-backtest",
       userId,
       body.strategy_id,
+      strategyVersion,
       symbol,
       timeframe,
       fromMs,

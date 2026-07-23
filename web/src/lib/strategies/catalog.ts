@@ -8,6 +8,13 @@ export const BACKTEST_STRATEGY_IDS = [
 
 export type BacktestStrategyId = (typeof BACKTEST_STRATEGY_IDS)[number];
 
+/**
+ * Catalog revision for research specs. Bump when entry/exit/risk policy changes
+ * so idempotent backtest jobs do not reuse stale one-trade results after engine
+ * or catalog fixes. Displayed as `${strategyId}.${CATALOG_SPEC_REVISION}`.
+ */
+export const CATALOG_SPEC_REVISION = "2";
+
 export interface StrategyCostProfile {
   spreadPips: number;
   slippagePips: number;
@@ -116,7 +123,7 @@ export function buildBacktestStrategySpec(input: {
   };
   return {
     strategy_id: strategyId,
-    version_id: `${strategyId}.1`,
+    version_id: `${strategyId}.${CATALOG_SPEC_REVISION}`,
     name: labels[strategyId],
     description:
       "AiChart deterministic candidate with broker-observed execution costs; research-only until statistical and shadow gates pass.",
