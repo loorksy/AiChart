@@ -9,6 +9,7 @@ from app.jobs.manager import JobManager
 from app.models.api import EventsResponse, JobCreateResponse
 from app.models.jobs import ArtifactReference, JobCreateRequest, JobRecord
 from app.security import CallerContext, require_caller
+from app.services.artifacts import JobArtifactService
 
 router = APIRouter(prefix="/internal/research/jobs", tags=["research-jobs"])
 
@@ -91,7 +92,8 @@ async def get_json_artifact_content(
     job = await service.store.get_for_user(job_id, context.user_id)
     if job is None:
         raise ServiceError("JOB_NOT_FOUND", "research job not found", 404)
-    return await service.artifacts.read_json_object(
+    reader = JobArtifactService(service.artifacts, service.store)
+    return await reader.read_json_object(
         user_id=context.user_id,
         source_job_id=job_id,
         artifact_id=artifact_id,
