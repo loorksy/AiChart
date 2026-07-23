@@ -983,7 +983,7 @@
     {
       "name": "run_backtest",
       "version": "1.1.1",
-      "description": "When: before trusting a catalog strategy live. Runs deterministic historical backtest for strategy_id/symbol/timeframe/date_range and records server evidence. read-only research write of evidence only — not trade execution. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "description": "When: before trusting a catalog strategy live. Runs deterministic historical backtest for strategy_id/symbol/timeframe/date_range and records server evidence. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity. Not trade execution. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
       "permission": "research.run",
       "riskClass": "write",
       "surfaces": [

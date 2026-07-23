@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { ApiError, handleError } from "@/lib/api";
-import { getRiskBudget } from "@/lib/execution";
 import { barDurationMs } from "@/lib/intervals";
 import { normalizeSymbol } from "@/lib/markets/symbolMapping";
 import {
@@ -12,11 +11,15 @@ import {
   runForexBacktest,
 } from "@/lib/research";
 import type { ResearchTimeframe } from "@/lib/research";
-import { resolveBrokerForMarket } from "@/lib/store";
 import {
   BACKTEST_STRATEGY_IDS,
   buildBacktestStrategySpec,
 } from "@/lib/strategies/catalog";
+import {
+  DEFAULT_BACKTEST_ACCOUNT_CURRENCY,
+  DEFAULT_BACKTEST_NOTIONAL_CAPITAL,
+  resolveBacktestNotionalCapital,
+} from "@/lib/strategies/backtestCapital";
 import { getStrategyCostEvidence } from "@/lib/strategies/costProfile";
 import { recordPendingStrategyBacktest } from "@/lib/strategies/evidence";
 
@@ -31,6 +34,14 @@ const schema = z
         to: z.string().datetime({ offset: true }),
       })
       .strict(),
+    /** Simulation-only capital for historical sizing. Never live broker equity. */
+    notional_capital: z
+      .number()
+      .finite()
+      .min(100)
+      .max(10_000_000)
+      .optional()
+      .default(DEFAULT_BACKTEST_NOTIONAL_CAPITAL),
   })
   .strict();
 
@@ -58,12 +69,29 @@ export async function POST(req: NextRequest) {
         "This synchronous run exceeds 10,000 bars; use a higher timeframe or a shorter range while the historical artifact exporter processes longer ranges",
       );
     }
-    const broker = await resolveBrokerForMarket(userId, "forex");
-    const budget = await getRiskBudget(userId, broker);
-    if (!budget) {
-      throw new ApiError(409, "Verified broker equity is required for backtest sizing");
+
+    let notionalCapital: number;
+    try {
+      notionalCapital = resolveBacktestNotionalCapital(body.notional_capital);
+    } catch (error) {
+      throw new ApiError(
+        400,
+        error instanceof Error ? error.message : "Invalid notional_capital",
+      );
     }
-    const costs = await getStrategyCostEvidence(userId, symbol);
+
+    let costs;
+    try {
+      costs = await getStrategyCostEvidence(userId, symbol);
+    } catch (error) {
+      throw new ApiError(
+        409,
+        error instanceof Error
+          ? `Backtest cost profile unavailable: ${error.message}. Connect EA live quotes or set BACKTEST_SPREAD_PIPS.`
+          : "Backtest cost profile unavailable",
+      );
+    }
+
     const dataset = await exportAiChartCandleWarehouse({
       symbol,
       timeframe,
@@ -74,7 +102,7 @@ export async function POST(req: NextRequest) {
     if (dataset.bars.length < 200) {
       throw new ApiError(
         409,
-        `Historical warehouse coverage is insufficient (${dataset.bars.length} closed bars; at least 200 required)`,
+        `Historical warehouse coverage is insufficient (${dataset.bars.length} closed bars; at least 200 required). Run candle-warehouse backfill or shorten the date_range.`,
       );
     }
     const strategySpec = buildBacktestStrategySpec({
@@ -92,6 +120,7 @@ export async function POST(req: NextRequest) {
       timeframe,
       fromMs,
       toMs,
+      notionalCapital,
     ].join(":");
     const created = await runForexBacktest(
       { userId, requestId },
@@ -101,8 +130,8 @@ export async function POST(req: NextRequest) {
         strategySpec,
         dataset: { source: "aichart_candle_warehouse", payload: dataset },
         runConfig: {
-          initialCapital: budget.equity,
-          accountCurrency: budget.currency || "USD",
+          initialCapital: notionalCapital,
+          accountCurrency: DEFAULT_BACKTEST_ACCOUNT_CURRENCY,
           seed: 42,
           intrabarPolicy: "worst_case",
           leverage: 30,
@@ -130,8 +159,9 @@ export async function POST(req: NextRequest) {
         },
         candle_count: dataset.bars.length,
         cost_evidence: costs,
-        initial_capital: budget.equity,
-        account_currency: budget.currency,
+        initial_capital: notionalCapital,
+        account_currency: DEFAULT_BACKTEST_ACCOUNT_CURRENCY,
+        capital_source: "notional_simulation",
       },
     });
     return NextResponse.json(
@@ -139,6 +169,7 @@ export async function POST(req: NextRequest) {
         ok: true,
         created: created.created,
         backtest,
+        notional_capital: notionalCapital,
         research_job: {
           job_id: created.job.job_id,
           status: created.job.status,
@@ -151,4 +182,3 @@ export async function POST(req: NextRequest) {
     return handleError(error);
   }
 }
-

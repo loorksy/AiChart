@@ -4,11 +4,17 @@ import { spreadFromBidAsk } from "@/lib/spread";
 import type { StrategyCostProfile } from "./catalog";
 
 export interface StrategyCostEvidence extends StrategyCostProfile {
-  spreadSource: "ea_live_quote" | "configured_broker_profile";
+  spreadSource:
+    | "ea_live_quote"
+    | "configured_broker_profile"
+    | "research_default_profile";
   slippageSource: "configured_broker_profile" | "spread_stress_model";
   commissionSource: "configured_broker_profile" | "not_recorded";
   quoteAgeMs: number | null;
 }
+
+/** Conservative research fallback when no EA quote or BACKTEST_SPREAD_PIPS is set. */
+const RESEARCH_DEFAULT_SPREAD_PIPS = 2;
 
 function configuredNumber(name: string): number | null {
   const value = Number(process.env[name]);
@@ -37,12 +43,13 @@ export async function getStrategyCostEvidence(
       ? spreadFromBidAsk(Number(quote.bid), Number(quote.ask), canonical)
       : null;
   const configuredSpread = configuredNumber("BACKTEST_SPREAD_PIPS");
-  const spreadPips = observed?.spreadPips ?? configuredSpread;
-  if (spreadPips == null || !Number.isFinite(spreadPips)) {
-    throw new Error(
-      "Execution-cost evidence is unavailable: connect EA live quotes or configure BACKTEST_SPREAD_PIPS",
-    );
-  }
+  const spreadPips =
+    observed?.spreadPips ?? configuredSpread ?? RESEARCH_DEFAULT_SPREAD_PIPS;
+  const spreadSource = observed
+    ? "ea_live_quote"
+    : configuredSpread != null
+      ? "configured_broker_profile"
+      : "research_default_profile";
 
   const configuredSlippage = configuredNumber("BACKTEST_SLIPPAGE_PIPS");
   const configuredCommission = configuredNumber(
@@ -54,7 +61,7 @@ export async function getStrategyCostEvidence(
     // is not presented as an observed broker value.
     slippagePips: configuredSlippage ?? spreadPips * 0.5,
     commissionPerLotSideUsd: configuredCommission ?? 0,
-    spreadSource: observed ? "ea_live_quote" : "configured_broker_profile",
+    spreadSource,
     slippageSource:
       configuredSlippage == null
         ? "spread_stress_model"

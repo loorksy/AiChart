@@ -44,6 +44,12 @@
         "to"
       ],
       "additionalProperties": false
+    },
+    "notional_capital": {
+      "description": "Simulation capital for historical position sizing only (default 10000). Not live broker equity.",
+      "type": "number",
+      "minimum": 100,
+      "maximum": 10000000
     }
   },
   "required": [

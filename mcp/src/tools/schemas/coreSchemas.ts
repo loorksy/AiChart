@@ -150,7 +150,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_backtest",
     domain: "core",
     description:
-      "When: before trusting a catalog strategy live. Runs deterministic historical backtest for strategy_id/symbol/timeframe/date_range and records server evidence. read-only research write of evidence only — not trade execution. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "When: before trusting a catalog strategy live. Runs deterministic historical backtest for strategy_id/symbol/timeframe/date_range and records server evidence. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity. Not trade execution. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
     inputSchema: {
       strategy_id: zBacktestStrategyId,
       symbol: zSymbol,
@@ -161,6 +161,15 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
           to: z.string().datetime({ offset: true }),
         })
         .strict(),
+      notional_capital: z
+        .number()
+        .finite()
+        .min(100)
+        .max(10_000_000)
+        .optional()
+        .describe(
+          "Simulation capital for historical position sizing only (default 10000). Not live broker equity.",
+        ),
     },
     annotations: IDEMPOTENT_WRITE,
   },
