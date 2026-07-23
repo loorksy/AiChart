@@ -121,7 +121,7 @@ export function handleError(err: unknown): NextResponse {
     "name" in err &&
     (err as { name?: string }).name === "ResearchServiceError"
   ) {
-    const researchErr = err as {
+    const researchErr = err as unknown as {
       message: string;
       code?: string;
       status?: number;
