@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { maintainCandleSeries } from "@/lib/candles/candleBackfillService";
+import { buildWarehouseCompletenessReport } from "@/lib/candles/candleCompleteness";
 import {
   listWarehouseSeries,
   pruneExpiredCandles,
 } from "@/lib/candles/candleRepository";
 import { verifyCronSecret } from "@/lib/cronAuth";
 import { withLock } from "@/lib/locks";
+import { createLogger } from "@/lib/logger";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import {
   isCanonicalInterval,
@@ -15,6 +17,7 @@ import { getFlag, logAudit, setFlag } from "@/lib/store";
 
 export const maxDuration = 300;
 
+const log = createLogger("cron:candle-warehouse");
 const DEFAULT_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"] as const;
 const LEADER_LOCK_MS = 290_000;
 const SERIES_CURSOR_FLAG = "candle_warehouse_series_cursor";
@@ -50,10 +53,24 @@ function dedupeSeries(
   return [...unique.values()];
 }
 
+/** Read-only coverage report: first/last candle + gap counts per series. */
+export async function GET(req: NextRequest) {
+  if (!verifyCronSecret(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const symbol = req.nextUrl.searchParams.get("symbol") || undefined;
+  const interval = req.nextUrl.searchParams.get("interval") || undefined;
+  const report = await buildWarehouseCompletenessReport({
+    symbols: symbol ? [symbol] : undefined,
+    intervals: interval ? [interval] : undefined,
+    repair: false,
+  });
+  return NextResponse.json({ ok: true, ...report });
+}
+
 /**
  * Incrementally fills years of OANDA history, repairs recent open-market gaps,
- * and applies retention. It is bounded per invocation and resumes from the
- * oldest stored candle on the next cron run.
+ * applies 5-year retention, and emits a completeness report (first/last/gaps).
  */
 export async function POST(req: NextRequest) {
   if (!verifyCronSecret(req)) {
@@ -88,11 +105,34 @@ export async function POST(req: NextRequest) {
       );
     }
     const pruned = await pruneExpiredCandles();
+
+    // Completeness for the series touched this run — repair gaps + clear log.
+    const completeness = await buildWarehouseCompletenessReport({
+      symbols: [...new Set(selected.map((item) => item.symbol))],
+      intervals: [...new Set(selected.map((item) => item.interval))],
+      repair: true,
+      maxSeries: selected.length || 1,
+    });
+    for (const row of completeness.series) {
+      log.info("warehouse coverage", {
+        symbol: row.symbol,
+        interval: row.interval,
+        firstCandleAt: row.firstCandleAt,
+        lastCandleAt: row.lastCandleAt,
+        barCount: row.barCount,
+        depthComplete: row.depthComplete,
+        gapCount: row.gapCount,
+        missingBars: row.missingBars,
+        repairedGaps: row.repairedGaps,
+      });
+    }
+
     return {
       configured: allSeries.length,
       processed: selected.length,
       pruned,
       results,
+      completeness,
     };
   });
 
@@ -102,7 +142,7 @@ export async function POST(req: NextRequest) {
   await logAudit(
     null,
     "cron_candle_warehouse",
-    `processed=${run.result.processed} pruned=${run.result.pruned}`,
+    `processed=${run.result.processed} pruned=${run.result.pruned} gaps=${run.result.completeness.series.reduce((n, s) => n + s.gapCount, 0)}`,
   );
   return NextResponse.json({ ok: true, ...run.result });
 }

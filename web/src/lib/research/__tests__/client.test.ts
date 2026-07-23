@@ -79,10 +79,40 @@ test("normalizes service errors without leaking the internal token", async () =>
       assert.ok(error instanceof ResearchServiceError);
       assert.equal(error.code, "IDEMPOTENCY_CONFLICT");
       assert.equal(error.status, 409);
+      assert.match(error.message, /HTTP 409/);
       assert.doesNotMatch(error.message, /server-secret/);
       return true;
     },
   );
+});
+
+test("surfaces FastAPI detail bodies instead of a generic failure", async () => {
+  enable();
+  globalThis.fetch = async () =>
+    Response.json({ detail: "Not Found" }, { status: 404 });
+  await assert.rejects(
+    getResearchJob({ userId: 1, requestId: "req-detail" }, "rj_missing"),
+    (error: unknown) => {
+      assert.ok(error instanceof ResearchServiceError);
+      assert.match(error.message, /Not Found/);
+      assert.match(error.message, /HTTP 404/);
+      assert.equal(error.code, "RESEARCH_ENDPOINT_NOT_FOUND");
+      return true;
+    },
+  );
+});
+
+test("retries once on transient connection errors then succeeds", async () => {
+  enable();
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) throw new TypeError("fetch failed");
+    return Response.json({ job_id: "rj_retry", status: "succeeded" });
+  };
+  const job = await getResearchJob({ userId: 1, requestId: "req-retry" }, "rj_retry");
+  assert.equal(attempts, 2);
+  assert.equal(job.job_id, "rj_retry");
 });
 
 test("bounded timeout aborts the internal request", async () => {

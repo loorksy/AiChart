@@ -30,9 +30,10 @@ export interface WarehouseCoverage {
 }
 
 export const WAREHOUSE_SOURCE = "oanda";
-const MAX_READ_LIMIT = 10_000;
+export const MAX_READ_LIMIT = 10_000;
 /** ~100 rows × 10 params stays far under SQLite's bind-variable ceiling. */
 const UPSERT_CHUNK = 100;
+const FIVE_YEARS_MS = Math.floor(5 * 365.25 * 24 * 60 * 60 * 1000);
 
 export interface CandleGap {
   fromMs: number;
@@ -207,8 +208,9 @@ export function warehouseKey(symbol: string, interval: string): {
 }
 
 /**
- * Read candles ascending by time. `fromMs`/`toMs` are inclusive bounds; with
- * no bounds the newest `limit` candles are returned.
+ * Read candles. `fromMs`/`toMs` are inclusive bounds.
+ * - Default `order: "desc"` returns the newest `limit` bars (then ascending).
+ * - `order: "asc"` pages oldest-first inside the range (for completeness scans).
  */
 export async function getCandles(params: {
   symbol: string;
@@ -216,9 +218,11 @@ export async function getCandles(params: {
   fromMs?: number;
   toMs?: number;
   limit?: number;
+  order?: "asc" | "desc";
 }): Promise<StoredCandle[]> {
   const { symbol, interval } = warehouseKey(params.symbol, params.interval);
   const limit = Math.min(Math.max(1, params.limit ?? 1000), MAX_READ_LIMIT);
+  const order = params.order === "asc" ? "asc" : "desc";
 
   const conditions = ["symbol = ?", "interval = ?", "source = ?"];
   const args: unknown[] = [symbol, interval, WAREHOUSE_SOURCE];
@@ -236,11 +240,12 @@ export async function getCandles(params: {
     `SELECT time, open, high, low, close, volume, complete
        FROM market_candles
       WHERE ${conditions.join(" AND ")}
-      ORDER BY time DESC
+      ORDER BY time ${order === "asc" ? "ASC" : "DESC"}
       LIMIT ?`,
     args,
   );
-  return rows.map(toStoredCandle).reverse();
+  const candles = rows.map(toStoredCandle);
+  return order === "asc" ? candles : candles.reverse();
 }
 
 /**
@@ -366,22 +371,26 @@ export async function countCandlesInRange(params: {
 }
 
 /**
- * Retention policy (cleanup job): 1m candles kept ~2 years, 5m/15m ~5 years,
- * 1h+ kept indefinitely. Returns deleted row count.
+ * Retention policy: keep a rolling 5-year historical window for every major
+ * timeframe (1m → 1d). Older bars are deleted by the warehouse cron.
  */
 export const CANDLE_RETENTION_MS: Record<string, number> = {
-  "1m": 2 * 365 * 24 * 3600 * 1000,
-  "5m": 5 * 365 * 24 * 3600 * 1000,
-  "15m": 5 * 365 * 24 * 3600 * 1000,
+  "1m": FIVE_YEARS_MS,
+  "5m": FIVE_YEARS_MS,
+  "15m": FIVE_YEARS_MS,
+  "30m": FIVE_YEARS_MS,
+  "1h": FIVE_YEARS_MS,
+  "4h": FIVE_YEARS_MS,
+  "1d": FIVE_YEARS_MS,
 };
 
-export async function pruneExpiredCandles(): Promise<number> {
+export async function pruneExpiredCandles(nowMs = Date.now()): Promise<number> {
   let deleted = 0;
   for (const [interval, retentionMs] of Object.entries(CANDLE_RETENTION_MS)) {
     const res = await execute(
       `DELETE FROM market_candles
         WHERE interval = ? AND source = ? AND time < ?`,
-      [interval, WAREHOUSE_SOURCE, Date.now() - retentionMs],
+      [interval, WAREHOUSE_SOURCE, nowMs - retentionMs],
     );
     deleted += res.changes;
   }

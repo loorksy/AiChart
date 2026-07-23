@@ -114,6 +114,33 @@ export function handleError(err: unknown): NextResponse {
   if (err instanceof ApiError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
+  // Surface Research Service failures with code + HTTP status (never opaque).
+  if (
+    err &&
+    typeof err === "object" &&
+    "name" in err &&
+    (err as { name?: string }).name === "ResearchServiceError"
+  ) {
+    const researchErr = err as {
+      message: string;
+      code?: string;
+      status?: number;
+    };
+    const status =
+      typeof researchErr.status === "number" &&
+      researchErr.status >= 400 &&
+      researchErr.status < 600
+        ? researchErr.status
+        : 502;
+    return NextResponse.json(
+      {
+        error: researchErr.message,
+        code: researchErr.code ?? "RESEARCH_SERVICE_ERROR",
+        status,
+      },
+      { status },
+    );
+  }
   const message = err instanceof Error ? err.message : "حدث خطأ غير متوقع.";
   return NextResponse.json({ error: message }, { status: 500 });
 }

@@ -13,8 +13,8 @@ import { acquireLock, releaseLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { normalizeCanonicalInterval } from "@/lib/markets/intervals";
+import { targetHistoryStartMs } from "./candleHistoryPolicy";
 import {
-  CANDLE_RETENTION_MS,
   detectCandleGaps,
   getCandles,
   getCoverage,
@@ -28,7 +28,7 @@ const log = createLogger("candles:backfill");
 const activeBackfills = new Set<string>();
 /** DB lease TTL — long enough for a 5000-candle OANDA page + write. */
 const LOCK_TTL_MS = 30_000;
-const MAX_BACKFILL = 5000;
+export const MAX_BACKFILL = 5000;
 const HISTORICAL_PAGE_BARS = 4_500;
 
 export interface BackfillParams {
@@ -227,14 +227,11 @@ export async function repairRecentCandleGaps(input: {
   };
 }
 
-function historyStartMs(interval: string, nowMs: number): number {
-  const configuredYears = Number(process.env.CANDLE_HISTORY_YEARS ?? "5");
-  const years = Number.isFinite(configuredYears)
-    ? Math.min(Math.max(configuredYears, 1), 10)
+function historicalPagesPerRun(): number {
+  const configured = Number(process.env.CANDLE_SYNC_MAX_PAGES ?? "5");
+  return Number.isFinite(configured)
+    ? Math.min(Math.max(Math.floor(configured), 1), 20)
     : 5;
-  const desired = years * 365.25 * 24 * 60 * 60 * 1000;
-  const retention = CANDLE_RETENTION_MS[interval];
-  return nowMs - Math.min(desired, retention ?? desired);
 }
 
 /** One bounded maintenance unit suitable for cron/worker execution. */
@@ -253,17 +250,23 @@ export async function maintainCandleSeries(input: {
     limit: initialCoverage.count === 0 ? MAX_BACKFILL : 10,
   });
   const afterLatest = await getCoverage({ symbol, interval });
-  const targetStart = historyStartMs(interval, nowMs);
+  const targetStart = targetHistoryStartMs(interval, nowMs);
   let historicalInserted = 0;
   const errors: string[] = [];
 
-  if (afterLatest.firstTime != null && afterLatest.firstTime > targetStart) {
+  if (
+    afterLatest.firstTime == null ||
+    afterLatest.firstTime > targetStart
+  ) {
     const historical = await syncHistoricalCandles({
       symbol,
       interval,
       fromMs: targetStart,
-      toMs: afterLatest.firstTime - 1,
-      maxPages: 1,
+      toMs:
+        afterLatest.firstTime != null
+          ? afterLatest.firstTime - 1
+          : nowMs,
+      maxPages: historicalPagesPerRun(),
     });
     historicalInserted = historical.inserted;
     errors.push(...historical.errors);

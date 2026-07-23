@@ -3,6 +3,7 @@ import {
   getResearchJob,
   getResearchJsonArtifact,
 } from "@/lib/research/client";
+import { formatResearchFailure } from "@/lib/research/serviceErrors";
 import { runBacktestValidation } from "@/lib/research/jobs";
 import type {
   ResearchArtifactReference,
@@ -454,7 +455,9 @@ export async function refreshStrategyBacktest(
     [backtestId, context.userId],
   );
   if (!row) return null;
-  if (["eligible", "ineligible", "failed"].includes(row.status)) return toEvidence(row);
+  // Terminal success/rejection stays cached. Failed rows may be retried when the
+  // Research job actually succeeded (e.g. after deploying missing artifact APIs).
+  if (["eligible", "ineligible"].includes(row.status)) return toEvidence(row);
 
   try {
     if (row.status === "validating") {
@@ -470,12 +473,27 @@ export async function refreshStrategyBacktest(
       return getStrategyBacktest(context.userId, row.id);
     }
     if (job.status !== "succeeded") {
+      const detail = [
+        job.error_message,
+        job.error_code ? `code=${job.error_code}` : null,
+        `job_status=${job.status}`,
+      ]
+        .filter(Boolean)
+        .join(" | ");
       await updateBacktest(context.userId, row.id, {
         status: "failed",
-        errorMessage: job.error_message ?? `Backtest ${job.status}`,
+        errorMessage: detail || `Backtest ${job.status}`,
         completedAt: Date.now(),
       });
       return getStrategyBacktest(context.userId, row.id);
+    }
+
+    if (row.status === "failed") {
+      await updateBacktest(context.userId, row.id, {
+        status: "running",
+        errorMessage: null,
+        completedAt: null,
+      });
     }
 
     const metricsRef = artifact(job.artifact_refs, "metrics.json");
@@ -566,7 +584,7 @@ export async function refreshStrategyBacktest(
   } catch (error) {
     await updateBacktest(context.userId, row.id, {
       status: "failed",
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: formatResearchFailure(error),
       completedAt: Date.now(),
     });
   }
@@ -770,7 +788,7 @@ export async function getStrategyPerformance(input: {
   if (
     backtest &&
     input.context &&
-    !["eligible", "ineligible", "failed"].includes(backtest.status)
+    !["eligible", "ineligible"].includes(backtest.status)
   ) {
     backtest = await refreshStrategyBacktest(input.context, backtest.id);
   }

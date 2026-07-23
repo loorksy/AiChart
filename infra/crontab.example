@@ -7,7 +7,7 @@
 # Recommendation-tracker sweep every 5 min (no browser / no LLM / no execution).
 */5 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep
 
-# Candle-warehouse maintenance every 10 min (bounded backfill + gap repair).
+# Candle-warehouse: 5y backfill + gap repair + completeness report (GET = report only).
 */10 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/candle-warehouse
 
 # Daily Telegram summary at 20:00 UTC

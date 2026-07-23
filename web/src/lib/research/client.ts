@@ -1,4 +1,9 @@
 import { ResearchServiceError } from "./errors";
+import {
+  isTransientResearchError,
+  researchHttpError,
+  type ServiceErrorBody,
+} from "./serviceErrors";
 import type {
   CreateResearchSwarmInput,
   ResearchArtifactReference,
@@ -15,8 +20,8 @@ if (typeof window !== "undefined") {
   throw new Error("Research Service client is server-only");
 }
 
-interface ServiceErrorBody {
-  error?: { code?: string; message?: string };
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function researchServiceEnabled(): boolean {
@@ -104,7 +109,7 @@ function serviceConfig(): { url: string; token: string } {
   return { url, token };
 }
 
-async function serviceRequest<T>(
+async function serviceRequestOnce<T>(
   context: ResearchCallerContext,
   path: string,
   init: RequestInit = {},
@@ -132,11 +137,7 @@ async function serviceRequest<T>(
     });
     const body = (await response.json().catch(() => ({}))) as T & ServiceErrorBody;
     if (!response.ok) {
-      throw new ResearchServiceError(
-        body.error?.code || "RESEARCH_SERVICE_ERROR",
-        body.error?.message || "Research Service request failed",
-        response.status,
-      );
+      throw researchHttpError(response.status, body, path);
     }
     return body;
   } catch (error) {
@@ -144,17 +145,37 @@ async function serviceRequest<T>(
     if (error instanceof Error && error.name === "AbortError") {
       throw new ResearchServiceError(
         "RESEARCH_SERVICE_TIMEOUT",
-        "Research Service request timed out",
+        `Research Service request timed out after ${clientTimeoutMs()}ms (path=${path})`,
         504,
       );
     }
+    const cause = error instanceof Error ? error.message : String(error);
     throw new ResearchServiceError(
       "RESEARCH_SERVICE_UNAVAILABLE",
-      "Research Service is unavailable",
+      `Research Service connection error: ${cause} (path=${path})`,
       503,
     );
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * One automatic retry for transient timeout / connection failures before the
+ * caller (or strategy job) is marked failed.
+ */
+async function serviceRequest<T>(
+  context: ResearchCallerContext,
+  path: string,
+  init: RequestInit = {},
+  idempotencyKey?: string,
+): Promise<T> {
+  try {
+    return await serviceRequestOnce<T>(context, path, init, idempotencyKey);
+  } catch (error) {
+    if (!isTransientResearchError(error)) throw error;
+    await sleep(250);
+    return serviceRequestOnce<T>(context, path, init, idempotencyKey);
   }
 }
 
