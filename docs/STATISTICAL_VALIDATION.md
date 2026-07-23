@@ -60,6 +60,9 @@ Two stacked defects capped historical trade counts:
    the rest of the sample after N losers (observed as exactly 4 trades with win rate 0). Fix: treat
    the limit as a circuit-breaker *pause* that resets the counter after `consecutive_loss_pause_bars`
    (or a derived pause), so the historical sample can continue.
+3. **Occupancy density:** with `max_open_positions=1`, a long `maximum_holding_bars` capped closed
+   trades near ~98/year on XAUUSD/1h even after re-entry worked. Catalog hold was shortened so a
+   full-year sample can clear the 100-trade evidence gate without lowering `MIN_BACKTEST_TRADES`.
 
 There is no fitting, parameter selection, or optimization in training/validation, and no access to
 out-of-sample data for selection. Window boundaries are observation indexes rather than market
