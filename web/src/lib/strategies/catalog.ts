@@ -164,7 +164,7 @@ export function buildBacktestStrategySpec(input: {
         apply_after_target: null,
       },
       trailing_stop: null,
-      maximum_holding_bars: 40,
+      maximum_holding_bars: 24,
       close_on_opposite_signal: true,
       session_close_exit: false,
     },
