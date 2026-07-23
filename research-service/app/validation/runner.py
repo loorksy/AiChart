@@ -37,7 +37,12 @@ def run_validation_suite(request: ValidationSuiteRequest) -> ValidationSuiteResu
 
     walk_forward_result = None
     if request.walk_forward is not None:
-        walk_forward_result = run_walk_forward(request.equity_values, request.walk_forward)
+        walk_forward_result = run_walk_forward(
+            request.equity_values,
+            request.walk_forward,
+            trade_exit_indices=request.trade_exit_indices,
+            trade_returns=request.trade_returns if request.trade_exit_indices is not None else None,
+        )
 
     readiness_result = None
     if request.readiness_evidence is not None:

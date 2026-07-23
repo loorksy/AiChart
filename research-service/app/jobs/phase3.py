@@ -312,6 +312,30 @@ async def _validation_request(
     trade_returns = [
         _finite_float(row["net_pnl"], "net_pnl") / initial_capital for row in trade_rows
     ]
+    trade_exit_indices: list[int] | None = None
+    if (
+        equity_rows
+        and trade_rows
+        and "timestamp" in equity_rows[0]
+        and "exit_time" in trade_rows[0]
+    ):
+        equity_timestamps = [str(row["timestamp"]) for row in equity_rows]
+        timestamp_to_index = {stamp: index for index, stamp in enumerate(equity_timestamps)}
+        trade_exit_indices = []
+        for row in trade_rows:
+            exit_stamp = str(row["exit_time"])
+            if exit_stamp in timestamp_to_index:
+                trade_exit_indices.append(timestamp_to_index[exit_stamp])
+            else:
+                matched = next(
+                    (
+                        index
+                        for index in range(len(equity_timestamps) - 1, -1, -1)
+                        if equity_timestamps[index] <= exit_stamp
+                    ),
+                    0,
+                )
+                trade_exit_indices.append(matched)
     gross_returns = [
         _finite_float(row["gross_pnl"], "gross_pnl") / initial_capital for row in trade_rows
     ]
@@ -350,6 +374,7 @@ async def _validation_request(
             gross_trade_returns=gross_returns,
             trade_cost_returns=cost_returns,
             equity_values=equity_values,
+            trade_exit_indices=trade_exit_indices,
             monte_carlo=monte_carlo,
             bootstrap=bootstrap,
             walk_forward=walk_forward,
@@ -412,6 +437,10 @@ async def _validation_stages(
             request.equity_values,
             request.walk_forward,
             cancel_check=cancel_check,
+            trade_exit_indices=request.trade_exit_indices,
+            trade_returns=(
+                request.trade_returns if request.trade_exit_indices is not None else None
+            ),
         )
     await reporter.emit(70, "walk_forward", "walk-forward summaries completed")
     await _checkpoint(cancelled)
@@ -548,15 +577,35 @@ async def _checkpoint(cancelled: asyncio.Event) -> None:
 def _walk_forward_config(
     observation_count: int, config: BacktestValidationConfig
 ) -> WalkForwardConfig | None:
+    """Build sequential windows with ~70% training and ~30% out-of-sample per window.
+
+    A tiny validation segment (>=2 points) is retained for schema compatibility; it is
+    not used for parameter fitting (strategy remains fixed).
+    """
     if config.walk_forward_windows is None:
         return None
     window_count = config.walk_forward_windows
     window_size = observation_count // window_count
-    if window_size < 6:
-        raise ValueError("walk-forward windows require at least six equity points each")
-    training = window_size // 3
-    validation = window_size // 3
-    out_of_sample = window_size - training - validation
+    if window_size < 10:
+        raise ValueError("walk-forward windows require at least ten equity points each")
+    training = max(2, int(window_size * 0.70))
+    out_of_sample = max(2, int(window_size * 0.30))
+    validation = window_size - training - out_of_sample
+    if validation < 2:
+        # Steal from the larger of training/OOS to keep a minimal holdout slice.
+        donor = "training" if training >= out_of_sample else "oos"
+        need = 2 - validation
+        if donor == "training" and training - need >= 2:
+            training -= need
+            validation = 2
+        elif out_of_sample - need >= 2:
+            out_of_sample -= need
+            validation = 2
+        else:
+            raise ValueError("walk-forward windows are too small for a 70/30 split")
+    if training + validation + out_of_sample != window_size:
+        # Absorb integer rounding remainder into training.
+        training += window_size - (training + validation + out_of_sample)
     return WalkForwardConfig(
         training_observations=training,
         validation_observations=validation,
@@ -615,6 +664,11 @@ def _readiness_evidence(
         ),
         walk_forward_profitable_fraction=(
             validation.walk_forward.out_of_sample_profitable_fraction
+            if validation.walk_forward is not None
+            else None
+        ),
+        walk_forward_likely_overfit=(
+            validation.walk_forward.likely_overfit
             if validation.walk_forward is not None
             else None
         ),

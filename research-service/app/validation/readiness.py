@@ -110,6 +110,7 @@ def _missing_evidence_warnings(evidence: ReadinessEvidence) -> list[str]:
         "expectancy": evidence.expectancy,
         "cost_stress_profitable_probability": evidence.cost_stress_profitable_probability,
         "walk_forward_profitable_fraction": evidence.walk_forward_profitable_fraction,
+        "walk_forward_likely_overfit": evidence.walk_forward_likely_overfit,
         "bootstrap_expectancy_lower_bound": evidence.bootstrap_expectancy_lower_bound,
         "monte_carlo_probability_of_loss": evidence.monte_carlo_probability_of_loss,
         "intrabar_ambiguity_rate": evidence.intrabar_ambiguity_rate,
@@ -170,6 +171,10 @@ _DEMO_GATES: tuple[Gate, ...] = (
         lambda evidence, policy: evidence.walk_forward_profitable_fraction is not None
         and evidence.walk_forward_profitable_fraction
         >= policy.minimum_walk_forward_profitable_fraction,
+    ),
+    (
+        "walk-forward indicates likely overfitting (train profitable, OOS weak)",
+        lambda evidence, _policy: evidence.walk_forward_likely_overfit is not True,
     ),
     (
         "bootstrap expectancy lower bound is missing or non-positive",

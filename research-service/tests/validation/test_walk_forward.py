@@ -63,3 +63,31 @@ def test_walk_forward_does_not_hide_unused_trailing_data() -> None:
     assert result.observations_used == 6
     assert result.unused_observations == 14
     assert any("unused" in assumption for assumption in result.assumptions)
+
+
+def test_walk_forward_reports_training_and_overfit_heuristic() -> None:
+    equity = [100.0]
+    for index in range(1, 40):
+        if index % 10 < 7:
+            equity.append(equity[-1] * 1.02)
+        else:
+            equity.append(equity[-1] * 0.97)
+    config = WalkForwardConfig(
+        training_observations=6,
+        validation_observations=2,
+        out_of_sample_observations=2,
+        minimum_windows=2,
+        maximum_windows=3,
+    )
+    result = run_walk_forward(
+        equity,
+        config,
+        trade_exit_indices=[2, 5, 8, 12, 15, 18, 22, 25],
+        trade_returns=[0.01, -0.01, 0.02, 0.01, -0.02, 0.015, 0.01, -0.01],
+    )
+    assert result.training_profitable_fraction >= 0.0
+    assert isinstance(result.likely_overfit, bool)
+    assert "out-of-sample" in " ".join(result.assumptions).lower()
+    oos = result.windows[0].out_of_sample
+    assert oos.trade_count is not None
+    assert oos.win_rate is None or 0.0 <= oos.win_rate <= 1.0

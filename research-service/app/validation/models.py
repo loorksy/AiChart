@@ -164,6 +164,10 @@ class WindowSegmentSummary(StrictModel):
     mean_period_return: float = Field(allow_inf_nan=False)
     sharpe: float | None = Field(default=None, allow_inf_nan=False)
     maximum_drawdown: float = Field(ge=0.0, allow_inf_nan=False)
+    # Optional trade-level metrics for the segment (exit bar in [start, end)).
+    trade_count: int | None = Field(default=None, ge=0)
+    win_rate: float | None = Field(default=None, ge=0.0, le=1.0, allow_inf_nan=False)
+    expectancy: float | None = Field(default=None, allow_inf_nan=False)
 
 
 class WalkForwardWindow(StrictModel):
@@ -181,6 +185,9 @@ class WalkForwardResult(StrictModel):
     fixed_strategy_only: bool
     out_of_sample_profitable_fraction: float = Field(ge=0.0, le=1.0, allow_inf_nan=False)
     out_of_sample_mean_return: float = Field(allow_inf_nan=False)
+    training_mean_return: float = Field(default=0.0, allow_inf_nan=False)
+    training_profitable_fraction: float = Field(default=0.0, ge=0.0, le=1.0, allow_inf_nan=False)
+    likely_overfit: bool = False
     assumptions: list[str] = Field(default_factory=list, max_length=20)
 
 
@@ -264,6 +271,7 @@ class ReadinessEvidence(StrictModel):
     walk_forward_profitable_fraction: float | None = Field(
         default=None, ge=0.0, le=1.0, allow_inf_nan=False
     )
+    walk_forward_likely_overfit: bool | None = None
     bootstrap_expectancy_lower_bound: float | None = Field(default=None, allow_inf_nan=False)
     monte_carlo_probability_of_loss: float | None = Field(
         default=None, ge=0.0, le=1.0, allow_inf_nan=False
@@ -332,6 +340,8 @@ class ValidationSuiteRequest(StrictModel):
     gross_trade_returns: list[float] | None = Field(default=None, max_length=MAX_OBSERVATIONS)
     trade_cost_returns: list[float] | None = Field(default=None, max_length=MAX_OBSERVATIONS)
     equity_values: list[float] = Field(default_factory=list, max_length=MAX_OBSERVATIONS)
+    # Exit bar indexes aligned with trade_returns for walk-forward trade metrics.
+    trade_exit_indices: list[int] | None = Field(default=None, max_length=MAX_OBSERVATIONS)
     monte_carlo: list[MonteCarloConfig] = Field(default_factory=list, max_length=3)
     bootstrap: BootstrapConfig | None = None
     walk_forward: WalkForwardConfig | None = None

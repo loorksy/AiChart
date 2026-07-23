@@ -40,9 +40,22 @@ shift, or data-snooping bias.
 ## Walk-forward
 
 The implemented walk-forward procedure partitions an equity sequence into complete, sequential,
-non-overlapping training, validation, and out-of-sample observation blocks. The strategy is fixed
-for all segments. It reports per-segment return, mean period return, optional Sharpe, drawdown,
-profitable out-of-sample fraction, and unused trailing observations.
+non-overlapping training, validation, and out-of-sample observation blocks. Integration jobs size
+each window approximately **70% training / ~30% out-of-sample** (plus a tiny unused-for-fitting
+validation slice for schema compatibility). The strategy is fixed for all segments. It reports
+per-segment return, mean period return, optional Sharpe, drawdown, optional trade-level
+`win_rate` / `expectancy` / `trade_count` (when exit indexes are supplied), profitable out-of-sample
+fraction, training vs OOS summary fields, a descriptive `likely_overfit` heuristic, and unused
+trailing observations.
+
+### Backtest trade-count root cause (ema_trend_follow_v1)
+
+A catalog flag `entry.allow_reentry: false` combined with an engine set `_entered_symbols` that was
+never cleared after a full close capped every multi-bar run at **one trade per symbol**. The intended
+constraint was one *open* position at a time (`max_open_positions`), not one trade for the entire
+sample. Fix: allow re-entry after close in the catalog, and discard the symbol from
+`_entered_symbols` on full close so `allow_reentry: false` means “no stacking,” not “trade once
+forever.”
 
 There is no fitting, parameter selection, or optimization in training/validation, and no access to
 out-of-sample data for selection. Window boundaries are observation indexes rather than market

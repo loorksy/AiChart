@@ -9,6 +9,7 @@ import type {
   ResearchArtifactReference,
   ResearchCallerContext,
 } from "@/lib/research/types";
+import { calibrateBootstrapWinRate } from "./calibration";
 
 export const MIN_BACKTEST_TRADES = 100;
 export const DECAY_SAMPLE_SIZE = 30;
@@ -178,33 +179,26 @@ function toDeployment(row: StrategyDeploymentRow): StrategyDeployment {
 }
 
 /**
- * Beta(1,1)-smoothed observed win rate plus a Wilson 95% interval.
- *
- * This is deliberately not labelled Platt/isotonic calibration: those methods
- * need per-trade prediction scores, which the deterministic strategies do not
- * currently emit.  The interval honestly widens for smaller samples.
+ * Bootstrap (IID) 90% CI on the observed win rate (Wilson fallback for tiny n).
+ * Stored as 0–100 percentages to match deployment / recommendation gates.
  */
 export function calibrateObservedWinRate(
   tradeCount: number,
   rawWinRate: number,
 ): CalibratedConfidence {
-  const n = Math.max(0, Math.floor(tradeCount));
-  const p = Math.max(0, Math.min(1, rawWinRate));
-  if (n === 0) return { confidence: 50, low: 0, high: 100 };
-  const wins = Math.max(0, Math.min(n, Math.round(p * n)));
-  const posteriorMean = (wins + 1) / (n + 2);
-  const z = 1.959963984540054;
-  const denominator = 1 + (z * z) / n;
-  const centre = (wins / n + (z * z) / (2 * n)) / denominator;
-  const margin =
-    (z / denominator) *
-    Math.sqrt((wins / n) * (1 - wins / n) / n + (z * z) / (4 * n * n));
-  const asPercent = (value: number) =>
-    Math.round(Math.max(0, Math.min(1, value)) * 10_000) / 100;
+  const wins = Math.max(0, Math.round(Math.max(0, Math.min(1, rawWinRate)) * tradeCount));
+  const calibrated = calibrateBootstrapWinRate({
+    wins,
+    samples: tradeCount,
+    iterations: 2_000,
+    seed: 42,
+    confidenceLevel: 0.9,
+    minTradesForCalibration: 30,
+  });
   return {
-    confidence: asPercent(posteriorMean),
-    low: asPercent(centre - margin),
-    high: asPercent(centre + margin),
+    confidence: Math.round(calibrated.winRate * 10_000) / 100,
+    low: Math.round(calibrated.confidenceLow * 10_000) / 100,
+    high: Math.round(calibrated.confidenceHigh * 10_000) / 100,
   };
 }
 
@@ -424,19 +418,90 @@ async function finalizeValidation(
     validationJobId,
     readinessRef.artifact_id,
   );
+  const validationRef = artifact(job.artifact_refs, "validation.json");
+  const validationSuite = validationRef
+    ? await getResearchJsonArtifact(
+        context,
+        validationJobId,
+        validationRef.artifact_id,
+      )
+    : null;
+  const walkForward =
+    validationSuite &&
+    typeof validationSuite === "object" &&
+    validationSuite.walk_forward &&
+    typeof validationSuite.walk_forward === "object"
+      ? (validationSuite.walk_forward as Record<string, unknown>)
+      : null;
+  const bootstrap =
+    validationSuite &&
+    typeof validationSuite === "object" &&
+    validationSuite.bootstrap &&
+    typeof validationSuite.bootstrap === "object"
+      ? (validationSuite.bootstrap as Record<string, unknown>)
+      : null;
+
+  // Prefer research-service bootstrap win-rate CI when present.
+  let calibratedUpdate: CalibratedConfidence | null = null;
+  const intervals = Array.isArray(bootstrap?.intervals) ? bootstrap.intervals : [];
+  const winRateInterval = intervals.find(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      (item as { metric?: string }).metric === "win_rate",
+  ) as { lower?: unknown; upper?: unknown; observed?: unknown } | undefined;
+  if (
+    winRateInterval &&
+    typeof winRateInterval.lower === "number" &&
+    typeof winRateInterval.upper === "number"
+  ) {
+    const observed =
+      typeof winRateInterval.observed === "number"
+        ? winRateInterval.observed
+        : row.win_rate ?? 0;
+    calibratedUpdate = {
+      confidence:
+        Math.round(Math.max(0, Math.min(1, observed)) * 10_000) / 100,
+      low: Math.round(Math.max(0, Math.min(1, winRateInterval.lower)) * 10_000) / 100,
+      high: Math.round(Math.max(0, Math.min(1, winRateInterval.upper)) * 10_000) / 100,
+    };
+  }
+
   const readinessStatus = String(readiness.readiness_status ?? "rejected");
+  const failedGates = Array.isArray(readiness.failed_gates)
+    ? readiness.failed_gates.map(String)
+    : [];
+  const overfit =
+    walkForward?.likely_overfit === true ||
+    failedGates.some((gate) => gate.toLowerCase().includes("overfitting"));
   const eligible =
     READY_FOR_SHADOW.has(readinessStatus) &&
-    readiness.live_trading_authorized === false;
+    readiness.live_trading_authorized === false &&
+    !overfit;
   await updateBacktest(context.userId, row.id, {
     status: eligible ? "eligible" : "ineligible",
+    ...(calibratedUpdate ? { calibrated: calibratedUpdate } : {}),
     validation: {
       ...validationState,
       job_status: job.status,
       readiness,
       readiness_artifact_id: readinessRef.artifact_id,
+      walk_forward: walkForward,
+      bootstrap_summary: bootstrap
+        ? {
+            method: bootstrap.method,
+            simulations: bootstrap.simulations,
+            confidence: bootstrap.confidence,
+            observations: bootstrap.observations,
+            intervals: bootstrap.intervals,
+          }
+        : null,
     },
-    errorMessage: eligible ? null : `Readiness gate: ${readinessStatus}`,
+    errorMessage: eligible
+      ? null
+      : overfit
+        ? "Readiness gate: walk-forward overfitting risk"
+        : `Readiness gate: ${readinessStatus}`,
     completedAt: Date.now(),
   });
   if (eligible) {
@@ -510,10 +575,26 @@ export async function refreshStrategyBacktest(
     );
     const tradeCount = Math.max(0, Math.floor(finite(metrics.trade_count) ?? 0));
     const winRate = Math.max(0, Math.min(1, finite(metrics.win_rate) ?? 0));
-    const calibrated = calibrateObservedWinRate(tradeCount, winRate);
+    const wins = Math.max(0, Math.round(winRate * tradeCount));
+    const bootstrapCalibration = calibrateBootstrapWinRate({
+      wins,
+      samples: tradeCount,
+      iterations: 2_000,
+      seed: 42,
+      confidenceLevel: 0.9,
+      minTradesForCalibration: Math.min(MIN_BACKTEST_TRADES, 30),
+    });
+    const calibrated: CalibratedConfidence = {
+      confidence: Math.round(bootstrapCalibration.winRate * 10_000) / 100,
+      low: Math.round(bootstrapCalibration.confidenceLow * 10_000) / 100,
+      high: Math.round(bootstrapCalibration.confidenceHigh * 10_000) / 100,
+    };
     const storedMetrics = {
       ...jsonObject(row.metrics_json),
       metrics,
+      bars_in_dataset: metrics.bars_in_dataset ?? null,
+      bars_evaluated: metrics.bars_evaluated ?? null,
+      confidence_calibration: bootstrapCalibration,
       artifacts: {
         metrics: metricsRef.artifact_id,
         trades: tradesRef.artifact_id,

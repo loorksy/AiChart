@@ -85,6 +85,7 @@ class BacktestEngine:
         self._daily_trades: dict[str, int] = defaultdict(int)
         self._consecutive_losses = 0
         self._cooldown_until_index: dict[str, int] = defaultdict(lambda: -1)
+        # Symbols with an *open* fill when allow_reentry is false (cleared on full close).
         self._entered_symbols: set[str] = set()
 
     async def run(self, cancelled: asyncio.Event | None = None) -> BacktestResult:
@@ -95,6 +96,8 @@ class BacktestEngine:
                 entry_events.append((bar.timestamp, symbol, index, bar))
         entry_events.sort(key=lambda item: (item[0], item[1]))
         last_prices: dict[str, float] = {}
+        bars_in_dataset = len(entry_events)
+        bars_evaluated = 0
         for sequence, (_, symbol, index, bar) in enumerate(entry_events):
             if cancelled and cancelled.is_set():
                 raise JobCancelled
@@ -104,6 +107,7 @@ class BacktestEngine:
                 continue
             if self.config.end_time and bar.timestamp > self.config.end_time:
                 break
+            bars_evaluated += 1
             last_prices[symbol] = float(bar.close)
             self._activate_pending_stops(symbol)
             self._execute_pending_exits(symbol, index, bar)
@@ -183,6 +187,8 @@ class BacktestEngine:
             self.config.initial_capital,
             self.strategy.entry_timeframe,
         )
+        metrics["bars_in_dataset"] = bars_in_dataset
+        metrics["bars_evaluated"] = bars_evaluated
         return BacktestResult(
             strategy_hash=self.strategy.spec_hash,
             dataset_hash=str(self.dataset.dataset_hash),
@@ -472,6 +478,8 @@ class BacktestEngine:
             return False
         if any(order.symbol == symbol and order.side == side for order in pending):
             return False
+        # allow_reentry=false blocks only while a prior fill on this symbol is still open
+        # (cleared in _close_fraction). One-at-a-time sizing stays on max_open_positions.
         if not self.strategy.entry.get("allow_reentry", False) and symbol in self._entered_symbols:
             return False
         date_key = decision_time.date().isoformat()
@@ -726,6 +734,8 @@ class BacktestEngine:
             self._cooldown_until_index[position.symbol],
             position.entry_index + position.bars_held + entry_cooldown,
         )
+        # Position fully closed — allow later signals (subject to cooldown / max_open).
+        self._entered_symbols.discard(position.symbol)
 
     def _apply_carry(self, position: Position, bar: Any) -> None:
         costs = self._execution_costs()

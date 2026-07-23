@@ -21,16 +21,42 @@ async def test_signal_on_n_fills_n_plus_one_and_partial_targets(
         RunConfig(initial_capital=10_000.0, account_currency="USD"),
     )
     result = await engine.run()
-    assert len(result.trades) == 1
+    assert len(result.trades) >= 1
     trade = result.trades[0]
     bars = rising_dataset.bars
     assert trade.entry_time == bars[1].timestamp
     assert trade.net_pnl > 0
     partials = [event for event in result.events if event["type"] == "partial_exit"]
-    assert len(partials) == 1
-    assert result.metrics["trade_count"] == 1
+    assert len(partials) >= 1
+    assert result.metrics["trade_count"] == len(result.trades)
+    assert result.metrics["bars_in_dataset"] == 4
+    assert result.metrics["bars_evaluated"] == 4
     assert result.metrics["spread_cost_total"] == 0
     assert result.final_balance > 10_000
+
+
+async def test_allow_reentry_false_only_blocks_while_position_is_open(
+    simple_strategy_payload, rising_dataset
+) -> None:
+    """After a full close, the same symbol may trade again (one-at-a-time, not one-ever)."""
+    import copy
+
+    from app.strategies import parse_strategy_specification
+
+    payload = copy.deepcopy(simple_strategy_payload)
+    payload["entry"]["allow_reentry"] = False
+    payload["entry"]["cooldown_bars"] = 0
+    payload["risk_controls"]["cooldown_after_loss_bars"] = 0
+    payload["management"]["maximum_holding_bars"] = 1
+    strategy = parse_strategy_specification(payload)
+    result = await BacktestEngine(
+        strategy,
+        rising_dataset,
+        RunConfig(initial_capital=10_000.0, account_currency="USD", seed=7),
+    ).run()
+    assert result.metrics["bars_evaluated"] == 4
+    # Short max-hold forces closes so later bars can open new trades.
+    assert result.metrics["trade_count"] >= 2
 
 
 async def test_engine_is_reproducible(simple_strategy, rising_dataset) -> None:

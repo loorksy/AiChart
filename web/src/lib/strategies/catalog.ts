@@ -147,7 +147,10 @@ export function buildBacktestStrategySpec(input: {
       offset_value: 0,
       valid_for_bars: 1,
       cancel_on_opposite_signal: true,
-      allow_reentry: false,
+      // One open position at a time is enforced by risk_controls.max_open_positions.
+      // allow_reentry must stay true so closed trades can be followed by later signals
+      // across a multi-month/year sample (false previously capped the whole run at 1 trade).
+      allow_reentry: true,
       cooldown_bars: 2,
     },
     stop_loss: {
