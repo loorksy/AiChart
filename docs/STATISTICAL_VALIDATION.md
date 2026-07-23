@@ -50,12 +50,16 @@ trailing observations.
 
 ### Backtest trade-count root cause (ema_trend_follow_v1)
 
-A catalog flag `entry.allow_reentry: false` combined with an engine set `_entered_symbols` that was
-never cleared after a full close capped every multi-bar run at **one trade per symbol**. The intended
-constraint was one *open* position at a time (`max_open_positions`), not one trade for the entire
-sample. Fix: allow re-entry after close in the catalog, and discard the symbol from
-`_entered_symbols` on full close so `allow_reentry: false` means “no stacking,” not “trade once
-forever.”
+Two stacked defects capped historical trade counts:
+
+1. **One-trade-ever:** catalog `entry.allow_reentry: false` plus an engine set `_entered_symbols`
+   that was never cleared after a full close capped every multi-bar run at **one trade per symbol**.
+   The intended constraint was one *open* position at a time (`max_open_positions`). Fix: allow
+   re-entry after close in the catalog, and discard the symbol from `_entered_symbols` on full close.
+2. **Permanent consecutive-loss halt:** `max_consecutive_losses` permanently blocked new entries for
+   the rest of the sample after N losers (observed as exactly 4 trades with win rate 0). Fix: treat
+   the limit as a circuit-breaker *pause* that resets the counter after `consecutive_loss_pause_bars`
+   (or a derived pause), so the historical sample can continue.
 
 There is no fitting, parameter selection, or optimization in training/validation, and no access to
 out-of-sample data for selection. Window boundaries are observation indexes rather than market

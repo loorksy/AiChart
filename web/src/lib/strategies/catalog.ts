@@ -184,9 +184,11 @@ export function buildBacktestStrategySpec(input: {
       max_open_positions: 1,
       max_positions_per_symbol: 1,
       max_daily_loss_percent: 5,
-      max_consecutive_losses: 4,
+      // Circuit-breaker threshold: engine pauses then resumes (never permanently disables).
+      max_consecutive_losses: 8,
+      consecutive_loss_pause_bars: 24,
       cooldown_after_loss_bars: 2,
-      daily_trade_limit: 10,
+      daily_trade_limit: 20,
       minimum_reward_risk: 1,
     },
     costs: {

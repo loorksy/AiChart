@@ -59,6 +59,56 @@ async def test_allow_reentry_false_only_blocks_while_position_is_open(
     assert result.metrics["trade_count"] >= 2
 
 
+async def test_consecutive_loss_limit_pauses_then_resumes(
+    simple_strategy_payload,
+) -> None:
+    """max_consecutive_losses must not permanently disable the rest of the sample."""
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from app.data import CanonicalBar, Timeframe, validate_dataset
+    from app.strategies import parse_strategy_specification
+
+    start = datetime(2026, 1, 5, 8, 0, tzinfo=UTC)
+    # Steadily falling closes so long entries lose when held one bar.
+    values = [1.0100 - 0.001 * index for index in range(12)]
+    bars = tuple(
+        CanonicalBar(
+            timestamp=start + timedelta(minutes=15 * index),
+            open=Decimal(str(price)),
+            high=Decimal(str(price + 0.0002)),
+            low=Decimal(str(price - 0.0004)),
+            close=Decimal(str(price - 0.0003)),
+            volume=Decimal("100"),
+            spread=Decimal("0"),
+            symbol="EURUSD",
+            timeframe=Timeframe.M15,
+            source="fixture",
+            timezone="UTC",
+        )
+        for index, price in enumerate(values)
+    )
+    dataset = validate_dataset(bars).dataset
+
+    payload = copy.deepcopy(simple_strategy_payload)
+    payload["entry"]["allow_reentry"] = True
+    payload["entry"]["cooldown_bars"] = 0
+    payload["risk_controls"]["max_consecutive_losses"] = 1
+    payload["risk_controls"]["consecutive_loss_pause_bars"] = 1
+    payload["risk_controls"]["cooldown_after_loss_bars"] = 0
+    payload["risk_controls"]["max_daily_loss_percent"] = 100.0
+    payload["management"]["maximum_holding_bars"] = 1
+    strategy = parse_strategy_specification(payload)
+    result = await BacktestEngine(
+        strategy,
+        dataset,
+        RunConfig(initial_capital=10_000.0, account_currency="USD", seed=11),
+    ).run()
+    pauses = [event for event in result.events if event["type"] == "risk_consecutive_loss_pause"]
+    assert pauses, "expected at least one consecutive-loss pause event"
+    assert result.metrics["trade_count"] >= 2
+
+
 async def test_engine_is_reproducible(simple_strategy, rising_dataset) -> None:
     config = RunConfig(initial_capital=10_000.0, account_currency="USD", seed=77)
     first = await BacktestEngine(simple_strategy, rising_dataset, config).run()

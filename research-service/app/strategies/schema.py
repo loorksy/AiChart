@@ -410,6 +410,9 @@ class RiskControls(FrozenStrictModel):
     max_positions_per_symbol: int = Field(ge=1, le=100)
     max_daily_loss_percent: float = Field(gt=0, le=100)
     max_consecutive_losses: int = Field(ge=1, le=1_000)
+    # Optional pause length after the consecutive-loss circuit breaker trips.
+    # When omitted, the engine derives a pause from cooldown_after_loss_bars.
+    consecutive_loss_pause_bars: int | None = Field(default=None, ge=0, le=1_000_000)
     cooldown_after_loss_bars: int = Field(ge=0, le=1_000_000)
     daily_trade_limit: int = Field(ge=1, le=100_000)
     minimum_reward_risk: float = Field(gt=0, le=1_000)

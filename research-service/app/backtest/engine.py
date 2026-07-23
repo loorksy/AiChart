@@ -488,8 +488,8 @@ class BacktestEngine:
         daily_loss_limit = _number(risk, "max_daily_loss_percent", default=100.0)
         if self._daily_realized[date_key] <= -self.config.initial_capital * daily_loss_limit / 100:
             return False
-        if self._consecutive_losses >= int(risk.get("max_consecutive_losses", 10_000)):
-            return False
+        # Consecutive-loss circuit breaker is enforced via cooldown pause + counter
+        # reset in _close_fraction (not a permanent halt for the rest of the sample).
         return index >= self._cooldown_until_index[symbol]
 
     def _process_orders(self, symbol: str, index: int, bar: Any) -> None:
@@ -721,18 +721,38 @@ class BacktestEngine:
         self.closed_trades.append(trade)
         date_key = bar.timestamp.date().isoformat()
         self._daily_realized[date_key] += trade.net_pnl
+        close_index = position.entry_index + position.bars_held
         if trade.net_pnl < 0:
             self._consecutive_losses += 1
             cooldown = int(self.strategy.risk.get("cooldown_after_loss_bars", 0))
-            self._cooldown_until_index[position.symbol] = (
-                position.entry_index + position.bars_held + cooldown
-            )
+            max_losses = int(self.strategy.risk.get("max_consecutive_losses", 10_000))
+            # Circuit breaker: pause, then resume. Never freeze the whole backtest sample.
+            if self._consecutive_losses >= max_losses:
+                raw_pause = self.strategy.risk.get("consecutive_loss_pause_bars")
+                pause_bars = (
+                    int(raw_pause)
+                    if raw_pause is not None
+                    else max(cooldown * max_losses, max_losses * 2)
+                )
+                self._cooldown_until_index[position.symbol] = close_index + max(pause_bars, cooldown)
+                self.events.append(
+                    {
+                        "type": "risk_consecutive_loss_pause",
+                        "symbol": position.symbol,
+                        "consecutive_losses": self._consecutive_losses,
+                        "pause_bars": pause_bars,
+                        "resume_index": self._cooldown_until_index[position.symbol],
+                    }
+                )
+                self._consecutive_losses = 0
+            else:
+                self._cooldown_until_index[position.symbol] = close_index + cooldown
         else:
             self._consecutive_losses = 0
         entry_cooldown = int(self.strategy.entry.get("cooldown_bars", 0))
         self._cooldown_until_index[position.symbol] = max(
             self._cooldown_until_index[position.symbol],
-            position.entry_index + position.bars_held + entry_cooldown,
+            close_index + entry_cooldown,
         )
         # Position fully closed — allow later signals (subject to cooldown / max_open).
         self._entered_symbols.discard(position.symbol)
