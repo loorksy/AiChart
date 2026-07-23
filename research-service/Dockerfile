@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir -r requirements.lock \
     && groupadd --system --gid 10001 research \
     && useradd --system --uid 10001 --gid research --home-dir /nonexistent research \
     && mkdir -p /var/lib/aichart-research/work /var/lib/aichart-research/artifacts \
-    && chown -R research:research /var/lib/aichart-research
+    && chown -R research:research /var/lib/aichart-research \
+    && chmod -R a+rX /app
 
 USER 10001:10001
 EXPOSE 8090
