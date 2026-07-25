@@ -64,6 +64,26 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "capture_multi_timeframe_snapshot",
+      "version": "1.1.1",
+      "description": "When: before every recommendation. Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels). Use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). A timeframe that fails to render is reported in missing_timeframes while the rest still return. Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
+      "permission": "chart.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 45000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/capture_multi_timeframe_snapshot.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "clear_chart_drawings",
       "version": "1.1.1",
       "description": "When: clear all user chart drawings and recommendation. Does not touch candles or manual TradingView drawings.",
@@ -147,7 +167,7 @@
     {
       "name": "create_recommendation",
       "version": "1.1.1",
-      "description": "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. side-effect: writes recommendation.",
+      "description": "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
       "permission": "trade.recommend",
       "riskClass": "recommendation",
       "surfaces": [
@@ -557,7 +577,7 @@
     {
       "name": "get_multi_timeframe_snapshot",
       "version": "1.1.1",
-      "description": "When: multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "description": "When: numeric-only multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). For a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [

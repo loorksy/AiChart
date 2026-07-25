@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string"
+    },
+    "timeframes": {
+      "description": "Timeframes to capture, ordered fine → coarse. Default [\"15m\",\"1h\",\"4h\",\"1D\"].",
+      "maxItems": 12,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 16
+      }
+    },
+    "max_images": {
+      "description": "Image budget (default 4) — extra timeframes are reported, not captured.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 6
+    },
+    "market": {
+      "type": "string",
+      "const": "forex"
+    },
+    "include_numeric_context": {
+      "description": "Attach per-timeframe numbers (default true). Turn off only for a pure visual look.",
+      "type": "boolean"
+    },
+    "inline_base64": {
+      "description": "Also repeat raw base64 inside the JSON block (default false — images already arrive as inline image blocks).",
+      "type": "boolean"
+    },
+    "fresh": {
+      "description": "Bypass the ~12s snapshot cache and force a fresh render.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "symbol"
+  ],
+  "additionalProperties": false
+}

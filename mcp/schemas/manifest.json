@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-22T23:59:05.168Z",
-  "toolCount": 53,
+  "exportedAt": "2026-07-24T23:59:40.727Z",
+  "toolCount": 54,
   "tools": [
     {
       "name": "get_account_overview",
@@ -86,7 +86,7 @@
     {
       "name": "create_recommendation",
       "domain": "core",
-      "description": "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. side-effect: writes recommendation.",
+      "description": "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -194,6 +194,16 @@
       }
     },
     {
+      "name": "capture_multi_timeframe_snapshot",
+      "domain": "core",
+      "description": "When: before every recommendation. Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels). Use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). A timeframe that fails to render is reported in missing_timeframes while the rest still return. Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
       "name": "get_recommendation_chart",
       "domain": "core",
       "description": "When: after create_recommendation. PNG chart for recommendation. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for live chart. read-only.",
@@ -246,7 +256,7 @@
     {
       "name": "get_multi_timeframe_snapshot",
       "domain": "market",
-      "description": "When: multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "description": "When: numeric-only multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). For a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

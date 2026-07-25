@@ -13,6 +13,27 @@ import {
   zTradeId,
 } from "./shapes.js";
 
+/**
+ * Audit-only visual review. Optional on purpose: recommendations that predate
+ * multi-timeframe chart review must keep validating unchanged. `true` maps to
+ * confirmed and `false` to contradicted — omit the field entirely when no
+ * charts were reviewed.
+ */
+const zVisualConfirmation = z
+  .union([z.enum(["confirmed", "contradicted", "not_checked"]), z.boolean()])
+  .optional()
+  .describe(
+    "Did the chart images agree with the numbers? confirmed | contradicted | not_checked. Contradicted lowers the DISPLAYED confidence; it never changes backtest evidence.",
+  );
+
+const zTimeframesReviewed = z
+  .array(z.string().min(1).max(16))
+  .max(8)
+  .optional()
+  .describe(
+    "Timeframes actually reviewed visually before this call (e.g. [\"15m\",\"1h\",\"4h\",\"1D\"]). Audit trail only.",
+  );
+
 const recommendationSharedFields = {
   symbol: zSymbol,
   // Optional for BUY/SELL — server replaces with calibrated backtest evidence.
@@ -23,6 +44,8 @@ const recommendationSharedFields = {
   pattern_name: z.string().optional(),
   strategy_version: z.string().min(1).max(64).optional(),
   chart_drawings: zChartDrawings,
+  visual_confirmation: zVisualConfirmation,
+  timeframes_reviewed: zTimeframesReviewed,
 };
 
 /** Structural BUY/SELL gate used by the MCP handler and unit tests. */
@@ -76,6 +99,8 @@ const createRecommendationCatalogShape = {
   entry: z.number().positive().optional(),
   stop_loss: z.number().positive().optional(),
   take_profit: z.number().positive().optional(),
+  visual_confirmation: zVisualConfirmation,
+  timeframes_reviewed: zTimeframesReviewed,
 };
 
 export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -189,7 +214,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. side-effect: writes recommendation.",
+      "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
@@ -315,6 +340,45 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       market: zMarket,
       pattern_name: z.string().optional(),
       chart_drawings: zChartDrawings,
+    },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "capture_multi_timeframe_snapshot",
+    domain: "core",
+    description:
+      "When: before every recommendation. Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels). Use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). A timeframe that fails to render is reported in missing_timeframes while the rest still return. Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
+    inputSchema: {
+      symbol: zSymbol,
+      timeframes: z
+        .array(z.string().min(1).max(16))
+        .max(12)
+        .optional()
+        .describe(
+          "Timeframes to capture, ordered fine → coarse. Default [\"15m\",\"1h\",\"4h\",\"1D\"].",
+        ),
+      max_images: z
+        .number()
+        .int()
+        .min(1)
+        .max(6)
+        .optional()
+        .describe("Image budget (default 4) — extra timeframes are reported, not captured."),
+      market: zMarket,
+      include_numeric_context: z
+        .boolean()
+        .optional()
+        .describe("Attach per-timeframe numbers (default true). Turn off only for a pure visual look."),
+      inline_base64: z
+        .boolean()
+        .optional()
+        .describe(
+          "Also repeat raw base64 inside the JSON block (default false — images already arrive as inline image blocks).",
+        ),
+      fresh: z
+        .boolean()
+        .optional()
+        .describe("Bypass the ~12s snapshot cache and force a fresh render."),
     },
     annotations: READ_ONLY,
   },

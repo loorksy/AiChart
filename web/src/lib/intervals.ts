@@ -65,6 +65,56 @@ export function normalizeInterval(interval: string): string {
   return "1h";
 }
 
+const UNIT_SUFFIX: Record<string, string> = {
+  m: "m",
+  min: "m",
+  mins: "m",
+  minute: "m",
+  minutes: "m",
+  h: "h",
+  hr: "h",
+  hour: "h",
+  hours: "h",
+  d: "d",
+  day: "d",
+  days: "d",
+  w: "w",
+  wk: "w",
+  week: "w",
+  weeks: "w",
+  mo: "M",
+  mon: "M",
+  month: "M",
+  months: "M",
+};
+
+/**
+ * Canonicalises an agent-supplied timeframe label ("1D", "4H", "15 min") to a
+ * supported interval, or null when the platform cannot chart it.
+ *
+ * Unlike {@link normalizeInterval} this never falls back to "1h": a caller that
+ * asked for four timeframes must learn which one was unavailable instead of
+ * silently receiving the same hourly chart several times.
+ *
+ * Case note: the canonical set contains both `1m` (minute) and `1M` (month), so
+ * an exact match is honoured first and only unmatched labels are case-folded.
+ */
+export function canonicalizeInterval(interval: string): string | null {
+  const raw = interval.trim();
+  if (!raw) return null;
+  if (INTERVAL_SET.has(raw) || raw in DERIVED_INTERVALS) return raw;
+
+  const match = /^(\d{1,4})\s*([a-zA-Z]{1,6})$/.exec(raw);
+  if (!match) return null;
+  const suffix = UNIT_SUFFIX[match[2]!.toLowerCase()];
+  if (!suffix) return null;
+
+  const candidate = `${Number(match[1])}${suffix}`;
+  return INTERVAL_SET.has(candidate) || candidate in DERIVED_INTERVALS
+    ? candidate
+    : null;
+}
+
 /** Seconds per candle for forecast path time mapping + duration-based tiering. */
 export function barDurationSec(interval: string): number {
   const map: Record<string, number> = {
