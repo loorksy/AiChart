@@ -78,8 +78,13 @@ services:
       - research-artifacts:/var/lib/aichart-research/artifacts
       - research-work:/var/lib/aichart-research/work
     read_only: true
+    # 256m, not 16m: sqlite spills sort/journal temp files to /tmp during
+    # large transactions, and a single 50k-bar dataset payload is ~6 MiB. At
+    # 16m the job store hit "database or disk is full" mid-write — the service
+    # wedged at 100% CPU retrying, then crash-looped on startup recovery.
+    # tmpfs only charges memory for bytes actually used.
     tmpfs:
-      - /tmp:size=16m,noexec,nosuid
+      - /tmp:size=256m,noexec,nosuid
     cap_drop:
       - ALL
     security_opt:
