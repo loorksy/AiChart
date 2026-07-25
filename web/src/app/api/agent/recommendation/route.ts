@@ -21,7 +21,11 @@ import {
   searchSimilarLessons,
   formatLessonsForPrompt,
 } from "@/lib/tradeMemory";
-import { normalizeIntentSymbol } from "@/lib/markets/resolve";
+import {
+  canonicalStrategySymbol,
+  canonicalStrategyTimeframe,
+  storageStrategyTimeframe,
+} from "@/lib/strategies/matchingKeys";
 import type { Recommendation } from "@/lib/types";
 import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import {
@@ -111,13 +115,26 @@ export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
-    const normalizedSymbol = normalizeIntentSymbol(body.symbol, DEFAULT_MARKET);
+    // Matching keys are CANONICAL (XAUUSD, 1h) so deployment lookups, decay
+    // tracking, and execution eligibility all join. Broker-suffixed raw
+    // symbols stay in body.symbol for the MT5 capture path below.
+    const normalizedSymbol = canonicalStrategySymbol(body.symbol);
+    const storedTimeframe = storageStrategyTimeframe(body.timeframe);
 
     let deployment: Awaited<ReturnType<typeof requireRecommendationEvidence>> | null = null;
     let backtest: Awaited<ReturnType<typeof getStrategyBacktest>> = null;
     if (body.action !== "wait") {
       if (!body.strategy_id || !isBacktestStrategyId(body.strategy_id)) {
         throw new ApiError(409, "strategy_id is not present in the backtested strategy catalog");
+      }
+      // BUY/SELL must land on a research timeframe or no deployment can ever
+      // match — reject early with an actionable message instead of a silent
+      // "no validated backtest" downstream.
+      if (!canonicalStrategyTimeframe(body.timeframe)) {
+        throw new ApiError(
+          400,
+          `timeframe "${body.timeframe}" is not a research timeframe (use one of: 1m, 5m, 15m, 30m, 1h, 4h, 1d)`,
+        );
       }
       try {
         deployment = await requireRecommendationEvidence({
@@ -178,7 +195,7 @@ export async function POST(req: NextRequest) {
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,
       take_profit: body.take_profit ?? null,
-      timeframe: body.timeframe,
+      timeframe: storedTimeframe,
       rationale,
       factors: body.factors,
       pattern_name: body.pattern_name ?? null,

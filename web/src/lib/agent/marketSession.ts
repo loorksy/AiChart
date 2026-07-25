@@ -1,39 +1,30 @@
 /**
- * Forex/metals market-session check. The spot FX week runs from Sunday ~22:00
- * UTC to Friday ~22:00 UTC. This is a coarse gate used to (a) accept stale
- * candles on weekends and (b) block execution when the market is closed. It is
- * intentionally conservative and does NOT model exchange holidays.
+ * Forex/metals market-session check — thin delegate over the trading calendar
+ * (web/src/lib/markets/tradingCalendar.ts), which models the week in New York
+ * WALL time (DST-correct) and knows the metals daily maintenance break.
+ *
+ * Exported names are preserved so existing call sites keep compiling; the
+ * behavioural change is that `isForexMarketOpen` finally honours its symbol
+ * argument. Exchange holidays remain unmodelled by design.
  */
+import { getSessionStatus, isMarketOpenAt } from "@/lib/markets/tradingCalendar";
+
 export interface MarketSessionStatus {
   isOpen: boolean;
   reason: string;
   nextOpenTime?: string;
 }
 
-/** UTC open/close boundaries of the FX week (hours). */
-const FRIDAY_CLOSE_UTC_HOUR = 22;
-const SUNDAY_OPEN_UTC_HOUR = 22;
-
+/**
+ * Session status for the generic FX week. Callers that know their symbol
+ * should prefer `getSessionStatus(symbol)` from the trading calendar; this
+ * signature is kept for legacy call sites that have no symbol in scope.
+ */
 export function getForexSessionStatus(now: Date = new Date()): MarketSessionStatus {
-  const day = now.getUTCDay(); // 0 = Sun … 6 = Sat
-  const hour = now.getUTCHours();
-
-  // Saturday: always closed.
-  if (day === 6) {
-    return { isOpen: false, reason: "عطلة نهاية الأسبوع — السوق مغلق (السبت)." };
-  }
-  // Friday after close.
-  if (day === 5 && hour >= FRIDAY_CLOSE_UTC_HOUR) {
-    return { isOpen: false, reason: "أغلق السوق ليوم الجمعة." };
-  }
-  // Sunday before open.
-  if (day === 0 && hour < SUNDAY_OPEN_UTC_HOUR) {
-    return { isOpen: false, reason: "لم يفتح السوق بعد (الأحد)." };
-  }
-  return { isOpen: true, reason: "السوق مفتوح." };
+  return getSessionStatus("EURUSD", now);
 }
 
-/** Boolean convenience wrapper. Non-FX symbols default to open (24/7 feeds). */
-export function isForexMarketOpen(_symbol: string, now: Date = new Date()): boolean {
-  return getForexSessionStatus(now).isOpen;
+/** Symbol-aware open check (metals honour their daily maintenance break). */
+export function isForexMarketOpen(symbol: string, now: Date = new Date()): boolean {
+  return isMarketOpenAt(symbol, now.getTime());
 }

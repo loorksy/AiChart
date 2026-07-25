@@ -4,11 +4,10 @@
   "properties": {
     "strategy_id": {
       "type": "string",
-      "enum": [
-        "ema_trend_follow_v1",
-        "rsi_mean_reversion_v1",
-        "range_breakout_v1"
-      ]
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9_]+_v\\d+$",
+      "description": "Server-validated catalog strategy id (e.g. ema_trend_follow_v1). Discover valid ids and their evidence with get_strategy_performance; unknown ids are rejected server-side."
     },
     "symbol": {
       "type": "string"

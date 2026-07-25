@@ -1370,6 +1370,29 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS binance_accounts CASCADE`).catch(() => {});
 
+  // Canonical matching keys (idempotent): strategy_deployments store XAUUSD/1h
+  // while legacy recommendations kept broker suffixes (XAUUSDM) and timeframe
+  // aliases (H1/60/1D) — those rows never matched deployment lookups, decay
+  // tracking, or the execution-eligibility join. Forex symbols are 6 chars.
+  await client.query(`
+    UPDATE recommendations
+       SET symbol = UPPER(SUBSTRING(symbol FROM 1 FOR 6))
+     WHERE market = 'forex' AND LENGTH(symbol) > 6
+  `).catch(() => {});
+  await client.query(`
+    UPDATE recommendations SET timeframe = CASE
+      WHEN timeframe IN ('M1', '1') THEN '1m'
+      WHEN timeframe IN ('M5', '5') THEN '5m'
+      WHEN timeframe IN ('M15', '15') THEN '15m'
+      WHEN timeframe IN ('M30', '30') THEN '30m'
+      WHEN timeframe IN ('H1', '1H', '60') THEN '1h'
+      WHEN timeframe IN ('H4', '4H', '240') THEN '4h'
+      WHEN timeframe IN ('D1', '1D', 'D', '1440') THEN '1d'
+      ELSE timeframe
+    END
+    WHERE timeframe IN ('M1','1','M5','5','M15','15','M30','30','H1','1H','60','H4','4H','240','D1','1D','D','1440')
+  `).catch(() => {});
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS deep_analysis_runs (
       analysis_id            TEXT PRIMARY KEY,

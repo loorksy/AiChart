@@ -2,21 +2,22 @@
  * Spread computation for forex pairs and metals.
  */
 
-/** Standard pip size for well-known forex majors and minors. */
+/**
+ * Standard pip size per instrument CLASS — static, never price-dependent.
+ *
+ * Values match the research-service SYMBOL_REGISTRY (gold pip_size 0.01) so
+ * web-side cost evidence and the Python backtest engine agree. The previous
+ * gold branch flipped 0.01 ↔ 0.0001 at a $1000 mid-price, producing a 100×
+ * different spreadPips for the same quote depending on the day's price.
+ */
 export function pipSizeForSymbol(symbol: string, midPrice?: number): number {
+  // Signature kept for existing callers; the price no longer changes the pip.
+  void midPrice;
   const s = symbol.toUpperCase().replace(/M$/, "");
 
   if (s.includes("JPY")) return 0.01;
-
-  for (const root of ["XAU", "XAG"]) {
-    if (s.startsWith(root)) {
-      if (midPrice && midPrice > 0) {
-        if (midPrice >= 1000) return 0.01;
-        return 0.0001;
-      }
-      return 0.01;
-    }
-  }
+  if (s.startsWith("XAU")) return 0.01;
+  if (s.startsWith("XAG")) return 0.001;
 
   return 0.0001;
 }

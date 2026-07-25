@@ -1461,6 +1461,23 @@ function migrate(db: Database.Database) {
     DROP TABLE IF EXISTS binance_accounts;
   `);
 
+  // Canonical matching keys (idempotent): strategy_deployments store XAUUSD/1h
+  // while legacy recommendations kept broker suffixes (XAUUSDM) and timeframe
+  // aliases (H1/60/1D) — those rows never matched deployment lookups, decay
+  // tracking, or the execution-eligibility join. Forex symbols are 6 chars.
+  db.exec(`
+    UPDATE recommendations
+       SET symbol = UPPER(SUBSTR(symbol, 1, 6))
+     WHERE market = 'forex' AND LENGTH(symbol) > 6;
+    UPDATE recommendations SET timeframe = '1m'  WHERE timeframe IN ('M1', '1');
+    UPDATE recommendations SET timeframe = '5m'  WHERE timeframe IN ('M5', '5');
+    UPDATE recommendations SET timeframe = '15m' WHERE timeframe IN ('M15', '15');
+    UPDATE recommendations SET timeframe = '30m' WHERE timeframe IN ('M30', '30');
+    UPDATE recommendations SET timeframe = '1h'  WHERE timeframe IN ('H1', '1H', '60');
+    UPDATE recommendations SET timeframe = '4h'  WHERE timeframe IN ('H4', '4H', '240');
+    UPDATE recommendations SET timeframe = '1d'  WHERE timeframe IN ('D1', '1D', 'D', '1440');
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_entitlements (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

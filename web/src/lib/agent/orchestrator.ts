@@ -411,6 +411,9 @@ export async function runUnifiedChartAgent(
     };
   }
 
+  // Gap policy v1.2: only CATASTROPHIC data loss stops the analysis (the
+  // series is unusable). Significant gaps become soft evidence below — the
+  // model stays the sole BUY/SELL/WAIT authority and weighs them itself.
   if (market.dataQuality.coverage.status === "gapped") {
     trackedCtx.emitActivity({
       type: "data",
@@ -430,8 +433,8 @@ export async function runUnifiedChartAgent(
       riskWarnings: [
         bilingual(
           locale,
-          "أُوقف التحليل لأن سلسلة الأسعار تحتوي فجوات مهمة أثناء فتح السوق.",
-          "Analysis was stopped because the price series contains significant open-market gaps.",
+          "أُوقف التحليل لأن سلسلة الأسعار تفتقد جزءاً كبيراً من البيانات — بدأ الإصلاح التلقائي.",
+          "Analysis was stopped because a large part of the price series is missing — automatic repair has started.",
         ),
       ],
       activityEvents: collected,
@@ -446,12 +449,30 @@ export async function runUnifiedChartAgent(
               dailyCandleCount: market.dailyCandles.length,
               selectedLevelsCount: 0,
               rejectedLevelsCount: 0,
-              drawingPlanReason: "significant open-market candle gaps",
+              drawingPlanReason: "catastrophic open-market candle gaps",
               dataSource: chartContext?.dataSource ?? "oanda",
               marketSync: market.sync,
             }
           : undefined,
     };
+  }
+
+  // Significant (non-blocking) gaps: surface as a warning event + evidence.
+  const significantGapWarning =
+    market.dataQuality.coverage.gapSeverity === "significant"
+      ? bilingual(
+          locale,
+          "توجد فجوات بيانات ملحوظة في بعض الفريمات — بدأ الإصلاح التلقائي؛ اعتُبرت الأدلة المتأثرة أضعف.",
+          "Noticeable data gaps exist on some timeframes — automatic repair started; affected evidence is weighted lower.",
+        )
+      : null;
+  if (significantGapWarning) {
+    trackedCtx.emitActivity({
+      type: "data",
+      status: "warning",
+      message: market.dataQuality.coverage.summaryAr,
+      metadata: { ...market.dataQuality.coverage },
+    });
   }
 
   // Structure / liquidity / S&D / MTF run concurrently; each degrades to null.
@@ -565,6 +586,14 @@ export async function runUnifiedChartAgent(
     );
   }
   const finalDecision = synth.result;
+  // Attach the significant-gap warning once — every downstream return path
+  // (guard blocks, confirmation, final result) reuses finalDecision.riskWarnings.
+  if (significantGapWarning) {
+    finalDecision.riskWarnings = [
+      significantGapWarning,
+      ...finalDecision.riskWarnings,
+    ];
+  }
   const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
 
   // Build the drawing plan: the single source of truth for what may be drawn.
@@ -1204,6 +1233,8 @@ async function trackStoredRecommendation(input: {
     };
   }
 
+  // Gap policy v1.2: only catastrophic loss blocks the status update;
+  // significant gaps surface as a warning event and tracking continues.
   if (market.dataQuality.coverage.status === "gapped") {
     ctx.emitActivity({
       type: "data",
@@ -1223,8 +1254,8 @@ async function trackStoredRecommendation(input: {
       riskWarnings: [
         bilingual(
           locale,
-          "أُوقف تحديث التوصية لأن سلسلة الأسعار تحتوي فجوات مهمة أثناء فتح السوق.",
-          "Recommendation status was not updated because the price series contains significant open-market gaps.",
+          "أُوقف تحديث التوصية لأن سلسلة الأسعار تفتقد جزءاً كبيراً من البيانات — بدأ الإصلاح التلقائي.",
+          "Recommendation status was not updated because a large part of the price series is missing — automatic repair has started.",
         ),
       ],
       activityEvents: collected,
@@ -1236,6 +1267,14 @@ async function trackStoredRecommendation(input: {
         interval: rec.interval,
       },
     };
+  }
+  if (market.dataQuality.coverage.gapSeverity === "significant") {
+    ctx.emitActivity({
+      type: "data",
+      status: "warning",
+      message: market.dataQuality.coverage.summaryAr,
+      metadata: { ...market.dataQuality.coverage },
+    });
   }
 
   const evaluated = evaluateRecommendationStatus({ recommendation: rec, market });

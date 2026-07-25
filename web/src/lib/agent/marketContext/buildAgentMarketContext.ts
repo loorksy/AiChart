@@ -44,6 +44,31 @@ import {
   evaluateMarketSync,
   type MarketSyncStatus,
 } from "./marketSyncGuard";
+import { enqueue } from "@/lib/queue";
+
+/**
+ * Fire-and-forget gap repair with a per-series cooldown so a chatty session
+ * cannot stampede OANDA. The queue's idempotency key (bucketed to the same
+ * window) dedupes across processes when Redis is available.
+ */
+const GAP_REPAIR_COOLDOWN_MS = 10 * 60 * 1000;
+const gapRepairLastFired = new Map<string, number>();
+
+function triggerGapRepair(symbol: string, interval: string): void {
+  const key = `${symbol}:${interval}`;
+  const now = Date.now();
+  const last = gapRepairLastFired.get(key) ?? 0;
+  if (now - last < GAP_REPAIR_COOLDOWN_MS) return;
+  gapRepairLastFired.set(key, now);
+  const bucket = Math.floor(now / GAP_REPAIR_COOLDOWN_MS);
+  void enqueue(
+    "candle_gap_repair",
+    { symbol, interval },
+    { idempotencyKey: `repair:${key}:${bucket}` },
+  ).catch(() => {
+    // Repair is best-effort; the cron sweep remains the backstop.
+  });
+}
 
 export interface DataFreshness {
   lastCandleTime: number | null;
@@ -239,6 +264,14 @@ export async function buildAgentMarketContext(input: {
       daily: dailyRefill,
     },
   });
+
+  // Auto-repair: gaps at warning level or worse enqueue a bounded repair for
+  // the affected series only. Never blocks — analysis proceeds below.
+  for (const frame of coverage.timeframes) {
+    if (frame.gapSeverity === "significant" || frame.gapSeverity === "catastrophic") {
+      triggerGapRepair(symbol, frame.interval);
+    }
+  }
 
   const currentPrice = currentTfCandles.at(-1)?.close ?? null;
   const lastCandleTime = currentTfCandles.at(-1)?.time ?? null;
