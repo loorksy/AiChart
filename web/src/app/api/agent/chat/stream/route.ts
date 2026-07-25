@@ -407,6 +407,10 @@ export async function POST(req: NextRequest) {
               recalledMemoryCount: conversationContext?.recalledMemoryIds.length ?? 0,
             })
           : null;
+        // The ticker is dependent work: it must be CANCELLABLE so the burst
+        // slot is never released while its model call is still in flight
+        // (RELIABILITY_PLAN.md item 2).
+        const tickerAbort = new AbortController();
         const tickerTask = (async () => {
           try {
             const plan = await generateTickerPlan({
@@ -418,6 +422,7 @@ export async function POST(req: NextRequest) {
               newsProviderConfigured: newsProviderConfigured(),
               canUseMarketTools: true,
               canUseNewsTools: newsProviderConfigured(),
+              signal: tickerAbort.signal,
             });
             if (done || req.signal.aborted) return;
             tickerDebug.tickerGenerated = true;
@@ -605,6 +610,15 @@ export async function POST(req: NextRequest) {
           }
         } finally {
           done = true; // stop any in-flight ticker loop
+          // Do not release the burst slot while dependent work is still running
+          // (RELIABILITY_PLAN.md item 2): abort the ticker, then wait — briefly
+          // and boundedly — for it to unwind. Otherwise the next run could
+          // start while this run's provider calls are still consuming quota.
+          tickerAbort.abort();
+          await Promise.race([
+            tickerTask.catch(() => {}),
+            new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+          ]);
           release?.();
           try {
             controller.close();

@@ -122,6 +122,12 @@ function flattenSystem(system: SystemPromptInput): string {
 export interface LLMCallOptions {
   /** Which model tier serves this call. Defaults to "deep". */
   tier?: ModelTier;
+  /**
+   * Caller cancellation/deadline (RELIABILITY_PLAN.md item 2). When it aborts,
+   * the in-flight HTTP request is torn down — not merely un-awaited — so a
+   * timed-out or cancelled stage stops burning provider quota and CPU.
+   */
+  signal?: AbortSignal;
 }
 
 export async function callLLM(
@@ -135,6 +141,7 @@ export async function callLLM(
     return await callOpenAICompat(compatTarget(model), {
       ...params,
       system: flattenSystem(params.system),
+      signal: opts?.signal,
     });
   } finally {
     // Before/after measurement (item 15): tier + model + wall time, no content.
@@ -153,7 +160,7 @@ export async function callLLMStream(
   try {
     return await callOpenAICompatStream(
       compatTarget(model),
-      { ...params, system: flattenSystem(params.system) },
+      { ...params, system: flattenSystem(params.system), signal: opts?.signal },
       handlers,
     );
   } finally {

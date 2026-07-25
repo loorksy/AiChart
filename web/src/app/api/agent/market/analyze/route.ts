@@ -99,7 +99,14 @@ export async function POST(req: NextRequest) {
     const result = await runUnifiedChartAgent({
       userMessage: `حلّل ${symbol} على إطار ${interval} كفرصة سكالب واشرح قرارك.`,
       chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
-      requestContext: { requestId: newId(), userId, emitActivity: () => {} },
+      requestContext: {
+        requestId: newId(),
+        userId,
+        emitActivity: () => {},
+        // Client disconnect (MCP tool gave up / caller aborted) must tear the
+        // provider work down, not leave it running (RELIABILITY_PLAN item 2).
+        signal: req.signal,
+      },
       account: null,
       canExecute: false,
     });

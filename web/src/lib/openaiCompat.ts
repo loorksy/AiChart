@@ -235,6 +235,8 @@ export async function callOpenAICompat(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
+    /** Caller cancellation/deadline — aborts the in-flight HTTP call. */
+    signal?: AbortSignal;
   },
 ): Promise<AnthropicResponse> {
   // Circuit breaker (RELIABILITY_PLAN.md item 6): a provider outage fails fast
@@ -260,7 +262,7 @@ export async function callOpenAICompat(
       }),
       cache: "no-store",
     },
-    { timeoutMs: llmTotalTimeoutMs(), label: target.model },
+    { timeoutMs: llmTotalTimeoutMs(), label: target.model, signal: params.signal },
   );
 
   if (!res.ok) throw new Error(await readError(res, target.model));
@@ -293,6 +295,8 @@ export async function callOpenAICompatStream(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
+    /** Caller cancellation/deadline — aborts the in-flight stream. */
+    signal?: AbortSignal;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
@@ -326,6 +330,7 @@ async function streamOnce(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
+    signal?: AbortSignal;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
@@ -334,6 +339,18 @@ async function streamOnce(
     target.model,
     llmTtftTimeoutMs(),
   );
+  // A caller abort (client disconnect / stage deadline / total run budget) must
+  // tear down the in-flight stream, not just stop awaiting it: the watchdog's
+  // controller is the one signal fetch sees, so link the caller into it.
+  const streamSignal = watchdog.start();
+  if (params.signal) {
+    if (params.signal.aborted) watchdog.controller.abort();
+    else {
+      params.signal.addEventListener("abort", () => watchdog.controller.abort(), {
+        once: true,
+      });
+    }
+  }
   const res = await fetch(`${target.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -350,9 +367,11 @@ async function streamOnce(
       ...(params.tools ? { tools: toOATools(params.tools) } : {}),
     }),
     cache: "no-store",
-    signal: watchdog.start(),
+    signal: streamSignal,
   }).catch((err) => {
     watchdog.clear();
+    // A caller abort is a deliberate cancellation, never a provider timeout.
+    if (params.signal?.aborted) throw err;
     if (watchdog.timedOut) throw watchdog.error();
     throw err;
   });

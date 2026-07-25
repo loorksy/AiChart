@@ -207,7 +207,9 @@ export async function runFinalDecisionSynthesizer(
         maxTokens: 2048,
         // The trade decision ALWAYS runs on the deep model (item 15) — never a
         // quick/auxiliary tier, regardless of any default change.
-      }, { tier: "deep" });
+        // The run signal (stage deadline / total budget / client disconnect)
+        // tears the call down instead of leaving it running (item 2).
+      }, { tier: "deep", signal: ctx.signal });
       return res.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)

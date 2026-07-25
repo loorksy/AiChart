@@ -23,7 +23,7 @@ import {
   routeIntent,
 } from "./intentRouter";
 import { handleUserDrawingCommand } from "./drawingCommands/handleUserDrawingCommand";
-import { withTimeout, AGENT_TIMEOUTS } from "./timeout";
+import { withTimeout, withDeadline, createRunBudget, AGENT_TIMEOUTS } from "./timeout";
 import { buildInformationalResult, buildAgentFallbackResult } from "./fallback";
 import {
   failureCodeFromSynthesizerKind,
@@ -40,6 +40,7 @@ import {
   envelopeForFinalDecision,
   operationalBlockerEnvelope,
 } from "./resultEnvelope";
+import { evaluateDependencies } from "./dependencyMatrix";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
 import {
@@ -100,6 +101,16 @@ import {
 } from "./recommendation/followupAnswer";
 import { hashMarketSnapshot } from "./chartSnapshot";
 import {
+  loadStageCheckpoint,
+  saveStageCheckpoint,
+  stageCheckpointKey,
+} from "./stageCheckpoint";
+import type { StructureResult } from "./agents/structureAgent";
+import type { LiquidityResult } from "./agents/liquidityAgent";
+import type { SupplyDemandResult } from "./agents/supplyDemandAgent";
+import type { MultiTimeframeResult } from "./agents/multiTimeframeAgent";
+import type { NewsMacroResult } from "./agents/newsMacroAgent";
+import {
   buildAgentSkillContext,
   EMPTY_SKILL_CONTEXT,
   type AgentSkillContext,
@@ -129,7 +140,38 @@ export interface UnifiedAgentInput {
 export async function runUnifiedChartAgent(
   input: UnifiedAgentInput,
 ): Promise<AgentFinalResult> {
-  const result = await runUnifiedChartAgentInner(input);
+  // Total run budget (RELIABILITY_PLAN.md item 2): one signal that aborts on a
+  // client disconnect OR when the run exceeds the budget, which every I/O stage
+  // links to. It stays under the MCP tool's wait so the caller always receives
+  // a real envelope instead of a bare transport timeout.
+  const budget = createRunBudget(input.requestContext.signal);
+  let result: AgentFinalResult;
+  try {
+    result = await runUnifiedChartAgentInner({
+      ...input,
+      requestContext: { ...input.requestContext, signal: budget.signal },
+    });
+  } finally {
+    budget.dispose();
+  }
+
+  // A run that blew its total budget did NOT complete on full evidence. Saying
+  // so is mandatory: silently returning the degraded answer would dress an
+  // incomplete run up as a normal one (and re-enable usage charging).
+  if (
+    (budget.expired || budget.cancelledByClient) &&
+    result.envelope?.outcome_class !== "operational_blocker"
+  ) {
+    result.envelope = operationalBlockerEnvelope({
+      failureStage: "general",
+      failureCode: budget.cancelledByClient ? "cancelled" : "timeout",
+      retryable: !budget.cancelledByClient,
+      traceId: input.requestContext.requestId,
+      cancelled: budget.cancelledByClient,
+      degradedStages: result.envelope?.degraded_stages,
+    });
+  }
+
   // Contract guarantee: EVERY result carries a three-state envelope. Blockers
   // and evidence-bearing finals set theirs explicitly at the return site; the
   // backstop below only labels successful answers (informational/status
@@ -578,27 +620,67 @@ async function runUnifiedChartAgentInner(
     });
   }
 
-  // Structure / liquidity / S&D / MTF run concurrently; each degrades to null
-  // with its failure CLASSIFIED and recorded (never a silent swallow).
-  const [structure, liquidity, supplyDemand, mtf] = await Promise.all([
-    withTimeout(captureStage("structure", runStructureAgent(trackedCtx, market)), AGENT_TIMEOUTS.structure, null),
-    withTimeout(captureStage("liquidity", runLiquidityAgent(trackedCtx, market)), AGENT_TIMEOUTS.liquidity, null),
-    withTimeout(captureStage("supply_demand", runSupplyDemandAgent(trackedCtx, market)), AGENT_TIMEOUTS.supplyDemand, null),
-    withTimeout(captureStage("multi_timeframe", runMultiTimeframeAgent(trackedCtx, market)), AGENT_TIMEOUTS.multiTimeframe, null),
-  ]);
+  // Stage checkpoint (item 2): an identical market snapshot means the fleet —
+  // pure functions of the candle window — would produce identical output, so a
+  // retry after a failed decision resumes instead of re-earning the evidence.
+  // A changed candle changes the hash and the fleet re-runs.
+  const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
+  const checkpointKey = stageCheckpointKey({
+    userId: ctx.userId,
+    symbol: market.symbol,
+    interval: market.interval,
+  });
+  const resumed = loadStageCheckpoint(checkpointKey, chartSnapshotHash);
 
-  // News is non-critical: failure → newsRisk unknown (handled inside agent).
-  const news = await withTimeout(
-    captureStage(
-      "news",
-      runNewsMacroAgent(trackedCtx, {
-        symbol: market.symbol,
-        message: userMessage,
-      }),
-    ),
-    AGENT_TIMEOUTS.news,
-    null,
-  );
+  let structure: StructureResult | null;
+  let liquidity: LiquidityResult | null;
+  let supplyDemand: SupplyDemandResult | null;
+  let mtf: MultiTimeframeResult | null;
+  let news: NewsMacroResult | null;
+
+  if (resumed) {
+    ({ structure, liquidity, supplyDemand, mtf, news } = resumed);
+  } else {
+    // Structure / liquidity / S&D / MTF run concurrently; each degrades to null
+    // with its failure CLASSIFIED and recorded (never a silent swallow).
+    [structure, liquidity, supplyDemand, mtf] = await Promise.all([
+      withTimeout(captureStage("structure", runStructureAgent(trackedCtx, market)), AGENT_TIMEOUTS.structure, null),
+      withTimeout(captureStage("liquidity", runLiquidityAgent(trackedCtx, market)), AGENT_TIMEOUTS.liquidity, null),
+      withTimeout(captureStage("supply_demand", runSupplyDemandAgent(trackedCtx, market)), AGENT_TIMEOUTS.supplyDemand, null),
+      withTimeout(captureStage("multi_timeframe", runMultiTimeframeAgent(trackedCtx, market)), AGENT_TIMEOUTS.multiTimeframe, null),
+    ]);
+
+    // News is non-critical: failure → newsRisk unknown (handled inside agent).
+    // It performs network I/O, so its deadline CANCELS the provider call.
+    news = await withDeadline(
+      (signal) =>
+        captureStage(
+          "news",
+          runNewsMacroAgent(
+            { ...trackedCtx, signal },
+            {
+              symbol: market.symbol,
+              message: userMessage,
+            },
+          ),
+        ),
+      AGENT_TIMEOUTS.news,
+      null,
+      ctx.signal,
+    );
+
+    // Only a COMPLETE fleet is checkpointed — a degraded run must never be
+    // replayed as if it were good evidence.
+    if (structure && liquidity && supplyDemand && mtf) {
+      saveStageCheckpoint(checkpointKey, chartSnapshotHash, {
+        structure,
+        liquidity,
+        supplyDemand,
+        mtf,
+        news,
+      });
+    }
+  }
 
   // Silent deadlines never throw, so ledger them explicitly — otherwise a run
   // whose whole fleet timed out would still report operational_status "ok".
@@ -687,20 +769,28 @@ async function runUnifiedChartAgentInner(
   // The LLM chooses BUY, SELL, or WAIT and binds actionable choices to a real
   // candidate. Model failure produces a technical no-recommendation state.
   let synthError: unknown = null;
-  const synth = await withTimeout(
-    runFinalDecisionSynthesizer(trackedCtx, {
-      ...decisionInput,
-      candidates,
-      narrative,
-      geometry,
-      locale,
-      skillContextBlock: skillContext.block || null,
-    }).catch((err) => {
-      synthError = err;
-      return null;
-    }),
+  // withDeadline (not withTimeout): the decision call is the single most
+  // expensive stage, so its deadline must actually ABORT the provider request
+  // rather than leave it running behind an answer the user already received.
+  const synth = await withDeadline(
+    (signal) =>
+      runFinalDecisionSynthesizer(
+        { ...trackedCtx, signal },
+        {
+          ...decisionInput,
+          candidates,
+          narrative,
+          geometry,
+          locale,
+          skillContextBlock: skillContext.block || null,
+        },
+      ).catch((err) => {
+        synthError = err;
+        return null;
+      }),
     AGENT_TIMEOUTS.finalDecision,
     null,
+    ctx.signal,
   );
   if (!synth) {
     // withTimeout resolves to null on deadline; a thrown error is a real fault.
@@ -771,7 +861,8 @@ async function runUnifiedChartAgentInner(
       ...finalDecision.riskWarnings,
     ];
   }
-  const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
+  // chartSnapshotHash was computed before the fleet (it also keys the stage
+  // checkpoint) — the market window cannot change mid-run, so it is reused.
 
   // Build the drawing plan: the single source of truth for what may be drawn.
   // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
@@ -1117,11 +1208,18 @@ async function runUnifiedChartAgentInner(
   const usedContributions = researchEvidence.contributions.filter(
     (c) => c.status === "used",
   );
+  // Dependency matrix (item 5): a stage loss is labelled by POLICY, not by
+  // ad-hoc checks. It can only pull the outcome to a safer state — losing
+  // recommendation-critical evidence (risk / structure / liquidity / S&D / MTF)
+  // forbids an execution-grade label even when the evidence check passed.
+  const dependencyPolicy = evaluateDependencies(stageFailures);
   const envelope = envelopeForFinalDecision({
     actionableRecommendation,
-    validatedEvidence: usedContributions.some(
-      (c) => c.system === "backtest" || c.system === "validation",
-    ),
+    validatedEvidence:
+      dependencyPolicy.allowsRecommendation &&
+      usedContributions.some(
+        (c) => c.system === "backtest" || c.system === "validation",
+      ),
     partialEvidence: usedContributions.length > 0,
     traceId: ctx.requestId,
     degradedStages: degradedStagesFrom(stageFailures),
