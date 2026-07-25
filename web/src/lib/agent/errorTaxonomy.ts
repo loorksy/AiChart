@@ -33,6 +33,7 @@ export type AgentFailureCode =
 
 /** Pipeline stages a failure can be attributed to. */
 export type AgentStage =
+  | "general"
   | "market_data"
   | "structure"
   | "liquidity"
@@ -150,6 +151,24 @@ export function stageTimeoutFailure(stage: AgentStage, deadlineMs: number): Agen
     retryable: true,
     operatorDetail: `Stage exceeded its ${Math.round(deadlineMs / 1000)}s deadline.`,
   };
+}
+
+/**
+ * Ledger a SILENT stage deadline. `withTimeout` resolves to the fallback
+ * (null) without throwing, so the capture catch never fires — without this,
+ * a run whose specialists all timed out would still claim operational_status
+ * "ok". A null value with no thrown-failure entry for the stage can only mean
+ * the deadline hit.
+ */
+export function ledgerSilentTimeout(
+  failures: AgentStageFailure[],
+  stage: AgentStage,
+  value: unknown,
+  deadlineMs: number,
+): void {
+  if (value != null) return;
+  if (failures.some((f) => f.stage === stage)) return;
+  failures.push(stageTimeoutFailure(stage, deadlineMs));
 }
 
 /** Map the synthesizer's existing failure kinds onto the shared taxonomy. */

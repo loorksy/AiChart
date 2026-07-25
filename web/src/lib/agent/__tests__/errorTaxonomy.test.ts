@@ -4,9 +4,11 @@ import {
   classifyAgentError,
   failureCodeFromSynthesizerKind,
   isRetryableFailureCode,
+  ledgerSilentTimeout,
   stageFailureFromError,
   stageTimeoutFailure,
   userMessageForFailure,
+  type AgentStageFailure,
 } from "@/lib/agent/errorTaxonomy";
 
 describe("classifyAgentError", () => {
@@ -78,6 +80,24 @@ describe("stage failures", () => {
     assert.equal(failure.code, "timeout");
     assert.equal(failure.retryable, true);
     assert.match(failure.operatorDetail, /8s/);
+  });
+
+  it("ledgers a SILENT deadline (null value, no thrown failure) exactly once", () => {
+    const failures: AgentStageFailure[] = [];
+    ledgerSilentTimeout(failures, "structure", null, 5000);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0]!.stage, "structure");
+    assert.equal(failures[0]!.code, "timeout");
+
+    // A successful stage (non-null) is never ledgered.
+    ledgerSilentTimeout(failures, "liquidity", { ok: true }, 5000);
+    assert.equal(failures.length, 1);
+
+    // A stage that already has a THROWN failure keeps the real cause.
+    failures.push(stageFailureFromError("news", new Error("HTTP 429 rate limit")));
+    ledgerSilentTimeout(failures, "news", null, 8000);
+    assert.equal(failures.filter((f) => f.stage === "news").length, 1);
+    assert.equal(failures.find((f) => f.stage === "news")!.code, "rate_limit");
   });
 });
 

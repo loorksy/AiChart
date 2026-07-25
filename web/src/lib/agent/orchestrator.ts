@@ -27,6 +27,7 @@ import { withTimeout, AGENT_TIMEOUTS } from "./timeout";
 import { buildInformationalResult, buildAgentFallbackResult } from "./fallback";
 import {
   failureCodeFromSynthesizerKind,
+  ledgerSilentTimeout,
   stageFailureFromError,
   type AgentStage,
   type AgentStageFailure,
@@ -125,11 +126,11 @@ export async function runUnifiedChartAgent(
   input: UnifiedAgentInput,
 ): Promise<AgentFinalResult> {
   const result = await runUnifiedChartAgentInner(input);
-  // Contract guarantee: EVERY result carries a three-state envelope. Return
-  // sites that know their exact state set it explicitly; anything else is a
-  // successful non-market answer → descriptive. `action_required` without an
-  // envelope only occurs on execution-confirmation flows, which are still
-  // descriptive (nothing executes without explicit confirmation).
+  // Contract guarantee: EVERY result carries a three-state envelope. Blockers
+  // and evidence-bearing finals set theirs explicitly at the return site; the
+  // backstop below only labels successful answers (informational/status
+  // replies) as descriptive. Any NEW fault path must attach its own
+  // operationalBlockerEnvelope — the backstop will not do it for you.
   if (!result.envelope) {
     result.envelope = descriptiveEnvelope({
       recommendationIssued:
@@ -252,8 +253,17 @@ async function runUnifiedChartAgentInner(
         activeRecommendation,
       }),
       AGENT_TIMEOUTS.general,
-      bilingual(locale, "تعذّر شرح الرسومات في الوقت المتاح.", "Could not explain the drawings in time."),
+      null,
     );
+    if (summary == null) {
+      // Deadline hit — an honest blocker, never an "ok" descriptive answer.
+      return buildAgentFallbackResult(
+        "Drawing explanation exceeded its deadline.",
+        collected,
+        locale,
+        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: ctx.requestId },
+      );
+    }
     return {
       decision: "informational",
       confidence: 0.8,
@@ -299,9 +309,17 @@ async function runUnifiedChartAgentInner(
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage, input.conversationContext),
       AGENT_TIMEOUTS.general,
-      bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time."),
+      null,
     );
-    return buildInformationalResult(summary, collected);
+    if (summary == null) {
+      return buildAgentFallbackResult(
+        "General answer exceeded its deadline.",
+        collected,
+        locale,
+        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: ctx.requestId },
+      );
+    }
+    return buildInformationalResult(summary, collected, { traceId: ctx.requestId });
   }
 
   const wantMarket = needsMarketContext(intents);
@@ -367,9 +385,17 @@ async function runUnifiedChartAgentInner(
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage, input.conversationContext),
       AGENT_TIMEOUTS.general,
-      bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time."),
+      null,
     );
-    return buildInformationalResult(summary, collected);
+    if (summary == null) {
+      return buildAgentFallbackResult(
+        "General answer exceeded its deadline.",
+        collected,
+        locale,
+        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: ctx.requestId },
+      );
+    }
+    return buildInformationalResult(summary, collected, { traceId: ctx.requestId });
   }
 
   // --- Market fleet ---
@@ -569,6 +595,14 @@ async function runUnifiedChartAgentInner(
     AGENT_TIMEOUTS.news,
     null,
   );
+
+  // Silent deadlines never throw, so ledger them explicitly — otherwise a run
+  // whose whole fleet timed out would still report operational_status "ok".
+  ledgerSilentTimeout(stageFailures, "structure", structure, AGENT_TIMEOUTS.structure);
+  ledgerSilentTimeout(stageFailures, "liquidity", liquidity, AGENT_TIMEOUTS.liquidity);
+  ledgerSilentTimeout(stageFailures, "supply_demand", supplyDemand, AGENT_TIMEOUTS.supplyDemand);
+  ledgerSilentTimeout(stageFailures, "multi_timeframe", mtf, AGENT_TIMEOUTS.multiTimeframe);
+  ledgerSilentTimeout(stageFailures, "news", news, AGENT_TIMEOUTS.news);
 
   // The evidence builder prepares price-valid candidates for the model. It is
   // not a policy gate and it does not own BUY/SELL/WAIT.
@@ -831,6 +865,13 @@ async function runUnifiedChartAgentInner(
       confirmationPayload = guard.confirmationPayload;
       return {
         decision: "action_required",
+        envelope: descriptiveEnvelope({
+          recommendationIssued:
+            finalDecision.recommendation.action === "buy" ||
+            finalDecision.recommendation.action === "sell",
+          traceId: ctx.requestId,
+          degradedStages: degradedStagesFrom(stageFailures),
+        }),
         confidence: finalDecision.confidence,
         summary: guard.message,
         keyReasons: guard.reasons,
@@ -849,6 +890,13 @@ async function runUnifiedChartAgentInner(
     // Guard blocked (not confirmable) → action_required with the block reason.
     return {
       decision: "action_required",
+      envelope: descriptiveEnvelope({
+        recommendationIssued:
+          finalDecision.recommendation.action === "buy" ||
+          finalDecision.recommendation.action === "sell",
+        traceId: ctx.requestId,
+        degradedStages: degradedStagesFrom(stageFailures),
+      }),
       confidence: finalDecision.confidence,
       summary: guard.message,
       keyReasons: guard.reasons,

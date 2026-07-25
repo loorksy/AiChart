@@ -277,6 +277,10 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
                 opts.onVoiceFinal?.(result);
               }
             } else if (eventName === "error") {
+              // The failure path now emits a COMPLETE `final` (fallback bubble)
+              // before the legacy `error` event. If that final already landed,
+              // showing the banner too would surface the same failure twice.
+              if (finalized) continue;
               const msg =
                 (data as { error?: string }).error ?? "حدث خطأ في الوكيل.";
               setError(msg);
