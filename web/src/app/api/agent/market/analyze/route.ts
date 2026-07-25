@@ -24,6 +24,7 @@ import {
   shouldChargeAnalysis,
 } from "@/lib/agent/analysisAccounting";
 import { newId } from "@/lib/agent/activity";
+import { inboundTraceId } from "@/lib/traceCorrelation";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import type { Recommendation } from "@/lib/types";
 
@@ -100,7 +101,10 @@ export async function POST(req: NextRequest) {
       userMessage: `حلّل ${symbol} على إطار ${interval} كفرصة سكالب واشرح قرارك.`,
       chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
       requestContext: {
-        requestId: newId(),
+        // Honour an inbound MCP correlation id so one trace spans
+        // MCP call -> web request -> agent stages -> research job
+        // (RELIABILITY_PLAN.md item 9). It is echoed back as envelope.trace_id.
+        requestId: inboundTraceId(req) ?? newId(),
         userId,
         emitActivity: () => {},
         // Client disconnect (MCP tool gave up / caller aborted) must tear the

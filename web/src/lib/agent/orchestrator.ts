@@ -34,6 +34,7 @@ import {
   type AgentStageFailure,
 } from "./errorTaxonomy";
 import { createLogger } from "@/lib/logger";
+import { recordAgentOutcome, recordStageFailure } from "@/lib/metrics";
 import {
   degradedStagesFrom,
   descriptiveEnvelope,
@@ -166,6 +167,7 @@ export async function runUnifiedChartAgent(
   // links to. It stays under the MCP tool's wait so the caller always receives
   // a real envelope instead of a bare transport timeout.
   const budget = createRunBudget(input.requestContext.signal);
+  const startedAt = performance.now();
   let result: AgentFinalResult;
   try {
     result = await runUnifiedChartAgentInner({
@@ -206,6 +208,15 @@ export async function runUnifiedChartAgent(
       traceId: input.requestContext.requestId,
     });
   }
+
+  // Observability (item 9): the three-state ratio is the headline reliability
+  // signal — a rising operational_blocker share IS the outage.
+  recordAgentOutcome({
+    outcome: result.envelope.outcome_class,
+    executionMode: result.envelope.execution_mode,
+    failureCode: result.envelope.failure_code,
+    durationSeconds: (performance.now() - startedAt) / 1000,
+  });
   return result;
 }
 
@@ -472,7 +483,14 @@ async function runUnifiedChartAgentInner(
   const stageFailures: AgentStageFailure[] = [];
   const captureStage = <T,>(stage: AgentStage, promise: Promise<T>): Promise<T | null> =>
     promise.catch((error) => {
-      stageFailures.push(stageFailureFromError(stage, error));
+      const failure = stageFailureFromError(stage, error);
+      stageFailures.push(failure);
+      // Observability (item 9): per-stage failure/timeout rates by taxonomy code.
+      recordStageFailure({
+        stage: failure.stage,
+        code: failure.code,
+        retryable: failure.retryable,
+      });
       return null;
     });
 
@@ -722,11 +740,22 @@ async function runUnifiedChartAgentInner(
 
   // Silent deadlines never throw, so ledger them explicitly — otherwise a run
   // whose whole fleet timed out would still report operational_status "ok".
+  // They also bypass captureStage, so they must be counted here or the stage
+  // timeout metric would read zero during exactly the outage it exists for.
+  // (errorTaxonomy is client-bundled — metrics can only be recorded here.)
+  const ledgeredBefore = stageFailures.length;
   ledgerSilentTimeout(stageFailures, "structure", structure, AGENT_TIMEOUTS.structure);
   ledgerSilentTimeout(stageFailures, "liquidity", liquidity, AGENT_TIMEOUTS.liquidity);
   ledgerSilentTimeout(stageFailures, "supply_demand", supplyDemand, AGENT_TIMEOUTS.supplyDemand);
   ledgerSilentTimeout(stageFailures, "multi_timeframe", mtf, AGENT_TIMEOUTS.multiTimeframe);
   ledgerSilentTimeout(stageFailures, "news", news, AGENT_TIMEOUTS.news);
+  for (const failure of stageFailures.slice(ledgeredBefore)) {
+    recordStageFailure({
+      stage: failure.stage,
+      code: failure.code,
+      retryable: failure.retryable,
+    });
+  }
 
   // The evidence builder prepares price-valid candidates for the model. It is
   // not a policy gate and it does not own BUY/SELL/WAIT.

@@ -1,4 +1,10 @@
-import { getIntent, getLimits, getMtAccountMeta, getSettings, updateIntentDenied } from "./store";
+import { getFlag, getIntent, getLimits, getMtAccountMeta, getSettings, updateIntentDenied } from "./store";
+import {
+  checkExecutionHalt,
+  isLiveTradingEnvironment,
+  KILL_SWITCH_FLAG,
+  LIVE_ENABLED_FLAG,
+} from "./executionKillSwitch";
 import { getEaConnection } from "./eaStore";
 import { BridgeErrorCode } from "./bridge/errors";
 import { getBrokerAdapter } from "./brokers";
@@ -73,6 +79,34 @@ export async function executeIntent(
   }
   if (intent.status === "executed") {
     return { ok: false, status: "failed", reason: "سبق تنفيذ هذا الطلب.", activities };
+  }
+
+  // Master kill switch / dual-enablement halt (RELIABILITY_PLAN.md item 11).
+  // Checked FIRST, at the single execution choke point, so no route can bypass
+  // it. These protections can only ever BLOCK — never authorize.
+  //
+  // Dual enablement: real-money execution needs the deploy-scoped env switch
+  // AND an independently-set ops flag, so one wrong setting can't go live.
+  const [killFlag, liveRuntimeFlag] = await Promise.all([
+    getFlag(KILL_SWITCH_FLAG).catch(() => null),
+    getFlag(LIVE_ENABLED_FLAG).catch(() => null),
+  ]);
+  const halt = checkExecutionHalt({
+    killSwitchFlag: killFlag,
+    isLive: isLiveTradingEnvironment(),
+    liveRuntimeEnabled: liveRuntimeFlag === "1",
+  });
+  if (halt.halted) {
+    push({ id: "safety", label: `التحقق التقني · ${intent.symbol}`, status: "error", detail: halt.reason });
+    await updateIntentDenied(intentId, halt.reason, BridgeErrorCode.EXECUTION_UNAUTHORIZED, userId);
+    metrics.executionDenials.inc({ code: `HALT_${halt.code.toUpperCase()}` });
+    return {
+      ok: false,
+      status: "failed",
+      reason: halt.reason,
+      denyCode: BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+      activities,
+    };
   }
 
   push({ id: "safety", label: `التحقق التقني · ${intent.symbol}`, status: "running" });

@@ -33,6 +33,7 @@ import { generateTickerPlan } from "@/lib/agent/ticker/generateTickerPlan";
 import { streamTicker } from "@/lib/agent/ticker/streamTicker";
 import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
 import { createLogger } from "@/lib/logger";
+import { recordRequestWithoutFinal } from "@/lib/metrics";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
 import { buildAgentFallbackResult } from "@/lib/agent/fallback";
 import { classifyAgentError, userMessageForFailure } from "@/lib/agent/errorTaxonomy";
@@ -355,7 +356,11 @@ export async function POST(req: NextRequest) {
 
     const stream = new ReadableStream({
       async start(controller) {
+        // Phase-0 SLO instrumentation (item 9): every request must end with a
+        // complete `final`. This flag is the ONLY source of that measurement.
+        let sentFinal = false;
         const send = (event: string, data: unknown) => {
+          if (event === "final") sentFinal = true;
           try {
             controller.enqueue(sseEncode(event, data));
           } catch {
@@ -609,6 +614,12 @@ export async function POST(req: NextRequest) {
             });
           }
         } finally {
+          // SLO: a run that ended without a complete `final` is a contract
+          // breach. A user cancellation is NOT a breach (nobody is waiting).
+          if (!sentFinal && !req.signal.aborted) {
+            recordRequestWithoutFinal("agent.chat.stream", "no_final_event");
+            log.error("agent.stream.slo_breach", { requestId, reason: "no_final_event" });
+          }
           done = true; // stop any in-flight ticker loop
           // Do not release the burst slot while dependent work is still running
           // (RELIABILITY_PLAN.md item 2): abort the ticker, then wait — briefly

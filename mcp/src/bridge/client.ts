@@ -1,7 +1,12 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { AppConfig } from "../config.js";
 import { formatToolTextFallback } from "./textFallback.js";
+
+/** Correlation id for one MCP tool call as it crosses into the web tier. */
+function newTraceId(): string {
+  return `mcp-${randomUUID()}`;
+}
 
 export class BridgeError extends Error {
   constructor(
@@ -98,6 +103,11 @@ export class BridgeClient {
       Authorization: `Bearer ${this.cfg.serviceToken}`,
       "Content-Type": "application/json",
       Accept: "application/json",
+      // One trace across MCP -> web -> agent stages -> research job
+      // (RELIABILITY_PLAN.md item 9). Without this the chain broke at the MCP
+      // boundary: a tool-call failure could not be joined to the web run that
+      // served it. The web side honours this id and echoes it as trace_id.
+      "X-Aichart-Request-Id": newTraceId(),
     };
     if (this.actAsEmail) {
       const email = this.actAsEmail.toLowerCase();

@@ -18,6 +18,11 @@
  * double-retries. The pure helpers are exported for direct unit testing.
  */
 import { ExternalTimeoutError, fetchWithTimeout } from "./externalFetch";
+import {
+  recordCircuitState,
+  recordProviderError,
+  recordProviderRetry,
+} from "./metrics";
 
 export type BreakerState = "closed" | "open" | "half_open";
 
@@ -111,6 +116,7 @@ export function breakerOnSuccess(key: string): void {
   b.consecutiveFailures = 0;
   b.state = "closed";
   b.probing = false;
+  recordCircuitState(key, "closed");
 }
 
 export function breakerOnFailure(
@@ -125,6 +131,7 @@ export function breakerOnFailure(
     b.state = "open";
     b.openedAt = now;
   }
+  recordCircuitState(key, b.state);
 }
 
 /** Current breaker state (for observability / tests). */
@@ -238,6 +245,9 @@ export async function resilientFetch(
   const maxRetries = opts.maxRetries ?? 0;
   const backoff = { baseMs: opts.baseBackoffMs ?? 400, maxMs: opts.maxBackoffMs ?? 8_000 };
   let attempt = 0;
+  // Tracks whether THIS call retried, so retry success rate counts calls that
+  // actually needed a retry — not every healthy first-attempt request.
+  let retried = false;
   for (;;) {
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     try {
@@ -248,26 +258,36 @@ export async function resilientFetch(
       );
       if (res.ok || !isRetryableStatus(res.status)) {
         // Reachable provider (2xx, or a 4xx that is the caller's fault).
+        if (retried) recordProviderRetry(providerKey, "succeeded");
         breakerOnSuccess(providerKey);
         return res;
       }
       // Retryable non-2xx (429/5xx).
+      recordProviderError(providerKey, res.status === 429 ? "rate_limit" : "server_error");
       if (attempt < maxRetries && !opts.signal?.aborted) {
         const retryAfter = parseRetryAfterMs(res.headers.get("retry-after"), Date.now());
         const delay = retryAfter ?? computeBackoffMs(attempt, backoff);
         attempt += 1;
+        retried = true;
         await abortSleep(delay, opts.signal);
         continue;
       }
+      if (retried) recordProviderRetry(providerKey, "failed");
       breakerOnFailure(providerKey, Date.now(), opts.breaker);
       return res;
     } catch (err) {
       if (opts.signal?.aborted) throw err; // caller cancelled — not provider health
+      recordProviderError(
+        providerKey,
+        err instanceof ExternalTimeoutError ? "timeout" : "network",
+      );
       if (isRetryableError(err) && attempt < maxRetries) {
         attempt += 1;
+        retried = true;
         await abortSleep(computeBackoffMs(attempt, backoff), opts.signal);
         continue;
       }
+      if (retried) recordProviderRetry(providerKey, "failed");
       breakerOnFailure(providerKey, Date.now(), opts.breaker);
       throw err;
     }
