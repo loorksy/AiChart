@@ -58,7 +58,7 @@ async function compose(input: {
         },
       ],
       maxTokens: 700,
-    });
+    }, { tier: "quick" });
     const text = res.content
       .filter((b): b is { type: "text"; text: string } => b.type === "text")
       .map((b) => b.text)

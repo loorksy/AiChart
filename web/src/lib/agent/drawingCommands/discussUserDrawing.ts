@@ -100,7 +100,7 @@ export async function discussUserDrawing(
         },
       ],
       maxTokens: 500,
-    });
+    }, { tier: "quick" });
     const text = res.content
       .filter((b): b is { type: "text"; text: string } => b.type === "text")
       .map((b) => b.text)

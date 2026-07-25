@@ -262,11 +262,11 @@ Throttles لكل provider، احترام `Retry-After`، exponential backoff م�
 
 ### المرحلة 1 — موثوقية الطلب المباشر (أسبوع–أسبوعان)
 
-- Timeout hierarchy وAbortSignal وإلغاء حقيقي (بند 2).
-- **[جديد] Checkpoint/resume لكل مرحلة** (بند 2 المحدّث).
-- **[جديد] فصل النموذج السريع/العميق** (بند 15).
-- Dependency matrix وdescriptive degradation (بند 5).
-- Provider throttle/cache/circuit breaker (بند 6).
+- Timeout hierarchy وAbortSignal وإلغاء حقيقي (بند 2). — **قيد الإنجاز** (`withTimeout` بلا إلغاء بعدُ؛ المتخصصون حسابيون فلا يحتاجون إشارة، والتهديف الحقيقي على استدعاءات LLM/OANDA + الميزانية الكلية + الـcheckpoint هو المتبقّي).
+- **[جديد] Checkpoint/resume لكل مرحلة** (بند 2 المحدّث). — متبقٍّ ضمن البند 2.
+- ✅ **[جديد] فصل النموذج السريع/العميق** (بند 15) — `getQuickModel()/getDeepModel()/modelForTier()` + `tier` في `callLLM`؛ كل الاستدعاءات المساعدة (ticker/suggestions/status/general/drawing/compose) على `quick`، والقرار النهائي على `deep` صراحةً. مضبوط بـ`AI_QUICK_MODEL` (افتراضياً = العميق ⇒ لا انقسام ولا تدهور)، مع قياس زمن لكل نداء.
+- Dependency matrix وdescriptive degradation (بند 5). — **قائم فعلياً في `orchestrator.ts`** (market_data→blocker، المتخصصون→degrade+announce، risk/final→fallback)؛ المتبقّي تحويله إلى مصفوفة صريحة مُوحّدة (مؤجّل لتفادي المخاطرة بعلامات `phase0Contracts`).
+- ✅ **Provider circuit breaker + throttle + backoff/Retry-After** (بند 6) — `providerResilience.ts`؛ OANDA بإعادة محاولة محدودة + قاطع، وLLM بقاطع فقط (المُركّب يحتفظ بإعادة محاولته).
 
 ### المرحلة 2 — تحصين خدمة الأبحاث (~أسبوعان)
 

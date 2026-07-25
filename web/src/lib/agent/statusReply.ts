@@ -50,7 +50,7 @@ export async function composeStatusReply(input: StatusReplyInput): Promise<strin
         },
       ],
       maxTokens: input.maxTokens ?? 400,
-    });
+    }, { tier: "quick" });
     const text = res.content
       .filter((b): b is { type: "text"; text: string } => b.type === "text")
       .map((b) => b.text)

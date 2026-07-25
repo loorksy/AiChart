@@ -102,7 +102,7 @@ export async function generateAgentSuggestions(
         system,
         messages: [{ role: "user", content: userMsg }],
         maxTokens: 400,
-      });
+      }, { tier: "quick" });
       return res.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)

@@ -205,7 +205,9 @@ export async function runFinalDecisionSynthesizer(
         messages: [{ role: "user", content: userMsg }],
         // Leave headroom for gpt-5 reasoning tokens + the JSON decision payload.
         maxTokens: 2048,
-      });
+        // The trade decision ALWAYS runs on the deep model (item 15) — never a
+        // quick/auxiliary tier, regardless of any default change.
+      }, { tier: "deep" });
       return res.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)
