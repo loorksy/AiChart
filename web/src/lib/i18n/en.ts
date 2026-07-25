@@ -198,6 +198,17 @@ export const en = {
   "agent.run_details": "Run details",
   "agent.error": "Something went wrong",
 
+  // --- Phase 0: persistent execution-mode badge + operational-blocker card ---
+  "agent.mode.descriptive": "Descriptive — not authorized to execute",
+  "agent.mode.shadow": "Shadow",
+  "agent.mode.demo": "Demo",
+  "agent.mode.live": "Live",
+  "agent.mode.blocker": "Operational blocker",
+  "agent.fault.title": "Analysis could not be completed",
+  "agent.fault.trace": "Request ID",
+  "agent.fault.retryable": "You can try again shortly.",
+  "agent.fault.permanent": "Retrying won't help — this needs a configuration fix.",
+
   "decision.buy": "Buy",
   "decision.sell": "Sell",
   "decision.wait": "Wait",

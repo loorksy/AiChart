@@ -11,6 +11,8 @@ import { useLocale } from "@/hooks/useLocale";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
+import { AgentModeBadge, AgentFaultCard } from "./AgentEnvelopeStatus";
+import { isOperationalBlocker } from "@/lib/agent/executionModeBadge";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import {
@@ -210,6 +212,16 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 </div>
               ) : (
                 <>
+              {/* Persistent execution-mode badge above every assistant result. */}
+              {m.role === "assistant" && m.result?.envelope ? (
+                <div className="mb-1">
+                  <AgentModeBadge envelope={m.result.envelope} />
+                </div>
+              ) : null}
+              {m.role === "assistant" && isOperationalBlocker(m.result?.envelope) ? (
+                <AgentFaultCard envelope={m.result!.envelope!} />
+              ) : (
+                <>
               {m.role === "assistant" && m.result && (
                 <div className="mb-1 flex items-center gap-2 text-[11px]">
                   <span
@@ -285,6 +297,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   </ul>
                 </div>
               ) : null}
+                </>
+              )}
               {m.options?.length ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {m.options.map((option) => (
