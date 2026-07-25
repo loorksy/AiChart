@@ -18,6 +18,11 @@ import {
 } from "../confidenceSemantics";
 import type { DrawingCandidate } from "../drawings/buildDrawingPlan";
 import type { MarketNarrative } from "../marketContext/buildMarketNarrative";
+import {
+  geometryEvidenceLines,
+  summarizeGeometry,
+  type GeometrySnapshot,
+} from "@/lib/chart/geometry";
 import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
@@ -62,6 +67,7 @@ Hard rules:
 - A valid directional opinion may exist without executable levels. Do not change BUY/SELL to WAIT merely because levels are unavailable.
 - Conditional (pending) candidates require a future retest/confirmation — say so clearly in natural language. Never present a distant pending entry as an immediate trade.
 - Never invent numbers, levels, or news. Never claim news was checked when newsRisk is "unknown".
+- chartGeometry is deterministic evidence: cite a trendline/channel/pattern by name when it genuinely supports your decision (e.g. "ارتداد من خط الاتجاه الداعم", "مثلث صاعد مكتمل"). Treat status "forming" as WEAKER evidence than "completed"; never trade a forming pattern as if it broke out, and never cite a pattern not present in chartGeometry.
 - Do not reveal chain-of-thought, hidden reasoning, scratchpad, POI scores, ATR ratios, or machine ranking labels.
 - drawingAdvice.shouldDraw=false when drawing would mislead (mid-range, weak levels, thin data).
 - selectedCandidateIds: pick at most 8 candidate ids worth drawing (only strong, meaningful ones); omit or empty if none.
@@ -78,6 +84,8 @@ export async function runFinalDecisionSynthesizer(
     candidates: DrawingCandidate[];
     /** Evidence-based chart story (built from real detector output). */
     narrative?: MarketNarrative | null;
+    /** Shared-engine geometry: trendlines/channels/patterns with state. */
+    geometry?: GeometrySnapshot | null;
     /** Operator locale — the reply language mirrors the operator (SYSTEM.md §2). */
     locale?: "ar" | "en";
     /** Loaded skill guidance (bounded, read-only) appended to the system prompt. */
@@ -138,6 +146,7 @@ function buildModelContext(
   input: FinalDecisionInput & {
     candidates: DrawingCandidate[];
     narrative?: MarketNarrative | null;
+    geometry?: GeometrySnapshot | null;
   },
 ): Record<string, unknown> {
   const playbook = input.risk?.playbook ?? null;
@@ -147,6 +156,17 @@ function buildModelContext(
     scalpingContext: SCALPING_CONTEXT,
     // --- Trading-brain context (Phase 2) ---
     narrative: input.narrative ?? null,
+    // Deterministic chart geometry — trendlines, channels, and named patterns
+    // with forming/completed state. EVIDENCE ONLY: it can justify a decision
+    // narrative ("bounce off the rising trendline", "ascending triangle
+    // completed upward") but never overrides the model's choice and never
+    // grants execution authority.
+    chartGeometry: input.geometry
+      ? {
+          summary: summarizeGeometry(input.geometry),
+          lines: geometryEvidenceLines(input.geometry).slice(0, 8),
+        }
+      : null,
     playbook: playbook
       ? {
           warnings: playbook.warnings,

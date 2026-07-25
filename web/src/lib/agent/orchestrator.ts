@@ -93,6 +93,7 @@ import { bilingual, composeStatusReply } from "./statusReply";
 import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
+import { detectChartGeometry } from "@/lib/chart/geometry";
 import { createTrackedRecommendation } from "@/lib/recommendations/recommendationStore";
 
 export interface UnifiedAgentInput {
@@ -549,6 +550,14 @@ export async function runUnifiedChartAgent(
     mtf,
   });
 
+  // Deterministic chart geometry (trendlines, channels, patterns with
+  // forming/completed state) — computed ONCE and shared by the synthesizer
+  // evidence, the drawing plan, and every render surface downstream.
+  const geometry = detectChartGeometry({
+    candles: market.currentTfCandles,
+    atr: market.atr,
+  });
+
   // Evidence-based chart story for the synthesizer (real detector output only).
   const narrative = buildMarketNarrative({ market, structure, liquidity, mtf });
 
@@ -560,6 +569,7 @@ export async function runUnifiedChartAgent(
       ...decisionInput,
       candidates,
       narrative,
+      geometry,
       locale,
       skillContextBlock: skillContext.block || null,
     }).catch((err) => {
@@ -605,6 +615,7 @@ export async function runUnifiedChartAgent(
     supplyDemand,
     liquidity,
     mtf,
+    geometry,
     preferMinimalDrawings: ctx.session?.preferences.preferMinimalDrawings,
     selectedCandidateIds: synth.selectedCandidateIds,
     drawingAdvice: synth.drawingAdvice ?? null,

@@ -53,6 +53,7 @@ describe("drawingAgent (plan-only)", () => {
       selectedLevels: [],
       selectedZones: [],
       selectedAnnotations: [],
+      selectedGeometry: [],
     };
     const out = await runDrawingAgent(fakeCtx(), {
       analysisId: "a1",
@@ -73,6 +74,7 @@ describe("drawingAgent (plan-only)", () => {
       ],
       selectedZones: [],
       selectedAnnotations: [],
+      selectedGeometry: [],
     };
     const out = await runDrawingAgent(fakeCtx(), {
       analysisId: "a1",

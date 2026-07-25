@@ -27,6 +27,11 @@ import {
 } from "@/lib/ohlc/marketRegime";
 import { detectStructureLevels } from "@/lib/ohlc/structure";
 import {
+  detectChartGeometry,
+  summarizeGeometry,
+  type GeometrySummary,
+} from "@/lib/chart/geometry";
+import {
   chartSnapshotCacheKey,
   getCachedChartSnapshot,
   setCachedChartSnapshot,
@@ -273,6 +278,9 @@ export interface TimeframeNumericContext {
   supports: number[];
   resistances: number[];
   candle_count: number | null;
+  /** Deterministic geometry: trendlines/channel/patterns with state — the
+   *  numeric counterpart of the shapes visible in the same-frame image. */
+  geometry: GeometrySummary | null;
   /** Which deterministic engine produced each group of numbers. */
   sources: Record<string, string>;
   /** Engines that failed for this timeframe (numbers above stay null). */
@@ -364,6 +372,7 @@ export async function buildTimeframeNumericContext(
   let supports: number[] = [];
   let resistances: number[] = [];
   let candleCount: number | null = null;
+  let geometry: GeometrySummary | null = null;
 
   if (candlesResult.status === "fulfilled") {
     const candles = candlesResult.value;
@@ -404,6 +413,14 @@ export async function buildTimeframeNumericContext(
     } catch (error) {
       errors.push(`detect_market_regime: ${errorText(error)}`);
     }
+
+    try {
+      const snapshot = detectChartGeometry({ candles, atr: atr14 });
+      geometry = summarizeGeometry(snapshot);
+      sources.geometry = "detect_chart_geometry";
+    } catch (error) {
+      errors.push(`detect_chart_geometry: ${errorText(error)}`);
+    }
   } else {
     errors.push(`ohlc: ${errorText(candlesResult.reason)}`);
   }
@@ -422,6 +439,7 @@ export async function buildTimeframeNumericContext(
     supports,
     resistances,
     candle_count: candleCount,
+    geometry,
     sources,
     ...(errors.length ? { errors } : {}),
   };

@@ -287,7 +287,53 @@ function buildChartJson(
   if (boxEnd > xMaxExtension) xMaxExtension = boxEnd;
 
   // ── Agent drawings ──
-  for (const d of input.drawings ?? []) {
+  // Semantic → renderable down-mapping. The drawing agent emits semantic
+  // types (supply_zone, parallel_channel, neckline, positions…) that the
+  // switch below has no case for — they were silently DROPPED from every
+  // recommendation PNG. Each semantic type now collapses to the primitive
+  // that renders it faithfully; unknown types still fall through harmlessly.
+  const SNAPSHOT_TYPE_MAP: Record<string, ChartDrawing["type"]> = {
+    supply_zone: "zone",
+    demand_zone: "zone",
+    decision_zone: "zone",
+    retest_zone: "zone",
+    range_box: "zone",
+    rectangle: "zone",
+    parallel_channel: "channel",
+    regression_trend: "channel",
+    neckline: "trend_line",
+    trendline: "trend_line",
+    trend: "trend_line",
+    hline: "price_line",
+    fibonacci: "fib_retracement",
+    fibo: "fib_retracement",
+  };
+  const normalizedDrawings: ChartDrawing[] = (input.drawings ?? []).flatMap((d) => {
+    // Positions expand into their entry/stop/target level cluster.
+    if (d.type === "long_position" || d.type === "short_position") {
+      const meta = (d.meta ?? {}) as Record<string, unknown>;
+      const cluster: ChartDrawing[] = [];
+      const push = (price: unknown, label: string, color: string) => {
+        if (typeof price === "number" && Number.isFinite(price)) {
+          cluster.push({
+            type: "price_line",
+            confidence: d.confidence,
+            label,
+            color,
+            points: [{ time: d.points[0]?.time, price }],
+          });
+        }
+      };
+      push(meta.entry ?? d.points[0]?.price, "دخول", "#3b82f6");
+      push(meta.stopLoss ?? d.points[2]?.price, "وقف خسارة", "#ef4444");
+      push(meta.takeProfit ?? d.points[1]?.price, "هدف", "#22c55e");
+      return cluster;
+    }
+    const mapped = SNAPSHOT_TYPE_MAP[d.type];
+    return [mapped ? { ...d, type: mapped } : d];
+  });
+
+  for (const d of normalizedDrawings) {
     const color = d.color ?? colorForType(d.type);
     switch (d.type) {
       case "price_line":
@@ -298,6 +344,15 @@ function buildChartJson(
         break;
       case "trend_line":
         addPathDataset(d, d.label ?? "اتجاه", undefined);
+        break;
+      case "polyline_pattern":
+        // Named chart pattern traced through its anchors; forming patterns
+        // arrive dashed from the geometry engine and keep that style.
+        addPathDataset(
+          d,
+          d.label ?? "نموذج فني",
+          d.style === "dashed" ? [5, 4] : undefined,
+        );
         break;
       case "channel": {
         const half = Math.ceil(d.points.length / 2);

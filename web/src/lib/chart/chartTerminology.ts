@@ -38,7 +38,7 @@ const SEMANTIC_ROLE_LABELS: Record<SemanticRole, string> = {
   decision_zone: "منطقة قرار",
 };
 
-const PATTERN_TYPE_LABELS: Record<PatternTypeName, string> = {
+export const PATTERN_TYPE_LABELS: Record<PatternTypeName, string> = {
   double_bottom: "قاع مزدوج",
   double_top: "قمة مزدوجة",
   w_pattern: "نموذج W",
@@ -79,6 +79,10 @@ function isBanned(label: string): boolean {
   return false;
 }
 
+/** Pattern-state suffixes the geometry engine appends — must survive
+ *  normalization so the operator can tell a forming shape from a completed one. */
+const PATTERN_STATUS_SUFFIXES = ["(قيد التكوّن)", "(مكتمل)", "(مُبطل)"];
+
 export function normalizeChartLabel(
   inputLabel: string | undefined,
   semanticRole?: SemanticRole,
@@ -86,7 +90,9 @@ export function normalizeChartLabel(
   _locale = "ar",
 ): string {
   if (patternType && PATTERN_TYPE_LABELS[patternType]) {
-    return PATTERN_TYPE_LABELS[patternType];
+    const base = PATTERN_TYPE_LABELS[patternType];
+    const suffix = PATTERN_STATUS_SUFFIXES.find((s) => inputLabel?.includes(s));
+    return suffix ? `${base} ${suffix}` : base;
   }
   if (semanticRole && SEMANTIC_ROLE_LABELS[semanticRole]) {
     const fromRole = SEMANTIC_ROLE_LABELS[semanticRole];
