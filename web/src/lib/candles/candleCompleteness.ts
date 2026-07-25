@@ -5,6 +5,7 @@
 import { barDurationMs } from "@/lib/intervals";
 import { createLogger } from "@/lib/logger";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { isKnownForexSymbol } from "@/lib/markets/forexInstruments";
 import { normalizeCanonicalInterval } from "@/lib/markets/intervals";
 import { backfillCandles, MAX_BACKFILL } from "./candleBackfillService";
 import {
@@ -256,7 +257,9 @@ export async function buildWarehouseCompletenessReport(input?: {
   const configuredSymbols = (process.env.CANDLE_SYNC_SYMBOLS ?? "")
     .split(",")
     .map((value) => forexCanonicalKey(value))
-    .filter((value) => /^[A-Z]{6}$/.test(value));
+    // Shape check is permissive (indices/crypto later); the instrument
+    // registry is the real gate.
+    .filter((value) => /^[A-Z0-9]{3,10}$/.test(value) && isKnownForexSymbol(value));
   const configuredIntervals = (process.env.CANDLE_SYNC_INTERVALS ?? "")
     .split(",")
     .map((value) => value.trim())

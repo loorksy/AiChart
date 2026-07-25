@@ -3,30 +3,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { ApiError, handleError } from "@/lib/api";
-import { barDurationMs } from "@/lib/intervals";
-import { normalizeSymbol } from "@/lib/markets/symbolMapping";
-import {
-  exportAiChartCandleWarehouse,
-  researchValidationEnabled,
-  runForexBacktest,
-} from "@/lib/research";
 import type { ResearchTimeframe } from "@/lib/research";
+import { DEFAULT_BACKTEST_NOTIONAL_CAPITAL, resolveBacktestNotionalCapital } from "@/lib/strategies/backtestCapital";
 import {
-  BACKTEST_STRATEGY_IDS,
-  CATALOG_SPEC_REVISION,
-  buildBacktestStrategySpec,
-} from "@/lib/strategies/catalog";
-import {
-  DEFAULT_BACKTEST_ACCOUNT_CURRENCY,
-  DEFAULT_BACKTEST_NOTIONAL_CAPITAL,
-  resolveBacktestNotionalCapital,
-} from "@/lib/strategies/backtestCapital";
-import { getStrategyCostEvidence } from "@/lib/strategies/costProfile";
-import { recordPendingStrategyBacktest } from "@/lib/strategies/evidence";
+  PipelineSubmitError,
+  submitStrategyBacktest,
+} from "@/lib/strategies/pipeline";
 
 const schema = z
   .object({
-    strategy_id: z.enum(BACKTEST_STRATEGY_IDS),
+    // Membership is validated inside the shared submit flow (the id list is
+    // runtime-generated, so a compile-time z.enum no longer fits).
+    strategy_id: z.string().min(3).max(128),
     symbol: z.string().min(1).max(32),
     timeframe: z.enum(["1m", "5m", "15m", "30m", "1h", "4h", "1d"]),
     date_range: z
@@ -46,30 +34,16 @@ const schema = z
   })
   .strict();
 
+/**
+ * Manual single-backtest entry point. Delegates to the SAME submit flow the
+ * mass pipeline uses (cost evidence → warehouse export → spec → research job
+ * → pending evidence row), so manual and pipeline runs are indistinguishable
+ * to the statistical gates.
+ */
 export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
-    if (!researchValidationEnabled()) {
-      throw new ApiError(
-        503,
-        "The complete backtest + validation pipeline is disabled; enable RESEARCH_SERVICE_ENABLED, RESEARCH_BACKTEST_ENABLED, and RESEARCH_VALIDATION_ENABLED",
-      );
-    }
-    const symbol = normalizeSymbol(body.symbol).canonical;
-    const fromMs = Date.parse(body.date_range.from);
-    const toMs = Date.parse(body.date_range.to);
-    if (!(fromMs > 0 && toMs > fromMs && toMs <= Date.now())) {
-      throw new ApiError(400, "date_range must be ordered and end in the past");
-    }
-    const timeframe = body.timeframe as ResearchTimeframe;
-    const estimatedBars = Math.ceil((toMs - fromMs) / barDurationMs(timeframe));
-    if (estimatedBars > 10_000) {
-      throw new ApiError(
-        400,
-        "This synchronous run exceeds 10,000 bars; use a higher timeframe or a shorter range while the historical artifact exporter processes longer ranges",
-      );
-    }
 
     let notionalCapital: number;
     try {
@@ -81,99 +55,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let costs;
-    try {
-      costs = await getStrategyCostEvidence(userId, symbol);
-    } catch (error) {
-      throw new ApiError(
-        409,
-        error instanceof Error
-          ? `Backtest cost profile unavailable: ${error.message}. Connect EA live quotes or set BACKTEST_SPREAD_PIPS.`
-          : "Backtest cost profile unavailable",
-      );
-    }
-
-    const dataset = await exportAiChartCandleWarehouse({
-      symbol,
-      timeframe,
-      fromMs,
-      toMs,
-      limit: 10_000,
-    });
-    if (dataset.bars.length < 200) {
-      throw new ApiError(
-        409,
-        `Historical warehouse coverage is insufficient (${dataset.bars.length} closed bars; at least 200 required). Run candle-warehouse backfill or shorten the date_range.`,
-      );
-    }
-    const strategySpec = buildBacktestStrategySpec({
-      strategyId: body.strategy_id,
-      symbol,
-      timeframe,
-      costs,
-    });
-    const requestId = req.headers.get("x-request-id")?.trim() || randomUUID();
-    // Include catalog revision so engine/catalog fixes never replay an old
-    // succeeded job that still has trade_count=1 under the same date range.
-    const strategyVersion =
-      typeof strategySpec.version_id === "string"
-        ? strategySpec.version_id
-        : `${body.strategy_id}.${CATALOG_SPEC_REVISION}`;
-    const idempotencyKey = [
-      "strategy-backtest",
+    const { created, backtest } = await submitStrategyBacktest({
       userId,
-      body.strategy_id,
-      strategyVersion,
-      symbol,
-      timeframe,
-      fromMs,
-      toMs,
+      strategyId: body.strategy_id,
+      symbol: body.symbol,
+      timeframe: body.timeframe as ResearchTimeframe,
+      fromMs: Date.parse(body.date_range.from),
+      toMs: Date.parse(body.date_range.to),
       notionalCapital,
-    ].join(":");
-    const created = await runForexBacktest(
-      { userId, requestId },
-      {
-        idempotencyKey,
-        timeoutSeconds: 300,
-        strategySpec,
-        dataset: { source: "aichart_candle_warehouse", payload: dataset },
-        runConfig: {
-          initialCapital: notionalCapital,
-          accountCurrency: DEFAULT_BACKTEST_ACCOUNT_CURRENCY,
-          seed: 42,
-          intrabarPolicy: "worst_case",
-          leverage: 30,
-          startTime: new Date(fromMs).toISOString(),
-          endTime: new Date(toMs).toISOString(),
-        },
-        limits: {
-          maxRows: 10_000,
-          maxSymbols: 1,
-          maxDateRangeDays: Math.ceil((toMs - fromMs) / 86_400_000) + 1,
-        },
-      },
-    );
-    const backtest = await recordPendingStrategyBacktest({
-      userId,
-      strategyId: body.strategy_id,
-      // Same catalog revision as the spec/idempotency key — a hardcoded ".1"
-      // here previously drifted from CATALOG_SPEC_REVISION.
-      strategyVersion,
-      symbol,
-      timeframe,
-      jobId: created.job.job_id,
-      request: {
-        date_range: {
-          from: new Date(fromMs).toISOString(),
-          to: new Date(toMs).toISOString(),
-        },
-        candle_count: dataset.bars.length,
-        cost_evidence: costs,
-        initial_capital: notionalCapital,
-        account_currency: DEFAULT_BACKTEST_ACCOUNT_CURRENCY,
-        capital_source: "notional_simulation",
-      },
+      requestId: req.headers.get("x-request-id")?.trim() || randomUUID(),
     });
+
     return NextResponse.json(
       {
         ok: true,
@@ -189,6 +81,9 @@ export async function POST(req: NextRequest) {
       { status: created.created ? 202 : 200 },
     );
   } catch (error) {
+    if (error instanceof PipelineSubmitError) {
+      return handleError(new ApiError(error.status, error.message));
+    }
     return handleError(error);
   }
 }

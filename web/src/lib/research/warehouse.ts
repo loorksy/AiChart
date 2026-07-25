@@ -15,7 +15,12 @@ if (typeof window !== "undefined") {
   throw new Error("Research warehouse export is server-only");
 }
 
-const MAX_EXPORT_ROWS = 10_000;
+/**
+ * 50k bars ≈ 6 MiB of envelope JSON — inside the research-service 8 MiB
+ * request cap with headroom. Unlocks 15m ≈ 17 months and 1h ≈ 5.7 years,
+ * which the 100-trade evidence gate needs on intraday timeframes.
+ */
+const MAX_EXPORT_ROWS = 50_000;
 const MAX_RANGE_MS = 10 * 366 * 24 * 60 * 60 * 1000;
 const DURATION_MS: Record<ResearchTimeframe, number> = {
   "1m": 60_000,

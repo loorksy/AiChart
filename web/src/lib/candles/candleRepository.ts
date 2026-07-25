@@ -33,7 +33,9 @@ export interface WarehouseCoverage {
 }
 
 export const WAREHOUSE_SOURCE = "oanda";
-export const MAX_READ_LIMIT = 10_000;
+/** Raised 10k → 50k with the research export cap: a 15m mass-backtest sample
+ *  needs ~35k bars and the repository clamp must not silently truncate it. */
+export const MAX_READ_LIMIT = 50_000;
 /** ~100 rows × 10 params stays far under SQLite's bind-variable ceiling. */
 const UPSERT_CHUNK = 100;
 const FIVE_YEARS_MS = Math.floor(5 * 365.25 * 24 * 60 * 60 * 1000);

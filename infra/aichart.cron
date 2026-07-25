@@ -17,6 +17,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # read-only report. Overlap-safe via the route's distributed lease.
 */10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/candle-warehouse >/dev/null 2>&1
 
+# Strategy mass-backtest pipeline — every 10 min. Advances in-flight backtests
+# through the evidence state machine and submits missing catalog combos
+# (batch-paced for the single-concurrency research container). No-ops without
+# REDIS_URL. GET the same path for state counts + gate-failure reasons.
+*/10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/strategy-pipeline >/dev/null 2>&1
+
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 
