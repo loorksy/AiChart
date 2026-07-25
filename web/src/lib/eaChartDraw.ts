@@ -104,6 +104,58 @@ export async function canUseMt5ChartCapture(
   return { ok: true, mt5Symbol };
 }
 
+/**
+ * Semantic drawing types → MT5-native types AiChartBridge.mq5 already renders.
+ *
+ * The EA's ResolveDrawingType knows the legacy semantic set (price_line, zone,
+ * channel, fib_retracement…) but prints "unsupported" and SKIPS the newer
+ * semantic types (supply_zone, parallel_channel, neckline, polyline_pattern,
+ * positions). Mapping server-side means richer MT5 captures with NO EA
+ * recompile — the user would otherwise have to rebuild + reattach manually.
+ */
+const MT5_TYPE_MAP: Record<string, string> = {
+  supply_zone: "rectangle",
+  demand_zone: "rectangle",
+  decision_zone: "rectangle",
+  retest_zone: "rectangle",
+  range_box: "rectangle",
+  risk_reward_box: "rectangle",
+  parallel_channel: "channel",
+  regression_trend: "channel",
+  neckline: "trendline",
+  polyline_pattern: "trend_path",
+  pattern_label: "text",
+  labeled_arrow: "arrow",
+  breakout_arrow: "arrow_up",
+};
+
+export function mapDrawingsForMt5(drawings: ChartDrawing[]): ChartDrawing[] {
+  return drawings.flatMap((d) => {
+    // Positions expand into their level lines (the EA has no position tool).
+    if (d.type === "long_position" || d.type === "short_position") {
+      const meta = (d.meta ?? {}) as Record<string, unknown>;
+      const out: ChartDrawing[] = [];
+      const push = (price: unknown, label: string, color: string) => {
+        if (typeof price === "number" && Number.isFinite(price)) {
+          out.push({
+            type: "hline" as ChartDrawing["type"],
+            confidence: d.confidence,
+            label,
+            color,
+            points: [{ price }],
+          });
+        }
+      };
+      push(meta.entry ?? d.points[0]?.price, "دخول", "#3b82f6");
+      push(meta.stopLoss ?? d.points[2]?.price, "SL", "#ef4444");
+      push(meta.takeProfit ?? d.points[1]?.price, "TP", "#22c55e");
+      return out;
+    }
+    const mapped = MT5_TYPE_MAP[d.type];
+    return [mapped ? ({ ...d, type: mapped as ChartDrawing["type"] }) : d];
+  });
+}
+
 /** Queue a draw_and_capture command for the connected EA. */
 export async function queueMt5ChartCapture(
   userId: number,
@@ -128,7 +180,7 @@ export async function queueMt5ChartCapture(
     entry: input.entry ?? null,
     stop_loss: input.stop_loss ?? null,
     take_profit: input.take_profit ?? null,
-    drawings: input.drawings,
+    drawings: mapDrawingsForMt5(input.drawings),
   };
 
   await createEaCommand(userId, {

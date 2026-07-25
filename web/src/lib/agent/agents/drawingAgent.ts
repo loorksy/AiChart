@@ -121,6 +121,10 @@ export async function runDrawingAgent(
     raw.push(annotationDrawing(ann, lastTime));
   }
 
+  // Shared-engine geometry: trendlines, channels, and patterns with their
+  // forming/completed state — already strength-gated and bounded by the plan.
+  raw.push(...(plan.selectedGeometry ?? []));
+
   // Scenario path (valid setups only) — a POSSIBLE route, never a guarantee.
   if (plan.forecastPath?.length) {
     raw.push({

@@ -86,6 +86,13 @@ const PATTERN_TOOL: Record<string, { tool: string; pts: number }> = {
   m_pattern: { tool: "xabcd_pattern", pts: 5 },
   double_bottom: { tool: "xabcd_pattern", pts: 5 },
   double_top: { tool: "xabcd_pattern", pts: 5 },
+  // Geometry-engine shapes: wedges reuse the triangle tool (same 4-anchor
+  // boundary construction); flags/pennants/cup render as an explicit labeled
+  // polyline — better than the silent generic fallback they previously hit.
+  wedge: { tool: "triangle_pattern", pts: 4 },
+  flag: { tool: "polyline", pts: 3 },
+  pennant: { tool: "polyline", pts: 3 },
+  cup_and_handle: { tool: "polyline", pts: 5 },
 };
 
 // Real, user-editable chart drawings: selectable, draggable, adjustable

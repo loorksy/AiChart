@@ -15,6 +15,8 @@ import type { LiquidityResult } from "../agents/liquidityAgent";
 import type { MultiTimeframeResult } from "../agents/multiTimeframeAgent";
 import { computeRangePosition } from "../marketContext/rangePosition";
 import { DATA_QUALITY_POLICY } from "../dataQualityPolicy";
+import { geometryToDrawings, type GeometrySnapshot } from "@/lib/chart/geometry";
+import type { ChartDrawing } from "@/lib/chartDrawings";
 
 /** Minimum candle history required before ANY level/zone drawing is trusted.
  *  Sourced from the central data-quality policy (drawing gate). */
@@ -71,10 +73,17 @@ export type DrawingPlan = {
   selectedAnnotations: DrawingAnnotation[];
   /** Scenario path — a POSSIBLE route, never a prediction guarantee. */
   forecastPath?: Array<{ time: number; price: number }>;
+  /** Detected geometry drawings (trendlines/channels/patterns) — pre-built
+   *  ChartDrawings from the shared engine, already strength-gated. */
+  selectedGeometry: ChartDrawing[];
 };
 
-/** Hard cap: meaningful analysis, never chart clutter. */
-export const MAX_PLAN_OBJECTS = 7;
+/** Hard cap: meaningful analysis, never chart clutter.
+ *  Raised 7 → 9 when geometry landed so trendlines/patterns never evict the
+ *  POI zones and levels that justify the trade itself. */
+export const MAX_PLAN_OBJECTS = 9;
+/** Geometry gets its own sub-budget inside MAX_PLAN_OBJECTS. */
+export const MAX_GEOMETRY_OBJECTS = 3;
 
 export interface DrawingPlanInput {
   decision: FinalDecisionResult;
@@ -83,6 +92,8 @@ export interface DrawingPlanInput {
   supplyDemand: SupplyDemandResult | null;
   liquidity: LiquidityResult | null;
   mtf: MultiTimeframeResult | null;
+  /** Shared geometry snapshot (trendlines/channels/patterns). */
+  geometry?: GeometrySnapshot | null;
   preferMinimalDrawings?: boolean;
   /** LLM-selected candidate ids (subset filter). The LLM can only SHRINK the
    *  candidate set — every selection is still strength-validated here. */
@@ -220,7 +231,25 @@ function noDrawPlan(reason: string): DrawingPlan {
     selectedLevels: [],
     selectedZones: [],
     selectedAnnotations: [],
+    selectedGeometry: [],
   };
+}
+
+/**
+ * Geometry drawings above the strength gate, invalidated patterns excluded,
+ * bounded to the geometry sub-budget. Confidence maps 1:1 onto the plan's
+ * 0–100 strength scale so the same threshold governs levels AND geometry.
+ */
+function selectGeometryDrawings(
+  geometry: GeometrySnapshot | null | undefined,
+  threshold: number,
+): ChartDrawing[] {
+  if (!geometry) return [];
+  return geometryToDrawings(geometry)
+    .filter((drawing) => (drawing.confidence ?? 0) >= threshold)
+    .filter((drawing) => drawing.meta?.patternStatus !== "invalidated")
+    .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+    .slice(0, MAX_GEOMETRY_OBJECTS);
 }
 
 export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
@@ -300,6 +329,9 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
         entry: rec.entry,
         target: rec.targets[0]!,
       }),
+      // The structural justification drawn WITH the trade: the trendline,
+      // channel, or pattern the recommendation narrative can point at.
+      selectedGeometry: selectGeometryDrawings(input.geometry, threshold),
     };
   }
 
@@ -387,15 +419,18 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
   }
   annotations.push(...pickEvidenceAnnotations(input, 2));
 
-  if (!levels.length && !zones.length && !annotations.length) {
+  const geometryDrawings = selectGeometryDrawings(input.geometry, threshold);
+
+  if (!levels.length && !zones.length && !annotations.length && !geometryDrawings.length) {
     return noDrawPlan(
       "قرار انتظار دون مستويات أو مناطق قوية موثوقة — الرسم الآن سيكون مضللاً.",
     );
   }
 
-  // Cap total drawn objects — analysis, not clutter.
-  const budget = MAX_PLAN_OBJECTS;
-  const cappedLevels = levels.slice(0, Math.min(3, budget));
+  // Cap total drawn objects — analysis, not clutter. Geometry spends its own
+  // sub-budget first; levels/zones/annotations share the remainder.
+  const budget = MAX_PLAN_OBJECTS - geometryDrawings.length;
+  const cappedLevels = levels.slice(0, Math.min(3, Math.max(0, budget)));
   const cappedZones = zones.slice(
     0,
     Math.max(0, Math.min(2, budget - cappedLevels.length)),
@@ -412,6 +447,7 @@ export function buildDrawingPlan(input: DrawingPlanInput): DrawingPlan {
     selectedLevels: cappedLevels,
     selectedZones: cappedZones,
     selectedAnnotations: cappedAnnotations,
+    selectedGeometry: geometryDrawings,
   };
 }
 
