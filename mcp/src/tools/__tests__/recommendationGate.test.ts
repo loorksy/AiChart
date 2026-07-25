@@ -45,20 +45,42 @@ describe("create_recommendation structural gate", () => {
     assert.equal(parsed.success, true);
   });
 
-  it("rejects unknown strategy_id for SELL", () => {
+  it("rejects malformed strategy ids at the schema layer", () => {
+    for (const badId of ["Invented Edge!", "UPPERCASE_V1", "no_version_suffix", "x"]) {
+      const parsed = createRecommendationInput.safeParse({
+        symbol: "EURUSD",
+        action: "sell",
+        strategy_id: badId,
+        backtested_confidence: 70,
+        market_regime: "trending_down",
+        rationale: "We sell a strategy with a malformed identifier.",
+        factors: ["fake edge"],
+        entry: 1.1,
+        stop_loss: 1.12,
+        take_profit: 1.08,
+      });
+      assert.equal(parsed.success, false, badId);
+    }
+  });
+
+  it("passes well-formed unknown ids through to SERVER validation (409)", () => {
+    // The web catalog is the single source of truth. The MCP schema validates
+    // shape only, so a growing catalog never churns the tool contract — an id
+    // the server does not know is rejected there with 409, and BUY/SELL
+    // additionally require a validated deployment for the symbol+timeframe.
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "sell",
       strategy_id: "invented_edge_v9",
       backtested_confidence: 70,
       market_regime: "trending_down",
-      rationale: "We sell a made-up strategy that is not in the catalog.",
+      rationale: "Made-up strategy — the server, not the schema, rejects it.",
       factors: ["fake edge"],
       entry: 1.1,
       stop_loss: 1.12,
       take_profit: 1.08,
     });
-    assert.equal(parsed.success, false);
+    assert.equal(parsed.success, true);
   });
 });
 

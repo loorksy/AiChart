@@ -18,7 +18,9 @@ import { getFlag, logAudit, setFlag } from "@/lib/store";
 export const maxDuration = 300;
 
 const log = createLogger("cron:candle-warehouse");
-const DEFAULT_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d"] as const;
+// 30m included: it is a research backtest timeframe — without warehouse
+// maintenance no 30m strategy deployment can ever accumulate history.
+const DEFAULT_INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;
 const LEADER_LOCK_MS = 290_000;
 const SERIES_CURSOR_FLAG = "candle_warehouse_series_cursor";
 

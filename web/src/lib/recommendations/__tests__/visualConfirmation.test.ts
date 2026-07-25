@@ -168,7 +168,7 @@ describe("live execution never consults visual review", () => {
   it("execution eligibility still requires an active deployment and backtest id", () => {
     const evidence = read("lib/strategies/evidence.ts");
     assert.ok(evidence.includes("Recommendation has no backtest evidence"));
-    assert.ok(evidence.includes('row.deployment_state !== "active"'));
+    assert.ok(evidence.includes('deployment?.state !== "active"'));
   });
 
   it("the contradiction penalty touches displayed confidence only", () => {

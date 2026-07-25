@@ -34,7 +34,10 @@ test("market sync, risk and explicit execution guard remain in the orchestrator"
   assert.match(orchestrator, /requiresConfirmation/);
 });
 
-test("significant candle gaps stop the market fleet before specialist analysis", () => {
+// Gap policy v1.2: "gapped" now means CATASTROPHIC data loss only — that tier
+// still stops the fleet. Significant gaps degrade to a warning + evidence and
+// analysis proceeds (the model stays the sole BUY/SELL/WAIT authority).
+test("catastrophic candle gaps stop the market fleet before specialist analysis", () => {
   const gapGate = orchestrator.indexOf(
     'market.dataQuality.coverage.status === "gapped"',
   );
@@ -42,4 +45,18 @@ test("significant candle gaps stop the market fleet before specialist analysis",
     "withTimeout(runStructureAgent",
   );
   assert.ok(gapGate > 0 && gapGate < specialistFleet);
+});
+
+test("significant gaps proceed to analysis as a warning, not a block", () => {
+  const warningBranch = orchestrator.indexOf(
+    'market.dataQuality.coverage.gapSeverity === "significant"',
+  );
+  const specialistFleet = orchestrator.indexOf(
+    "withTimeout(runStructureAgent",
+  );
+  assert.ok(warningBranch > 0 && warningBranch < specialistFleet);
+  // The significant branch emits a warning event — it must NOT early-return.
+  const branchSlice = orchestrator.slice(warningBranch, specialistFleet);
+  assert.doesNotMatch(branchSlice, /decision:\s*"action_required"/);
+  assert.match(branchSlice, /status:\s*"warning"/);
 });

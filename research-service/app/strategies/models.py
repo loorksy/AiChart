@@ -136,6 +136,21 @@ SYMBOL_REGISTRY["XAUUSD"] = SymbolMetadata(
     minimum_lot=0.01,
     lot_step=0.01,
 )
+# Silver: 5000 oz contract, 3-digit pricing. The web-side warehouse exporter
+# already allowlists XAGUSD — without this entry every silver spec was
+# rejected with "unsupported symbol metadata".
+SYMBOL_REGISTRY["XAGUSD"] = SymbolMetadata(
+    symbol="XAGUSD",
+    digits=3,
+    pip_size=0.001,
+    tick_size=0.001,
+    contract_size=5_000.0,
+    quote_currency="USD",
+    base_currency="XAG",
+    pip_value_method=PipValueMethod.QUOTE_CURRENCY,
+    minimum_lot=0.01,
+    lot_step=0.01,
+)
 
 
 class StrategyDefinition(FrozenStrictModel):

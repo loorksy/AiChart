@@ -36,3 +36,12 @@ if (!hasHandler("deep_analysis_poll")) {
     await pollDeepAnalysisOnce(payload);
   });
 }
+
+if (!hasHandler("candle_gap_repair")) {
+  registerHandler("candle_gap_repair", async ({ symbol, interval }) => {
+    const { repairRecentCandleGaps } = await import(
+      "./candles/candleBackfillService"
+    );
+    await repairRecentCandleGaps({ symbol, interval });
+  });
+}

@@ -1,5 +1,9 @@
 import { execute, insertReturningId, query, queryOne } from "@/lib/db";
 import {
+  canonicalStrategySymbol,
+  canonicalStrategyTimeframe,
+} from "./matchingKeys";
+import {
   getResearchJob,
   getResearchJsonArtifact,
 } from "@/lib/research/client";
@@ -678,10 +682,14 @@ export async function getStrategyDeployment(
   symbol: string,
   timeframe: string,
 ): Promise<StrategyDeployment | null> {
+  // Canonicalise the matching keys: deployments store XAUUSD/1h while callers
+  // may hold broker-suffixed symbols (XAUUSDM) or alias timeframes ("H1").
+  const canonicalTimeframe = canonicalStrategyTimeframe(timeframe);
+  if (!canonicalTimeframe) return null;
   const row = await queryOne<StrategyDeploymentRow>(
     `SELECT * FROM strategy_deployments
       WHERE user_id = ? AND strategy_id = ? AND symbol = ? AND timeframe = ?`,
-    [userId, strategyId, symbol.toUpperCase(), timeframe],
+    [userId, strategyId, canonicalStrategySymbol(symbol), canonicalTimeframe],
   );
   return row ? toDeployment(row) : null;
 }
@@ -900,33 +908,40 @@ export async function checkRecommendationExecutionEligibility(input: {
     strategy_id: string | null;
     timeframe: string | null;
     backtest_id: number | null;
-    deployment_state: string | null;
-    deployment_backtest_id: number | null;
   }>(
-    `SELECT r.symbol, r.action, r.strategy_id, r.timeframe, r.backtest_id,
-            d.state AS deployment_state, d.backtest_id AS deployment_backtest_id
+    `SELECT r.symbol, r.action, r.strategy_id, r.timeframe, r.backtest_id
        FROM recommendations r
-       LEFT JOIN strategy_deployments d
-         ON d.user_id = r.user_id AND d.strategy_id = r.strategy_id
-        AND d.symbol = r.symbol AND d.timeframe = r.timeframe
       WHERE r.id = ? AND r.user_id = ?`,
     [input.recommendationId, input.userId],
   );
   if (!row) return { ok: false, reason: "Recommendation does not exist for this user" };
-  if (row.symbol.toUpperCase() !== input.symbol.toUpperCase() || row.action !== input.side) {
+  // Compare canonical symbols so a broker-suffixed order (XAUUSDM) matches a
+  // canonically stored recommendation (XAUUSD) and vice versa for legacy rows.
+  if (
+    canonicalStrategySymbol(row.symbol) !== canonicalStrategySymbol(input.symbol) ||
+    row.action !== input.side
+  ) {
     return { ok: false, reason: "Recommendation symbol or side does not match the order" };
   }
   if (!row.strategy_id || !row.backtest_id) {
     return { ok: false, reason: "Recommendation has no backtest evidence" };
   }
+  // Deployment lookup goes through the canonicalising helper instead of a raw
+  // SQL join, so legacy suffixed/alias recommendation rows still resolve.
+  const deployment = await getStrategyDeployment(
+    input.userId,
+    row.strategy_id,
+    row.symbol,
+    row.timeframe ?? "",
+  );
   if (
-    row.deployment_state !== "active" ||
-    Number(row.deployment_backtest_id) !== Number(row.backtest_id)
+    deployment?.state !== "active" ||
+    Number(deployment.backtestId) !== Number(row.backtest_id)
   ) {
     return {
       ok: false,
       reason:
-        row.deployment_state === "shadow"
+        deployment?.state === "shadow"
           ? "Strategy is still in shadow trading and cannot execute live"
           : "Strategy is not active or its evidence has been superseded",
     };

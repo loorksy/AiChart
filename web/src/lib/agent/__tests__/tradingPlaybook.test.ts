@@ -154,9 +154,10 @@ describe("tradingPlaybook", () => {
             higherTfCount: 120,
             dailyCount: 60,
             sufficient: true, // analysis gate OK, trade gate NOT
-            policyVersion: "1.1.0",
+            hasCriticalGaps: false,
+            policyVersion: "1.2.0",
             coverage: {
-              policyVersion: "1.1.0",
+              policyVersion: "1.2.0",
               analysisKind: "intraday",
               gate: "trade",
               status: "insufficient",

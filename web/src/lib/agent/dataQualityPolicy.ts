@@ -7,7 +7,7 @@
  * - Drawings / structural trendlines require the drawing threshold.
  * Insufficient coverage triggers refill upstream but never invents data.
  */
-export const CANDLE_COVERAGE_POLICY_VERSION = "1.1.0";
+export const CANDLE_COVERAGE_POLICY_VERSION = "1.2.0";
 
 export interface DataQualityThresholds {
   currentTf: number;
@@ -55,18 +55,105 @@ export interface CandleGapEvidence {
   missingBars: number;
 }
 
+/**
+ * Gap severity ladder (policy v1.2):
+ *   none         — no missing open-market bars.
+ *   minor        — isolated missing bars; normal provider noise, no action.
+ *   significant  — worth a warning and an automatic repair job, but analysis
+ *                  PROCEEDS; the model weighs it as evidence.
+ *   catastrophic — so much data is missing that analysis output would be
+ *                  meaningless; the only tier that still blocks.
+ *
+ * The previous absolute policy (any 2-bar gap, or >2 missing bars total)
+ * blocked analysis permanently on healthy series because session-boundary
+ * bars misclassified as "missing" accumulate with window size. Thresholds are
+ * therefore RELATIVE to the inspected window, with env overrides.
+ */
+export type CandleGapSeverity = "none" | "minor" | "significant" | "catastrophic";
+
+const GAP_SEVERITY_ORDER: Record<CandleGapSeverity, number> = {
+  none: 0,
+  minor: 1,
+  significant: 2,
+  catastrophic: 3,
+};
+
+export function worstGapSeverity(
+  severities: readonly CandleGapSeverity[],
+): CandleGapSeverity {
+  let worst: CandleGapSeverity = "none";
+  for (const severity of severities) {
+    if (GAP_SEVERITY_ORDER[severity] > GAP_SEVERITY_ORDER[worst]) worst = severity;
+  }
+  return worst;
+}
+
 export interface CandleGapSummary {
   gapCount: number;
   missingBars: number;
   largestGapBars: number;
+  gapSeverity: CandleGapSeverity;
+  /** True only for the catastrophic tier — the sole remaining hard block. */
   hasCriticalGaps: boolean;
 }
 
-/**
- * One isolated missing bar is tolerated because providers occasionally revise
- * a just-closed candle. Two consecutive bars, or more than two missing bars in
- * the inspected window, are significant enough to block analysis until repair.
- */
+export interface CandleGapPolicy {
+  /** Single-gap run length tolerated without a warning. */
+  maxSingleGapBars: number;
+  /** Total missing bars tolerated without a warning (ratio × window). */
+  maxTotalMissingBars: number;
+  /** Single-gap run length that alone makes the series unusable. */
+  catastrophicSingleGapBars: number;
+  /** Total missing bars that make the series unusable (ratio × window). */
+  catastrophicMissingBars: number;
+}
+
+const DEFAULT_MAX_SINGLE_GAP_BARS = 3;
+const DEFAULT_MAX_MISSING_RATIO = 0.02;
+const DEFAULT_CATASTROPHIC_SINGLE_GAP_BARS = 20;
+const DEFAULT_CATASTROPHIC_MISSING_RATIO = 0.1;
+
+function envInt(name: string, fallback: number, min: number, max: number): number {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(raw)));
+}
+
+function envRatio(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw) || raw <= 0 || raw > 1) return fallback;
+  return raw;
+}
+
+/** Window-relative gap thresholds. `windowBars` = bars available in the scan. */
+export function resolveGapPolicy(windowBars: number): CandleGapPolicy {
+  const window = Math.max(1, Math.floor(windowBars));
+  const maxSingleGapBars = envInt("CANDLE_GAP_MAX_SINGLE_BARS", DEFAULT_MAX_SINGLE_GAP_BARS, 1, 100);
+  const missingRatio = envRatio("CANDLE_GAP_MAX_MISSING_RATIO", DEFAULT_MAX_MISSING_RATIO);
+  const catastrophicSingleGapBars = envInt(
+    "CANDLE_GAP_CATASTROPHIC_SINGLE_BARS",
+    DEFAULT_CATASTROPHIC_SINGLE_GAP_BARS,
+    5,
+    10_000,
+  );
+  const catastrophicRatio = envRatio(
+    "CANDLE_GAP_CATASTROPHIC_RATIO",
+    DEFAULT_CATASTROPHIC_MISSING_RATIO,
+  );
+  return {
+    maxSingleGapBars,
+    maxTotalMissingBars: Math.max(
+      maxSingleGapBars,
+      Math.ceil(window * missingRatio),
+    ),
+    catastrophicSingleGapBars,
+    // Floored at 10 (not at the single-gap threshold) so the ratio path stays
+    // reachable for small windows like the 100-bar daily frame.
+    catastrophicMissingBars: Math.max(10, Math.ceil(window * catastrophicRatio)),
+  };
+}
+
+/** @deprecated v1.1 absolute thresholds — kept for reference in stored reports. */
 export const IMPORTANT_CANDLE_GAP_POLICY = {
   maxSingleGapBars: 1,
   maxTotalMissingBars: 2,
@@ -74,19 +161,32 @@ export const IMPORTANT_CANDLE_GAP_POLICY = {
 
 export function summarizeCandleGaps(
   gaps: readonly CandleGapEvidence[] = [],
+  windowBars = 500,
 ): CandleGapSummary {
   const missingByGap = gaps
     .map((gap) => Math.max(0, Math.floor(Number(gap.missingBars))))
     .filter((missing) => missing > 0);
   const missingBars = missingByGap.reduce((sum, missing) => sum + missing, 0);
   const largestGapBars = Math.max(0, ...missingByGap);
+  const policy = resolveGapPolicy(windowBars);
+
+  const gapSeverity: CandleGapSeverity =
+    largestGapBars >= policy.catastrophicSingleGapBars ||
+    missingBars >= policy.catastrophicMissingBars
+      ? "catastrophic"
+      : largestGapBars > policy.maxSingleGapBars ||
+          missingBars > policy.maxTotalMissingBars
+        ? "significant"
+        : missingBars > 0
+          ? "minor"
+          : "none";
+
   return {
     gapCount: missingByGap.length,
     missingBars,
     largestGapBars,
-    hasCriticalGaps:
-      largestGapBars > IMPORTANT_CANDLE_GAP_POLICY.maxSingleGapBars ||
-      missingBars > IMPORTANT_CANDLE_GAP_POLICY.maxTotalMissingBars,
+    gapSeverity,
+    hasCriticalGaps: gapSeverity === "catastrophic",
   };
 }
 
@@ -104,6 +204,7 @@ export interface PerTimeframeCoverage {
   gapCount: number;
   missingBars: number;
   largestGapBars: number;
+  gapSeverity: CandleGapSeverity;
   hasCriticalGaps: boolean;
 }
 
@@ -117,6 +218,8 @@ export interface CandleCoverageReport {
   sufficientForDrawing: boolean;
   /** Present on reports generated by v1.1+; optional for stored legacy reports. */
   hasCriticalGaps?: boolean;
+  /** Worst gap severity across frames (v1.2+; absent on stored legacy reports). */
+  gapSeverity?: CandleGapSeverity;
   timeframes: PerTimeframeCoverage[];
   summaryAr: string;
   summaryEn: string;
@@ -209,10 +312,21 @@ export function buildCandleCoverageReport(input: {
   const gate = input.gate ?? "trade";
   const required = resolveCoverageThresholds(input.analysisKind, gate);
   const source = input.source ?? "warehouse+oanda";
+  // Severity is window-relative: the same 5 missing bars are noise in a
+  // 500-bar frame and a real problem in a 100-bar daily frame.
   const gapSummaries = {
-    current: summarizeCandleGaps(input.gaps?.current),
-    higher: summarizeCandleGaps(input.gaps?.higher),
-    daily: summarizeCandleGaps(input.gaps?.daily),
+    current: summarizeCandleGaps(
+      input.gaps?.current,
+      Math.max(input.currentTfCount, required.currentTf),
+    ),
+    higher: summarizeCandleGaps(
+      input.gaps?.higher,
+      Math.max(input.higherTfCount, required.higherTf),
+    ),
+    daily: summarizeCandleGaps(
+      input.gaps?.daily,
+      Math.max(input.dailyCount, required.daily),
+    ),
   };
 
   const frames: PerTimeframeCoverage[] = [
@@ -278,13 +392,14 @@ export function buildCandleCoverageReport(input: {
     },
   ];
 
+  const gapSeverity = worstGapSeverity(
+    Object.values(gapSummaries).map((summary) => summary.gapSeverity),
+  );
   const counts: CandleCounts = {
     currentTfCount: input.currentTfCount,
     higherTfCount: input.higherTfCount,
     dailyCount: input.dailyCount,
-    hasCriticalGaps: Object.values(gapSummaries).some(
-      (summary) => summary.hasCriticalGaps,
-    ),
+    hasCriticalGaps: gapSeverity === "catastrophic",
   };
   const sufficientForAnalysis = meetsDataQuality(counts, "analysis");
   const sufficientForTrade = meetsDataQuality(counts, "trade");
@@ -329,7 +444,12 @@ export function buildCandleCoverageReport(input: {
     )
     .join(" · ");
 
-  const gapped = frames.filter((frame) => frame.hasCriticalGaps);
+  // Detail lines cover every frame with warning-level gaps or worse, so the
+  // significant-tier warning names the affected frames too.
+  const gapped = frames.filter(
+    (frame) =>
+      frame.gapSeverity === "significant" || frame.gapSeverity === "catastrophic",
+  );
   const gapDetailAr = gapped
     .map(
       (frame) =>
@@ -343,16 +463,25 @@ export function buildCandleCoverageReport(input: {
     )
     .join(" · ");
 
+  const significantGapNoteAr =
+    gapSeverity === "significant"
+      ? ` تنبيه: فجوات بيانات ملحوظة (${gapDetailAr}) — بدأ الإصلاح التلقائي وتستمر المعالجة مع خفض الثقة بالأدلة المتأثرة.`
+      : "";
+  const significantGapNoteEn =
+    gapSeverity === "significant"
+      ? ` Note: noticeable data gaps (${gapDetailEn}) — automatic repair started; analysis continues with reduced weight on affected evidence.`
+      : "";
+
   const summaryAr = hasCriticalGaps
-    ? `انتظار — توجد فجوات مهمة أثناء فتح السوق. ${gapDetailAr}. أُوقف التحليل حتى إصلاح البيانات.`
+    ? `فجوات بيانات حرجة أثناء فتح السوق. ${gapDetailAr}. بدأ الإصلاح التلقائي — أعد المحاولة خلال دقائق.`
     : sufficientForTrade
-      ? `تغطية الشموع كافية (${frames.map((f) => `${f.interval}:${f.available}`).join(", ")}).`
-      : `انتظار — تغطية الشموع غير كافية. ${detailAr || "لا بيانات"}. لم تُنشأ توصية ولا خط اتجاه هيكلي.`;
+      ? `تغطية الشموع كافية (${frames.map((f) => `${f.interval}:${f.available}`).join(", ")}).${significantGapNoteAr}`
+      : `انتظار — تغطية الشموع غير كافية. ${detailAr || "لا بيانات"}. لم تُنشأ توصية ولا خط اتجاه هيكلي.${significantGapNoteAr}`;
   const summaryEn = hasCriticalGaps
-    ? `WAIT — significant open-market candle gaps detected. ${gapDetailEn}. Analysis is blocked until the data is repaired.`
+    ? `Catastrophic open-market candle gaps. ${gapDetailEn}. Automatic repair started — retry in a few minutes.`
     : sufficientForTrade
-      ? `Candle coverage sufficient (${frames.map((f) => `${f.interval}:${f.available}`).join(", ")}).`
-      : `WAIT — candle coverage insufficient. ${detailEn || "no data"}. No recommendation or structural trendline produced.`;
+      ? `Candle coverage sufficient (${frames.map((f) => `${f.interval}:${f.available}`).join(", ")}).${significantGapNoteEn}`
+      : `WAIT — candle coverage insufficient. ${detailEn || "no data"}. No recommendation or structural trendline produced.${significantGapNoteEn}`;
 
   return {
     policyVersion: CANDLE_COVERAGE_POLICY_VERSION,
@@ -363,6 +492,7 @@ export function buildCandleCoverageReport(input: {
     sufficientForTrade,
     sufficientForDrawing,
     hasCriticalGaps,
+    gapSeverity,
     timeframes: frames,
     summaryAr,
     summaryEn,

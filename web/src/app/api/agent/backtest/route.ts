@@ -156,7 +156,9 @@ export async function POST(req: NextRequest) {
     const backtest = await recordPendingStrategyBacktest({
       userId,
       strategyId: body.strategy_id,
-      strategyVersion: `${body.strategy_id}.1`,
+      // Same catalog revision as the spec/idempotency key — a hardcoded ".1"
+      // here previously drifted from CATALOG_SPEC_REVISION.
+      strategyVersion,
       symbol,
       timeframe,
       jobId: created.job.job_id,

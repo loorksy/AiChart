@@ -27,6 +27,8 @@ export interface JobPayloads {
     recommendationId: number | null;
     generation: number;
   };
+  /** Repair detected open-market candle gaps for one warehouse series. */
+  candle_gap_repair: { symbol: string; interval: string };
 }
 export type JobName = keyof JobPayloads;
 

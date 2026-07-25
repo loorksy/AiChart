@@ -9,7 +9,10 @@
  */
 import { execute, query, queryOne } from "@/lib/db";
 import { barDurationMs } from "@/lib/intervals";
-import { isForexMarketOpen } from "@/lib/agent/marketSession";
+import {
+  isExpectedDailyBarOpen,
+  isMarketOpenAt,
+} from "@/lib/markets/tradingCalendar";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { normalizeCanonicalInterval } from "@/lib/markets/intervals";
 
@@ -153,15 +156,29 @@ export function sanitizeCandles(
   return { candles, rejected };
 }
 
-/** Detect missing open-market bars while ignoring the normal FX weekend. */
+/**
+ * Detect missing open-market bars while ignoring the FX weekend, the metals
+ * daily maintenance break, and DST-shifted daily alignment.
+ *
+ * Daily series get their own predicate: OANDA daily candles open at 17:00
+ * America/New_York, so a fixed 24h step drifts by an hour across every DST
+ * transition. `isExpectedDailyBarOpen` counts a candidate as missing only when
+ * it lands on a genuine session-open slot (Sun–Thu 17:00 NY — five per week).
+ */
 export function detectCandleGaps(
   symbol: string,
   interval: string,
   candles: readonly Pick<StoredCandle, "time">[],
   maxMissingBars = 20_000,
 ): CandleGap[] {
-  const step = barDurationMs(normalizeCanonicalInterval(interval));
+  const canonicalInterval = normalizeCanonicalInterval(interval);
+  const step = barDurationMs(canonicalInterval);
   if (!(step > 0) || candles.length < 2) return [];
+  const isDaily = canonicalInterval === "1d";
+  const isExpectedBar = (candidate: number): boolean =>
+    isDaily
+      ? isExpectedDailyBarOpen(symbol, candidate)
+      : isMarketOpenAt(symbol, candidate);
   const times = [...new Set(candles.map((candle) => Math.floor(candle.time)))]
     .sort((a, b) => a - b);
   const gaps: CandleGap[] = [];
@@ -178,7 +195,7 @@ export function detectCandleGaps(
     for (let candidate = previous + step; candidate < current; candidate += step) {
       scanned += 1;
       if (scanned > maxMissingBars) break;
-      if (!isForexMarketOpen(symbol, new Date(candidate))) {
+      if (!isExpectedBar(candidate)) {
         if (gapStart != null && gapEnd != null) {
           gaps.push({ fromMs: gapStart, toMs: gapEnd, missingBars });
           gapStart = gapEnd = null;

@@ -264,7 +264,7 @@ export async function buildWarehouseCompletenessReport(input?: {
     .map((value) => normalizeCanonicalInterval(value));
   const defaults = configuredIntervals.length
     ? configuredIntervals
-    : (["1m", "5m", "15m", "1h", "4h", "1d"] as const).map((value) => value);
+    : (["1m", "5m", "15m", "30m", "1h", "4h", "1d"] as const).map((value) => value);
 
   const stored = await listWarehouseSeries();
   const wanted = new Map<string, { symbol: string; interval: string }>();
