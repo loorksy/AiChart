@@ -32,6 +32,25 @@ services:
       - default
       - research-internal
 
+  # Loopback ingress for the pm2 deployment layout, where web/worker run on
+  # the HOST (RESEARCH_SERVICE_URL=http://127.0.0.1:8090) rather than as
+  # compose services. The research service itself stays on the INTERNAL-only
+  # network (no egress — docker cannot and must not publish its ports
+  # directly); this proxy bridges default ⇄ research-internal and binds
+  # strictly to 127.0.0.1.
+  research-ingress:
+    profiles: ["research"]
+    image: alpine/socat:1.8.0.0
+    command: TCP-LISTEN:8090,fork,reuseaddr TCP:research:8090
+    ports:
+      - "127.0.0.1:8090:8090"
+    depends_on:
+      - research
+    networks:
+      - default
+      - research-internal
+    restart: unless-stopped
+
   research:
     profiles: ["research"]
     build:
@@ -39,11 +58,6 @@ services:
       dockerfile: Dockerfile
     expose:
       - "8090"
-    # Loopback-published for the pm2 deployment layout, where web/worker run
-    # on the HOST (RESEARCH_SERVICE_URL=http://127.0.0.1:8090) rather than as
-    # compose services. Never bind beyond 127.0.0.1 — the service is internal.
-    ports:
-      - "127.0.0.1:8090:8090"
     environment:
       - RESEARCH_SERVICE_ENV=production
       - RESEARCH_SERVICE_INTERNAL_TOKEN=${RESEARCH_SERVICE_INTERNAL_TOKEN:-}
