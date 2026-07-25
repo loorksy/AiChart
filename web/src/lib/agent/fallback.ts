@@ -13,7 +13,12 @@ import {
   buildInformationalConfidence,
 } from "./confidenceSemantics";
 import type { AgentActivityEvent, AgentFinalResult } from "./types";
-import type { AgentFailureCode, AgentStage } from "./errorTaxonomy";
+import {
+  isRetryableFailureCode,
+  userMessageForFailure,
+  type AgentFailureCode,
+  type AgentStage,
+} from "./errorTaxonomy";
 import {
   descriptiveEnvelope,
   operationalBlockerEnvelope,
@@ -22,16 +27,23 @@ import {
 /**
  * Generic partial-failure fallback: informational, no market decision.
  *
- * `options.detail` carries the ACTUAL cause (provider auth, rate limit,
- * malformed model reply, deadline) into the operator-visible summary. The old
- * behaviour buried every distinct fault under one "try again shortly" line,
- * which made production failures impossible to triage from the outside.
+ * User/operator separation (RELIABILITY_PLAN.md item 7): the user-facing
+ * `summary` is ALWAYS the safe, localized taxonomy message for the failure
+ * code — it NEVER carries the raw provider payload (which may embed an API
+ * key, an internal URL, or a stack fragment). The raw cause (`reason` /
+ * `options.detail`) is operator-only: callers log it server-side and every
+ * result carries a `trace_id` so a support request correlates the two. The
+ * machine-readable code lives in `envelope.failure_code`, never in
+ * user-rendered `keyReasons`.
  */
 export function buildAgentFallbackResult(
+  // Operator/machine cause. Retained for call-site readability + backwards
+  // compatibility; INTENTIONALLY never rendered to the user (see above).
   reason: string,
   activityEvents: AgentActivityEvent[] = [],
   locale: AppLocale = "ar",
   options: {
+    /** Operator-only raw cause. Never interpolated into the user summary. */
     detail?: string;
     retryable?: boolean;
     /** Pipeline stage the failure is attributed to (envelope.failure_stage). */
@@ -43,27 +55,20 @@ export function buildAgentFallbackResult(
   } = {},
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({ analysisConfidence: 0 });
-  const detail = options.detail?.trim();
-  const retryHintAr = options.retryable
-    ? " أعد المحاولة بعد قليل."
-    : " هذه المشكلة لن تُحل بإعادة المحاولة — راجع الإعداد.";
-  const retryHintEn = options.retryable
-    ? " Please try again shortly."
-    : " Retrying will not help — check the configuration.";
+  const failureCode = options.failureCode ?? "unknown";
+  const retryable = options.retryable ?? isRetryableFailureCode(failureCode);
+  // Safe, localized, code-specific message — the ONLY thing the user sees.
+  const safeMessage = userMessageForFailure(failureCode, locale);
   const summary =
     locale === "en"
-      ? detail
-        ? `The agent could not complete this run: ${detail}${retryHintEn}`
-        : "The agent could not complete this run safely. Please try again shortly."
-      : detail
-        ? `تعذّر إكمال التحليل: ${detail}${retryHintAr}`
-        : "تعذّر تشغيل الوكيل الذكي حالياً. حاول مرة أخرى بعد قليل.";
+      ? `The request could not be completed. ${safeMessage}`
+      : `تعذّر إكمال الطلب. ${safeMessage}`;
   return {
     decision: "informational",
     envelope: operationalBlockerEnvelope({
       failureStage: options.failureStage ?? "final_decision",
-      failureCode: options.failureCode ?? "unknown",
-      retryable: options.retryable ?? false,
+      failureCode,
+      retryable,
       traceId: options.traceId,
     }),
     confidence:
@@ -72,7 +77,8 @@ export function buildAgentFallbackResult(
         : 0,
     confidenceSemantics,
     summary,
-    keyReasons: [reason],
+    // Machine cause is in envelope.failure_code + operator logs — not here.
+    keyReasons: [],
     riskWarnings: [
       locale === "en"
         ? "No trade recommendation was issued due to a partial system failure."

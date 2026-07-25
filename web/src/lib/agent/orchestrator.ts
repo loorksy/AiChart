@@ -29,9 +29,11 @@ import {
   failureCodeFromSynthesizerKind,
   ledgerSilentTimeout,
   stageFailureFromError,
+  userMessageForFailure,
   type AgentStage,
   type AgentStageFailure,
 } from "./errorTaxonomy";
+import { createLogger } from "@/lib/logger";
 import {
   degradedStagesFrom,
   descriptiveEnvelope,
@@ -108,6 +110,8 @@ import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
 import { detectChartGeometry } from "@/lib/chart/geometry";
 import { createTrackedRecommendation } from "@/lib/recommendations/recommendationStore";
+
+const log = createLogger("agent.orchestrator");
 
 export interface UnifiedAgentInput {
   userMessage: string;
@@ -700,46 +704,61 @@ async function runUnifiedChartAgentInner(
   );
   if (!synth) {
     // withTimeout resolves to null on deadline; a thrown error is a real fault.
-    const reason = synthError
-      ? `Decision model call threw: ${
-          synthError instanceof Error ? synthError.message : String(synthError)
-        }`
-      : `Decision model exceeded its ${AGENT_TIMEOUTS.finalDecision / 1000}s deadline — no market recommendation was issued.`;
-    trackedCtx.emitActivity({
-      type: "analysis",
-      status: "failed",
-      message: reason,
-      metadata: { stage: "final_decision", cause: synthError ? "threw" : "timeout" },
-    });
     const thrownFailure = synthError
       ? stageFailureFromError("final_decision", synthError)
       : null;
-    return buildAgentFallbackResult(reason, collected, locale, {
-      detail: reason,
+    const code = thrownFailure?.code ?? "timeout";
+    // Operator-only raw cause → server logs (correlated by requestId). It must
+    // NEVER reach the user-facing activity/summary (RELIABILITY_PLAN item 7).
+    const operatorReason = synthError
+      ? `Decision model call threw: ${
+          synthError instanceof Error ? synthError.message : String(synthError)
+        }`
+      : `Decision model exceeded its ${AGENT_TIMEOUTS.finalDecision / 1000}s deadline.`;
+    log.warn("agent.final_decision.failed", {
+      requestId: ctx.requestId,
+      cause: synthError ? "threw" : "timeout",
+      code,
+      detail: operatorReason,
+    });
+    trackedCtx.emitActivity({
+      type: "analysis",
+      status: "failed",
+      message: userMessageForFailure(code, locale),
+      metadata: { stage: "final_decision", cause: synthError ? "threw" : "timeout" },
+    });
+    return buildAgentFallbackResult(operatorReason, collected, locale, {
       retryable: thrownFailure ? thrownFailure.retryable : true,
       failureStage: "final_decision",
-      failureCode: thrownFailure?.code ?? "timeout",
+      failureCode: code,
       traceId: ctx.requestId,
     });
   }
   if (!synth.usedLLM || !synth.result) {
-    // The synthesizer now reports WHY (provider auth, rate limit, malformed
-    // reply…) instead of a generic "unavailable" that hid every real cause.
+    // The synthesizer reports WHY (provider auth, rate limit, malformed reply…)
+    // for OPERATORS. The user only ever sees the safe taxonomy message.
     const failure = synth.failure;
-    const reason = failure
+    const code = failure ? failureCodeFromSynthesizerKind(failure.kind) : "unknown";
+    // Operator-only raw cause → server logs; never the user-facing surface.
+    const operatorReason = failure
       ? `Decision model failed (${failure.kind}, ${failure.attempts} attempt(s)): ${failure.detail}`
       : "Decision model was unavailable — no market recommendation was issued.";
+    log.warn("agent.final_decision.unavailable", {
+      requestId: ctx.requestId,
+      kind: failure?.kind ?? "unknown",
+      code,
+      detail: failure?.detail,
+    });
     trackedCtx.emitActivity({
       type: "analysis",
       status: "failed",
-      message: reason,
+      message: userMessageForFailure(code, locale),
       metadata: { stage: "final_decision", kind: failure?.kind ?? "unknown" },
     });
-    return buildAgentFallbackResult(reason, collected, locale, {
-      detail: failure?.detail,
+    return buildAgentFallbackResult(operatorReason, collected, locale, {
       retryable: failure?.retryable ?? false,
       failureStage: "final_decision",
-      failureCode: failure ? failureCodeFromSynthesizerKind(failure.kind) : "unknown",
+      failureCode: code,
       traceId: ctx.requestId,
     });
   }
