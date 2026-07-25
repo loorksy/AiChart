@@ -29,6 +29,12 @@ import {
   requireRecommendationEvidence,
 } from "@/lib/strategies/evidence";
 import { isBacktestStrategyId } from "@/lib/strategies/catalog";
+import {
+  applyVisualConfidencePenalty,
+  buildVisualConfirmationAudit,
+  normalizeTimeframesReviewed,
+  normalizeVisualConfirmation,
+} from "@/lib/recommendations/visualConfirmation";
 
 const schema = z
   .object({
@@ -49,6 +55,15 @@ const schema = z
     factors: z.array(z.string()).min(1).max(8),
     pattern_name: z.string().nullish(),
     chart_drawings: z.array(z.record(z.string(), z.unknown())).optional(),
+    // Audit-only visual confirmation. Optional so recommendations written
+    // before multi-timeframe review existed keep working unchanged.
+    visual_confirmation: z
+      .union([
+        z.enum(["confirmed", "contradicted", "not_checked"]),
+        z.boolean(),
+      ])
+      .nullish(),
+    timeframes_reviewed: z.array(z.string().min(1).max(16)).max(8).optional(),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -126,11 +141,22 @@ export async function POST(req: NextRequest) {
     const calibratedConfidence =
       deployment?.calibratedConfidence ?? Math.max(0, Math.min(100, body.confidence ?? 0));
 
+    // Visual review is a confirmation layer on top of the statistical gates
+    // above — it can only lower the DISPLAYED confidence when the chart
+    // contradicts the numbers, never raise it and never replace the evidence.
+    const visualConfirmation = normalizeVisualConfirmation(body.visual_confirmation);
+    const timeframesReviewed = normalizeTimeframesReviewed(body.timeframes_reviewed);
+    const visualAdjustment = applyVisualConfidencePenalty(
+      calibratedConfidence,
+      visualConfirmation,
+    );
+    const displayedConfidence = visualAdjustment.confidence;
+
     const profile = profileForInterval(body.timeframe);
     const drawings = validateChartDrawings(
       (body.chart_drawings ?? []) as unknown as ChartDrawing[],
       body.action,
-      calibratedConfidence,
+      displayedConfidence,
       profile,
     );
 
@@ -148,7 +174,7 @@ export async function POST(req: NextRequest) {
     const rec = await saveRecommendation(userId, {
       symbol: normalizedSymbol,
       action: body.action,
-      confidence: calibratedConfidence,
+      confidence: displayedConfidence,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,
       take_profit: body.take_profit ?? null,
@@ -162,6 +188,11 @@ export async function POST(req: NextRequest) {
         evidence_source: deployment ? "validated_backtest" : "wait_decision",
         deployment_state: deployment?.state ?? null,
         market_regime: body.market_regime ?? null,
+        ...buildVisualConfirmationAudit(
+          visualConfirmation,
+          timeframesReviewed,
+          visualAdjustment,
+        ),
       }),
       backtested_confidence: deployment?.calibratedConfidence ?? null,
       confidence_low: deployment?.confidenceLow ?? null,
@@ -184,7 +215,7 @@ export async function POST(req: NextRequest) {
     await logAudit(
       userId,
       "agent_recommendation",
-      `${rec.symbol} ${rec.action} ${rec.confidence}% strategy=${body.strategy_id ?? "none"} backtest=${deployment?.backtestId ?? "none"} regime=${body.market_regime ?? "none"} (#${rec.id})`,
+      `${rec.symbol} ${rec.action} ${rec.confidence}% strategy=${body.strategy_id ?? "none"} backtest=${deployment?.backtestId ?? "none"} regime=${body.market_regime ?? "none"} visual=${visualConfirmation}${visualAdjustment.applied ? `(-${visualAdjustment.penaltyPct}% from ${visualAdjustment.baseConfidence})` : ""} tf_reviewed=${timeframesReviewed.join("/") || "none"} (#${rec.id})`,
     );
 
     const mt5 = await canUseMt5ChartCapture(userId, body.symbol);
@@ -228,6 +259,19 @@ export async function POST(req: NextRequest) {
       mt5_pending: mt5Pending,
       mt5_symbol: mt5.mt5Symbol ?? null,
       mt5_unavailable_reason: mt5.ok ? null : mt5.reason ?? null,
+      visual_review: {
+        visual_confirmation: visualConfirmation,
+        timeframes_reviewed: timeframesReviewed,
+        confidence_penalty_applied: visualAdjustment.applied,
+        confidence_penalty_pct: visualAdjustment.applied
+          ? visualAdjustment.penaltyPct
+          : 0,
+        confidence_before_penalty: visualAdjustment.applied
+          ? visualAdjustment.baseConfidence
+          : null,
+        note:
+          "Audit only. Visual review never grants execution authority — see backtest_evidence.execution_eligible.",
+      },
       backtest_evidence:
         deployment == null
           ? null

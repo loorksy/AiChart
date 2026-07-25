@@ -20,3 +20,10 @@ No shell, arbitrary HTTP/Python/file/database tool or live execution tool was in
 - `mcp/src/tools/__tests__/contractParity.test.ts` — every registered MCP tool exists in the contract; read-only tools are never execution-classed; high-risk tools are explicitly `execution` + server controlled.
 
 Execution authority remains server-side (technical execution safety + explicit approval + tenant auth + idempotency) regardless of what any model, skill, or MCP client requests.
+
+## Visual evidence tools
+
+`capture_multi_timeframe_snapshot` (`chart.read`) captures several timeframes of one
+symbol in parallel and pairs each image with the numeric context for that same
+timeframe. It is a confirmation layer only: images never supply precise levels and
+never grant execution authority. See [VISUAL_CONFIRMATION.md](VISUAL_CONFIRMATION.md).

@@ -95,6 +95,8 @@ const OVERRIDES: Record<string, Override> = {
   get_chart_link: { permission: "chart.read" },
   get_recommendation_chart: { permission: "chart.read" },
   capture_chart_snapshot: { permission: "chart.read" },
+  // Fans out across timeframes server-side; needs more than the 30s default.
+  capture_multi_timeframe_snapshot: { permission: "chart.read", timeoutMs: 45_000 },
   capture_mt5_chart: { permission: "chart.read" },
   show_live_chart: { permission: "chart.read" },
   draw_on_chart: { permission: "chart.write", riskClass: "write" },

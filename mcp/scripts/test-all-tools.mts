@@ -31,6 +31,11 @@ const SAMPLE_ARGS: Record<string, Record<string, unknown>> = {
   detect_levels: { symbol: "EURUSD", interval: "1h", market: "forex" },
   get_trade_lessons: { limit: 3 },
   capture_chart_snapshot: { symbol: "EURUSD", interval: "15m" },
+  capture_multi_timeframe_snapshot: {
+    symbol: "EURUSD",
+    timeframes: ["15m", "1h"],
+    max_images: 2,
+  },
   capture_mt5_chart: { symbol: "EURUSD", timeframe: "15m" },
   get_chart_state: {},
   query_mt5_terminal: {},

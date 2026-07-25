@@ -21,7 +21,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_multi_timeframe_snapshot",
     domain: "market",
     description:
-      "When: multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "When: numeric-only multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). For a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
     inputSchema: {
       symbol: zSymbol.describe("e.g. EURUSD"),
       intervals: z

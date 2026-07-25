@@ -11,10 +11,15 @@ import { gitCommit } from "../version.js";
 import {
   chartInlineContent,
   chartTimeoutContent,
+  multiTimeframeContent,
   pollBridgeMt5ChartPng,
   resolveChartSnapshotResponse,
   type ChartSnapshotBridgeResult,
+  type MultiTimeframeBridgeResult,
 } from "./chartInline.js";
+
+/** Whole-request budget for parallel multi-timeframe capture (per-image ~8s). */
+const MULTI_TIMEFRAME_TIMEOUT_MS = 25_000;
 
 export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
@@ -428,6 +433,31 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           response_format: "json",
         })) as ChartSnapshotBridgeResult;
         return resolveChartSnapshotResponse(bridge, res);
+      } catch (e) {
+        return formatBridgeError(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "capture_multi_timeframe_snapshot",
+    mcpToolConfig("capture_multi_timeframe_snapshot"),
+    async (args) => {
+      const {
+        inline_base64: inlineBase64,
+        ...body
+      } = (args ?? {}) as Record<string, unknown> & { inline_base64?: boolean };
+      try {
+        // The bridge fans out across timeframes itself — one round trip keeps
+        // the images and their numbers in the same response.
+        const res = (await bridge.post(
+          "/api/agent/chart/multi-snapshot",
+          body,
+          MULTI_TIMEFRAME_TIMEOUT_MS,
+        )) as MultiTimeframeBridgeResult;
+        return multiTimeframeContent(res, {
+          inlineBase64: inlineBase64 === true,
+        });
       } catch (e) {
         return formatBridgeError(e);
       }

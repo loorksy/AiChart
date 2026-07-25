@@ -107,6 +107,97 @@ export function chartTimeoutContent(
   };
 }
 
+export interface MultiTimeframeBridgeSnapshot {
+  timeframe: string;
+  content_type?: string;
+  image_base64?: string;
+  captured_at?: string;
+  image_source?: string;
+  from_cache?: boolean;
+  numeric_context?: Record<string, unknown> | null;
+}
+
+export interface MultiTimeframeBridgeResult {
+  ok?: boolean;
+  symbol?: string;
+  market?: string;
+  requested_timeframes?: string[];
+  captured_timeframes?: string[];
+  missing_timeframes?: Array<{ timeframe: string; reason: string }>;
+  partial_success?: boolean;
+  snapshots?: MultiTimeframeBridgeSnapshot[];
+  elapsed_ms?: number;
+  guardrails?: string[];
+}
+
+/**
+ * Renders one image block per timeframe, each preceded by the numeric context
+ * for that same timeframe.
+ *
+ * The interleaving is the point: a flat list of four PNGs gives the model no
+ * reliable way to bind a chart to its timeframe, and binding is exactly what a
+ * multi-timeframe read depends on.
+ *
+ * `inlineBase64` additionally repeats the raw base64 inside the JSON summary.
+ * It defaults off because four charts duplicated as text can approach a
+ * megabyte of payload for no gain — the image blocks are what the model sees.
+ */
+export function multiTimeframeContent(
+  result: MultiTimeframeBridgeResult,
+  options: { inlineBase64?: boolean } = {},
+): ChartInlineResponse {
+  const snapshots = (result.snapshots ?? []).filter(
+    (snapshot) => typeof snapshot.image_base64 === "string" && snapshot.image_base64,
+  );
+  const content: McpContentBlock[] = [];
+
+  const summary = {
+    ok: result.ok !== false && snapshots.length > 0,
+    symbol: result.symbol,
+    market: result.market,
+    requested_timeframes: result.requested_timeframes ?? [],
+    captured_timeframes: result.captured_timeframes ?? snapshots.map((s) => s.timeframe),
+    missing_timeframes: result.missing_timeframes ?? [],
+    partial_success: result.partial_success === true,
+    elapsed_ms: result.elapsed_ms,
+    image_delivery: options.inlineBase64
+      ? "imageBase64 in this JSON and as inline image blocks"
+      : "inline image blocks below, one per timeframe (set inline_base64=true to also receive raw base64)",
+    guardrails: result.guardrails ?? [],
+    snapshots: snapshots.map((snapshot, index) => ({
+      timeframe: snapshot.timeframe,
+      content_type: snapshot.content_type ?? "image/png",
+      captured_at: snapshot.captured_at,
+      image_source: snapshot.image_source,
+      from_cache: snapshot.from_cache === true,
+      image_block_index: index,
+      image_bytes: Math.floor(((snapshot.image_base64?.length ?? 0) * 3) / 4),
+      ...(options.inlineBase64 ? { imageBase64: snapshot.image_base64 } : {}),
+      numeric_context: snapshot.numeric_context ?? null,
+    })),
+  };
+
+  content.push({ type: "text", text: JSON.stringify(summary, null, 2) });
+
+  for (const snapshot of snapshots) {
+    content.push({
+      type: "text",
+      text: JSON.stringify({
+        timeframe: snapshot.timeframe,
+        captured_at: snapshot.captured_at,
+        numeric_context: snapshot.numeric_context ?? null,
+      }),
+    });
+    content.push({
+      type: "image",
+      data: snapshot.image_base64!,
+      mimeType: snapshot.content_type ?? "image/png",
+    });
+  }
+
+  return { content, ...(snapshots.length === 0 ? { isError: true } : {}) };
+}
+
 export type ChartSnapshotBridgeResult = {
   ok?: boolean;
   status?: string;
