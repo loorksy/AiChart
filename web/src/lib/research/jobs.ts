@@ -18,6 +18,8 @@ import type {
 const SAFE_ID = /^[A-Za-z0-9._:-]{3,128}$/;
 const MAX_STRATEGY_SPEC_BYTES = 48 * 1024;
 const MAX_PHASE3_PAYLOAD_BYTES = 8 * 1024 * 1024;
+/** Mirrors MAX_EXPORT_ROWS in ./warehouse — keep the two in step. */
+const MAX_WAREHOUSE_ENVELOPE_BARS = 50_000;
 const STRATEGY_SENSITIVITY_PATH = /^(?:entry\.offset_value|stop_loss\.value|position_sizing\.(?:lots|notional|risk_percent)|management\.(?:trailing_stop\.(?:value|activation_r)|move_to_break_even\.trigger_value)|risk_controls\.minimum_reward_risk|targets\.[0-9]\.value)$/;
 
 type CreateResult = { job: ResearchJob; created: boolean };
@@ -69,15 +71,23 @@ function boundedInteger(value: number, minimum: number, maximum: number, label: 
 function datasetPayload(dataset: ResearchDatasetInput): Record<string, unknown> {
   if (dataset.source === "aichart_candle_warehouse") {
     const envelope = dataset.payload;
+    // Must track MAX_EXPORT_ROWS in research/warehouse.ts. These are two
+    // independent ceilings on the same payload: raising only the exporter
+    // produced a valid 40k-bar envelope that this validator then rejected
+    // with a message that named no dimension.
     if (
       envelope.schema_version !== "aichart-candle-warehouse-v1" ||
       envelope.source !== "aichart_candle_warehouse" ||
       envelope.closed_bars_only !== true ||
       !Array.isArray(envelope.bars) ||
-      !envelope.bars.length ||
-      envelope.bars.length > 10_000
+      !envelope.bars.length
     ) {
       invalid("AiChart Candle Warehouse envelope is invalid");
+    }
+    if (envelope.bars.length > MAX_WAREHOUSE_ENVELOPE_BARS) {
+      invalid(
+        `AiChart Candle Warehouse envelope exceeds ${MAX_WAREHOUSE_ENVELOPE_BARS.toLocaleString()} bars (got ${envelope.bars.length.toLocaleString()})`,
+      );
     }
     return { source: "aichart_candle_warehouse", payload: envelope };
   }
