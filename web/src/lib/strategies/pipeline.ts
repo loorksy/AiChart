@@ -149,6 +149,24 @@ export async function submitStrategyBacktest(input: SubmitStrategyBacktestInput)
       409,
     );
   }
+  // DEPTH guard: 200 bars clears "has data" but not "has a testable sample".
+  // Submitting a 30-day 1m request against 10 days of warehouse produces an
+  // honest-looking `ineligible: <100 trades` that actually means "we never
+  // had the data" — and it BURNS the target, so the whole wave would have to
+  // be re-run under a new revision once depth arrives. Skipping instead
+  // leaves the target outstanding, so the pipeline self-heals as the
+  // warehouse fills. Forex trades ~5/7 of calendar time, so half the
+  // calendar-bar count is a conservative floor.
+  const expectedCalendarBars = Math.ceil(
+    (toMs - fromMs) / barDurationMs(input.timeframe),
+  );
+  const minimumDepth = Math.max(200, Math.floor(expectedCalendarBars * 0.5));
+  if (dataset.bars.length < minimumDepth) {
+    throw new PipelineSubmitError(
+      `Warehouse depth is too shallow for a ${input.timeframe} sample: ${dataset.bars.length} bars available, ${minimumDepth} needed for the requested range. Backfill ${symbol} ${input.timeframe} first — the target stays queued.`,
+      409,
+    );
+  }
 
   const strategySpec = buildBacktestStrategySpec({
     strategyId: input.strategyId,
