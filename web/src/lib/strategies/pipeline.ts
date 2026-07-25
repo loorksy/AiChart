@@ -50,6 +50,9 @@ const log = createLogger("strategy-pipeline");
 
 export const MAX_BACKTEST_BARS = 50_000;
 
+/** How long a `failed` row rests before the pipeline re-offers it. */
+export const FAILED_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
+
 /**
  * Per-timeframe history depth (months), sized so the CALENDAR range stays
  * inside the 50k-bar export budget while giving the 100-trade gate enough
@@ -334,12 +337,24 @@ export async function runStrategyPipelineTick(
   const userId = config.userId;
 
   // 1) Advance in-flight rows (oldest first) through the evidence state machine.
+  //
+  // `failed` is included deliberately: a poll that times out while the engine
+  // crunches a 40k-bar sample marks the row failed even though the research
+  // job is alive and will finish. refreshStrategyBacktest already knows how to
+  // resume those (only `eligible`/`ineligible` are terminal), but the pipeline
+  // never re-offered them, so one transient 504 permanently stranded a target.
+  // The cooldown stops a genuinely dead row from monopolising the batch.
+  const failedRetryAfterMs = Date.now() - FAILED_RETRY_COOLDOWN_MS;
   const inflightRows = await query<{ id: number }>(
     `SELECT id FROM strategy_backtests
-      WHERE user_id = ? AND status IN ('pending', 'running', 'validating')
+      WHERE user_id = ?
+        AND (
+          status IN ('pending', 'running', 'validating')
+          OR (status = 'failed' AND updated_at < ?)
+        )
       ORDER BY updated_at ASC, id ASC
       LIMIT 50`,
-    [userId],
+    [userId, failedRetryAfterMs],
   );
   const advanceBucket = Math.floor(Date.now() / (10 * 60 * 1000));
   const toAdvance = inflightRows.slice(0, config.batch);
