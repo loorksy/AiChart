@@ -20,6 +20,7 @@ import {
   llmTotalTimeoutMs,
   llmTtftTimeoutMs,
 } from "./externalFetch";
+import { resilientFetch } from "./providerResilience";
 
 export interface OpenAICompatTarget {
   baseUrl: string;
@@ -236,7 +237,12 @@ export async function callOpenAICompat(
     maxTokens?: number;
   },
 ): Promise<AnthropicResponse> {
-  const res = await fetchWithTimeout(
+  // Circuit breaker (RELIABILITY_PLAN.md item 6): a provider outage fails fast
+  // instead of every request burning its full timeout. No added retries here —
+  // callers that retry (the final-decision synthesizer) keep sole ownership of
+  // retry policy, so this never double-retries.
+  const res = await resilientFetch(
+    "openai",
     `${target.baseUrl}/chat/completions`,
     {
       method: "POST",
