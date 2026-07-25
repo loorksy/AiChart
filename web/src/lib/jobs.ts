@@ -45,3 +45,39 @@ if (!hasHandler("candle_gap_repair")) {
     await repairRecentCandleGaps({ symbol, interval });
   });
 }
+
+if (!hasHandler("strategy_backtest_submit")) {
+  registerHandler(
+    "strategy_backtest_submit",
+    async ({ userId, strategyId, symbol, timeframe }) => {
+      const { submitStrategyBacktest, pipelineDateRange, hasBacktestForTarget } =
+        await import("./strategies/pipeline");
+      const { canonicalStrategyTimeframe } = await import(
+        "./strategies/matchingKeys"
+      );
+      const tf = canonicalStrategyTimeframe(timeframe);
+      if (!tf) throw new Error(`unsupported pipeline timeframe: ${timeframe}`);
+      // Idempotence across retries: a row for this revision means done.
+      if (await hasBacktestForTarget(userId, { strategyId, symbol, timeframe: tf })) {
+        return;
+      }
+      const { fromMs, toMs } = pipelineDateRange(tf);
+      await submitStrategyBacktest({
+        userId,
+        strategyId,
+        symbol,
+        timeframe: tf,
+        fromMs,
+        toMs,
+      });
+    },
+  );
+}
+
+if (!hasHandler("strategy_backtest_advance")) {
+  registerHandler("strategy_backtest_advance", async ({ userId, backtestId }) => {
+    const { refreshStrategyBacktest } = await import("./strategies/evidence");
+    const { randomUUID } = await import("node:crypto");
+    await refreshStrategyBacktest({ userId, requestId: randomUUID() }, backtestId);
+  });
+}

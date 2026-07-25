@@ -9,6 +9,7 @@ import { verifyCronSecret } from "@/lib/cronAuth";
 import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { isKnownForexSymbol } from "@/lib/markets/forexInstruments";
 import {
   isCanonicalInterval,
   normalizeCanonicalInterval,
@@ -28,7 +29,8 @@ function configuredSeries(): Array<{ symbol: string; interval: string }> {
   const symbols = (process.env.CANDLE_SYNC_SYMBOLS ?? "")
     .split(",")
     .map((value) => forexCanonicalKey(value))
-    .filter((value) => /^[A-Z]{6}$/.test(value));
+    // Permissive shape (indices/crypto later); the registry is the real gate.
+    .filter((value) => /^[A-Z0-9]{3,10}$/.test(value) && isKnownForexSymbol(value));
   const configuredIntervals = (process.env.CANDLE_SYNC_INTERVALS ?? "")
     .split(",")
     .map((value) => value.trim())

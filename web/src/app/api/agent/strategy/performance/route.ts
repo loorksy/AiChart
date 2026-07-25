@@ -4,11 +4,16 @@ import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { normalizeSymbol } from "@/lib/markets/symbolMapping";
-import { BACKTEST_STRATEGY_IDS } from "@/lib/strategies/catalog";
+import { isBacktestStrategyId } from "@/lib/strategies/catalog";
 import { getStrategyPerformance } from "@/lib/strategies/evidence";
 
 const querySchema = z.object({
-  strategy_id: z.enum(BACKTEST_STRATEGY_IDS),
+  // Membership validated against the generated catalog (runtime id list).
+  strategy_id: z
+    .string()
+    .min(3)
+    .max(128)
+    .refine(isBacktestStrategyId, "strategy_id is not in the catalog"),
   symbol: z.string().min(1).max(32).optional(),
   timeframe: z.enum(["1m", "5m", "15m", "30m", "1h", "4h", "1d"]).optional(),
 });

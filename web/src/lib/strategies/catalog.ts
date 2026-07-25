@@ -1,19 +1,33 @@
 import type { ResearchJsonObject, ResearchTimeframe } from "@/lib/research";
+import { GENERATED_CATALOG, GENERATED_CATALOG_BY_ID } from "./catalogGen";
 
-export const BACKTEST_STRATEGY_IDS = [
+/**
+ * Legacy hand-written ids. They MUST remain valid forever: deployed evidence
+ * rows, recommendations, and the deep-analysis strategy mapper reference them.
+ */
+export const LEGACY_STRATEGY_IDS = [
   "ema_trend_follow_v1",
   "rsi_mean_reversion_v1",
   "range_breakout_v1",
 ] as const;
 
-export type BacktestStrategyId = (typeof BACKTEST_STRATEGY_IDS)[number];
+/** Full catalog: legacy trio + the generative families (~60 ids). */
+export const BACKTEST_STRATEGY_IDS: readonly string[] = [
+  ...LEGACY_STRATEGY_IDS,
+  ...GENERATED_CATALOG.map((entry) => entry.id),
+];
+
+export type BacktestStrategyId = string;
+
+const STRATEGY_ID_SET = new Set(BACKTEST_STRATEGY_IDS);
 
 /**
  * Catalog revision for research specs. Bump when entry/exit/risk policy changes
  * so idempotent backtest jobs do not reuse stale one-trade results after engine
  * or catalog fixes. Displayed as `${strategyId}.${CATALOG_SPEC_REVISION}`.
+ * Revision 3: the generative catalog wave (families × parameter grids).
  */
-export const CATALOG_SPEC_REVISION = "2";
+export const CATALOG_SPEC_REVISION = "3";
 
 export interface StrategyCostProfile {
   spreadPips: number;
@@ -22,10 +36,14 @@ export interface StrategyCostProfile {
 }
 
 export function isBacktestStrategyId(value: string): value is BacktestStrategyId {
-  return (BACKTEST_STRATEGY_IDS as readonly string[]).includes(value);
+  return STRATEGY_ID_SET.has(value);
 }
 
 function conditionTrees(strategyId: BacktestStrategyId, timeframe: ResearchTimeframe) {
+  // Generated families own their condition trees; legacy ids keep the
+  // hand-written trees below verbatim (deployed evidence depends on them).
+  const generated = GENERATED_CATALOG_BY_ID.get(strategyId);
+  if (generated) return generated.buildConditions(timeframe);
   if (strategyId === "ema_trend_follow_v1") {
     // Pure EMA cross — RSI confirmation previously discarded many valid crosses
     // and kept year-long XAUUSD/1h samples just under the 100-trade evidence gate.
@@ -116,15 +134,19 @@ export function buildBacktestStrategySpec(input: {
   costs: StrategyCostProfile;
 }): ResearchJsonObject {
   const { strategyId, symbol, timeframe, costs } = input;
-  const labels: Record<BacktestStrategyId, string> = {
+  const legacyLabels: Record<string, string> = {
     ema_trend_follow_v1: "EMA trend follow",
     rsi_mean_reversion_v1: "RSI mean reversion",
     range_breakout_v1: "Range breakout",
   };
+  const label =
+    GENERATED_CATALOG_BY_ID.get(strategyId)?.label ??
+    legacyLabels[strategyId] ??
+    strategyId;
   return {
     strategy_id: strategyId,
     version_id: `${strategyId}.${CATALOG_SPEC_REVISION}`,
-    name: labels[strategyId],
+    name: label,
     description:
       "AiChart deterministic candidate with broker-observed execution costs; research-only until statistical and shadow gates pass.",
     market: "forex",

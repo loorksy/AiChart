@@ -841,8 +841,12 @@ export async function refreshAllStrategyDecay(
     deployment: StrategyDeployment;
   }>
 > {
+  // Batched: with a mass-backtest catalog the deployment count can reach
+  // hundreds. Oldest-refreshed first, 200 per 10-min monitor tick — full
+  // coverage within the hour without stretching the cron invocation.
   const rows = await query<StrategyDeploymentRow>(
-    "SELECT * FROM strategy_deployments WHERE user_id = ? ORDER BY strategy_id, symbol, timeframe",
+    `SELECT * FROM strategy_deployments WHERE user_id = ?
+      ORDER BY updated_at ASC, strategy_id, symbol, timeframe LIMIT 200`,
     [userId],
   );
   const events: Array<{
