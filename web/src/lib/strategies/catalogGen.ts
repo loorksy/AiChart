@@ -13,6 +13,7 @@
  * deployed evidence rows reference it; add a _v2 instead.
  */
 import type { ResearchTimeframe } from "@/lib/research";
+import { styleForTimeframe } from "./riskPolicy";
 
 type ConditionLeaf = Record<string, unknown>;
 
@@ -427,18 +428,224 @@ function buildAtrRegimeFamily(): CatalogEntry[] {
   return out;
 }
 
+// --- Scalp-native families ---------------------------------------------------------
+//
+// These are NOT the slower families re-run on faster candles. Scalping asks a
+// different question — where is a small, immediate displacement that resolves
+// within minutes — so the entry logic differs in kind:
+//   micro_break     : very short lookback break, wick-confirmed for speed,
+//                     restricted to the liquid sessions where it can follow through
+//   quick_mr        : short-period RSI extreme reverting toward the 20-bar mean,
+//                     the classic scalp fade, session-gated
+//   momentum_burst  : fast EMA displacement CONFIRMED by an ATR expansion, i.e.
+//                     only take the burst when volatility actually arrived
+//   vwap_ish_revert : price stretched away from the intraday mean (SMA proxy)
+//                     during the overlap, fading back
+//
+// The scalp risk geometry (tight stop, near first target, ≤12-bar hold) comes
+// from riskPolicy.ts, keyed on the timeframe — the catalog stays purely about
+// entry conditions.
+
+const LIQUID_SESSIONS: ConditionLeaf[] = [
+  marketSession(["london", "new_york", "london_new_york_overlap"]),
+];
+
+function buildMicroBreakFamily(): CatalogEntry[] {
+  const lookbacks = [3, 5, 8];
+  const confirmations: Array<["hl" | "cls", "high_low" | "close"]> = [
+    ["hl", "high_low"],
+    ["cls", "close"],
+  ];
+  const out: CatalogEntry[] = [];
+  for (const lookback of lookbacks) {
+    for (const [suffix, confirmation] of confirmations) {
+      out.push({
+        id: `scalp_micro_break_${lookback}_${suffix}_v1`,
+        family: "scalp_micro_break",
+        label: `Micro-breakout ${lookback} bars (${confirmation}, liquid sessions)`,
+        buildConditions: (timeframe) => ({
+          long_entry_conditions: {
+            all: [
+              rangeBreakout(timeframe, lookback, "long", confirmation),
+              ...LIQUID_SESSIONS,
+            ],
+          },
+          short_entry_conditions: {
+            all: [
+              rangeBreakout(timeframe, lookback, "short", confirmation),
+              ...LIQUID_SESSIONS,
+            ],
+          },
+        }),
+      });
+    }
+  }
+  return out;
+}
+
+function buildQuickMeanReversionFamily(): CatalogEntry[] {
+  const grids: Array<[number, number, number]> = [
+    // [rsi period, oversold, overbought] — short periods only; a 14-period RSI
+    // barely reaches an extreme inside a scalp's horizon.
+    [3, 15, 85],
+    [3, 20, 80],
+    [5, 20, 80],
+    [5, 25, 75],
+  ];
+  const out: CatalogEntry[] = [];
+  for (const [period, low, high] of grids) {
+    out.push({
+      id: `scalp_quick_mr_${period}_${low}_${high}_v1`,
+      family: "scalp_quick_mr",
+      label: `Quick RSI(${period}) fade ${low}/${high} (liquid sessions)`,
+      buildConditions: (timeframe) => ({
+        long_entry_conditions: {
+          all: [
+            rsiThreshold(timeframe, period, "crosses_below", low),
+            ...LIQUID_SESSIONS,
+          ],
+        },
+        short_entry_conditions: {
+          all: [
+            rsiThreshold(timeframe, period, "crosses_above", high),
+            ...LIQUID_SESSIONS,
+          ],
+        },
+      }),
+    });
+  }
+  return out;
+}
+
+/** ATR% floor that marks "volatility actually arrived" on scalp frames. */
+const BURST_ATR_FLOOR: Record<ResearchTimeframe, number> = {
+  "1m": 0.02,
+  "5m": 0.04,
+  "15m": 0.07,
+  "30m": 0.1,
+  "1h": 0.15,
+  "4h": 0.3,
+  "1d": 0.6,
+};
+
+function buildMomentumBurstFamily(): CatalogEntry[] {
+  const pairs: Array<[number, number]> = [
+    [3, 8],
+    [5, 13],
+    [8, 21],
+  ];
+  const out: CatalogEntry[] = [];
+  for (const [fast, slow] of pairs) {
+    out.push({
+      id: `scalp_burst_${fast}_${slow}_v1`,
+      family: "scalp_burst",
+      label: `Momentum burst EMA ${fast}/${slow} with volatility expansion`,
+      buildConditions: (timeframe) => ({
+        long_entry_conditions: {
+          all: [
+            emaCross(timeframe, fast, slow, "long"),
+            // Only take the burst when volatility is actually present —
+            // a cross in dead tape is pure cost on a scalp.
+            atrThreshold(timeframe, "above", BURST_ATR_FLOOR[timeframe]),
+            ...LIQUID_SESSIONS,
+          ],
+        },
+        short_entry_conditions: {
+          all: [
+            emaCross(timeframe, fast, slow, "short"),
+            atrThreshold(timeframe, "above", BURST_ATR_FLOOR[timeframe]),
+            ...LIQUID_SESSIONS,
+          ],
+        },
+      }),
+    });
+  }
+  return out;
+}
+
+function buildStretchRevertFamily(): CatalogEntry[] {
+  const periods = [20, 50];
+  const out: CatalogEntry[] = [];
+  for (const period of periods) {
+    out.push({
+      id: `scalp_stretch_revert_${period}_v1`,
+      family: "scalp_stretch_revert",
+      label: `Fade the stretch from SMA(${period}) (overlap)`,
+      buildConditions: (timeframe) => ({
+        // Price below the intraday mean AND momentum washed out → fade up.
+        long_entry_conditions: {
+          all: [
+            priceVsSma(timeframe, period, "below"),
+            rsiThreshold(timeframe, 5, "crosses_below", 25),
+            marketSession(["london_new_york_overlap"]),
+          ],
+        },
+        short_entry_conditions: {
+          all: [
+            priceVsSma(timeframe, period, "above"),
+            rsiThreshold(timeframe, 5, "crosses_above", 75),
+            marketSession(["london_new_york_overlap"]),
+          ],
+        },
+      }),
+    });
+  }
+  return out;
+}
+
 // --- Assembly --------------------------------------------------------------------
 
+/** Scalp-native families — the product's priority set (1m/5m). */
+export const SCALP_CATALOG: readonly CatalogEntry[] = [
+  ...buildMicroBreakFamily(), // 6
+  ...buildQuickMeanReversionFamily(), // 4
+  ...buildMomentumBurstFamily(), // 3
+  ...buildStretchRevertFamily(), // 2  → 15 scalp-native
+];
+
 export const GENERATED_CATALOG: readonly CatalogEntry[] = [
+  ...SCALP_CATALOG, // 15
   ...buildEmaCrossFamily(), // 12
   ...buildEmaCrossRsiFamily(), // 6
   ...buildRsiMeanReversionFamily(), // 12
   ...buildRsiMrTrendFamily(), // 4
   ...buildBreakoutFamily(), // 18
   ...buildSessionRangeFamily(), // 4
-  ...buildAtrRegimeFamily(), // 4  → 60 total
+  ...buildAtrRegimeFamily(), // 4  → 75 total (15 scalp-native + 60 general)
 ];
 
 export const GENERATED_CATALOG_BY_ID: ReadonlyMap<string, CatalogEntry> = new Map(
   GENERATED_CATALOG.map((entry) => [entry.id, entry]),
 );
+
+const SCALP_FAMILIES = new Set(SCALP_CATALOG.map((entry) => entry.family));
+
+/**
+ * Families whose lookbacks are structurally too slow for scalp frames. On 1m a
+ * 200-period EMA spans three hours and a 48-bar range spans forty minutes —
+ * the signal cannot resolve inside a scalp's horizon, so running them there
+ * only burns pipeline capacity.
+ */
+const SLOW_ONLY_FAMILIES = new Set(["rsi_mr_trend", "session_range"]);
+const SLOW_ID_MARKERS = ["_50_200_", "brk_48_"];
+
+/**
+ * Which catalog entries are worth backtesting on this timeframe.
+ *
+ * Scalp frames (1m/5m) run the scalp-native families plus the general ones
+ * whose parameters still resolve quickly; slower frames run everything EXCEPT
+ * the scalp-native families, whose 3–8 bar lookbacks are noise at 1h+.
+ */
+export function catalogEntriesForTimeframe(
+  timeframe: ResearchTimeframe,
+): CatalogEntry[] {
+  const style = styleForTimeframe(timeframe);
+  if (style === "scalp") {
+    return GENERATED_CATALOG.filter((entry) => {
+      if (SCALP_FAMILIES.has(entry.family)) return true;
+      if (SLOW_ONLY_FAMILIES.has(entry.family)) return false;
+      return !SLOW_ID_MARKERS.some((marker) => entry.id.includes(marker));
+    });
+  }
+  return GENERATED_CATALOG.filter((entry) => !SCALP_FAMILIES.has(entry.family));
+}

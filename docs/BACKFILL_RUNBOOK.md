@@ -1,4 +1,35 @@
-# Warehouse Backfill & Pipeline Scale-Out Runbook (Phase 5)
+# Warehouse Backfill & Pipeline Scale-Out Runbook
+
+## Scalping is the product priority
+
+The pipeline's default wave is **1m, 5m, 15m** — not the slower frames. Two
+consequences that must not be undone by a well-meaning config change:
+
+- **Risk geometry is timeframe-aware** (`web/src/lib/strategies/riskPolicy.ts`).
+  Scalp frames use a 0.8×ATR stop, 1.2R/2.0R targets, a 12-bar maximum hold,
+  break-even at 0.8R, and an 80/day trade cap. Swing frames keep the wider
+  1.5×ATR / 1.5R–2.5R / 24-bar geometry. Sharing one policy across both was
+  wrong in both directions.
+- **The catalog is filtered per timeframe** (`catalogEntriesForTimeframe`).
+  Scalp frames get the scalp-native families (micro-breakout, quick RSI fade,
+  momentum burst with volatility confirmation, stretch-revert) and exclude
+  structurally slow parameters (EMA 50/200, 48-bar ranges, Asian-range).
+  Slower frames exclude the scalp families.
+- **Cost sensitivity**: `assessCostViability` expresses the rule that a scalp's
+  first target must clear ≥3× the round-trip cost (spread ×2 + slippage ×2 +
+  commission). On a 6-pip round trip that means ≥18 pips of first-target
+  distance — with a 0.8×ATR stop and 1.2R target, that needs ATR ≳ 19 pips.
+  Below that the family is not "slightly worse", it is unprofitable by
+  construction. Keep `BACKTEST_SPREAD_PIPS` / live EA quotes accurate per
+  symbol — a wrong spread silently invalidates every scalp backtest.
+
+Changing `CATALOG_SPEC_REVISION` is REQUIRED whenever risk geometry changes;
+results from an older revision were produced under different exits and must
+never be reused (revision 4 = the scalp re-prioritisation).
+
+---
+
+# Warehouse Backfill & Pipeline Scale-Out (Phase 5)
 
 The mass-backtest pipeline consumes warehouse history. New symbols/timeframes
 need depth BEFORE their catalog wave is seeded, or every submit dies at the

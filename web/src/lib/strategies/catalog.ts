@@ -1,5 +1,6 @@
 import type { ResearchJsonObject, ResearchTimeframe } from "@/lib/research";
 import { GENERATED_CATALOG, GENERATED_CATALOG_BY_ID } from "./catalogGen";
+import { riskPolicyFor } from "./riskPolicy";
 
 /**
  * Legacy hand-written ids. They MUST remain valid forever: deployed evidence
@@ -26,8 +27,11 @@ const STRATEGY_ID_SET = new Set(BACKTEST_STRATEGY_IDS);
  * so idempotent backtest jobs do not reuse stale one-trade results after engine
  * or catalog fixes. Displayed as `${strategyId}.${CATALOG_SPEC_REVISION}`.
  * Revision 3: the generative catalog wave (families × parameter grids).
+ * Revision 4: scalp re-prioritisation — timeframe-aware risk geometry (stop,
+ * targets, holding time, trade limit) plus the scalp-native families. Every
+ * revision-3 result was produced under swing geometry and must NOT be reused.
  */
-export const CATALOG_SPEC_REVISION = "3";
+export const CATALOG_SPEC_REVISION = "4";
 
 export interface StrategyCostProfile {
   spreadPips: number;
@@ -143,6 +147,7 @@ export function buildBacktestStrategySpec(input: {
     GENERATED_CATALOG_BY_ID.get(strategyId)?.label ??
     legacyLabels[strategyId] ??
     strategyId;
+  const risk = riskPolicyFor(timeframe);
   return {
     strategy_id: strategyId,
     version_id: `${strategyId}.${CATALOG_SPEC_REVISION}`,
@@ -168,17 +173,19 @@ export function buildBacktestStrategySpec(input: {
       // allow_reentry must stay true so closed trades can be followed by later signals
       // across a multi-month/year sample (false previously capped the whole run at 1 trade).
       allow_reentry: true,
-      cooldown_bars: 2,
+      cooldown_bars: risk.cooldownBars,
     },
+    // Risk geometry is TIMEFRAME-AWARE: a 1m scalp cannot share the stop
+    // width, target distance, or holding time of a 4h swing (see riskPolicy).
     stop_loss: {
       type: "atr_multiple",
-      value: 1.5,
+      value: risk.stopAtrMultiple,
       period: 14,
       timeframe,
     },
     targets: [
-      { type: "risk_reward", size_percent: 50, value: 1.5 },
-      { type: "risk_reward", size_percent: 50, value: 2.5 },
+      { type: "risk_reward", size_percent: 50, value: risk.targetR[0] },
+      { type: "risk_reward", size_percent: 50, value: risk.targetR[1] },
     ],
     position_sizing: {
       type: "risk_percent",
@@ -188,12 +195,12 @@ export function buildBacktestStrategySpec(input: {
     management: {
       move_to_break_even: {
         trigger_type: "r_multiple",
-        trigger_value: 1,
+        trigger_value: risk.breakEvenAtR,
         new_stop_offset_pips: 0,
         apply_after_target: null,
       },
       trailing_stop: null,
-      maximum_holding_bars: 18,
+      maximum_holding_bars: risk.maximumHoldingBars,
       close_on_opposite_signal: true,
       session_close_exit: false,
     },
@@ -206,7 +213,9 @@ export function buildBacktestStrategySpec(input: {
       consecutive_loss_pause_bars: 4,
       cooldown_after_loss_bars: 1,
       max_daily_loss_percent: 15,
-      daily_trade_limit: 30,
+      // Scalping fires far more often than swing — a 30/day cap would silently
+      // truncate the sample and starve the 100-trade evidence gate.
+      daily_trade_limit: risk.dailyTradeLimit,
       minimum_reward_risk: 1,
     },
     costs: {

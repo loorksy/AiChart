@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { callLLM, isLLMConfiguredAsync } from "@/lib/llm";
+import { createLogger } from "@/lib/logger";
 import { sanitizePublicText } from "../activity";
 import type { AgentRunContext } from "../types";
 import type {
@@ -27,6 +28,8 @@ import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 
+const log = createLogger("final-decision");
+
 const FinalDecisionModelSchema = z.object({
   decision: z.enum(["buy", "sell", "wait"]),
   selectedTradeCandidateId: z.string().nullable().optional(),
@@ -42,11 +45,89 @@ const FinalDecisionModelSchema = z.object({
   selectedCandidateIds: z.array(z.string()).max(8).optional(),
 });
 
+/**
+ * Why the synthesizer produced no decision. A bare `catch` used to discard
+ * this entirely, so every provider outage, quota rejection, and malformed
+ * model reply surfaced as the same "try again shortly" message — undebuggable
+ * in production.
+ */
+export type SynthesizerFailureKind =
+  | "llm_not_configured"
+  | "provider_auth"
+  | "provider_rate_limit"
+  | "provider_unavailable"
+  | "timeout"
+  | "network"
+  | "empty_response"
+  | "invalid_json"
+  | "schema_mismatch"
+  | "unknown";
+
+export interface SynthesizerFailure {
+  kind: SynthesizerFailureKind;
+  /** Operator-safe detail (provider text is already user-facing Arabic). */
+  detail: string;
+  /** True when a retry could plausibly succeed. */
+  retryable: boolean;
+  /** How many attempts were made before giving up. */
+  attempts: number;
+}
+
 export interface SynthesizerOutcome {
   result: FinalDecisionResult | null;
   usedLLM: boolean;
   selectedCandidateIds?: string[];
   drawingAdvice?: { shouldDraw: boolean; reason: string };
+  /** Present only when `result` is null. */
+  failure?: SynthesizerFailure;
+}
+
+/** Classify a raw provider/parse error into an actionable failure kind. */
+export function classifySynthesizerError(error: unknown): {
+  kind: SynthesizerFailureKind;
+  retryable: boolean;
+  detail: string;
+} {
+  if (error instanceof z.ZodError) {
+    return {
+      kind: "schema_mismatch",
+      retryable: true,
+      detail: `القرار المُعاد لا يطابق العقد: ${error.issues
+        .slice(0, 3)
+        .map((issue) => `${issue.path.join(".") || "root"} ${issue.message}`)
+        .join("; ")}`,
+    };
+  }
+  if (error instanceof SyntaxError) {
+    return {
+      kind: "invalid_json",
+      retryable: true,
+      detail: `تعذّر تحليل رد النموذج كـ JSON: ${error.message}`,
+    };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+
+  if (/\b(401|403)\b/.test(message) || lower.includes("api key") || message.includes("مفتاح")) {
+    return { kind: "provider_auth", retryable: false, detail: message };
+  }
+  if (/\b429\b/.test(message) || lower.includes("rate limit") || lower.includes("quota")) {
+    return { kind: "provider_rate_limit", retryable: true, detail: message };
+  }
+  if (/\b(500|502|503|504)\b/.test(message) || lower.includes("overloaded")) {
+    return { kind: "provider_unavailable", retryable: true, detail: message };
+  }
+  if (lower.includes("abort") || lower.includes("timeout") || lower.includes("timed out")) {
+    return { kind: "timeout", retryable: true, detail: message };
+  }
+  if (lower.includes("fetch failed") || lower.includes("econnreset") || lower.includes("enotfound")) {
+    return { kind: "network", retryable: true, detail: message };
+  }
+  if (message.includes("رد فارغ") || lower.includes("empty")) {
+    return { kind: "empty_response", retryable: true, detail: message };
+  }
+  return { kind: "unknown", retryable: false, detail: message };
 }
 
 export interface SynthesizerDeps {
@@ -95,7 +176,17 @@ export async function runFinalDecisionSynthesizer(
 ): Promise<SynthesizerOutcome> {
   const configured = deps.configured ?? (await isLLMConfiguredAsync());
   if (!configured) {
-    return { result: null, usedLLM: false };
+    return {
+      result: null,
+      usedLLM: false,
+      failure: {
+        kind: "llm_not_configured",
+        detail:
+          "مفتاح مزوّد الذكاء الاصطناعي غير مُعدّ على الخادم — أضِفه من لوحة المفاتيح.",
+        retryable: false,
+        attempts: 0,
+      },
+    };
   }
 
   const language = input.locale === "en" ? "English" : "Arabic";
@@ -122,12 +213,44 @@ export async function runFinalDecisionSynthesizer(
         .trim();
     });
 
-  let parsed: z.infer<typeof FinalDecisionModelSchema>;
-  try {
-    const raw = await callModel(system, user);
-    parsed = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
-  } catch {
-    return { result: null, usedLLM: false };
+  // ONE automatic retry for transient failures (timeout, network blip, 429/5xx,
+  // or a malformed reply the model can usually re-emit correctly). Auth errors
+  // and unknown faults fail immediately — retrying them only wastes the budget.
+  let parsed: z.infer<typeof FinalDecisionModelSchema> | null = null;
+  let failure: SynthesizerFailure | null = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const raw = await callModel(system, user);
+      parsed = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
+      failure = null;
+      break;
+    } catch (error) {
+      const classified = classifySynthesizerError(error);
+      failure = { ...classified, attempts: attempt };
+      log.warn("final decision synthesis failed", {
+        attempt,
+        kind: classified.kind,
+        retryable: classified.retryable,
+        symbol: input.market.symbol,
+        interval: input.market.interval,
+        detail: classified.detail.slice(0, 300),
+      });
+      if (!classified.retryable || attempt === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+  }
+  if (!parsed) {
+    return {
+      result: null,
+      usedLLM: false,
+      failure:
+        failure ?? {
+          kind: "unknown",
+          detail: "لم يُنتج نموذج القرار رداً صالحاً.",
+          retryable: false,
+          attempts: 2,
+        },
+    };
   }
 
   return {

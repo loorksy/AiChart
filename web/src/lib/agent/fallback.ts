@@ -10,13 +10,36 @@ import {
 } from "./confidenceSemantics";
 import type { AgentActivityEvent, AgentFinalResult } from "./types";
 
-/** Generic partial-failure fallback: informational, no market decision. */
+/**
+ * Generic partial-failure fallback: informational, no market decision.
+ *
+ * `options.detail` carries the ACTUAL cause (provider auth, rate limit,
+ * malformed model reply, deadline) into the operator-visible summary. The old
+ * behaviour buried every distinct fault under one "try again shortly" line,
+ * which made production failures impossible to triage from the outside.
+ */
 export function buildAgentFallbackResult(
   reason: string,
   activityEvents: AgentActivityEvent[] = [],
   locale: AppLocale = "ar",
+  options: { detail?: string; retryable?: boolean } = {},
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({ analysisConfidence: 0 });
+  const detail = options.detail?.trim();
+  const retryHintAr = options.retryable
+    ? " أعد المحاولة بعد قليل."
+    : " هذه المشكلة لن تُحل بإعادة المحاولة — راجع الإعداد.";
+  const retryHintEn = options.retryable
+    ? " Please try again shortly."
+    : " Retrying will not help — check the configuration.";
+  const summary =
+    locale === "en"
+      ? detail
+        ? `The agent could not complete this run: ${detail}${retryHintEn}`
+        : "The agent could not complete this run safely. Please try again shortly."
+      : detail
+        ? `تعذّر إكمال التحليل: ${detail}${retryHintAr}`
+        : "تعذّر تشغيل الوكيل الذكي حالياً. حاول مرة أخرى بعد قليل.";
   return {
     decision: "informational",
     confidence:
@@ -24,10 +47,7 @@ export function buildAgentFallbackResult(
         ? confidenceSemantics.displayValue
         : 0,
     confidenceSemantics,
-    summary:
-      locale === "en"
-        ? "The agent could not complete this run safely. Please try again shortly."
-        : "تعذّر تشغيل الوكيل الذكي حالياً. حاول مرة أخرى بعد قليل.",
+    summary,
     keyReasons: [reason],
     riskWarnings: [
       locale === "en"

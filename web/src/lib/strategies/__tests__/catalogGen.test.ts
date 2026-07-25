@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { GENERATED_CATALOG, GENERATED_CATALOG_BY_ID } from "@/lib/strategies/catalogGen";
+import {
+  GENERATED_CATALOG,
+  GENERATED_CATALOG_BY_ID,
+  SCALP_CATALOG,
+  catalogEntriesForTimeframe,
+} from "@/lib/strategies/catalogGen";
+import {
+  assessCostViability,
+  riskPolicyFor,
+  roundTripCostPips,
+  styleForTimeframe,
+} from "@/lib/strategies/riskPolicy";
 import {
   BACKTEST_STRATEGY_IDS,
   CATALOG_SPEC_REVISION,
@@ -28,14 +39,22 @@ const SUPPORTED_LEAF_TYPES = new Set([
   "time_window",
 ]);
 
-const TIMEFRAMES: ResearchTimeframe[] = ["15m", "30m", "1h", "4h"];
+const TIMEFRAMES: ResearchTimeframe[] = ["1m", "5m", "15m", "30m", "1h", "4h"];
+const SCALP_TIMEFRAMES: ResearchTimeframe[] = ["1m", "5m", "15m"];
 
 describe("generated catalog", () => {
-  it("contains the planned family sizes (60 generated + 3 legacy)", () => {
+  it("contains the planned family sizes (15 scalp + 60 general + 3 legacy)", () => {
     const byFamily = new Map<string, number>();
     for (const entry of GENERATED_CATALOG) {
       byFamily.set(entry.family, (byFamily.get(entry.family) ?? 0) + 1);
     }
+    // Scalp-native families — the product's priority set.
+    assert.equal(byFamily.get("scalp_micro_break"), 6);
+    assert.equal(byFamily.get("scalp_quick_mr"), 4);
+    assert.equal(byFamily.get("scalp_burst"), 3);
+    assert.equal(byFamily.get("scalp_stretch_revert"), 2);
+    assert.equal(SCALP_CATALOG.length, 15);
+    // General families.
     assert.equal(byFamily.get("ema_cross"), 12);
     assert.equal(byFamily.get("ema_cross_rsi"), 6);
     assert.equal(byFamily.get("rsi_mr"), 12);
@@ -43,8 +62,8 @@ describe("generated catalog", () => {
     assert.equal(byFamily.get("breakout"), 18);
     assert.equal(byFamily.get("session_range"), 4);
     assert.equal(byFamily.get("atr_regime"), 4);
-    assert.equal(GENERATED_CATALOG.length, 60);
-    assert.equal(BACKTEST_STRATEGY_IDS.length, 63);
+    assert.equal(GENERATED_CATALOG.length, 75);
+    assert.equal(BACKTEST_STRATEGY_IDS.length, 78);
   });
 
   it("every id is unique and satisfies BOTH id contracts", () => {
@@ -127,21 +146,108 @@ describe("generated catalog", () => {
   });
 });
 
+describe("scalp prioritisation", () => {
+  it("classifies timeframes into trading styles", () => {
+    assert.equal(styleForTimeframe("1m"), "scalp");
+    assert.equal(styleForTimeframe("5m"), "scalp");
+    assert.equal(styleForTimeframe("15m"), "intraday");
+    assert.equal(styleForTimeframe("4h"), "swing");
+  });
+
+  it("scalp risk geometry is tighter and faster than swing", () => {
+    const scalp = riskPolicyFor("1m");
+    const swing = riskPolicyFor("4h");
+    assert.ok(scalp.stopAtrMultiple < swing.stopAtrMultiple);
+    assert.ok(scalp.targetR[0] < swing.targetR[0]);
+    assert.ok(scalp.maximumHoldingBars < swing.maximumHoldingBars);
+    assert.ok(scalp.breakEvenAtR <= swing.breakEvenAtR);
+    // Scalping fires far more often — the daily cap must not truncate it.
+    assert.ok(scalp.dailyTradeLimit > swing.dailyTradeLimit);
+  });
+
+  it("specs carry the timeframe's own risk geometry", () => {
+    const costs = { spreadPips: 2, slippagePips: 1, commissionPerLotSideUsd: 0 };
+    const build = (timeframe: ResearchTimeframe) =>
+      buildBacktestStrategySpec({
+        strategyId: "ema_trend_follow_v1",
+        symbol: "XAUUSD",
+        timeframe,
+        costs,
+      }) as Record<string, any>;
+
+    const scalp = build("1m");
+    const swing = build("4h");
+    assert.equal(scalp.stop_loss.value, riskPolicyFor("1m").stopAtrMultiple);
+    assert.equal(swing.stop_loss.value, riskPolicyFor("4h").stopAtrMultiple);
+    assert.ok(scalp.management.maximum_holding_bars < swing.management.maximum_holding_bars);
+    assert.ok(
+      scalp.risk_controls.daily_trade_limit > swing.risk_controls.daily_trade_limit,
+    );
+    // Sizing split must still total 100% on every style.
+    for (const spec of [scalp, swing]) {
+      assert.equal(
+        spec.targets.reduce((s: number, t: any) => s + t.size_percent, 0),
+        100,
+      );
+    }
+  });
+
+  it("scalp frames get the scalp families; slow frames never do", () => {
+    for (const timeframe of ["1m", "5m"] as ResearchTimeframe[]) {
+      const ids = new Set(catalogEntriesForTimeframe(timeframe).map((e) => e.id));
+      for (const entry of SCALP_CATALOG) {
+        assert.ok(ids.has(entry.id), `${timeframe} must include ${entry.id}`);
+      }
+      // Structurally-too-slow parameters are excluded from scalp frames.
+      assert.ok(![...ids].some((id) => id.includes("_50_200_")), timeframe);
+      assert.ok(![...ids].some((id) => id.startsWith("brk_48_")), timeframe);
+      assert.ok(![...ids].some((id) => id.startsWith("session_range")), timeframe);
+    }
+    for (const timeframe of ["1h", "4h"] as ResearchTimeframe[]) {
+      const ids = new Set(catalogEntriesForTimeframe(timeframe).map((e) => e.id));
+      for (const entry of SCALP_CATALOG) {
+        assert.ok(!ids.has(entry.id), `${timeframe} must exclude ${entry.id}`);
+      }
+    }
+  });
+
+  it("cost viability rejects targets that cannot clear the round trip", () => {
+    const costs = { spreadPips: 2, slippagePips: 1, commissionPerLotSideUsd: 0 };
+    // Round trip = (2 + 1) × 2 = 6 pips; a viable first target needs ≥ 18.
+    assert.equal(roundTripCostPips(costs), 6);
+
+    // Gold 1m with a 3-pip ATR: 3 × 0.8 × 1.2 ≈ 2.9 pips — hopeless.
+    const thin = assessCostViability("1m", costs, 3);
+    assert.equal(thin.viable, false);
+    assert.equal(thin.requiredTargetPips, 18);
+    assert.match(thin.reason, /does not clear/);
+
+    // With a 30-pip ATR: 30 × 0.8 × 1.2 = 28.8 pips — comfortably viable.
+    assert.equal(assessCostViability("1m", costs, 30).viable, true);
+  });
+});
+
 describe("pipeline targets and ranges", () => {
-  it("wave 1 matrix = catalog × XAUUSD × 4 timeframes", () => {
+  it("wave matrix is timeframe-appropriate, not the full cross product", () => {
     const config = {
       userId: 1,
       symbols: ["XAUUSD"],
-      timeframes: TIMEFRAMES,
+      timeframes: SCALP_TIMEFRAMES,
       batch: 2,
     };
     const targets = pipelineTargets(config);
-    assert.equal(targets.length, 63 * 4);
+    // Each timeframe contributes legacy(3) + its own filtered catalog.
+    const expected = SCALP_TIMEFRAMES.reduce(
+      (sum, tf) => sum + 3 + catalogEntriesForTimeframe(tf).length,
+      0,
+    );
+    assert.equal(targets.length, expected);
+    assert.ok(targets.length < 78 * SCALP_TIMEFRAMES.length, "must be filtered");
     // Deterministic ordering (stable ids for idempotency keys).
     assert.deepEqual(targets[0], {
       strategyId: "ema_trend_follow_v1",
       symbol: "XAUUSD",
-      timeframe: "15m",
+      timeframe: "1m",
     });
   });
 
@@ -156,7 +262,7 @@ describe("pipeline targets and ranges", () => {
     }
   });
 
-  it("config defaults are safe without env", () => {
+  it("config defaults prioritise scalp timeframes", () => {
     delete process.env.STRATEGY_PIPELINE_USER_ID;
     delete process.env.STRATEGY_PIPELINE_SYMBOLS;
     delete process.env.STRATEGY_PIPELINE_TIMEFRAMES;
@@ -164,7 +270,7 @@ describe("pipeline targets and ranges", () => {
     const config = pipelineConfig();
     assert.equal(config.userId, null); // tick refuses to run without it
     assert.deepEqual(config.symbols, ["XAUUSD"]);
-    assert.deepEqual(config.timeframes, ["15m", "30m", "1h", "4h"]);
+    assert.deepEqual(config.timeframes, ["1m", "5m", "15m"]);
     assert.equal(config.batch, 2);
   });
 });
