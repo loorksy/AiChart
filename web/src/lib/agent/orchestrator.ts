@@ -124,6 +124,27 @@ import { createTrackedRecommendation } from "@/lib/recommendations/recommendatio
 
 const log = createLogger("agent.orchestrator");
 
+/**
+ * Cancellation checkpoint (RELIABILITY_PLAN.md item 2). withDeadline degrades a
+ * cancelled stage to its fallback rather than throwing, which keeps partial
+ * results usable — but it also means a cancelled run would otherwise WALK the
+ * remaining stages before finishing. Checking the run signal at stage
+ * boundaries makes cancellation prompt: the run stops as soon as nobody is
+ * waiting for it, which is also what frees the burst slot quickly.
+ */
+function cancelledRunResult(
+  ctx: AgentRunContext,
+  collected: AgentFinalResult["activityEvents"],
+  locale: AppLocale,
+): AgentFinalResult {
+  return buildAgentFallbackResult("Run cancelled by the caller.", collected, locale, {
+    failureStage: "general",
+    failureCode: "cancelled",
+    retryable: false,
+    traceId: ctx.requestId,
+  });
+}
+
 export interface UnifiedAgentInput {
   userMessage: string;
   chartContext?: AgentChartContext;
@@ -456,18 +477,29 @@ async function runUnifiedChartAgentInner(
     });
 
   // Market Data Agent is CRITICAL: failure → stop, return action_required.
-  const market = await withTimeout(
-    captureStage(
-      "market_data",
-      runMarketDataAgent(trackedCtx, {
-        ...chartContext,
-        spread: input.spread,
-        analysisKind,
-      }),
-    ),
+  // It performs network I/O (warehouse + OANDA), so it uses withDeadline: a
+  // cancelled run tears the fetch down immediately instead of holding the burst
+  // slot for the remainder of the stage deadline (RELIABILITY_PLAN item 2).
+  const market = await withDeadline(
+    (signal) =>
+      captureStage(
+        "market_data",
+        runMarketDataAgent(
+          { ...trackedCtx, signal },
+          {
+            ...chartContext,
+            spread: input.spread,
+            analysisKind,
+          },
+        ),
+      ),
     AGENT_TIMEOUTS.marketData,
     null,
+    ctx.signal,
   );
+
+  // Cancelled during market data: stop before any further work.
+  if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
 
   if (!market || market.currentPrice == null) {
     const marketFailure = stageFailures.find((f) => f.stage === "market_data");
@@ -620,6 +652,9 @@ async function runUnifiedChartAgentInner(
     });
   }
 
+  // Cancelled right after market data: never start the fleet for nobody.
+  if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
+
   // Stage checkpoint (item 2): an identical market snapshot means the fleet —
   // pure functions of the candle window — would produce identical output, so a
   // retry after a failed decision resumes instead of re-earning the evidence.
@@ -681,6 +716,9 @@ async function runUnifiedChartAgentInner(
       });
     }
   }
+
+  // Cancelled mid-fleet: stop now instead of walking the remaining stages.
+  if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
 
   // Silent deadlines never throw, so ledger them explicitly — otherwise a run
   // whose whole fleet timed out would still report operational_status "ok".
@@ -768,6 +806,10 @@ async function runUnifiedChartAgentInner(
 
   // The LLM chooses BUY, SELL, or WAIT and binds actionable choices to a real
   // candidate. Model failure produces a technical no-recommendation state.
+  // Cancelled before the decision: never pay for the most expensive call when
+  // the answer has no reader.
+  if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
+
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request

@@ -615,9 +615,12 @@ export async function POST(req: NextRequest) {
           // and boundedly — for it to unwind. Otherwise the next run could
           // start while this run's provider calls are still consuming quota.
           tickerAbort.abort();
+          // The abort tears the ticker's model call down, so this normally
+          // settles in milliseconds; the cap only bounds a pathological unwind
+          // (it must stay short — the slot gates the operator's next request).
           await Promise.race([
             tickerTask.catch(() => {}),
-            new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+            new Promise<void>((resolve) => setTimeout(resolve, 250)),
           ]);
           release?.();
           try {
