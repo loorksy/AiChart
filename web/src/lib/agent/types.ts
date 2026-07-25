@@ -163,6 +163,12 @@ export interface AgentOption {
 
 export interface AgentFinalResult {
   decision: AgentDecision;
+  /**
+   * Three-state outcome contract (execution_validated / descriptive_only /
+   * operational_blocker). Additive: legacy clients keep reading `decision`.
+   * The orchestrator guarantees this is set on every returned result.
+   */
+  envelope?: import("./resultEnvelope").ResultEnvelope;
   confidence: number;
   /** Distinct confidence fields — UI must use displayKind/displayValue. */
   confidenceSemantics?: import("./confidenceSemantics").ConfidenceSemantics;

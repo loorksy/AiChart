@@ -34,6 +34,8 @@ import { streamTicker } from "@/lib/agent/ticker/streamTicker";
 import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
 import { createLogger } from "@/lib/logger";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
+import { buildAgentFallbackResult } from "@/lib/agent/fallback";
+import { classifyAgentError, userMessageForFailure } from "@/lib/agent/errorTaxonomy";
 import type { AgentActivityEvent } from "@/lib/agent/types";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
@@ -565,8 +567,40 @@ export async function POST(req: NextRequest) {
               message: "تعذّر إكمال الطلب بسبب خطأ أثناء تشغيل الوكيل.",
             });
             send("activity", failed);
+            // Contract guarantee (RELIABILITY_PLAN.md phase-0 SLO): even a
+            // crashed run ends with a COMPLETE `final` event carrying an
+            // operational_blocker envelope — never only a bare `error` event.
+            const classified = classifyAgentError(error);
+            const fallbackResult = buildAgentFallbackResult(
+              "Agent run failed before producing a result.",
+              activityEvents,
+              body.locale ?? "ar",
+              {
+                detail: userMessageForFailure(classified.code, body.locale ?? "ar"),
+                retryable: classified.retryable,
+                failureStage: "transport",
+                failureCode: classified.code,
+                traceId: requestId,
+              },
+            );
+            send("final", {
+              ...stripInternalFieldsFromClientResult(fallbackResult),
+              sessionId,
+              activityEvents,
+              options: [],
+              suggestions: [],
+            });
+            // Legacy clients still listen for `error` — keep it, without
+            // leaking the raw provider message to the operator.
             send("error", {
-              error: error instanceof Error ? error.message : "Agent failed",
+              error: userMessageForFailure(classified.code, body.locale ?? "ar"),
+              code: classified.code,
+              trace_id: requestId,
+            });
+            log.error("agent.stream.failed", {
+              requestId,
+              code: classified.code,
+              error: error instanceof Error ? error.message : String(error),
             });
           }
         } finally {

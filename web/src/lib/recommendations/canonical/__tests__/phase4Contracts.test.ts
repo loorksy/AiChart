@@ -69,8 +69,10 @@ describe("Phase 4 static contracts", () => {
       join(lib, "..", "app", "api", "recommendations", "tracked", "[id]", "route.ts"),
       "utf8",
     );
-    assert.match(collection, /requireUser/);
-    assert.match(detail, /requireUser/);
+    // Owner-scoped auth: the routes moved from requireUser to the stricter
+    // requirePaidAccess — either satisfies the "authenticated reads" contract.
+    assert.match(collection, /requireUser|requirePaidAccess/);
+    assert.match(detail, /requireUser|requirePaidAccess/);
     assert.doesNotMatch(collection, /export async function (POST|PUT|PATCH|DELETE)/);
     assert.doesNotMatch(detail, /export async function (POST|PUT|PATCH|DELETE)/);
   });

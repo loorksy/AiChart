@@ -3,12 +3,21 @@
  * a well-formed result with NO trade recommendation — never a crash, never an
  * invented analysis. These are protocol-failure messages (allowed to be
  * static) but they still respect the operator's language.
+ *
+ * Contract note: a partial-failure fallback is an OPERATIONAL BLOCKER, not a
+ * descriptive answer — its envelope says so explicitly so clients can stop
+ * guessing whether "informational" meant analysis or fault.
  */
 import type { AppLocale } from "@/lib/i18n";
 import {
   buildInformationalConfidence,
 } from "./confidenceSemantics";
 import type { AgentActivityEvent, AgentFinalResult } from "./types";
+import type { AgentFailureCode, AgentStage } from "./errorTaxonomy";
+import {
+  descriptiveEnvelope,
+  operationalBlockerEnvelope,
+} from "./resultEnvelope";
 
 /**
  * Generic partial-failure fallback: informational, no market decision.
@@ -22,7 +31,16 @@ export function buildAgentFallbackResult(
   reason: string,
   activityEvents: AgentActivityEvent[] = [],
   locale: AppLocale = "ar",
-  options: { detail?: string; retryable?: boolean } = {},
+  options: {
+    detail?: string;
+    retryable?: boolean;
+    /** Pipeline stage the failure is attributed to (envelope.failure_stage). */
+    failureStage?: AgentStage;
+    /** Taxonomy code for the failure (envelope.failure_code). */
+    failureCode?: AgentFailureCode;
+    /** Correlation id surfaced to the user for support (request id). */
+    traceId?: string;
+  } = {},
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({ analysisConfidence: 0 });
   const detail = options.detail?.trim();
@@ -42,6 +60,12 @@ export function buildAgentFallbackResult(
         : "تعذّر تشغيل الوكيل الذكي حالياً. حاول مرة أخرى بعد قليل.";
   return {
     decision: "informational",
+    envelope: operationalBlockerEnvelope({
+      failureStage: options.failureStage ?? "final_decision",
+      failureCode: options.failureCode ?? "unknown",
+      retryable: options.retryable ?? false,
+      traceId: options.traceId,
+    }),
     confidence:
       typeof confidenceSemantics.displayValue === "number"
         ? confidenceSemantics.displayValue
@@ -63,12 +87,14 @@ export function buildAgentFallbackResult(
 export function buildInformationalResult(
   summary: string,
   activityEvents: AgentActivityEvent[] = [],
+  options: { traceId?: string } = {},
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({
     analysisConfidence: 0,
   });
   return {
     decision: "informational",
+    envelope: descriptiveEnvelope({ traceId: options.traceId }),
     confidence: 0,
     confidenceSemantics,
     summary,
