@@ -319,7 +319,11 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "run_backtest",
     mcpToolConfig("run_backtest"),
     async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/backtest", body)),
+      // The contract declares 120s for this tool, but the bridge default is
+      // 15s — submission does a warehouse export + research job creation and
+      // legitimately exceeds 15s when the research service is busy with a
+      // pipeline job. Without the override every manual backtest 504'd.
+      bridgeCall(() => bridge.post("/api/agent/backtest", body, 120_000)),
   );
 
   server.registerTool(
@@ -331,12 +335,18 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         symbol?: string;
         timeframe?: string;
       };
+      // Advances pending backtests server-side (research polling) — needs
+      // more than the 15s bridge default when the service is under load.
       return bridgeCall(() =>
-        bridge.get("/api/agent/strategy/performance", {
-          strategy_id,
-          symbol,
-          timeframe,
-        }),
+        bridge.get(
+          "/api/agent/strategy/performance",
+          {
+            strategy_id,
+            symbol,
+            timeframe,
+          },
+          60_000,
+        ),
       );
     },
   );
