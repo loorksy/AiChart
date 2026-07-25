@@ -33,9 +33,11 @@ import { createLogger } from "@/lib/logger";
 import {
   BACKTEST_STRATEGY_IDS,
   CATALOG_SPEC_REVISION,
+  LEGACY_STRATEGY_IDS,
   buildBacktestStrategySpec,
   isBacktestStrategyId,
 } from "./catalog";
+import { catalogEntriesForTimeframe } from "./catalogGen";
 import {
   DEFAULT_BACKTEST_ACCOUNT_CURRENCY,
   DEFAULT_BACKTEST_NOTIONAL_CAPITAL,
@@ -48,11 +50,14 @@ const log = createLogger("strategy-pipeline");
 
 export const MAX_BACKTEST_BARS = 50_000;
 
-/** Per-timeframe history depth (months) sized for the 100-trade gate within
- *  the 50k-bar export budget (15m ≈ 35k bars/year of trading days). */
+/**
+ * Per-timeframe history depth (months), sized so the CALENDAR range stays
+ * inside the 50k-bar export budget while giving the 100-trade gate enough
+ * sample. Scalp frames are shallower in months but far denser in bars.
+ */
 const LOOKBACK_MONTHS: Record<ResearchTimeframe, number> = {
-  "1m": 2,
-  "5m": 6,
+  "1m": 1, // ~43k bars
+  "5m": 5, // ~43k bars
   "15m": 12,
   "30m": 24,
   "1h": 36,
@@ -227,7 +232,9 @@ export function pipelineConfig(): PipelineConfig {
     .split(",")
     .map((value) => normalizeSymbol(value.trim()).canonical)
     .filter((value) => /^[A-Z]{6}$/.test(value));
-  const timeframes = (process.env.STRATEGY_PIPELINE_TIMEFRAMES ?? "15m,30m,1h,4h")
+  // Scalping is the product: 1m/5m lead, 15m is the ceiling for the default
+  // wave. Slower frames remain available by explicit configuration.
+  const timeframes = (process.env.STRATEGY_PIPELINE_TIMEFRAMES ?? "1m,5m,15m")
     .split(",")
     .map((value) => canonicalStrategyTimeframe(value.trim()))
     .filter((value): value is ResearchTimeframe => value != null);
@@ -235,7 +242,7 @@ export function pipelineConfig(): PipelineConfig {
   return {
     userId: Number.isSafeInteger(userIdRaw) && userIdRaw > 0 ? userIdRaw : null,
     symbols: symbols.length ? [...new Set(symbols)] : ["XAUUSD"],
-    timeframes: timeframes.length ? [...new Set(timeframes)] : ["15m", "30m", "1h", "4h"],
+    timeframes: timeframes.length ? [...new Set(timeframes)] : ["1m", "5m", "15m"],
     batch: Number.isFinite(batchRaw) ? Math.min(Math.max(Math.floor(batchRaw), 1), 8) : 2,
   };
 }
@@ -246,12 +253,22 @@ export interface PipelineTarget {
   timeframe: ResearchTimeframe;
 }
 
-/** Deterministic work matrix: catalog × symbols × timeframes. */
+/**
+ * Deterministic work matrix: TIMEFRAME-APPROPRIATE catalog × symbols ×
+ * timeframes. Scalp frames get the scalp-native families (plus fast general
+ * ones); slower frames skip them. Running every strategy on every timeframe
+ * would spend most of the pipeline's capacity on combinations that cannot
+ * resolve inside their own horizon.
+ */
 export function pipelineTargets(config: PipelineConfig): PipelineTarget[] {
   const out: PipelineTarget[] = [];
   for (const symbol of config.symbols) {
     for (const timeframe of config.timeframes) {
-      for (const strategyId of BACKTEST_STRATEGY_IDS) {
+      const ids = [
+        ...LEGACY_STRATEGY_IDS,
+        ...catalogEntriesForTimeframe(timeframe).map((entry) => entry.id),
+      ];
+      for (const strategyId of ids) {
         out.push({ strategyId, symbol, timeframe });
       }
     }

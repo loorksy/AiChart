@@ -580,20 +580,40 @@ export async function runUnifiedChartAgent(
     null,
   );
   if (!synth) {
-    return buildAgentFallbackResult(
-      synthError
-        ? "Decision model was unavailable — no market recommendation was issued."
-        : "Decision model timed out — no market recommendation was issued.",
-      collected,
-      locale,
-    );
+    // withTimeout resolves to null on deadline; a thrown error is a real fault.
+    const reason = synthError
+      ? `Decision model call threw: ${
+          synthError instanceof Error ? synthError.message : String(synthError)
+        }`
+      : `Decision model exceeded its ${AGENT_TIMEOUTS.finalDecision / 1000}s deadline — no market recommendation was issued.`;
+    trackedCtx.emitActivity({
+      type: "analysis",
+      status: "failed",
+      message: reason,
+      metadata: { stage: "final_decision", cause: synthError ? "threw" : "timeout" },
+    });
+    return buildAgentFallbackResult(reason, collected, locale, {
+      detail: reason,
+      retryable: !synthError,
+    });
   }
   if (!synth.usedLLM || !synth.result) {
-    return buildAgentFallbackResult(
-      "Decision model was unavailable — no market recommendation was issued.",
-      collected,
-      locale,
-    );
+    // The synthesizer now reports WHY (provider auth, rate limit, malformed
+    // reply…) instead of a generic "unavailable" that hid every real cause.
+    const failure = synth.failure;
+    const reason = failure
+      ? `Decision model failed (${failure.kind}, ${failure.attempts} attempt(s)): ${failure.detail}`
+      : "Decision model was unavailable — no market recommendation was issued.";
+    trackedCtx.emitActivity({
+      type: "analysis",
+      status: "failed",
+      message: reason,
+      metadata: { stage: "final_decision", kind: failure?.kind ?? "unknown" },
+    });
+    return buildAgentFallbackResult(reason, collected, locale, {
+      detail: failure?.detail,
+      retryable: failure?.retryable ?? false,
+    });
   }
   const finalDecision = synth.result;
   // Attach the significant-gap warning once — every downstream return path
