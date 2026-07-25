@@ -39,6 +39,11 @@ services:
       dockerfile: Dockerfile
     expose:
       - "8090"
+    # Loopback-published for the pm2 deployment layout, where web/worker run
+    # on the HOST (RESEARCH_SERVICE_URL=http://127.0.0.1:8090) rather than as
+    # compose services. Never bind beyond 127.0.0.1 — the service is internal.
+    ports:
+      - "127.0.0.1:8090:8090"
     environment:
       - RESEARCH_SERVICE_ENV=production
       - RESEARCH_SERVICE_INTERNAL_TOKEN=${RESEARCH_SERVICE_INTERNAL_TOKEN:-}
