@@ -16,8 +16,11 @@ from app.data import DatasetValidationResult, validate_dataset
 from app.data.errors import DatasetError, DatasetInputError
 from app.data.loaders.aichart_candle_warehouse import load_aichart_candle_warehouse
 from app.data.registry import DatasetFormat, DatasetLoaderRegistry
+from app.config import load_settings
 from app.errors import ServiceError
+from app.jobs.backtest_process import run_backtest_in_child
 from app.jobs.cancellation import JobCancelled
+from app.jobs.process_worker import run_in_killable_process
 from app.jobs.payloads import (
     BacktestValidationConfig,
     DatasetArtifactFormat,
@@ -577,19 +580,36 @@ async def _checkpoint(cancelled: asyncio.Event) -> None:
 async def _run_engine_off_loop(
     engine: BacktestEngine, cancelled: asyncio.Event | None
 ) -> Any:
-    """Run the CPU-bound simulation in a worker thread, off the API loop.
+    """Run the CPU-bound simulation off the API loop.
 
     On the main loop a 40k-bar run starved everything sharing it — health
     checks, job submissions, and even the job-timeout machinery, so a wedged
     simulation could never be timed out by the very loop it was blocking.
-    In a worker thread the interpreter's ~5ms GIL switch keeps the API
-    responsive regardless of simulation size.
 
-    Safety: the engine consumes `cancelled` only via thread-safe
-    ``Event.is_set()`` checks, and its awaits are bare cooperative
-    ``asyncio.sleep(0)`` yields — both are correct inside the nested loop
-    that ``asyncio.run`` creates for the thread.
+    Two isolation modes:
+
+    - **thread** (default): the interpreter's ~5ms GIL switch keeps the API
+      responsive regardless of simulation size. The engine consumes `cancelled`
+      only via thread-safe ``Event.is_set()`` checks, and its awaits are bare
+      cooperative ``asyncio.sleep(0)`` yields — both correct inside the nested
+      loop ``asyncio.run`` creates for the thread. Limitation: a run that
+      ignores the flag CANNOT be stopped.
+    - **process** (``RESEARCH_SERVICE_PROCESS_ISOLATION=1``): the simulation runs
+      in a killable child with a heartbeat lease, so cancellation and timeouts
+      are enforceable rather than advisory (RELIABILITY_PLAN item 3).
     """
+    settings = load_settings()
+    if settings.process_isolation:
+        return await run_in_killable_process(
+            run_backtest_in_child,
+            engine.strategy_input,
+            engine.dataset,
+            engine.config,
+            timeout_seconds=float(settings.max_timeout_seconds),
+            cancelled=cancelled,
+            lease_seconds=settings.process_lease_seconds,
+            kill_grace_seconds=settings.process_kill_grace_seconds,
+        )
 
     def _runner() -> Any:
         return asyncio.run(engine.run(cancelled))

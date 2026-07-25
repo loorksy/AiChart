@@ -8,6 +8,11 @@ import {
   getResearchJsonArtifact,
 } from "@/lib/research/client";
 import { formatResearchFailure } from "@/lib/research/serviceErrors";
+import {
+  buildTransportIncident,
+  clearedTransportState,
+  isTransportFailure,
+} from "@/lib/research/transportState";
 import { runBacktestValidation } from "@/lib/research/jobs";
 import type {
   ResearchArtifactReference,
@@ -535,9 +540,21 @@ export async function refreshStrategyBacktest(
     }
 
     const job = await getResearchJob(context, row.job_id);
+    // Reachable again: replace any assumed state with the authoritative one and
+    // clear the transport incident (RELIABILITY_PLAN.md item 4).
+    const priorValidation = jsonObject(row.validation_json);
+    const hadTransportIncident =
+      priorValidation.transport_state !== undefined &&
+      priorValidation.transport_state !== "ok";
     if (["queued", "running", "retry_wait", "cancelling"].includes(job.status)) {
       await updateBacktest(context.userId, row.id, {
         status: job.status === "queued" ? "pending" : "running",
+        ...(hadTransportIncident
+          ? {
+              validation: { ...priorValidation, ...clearedTransportState() },
+              errorMessage: null,
+            }
+          : {}),
       });
       return getStrategyBacktest(context.userId, row.id);
     }
@@ -667,11 +684,29 @@ export async function refreshStrategyBacktest(
       errorMessage: null,
     });
   } catch (error) {
-    await updateBacktest(context.userId, row.id, {
-      status: "failed",
-      errorMessage: formatResearchFailure(error),
-      completedAt: Date.now(),
-    });
+    // Transport failure is NOT job failure (RELIABILITY_PLAN.md item 4).
+    // Losing the connection tells us nothing about the job: the production
+    // incident this guards against is a polling timeout marking LIVE jobs
+    // "failed". Only an explicit terminal verdict from the service may do that.
+    if (isTransportFailure(error)) {
+      const previous = jsonObject(row.validation_json);
+      const incident = buildTransportIncident(
+        Number(previous.poll_failures ?? 0),
+        error,
+      );
+      await updateBacktest(context.userId, row.id, {
+        // Status deliberately UNCHANGED — the job keeps its last known state.
+        validation: { ...previous, ...incident },
+        errorMessage: incident.note,
+        // No completedAt: the job is not finished, we simply cannot see it.
+      });
+    } else {
+      await updateBacktest(context.userId, row.id, {
+        status: "failed",
+        errorMessage: formatResearchFailure(error),
+        completedAt: Date.now(),
+      });
+    }
   }
   return getStrategyBacktest(context.userId, row.id);
 }

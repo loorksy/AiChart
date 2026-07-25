@@ -260,18 +260,19 @@ Throttles لكل provider، احترام `Retry-After`، exponential backoff م�
 تحليل ناجح → `descriptive_only` في `final` وفي رد الأداة؛ فصل LLM → `operational_blocker`/`final_decision`/`auth` بلا خصم رصيد مع `trace_id`؛ فصل OANDA → `market_data`/`timeout`/`retryable:true` بلا خصم؛ إلغاء منتصف التحليل → تحرّر الـslot فوراً. الحقول الجديدة في MCP (`envelope`, `recommendation_reason`, `applied_to_chart`) تمرّ دون كسر (لا مخطط مخرجات صارم).
 **تصليب البند 7:** كان مسار عطل القرار النهائي يمرّر رسالة المزوّد الخام (مثل مفتاح API مقنّع + رابط المزوّد) إلى `summary`/`keyReasons` وإلى رسائل النشاط المبثوثة؛ صار الآن يعرض رسالة المستخدم الآمنة فقط (`userMessageForFailure`) ويُسجّل السبب الخام على الخادم فقط. `test:ci` = 646 ناجحاً.
 
-### المرحلة 1 — موثوقية الطلب المباشر (أسبوع–أسبوعان)
+### المرحلة 1 — موثوقية الطلب المباشر (أسبوع–أسبوعان) — ✅ منفذة
 
-- Timeout hierarchy وAbortSignal وإلغاء حقيقي (بند 2). — **قيد الإنجاز** (`withTimeout` بلا إلغاء بعدُ؛ المتخصصون حسابيون فلا يحتاجون إشارة، والتهديف الحقيقي على استدعاءات LLM/OANDA + الميزانية الكلية + الـcheckpoint هو المتبقّي).
-- **[جديد] Checkpoint/resume لكل مرحلة** (بند 2 المحدّث). — متبقٍّ ضمن البند 2.
+- ✅ Timeout hierarchy وAbortSignal وإلغاء حقيقي (بند 2) — `callLLM/callLLMStream` صارا يقبلان إشارة تصل إلى طبقة HTTP؛ `withDeadline` يُلغي فعلياً (مهلة/إلغاء الأب/عند الاستقرار) ويسابق الإلغاء لا العمل فقط فلا تستطيع مرحلة غير متعاونة تجاوز مهلتها؛ `createRunBudget` بميزانية 135s (< مهلة MCP 150s) وطلب يتجاوزها يُوسم `operational_blocker` بدل تمرير عمل ناقص كأنه طبيعي؛ مسار REST صار يمرّر `req.signal`؛ ولا يُحرَّر analyze slot قبل توقف عمل الـticker.
+- ✅ **Checkpoint/resume لكل مرحلة** (بند 2 المحدّث) — `stageCheckpoint.ts`؛ الاستئناف مشروط بتطابق **هاش لقطة السوق** تماماً (نفس الشموع ⇒ نفس مخرجات المتخصصين الحسابية حتماً)، ولا يُحفظ إلا أسطول مكتمل، بـTTL ومخزن محدود.
 - ✅ **[جديد] فصل النموذج السريع/العميق** (بند 15) — `getQuickModel()/getDeepModel()/modelForTier()` + `tier` في `callLLM`؛ كل الاستدعاءات المساعدة (ticker/suggestions/status/general/drawing/compose) على `quick`، والقرار النهائي على `deep` صراحةً. مضبوط بـ`AI_QUICK_MODEL` (افتراضياً = العميق ⇒ لا انقسام ولا تدهور)، مع قياس زمن لكل نداء.
-- Dependency matrix وdescriptive degradation (بند 5). — **قائم فعلياً في `orchestrator.ts`** (market_data→blocker، المتخصصون→degrade+announce، risk/final→fallback)؛ المتبقّي تحويله إلى مصفوفة صريحة مُوحّدة (مؤجّل لتفادي المخاطرة بعلامات `phase0Contracts`).
+- ✅ Dependency matrix وdescriptive degradation (بند 5) — `dependencyMatrix.ts` يصنّف كل مرحلة (`analysis_critical` / `recommendation_critical` / `execution_only` / `optional`) بأسبقية السلامة أولاً؛ فقدان دليل حرج للتوصية (risk/structure/liquidity/S&D/MTF) يمنع وسم «مخوّل للتنفيذ» حتى لو نجح فحص الأدلة، والاختياري (أخبار/رسم) يستمر ويُعلن النقص. `strictestOutcome` لا يرفع حالة أبداً — يخفّضها فقط.
 - ✅ **Provider circuit breaker + throttle + backoff/Retry-After** (بند 6) — `providerResilience.ts`؛ OANDA بإعادة محاولة محدودة + قاطع، وLLM بقاطع فقط (المُركّب يحتفظ بإعادة محاولته).
 
-### المرحلة 2 — تحصين خدمة الأبحاث (~أسبوعان)
+### المرحلة 2 — تحصين خدمة الأبحاث (~أسبوعان) — ✅ منفذة
 
-- Process workers مع lease/heartbeat وhard kill (بند 3).
-- فصل transport/job state وreconciliation (بند 4).
+- ✅ **Process worker قابل للقتل مع lease/heartbeat** (بند 3) — `app/jobs/process_worker.py`: تصعيد الإيقاف (تعاوني ← SIGTERM ← SIGKILL)، وlease عبر نبض يجدّده المحرّك عند كل شمعة (فالعمل والحياة إشارة واحدة)، وكل الانتظار غير حاجب للـevent loop. تفعيل اختياري بـ`RESEARCH_SERVICE_PROCESS_ISOLATION=1`، والمسار الافتراضي (thread) بلا تغيير.
+  اختبار عطل مثبت: وظيفة **تتجاهل الإلغاء** تُقتل قسرياً بينما يظل الـloop مستجيباً (health)، إضافة إلى المهلة والـlease والانهيار غير الطبيعي. واختبار تكافؤ: backtest حقيقي عبر حدود العملية يعطي نفس الهاشات والمقاييس والأرباح حرفياً.
+- ✅ **فصل فشل النقل عن فشل الوظيفة** (بند 4) — `web/src/lib/research/transportState.ts` بمفردات `poll_interrupted` / `status_unknown` / `reconciling` / `service_unreachable`. أُصلح العطل الفعلي في `strategies/evidence.ts`: كان **أي** خطأ — بما فيه مهلة polling بحتة — يعلّم وظيفة حية `failed` مع `completedAt` (نفس الحادثة الموثقة في التشخيص). الآن فشل النقل يُبقي الحالة الأخيرة كما هي ويسجّل الحادثة، ولا يُعلَن الفشل إلا بحكم نهائي صريح من الخدمة؛ وعند عودة الخدمة تُمسح حالة النقل وتُقرأ الحالة الحقيقية.
 
 ### المرحلة 3 — الاختبارات والتشغيل (أسبوع–أسبوعان)
 
