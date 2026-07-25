@@ -150,7 +150,7 @@ async def _run_backtest(
     await _checkpoint(cancelled)
     engine = BacktestEngine(strategy, dataset_result.dataset, payload.run_config)
     await reporter.emit(45, "run_simulation", "deterministic simulation started")
-    result = await engine.run(cancelled)
+    result = await _run_engine_off_loop(engine, cancelled)
     await reporter.emit(75, "calculate_metrics", "metrics and attribution calculated")
     await _checkpoint(cancelled)
     await _write_backtest_artifacts(
@@ -574,6 +574,29 @@ async def _checkpoint(cancelled: asyncio.Event) -> None:
         raise JobCancelled
 
 
+async def _run_engine_off_loop(
+    engine: BacktestEngine, cancelled: asyncio.Event | None
+) -> Any:
+    """Run the CPU-bound simulation in a worker thread, off the API loop.
+
+    On the main loop a 40k-bar run starved everything sharing it — health
+    checks, job submissions, and even the job-timeout machinery, so a wedged
+    simulation could never be timed out by the very loop it was blocking.
+    In a worker thread the interpreter's ~5ms GIL switch keeps the API
+    responsive regardless of simulation size.
+
+    Safety: the engine consumes `cancelled` only via thread-safe
+    ``Event.is_set()`` checks, and its awaits are bare cooperative
+    ``asyncio.sleep(0)`` yields — both are correct inside the nested loop
+    that ``asyncio.run`` creates for the thread.
+    """
+
+    def _runner() -> Any:
+        return asyncio.run(engine.run(cancelled))
+
+    return await asyncio.to_thread(_runner)
+
+
 def _walk_forward_config(
     observation_count: int, config: BacktestValidationConfig
 ) -> WalkForwardConfig | None:
@@ -720,11 +743,10 @@ async def _strategy_parameter_sensitivity(
         for path, value in combination.parameters.items():
             _set_strategy_numeric_value(candidate, path, value)
         strategy = parse_strategy_specification(candidate)
-        result = await BacktestEngine(
-            strategy,
-            dataset.dataset,
-            source_payload.run_config,
-        ).run(cancelled)
+        result = await _run_engine_off_loop(
+            BacktestEngine(strategy, dataset.dataset, source_payload.run_config),
+            cancelled,
+        )
         score = _finite_float(result.metrics.get("total_return"), "sensitivity score")
         outcomes.append(
             SensitivityOutcome(
