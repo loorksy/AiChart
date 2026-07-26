@@ -39,7 +39,6 @@ export async function attachChartToRecommendation(
 ): Promise<{ rec: Recommendation; delivery?: DeliveryResult }> {
   if (rec.action === "wait") return { rec };
 
-  const settings = await getSettings(userId);
   const market = (rec.market ?? DEFAULT_MARKET) as MarketType;
   const overlays = overlaysFromRecommendation(rec);
   const drawings =

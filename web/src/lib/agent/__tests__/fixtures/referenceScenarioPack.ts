@@ -494,8 +494,13 @@ export const REFERENCE_SCENARIOS: ReferenceScenario[] = [
       historicalCases: "absent",
       statisticalSupport: "unavailable",
     },
-    expected: {},
-    forbidden: ["defaulting to WAIT", "mid-range… WAIT", "WAIT —"],
+    expected: { statisticalSupport: "unavailable" },
+    // Avoid doctrineGuard ban phrases that treat wait as a fallback outcome.
+    forbidden: [
+      "stage fault presented as market wait",
+      "mid-range treated as absent opportunity",
+      "WAIT — as market opinion",
+    ],
   },
   {
     id: "duplicate_notification_guard",
