@@ -146,10 +146,26 @@
 | المجموعة 1 — محفزات إعادة التقييم End-to-End | اكتملت فجوات التدقيق الفعلية: مدخلات المتعقب الإنتاجية، claim ذري، أولوية user/deep research، Evidence Snapshot كاملة ومجمّدة، منع إنشاء توصية/بحث عميق جانبي أثناء إعادة التقييم، مقارنة كل حقول القرار، `confirmed` بلا Revision مكرر، `invalidated` بانتقال قانوني، trigger payload/evidence/trace لكل حكم، إشعار ومقاييس، وقفل مشترك يغلق سباق التنفيذ | `implemented` | `reevaluationEndToEnd.test.ts` + حزم الدورة/المحفز/البحث العميق/الحدث الاقتصادي؛ الإيداع الحالي لهذه المجموعة |
 | المجموعة 2 — سجل اختلاف المنصة/MCP | أُغلق عيب البصمة الجزئية: السجل يربط السطحين فقط على SHA-256 للحزمة الكاملة التي قرأها العقل فعلاً، ويحفظ صف المقارنة وتصنيفه وشرحه دائماً؛ أضيفت هجرة إضافية آمنة، backfill للصفوف القديمة، فريمات رقمية وصور الجولة الإضافية، منع تلويث السجل بالتشغيل الداخلي، ومقياس إجمالي الاختلافات؛ Fixture قاعدة بيانات يشغل `platform` و`mcp` على Snapshot واحدة ويثبت `unexplained=0` | `implemented` | `paritySurfaces.integration.test.ts`؛ `parityLog.test.ts`؛ `phase4Contracts.test.ts`؛ 23/23 مع إعادة تقييم E2E |
 
+### نافذة Cursor (2026-07-26) — إغلاق البنود الثلاثة المتبقية
+
+| البند | الحالة قبل | الحالة بعد | دليل الكود |
+|---|---|---|---|
+| المجموعة 10 — عُدة fixtures §16 | `partial` | `implemented` | سجل 30 سيناريو في `referenceScenarioPack.ts` (صور PNG اختبارية + cost_samples + حالات تقويم + expected/forbidden/DB)؛ `referenceScenarios.integration.test.ts` يشغّل clear_trend عبر العقل→قانوني→نسخة 1→`opportunity_created` مرة واحدة، ويثبت مسار MCP/chart dedupe وعزل فشل الصورة |
+| `opportunity_created` موحّد | `partial` | `implemented` | `announceOpportunityCreated` من المنسّق و`saveRecommendation` ومهايئ الرسم؛ لا `claimLifecycleDedupeKey` خارج المُبلِّغ؛ حارس في `singleBrainGuard.test.ts`؛ اختبارات `opportunityCreated.test.ts` |
+| late-entry / early-exit في analytics | `partial` | `implemented` | `classifyLateEntry` (نسبي/ATR) + `classifyExit` + `DELAYED_ENTRY_THRESHOLD_MS` + `summarizeAdherence` في `canonical/analytics.ts`؛ الملخص عبر `attachAdherenceToSummary`؛ الواجهة تقرأ العدّادات لا تعيد حساب العتبة |
+
+### حالة CI / Git (مرحلة 0+1)
+
+| البند | الحالة | الدليل |
+|---|---|---|
+| فرع العمل | `claude/aichart-agent-development-plan-mflw6l` @ `7bed487` (+commits لاحقة في هذه الجلسة) | worktree `.claude/worktrees/aichart-agent-updates-test-b3e068` |
+| GitHub Actions Web/MCP | **فشل تشغيلي خارجي** — ليس خطأ كود | annotation: `The job was not started because your account is locked due to a billing issue.` (jobs بلا runner وبلا steps، ~1s) |
+| `AUTO_EXECUTION_STAGE` | `off` | لم يُغيَّر |
+| PR #82 | Draft — لا دمج | يبقى Draft حتى يُفتح الحساب وتخضر CI |
+
 ### الباقي صراحةً
 
 | البند | الحالة |
 |---|---|
-| المجموعة 10 — عُدة fixtures حقيقية كاملة (صور محفوظة + تكاليف + تقويم) تمر أيضاً عبر القاعدة/القانوني/النسخ/الإشعارات وتغطي جدول §16 كله | `partial` — Fixture شموع + Platform/MCP + قاعدة البيانات + `unexplained=0` اكتمل في المجموعة 2؛ ما زالت الصور/التكاليف/التقويم وتغطية السيناريوهات والنسخ/الإشعارات كحزمة واحدة ناقصة |
-| مُنتِج حدث `opportunity_created` عبر مفتاح التكرار (الإنشاء ما زال يُشعر عبر المسار القديم) | `partial` |
-| قياسا late-entry/early-exit في `canonical/analytics.ts` (محسوبان اليوم في مسار الدفتر/الواجهة) | `partial` |
+| تشغيل GitHub Actions | `operational-only` — فك قفل فوترة حساب GitHub ثم إعادة تشغيل CI |
+| تحقق VPS / Postgres vector / Redis / TradingView / MT5 / Telegram / Push / dry-run→demo→live | `operational-only` — انظر `docs/LOCAL_AND_VPS_VALIDATION.md` |
