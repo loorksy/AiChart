@@ -208,6 +208,15 @@ export const ar: Record<TranslationKey, string> = {
   "agent.fault.retryable": "يمكنك إعادة المحاولة بعد قليل.",
   "agent.fault.permanent": "لن تُحل المشكلة بإعادة المحاولة — تحتاج مراجعة الإعداد.",
 
+  // --- المرحلة 4: بطاقة الأدلة خلف التوصية ---
+  "agent.evidence.title": "الأدلة خلف هذه القراءة",
+  "agent.evidence.trades": "صفقات تاريخية",
+  "agent.evidence.win_rate": "نسبة الربح التاريخية",
+  "agent.evidence.deployment": "حالة النشر",
+  "agent.evidence.live": "النتائج الحية",
+  "agent.evidence.not_execution_grade":
+    "هذا السجل لا يستوفي بوابات التنفيذ، فهو يُثري القراءة ولا يخوّل صفقة.",
+
   "decision.buy": "شراء",
   "decision.sell": "بيع",
   "decision.wait": "انتظار",

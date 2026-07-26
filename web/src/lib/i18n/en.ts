@@ -209,6 +209,15 @@ export const en = {
   "agent.fault.retryable": "You can try again shortly.",
   "agent.fault.permanent": "Retrying won't help — this needs a configuration fix.",
 
+  // --- Phase 4: evidence card behind a recommendation ---
+  "agent.evidence.title": "Evidence behind this read",
+  "agent.evidence.trades": "Historical trades",
+  "agent.evidence.win_rate": "Historical win rate",
+  "agent.evidence.deployment": "Deployment",
+  "agent.evidence.live": "Live results",
+  "agent.evidence.not_execution_grade":
+    "This history does not meet the execution gates, so it informs the read but does not authorize a trade.",
+
   "decision.buy": "Buy",
   "decision.sell": "Sell",
   "decision.wait": "Wait",

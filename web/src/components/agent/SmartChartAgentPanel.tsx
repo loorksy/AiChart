@@ -11,7 +11,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
-import { AgentModeBadge, AgentFaultCard } from "./AgentEnvelopeStatus";
+import { AgentModeBadge, AgentFaultCard, AgentEvidenceCard } from "./AgentEnvelopeStatus";
 import { isOperationalBlocker } from "@/lib/agent/executionModeBadge";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import { AgentAvatar } from "@/components/AgentAvatar";
@@ -268,6 +268,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 }
                 return null;
               })()}
+              {/* What the read actually rests on (item 13) — never a bare number. */}
+              {m.result?.evidenceCard ? (
+                <AgentEvidenceCard card={m.result.evidenceCard} />
+              ) : null}
               {m.result?.keyReasons?.length ? (
                 <ul className="mt-1 list-inside list-disc text-[12px] text-muted-foreground">
                   {m.result.keyReasons.map((r, i) => (

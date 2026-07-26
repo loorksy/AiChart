@@ -169,6 +169,14 @@ export interface AgentFinalResult {
    * The orchestrator guarantees this is set on every returned result.
    */
   envelope?: import("./resultEnvelope").ResultEnvelope;
+  /**
+   * Evidence behind the answer (RELIABILITY_PLAN.md item 13): the matched
+   * strategy, its historical trade count, walk-forward verdict and deployment
+   * state. Present only when validated factory evidence was actually found —
+   * it SHOWS the gates rather than replacing them, so a bare confidence number
+   * is never the whole story the operator sees.
+   */
+  evidenceCard?: import("./evidenceCard").EvidenceCard;
   confidence: number;
   /** Distinct confidence fields — UI must use displayKind/displayValue. */
   confidenceSemantics?: import("./confidenceSemantics").ConfidenceSemantics;

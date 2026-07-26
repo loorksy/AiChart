@@ -9,11 +9,15 @@
  *   reason (never a raw provider payload) plus the retry stance and the
  *   trace_id the operator quotes to support.
  */
-import { TriangleAlert } from "lucide-react";
+import { ShieldCheck, TriangleAlert } from "lucide-react";
 import type { ResultEnvelope } from "@/lib/agent/resultEnvelope";
 import { useLocale } from "@/hooks/useLocale";
 import { envelopeBadge, type BadgeTone } from "@/lib/agent/executionModeBadge";
 import { userMessageForFailure } from "@/lib/agent/errorTaxonomy";
+import {
+  summarizeEvidenceCard,
+  type EvidenceCard,
+} from "@/lib/agent/evidenceCard";
 
 const TONE_CLASSES: Record<BadgeTone, string> = {
   descriptive:
@@ -51,6 +55,66 @@ export function AgentModeBadge({
       )}
       <span>{label}</span>
     </span>
+  );
+}
+
+/**
+ * Evidence card (RELIABILITY_PLAN.md item 13). A recommendation used to show a
+ * bare confidence number; this shows WHAT it rests on — the matched strategy,
+ * how many historical trades, the walk-forward verdict, the deployment state,
+ * and the realised live results. When the evidence does not meet the execution
+ * gates that is stated plainly rather than hidden.
+ */
+export function AgentEvidenceCard({ card }: { card: EvidenceCard }) {
+  const { t, locale } = useLocale();
+  const gated = card.meetsExecutionGates;
+  return (
+    <div
+      className={`mt-2 rounded-lg border px-3 py-2 text-[12px] ${
+        gated
+          ? "border-emerald-500/35 bg-emerald-500/[0.06]"
+          : "border-border/60 bg-muted/30"
+      }`}
+    >
+      <div className="flex items-center gap-1.5 font-semibold">
+        <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span>{t("agent.evidence.title")}</span>
+      </div>
+      <p className="mt-1 text-muted-foreground">{summarizeEvidenceCard(card, locale)}</p>
+      <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+        <div className="flex justify-between gap-2">
+          <dt>{t("agent.evidence.trades")}</dt>
+          <dd className="font-mono text-foreground/80">{card.tradeCount}</dd>
+        </div>
+        {card.winRate != null ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t("agent.evidence.win_rate")}</dt>
+            <dd className="font-mono text-foreground/80">
+              {Math.round(card.winRate * 100)}%
+            </dd>
+          </div>
+        ) : null}
+        {card.deploymentState ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t("agent.evidence.deployment")}</dt>
+            <dd className="text-foreground/80">{card.deploymentState}</dd>
+          </div>
+        ) : null}
+        {card.liveSampleSize > 0 && card.liveWinRate != null ? (
+          <div className="flex justify-between gap-2">
+            <dt>{t("agent.evidence.live")}</dt>
+            <dd className="font-mono text-foreground/80">
+              {Math.round(card.liveWinRate * 100)}% · {card.liveSampleSize}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {!gated ? (
+        <p className="mt-1.5 text-amber-600 dark:text-amber-400">
+          {t("agent.evidence.not_execution_grade")}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
