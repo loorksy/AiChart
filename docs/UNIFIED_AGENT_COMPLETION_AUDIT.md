@@ -113,6 +113,7 @@
 | 1 — أعلام المراحل | أُضيفت الثمانية + علم محفزات إعادة التقييم؛ كل علم **يُقرأ فعلاً** عند نقطة عمل مرحلته، وقائمة `PHASE_FLAGS` تُلزم وجود علم لكل مرحلة A–J | `implemented` | `featureFlags.ts`؛ `phaseFlags.test.ts` (18 اختباراً: ON/OFF لكل علم، وجود قارئ، عدم كسر القراءة عند OFF، توثيق في env) |
 | 9 — `plan_type` إلزامي في MCP | إلزامي في عضوَي الاتحاد المميَّز وفي شكل الكتالوج؛ ومُضاف للمسار الخادمي ومُخزَّن | `implemented` | `coreSchemas.ts`؛ `recommendationGate.test.ts` (يرفض بلا نوع، يقبل الثلاثة)؛ `api/agent/recommendation/route.ts` |
 | 8 — `evidence_source` | عمود nullable إضافي في SQLite وPG + هجرة إضافية + عقد الإنشاء | `implemented` (المخطط والعقد) · `partial` (لم يُملأ من المسارات بعد) | `db/sqlite.ts:105`، `db/pg.ts:97`، `canonical/types.ts` |
+| 5 — محفزات إعادة التقييم | وحدة `reevaluationTriggers.ts`: سبعة محفزات آلية + طلب المستخدم + البحث العميق؛ جدول `recommendation_reevaluations` بمفتاح تكرار؛ cooldown 15د، سقف 6 دورات آلية، دورة واحدة لكل مسح؛ طلب المستخدم مستثنى؛ المتعقب يرصد ويعيد المحفزات ولا يقرر | `implemented` (الرصد والحدود والتسجيل) · `partial` (تشغيل دورة القرار من المحفَز لم يُوصَّل بعد) | `reevaluationTriggers.ts`؛ `reevaluationTriggers.test.ts` (19 اختباراً، منها حارسان بنيويان: المتعقب لا يستدعي النسخ ولا العقل، والمحفَز لا يحمل اتجاهاً) |
 | 6،7 — `retest_started` و`breakout_no_retest` | معرَّفان في العقد ويُصدرهما المشتق بشرطين قابلين للاختبار (عودة للمستوى / تجاوز 2 ATR)، بمفتاح نسخة | `implemented` (الاشتقاق والإشعار) · `partial` (لم يُغذَّ `retestLevel` من المتعقب بعد، ولا واجهة) | `lifecycleEvents.ts`؛ `lifecycleEvents.test.ts` (5 اختبارات) |
 
 ### ما لم يُنفَّذ في هذه الجلسة (باقٍ صريحاً)
@@ -120,7 +121,7 @@
 | المرحلة في مهمة الإغلاق | البنود | الحالة |
 |---|---|---|
 | 2 | الواجهة كاملة: مبدّل الوضع + لوحة الانتظار · مركز إشعارات + SSE · صفحة دفتر الأداء | `missing` |
-| 3 | محفزات إعادة التقييم (المنطق؛ العلم موجود) | `missing` |
+| 3 | ربط المحفَز بتشغيل دورة قرار فعلية (الرصد والحدود مُنفَّذة) | `partial` |
 | 4 (بقية) | تغذية `retestLevel` من المتعقب · `evidence_source` في MCP والنسخ · تغطية replay · أثر الحدثين في الواجهة | `partial` |
 | 5 | Rectangle · Cup & Handle (وعكسه) · Triple Top/Bottom · مولّد `pattern_boundary` | `missing` |
 | 6 | جولة الفريم الإضافي | `missing` |

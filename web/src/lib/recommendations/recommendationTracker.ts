@@ -17,6 +17,12 @@ import {
   type TrackerCandle,
 } from "./recommendationStatus";
 import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
+import {
+  admitTriggers,
+  detectReevaluationTriggers,
+  recordTrigger,
+  type ReevaluationTrigger,
+} from "./reevaluationTriggers";
 import { notifyLifecycleEvents } from "./lifecycleNotifier";
 import { maybeAutoExecute, autoExecutionStage } from "./autoExecutor";
 import type { TrackedRecommendation } from "./types";
@@ -39,6 +45,12 @@ export interface TrackOneResult {
   recommendation: TrackedRecommendation | null;
   /** Real changes since the last sweep; empty when nothing moved. */
   events: LifecycleEvent[];
+  /**
+   * Triggers admitted for a new decision cycle. The tracker returns them rather
+   * than acting on them: the brain decides, and applyRecommendationRevision is
+   * the only thing that may change the plan.
+   */
+  reevaluations: ReevaluationTrigger[];
 }
 
 export async function trackOneRecommendation(
@@ -120,7 +132,32 @@ export async function trackOneRecommendation(
     revisionNo: rec.revisionNo ?? null,
   });
 
-  return { recommendation: updated, events };
+  // Re-evaluation triggers (constitution §6). The tracker NOTICES; it does not
+  // decide and it does not touch a level. Admitted triggers request a fresh
+  // decision cycle whose output is the only thing allowed to change the plan.
+  const triggers = detectReevaluationTriggers({
+    recommendation: {
+      id: rec.id,
+      userId: rec.userId,
+      symbol: rec.symbol,
+      direction: rec.direction,
+      entry: rec.entry,
+      stopLoss: rec.stopLoss,
+      invalidationLevel: rec.invalidationLevel,
+      revisionNo: rec.revisionNo ?? null,
+    },
+    now: Date.now(),
+  });
+  const { admitted, suppressed } = await admitTriggers(triggers);
+  for (const trigger of triggers) {
+    await recordTrigger(
+      trigger,
+      admitted.includes(trigger) ? "cycle_requested" : "suppressed",
+    );
+  }
+  void suppressed;
+
+  return { recommendation: updated, events, reevaluations: admitted };
 }
 
 /** Cheap ATR over the tail, so proximity bands scale with the instrument. */

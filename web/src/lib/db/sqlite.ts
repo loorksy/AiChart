@@ -509,6 +509,28 @@ const SCHEMA = `
     UNIQUE(symbol, interval, case_time, direction, indexer_version)
   );
 
+  -- Re-evaluation triggers (constitution §6). A trigger REQUESTS a new decision
+  -- cycle; it never changes a plan. Recorded whether or not a cycle followed, so
+  -- "why was this re-decided" and "why was it not" are both answerable.
+  CREATE TABLE IF NOT EXISTS recommendation_reevaluations (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_id TEXT NOT NULL,
+    user_id           INTEGER NOT NULL,
+    symbol            TEXT NOT NULL,
+    reason            TEXT NOT NULL,
+    detail            TEXT NOT NULL DEFAULT '',
+    source            TEXT NOT NULL,
+    revision_no       INTEGER,
+    outcome           TEXT NOT NULL,
+    raised_at         INTEGER NOT NULL,
+    dedupe_key        TEXT NOT NULL,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (recommendation_id, dedupe_key)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_recommendation_reevaluations_lookup
+    ON recommendation_reevaluations(recommendation_id, raised_at DESC);
+
   CREATE INDEX IF NOT EXISTS idx_market_cases_lookup
     ON market_cases(symbol, interval, regime, trend, direction);
   CREATE INDEX IF NOT EXISTS idx_market_cases_pending
