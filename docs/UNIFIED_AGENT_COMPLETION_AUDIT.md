@@ -154,18 +154,45 @@
 | `opportunity_created` موحّد | `partial` | `implemented` | `announceOpportunityCreated` من المنسّق و`saveRecommendation` ومهايئ الرسم؛ لا `claimLifecycleDedupeKey` خارج المُبلِّغ؛ حارس في `singleBrainGuard.test.ts`؛ اختبارات `opportunityCreated.test.ts` |
 | late-entry / early-exit في analytics | `partial` | `implemented` | `classifyLateEntry` (نسبي/ATR) + `classifyExit` + `DELAYED_ENTRY_THRESHOLD_MS` + `summarizeAdherence` في `canonical/analytics.ts`؛ الملخص عبر `attachAdherenceToSummary`؛ الواجهة تقرأ العدّادات لا تعيد حساب العتبة |
 
-### حالة CI / Git (مرحلة 0+1)
+### Final Qualification (2026-07-26) — بوابة التحقق المحلية
 
 | البند | الحالة | الدليل |
 |---|---|---|
-| فرع العمل | `claude/aichart-agent-development-plan-mflw6l` @ `7bed487` (+commits لاحقة في هذه الجلسة) | worktree `.claude/worktrees/aichart-agent-updates-test-b3e068` |
-| GitHub Actions Web/MCP | **فشل تشغيلي خارجي** — ليس خطأ كود | annotation: `The job was not started because your account is locked due to a billing issue.` (jobs بلا runner وبلا steps، ~1s) |
+| GitHub Actions automatic (`push`/`pull_request`) | **DISABLED** بقرار المالك | `.github/workflows/ci.yml` → `workflow_dispatch` فقط؛ الخطوات محفوظة |
+| بوابة التحقق الرسمية | المصفوفة المحلية الكاملة | `docs/LOCAL_RELEASE_QUALIFICATION.md` |
+| خريطة تغطية السيناريوهات المرجعية | `implemented` | `referenceScenarioCoverage.ts` + `referenceScenarioCoverage.test.ts` (5)؛ 30/30 مغطاة؛ 18 حرجة بتكامل |
+| تكامل السيناريوهات الحرجة الناقصة سابقاً | `implemented` | `criticalReferenceScenarios.integration.test.ts` (10) |
+| `opportunity_created` / adherence / fixtures | `implemented` | إعادة تحقق: نفس المسارات القانونية؛ لا مسار قديم |
+| Redis integration | `operational-only` | Docker غير متوفر على مضيف التأهيل |
+| Production build (TradingView) | `operational-only` | أسرار المكتبة غائبة — بلا stub |
+| Typecheck التطبيق | أخضر لملفات الوكيل/التحليل | أخطاء `tsc` المتبقية = مكتبة TradingView غير مُزوَّدة فقط |
 | `AUTO_EXECUTION_STAGE` | `off` | لم يُغيَّر |
-| PR #82 | Draft — لا دمج | يبقى Draft حتى يُفتح الحساب وتخضر CI |
+| PR #82 | انظر تقرير التأهيل النهائي | GitHub CI **ليس** شرط دمج |
+
+### خريطة تغطية السيناريوهات (ملخص)
+
+| Metric | Count |
+|---|---|
+| Registry (`REFERENCE_SCENARIOS`) | 30 |
+| Covered (coverage owners) | 30 |
+| Uncovered | 0 |
+| Critical integration required | 18 (+ clear_trend / deep_research في الحزمة) |
+| Coverage guard failures allowed | 0 |
+
+المصدر الآلي: `web/src/lib/agent/__tests__/fixtures/referenceScenarioCoverage.ts`.
+
+### حالة CI / Git
+
+| البند | الحالة | الدليل |
+|---|---|---|
+| فرع العمل | `claude/aichart-agent-development-plan-mflw6l` | worktree `.claude/worktrees/aichart-agent-updates-test-b3e068` |
+| GitHub Actions Web/MCP التلقائي | **معطّل عمداً** — ليس خطأ كود | فوترة الحساب مقفلة؛ التشغيل اليدوي متاح |
+| Branch protection | يدوي إن لزم | المالك يضبط Settings → Branches؛ لا تغيير آلي لإعدادات المستودع |
 
 ### الباقي صراحةً
 
 | البند | الحالة |
 |---|---|
-| تشغيل GitHub Actions | `operational-only` — فك قفل فوترة حساب GitHub ثم إعادة تشغيل CI |
-| تحقق VPS / Postgres vector / Redis / TradingView / MT5 / Telegram / Push / dry-run→demo→live | `operational-only` — انظر `docs/LOCAL_AND_VPS_VALIDATION.md` |
+| برمجي `missing` / `partial` في بنود الخطة المغلقة أعلاه | **none** بعد إغلاق المجموعة 10 + opportunity + adherence + coverage map |
+| تشغيل GitHub Actions التلقائي | `operational-only` — قرار المالك؛ ليس بوابة |
+| تحقق VPS / Postgres / Redis / TradingView / MT5 / Telegram / Push / dry-run→demo→live | `operational-only` — انظر `docs/LOCAL_AND_VPS_VALIDATION.md` |
