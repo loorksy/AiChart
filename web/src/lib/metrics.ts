@@ -16,6 +16,10 @@ type Store = {
   reevaluationCycles: client.Counter<string>;
   /** What those cycles concluded: confirmed | revised | invalidated. */
   reevaluationVerdicts: client.Counter<string>;
+  /** Moments where both surfaces decided and were compared. */
+  parityComparisons: client.Gauge<string>;
+  /** Differences with no known cause. Completion criterion 2 requires zero. */
+  parityUnexplained: client.Gauge<string>;
   tradesExecuted: client.Counter<string>;
   brokerUp: client.Gauge<string>;
   // --- Reliability metrics (RELIABILITY_PLAN.md item 9) ---
@@ -54,6 +58,16 @@ function build(): Store {
     name: "aichart_agent_runs_total",
     help: "Agent runs by mode and status",
     labelNames: ["mode", "status"],
+    registers: [registry],
+  });
+  const parityComparisons = new client.Gauge({
+    name: "aichart_parity_comparisons",
+    help: "Platform/MCP decisions compared on identical evidence",
+    registers: [registry],
+  });
+  const parityUnexplained = new client.Gauge({
+    name: "aichart_parity_unexplained",
+    help: "Platform/MCP differences with no known cause (target: 0)",
     registers: [registry],
   });
   const reevaluationCycles = new client.Counter({
@@ -156,6 +170,8 @@ function build(): Store {
     executionDenials,
     reevaluationCycles,
     reevaluationVerdicts,
+    parityComparisons,
+    parityUnexplained,
     tradesExecuted,
     brokerUp,
     outcomes,

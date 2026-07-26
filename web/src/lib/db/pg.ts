@@ -506,6 +506,24 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_recommendation_reevaluations_lookup
     ON recommendation_reevaluations(recommendation_id, raised_at DESC);
 
+  -- Platform/MCP decision parity (plan §16, completion criterion 2). One row per
+  -- surface per evidence bundle; two rows with the same evidence_hash are the
+  -- only pair that is meaningfully comparable.
+  CREATE TABLE IF NOT EXISTS decision_parity (
+    id               BIGSERIAL PRIMARY KEY,
+    evidence_hash    TEXT NOT NULL,
+    symbol           TEXT NOT NULL,
+    timeframe_set    TEXT NOT NULL DEFAULT '[]',
+    market_timestamp BIGINT NOT NULL,
+    surface          TEXT NOT NULL,
+    decision_json    TEXT NOT NULL DEFAULT '{}',
+    created_at       BIGINT NOT NULL,
+    UNIQUE (evidence_hash, surface)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
+    ON decision_parity(created_at DESC);
+
   CREATE INDEX IF NOT EXISTS idx_market_cases_lookup
     ON market_cases(symbol, interval, regime, trend, direction);
   CREATE INDEX IF NOT EXISTS idx_market_cases_pending
