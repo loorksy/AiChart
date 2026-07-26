@@ -42,10 +42,26 @@ test("builtin fallback stays byte-identical to the SYSTEM.md core block", () => 
 test("canonical core carries the identity and the hard rules", () => {
   const core = canonicalIdentityCore();
   assert.match(core, /chat-first Forex scalping assistant/);
-  assert.match(core, /sole authority for BUY, SELL, or WAIT/);
+  assert.match(core, /model alone owns the analytical decision/);
   assert.match(core, /Risk per Trade is the only trading setting/);
   assert.match(core, /valid stop-loss/);
   assert.match(core, /operator's language/);
+});
+
+test("canonical core states the three-layer doctrine", () => {
+  const core = canonicalIdentityCore();
+  // Direction is mandatory on a successful analysis...
+  assert.match(core, /ends in one direction — BUY or SELL/);
+  assert.match(core, /WAIT is not an analytical outcome/);
+  // ...but an immediate entry is not, so the agent never invents a weak one.
+  assert.match(core, /A direction is always required; an immediate entry is not/);
+  assert.match(core, /plan type \(immediate, anticipatory, or conditional\)/);
+  assert.match(core, /execution state/);
+  // Evidence supports the decision; it never gates it.
+  assert.match(core, /none of them decides whether it may exist/);
+  assert.match(core, /Never claim statistical support without valid evidence/);
+  // A real blocker stays a named blocker, never a disguised wait.
+  assert.match(core, /name the operational blocker and its cause/);
 });
 
 test("Smart Chart Agent prompt derives from the canonical core", () => {

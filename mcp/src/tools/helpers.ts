@@ -27,7 +27,7 @@ export function readWorkspaceFile(relativePath: string, defaultText = ""): strin
 export function tradingRulesText(): string {
   return readWorkspaceFile(
     "AGENTS.md",
-    "قواعد AiChart: الذكاء الاصطناعي يختار BUY/SELL/WAIT. استخدم get_trade_readiness قبل التنفيذ، والحجم يُحسب من Risk per Trade."
+    "قواعد AiChart: الذكاء الاصطناعي يختار الاتجاه — شراء أو بيع — ونوع الخطة (فورية أو استباقية أو مشروطة). استخدم get_trade_readiness قبل التنفيذ، والحجم يُحسب من Risk per Trade."
   );
 }
 
