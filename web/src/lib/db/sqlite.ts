@@ -15,7 +15,7 @@ import type { DbRow, ExecuteResult } from "./types";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
-const SCHEMA_VERSION = "2026-07-26-reevaluation-e2e-v1";
+const SCHEMA_VERSION = "2026-07-26-platform-mcp-parity-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -569,6 +569,31 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
     ON decision_parity(created_at DESC);
+
+  -- Durable paired Platform/MCP comparison once both surfaces used the same
+  -- Evidence Snapshot. Raw per-surface observations remain above.
+  CREATE TABLE IF NOT EXISTS decision_parity_comparisons (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    evidence_hash             TEXT NOT NULL UNIQUE,
+    symbol                    TEXT NOT NULL,
+    timeframe_set             TEXT NOT NULL DEFAULT '[]',
+    market_timestamp          INTEGER NOT NULL,
+    platform_decision         TEXT NOT NULL DEFAULT '{}',
+    mcp_decision              TEXT NOT NULL DEFAULT '{}',
+    direction                 TEXT NOT NULL DEFAULT '{}',
+    plan_type                 TEXT NOT NULL DEFAULT '{}',
+    entry_zone                TEXT NOT NULL DEFAULT '{}',
+    stop                      TEXT NOT NULL DEFAULT '{}',
+    targets                   TEXT NOT NULL DEFAULT '{}',
+    execution_state           TEXT NOT NULL DEFAULT '{}',
+    difference_classification TEXT,
+    explained                 INTEGER NOT NULL DEFAULT 1,
+    explanation               TEXT NOT NULL DEFAULT '',
+    created_at                INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_decision_parity_comparisons_recent
+    ON decision_parity_comparisons(created_at DESC);
 
   -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
   -- from the EA's live quotes; aggregated on read, pruned past the window.

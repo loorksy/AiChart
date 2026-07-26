@@ -100,6 +100,7 @@ async function defaultRunBrain(input: {
   reason: string;
 }, synthesizerDeps?: SynthesizerDeps): Promise<AgentFinalResult | null> {
   return runUnifiedChartAgent({
+    surface: "internal",
     userMessage: `Re-analyze the active trade plan for ${input.symbol} on ${input.interval}. Trigger: ${input.reason}`,
     chartContext: { symbol: input.symbol, interval: input.interval },
     requestContext: {

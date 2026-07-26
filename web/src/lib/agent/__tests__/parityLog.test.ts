@@ -112,6 +112,17 @@ describe("classifying a real difference", () => {
     assert.equal(result.explained, true);
   });
 
+  it("detects different image timeframes even when the counts match", () => {
+    const result = parity.compareDecisions({
+      platform: observation("platform"),
+      mcp: observation("mcp", {
+        decision: decision({ imagesFor: ["15m", "4h"], stopLoss: 3975 }),
+      }),
+    });
+    assert.equal(result.classification, "missing_image");
+    assert.equal(result.explained, true);
+  });
+
   it("explains a difference by a provider configured on one side only", () => {
     const result = parity.compareDecisions({
       platform: observation("platform"),
@@ -264,8 +275,13 @@ describe("both surfaces are labelled at their entry points", () => {
     // Recorded from the frozen bundle, not re-derived afterwards — otherwise two
     // surfaces could never produce a matching hash.
     assert.ok(
-      /evidenceHash: evidenceFingerprint\(parityBundle\)/.test(orchestrator),
-      "the hash must be the fingerprint of the bundle the brain read",
+      /evidenceHash: evidenceFingerprint\(synth\.evidenceSnapshot\)/.test(orchestrator),
+      "the hash must fingerprint the exact frozen snapshot the brain read",
+    );
+    assert.equal(
+      /const parityBundle\s*=/.test(orchestrator),
+      false,
+      "a reduced parity bundle can create false evidence-hash matches",
     );
   });
 

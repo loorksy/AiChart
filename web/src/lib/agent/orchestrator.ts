@@ -256,7 +256,7 @@ export interface UnifiedAgentInput {
    * not of a second decision path. Labelling it is what lets the parity log show
    * that a decision made through MCP and one made in chat came from one engine.
    */
-  surface?: "platform" | "mcp";
+  surface?: "platform" | "mcp" | "internal";
   /**
    * A re-evaluation runs the identical evidence and decision pipeline, but it
    * must not create a second recommendation or recursively enqueue research.
@@ -1023,16 +1023,6 @@ async function runUnifiedChartAgentInner(
     });
   }
 
-  // Parity observation point (completion criterion 2). Recorded from the SAME
-  // frozen bundle the decision was made on, so the MCP surface's row for the same
-  // hash is genuinely comparable. Diagnostics only — never affects the answer.
-  const parityBundle = {
-    statisticalSupport: statisticalSupport ?? null,
-    historicalCases: historicalCases ?? null,
-    geometry: geometry.patterns?.map((p) => `${p.patternType}:${p.status}`) ?? [],
-    dataQuality: market.dataQuality.sufficient,
-  };
-
   const decisionStartedAt = performance.now();
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
@@ -1391,34 +1381,55 @@ async function runUnifiedChartAgentInner(
     );
   }
 
-  // One row per surface per bundle. The MCP surface records its own against the
-  // same hash, and only a matching hash makes the two comparable at all.
-  void recordDecisionForParity({
-    evidenceHash: evidenceFingerprint(parityBundle),
-    symbol: market.symbol,
-    timeframeSet: visual.snapshots.map((snapshot) => snapshot.timeframe),
-    marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
-    surface: input.surface ?? "platform",
-    decision: {
-      direction:
-        finalDecision.decision === "buy" || finalDecision.decision === "sell"
-          ? finalDecision.decision
-          : null,
-      planType: finalDecision.planType ?? null,
-      entryLow: finalDecision.recommendation?.entryZone?.low ?? null,
-      entryHigh: finalDecision.recommendation?.entryZone?.high ?? null,
-      stopLoss: finalDecision.recommendation?.stop_loss ?? null,
-      targets: finalDecision.recommendation?.targets ?? [],
-      executionState: finalDecision.executionState ?? null,
-      blocked: !finalDecision.recommendation,
-      imagesFor: visual.snapshots.map((snapshot) => snapshot.timeframe),
-      providers: [
-        statisticalSupport ? "statistical_support" : null,
-        historicalCases ? "case_memory" : null,
-        news ? "calendar" : null,
-      ].filter((name): name is string => name != null),
-    },
-  });
+  // One row per surface per exact immutable Evidence Snapshot. A reduced or
+  // reconstructed hash could create false matches and is forbidden here.
+  if (synth.evidenceSnapshot && input.surface !== "internal") {
+    const snapshotImageTimeframes = Array.isArray(
+      synth.evidenceSnapshot.visualSnapshots,
+    )
+      ? synth.evidenceSnapshot.visualSnapshots
+          .map((item) =>
+            item && typeof item === "object" && "timeframe" in item
+              ? String((item as { timeframe: unknown }).timeframe)
+              : "",
+          )
+          .filter(Boolean)
+      : [];
+    const timeframeSet = [
+      ...new Set([
+        market.interval,
+        market.higherInterval,
+        "1d",
+        ...snapshotImageTimeframes,
+      ]),
+    ];
+    await recordDecisionForParity({
+      evidenceHash: evidenceFingerprint(synth.evidenceSnapshot),
+      symbol: market.symbol,
+      timeframeSet,
+      marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
+      surface: input.surface ?? "platform",
+      decision: {
+        direction:
+          finalDecision.decision === "buy" || finalDecision.decision === "sell"
+            ? finalDecision.decision
+            : null,
+        planType: finalDecision.planType ?? null,
+        entryLow: finalDecision.recommendation?.entryZone?.low ?? null,
+        entryHigh: finalDecision.recommendation?.entryZone?.high ?? null,
+        stopLoss: finalDecision.recommendation?.stop_loss ?? null,
+        targets: finalDecision.recommendation?.targets ?? [],
+        executionState: finalDecision.executionState ?? null,
+        blocked: !finalDecision.recommendation,
+        imagesFor: snapshotImageTimeframes,
+        providers: [
+          statisticalSupport ? "statistical_support" : null,
+          historicalCases ? "case_memory" : null,
+          news ? "calendar" : null,
+        ].filter((name): name is string => name != null),
+      },
+    });
+  }
 
   if (
     input.purpose !== "reevaluation" &&

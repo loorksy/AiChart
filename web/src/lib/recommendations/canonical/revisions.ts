@@ -125,8 +125,7 @@ export function recommendationLockName(recommendationId: number): string {
 export function evidenceFingerprint(evidence: unknown): string {
   return createHash("sha256")
     .update(JSON.stringify(evidence ?? null))
-    .digest("hex")
-    .slice(0, 16);
+    .digest("hex");
 }
 
 function parseJson<T>(text: string | null | undefined, fallback: T): T {

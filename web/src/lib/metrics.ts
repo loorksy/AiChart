@@ -20,6 +20,8 @@ type Store = {
   reevaluationVerdicts: client.Counter<string>;
   /** Moments where both surfaces decided and were compared. */
   parityComparisons: client.Gauge<string>;
+  /** Comparable Platform/MCP decisions whose contract fields differ. */
+  parityDifferences: client.Gauge<string>;
   /** Differences with no known cause. Completion criterion 2 requires zero. */
   parityUnexplained: client.Gauge<string>;
   // --- Plan §17 dashboards ---
@@ -92,6 +94,11 @@ function build(): Store {
   const parityComparisons = new client.Gauge({
     name: "aichart_parity_comparisons",
     help: "Platform/MCP decisions compared on identical evidence",
+    registers: [registry],
+  });
+  const parityDifferences = new client.Gauge({
+    name: "aichart_parity_differences",
+    help: "Platform/MCP decisions with one or more differing contract fields",
     registers: [registry],
   });
   const parityUnexplained = new client.Gauge({
@@ -284,6 +291,7 @@ function build(): Store {
     reevaluationTriggers,
     reevaluationVerdicts,
     parityComparisons,
+    parityDifferences,
     parityUnexplained,
     analysisContracts,
     hiddenWaitWrites,
