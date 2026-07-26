@@ -34,6 +34,7 @@ import {
 } from "@/lib/strategies/evidence";
 import { isBacktestStrategyId } from "@/lib/strategies/catalog";
 import { FEATURES } from "@/lib/agent/featureFlags";
+import { criticalAlert } from "@/lib/metrics";
 import {
   applyVisualConfidencePenalty,
   buildVisualConfirmationAudit,
@@ -96,6 +97,9 @@ const schema = z
       // something instead of failing every call. It does not resurrect WAIT
       // inside the engine, whose contract has no such value structurally.
       if (!FEATURES.agentDoctrineV3()) return;
+      // The counter that must stay at zero. A write reaching here means some
+      // client still believes WAIT is an analytical outcome.
+      criticalAlert("hidden_wait_write", { source: "agent_recommendation_api" });
       ctx.addIssue({
         code: "custom",
         path: ["action"],

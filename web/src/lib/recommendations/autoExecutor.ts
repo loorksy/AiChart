@@ -23,6 +23,7 @@ import { createIntent } from "@/lib/store";
 import { executeIntent } from "@/lib/execution";
 import { getResolvedExecutionEnv } from "@/lib/executionEnv";
 import { isAutoExecutionAuthorized } from "@/lib/agent/tradeMode";
+import { criticalAlert } from "@/lib/metrics";
 import { createLogger } from "@/lib/logger";
 import type { LifecycleEvent } from "./lifecycleEvents";
 import type { TrackedRecommendation } from "./types";
@@ -96,6 +97,10 @@ export async function maybeAutoExecute(
   }
 
   if (!(await isAutoExecutionAuthorized(rec.userId))) {
+    // A standing-auto attempt without a live grant is the invariant this counter
+    // pages on. Reaching here through normal flow (mode dropped mid-sweep) is
+    // exactly the case the operator must hear about.
+    criticalAlert("execution_wrong_mode", { source: "auto_executor", userId: rec.userId });
     return {
       placed: false,
       reason: "the operator has not authorised standing execution on this connection",

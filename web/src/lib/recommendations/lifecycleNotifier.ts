@@ -18,6 +18,7 @@ import { dispatchAlert } from "@/lib/alerts";
 import { createLogger } from "@/lib/logger";
 import type { LifecycleEvent } from "./lifecycleEvents";
 import { FEATURES } from "@/lib/agent/featureFlags";
+import { metrics } from "@/lib/metrics";
 
 const log = createLogger("lifecycle-notify");
 
@@ -125,7 +126,10 @@ export async function notifyLifecycleEvents(
     const fresh: LifecycleEvent[] = [];
     for (const event of group) {
       if (await claimDedupeKey({ userId, event })) fresh.push(event);
-      else result.suppressedDuplicate += 1;
+      else {
+        result.suppressedDuplicate += 1;
+        metrics.duplicateNotifications.inc();
+      }
     }
     if (!fresh.length) continue;
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/lib/cronAuth";
+import { metrics } from "@/lib/metrics";
 import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
 import { getFlag, setFlag } from "@/lib/store";
@@ -54,6 +55,16 @@ export async function GET(req: NextRequest) {
       ORDER BY symbol ASC, interval ASC`,
     [INDEXER_VERSION],
   ).catch(() => []);
+
+  // Coverage gauges for the growth dashboard (plan §17).
+  let resolvedTotal = 0;
+  let pendingTotal = 0;
+  for (const row of rows) {
+    resolvedTotal += Number(row.resolved);
+    pendingTotal += Number(row.total) - Number(row.resolved);
+  }
+  metrics.caseMemoryRows.set({ state: "resolved" }, resolvedTotal);
+  metrics.caseMemoryRows.set({ state: "pending" }, pendingTotal);
 
   return NextResponse.json({
     ok: true,

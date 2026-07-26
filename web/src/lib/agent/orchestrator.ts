@@ -90,6 +90,7 @@ import { resolveValidity } from "./trading/tradePlan";
 import { collectVisualEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { recordDecisionForParity } from "./parityLog";
+import { metrics } from "@/lib/metrics";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
 import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
@@ -987,6 +988,7 @@ async function runUnifiedChartAgentInner(
     dataQuality: market.dataQuality.sufficient,
   };
 
+  const decisionStartedAt = performance.now();
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
@@ -1307,6 +1309,24 @@ async function runUnifiedChartAgentInner(
   });
 
   let storedRecommendation: ActiveRecommendation | null = null;
+  // Contract completeness + planned economics + vision latency (plan §17).
+  {
+    const rec = finalDecision.recommendation;
+    const complete = Boolean(
+      rec && finalDecision.planType && finalDecision.executionState &&
+      rec.entry != null && rec.stop_loss != null && (rec.targets?.length ?? 0) > 0,
+    );
+    metrics.analysisContracts.inc({ completeness: complete ? "complete" : "incomplete" });
+    if (rec && !complete) {
+      metrics.invalidLevelRecommendations.inc({ source: "platform" });
+    }
+    if (rec?.netRr != null) metrics.plannedNetR.observe(rec.netRr);
+    metrics.visionLatency.observe(
+      { vision: visual.snapshots.length ? "with" : "without" },
+      (performance.now() - decisionStartedAt) / 1000,
+    );
+  }
+
   // One row per surface per bundle. The MCP surface records its own against the
   // same hash, and only a matching hash makes the two comparable at all.
   void recordDecisionForParity({

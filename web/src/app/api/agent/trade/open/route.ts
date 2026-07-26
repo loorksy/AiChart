@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { isAutoExecutionAuthorized } from "@/lib/agent/tradeMode";
+import { criticalAlert } from "@/lib/metrics";
 import { handleError } from "@/lib/api";
 import {
   createIntent,
@@ -139,6 +140,7 @@ export async function POST(req: NextRequest) {
     if (!body.approved_by_user) {
       const authorized = await isAutoExecutionAuthorized(userId);
       if (!authorized) {
+        criticalAlert("execution_wrong_mode", { source: "trade_open_api", userId });
         const envelope = bridgeSuccess(
           tradeOpenPayload(
             false,

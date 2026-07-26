@@ -20,6 +20,7 @@
 import { createHash } from "node:crypto";
 import { query, queryOne, transaction } from "@/lib/db";
 import { withLock } from "@/lib/locks";
+import { metrics } from "@/lib/metrics";
 import { RecommendationLifecycleError, type RecommendationStatus } from "./types";
 import { isTerminalRecommendationStatus } from "./stateMachine";
 
@@ -193,6 +194,11 @@ async function writeRevision(
 ): Promise<RecommendationRevision> {
   const r = input.revision;
   const evidenceHash = r.evidence ? evidenceFingerprint(r.evidence) : null;
+  // Snapshot size is a dashboard, not a limit: a snapshot quietly growing past
+  // hundreds of KB per revision is how storage surprises start.
+  if (r.evidence) {
+    metrics.evidenceSnapshotBytes.observe(JSON.stringify(r.evidence).length);
+  }
   let revisionNo = 1;
 
   await transaction(async (db) => {

@@ -197,6 +197,7 @@ export async function executeIntent(
       revisionNo: intent.recommendation_revision_no,
     }).catch(() => null);
     if (revision && !revision.ok) {
+      metrics.staleRevisionDenials.inc();
       const reason =
         revision.reason === "stale_revision"
           ? `تغيّرت خطة التوصية (النسخة الفعالة الآن ${revision.effectiveRevisionNo}) — لم يُرسل الأمر بمستويات قديمة.`
