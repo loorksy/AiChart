@@ -89,6 +89,8 @@ import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
 import { collectVisualEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
+import { recordDecisionForParity } from "./parityLog";
+import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
 import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
@@ -966,6 +968,16 @@ async function runUnifiedChartAgentInner(
     });
   }
 
+  // Parity observation point (completion criterion 2). Recorded from the SAME
+  // frozen bundle the decision was made on, so the MCP surface's row for the same
+  // hash is genuinely comparable. Diagnostics only — never affects the answer.
+  const parityBundle = {
+    statisticalSupport: statisticalSupport ?? null,
+    historicalCases: historicalCases ?? null,
+    geometry: geometry.patterns?.map((p) => `${p.patternType}:${p.status}`) ?? [],
+    dataQuality: market.dataQuality.sufficient,
+  };
+
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
@@ -1286,6 +1298,35 @@ async function runUnifiedChartAgentInner(
   });
 
   let storedRecommendation: ActiveRecommendation | null = null;
+  // One row per surface per bundle. The MCP surface records its own against the
+  // same hash, and only a matching hash makes the two comparable at all.
+  void recordDecisionForParity({
+    evidenceHash: evidenceFingerprint(parityBundle),
+    symbol: market.symbol,
+    timeframeSet: visual.snapshots.map((snapshot) => snapshot.timeframe),
+    marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
+    surface: "platform",
+    decision: {
+      direction:
+        finalDecision.decision === "buy" || finalDecision.decision === "sell"
+          ? finalDecision.decision
+          : null,
+      planType: finalDecision.planType ?? null,
+      entryLow: finalDecision.recommendation?.entryZone?.low ?? null,
+      entryHigh: finalDecision.recommendation?.entryZone?.high ?? null,
+      stopLoss: finalDecision.recommendation?.stop_loss ?? null,
+      targets: finalDecision.recommendation?.targets ?? [],
+      executionState: finalDecision.executionState ?? null,
+      blocked: !finalDecision.recommendation,
+      imagesFor: visual.snapshots.map((snapshot) => snapshot.timeframe),
+      providers: [
+        statisticalSupport ? "statistical_support" : null,
+        historicalCases ? "case_memory" : null,
+        news ? "calendar" : null,
+      ].filter((name): name is string => name != null),
+    },
+  });
+
   if (
     finalDecision.decision === "buy" ||
     finalDecision.decision === "sell"
