@@ -89,6 +89,7 @@ import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
 import { collectVisualEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
+import { expectedSpreadFor } from "@/lib/strategies/liveCostProfile";
 import { recordDecisionForParity } from "./parityLog";
 import { metrics } from "@/lib/metrics";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
@@ -954,6 +955,13 @@ async function runUnifiedChartAgentInner(
   // What followed structurally similar moments. Read before the decision like
   // every other piece of evidence, and for both directions — the memory must not
   // be consulted to confirm a direction the brain has already leaned toward.
+  // Live session cost, measured on this operator's broker. Falls back to the
+  // static session model WITH the fallback labelled — the label is what keeps a
+  // modelled number from posing as a measured one in the evidence card.
+  const liveCost = FEATURES.evidencePipelineV2()
+    ? await expectedSpreadFor(market.symbol, market.spread ?? null).catch(() => null)
+    : null;
+
   const historicalCases = FEATURES.caseMemoryV1()
     ? await collectCaseEvidenceFor({
         symbol: market.symbol,
@@ -1011,6 +1019,7 @@ async function runUnifiedChartAgentInner(
           visualSnapshots: visual.snapshots,
           statisticalSupport,
           historicalCases,
+          liveCost: liveCost as Record<string, unknown> | null,
         },
         {
           // The extra-frame round captures through the SAME collector the first

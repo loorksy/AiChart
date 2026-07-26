@@ -1,5 +1,6 @@
 import { runCronPostScan } from "./cronPostScan";
 import { monitorEaBridgeHealth } from "./eaHealthMonitor";
+import { sampleLiveCosts } from "./strategies/liveCostProfile";
 import { collectTradeWatchAlerts } from "./tradeWatch";
 import { listUsersForMonitor } from "./store";
 import { notifyUser } from "./telegram";
@@ -36,6 +37,10 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
   for (const { id: userId } of users) {
     try {
       const eaEvent = await monitorEaBridgeHealth(userId);
+      // Spread sampling piggybacks on the health check: the quotes are already
+      // in memory, and ten-minute samples describe the session distribution as
+      // well as a tick stream would (plan §13 H.1). Best-effort by design.
+      await sampleLiveCosts(userId).catch(() => undefined);
       if (eaEvent) {
         let delivered = true;
         try {

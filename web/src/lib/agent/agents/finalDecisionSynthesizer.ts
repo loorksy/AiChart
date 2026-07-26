@@ -352,6 +352,11 @@ export async function runFinalDecisionSynthesizer(
      * is normal on a thin memory and is reported as absent.
      */
     historicalCases?: HistoricalCaseEvidence | null;
+    /**
+     * Live session cost profile, when the sampler has enough data. Carries its
+     * own `source` label so a static fallback never masquerades as measured.
+     */
+    liveCost?: Record<string, unknown> | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -521,6 +526,7 @@ function buildModelContext(
     geometry?: GeometrySnapshot | null;
     statisticalSupport?: StatisticalSupport | null;
     historicalCases?: HistoricalCaseEvidence | null;
+    liveCost?: Record<string, unknown> | null;
   },
 ): Record<string, unknown> {
   const playbook = input.risk?.playbook ?? null;
@@ -548,7 +554,7 @@ function buildModelContext(
       ? {
           observed_spread: input.market.spread,
           ...(FEATURES.evidencePipelineV2()
-            ? expectedSpreadNow(input.market.spread)
+            ? input.liveCost ?? expectedSpreadNow(input.market.spread)
             : { session: null, expected_spread: input.market.spread }),
           note: "Session-adjusted expected spread. A move that does not clear it is a worse entry, not an absent one — say the better price instead.",
         }

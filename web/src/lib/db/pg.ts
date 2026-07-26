@@ -524,6 +524,19 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
     ON decision_parity(created_at DESC);
 
+  -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
+  -- from the EA's live quotes; aggregated on read, pruned past the window.
+  CREATE TABLE IF NOT EXISTS cost_samples (
+    id          BIGSERIAL PRIMARY KEY,
+    symbol      TEXT NOT NULL,
+    session     TEXT NOT NULL,
+    spread_pips DOUBLE PRECISION NOT NULL,
+    observed_at BIGINT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cost_samples_lookup
+    ON cost_samples(symbol, observed_at);
+
   CREATE INDEX IF NOT EXISTS idx_market_cases_lookup
     ON market_cases(symbol, interval, regime, trend, direction);
   CREATE INDEX IF NOT EXISTS idx_market_cases_pending
