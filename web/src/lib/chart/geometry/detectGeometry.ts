@@ -16,6 +16,12 @@ import type {
   GeometrySnapshot,
   PatternInstance,
 } from "./types";
+import {
+  assessPatternStage,
+  breakLevelOf,
+  expectedAnchorsFor,
+} from "./patternStage";
+import { detectCandlesticks } from "./candlesticks";
 import { geometryAtr, zigzagPivots, allConfirmedPivots } from "./pivots";
 import { detectTrendlines } from "./trendlines";
 import { detectChannels } from "./channels";
@@ -41,6 +47,7 @@ function emptySnapshot(candleCount: number, atr: number): GeometrySnapshot {
     trendlines: [],
     channels: [],
     patterns: [],
+    candlesticks: [],
     candleCount,
     atr,
   };
@@ -131,11 +138,33 @@ export function detectChartGeometry(input: {
   }
   patterns.sort((a, b) => b.confidence - a.confidence);
 
+  // Where each surviving pattern is in its own life. Added after selection so
+  // every detector keeps its own break logic untouched, and so a structure that
+  // is nearly finished can be recognised as an opportunity rather than lumped in
+  // with one that has barely started.
+  const staged: PatternInstance[] = patterns.map((pattern) => {
+    const assessment = assessPatternStage({
+      status: pattern.status,
+      anchorCount: pattern.anchors.length,
+      expectedAnchors: expectedAnchorsFor(pattern.patternType),
+      candles,
+      breakLevel: breakLevelOf(pattern),
+      atr,
+    });
+    return {
+      ...pattern,
+      stage: assessment.stage,
+      completionRatio: Number(assessment.completionRatio.toFixed(2)),
+    };
+  });
+
   return {
     pivots: zigzag,
     trendlines,
     channels,
-    patterns,
+    patterns: staged,
+    // The bar-level shapes the agent could previously only describe in prose.
+    candlesticks: detectCandlesticks({ candles, atr }),
     candleCount: candles.length,
     atr,
   };

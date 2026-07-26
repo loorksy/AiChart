@@ -42,6 +42,7 @@ import {
   summarizeGeometry,
   type GeometrySnapshot,
 } from "@/lib/chart/geometry";
+import { breakLevelOf, offersAnticipatoryEntry } from "@/lib/chart/geometry/patternStage";
 import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
@@ -413,7 +414,11 @@ function buildModelContext(
     chartGeometry: input.geometry
       ? {
           summary: summarizeGeometry(input.geometry),
-          lines: geometryEvidenceLines(input.geometry).slice(0, 8),
+          lines: geometryEvidenceLines(input.geometry).slice(0, 10),
+          // Structures still building, with the boundary an early entry would
+          // use. Offered so an anticipatory plan is grounded in a real level
+          // rather than the idea of one.
+          formingOpportunities: formingOpportunities(input.geometry),
         }
       : null,
     playbook: playbook
@@ -688,6 +693,7 @@ function applyModelDecision(
           : "aligned"
         : "unknown",
       patternState: input.geometry ? describePrimaryPattern(input.geometry) : null,
+      patternCompletion: input.geometry?.patterns?.[0]?.completionRatio ?? null,
       entryQuality: selected ? selected.poi.score.score : null,
       netR: netRr ?? null,
       belowPreferredNetR:
@@ -749,6 +755,33 @@ function sanitizeDecisionTrace(
   };
 }
 
+/**
+ * Patterns whose boundary is a plausible early entry.
+ *
+ * "Not complete yet" was read as "nothing here" for years. A triangle pressing
+ * its rising lows, a double top on its second rejection — those ARE the
+ * anticipatory setups the doctrine asks for, and they need a real level to hang
+ * on, which is what this hands over.
+ */
+function formingOpportunities(geometry: GeometrySnapshot): Array<{
+  pattern: string;
+  stage: string;
+  completion: number | null;
+  boundary: number | null;
+  expectedBreak: "up" | "down" | null;
+}> {
+  return (geometry.patterns ?? [])
+    .filter((pattern) => pattern.stage != null && offersAnticipatoryEntry(pattern.stage))
+    .slice(0, 3)
+    .map((pattern) => ({
+      pattern: pattern.patternType,
+      stage: pattern.stage!,
+      completion: pattern.completionRatio ?? null,
+      boundary: breakLevelOf(pattern),
+      expectedBreak: pattern.breakDirection ?? null,
+    }));
+}
+
 /** Prices a plan may legitimately cite from detected chart geometry. */
 function geometryLevelPrices(geometry: GeometrySnapshot): number[] {
   const out: number[] = [];
@@ -766,7 +799,7 @@ function geometryLevelPrices(geometry: GeometrySnapshot): number[] {
 function describePrimaryPattern(geometry: GeometrySnapshot): string | null {
   const pattern = (geometry.patterns ?? [])[0];
   if (!pattern) return null;
-  return `${pattern.patternType} · ${pattern.status}`;
+  return `${pattern.patternType} · ${pattern.stage ?? pattern.status}`;
 }
 
 function extractJson(raw: string): string {
