@@ -16,8 +16,12 @@
  *    never dominate live analysis, and a glowing backtest cannot manufacture
  *    confidence the live read does not support.
  */
+// TYPE-only import (erased at build time) — safe from the client bundle.
 import type { StrategyBacktestEvidence, StrategyDeployment } from "@/lib/strategies/evidence";
-import { MIN_BACKTEST_TRADES } from "@/lib/strategies/evidence";
+// VALUE import must come from the dependency-free thresholds module: importing
+// it from evidence.ts would drag the database into the browser bundle and break
+// `next build`. Types are erased; values are not.
+import { MIN_BACKTEST_TRADES } from "@/lib/strategies/thresholds";
 
 /** The plan's fixed envelope for historical influence. Do not widen. */
 export const HISTORICAL_DELTA_MIN = -0.15;

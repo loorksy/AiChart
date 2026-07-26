@@ -22,7 +22,9 @@ import type {
 } from "@/lib/research/types";
 import { calibrateBootstrapWinRate } from "./calibration";
 
-export const MIN_BACKTEST_TRADES = 100;
+// Re-exported from the dependency-free thresholds module so client-rendered
+// code can read the number without importing this file (which pulls in the DB).
+export { MIN_BACKTEST_TRADES } from "./thresholds";
 
 /**
  * How many strategy configurations the factory searches — the "trials" the
