@@ -210,6 +210,21 @@ export interface AgentFinalResult {
    * is never the whole story the operator sees.
    */
   evidenceCard?: import("./evidenceCard").EvidenceCard;
+  /**
+   * Why this decision, in the operator's terms: the scenarios weighed, what
+   * supported and opposed each, why this one won, and why this plan type.
+   *
+   * Not optional decoration. A decision that cannot be explained from its own
+   * trace is not one the operator can act on or the learning loop can use, so
+   * the decision contract requires it and it is carried all the way out.
+   */
+  decisionTrace?: DecisionTrace;
+  /**
+   * The evidence card, dimension by dimension, with `unavailable` as a real
+   * grade. One blended percentage hides exactly what matters — a plan can rest
+   * on strong structure with no statistical history behind it.
+   */
+  evidenceDimensions?: import("./evidenceDimensions").EvidenceDimension[];
   confidence: number;
   /** Distinct confidence fields — UI must use displayKind/displayValue. */
   confidenceSemantics?: import("./confidenceSemantics").ConfidenceSemantics;

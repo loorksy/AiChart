@@ -9,7 +9,9 @@ import type {
   AgentChartContext,
   AgentFinalResult,
   AgentRunContext,
+  DecisionTrace,
 } from "./types";
+import type { EvidenceDimension } from "./evidenceDimensions";
 import type { AppLocale } from "@/lib/i18n";
 import type { AgentConversationContext } from "./context";
 import { contextualizeIntentMessage } from "./context";
@@ -1299,6 +1301,7 @@ async function runUnifiedChartAgentInner(
       risk,
       drawings,
       chartSnapshotHash,
+      statisticalSupport: statisticalSupport?.level,
     });
   }
 
@@ -1498,6 +1501,11 @@ async function runUnifiedChartAgentInner(
         }
       : undefined,
     publicReasoningSummary: finalDecision.publicReasoningSummary,
+    // Explainability is a validity condition, not a nicety: both of these are
+    // built by the decision engine and were being dropped here, so the trace
+    // and the evidence card never reached the operator at all.
+    decisionTrace: finalDecision.decisionTrace,
+    evidenceDimensions: finalDecision.evidenceDimensions,
     debugDecisionFlow,
     options: contextualOptionsFor({
       decision: finalDecision.decision,
@@ -1860,6 +1868,8 @@ async function storeFinalRecommendation(input: {
   risk: RiskAgentResult;
   drawings: AgentFinalResult["drawings"];
   chartSnapshotHash: string;
+  /** Verified backing grade, persisted so the card is not rebuilt from nothing. */
+  statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
 }): Promise<ActiveRecommendation | null> {
   const rec = input.finalDecision.recommendation;
   if (
@@ -1899,6 +1909,8 @@ async function storeFinalRecommendation(input: {
     }).expiresAt,
     direction: rec.action,
     planType: rec.planType,
+    executionState: rec.executionState,
+    statisticalSupport: input.statisticalSupport ?? undefined,
     entry: rec.entry,
     entryZone: rec.entryZone,
     entryType: rec.entryType,
@@ -1944,9 +1956,10 @@ async function storeFinalRecommendation(input: {
   // Persist a server-side tracked record (monitoring only — never executes).
   // Best-effort: a storage failure must not break the agent's reply.
   if (input.userId != null) {
-    await persistTrackedRecommendation(active, input.userId, input.sessionId).catch(
-      () => {},
-    );
+    await persistTrackedRecommendation(active, input.userId, input.sessionId, {
+      decisionTrace: input.finalDecision.decisionTrace,
+      evidenceDimensions: input.finalDecision.evidenceDimensions,
+    }).catch(() => {});
   }
   return active;
 }
@@ -1956,6 +1969,10 @@ async function persistTrackedRecommendation(
   active: ActiveRecommendation,
   userId: number,
   chatId: string,
+  explanation?: {
+    decisionTrace?: DecisionTrace;
+    evidenceDimensions?: EvidenceDimension[];
+  },
 ): Promise<void> {
   const entryType: "market" | "limit" | "pending" =
     active.entryType === "market"
@@ -1988,5 +2005,22 @@ async function persistTrackedRecommendation(
     expiresAt: active.expiresAt ?? Date.now() + 4 * 60 * 60 * 1000,
     triggeredAt: entryType === "market" ? Date.now() : undefined,
     priceAtCreation: active.priceAtCreation,
+    // The three layers and the plan's own conditions, so the tracker has an
+    // activation condition to watch and the journal a plan type to report.
+    planType: active.planType,
+    executionState: active.executionState,
+    statisticalSupport: active.statisticalSupport,
+    entryLow: active.entryZone?.low,
+    entryHigh: active.entryZone?.high,
+    triggerCondition: active.triggerCondition,
+    invalidationRule: active.invalidationRule,
+    alternativeScenario: active.alternativeScenario,
+    validityCandles: active.validityCandles,
+    // Stored with revision 1: why this plan, and on what evidence — so the
+    // decision stays explainable after the market has moved past it.
+    decisionTrace: explanation?.decisionTrace as unknown as Record<string, unknown> | undefined,
+    evidence: explanation?.evidenceDimensions
+      ? { evidenceDimensions: explanation.evidenceDimensions }
+      : undefined,
   });
 }

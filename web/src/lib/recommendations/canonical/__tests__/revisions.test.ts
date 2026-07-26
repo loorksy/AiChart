@@ -30,9 +30,14 @@ before(async () => {
   );
 });
 
-async function newRecommendation() {
+async function newRecommendation(initialRevision?: {
+  evidence?: Record<string, unknown> | null;
+}) {
   const lifecycle = await import("@/lib/recommendations/canonical");
   return lifecycle.createCanonicalRecommendation({
+    planType: "conditional",
+    executionState: "awaiting_activation",
+    initialRevision,
     userId: owner,
     analysisId: `analysis-${Math.floor(performance.now() * 1000)}`,
     sessionId: "session-1",
@@ -60,25 +65,16 @@ describe("effective recommendation revisions", () => {
     const { applyRecommendationRevision, listRevisions, getEffectiveRevision } = await import(
       "@/lib/recommendations/canonical/revisions"
     );
-    const rec = await newRecommendation();
-
-    const first = await applyRecommendationRevision({
-      userId: owner,
-      recommendationId: rec.recommendationId,
-      revision: {
-        direction: "buy",
-        planType: "conditional",
-        executionState: "awaiting_activation",
-        entry: 3992,
-        stopLoss: 3986,
-        targets: [4010],
-        reason: "initial plan",
-        source: "agent",
-        evidence: { atr: 2, zone: [3990, 3994] },
-      },
+    // Creation seeds revision 1 with the plan and the evidence behind it, so a
+    // revision always has a predecessor to supersede.
+    const rec = await newRecommendation({
+      evidence: { atr: 2, zone: [3990, 3994] },
     });
-    assert.equal(first.revisionNo, 1);
-    assert.ok(first.evidenceHash, "the evidence bundle is fingerprinted");
+
+    const first = await getEffectiveRevision(owner, rec.recommendationId);
+    assert.equal(first?.revisionNo, 1, "creation must seed revision 1");
+    assert.equal(first?.entry, 3992);
+    assert.ok(first?.evidenceHash, "the evidence bundle is fingerprinted");
 
     const second = await applyRecommendationRevision({
       userId: owner,
@@ -114,12 +110,8 @@ describe("effective recommendation revisions", () => {
       "@/lib/recommendations/canonical/revisions"
     );
     const rec = await newRecommendation();
-    await applyRecommendationRevision({
-      userId: owner,
-      recommendationId: rec.recommendationId,
-      revision: { direction: "buy", entry: 3992, reason: "initial", source: "agent" },
-    });
 
+    // Revision 1 came from creation — that is what makes it stale-able.
     const beforeUpdate = await checkRevisionIsCurrent({
       userId: owner,
       recommendationId: rec.recommendationId,
@@ -144,15 +136,31 @@ describe("effective recommendation revisions", () => {
   });
 
   it("treats a pre-revision recommendation as non-executable rather than current", async () => {
+    const db = await import("@/lib/db");
     const { checkRevisionIsCurrent } = await import(
       "@/lib/recommendations/canonical/revisions"
     );
-    const rec = await newRecommendation();
+    // Written before revisions existed, so it has no effective revision. Built
+    // with raw SQL on purpose: the creator now seeds one, and the point of this
+    // test is the row that predates it.
+    const legacyId = await db.insertReturningId(
+      `INSERT INTO recommendations
+         (user_id, symbol, market, timeframe, action, direction, confidence,
+          strategy_id, strategy_version, status, status_reason, source,
+          engine_version, entry, stop_loss, expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        owner, "XAUUSD", "forex", "5m", "buy", "buy", 70, "unspecified", "1",
+        "active", "legacy row", "test", "pre-revision", 3992, 3986,
+        Date.now() + 3_600_000,
+      ],
+    );
     const check = await checkRevisionIsCurrent({
       userId: owner,
-      recommendationId: rec.recommendationId,
+      recommendationId: legacyId,
       revisionNo: 1,
     });
+    // Not executable, and not silently treated as current either.
     assert.equal(check.ok, false);
     assert.equal(check.reason, "no_effective_revision");
   });

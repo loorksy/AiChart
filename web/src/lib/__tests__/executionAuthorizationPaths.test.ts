@@ -9,7 +9,7 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { describe, it } from "node:test";
 
 const SRC = resolve(process.cwd(), "src");
@@ -37,8 +37,16 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * Repo-relative path with POSIX separators.
+ *
+ * The allowlist is written with forward slashes, so the comparison has to be
+ * too. On Windows `join` produces backslashes and a naive replace leaves an
+ * absolute path that matches no key — which makes this guard fail everywhere
+ * instead of only where a real violation exists.
+ */
 function relative(file: string): string {
-  return file.replace(`${process.cwd()}/`, "");
+  return file.slice(process.cwd().length + 1).split(sep).join("/");
 }
 
 describe("execution authorization paths", () => {

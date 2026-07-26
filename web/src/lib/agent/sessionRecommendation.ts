@@ -33,6 +33,10 @@ export type ActiveRecommendation = {
   direction: "buy" | "sell";
   /** How this plan is entered (result contract layer 2). */
   planType?: "immediate" | "anticipatory" | "conditional";
+  /** Whether it can be entered right now (result contract layer 3). */
+  executionState?: "valid_now" | "awaiting_activation" | "expired" | "invalidated" | "blocked";
+  /** Verified statistical backing behind the plan, or its absence stated. */
+  statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
   entry: number;
   /** The area the plan accepts, not only the ideal price. */
   entryZone?: { low: number; high: number };

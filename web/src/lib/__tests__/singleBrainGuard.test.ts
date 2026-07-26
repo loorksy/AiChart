@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { describe, it } from "node:test";
 
 /**
@@ -41,6 +41,7 @@ const CREATION_CALLERS = new Set([
 const REVISION_CALLERS = new Set([
   "lib/recommendations/canonical/revisions.ts", // the mechanism itself
   "lib/recommendations/canonical/index.ts", // re-export
+  "lib/recommendations/canonical/repository.ts", // seeds revision 1 at creation
   "lib/agent/deepAnalysis/completion.ts", // verdict → revision
 ]);
 
@@ -70,8 +71,13 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * Paths are normalized to forward slashes because the allowlists above are
+ * written that way. Without this the guard fails on Windows for every file at
+ * once — a loud failure, but a useless one that says nothing about the code.
+ */
 const files = walk(SRC).map((path) => ({
-  rel: path.slice(SRC.length + 1),
+  rel: path.slice(SRC.length + 1).split(sep).join("/"),
   text: readFileSync(path, "utf8"),
 }));
 
@@ -179,6 +185,63 @@ describe("explainability is a validity condition", () => {
       !/decisionTrace:\s*DecisionTraceSchema\.(optional|nullable)/.test(synth.text),
       "decisionTrace must not be optional",
     );
+  });
+
+  /**
+   * The gap this guard originally missed.
+   *
+   * It checked that the decision contract REQUIRED a trace, and it did — while
+   * the orchestrator built its result field by field and copied neither the
+   * trace nor the evidence card onto it. Both were computed correctly and thrown
+   * away, and every schema-shaped assertion passed. So the check has to be that
+   * the value is carried, not merely produced.
+   */
+  it("carries the trace and the evidence card out to the caller", () => {
+    const types = files.find((file) => file.rel === "lib/agent/types.ts");
+    assert.ok(types);
+    assert.ok(
+      /decisionTrace\?:\s*DecisionTrace/.test(types.text),
+      "AgentFinalResult must expose decisionTrace, or the trace cannot reach any surface",
+    );
+    assert.ok(
+      /evidenceDimensions\?:/.test(types.text),
+      "AgentFinalResult must expose evidenceDimensions, or the evidence card is unreachable",
+    );
+
+    const orchestrator = files.find((file) => file.rel === "lib/agent/orchestrator.ts");
+    assert.ok(orchestrator);
+    for (const field of ["decisionTrace", "evidenceDimensions"]) {
+      assert.ok(
+        new RegExp(`${field}:\\s*finalDecision\\.${field}`).test(orchestrator.text),
+        `the orchestrator must copy ${field} from the decision onto its result`,
+      );
+    }
+  });
+
+  it("persists the plan layers rather than keeping them in memory", () => {
+    const repository = files.find(
+      (file) => file.rel === "lib/recommendations/canonical/repository.ts",
+    );
+    const revisions = files.find(
+      (file) => file.rel === "lib/recommendations/canonical/revisions.ts",
+    );
+    assert.ok(repository && revisions);
+
+    // Every recommendation needs an effective revision from birth: without one
+    // nothing can revise it and the compare-and-swap on execution has no number
+    // to compare. Seeding it is also what writes plan_type and execution_state,
+    // since the pointer move owns those columns.
+    assert.ok(
+      /applyRecommendationRevision\s*\(/.test(repository.text),
+      "creation must seed revision 1",
+    );
+    const canonical = `${repository.text}\n${revisions.text}`;
+    for (const column of ["plan_type", "execution_state", "statistical_support"]) {
+      assert.ok(
+        canonical.includes(column),
+        `${column} must be written by the canonical modules; an in-memory-only layer is invisible to the tracker`,
+      );
+    }
   });
 
   it("stores the evidence a revision was decided on", () => {

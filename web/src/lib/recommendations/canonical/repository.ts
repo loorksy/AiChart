@@ -1,5 +1,7 @@
 import { getDbBackend, query, queryOne, transaction } from "@/lib/db";
+import { createLogger } from "@/lib/logger";
 import { assertRecommendationTransition, initialRecommendationStatus } from "./stateMachine";
+import { applyRecommendationRevision } from "./revisions";
 import {
   RecommendationLifecycleError,
   type CanonicalRecommendation,
@@ -9,6 +11,8 @@ import {
   type RecommendationTransition,
   type TransitionRecommendationInput,
 } from "./types";
+
+const log = createLogger("recommendations:canonical");
 
 interface RecommendationRow {
   id: number;
@@ -198,8 +202,9 @@ export async function createCanonicalRecommendation(
          confidence, backtested_confidence, confidence_low, confidence_high,
          backtest_id, market_regime, strategy_id, strategy_version, expires_at, status, status_reason,
          source, engine_version, entry_type, legacy_tracking_id, rationale, factors,
-         chart_drawings_json, pattern_name, analysis_tier, context_json, updated_at, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
+         chart_drawings_json, pattern_name, analysis_tier, context_json,
+         statistical_support, updated_at, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
       [
         input.userId,
         input.analysisId ?? null,
@@ -236,6 +241,7 @@ export async function createCanonicalRecommendation(
         input.patternName ?? null,
         input.analysisTier ?? null,
         input.contextJson ?? null,
+        input.statisticalSupport ?? null,
         now,
         now,
       ],
@@ -291,6 +297,55 @@ export async function createCanonicalRecommendation(
     );
     return id;
   });
+
+  /**
+   * Seed revision 1.
+   *
+   * Every recommendation needs an effective revision from birth: a later update
+   * has to have something to supersede, and the compare-and-swap on execution
+   * has to have a number to compare against. Without it a recommendation can be
+   * neither revised nor auto-executed.
+   *
+   * Legacy `wait` rows are skipped deliberately — they carry no plan to revise
+   * and must never become executable.
+   *
+   * Best-effort: the recommendation already exists and the operator has already
+   * been shown it, so a revision failure must not delete their answer. It costs
+   * auto-execution eligibility, which is the safe direction to fail in.
+   */
+  if (direction === "buy" || direction === "sell") {
+    const seed = input.initialRevision;
+    await applyRecommendationRevision({
+      userId: input.userId,
+      recommendationId,
+      timestamp: now,
+      revision: {
+        direction,
+        planType: input.planType ?? null,
+        executionState: input.executionState ?? null,
+        entry: input.entry ?? null,
+        entryLow: seed?.entryLow ?? null,
+        entryHigh: seed?.entryHigh ?? null,
+        stopLoss: input.stopLoss ?? null,
+        targets,
+        activationCondition: seed?.activationCondition ?? null,
+        invalidationRule: seed?.invalidationRule ?? null,
+        alternativeScenario: seed?.alternativeScenario ?? null,
+        validityCandles: seed?.validityCandles ?? null,
+        expiresAt,
+        reason: "initial recommendation",
+        source: "agent",
+        evidence: seed?.evidence ?? null,
+        decisionTrace: seed?.decisionTrace ?? null,
+      },
+    }).catch((err) => {
+      log.warn("failed to seed revision 1", {
+        recommendationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
   const stored = await getCanonicalRecommendation(input.userId, recommendationId);
   if (!stored) {
     throw new RecommendationLifecycleError(
