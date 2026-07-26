@@ -264,9 +264,28 @@ export function pipelineConfig(): PipelineConfig {
     userId: Number.isSafeInteger(userIdRaw) && userIdRaw > 0 ? userIdRaw : null,
     symbols: symbols.length ? [...new Set(symbols)] : ["XAUUSD"],
     timeframes: timeframes.length ? [...new Set(timeframes)] : ["1m", "5m", "15m"],
-    batch: Number.isFinite(batchRaw) ? Math.min(Math.max(Math.floor(batchRaw), 1), 8) : 2,
+    batch: Number.isFinite(batchRaw)
+      ? Math.min(Math.max(Math.floor(batchRaw), 1), MAX_PIPELINE_BATCH)
+      : 2,
   };
 }
+
+/**
+ * Ceiling on strategies advanced per cron tick (RELIABILITY_PLAN.md item 18,
+ * step 1 — pipeline throughput).
+ *
+ * IMPORTANT, and the reason the default stays at 2: this number is NOT the real
+ * bottleneck on its own. The research service processes
+ * `RESEARCH_SERVICE_MAX_CONCURRENT_JOBS` backtests at a time (default 1), so
+ * raising the batch alone only makes the queue longer — the throughput ceiling
+ * is `min(batch, service concurrency)`. Raising this without matching the
+ * service (and its CPU) trades one bottleneck for a queue, and on a shared box
+ * it can starve the live analysis path the operator actually waits on.
+ *
+ * To genuinely raise throughput, raise BOTH, then watch queue depth and
+ * event-loop lag (item 9 metrics) before going further.
+ */
+export const MAX_PIPELINE_BATCH = 16;
 
 export interface PipelineTarget {
   strategyId: string;
