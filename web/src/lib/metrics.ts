@@ -12,6 +12,10 @@ type Store = {
   jobs: client.Counter<string>;
   agentRuns: client.Counter<string>;
   executionDenials: client.Counter<string>;
+  /** Re-evaluation cycles started, by what triggered them. */
+  reevaluationCycles: client.Counter<string>;
+  /** What those cycles concluded: confirmed | revised | invalidated. */
+  reevaluationVerdicts: client.Counter<string>;
   tradesExecuted: client.Counter<string>;
   brokerUp: client.Gauge<string>;
   // --- Reliability metrics (RELIABILITY_PLAN.md item 9) ---
@@ -50,6 +54,18 @@ function build(): Store {
     name: "aichart_agent_runs_total",
     help: "Agent runs by mode and status",
     labelNames: ["mode", "status"],
+    registers: [registry],
+  });
+  const reevaluationCycles = new client.Counter({
+    name: "aichart_reevaluation_cycles_total",
+    help: "Re-evaluation decision cycles started, by trigger reason",
+    labelNames: ["reason"] as const,
+    registers: [registry],
+  });
+  const reevaluationVerdicts = new client.Counter({
+    name: "aichart_reevaluation_verdicts_total",
+    help: "Re-evaluation outcomes — confirmed is as important as revised",
+    labelNames: ["verdict"] as const,
     registers: [registry],
   });
   const executionDenials = new client.Counter({
@@ -138,6 +154,8 @@ function build(): Store {
     jobs,
     agentRuns,
     executionDenials,
+    reevaluationCycles,
+    reevaluationVerdicts,
     tradesExecuted,
     brokerUp,
     outcomes,

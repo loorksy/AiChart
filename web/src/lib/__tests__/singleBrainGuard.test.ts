@@ -43,6 +43,11 @@ const REVISION_CALLERS = new Set([
   "lib/recommendations/canonical/index.ts", // re-export
   "lib/recommendations/canonical/repository.ts", // seeds revision 1 at creation
   "lib/agent/deepAnalysis/completion.ts", // verdict → revision
+  // Re-evaluation cycle: calls the unified brain FIRST and applies only what the
+  // brain returned, after comparing it to the effective revision. It qualifies
+  // because it decides nothing itself — the trigger that started it carries no
+  // direction and no levels, and an unchanged decision writes no revision.
+  "lib/recommendations/reevaluationCycle.ts",
 ]);
 
 /**

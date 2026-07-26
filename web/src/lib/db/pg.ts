@@ -496,6 +496,9 @@ const SCHEMA = `
     outcome           TEXT NOT NULL,
     raised_at         BIGINT NOT NULL,
     dedupe_key        TEXT NOT NULL,
+    -- Fingerprint of the bundle the cycle decided on, so a confirmed verdict is
+    -- traceable to the evidence that confirmed it.
+    evidence_hash     TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (recommendation_id, dedupe_key)
   );

@@ -5,6 +5,7 @@
  * browser session (called from an API route or a scheduled job). Never executes
  * trades.
  */
+import { query } from "@/lib/db";
 import { getCandles } from "@/lib/candles/candleRepository";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { normalizeCanonicalInterval } from "@/lib/markets/intervals";
@@ -23,6 +24,7 @@ import {
   recordTrigger,
   type ReevaluationTrigger,
 } from "./reevaluationTriggers";
+import { runReevaluationCycles } from "./reevaluationCycle";
 import { notifyLifecycleEvents } from "./lifecycleNotifier";
 import { maybeAutoExecute, autoExecutionStage } from "./autoExecutor";
 import type { TrackedRecommendation } from "./types";
@@ -160,6 +162,23 @@ export async function trackOneRecommendation(
   return { recommendation: updated, events, reevaluations: admitted };
 }
 
+/**
+ * Canonical row id for a tracked recommendation.
+ *
+ * The tracked record carries a TEXT id; the canonical row it maps to carries the
+ * INTEGER id everything else joins on (`legacy_tracking_id` is the link). The
+ * cycle needs the canonical one because the revision mechanism is keyed on it.
+ */
+async function canonicalIdFor(
+  rec: Pick<TrackedRecommendation, "id" | "userId">,
+): Promise<number | null> {
+  const rows = await query<{ id: number | string }>(
+    "SELECT id FROM recommendations WHERE legacy_tracking_id = ? AND user_id = ?",
+    [rec.id, rec.userId],
+  ).catch(() => []);
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
 /** Cheap ATR over the tail, so proximity bands scale with the instrument. */
 function approximateAtr(candles: TrackerCandle[]): number | null {
   const window = candles.slice(-14);
@@ -180,6 +199,11 @@ export async function trackRecommendations(
     silentAlerts?: boolean;
     /** Disable standing-authorisation execution for this run (tests, replays). */
     autoExecute?: boolean;
+    /**
+     * Run re-evaluation cycles for admitted triggers. Off in replays and tests
+     * that assert deterministic sweep output, since a cycle calls the brain.
+     */
+    reevaluate?: boolean;
   } = {},
 ): Promise<TrackSweepResult> {
   const active = await listActiveTrackedRecommendations({
@@ -190,12 +214,14 @@ export async function trackRecommendations(
   let terminal = 0;
   const events: LifecycleEvent[] = [];
   const byUser = new Map<number, LifecycleEvent[]>();
+  const pendingCycles: Array<{ trigger: ReevaluationTrigger; canonicalId: number }> = [];
   const placedToday = new Map<number, number>();
   const autoEnabled = opts.autoExecute !== false && autoExecutionStage() !== "off";
 
   for (const rec of active) {
     try {
-      const { recommendation: next, events: recEvents } = await trackOneRecommendation(rec);
+      const tracked = await trackOneRecommendation(rec);
+      const { recommendation: next, events: recEvents } = tracked;
       events.push(...recEvents);
 
       // Standing authorisation acts at the moment a plan's own condition is
@@ -240,11 +266,44 @@ export async function trackRecommendations(
       if (recEvents.length) {
         byUser.set(rec.userId, [...(byUser.get(rec.userId) ?? []), ...recEvents]);
       }
+      // Admitted triggers are collected, not run inline: a model call inside the
+      // per-symbol loop would stretch the sweep unpredictably, and the sweep must
+      // stay LLM-free so a slow provider never delays a stop-out evaluation.
+      for (const trigger of tracked.reevaluations) {
+        const canonicalId = await canonicalIdFor(rec);
+        if (canonicalId != null) pendingCycles.push({ trigger, canonicalId });
+      }
       if (!next) continue;
       if (next.status !== rec.status || next.outcome !== rec.outcome) updated += 1;
       if (next.outcome !== "pending") terminal += 1;
     } catch {
       // A single failing symbol must not abort the whole sweep.
+    }
+  }
+
+  // Re-evaluation cycles run AFTER the deterministic sweep, so a slow decision
+  // never delays a stop-out. Each one re-runs the whole evidence pipeline through
+  // the same brain and its output goes through applyRecommendationRevision — the
+  // tracker still has not decided anything.
+  if (opts.reevaluate !== false && pendingCycles.length) {
+    const cycles = await runReevaluationCycles(pendingCycles).catch(() => []);
+    for (const cycle of cycles) {
+      if (cycle.verdict === "skipped") continue;
+      // A confirmation is worth hearing too: "looked again and stood by it" is
+      // different information from silence.
+      byUser.set(cycle.trigger.userId, [
+        ...(byUser.get(cycle.trigger.userId) ?? []),
+        {
+          type: cycle.verdict === "confirmed" ? "scenario_changed" : "entry_updated",
+          recommendationId: cycle.trigger.recommendationId,
+          symbol: cycle.trigger.symbol,
+          revisionNo: cycle.revision?.revisionNo ?? cycle.trigger.revisionNo,
+          dedupeKey: `${cycle.trigger.recommendationId}:${cycle.revision?.revisionNo ?? 0}:reeval:${cycle.verdict}`,
+          detail: cycle.detail,
+          terminal: false,
+          occurredAt: Date.now(),
+        },
+      ]);
     }
   }
 
