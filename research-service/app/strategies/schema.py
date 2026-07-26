@@ -97,6 +97,52 @@ class AtrThresholdCondition(FrozenStrictModel):
     unit: Literal["price", "pips", "percentage"]
 
 
+class MacdCondition(FrozenStrictModel):
+    """MACD as a closed condition leaf (RELIABILITY_PLAN item 17, stage A).
+
+    The engine already computed MACD; only the DSL could not express it, so no
+    strategy could use it. The leaf stays fully declarative — periods and the
+    compared series are enumerated, never free expressions.
+    """
+
+    type: Literal["macd"]
+    timeframe: Timeframe
+    fast_period: int = Field(default=12, ge=2, le=10_000)
+    slow_period: int = Field(default=26, ge=3, le=10_000)
+    signal_period: int = Field(default=9, ge=2, le=10_000)
+    # Which MACD series the comparison is about.
+    series: Literal["macd", "signal", "histogram"] = "macd"
+    # Compare against the signal line, the zero line, or a fixed level.
+    reference: Literal["signal", "zero", "value"] = "signal"
+    operator: Literal["above", "below", "crosses_above", "crosses_below"]
+    value: float | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> MacdCondition:
+        if self.slow_period <= self.fast_period:
+            raise ValueError("macd slow_period must be greater than fast_period")
+        if self.reference == "value" and self.value is None:
+            raise ValueError("macd reference 'value' requires an explicit value")
+        if self.reference != "value" and self.value is not None:
+            raise ValueError("macd value is only allowed with reference 'value'")
+        if self.series == "signal" and self.reference == "signal":
+            raise ValueError("comparing the signal line to itself is not a condition")
+        return self
+
+
+class BollingerCondition(FrozenStrictModel):
+    """Bollinger bands as a closed condition leaf (item 17, stage A)."""
+
+    type: Literal["bollinger"]
+    timeframe: Timeframe
+    period: int = Field(default=20, ge=2, le=10_000)
+    std_dev: float = Field(default=2.0, gt=0, le=10)
+    band: Literal["upper", "middle", "lower"]
+    # What is compared to the band.
+    source: Literal["close", "high", "low"] = "close"
+    operator: Literal["above", "below", "crosses_above", "crosses_below"]
+
+
 class RangeBreakoutCondition(FrozenStrictModel):
     type: Literal["range_breakout"]
     timeframe: Timeframe
@@ -177,6 +223,8 @@ ConditionLeaf = Annotated[
     | SmaRelationCondition
     | RsiThresholdCondition
     | AtrThresholdCondition
+    | MacdCondition
+    | BollingerCondition
     | RangeBreakoutCondition
     | MarketSessionCondition
     | DayOfWeekCondition

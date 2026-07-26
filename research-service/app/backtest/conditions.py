@@ -63,8 +63,12 @@ class ConditionContext:
             result = list(macd(closes, *map(int, args))[0])
         elif name == "macd_signal":
             result = list(macd(closes, *map(int, args))[1])
+        elif name == "macd_histogram":
+            result = list(macd(closes, *map(int, args))[2])
         elif name == "bollinger_lower":
             result = list(bollinger(closes, int(args[0]), float(args[1]))[0])
+        elif name == "bollinger_middle":
+            result = list(bollinger(closes, int(args[0]), float(args[1]))[1])
         elif name == "bollinger_upper":
             result = list(bollinger(closes, int(args[0]), float(args[1]))[2])
         elif name == "rolling_high":
@@ -158,6 +162,66 @@ def evaluate_condition(node: dict[str, Any], context: ConditionContext) -> bool:
                     previous_close = _value(bars[index - 1].close)
                     previous_value = previous_value / previous_close * 100
         return _relation(current_value, previous_value, threshold, node["operator"])
+    if kind == "macd":
+        # DSL-exposed MACD leaf (RELIABILITY_PLAN item 17, stage A). The engine
+        # already computed MACD; only the strategy language could not express
+        # it, so no catalog strategy could use it.
+        macd_args = (
+            node.get("fast_period", 12),
+            node.get("slow_period", 26),
+            node.get("signal_period", 9),
+        )
+        series_name = {
+            "macd": "macd",
+            "signal": "macd_signal",
+            "histogram": "macd_histogram",
+        }[node.get("series", "macd")]
+        values = context.series(timeframe, series_name, macd_args)
+        if values[index] is None:
+            return False
+        current_value = float(values[index])
+        previous_value = (
+            float(values[index - 1]) if index > 0 and values[index - 1] is not None else None
+        )
+        reference = node.get("reference", "signal")
+        if reference == "signal":
+            signal_line = context.series(timeframe, "macd_signal", macd_args)
+            if signal_line[index] is None:
+                return False
+            # Compare as a difference so a cross is a zero crossing.
+            current_diff = current_value - float(signal_line[index])
+            previous_diff = None
+            if (
+                index > 0
+                and previous_value is not None
+                and signal_line[index - 1] is not None
+            ):
+                previous_diff = previous_value - float(signal_line[index - 1])
+            return _relation(current_diff, previous_diff, 0.0, node["operator"])
+        threshold = 0.0 if reference == "zero" else float(node["value"])
+        return _relation(current_value, previous_value, threshold, node["operator"])
+    if kind == "bollinger":
+        # DSL-exposed Bollinger leaf (item 17, stage A).
+        band_name = {
+            "upper": "bollinger_upper",
+            "middle": "bollinger_middle",
+            "lower": "bollinger_lower",
+        }[node["band"]]
+        band_args = (node.get("period", 20), node.get("std_dev", 2.0))
+        band = context.series(timeframe, band_name, band_args)
+        if band[index] is None:
+            return False
+        source_name = node.get("source", "close")
+        current_source = _value(getattr(bar, source_name))
+        previous_source = (
+            _value(getattr(bars[index - 1], source_name)) if index > 0 else None
+        )
+        # Compare price-to-band as a difference so crosses are zero crossings.
+        current_diff = current_source - float(band[index])
+        previous_diff = None
+        if index > 0 and previous_source is not None and band[index - 1] is not None:
+            previous_diff = previous_source - float(band[index - 1])
+        return _relation(current_diff, previous_diff, 0.0, node["operator"])
     if kind == "macd_relation":
         macd_args = (
             node.get("fast_period", 12),
