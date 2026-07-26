@@ -225,6 +225,11 @@ export interface AgentFinalResult {
    * on strong structure with no statistical history behind it.
    */
   evidenceDimensions?: import("./evidenceDimensions").EvidenceDimension[];
+  /**
+   * Immutable snapshot of the complete evidence input consumed by the unified
+   * decision engine. Re-evaluations and revisions persist this exact object.
+   */
+  evidenceSnapshot?: Record<string, unknown>;
   confidence: number;
   /** Distinct confidence fields — UI must use displayKind/displayValue. */
   confidenceSemantics?: import("./confidenceSemantics").ConfidenceSemantics;

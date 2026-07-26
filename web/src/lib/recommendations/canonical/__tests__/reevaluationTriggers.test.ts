@@ -133,6 +133,34 @@ describe("detecting what warrants a new decision cycle", () => {
     assert.deepEqual(found, []);
   });
 
+  it("raises near invalidation only when the surrounding context changed", () => {
+    const found = triggers.detectReevaluationTriggers({
+      recommendation: plan(),
+      invalidationProximity: {
+        currentPrice: 3981,
+        invalidationLevel: 3980,
+        atr: 4,
+        contextChanged: true,
+      },
+    });
+    assert.equal(
+      found[0]?.reason,
+      "approaching_invalidation_changed_context",
+    );
+    assert.deepEqual(
+      triggers.detectReevaluationTriggers({
+        recommendation: plan(),
+        invalidationProximity: {
+          currentPrice: 3981,
+          invalidationLevel: 3980,
+          atr: 4,
+          contextChanged: false,
+        },
+      }),
+      [],
+    );
+  });
+
   it("returns nothing on a quiet sweep", () => {
     // The common case. A tracker that finds a reason every sweep is a tracker
     // that would re-decide constantly.
@@ -196,6 +224,22 @@ describe("bounding automatic cycles", () => {
     assert.equal(admitted.length, 1);
   });
 
+  it("never loses a deep-research completion to the automatic cooldown", async () => {
+    const request = {
+      recommendationId: "rec-admit",
+      userId: 1,
+      symbol: "XAUUSD",
+      reason: "deep_research" as const,
+      detail: "research job completed",
+      source: "deep_research" as const,
+      revisionNo: 2,
+      raisedAt: Date.now(),
+      idempotencyKey: "deep:job-42",
+    };
+    const { admitted } = await triggers.admitTriggers([request]);
+    assert.equal(admitted.length, 1);
+  });
+
   it("records a suppressed trigger too, so the silence is explainable", async () => {
     const found = triggers.detectReevaluationTriggers({
       recommendation: plan({ id: "rec-suppressed" }),
@@ -220,6 +264,27 @@ describe("bounding automatic cycles", () => {
     await triggers.recordTrigger(trigger, "cycle_requested");
     await triggers.recordTrigger(trigger, "cycle_requested");
     assert.equal((await triggers.listTriggers("rec-idem")).length, 1);
+  });
+
+  it("can re-check an ongoing state after the cooldown window", async () => {
+    const firstAt = Date.now();
+    const first = triggers.detectReevaluationTriggers({
+      recommendation: plan({ id: "rec-windowed" }),
+      spread: { now: 0.8, plannedFor: 0.3 },
+      now: firstAt,
+    });
+    assert.equal((await triggers.admitTriggers(first)).admitted.length, 1);
+
+    const later = triggers.detectReevaluationTriggers({
+      recommendation: plan({ id: "rec-windowed" }),
+      spread: { now: 0.8, plannedFor: 0.3 },
+      now: firstAt + triggers.COOLDOWN_MS + 1,
+    });
+    assert.equal(
+      (await triggers.admitTriggers(later)).admitted.length,
+      1,
+      "dedupe must not turn a cooldown into a permanent suppression",
+    );
   });
 
   it("admits nothing when the phase is rolled back", async () => {
@@ -264,7 +329,7 @@ describe("the tracker notices but never decides", () => {
   });
 
   it("keeps the trigger module free of any decision or plan write", () => {
-    const module = readFileSync(
+    const triggerSource = readFileSync(
       resolve(process.cwd(), "src/lib/recommendations/reevaluationTriggers.ts"),
       "utf8",
     );
@@ -272,21 +337,21 @@ describe("the tracker notices but never decides", () => {
     // explaining the ordering, which is exactly the documentation we want.
     assert.ok(
       !/\bawait\s+applyRecommendationRevision\s*\(|^\s*applyRecommendationRevision\s*\(/m.test(
-        module,
+        triggerSource,
       ),
       "the trigger module must not apply revisions",
     );
     assert.ok(
-      !/^import[\s\S]*applyRecommendationRevision/m.test(module),
+      !/^import[\s\S]*applyRecommendationRevision/m.test(triggerSource),
       "the trigger module must not even import the revision mechanism",
     );
     assert.ok(
-      !/UPDATE\s+recommendations/i.test(module),
+      !/UPDATE\s+recommendations/i.test(triggerSource),
       "a trigger module must never write a plan column",
     );
     // The trigger SHAPE carries no direction at all. A trigger says why to look
     // again; concluding what to do is the brain's output, not the tracker's.
-    const shape = /export interface ReevaluationTrigger \{[\s\S]*?\n\}/.exec(module);
+    const shape = /export interface ReevaluationTrigger \{[\s\S]*?\n\}/.exec(triggerSource);
     assert.ok(shape, "ReevaluationTrigger moved — update this guard");
     assert.ok(
       !/\bdirection\b/.test(shape[0]),

@@ -22,7 +22,10 @@ import { query, queryOne, transaction } from "@/lib/db";
 import { withLock } from "@/lib/locks";
 import { metrics } from "@/lib/metrics";
 import { RecommendationLifecycleError, type RecommendationStatus } from "./types";
-import { isTerminalRecommendationStatus } from "./stateMachine";
+import {
+  assertRecommendationTransition,
+  isTerminalRecommendationStatus,
+} from "./stateMachine";
 
 /** Who asked for this change. Recorded so a plan's history reads honestly. */
 export type RevisionSource =
@@ -225,6 +228,13 @@ async function writeRevision(
         "A finished recommendation cannot be revised",
       );
     }
+    const invalidating = r.executionState === "invalidated";
+    if (invalidating) {
+      assertRecommendationTransition(
+        (current.status ?? "draft") as RecommendationStatus,
+        "invalidated",
+      );
+    }
     revisionNo = Number(current.effective_revision_no ?? 0) + 1;
 
     await db.execute(
@@ -263,13 +273,19 @@ async function writeRevision(
     // The pointer move is what actually retires the previous levels.
     await db.execute(
       `UPDATE recommendations
-          SET effective_revision_no = ?, plan_type = ?, execution_state = ?,
+          SET effective_revision_no = ?, direction = ?, action = ?,
+              plan_type = ?, execution_state = ?,
               entry = COALESCE(?, entry), stop_loss = COALESCE(?, stop_loss),
               targets_json = CASE WHEN ? = '[]' THEN targets_json ELSE ? END,
-              expires_at = COALESCE(?, expires_at), updated_at = ?
+              expires_at = COALESCE(?, expires_at),
+              status = CASE WHEN ? = 1 THEN 'invalidated' ELSE status END,
+              status_reason = CASE WHEN ? = 1 THEN ? ELSE status_reason END,
+              updated_at = ?
         WHERE id = ? AND user_id = ?`,
       [
         revisionNo,
+        r.direction,
+        r.direction,
         r.planType ?? null,
         r.executionState ?? null,
         r.entry ?? null,
@@ -277,11 +293,38 @@ async function writeRevision(
         JSON.stringify(r.targets ?? []),
         JSON.stringify(r.targets ?? []),
         r.expiresAt ?? null,
+        invalidating ? 1 : 0,
+        invalidating ? 1 : 0,
+        r.reason,
         timestamp,
         input.recommendationId,
         input.userId,
       ],
     );
+
+    if (invalidating) {
+      await db.execute(
+        `INSERT INTO recommendation_transitions
+          (recommendation_id, user_id, from_status, to_status, occurred_at,
+           trigger_name, actor, source, reason, metadata_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [
+          input.recommendationId,
+          input.userId,
+          current.status ?? "draft",
+          "invalidated",
+          timestamp,
+          "brain_reevaluation",
+          "agent",
+          r.source,
+          r.reason,
+          JSON.stringify({
+            revision_no: revisionNo,
+            evidence_hash: evidenceHash,
+          }),
+        ],
+      );
+    }
 
     // Revisions are recorded as evidence too, so a replay shows what changed
     // and why without having to diff two snapshots by hand.

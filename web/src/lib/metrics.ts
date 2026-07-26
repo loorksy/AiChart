@@ -14,6 +14,8 @@ type Store = {
   executionDenials: client.Counter<string>;
   /** Re-evaluation cycles started, by what triggered them. */
   reevaluationCycles: client.Counter<string>;
+  /** Detected trigger admission outcomes: admitted | suppressed | duplicate. */
+  reevaluationTriggers: client.Counter<string>;
   /** What those cycles concluded: confirmed | revised | invalidated. */
   reevaluationVerdicts: client.Counter<string>;
   /** Moments where both surfaces decided and were compared. */
@@ -180,6 +182,12 @@ function build(): Store {
     labelNames: ["reason"] as const,
     registers: [registry],
   });
+  const reevaluationTriggers = new client.Counter({
+    name: "aichart_reevaluation_triggers_total",
+    help: "Re-evaluation triggers by reason and durable claim outcome",
+    labelNames: ["reason", "outcome"] as const,
+    registers: [registry],
+  });
   const reevaluationVerdicts = new client.Counter({
     name: "aichart_reevaluation_verdicts_total",
     help: "Re-evaluation outcomes — confirmed is as important as revised",
@@ -273,6 +281,7 @@ function build(): Store {
     agentRuns,
     executionDenials,
     reevaluationCycles,
+    reevaluationTriggers,
     reevaluationVerdicts,
     parityComparisons,
     parityUnexplained,

@@ -110,7 +110,7 @@ export function AppConsoleShell({
       closeMobileMenu: () => setMobileOpen(false),
       mobileOpen,
     }),
-    [mobileOpen],
+    [mobileOpen, setMobileOpen],
   );
 
   const navList = (onNavigate?: () => void) => (

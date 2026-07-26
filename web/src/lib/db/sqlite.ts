@@ -15,7 +15,7 @@ import type { DbRow, ExecuteResult } from "./types";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
-const SCHEMA_VERSION = "2026-07-18-nav-admin-subscription-v1";
+const SCHEMA_VERSION = "2026-07-26-reevaluation-e2e-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -540,6 +540,11 @@ const SCHEMA = `
     -- Fingerprint of the bundle the cycle decided on, so a confirmed verdict is
     -- traceable to the evidence that confirmed it.
     evidence_hash     TEXT,
+    trigger_payload_json TEXT NOT NULL DEFAULT '{}',
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    decision_trace_json TEXT NOT NULL DEFAULT '{}',
+    claimed_at        INTEGER,
+    completed_at      INTEGER,
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (recommendation_id, dedupe_key)
   );
@@ -1215,6 +1220,38 @@ function migrate(db: Database.Database) {
       db.exec(`ALTER TABLE trading_settings ADD COLUMN ${name} ${definition}`);
     }
   }
+
+  // Durable re-evaluation claims and the exact evidence/trace consumed by the
+  // unified brain. Additive for databases created before the end-to-end cycle.
+  const reevaluationCols = db
+    .prepare("PRAGMA table_info(recommendation_reevaluations)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["trigger_payload_json", "TEXT NOT NULL DEFAULT '{}'"],
+    ["evidence_json", "TEXT NOT NULL DEFAULT '{}'"],
+    ["decision_trace_json", "TEXT NOT NULL DEFAULT '{}'"],
+    ["claimed_at", "INTEGER"],
+    ["completed_at", "INTEGER"],
+  ] as const) {
+    if (!reevaluationCols.some((column) => column.name === name)) {
+      db.exec(
+        `ALTER TABLE recommendation_reevaluations ADD COLUMN ${name} ${definition}`,
+      );
+    }
+  }
+  // Rows written by the pre-queue implementation have no claimed_at marker.
+  // Treat them as historical so the first deploy cannot replay the entire old
+  // trigger log. Every claim written by the resumable consumer has claimed_at.
+  db.exec(
+    `UPDATE recommendation_reevaluations
+        SET completed_at = raised_at
+      WHERE outcome = 'cycle_requested' AND completed_at IS NULL
+        AND claimed_at IS NULL`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_recommendation_reevaluations_pending
+       ON recommendation_reevaluations(outcome, completed_at, user_id, claimed_at)`,
+  );
   if (!settingsCols.some((c) => c.name === "alert_push")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN alert_push INTEGER NOT NULL DEFAULT 1",

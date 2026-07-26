@@ -120,7 +120,9 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistantSpeakingRef = useRef(false);
   const sendAgentMessageRef = useRef(sendAgentMessage);
-  sendAgentMessageRef.current = sendAgentMessage;
+  useEffect(() => {
+    sendAgentMessageRef.current = sendAgentMessage;
+  }, [sendAgentMessage]);
 
   const clearTimers = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
@@ -178,6 +180,9 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
   }, [armIdleTimer, assistantSpeaking, controller, error, muted]);
 
   const askAichartTool = useMemo((): VoiceTool<{ message: string }> => {
+    // The refs below are read only when the voice runtime invokes `execute`,
+    // never while React renders. The compiler cannot see through defineVoiceTool.
+    // eslint-disable-next-line react-hooks/refs
     return defineVoiceTool({
       name: "ask_aichart",
       description:

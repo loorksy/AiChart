@@ -26,6 +26,8 @@ let db: typeof import("@/lib/db");
 let cycle: typeof import("@/lib/recommendations/reevaluationCycle");
 let revisions: typeof import("@/lib/recommendations/canonical/revisions");
 let repository: typeof import("@/lib/recommendations/canonical/repository");
+let reevaluationTriggers: typeof import("@/lib/recommendations/reevaluationTriggers");
+let locks: typeof import("@/lib/locks");
 let userId = 0;
 
 before(async () => {
@@ -34,6 +36,8 @@ before(async () => {
   cycle = await import("@/lib/recommendations/reevaluationCycle");
   revisions = await import("@/lib/recommendations/canonical/revisions");
   repository = await import("@/lib/recommendations/canonical/repository");
+  reevaluationTriggers = await import("@/lib/recommendations/reevaluationTriggers");
+  locks = await import("@/lib/locks");
   userId = await db.insertReturningId(
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     ["cycle@example.com", "x", "user", "active"],
@@ -105,6 +109,11 @@ function brainResult(over: {
       planTypeBecause: "السعر بعيد.",
     },
     evidenceDimensions: [{ key: "signal_strength", grade: "moderate", detail: "x" }],
+    evidenceSnapshot: {
+      schemaVersion: 1,
+      modelContext: { signalStrength: "moderate", symbol: "XAUUSD" },
+      visualSnapshots: [],
+    },
     recommendation: {
       action: over.direction ?? "buy",
       planType: over.planType ?? "conditional",
@@ -200,12 +209,16 @@ describe("a changed decision produces a revision through the one mechanism", () 
     const id = await livePlan();
     const result = await cycle.runReevaluationCycle(trigger(), id, {
       runBrain: async () =>
-        brainResult({ executionState: "invalidated", entry: 3950, stopLoss: 3930 }),
+        brainResult({ executionState: "invalidated" }),
     });
     // Invalidation comes from the BRAIN through the revision mechanism, never
     // from the tracker deciding a plan is finished.
     assert.equal(result.verdict, "invalidated");
     assert.ok(result.revision);
+    const canonical = await repository.getCanonicalRecommendation(userId, id);
+    assert.equal(canonical?.status, "invalidated");
+    const transitions = await repository.listRecommendationTransitions(userId, id);
+    assert.equal(transitions.at(-1)?.toStatus, "invalidated");
   });
 
   it("stores the evidence snapshot and trace with the revision", async () => {
@@ -219,9 +232,9 @@ describe("a changed decision produces a revision through the one mechanism", () 
       (effective!.decisionTrace as { chosenBecause?: string }).chosenBecause,
       "الطلب صمد.",
     );
-    // The trigger that caused the cycle is part of the snapshot.
-    const evidence = effective!.evidence as { trigger?: { reason?: string } };
-    assert.equal(evidence.trigger?.reason, "structure_break");
+    // The revision keeps the exact complete object consumed by the brain.
+    assert.equal(effective!.evidence.schemaVersion, 1);
+    assert.deepEqual(effective!.evidence.visualSnapshots, []);
   });
 
   it("ignores wording drift that is not a plan change", async () => {
@@ -238,6 +251,35 @@ describe("a changed decision produces a revision through the one mechanism", () 
 });
 
 describe("the cycle refuses to run where it should not", () => {
+  it("rejects a trigger raised against a superseded revision before the brain", async () => {
+    const id = await livePlan();
+    await revisions.applyRecommendationRevision({
+      userId,
+      recommendationId: id,
+      revision: {
+        direction: "buy",
+        planType: "conditional",
+        executionState: "awaiting_activation",
+        entry: 3990,
+        stopLoss: 3970,
+        targets: [4040],
+        reason: "newer plan",
+        source: "agent",
+        evidence: { schemaVersion: 1 },
+      },
+    });
+    let called = false;
+    const result = await cycle.runReevaluationCycle(trigger({ revisionNo: 1 }), id, {
+      runBrain: async () => {
+        called = true;
+        return brainResult();
+      },
+    });
+    assert.equal(result.verdict, "skipped");
+    assert.match(result.detail, /stale trigger revision/);
+    assert.equal(called, false);
+  });
+
   it("skips a terminal recommendation", async () => {
     const id = await livePlan();
     const { transitionRecommendation } = repository;
@@ -321,22 +363,68 @@ describe("the cycle refuses to run where it should not", () => {
       "two concurrent revisions from one condition",
     );
   });
+
+  it("keeps a claimed request pending while busy and consumes it later", async () => {
+    const id = await livePlan();
+    const requested = trigger({
+      recommendationId: String(id),
+      reason: "user_request",
+      source: "user",
+      idempotencyKey: `user-retry-${id}`,
+    });
+    assert.equal(
+      (await reevaluationTriggers.admitTriggers([requested])).admitted.length,
+      1,
+    );
+
+    const held = await locks.acquireLock(`reevaluation:${id}`, 15_000);
+    assert.ok(held);
+    try {
+      const busy = await cycle.consumePendingReevaluationTriggers(
+        { userId },
+        { runBrain: async () => brainResult() },
+      );
+      assert.equal(busy[0]?.verdict, "skipped");
+      assert.equal(busy[0]?.retryable, true);
+      const rows = await db.query<{ completed_at: number | null }>(
+        `SELECT completed_at FROM recommendation_reevaluations
+          WHERE recommendation_id = ? AND outcome = 'cycle_requested'`,
+        [String(id)],
+      );
+      assert.equal(rows[0]?.completed_at, null);
+    } finally {
+      await locks.releaseLock(held!);
+    }
+
+    const retried = await cycle.consumePendingReevaluationTriggers(
+      { userId },
+      { runBrain: async () => brainResult(), silentNotifications: true },
+    );
+    assert.equal(retried[0]?.verdict, "confirmed");
+    const pending = await db.query<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM recommendation_reevaluations
+        WHERE recommendation_id = ? AND outcome = 'cycle_requested'
+          AND completed_at IS NULL`,
+      [String(id)],
+    );
+    assert.equal(Number(pending[0]!.count), 0);
+  });
 });
 
 describe("the ordering is structural, not just intended", () => {
   it("reaches the brain through the same entry point a chat analysis uses", () => {
-    const module = readFileSync(
+    const cycleSource = readFileSync(
       resolve(process.cwd(), "src/lib/recommendations/reevaluationCycle.ts"),
       "utf8",
     );
     // A second, cheaper "re-check" path would be a second brain with its own
     // habits, and the two would drift apart.
     assert.ok(
-      /runUnifiedChartAgent\s*\(/.test(module),
+      /runUnifiedChartAgent\s*\(/.test(cycleSource),
       "the cycle must call the unified brain entry point",
     );
     assert.ok(
-      !/runFinalDecisionSynthesizer\s*\(/.test(module),
+      !/runFinalDecisionSynthesizer\s*\(/.test(cycleSource),
       "the cycle must not reach past the orchestrator into the synthesizer, which would skip the evidence bundle",
     );
   });

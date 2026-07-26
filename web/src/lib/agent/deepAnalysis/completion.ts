@@ -22,7 +22,10 @@ import {
 import type { CanonicalRecommendation } from "@/lib/recommendations/canonical/types";
 import { notifyLifecycleEvents } from "@/lib/recommendations/lifecycleNotifier";
 import type { LifecycleEvent } from "@/lib/recommendations/lifecycleEvents";
-import type { ReevaluationTrigger } from "@/lib/recommendations/reevaluationTriggers";
+import {
+  admitTriggers,
+  type ReevaluationTrigger,
+} from "@/lib/recommendations/reevaluationTriggers";
 import type { CycleDeps, CycleResult } from "@/lib/recommendations/reevaluationCycle";
 import { execute } from "@/lib/db";
 import { FEATURES } from "@/lib/agent/featureFlags";
@@ -339,6 +342,54 @@ export async function applyDeepResearchVerdict(
     metricsPresent: scored.metricsPresent,
     executionTriggered: false,
   };
+
+  // Every deep-research completion is evidence for a NEW unified decision
+  // cycle. Research never confirms or revises a plan by itself, even when its
+  // historical tendency agrees with the current direction.
+  if (
+    FEATURES.reevaluationTriggersV1() &&
+    (scored.delta >= 0 || FEATURES.deepResearchV2())
+  ) {
+    const trigger: ReevaluationTrigger = {
+      recommendationId: reference,
+      userId,
+      symbol: rec.symbol,
+      reason: "deep_research",
+      detail:
+        `Deep research completed (${scored.agreement}); ` +
+        `historicalEvidenceTendency=${scored.delta}. Rebuild all live evidence before deciding.`,
+      source: "deep_research",
+      revisionNo,
+      raisedAt: Date.now(),
+      idempotencyKey: `deep:${analysisId}`,
+    };
+    const { admitted } = await admitTriggers([trigger]);
+    if (!admitted.length) return { verdict: null, cycle: null };
+    const { runReevaluationCycle } = await import(
+      "@/lib/recommendations/reevaluationCycle"
+    );
+    const cycle = await runReevaluationCycle(
+      admitted[0]!,
+      recommendationId,
+      deps,
+    );
+    const verdict: DeepResearchVerdict | null =
+      cycle.verdict === "skipped" ? null : cycle.verdict;
+    await appendRecommendationHistory({
+      userId,
+      recommendationId,
+      kind: "research_completion",
+      actor: "deep_analysis",
+      source: "research_service",
+      payload: {
+        ...basePayload,
+        cycleVerdict: cycle.verdict,
+        revisionNo: cycle.revision?.revisionNo ?? null,
+        ...(verdict ? { verdict } : {}),
+      },
+    });
+    return { verdict, cycle };
+  }
 
   // Nothing against the plan: a confirmed verdict, recorded like a cycle's —
   // same table, same dedupe shape — and never a revision.

@@ -196,6 +196,14 @@ export interface SynthesizerFailure {
 export interface SynthesizerOutcome {
   result: FinalDecisionResult | null;
   usedLLM: boolean;
+  /**
+   * The immutable, complete input the decision engine actually read.
+   *
+   * Re-evaluation persists this object verbatim. Keeping it on the outcome
+   * prevents callers from reconstructing a smaller, subtly different bundle
+   * after the model has already decided.
+   */
+  evidenceSnapshot?: Record<string, unknown>;
   selectedCandidateIds?: string[];
   drawingAdvice?: { shouldDraw: boolean; reason: string };
   /** Present only when `result` is null. */
@@ -259,6 +267,39 @@ export interface SynthesizerDeps {
    * defaults to the same visual-evidence collector the first round used.
    */
   captureExtraFrame?: (timeframe: string) => Promise<VisualSnapshot | null>;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      deepFreeze(child);
+    }
+  }
+  return value;
+}
+
+function frozenEvidenceSnapshot(
+  input: Parameters<typeof buildModelContext>[0] & {
+    locale?: "ar" | "en";
+    skillContextBlock?: string | null;
+    lessonsBlock?: string | null;
+    visualSnapshots?: VisualSnapshot[] | null;
+  },
+): Record<string, unknown> {
+  // JSON cloning deliberately removes undefined values, exactly as the model
+  // serialization does, and detaches the snapshot from mutable pipeline data.
+  const detached = JSON.parse(
+    JSON.stringify({
+      schemaVersion: 1,
+      modelContext: buildModelContext(input),
+      visualSnapshots: input.visualSnapshots ?? [],
+      locale: input.locale ?? "ar",
+      skillContextBlock: input.skillContextBlock ?? null,
+      lessonsBlock: input.lessonsBlock ?? null,
+    }),
+  ) as Record<string, unknown>;
+  return deepFreeze(detached);
 }
 
 const SYNTH_SYSTEM_PROMPT = `You are the decision engine of a chart-connected Forex scalping agent — the only component that turns evidence into a decision.
@@ -385,7 +426,8 @@ export async function runFinalDecisionSynthesizer(
   ]
     .filter(Boolean)
     .join("\n\n");
-  const user = JSON.stringify(buildModelContext(input));
+  let evidenceSnapshot = frozenEvidenceSnapshot(input);
+  const user = JSON.stringify(evidenceSnapshot.modelContext);
   // Charts, when we have them. The platform's decision engine used to read a
   // JSON summary while the MCP agent looked at the same market on real charts —
   // two different ways of seeing, and so two different answers to the same
@@ -445,6 +487,7 @@ export async function runFinalDecisionSynthesizer(
     return {
       result: null,
       usedLLM: false,
+      evidenceSnapshot,
       failure:
         failure ?? {
           kind: "unknown",
@@ -494,6 +537,10 @@ You asked for the ${extraRequest} view; it is now attached with its numbers. ` +
           metadata: { extraTimeframe: extraRequest },
         });
         parsed = second;
+        evidenceSnapshot = frozenEvidenceSnapshot({
+          ...input,
+          visualSnapshots: [...(input.visualSnapshots ?? []), snapshot],
+        });
       } catch {
         // The first decision stands. That is the whole contract of the round.
         metrics.extraFrameRounds.inc({ outcome: "second_call_failed" });
@@ -510,6 +557,7 @@ You asked for the ${extraRequest} view; it is now attached with its numbers. ` +
   return {
     result: applyModelDecision(parsed, input),
     usedLLM: true,
+    evidenceSnapshot,
     selectedCandidateIds: parsed.selectedCandidateIds?.slice(0, 8),
     drawingAdvice: {
       shouldDraw: parsed.drawingAdvice.shouldDraw,

@@ -65,6 +65,8 @@ export interface TrackedRecommendation {
   validityCandles?: number;
   /** Which revision of the plan these levels belong to. */
   revisionNo?: number;
+  /** Frozen evidence consumed by the brain for the effective revision. */
+  evidenceSnapshot?: Record<string, unknown>;
   triggerCondition?: string;
   createdAt: number;
   createdCandleTime: number;

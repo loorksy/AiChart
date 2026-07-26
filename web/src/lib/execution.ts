@@ -23,7 +23,9 @@ import { getEaConnection } from "./eaStore";
 import {
   checkRevisionIsCurrent,
   getEffectiveRevision,
+  recommendationLockName,
 } from "./recommendations/canonical/revisions";
+import { withLock } from "./locks";
 import { isAutoExecutionAuthorized } from "./agent/tradeMode";
 import { FEATURES } from "./agent/featureFlags";
 import { createLogger } from "./logger";
@@ -214,6 +216,33 @@ export async function executeIntent(
   intentId: number,
   options?: ExecuteIntentOptions,
 ): Promise<ExecutionResult & { activities: AgentActivity[] }> {
+  const intent = await getIntent(intentId, userId);
+  if (intent?.recommendation_id == null || !FEATURES.recRevisionsV1()) {
+    return executeIntentUnderRevisionLock(userId, intentId, options);
+  }
+  const locked = await withLock(
+    recommendationLockName(intent.recommendation_id),
+    120_000,
+    () => executeIntentUnderRevisionLock(userId, intentId, options),
+  );
+  if (!locked.ran) {
+    return {
+      ok: false,
+      status: "failed",
+      reason:
+        "The recommendation is being revised or executed concurrently; no order was sent.",
+      errorCode: "recommendation_busy",
+      activities: [],
+    };
+  }
+  return locked.result!;
+}
+
+async function executeIntentUnderRevisionLock(
+  userId: number,
+  intentId: number,
+  options?: ExecuteIntentOptions,
+): Promise<ExecutionResult & { activities: AgentActivity[] }> {
   const activities: AgentActivity[] = [];
   const push = (activity: AgentActivity) => {
     const index = activities.findIndex((item) => item.id === activity.id);
@@ -351,6 +380,7 @@ export async function executeIntent(
         status: "failed",
         reason,
         denyCode: BridgeErrorCode.VALIDATION_ERROR,
+        errorCode: revision.reason ?? "stale_revision",
         activities,
       };
     }

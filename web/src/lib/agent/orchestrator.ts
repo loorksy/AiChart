@@ -78,7 +78,10 @@ import {
   type RiskAgentResult,
 } from "./agents/riskAgent";
 import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
-import { runFinalDecisionSynthesizer } from "./agents/finalDecisionSynthesizer";
+import {
+  runFinalDecisionSynthesizer,
+  type SynthesizerDeps,
+} from "./agents/finalDecisionSynthesizer";
 import { runDrawingAgent } from "./agents/drawingAgent";
 import {
   buildDrawingPlan,
@@ -254,6 +257,13 @@ export interface UnifiedAgentInput {
    * that a decision made through MCP and one made in chat came from one engine.
    */
   surface?: "platform" | "mcp";
+  /**
+   * A re-evaluation runs the identical evidence and decision pipeline, but it
+   * must not create a second recommendation or recursively enqueue research.
+   */
+  purpose?: "analysis" | "reevaluation";
+  /** Model-provider seam used by integration tests; never a second brain. */
+  synthesizerDeps?: SynthesizerDeps;
 }
 
 export async function runUnifiedChartAgent(
@@ -1047,19 +1057,22 @@ async function runUnifiedChartAgentInner(
           liveCost: liveCost as Record<string, unknown> | null,
         },
         {
+          ...input.synthesizerDeps,
           // The extra-frame round captures through the SAME collector the first
           // round used — one image, tight budget, failure returns null and the
           // first decision stands.
-          captureExtraFrame: async (timeframe) => {
-            const extra = await collectVisualEvidence({
-              userId: ctx.userId,
-              symbol: market.symbol,
-              interval: market.interval,
-              timeframes: [timeframe],
-              timeoutMs: AGENT_TIMEOUTS.visualEvidence,
-            }).catch(() => null);
-            return extra?.snapshots[0] ?? null;
-          },
+          captureExtraFrame:
+            input.synthesizerDeps?.captureExtraFrame ??
+            (async (timeframe) => {
+              const extra = await collectVisualEvidence({
+                userId: ctx.userId,
+                symbol: market.symbol,
+                interval: market.interval,
+                timeframes: [timeframe],
+                timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+              }).catch(() => null);
+              return extra?.snapshots[0] ?? null;
+            }),
         },
       ).catch((err) => {
         synthError = err;
@@ -1408,8 +1421,9 @@ async function runUnifiedChartAgentInner(
   });
 
   if (
-    finalDecision.decision === "buy" ||
-    finalDecision.decision === "sell"
+    input.purpose !== "reevaluation" &&
+    (finalDecision.decision === "buy" ||
+      finalDecision.decision === "sell")
   ) {
     storedRecommendation = await storeFinalRecommendation({
       sessionId,
@@ -1426,7 +1440,12 @@ async function runUnifiedChartAgentInner(
     });
   }
 
-  if (deepTrigger.run && ctx.userId && deepTrigger.allowReason) {
+  if (
+    input.purpose !== "reevaluation" &&
+    deepTrigger.run &&
+    ctx.userId &&
+    deepTrigger.allowReason
+  ) {
     const direction =
       finalDecision.decision === "buy" || finalDecision.decision === "sell"
         ? finalDecision.decision
@@ -1627,6 +1646,7 @@ async function runUnifiedChartAgentInner(
     // and the evidence card never reached the operator at all.
     decisionTrace: finalDecision.decisionTrace,
     evidenceDimensions: finalDecision.evidenceDimensions,
+    evidenceSnapshot: synth.evidenceSnapshot,
     debugDecisionFlow,
     options: contextualOptionsFor({
       decision: finalDecision.decision,

@@ -11,7 +11,7 @@ import { adaptSql, normalizeRow } from "./sql";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _pool: Pool | null = null;
-const SCHEMA_VERSION = "2026-07-18-nav-admin-subscription-v1";
+const SCHEMA_VERSION = "2026-07-26-reevaluation-e2e-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -512,6 +512,11 @@ const SCHEMA = `
     -- Fingerprint of the bundle the cycle decided on, so a confirmed verdict is
     -- traceable to the evidence that confirmed it.
     evidence_hash     TEXT,
+    trigger_payload_json TEXT NOT NULL DEFAULT '{}',
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    decision_trace_json TEXT NOT NULL DEFAULT '{}',
+    claimed_at        BIGINT,
+    completed_at      BIGINT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (recommendation_id, dedupe_key)
   );
@@ -883,6 +888,26 @@ const SCHEMA = `
 `;
 
 async function migratePg(client: PoolClient) {
+  await client.query(`
+    ALTER TABLE recommendation_reevaluations
+      ADD COLUMN IF NOT EXISTS trigger_payload_json TEXT NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS evidence_json TEXT NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS decision_trace_json TEXT NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS claimed_at BIGINT,
+      ADD COLUMN IF NOT EXISTS completed_at BIGINT
+  `);
+  // Pre-queue rows have no claim timestamp. Close them during the additive
+  // migration so the first deploy cannot replay the historical trigger log.
+  await client.query(`
+    UPDATE recommendation_reevaluations
+       SET completed_at = raised_at
+     WHERE outcome = 'cycle_requested' AND completed_at IS NULL
+       AND claimed_at IS NULL
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_recommendation_reevaluations_pending
+      ON recommendation_reevaluations(outcome, completed_at, user_id, claimed_at)
+  `);
   await client.query(`
     CREATE TABLE IF NOT EXISTS dynamic_pages (
       slug          TEXT PRIMARY KEY,

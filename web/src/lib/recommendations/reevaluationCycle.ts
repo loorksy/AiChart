@@ -25,13 +25,14 @@
  * The cycle never runs twice for one recommendation at a time, and its output goes
  * through `applyRecommendationRevision` like every other change.
  */
-import { execute } from "@/lib/db";
+import { query, transaction } from "@/lib/db";
 import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
 import { metrics } from "@/lib/metrics";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
 import type { AgentFinalResult } from "@/lib/agent/types";
+import type { SynthesizerDeps } from "@/lib/agent/agents/finalDecisionSynthesizer";
 import {
   applyRecommendationRevision,
   evidenceFingerprint,
@@ -39,8 +40,15 @@ import {
   type RecommendationRevision,
 } from "./canonical/revisions";
 import { getCanonicalRecommendation } from "./canonical/repository";
+import { isTerminalRecommendationStatus } from "./canonical/stateMachine";
 import { manageOpenTradeAfterRevision } from "./tradeManagement";
-import type { ReevaluationTrigger } from "./reevaluationTriggers";
+import { notifyLifecycleEvents } from "./lifecycleNotifier";
+import type { LifecycleEvent } from "./lifecycleEvents";
+import {
+  reevaluationClaimKey,
+  type ReevaluationReason,
+  type ReevaluationTrigger,
+} from "./reevaluationTriggers";
 
 const log = createLogger("recommendations:reevaluation-cycle");
 
@@ -58,6 +66,8 @@ export interface CycleResult {
   /** Operator-readable why. */
   detail: string;
   trigger: ReevaluationTrigger;
+  /** Retryable skips leave the durable claim pending for the next consumer. */
+  retryable?: boolean;
 }
 
 /** How the brain is reached. Injectable so tests exercise the real comparison. */
@@ -68,6 +78,12 @@ export interface CycleDeps {
     userId: number;
     reason: string;
   }) => Promise<AgentFinalResult | null>;
+  /** Provider seam passed into the real unified brain by integration tests. */
+  synthesizerDeps?: SynthesizerDeps;
+  /** Suppress external delivery while still claiming the notification dedupe. */
+  silentNotifications?: boolean;
+  /** Tracker batches its own events; other orchestration callers notify here. */
+  notifyInCycle?: boolean;
 }
 
 /**
@@ -82,9 +98,9 @@ async function defaultRunBrain(input: {
   interval: string;
   userId: number;
   reason: string;
-}): Promise<AgentFinalResult | null> {
+}, synthesizerDeps?: SynthesizerDeps): Promise<AgentFinalResult | null> {
   return runUnifiedChartAgent({
-    userMessage: `أعِد تقييم ${input.symbol} على ${input.interval}: ${input.reason}`,
+    userMessage: `Re-analyze the active trade plan for ${input.symbol} on ${input.interval}. Trigger: ${input.reason}`,
     chartContext: { symbol: input.symbol, interval: input.interval },
     requestContext: {
       requestId: `reeval-${input.symbol}-${Date.now()}`,
@@ -92,6 +108,8 @@ async function defaultRunBrain(input: {
       emitActivity: () => {},
     },
     canExecute: false,
+    purpose: "reevaluation",
+    synthesizerDeps,
   }).catch((error: unknown) => {
     log.warn("re-evaluation brain call failed", {
       symbol: input.symbol,
@@ -106,10 +124,15 @@ interface ComparableDecision {
   direction: "buy" | "sell";
   planType: string | null;
   entry: number | null;
+  entryLow: number | null;
+  entryHigh: number | null;
   stopLoss: number | null;
   targets: number[];
   validityCandles: number | null;
   alternativeScenario: string | null;
+  executionState: string | null;
+  activationCondition: string | null;
+  invalidationRule: string | null;
 }
 
 function comparableFromResult(result: AgentFinalResult): ComparableDecision | null {
@@ -119,10 +142,15 @@ function comparableFromResult(result: AgentFinalResult): ComparableDecision | nu
     direction: rec.action,
     planType: rec.planType ?? null,
     entry: rec.entry ?? null,
+    entryLow: rec.entryZone?.low ?? rec.entry ?? null,
+    entryHigh: rec.entryZone?.high ?? rec.entry ?? null,
     stopLoss: rec.stop_loss ?? null,
     targets: rec.targets ?? [],
     validityCandles: rec.validityCandles ?? null,
     alternativeScenario: rec.alternativeScenario ?? null,
+    executionState: rec.executionState ?? null,
+    activationCondition: rec.triggerCondition ?? null,
+    invalidationRule: rec.invalidationRule ?? null,
   };
 }
 
@@ -131,10 +159,15 @@ function comparableFromRevision(revision: RecommendationRevision): ComparableDec
     direction: revision.direction,
     planType: revision.planType,
     entry: revision.entry,
+    entryLow: revision.entryLow ?? revision.entry,
+    entryHigh: revision.entryHigh ?? revision.entry,
     stopLoss: revision.stopLoss,
     targets: revision.targets,
     validityCandles: revision.validityCandles,
     alternativeScenario: revision.alternativeScenario,
+    executionState: revision.executionState,
+    activationCondition: revision.activationCondition,
+    invalidationRule: revision.invalidationRule,
   };
 }
 
@@ -160,6 +193,8 @@ export function decisionChanged(
   if (before.direction !== after.direction) fields.push("direction");
   if ((before.planType ?? null) !== (after.planType ?? null)) fields.push("plan_type");
   if (!samePrice(before.entry, after.entry)) fields.push("entry");
+  if (!samePrice(before.entryLow, after.entryLow)) fields.push("entry_low");
+  if (!samePrice(before.entryHigh, after.entryHigh)) fields.push("entry_high");
   if (!samePrice(before.stopLoss, after.stopLoss)) fields.push("stop_loss");
   if (
     before.targets.length !== after.targets.length ||
@@ -172,6 +207,18 @@ export function decisionChanged(
   }
   if ((before.alternativeScenario ?? "") !== (after.alternativeScenario ?? "")) {
     fields.push("scenario");
+  }
+  if ((before.executionState ?? null) !== (after.executionState ?? null)) {
+    fields.push("execution_state");
+  }
+  if (
+    (before.activationCondition ?? "") !==
+    (after.activationCondition ?? "")
+  ) {
+    fields.push("activation_condition");
+  }
+  if ((before.invalidationRule ?? "") !== (after.invalidationRule ?? "")) {
+    fields.push("invalidation_rule");
   }
   return { changed: fields.length > 0, fields };
 }
@@ -188,32 +235,99 @@ async function recordCycle(input: {
   verdict: CycleVerdict;
   evidenceHash: string | null;
   detail: string;
+  evidence: Record<string, unknown>;
+  decisionTrace: Record<string, unknown>;
+  /** False for a transient failure: the DB claim remains available for retry. */
+  completeClaim?: boolean;
 }): Promise<void> {
-  await execute(
-    `INSERT INTO recommendation_reevaluations
-       (recommendation_id, user_id, symbol, reason, detail, source, revision_no,
-        outcome, raised_at, dedupe_key, evidence_hash)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT (recommendation_id, dedupe_key) DO NOTHING`,
-    [
-      input.trigger.recommendationId,
-      input.trigger.userId,
-      input.trigger.symbol,
-      input.trigger.reason,
-      input.detail,
-      input.trigger.source,
-      input.trigger.revisionNo,
-      input.verdict,
-      Date.now(),
-      `${input.trigger.revisionNo ?? 0}:${input.trigger.reason}:${input.verdict}`,
-      input.evidenceHash,
-    ],
-  ).catch((error: unknown) => {
-    log.warn("failed to record re-evaluation cycle", {
-      recommendationId: input.trigger.recommendationId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+  const completedAt = Date.now();
+  await transaction(async (db) => {
+    await db.execute(
+      `INSERT INTO recommendation_reevaluations
+         (recommendation_id, user_id, symbol, reason, detail, source, revision_no,
+          outcome, raised_at, dedupe_key, evidence_hash, trigger_payload_json,
+          evidence_json, decision_trace_json, completed_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT (recommendation_id, dedupe_key) DO NOTHING`,
+      [
+        input.trigger.recommendationId,
+        input.trigger.userId,
+        input.trigger.symbol,
+        input.trigger.reason,
+        input.detail,
+        input.trigger.source,
+        input.trigger.revisionNo,
+        input.verdict,
+        input.trigger.raisedAt,
+        `${input.trigger.revisionNo ?? 0}:${input.trigger.reason}:${input.trigger.raisedAt}:${input.verdict}`,
+        input.evidenceHash,
+        JSON.stringify({
+          reason: input.trigger.reason,
+          detail: input.trigger.detail,
+          source: input.trigger.source,
+          revisionNo: input.trigger.revisionNo,
+          raisedAt: input.trigger.raisedAt,
+          idempotencyKey: input.trigger.idempotencyKey ?? null,
+        }),
+        JSON.stringify(input.evidence),
+        JSON.stringify(input.decisionTrace),
+        completedAt,
+      ],
+    );
+    if (input.completeClaim !== false) {
+      await db.execute(
+        `UPDATE recommendation_reevaluations
+            SET completed_at = ?
+          WHERE recommendation_id = ? AND dedupe_key = ?
+            AND outcome = 'cycle_requested' AND completed_at IS NULL`,
+        [
+          completedAt,
+          input.trigger.recommendationId,
+          reevaluationClaimKey(input.trigger),
+        ],
+      );
+    }
   });
+}
+
+function lifecycleEventFor(result: CycleResult): LifecycleEvent | null {
+  if (result.verdict === "skipped") return null;
+  const revisionNo =
+    result.revision?.revisionNo ?? result.trigger.revisionNo ?? null;
+  return {
+    type:
+      result.verdict === "confirmed"
+        ? "reevaluation_confirmed"
+        : result.verdict === "invalidated"
+          ? "scenario_changed"
+          : "entry_updated",
+    recommendationId: result.trigger.recommendationId,
+    symbol: result.trigger.symbol,
+    revisionNo,
+    dedupeKey:
+      result.verdict === "confirmed"
+        ? `${result.trigger.recommendationId}:${result.trigger.revisionNo ?? 0}:reeval:confirmed:${result.trigger.reason}:${result.trigger.raisedAt}`
+        : `${result.trigger.recommendationId}:${revisionNo ?? 0}:reeval:${result.verdict}`,
+    detail: result.detail,
+    terminal: result.verdict === "invalidated",
+    occurredAt: Date.now(),
+  };
+}
+
+async function announceCycle(
+  result: CycleResult,
+  silent: boolean,
+): Promise<void> {
+  const event = lifecycleEventFor(result);
+  if (!event) return;
+  await notifyLifecycleEvents(result.trigger.userId, [event], { silent }).catch(
+    (error: unknown) => {
+      log.warn("failed to announce re-evaluation verdict", {
+        recommendationId: result.recommendationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  );
 }
 
 /**
@@ -236,7 +350,7 @@ export async function runReevaluationCycle(
   canonicalId: number,
   deps: CycleDeps = {},
 ): Promise<CycleResult> {
-  const skip = (detail: string): CycleResult => ({
+  const skip = (detail: string, retryable = true): CycleResult => ({
     recommendationId: trigger.recommendationId,
     canonicalId,
     verdict: "skipped",
@@ -244,6 +358,7 @@ export async function runReevaluationCycle(
     evidenceHash: null,
     detail,
     trigger,
+    retryable,
   });
 
   if (!FEATURES.reevaluationTriggersV1()) {
@@ -255,24 +370,46 @@ export async function runReevaluationCycle(
     120_000,
     async (): Promise<CycleResult> => {
       const rec = await getCanonicalRecommendation(trigger.userId, canonicalId);
-      if (!rec) return skip("recommendation not found");
+      if (!rec) return skip("recommendation not found", false);
       // A finished plan is history, not a draft. Re-deciding it would produce a
       // revision the state machine correctly refuses.
-      if (rec.status === "sl_hit" || rec.status === "expired" || rec.status === "cancelled") {
-        return skip(`terminal status ${rec.status}`);
+      if (isTerminalRecommendationStatus(rec.status)) {
+        return skip(`terminal status ${rec.status}`, false);
       }
 
       const effective = await getEffectiveRevision(trigger.userId, canonicalId);
-      if (!effective) return skip("no effective revision to compare against");
+      if (!effective) {
+        return skip("no effective revision to compare against", false);
+      }
+      if (
+        trigger.revisionNo != null &&
+        trigger.revisionNo !== effective.revisionNo
+      ) {
+        return skip(
+          `stale trigger revision ${trigger.revisionNo}; effective ${effective.revisionNo}`,
+          false,
+        );
+      }
+
+      metrics.reevaluationCycles.inc({ reason: trigger.reason });
 
       // The whole bundle, from the same brain, on fresh market data.
-      const runBrain = deps.runBrain ?? defaultRunBrain;
-      const result = await runBrain({
-        symbol: rec.symbol,
-        interval: rec.timeframe,
-        userId: trigger.userId,
-        reason: trigger.detail,
-      });
+      const result = deps.runBrain
+        ? await deps.runBrain({
+            symbol: rec.symbol,
+            interval: rec.timeframe,
+            userId: trigger.userId,
+            reason: trigger.detail,
+          })
+        : await defaultRunBrain(
+            {
+              symbol: rec.symbol,
+              interval: rec.timeframe,
+              userId: trigger.userId,
+              reason: trigger.detail,
+            },
+            deps.synthesizerDeps,
+          );
       if (!result) return skip("brain produced no decision");
 
       const after = comparableFromResult(result);
@@ -282,20 +419,26 @@ export async function runReevaluationCycle(
         return skip("no decision in result (operational blocker)");
       }
 
-      const evidenceHash = evidenceFingerprint({
-        dimensions: result.evidenceDimensions ?? null,
-        decisionTrace: result.decisionTrace ?? null,
-      });
+      const evidence = result.evidenceSnapshot;
+      if (!evidence) return skip("brain returned no complete evidence snapshot");
+      const decisionTrace =
+        (result.decisionTrace as Record<string, unknown> | undefined) ?? {};
+      const evidenceHash = evidenceFingerprint(evidence);
       const before = comparableFromRevision(effective);
       const { changed, fields } = decisionChanged(before, after);
 
-      metrics.reevaluationCycles.inc({ reason: trigger.reason });
-
       if (!changed) {
         const detail = `${rec.symbol}: أُعيد التقييم بعد ${trigger.reason} والقرار لم يتغيّر — النسخة ${effective.revisionNo} قائمة.`;
-        await recordCycle({ trigger, verdict: "confirmed", evidenceHash, detail });
+        await recordCycle({
+          trigger,
+          verdict: "confirmed",
+          evidenceHash,
+          detail,
+          evidence,
+          decisionTrace,
+        });
         metrics.reevaluationVerdicts.inc({ verdict: "confirmed" });
-        return {
+        const confirmed: CycleResult = {
           recommendationId: trigger.recommendationId,
           canonicalId,
           verdict: "confirmed",
@@ -304,6 +447,10 @@ export async function runReevaluationCycle(
           detail,
           trigger,
         };
+        if (deps.notifyInCycle !== false) {
+          await announceCycle(confirmed, deps.silentNotifications === true);
+        }
+        return confirmed;
       }
 
       // Changed. The revision mechanism is the only thing that writes a plan, and
@@ -316,6 +463,8 @@ export async function runReevaluationCycle(
           planType: after.planType,
           executionState: result.recommendation?.executionState ?? null,
           entry: after.entry,
+          entryLow: after.entryLow,
+          entryHigh: after.entryHigh,
           stopLoss: after.stopLoss,
           targets: after.targets,
           activationCondition: result.recommendation?.triggerCondition ?? null,
@@ -324,18 +473,22 @@ export async function runReevaluationCycle(
           validityCandles: after.validityCandles,
           reason: `إعادة تقييم (${trigger.reason}): تغيّر ${fields.join("، ")}.`,
           source: "market_update",
-          evidence: {
-            evidenceDimensions: result.evidenceDimensions ?? null,
-            trigger: { reason: trigger.reason, detail: trigger.detail },
-          },
-          decisionTrace: (result.decisionTrace ?? null) as Record<string, unknown> | null,
+          evidence,
+          decisionTrace,
         },
       });
 
       const verdict: CycleVerdict =
         result.recommendation?.executionState === "invalidated" ? "invalidated" : "revised";
       const detail = `${rec.symbol}: أُعيد التقييم بعد ${trigger.reason} — تغيّر ${fields.join("، ")} (النسخة ${revision.revisionNo}).`;
-      await recordCycle({ trigger, verdict, evidenceHash, detail });
+      await recordCycle({
+        trigger,
+        verdict,
+        evidenceHash,
+        detail,
+        evidence,
+        decisionTrace,
+      });
       metrics.reevaluationVerdicts.inc({ verdict });
 
       // Plan §14: when this plan's trade is ALREADY OPEN, the recorded change
@@ -354,7 +507,7 @@ export async function runReevaluationCycle(
         });
       });
 
-      return {
+      const completed: CycleResult = {
         recommendationId: trigger.recommendationId,
         canonicalId,
         verdict,
@@ -363,15 +516,41 @@ export async function runReevaluationCycle(
         detail,
         trigger,
       };
+      if (deps.notifyInCycle !== false) {
+        await announceCycle(completed, deps.silentNotifications === true);
+      }
+      return completed;
     },
   );
 
   if (!locked.ran) {
     // Another cycle or an execution holds the plan. Skipping is right: the
     // condition, if real, is still there on the next sweep.
-    return skip("recommendation busy");
+    const busy = skip("recommendation busy");
+    await recordCycle({
+      trigger,
+      verdict: "skipped",
+      evidenceHash: null,
+      detail: busy.detail,
+      evidence: {},
+      decisionTrace: {},
+      completeClaim: false,
+    });
+    return busy;
   }
-  return locked.result!;
+  const completed = locked.result!;
+  if (completed.verdict === "skipped") {
+    await recordCycle({
+      trigger,
+      verdict: "skipped",
+      evidenceHash: null,
+      detail: completed.detail,
+      evidence: {},
+      decisionTrace: {},
+      completeClaim: completed.retryable !== true,
+    });
+  }
+  return completed;
 }
 
 /**
@@ -389,4 +568,99 @@ export async function runReevaluationCycles(
     results.push(await runReevaluationCycle(item.trigger, item.canonicalId, deps));
   }
   return results;
+}
+
+interface PendingClaimRow {
+  recommendation_id: string;
+  user_id: number | string;
+  symbol: string;
+  reason: string;
+  detail: string;
+  source: string;
+  revision_no: number | string | null;
+  raised_at: number | string;
+  trigger_payload_json: string | null;
+}
+
+function pendingTrigger(row: PendingClaimRow): ReevaluationTrigger {
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = row.trigger_payload_json
+      ? (JSON.parse(row.trigger_payload_json) as Record<string, unknown>)
+      : {};
+  } catch {
+    payload = {};
+  }
+  return {
+    recommendationId: row.recommendation_id,
+    userId: Number(row.user_id),
+    symbol: row.symbol,
+    reason: row.reason as ReevaluationReason,
+    detail:
+      typeof payload.detail === "string" ? payload.detail : row.detail,
+    source:
+      payload.source === "user" ||
+      payload.source === "deep_research" ||
+      payload.source === "monitor"
+        ? payload.source
+        : "tracker",
+    revisionNo:
+      row.revision_no == null ? null : Number(row.revision_no),
+    raisedAt: Number(row.raised_at),
+    idempotencyKey:
+      typeof payload.idempotencyKey === "string"
+        ? payload.idempotencyKey
+        : undefined,
+  };
+}
+
+/**
+ * Drain durable claims left by this sweep or an interrupted earlier process.
+ *
+ * The claim is completed only after a terminal cycle verdict. Busy locks,
+ * provider failures, and temporarily incomplete evidence leave it pending, so a
+ * user request or deep-research completion cannot disappear between claim and
+ * brain invocation.
+ */
+export async function consumePendingReevaluationTriggers(
+  options: { userId?: number; limit?: number } = {},
+  deps: CycleDeps = {},
+): Promise<CycleResult[]> {
+  const limit = Math.max(1, Math.min(100, options.limit ?? 25));
+  const rows = options.userId == null
+    ? await query<PendingClaimRow>(
+        `SELECT recommendation_id, user_id, symbol, reason, detail, source,
+                revision_no, raised_at, trigger_payload_json
+           FROM recommendation_reevaluations
+          WHERE outcome = 'cycle_requested' AND completed_at IS NULL
+          ORDER BY COALESCE(claimed_at, raised_at) ASC
+          LIMIT ?`,
+        [limit],
+      )
+    : await query<PendingClaimRow>(
+        `SELECT recommendation_id, user_id, symbol, reason, detail, source,
+                revision_no, raised_at, trigger_payload_json
+           FROM recommendation_reevaluations
+          WHERE outcome = 'cycle_requested' AND completed_at IS NULL
+            AND user_id = ?
+          ORDER BY COALESCE(claimed_at, raised_at) ASC
+          LIMIT ?`,
+        [options.userId, limit],
+      );
+
+  const work: Array<{ trigger: ReevaluationTrigger; canonicalId: number }> = [];
+  for (const row of rows) {
+    const canonical = await query<{ id: number | string }>(
+      `SELECT id FROM recommendations
+        WHERE user_id = ?
+          AND (legacy_tracking_id = ? OR CAST(id AS TEXT) = ?)
+        LIMIT 1`,
+      [row.user_id, row.recommendation_id, row.recommendation_id],
+    );
+    const canonicalId = Number(canonical[0]?.id);
+    if (Number.isFinite(canonicalId) && canonicalId > 0) {
+      work.push({ trigger: pendingTrigger(row), canonicalId });
+    }
+  }
+  return runReevaluationCycles(work, deps);
 }

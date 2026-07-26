@@ -75,6 +75,9 @@ export async function GET() {
           "aichart_duplicate_notifications_total",
         ),
         reevaluationCycles: await value("aichart_reevaluation_cycles_total"),
+        reevaluationTriggers: await value(
+          "aichart_reevaluation_triggers_total",
+        ),
       },
       featureFlags: featureFlagSnapshot(),
     });

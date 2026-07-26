@@ -22,7 +22,9 @@
  * limited and de-duplicated here, and they never bill.
  */
 import { execute, query } from "@/lib/db";
+import { withLock } from "@/lib/locks";
 import { createLogger } from "@/lib/logger";
+import { metrics } from "@/lib/metrics";
 import { FEATURES } from "@/lib/agent/featureFlags";
 
 const log = createLogger("recommendations:reevaluation");
@@ -59,6 +61,8 @@ export interface ReevaluationTrigger {
   /** Revision in force when it was raised, so a stale trigger is recognisable. */
   revisionNo: number | null;
   raisedAt: number;
+  /** Stable producer identity (for example a deep-analysis id). */
+  idempotencyKey?: string;
 }
 
 /**
@@ -101,15 +105,26 @@ export interface DetectTriggersInput {
     bias?: "up" | "down" | "flat" | null;
     /** True when a break-of-structure event landed since the last sweep. */
     brokeSinceLastSweep?: boolean | null;
+    /** Stable identity of the detected break (normally its candle time). */
+    eventKey?: string | null;
   } | null;
   /** Founding pattern's current stage, when the detector still sees it. */
   patternStage?: string | null;
+  /** Stable identity of the pattern/stage observation. */
+  patternStageKey?: string | null;
   /** Higher-timeframe bias, when the multi-timeframe read ran. */
   higherTimeframeBias?: "up" | "down" | "flat" | null;
   /** Spread now versus what the plan was costed at, both in the same unit. */
   spread?: { now: number; plannedFor: number } | null;
   /** Calendar releases within the plan's horizon. */
   upcomingEvents?: Array<{ title: string; minutesAway: number; impact: string }> | null;
+  /** Price is close to invalidation while some surrounding evidence changed. */
+  invalidationProximity?: {
+    currentPrice: number;
+    invalidationLevel: number;
+    atr: number;
+    contextChanged: boolean;
+  } | null;
   now?: number;
 }
 
@@ -124,6 +139,10 @@ const SPREAD_BREAK_MULTIPLE = 2;
 /** Minutes inside which a release is treated as imminent. */
 const EVENT_IMMINENT_MINUTES = 30;
 
+function cooldownBucket(timestamp: number): number {
+  return Math.floor(timestamp / COOLDOWN_MS);
+}
+
 /**
  * Detect what changed. Pure — no reads, no writes, no decisions.
  *
@@ -137,7 +156,11 @@ export function detectReevaluationTriggers(
   const now = input.now ?? Date.now();
   const triggers: ReevaluationTrigger[] = [];
 
-  const raise = (reason: ReevaluationReason, detail: string) => {
+  const raise = (
+    reason: ReevaluationReason,
+    detail: string,
+    idempotencyKey?: string,
+  ) => {
     triggers.push({
       recommendationId: rec.id,
       userId: rec.userId,
@@ -147,6 +170,7 @@ export function detectReevaluationTriggers(
       source: "tracker",
       revisionNo: rec.revisionNo ?? null,
       raisedAt: now,
+      idempotencyKey,
     });
   };
 
@@ -160,6 +184,7 @@ export function detectReevaluationTriggers(
       raise(
         "structure_break",
         `${rec.symbol}: كسر هيكلي ضد اتجاه الخطة — يستدعي إعادة تقييم.`,
+        input.structure.eventKey ?? undefined,
       );
     }
   }
@@ -170,11 +195,13 @@ export function detectReevaluationTriggers(
       raise(
         "pattern_completed",
         `${rec.symbol}: اكتمل ${rec.foundingPattern} الذي بُنيت عليه الخطة.`,
+        input.patternStageKey ?? undefined,
       );
     } else if (input.patternStage === "failed" || input.patternStage === "invalidated") {
       raise(
         "pattern_failed",
         `${rec.symbol}: فشل ${rec.foundingPattern} الذي بُنيت عليه الخطة.`,
+        input.patternStageKey ?? undefined,
       );
     }
   }
@@ -187,6 +214,7 @@ export function detectReevaluationTriggers(
       raise(
         "spread_widened",
         `${rec.symbol}: السبريد الآن ${multiple.toFixed(1)}× ما كُلّفت به الخطة — الجدوى تغيّرت.`,
+        `spread:${multiple.toFixed(1)}:${cooldownBucket(now)}`,
       );
     }
   }
@@ -200,6 +228,7 @@ export function detectReevaluationTriggers(
       raise(
         "higher_timeframe_reversal",
         `${rec.symbol}: انعكس الفريم الأعلى ضد الخطة.`,
+        `htf:${input.higherTimeframeBias}:${cooldownBucket(now)}`,
       );
     }
   }
@@ -210,9 +239,25 @@ export function detectReevaluationTriggers(
       raise(
         "economic_event",
         `${rec.symbol}: ${event.title} بعد ${Math.max(0, Math.round(event.minutesAway))} دقيقة (${event.impact}).`,
+        `event:${event.title}:${event.impact}:${Math.round((now + event.minutesAway * 60_000) / 60_000)}`,
       );
       break; // One trigger per sweep is enough to ask for one cycle.
     }
+  }
+
+  const proximity = input.invalidationProximity;
+  if (
+    proximity &&
+    proximity.contextChanged &&
+    proximity.atr > 0 &&
+    Math.abs(proximity.currentPrice - proximity.invalidationLevel) <=
+      proximity.atr * 0.5
+  ) {
+    raise(
+      "approaching_invalidation_changed_context",
+      `${rec.symbol}: price is within 0.5 ATR of invalidation and the surrounding evidence changed.`,
+      `invalidation-band:0.5atr:${cooldownBucket(now)}`,
+    );
   }
 
   return triggers;
@@ -221,6 +266,24 @@ export function detectReevaluationTriggers(
 interface TriggerRow {
   raised_at: number | string;
   reason: string;
+}
+
+function triggerPayload(trigger: ReevaluationTrigger): Record<string, unknown> {
+  return {
+    reason: trigger.reason,
+    detail: trigger.detail,
+    source: trigger.source,
+    revisionNo: trigger.revisionNo,
+    raisedAt: trigger.raisedAt,
+    idempotencyKey: trigger.idempotencyKey ?? null,
+  };
+}
+
+export function reevaluationClaimKey(trigger: ReevaluationTrigger): string {
+  const base = `${trigger.revisionNo ?? 0}:${trigger.reason}`;
+  return EXEMPT_FROM_LIMITS.has(trigger.reason)
+    ? `${base}:${trigger.idempotencyKey ?? `${trigger.raisedAt}:${encodeURIComponent(trigger.detail).slice(0, 80)}`}`
+    : `${base}:${trigger.idempotencyKey ?? `window:${cooldownBucket(trigger.raisedAt)}`}`;
 }
 
 /**
@@ -238,40 +301,117 @@ export async function admitTriggers(
   }
   if (!triggers.length) return { admitted: [], suppressed: 0 };
 
-  const recommendationId = triggers[0]!.recommendationId;
-  const history = await query<TriggerRow>(
-    `SELECT raised_at, reason FROM recommendation_reevaluations
-      WHERE recommendation_id = ? ORDER BY raised_at DESC LIMIT 50`,
-    [recommendationId],
-  ).catch(() => []);
-
-  const automatic = history.filter(
-    (row) => !EXEMPT_FROM_LIMITS.has(row.reason as ReevaluationReason),
-  );
-  const lastRaisedAt = history.length ? Number(history[0]!.raised_at) : 0;
-
   const admitted: ReevaluationTrigger[] = [];
   let suppressed = 0;
 
+  const groups = new Map<string, ReevaluationTrigger[]>();
   for (const trigger of triggers) {
-    const exempt = EXEMPT_FROM_LIMITS.has(trigger.reason);
+    groups.set(trigger.recommendationId, [
+      ...(groups.get(trigger.recommendationId) ?? []),
+      trigger,
+    ]);
+    metrics.reevaluationTriggers.inc({
+      reason: trigger.reason,
+      outcome: "detected",
+    });
+  }
 
-    if (!exempt) {
-      if (automatic.length + admitted.length >= MAX_AUTOMATIC_CYCLES) {
-        suppressed += 1;
-        continue;
-      }
-      if (trigger.raisedAt - lastRaisedAt < COOLDOWN_MS) {
-        suppressed += 1;
-        continue;
-      }
-      // One cycle per sweep: several reasons at once are one reason to re-decide.
-      if (admitted.length >= 1) {
-        suppressed += 1;
-        continue;
+  for (const [recommendationId, group] of groups) {
+    const locked = await withLock(
+      `reevaluation-admission:${recommendationId}`,
+      15_000,
+      async () => {
+        const history = await query<TriggerRow>(
+          `SELECT raised_at, reason FROM recommendation_reevaluations
+            WHERE recommendation_id = ? AND outcome = 'cycle_requested'
+            ORDER BY raised_at DESC LIMIT 50`,
+          [recommendationId],
+        ).catch(() => []);
+        const automatic = history.filter(
+          (row) => !EXEMPT_FROM_LIMITS.has(row.reason as ReevaluationReason),
+        );
+        const lastRaisedAt = automatic.length
+          ? Number(automatic[0]!.raised_at)
+          : 0;
+        let automaticAdmitted = 0;
+
+        for (const trigger of group) {
+          const exempt = EXEMPT_FROM_LIMITS.has(trigger.reason);
+          const overCap =
+            !exempt &&
+            automatic.length + automaticAdmitted >= MAX_AUTOMATIC_CYCLES;
+          const inCooldown =
+            !exempt && trigger.raisedAt - lastRaisedAt < COOLDOWN_MS;
+          const extraAutomatic = !exempt && automaticAdmitted >= 1;
+          if (overCap || inCooldown || extraAutomatic) {
+            suppressed += 1;
+            metrics.reevaluationTriggers.inc({
+              reason: trigger.reason,
+              outcome: "suppressed",
+            });
+            await recordTrigger(trigger, "suppressed");
+            continue;
+          }
+
+          const result = await execute(
+            `INSERT INTO recommendation_reevaluations
+               (recommendation_id, user_id, symbol, reason, detail, source,
+                revision_no, outcome, raised_at, dedupe_key,
+                trigger_payload_json, claimed_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             ON CONFLICT (recommendation_id, dedupe_key) DO NOTHING`,
+            [
+              trigger.recommendationId,
+              trigger.userId,
+              trigger.symbol,
+              trigger.reason,
+              trigger.detail,
+              trigger.source,
+              trigger.revisionNo,
+              "cycle_requested",
+              trigger.raisedAt,
+              reevaluationClaimKey(trigger),
+              JSON.stringify(triggerPayload(trigger)),
+              Date.now(),
+            ],
+          );
+          if (result.changes > 0) {
+            admitted.push(trigger);
+            if (!exempt) automaticAdmitted += 1;
+            metrics.reevaluationTriggers.inc({
+              reason: trigger.reason,
+              outcome: "admitted",
+            });
+          } else {
+            suppressed += 1;
+            metrics.reevaluationTriggers.inc({
+              reason: trigger.reason,
+              outcome: "duplicate",
+            });
+          }
+        }
+      },
+    );
+    if (!locked.ran) {
+      for (const trigger of group) {
+        if (
+          EXEMPT_FROM_LIMITS.has(trigger.reason) &&
+          (await recordTrigger(trigger, "cycle_requested"))
+        ) {
+          admitted.push(trigger);
+          metrics.reevaluationTriggers.inc({
+            reason: trigger.reason,
+            outcome: "admitted",
+          });
+        } else {
+          suppressed += 1;
+          metrics.reevaluationTriggers.inc({
+            reason: trigger.reason,
+            outcome: "duplicate",
+          });
+        }
       }
     }
-    admitted.push(trigger);
   }
 
   return { admitted, suppressed };
@@ -287,12 +427,12 @@ export async function admitTriggers(
 export async function recordTrigger(
   trigger: ReevaluationTrigger,
   outcome: "cycle_requested" | "suppressed",
-): Promise<void> {
-  await execute(
+): Promise<boolean> {
+  return execute(
     `INSERT INTO recommendation_reevaluations
        (recommendation_id, user_id, symbol, reason, detail, source, revision_no,
-        outcome, raised_at, dedupe_key)
-     VALUES (?,?,?,?,?,?,?,?,?,?)
+        outcome, raised_at, dedupe_key, trigger_payload_json, claimed_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT (recommendation_id, dedupe_key) DO NOTHING`,
     [
       trigger.recommendationId,
@@ -304,17 +444,24 @@ export async function recordTrigger(
       trigger.revisionNo,
       outcome,
       trigger.raisedAt,
-      `${trigger.revisionNo ?? 0}:${trigger.reason}`,
+      outcome === "cycle_requested"
+        ? reevaluationClaimKey(trigger)
+        : `suppressed:${trigger.revisionNo ?? 0}:${trigger.reason}:${trigger.raisedAt}`,
+      JSON.stringify(triggerPayload(trigger)),
+      outcome === "cycle_requested" ? Date.now() : null,
     ],
-  ).catch((error: unknown) => {
-    // A lost trigger record must not break the sweep; the plan is unchanged
-    // either way, since a trigger never edits anything by itself.
-    log.warn("failed to record re-evaluation trigger", {
-      recommendationId: trigger.recommendationId,
-      reason: trigger.reason,
-      error: error instanceof Error ? error.message : String(error),
+  )
+    .then((result) => result.changes > 0)
+    .catch((error: unknown) => {
+      // A lost trigger record must not break the sweep; the plan is unchanged
+      // either way, since a trigger never edits anything by itself.
+      log.warn("failed to record re-evaluation trigger", {
+        recommendationId: trigger.recommendationId,
+        reason: trigger.reason,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
     });
-  });
 }
 
 /** Trigger history for one recommendation, newest first. */
