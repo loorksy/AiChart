@@ -2,7 +2,7 @@
 
 ## Last SHA
 
-`b1b818b` (`docs: finalize unified-agent completion audit`) on top of `7bed487`.
+`6c171e9` (includes opportunity_created, adherence analytics, reference fixtures, audit/ops docs).
 
 Worktree (do not use main checkout — branch is locked there):
 
