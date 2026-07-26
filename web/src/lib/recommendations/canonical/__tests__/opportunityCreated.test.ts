@@ -14,12 +14,11 @@ delete process.env.TELEGRAM_BOT_TOKEN;
 /**
  * The birth announcement (plan §8 C.1), against a real database.
  *
- * `opportunity_created` existed as an event type and a notifier label with no
- * producer; creation alerts went out through the legacy `recommendationChart`
- * path with no dedupe at all. These tests pin the new contract: the event is
- * emitted once through the (recommendation, event, revision) dedupe, a re-run
- * says nothing, and the legacy path claims the SAME key — so whichever path
- * speaks first, the plan is announced exactly once.
+ * Creation alerts used to fire through a parallel `recommendationChart` path
+ * that claimed the same dedupe key but sent via raw `dispatchAlert`. The
+ * contract now is: every producer goes through `announceOpportunityCreated`
+ * (orchestrator, `saveRecommendation`, and the chart adapter), so a plan is
+ * announced exactly once under `(recommendation_id, event, revision_no)`.
  */
 
 let db: typeof import("@/lib/db");
@@ -89,12 +88,11 @@ describe("opportunity_created is emitted once and deduped on re-run", () => {
   });
 });
 
-describe("the legacy creation alert shares the same dedupe", () => {
-  it("suppresses the legacy alert when the lifecycle path already announced", async () => {
+describe("every creation adapter shares the same dedupe", () => {
+  it("suppresses the chart adapter when the lifecycle path already announced", async () => {
     const { notifyRecommendation } = await import("@/lib/recommendationChart");
     const rec = await legacyRecommendation({ legacyTrackingId: "tracked-99" });
 
-    // The lifecycle path announced this plan at creation (tracked reference id).
     const announced = await notifier.announceOpportunityCreated(userId, {
       recommendationId: "tracked-99",
       symbol: rec.symbol,
@@ -103,25 +101,18 @@ describe("the legacy creation alert shares the same dedupe", () => {
     });
     assert.equal(announced.delivered, 1);
 
-    // The legacy path now has nothing new to say about the same plan.
-    const legacy = await notifyRecommendation(userId, rec);
-    assert.equal(legacy.delivered, false);
-    assert.equal(legacy.reason, "duplicate_creation_alert");
+    const viaChart = await notifyRecommendation(userId, rec);
+    assert.equal(viaChart.delivered, false);
+    assert.equal(viaChart.reason, "duplicate_creation_alert");
   });
 
-  it("lets the legacy path speak first — and then silences the lifecycle event", async () => {
+  it("lets the chart adapter speak first — and then silences a direct announce", async () => {
     const { notifyRecommendation } = await import("@/lib/recommendationChart");
     const rec = await legacyRecommendation();
 
-    // Legacy path first (a plan created outside the orchestrator seam).
-    const legacy = await notifyRecommendation(userId, rec);
-    assert.notEqual(
-      legacy.reason,
-      "duplicate_creation_alert",
-      "nothing announced this plan yet — the legacy path must proceed",
-    );
+    const viaChart = await notifyRecommendation(userId, rec);
+    assert.equal(viaChart.delivered, true);
 
-    // A later lifecycle emission for the same identity stays silent.
     const after = await notifier.announceOpportunityCreated(userId, {
       recommendationId: String((rec as { id: number }).id),
       symbol: rec.symbol,
@@ -132,14 +123,62 @@ describe("the legacy creation alert shares the same dedupe", () => {
     assert.equal(after.suppressedDuplicate, 1);
   });
 
-  it("keeps OFF-flag behaviour identical to today", async () => {
+  it("announces once through saveRecommendation and stays silent on retry", async () => {
+    const { saveRecommendation } = await import("@/lib/store");
+    const first = await saveRecommendation(userId, {
+      symbol: "GBPUSD",
+      action: "sell",
+      confidence: 72,
+      entry: 1.27,
+      stop_loss: 1.275,
+      take_profit: 1.26,
+      plan_type: "immediate",
+      source: "agent",
+    });
+    const second = await saveRecommendation(userId, {
+      symbol: "GBPUSD",
+      action: "sell",
+      confidence: 72,
+      entry: 1.27,
+      stop_loss: 1.275,
+      take_profit: 1.26,
+      plan_type: "immediate",
+      source: "agent",
+    });
+    // Two rows, but each birth key is unique — one alert per recommendation id.
+    const keys = await db.query<{ dedupe_key: string }>(
+      `SELECT dedupe_key FROM alert_dedupe
+        WHERE user_id = ? AND event_type = 'opportunity_created'
+          AND dedupe_key LIKE ?`,
+      [userId, `${first.id}:1:opportunity_created`],
+    );
+    assert.equal(keys.length, 1);
+    const secondKeys = await db.query<{ dedupe_key: string }>(
+      `SELECT dedupe_key FROM alert_dedupe
+        WHERE user_id = ? AND event_type = 'opportunity_created'
+          AND dedupe_key LIKE ?`,
+      [userId, `${second.id}:1:opportunity_created`],
+    );
+    assert.equal(secondKeys.length, 1);
+
+    // Re-announcing the same id adds nothing.
+    const again = await notifier.announceOpportunityCreated(userId, {
+      recommendationId: String(first.id),
+      symbol: "GBPUSD",
+      direction: "sell",
+      entry: 1.27,
+    });
+    assert.equal(again.delivered, 0);
+    assert.equal(again.suppressedDuplicate, 1);
+  });
+
+  it("keeps OFF-flag rollback on the pre-lifecycle card path", async () => {
     const { clearPlatformConfigCache } = await import("@/lib/platformConfig");
     const { notifyRecommendation } = await import("@/lib/recommendationChart");
     const rec = await legacyRecommendation();
     process.env.REC_LIFECYCLE_ALERTS_V1 = "0";
     clearPlatformConfigCache();
     try {
-      // Lifecycle delivery is off: the event is suppressed, no key is claimed.
       const announce = await notifier.announceOpportunityCreated(userId, {
         recommendationId: String((rec as { id: number }).id),
         symbol: rec.symbol,
@@ -149,7 +188,7 @@ describe("the legacy creation alert shares the same dedupe", () => {
       assert.equal(announce.delivered, 0);
       assert.equal(announce.suppressedSilent, 1);
 
-      // And the legacy path behaves exactly as it always did — no dedupe check.
+      // Rollback: chart adapter uses the old card without lifecycle dedupe.
       const legacy = await notifyRecommendation(userId, rec);
       assert.notEqual(legacy.reason, "duplicate_creation_alert");
       const again = await notifyRecommendation(userId, rec);

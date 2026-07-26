@@ -51,11 +51,10 @@ async function claimDedupeKey(input: {
 /**
  * Claim one (recommendation, event, revision) identity directly.
  *
- * Exported for the LEGACY creation alert path (`recommendationChart.ts`), which
- * predates lifecycle events and would otherwise announce a plan's creation with
- * no dedupe at all. Claiming the same key the lifecycle path uses means whoever
- * speaks first wins and the other stays silent — one announcement per plan,
- * whichever path noticed it.
+ * Production creation alerts must go through `announceOpportunityCreated`.
+ * This helper remains the notifier's internal claim primitive (and the unit-test
+ * seam for concurrent delivery). A static guard fails if a new module claims
+ * the key itself — that reopens the parallel-path race.
  */
 export async function claimLifecycleDedupeKey(input: {
   userId: number;

@@ -39,6 +39,7 @@ import {
   appendRecommendationHistory,
   createCanonicalRecommendation,
 } from "./recommendations/canonical";
+import { announceOpportunityCreated } from "./recommendations/lifecycleNotifier";
 
 /**
  * Broker kind for a user honoring their per-user forex backend choice (EA vs
@@ -658,6 +659,19 @@ export async function saveRecommendation(
     analysisTier: rec.analysis_tier ?? undefined,
     contextJson: rec.context_json ?? undefined,
   });
+  // MCP `create_recommendation` and every other store write land here. Birth
+  // announcements must share the lifecycle (recommendation, event, revision)
+  // dedupe with the orchestrator path — otherwise Platform and MCP can each
+  // fire once for the same plan. Best-effort: a failed send never undoes the row.
+  if (action === "buy" || action === "sell") {
+    await announceOpportunityCreated(userId, {
+      recommendationId: String(canonical.recommendationId),
+      symbol: rec.symbol,
+      direction: action,
+      entry: rec.entry ?? null,
+      planType: rec.plan_type ?? null,
+    }).catch(() => {});
+  }
   return (await queryOne<Recommendation>(
     "SELECT * FROM recommendations WHERE id = ?",
     [canonical.recommendationId],

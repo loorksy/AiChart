@@ -37,7 +37,11 @@ export type DeliveryReason =
   | "delivery_failed"
   | "no_actionable_signal"
   /** Creation already announced through the lifecycle notifier's dedupe. */
-  | "duplicate_creation_alert";
+  | "duplicate_creation_alert"
+  /** Lifecycle alerts flag / silent rollout window suppressed sending. */
+  | "silent_mode"
+  /** Per-symbol rate cap suppressed a non-terminal creation alert. */
+  | "rate_limited";
 
 export interface DeliveryResult {
   delivered: boolean;
@@ -55,6 +59,8 @@ const REASON_AR: Record<DeliveryReason, string> = {
   delivery_failed: "فشل الإرسال إلى تليجرام",
   no_actionable_signal: "لا إشارة تنفيذية",
   duplicate_creation_alert: "أُعلنت هذه التوصية من قبل",
+  silent_mode: "وضع صامت — سُجِّل دون إرسال",
+  rate_limited: "تجاوز حد التنبيهات للرمز",
 };
 
 export function deliveryReasonAr(reason?: DeliveryReason): string {
