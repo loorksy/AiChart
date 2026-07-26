@@ -86,6 +86,7 @@ import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
 import { collectVisualEvidence } from "./visualEvidence";
+import { sessionOf } from "@/lib/recommendations/performanceJournal";
 import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
@@ -128,6 +129,7 @@ import {
   createTrackedRecommendation,
   listTrackedRecommendations,
 } from "@/lib/recommendations/recommendationStore";
+import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import {
   renderLessonsForPrompt,
   summarizeTradeLessons,
@@ -135,6 +137,24 @@ import {
 } from "./learningLoop";
 
 const log = createLogger("agent.orchestrator");
+
+/**
+ * Realised R for a resolved recommendation, from its own levels.
+ *
+ * The tracker records which target was reached, and the plan records what the
+ * risk was, so the R multiple is derivable without a fill price — a loss is
+ * −1R by construction and a win is the distance to the target it reached.
+ */
+function realisedRMultiple(rec: TrackedRecommendation): number | null {
+  const risk = Math.abs(rec.entry - rec.stopLoss);
+  if (!(risk > 0)) return null;
+  if (rec.outcome === "loss") return -1;
+  const index =
+    rec.outcome === "win_tp3" ? 2 : rec.outcome === "win_tp2" ? 1 : rec.outcome === "win_tp1" ? 0 : -1;
+  const target = index >= 0 ? rec.targets[index] : undefined;
+  if (target == null) return null;
+  return Number((Math.abs(target - rec.entry) / risk).toFixed(2));
+}
 
 /**
  * Realised-outcome lessons for the decision prompt (RELIABILITY_PLAN item 14).
@@ -153,14 +173,21 @@ async function buildLessonsBlock(
     const tracked = await listTrackedRecommendations(userId, { limit: 60 });
     const outcomes: TradeOutcomeRecord[] = tracked
       .filter((r) => r.outcome === "loss" || r.outcome.startsWith("win_"))
-      .map((r) => ({
-        symbol: r.symbol,
-        direction: r.direction,
-        won: r.outcome.startsWith("win_"),
-        rMultiple: null,
-        session: null,
-        closedAt: r.slHitAt ?? r.tp3HitAt ?? r.tp2HitAt ?? r.tp1HitAt ?? r.createdAt,
-      }));
+      .map((r) => {
+        const closedAt =
+          r.slHitAt ?? r.tp3HitAt ?? r.tp2HitAt ?? r.tp1HitAt ?? r.createdAt;
+        return {
+          symbol: r.symbol,
+          direction: r.direction,
+          won: r.outcome.startsWith("win_"),
+          // Both of these were hardcoded null, which silently disabled the
+          // average-R and weak-session analysis inside the learning loop — the
+          // code ran on every request and could never conclude anything.
+          rMultiple: realisedRMultiple(r),
+          session: sessionOf(r.createdAt),
+          closedAt,
+        };
+      });
     return renderLessonsForPrompt(summarizeTradeLessons({ symbol, outcomes }));
   } catch (error) {
     // History is an aid, never a gate: losing it must not affect the decision.
