@@ -14,6 +14,7 @@
  */
 import { z } from "zod";
 import { callLLM, isLLMConfiguredAsync } from "@/lib/llm";
+import type { ContentBlock } from "@/lib/anthropic";
 import { createLogger } from "@/lib/logger";
 import { sanitizePublicText } from "../activity";
 import type { AgentRunContext } from "../types";
@@ -77,6 +78,14 @@ const FinalDecisionModelSchema = z.object({
   selectedTradeCandidateId: z.string().nullable().optional(),
   /** Levels composed from the evidence menu when no candidate fits. */
   proposedLevels: PlanLevelsSchema.nullable().optional(),
+  /** Which timeframe drove the decision, gave context, and timed the entry. */
+  timeframeRoles: z
+    .object({
+      lead: z.string().max(16),
+      context: z.string().max(16).nullable().optional(),
+      timing: z.string().max(16).nullable().optional(),
+    })
+    .optional(),
   activationCondition: z.string().max(400).nullable().optional(),
   invalidationRule: z.string().max(400),
   alternativeScenario: z.string().max(400),
@@ -95,6 +104,13 @@ const FinalDecisionModelSchema = z.object({
 });
 
 export type FinalDecisionModelOutput = z.infer<typeof FinalDecisionModelSchema>;
+
+/** One captured chart plus the numbers for the same timeframe. */
+export interface VisualSnapshot {
+  timeframe: string;
+  imageBase64: string;
+  numericContext?: unknown;
+}
 
 /**
  * Why the synthesizer produced no decision. A bare `catch` used to discard
@@ -204,6 +220,12 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - planType: "immediate" (price is in a valid entry area now), "anticipatory" (entering while the structure is still forming — from a triangle's rising lows, a second rejection before the neckline, a range edge, after a liquidity sweep; higher risk, say so), or "conditional" (the entry waits for a stated trigger: a close beyond a level, a rejection from a zone, a better price, or the first move after a release).
 - The direction is mandatory; an entry at the current price is NOT. If price is a poor entry, or the move does not pay for its spread and slippage, keep the direction and make the plan conditional at the price or condition that WOULD make it worth taking. Never invent a weak entry, and never stretch a target or tighten a stop to make the numbers look acceptable.
 
+## The charts
+- When chart images are attached, each one arrives immediately after a label naming its timeframe and carrying that timeframe's numbers. Read the picture and the numbers together, and bind each chart to the timeframe it belongs to.
+- Images confirm SHAPE — a rejection, a gap, a formation, where a structure sits. Every precise level you quote must come from the numeric evidence, never estimated off the pixels.
+- Say which timeframe LEADS this decision, which provides CONTEXT, and which times the ENTRY, in timeframeRoles. When the timeframes disagree, that assignment IS the resolution — never let disagreement remove the direction.
+- If a timeframe is missing from the attachments, say you did not have that view rather than implying full coverage.
+
 ## Levels
 - Prefer a same-direction tradeCandidate: set selectedTradeCandidateId and leave proposedLevels null. Its geometry is already validated.
 - If no candidate fits your plan (e.g. you want a better price), set selectedTradeCandidateId null and fill proposedLevels using ONLY prices that appear in evidenceLevels. Any price not on that menu is rejected and your plan loses its numbers — so quote the menu, never a number you computed yourself.
@@ -233,7 +255,7 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
 
 Respond with ONLY a JSON object, no markdown fences:
-{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"activationCondition":"...|null","invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[]}`;
+{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"timeframeRoles":{"lead":"15m","context":"4h","timing":"5m"},"activationCondition":"...|null","invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[]}`;
 
 export async function runFinalDecisionSynthesizer(
   ctx: AgentRunContext,
@@ -253,6 +275,12 @@ export async function runFinalDecisionSynthesizer(
      * never override live analysis or any statistical gate.
      */
     lessonsBlock?: string | null;
+    /**
+     * Multi-timeframe chart images with their own numbers. Absent is normal —
+     * capture is best-effort and a missing view degrades the read rather than
+     * blocking the decision.
+     */
+    visualSnapshots?: VisualSnapshot[] | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -282,12 +310,20 @@ export async function runFinalDecisionSynthesizer(
     .filter(Boolean)
     .join("\n\n");
   const user = JSON.stringify(buildModelContext(input));
+  // Charts, when we have them. The platform's decision engine used to read a
+  // JSON summary while the MCP agent looked at the same market on real charts —
+  // two different ways of seeing, and so two different answers to the same
+  // question. Same images, same interleaving, same rules on both surfaces now.
+  const visualBlocks = buildVisualBlocks(input.visualSnapshots ?? []);
   const callModel =
     deps.callModel ??
     (async (system: string, userMsg: string) => {
+      const content: ContentBlock[] = visualBlocks.length
+        ? [{ type: "text", text: userMsg }, ...visualBlocks]
+        : [{ type: "text", text: userMsg }];
       const res = await callLLM({
         system,
-        messages: [{ role: "user", content: userMsg }],
+        messages: [{ role: "user", content }],
         // Headroom for reasoning tokens plus the full plan payload: the three
         // layers, the levels, the conditions, and the decision trace.
         maxTokens: 3072,
@@ -618,10 +654,23 @@ function applyModelDecision(
         validityCandles: parsed.validityCandles,
       };
 
+  const timeframeRoles = parsed.timeframeRoles
+    ? {
+        lead: sanitizePublicText(parsed.timeframeRoles.lead).slice(0, 16),
+        context: parsed.timeframeRoles.context
+          ? sanitizePublicText(parsed.timeframeRoles.context).slice(0, 16)
+          : null,
+        timing: parsed.timeframeRoles.timing
+          ? sanitizePublicText(parsed.timeframeRoles.timing).slice(0, 16)
+          : null,
+      }
+    : undefined;
+
   return {
     decision: direction,
     planType,
     executionState,
+    timeframeRoles,
     confidence: displayConfidence,
     confidenceSemantics,
     summary: sanitizePublicText(parsed.summary).slice(0, 900),
@@ -650,6 +699,38 @@ function applyModelDecision(
     }).dimensions,
     publicReasoningSummary: clean(parsed.publicReasoningSummary, 5),
   };
+}
+
+/**
+ * Chart images, each preceded by a label naming its timeframe and carrying that
+ * timeframe's numbers.
+ *
+ * The interleaving is the point: an unlabelled batch of charts leaves the model
+ * guessing which one is the 4h, and a wrong binding is worse than no image at
+ * all. This mirrors exactly what the MCP surface sends.
+ */
+export function buildVisualBlocks(snapshots: VisualSnapshot[]): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  for (const snapshot of snapshots) {
+    if (!snapshot.imageBase64) continue;
+    blocks.push({
+      type: "text",
+      text: JSON.stringify({
+        chart_timeframe: snapshot.timeframe,
+        numeric_context: snapshot.numericContext ?? null,
+        note: "Shape only — quote levels from the numeric evidence, never from the pixels.",
+      }),
+    });
+    blocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/png",
+        data: snapshot.imageBase64,
+      },
+    });
+  }
+  return blocks;
 }
 
 /** Operator-safe copy of the model's reasoning trace (never raw scratchpad). */

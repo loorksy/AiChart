@@ -85,6 +85,7 @@ import {
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
+import { collectVisualEvidence } from "./visualEvidence";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
   clearActiveRecommendation,
@@ -892,6 +893,27 @@ async function runUnifiedChartAgentInner(
   // deadline-wrapped callback stays synchronous (item 14).
   const lessonsBlock = await buildLessonsBlock(ctx.userId, market.symbol);
 
+  // Charts, on the same terms the MCP surface gets them. Fetched before the
+  // decision call rather than inside it, so a slow capture cannot eat the
+  // decision's own deadline — and an empty result simply means the engine
+  // reads numbers alone, as it always did.
+  const visual = FEATURES.visionDecisionV1()
+    ? await collectVisualEvidence({
+        userId: ctx.userId,
+        symbol: market.symbol,
+        interval: market.interval,
+        timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+      })
+    : { snapshots: [], missing: [], elapsedMs: 0 };
+  if (visual.snapshots.length) {
+    trackedCtx.emitActivity({
+      type: "analysis",
+      status: "completed",
+      message: `تمت مراجعة ${visual.snapshots.length} لقطات شارت بصرياً.`,
+      metadata: { timeframes: visual.snapshots.map((s) => s.timeframe) },
+    });
+  }
+
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
@@ -909,6 +931,7 @@ async function runUnifiedChartAgentInner(
           skillContextBlock: skillContext.block || null,
           // Realised-outcome lessons (item 14): evidence the model weighs.
           lessonsBlock,
+          visualSnapshots: visual.snapshots,
         },
       ).catch((err) => {
         synthError = err;

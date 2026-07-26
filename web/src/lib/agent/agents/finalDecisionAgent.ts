@@ -27,6 +27,11 @@ export interface FinalDecisionResult {
   keyReasons: string[];
   riskWarnings: string[];
   recommendation: AgentRecommendation;
+  /**
+   * Which timeframe led the decision, which gave context, which timed entry.
+   * Present when charts were reviewed — the resolution of any disagreement.
+   */
+  timeframeRoles?: { lead: string; context: string | null; timing: string | null };
   /** Why this direction and this plan type — operator-readable. */
   decisionTrace?: DecisionTrace;
   /** The evidence card, one grade per dimension, never blended. */

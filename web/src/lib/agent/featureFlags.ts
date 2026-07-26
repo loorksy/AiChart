@@ -29,6 +29,9 @@ export const FEATURES = {
   agentContextV2: () => flag("AGENT_CONTEXT_V2", true),
   /** Conservative memory candidate writes. OFF until explicit rollout. */
   agentMemoryWriteV1: () => flag("AGENT_MEMORY_WRITE_V1", false),
+  /** Chart images in the decision call, so the platform engine sees what the
+   *  MCP agent sees. ON by default; disabling returns the numbers-only read. */
+  visionDecisionV1: () => flag("VISION_DECISION_V1", true),
   /** Redacted run/step/tool-call persistence. ON by default so selected
    *  skills/tools/routing are auditable; failure never blocks a run. */
   agentRunTraceV1: () => flag("AGENT_RUN_TRACE_V1", true),
@@ -42,5 +45,6 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     agentContextV2: FEATURES.agentContextV2(),
     agentMemoryWriteV1: FEATURES.agentMemoryWriteV1(),
     agentRunTraceV1: FEATURES.agentRunTraceV1(),
+    visionDecisionV1: FEATURES.visionDecisionV1(),
   };
 }

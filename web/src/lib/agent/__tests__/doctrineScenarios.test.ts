@@ -290,3 +290,56 @@ describe("doctrine scenarios", () => {
     assert.equal(out.failure?.retryable, true);
   });
 });
+
+describe("visual evidence", () => {
+  it("attaches each chart to its own timeframe and numbers", async () => {
+    const { buildVisualBlocks } = await import(
+      "@/lib/agent/agents/finalDecisionSynthesizer"
+    );
+    const blocks = buildVisualBlocks([
+      { timeframe: "5m", imageBase64: "AAAA", numericContext: { price: 4000 } },
+      { timeframe: "1h", imageBase64: "BBBB", numericContext: { price: 4001 } },
+    ]);
+    // label, image, label, image — an unlabelled batch would leave the model
+    // guessing which chart is which, and a wrong binding is worse than none.
+    assert.equal(blocks.length, 4);
+    assert.equal(blocks[0]!.type, "text");
+    assert.equal(blocks[1]!.type, "image");
+    const label = JSON.parse((blocks[0] as { text: string }).text);
+    assert.equal(label.chart_timeframe, "5m");
+    assert.equal(label.numeric_context.price, 4000);
+    assert.match(label.note, /never from the pixels/);
+    assert.equal((blocks[3] as { source: { data: string } }).source.data, "BBBB");
+  });
+
+  it("skips snapshots that carry no image rather than sending an empty block", async () => {
+    const { buildVisualBlocks } = await import(
+      "@/lib/agent/agents/finalDecisionSynthesizer"
+    );
+    assert.deepEqual(buildVisualBlocks([{ timeframe: "5m", imageBase64: "" }]), []);
+  });
+
+  it("picks the timeframes worth showing for the frame being traded", async () => {
+    const { visualTimeframesFor } = await import("@/lib/agent/visualEvidence");
+    assert.deepEqual(visualTimeframesFor("5m"), ["5m", "15m", "1h"]);
+    assert.deepEqual(visualTimeframesFor("1h"), ["1h", "4h", "1d"]);
+    // An unknown frame still yields a sane, bounded set rather than nothing.
+    assert.equal(visualTimeframesFor("weird").length, 3);
+  });
+
+  it("reports timeframe roles when the model resolves a conflict", async () => {
+    const out = await decide(
+      {
+        mtf: {
+          conflict: true,
+          currentBias: "bullish",
+          higherBias: "bearish",
+          dailyBias: "bearish",
+        } as unknown as FinalDecisionInput["mtf"],
+      },
+      answer({ timeframeRoles: { lead: "15m", context: "4h", timing: "5m" } }),
+    );
+    assert.equal(out.result?.timeframeRoles?.lead, "15m");
+    assert.equal(out.result?.timeframeRoles?.context, "4h");
+  });
+});
