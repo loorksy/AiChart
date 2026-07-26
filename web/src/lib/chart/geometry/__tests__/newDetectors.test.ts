@@ -42,7 +42,8 @@ function swings(levels: number[], step = 5): GeometryCandle[] {
 
 function detectorInput(candles: GeometryCandle[]) {
   const atr = geometryAtr(candles);
-  return { input: { candles, atr }, zigzag: zigzagPivots(candles, atr) };
+  const zigzag = zigzagPivots(candles, atr);
+  return { input: { candles, atr, pivots: zigzag }, zigzag };
 }
 
 describe("rectangle", () => {

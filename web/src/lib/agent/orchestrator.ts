@@ -845,6 +845,15 @@ async function runUnifiedChartAgentInner(
     });
   }
 
+  // Deterministic chart geometry — computed ONCE, BEFORE the candidate engine,
+  // so forming-pattern boundaries become real entry zones rather than prompt
+  // prose. Shared by the synthesizer evidence, the drawing plan, and every
+  // render surface downstream.
+  const geometry = detectChartGeometry({
+    candles: market.currentTfCandles,
+    atr: market.atr,
+  });
+
   // The evidence builder prepares price-valid candidates for the model. It is
   // not a policy gate and it does not own the direction.
   let risk: RiskAgentResult | null = null;
@@ -860,6 +869,7 @@ async function runUnifiedChartAgentInner(
         account: input.account ?? null,
         educationalOnly,
         chartDrawings: chartContext?.drawings,
+        geometry,
       }),
       AGENT_TIMEOUTS.risk,
       null,
@@ -913,14 +923,6 @@ async function runUnifiedChartAgentInner(
     supplyDemand,
     liquidity,
     mtf,
-  });
-
-  // Deterministic chart geometry (trendlines, channels, patterns with
-  // forming/completed state) — computed ONCE and shared by the synthesizer
-  // evidence, the drawing plan, and every render surface downstream.
-  const geometry = detectChartGeometry({
-    candles: market.currentTfCandles,
-    atr: market.atr,
   });
 
   // Evidence-based chart story for the synthesizer (real detector output only).
