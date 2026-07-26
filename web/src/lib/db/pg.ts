@@ -41,6 +41,12 @@ const SCHEMA = `
     alerts_enabled           BOOLEAN NOT NULL DEFAULT TRUE,
     alert_trades             BOOLEAN NOT NULL DEFAULT TRUE,
     alert_signals            BOOLEAN NOT NULL DEFAULT TRUE,
+    alert_push               BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Standing execution authorisation; the epoch pins an 'auto' grant to the
+    -- connection it was given for. See the SQLite schema for the rationale.
+    agent_trade_mode         TEXT NOT NULL DEFAULT 'unset',
+    agent_trade_mode_updated_at BIGINT,
+    agent_trade_mode_epoch   TEXT,
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -81,6 +87,14 @@ const SCHEMA = `
     entry_type      TEXT,
     legacy_tracking_id TEXT,
     updated_at      BIGINT,
+    effective_revision_no INTEGER,
+    plan_type       TEXT,
+    execution_state TEXT,
+    statistical_support TEXT,
+    -- Where the decision's support came from, distinct from its grade above:
+    -- direct_analysis | strategy_supported | historical_memory | deep_research.
+    -- NULL on pre-existing rows; never backfilled with an implied source.
+    evidence_source TEXT,
     rationale       TEXT,
     factors         TEXT,
     chart_image_url TEXT,
@@ -98,6 +112,10 @@ const SCHEMA = `
     id                SERIAL PRIMARY KEY,
     user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     recommendation_id INTEGER,
+    -- Which revision of that recommendation this order was built from, and who
+    -- authorised it. Both are checked again at execution time.
+    recommendation_revision_no INTEGER,
+    authorization_source TEXT,
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          DOUBLE PRECISION NOT NULL,
@@ -340,6 +358,34 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_alert_log_user
     ON alert_log (user_id, id DESC);
 
+  -- One row per real change already announced; the unique key is what makes a
+  -- re-run of the sweep silent. See the SQLite schema for the rationale.
+  CREATE TABLE IF NOT EXISTS alert_dedupe (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    dedupe_key  TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    symbol      TEXT,
+    created_at  BIGINT NOT NULL,
+    UNIQUE (user_id, dedupe_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_alert_dedupe_recent
+    ON alert_dedupe (user_id, created_at DESC);
+
+  -- Browser/mobile push endpoints; see the SQLite schema for the rationale.
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint    TEXT NOT NULL UNIQUE,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    user_agent  TEXT,
+    created_at  BIGINT NOT NULL,
+    last_used_at BIGINT
+  );
+  CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
+    ON push_subscriptions (user_id);
+
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id
     ON users (telegram_id) WHERE telegram_id IS NOT NULL;
 
@@ -401,6 +447,113 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_market_candles_lookup
     ON market_candles(symbol, interval, source, time);
+
+  -- Historical case memory: one row per indexed market moment.
+  -- Features come from candles at or before case_time; the outcome_* columns are
+  -- computed from candles strictly after it. That split is the whole point, so
+  -- the two groups are written by different functions and never mixed.
+  CREATE TABLE IF NOT EXISTS market_cases (
+    id              BIGSERIAL PRIMARY KEY,
+    symbol          TEXT NOT NULL,
+    interval        TEXT NOT NULL,
+    case_time       BIGINT NOT NULL,
+    direction       TEXT NOT NULL,
+    regime          TEXT NOT NULL,
+    trend           TEXT NOT NULL,
+    range_zone      TEXT NOT NULL,
+    pullback_depth  DOUBLE PRECISION NOT NULL,
+    impulse_atr     DOUBLE PRECISION NOT NULL,
+    volatility      DOUBLE PRECISION NOT NULL,
+    session         TEXT NOT NULL,
+    structure_run   INTEGER NOT NULL,
+    pattern_name    TEXT,
+    pattern_stage   TEXT,
+    entry_price     DOUBLE PRECISION NOT NULL,
+    atr             DOUBLE PRECISION NOT NULL,
+    -- The boundary that would complete a forming pattern, frozen at case_time
+    -- like every other feature. NULL when no pattern (or no single boundary)
+    -- was present, and on rows indexed before partial-stage outcomes existed.
+    break_level     DOUBLE PRECISION,
+    break_direction TEXT,
+    -- NULL while the forward window is still open (a case at the edge of the
+    -- warehouse has no future yet); filled once the horizon is available.
+    outcome         TEXT,
+    outcome_bars    INTEGER,
+    max_favourable  DOUBLE PRECISION,
+    max_adverse     DOUBLE PRECISION,
+    net_r           DOUBLE PRECISION,
+    -- Partial-stage outcomes (plan §12): only cases indexed on a FORMING
+    -- pattern carry these; computed strictly from candles after case_time.
+    forming_outcome TEXT,
+    forming_bars    INTEGER,
+    false_break     INTEGER,
+    early_net_r     DOUBLE PRECISION,
+    confirmed_net_r DOUBLE PRECISION,
+    session_cost    DOUBLE PRECISION,
+    indexer_version INTEGER NOT NULL DEFAULT 1,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(symbol, interval, case_time, direction, indexer_version)
+  );
+
+  -- Re-evaluation triggers (constitution §6). A trigger REQUESTS a new decision
+  -- cycle; it never changes a plan. Recorded whether or not a cycle followed.
+  CREATE TABLE IF NOT EXISTS recommendation_reevaluations (
+    id                BIGSERIAL PRIMARY KEY,
+    recommendation_id TEXT NOT NULL,
+    user_id           INTEGER NOT NULL,
+    symbol            TEXT NOT NULL,
+    reason            TEXT NOT NULL,
+    detail            TEXT NOT NULL DEFAULT '',
+    source            TEXT NOT NULL,
+    revision_no       INTEGER,
+    outcome           TEXT NOT NULL,
+    raised_at         BIGINT NOT NULL,
+    dedupe_key        TEXT NOT NULL,
+    -- Fingerprint of the bundle the cycle decided on, so a confirmed verdict is
+    -- traceable to the evidence that confirmed it.
+    evidence_hash     TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (recommendation_id, dedupe_key)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_recommendation_reevaluations_lookup
+    ON recommendation_reevaluations(recommendation_id, raised_at DESC);
+
+  -- Platform/MCP decision parity (plan §16, completion criterion 2). One row per
+  -- surface per evidence bundle; two rows with the same evidence_hash are the
+  -- only pair that is meaningfully comparable.
+  CREATE TABLE IF NOT EXISTS decision_parity (
+    id               BIGSERIAL PRIMARY KEY,
+    evidence_hash    TEXT NOT NULL,
+    symbol           TEXT NOT NULL,
+    timeframe_set    TEXT NOT NULL DEFAULT '[]',
+    market_timestamp BIGINT NOT NULL,
+    surface          TEXT NOT NULL,
+    decision_json    TEXT NOT NULL DEFAULT '{}',
+    created_at       BIGINT NOT NULL,
+    UNIQUE (evidence_hash, surface)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
+    ON decision_parity(created_at DESC);
+
+  -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
+  -- from the EA's live quotes; aggregated on read, pruned past the window.
+  CREATE TABLE IF NOT EXISTS cost_samples (
+    id          BIGSERIAL PRIMARY KEY,
+    symbol      TEXT NOT NULL,
+    session     TEXT NOT NULL,
+    spread_pips DOUBLE PRECISION NOT NULL,
+    observed_at BIGINT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cost_samples_lookup
+    ON cost_samples(symbol, observed_at);
+
+  CREATE INDEX IF NOT EXISTS idx_market_cases_lookup
+    ON market_cases(symbol, interval, regime, trend, direction);
+  CREATE INDEX IF NOT EXISTS idx_market_cases_pending
+    ON market_cases(symbol, interval, outcome, case_time);
 
   -- Smart Chart Agent decision audit (never stores raw model reasoning).
   CREATE TABLE IF NOT EXISTS agent_audit_logs (
@@ -527,6 +680,27 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_recommendation_history_replay
     ON recommendation_history (user_id, recommendation_id, occurred_at, id);
+
+  -- See the SQLite schema for the rationale: one revision is in force at a
+  -- time, prior ones stay readable but stop being executable.
+  CREATE TABLE IF NOT EXISTS recommendation_revisions (
+    id BIGSERIAL PRIMARY KEY,
+    recommendation_id INTEGER NOT NULL REFERENCES recommendations(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    revision_no INTEGER NOT NULL,
+    direction TEXT NOT NULL, plan_type TEXT, execution_state TEXT,
+    entry DOUBLE PRECISION, entry_low DOUBLE PRECISION, entry_high DOUBLE PRECISION,
+    stop_loss DOUBLE PRECISION, targets_json TEXT NOT NULL DEFAULT '[]',
+    activation_condition TEXT, invalidation_rule TEXT, alternative_scenario TEXT,
+    validity_candles INTEGER, expires_at BIGINT,
+    reason TEXT NOT NULL, source TEXT NOT NULL,
+    evidence_hash TEXT, evidence_json TEXT NOT NULL DEFAULT '{}',
+    decision_trace_json TEXT NOT NULL DEFAULT '{}',
+    created_at BIGINT NOT NULL,
+    UNIQUE (recommendation_id, revision_no)
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_revisions_lookup
+    ON recommendation_revisions (user_id, recommendation_id, revision_no DESC);
 
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id BIGSERIAL PRIMARY KEY,
@@ -668,6 +842,11 @@ const SCHEMA = `
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_recommendation_history_update') THEN
       CREATE TRIGGER immutable_recommendation_history_update
         BEFORE UPDATE ON recommendation_history
+        FOR EACH ROW EXECUTE FUNCTION reject_recommendation_history_update();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_recommendation_revisions_update') THEN
+      CREATE TRIGGER immutable_recommendation_revisions_update
+        BEFORE UPDATE ON recommendation_revisions
         FOR EACH ROW EXECUTE FUNCTION reject_recommendation_history_update();
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_recommendation_transitions_update') THEN
@@ -844,6 +1023,68 @@ async function migratePg(client: PoolClient) {
       console.warn("[db] trade_lessons HNSW index skipped:", err.message);
     });
 
+  // Partial-stage outcomes on the case memory (plan §12). Additive only: rows
+  // indexed before these columns existed keep NULLs — their features are
+  // frozen and never reinterpreted.
+  await client.query(`
+    ALTER TABLE market_cases
+      ADD COLUMN IF NOT EXISTS break_level     DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS break_direction TEXT,
+      ADD COLUMN IF NOT EXISTS forming_outcome TEXT,
+      ADD COLUMN IF NOT EXISTS forming_bars    INTEGER,
+      ADD COLUMN IF NOT EXISTS false_break     INTEGER,
+      ADD COLUMN IF NOT EXISTS early_net_r     DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS confirmed_net_r DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS session_cost    DOUBLE PRECISION
+  `).catch(() => {});
+
+  // Case-memory KNN (plan phase G infra). Every step is individually guarded:
+  // a Postgres without pgvector, or without ANN index support, keeps the JS
+  // similarity path — degraded and warned about, never fatal. The dimension
+  // must match CASE_EMBEDDING_DIM in lib/marketMemory/caseVector.ts (the
+  // fingerprint feature vector's length).
+  let caseVectorOk = true;
+  await client.query(`CREATE EXTENSION IF NOT EXISTS vector`).catch((err) => {
+    caseVectorOk = false;
+    console.warn(
+      "[db] pgvector unavailable; market_cases keeps the JS similarity path:",
+      err.message,
+    );
+  });
+  if (caseVectorOk) {
+    await client
+      .query(`ALTER TABLE market_cases ADD COLUMN IF NOT EXISTS embedding vector(8)`)
+      .catch((err) => {
+        caseVectorOk = false;
+        console.warn("[db] market_cases embedding column skipped:", err.message);
+      });
+  }
+  if (caseVectorOk) {
+    // HNSW where pgvector >= 0.5; ivfflat where only the older index exists;
+    // plain sequential KNN when neither builds. `<->` is L2, hence _l2_ops.
+    await client
+      .query(
+        `CREATE INDEX IF NOT EXISTS idx_market_cases_embedding_hnsw
+         ON market_cases USING hnsw (embedding vector_l2_ops)`,
+      )
+      .catch(async (hnswErr) => {
+        await client
+          .query(
+            `CREATE INDEX IF NOT EXISTS idx_market_cases_embedding_ivfflat
+             ON market_cases USING ivfflat (embedding vector_l2_ops)`,
+          )
+          .catch((ivfErr) => {
+            console.warn(
+              "[db] market_cases ANN index skipped (hnsw:",
+              hnswErr.message,
+              "; ivfflat:",
+              ivfErr.message,
+              ") — vector KNN will sequential-scan",
+            );
+          });
+      });
+  }
+
   await client.query(`
     UPDATE platform_config SET plain = TRUE
     WHERE plain = FALSE
@@ -862,6 +1103,10 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS alerts_enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS alert_push            BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS agent_trade_mode      TEXT NOT NULL DEFAULT 'unset',
+      ADD COLUMN IF NOT EXISTS agent_trade_mode_updated_at BIGINT,
+      ADD COLUMN IF NOT EXISTS agent_trade_mode_epoch TEXT,
       ADD COLUMN IF NOT EXISTS alert_trades          BOOLEAN NOT NULL DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS alert_signals         BOOLEAN NOT NULL DEFAULT TRUE
   `).catch(() => {
@@ -898,7 +1143,9 @@ async function migratePg(client: PoolClient) {
 
   await client.query(`
     ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS deny_code TEXT
+      ADD COLUMN IF NOT EXISTS deny_code TEXT,
+      ADD COLUMN IF NOT EXISTS recommendation_revision_no INTEGER,
+      ADD COLUMN IF NOT EXISTS authorization_source TEXT
   `).catch(() => {});
 
   await client.query(`
@@ -965,7 +1212,12 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS engine_version TEXT NOT NULL DEFAULT 'legacy',
       ADD COLUMN IF NOT EXISTS entry_type TEXT,
       ADD COLUMN IF NOT EXISTS legacy_tracking_id TEXT,
-      ADD COLUMN IF NOT EXISTS updated_at BIGINT
+      ADD COLUMN IF NOT EXISTS updated_at BIGINT,
+      ADD COLUMN IF NOT EXISTS effective_revision_no INTEGER,
+      ADD COLUMN IF NOT EXISTS plan_type TEXT,
+      ADD COLUMN IF NOT EXISTS execution_state TEXT,
+      ADD COLUMN IF NOT EXISTS statistical_support TEXT,
+      ADD COLUMN IF NOT EXISTS evidence_source TEXT
   `).catch(() => {});
   await client.query(`
     UPDATE recommendations

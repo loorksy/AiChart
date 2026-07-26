@@ -127,9 +127,36 @@ export interface AgentRunContext {
   session?: AgentSessionMemory;
 }
 
+/**
+ * The model's reasoning, in a form the operator can read (never scratchpad).
+ * Every recommendation carries one: a decision that cannot be explained from
+ * its trace and its evidence is not a valid decision (architecture rule §0-ج).
+ */
+export interface DecisionTrace {
+  hypotheses: Array<{
+    scenario: string;
+    supporting: string[];
+    opposing: string[];
+  }>;
+  chosenBecause: string;
+  planTypeBecause: string;
+}
+
 export interface AgentRecommendation {
+  /** Layer 1 — the analytical view. Always a side on a successful analysis. */
   action: "buy" | "sell" | "wait";
+  /** Layer 2 — how this plan is entered. */
+  planType?: "immediate" | "anticipatory" | "conditional";
+  /** Layer 3 — whether it can be acted on right now. */
+  executionState?:
+    | "valid_now"
+    | "awaiting_activation"
+    | "expired"
+    | "invalidated"
+    | "blocked";
   entry?: number;
+  /** The area the plan is willing to enter from, not just the ideal price. */
+  entryZone?: { low: number; high: number };
   entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   stop_loss?: number;
   take_profit?: number;
@@ -145,6 +172,12 @@ export interface AgentRecommendation {
   triggerCondition?: string;
   invalidationLevel?: number;
   invalidationRule?: string;
+  /** The runner-up scenario and what would switch the plan to it. */
+  alternativeScenario?: string;
+  /** How many candles of this timeframe the plan stays meaningful. */
+  validityCandles?: number;
+  /** Where the numbers came from — a validated candidate or evidence levels. */
+  levelSource?: "candidate" | "evidence_levels";
   chartSnapshotHash?: string;
 }
 
@@ -177,6 +210,21 @@ export interface AgentFinalResult {
    * is never the whole story the operator sees.
    */
   evidenceCard?: import("./evidenceCard").EvidenceCard;
+  /**
+   * Why this decision, in the operator's terms: the scenarios weighed, what
+   * supported and opposed each, why this one won, and why this plan type.
+   *
+   * Not optional decoration. A decision that cannot be explained from its own
+   * trace is not one the operator can act on or the learning loop can use, so
+   * the decision contract requires it and it is carried all the way out.
+   */
+  decisionTrace?: DecisionTrace;
+  /**
+   * The evidence card, dimension by dimension, with `unavailable` as a real
+   * grade. One blended percentage hides exactly what matters — a plan can rest
+   * on strong structure with no statistical history behind it.
+   */
+  evidenceDimensions?: import("./evidenceDimensions").EvidenceDimension[];
   confidence: number;
   /** Distinct confidence fields — UI must use displayKind/displayValue. */
   confidenceSemantics?: import("./confidenceSemantics").ConfidenceSemantics;

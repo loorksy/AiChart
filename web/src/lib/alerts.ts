@@ -1,11 +1,16 @@
 /**
- * Advanced alerts layer. Centralises the decision of whether a Telegram
- * notification should fire (based on per-user alert preferences) and records
- * every alert in the alert_log so the user has an in-app history.
+ * Alerts layer. Decides whether a notification should fire (from per-user
+ * preferences), fans it out to the enabled channels, and records every alert in
+ * alert_log so the platform always has the history — delivered or not.
+ *
+ * Three channels, one decision: Telegram, browser/mobile push, and the in-app
+ * feed that reads alert_log. They are deliberately independent at delivery
+ * time: an unlinked Telegram or an absent VAPID key must not silence the
+ * others, and no channel failure is ever allowed to lose the record.
  *
  * Two alert families are supported:
  *  - trade alerts  (executed / closed / failed)
- *  - signal alerts (new agent recommendations)
+ *  - signal alerts (new agent recommendations, lifecycle changes)
  */
 
 import { getSettings, getRecommendation, recordAlert, getTelegramChatId } from "./store";
@@ -19,6 +24,7 @@ import {
 import { buildChartSnapshotBuffer } from "./chartSnapshot";
 import { overlaysFromRecommendation } from "./chartOverlays";
 import { parseChartDrawingsJson } from "./chartDrawings";
+import { sendPushToUser } from "./push";
 import type { AlertType } from "./types";
 
 export type DeliveryReason =
@@ -29,7 +35,9 @@ export type DeliveryReason =
   | "telegram_not_linked"
   | "bot_not_configured"
   | "delivery_failed"
-  | "no_actionable_signal";
+  | "no_actionable_signal"
+  /** Creation already announced through the lifecycle notifier's dedupe. */
+  | "duplicate_creation_alert";
 
 export interface DeliveryResult {
   delivered: boolean;
@@ -46,6 +54,7 @@ const REASON_AR: Record<DeliveryReason, string> = {
   bot_not_configured: "بوت تليجرام غير مُعدّ",
   delivery_failed: "فشل الإرسال إلى تليجرام",
   no_actionable_signal: "لا إشارة تنفيذية",
+  duplicate_creation_alert: "أُعلنت هذه التوصية من قبل",
 };
 
 export function deliveryReasonAr(reason?: DeliveryReason): string {
@@ -197,8 +206,12 @@ export async function deliverSignal(
 }
 
 /**
- * Decides whether an alert should be delivered to the user's Telegram given
- * their preferences, then sends it (best-effort) and logs it either way.
+ * Deliver an alert on every enabled channel and record it either way.
+ *
+ * The alert_log write is unconditional on purpose: whether or not Telegram is
+ * linked or push is configured, the in-app feed is the channel that always
+ * works, and losing the record because a transport was down would be the one
+ * unrecoverable failure here.
  */
 export async function dispatchAlert(
   userId: number,
@@ -206,14 +219,39 @@ export async function dispatchAlert(
 ): Promise<DeliveryResult> {
   const result = await deliverSignal(userId, opts);
 
+  // Push runs independently of the Telegram outcome: a user with no Telegram
+  // link should still get the notification on their phone.
+  let pushed = false;
+  try {
+    const settings = await getSettings(userId);
+    const pushAllowed =
+      settings.alerts_enabled === 1 &&
+      (settings.alert_push ?? 1) === 1 &&
+      (opts.type !== "signal" || settings.alert_signals === 1);
+    if (pushAllowed) {
+      const outcome = await sendPushToUser(userId, {
+        title: opts.title,
+        body: opts.text ?? opts.title,
+        url: opts.symbol ? `/chart?symbol=${encodeURIComponent(opts.symbol)}` : "/",
+        tag: opts.symbol ?? opts.type,
+      });
+      pushed = outcome.sent > 0;
+    }
+  } catch {
+    // Best-effort by design — never let a push transport failure change the
+    // Telegram result or block the history write below.
+  }
+
   await recordAlert(userId, {
     type: opts.type,
     title: opts.title,
     body: opts.text ?? null,
     symbol: opts.symbol ?? null,
     image_url: opts.photoUrl ?? null,
-    delivered: result.delivered,
+    delivered: result.delivered || pushed,
   });
 
-  return result;
+  return pushed && !result.delivered
+    ? { delivered: true, reason: "delivered", reasonAr: REASON_AR.delivered }
+    : result;
 }

@@ -48,44 +48,103 @@ const recommendationSharedFields = {
   timeframes_reviewed: zTimeframesReviewed,
 };
 
-/** Structural BUY/SELL gate used by the MCP handler and unit tests. */
+/**
+ * Structural shape for a recommendation.
+ *
+ * BUY/SELL requires LEVELS — a direction with nowhere to enter, stop, or take
+ * profit is not a plan. It does NOT require a backtested strategy: send
+ * strategy_id (and optionally backtested_confidence) when real evidence exists,
+ * omit both otherwise and the server records the recommendation as direct
+ * analysis with no statistical support. Evidence grades a plan; it never
+ * decides whether the plan may exist.
+ */
 export const createRecommendationInput = z.discriminatedUnion("action", [
   z.object({
-    action: z.literal("wait"),
+    action: z.literal("buy"),
+  /**
+   * How the plan is entered — the contract's second layer, and mandatory.
+   * A direction with no plan type does not say whether the operator should act
+   * now or wait for a stated condition, which is the difference between a plan
+   * and an opinion.
+   */
+  plan_type: z
+    .enum(["immediate", "anticipatory", "conditional"])
+    .describe(
+      "immediate = price is in a valid entry area now. anticipatory = entering while the structure is still forming (higher risk, say so). conditional = the entry waits for a stated trigger.",
+    ),
     ...recommendationSharedFields,
-    entry: z.number().positive().optional(),
-    stop_loss: z.number().positive().optional(),
-    take_profit: z.number().positive().optional(),
     strategy_id: zBacktestStrategyId.optional(),
     backtested_confidence: zConfidence.optional(),
     market_regime: z.string().min(3).max(64).optional(),
-  }),
-  z.object({
-    action: z.literal("buy"),
-    ...recommendationSharedFields,
-    strategy_id: zBacktestStrategyId,
-    backtested_confidence: zConfidence,
-    market_regime: z.string().min(3).max(64),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
     take_profit: z.number().positive(),
   }),
   z.object({
     action: z.literal("sell"),
+  /**
+   * How the plan is entered — the contract's second layer, and mandatory.
+   * A direction with no plan type does not say whether the operator should act
+   * now or wait for a stated condition, which is the difference between a plan
+   * and an opinion.
+   */
+  plan_type: z
+    .enum(["immediate", "anticipatory", "conditional"])
+    .describe(
+      "immediate = price is in a valid entry area now. anticipatory = entering while the structure is still forming (higher risk, say so). conditional = the entry waits for a stated trigger.",
+    ),
     ...recommendationSharedFields,
-    strategy_id: zBacktestStrategyId,
-    backtested_confidence: zConfidence,
-    market_regime: z.string().min(3).max(64),
+    strategy_id: zBacktestStrategyId.optional(),
+    backtested_confidence: zConfidence.optional(),
+    market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
     take_profit: z.number().positive(),
   }),
 ]);
 
+/** Trade-mode input: `auto` demands an explicit operator confirmation flag. */
+export const setAgentTradeModeShape = {
+  mode: z.enum(["auto", "advisory"]),
+  confirmed_by_user: z
+    .boolean()
+    .optional()
+    .describe(
+      "Required true for mode=auto: proof the operator asked for standing execution authorisation in their own words.",
+    ),
+};
+
+export const setAgentTradeModeInput = z.object(setAgentTradeModeShape).strict();
+
+const findSimilarCasesShape = {
+  symbol: zSymbol,
+  interval: zInterval,
+  at_ms: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Ask about a past moment instead of now; cases at or after it are excluded so the answer is the one available then.",
+    ),
+  min_similarity: z
+    .number()
+    .min(0.5)
+    .max(1)
+    .optional()
+    .describe("Structural-similarity floor, 0.5–1. Default 0.82."),
+  limit: z.number().int().min(1).max(200).optional(),
+};
+
+export const findSimilarCasesInput = z.object(findSimilarCasesShape).strict();
+
 /** Catalog shape stays a ZodRawShape so MCP SDK handler inference remains intact. */
 const createRecommendationCatalogShape = {
   symbol: zSymbol,
-  action: z.enum(["buy", "sell", "wait"]),
+  // No "wait": every successful analysis ends in a direction. An unreadable
+  // market is an operational blocker reported as such, not a recommendation.
+  action: z.enum(["buy", "sell"]),
+  plan_type: z.enum(["immediate", "anticipatory", "conditional"]),
   confidence: zConfidence.optional(),
   rationale: z.string().min(10),
   factors: z.array(z.string()).min(1).max(8),
@@ -214,7 +273,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
+      "When: after choosing a direction — record the recommendation. Only buy or sell: every successful analysis ends in a direction with a plan, and an unreadable market is reported as a named operational blocker rather than a recommendation. BUY/SELL require valid entry/SL/TP levels AND plan_type (immediate | anticipatory | conditional) — a direction with no plan type does not say whether to act now or wait for a condition. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
@@ -319,6 +378,30 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "Current fixed product settings: Forex, scalping, and Risk per Trade. read-only.",
     inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  {
+    name: "get_agent_trade_mode",
+    domain: "core",
+    description:
+      "When: at session start after get_account_overview, and before offering execution — the operator's standing trading mode, shared with the platform. Returns mode (auto | advisory), connected, and needs_choice. needs_choice=true means a connected operator has not chosen yet: ask ONCE which mode they want, then remember the answer. Never re-ask on every analysis. read-only.",
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  {
+    name: "set_agent_trade_mode",
+    domain: "core",
+    description:
+      "When: the operator explicitly states which mode they want. 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met — set it ONLY when the operator asked for it in their own words, and pass confirmed_by_user:true to record that. 'advisory' means analysis and recommendations with no execution at all. auto requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation.",
+    inputSchema: setAgentTradeModeShape,
+    annotations: DESTRUCTIVE,
+  },
+  {
+    name: "find_similar_cases",
+    domain: "core",
+    description:
+      "When: during analysis, to ask what followed structurally similar past moments on this symbol and timeframe. Returns aggregated forward outcomes for BOTH directions (buy and short), so it is evidence to weigh and not confirmation of a direction already chosen. found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. This never gates a recommendation. read-only.",
+    inputSchema: findSimilarCasesShape,
     annotations: READ_ONLY,
   },
   {

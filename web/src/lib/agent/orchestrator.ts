@@ -9,7 +9,9 @@ import type {
   AgentChartContext,
   AgentFinalResult,
   AgentRunContext,
+  DecisionTrace,
 } from "./types";
+import type { EvidenceDimension } from "./evidenceDimensions";
 import type { AppLocale } from "@/lib/i18n";
 import type { AgentConversationContext } from "./context";
 import { contextualizeIntentMessage } from "./context";
@@ -84,6 +86,15 @@ import {
 } from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
+import { resolveValidity } from "./trading/tradePlan";
+import { collectVisualEvidence } from "./visualEvidence";
+import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
+import { expectedSpreadFor } from "@/lib/strategies/liveCostProfile";
+import { recordDecisionForParity } from "./parityLog";
+import { metrics } from "@/lib/metrics";
+import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
+import { sessionOf } from "@/lib/recommendations/performanceJournal";
+import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
   clearActiveRecommendation,
@@ -125,6 +136,8 @@ import {
   createTrackedRecommendation,
   listTrackedRecommendations,
 } from "@/lib/recommendations/recommendationStore";
+import { announceOpportunityCreated } from "@/lib/recommendations/lifecycleNotifier";
+import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import {
   renderLessonsForPrompt,
   summarizeTradeLessons,
@@ -134,12 +147,30 @@ import {
 const log = createLogger("agent.orchestrator");
 
 /**
+ * Realised R for a resolved recommendation, from its own levels.
+ *
+ * The tracker records which target was reached, and the plan records what the
+ * risk was, so the R multiple is derivable without a fill price — a loss is
+ * −1R by construction and a win is the distance to the target it reached.
+ */
+function realisedRMultiple(rec: TrackedRecommendation): number | null {
+  const risk = Math.abs(rec.entry - rec.stopLoss);
+  if (!(risk > 0)) return null;
+  if (rec.outcome === "loss") return -1;
+  const index =
+    rec.outcome === "win_tp3" ? 2 : rec.outcome === "win_tp2" ? 1 : rec.outcome === "win_tp1" ? 0 : -1;
+  const target = index >= 0 ? rec.targets[index] : undefined;
+  if (target == null) return null;
+  return Number((Math.abs(target - rec.entry) / risk).toFixed(2));
+}
+
+/**
  * Realised-outcome lessons for the decision prompt (RELIABILITY_PLAN item 14).
  *
  * Feeds what ACTUALLY happened on this symbol back into the next decision. It
  * is strictly evidence: a failure to read history degrades to no block at all
  * rather than blocking the run, and the block itself is phrased as context to
- * weigh — the model keeps sole authority over BUY/SELL/WAIT.
+ * weigh — the model keeps sole authority over the direction.
  */
 async function buildLessonsBlock(
   userId: number | undefined,
@@ -150,15 +181,29 @@ async function buildLessonsBlock(
     const tracked = await listTrackedRecommendations(userId, { limit: 60 });
     const outcomes: TradeOutcomeRecord[] = tracked
       .filter((r) => r.outcome === "loss" || r.outcome.startsWith("win_"))
-      .map((r) => ({
-        symbol: r.symbol,
-        direction: r.direction,
-        won: r.outcome.startsWith("win_"),
-        rMultiple: null,
-        session: null,
-        closedAt: r.slHitAt ?? r.tp3HitAt ?? r.tp2HitAt ?? r.tp1HitAt ?? r.createdAt,
-      }));
-    return renderLessonsForPrompt(summarizeTradeLessons({ symbol, outcomes }));
+      .map((r) => {
+        const closedAt =
+          r.slHitAt ?? r.tp3HitAt ?? r.tp2HitAt ?? r.tp1HitAt ?? r.createdAt;
+        return {
+          symbol: r.symbol,
+          direction: r.direction,
+          won: r.outcome.startsWith("win_"),
+          // Both of these were hardcoded null, which silently disabled the
+          // average-R and weak-session analysis inside the learning loop — the
+          // code ran on every request and could never conclude anything.
+          rMultiple: realisedRMultiple(r),
+          session: sessionOf(r.createdAt),
+          closedAt,
+        };
+      });
+    const summary = summarizeTradeLessons({ symbol, outcomes });
+    // Personal notes (plan §15): the operator's OWN session/R record, appended
+    // as further observations inside the same bounded block. Guidance only —
+    // the summary's insufficiency rule and note cap both still apply.
+    const { appendPersonalNotes } = await import(
+      "@/lib/recommendations/personalNotes"
+    );
+    return renderLessonsForPrompt(await appendPersonalNotes(userId, symbol, summary));
   } catch (error) {
     // History is an aid, never a gate: losing it must not affect the decision.
     log.warn("agent.lessons.unavailable", {
@@ -200,6 +245,15 @@ export interface UnifiedAgentInput {
   locale?: AppLocale;
   /** Optional, bounded language context. It is never a market-data authority. */
   conversationContext?: AgentConversationContext;
+  /**
+   * Which surface invoked the engine, for the parity log.
+   *
+   * Both surfaces run the SAME brain — the MCP tool proxies to the bridge route,
+   * which calls this function. So the surface is a property of the entry point,
+   * not of a second decision path. Labelling it is what lets the parity log show
+   * that a decision made through MCP and one made in chat came from one engine.
+   */
+  surface?: "platform" | "mcp";
 }
 
 export async function runUnifiedChartAgent(
@@ -645,7 +699,7 @@ async function runUnifiedChartAgentInner(
 
   // Gap policy v1.2: only CATASTROPHIC data loss stops the analysis (the
   // series is unusable). Significant gaps become soft evidence below — the
-  // model stays the sole BUY/SELL/WAIT authority and weighs them itself.
+  // model stays the sole authority over the direction and weighs them itself.
   if (market.dataQuality.coverage.status === "gapped") {
     trackedCtx.emitActivity({
       type: "data",
@@ -800,8 +854,34 @@ async function runUnifiedChartAgentInner(
     });
   }
 
+  // Deterministic chart geometry — computed ONCE, BEFORE the candidate engine,
+  // so forming-pattern boundaries become real entry zones rather than prompt
+  // prose. Shared by the synthesizer evidence, the drawing plan, and every
+  // render surface downstream.
+  const geometry = detectChartGeometry({
+    candles: market.currentTfCandles,
+    atr: market.atr,
+  });
+
+  // Selective atlas loading keyed by what the engine ACTUALLY found (plan
+  // §11 F.1). Skill selection ran before candles existed; with the detected
+  // pattern names in hand the catalogue is re-selected so the atlas loads
+  // exactly when there is a pattern to read about — same caps, same budget.
+  const detectedPatternNames = geometry.patterns.map((p) => p.patternType);
+  const skillContextFinal =
+    detectedPatternNames.length && wantMarket && FEATURES.agentSkillsV1()
+      ? buildAgentSkillContext({
+          request: userMessage,
+          intent: intents,
+          locale,
+          market: "forex",
+          availableTools: ["render_cards", "detect_levels", "get_ohlc"],
+          detectedPatterns: detectedPatternNames,
+        })
+      : skillContext;
+
   // The evidence builder prepares price-valid candidates for the model. It is
-  // not a policy gate and it does not own BUY/SELL/WAIT.
+  // not a policy gate and it does not own the direction.
   let risk: RiskAgentResult | null = null;
   try {
     risk = await withTimeout(
@@ -815,6 +895,7 @@ async function runUnifiedChartAgentInner(
         account: input.account ?? null,
         educationalOnly,
         chartDrawings: chartContext?.drawings,
+        geometry,
       }),
       AGENT_TIMEOUTS.risk,
       null,
@@ -828,11 +909,16 @@ async function runUnifiedChartAgentInner(
     trackedCtx.emitActivity({
       type: "risk",
       status: "failed",
-      message: "تعذّر إكمال فحص المخاطر — القرار انتظار احترازياً.",
+      // A stage fault is an operational blocker with a name, never a market
+      // opinion — calling it a "precautionary wait" told the operator the agent
+      // had read the market and chosen to stand aside, which is not what
+      // happened. The returned envelope has always been informational; only the
+      // wording was lying.
+      message: "تعذّر إكمال فحص المخاطر — عائق تشغيلي، لا قرار سوقي.",
       metadata: { stage: "risk", code: riskFailure?.code ?? "timeout" },
     });
     return buildAgentFallbackResult(
-      "Risk agent failed — defaulting to WAIT.",
+      "Risk stage failed — operational blocker, no market decision was made.",
       collected,
       locale,
       {
@@ -865,18 +951,10 @@ async function runUnifiedChartAgentInner(
     mtf,
   });
 
-  // Deterministic chart geometry (trendlines, channels, patterns with
-  // forming/completed state) — computed ONCE and shared by the synthesizer
-  // evidence, the drawing plan, and every render surface downstream.
-  const geometry = detectChartGeometry({
-    candles: market.currentTfCandles,
-    atr: market.atr,
-  });
-
   // Evidence-based chart story for the synthesizer (real detector output only).
   const narrative = buildMarketNarrative({ market, structure, liquidity, mtf });
 
-  // The LLM chooses BUY, SELL, or WAIT and binds actionable choices to a real
+  // The LLM chooses the direction and binds the plan to a real
   // candidate. Model failure produces a technical no-recommendation state.
   // Cancelled before the decision: never pay for the most expensive call when
   // the answer has no reader.
@@ -886,6 +964,66 @@ async function runUnifiedChartAgentInner(
   // deadline-wrapped callback stays synchronous (item 14).
   const lessonsBlock = await buildLessonsBlock(ctx.userId, market.symbol);
 
+  // Charts, on the same terms the MCP surface gets them. Fetched before the
+  // decision call rather than inside it, so a slow capture cannot eat the
+  // decision's own deadline — and an empty result simply means the engine
+  // reads numbers alone, as it always did.
+  // Verified statistical support, looked up rather than assembled: the factory's
+  // evidence never used to reach an answer because building it mid-request could
+  // not finish in time, and evidence that arrives after the decision is none.
+  const statisticalSupport = await getStatisticalSupport({
+    userId: ctx.userId,
+    symbol: market.symbol,
+    timeframe: market.interval,
+  }).catch(() => null);
+
+  // What followed structurally similar moments. Read before the decision like
+  // every other piece of evidence, and for both directions — the memory must not
+  // be consulted to confirm a direction the brain has already leaned toward.
+  // Live session cost, measured on this operator's broker. Falls back to the
+  // static session model WITH the fallback labelled — the label is what keeps a
+  // modelled number from posing as a measured one in the evidence card.
+  const liveCost = FEATURES.evidencePipelineV2()
+    ? await expectedSpreadFor(market.symbol, market.spread ?? null).catch(() => null)
+    : null;
+
+  const historicalCases = FEATURES.caseMemoryV1()
+    ? await collectCaseEvidenceFor({
+        symbol: market.symbol,
+        interval: market.interval,
+        candles: market.currentTfCandles,
+        geometry,
+      }).catch(() => null)
+    : null;
+
+  const visual = FEATURES.visionDecisionV1()
+    ? await collectVisualEvidence({
+        userId: ctx.userId,
+        symbol: market.symbol,
+        interval: market.interval,
+        timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+      })
+    : { snapshots: [], missing: [], elapsedMs: 0 };
+  if (visual.snapshots.length) {
+    trackedCtx.emitActivity({
+      type: "analysis",
+      status: "completed",
+      message: `تمت مراجعة ${visual.snapshots.length} لقطات شارت بصرياً.`,
+      metadata: { timeframes: visual.snapshots.map((s) => s.timeframe) },
+    });
+  }
+
+  // Parity observation point (completion criterion 2). Recorded from the SAME
+  // frozen bundle the decision was made on, so the MCP surface's row for the same
+  // hash is genuinely comparable. Diagnostics only — never affects the answer.
+  const parityBundle = {
+    statisticalSupport: statisticalSupport ?? null,
+    historicalCases: historicalCases ?? null,
+    geometry: geometry.patterns?.map((p) => `${p.patternType}:${p.status}`) ?? [],
+    dataQuality: market.dataQuality.sufficient,
+  };
+
+  const decisionStartedAt = performance.now();
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
@@ -900,9 +1038,28 @@ async function runUnifiedChartAgentInner(
           narrative,
           geometry,
           locale,
-          skillContextBlock: skillContext.block || null,
+          skillContextBlock: skillContextFinal.block || null,
           // Realised-outcome lessons (item 14): evidence the model weighs.
           lessonsBlock,
+          visualSnapshots: visual.snapshots,
+          statisticalSupport,
+          historicalCases,
+          liveCost: liveCost as Record<string, unknown> | null,
+        },
+        {
+          // The extra-frame round captures through the SAME collector the first
+          // round used — one image, tight budget, failure returns null and the
+          // first decision stands.
+          captureExtraFrame: async (timeframe) => {
+            const extra = await collectVisualEvidence({
+              userId: ctx.userId,
+              symbol: market.symbol,
+              interval: market.interval,
+              timeframes: [timeframe],
+              timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+            }).catch(() => null);
+            return extra?.snapshots[0] ?? null;
+          },
         },
       ).catch((err) => {
         synthError = err;
@@ -1203,6 +1360,53 @@ async function runUnifiedChartAgentInner(
   });
 
   let storedRecommendation: ActiveRecommendation | null = null;
+  // Contract completeness + planned economics + vision latency (plan §17).
+  {
+    const rec = finalDecision.recommendation;
+    const complete = Boolean(
+      rec && finalDecision.planType && finalDecision.executionState &&
+      rec.entry != null && rec.stop_loss != null && (rec.targets?.length ?? 0) > 0,
+    );
+    metrics.analysisContracts.inc({ completeness: complete ? "complete" : "incomplete" });
+    if (rec && !complete) {
+      metrics.invalidLevelRecommendations.inc({ source: "platform" });
+    }
+    if (rec?.netRr != null) metrics.plannedNetR.observe(rec.netRr);
+    metrics.visionLatency.observe(
+      { vision: visual.snapshots.length ? "with" : "without" },
+      (performance.now() - decisionStartedAt) / 1000,
+    );
+  }
+
+  // One row per surface per bundle. The MCP surface records its own against the
+  // same hash, and only a matching hash makes the two comparable at all.
+  void recordDecisionForParity({
+    evidenceHash: evidenceFingerprint(parityBundle),
+    symbol: market.symbol,
+    timeframeSet: visual.snapshots.map((snapshot) => snapshot.timeframe),
+    marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
+    surface: input.surface ?? "platform",
+    decision: {
+      direction:
+        finalDecision.decision === "buy" || finalDecision.decision === "sell"
+          ? finalDecision.decision
+          : null,
+      planType: finalDecision.planType ?? null,
+      entryLow: finalDecision.recommendation?.entryZone?.low ?? null,
+      entryHigh: finalDecision.recommendation?.entryZone?.high ?? null,
+      stopLoss: finalDecision.recommendation?.stop_loss ?? null,
+      targets: finalDecision.recommendation?.targets ?? [],
+      executionState: finalDecision.executionState ?? null,
+      blocked: !finalDecision.recommendation,
+      imagesFor: visual.snapshots.map((snapshot) => snapshot.timeframe),
+      providers: [
+        statisticalSupport ? "statistical_support" : null,
+        historicalCases ? "case_memory" : null,
+        news ? "calendar" : null,
+      ].filter((name): name is string => name != null),
+    },
+  });
+
   if (
     finalDecision.decision === "buy" ||
     finalDecision.decision === "sell"
@@ -1218,6 +1422,7 @@ async function runUnifiedChartAgentInner(
       risk,
       drawings,
       chartSnapshotHash,
+      statisticalSupport: statisticalSupport?.level,
     });
   }
 
@@ -1368,8 +1573,8 @@ async function runUnifiedChartAgentInner(
     newsRisk: news ? { level: news.newsRisk, reason: news.reason } : undefined,
     activityEvents: collected,
     analysisId,
-    selectedSkills: skillContext.loaded.length ? skillContext.loaded : undefined,
-    skillLoadFailures: skillContext.failed.length ? skillContext.failed : undefined,
+    selectedSkills: skillContextFinal.loaded.length ? skillContextFinal.loaded : undefined,
+    skillLoadFailures: skillContextFinal.failed.length ? skillContextFinal.failed : undefined,
     // Full research kept for runTrace/admin — stripped before client SSE.
     researchEvidence: {
       ...researchEvidence,
@@ -1417,6 +1622,11 @@ async function runUnifiedChartAgentInner(
         }
       : undefined,
     publicReasoningSummary: finalDecision.publicReasoningSummary,
+    // Explainability is a validity condition, not a nicety: both of these are
+    // built by the decision engine and were being dropped here, so the trace
+    // and the evidence card never reached the operator at all.
+    decisionTrace: finalDecision.decisionTrace,
+    evidenceDimensions: finalDecision.evidenceDimensions,
     debugDecisionFlow,
     options: contextualOptionsFor({
       decision: finalDecision.decision,
@@ -1779,6 +1989,8 @@ async function storeFinalRecommendation(input: {
   risk: RiskAgentResult;
   drawings: AgentFinalResult["drawings"];
   chartSnapshotHash: string;
+  /** Verified backing grade, persisted so the card is not rebuilt from nothing. */
+  statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
 }): Promise<ActiveRecommendation | null> {
   const rec = input.finalDecision.recommendation;
   if (
@@ -1803,27 +2015,40 @@ async function storeFinalRecommendation(input: {
     interval: input.market.interval,
     createdAt: createdCandleTime ?? Date.now(),
     createdCandleTime,
-    expiresAt: computeRecommendationExpiry({
+    // The agent states how many candles its plan stays meaningful; the
+    // timeframe default remains the ceiling so a bad number cannot pin a plan
+    // open for days.
+    expiresAt: resolveValidity({
+      validityCandles: rec.validityCandles ?? 6,
       interval: input.market.interval,
-      scalp: input.scalp,
-      from: Date.now(),
-    }),
+      maxExpiresAt: computeRecommendationExpiry({
+        interval: input.market.interval,
+        scalp: input.scalp,
+        from: Date.now(),
+      }),
+      now: Date.now(),
+    }).expiresAt,
     direction: rec.action,
+    planType: rec.planType,
+    executionState: rec.executionState,
+    statisticalSupport: input.statisticalSupport ?? undefined,
     entry: rec.entry,
+    entryZone: rec.entryZone,
     entryType: rec.entryType,
     stopLoss: rec.stop_loss,
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],
     rr: rec.rr,
     status:
-      rec.activationClass === "immediate" || rec.entryType === "market"
+      rec.executionState === "valid_now" ||
+      rec.activationClass === "immediate" ||
+      rec.entryType === "market"
         ? "triggered"
         : "pending_entry",
+    alternativeScenario: rec.alternativeScenario,
+    validityCandles: rec.validityCandles,
     triggerCondition:
-      rec.triggerCondition ??
-      (rec.action === "buy"
-        ? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`
-        : `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`),
+      rec.triggerCondition ?? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`,
     invalidationLevel: rec.stop_loss,
     invalidationRule:
       rec.invalidationRule ??
@@ -1852,9 +2077,20 @@ async function storeFinalRecommendation(input: {
   // Persist a server-side tracked record (monitoring only — never executes).
   // Best-effort: a storage failure must not break the agent's reply.
   if (input.userId != null) {
-    await persistTrackedRecommendation(active, input.userId, input.sessionId).catch(
-      () => {},
-    );
+    await persistTrackedRecommendation(active, input.userId, input.sessionId, {
+      // The timeframe-agreement ruling rides with the trace (plan §10 E): the
+      // model names which frame led and which gave context/timing, and that
+      // ruling must survive into revision 1 like every other part of the why.
+      decisionTrace: (input.finalDecision.decisionTrace
+        ? {
+            ...input.finalDecision.decisionTrace,
+            timeframeRoles: input.finalDecision.timeframeRoles ?? null,
+          }
+        : input.finalDecision.timeframeRoles
+          ? { timeframeRoles: input.finalDecision.timeframeRoles }
+          : undefined) as DecisionTrace | undefined,
+      evidenceDimensions: input.finalDecision.evidenceDimensions,
+    }).catch(() => {});
   }
   return active;
 }
@@ -1864,6 +2100,10 @@ async function persistTrackedRecommendation(
   active: ActiveRecommendation,
   userId: number,
   chatId: string,
+  explanation?: {
+    decisionTrace?: DecisionTrace;
+    evidenceDimensions?: EvidenceDimension[];
+  },
 ): Promise<void> {
   const entryType: "market" | "limit" | "pending" =
     active.entryType === "market"
@@ -1896,5 +2136,41 @@ async function persistTrackedRecommendation(
     expiresAt: active.expiresAt ?? Date.now() + 4 * 60 * 60 * 1000,
     triggeredAt: entryType === "market" ? Date.now() : undefined,
     priceAtCreation: active.priceAtCreation,
+    // The three layers and the plan's own conditions, so the tracker has an
+    // activation condition to watch and the journal a plan type to report.
+    planType: active.planType,
+    executionState: active.executionState,
+    statisticalSupport: active.statisticalSupport,
+    // The SOURCE of support, distinct from its grade: a verified strategy
+    // backed this plan, or it stands on direct analysis alone. Deep-research
+    // revisions record their own source through the revision mechanism.
+    evidenceSource:
+      active.statisticalSupport && active.statisticalSupport !== "unavailable"
+        ? "strategy_supported"
+        : "direct_analysis",
+    entryLow: active.entryZone?.low,
+    entryHigh: active.entryZone?.high,
+    triggerCondition: active.triggerCondition,
+    invalidationRule: active.invalidationRule,
+    alternativeScenario: active.alternativeScenario,
+    validityCandles: active.validityCandles,
+    // Stored with revision 1: why this plan, and on what evidence — so the
+    // decision stays explainable after the market has moved past it.
+    decisionTrace: explanation?.decisionTrace as unknown as Record<string, unknown> | undefined,
+    evidence: explanation?.evidenceDimensions
+      ? { evidenceDimensions: explanation.evidenceDimensions }
+      : undefined,
   });
+  // The birth announcement (plan §8 C.1), through the lifecycle notifier so it
+  // shares the (recommendation, event, revision) dedupe with every later event
+  // — revision 1 announced exactly once, re-runs and the legacy chart alert
+  // both silenced by the same claimed key. Best-effort: a failed send never
+  // undoes the stored plan.
+  await announceOpportunityCreated(userId, {
+    recommendationId: active.id,
+    symbol: active.symbol,
+    direction: active.direction,
+    entry: active.entry,
+    planType: active.planType ?? null,
+  }).catch(() => {});
 }

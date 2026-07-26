@@ -43,6 +43,13 @@ const SCHEMA = `
     telegram_chat_id         TEXT,
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
     alerts_enabled           INTEGER NOT NULL DEFAULT 1,
+    alert_push               INTEGER NOT NULL DEFAULT 1,
+    -- Standing execution authorisation: 'unset' until a connected operator
+    -- chooses. The epoch pins an 'auto' grant to the connection it was given
+    -- for, so it cannot silently survive a disconnect and reconnect.
+    agent_trade_mode         TEXT NOT NULL DEFAULT 'unset',
+    agent_trade_mode_updated_at INTEGER,
+    agent_trade_mode_epoch   TEXT,
     alert_trades             INTEGER NOT NULL DEFAULT 1,
     alert_signals            INTEGER NOT NULL DEFAULT 1,
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
@@ -86,6 +93,16 @@ const SCHEMA = `
     engine_version  TEXT NOT NULL DEFAULT 'legacy',
     entry_type      TEXT,
     legacy_tracking_id TEXT,
+    effective_revision_no INTEGER,
+    plan_type       TEXT,
+    execution_state TEXT,
+    statistical_support TEXT,
+    -- Where the decision's support actually came from. Named separately from
+    -- statistical_support (a GRADE) because the source and its strength are
+    -- different facts: direct_analysis | strategy_supported | historical_memory
+    -- | deep_research. NULL on rows written before it existed — never given a
+    -- value that would imply evidence the row does not have.
+    evidence_source TEXT,
     updated_at      INTEGER,
     rationale       TEXT,
     factors         TEXT,
@@ -106,6 +123,10 @@ const SCHEMA = `
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id           INTEGER NOT NULL,
     recommendation_id INTEGER,
+    -- Which revision of that recommendation this order was built from, and who
+    -- authorised it. Both are checked again at execution time.
+    recommendation_revision_no INTEGER,
+    authorization_source TEXT,
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          REAL NOT NULL,
@@ -362,6 +383,40 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_alert_log_user
     ON alert_log (user_id, id DESC);
 
+  -- One row per real change already announced. The unique key is what makes a
+  -- re-run of the sweep silent: the same recommendation, revision, and event
+  -- can only ever be delivered once, however many times it is evaluated.
+  CREATE TABLE IF NOT EXISTS alert_dedupe (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    dedupe_key  TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    symbol      TEXT,
+    created_at  INTEGER NOT NULL,
+    UNIQUE (user_id, dedupe_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_alert_dedupe_recent
+    ON alert_dedupe (user_id, created_at DESC);
+
+  -- Browser/mobile push endpoints. One row per device the operator opted in
+  -- from; a rejected endpoint is deleted on the next send rather than retried
+  -- forever, since the browser has already told us it is gone.
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    endpoint    TEXT NOT NULL,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    user_agent  TEXT,
+    created_at  INTEGER NOT NULL,
+    last_used_at INTEGER,
+    UNIQUE (endpoint),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
+    ON push_subscriptions (user_id);
+
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id             INTEGER NOT NULL,
@@ -419,6 +474,114 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_market_candles_lookup
     ON market_candles(symbol, interval, source, time);
+
+  -- Historical case memory: one row per indexed market moment.
+  -- Features come from candles at or before case_time; the outcome_* columns are
+  -- computed from candles strictly after it. That split is the whole point, so
+  -- the two groups are written by different functions and never mixed.
+  CREATE TABLE IF NOT EXISTS market_cases (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol          TEXT NOT NULL,
+    interval        TEXT NOT NULL,
+    case_time       INTEGER NOT NULL,
+    direction       TEXT NOT NULL,
+    regime          TEXT NOT NULL,
+    trend           TEXT NOT NULL,
+    range_zone      TEXT NOT NULL,
+    pullback_depth  REAL NOT NULL,
+    impulse_atr     REAL NOT NULL,
+    volatility      REAL NOT NULL,
+    session         TEXT NOT NULL,
+    structure_run   INTEGER NOT NULL,
+    pattern_name    TEXT,
+    pattern_stage   TEXT,
+    entry_price     REAL NOT NULL,
+    atr             REAL NOT NULL,
+    -- The boundary that would complete a forming pattern, frozen at case_time
+    -- like every other feature. NULL when no pattern (or no single boundary)
+    -- was present, and on rows indexed before partial-stage outcomes existed.
+    break_level     REAL,
+    break_direction TEXT,
+    -- NULL while the forward window is still open (a case at the edge of the
+    -- warehouse has no future yet); filled once the horizon is available.
+    outcome         TEXT,
+    outcome_bars    INTEGER,
+    max_favourable  REAL,
+    max_adverse     REAL,
+    net_r           REAL,
+    -- Partial-stage outcomes (plan §12): only cases indexed on a FORMING
+    -- pattern carry these; computed strictly from candles after case_time.
+    forming_outcome TEXT,
+    forming_bars    INTEGER,
+    false_break     INTEGER,
+    early_net_r     REAL,
+    confirmed_net_r REAL,
+    session_cost    REAL,
+    indexer_version INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(symbol, interval, case_time, direction, indexer_version)
+  );
+
+  -- Re-evaluation triggers (constitution §6). A trigger REQUESTS a new decision
+  -- cycle; it never changes a plan. Recorded whether or not a cycle followed, so
+  -- "why was this re-decided" and "why was it not" are both answerable.
+  CREATE TABLE IF NOT EXISTS recommendation_reevaluations (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_id TEXT NOT NULL,
+    user_id           INTEGER NOT NULL,
+    symbol            TEXT NOT NULL,
+    reason            TEXT NOT NULL,
+    detail            TEXT NOT NULL DEFAULT '',
+    source            TEXT NOT NULL,
+    revision_no       INTEGER,
+    outcome           TEXT NOT NULL,
+    raised_at         INTEGER NOT NULL,
+    dedupe_key        TEXT NOT NULL,
+    -- Fingerprint of the bundle the cycle decided on, so a confirmed verdict is
+    -- traceable to the evidence that confirmed it.
+    evidence_hash     TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (recommendation_id, dedupe_key)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_recommendation_reevaluations_lookup
+    ON recommendation_reevaluations(recommendation_id, raised_at DESC);
+
+  -- Platform/MCP decision parity (plan §16, completion criterion 2). One row per
+  -- surface per evidence bundle; two rows with the same evidence_hash are the
+  -- only pair that is meaningfully comparable.
+  CREATE TABLE IF NOT EXISTS decision_parity (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    evidence_hash    TEXT NOT NULL,
+    symbol           TEXT NOT NULL,
+    timeframe_set    TEXT NOT NULL DEFAULT '[]',
+    market_timestamp INTEGER NOT NULL,
+    surface          TEXT NOT NULL,
+    decision_json    TEXT NOT NULL DEFAULT '{}',
+    created_at       INTEGER NOT NULL,
+    UNIQUE (evidence_hash, surface)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
+    ON decision_parity(created_at DESC);
+
+  -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
+  -- from the EA's live quotes; aggregated on read, pruned past the window.
+  CREATE TABLE IF NOT EXISTS cost_samples (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol      TEXT NOT NULL,
+    session     TEXT NOT NULL,
+    spread_pips REAL NOT NULL,
+    observed_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cost_samples_lookup
+    ON cost_samples(symbol, observed_at);
+
+  CREATE INDEX IF NOT EXISTS idx_market_cases_lookup
+    ON market_cases(symbol, interval, regime, trend, direction);
+  CREATE INDEX IF NOT EXISTS idx_market_cases_pending
+    ON market_cases(symbol, interval, outcome, case_time);
 
   -- Smart Chart Agent decision audit (never stores raw model reasoning).
   CREATE TABLE IF NOT EXISTS agent_audit_logs (
@@ -555,6 +718,42 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_recommendation_history_replay
     ON recommendation_history (user_id, recommendation_id, occurred_at, id);
+
+  -- Every edit to a live recommendation lands here as a new row; the pointer
+  -- column effective_revision_no on recommendations says which one is in force.
+  -- Prior revisions stay readable but stop being executable, so a level the
+  -- agent has since moved can never be filled, and "what did it say at the
+  -- time" always has an answer. evidence_json freezes the bundle it decided on.
+  CREATE TABLE IF NOT EXISTS recommendation_revisions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_id INTEGER NOT NULL,
+    user_id           INTEGER NOT NULL,
+    revision_no       INTEGER NOT NULL,
+    direction         TEXT NOT NULL,
+    plan_type         TEXT,
+    execution_state   TEXT,
+    entry             REAL,
+    entry_low         REAL,
+    entry_high        REAL,
+    stop_loss         REAL,
+    targets_json      TEXT NOT NULL DEFAULT '[]',
+    activation_condition TEXT,
+    invalidation_rule TEXT,
+    alternative_scenario TEXT,
+    validity_candles  INTEGER,
+    expires_at        INTEGER,
+    reason            TEXT NOT NULL,
+    source            TEXT NOT NULL,
+    evidence_hash     TEXT,
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    decision_trace_json TEXT NOT NULL DEFAULT '{}',
+    created_at        INTEGER NOT NULL,
+    UNIQUE (recommendation_id, revision_no),
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_revisions_lookup
+    ON recommendation_revisions (user_id, recommendation_id, revision_no DESC);
 
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -765,6 +964,9 @@ const SCHEMA = `
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_history_update
     BEFORE UPDATE ON recommendation_history
     BEGIN SELECT RAISE(ABORT, 'recommendation history is append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_recommendation_revisions_update
+    BEFORE UPDATE ON recommendation_revisions
+    BEGIN SELECT RAISE(ABORT, 'recommendation revisions are append-only'); END;
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_transitions_update
     BEFORE UPDATE ON recommendation_transitions
     BEGIN SELECT RAISE(ABORT, 'recommendation transitions are append-only'); END;
@@ -947,6 +1149,13 @@ function migrate(db: Database.Database) {
     ["entry_type", "TEXT"],
     ["legacy_tracking_id", "TEXT"],
     ["updated_at", "INTEGER"],
+    // Which revision is in force. NULL on rows written before revisions
+    // existed: those stay readable and are never treated as executable.
+    ["effective_revision_no", "INTEGER"],
+    ["plan_type", "TEXT"],
+    ["execution_state", "TEXT"],
+    ["statistical_support", "TEXT"],
+    ["evidence_source", "TEXT"],
   ];
   for (const [name, definition] of canonicalRecColumns) {
     if (!recCols.some((column) => column.name === name)) {
@@ -995,6 +1204,20 @@ function migrate(db: Database.Database) {
   if (!settingsCols.some((c) => c.name === "onboarding_done")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  for (const [name, definition] of [
+    ["agent_trade_mode", "TEXT NOT NULL DEFAULT 'unset'"],
+    ["agent_trade_mode_updated_at", "INTEGER"],
+    ["agent_trade_mode_epoch", "TEXT"],
+  ] as const) {
+    if (!settingsCols.some((c) => c.name === name)) {
+      db.exec(`ALTER TABLE trading_settings ADD COLUMN ${name} ${definition}`);
+    }
+  }
+  if (!settingsCols.some((c) => c.name === "alert_push")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN alert_push INTEGER NOT NULL DEFAULT 1",
     );
   }
   if (!settingsCols.some((c) => c.name === "alerts_enabled")) {
@@ -1121,6 +1344,12 @@ function migrate(db: Database.Database) {
   }
   if (!intentCols.some((c) => c.name === "limit_price")) {
     db.exec("ALTER TABLE trade_intents ADD COLUMN limit_price REAL");
+  }
+  if (!intentCols.some((c) => c.name === "recommendation_revision_no")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN recommendation_revision_no INTEGER");
+  }
+  if (!intentCols.some((c) => c.name === "authorization_source")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN authorization_source TEXT");
   }
   if (!tradeCols.some((c) => c.name === "limit_price")) {
     db.exec("ALTER TABLE trades ADD COLUMN limit_price REAL");
@@ -1501,6 +1730,27 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_trial_ledger_user
       ON trial_interaction_ledger(user_id, status);
   `);
+
+  // Partial-stage outcomes on the case memory (plan §12). Additive only: rows
+  // indexed before these columns existed keep NULLs — their features are
+  // frozen and never reinterpreted.
+  const marketCaseCols = db
+    .prepare("PRAGMA table_info(market_cases)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["break_level", "REAL"],
+    ["break_direction", "TEXT"],
+    ["forming_outcome", "TEXT"],
+    ["forming_bars", "INTEGER"],
+    ["false_break", "INTEGER"],
+    ["early_net_r", "REAL"],
+    ["confirmed_net_r", "REAL"],
+    ["session_cost", "REAL"],
+  ] as const) {
+    if (!marketCaseCols.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE market_cases ADD COLUMN ${name} ${definition}`);
+    }
+  }
 
   const entFlag = db
     .prepare("SELECT value FROM system_flags WHERE key = 'entitlement_migration_v1'")

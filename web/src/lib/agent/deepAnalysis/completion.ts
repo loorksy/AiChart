@@ -16,6 +16,17 @@ import {
 } from "@/lib/recommendations/canonical/repository";
 import { isTerminalRecommendationStatus } from "@/lib/recommendations/canonical/stateMachine";
 import {
+  evidenceFingerprint,
+  getEffectiveRevision,
+} from "@/lib/recommendations/canonical/revisions";
+import type { CanonicalRecommendation } from "@/lib/recommendations/canonical/types";
+import { notifyLifecycleEvents } from "@/lib/recommendations/lifecycleNotifier";
+import type { LifecycleEvent } from "@/lib/recommendations/lifecycleEvents";
+import type { ReevaluationTrigger } from "@/lib/recommendations/reevaluationTriggers";
+import type { CycleDeps, CycleResult } from "@/lib/recommendations/reevaluationCycle";
+import { execute } from "@/lib/db";
+import { FEATURES } from "@/lib/agent/featureFlags";
+import {
   composeDeepAnalysisUpdate,
   mapProgressToUxPhase,
 } from "./composeUpdate";
@@ -32,6 +43,19 @@ import {
   type UserSafeResearchProjection,
 } from "../userSafeOutbound";
 import type { ResearchEvidenceBundle } from "../researchEvidence";
+
+/**
+ * What deep research concluded about the plan it was asked to examine — the
+ * SAME trio every re-evaluation cycle uses (plan §14 I): `confirmed` records
+ * "we looked and found nothing against it" with no revision; `revised` means a
+ * real revision was applied through the one mechanism; `invalidated` means the
+ * plan's executionState was set invalidated — through a revision, never a
+ * direct write. Reported on every completed run, so "we looked and found
+ * nothing against it" is stated rather than indistinguishable from "we never
+ * looked". (Historical rows may carry the older reinforced/neutral/contradicted
+ * vocabulary; they are never rewritten.)
+ */
+export type DeepResearchVerdict = "confirmed" | "revised" | "invalidated";
 
 const log = createLogger("deepAnalysis.completion");
 
@@ -243,6 +267,223 @@ export async function loadResearchJobMetrics(
   } catch {
     return null;
   }
+}
+
+/** Delivery is best-effort: a failed send never undoes a recorded verdict. */
+async function notifyVerdictEvent(
+  userId: number,
+  event: LifecycleEvent,
+): Promise<void> {
+  await notifyLifecycleEvents(userId, [event]).catch((error: unknown) => {
+    log.info("verdict notification skipped", {
+      dedupeKey: event.dedupeKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
+export interface DeepResearchVerdictOutcome {
+  /** Null when no verdict could be reached (reporting-only flag, cycle skipped). */
+  verdict: DeepResearchVerdict | null;
+  /** The re-evaluation cycle result, when the conflict path ran one. */
+  cycle: CycleResult | null;
+}
+
+/**
+ * Turn a completed research run's finding into one of the plan's three verdicts
+ * (plan §14 I), through the same machinery every other re-evaluation uses.
+ *
+ * Research that does not conflict with the plan is a `confirmed` verdict in its
+ * own right: recorded in `recommendation_reevaluations` and the plan's history,
+ * no revision written, and announced — because "we looked and stood by it" is
+ * different information from "nobody looked".
+ *
+ * Research that conflicts cannot honestly propose levels — its artifacts carry
+ * win rates and drawdowns, not entries and stops — so instead of inventing a
+ * revision it hands the conflict to the unified re-evaluation cycle: the same
+ * brain, a fresh evidence bundle, and `applyRecommendationRevision` as the only
+ * writer. The cycle's `deep_research` reason is exempt from the automatic
+ * cooldown (see `reevaluationTriggers.ts`), records its own verdict row, and —
+ * when the plan's trade is already open — syncs the broker through the
+ * trade-management layer itself, which preserves the post-open hook this module
+ * used to call directly.
+ *
+ * Gated by DEEP_RESEARCH_V2 for the CONFLICT path only: off returns deep
+ * research to reporting-only, recording the finding and proposing nothing.
+ */
+export async function applyDeepResearchVerdict(
+  input: {
+    userId: number;
+    analysisId: string;
+    /** Canonical recommendation id (the INTEGER everything joins on). */
+    recommendationId: number;
+    /** The tracked/legacy reference id the tracker and triggers key on. */
+    recommendationRef?: string | null;
+    recommendation: CanonicalRecommendation;
+    scored: { delta: number; agreement: string; metricsPresent: boolean };
+  },
+  deps: CycleDeps = {},
+): Promise<DeepResearchVerdictOutcome> {
+  const { userId, analysisId, recommendationId, recommendation: rec, scored } = input;
+  const reference = input.recommendationRef ?? String(recommendationId);
+  const effective = await getEffectiveRevision(userId, recommendationId);
+  const revisionNo = effective?.revisionNo ?? null;
+
+  const basePayload = {
+    analysisId,
+    status: "completed",
+    originalDirection: rec.direction,
+    originalConfidence: rec.confidence,
+    historicalEvidenceTendency: scored.delta,
+    agreement: scored.agreement,
+    metricsPresent: scored.metricsPresent,
+    executionTriggered: false,
+  };
+
+  // Nothing against the plan: a confirmed verdict, recorded like a cycle's —
+  // same table, same dedupe shape — and never a revision.
+  if (scored.delta >= 0) {
+    const detail = `${rec.symbol}: أنهى البحث العميق مراجعته ولم يجد ما يعارض الخطة — النسخة ${revisionNo ?? 1} قائمة.`;
+    await appendRecommendationHistory({
+      userId,
+      recommendationId,
+      kind: "research_completion",
+      actor: "deep_analysis",
+      source: "research_service",
+      payload: { ...basePayload, verdict: "confirmed" },
+    });
+    await execute(
+      `INSERT INTO recommendation_reevaluations
+         (recommendation_id, user_id, symbol, reason, detail, source, revision_no,
+          outcome, raised_at, dedupe_key, evidence_hash)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT (recommendation_id, dedupe_key) DO NOTHING`,
+      [
+        reference,
+        userId,
+        rec.symbol,
+        "deep_research",
+        detail,
+        "deep_research",
+        revisionNo,
+        "confirmed",
+        Date.now(),
+        `${revisionNo ?? 0}:deep_research:confirmed`,
+        evidenceFingerprint({
+          analysisId,
+          historicalEvidenceTendency: scored.delta,
+          agreement: scored.agreement,
+        }),
+      ],
+    ).catch((error: unknown) => {
+      log.warn("failed to record deep-research confirmation", {
+        recommendationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    await notifyVerdictEvent(userId, {
+      type: "reevaluation_confirmed",
+      recommendationId: reference,
+      symbol: rec.symbol,
+      revisionNo,
+      dedupeKey: `${reference}:${revisionNo ?? 0}:reeval:confirmed:deep_research`,
+      detail,
+      terminal: false,
+      occurredAt: Date.now(),
+    });
+    return { verdict: "confirmed", cycle: null };
+  }
+
+  // Gated by DEEP_RESEARCH_V2: off returns deep research to reporting only. It
+  // still runs and still records its finding; it proposes no revision. Nothing
+  // silently edits a plan either way — that is structural.
+  if (!FEATURES.deepResearchV2()) {
+    await appendRecommendationHistory({
+      userId,
+      recommendationId,
+      kind: "research_completion",
+      actor: "deep_analysis",
+      source: "research_service",
+      payload: { ...basePayload, finding: "conflicts", originalDecisionPreserved: true },
+    });
+    return { verdict: null, cycle: null };
+  }
+
+  // A conflict is a request for a new decision, not a decision: the unified
+  // cycle re-runs the whole evidence pipeline through the same brain, and only
+  // what the brain returns can change the plan.
+  const trigger: ReevaluationTrigger = {
+    recommendationId: reference,
+    userId,
+    symbol: rec.symbol,
+    reason: "deep_research",
+    detail: `البحث العميق يعارض الأساس التاريخي للخطة: ${scored.agreement}`,
+    source: "deep_research",
+    revisionNo,
+    raisedAt: Date.now(),
+  };
+  const { runReevaluationCycle } = await import(
+    "@/lib/recommendations/reevaluationCycle"
+  );
+  const cycle = await runReevaluationCycle(trigger, recommendationId, deps);
+  const verdict: DeepResearchVerdict | null =
+    cycle.verdict === "skipped" ? null : cycle.verdict;
+
+  await appendRecommendationHistory({
+    userId,
+    recommendationId,
+    kind: "research_completion",
+    actor: "deep_analysis",
+    source: "research_service",
+    payload: {
+      ...basePayload,
+      finding: "conflicts",
+      ...(verdict ? { verdict } : {}),
+      cycleVerdict: cycle.verdict,
+      cycleDetail: cycle.detail,
+      revisionNo: cycle.revision?.revisionNo ?? null,
+    },
+  });
+
+  if (verdict === "revised") {
+    await notifyVerdictEvent(userId, {
+      type: "entry_updated",
+      recommendationId: reference,
+      symbol: rec.symbol,
+      revisionNo: cycle.revision?.revisionNo ?? revisionNo,
+      // Same key shape the tracker's cycle block uses, so the sweep and this
+      // path can never announce one revision twice between them.
+      dedupeKey: `${reference}:${cycle.revision?.revisionNo ?? 0}:reeval:revised`,
+      detail: cycle.detail,
+      terminal: false,
+      occurredAt: Date.now(),
+    });
+  } else if (verdict === "invalidated") {
+    await notifyVerdictEvent(userId, {
+      type: "scenario_changed",
+      recommendationId: reference,
+      symbol: rec.symbol,
+      revisionNo: cycle.revision?.revisionNo ?? revisionNo,
+      dedupeKey: `${reference}:${cycle.revision?.revisionNo ?? 0}:reeval:invalidated`,
+      detail: cycle.detail,
+      terminal: false,
+      occurredAt: Date.now(),
+    });
+  } else if (verdict === "confirmed") {
+    // The research conflicted, the brain looked again and stood by the plan.
+    await notifyVerdictEvent(userId, {
+      type: "reevaluation_confirmed",
+      recommendationId: reference,
+      symbol: rec.symbol,
+      revisionNo,
+      dedupeKey: `${reference}:${revisionNo ?? 0}:reeval:confirmed:deep_research`,
+      detail: cycle.detail,
+      terminal: false,
+      occurredAt: Date.now(),
+    });
+  }
+
+  return { verdict, cycle };
 }
 
 export async function pollDeepAnalysisOnce(payload: {
@@ -496,24 +737,29 @@ async function finalizeSuccess(
         },
       });
     } else {
-      await appendRecommendationHistory({
+      // Deep research reaches one of the plan's own three verdicts — confirmed,
+      // revised, invalidated — through the same cycle machinery every other
+      // re-evaluation uses, and the verdict is announced rather than filed
+      // away. It used to write "originalDecisionPreserved: true" whatever it
+      // found — so a run that contradicted the thesis changed nothing and told
+      // no one, which made the whole layer decorative. The cycle also carries
+      // the post-open trade-management sync itself, so a verdict landing on a
+      // plan whose trade is already open still reaches the broker.
+      await applyDeepResearchVerdict({
         userId: run.userId,
+        analysisId: run.analysisId,
         recommendationId,
-        kind: "research_completion",
-        actor: "deep_analysis",
-        source: "research_service",
-        payload: {
+        recommendationRef: run.recommendationRef,
+        recommendation: rec,
+        scored,
+      }).catch((error: unknown) => {
+        // The run still completes: the projection below reports what research
+        // found even when the verdict machinery could not record it.
+        log.warn("deep research verdict application failed", {
           analysisId: run.analysisId,
-          status: "completed",
-          originalDirection: rec.direction,
-          originalConfidence: rec.confidence,
-          historicalEvidenceTendency: scored.delta,
-          agreement: scored.agreement,
-          metricsPresent: scored.metricsPresent,
-          executionTriggered: false,
-        },
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-
     }
   }
 

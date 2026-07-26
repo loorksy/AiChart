@@ -613,6 +613,10 @@ export async function saveRecommendation(
     expires_at?: number | null;
     entry_type?: string | null;
     engine_version?: string | null;
+    /** The contract's second layer, carried through to the canonical row. */
+    plan_type?: string | null;
+    /** Where the support came from, distinct from its grade. */
+    evidence_source?: string | null;
   },
 ): Promise<Recommendation> {
   const action = rec.action === "buy" || rec.action === "sell" ? rec.action : "wait";
@@ -645,6 +649,8 @@ export async function saveRecommendation(
     source: rec.source ?? "web",
     engineVersion: rec.engine_version ?? "aichart-phase4-v1",
     entryType: rec.entry_type ?? undefined,
+    planType: rec.plan_type ?? null,
+    evidenceSource: rec.evidence_source ?? null,
     rationale: rec.rationale ?? undefined,
     factors: rec.factors ?? undefined,
     chartDrawingsJson: rec.chart_drawings_json ?? undefined,
@@ -822,6 +828,11 @@ export async function createIntent(
   userId: number,
   intent: {
     recommendation_id?: number | null;
+    /** Revision of that recommendation these levels came from (CAS at execute). */
+    recommendation_revision_no?: number | null;
+    /** How this order was authorised: explicit approval or a standing mode.
+     *  `trade_management` marks an SL/TP-modify proposal, never an order. */
+    authorization_source?: "user_approved" | "standing_auto" | "trade_management" | null;
     symbol: string;
     side: "buy" | "sell";
     notional: number;
@@ -846,11 +857,13 @@ export async function createIntent(
     intent.broker ?? (await resolveBrokerForMarket(userId, market));
   const id = await insertReturningId(
     `INSERT INTO trade_intents
-      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, recommendation_id, recommendation_revision_no, authorization_source, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       intent.recommendation_id ?? null,
+      intent.recommendation_revision_no ?? null,
+      intent.authorization_source ?? null,
       intent.symbol.toUpperCase(),
       intent.side,
       intent.notional,

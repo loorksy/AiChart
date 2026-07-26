@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
+import { isAutoExecutionAuthorized } from "@/lib/agent/tradeMode";
+import { criticalAlert } from "@/lib/metrics";
 import { handleError } from "@/lib/api";
 import {
   createIntent,
@@ -9,6 +11,7 @@ import {
   resolveBrokerForMarket,
 } from "@/lib/store";
 import { executeIntent, getRiskBudget } from "@/lib/execution";
+import { getEffectiveRevision } from "@/lib/recommendations/canonical/revisions";
 import {
   bridgeError,
   bridgeSuccess,
@@ -28,7 +31,6 @@ import {
 } from "@/lib/marketPolicy";
 import type { MarketType } from "@/lib/markets/types";
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
-import { checkRecommendationExecutionEligibility } from "@/lib/strategies/evidence";
 
 const schema = z
   .object({
@@ -130,35 +132,21 @@ export async function POST(req: NextRequest) {
       return respondWithIdempotency(userId, idempotencyKey, envelope);
     }
 
-    // Autonomous execution is only allowed from a recommendation whose
-    // validated strategy has completed shadow trading and is currently active.
-    // A human's explicit order remains possible and is separately audited.
+    // An order arrives here from exactly one of two authorisations: the
+    // operator approved THIS trade, or they earlier chose the auto mode and
+    // this plan's conditions have now been met. There is no third path — the
+    // old "autonomous if the strategy is active" route is gone, because whether
+    // a trade may be placed is the operator's decision to make, not a
+    // statistical property of a strategy (docs/UNIFIED_AGENT_PLAN.md §3).
     if (!body.approved_by_user) {
-      if (body.recommendation_id == null) {
+      const authorized = await isAutoExecutionAuthorized(userId);
+      if (!authorized) {
+        criticalAlert("execution_wrong_mode", { source: "trade_open_api", userId });
         const envelope = bridgeSuccess(
           tradeOpenPayload(
             false,
             "denied",
-            "A backtest-gated active recommendation_id is required for autonomous execution",
-            null,
-            null,
-            null,
-          ),
-        );
-        return respondWithIdempotency(userId, idempotencyKey, envelope);
-      }
-      const eligibility = await checkRecommendationExecutionEligibility({
-        userId,
-        recommendationId: body.recommendation_id,
-        symbol: normalizeIntentSymbol(body.symbol, DEFAULT_MARKET),
-        side: body.side,
-      });
-      if (!eligibility.ok) {
-        const envelope = bridgeSuccess(
-          tradeOpenPayload(
-            false,
-            "denied",
-            eligibility.reason,
+            "لا يوجد تفويض للتنفيذ: إمّا موافقة صريحة على هذه الصفقة (approved_by_user)، أو تفعيل الوضع التلقائي من المستخدم مع حساب متصل.",
             null,
             null,
             null,
@@ -203,8 +191,21 @@ export async function POST(req: NextRequest) {
 
     const leverage = 1;
 
+    // The revision the referenced plan is on RIGHT NOW, so the execution-time
+    // compare-and-swap has a number to hold the order to. Null when the trade
+    // references no recommendation, or a pre-revision one.
+    const effectiveRevision =
+      body.recommendation_id != null
+        ? await getEffectiveRevision(userId, body.recommendation_id).catch(() => null)
+        : null;
+
     const intent = await createIntent(userId, {
       recommendation_id: body.recommendation_id ?? null,
+      recommendation_revision_no: effectiveRevision?.revisionNo ?? null,
+      // Which of the two authorisations brought us here (checked above): the
+      // operator approving THIS trade, or their standing auto mode — which the
+      // execution choke point re-verifies at the moment the order is placed.
+      authorization_source: body.approved_by_user ? "user_approved" : "standing_auto",
       symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
       notional: budget.riskAmount,

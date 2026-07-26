@@ -96,6 +96,10 @@ export const AGENT_TIMEOUTS = {
   drawing: 5_000,
   // gpt-5 family spends budget on reasoning before emitting JSON; 15s was
   // aborting live XAUUSD decisions before any recommendation could land.
+  // Chart capture waits on the operator's MT5 or a render service. Bounded
+  // tightly: a missing view costs the decision some context, a slow one would
+  // cost it the whole run.
+  visualEvidence: 9_000,
   finalDecision: 60_000,
   general: 20_000,
 } as const;

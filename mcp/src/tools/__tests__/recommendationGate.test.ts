@@ -4,22 +4,29 @@ import { createRecommendationInput } from "../schemas/coreSchemas.js";
 import { getToolDef } from "../schemas/index.js";
 
 describe("create_recommendation structural gate", () => {
-  it("accepts WAIT without strategy evidence", () => {
+  it("refuses WAIT — it is not an analytical outcome", () => {
+    // Every successful analysis ends in a direction with a plan. A market that
+    // genuinely cannot be read is a named operational blocker, reported as such,
+    // not a recommendation to do nothing. Leaving this open kept the exact
+    // asymmetry the doctrine removes: the platform engine cannot express a wait,
+    // so the MCP surface must not be able to either.
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "wait",
       rationale: "No clear setup yet — we wait for confirmation.",
       factors: ["mixed structure"],
     });
-    assert.equal(parsed.success, true);
+    assert.equal(parsed.success, false);
   });
 
-  it("rejects BUY without strategy_id and backtested_confidence", () => {
+  it("refuses a direction with no plan type", () => {
+    // The direction says what, the levels say where, and the plan type says
+    // when. Without it the operator cannot tell "enter now" from "wait for the
+    // trigger", which is the difference between a plan and an opinion.
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
-      confidence: 80,
-      rationale: "We buy the bounce from demand.",
+      rationale: "Structure is bullish and the demand zone held twice.",
       factors: ["demand zone"],
       entry: 1.1,
       stop_loss: 1.09,
@@ -28,10 +35,67 @@ describe("create_recommendation structural gate", () => {
     assert.equal(parsed.success, false);
   });
 
+  it("accepts each of the three plan types", () => {
+    for (const planType of ["immediate", "anticipatory", "conditional"] as const) {
+      const parsed = createRecommendationInput.safeParse({
+        symbol: "EURUSD",
+        action: "buy",
+        plan_type: planType,
+        rationale: "Structure is bullish and the demand zone held twice.",
+        factors: ["demand zone"],
+        entry: 1.1,
+        stop_loss: 1.09,
+        take_profit: 1.12,
+      });
+      assert.equal(parsed.success, true, `${planType} must be accepted`);
+    }
+  });
+
+  it("refuses a direction with no levels", () => {
+    // A direction with nowhere to enter, stop, or take profit is not a plan.
+    const parsed = createRecommendationInput.safeParse({
+      symbol: "EURUSD",
+      action: "buy",
+      plan_type: "immediate",
+      rationale: "Structure is bullish and the zone held.",
+      factors: ["demand zone"],
+    });
+    assert.equal(parsed.success, false);
+  });
+
+  it("accepts BUY with levels but no strategy evidence (direct analysis)", () => {
+    // A missing backtest downgrades the label, never the right to recommend.
+    const parsed = createRecommendationInput.safeParse({
+      symbol: "EURUSD",
+      action: "buy",
+      plan_type: "immediate",
+      confidence: 80,
+      rationale: "We buy the bounce from demand.",
+      factors: ["demand zone"],
+      entry: 1.1,
+      stop_loss: 1.09,
+      take_profit: 1.12,
+    });
+    assert.equal(parsed.success, true);
+  });
+
+  it("rejects BUY without levels — a direction with nowhere to act is not a plan", () => {
+    const parsed = createRecommendationInput.safeParse({
+      symbol: "EURUSD",
+      action: "buy",
+      plan_type: "immediate",
+      confidence: 80,
+      rationale: "We buy the bounce from demand.",
+      factors: ["demand zone"],
+    });
+    assert.equal(parsed.success, false);
+  });
+
   it("accepts BUY with catalog strategy evidence and levels", () => {
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
+      plan_type: "immediate",
       strategy_id: "ema_trend_follow_v1",
       backtested_confidence: 62.5,
       market_regime: "trending_up",
@@ -71,6 +135,7 @@ describe("create_recommendation structural gate", () => {
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "sell",
+      plan_type: "conditional",
       strategy_id: "invented_edge_v9",
       backtested_confidence: 70,
       market_regime: "trending_down",

@@ -9,7 +9,7 @@
  * Hard rule, stated in the plan and enforced by the shape of this module:
  * **lessons are EVIDENCE, never a veto.** This produces a compact, factual
  * summary for the decision model to weigh. It returns no decision, no score,
- * and no gate — the model keeps sole authority over BUY/SELL/WAIT, and the
+ * and no gate — the model keeps sole authority over the direction, and the
  * statistical gates are untouched.
  */
 

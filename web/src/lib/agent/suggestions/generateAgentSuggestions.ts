@@ -40,7 +40,7 @@ Rules:
 State-aware examples (do NOT copy verbatim — adapt to the actual state and locale):
 - after a buy/sell recommendation: track it, explain why, draw its details, cancel it.
 - after a drawing-only command: adjust the drawing, clear agent drawings, analyze based on the drawing.
-- when there is no active recommendation: analyze the current chart, ask for a buy/sell/wait opinion.
+- when there is no active recommendation: analyze the current chart, ask for a direction and a plan.
 - when data is out of sync / action required: wait a few seconds and ask again, check the data status.
 
 Respond with ONLY a JSON object, no markdown fences:

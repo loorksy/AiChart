@@ -150,3 +150,190 @@ export async function computeCanonicalRecommendationAnalytics(
     byDay: group(items, (item) => createdDate(item.row.created_at).toISOString().slice(0, 10)),
   };
 }
+
+// ─── Adherence metrics (plan §15 J) ─────────────────────────────────────────
+//
+// How closely the executed trades matched the plans. These lived half in the
+// performance journal (entry/stop adherence) and half re-derived ad hoc in the
+// journal API route (early exit, entry delay); this module is now the canonical
+// home for both halves. Descriptive only — nothing here gates a recommendation.
+
+/**
+ * Relative tolerance for "entered where the plan said" / "kept the plan's stop".
+ * A FRACTION of the plan price, so one threshold means the same thing on
+ * EURUSD and on XAUUSD.
+ */
+export const ADHERENCE_PRICE_TOLERANCE = 0.0005;
+
+export interface AdherenceEntry {
+  /** Fill price minus plan price, as a fraction of the plan price. */
+  entryDeviation: number | null;
+  /** True when the executed stop matched the plan's. */
+  stopMatchedPlan: boolean | null;
+}
+
+/** Share of entries filled within tolerance of the plan price; null without data. */
+export function computeEntryAdherence(entries: readonly AdherenceEntry[]): number | null {
+  const withDeviation = entries.filter((entry) => entry.entryDeviation != null);
+  if (!withDeviation.length) return null;
+  const closeEnough = withDeviation.filter(
+    (entry) => Math.abs(entry.entryDeviation!) <= ADHERENCE_PRICE_TOLERANCE,
+  );
+  return closeEnough.length / withDeviation.length;
+}
+
+/** Share of executed stops that matched the plan's stop; null without data. */
+export function computeStopAdherence(entries: readonly AdherenceEntry[]): number | null {
+  const withStop = entries.filter((entry) => entry.stopMatchedPlan != null);
+  if (!withStop.length) return null;
+  return withStop.filter((entry) => entry.stopMatchedPlan).length / withStop.length;
+}
+
+/**
+ * Late entry: how long after the plan FIRST became enterable (its first
+ * transition to `triggered`) the order was actually raised (the first linked
+ * trade's creation). Null when either side never happened.
+ */
+export function computeEntryDelayMs(input: {
+  firstTriggeredAt: number | null;
+  firstTradeAt: number | null;
+}): number | null {
+  if (input.firstTriggeredAt == null || input.firstTradeAt == null) return null;
+  return Math.max(0, input.firstTradeAt - input.firstTriggeredAt);
+}
+
+/**
+ * Early exit: the trade was closed manually BEFORE the plan paid any target.
+ * A manual close after TP1 is management, not abandonment, and does not count.
+ */
+export function isEarlyExit(input: {
+  manualCloseAt: number | null;
+  firstTakeProfitAt: number | null;
+}): boolean {
+  if (input.manualCloseAt == null) return false;
+  return input.firstTakeProfitAt == null || input.manualCloseAt < input.firstTakeProfitAt;
+}
+
+export interface RecommendationAdherenceFacts {
+  /** Latest realised R multiple per recommendation id. */
+  rMultipleById: Map<string, number>;
+  /** Recommendations whose trade was closed manually before any TP outcome. */
+  earlyExitIds: Set<string>;
+  /** First activation → first linked trade creation, per recommendation id. */
+  entryDelayMsById: Map<string, number>;
+}
+
+interface OutcomeFactRow {
+  recommendation_id: number | string;
+  outcome_type: string;
+  r_multiple: number | string | null;
+  occurred_at: number | string;
+}
+
+interface TransitionFactRow {
+  recommendation_id: number | string;
+  occurred_at: number | string;
+}
+
+interface IntentFactRow {
+  recommendation_id: number | string;
+  created_at: number | string | null;
+}
+
+/** Timestamps are epoch-ish on sqlite and timestamp strings on pg. */
+function toMs(value: number | string | null): number | null {
+  if (value == null) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Read the adherence facts for one operator: realised R, early exits, and entry
+ * delays, keyed by canonical recommendation id (as a string, matching the
+ * journal's entry ids). Read-only joins over existing tables.
+ */
+export async function collectAdherenceFacts(
+  userId: number,
+): Promise<RecommendationAdherenceFacts> {
+  const [outcomeRows, triggeredRows, intentRows] = await Promise.all([
+    query<OutcomeFactRow>(
+      `SELECT recommendation_id, outcome_type, r_multiple, occurred_at
+         FROM recommendation_outcomes WHERE user_id = ?
+        ORDER BY occurred_at DESC`,
+      [userId],
+    ).catch(() => [] as OutcomeFactRow[]),
+    query<TransitionFactRow>(
+      `SELECT recommendation_id, occurred_at FROM recommendation_transitions
+        WHERE user_id = ? AND to_status = 'triggered'`,
+      [userId],
+    ).catch(() => [] as TransitionFactRow[]),
+    query<IntentFactRow>(
+      `SELECT i.recommendation_id, t.created_at
+         FROM trade_intents i JOIN trades t ON t.intent_id = i.id
+        WHERE i.user_id = ? AND i.recommendation_id IS NOT NULL`,
+      [userId],
+    ).catch(() => [] as IntentFactRow[]),
+  ]);
+
+  // Newest-first, so the first r_multiple seen per plan is the latest.
+  const rMultipleById = new Map<string, number>();
+  const manualCloseAtById = new Map<string, number>();
+  const firstTakeProfitAtById = new Map<string, number>();
+  for (const row of outcomeRows) {
+    const id = String(row.recommendation_id);
+    const r = Number(row.r_multiple);
+    if (!rMultipleById.has(id) && row.r_multiple != null && Number.isFinite(r)) {
+      rMultipleById.set(id, r);
+    }
+    const at = toMs(row.occurred_at);
+    if (at == null) continue;
+    if (row.outcome_type === "ManualClose") {
+      const known = manualCloseAtById.get(id);
+      if (known == null || at < known) manualCloseAtById.set(id, at);
+    }
+    if (row.outcome_type === "TP1" || row.outcome_type === "TP2" || row.outcome_type === "TP3") {
+      const known = firstTakeProfitAtById.get(id);
+      if (known == null || at < known) firstTakeProfitAtById.set(id, at);
+    }
+  }
+
+  const earlyExitIds = new Set<string>();
+  for (const [id, manualCloseAt] of manualCloseAtById) {
+    if (isEarlyExit({ manualCloseAt, firstTakeProfitAt: firstTakeProfitAtById.get(id) ?? null })) {
+      earlyExitIds.add(id);
+    }
+  }
+
+  // Keep the FIRST activation: a delayed entry is measured from the moment the
+  // plan first became enterable.
+  const triggeredAtById = new Map<string, number>();
+  for (const row of triggeredRows) {
+    const at = toMs(row.occurred_at);
+    const id = String(row.recommendation_id);
+    if (at != null && (!triggeredAtById.has(id) || at < triggeredAtById.get(id)!)) {
+      triggeredAtById.set(id, at);
+    }
+  }
+
+  const tradeAtById = new Map<string, number>();
+  for (const row of intentRows) {
+    const at = toMs(row.created_at);
+    const id = String(row.recommendation_id);
+    if (at != null && (!tradeAtById.has(id) || at < tradeAtById.get(id)!)) {
+      tradeAtById.set(id, at);
+    }
+  }
+
+  const entryDelayMsById = new Map<string, number>();
+  for (const [id, firstTriggeredAt] of triggeredAtById) {
+    const delay = computeEntryDelayMs({
+      firstTriggeredAt,
+      firstTradeAt: tradeAtById.get(id) ?? null,
+    });
+    if (delay != null) entryDelayMsById.set(id, delay);
+  }
+
+  return { rMultipleById, earlyExitIds, entryDelayMsById };
+}

@@ -74,15 +74,15 @@ When analyzing currency pairs and gold on MetaTrader 5, the Agent must adhere to
     *   **Tokyo/Asian Session**: Quiet consolidation and narrow ranges. Best for mean-reversion or waiting for false breakouts at the London Open (Judas Swing).
 *   **Economic Calendar & Macro News**:
     *   **High-Impact News (Red Folder)**: Interest rates, CPI, NFP (Non-Farm Payroll), Retail Sales.
-    *   **Execution Rule**: Avoid recommending entry 30 minutes before and after high-impact news releases due to wide spreads, slippage, and random volatility.
+    *   An imminent release shapes the plan; it does not remove it. Wide spreads, slippage, and the first random swing usually make the minutes around a release a poor *immediate* entry — so keep the direction and express it as a plan whose validity ends before the release, or a conditional one that activates after the initial move settles and a level is reclaimed.
 *   **MT5 Leverage & Spread Management**:
-    *   Check `spreadPips` via `get_live_account` or `get_ea_diagnostics`. Postpone entries if spreads are abnormally high.
+    *   Check `spreadPips` via `get_live_account` or `get_ea_diagnostics`. An abnormally wide spread means the current price is a poor entry, not that the setup is gone: give the better price or the condition that makes the plan worth taking.
 
 ---
 
-## 5. Confluence Checklist
-The Agent must cross-reference multiple parameters before recommending a `buy` or `sell`:
-1.  **Structure Confluence**: H4/H1 trend alignment + M15 Order Block / FVG reaction.
-2.  **Indicator Confluence**: RSI oversold/overbought + MACD signal line crossover.
-3.  **Fundamental Confluence**: Live news sentiment + Fear & Greed index confirmation.
-4.  **Confidence Assessment**: Dynamically calculate the confidence rating (0-100) based on the number of matching confluences (e.g., 4 factors matching = 85% confidence, 2 factors matching = 60% confidence).
+## 5. Weighing the Evidence
+The dimensions above are evidence for the model's own judgment — they are not a scoring sheet:
+*   Read structure, liquidity reaction, indicators, and the macro backdrop together, and say which of them actually carries the decision and which merely agrees with it.
+*   Never count matching factors, and never derive a confidence number from how many of them line up. Confidence is not a tally.
+*   Conflicting evidence is normal: resolve it in the open ("H4 is still bearish, but the M15 sweep and reclaim lead this entry") instead of treating the conflict as a reason to produce nothing.
+*   Weak or partial confluence lowers how much a plan should be leaned on, and can turn an immediate entry into a conditional one — it never removes the direction.

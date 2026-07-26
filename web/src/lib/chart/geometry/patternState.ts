@@ -104,9 +104,18 @@ export function projectMeasuredMove(
   return direction === "up" ? breakLevel + magnitude : breakLevel - magnitude;
 }
 
-/** Confidence discount per state — forming evidence is weaker by contract. */
+/**
+ * Confidence per state.
+ *
+ * A completed break is the strongest claim the geometry makes, and an
+ * invalidated one is nearly worthless as evidence of that pattern. Forming is
+ * NOT discounted: it used to lose 15% automatically, which quietly said "a
+ * structure still building is a worse trade" — but the boundary of a forming
+ * pattern is often the best entry available, and the detector has no business
+ * pre-judging that. The stage and completion ratio travel with the pattern
+ * instead, and the decision engine weighs them.
+ */
 export function stateConfidence(base: number, status: PatternStatus): number {
-  if (status === "completed") return base;
-  if (status === "forming") return Math.round(base * 0.85);
-  return Math.round(base * 0.4);
+  if (status === "invalidated") return Math.round(base * 0.4);
+  return Math.round(base);
 }

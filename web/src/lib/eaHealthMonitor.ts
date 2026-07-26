@@ -4,6 +4,7 @@ import {
   eaResyncCandlesFlagKey,
 } from "./eaTradeCommands";
 import { getFlag, setFlag } from "./store";
+import { suspendAutoOnDisconnect } from "./agent/tradeMode";
 
 export type EaHealthStatus = "online" | "offline";
 
@@ -55,7 +56,8 @@ export function decideEaHealthEvent(
       type: "ea_offline",
       detail:
         `⚠️ انقطع اتصال MetaTrader/EA بعد ${missedHeartbeats} نبضات مفقودة. ` +
-        "تم تفعيل إعادة الاتصال وإعادة مزامنة الشموع تلقائياً؛ التنفيذ متوقف حتى عودة نبض حديث.",
+        "تم تفعيل إعادة الاتصال وإعادة مزامنة الشموع تلقائياً؛ التنفيذ متوقف حتى عودة نبض حديث، " +
+        "وأُوقف الوضع التلقائي إن كان مفعّلاً — ستُسأل عنه من جديد بعد عودة الاتصال.",
     };
   }
   if (current === "online" && previous === "offline") {
@@ -92,6 +94,11 @@ export async function monitorEaBridgeHealth(
       setFlag(eaReconnectFlagKey(userId), "1"),
       setFlag(eaResyncCandlesFlagKey(userId), "1"),
       setEaStatus(userId, "offline"),
+      // Standing execution authorisation was given for a live connection. With
+      // the account gone it is suspended rather than left armed, so a silent
+      // reconnect hours later cannot start placing orders the operator has
+      // stopped expecting.
+      suspendAutoOnDisconnect(userId).catch(() => false),
     ]);
   }
 

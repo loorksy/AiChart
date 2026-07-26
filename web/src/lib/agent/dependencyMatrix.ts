@@ -14,7 +14,7 @@
  *                          and DECLARES the gap.
  *
  * This module is pure policy: it decides labelling only. It never overrides the
- * model's BUY/SELL/WAIT authority, never loosens a statistical gate, and never
+ * model's authority over the direction, never loosens a statistical gate, and never
  * upgrades an outcome — it can only degrade one to a safer state.
  */
 import type { AgentStage, AgentStageFailure } from "./errorTaxonomy";

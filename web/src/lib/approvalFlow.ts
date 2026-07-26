@@ -12,6 +12,7 @@ import {
   updateIntentStatus,
 } from "./store";
 import { executeIntent, getRiskBudget } from "./execution";
+import { getEffectiveRevision } from "./recommendations/canonical/revisions";
 import { dispatchAlert } from "./alerts";
 import type { InlineButton } from "./telegram";
 import { resolveChartUrl } from "./recommendationChart";
@@ -117,8 +118,21 @@ export async function createApprovalRequest(
   const budget = await getRiskBudget(userId, broker);
   if (!budget) throw new Error("تعذّر التحقق من equity للحساب المتصل.");
 
+  // The revision these levels came from, captured NOW so the execution-time
+  // compare-and-swap can refuse the order if the plan moves while the approval
+  // sits in the operator's inbox. Null for pre-revision recommendations.
+  const revisionNo =
+    input.recommendation_id != null
+      ? ((await getEffectiveRevision(userId, input.recommendation_id).catch(() => null))
+          ?.revisionNo ?? null)
+      : null;
+
   const intent = await createIntent(userId, {
     recommendation_id: input.recommendation_id ?? null,
+    recommendation_revision_no: revisionNo,
+    // Executable only through the operator approving THIS trade — enforced at
+    // the choke point, which requires `explicitApproval` for this source.
+    authorization_source: "user_approved",
     symbol: input.symbol,
     side: input.side,
     notional: budget.riskAmount,
@@ -190,6 +204,15 @@ export async function respondToApproval(
       status: intent.status,
       reason: "تمّت معالجة هذا الطلب مسبقاً.",
     };
+  }
+
+  // An SL/TP-modify proposal for an open position — never an order. Approving
+  // routes to the broker's modify path; executeIntent refuses this source.
+  if (intent.authorization_source === "trade_management") {
+    const { respondToTradeManagementIntent } = await import(
+      "./recommendations/tradeManagement"
+    );
+    return respondToTradeManagementIntent(userId, intent, action);
   }
 
   if (action === "reject") {

@@ -112,6 +112,42 @@ export interface CreateCanonicalRecommendationInput {
   patternName?: string;
   analysisTier?: string;
   contextJson?: string;
+  /**
+   * The three-layer plan (docs/UNIFIED_AGENT_PLAN.md). `direction` above is the
+   * analytical view; these two are how the plan is entered and whether it can
+   * be entered right now. Absent on legacy paths, which is why the columns are
+   * nullable — but the analysis path must supply them, or the tracker has no
+   * activation condition to evaluate and the journal no plan type to report.
+   */
+  planType?: string | null;
+  executionState?: string | null;
+  /** Verified statistical backing: strong | moderate | weak | unavailable. */
+  statisticalSupport?: string | null;
+  /**
+   * Where the support came from — a different fact from how strong it is:
+   * direct_analysis | strategy_supported | historical_memory | deep_research.
+   * Left null rather than guessed, so a row never implies evidence it lacks.
+   */
+  evidenceSource?: string | null;
+  /**
+   * The plan fields and evidence that seed revision 1.
+   *
+   * Every recommendation gets an effective revision at creation, so a later
+   * update has something to supersede and the compare-and-swap on execution has
+   * a number to compare. A recommendation created without this has no effective
+   * revision, and nothing can revise or auto-execute it.
+   */
+  initialRevision?: {
+    entryLow?: number | null;
+    entryHigh?: number | null;
+    activationCondition?: string | null;
+    invalidationRule?: string | null;
+    alternativeScenario?: string | null;
+    validityCandles?: number | null;
+    /** The frozen evidence bundle the decision was made on. */
+    evidence?: Record<string, unknown> | null;
+    decisionTrace?: Record<string, unknown> | null;
+  };
 }
 
 export interface RecommendationTransition {
@@ -199,7 +235,9 @@ export type RecommendationHistoryKind =
   | "updated"
   | "drawing_snapshot"
   | "research_revision"
-  | "research_completion";
+  | "research_completion"
+  /** Post-open trade management: proposals and broker syncs (plan §14). */
+  | "trade_management";
 
 export interface RecommendationHistoryEntry {
   id: number;

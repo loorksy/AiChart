@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string"
+    },
+    "interval": {
+      "type": "string"
+    },
+    "at_ms": {
+      "description": "Ask about a past moment instead of now; cases at or after it are excluded so the answer is the one available then.",
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "min_similarity": {
+      "description": "Structural-similarity floor, 0.5–1. Default 0.82.",
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 1
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200
+    }
+  },
+  "required": [
+    "symbol"
+  ],
+  "additionalProperties": false
+}

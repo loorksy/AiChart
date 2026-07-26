@@ -154,6 +154,7 @@ describe("create_recommendation visual audit fields", () => {
   const base = {
     symbol: "XAUUSD",
     action: "buy" as const,
+    plan_type: "immediate" as const,
     strategy_id: "ema_trend_follow_v1" as const,
     backtested_confidence: 62.5,
     market_regime: "trending",
@@ -189,16 +190,18 @@ describe("create_recommendation visual audit fields", () => {
     assert.equal(parsed.data?.visual_confirmation, true);
   });
 
-  it("accepts visual review on WAIT decisions too", () => {
+  it("records a contradicted review on a real direction", () => {
+    // Charts disagreeing with the numbers lowers the DISPLAYED confidence and is
+    // recorded for audit. It does not remove the direction, and there is no
+    // "wait" to fall back to.
     const parsed = createRecommendationInput.safeParse({
-      symbol: "XAUUSD",
-      action: "wait",
-      rationale: "Chart and numbers disagree — we wait.",
-      factors: ["conflicting evidence"],
+      ...base,
       visual_confirmation: "contradicted",
       timeframes_reviewed: ["1h"],
     });
     assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.action, "buy");
+    assert.equal(parsed.data?.visual_confirmation, "contradicted");
   });
 
   it("rejects an invalid state rather than guessing", () => {
@@ -209,13 +212,17 @@ describe("create_recommendation visual audit fields", () => {
     assert.equal(parsed.success, false);
   });
 
-  it("never lets visual review stand in for backtest evidence", () => {
+  it("accepts a confirmed visual review with no backtest behind it", () => {
+    // The recommendation is recorded as direct analysis; what visual review
+    // must never do is imply statistical backing, and it does not — the server
+    // labels support separately from anything the chart showed.
     const { strategy_id: _s, backtested_confidence: _b, ...withoutEvidence } = base;
     const parsed = createRecommendationInput.safeParse({
       ...withoutEvidence,
       visual_confirmation: "confirmed",
       timeframes_reviewed: ["15m", "1h", "4h", "1D"],
     });
-    assert.equal(parsed.success, false);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.strategy_id, undefined);
   });
 });

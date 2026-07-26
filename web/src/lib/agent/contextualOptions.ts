@@ -59,7 +59,7 @@ const NO_RECOMMENDATION_OPTIONS: OptionSet = {
   ],
   en: [
     { id: "analyze_chart", label: "Analyze the current chart", prompt: "Analyze the current chart." },
-    { id: "buy_sell_wait", label: "Buy / sell / wait opinion", prompt: "Give me a buy/sell/wait opinion." },
+    { id: "direction_opinion", label: "Buy or sell opinion", prompt: "Give me your direction and a full plan." },
   ],
 };
 

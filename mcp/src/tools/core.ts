@@ -4,7 +4,11 @@ import { BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/c
 import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
-import { createRecommendationInput } from "./schemas/coreSchemas.js";
+import {
+  createRecommendationInput,
+  findSimilarCasesInput,
+  setAgentTradeModeInput,
+} from "./schemas/coreSchemas.js";
 import { discoverSkills, loadSkill } from "../skills/catalog.js";
 import { selectMcpSkills } from "../skills/select.js";
 import { gitCommit } from "../version.js";
@@ -37,6 +41,10 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           include_live
             ? bridge.get("/api/agent/live/account", undefined, 10000)
             : Promise.resolve({ skipped: true }),
+          // Shared server-side state (plan §9): the overview carries the
+          // operator's trade mode so the session starts knowing it — mcp-core
+          // says ask ONCE when it is unset, never re-ask a stored choice.
+          bridge.get("/api/agent/trade-mode"),
         ]);
         const val = (r: PromiseSettledResult<unknown>) => {
           if (r.status !== "fulfilled") {
@@ -53,6 +61,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           connection: val(settled[0]),
           portfolio: val(settled[1]),
           live: include_live ? val(settled[2]) : { skipped: true },
+          trade_mode: val(settled[3]),
         };
       }, { structured: true });
     },
@@ -425,6 +434,52 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "get_agent_settings",
     mcpToolConfig("get_agent_settings"),
     bridgeWrap(bridge, () => bridge.get("/api/agent/settings")),
+  );
+
+  server.registerTool(
+    "get_agent_trade_mode",
+    mcpToolConfig("get_agent_trade_mode"),
+    bridgeWrap(bridge, () => bridge.get("/api/agent/trade-mode")),
+  );
+
+  server.registerTool(
+    "set_agent_trade_mode",
+    mcpToolConfig("set_agent_trade_mode"),
+    async (body) => {
+      const parsed = setAgentTradeModeInput.safeParse(body);
+      if (!parsed.success) {
+        return formatBridgeError(
+          new Error(
+            parsed.error.issues
+              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+              .join("; ") || "Invalid set_agent_trade_mode payload",
+          ),
+        );
+      }
+      // The server re-checks confirmed_by_user for auto; sending actor lets the
+      // audit trail say which surface the operator used.
+      return bridgeCall(() =>
+        bridge.patch("/api/agent/trade-mode", { ...parsed.data, actor: "mcp" }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "find_similar_cases",
+    mcpToolConfig("find_similar_cases"),
+    async (body) => {
+      const parsed = findSimilarCasesInput.safeParse(body);
+      if (!parsed.success) {
+        return formatBridgeError(
+          new Error(
+            parsed.error.issues
+              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+              .join("; ") || "Invalid find_similar_cases payload",
+          ),
+        );
+      }
+      return bridgeCall(() => bridge.post("/api/agent/similar-cases", parsed.data));
+    },
   );
 
   server.registerTool(

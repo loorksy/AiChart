@@ -4,7 +4,7 @@
  *
  * These are USER-VISIBLE EXECUTION protections layered ON TOP of every existing
  * gate — they can only ever BLOCK execution, never authorize it. Nothing here
- * touches the model's BUY/SELL/WAIT authority, the statistical gates, or the
+ * touches the model's authority over the direction, the statistical gates, or the
  * requirement for explicit user confirmation.
  *
  * Three independent protections:

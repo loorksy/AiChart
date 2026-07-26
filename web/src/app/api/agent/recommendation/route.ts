@@ -33,6 +33,8 @@ import {
   requireRecommendationEvidence,
 } from "@/lib/strategies/evidence";
 import { isBacktestStrategyId } from "@/lib/strategies/catalog";
+import { FEATURES } from "@/lib/agent/featureFlags";
+import { criticalAlert } from "@/lib/metrics";
 import {
   applyVisualConfidencePenalty,
   buildVisualConfirmationAudit,
@@ -40,10 +42,20 @@ import {
   normalizeVisualConfirmation,
 } from "@/lib/recommendations/visualConfirmation";
 
+/** How much verified statistical weight sits behind a recommendation. */
+type StatisticalSupport = "strong" | "moderate" | "weak" | "unavailable";
+
 const schema = z
   .object({
     symbol: z.string().min(1),
     action: z.enum(["buy", "sell", "wait"]),
+    /**
+     * How the plan is entered — the contract's second layer. Optional in the
+     * SCHEMA so a legacy client is not broken at parse time, then required for a
+     * new buy/sell below: a direction with no plan type does not say whether to
+     * act now or wait for a condition.
+     */
+    plan_type: z.enum(["immediate", "anticipatory", "conditional"]).optional(),
     // Retained for WAIT/backward compatibility. BUY/SELL confidence is always
     // replaced by server-owned calibrated evidence below.
     confidence: z.number().min(0).max(100).optional(),
@@ -71,15 +83,46 @@ const schema = z
   })
   .strict()
   .superRefine((body, ctx) => {
-    if (body.action === "wait") return;
-    for (const field of [
-      "strategy_id",
-      "backtested_confidence",
-      "market_regime",
-      "entry",
-      "stop_loss",
-      "take_profit",
-    ] as const) {
+    // WAIT is not an analytical outcome (docs/UNIFIED_AGENT_PLAN.md — decision 1).
+    // Existing `wait` rows stay readable; writing a NEW one is refused, because
+    // this is the one externally reachable write path and leaving it open kept
+    // the exact asymmetry the doctrine exists to remove: the platform engine
+    // cannot express a wait, and an MCP-hosted model still could.
+    //
+    // The alternative is never silence: either a direction with a plan type, or
+    // a named operational blocker when the market genuinely cannot be read.
+    if (body.action === "wait") {
+      // Gated by AGENT_DOCTRINE_V3 — the ONLY reversible part of phase A. Off is
+      // a narrow escape hatch for an un-updated MCP client: it may still record
+      // something instead of failing every call. It does not resurrect WAIT
+      // inside the engine, whose contract has no such value structurally.
+      if (!FEATURES.agentDoctrineV3()) return;
+      // The counter that must stay at zero. A write reaching here means some
+      // client still believes WAIT is an analytical outcome.
+      criticalAlert("hidden_wait_write", { source: "agent_recommendation_api" });
+      ctx.addIssue({
+        code: "custom",
+        path: ["action"],
+        message:
+          "WAIT is not an analytical outcome. Return a direction (buy or sell) with a plan type — immediate, anticipatory, or conditional — or report the operational blocker that prevents reading the market.",
+      });
+      return;
+    }
+    // The plan type is required alongside the levels for the same reason: the
+    // direction says what, the levels say where, and the plan type says when.
+    if (body.plan_type == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["plan_type"],
+        message:
+          "plan_type is required for BUY/SELL: immediate (enter now), anticipatory (structure still forming), or conditional (waits for a stated trigger)",
+      });
+    }
+    // Levels are required because a direction without them is not a plan.
+    // Strategy evidence is NOT: a recommendation with no matching backtest is
+    // recorded as direct analysis and labelled as such, never refused
+    // (docs/UNIFIED_AGENT_PLAN.md §11).
+    for (const field of ["entry", "stop_loss", "take_profit"] as const) {
       if (body[field] == null) {
         ctx.addIssue({
           code: "custom",
@@ -87,6 +130,16 @@ const schema = z
           message: `${field} is required for BUY/SELL recommendations`,
         });
       }
+    }
+    // Claiming statistical backing without naming the strategy behind it is the
+    // one thing that IS refused — an unbacked number is worse than none.
+    if (body.backtested_confidence != null && !body.strategy_id) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["strategy_id"],
+        message:
+          "backtested_confidence requires the strategy_id it came from; omit both for a direct-analysis recommendation",
+      });
     }
     if (
       body.entry != null &&
@@ -121,40 +174,53 @@ export async function POST(req: NextRequest) {
     const normalizedSymbol = canonicalStrategySymbol(body.symbol);
     const storedTimeframe = storageStrategyTimeframe(body.timeframe);
 
+    // Statistical evidence is GRADED here, not demanded. When the agent names a
+    // strategy we verify it and let the server own the confidence; when it does
+    // not, the recommendation is still recorded — labelled as direct analysis
+    // with no statistical support, which is what the operator then sees.
+    // Verification failures downgrade the label instead of refusing the plan;
+    // the only refusal is a confidence claim we could not substantiate.
     let deployment: Awaited<ReturnType<typeof requireRecommendationEvidence>> | null = null;
     let backtest: Awaited<ReturnType<typeof getStrategyBacktest>> = null;
-    if (body.action !== "wait") {
-      if (!body.strategy_id || !isBacktestStrategyId(body.strategy_id)) {
-        throw new ApiError(409, "strategy_id is not present in the backtested strategy catalog");
-      }
-      // BUY/SELL must land on a research timeframe or no deployment can ever
-      // match — reject early with an actionable message instead of a silent
-      // "no validated backtest" downstream.
-      if (!canonicalStrategyTimeframe(body.timeframe)) {
-        throw new ApiError(
-          400,
-          `timeframe "${body.timeframe}" is not a research timeframe (use one of: 1m, 5m, 15m, 30m, 1h, 4h, 1d)`,
-        );
-      }
-      try {
-        deployment = await requireRecommendationEvidence({
-          userId,
-          strategyId: body.strategy_id,
-          symbol: normalizedSymbol,
-          timeframe: body.timeframe,
-          claimedBacktestedConfidence: body.backtested_confidence!,
-        });
-      } catch (error) {
-        throw new ApiError(
-          409,
-          error instanceof Error ? error.message : "Backtest evidence is invalid",
-        );
-      }
-      backtest = await getStrategyBacktest(userId, deployment.backtestId);
-      if (!backtest || backtest.status !== "eligible") {
-        throw new ApiError(409, "Backtest is not eligible for recommendations");
+    let statisticalSupport: StatisticalSupport = "unavailable";
+    let supportDetail: string | null = null;
+
+    if (body.action !== "wait" && body.strategy_id) {
+      if (!isBacktestStrategyId(body.strategy_id)) {
+        supportDetail = "strategy_id is not present in the backtested strategy catalog";
+      } else if (!canonicalStrategyTimeframe(body.timeframe)) {
+        supportDetail = `timeframe "${body.timeframe}" is not a research timeframe`;
+      } else {
+        try {
+          deployment = await requireRecommendationEvidence({
+            userId,
+            strategyId: body.strategy_id,
+            symbol: normalizedSymbol,
+            timeframe: body.timeframe,
+            claimedBacktestedConfidence: body.backtested_confidence ?? undefined,
+          });
+          backtest = await getStrategyBacktest(userId, deployment.backtestId);
+          if (backtest?.status === "eligible") {
+            statisticalSupport = deployment.state === "active" ? "strong" : "moderate";
+            supportDetail = `validated backtest ${deployment.backtestId} (${deployment.state})`;
+          } else {
+            statisticalSupport = "weak";
+            supportDetail = "matched strategy has no eligible backtest yet";
+          }
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Backtest evidence is invalid";
+          // A confidence number we cannot substantiate is refused outright:
+          // labelling it would still put an unearned figure in front of the
+          // operator. A bare strategy_id just loses its claim to support.
+          if (body.backtested_confidence != null) {
+            throw new ApiError(409, `Unverifiable backtested_confidence: ${message}`);
+          }
+          supportDetail = message;
+        }
       }
     }
+
     const calibratedConfidence =
       deployment?.calibratedConfidence ?? Math.max(0, Math.min(100, body.confidence ?? 0));
 
@@ -191,6 +257,10 @@ export async function POST(req: NextRequest) {
     const rec = await saveRecommendation(userId, {
       symbol: normalizedSymbol,
       action: body.action,
+      plan_type: body.plan_type ?? null,
+      // The real column, not just the context blob: rows must be queryable by
+      // where their support came from (plan §6 A).
+      evidence_source: deployment ? "strategy_supported" : "direct_analysis",
       confidence: displayedConfidence,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,
@@ -202,7 +272,13 @@ export async function POST(req: NextRequest) {
       chart_drawings_json: drawings.length ? JSON.stringify(drawings) : null,
       analysis_tier: profile.tier,
       context_json: JSON.stringify({
-        evidence_source: deployment ? "validated_backtest" : "wait_decision",
+        evidence_source: deployment
+          ? "validated_backtest"
+          : body.action === "wait"
+            ? "wait_decision"
+            : "direct_analysis",
+        statistical_support: statisticalSupport,
+        statistical_support_detail: supportDetail,
         deployment_state: deployment?.state ?? null,
         market_regime: body.market_regime ?? null,
         ...buildVisualConfirmationAudit(
@@ -288,6 +364,16 @@ export async function POST(req: NextRequest) {
           : null,
         note:
           "Audit only. Visual review never grants execution authority — see backtest_evidence.execution_eligible.",
+      },
+      // Always told, never implied: how much statistical weight is behind this
+      // plan, including "none — direct analysis".
+      statistical_support: {
+        level: statisticalSupport,
+        detail:
+          supportDetail ??
+          (statisticalSupport === "unavailable"
+            ? "No matching validated strategy — recommendation rests on direct analysis."
+            : null),
       },
       backtest_evidence:
         deployment == null

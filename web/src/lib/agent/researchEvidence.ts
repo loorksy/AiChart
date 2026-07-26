@@ -23,6 +23,7 @@ import {
 } from "@/lib/tradingDna/repository";
 import { collectTradingDnaEvidence } from "@/lib/tradingDna/evidence";
 import type { TradingDnaSnapshot } from "@/lib/tradingDna/types";
+import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
 
 export const RESEARCH_EVIDENCE_VERSION = "1.2.0";
 
@@ -649,36 +650,72 @@ export async function collectBoundedResearchEvidence(
       status: "skipped",
       reason: plan.reasons.backtest,
     });
-  } else if (backtestIds.length === 0) {
-    contributions.push({
-      system: "backtest",
-      status: "skipped",
-      reason: "justified_but_no_completed_job_in_latency_budget",
-      reasonDetail:
-        "Historical confirmation is justified, but no completed tenant-verified backtest is attached to DNA yet. A blocking Research Service run is not started mid-request (latency/safety). Queue a backtest from Research when needed.",
-    });
-    timeline.push({
-      step: "backtest",
-      status: "skipped",
-      reason: "justified_but_no_completed_job_in_latency_budget",
-    });
   } else {
-    // DNA may carry verified backtest IDs — influence ONLY when metrics exist.
-    // Presence of job IDs alone must not raise confidence.
-    const delta = 0;
-    contributions.push({
-      system: "backtest",
-      status: "skipped",
-      reason: "insufficient_historical_metrics",
-      reasonDetail: `Found ${backtestIds.length} completed backtest id(s) in DNA evidence but no parsed reliability metrics in this sync path. Presence alone does not raise confidence.`,
-      jobId: backtestIds[0],
-      evidenceTendency: delta,
-    });
-    timeline.push({
-      step: "backtest",
-      status: "skipped",
-      reason: "insufficient_historical_metrics",
-    });
+    // The prepared path (plan §13 H.4): the strategy pipeline precomputes
+    // calibrated per-symbol×timeframe support into strategy_deployments, so
+    // the answer is a table read — the only kind of backtest evidence that
+    // fits inside a request budget. On-demand runs stay non-blocking.
+    const support =
+      input.symbol && input.interval
+        ? await withTimeout(
+            getStatisticalSupport({
+              userId: input.userId,
+              symbol: input.symbol,
+              timeframe: input.interval,
+            }),
+            Math.min(300, remaining()),
+          ).catch(() => null)
+        : null;
+
+    if (support && support.level !== "unavailable" && support.strategyId) {
+      // Bounded influence, scaled by the summary's own grade — the numbers
+      // were verified by the pipeline; this only relays them.
+      const delta =
+        support.level === "strong" ? 0.05 : support.level === "moderate" ? 0.02 : 0;
+      historicalEvidenceTendency += delta;
+      contributions.push({
+        system: "backtest",
+        status: "used",
+        reason: "precomputed_support_summary",
+        reasonDetail: support.detail,
+        jobId: support.strategyId,
+        evidenceTendency: delta,
+      });
+      summariesAr.push(`دعم إحصائي مُحضّر مسبقاً (${support.level}): ${support.detail}`);
+      summariesEn.push(
+        `Precomputed statistical support (${support.level}) from verified strategy ${support.strategyId}.`,
+      );
+      timeline.push({ step: "backtest", status: "used" });
+    } else if (backtestIds.length > 0) {
+      // DNA may carry verified backtest IDs — influence ONLY when metrics exist.
+      // Presence of job IDs alone must not raise confidence.
+      contributions.push({
+        system: "backtest",
+        status: "skipped",
+        reason: "insufficient_historical_metrics",
+        reasonDetail: `Found ${backtestIds.length} completed backtest id(s) in DNA evidence but no parsed reliability metrics in this sync path. Presence alone does not raise confidence.`,
+        jobId: backtestIds[0],
+        evidenceTendency: 0,
+      });
+      timeline.push({
+        step: "backtest",
+        status: "skipped",
+        reason: "insufficient_historical_metrics",
+      });
+    } else {
+      contributions.push({
+        system: "backtest",
+        status: "skipped",
+        reason: "justified_but_no_completed_job_in_latency_budget",
+        reasonDetail:
+          "Historical confirmation is justified, but the prepared support summary has no verified strategy for this symbol and timeframe and no completed backtest is attached to DNA. A blocking Research Service run is not started mid-request (latency/safety).",
+      });
+      timeline.push({
+        step: "backtest",
+        status: "skipped",
+        reason: "justified_but_no_completed_job_in_latency_budget",
+      });
+    }
   }
 
   // ---- Validation (never raises confidence alone; only after backtest used) ----

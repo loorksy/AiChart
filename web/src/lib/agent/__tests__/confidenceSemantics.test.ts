@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildDirectionalConfidence,
   buildInformationalConfidence,
   buildRecommendationConfidence,
-  buildWaitConfidence,
 } from "@/lib/agent/confidenceSemantics";
 
 describe("confidence semantics", () => {
@@ -14,16 +14,17 @@ describe("confidence semantics", () => {
     assert.equal(c.displayValue, "not_applicable");
   });
 
-  it("WAIT without recommendation exposes no confidence badge", () => {
-    const c = buildWaitConfidence({
+  it("a direction without confirmed levels shows decision — never recommendation — confidence", () => {
+    const c = buildDirectionalConfidence({
       decisionConfidence: 0.9,
       dataQualityScore: 0.3,
       setupQuality: null,
       reasons: ["M15: 64/500"],
     });
-    assert.equal(c.displayKind, "none");
+    assert.equal(c.displayKind, "decision");
     assert.equal(c.displayLabelKey, "agent.decision_confidence");
-    assert.equal(c.displayValue, "not_applicable");
+    assert.equal(c.displayValue, 0.9);
+    // No levels to stand behind, so no trade-grade number is implied.
     assert.equal(c.recommendationConfidence, "not_applicable");
     assert.equal(c.executionReadiness, "not_applicable");
     assert.ok(typeof c.decisionConfidence === "number" && c.decisionConfidence >= 0.85);

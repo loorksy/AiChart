@@ -135,6 +135,17 @@ export function classifyActivation(input: {
   return "non_executable";
 }
 
+/**
+ * Is this level set executable, and is it worth taking at the current price?
+ *
+ * The two questions are answered separately on purpose. Invalid level ORDER is
+ * a hard fault — those numbers cannot become an order. A weak net R is not: it
+ * means the move does not pay for its own spread and slippage right now, which
+ * is a fact the model must see and act on (better price, split entry, different
+ * plan type) rather than a reason to delete the candidate before the model ever
+ * sees it. Silently dropping these was how "the spread is wide today" turned
+ * into "no opinion".
+ */
 export function meetsExecutableGeometry(input: {
   action: "buy" | "sell";
   entry: number;
@@ -142,7 +153,14 @@ export function meetsExecutableGeometry(input: {
   targets: number[];
   spread?: number | null;
   meta?: SymbolGeometryMeta | null;
-}): { ok: boolean; netTp1R: number; grossTp1R: number; reason?: string } {
+}): {
+  ok: boolean;
+  netTp1R: number;
+  grossTp1R: number;
+  reason?: string;
+  /** Net TP1 R is below the preferred scalp minimum — a warning, not a reject. */
+  belowPreferredNetR?: boolean;
+} {
   if (
     !levelOrderValid({
       action: input.action,
@@ -174,10 +192,11 @@ export function meetsExecutableGeometry(input: {
   });
   if (netTp1R + 1e-9 < SCALP_GEOMETRY.minNetTp1R) {
     return {
-      ok: false,
+      ok: true,
       netTp1R,
       grossTp1R,
       reason: "tp1_net_r_below_minimum",
+      belowPreferredNetR: true,
     };
   }
   return { ok: true, netTp1R, grossTp1R };

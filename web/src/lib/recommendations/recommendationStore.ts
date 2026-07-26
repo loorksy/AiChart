@@ -157,7 +157,22 @@ export type CreateTrackedRecommendationInput = Omit<
       | "expiredAt"
       | "lastCheckedAt"
     >
-  >;
+  > & {
+    /**
+     * The frozen evidence bundle and decision trace behind revision 1.
+     *
+     * Not part of the tracked record itself — they belong to the revision, so a
+     * plan stays explainable from its own snapshot after the market has moved on
+     * and the evidence has changed underneath it.
+     */
+    evidence?: Record<string, unknown> | null;
+    decisionTrace?: Record<string, unknown> | null;
+    /**
+     * Where the decision's support came from — distinct from the support GRADE:
+     * direct_analysis | strategy_supported | historical_memory | deep_research.
+     */
+    evidenceSource?: string | null;
+  };
 
 function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unknown> {
   return {
@@ -167,6 +182,9 @@ function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unk
     createdCandleTime: input.createdCandleTime,
     priceAtCreation: input.priceAtCreation,
     lastCheckedAt: input.lastCheckedAt,
+    // Round-trips so the deterministic evaluator can enforce the contract's
+    // candle-count validity, not only its wall-clock expiry.
+    validityCandles: input.validityCandles,
   };
 }
 
@@ -271,6 +289,7 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     expiredAt: latestTimestamp(outcomes, "Expired"),
     priceAtCreation: numberValue(risk.priceAtCreation),
     lastCheckedAt: numberValue(risk.lastCheckedAt),
+    validityCandles: numberValue(risk.validityCandles),
   };
 }
 
@@ -301,6 +320,23 @@ export async function createTrackedRecommendation(
     engineVersion: "aichart-phase4-v1",
     entryType: input.entryType,
     legacyTrackingId: input.id,
+    // The three layers and the evidence grade, persisted rather than kept in
+    // memory: the tracker needs the activation condition to evaluate, and the
+    // journal needs the plan type to report.
+    planType: input.planType ?? null,
+    executionState: input.executionState ?? null,
+    statisticalSupport: input.statisticalSupport ?? null,
+    evidenceSource: input.evidenceSource ?? null,
+    initialRevision: {
+      entryLow: input.entryLow ?? null,
+      entryHigh: input.entryHigh ?? null,
+      activationCondition: input.triggerCondition ?? null,
+      invalidationRule: input.invalidationRule ?? null,
+      alternativeScenario: input.alternativeScenario ?? null,
+      validityCandles: input.validityCandles ?? null,
+      evidence: input.evidence ?? null,
+      decisionTrace: input.decisionTrace ?? null,
+    },
   });
   if (
     input.status !== "pending_entry" ||

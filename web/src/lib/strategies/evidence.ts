@@ -774,12 +774,21 @@ export async function getStrategyDeployment(
   return row ? toDeployment(row) : null;
 }
 
+/**
+ * Look up the validated deployment behind a claimed strategy.
+ *
+ * `claimedBacktestedConfidence` is optional: an agent may name the strategy it
+ * used without asserting a number, and then the server's calibrated confidence
+ * simply applies. When a number IS claimed it must match the evidence — an
+ * unverifiable confidence figure is refused rather than displayed, because a
+ * wrong number carries more authority than no number at all.
+ */
 export async function requireRecommendationEvidence(input: {
   userId: number;
   strategyId: string;
   symbol: string;
   timeframe: string;
-  claimedBacktestedConfidence: number;
+  claimedBacktestedConfidence?: number;
 }): Promise<StrategyDeployment> {
   const deployment = await getStrategyDeployment(
     input.userId,
@@ -794,6 +803,7 @@ export async function requireRecommendationEvidence(input: {
     throw new Error(deployment.suspendedReason ?? "Strategy is suspended after live performance decay");
   }
   if (
+    input.claimedBacktestedConfidence != null &&
     Math.abs(
       Number(input.claimedBacktestedConfidence) - deployment.calibratedConfidence,
     ) > 0.01

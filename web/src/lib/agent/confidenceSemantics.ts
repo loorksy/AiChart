@@ -57,7 +57,15 @@ export function buildInformationalConfidence(input: {
   };
 }
 
-export function buildWaitConfidence(input: {
+/**
+ * Confidence for a direction that has no confirmed levels yet.
+ *
+ * The model has a view and states it; what it does not have is an entry it can
+ * stand behind. So decision confidence is reported and recommendation
+ * confidence stays not_applicable — showing a trade-grade percentage for a plan
+ * with no numbers would misrepresent what the operator is being handed.
+ */
+export function buildDirectionalConfidence(input: {
   decisionConfidence: number;
   dataQualityScore: number;
   setupQuality?: number | null;
@@ -73,13 +81,18 @@ export function buildWaitConfidence(input: {
     {
       factor: "data_quality",
       status: dataQuality >= 0.8 ? "ok" : dataQuality >= 0.5 ? "degraded" : "insufficient",
-      effect: "supports WAIT when incomplete",
+      effect: "coverage behind the directional read",
+    },
+    {
+      factor: "levels",
+      status: "unconfirmed",
+      effect: "direction stated without confirmed entry levels",
     },
   ];
   for (const reason of input.reasons.slice(0, 3)) {
     factors.push({
-      factor: "rejection",
-      status: "blocking",
+      factor: "reason",
+      status: "supporting",
       effect: reason.slice(0, 160),
     });
   }
@@ -90,9 +103,9 @@ export function buildWaitConfidence(input: {
     setupQuality: setup,
     recommendationConfidence: "not_applicable",
     executionReadiness: "not_applicable",
-    displayKind: "none",
+    displayKind: "decision",
     displayLabelKey: "agent.decision_confidence",
-    displayValue: "not_applicable",
+    displayValue: decision,
     factors,
   };
 }
