@@ -29,6 +29,12 @@ export type RevisionSource =
   | "agent"
   | "deep_research"
   | "market_update"
+  /**
+   * Trade management syncing an already-open position with a revision the brain
+   * produced (plan §14). The levels are never its own — it records that the
+   * broker-side stop/target was brought in line with the effective plan.
+   */
+  | "trade_management"
   | "user";
 
 export interface RecommendationRevision {

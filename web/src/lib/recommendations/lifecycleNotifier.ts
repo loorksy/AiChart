@@ -213,6 +213,8 @@ function eventLabel(type: LifecycleEvent["type"]): string {
       return "نُفّذت آلياً";
     case "execution_skipped":
       return "امتنع التنفيذ";
+    case "economic_event_near":
+      return "حدث اقتصادي وشيك";
     default:
       return "تحديث";
   }

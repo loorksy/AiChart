@@ -235,7 +235,9 @@ export type RecommendationHistoryKind =
   | "updated"
   | "drawing_snapshot"
   | "research_revision"
-  | "research_completion";
+  | "research_completion"
+  /** Post-open trade management: proposals and broker syncs (plan §14). */
+  | "trade_management";
 
 export interface RecommendationHistoryEntry {
   id: number;

@@ -39,6 +39,7 @@ import {
   type RecommendationRevision,
 } from "./canonical/revisions";
 import { getCanonicalRecommendation } from "./canonical/repository";
+import { manageOpenTradeAfterRevision } from "./tradeManagement";
 import type { ReevaluationTrigger } from "./reevaluationTriggers";
 
 const log = createLogger("recommendations:reevaluation-cycle");
@@ -336,6 +337,22 @@ export async function runReevaluationCycle(
       const detail = `${rec.symbol}: أُعيد التقييم بعد ${trigger.reason} — تغيّر ${fields.join("، ")} (النسخة ${revision.revisionNo}).`;
       await recordCycle({ trigger, verdict, evidenceHash, detail });
       metrics.reevaluationVerdicts.inc({ verdict });
+
+      // Plan §14: when this plan's trade is ALREADY OPEN, the recorded change
+      // must reach the broker too — through the trade-management layer, which
+      // proposes an approval in advisory mode and uses the existing modify path
+      // under the standing grant in auto mode. Best-effort: a failed sync never
+      // undoes the revision, and the layer decides nothing itself.
+      await manageOpenTradeAfterRevision({
+        userId: trigger.userId,
+        recommendationId: canonicalId,
+        revision,
+      }).catch((error: unknown) => {
+        log.warn("post-open trade management failed", {
+          recommendationId: trigger.recommendationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
 
       return {
         recommendationId: trigger.recommendationId,

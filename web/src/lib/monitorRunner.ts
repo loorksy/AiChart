@@ -2,6 +2,7 @@ import { runCronPostScan } from "./cronPostScan";
 import { monitorEaBridgeHealth } from "./eaHealthMonitor";
 import { sampleLiveCosts } from "./strategies/liveCostProfile";
 import { collectTradeWatchAlerts } from "./tradeWatch";
+import { checkEconomicEventProximity } from "./recommendations/economicEventMonitor";
 import { listUsersForMonitor } from "./store";
 import { notifyUser } from "./telegram";
 import { refreshAllStrategyDecay } from "./strategies/evidence";
@@ -13,7 +14,8 @@ export interface MonitorCycleEvent {
     | "ea_offline"
     | "ea_recovered"
     | "strategy_promoted"
-    | "strategy_suspended";
+    | "strategy_suspended"
+    | "economic_event";
   detail: string;
   delivered: boolean;
 }
@@ -71,6 +73,19 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
               : "strategy_promoted",
           detail,
           delivered,
+        });
+      }
+      // Calendar proximity (plan §8 C.6): a factual "release in N minutes"
+      // alert for plans the operator holds, plus a re-evaluation trigger so the
+      // brain — never the monitor — can re-decide. With no news provider this
+      // produces nothing at all; delivery and dedupe live in the notifier.
+      const economic = await checkEconomicEventProximity(userId).catch(() => null);
+      if (economic?.events.length) {
+        result.events.push({
+          userId,
+          type: "economic_event",
+          detail: economic.events.map((event) => event.detail).join("\n"),
+          delivered: economic.notify.delivered > 0,
         });
       }
       const alerts = await collectTradeWatchAlerts(userId);

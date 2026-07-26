@@ -23,6 +23,8 @@ export type LifecycleEventType =
   | "retest_started"
   /** It broke and ran without returning: a retest plan will not fill. */
   | "breakout_no_retest"
+  /** A high-impact calendar release is imminent for the plan's currencies. */
+  | "economic_event_near"
   | "tp1_hit"
   | "tp2_hit"
   | "tp3_hit"

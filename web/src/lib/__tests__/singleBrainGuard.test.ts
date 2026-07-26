@@ -48,6 +48,12 @@ const REVISION_CALLERS = new Set([
   // because it decides nothing itself — the trigger that started it carries no
   // direction and no levels, and an unchanged decision writes no revision.
   "lib/recommendations/reevaluationCycle.ts",
+  // Trade management (plan §14): after a revision the BRAIN produced lands on a
+  // plan whose trade is already open, this syncs the broker's SL/TP through the
+  // existing modify path and records that sync as one more append-only revision.
+  // It qualifies because the levels it writes are always COPIED from the
+  // effective revision — it holds no market opinion and decides nothing.
+  "lib/recommendations/tradeManagement.ts",
 ]);
 
 /**

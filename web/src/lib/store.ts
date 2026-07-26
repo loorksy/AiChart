@@ -830,8 +830,9 @@ export async function createIntent(
     recommendation_id?: number | null;
     /** Revision of that recommendation these levels came from (CAS at execute). */
     recommendation_revision_no?: number | null;
-    /** How this order was authorised: explicit approval or a standing mode. */
-    authorization_source?: "user_approved" | "standing_auto" | null;
+    /** How this order was authorised: explicit approval or a standing mode.
+     *  `trade_management` marks an SL/TP-modify proposal, never an order. */
+    authorization_source?: "user_approved" | "standing_auto" | "trade_management" | null;
     symbol: string;
     side: "buy" | "sell";
     notional: number;

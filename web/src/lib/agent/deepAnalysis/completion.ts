@@ -541,7 +541,7 @@ async function finalizeSuccess(
       // execution, closing the window where an auto order could still fill a
       // plan the research has just argued against.
       if (verdict === "contradicted" && FEATURES.deepResearchV2()) {
-        await applyRecommendationRevision({
+        const revision = await applyRecommendationRevision({
           userId: run.userId,
           recommendationId,
           revision: {
@@ -566,7 +566,27 @@ async function finalizeSuccess(
           log.info("deep analysis revision skipped", {
             error: error instanceof Error ? error.message : String(error),
           });
+          return null;
         });
+
+        // Plan §14: a contradiction landing on a plan whose trade is already
+        // open must reach the broker as well — via the trade-management layer
+        // (advisory approval, or the modify path under the standing grant).
+        // Best-effort: the revision above stands whatever happens here.
+        if (revision) {
+          const { manageOpenTradeAfterRevision } = await import(
+            "@/lib/recommendations/tradeManagement"
+          );
+          await manageOpenTradeAfterRevision({
+            userId: run.userId,
+            recommendationId,
+            revision,
+          }).catch((error: unknown) => {
+            log.info("post-open trade management skipped", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }
       }
     }
   }
