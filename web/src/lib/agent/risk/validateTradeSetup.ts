@@ -82,14 +82,17 @@ export function validateTradeSetup(input: TradeValidationInput): TradeValidation
         });
 
   if (!geometry.ok) {
-    if (geometry.reason === "level_order_invalid") {
-      reasons.push("ترتيب مستويات الدخول والوقف والهدف غير صالح.");
-    } else {
-      reasons.push(
-        `هندسة الهدف غير قابلة للتنفيذ (صافي R≈${netRr.toFixed(2)} أقل من ${SCALP_GEOMETRY.minNetTp1R}).`,
-      );
-    }
+    reasons.push("ترتيب مستويات الدخول والوقف والهدف غير صالح.");
     return { accepted: false, reasons, warnings, rr, netRr };
+  }
+
+  // A move that barely pays for its own costs is a warning the model acts on,
+  // not a rejection: it can still take it, ask for a better price, or plan a
+  // different entry. Only impossible geometry is refused here.
+  if (geometry.belowPreferredNetR) {
+    warnings.push(
+      `العائد الصافي للهدف الأول ضعيف (≈${netRr.toFixed(2)}R بعد التكاليف، دون المفضّل ${SCALP_GEOMETRY.minNetTp1R}R).`,
+    );
   }
 
   if (input.activationClass === "non_executable") {

@@ -167,7 +167,7 @@ export function buildTradeCandidates(
         meta,
       });
       if (!targets.tp1) {
-        zoneReject = "لا هدف هيكلي حقيقي يحقق الحد الأدنى لهندسة السكالب.";
+        zoneReject = "لا يوجد هدف هيكلي حقيقي فوق/تحت الدخول في هذه المنطقة.";
         continue;
       }
 
@@ -181,10 +181,7 @@ export function buildTradeCandidates(
         meta,
       });
       if (!geometry.ok) {
-        zoneReject =
-          geometry.reason === "tp1_net_r_below_minimum"
-            ? `هندسة الهدف ضعيفة (صافي R≈${geometry.netTp1R.toFixed(2)} أقل من ${SCALP_GEOMETRY.minNetTp1R}).`
-            : "ترتيب مستويات الدخول/الوقف/الهدف غير صالح.";
+        zoneReject = "ترتيب مستويات الدخول/الوقف/الهدف غير صالح.";
         continue;
       }
 
@@ -232,6 +229,14 @@ export function buildTradeCandidates(
       });
 
       const warnings = [...poiScore.warnings, ...(setup.warnings ?? [])];
+      // A weak net R reaches the model as a labelled fact, not a silent delete:
+      // it decides whether to take it anyway, wait for a better price, or plan
+      // a different entry — see docs/UNIFIED_AGENT_PLAN.md §12.
+      if (geometry.belowPreferredNetR) {
+        warnings.push(
+          `العائد الصافي للهدف الأول ضعيف (≈${geometry.netTp1R.toFixed(2)}R بعد السبريد والانزلاق، دون المفضّل ${SCALP_GEOMETRY.minNetTp1R}R).`,
+        );
+      }
       if (input.newsRisk === "high") warnings.push("حدث إخباري عالي التأثير قريب.");
       if (input.htfConflict) warnings.push("يوجد تعارض مع الفريم الأعلى.");
       if (input.spread && risk < input.spread * 5) {
@@ -544,8 +549,17 @@ function selectTargets(input: {
     return { level, net };
   });
 
+  // Prefer the nearest structural target that pays for its own costs. When none
+  // does, fall back to the best real target available rather than discarding the
+  // zone: the weak net R travels with the candidate as a warning, and the model
+  // decides what to do about it (§12 of the plan) instead of losing the setup.
   const tp1 =
-    scored.find((s) => s.net + 1e-9 >= SCALP_GEOMETRY.minNetTp1R)?.level ?? null;
+    scored.find((s) => s.net + 1e-9 >= SCALP_GEOMETRY.minNetTp1R)?.level ??
+    scored.reduce<{ level: number; net: number } | null>(
+      (best, s) => (best == null || s.net > best.net ? s : best),
+      null,
+    )?.level ??
+    null;
   if (tp1 == null) {
     return { tp1: null, tp2: null, structuralCount: unique.length };
   }

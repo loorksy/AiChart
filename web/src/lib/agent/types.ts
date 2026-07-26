@@ -127,9 +127,36 @@ export interface AgentRunContext {
   session?: AgentSessionMemory;
 }
 
+/**
+ * The model's reasoning, in a form the operator can read (never scratchpad).
+ * Every recommendation carries one: a decision that cannot be explained from
+ * its trace and its evidence is not a valid decision (architecture rule §0-ج).
+ */
+export interface DecisionTrace {
+  hypotheses: Array<{
+    scenario: string;
+    supporting: string[];
+    opposing: string[];
+  }>;
+  chosenBecause: string;
+  planTypeBecause: string;
+}
+
 export interface AgentRecommendation {
+  /** Layer 1 — the analytical view. Always a side on a successful analysis. */
   action: "buy" | "sell" | "wait";
+  /** Layer 2 — how this plan is entered. */
+  planType?: "immediate" | "anticipatory" | "conditional";
+  /** Layer 3 — whether it can be acted on right now. */
+  executionState?:
+    | "valid_now"
+    | "awaiting_activation"
+    | "expired"
+    | "invalidated"
+    | "blocked";
   entry?: number;
+  /** The area the plan is willing to enter from, not just the ideal price. */
+  entryZone?: { low: number; high: number };
   entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   stop_loss?: number;
   take_profit?: number;
@@ -145,6 +172,12 @@ export interface AgentRecommendation {
   triggerCondition?: string;
   invalidationLevel?: number;
   invalidationRule?: string;
+  /** The runner-up scenario and what would switch the plan to it. */
+  alternativeScenario?: string;
+  /** How many candles of this timeframe the plan stays meaningful. */
+  validityCandles?: number;
+  /** Where the numbers came from — a validated candidate or evidence levels. */
+  levelSource?: "candidate" | "evidence_levels";
   chartSnapshotHash?: string;
 }
 

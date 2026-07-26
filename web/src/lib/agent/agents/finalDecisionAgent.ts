@@ -1,4 +1,5 @@
-import type { AgentDecision, AgentRecommendation } from "../types";
+import type { AgentDecision, AgentRecommendation, DecisionTrace } from "../types";
+import type { EvidenceDimension } from "../evidenceDimensions";
 import type { ConfidenceSemantics } from "../confidenceSemantics";
 import type { RiskAgentResult } from "./riskAgent";
 import type { NewsMacroResult } from "./newsMacroAgent";
@@ -11,12 +12,25 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 /** The sole model-produced market decision returned by the agent runtime. */
 export interface FinalDecisionResult {
   decision: Exclude<AgentDecision, "informational" | "action_required">;
+  /** Layer 2 of the result contract — how the plan is entered. */
+  planType?: "immediate" | "anticipatory" | "conditional";
+  /** Layer 3 — whether the plan is actionable right now. */
+  executionState?:
+    | "valid_now"
+    | "awaiting_activation"
+    | "expired"
+    | "invalidated"
+    | "blocked";
   confidence: number;
   confidenceSemantics: ConfidenceSemantics;
   summary: string;
   keyReasons: string[];
   riskWarnings: string[];
   recommendation: AgentRecommendation;
+  /** Why this direction and this plan type — operator-readable. */
+  decisionTrace?: DecisionTrace;
+  /** The evidence card, one grade per dimension, never blended. */
+  evidenceDimensions?: EvidenceDimension[];
   /** A short, user-safe evidence trace; never raw chain-of-thought. */
   publicReasoningSummary: string[];
 }

@@ -84,6 +84,7 @@ import {
 } from "./drawings/buildDrawingPlan";
 import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
+import { resolveValidity } from "./trading/tradePlan";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
   clearActiveRecommendation,
@@ -1803,27 +1804,38 @@ async function storeFinalRecommendation(input: {
     interval: input.market.interval,
     createdAt: createdCandleTime ?? Date.now(),
     createdCandleTime,
-    expiresAt: computeRecommendationExpiry({
+    // The agent states how many candles its plan stays meaningful; the
+    // timeframe default remains the ceiling so a bad number cannot pin a plan
+    // open for days.
+    expiresAt: resolveValidity({
+      validityCandles: rec.validityCandles ?? 6,
       interval: input.market.interval,
-      scalp: input.scalp,
-      from: Date.now(),
-    }),
+      maxExpiresAt: computeRecommendationExpiry({
+        interval: input.market.interval,
+        scalp: input.scalp,
+        from: Date.now(),
+      }),
+      now: Date.now(),
+    }).expiresAt,
     direction: rec.action,
+    planType: rec.planType,
     entry: rec.entry,
+    entryZone: rec.entryZone,
     entryType: rec.entryType,
     stopLoss: rec.stop_loss,
     targets: rec.targets,
     takeProfit: rec.take_profit ?? rec.targets[0],
     rr: rec.rr,
     status:
-      rec.activationClass === "immediate" || rec.entryType === "market"
+      rec.executionState === "valid_now" ||
+      rec.activationClass === "immediate" ||
+      rec.entryType === "market"
         ? "triggered"
         : "pending_entry",
+    alternativeScenario: rec.alternativeScenario,
+    validityCandles: rec.validityCandles,
     triggerCondition:
-      rec.triggerCondition ??
-      (rec.action === "buy"
-        ? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`
-        : `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`),
+      rec.triggerCondition ?? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`,
     invalidationLevel: rec.stop_loss,
     invalidationRule:
       rec.invalidationRule ??

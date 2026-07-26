@@ -1,8 +1,16 @@
 /**
- * LLM final-decision authority. Specialist modules supply evidence and
- * price-valid candidates; the model alone chooses BUY, SELL, or WAIT. Numeric
- * levels are then bound to the selected real candidate, and model/schema
- * failure returns a technical no-recommendation state.
+ * The decision engine (docs/UNIFIED_AGENT_IMPLEMENTATION_PLAN.md §4-b).
+ *
+ * It is the ONLY component that turns evidence into a trading decision. It
+ * takes the frozen evidence bundle, and returns the three layers — direction,
+ * plan type, execution state — plus the plan, the evidence card, and the
+ * decision trace. It holds no persistent state and reads nothing outside the
+ * bundle while deciding.
+ *
+ * A successful analysis always yields a direction. Levels are bound to a real
+ * candidate, or composed from the evidence level menu and verified against it;
+ * numbers that match neither are refused whole rather than repaired. Model or
+ * data failure is an operational blocker with a name, never a decision to wait.
  */
 import { z } from "zod";
 import { callLLM, isLLMConfiguredAsync } from "@/lib/llm";
@@ -14,9 +22,18 @@ import type {
   FinalDecisionResult,
 } from "./finalDecisionAgent";
 import {
+  buildDirectionalConfidence,
   buildRecommendationConfidence,
-  buildWaitConfidence,
 } from "../confidenceSemantics";
+import { buildEvidenceDimensions } from "../evidenceDimensions";
+import {
+  buildEvidenceLevels,
+  deriveExecutionState,
+  levelTolerance,
+  resolvePlanLevels,
+  type PlanType,
+} from "../trading/tradePlan";
+import type { AgentRecommendation, DecisionTrace } from "../types";
 import type { DrawingCandidate } from "../drawings/buildDrawingPlan";
 import type { MarketNarrative } from "../marketContext/buildMarketNarrative";
 import {
@@ -30,20 +47,54 @@ import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 
 const log = createLogger("final-decision");
 
+const PlanLevelsSchema = z.object({
+  entryLow: z.number().positive().optional(),
+  entryHigh: z.number().positive().optional(),
+  preferredEntry: z.number().positive(),
+  stopLoss: z.number().positive(),
+  targets: z.array(z.number().positive()).min(1).max(3),
+});
+
+const DecisionTraceSchema = z.object({
+  hypotheses: z
+    .array(
+      z.object({
+        scenario: z.string().max(240),
+        supporting: z.array(z.string().max(160)).max(4),
+        opposing: z.array(z.string().max(160)).max(4),
+      }),
+    )
+    .max(3),
+  chosenBecause: z.string().max(400),
+  planTypeBecause: z.string().max(400),
+});
+
 const FinalDecisionModelSchema = z.object({
-  decision: z.enum(["buy", "sell", "wait"]),
+  /** Layer 1 — always a side on a successful analysis. */
+  direction: z.enum(["buy", "sell"]),
+  /** Layer 2 — how the plan is entered. */
+  planType: z.enum(["immediate", "anticipatory", "conditional"]),
   selectedTradeCandidateId: z.string().nullable().optional(),
+  /** Levels composed from the evidence menu when no candidate fits. */
+  proposedLevels: PlanLevelsSchema.nullable().optional(),
+  activationCondition: z.string().max(400).nullable().optional(),
+  invalidationRule: z.string().max(400),
+  alternativeScenario: z.string().max(400),
+  validityCandles: z.number().int().min(1).max(96),
   confidence: z.number().min(0).max(1),
   summary: z.string().min(10).max(900),
   keyReasons: z.array(z.string()).max(6),
   riskWarnings: z.array(z.string()).max(6),
   publicReasoningSummary: z.array(z.string()).max(5),
+  decisionTrace: DecisionTraceSchema,
   drawingAdvice: z.object({
     shouldDraw: z.boolean(),
     reason: z.string(),
   }),
   selectedCandidateIds: z.array(z.string()).max(8).optional(),
 });
+
+export type FinalDecisionModelOutput = z.infer<typeof FinalDecisionModelSchema>;
 
 /**
  * Why the synthesizer produced no decision. A bare `catch` used to discard
@@ -136,28 +187,53 @@ export interface SynthesizerDeps {
   configured?: boolean;
 }
 
-const SYNTH_SYSTEM_PROMPT = `You are the sole final decision authority of a chart-connected trading agent.
-You receive the REAL outputs of specialist agents (market data quality, structure, liquidity, supply/demand, multi-timeframe, news, risk validation) plus scored drawing candidates.
+const SYNTH_SYSTEM_PROMPT = `You are the decision engine of a chart-connected Forex scalping agent — the only component that turns evidence into a decision.
+You receive the REAL outputs of the evidence pipeline (market data quality, structure, liquidity, supply/demand, multi-timeframe, chart geometry, news, cost-aware candidates) plus a menu of real price levels.
 
 Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in the provided evidence.
 
-Hard rules:
-- Choose BUY, SELL, or WAIT yourself from the specialist evidence and all tradeCandidates.
-- Your decision field is the sole market direction authority.
-- For BUY/SELL, select a same-direction trade candidate when one truthfully represents usable entry/stop/target levels. If none does, leave selectedTradeCandidateId null; keep your market decision but do not invent levels.
-- A valid directional opinion may exist without executable levels. Do not change BUY/SELL to WAIT merely because levels are unavailable.
-- Conditional (pending) candidates require a future retest/confirmation — say so clearly in natural language. Never present a distant pending entry as an immediate trade.
-- Never invent numbers, levels, or news. Never claim news was checked when newsRisk is "unknown".
-- chartGeometry is deterministic evidence: cite a trendline/channel/pattern by name when it genuinely supports your decision (e.g. "ارتداد من خط الاتجاه الداعم", "مثلث صاعد مكتمل"). Treat status "forming" as WEAKER evidence than "completed"; never trade a forming pattern as if it broke out, and never cite a pattern not present in chartGeometry.
-- Do not reveal chain-of-thought, hidden reasoning, scratchpad, POI scores, ATR ratios, or machine ranking labels.
-- drawingAdvice.shouldDraw=false when drawing would mislead (mid-range, weak levels, thin data).
-- selectedCandidateIds: pick at most 8 candidate ids worth drawing (only strong, meaningful ones); omit or empty if none.
-- summary must be specific to THIS context (symbol, structure, the exact missing condition or the POI) — never a generic sentence.
+## How to think (follow this order)
+1. Read the evidence and form 2–3 competing scenarios for where price goes next.
+2. Test each against the evidence — what supports it, what argues against it.
+3. Pick ONE as your main scenario and keep the runner-up as the alternative.
+4. Build the plan: where to enter, where the idea dies, where to take profit, how long it stays valid.
+5. Re-check the plan against the costs and the calendar before you answer.
+
+## The three layers — never mix them
+- direction: "buy" or "sell". A successful analysis ALWAYS produces one. There is no wait, no neutral, no "unclear".
+- planType: "immediate" (price is in a valid entry area now), "anticipatory" (entering while the structure is still forming — from a triangle's rising lows, a second rejection before the neckline, a range edge, after a liquidity sweep; higher risk, say so), or "conditional" (the entry waits for a stated trigger: a close beyond a level, a rejection from a zone, a better price, or the first move after a release).
+- The direction is mandatory; an entry at the current price is NOT. If price is a poor entry, or the move does not pay for its spread and slippage, keep the direction and make the plan conditional at the price or condition that WOULD make it worth taking. Never invent a weak entry, and never stretch a target or tighten a stop to make the numbers look acceptable.
+
+## Levels
+- Prefer a same-direction tradeCandidate: set selectedTradeCandidateId and leave proposedLevels null. Its geometry is already validated.
+- If no candidate fits your plan (e.g. you want a better price), set selectedTradeCandidateId null and fill proposedLevels using ONLY prices that appear in evidenceLevels. Any price not on that menu is rejected and your plan loses its numbers — so quote the menu, never a number you computed yourself.
+- Geometry must hold: buy → stop < entry < targets; sell → targets < entry < stop.
+- A candidate carrying a weak-net-R warning is still a real option: take it and say the return is thin, or plan a better price instead. Do not silently ignore it.
+
+## Evidence, not gates
+- Structure, liquidity, patterns, historical cases, backtests, costs, and news STRENGTHEN or WEAKEN a plan. None of them decides whether a plan exists.
+- Ranging or mid-range markets have plans: range edges, liquidity sweeps, the expected break, the false break. Never answer "unclear" for a range.
+- Conflicting timeframes: say which timeframe leads the decision, which is context, which times the entry. Conflict never removes the direction.
+- chartGeometry is deterministic evidence — cite a trendline/channel/pattern by name when it genuinely supports you. A "forming" pattern is weaker evidence that it will COMPLETE, but its boundary can be an excellent entry: that is what anticipatory means.
+- Never force price into a named pattern that does not fit. Describe the structure you actually see and call it hybrid or unclassified; that is a valid basis for a plan.
+- Never claim statistical support you were not given, and never invent a win rate, a historical count, news, or any number.
+- Never claim news was checked when newsRisk is "unknown".
+
+## Output rules
+- invalidationRule: what specifically kills this idea (a close beyond a level), in plain language.
+- activationCondition: required for conditional and anticipatory plans — the exact event that turns the plan on. null for immediate.
+- validityCandles: how many candles of THIS timeframe the plan stays meaningful.
+- alternativeScenario: the runner-up scenario and what would make you switch to it.
+- decisionTrace: the scenarios you weighed, what supported and opposed each, why this one won, and why this plan type. Operator-readable, no internal jargon.
+- Do not reveal chain-of-thought, scratchpad, POI scores, ATR ratios, or machine ranking labels.
+- drawingAdvice.shouldDraw=false only when drawing would genuinely mislead (no usable levels, thin data).
+- selectedCandidateIds: at most 8 candidate ids worth drawing; omit or empty if none.
+- summary must be specific to THIS context (symbol, structure, the exact trigger or zone) — never a generic sentence.
 - scalpingContext is fixed; higher timeframes are context evidence only.
-- Risk per Trade is intentionally absent: sizing occurs after the decision and must never influence BUY/SELL/WAIT.
+- Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
 
 Respond with ONLY a JSON object, no markdown fences:
-{"decision":"buy|sell|wait","selectedTradeCandidateId":"tc-0|null","confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"drawingAdvice":{"shouldDraw":false,"reason":"..."},"selectedCandidateIds":[]}`;
+{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"activationCondition":"...|null","invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[]}`;
 
 export async function runFinalDecisionSynthesizer(
   ctx: AgentRunContext,
@@ -212,8 +288,9 @@ export async function runFinalDecisionSynthesizer(
       const res = await callLLM({
         system,
         messages: [{ role: "user", content: userMsg }],
-        // Leave headroom for gpt-5 reasoning tokens + the JSON decision payload.
-        maxTokens: 2048,
+        // Headroom for reasoning tokens plus the full plan payload: the three
+        // layers, the levels, the conditions, and the decision trace.
+        maxTokens: 3072,
         // The trade decision ALWAYS runs on the deep model (item 15) — never a
         // quick/auxiliary tier, regardless of any default change.
         // The run signal (stage deadline / total budget / client disconnect)
@@ -349,6 +426,16 @@ function buildModelContext(
       warnings: tradeCandidate.warnings,
       invalidationReason: tradeCandidate.invalidationReason,
     })),
+    // The menu of real prices a plan may quote. Anything outside it is treated
+    // as invented and refused server-side, so the model composes better-price
+    // plans from this list instead of doing arithmetic of its own.
+    evidenceLevels: buildEvidenceLevels({
+      candidates: input.risk?.candidatesResult.candidates ?? [],
+      majorLevels: input.market.majorLevels ?? null,
+      zones: input.market.zones ?? [],
+      liquidity: input.market.liquidity ?? null,
+      geometryLevels: input.geometry ? geometryLevelPrices(input.geometry) : [],
+    }),
     rejectedCandidateReasons:
       input.risk?.candidatesResult?.rejectedReasons.slice(0, 6) ?? [],
     hasReversalEvidence:
@@ -399,98 +486,206 @@ function buildModelContext(
   };
 }
 
-/** Keep the model's chosen action authoritative and bind only real matching levels. */
+/**
+ * Turn the model's answer into the three-layer result.
+ *
+ * The direction is taken as authoritative. The plan's numbers are not: they
+ * come from the selected candidate, or from levels the model composed out of
+ * the evidence menu and that are re-verified here. Ungrounded numbers are
+ * dropped as a set — the direction, the plan type, and the reasoning survive,
+ * and the operator is told the plan has no levels yet.
+ */
 function applyModelDecision(
-  parsed: z.infer<typeof FinalDecisionModelSchema>,
-  input: FinalDecisionInput,
+  parsed: FinalDecisionModelOutput,
+  input: FinalDecisionInput & { geometry?: GeometrySnapshot | null },
 ): FinalDecisionResult {
   const confidence = Math.max(0, Math.min(1, parsed.confidence));
   const clean = (arr: string[], max: number) =>
     arr.map((s) => sanitizePublicText(s).slice(0, 240)).filter(Boolean).slice(0, max);
   const keyReasons = clean(parsed.keyReasons, 6);
   const riskWarnings = clean(parsed.riskWarnings, 6);
-  const selected = parsed.decision === "wait"
-    ? null
-    : (input.risk?.candidatesResult.candidates ?? []).find(
-        (candidate) =>
-          candidate.id === parsed.selectedTradeCandidateId &&
-          candidate.action === parsed.decision,
-      ) ?? null;
-  const decision: FinalDecisionResult["decision"] = parsed.decision;
-  if (!selected && parsed.decision !== "wait") {
+  const direction = parsed.direction;
+
+  const candidates = input.risk?.candidatesResult.candidates ?? [];
+  const selected =
+    candidates.find(
+      (candidate) =>
+        candidate.id === parsed.selectedTradeCandidateId &&
+        candidate.action === direction,
+    ) ?? null;
+
+  const currentPrice = input.market.currentPrice ?? 0;
+  const evidenceLevels = buildEvidenceLevels({
+    candidates: candidates.filter((c) => c.action === direction),
+    majorLevels: input.market.majorLevels ?? null,
+    zones: input.market.zones ?? [],
+    liquidity: input.market.liquidity ?? null,
+    geometryLevels: input.geometry ? geometryLevelPrices(input.geometry) : [],
+  });
+  const tolerance = levelTolerance({
+    atr: input.market.atr,
+    currentPrice,
+    meta: { spread: input.market.spread },
+  });
+  const resolved = resolvePlanLevels({
+    direction,
+    selectedCandidate: selected,
+    proposed: parsed.proposedLevels ?? null,
+    evidenceLevels,
+    tolerance,
+    meta: { spread: input.market.spread },
+  });
+
+  if (!resolved.levels) {
     riskWarnings.unshift(
-      "اتجاه السوق واضح من الدليل، لكن لا توجد مستويات دخول/وقف/هدف قابلة للتنفيذ حالياً.",
+      resolved.rejectionReason === "proposed_level_not_grounded_in_evidence"
+        ? "الاتجاه واضح، لكن المستويات المقترحة لم تُطابق أي مستوى حقيقي في الأدلة فلم تُعتمد."
+        : "الاتجاه واضح من الأدلة، لكن لا توجد مستويات دخول/وقف/هدف مؤكدة بعد.",
     );
   }
-  const geometryQuality = selected
-    ? Math.min(
-        1,
-        selected.netRr / SCALP_GEOMETRY.minNetTp1R,
-        selected.qualityScore,
-      )
+
+  const planType: PlanType = parsed.planType;
+  const executionState = deriveExecutionState({
+    planType,
+    levels: resolved.levels,
+    currentPrice: input.market.currentPrice,
+  });
+
+  const setupQuality = selected
+    ? Math.min(1, selected.poi.score.score / 100, Math.max(0, selected.qualityScore))
     : null;
-  const confidenceSemantics =
-    decision === "wait"
-      ? buildWaitConfidence({
-          decisionConfidence: confidence,
-          dataQualityScore: input.market.dataQuality.sufficient ? 1 : 0.5,
-          setupQuality: null,
-          reasons: keyReasons,
-        })
-      : !selected
-        ? buildWaitConfidence({
-            decisionConfidence: confidence,
-            dataQualityScore: input.market.dataQuality.sufficient ? 1 : 0.5,
-            setupQuality: null,
-            reasons: keyReasons,
-          })
-        : buildRecommendationConfidence({
-            base: Math.min(confidence, 0.55 + 0.45 * (geometryQuality ?? 0)),
-            dataQualityScore: input.market.dataQuality.sufficient ? 1 : 0.5,
-            setupQuality: Math.min(
-              selected.poi.score.score / 100,
-              geometryQuality ?? 0,
-            ),
-            newsRisk: input.news?.newsRisk ?? "unknown",
-            dataSufficientForTrade: input.market.dataQuality.sufficient,
-          });
+  const confidenceSemantics = resolved.levels
+    ? buildRecommendationConfidence({
+        // The model owns this number: it already sees the geometry, the costs,
+        // and the warnings. No hidden ceiling is applied on top of it.
+        base: confidence,
+        dataQualityScore: input.market.dataQuality.sufficient ? 1 : 0.5,
+        setupQuality,
+        newsRisk: input.news?.newsRisk ?? "unknown",
+        dataSufficientForTrade: input.market.dataQuality.sufficient,
+      })
+    : buildDirectionalConfidence({
+        decisionConfidence: confidence,
+        dataQualityScore: input.market.dataQuality.sufficient ? 1 : 0.5,
+        reasons: keyReasons,
+      });
   const displayConfidence =
     typeof confidenceSemantics.displayValue === "number"
       ? confidenceSemantics.displayValue
       : 0;
-  const activationClass =
-    selected?.activationClass === "immediate" ||
-    selected?.activationClass === "conditional"
-      ? selected.activationClass
-      : undefined;
+
+  const activationClass: "immediate" | "conditional" =
+    planType === "immediate" ? "immediate" : "conditional";
+  const netRr = selected?.netRr;
+  const plan: AgentRecommendation | null = resolved.levels
+    ? {
+        action: direction,
+        planType,
+        executionState,
+        entry: resolved.levels.preferredEntry,
+        entryZone: {
+          low: resolved.levels.entryLow,
+          high: resolved.levels.entryHigh,
+        },
+        entryType: selected?.entryType,
+        stop_loss: resolved.levels.stopLoss,
+        targets: resolved.levels.targets,
+        take_profit: resolved.levels.targets[0],
+        rr: selected?.rr,
+        netRr,
+        netRrTp2: selected?.netRrTp2,
+        activationClass,
+        triggerCondition:
+          sanitizePublicText(parsed.activationCondition ?? "").slice(0, 400) ||
+          selected?.triggerCondition,
+        invalidationLevel: resolved.levels.stopLoss,
+        invalidationRule:
+          sanitizePublicText(parsed.invalidationRule).slice(0, 400) ||
+          selected?.invalidationReason,
+        alternativeScenario: sanitizePublicText(parsed.alternativeScenario).slice(0, 400),
+        validityCandles: parsed.validityCandles,
+        levelSource: resolved.source ?? undefined,
+        status: executionState === "valid_now" ? "triggered" : "pending_entry",
+      }
+    : {
+        action: direction,
+        planType,
+        executionState,
+        triggerCondition:
+          sanitizePublicText(parsed.activationCondition ?? "").slice(0, 400) || undefined,
+        invalidationRule: sanitizePublicText(parsed.invalidationRule).slice(0, 400),
+        alternativeScenario: sanitizePublicText(parsed.alternativeScenario).slice(0, 400),
+        validityCandles: parsed.validityCandles,
+      };
+
   return {
-    decision,
+    decision: direction,
+    planType,
+    executionState,
     confidence: displayConfidence,
     confidenceSemantics,
     summary: sanitizePublicText(parsed.summary).slice(0, 900),
     keyReasons,
     riskWarnings: riskWarnings.slice(0, 6),
-    recommendation: selected
-      ? {
-          action: selected.action,
-          entry: selected.entry,
-          entryType: selected.entryType,
-          stop_loss: selected.stop_loss,
-          targets: selected.targets,
-          take_profit: selected.targets[0],
-          rr: selected.rr,
-          netRr: selected.netRr,
-          netRrTp2: selected.netRrTp2,
-          activationClass,
-          triggerCondition: selected.triggerCondition,
-          invalidationLevel: selected.stop_loss,
-          invalidationRule: selected.invalidationReason,
-          status:
-            activationClass === "immediate" ? "triggered" : "pending_entry",
-        }
-      : { action: decision },
+    recommendation: plan!,
+    decisionTrace: sanitizeDecisionTrace(parsed.decisionTrace),
+    evidenceDimensions: buildEvidenceDimensions({
+      planType,
+      executionState,
+      signalStrength: confidence,
+      timeframeAgreement: input.mtf
+        ? input.mtf.conflict
+          ? "conflicting"
+          : "aligned"
+        : "unknown",
+      patternState: input.geometry ? describePrimaryPattern(input.geometry) : null,
+      entryQuality: selected ? selected.poi.score.score : null,
+      netR: netRr ?? null,
+      belowPreferredNetR:
+        netRr != null ? netRr + 1e-9 < SCALP_GEOMETRY.minNetTp1R : undefined,
+      statisticalSupport: "unavailable",
+      newsRisk: input.news?.newsRisk ?? "unknown",
+      dataSufficient: input.market.dataQuality.sufficient,
+      validityCandles: parsed.validityCandles,
+    }).dimensions,
     publicReasoningSummary: clean(parsed.publicReasoningSummary, 5),
   };
+}
+
+/** Operator-safe copy of the model's reasoning trace (never raw scratchpad). */
+function sanitizeDecisionTrace(
+  trace: FinalDecisionModelOutput["decisionTrace"],
+): DecisionTrace {
+  const line = (text: string, max = 240) => sanitizePublicText(text).slice(0, max);
+  return {
+    hypotheses: trace.hypotheses.slice(0, 3).map((h) => ({
+      scenario: line(h.scenario),
+      supporting: h.supporting.map((s) => line(s, 160)).filter(Boolean).slice(0, 4),
+      opposing: h.opposing.map((s) => line(s, 160)).filter(Boolean).slice(0, 4),
+    })),
+    chosenBecause: line(trace.chosenBecause, 400),
+    planTypeBecause: line(trace.planTypeBecause, 400),
+  };
+}
+
+/** Prices a plan may legitimately cite from detected chart geometry. */
+function geometryLevelPrices(geometry: GeometrySnapshot): number[] {
+  const out: number[] = [];
+  for (const pattern of geometry.patterns ?? []) {
+    if (typeof pattern.projectedTarget === "number") out.push(pattern.projectedTarget);
+    if (pattern.neckline) {
+      out.push(pattern.neckline.from.price, pattern.neckline.to.price);
+    }
+    for (const anchor of pattern.anchors ?? []) out.push(anchor.price);
+  }
+  return out.filter((p) => Number.isFinite(p) && p > 0);
+}
+
+/** Short human label for the most significant detected pattern. */
+function describePrimaryPattern(geometry: GeometrySnapshot): string | null {
+  const pattern = (geometry.patterns ?? [])[0];
+  if (!pattern) return null;
+  return `${pattern.patternType} · ${pattern.status}`;
 }
 
 function extractJson(raw: string): string {
