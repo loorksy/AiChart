@@ -44,6 +44,12 @@ const SCHEMA = `
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
     alerts_enabled           INTEGER NOT NULL DEFAULT 1,
     alert_push               INTEGER NOT NULL DEFAULT 1,
+    -- Standing execution authorisation: 'unset' until a connected operator
+    -- chooses. The epoch pins an 'auto' grant to the connection it was given
+    -- for, so it cannot silently survive a disconnect and reconnect.
+    agent_trade_mode         TEXT NOT NULL DEFAULT 'unset',
+    agent_trade_mode_updated_at INTEGER,
+    agent_trade_mode_epoch   TEXT,
     alert_trades             INTEGER NOT NULL DEFAULT 1,
     alert_signals            INTEGER NOT NULL DEFAULT 1,
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
@@ -1084,6 +1090,15 @@ function migrate(db: Database.Database) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0",
     );
+  }
+  for (const [name, definition] of [
+    ["agent_trade_mode", "TEXT NOT NULL DEFAULT 'unset'"],
+    ["agent_trade_mode_updated_at", "INTEGER"],
+    ["agent_trade_mode_epoch", "TEXT"],
+  ] as const) {
+    if (!settingsCols.some((c) => c.name === name)) {
+      db.exec(`ALTER TABLE trading_settings ADD COLUMN ${name} ${definition}`);
+    }
   }
   if (!settingsCols.some((c) => c.name === "alert_push")) {
     db.exec(

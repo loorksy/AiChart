@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
+import { isAutoExecutionAuthorized } from "@/lib/agent/tradeMode";
 import { handleError } from "@/lib/api";
 import {
   createIntent,
@@ -28,7 +29,6 @@ import {
 } from "@/lib/marketPolicy";
 import type { MarketType } from "@/lib/markets/types";
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
-import { checkRecommendationExecutionEligibility } from "@/lib/strategies/evidence";
 
 const schema = z
   .object({
@@ -130,35 +130,20 @@ export async function POST(req: NextRequest) {
       return respondWithIdempotency(userId, idempotencyKey, envelope);
     }
 
-    // Autonomous execution is only allowed from a recommendation whose
-    // validated strategy has completed shadow trading and is currently active.
-    // A human's explicit order remains possible and is separately audited.
+    // An order arrives here from exactly one of two authorisations: the
+    // operator approved THIS trade, or they earlier chose the auto mode and
+    // this plan's conditions have now been met. There is no third path — the
+    // old "autonomous if the strategy is active" route is gone, because whether
+    // a trade may be placed is the operator's decision to make, not a
+    // statistical property of a strategy (docs/UNIFIED_AGENT_PLAN.md §3).
     if (!body.approved_by_user) {
-      if (body.recommendation_id == null) {
+      const authorized = await isAutoExecutionAuthorized(userId);
+      if (!authorized) {
         const envelope = bridgeSuccess(
           tradeOpenPayload(
             false,
             "denied",
-            "A backtest-gated active recommendation_id is required for autonomous execution",
-            null,
-            null,
-            null,
-          ),
-        );
-        return respondWithIdempotency(userId, idempotencyKey, envelope);
-      }
-      const eligibility = await checkRecommendationExecutionEligibility({
-        userId,
-        recommendationId: body.recommendation_id,
-        symbol: normalizeIntentSymbol(body.symbol, DEFAULT_MARKET),
-        side: body.side,
-      });
-      if (!eligibility.ok) {
-        const envelope = bridgeSuccess(
-          tradeOpenPayload(
-            false,
-            "denied",
-            eligibility.reason,
+            "لا يوجد تفويض للتنفيذ: إمّا موافقة صريحة على هذه الصفقة (approved_by_user)، أو تفعيل الوضع التلقائي من المستخدم مع حساب متصل.",
             null,
             null,
             null,

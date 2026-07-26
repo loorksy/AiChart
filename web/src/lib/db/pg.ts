@@ -41,6 +41,12 @@ const SCHEMA = `
     alerts_enabled           BOOLEAN NOT NULL DEFAULT TRUE,
     alert_trades             BOOLEAN NOT NULL DEFAULT TRUE,
     alert_signals            BOOLEAN NOT NULL DEFAULT TRUE,
+    alert_push               BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Standing execution authorisation; the epoch pins an 'auto' grant to the
+    -- connection it was given for. See the SQLite schema for the rationale.
+    agent_trade_mode         TEXT NOT NULL DEFAULT 'unset',
+    agent_trade_mode_updated_at BIGINT,
+    agent_trade_mode_epoch   TEXT,
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -925,6 +931,9 @@ async function migratePg(client: PoolClient) {
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS alerts_enabled        BOOLEAN NOT NULL DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS alert_push            BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS agent_trade_mode      TEXT NOT NULL DEFAULT 'unset',
+      ADD COLUMN IF NOT EXISTS agent_trade_mode_updated_at BIGINT,
+      ADD COLUMN IF NOT EXISTS agent_trade_mode_epoch TEXT,
       ADD COLUMN IF NOT EXISTS alert_trades          BOOLEAN NOT NULL DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS alert_signals         BOOLEAN NOT NULL DEFAULT TRUE
   `).catch(() => {

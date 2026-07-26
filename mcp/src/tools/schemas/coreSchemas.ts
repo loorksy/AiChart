@@ -91,6 +91,19 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
   }),
 ]);
 
+/** Trade-mode input: `auto` demands an explicit operator confirmation flag. */
+export const setAgentTradeModeShape = {
+  mode: z.enum(["auto", "advisory"]),
+  confirmed_by_user: z
+    .boolean()
+    .optional()
+    .describe(
+      "Required true for mode=auto: proof the operator asked for standing execution authorisation in their own words.",
+    ),
+};
+
+export const setAgentTradeModeInput = z.object(setAgentTradeModeShape).strict();
+
 /** Catalog shape stays a ZodRawShape so MCP SDK handler inference remains intact. */
 const createRecommendationCatalogShape = {
   symbol: zSymbol,
@@ -329,6 +342,22 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Current fixed product settings: Forex, scalping, and Risk per Trade. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
+  },
+  {
+    name: "get_agent_trade_mode",
+    domain: "core",
+    description:
+      "When: at session start after get_account_overview, and before offering execution — the operator's standing trading mode, shared with the platform. Returns mode (auto | advisory), connected, and needs_choice. needs_choice=true means a connected operator has not chosen yet: ask ONCE which mode they want, then remember the answer. Never re-ask on every analysis. read-only.",
+    inputSchema: {},
+    annotations: READ_ONLY,
+  },
+  {
+    name: "set_agent_trade_mode",
+    domain: "core",
+    description:
+      "When: the operator explicitly states which mode they want. 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met — set it ONLY when the operator asked for it in their own words, and pass confirmed_by_user:true to record that. 'advisory' means analysis and recommendations with no execution at all. auto requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation.",
+    inputSchema: setAgentTradeModeShape,
+    annotations: DESTRUCTIVE,
   },
   {
     name: "send_telegram_menu",

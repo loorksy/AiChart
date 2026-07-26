@@ -18,6 +18,7 @@ import {
 } from "./recommendationStatus";
 import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
 import { notifyLifecycleEvents } from "./lifecycleNotifier";
+import { maybeAutoExecute, autoExecutionStage } from "./autoExecutor";
 import type { TrackedRecommendation } from "./types";
 
 /** Normalize an epoch value to milliseconds (warehouse stores may use seconds). */
@@ -140,6 +141,8 @@ export async function trackRecommendations(
     notify?: boolean;
     /** Record what would be sent without sending it (rollout window). */
     silentAlerts?: boolean;
+    /** Disable standing-authorisation execution for this run (tests, replays). */
+    autoExecute?: boolean;
   } = {},
 ): Promise<TrackSweepResult> {
   const active = await listActiveTrackedRecommendations({
@@ -150,10 +153,53 @@ export async function trackRecommendations(
   let terminal = 0;
   const events: LifecycleEvent[] = [];
   const byUser = new Map<number, LifecycleEvent[]>();
+  const placedToday = new Map<number, number>();
+  const autoEnabled = opts.autoExecute !== false && autoExecutionStage() !== "off";
+
   for (const rec of active) {
     try {
       const { recommendation: next, events: recEvents } = await trackOneRecommendation(rec);
       events.push(...recEvents);
+
+      // Standing authorisation acts at the moment a plan's own condition is
+      // met — the same moment the operator is told about it, so the two can
+      // never disagree about what happened.
+      if (autoEnabled && recEvents.some((event) => event.type === "activated")) {
+        const outcome = await maybeAutoExecute({
+          recommendation: next ?? rec,
+          events: recEvents,
+          placedToday: placedToday.get(rec.userId) ?? 0,
+        }).catch(() => null);
+        if (outcome?.placed) {
+          placedToday.set(rec.userId, (placedToday.get(rec.userId) ?? 0) + 1);
+          recEvents.push({
+            type: "executed_auto",
+            recommendationId: rec.id,
+            symbol: rec.symbol,
+            revisionNo: rec.revisionNo ?? null,
+            dedupeKey: `${rec.id}:${rec.revisionNo ?? 0}:executed_auto`,
+            detail: outcome.dryRun
+              ? `${rec.symbol}: كان سيُنفَّذ آلياً الآن (وضع المحاكاة).`
+              : `${rec.symbol}: نُفِّذت الصفقة آلياً بعد تحقق شرط التفعيل.`,
+            terminal: false,
+            occurredAt: Date.now(),
+          });
+        } else if (outcome && outcome.code !== "stage_off" && outcome.code !== "not_authorized") {
+          // Why an authorised plan was NOT placed matters as much as a fill:
+          // silence here would look like the trade simply never triggered.
+          recEvents.push({
+            type: "execution_skipped",
+            recommendationId: rec.id,
+            symbol: rec.symbol,
+            revisionNo: rec.revisionNo ?? null,
+            dedupeKey: `${rec.id}:${rec.revisionNo ?? 0}:execution_skipped:${outcome.code}`,
+            detail: `${rec.symbol}: امتنع التنفيذ التلقائي — ${outcome.reason}`,
+            terminal: false,
+            occurredAt: Date.now(),
+          });
+        }
+      }
+
       if (recEvents.length) {
         byUser.set(rec.userId, [...(byUser.get(rec.userId) ?? []), ...recEvents]);
       }
