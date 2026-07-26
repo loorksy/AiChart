@@ -30,8 +30,13 @@ const STRATEGY_ID_SET = new Set(BACKTEST_STRATEGY_IDS);
  * Revision 4: scalp re-prioritisation — timeframe-aware risk geometry (stop,
  * targets, holding time, trade limit) plus the scalp-native families. Every
  * revision-3 result was produced under swing geometry and must NOT be reused.
+ * Revision 5: MACD and Bollinger became usable CONDITION LEAVES in the closed
+ * DSL (RELIABILITY_PLAN item 17, stage A). The engine already computed both,
+ * but the language could not express them, so no strategy could use them.
+ * Specs may now differ in their condition trees; revision-4 results were
+ * produced without these leaves and must NOT be reused.
  */
-export const CATALOG_SPEC_REVISION = "4";
+export const CATALOG_SPEC_REVISION = "5";
 
 export interface StrategyCostProfile {
   spreadPips: number;

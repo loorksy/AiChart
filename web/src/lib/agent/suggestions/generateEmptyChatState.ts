@@ -45,7 +45,7 @@ export async function generateEmptyChatState(
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: JSON.stringify(facts) }],
       maxTokens: 350,
-    });
+    }, { tier: "quick" });
     const raw = response.content
       .filter((block): block is { type: "text"; text: string } => block.type === "text")
       .map((block) => block.text)

@@ -3,7 +3,8 @@
  * Candles, prices, and instrument universe come exclusively from OANDA.
  * Trade execution remains on the user's EA/MT5 broker.
  */
-import { fetchWithTimeout, httpTimeoutMs } from "@/lib/externalFetch";
+import { httpTimeoutMs } from "@/lib/externalFetch";
+import { resilientFetch } from "@/lib/providerResilience";
 import { barDurationMs } from "@/lib/intervals";
 import { getPlatformValue } from "@/lib/platformConfig";
 
@@ -129,10 +130,11 @@ export async function fetchOandaCandles(
     url = `${base}?granularity=${granularity}&count=${n}&price=M`;
   }
 
-  const res = await fetchWithTimeout(
+  const res = await resilientFetch(
+    "oanda",
     url,
     { headers: authHeaders(), cache: "no-store" },
-    { timeoutMs: httpTimeoutMs(), label: "OANDA candles" },
+    { timeoutMs: httpTimeoutMs(), label: "OANDA candles", maxRetries: 2 },
   );
   if (!res.ok) {
     throw new Error(`OANDA candles HTTP ${res.status}`);
@@ -205,10 +207,11 @@ export async function fetchOandaPricing(symbols: string[]): Promise<OandaQuote[]
   if (instruments.length === 0) return [];
 
   const url = `${oandaBaseUrl()}/v3/accounts/${accountId}/pricing?instruments=${instruments.join("%2C")}`;
-  const res = await fetchWithTimeout(
+  const res = await resilientFetch(
+    "oanda",
     url,
     { headers: authHeaders(), cache: "no-store" },
-    { timeoutMs: httpTimeoutMs(), label: "OANDA pricing" },
+    { timeoutMs: httpTimeoutMs(), label: "OANDA pricing", maxRetries: 2 },
   );
   if (!res.ok) throw new Error(`OANDA pricing HTTP ${res.status}`);
   const data = (await res.json()) as { prices?: OandaPriceRow[] };
@@ -246,10 +249,11 @@ export async function fetchOandaInstruments(): Promise<OandaInstrument[]> {
   const accountId = oandaAccountId();
   if (!oandaConfigured() || !accountId) return [];
   const url = `${oandaBaseUrl()}/v3/accounts/${accountId}/instruments`;
-  const res = await fetchWithTimeout(
+  const res = await resilientFetch(
+    "oanda",
     url,
     { headers: authHeaders(), cache: "no-store" },
-    { timeoutMs: httpTimeoutMs(), label: "OANDA instruments" },
+    { timeoutMs: httpTimeoutMs(), label: "OANDA instruments", maxRetries: 2 },
   );
   if (!res.ok) throw new Error(`OANDA instruments HTTP ${res.status}`);
   const data = (await res.json()) as { instruments?: OandaInstrumentRow[] };

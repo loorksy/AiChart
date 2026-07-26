@@ -41,8 +41,10 @@ test("catastrophic candle gaps stop the market fleet before specialist analysis"
   const gapGate = orchestrator.indexOf(
     'market.dataQuality.coverage.status === "gapped"',
   );
+  // The specialist fleet is wrapped in classified failure capture:
+  // withTimeout(captureStage("structure", runStructureAgent(...)), …).
   const specialistFleet = orchestrator.indexOf(
-    "withTimeout(runStructureAgent",
+    'captureStage("structure", runStructureAgent',
   );
   assert.ok(gapGate > 0 && gapGate < specialistFleet);
 });
@@ -51,8 +53,10 @@ test("significant gaps proceed to analysis as a warning, not a block", () => {
   const warningBranch = orchestrator.indexOf(
     'market.dataQuality.coverage.gapSeverity === "significant"',
   );
+  // The specialist fleet is wrapped in classified failure capture:
+  // withTimeout(captureStage("structure", runStructureAgent(...)), …).
   const specialistFleet = orchestrator.indexOf(
-    "withTimeout(runStructureAgent",
+    'captureStage("structure", runStructureAgent',
   );
   assert.ok(warningBranch > 0 && warningBranch < specialistFleet);
   // The significant branch emits a warning event — it must NOT early-return.

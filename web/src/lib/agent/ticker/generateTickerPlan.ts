@@ -65,6 +65,8 @@ export interface GenerateTickerPlanInput {
   newsProviderConfigured: boolean;
   canUseMarketTools: boolean;
   canUseNewsTools: boolean;
+  /** Cancels the in-flight generation when the run ends (item 2). */
+  signal?: AbortSignal;
 }
 
 export interface GenerateTickerPlanDeps {
@@ -120,7 +122,7 @@ export async function generateTickerPlan(
         system,
         messages: [{ role: "user", content: userMsg }],
         maxTokens: 400,
-      });
+      }, { tier: "quick", signal: input.signal });
       return res.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)

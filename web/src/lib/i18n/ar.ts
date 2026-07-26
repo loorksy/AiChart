@@ -197,6 +197,26 @@ export const ar: Record<TranslationKey, string> = {
   "agent.run_details": "تفاصيل التنفيذ",
   "agent.error": "حدث خطأ",
 
+  // --- المرحلة 0: شارة وضع التنفيذ الدائمة + بطاقة العائق التشغيلي ---
+  "agent.mode.descriptive": "تحليل وصفي — غير مخوّل للتنفيذ",
+  "agent.mode.shadow": "وضع الظل",
+  "agent.mode.demo": "تجريبي",
+  "agent.mode.live": "مباشر",
+  "agent.mode.blocker": "عائق تشغيلي",
+  "agent.fault.title": "تعذّر إكمال التحليل",
+  "agent.fault.trace": "معرّف الطلب",
+  "agent.fault.retryable": "يمكنك إعادة المحاولة بعد قليل.",
+  "agent.fault.permanent": "لن تُحل المشكلة بإعادة المحاولة — تحتاج مراجعة الإعداد.",
+
+  // --- المرحلة 4: بطاقة الأدلة خلف التوصية ---
+  "agent.evidence.title": "الأدلة خلف هذه القراءة",
+  "agent.evidence.trades": "صفقات تاريخية",
+  "agent.evidence.win_rate": "نسبة الربح التاريخية",
+  "agent.evidence.deployment": "حالة النشر",
+  "agent.evidence.live": "النتائج الحية",
+  "agent.evidence.not_execution_grade":
+    "هذا السجل لا يستوفي بوابات التنفيذ، فهو يُثري القراءة ولا يخوّل صفقة.",
+
   "decision.buy": "شراء",
   "decision.sell": "بيع",
   "decision.wait": "انتظار",

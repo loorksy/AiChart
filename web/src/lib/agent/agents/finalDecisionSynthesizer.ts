@@ -171,6 +171,12 @@ export async function runFinalDecisionSynthesizer(
     locale?: "ar" | "en";
     /** Loaded skill guidance (bounded, read-only) appended to the system prompt. */
     skillContextBlock?: string | null;
+    /**
+     * Realised-outcome lessons for this symbol (item 14). Framed as context to
+     * weigh: the model keeps sole authority over BUY/SELL/WAIT, and these lines
+     * never override live analysis or any statistical gate.
+     */
+    lessonsBlock?: string | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -193,6 +199,9 @@ export async function runFinalDecisionSynthesizer(
   const system = [
     SYNTH_SYSTEM_PROMPT.replace("{{LANGUAGE}}", language),
     input.skillContextBlock?.trim() || null,
+    // Realised-outcome context (RELIABILITY_PLAN.md item 14). Evidence the
+    // model weighs — never a veto, never a substitute for the live read.
+    input.lessonsBlock?.trim() || null,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -205,7 +214,11 @@ export async function runFinalDecisionSynthesizer(
         messages: [{ role: "user", content: userMsg }],
         // Leave headroom for gpt-5 reasoning tokens + the JSON decision payload.
         maxTokens: 2048,
-      });
+        // The trade decision ALWAYS runs on the deep model (item 15) — never a
+        // quick/auxiliary tier, regardless of any default change.
+        // The run signal (stage deadline / total budget / client disconnect)
+        // tears the call down instead of leaving it running (item 2).
+      }, { tier: "deep", signal: ctx.signal });
       return res.content
         .filter((b): b is { type: "text"; text: string } => b.type === "text")
         .map((b) => b.text)

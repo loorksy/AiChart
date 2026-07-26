@@ -3,52 +3,82 @@
  * a well-formed result with NO trade recommendation — never a crash, never an
  * invented analysis. These are protocol-failure messages (allowed to be
  * static) but they still respect the operator's language.
+ *
+ * Contract note: a partial-failure fallback is an OPERATIONAL BLOCKER, not a
+ * descriptive answer — its envelope says so explicitly so clients can stop
+ * guessing whether "informational" meant analysis or fault.
  */
 import type { AppLocale } from "@/lib/i18n";
 import {
   buildInformationalConfidence,
 } from "./confidenceSemantics";
 import type { AgentActivityEvent, AgentFinalResult } from "./types";
+import {
+  isRetryableFailureCode,
+  userMessageForFailure,
+  type AgentFailureCode,
+  type AgentStage,
+} from "./errorTaxonomy";
+import {
+  descriptiveEnvelope,
+  operationalBlockerEnvelope,
+} from "./resultEnvelope";
 
 /**
  * Generic partial-failure fallback: informational, no market decision.
  *
- * `options.detail` carries the ACTUAL cause (provider auth, rate limit,
- * malformed model reply, deadline) into the operator-visible summary. The old
- * behaviour buried every distinct fault under one "try again shortly" line,
- * which made production failures impossible to triage from the outside.
+ * User/operator separation (RELIABILITY_PLAN.md item 7): the user-facing
+ * `summary` is ALWAYS the safe, localized taxonomy message for the failure
+ * code — it NEVER carries the raw provider payload (which may embed an API
+ * key, an internal URL, or a stack fragment). The raw cause (`reason` /
+ * `options.detail`) is operator-only: callers log it server-side and every
+ * result carries a `trace_id` so a support request correlates the two. The
+ * machine-readable code lives in `envelope.failure_code`, never in
+ * user-rendered `keyReasons`.
  */
 export function buildAgentFallbackResult(
+  // Operator/machine cause. Retained for call-site readability + backwards
+  // compatibility; INTENTIONALLY never rendered to the user (see above).
   reason: string,
   activityEvents: AgentActivityEvent[] = [],
   locale: AppLocale = "ar",
-  options: { detail?: string; retryable?: boolean } = {},
+  options: {
+    /** Operator-only raw cause. Never interpolated into the user summary. */
+    detail?: string;
+    retryable?: boolean;
+    /** Pipeline stage the failure is attributed to (envelope.failure_stage). */
+    failureStage?: AgentStage;
+    /** Taxonomy code for the failure (envelope.failure_code). */
+    failureCode?: AgentFailureCode;
+    /** Correlation id surfaced to the user for support (request id). */
+    traceId?: string;
+  } = {},
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({ analysisConfidence: 0 });
-  const detail = options.detail?.trim();
-  const retryHintAr = options.retryable
-    ? " أعد المحاولة بعد قليل."
-    : " هذه المشكلة لن تُحل بإعادة المحاولة — راجع الإعداد.";
-  const retryHintEn = options.retryable
-    ? " Please try again shortly."
-    : " Retrying will not help — check the configuration.";
+  const failureCode = options.failureCode ?? "unknown";
+  const retryable = options.retryable ?? isRetryableFailureCode(failureCode);
+  // Safe, localized, code-specific message — the ONLY thing the user sees.
+  const safeMessage = userMessageForFailure(failureCode, locale);
   const summary =
     locale === "en"
-      ? detail
-        ? `The agent could not complete this run: ${detail}${retryHintEn}`
-        : "The agent could not complete this run safely. Please try again shortly."
-      : detail
-        ? `تعذّر إكمال التحليل: ${detail}${retryHintAr}`
-        : "تعذّر تشغيل الوكيل الذكي حالياً. حاول مرة أخرى بعد قليل.";
+      ? `The request could not be completed. ${safeMessage}`
+      : `تعذّر إكمال الطلب. ${safeMessage}`;
   return {
     decision: "informational",
+    envelope: operationalBlockerEnvelope({
+      failureStage: options.failureStage ?? "final_decision",
+      failureCode,
+      retryable,
+      traceId: options.traceId,
+    }),
     confidence:
       typeof confidenceSemantics.displayValue === "number"
         ? confidenceSemantics.displayValue
         : 0,
     confidenceSemantics,
     summary,
-    keyReasons: [reason],
+    // Machine cause is in envelope.failure_code + operator logs — not here.
+    keyReasons: [],
     riskWarnings: [
       locale === "en"
         ? "No trade recommendation was issued due to a partial system failure."
@@ -63,12 +93,14 @@ export function buildAgentFallbackResult(
 export function buildInformationalResult(
   summary: string,
   activityEvents: AgentActivityEvent[] = [],
+  options: { traceId?: string } = {},
 ): AgentFinalResult {
   const confidenceSemantics = buildInformationalConfidence({
     analysisConfidence: 0,
   });
   return {
     decision: "informational",
+    envelope: descriptiveEnvelope({ traceId: options.traceId }),
     confidence: 0,
     confidenceSemantics,
     summary,

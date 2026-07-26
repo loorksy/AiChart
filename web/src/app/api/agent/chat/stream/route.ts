@@ -33,7 +33,10 @@ import { generateTickerPlan } from "@/lib/agent/ticker/generateTickerPlan";
 import { streamTicker } from "@/lib/agent/ticker/streamTicker";
 import { newsProviderConfigured } from "@/lib/agent/news/newsProvider";
 import { createLogger } from "@/lib/logger";
+import { recordRequestWithoutFinal } from "@/lib/metrics";
 import { writeAgentAudit } from "@/lib/agent/auditLog";
+import { buildAgentFallbackResult } from "@/lib/agent/fallback";
+import { classifyAgentError, userMessageForFailure } from "@/lib/agent/errorTaxonomy";
 import type { AgentActivityEvent } from "@/lib/agent/types";
 import { recallAgentMemoryForContext } from "@/lib/agent/agentMemory";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
@@ -353,7 +356,11 @@ export async function POST(req: NextRequest) {
 
     const stream = new ReadableStream({
       async start(controller) {
+        // Phase-0 SLO instrumentation (item 9): every request must end with a
+        // complete `final`. This flag is the ONLY source of that measurement.
+        let sentFinal = false;
         const send = (event: string, data: unknown) => {
+          if (event === "final") sentFinal = true;
           try {
             controller.enqueue(sseEncode(event, data));
           } catch {
@@ -405,6 +412,10 @@ export async function POST(req: NextRequest) {
               recalledMemoryCount: conversationContext?.recalledMemoryIds.length ?? 0,
             })
           : null;
+        // The ticker is dependent work: it must be CANCELLABLE so the burst
+        // slot is never released while its model call is still in flight
+        // (RELIABILITY_PLAN.md item 2).
+        const tickerAbort = new AbortController();
         const tickerTask = (async () => {
           try {
             const plan = await generateTickerPlan({
@@ -416,6 +427,7 @@ export async function POST(req: NextRequest) {
               newsProviderConfigured: newsProviderConfigured(),
               canUseMarketTools: true,
               canUseNewsTools: newsProviderConfigured(),
+              signal: tickerAbort.signal,
             });
             if (done || req.signal.aborted) return;
             tickerDebug.tickerGenerated = true;
@@ -565,12 +577,62 @@ export async function POST(req: NextRequest) {
               message: "تعذّر إكمال الطلب بسبب خطأ أثناء تشغيل الوكيل.",
             });
             send("activity", failed);
+            // Contract guarantee (RELIABILITY_PLAN.md phase-0 SLO): even a
+            // crashed run ends with a COMPLETE `final` event carrying an
+            // operational_blocker envelope — never only a bare `error` event.
+            const classified = classifyAgentError(error);
+            const fallbackResult = buildAgentFallbackResult(
+              "Agent run failed before producing a result.",
+              activityEvents,
+              body.locale ?? "ar",
+              {
+                detail: userMessageForFailure(classified.code, body.locale ?? "ar"),
+                retryable: classified.retryable,
+                failureStage: "transport",
+                failureCode: classified.code,
+                traceId: requestId,
+              },
+            );
+            send("final", {
+              ...stripInternalFieldsFromClientResult(fallbackResult),
+              sessionId,
+              activityEvents,
+              options: [],
+              suggestions: [],
+            });
+            // Legacy clients still listen for `error` — keep it, without
+            // leaking the raw provider message to the operator.
             send("error", {
-              error: error instanceof Error ? error.message : "Agent failed",
+              error: userMessageForFailure(classified.code, body.locale ?? "ar"),
+              code: classified.code,
+              trace_id: requestId,
+            });
+            log.error("agent.stream.failed", {
+              requestId,
+              code: classified.code,
+              error: error instanceof Error ? error.message : String(error),
             });
           }
         } finally {
+          // SLO: a run that ended without a complete `final` is a contract
+          // breach. A user cancellation is NOT a breach (nobody is waiting).
+          if (!sentFinal && !req.signal.aborted) {
+            recordRequestWithoutFinal("agent.chat.stream", "no_final_event");
+            log.error("agent.stream.slo_breach", { requestId, reason: "no_final_event" });
+          }
           done = true; // stop any in-flight ticker loop
+          // Do not release the burst slot while dependent work is still running
+          // (RELIABILITY_PLAN.md item 2): abort the ticker, then wait — briefly
+          // and boundedly — for it to unwind. Otherwise the next run could
+          // start while this run's provider calls are still consuming quota.
+          tickerAbort.abort();
+          // The abort tears the ticker's model call down, so this normally
+          // settles in milliseconds; the cap only bounds a pathological unwind
+          // (it must stay short — the slot gates the operator's next request).
+          await Promise.race([
+            tickerTask.catch(() => {}),
+            new Promise<void>((resolve) => setTimeout(resolve, 250)),
+          ]);
           release?.();
           try {
             controller.close();

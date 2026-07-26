@@ -19,7 +19,12 @@ import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 import { runUnifiedChartAgent } from "@/lib/agent/orchestrator";
+import {
+  deriveRecommendationReason,
+  shouldChargeAnalysis,
+} from "@/lib/agent/analysisAccounting";
 import { newId } from "@/lib/agent/activity";
+import { inboundTraceId } from "@/lib/traceCorrelation";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import type { Recommendation } from "@/lib/types";
 
@@ -95,7 +100,17 @@ export async function POST(req: NextRequest) {
     const result = await runUnifiedChartAgent({
       userMessage: `حلّل ${symbol} على إطار ${interval} كفرصة سكالب واشرح قرارك.`,
       chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
-      requestContext: { requestId: newId(), userId, emitActivity: () => {} },
+      requestContext: {
+        // Honour an inbound MCP correlation id so one trace spans
+        // MCP call -> web request -> agent stages -> research job
+        // (RELIABILITY_PLAN.md item 9). It is echoed back as envelope.trace_id.
+        requestId: inboundTraceId(req) ?? newId(),
+        userId,
+        emitActivity: () => {},
+        // Client disconnect (MCP tool gave up / caller aborted) must tear the
+        // provider work down, not leave it running (RELIABILITY_PLAN item 2).
+        signal: req.signal,
+      },
       account: null,
       canExecute: false,
     });
@@ -112,39 +127,67 @@ export async function POST(req: NextRequest) {
         } as Recommendation)
       : null;
 
-    await incrementUsage(userId, ANALYSIS_COST);
-    await logAudit(userId, "market_analyze", `${symbol}@${interval} decision=${result.decision}`);
+    // Accounting policy (RELIABILITY_PLAN.md item 8): an operational blocker
+    // is the platform's failure — the operator is NOT charged for it.
+    const charged = shouldChargeAnalysis(result.envelope);
+    const chargeAmount = charged ? ANALYSIS_COST : 0;
+    if (charged) await incrementUsage(userId, ANALYSIS_COST);
+    await logAudit(
+      userId,
+      "market_analyze",
+      `${symbol}@${interval} decision=${result.decision} outcome=${result.envelope?.outcome_class ?? "unknown"} charged=${charged}`,
+    );
+
+    // applied_to_chart must reflect what actually happened — a failed layout
+    // save is reported as a non-critical warning, never claimed as success.
+    let appliedToChart = false;
+    let layoutSaveError: string | undefined;
     if (body.layout_id) {
-      await saveChartLayout(body.layout_id, userId, {
-        symbol,
-        interval,
-        state: {
-          drawings: result.drawings ?? [],
-          overlays: [],
-          recommendation: mapped,
-          targets: recommendation?.targets ?? [],
-          dataSource,
-        },
-      }).catch(() => {});
+      try {
+        await saveChartLayout(body.layout_id, userId, {
+          symbol,
+          interval,
+          state: {
+            drawings: result.drawings ?? [],
+            overlays: [],
+            recommendation: mapped,
+            targets: recommendation?.targets ?? [],
+            dataSource,
+          },
+        });
+        appliedToChart = true;
+      } catch {
+        layoutSaveError = "layout_save_failed";
+      }
     }
 
     return NextResponse.json({
       reply: result.summary,
       recommendation: mapped,
+      ...(mapped
+        ? {}
+        : { recommendation_reason: deriveRecommendationReason(result.decision, result.envelope) }),
       targets: recommendation?.targets ?? [],
       drawings: result.drawings ?? [],
       overlays: [],
       activityEvents: result.activityEvents,
       decision: result.decision,
+      envelope: result.envelope,
       newsRisk: result.newsRisk,
       requiresConfirmation: result.requiresConfirmation ?? false,
       data_source: dataSource,
       quota: {
-        used: used + ANALYSIS_COST,
+        used: used + chargeAmount,
         limit: limits.claude_quota,
-        remaining: Math.max(0, limits.claude_quota - used - ANALYSIS_COST),
+        remaining: Math.max(0, limits.claude_quota - used - chargeAmount),
       },
-      ...(body.layout_id ? { layout_id: body.layout_id, applied_to_chart: true } : {}),
+      ...(body.layout_id
+        ? {
+            layout_id: body.layout_id,
+            applied_to_chart: appliedToChart,
+            ...(layoutSaveError ? { warnings: [layoutSaveError] } : {}),
+          }
+        : {}),
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

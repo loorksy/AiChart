@@ -58,6 +58,9 @@ def _number(data: dict[str, Any], *names: str, default: float = 0.0) -> float:
 class BacktestEngine:
     def __init__(self, strategy: Any, dataset: Any, run_config: RunConfig) -> None:
         self.strategy: CompiledStrategy = compile_strategy(strategy)
+        # The RAW spec is retained so a killable child process can rebuild an
+        # identical engine from picklable inputs (RELIABILITY_PLAN item 3).
+        self.strategy_input = strategy
         self.dataset = dataset
         self.config = run_config
         slippage_seed = int(self.strategy.costs.get("slippage", {}).get("seed", run_config.seed))

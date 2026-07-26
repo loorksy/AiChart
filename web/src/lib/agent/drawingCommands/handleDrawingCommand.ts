@@ -1,6 +1,7 @@
 import type { AgentChartContext, AgentFinalResult, AgentIntent, AgentRunContext } from "../types";
 import type { AppLocale } from "@/lib/i18n";
 import { buildAgentMarketContext } from "../marketContext/buildAgentMarketContext";
+import { operationalBlockerEnvelope } from "../resultEnvelope";
 import { newId } from "../activity";
 import { sanitizeAgentDrawings } from "../drawings/drawingOwnership";
 import { bilingual, composeStatusReply } from "../statusReply";
@@ -82,6 +83,14 @@ export async function handleDrawingCommand(input: {
     });
     return {
       decision: "action_required",
+      // A sync failure is a platform fault, not a descriptive answer — label
+      // it so the wrapper's descriptive default can never mask it as "ok".
+      envelope: operationalBlockerEnvelope({
+        failureStage: "market_data",
+        failureCode: "stale_data",
+        retryable: true,
+        traceId: ctx.requestId,
+      }),
       confidence: 0,
       summary: bilingual(
         locale,

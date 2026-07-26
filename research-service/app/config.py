@@ -26,6 +26,15 @@ class Settings(BaseModel):
     network_mode: Literal["disabled", "isolated"] = "disabled"
     job_storage: Literal["memory", "sqlite"] | None = None
     job_db_path: Path | None = None
+    # Run the CPU-bound simulation in a KILLABLE child process instead of a
+    # worker thread (RELIABILITY_PLAN item 3). A thread cannot be stopped, so a
+    # run that ignores its cancel flag survives its own timeout; a process can
+    # always be killed. Opt-in: enabling it costs one pickle of the dataset.
+    process_isolation: bool = False
+    # No heartbeat from the child for this long ⇒ treat the job as orphaned.
+    process_lease_seconds: float = Field(default=30.0, ge=1.0, le=600.0)
+    # Grace between "please stop" (cooperative + SIGTERM) and SIGKILL.
+    process_kill_grace_seconds: float = Field(default=5.0, ge=0.5, le=60.0)
     swarm_enabled: bool = False
     swarm_presets_enabled: bool = False
     swarm_db_path: Path | None = None
@@ -102,6 +111,12 @@ _ENV_MAP: dict[str, tuple[str, Callable[[str], object]]] = {
     "RESEARCH_SERVICE_NETWORK_MODE": ("network_mode", str),
     "RESEARCH_SERVICE_STORAGE": ("job_storage", str),
     "RESEARCH_SERVICE_JOB_DB_PATH": ("job_db_path", Path),
+    "RESEARCH_SERVICE_PROCESS_ISOLATION": ("process_isolation", lambda value: value == "1"),
+    "RESEARCH_SERVICE_PROCESS_LEASE_SECONDS": ("process_lease_seconds", float),
+    "RESEARCH_SERVICE_PROCESS_KILL_GRACE_SECONDS": (
+        "process_kill_grace_seconds",
+        float,
+    ),
     "RESEARCH_SWARM_ENABLED": ("swarm_enabled", lambda value: value == "1"),
     "RESEARCH_SWARM_PRESETS_ENABLED": (
         "swarm_presets_enabled",

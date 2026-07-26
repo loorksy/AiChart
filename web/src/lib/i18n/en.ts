@@ -198,6 +198,26 @@ export const en = {
   "agent.run_details": "Run details",
   "agent.error": "Something went wrong",
 
+  // --- Phase 0: persistent execution-mode badge + operational-blocker card ---
+  "agent.mode.descriptive": "Descriptive — not authorized to execute",
+  "agent.mode.shadow": "Shadow",
+  "agent.mode.demo": "Demo",
+  "agent.mode.live": "Live",
+  "agent.mode.blocker": "Operational blocker",
+  "agent.fault.title": "Analysis could not be completed",
+  "agent.fault.trace": "Request ID",
+  "agent.fault.retryable": "You can try again shortly.",
+  "agent.fault.permanent": "Retrying won't help — this needs a configuration fix.",
+
+  // --- Phase 4: evidence card behind a recommendation ---
+  "agent.evidence.title": "Evidence behind this read",
+  "agent.evidence.trades": "Historical trades",
+  "agent.evidence.win_rate": "Historical win rate",
+  "agent.evidence.deployment": "Deployment",
+  "agent.evidence.live": "Live results",
+  "agent.evidence.not_execution_grade":
+    "This history does not meet the execution gates, so it informs the read but does not authorize a trade.",
+
   "decision.buy": "Buy",
   "decision.sell": "Sell",
   "decision.wait": "Wait",

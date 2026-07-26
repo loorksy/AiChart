@@ -53,7 +53,9 @@ describe("Phase 5 architecture and security contracts", () => {
     ];
     for (const route of routes) {
       const source = text(route);
-      assert.ok(source.includes("requireUser"));
+      // Owner-scoped auth: routes moved from requireUser to the stricter
+      // requirePaidAccess — either satisfies the authenticated-reads contract.
+      assert.ok(source.includes("requireUser") || source.includes("requirePaidAccess"));
       assert.ok(source.includes("export async function GET"));
       assert.equal(/export async function (POST|PUT|PATCH|DELETE)/.test(source), false);
     }

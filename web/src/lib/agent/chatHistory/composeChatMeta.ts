@@ -108,7 +108,7 @@ export async function composeChatMeta(input: {
       system: "Return compact JSON only. No markdown.",
       messages: [{ role: "user", content: prompt }],
       maxTokens: 120,
-    });
+    }, { tier: "quick" });
     const text = textFromBlocks(res.content ?? []);
     const parsed = parseMetaJson(text);
     if (!parsed) return fallback;

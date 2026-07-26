@@ -8,6 +8,13 @@ import {
   getResearchJsonArtifact,
 } from "@/lib/research/client";
 import { formatResearchFailure } from "@/lib/research/serviceErrors";
+import {
+  buildTransportIncident,
+  clearedTransportState,
+  isTransportFailure,
+} from "@/lib/research/transportState";
+import { GENERATED_CATALOG } from "./catalogGen";
+import { evaluateSelectionBias } from "./selectionBias";
 import { runBacktestValidation } from "@/lib/research/jobs";
 import type {
   ResearchArtifactReference,
@@ -16,6 +23,17 @@ import type {
 import { calibrateBootstrapWinRate } from "./calibration";
 
 export const MIN_BACKTEST_TRADES = 100;
+
+/**
+ * How many strategy configurations the factory searches — the "trials" the
+ * selection-bias guard corrects for (RELIABILITY_PLAN.md item 18, step 3).
+ * Reading it from the live catalog means the bar rises AUTOMATICALLY as the
+ * catalog grows, which is precisely the protection the plan requires before
+ * any expansion.
+ */
+function catalogTrialCount(): number {
+  return Math.max(1, GENERATED_CATALOG.length);
+}
 export const DECAY_SAMPLE_SIZE = 30;
 export const MIN_SHADOW_OUTCOMES = 20;
 export const MAX_WIN_RATE_DECAY = 0.15;
@@ -478,10 +496,35 @@ async function finalizeValidation(
   const overfit =
     walkForward?.likely_overfit === true ||
     failedGates.some((gate) => gate.toLowerCase().includes("overfitting"));
+  // Selection-bias guard (RELIABILITY_PLAN.md item 18, step 3). This strategy
+  // was not tested in isolation — it was SELECTED out of a whole catalog, so
+  // its Sharpe must clear the bar that luck alone produces across that many
+  // trials. Without this, a bigger catalog manufactures false discoveries
+  // instead of finding edge. It can only ever REJECT; it never promotes.
+  // The stored Sharpe is ANNUALIZED per bar (research-service metrics.py), so
+  // it is de-annualized inside the guard and compared against the bar count it
+  // was computed over — never the trade count. Mixing those scales would make
+  // the gate pass everything while appearing to protect the operator.
+  const storedMetricsBlob = jsonObject(row.metrics_json);
+  const nestedMetrics =
+    storedMetricsBlob.metrics && typeof storedMetricsBlob.metrics === "object"
+      ? (storedMetricsBlob.metrics as Record<string, unknown>)
+      : {};
+  const barsInDataset = finite(
+    nestedMetrics.bars_in_dataset ?? storedMetricsBlob.bars_in_dataset,
+  );
+  const selection = evaluateSelectionBias({
+    sharpeRatio: row.sharpe_ratio,
+    timeframe: row.timeframe,
+    observationCount: barsInDataset,
+    trials: catalogTrialCount(),
+  });
+
   const eligible =
     READY_FOR_SHADOW.has(readinessStatus) &&
     readiness.live_trading_authorized === false &&
-    !overfit;
+    !overfit &&
+    selection.passes;
   await updateBacktest(context.userId, row.id, {
     status: eligible ? "eligible" : "ineligible",
     ...(calibratedUpdate ? { calibrated: calibratedUpdate } : {}),
@@ -491,6 +534,7 @@ async function finalizeValidation(
       readiness,
       readiness_artifact_id: readinessRef.artifact_id,
       walk_forward: walkForward,
+      selection_bias: selection,
       bootstrap_summary: bootstrap
         ? {
             method: bootstrap.method,
@@ -505,7 +549,9 @@ async function finalizeValidation(
       ? null
       : overfit
         ? "Readiness gate: walk-forward overfitting risk"
-        : `Readiness gate: ${readinessStatus}`,
+        : !selection.passes
+          ? `Selection-bias gate: ${selection.reason}`
+          : `Readiness gate: ${readinessStatus}`,
     completedAt: Date.now(),
   });
   if (eligible) {
@@ -535,9 +581,21 @@ export async function refreshStrategyBacktest(
     }
 
     const job = await getResearchJob(context, row.job_id);
+    // Reachable again: replace any assumed state with the authoritative one and
+    // clear the transport incident (RELIABILITY_PLAN.md item 4).
+    const priorValidation = jsonObject(row.validation_json);
+    const hadTransportIncident =
+      priorValidation.transport_state !== undefined &&
+      priorValidation.transport_state !== "ok";
     if (["queued", "running", "retry_wait", "cancelling"].includes(job.status)) {
       await updateBacktest(context.userId, row.id, {
         status: job.status === "queued" ? "pending" : "running",
+        ...(hadTransportIncident
+          ? {
+              validation: { ...priorValidation, ...clearedTransportState() },
+              errorMessage: null,
+            }
+          : {}),
       });
       return getStrategyBacktest(context.userId, row.id);
     }
@@ -667,11 +725,29 @@ export async function refreshStrategyBacktest(
       errorMessage: null,
     });
   } catch (error) {
-    await updateBacktest(context.userId, row.id, {
-      status: "failed",
-      errorMessage: formatResearchFailure(error),
-      completedAt: Date.now(),
-    });
+    // Transport failure is NOT job failure (RELIABILITY_PLAN.md item 4).
+    // Losing the connection tells us nothing about the job: the production
+    // incident this guards against is a polling timeout marking LIVE jobs
+    // "failed". Only an explicit terminal verdict from the service may do that.
+    if (isTransportFailure(error)) {
+      const previous = jsonObject(row.validation_json);
+      const incident = buildTransportIncident(
+        Number(previous.poll_failures ?? 0),
+        error,
+      );
+      await updateBacktest(context.userId, row.id, {
+        // Status deliberately UNCHANGED — the job keeps its last known state.
+        validation: { ...previous, ...incident },
+        errorMessage: incident.note,
+        // No completedAt: the job is not finished, we simply cannot see it.
+      });
+    } else {
+      await updateBacktest(context.userId, row.id, {
+        status: "failed",
+        errorMessage: formatResearchFailure(error),
+        completedAt: Date.now(),
+      });
+    }
   }
   return getStrategyBacktest(context.userId, row.id);
 }

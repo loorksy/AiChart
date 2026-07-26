@@ -23,8 +23,25 @@ import {
   routeIntent,
 } from "./intentRouter";
 import { handleUserDrawingCommand } from "./drawingCommands/handleUserDrawingCommand";
-import { withTimeout, AGENT_TIMEOUTS } from "./timeout";
+import { withTimeout, withDeadline, createRunBudget, AGENT_TIMEOUTS } from "./timeout";
 import { buildInformationalResult, buildAgentFallbackResult } from "./fallback";
+import {
+  failureCodeFromSynthesizerKind,
+  ledgerSilentTimeout,
+  stageFailureFromError,
+  userMessageForFailure,
+  type AgentStage,
+  type AgentStageFailure,
+} from "./errorTaxonomy";
+import { createLogger } from "@/lib/logger";
+import { recordAgentOutcome, recordStageFailure } from "@/lib/metrics";
+import {
+  degradedStagesFrom,
+  descriptiveEnvelope,
+  envelopeForFinalDecision,
+  operationalBlockerEnvelope,
+} from "./resultEnvelope";
+import { evaluateDependencies } from "./dependencyMatrix";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
 import {
@@ -85,6 +102,16 @@ import {
 } from "./recommendation/followupAnswer";
 import { hashMarketSnapshot } from "./chartSnapshot";
 import {
+  loadStageCheckpoint,
+  saveStageCheckpoint,
+  stageCheckpointKey,
+} from "./stageCheckpoint";
+import type { StructureResult } from "./agents/structureAgent";
+import type { LiquidityResult } from "./agents/liquidityAgent";
+import type { SupplyDemandResult } from "./agents/supplyDemandAgent";
+import type { MultiTimeframeResult } from "./agents/multiTimeframeAgent";
+import type { NewsMacroResult } from "./agents/newsMacroAgent";
+import {
   buildAgentSkillContext,
   EMPTY_SKILL_CONTEXT,
   type AgentSkillContext,
@@ -94,7 +121,73 @@ import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
 import { detectChartGeometry } from "@/lib/chart/geometry";
-import { createTrackedRecommendation } from "@/lib/recommendations/recommendationStore";
+import {
+  createTrackedRecommendation,
+  listTrackedRecommendations,
+} from "@/lib/recommendations/recommendationStore";
+import {
+  renderLessonsForPrompt,
+  summarizeTradeLessons,
+  type TradeOutcomeRecord,
+} from "./learningLoop";
+
+const log = createLogger("agent.orchestrator");
+
+/**
+ * Realised-outcome lessons for the decision prompt (RELIABILITY_PLAN item 14).
+ *
+ * Feeds what ACTUALLY happened on this symbol back into the next decision. It
+ * is strictly evidence: a failure to read history degrades to no block at all
+ * rather than blocking the run, and the block itself is phrased as context to
+ * weigh — the model keeps sole authority over BUY/SELL/WAIT.
+ */
+async function buildLessonsBlock(
+  userId: number | undefined,
+  symbol: string,
+): Promise<string | null> {
+  if (!userId || !symbol) return null;
+  try {
+    const tracked = await listTrackedRecommendations(userId, { limit: 60 });
+    const outcomes: TradeOutcomeRecord[] = tracked
+      .filter((r) => r.outcome === "loss" || r.outcome.startsWith("win_"))
+      .map((r) => ({
+        symbol: r.symbol,
+        direction: r.direction,
+        won: r.outcome.startsWith("win_"),
+        rMultiple: null,
+        session: null,
+        closedAt: r.slHitAt ?? r.tp3HitAt ?? r.tp2HitAt ?? r.tp1HitAt ?? r.createdAt,
+      }));
+    return renderLessonsForPrompt(summarizeTradeLessons({ symbol, outcomes }));
+  } catch (error) {
+    // History is an aid, never a gate: losing it must not affect the decision.
+    log.warn("agent.lessons.unavailable", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Cancellation checkpoint (RELIABILITY_PLAN.md item 2). withDeadline degrades a
+ * cancelled stage to its fallback rather than throwing, which keeps partial
+ * results usable — but it also means a cancelled run would otherwise WALK the
+ * remaining stages before finishing. Checking the run signal at stage
+ * boundaries makes cancellation prompt: the run stops as soon as nobody is
+ * waiting for it, which is also what frees the burst slot quickly.
+ */
+function cancelledRunResult(
+  ctx: AgentRunContext,
+  collected: AgentFinalResult["activityEvents"],
+  locale: AppLocale,
+): AgentFinalResult {
+  return buildAgentFallbackResult("Run cancelled by the caller.", collected, locale, {
+    failureStage: "general",
+    failureCode: "cancelled",
+    retryable: false,
+    traceId: ctx.requestId,
+  });
+}
 
 export interface UnifiedAgentInput {
   userMessage: string;
@@ -110,6 +203,67 @@ export interface UnifiedAgentInput {
 }
 
 export async function runUnifiedChartAgent(
+  input: UnifiedAgentInput,
+): Promise<AgentFinalResult> {
+  // Total run budget (RELIABILITY_PLAN.md item 2): one signal that aborts on a
+  // client disconnect OR when the run exceeds the budget, which every I/O stage
+  // links to. It stays under the MCP tool's wait so the caller always receives
+  // a real envelope instead of a bare transport timeout.
+  const budget = createRunBudget(input.requestContext.signal);
+  const startedAt = performance.now();
+  let result: AgentFinalResult;
+  try {
+    result = await runUnifiedChartAgentInner({
+      ...input,
+      requestContext: { ...input.requestContext, signal: budget.signal },
+    });
+  } finally {
+    budget.dispose();
+  }
+
+  // A run that blew its total budget did NOT complete on full evidence. Saying
+  // so is mandatory: silently returning the degraded answer would dress an
+  // incomplete run up as a normal one (and re-enable usage charging).
+  if (
+    (budget.expired || budget.cancelledByClient) &&
+    result.envelope?.outcome_class !== "operational_blocker"
+  ) {
+    result.envelope = operationalBlockerEnvelope({
+      failureStage: "general",
+      failureCode: budget.cancelledByClient ? "cancelled" : "timeout",
+      retryable: !budget.cancelledByClient,
+      traceId: input.requestContext.requestId,
+      cancelled: budget.cancelledByClient,
+      degradedStages: result.envelope?.degraded_stages,
+    });
+  }
+
+  // Contract guarantee: EVERY result carries a three-state envelope. Blockers
+  // and evidence-bearing finals set theirs explicitly at the return site; the
+  // backstop below only labels successful answers (informational/status
+  // replies) as descriptive. Any NEW fault path must attach its own
+  // operationalBlockerEnvelope — the backstop will not do it for you.
+  if (!result.envelope) {
+    result.envelope = descriptiveEnvelope({
+      recommendationIssued:
+        result.recommendation?.action === "buy" ||
+        result.recommendation?.action === "sell",
+      traceId: input.requestContext.requestId,
+    });
+  }
+
+  // Observability (item 9): the three-state ratio is the headline reliability
+  // signal — a rising operational_blocker share IS the outage.
+  recordAgentOutcome({
+    outcome: result.envelope.outcome_class,
+    executionMode: result.envelope.execution_mode,
+    failureCode: result.envelope.failure_code,
+    durationSeconds: (performance.now() - startedAt) / 1000,
+  });
+  return result;
+}
+
+async function runUnifiedChartAgentInner(
   input: UnifiedAgentInput,
 ): Promise<AgentFinalResult> {
   const { userMessage, chartContext, requestContext: ctx } = input;
@@ -220,8 +374,17 @@ export async function runUnifiedChartAgent(
         activeRecommendation,
       }),
       AGENT_TIMEOUTS.general,
-      bilingual(locale, "تعذّر شرح الرسومات في الوقت المتاح.", "Could not explain the drawings in time."),
+      null,
     );
+    if (summary == null) {
+      // Deadline hit — an honest blocker, never an "ok" descriptive answer.
+      return buildAgentFallbackResult(
+        "Drawing explanation exceeded its deadline.",
+        collected,
+        locale,
+        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: ctx.requestId },
+      );
+    }
     return {
       decision: "informational",
       confidence: 0.8,
@@ -267,9 +430,17 @@ export async function runUnifiedChartAgent(
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage, input.conversationContext),
       AGENT_TIMEOUTS.general,
-      bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time."),
+      null,
     );
-    return buildInformationalResult(summary, collected);
+    if (summary == null) {
+      return buildAgentFallbackResult(
+        "General answer exceeded its deadline.",
+        collected,
+        locale,
+        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: ctx.requestId },
+      );
+    }
+    return buildInformationalResult(summary, collected, { traceId: ctx.requestId });
   }
 
   const wantMarket = needsMarketContext(intents);
@@ -335,38 +506,92 @@ export async function runUnifiedChartAgent(
     const summary = await withTimeout(
       answerGeneralQuestion(userMessage, input.conversationContext),
       AGENT_TIMEOUTS.general,
-      bilingual(locale, "تعذّر إكمال الإجابة في الوقت المتاح.", "Could not complete the answer in time."),
+      null,
     );
-    return buildInformationalResult(summary, collected);
+    if (summary == null) {
+      return buildAgentFallbackResult(
+        "General answer exceeded its deadline.",
+        collected,
+        locale,
+        { failureStage: "general", failureCode: "timeout", retryable: true, traceId: ctx.requestId },
+      );
+    }
+    return buildInformationalResult(summary, collected, { traceId: ctx.requestId });
   }
 
   // --- Market fleet ---
+  // Degraded-stage ledger: every specialist/provider failure is CLASSIFIED and
+  // recorded here instead of vanishing into `.catch(() => null)`. The list
+  // feeds envelope.degraded_stages and operator diagnostics.
+  const stageFailures: AgentStageFailure[] = [];
+  const captureStage = <T,>(stage: AgentStage, promise: Promise<T>): Promise<T | null> =>
+    promise.catch((error) => {
+      const failure = stageFailureFromError(stage, error);
+      stageFailures.push(failure);
+      // Observability (item 9): per-stage failure/timeout rates by taxonomy code.
+      recordStageFailure({
+        stage: failure.stage,
+        code: failure.code,
+        retryable: failure.retryable,
+      });
+      return null;
+    });
+
   // Market Data Agent is CRITICAL: failure → stop, return action_required.
-  const market = await withTimeout(
-    runMarketDataAgent(trackedCtx, {
-      ...chartContext,
-      spread: input.spread,
-      analysisKind,
-    }).catch(() => null),
+  // It performs network I/O (warehouse + OANDA), so it uses withDeadline: a
+  // cancelled run tears the fetch down immediately instead of holding the burst
+  // slot for the remainder of the stage deadline (RELIABILITY_PLAN item 2).
+  const market = await withDeadline(
+    (signal) =>
+      captureStage(
+        "market_data",
+        runMarketDataAgent(
+          { ...trackedCtx, signal },
+          {
+            ...chartContext,
+            spread: input.spread,
+            analysisKind,
+          },
+        ),
+      ),
     AGENT_TIMEOUTS.marketData,
     null,
+    ctx.signal,
   );
 
+  // Cancelled during market data: stop before any further work.
+  if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
+
   if (!market || market.currentPrice == null) {
+    const marketFailure = stageFailures.find((f) => f.stage === "market_data");
     trackedCtx.emitActivity({
       type: "data",
       status: "failed",
       message: "تعذّر تجهيز بيانات السوق — لا يمكن إكمال تحليل الشارت الآن.",
+      metadata: marketFailure
+        ? { stage: marketFailure.stage, code: marketFailure.code }
+        : { stage: "market_data", code: "timeout" },
     });
     return {
       decision: "action_required",
+      envelope: operationalBlockerEnvelope({
+        failureStage: "market_data",
+        // No thrown error means withTimeout hit its deadline.
+        failureCode: marketFailure?.code ?? "timeout",
+        retryable: marketFailure?.retryable ?? true,
+        traceId: ctx.requestId,
+      }),
       confidence: 0,
       summary: bilingual(
         locale,
         "تعذّر تجهيز بيانات السوق من المخزن/OANDA. حاول مرة أخرى بعد قليل.",
         "Could not prepare market data from the warehouse/OANDA. Try again shortly.",
       ),
-      keyReasons: ["Market data unavailable."],
+      keyReasons: [
+        marketFailure
+          ? `Market data unavailable (${marketFailure.code}).`
+          : "Market data unavailable (stage deadline).",
+      ],
       riskWarnings: [
         bilingual(locale, "لم تصدر توصية بسبب نقص البيانات.", "No recommendation was issued due to missing data."),
       ],
@@ -378,6 +603,12 @@ export async function runUnifiedChartAgent(
   if (!market.sync.ok) {
     return {
       decision: "action_required",
+      envelope: operationalBlockerEnvelope({
+        failureStage: "market_data",
+        failureCode: "stale_data",
+        retryable: true,
+        traceId: ctx.requestId,
+      }),
       confidence: 0,
       summary: bilingual(
         locale,
@@ -424,6 +655,12 @@ export async function runUnifiedChartAgent(
     });
     return {
       decision: "action_required",
+      envelope: operationalBlockerEnvelope({
+        failureStage: "market_data",
+        failureCode: "insufficient_data",
+        retryable: true,
+        traceId: ctx.requestId,
+      }),
       confidence: 0,
       summary: bilingual(
         locale,
@@ -476,23 +713,92 @@ export async function runUnifiedChartAgent(
     });
   }
 
-  // Structure / liquidity / S&D / MTF run concurrently; each degrades to null.
-  const [structure, liquidity, supplyDemand, mtf] = await Promise.all([
-    withTimeout(runStructureAgent(trackedCtx, market).catch(() => null), AGENT_TIMEOUTS.structure, null),
-    withTimeout(runLiquidityAgent(trackedCtx, market).catch(() => null), AGENT_TIMEOUTS.liquidity, null),
-    withTimeout(runSupplyDemandAgent(trackedCtx, market).catch(() => null), AGENT_TIMEOUTS.supplyDemand, null),
-    withTimeout(runMultiTimeframeAgent(trackedCtx, market).catch(() => null), AGENT_TIMEOUTS.multiTimeframe, null),
-  ]);
+  // Cancelled right after market data: never start the fleet for nobody.
+  if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
 
-  // News is non-critical: failure → newsRisk unknown (handled inside agent).
-  const news = await withTimeout(
-    runNewsMacroAgent(trackedCtx, {
-      symbol: market.symbol,
-      message: userMessage,
-    }).catch(() => null),
-    AGENT_TIMEOUTS.news,
-    null,
-  );
+  // Stage checkpoint (item 2): an identical market snapshot means the fleet —
+  // pure functions of the candle window — would produce identical output, so a
+  // retry after a failed decision resumes instead of re-earning the evidence.
+  // A changed candle changes the hash and the fleet re-runs.
+  const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
+  const checkpointKey = stageCheckpointKey({
+    userId: ctx.userId,
+    symbol: market.symbol,
+    interval: market.interval,
+  });
+  const resumed = loadStageCheckpoint(checkpointKey, chartSnapshotHash);
+
+  let structure: StructureResult | null;
+  let liquidity: LiquidityResult | null;
+  let supplyDemand: SupplyDemandResult | null;
+  let mtf: MultiTimeframeResult | null;
+  let news: NewsMacroResult | null;
+
+  if (resumed) {
+    ({ structure, liquidity, supplyDemand, mtf, news } = resumed);
+  } else {
+    // Structure / liquidity / S&D / MTF run concurrently; each degrades to null
+    // with its failure CLASSIFIED and recorded (never a silent swallow).
+    [structure, liquidity, supplyDemand, mtf] = await Promise.all([
+      withTimeout(captureStage("structure", runStructureAgent(trackedCtx, market)), AGENT_TIMEOUTS.structure, null),
+      withTimeout(captureStage("liquidity", runLiquidityAgent(trackedCtx, market)), AGENT_TIMEOUTS.liquidity, null),
+      withTimeout(captureStage("supply_demand", runSupplyDemandAgent(trackedCtx, market)), AGENT_TIMEOUTS.supplyDemand, null),
+      withTimeout(captureStage("multi_timeframe", runMultiTimeframeAgent(trackedCtx, market)), AGENT_TIMEOUTS.multiTimeframe, null),
+    ]);
+
+    // News is non-critical: failure → newsRisk unknown (handled inside agent).
+    // It performs network I/O, so its deadline CANCELS the provider call.
+    news = await withDeadline(
+      (signal) =>
+        captureStage(
+          "news",
+          runNewsMacroAgent(
+            { ...trackedCtx, signal },
+            {
+              symbol: market.symbol,
+              message: userMessage,
+            },
+          ),
+        ),
+      AGENT_TIMEOUTS.news,
+      null,
+      ctx.signal,
+    );
+
+    // Only a COMPLETE fleet is checkpointed — a degraded run must never be
+    // replayed as if it were good evidence.
+    if (structure && liquidity && supplyDemand && mtf) {
+      saveStageCheckpoint(checkpointKey, chartSnapshotHash, {
+        structure,
+        liquidity,
+        supplyDemand,
+        mtf,
+        news,
+      });
+    }
+  }
+
+  // Cancelled mid-fleet: stop now instead of walking the remaining stages.
+  if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
+
+  // Silent deadlines never throw, so ledger them explicitly — otherwise a run
+  // whose whole fleet timed out would still report operational_status "ok".
+  // They also bypass captureStage, so they must be counted here or the stage
+  // timeout metric would read zero during exactly the outage it exists for.
+  // (errorTaxonomy is client-bundled — metrics can only be recorded here.)
+  const ledgeredBefore = stageFailures.length;
+  ledgerSilentTimeout(stageFailures, "structure", structure, AGENT_TIMEOUTS.structure);
+  ledgerSilentTimeout(stageFailures, "liquidity", liquidity, AGENT_TIMEOUTS.liquidity);
+  ledgerSilentTimeout(stageFailures, "supply_demand", supplyDemand, AGENT_TIMEOUTS.supplyDemand);
+  ledgerSilentTimeout(stageFailures, "multi_timeframe", mtf, AGENT_TIMEOUTS.multiTimeframe);
+  ledgerSilentTimeout(stageFailures, "news", news, AGENT_TIMEOUTS.news);
+  for (const failure of stageFailures.slice(ledgeredBefore)) {
+    recordStageFailure({
+      stage: failure.stage,
+      code: failure.code,
+      retryable: failure.retryable,
+    });
+  }
 
   // The evidence builder prepares price-valid candidates for the model. It is
   // not a policy gate and it does not own BUY/SELL/WAIT.
@@ -513,19 +819,28 @@ export async function runUnifiedChartAgent(
       AGENT_TIMEOUTS.risk,
       null,
     );
-  } catch {
+  } catch (error) {
+    stageFailures.push(stageFailureFromError("risk", error));
     risk = null;
   }
   if (!risk) {
+    const riskFailure = stageFailures.find((f) => f.stage === "risk");
     trackedCtx.emitActivity({
       type: "risk",
       status: "failed",
       message: "تعذّر إكمال فحص المخاطر — القرار انتظار احترازياً.",
+      metadata: { stage: "risk", code: riskFailure?.code ?? "timeout" },
     });
     return buildAgentFallbackResult(
       "Risk agent failed — defaulting to WAIT.",
       collected,
       locale,
+      {
+        failureStage: "risk",
+        failureCode: riskFailure?.code ?? "timeout",
+        retryable: riskFailure?.retryable ?? true,
+        traceId: ctx.requestId,
+      },
     );
   }
 
@@ -563,56 +878,98 @@ export async function runUnifiedChartAgent(
 
   // The LLM chooses BUY, SELL, or WAIT and binds actionable choices to a real
   // candidate. Model failure produces a technical no-recommendation state.
+  // Cancelled before the decision: never pay for the most expensive call when
+  // the answer has no reader.
+  if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
+
+  // Realised-outcome lessons are read BEFORE the decision call so the
+  // deadline-wrapped callback stays synchronous (item 14).
+  const lessonsBlock = await buildLessonsBlock(ctx.userId, market.symbol);
+
   let synthError: unknown = null;
-  const synth = await withTimeout(
-    runFinalDecisionSynthesizer(trackedCtx, {
-      ...decisionInput,
-      candidates,
-      narrative,
-      geometry,
-      locale,
-      skillContextBlock: skillContext.block || null,
-    }).catch((err) => {
-      synthError = err;
-      return null;
-    }),
+  // withDeadline (not withTimeout): the decision call is the single most
+  // expensive stage, so its deadline must actually ABORT the provider request
+  // rather than leave it running behind an answer the user already received.
+  const synth = await withDeadline(
+    (signal) =>
+      runFinalDecisionSynthesizer(
+        { ...trackedCtx, signal },
+        {
+          ...decisionInput,
+          candidates,
+          narrative,
+          geometry,
+          locale,
+          skillContextBlock: skillContext.block || null,
+          // Realised-outcome lessons (item 14): evidence the model weighs.
+          lessonsBlock,
+        },
+      ).catch((err) => {
+        synthError = err;
+        return null;
+      }),
     AGENT_TIMEOUTS.finalDecision,
     null,
+    ctx.signal,
   );
   if (!synth) {
     // withTimeout resolves to null on deadline; a thrown error is a real fault.
-    const reason = synthError
+    const thrownFailure = synthError
+      ? stageFailureFromError("final_decision", synthError)
+      : null;
+    const code = thrownFailure?.code ?? "timeout";
+    // Operator-only raw cause → server logs (correlated by requestId). It must
+    // NEVER reach the user-facing activity/summary (RELIABILITY_PLAN item 7).
+    const operatorReason = synthError
       ? `Decision model call threw: ${
           synthError instanceof Error ? synthError.message : String(synthError)
         }`
-      : `Decision model exceeded its ${AGENT_TIMEOUTS.finalDecision / 1000}s deadline — no market recommendation was issued.`;
+      : `Decision model exceeded its ${AGENT_TIMEOUTS.finalDecision / 1000}s deadline.`;
+    log.warn("agent.final_decision.failed", {
+      requestId: ctx.requestId,
+      cause: synthError ? "threw" : "timeout",
+      code,
+      detail: operatorReason,
+    });
     trackedCtx.emitActivity({
       type: "analysis",
       status: "failed",
-      message: reason,
+      message: userMessageForFailure(code, locale),
       metadata: { stage: "final_decision", cause: synthError ? "threw" : "timeout" },
     });
-    return buildAgentFallbackResult(reason, collected, locale, {
-      detail: reason,
-      retryable: !synthError,
+    return buildAgentFallbackResult(operatorReason, collected, locale, {
+      retryable: thrownFailure ? thrownFailure.retryable : true,
+      failureStage: "final_decision",
+      failureCode: code,
+      traceId: ctx.requestId,
     });
   }
   if (!synth.usedLLM || !synth.result) {
-    // The synthesizer now reports WHY (provider auth, rate limit, malformed
-    // reply…) instead of a generic "unavailable" that hid every real cause.
+    // The synthesizer reports WHY (provider auth, rate limit, malformed reply…)
+    // for OPERATORS. The user only ever sees the safe taxonomy message.
     const failure = synth.failure;
-    const reason = failure
+    const code = failure ? failureCodeFromSynthesizerKind(failure.kind) : "unknown";
+    // Operator-only raw cause → server logs; never the user-facing surface.
+    const operatorReason = failure
       ? `Decision model failed (${failure.kind}, ${failure.attempts} attempt(s)): ${failure.detail}`
       : "Decision model was unavailable — no market recommendation was issued.";
+    log.warn("agent.final_decision.unavailable", {
+      requestId: ctx.requestId,
+      kind: failure?.kind ?? "unknown",
+      code,
+      detail: failure?.detail,
+    });
     trackedCtx.emitActivity({
       type: "analysis",
       status: "failed",
-      message: reason,
+      message: userMessageForFailure(code, locale),
       metadata: { stage: "final_decision", kind: failure?.kind ?? "unknown" },
     });
-    return buildAgentFallbackResult(reason, collected, locale, {
-      detail: failure?.detail,
+    return buildAgentFallbackResult(operatorReason, collected, locale, {
       retryable: failure?.retryable ?? false,
+      failureStage: "final_decision",
+      failureCode: code,
+      traceId: ctx.requestId,
     });
   }
   const finalDecision = synth.result;
@@ -624,7 +981,8 @@ export async function runUnifiedChartAgent(
       ...finalDecision.riskWarnings,
     ];
   }
-  const chartSnapshotHash = hashMarketSnapshot(market, chartContext?.visibleRange);
+  // chartSnapshotHash was computed before the fleet (it also keys the stage
+  // checkpoint) — the market window cannot change mid-run, so it is reused.
 
   // Build the drawing plan: the single source of truth for what may be drawn.
   // Weak fractals, thin data, and directionless WAITs all resolve to no drawing.
@@ -648,7 +1006,10 @@ export async function runUnifiedChartAgent(
       market,
       finalDecision,
       plan: drawingPlan,
-    }).catch(() => [] as AgentFinalResult["drawings"]),
+    }).catch((error) => {
+      stageFailures.push(stageFailureFromError("drawing", error));
+      return [] as AgentFinalResult["drawings"];
+    }),
     AGENT_TIMEOUTS.drawing,
     [] as AgentFinalResult["drawings"],
   );
@@ -687,19 +1048,34 @@ export async function runUnifiedChartAgent(
     intents.includes("trade_execution") || intents.includes("trade_management")
   ) {
     const guard = await withTimeout(
-      runExecutionGuardAgent(trackedCtx, {
-        market,
-        finalDecision,
-        news,
-        canExecute: Boolean(input.canExecute),
-      }).catch(() => null),
+      captureStage(
+        "execution_guard",
+        runExecutionGuardAgent(trackedCtx, {
+          market,
+          finalDecision,
+          news,
+          canExecute: Boolean(input.canExecute),
+        }),
+      ),
       AGENT_TIMEOUTS.risk,
       null,
     );
     if (!guard) {
-      // Guard failure → block execution (safe default).
+      // Guard failure → block execution (safe default). The ANALYSIS itself
+      // succeeded, so this stays a descriptive answer with the guard stage
+      // marked degraded — execution authority is simply not granted.
       return {
         decision: "action_required",
+        envelope: descriptiveEnvelope({
+          recommendationIssued:
+            finalDecision.recommendation.action === "buy" ||
+            finalDecision.recommendation.action === "sell",
+          traceId: ctx.requestId,
+          degradedStages: degradedStagesFrom([
+            ...stageFailures,
+            { stage: "execution_guard", code: "timeout", retryable: true, operatorDetail: "guard unavailable" },
+          ]),
+        }),
         confidence: finalDecision.confidence,
         summary: bilingual(
           locale,
@@ -719,6 +1095,13 @@ export async function runUnifiedChartAgent(
       confirmationPayload = guard.confirmationPayload;
       return {
         decision: "action_required",
+        envelope: descriptiveEnvelope({
+          recommendationIssued:
+            finalDecision.recommendation.action === "buy" ||
+            finalDecision.recommendation.action === "sell",
+          traceId: ctx.requestId,
+          degradedStages: degradedStagesFrom(stageFailures),
+        }),
         confidence: finalDecision.confidence,
         summary: guard.message,
         keyReasons: guard.reasons,
@@ -737,6 +1120,13 @@ export async function runUnifiedChartAgent(
     // Guard blocked (not confirmable) → action_required with the block reason.
     return {
       decision: "action_required",
+      envelope: descriptiveEnvelope({
+        recommendationIssued:
+          finalDecision.recommendation.action === "buy" ||
+          finalDecision.recommendation.action === "sell",
+        traceId: ctx.requestId,
+        degradedStages: degradedStagesFrom(stageFailures),
+      }),
       confidence: finalDecision.confidence,
       summary: guard.message,
       keyReasons: guard.reasons,
@@ -928,8 +1318,36 @@ export async function runUnifiedChartAgent(
     ).filter((l) => scanForInternalLeakage(l).length === 0);
   }
 
+  // Three-state envelope for the finished analysis. `execution_validated`
+  // requires ACTUALLY-USED validated historical evidence (backtest/validation
+  // contribution with status "used") — a model BUY/SELL alone stays
+  // descriptive. Today the request path never grants that (see
+  // researchEvidence.ts), so this labels honestly rather than optimistically.
+  const actionableRecommendation =
+    finalDecision.decision === "buy" || finalDecision.decision === "sell";
+  const usedContributions = researchEvidence.contributions.filter(
+    (c) => c.status === "used",
+  );
+  // Dependency matrix (item 5): a stage loss is labelled by POLICY, not by
+  // ad-hoc checks. It can only pull the outcome to a safer state — losing
+  // recommendation-critical evidence (risk / structure / liquidity / S&D / MTF)
+  // forbids an execution-grade label even when the evidence check passed.
+  const dependencyPolicy = evaluateDependencies(stageFailures);
+  const envelope = envelopeForFinalDecision({
+    actionableRecommendation,
+    validatedEvidence:
+      dependencyPolicy.allowsRecommendation &&
+      usedContributions.some(
+        (c) => c.system === "backtest" || c.system === "validation",
+      ),
+    partialEvidence: usedContributions.length > 0,
+    traceId: ctx.requestId,
+    degradedStages: degradedStagesFrom(stageFailures),
+  });
+
   return {
     decision: finalDecision.decision,
+    envelope,
     confidence: finalDecision.confidence,
     confidenceSemantics: finalDecision.confidenceSemantics,
     summary: finalDecision.summary,
@@ -1245,6 +1663,11 @@ async function trackStoredRecommendation(input: {
   if (!market.sync.ok) {
     return {
       decision: "action_required",
+      envelope: operationalBlockerEnvelope({
+        failureStage: "market_data",
+        failureCode: "stale_data",
+        retryable: true,
+      }),
       confidence: 0,
       summary: bilingual(
         locale,
@@ -1275,6 +1698,11 @@ async function trackStoredRecommendation(input: {
     });
     return {
       decision: "action_required",
+      envelope: operationalBlockerEnvelope({
+        failureStage: "market_data",
+        failureCode: "insufficient_data",
+        retryable: true,
+      }),
       confidence: 0,
       summary: bilingual(
         locale,

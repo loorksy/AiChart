@@ -1,8 +1,16 @@
 /**
- * Per-agent timeout wrapper. Every specialist agent runs under a deadline so a
- * hung provider/tool degrades to a safe fallback instead of stalling the whole
- * request. On timeout the fallback value is returned (never a throw), so the
- * orchestrator's partial-result rules stay in control.
+ * Per-agent timeout wrappers.
+ *
+ * `withTimeout` is the legacy racer: it returns a fallback on deadline but
+ * leaves the underlying promise running. It is still correct for purely
+ * COMPUTATIONAL stages (the structure/liquidity/supply-demand/MTF specialists
+ * do no I/O), where an orphaned promise costs nothing but CPU already spent.
+ *
+ * `withDeadline` is the cancelling variant required for I/O stages
+ * (RELIABILITY_PLAN.md item 2): it hands the work an AbortSignal and ALWAYS
+ * aborts it when the deadline hits, when the parent run is cancelled, or when
+ * the caller stops waiting — so a timed-out provider call is actually torn
+ * down instead of quietly finishing after the user already got a fallback.
  */
 export async function withTimeout<T>(
   promise: Promise<T>,
@@ -20,6 +28,62 @@ export async function withTimeout<T>(
   }
 }
 
+/**
+ * Run `work` under a real deadline. The signal passed to `work` aborts when:
+ * the deadline elapses, `parentSignal` aborts, or the wrapper settles.
+ *
+ * On deadline the fallback is returned (same contract as `withTimeout`, so the
+ * orchestrator's partial-result rules are unchanged) — but the abort is fired
+ * first, so the underlying request stops. A thrown AbortError caused by our own
+ * deadline is swallowed into the fallback; any other error propagates.
+ */
+export async function withDeadline<T>(
+  work: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+  fallback: T,
+  parentSignal?: AbortSignal,
+): Promise<T> {
+  // Already cancelled before we start: never spend a provider call on a run
+  // whose result nobody is waiting for.
+  if (parentSignal?.aborted) return fallback;
+
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort();
+  parentSignal?.addEventListener("abort", onParentAbort, { once: true });
+
+  // Resolves as soon as WE cancel (deadline or parent). Racing on this — rather
+  // than on the work promise alone — means an uncooperative stage that ignores
+  // its signal still cannot hold the run past its deadline.
+  const cancelled = new Promise<typeof DEADLINE_HIT>((resolve) => {
+    controller.signal.addEventListener("abort", () => resolve(DEADLINE_HIT), {
+      once: true,
+    });
+  });
+
+  const timer = setTimeout(() => controller.abort(), ms);
+
+  try {
+    const result = await Promise.race([
+      work(controller.signal).catch((err) => {
+        // An abort WE caused (deadline or parent cancel) is not a real fault:
+        // degrade to the fallback exactly like the legacy racer did.
+        if (controller.signal.aborted) return DEADLINE_HIT;
+        throw err;
+      }),
+      cancelled,
+    ]);
+    return result === DEADLINE_HIT ? fallback : (result as T);
+  } finally {
+    clearTimeout(timer);
+    parentSignal?.removeEventListener("abort", onParentAbort);
+    // Always tear down: covers the deadline path AND a caller that stopped
+    // waiting for any other reason. Aborting a settled op is a no-op.
+    controller.abort();
+  }
+}
+
+const DEADLINE_HIT = Symbol("deadline");
+
 /** Suggested per-agent deadlines (ms). If Risk times out → decision must be wait. */
 export const AGENT_TIMEOUTS = {
   marketData: 10_000,
@@ -35,3 +99,75 @@ export const AGENT_TIMEOUTS = {
   finalDecision: 60_000,
   general: 20_000,
 } as const;
+
+/**
+ * Total wall-clock budget for one direct agent run (RELIABILITY_PLAN.md item 2).
+ *
+ * It must stay BELOW the MCP tool's 150s wait so the caller receives a real
+ * three-state envelope instead of a transport timeout with no result. The web
+ * route's own `maxDuration` (180s) stays above this, leaving room to compose
+ * and send the final event after the budget trips.
+ */
+export const TOTAL_RUN_BUDGET_MS = 135_000;
+
+/** MCP's client-side wait for run_market_analysis — the ceiling we stay under. */
+export const MCP_ANALYZE_TIMEOUT_MS = 150_000;
+
+export interface RunBudget {
+  /** Signal every I/O stage links to: aborts on client cancel OR budget end. */
+  signal: AbortSignal;
+  /** True once the total budget elapsed (as opposed to a client cancel). */
+  readonly expired: boolean;
+  /** True when the CLIENT cancelled (not our budget). */
+  readonly cancelledByClient: boolean;
+  /** Milliseconds left in the budget (0 once spent). */
+  remainingMs(): number;
+  /** Release the timer. Always call in a finally. */
+  dispose(): void;
+}
+
+/**
+ * Create the run-level budget for one agent run (RELIABILITY_PLAN.md item 2).
+ * Linking every I/O stage to `signal` means a blown budget or a disconnected
+ * client actually tears provider work down instead of leaving it running
+ * behind a request nobody is waiting for.
+ */
+export function createRunBudget(
+  clientSignal?: AbortSignal,
+  totalMs: number = TOTAL_RUN_BUDGET_MS,
+  now: () => number = Date.now,
+): RunBudget {
+  const startedAt = now();
+  const controller = new AbortController();
+  let expired = false;
+
+  const onClientAbort = () => controller.abort();
+  if (clientSignal) {
+    if (clientSignal.aborted) controller.abort();
+    else clientSignal.addEventListener("abort", onClientAbort, { once: true });
+  }
+
+  const timer = setTimeout(() => {
+    expired = true;
+    controller.abort();
+  }, totalMs);
+  // Never hold the process open just for the budget timer.
+  (timer as unknown as { unref?: () => void }).unref?.();
+
+  return {
+    signal: controller.signal,
+    get expired() {
+      return expired;
+    },
+    get cancelledByClient() {
+      return Boolean(clientSignal?.aborted) && !expired;
+    },
+    remainingMs() {
+      return Math.max(0, totalMs - (now() - startedAt));
+    },
+    dispose() {
+      clearTimeout(timer);
+      clientSignal?.removeEventListener("abort", onClientAbort);
+    },
+  };
+}

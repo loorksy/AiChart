@@ -52,45 +52,65 @@ describe("synthesizer failure classification", () => {
   });
 });
 
-describe("fallback surfaces the real cause", () => {
-  it("keeps the legacy generic text when no detail is known", () => {
-    const result = buildAgentFallbackResult("reason", [], "ar");
-    assert.match(result.summary, /تعذّر تشغيل الوكيل الذكي حالياً/);
-    assert.equal(result.decision, "informational");
-    assert.deepEqual(result.drawings, []);
-  });
-
-  it("names the cause and whether retrying helps", () => {
-    const retryable = buildAgentFallbackResult("r", [], "ar", {
+describe("fallback keeps the raw provider cause off the user surface", () => {
+  // RELIABILITY_PLAN.md item 7: the user-facing summary/keyReasons must carry
+  // the safe, localized taxonomy message only — never the raw provider payload
+  // (which can embed an API key, an internal URL, or a stack fragment). The
+  // machine cause lives in envelope.failure_code; operators read the raw text
+  // from server logs, correlated by trace_id.
+  it("uses the safe localized taxonomy message, never the raw detail", () => {
+    const rate = buildAgentFallbackResult("operator reason", [], "ar", {
       detail: "HTTP 429 rate limit exceeded",
+      failureCode: "rate_limit",
       retryable: true,
     });
-    assert.match(retryable.summary, /HTTP 429/);
-    assert.match(retryable.summary, /أعد المحاولة/);
-
-    const permanent = buildAgentFallbackResult("r", [], "ar", {
-      detail: "مفتاح مزوّد الذكاء الاصطناعي غير مُعدّ",
-      retryable: false,
-    });
-    assert.match(permanent.summary, /مفتاح/);
-    assert.match(permanent.summary, /لن تُحل بإعادة المحاولة/);
-
-    const english = buildAgentFallbackResult("r", [], "en", {
-      detail: "provider unavailable",
-      retryable: true,
-    });
-    assert.match(english.summary, /provider unavailable/);
-    assert.match(english.summary, /try again/i);
+    assert.match(rate.summary, /مزوّد الخدمة مشغول/);
+    assert.doesNotMatch(rate.summary, /HTTP 429/);
+    assert.equal(rate.envelope?.failure_code, "rate_limit");
+    assert.equal(rate.envelope?.retryable, true);
   });
 
-  it("carries the machine-readable reason in keyReasons for the run trace", () => {
+  it("never leaks a provider key or URL on an auth fault", () => {
+    const auth = buildAgentFallbackResult(
+      "Decision model failed (provider_auth, 1 attempt(s)): Incorrect API key provided: sk-abc123",
+      [],
+      "ar",
+      { detail: "Incorrect API key provided: sk-abc123", failureCode: "auth", retryable: false },
+    );
+    assert.doesNotMatch(auth.summary, /sk-/);
+    assert.doesNotMatch(auth.summary, /Incorrect API key/i);
+    // keyReasons is user-rendered — it must not carry the raw cause either.
+    assert.deepEqual(auth.keyReasons, []);
+    assert.equal(auth.envelope?.failure_code, "auth");
+    assert.equal(auth.envelope?.retryable, false);
+  });
+
+  it("localizes the safe message for English without the raw detail", () => {
+    const en = buildAgentFallbackResult("op", [], "en", {
+      detail: "provider unavailable — internal socket detail",
+      failureCode: "provider_unavailable",
+      retryable: true,
+    });
+    assert.match(en.summary, /temporarily unavailable/i);
+    assert.doesNotMatch(en.summary, /internal socket detail/);
+  });
+
+  it("carries the machine-readable cause in envelope.failure_code, not keyReasons", () => {
     const result = buildAgentFallbackResult(
       "Decision model failed (provider_auth, 1 attempt(s)): bad key",
       [],
       "ar",
-      { detail: "bad key", retryable: false },
+      { detail: "bad key", failureCode: "auth", retryable: false },
     );
-    assert.equal(result.keyReasons.length, 1);
-    assert.match(result.keyReasons[0]!, /provider_auth/);
+    assert.deepEqual(result.keyReasons, []);
+    assert.equal(result.envelope?.failure_code, "auth");
+  });
+
+  it("falls back to the generic unknown message when no code is given", () => {
+    const result = buildAgentFallbackResult("reason", [], "ar");
+    assert.match(result.summary, /تعذّر إكمال الطلب/);
+    assert.equal(result.decision, "informational");
+    assert.deepEqual(result.drawings, []);
+    assert.equal(result.envelope?.failure_code, "unknown");
   });
 });
