@@ -40,6 +40,7 @@ import {
   type SmartChartAgentHandle,
 } from "@/components/agent/SmartChartAgentPanel";
 import { AgentVoiceButton } from "@/components/agent/AgentVoiceButton";
+import { TradeModePanel } from "@/components/agent/TradeModePanel";
 import { AgentVoicePanel } from "@/components/agent/AgentVoicePanel";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { useAgentVoiceSession } from "@/hooks/useAgentVoiceSession";
@@ -766,6 +767,10 @@ function SmartChartWorkspaceInner({
 
         {chatEnabled && (
           <div className={chatPaneClass}>
+            {/* Operator trade-mode control: permanent badge + guarded switch
+                (Group 9). Sits above the chat so the standing-execution state
+                is visible whenever the agent is. */}
+            <TradeModePanel />
             <SmartChartAgentPanel
               key={chat.activeChatId ?? "new"}
               ref={agentRef}

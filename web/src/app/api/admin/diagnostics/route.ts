@@ -39,11 +39,22 @@ export async function GET() {
       const data = await metric.get();
       return data.values.reduce((sum, v) => sum + Number(v.value ?? 0), 0);
     };
+    // One kind of the labelled critical counter — plan_edit_outside_revisions
+    // has no dedicated counter of its own, only its criticalAlert kind.
+    const criticalKind = async (kind: string): Promise<number> => {
+      const metric = registry.getSingleMetric("aichart_critical_alerts_total");
+      if (!metric) return 0;
+      const data = await metric.get();
+      return data.values
+        .filter((v) => (v.labels as Record<string, unknown> | undefined)?.kind === kind)
+        .reduce((sum, v) => sum + Number(v.value ?? 0), 0);
+    };
 
     return NextResponse.json({
       critical: {
         hiddenWaitWrites: await value("aichart_hidden_wait_writes_total"),
         executionInWrongMode: await value("aichart_execution_wrong_mode_total"),
+        planEditOutsideRevisions: await criticalKind("plan_edit_outside_revisions"),
         unexplainedParity: parity.totals.unexplained,
         criticalAlerts: await value("aichart_critical_alerts_total"),
       },

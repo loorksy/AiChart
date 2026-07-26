@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import type { ClaudeUsageRow } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { AdminDiagnosticsPanel } from "@/components/admin/AdminDiagnosticsPanel";
 import { AdminKeysPanel } from "@/components/admin/AdminKeysPanel";
 import { AdminSystemPanel } from "@/components/admin/AdminSystemPanel";
 import { AdminSecurityPanel } from "@/components/admin/AdminSecurityPanel";
@@ -19,6 +20,7 @@ const TABS = [
   { id: "system", label: "النظام" },
   { id: "security", label: "الأمن" },
   { id: "usage", label: "الاستهلاك" },
+  { id: "diagnostics", label: "التشخيص" },
   { id: "profile", label: "الملف" },
 ] as const;
 
@@ -93,6 +95,7 @@ export function PlatformSection({
       {tab === "subscriptions" && isAdmin && <AdminSubscriptionsPanel />}
       {tab === "keys" && isAdmin && <AdminKeysPanel />}
       {tab === "system" && isAdmin && <AdminSystemPanel />}
+      {tab === "diagnostics" && isAdmin && <AdminDiagnosticsPanel />}
       {tab === "security" && isAdmin && (
         <AdminSecurityPanel audit={audit} />
       )}

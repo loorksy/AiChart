@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Menu, PanelLeft, PanelLeftClose, X } from "lucide-react";
 import { AiChartLogo } from "@/components/AiChartLogo";
+import { NotificationCenter } from "@/components/agent/NotificationCenter";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
@@ -176,14 +177,29 @@ export function AppConsoleShell({
           <AiChartLogo size={30} />
         </Link>
       )}
-      <button
-        type="button"
-        onClick={() => setCollapsed((c) => !c)}
-        className="hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground lg:flex"
-        aria-label={collapsed ? t("shell.expand_sidebar") : t("shell.collapse_sidebar")}
-      >
-        {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-      </button>
+      {!collapsed ? (
+        <div className="flex shrink-0 items-center gap-0.5">
+          {/* Alert bell + notification center (Group 9). */}
+          <NotificationCenter />
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground lg:flex"
+            aria-label={t("shell.collapse_sidebar")}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          className="hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground lg:flex"
+          aria-label={t("shell.expand_sidebar")}
+        >
+          <PanelLeft className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 
@@ -267,6 +283,8 @@ export function AppConsoleShell({
               >
                 <Menu className="h-5 w-5" />
               </button>
+              {/* Mobile bell: the sidebar (and its bell) is hidden below lg. */}
+              <NotificationCenter className="ms-auto" />
             </div>
           ) : null}
           <main

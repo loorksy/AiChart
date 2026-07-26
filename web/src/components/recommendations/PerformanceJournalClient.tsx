@@ -1,0 +1,383 @@
+"use client";
+
+/**
+ * Performance Journal page (Group 9) over GET /api/recommendations/journal.
+ *
+ * Shows the followed / ignored / auto / manual comparison, adherence rates,
+ * entry deviation, SL match, early exits, delayed entries, per-session
+ * performance, R multiples, and the server's personal observations.
+ *
+ * One hard display rule, applied everywhere: a percentage computed over a tiny
+ * sample NEVER appears without its small-sample warning. Descriptive only —
+ * nothing here gates a recommendation.
+ */
+import { useEffect, useState } from "react";
+import { TriangleAlert } from "lucide-react";
+import { useLocale } from "@/hooks/useLocale";
+import { cn } from "@/lib/utils";
+import type { JournalSummary } from "@/lib/recommendations/performanceJournal";
+import type { JournalEntryView } from "@/app/api/recommendations/journal/route";
+
+/** Below this, a rate is shown only alongside the small-sample warning. */
+const SMALL_SAMPLE = 10;
+/** An order raised this long after activation counts as a delayed entry. */
+const DELAYED_ENTRY_MS = 10 * 60 * 1000;
+
+type SessionKey = "asia" | "london" | "newyork";
+
+/** UTC session bucket — mirrors the journal lib's pure sessionOf. */
+function sessionOf(timestamp: number): SessionKey {
+  const hour = new Date(timestamp).getUTCHours();
+  if (hour >= 7 && hour < 12) return "london";
+  if (hour >= 12 && hour < 21) return "newyork";
+  return "asia";
+}
+
+function isWin(outcome: string): boolean {
+  return outcome.startsWith("win_");
+}
+
+function isResolved(outcome: string): boolean {
+  return outcome !== "pending";
+}
+
+function pct(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function SmallSampleWarning({ n }: { n: number }) {
+  const { t } = useLocale();
+  return (
+    <p className="mt-1 flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+      <TriangleAlert className="mt-px h-3 w-3 shrink-0" aria-hidden />
+      {t("journal.small_sample", { n: String(n) })}
+    </p>
+  );
+}
+
+/**
+ * A rate that refuses to mislead: no data → "not enough data"; a small sample
+ * → the number WITH its warning; otherwise the number alone.
+ */
+function Rate({ wins, count }: { wins: number; count: number }) {
+  const { t } = useLocale();
+  if (count === 0) {
+    return <p className="text-xs text-muted-foreground">{t("journal.no_data")}</p>;
+  }
+  return (
+    <>
+      <p className="text-lg font-bold text-foreground">{pct(wins / count)}</p>
+      <p className="text-[11px] text-muted-foreground">
+        {t("journal.wins_of", { wins: String(wins), count: String(count) })}
+      </p>
+      {count < SMALL_SAMPLE ? <SmallSampleWarning n={count} /> : null}
+    </>
+  );
+}
+
+function Tile({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <p className="text-[11px] font-medium text-muted-foreground">{title}</p>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+export function PerformanceJournalClient() {
+  const { t, dir } = useLocale();
+  const [data, setData] = useState<{
+    summary: JournalSummary;
+    entries: JournalEntryView[];
+  } | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/recommendations/journal", { cache: "no-store" });
+        if (!res.ok) throw new Error("load failed");
+        const json = (await res.json()) as {
+          summary?: JournalSummary;
+          entries?: JournalEntryView[];
+        };
+        if (alive && json.summary) {
+          setData({ summary: json.summary, entries: json.entries ?? [] });
+        }
+      } catch {
+        if (alive) setError(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <div dir={dir} className="mx-auto w-full max-w-6xl">
+        <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-6 text-center text-sm text-destructive-foreground">
+          {t("journal.error")}
+        </p>
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  const { summary, entries } = data;
+  const resolved = entries.filter((e) => isResolved(e.outcome));
+  const followed = resolved.filter((e) => e.followState !== "ignored");
+  const empty = resolved.length === 0;
+
+  // Entry deviation: mean absolute distance from the plan price, as a percent.
+  const deviations = followed
+    .map((e) => e.entryDeviation)
+    .filter((v): v is number => v != null);
+  const avgDeviation = deviations.length
+    ? deviations.reduce((sum, v) => sum + Math.abs(v), 0) / deviations.length
+    : null;
+  const stopSample = followed.filter((e) => e.stopMatchedPlan != null).length;
+
+  const earlyExits = followed.filter((e) => e.earlyExit).length;
+  const delayedEntries = followed.filter(
+    (e) => e.entryDelayMs != null && e.entryDelayMs >= DELAYED_ENTRY_MS,
+  ).length;
+
+  const rValues = entries
+    .map((e) => e.rMultiple)
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  const avgR = rValues.length ? rValues.reduce((s, v) => s + v, 0) / rValues.length : null;
+
+  const sessions: SessionKey[] = ["asia", "london", "newyork"];
+  const bySession = sessions.map((session) => {
+    const list = resolved.filter((e) => sessionOf(e.createdAt) === session);
+    return {
+      session,
+      count: list.length,
+      wins: list.filter((e) => isWin(e.outcome)).length,
+    };
+  });
+
+  const outcomeLabel = (outcome: string): string => {
+    switch (outcome) {
+      case "win_tp1":
+        return t("rec.status.tp1_hit");
+      case "win_tp2":
+        return t("rec.status.tp2_hit");
+      case "win_tp3":
+        return t("rec.status.tp3_hit");
+      case "loss":
+        return t("rec.status.sl_hit");
+      case "expired":
+        return t("rec.status.expired");
+      case "cancelled":
+        return t("rec.status.cancelled");
+      case "invalidated":
+        return t("rec.status.invalidated");
+      default:
+        return t("rec.status.pending_entry");
+    }
+  };
+
+  return (
+    <div dir={dir} className="mx-auto w-full max-w-6xl space-y-5">
+      <div>
+        <h1 className="text-xl font-semibold text-foreground">{t("journal.title")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("journal.subtitle")}</p>
+      </div>
+
+      {empty ? (
+        <p className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+          {t("journal.empty")}
+        </p>
+      ) : (
+        <>
+          {/* Followed / ignored / auto / manual breakdown. */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Tile title={t("journal.followed")}>
+              <Rate wins={summary.followed.wins} count={summary.followed.count} />
+            </Tile>
+            <Tile title={t("journal.ignored")}>
+              <Rate wins={summary.ignored.wins} count={summary.ignored.count} />
+            </Tile>
+            <Tile title={t("journal.auto")}>
+              <Rate wins={summary.auto.wins} count={summary.auto.count} />
+            </Tile>
+            <Tile title={t("journal.manual")}>
+              <Rate wins={summary.manual.wins} count={summary.manual.count} />
+            </Tile>
+          </div>
+
+          {/* Adherence and behaviour. */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Tile title={t("journal.adherence.entry")}>
+              {summary.entryAdherence == null ? (
+                <p className="text-xs text-muted-foreground">{t("journal.no_data")}</p>
+              ) : (
+                <>
+                  <p className="text-lg font-bold text-foreground">
+                    {pct(summary.entryAdherence)}
+                  </p>
+                  {avgDeviation != null ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      {t("journal.entry.deviation")}:{" "}
+                      <span dir="ltr">±{(avgDeviation * 100).toFixed(3)}%</span>
+                    </p>
+                  ) : null}
+                  {deviations.length < SMALL_SAMPLE ? (
+                    <SmallSampleWarning n={deviations.length} />
+                  ) : null}
+                </>
+              )}
+            </Tile>
+            <Tile title={t("journal.adherence.stop")}>
+              {summary.stopAdherence == null ? (
+                <p className="text-xs text-muted-foreground">{t("journal.no_data")}</p>
+              ) : (
+                <>
+                  <p className="text-lg font-bold text-foreground">
+                    {pct(summary.stopAdherence)}
+                  </p>
+                  {stopSample < SMALL_SAMPLE ? <SmallSampleWarning n={stopSample} /> : null}
+                </>
+              )}
+            </Tile>
+            <Tile title={t("journal.early_exits")}>
+              <p className="text-lg font-bold text-foreground">{earlyExits}</p>
+            </Tile>
+            <Tile title={t("journal.delayed_entries")}>
+              <p className="text-lg font-bold text-foreground">{delayedEntries}</p>
+            </Tile>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            {/* Per-session performance. */}
+            <div className="rounded-xl border border-border bg-card p-3">
+              <p className="text-[12px] font-semibold text-foreground">
+                {t("journal.sessions.title")}
+              </p>
+              <div className="mt-2 grid grid-cols-3 gap-3">
+                {bySession.map((row) => (
+                  <div key={row.session}>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t(`journal.session.${row.session}`)}
+                    </p>
+                    <Rate wins={row.wins} count={row.count} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* R multiples. */}
+            <div className="rounded-xl border border-border bg-card p-3">
+              <p className="text-[12px] font-semibold text-foreground">{t("journal.r.title")}</p>
+              {rValues.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">{t("journal.no_data")}</p>
+              ) : (
+                <div className="mt-2 grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">{t("journal.r.avg")}</p>
+                    <p className="text-lg font-bold text-foreground" dir="ltr">
+                      {avgR!.toFixed(2)}R
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">{t("journal.r.best")}</p>
+                    <p
+                      className="text-lg font-bold text-emerald-700 dark:text-emerald-300"
+                      dir="ltr"
+                    >
+                      {Math.max(...rValues).toFixed(2)}R
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">{t("journal.r.worst")}</p>
+                    <p className="text-lg font-bold text-red-700 dark:text-red-300" dir="ltr">
+                      {Math.min(...rValues).toFixed(2)}R
+                    </p>
+                  </div>
+                </div>
+              )}
+              {rValues.length > 0 && rValues.length < SMALL_SAMPLE ? (
+                <SmallSampleWarning n={rValues.length} />
+              ) : null}
+            </div>
+          </div>
+
+          {/* Personal observations (server-built, phrased as observations). */}
+          {summary.notes.length > 0 ? (
+            <div className="rounded-xl border border-border bg-card p-3">
+              <p className="text-[12px] font-semibold text-foreground">{t("journal.notes")}</p>
+              <ul className="mt-1.5 list-inside list-disc space-y-1 text-[12px] text-muted-foreground">
+                {summary.notes.map((note, i) => (
+                  <li key={i}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Entry list. */}
+          <div className="rounded-xl border border-border bg-card p-3">
+            <p className="text-[12px] font-semibold text-foreground">
+              {t("journal.entries.title")} ({entries.length})
+            </p>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[36rem] text-[12px]">
+                <thead>
+                  <tr className="border-b border-border text-start text-[11px] text-muted-foreground">
+                    <th className="py-1.5 text-start font-medium">{t("stats.group")}</th>
+                    <th className="py-1.5 text-start font-medium">{t("rec.detail.plan_type")}</th>
+                    <th className="py-1.5 text-start font-medium">{t("journal.followed")}</th>
+                    <th className="py-1.5 text-start font-medium">
+                      {t("journal.entry.deviation")}
+                    </th>
+                    <th className="py-1.5 text-start font-medium">{t("journal.r.avg")}</th>
+                    <th className="py-1.5 text-start font-medium">{t("journal.outcome")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.slice(0, 50).map((entry) => (
+                    <tr key={entry.recommendationId} className="border-b border-border/40">
+                      <td className="py-1.5">
+                        <span
+                          className={cn(
+                            "font-semibold",
+                            entry.direction === "buy" ? "text-buy" : "text-sell",
+                          )}
+                        >
+                          {t(`decision.${entry.direction}`)}
+                        </span>{" "}
+                        <span className="font-mono">{entry.symbol}</span>
+                      </td>
+                      <td className="py-1.5 text-muted-foreground">
+                        {entry.planType &&
+                        ["immediate", "anticipatory", "conditional"].includes(entry.planType)
+                          ? t(`rec.plan_type.${entry.planType}`)
+                          : (entry.planType ?? "—")}
+                      </td>
+                      <td className="py-1.5 text-muted-foreground">
+                        {t(`journal.follow.${entry.followState}`)}
+                      </td>
+                      <td className="py-1.5 font-mono text-muted-foreground" dir="ltr">
+                        {entry.entryDeviation != null
+                          ? `${(entry.entryDeviation * 100).toFixed(3)}%`
+                          : "—"}
+                      </td>
+                      <td className="py-1.5 font-mono text-muted-foreground" dir="ltr">
+                        {entry.rMultiple != null ? `${entry.rMultiple.toFixed(2)}R` : "—"}
+                      </td>
+                      <td className="py-1.5 text-muted-foreground">
+                        {outcomeLabel(entry.outcome)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
