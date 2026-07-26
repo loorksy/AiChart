@@ -27,7 +27,10 @@ export interface JournalEntry {
   planType: string | null;
   outcome: TrackedRecommendationOutcome;
   followState: FollowState;
-  /** Plan price vs the price actually filled, when both are known. */
+  /**
+   * Fill price minus plan price, as a FRACTION of the plan price. Relative so
+   * one adherence threshold means the same thing on EURUSD and on XAUUSD.
+   */
   entryDeviation: number | null;
   /** True when the executed stop matched the plan's. */
   stopMatchedPlan: boolean | null;
@@ -48,13 +51,15 @@ export interface JournalSummary {
 }
 
 interface JoinedRow {
-  id: string;
+  id: number | string;
   symbol: string;
   direction: string;
-  outcome: string;
-  created_at: number;
-  entry: number;
-  stop_loss: number;
+  plan_type: string | null;
+  status: string;
+  created_at: number | string;
+  entry: number | null;
+  stop_loss: number | null;
+  outcome_type: string | null;
   trade_id: number | null;
   avg_price: number | null;
   intent_stop: number | null;
@@ -70,29 +75,98 @@ function isResolved(outcome: string): boolean {
 }
 
 /**
+ * Map a canonical status/outcome pair onto the journal's outcome vocabulary.
+ *
+ * The outcome row is authoritative when present; the status carries the answer
+ * for a plan that ended without ever being filled, which is precisely the case
+ * the followed-vs-ignored comparison depends on.
+ */
+function journalOutcome(row: JoinedRow): TrackedRecommendationOutcome {
+  switch (row.outcome_type) {
+    case "TP1":
+      return "win_tp1";
+    case "TP2":
+      return "win_tp2";
+    case "TP3":
+      return "win_tp3";
+    case "SL":
+      return "loss";
+    case "Invalidated":
+      return "invalidated";
+    case "Cancelled":
+      return "cancelled";
+    case "Expired":
+      return "expired";
+    default:
+      break;
+  }
+  switch (row.status) {
+    case "tp1_hit":
+      return "win_tp1";
+    case "tp2_hit":
+      return "win_tp2";
+    case "tp3_hit":
+      return "win_tp3";
+    case "sl_hit":
+      return "loss";
+    case "invalidated":
+      return "invalidated";
+    case "cancelled":
+      return "cancelled";
+    case "expired":
+      return "expired";
+    default:
+      return "pending";
+  }
+}
+
+/** Relative tolerance for "entered where the plan said" / "kept the plan's stop". */
+const PRICE_TOLERANCE = 0.0005;
+
+/**
  * Build the journal for one operator.
  *
- * Joins tracked recommendations to any trade opened from them; a missing trade
- * is the signal, not missing data.
+ * Reads the CANONICAL recommendations table joined to any intent and trade
+ * raised against it. The earlier version read `tracked_recommendations`, which is
+ * the retired legacy table — nothing writes to it, and its TEXT id could never
+ * match `trade_intents.recommendation_id` (an INTEGER canonical id), so every
+ * entry classified as "ignored" and the whole comparison was silently empty.
+ *
+ * A recommendation with no trade was ignored; that absence is the signal, not
+ * missing data. Rows are collapsed per recommendation because one plan can raise
+ * several intents, and counting a plan once per intent would inflate every
+ * number in the summary.
  */
 export async function buildPerformanceJournal(input: {
   userId: number;
   limit?: number;
 }): Promise<{ entries: JournalEntry[]; summary: JournalSummary }> {
+  const limit = input.limit ?? 200;
   const rows = await query<JoinedRow>(
-    `SELECT r.id, r.symbol, r.direction, r.outcome, r.created_at, r.entry, r.stop_loss,
+    `SELECT r.id, r.symbol, r.direction, r.plan_type, r.status, r.created_at,
+            r.entry, r.stop_loss,
+            o.outcome_type AS outcome_type,
             t.id AS trade_id, t.avg_price AS avg_price,
             i.stop_loss AS intent_stop, i.authorization_source AS authorization_source
-       FROM tracked_recommendations r
-       LEFT JOIN trade_intents i ON i.recommendation_id = r.id
+       FROM recommendations r
+       LEFT JOIN recommendation_outcomes o
+         ON o.recommendation_id = r.id AND o.user_id = r.user_id
+       LEFT JOIN trade_intents i
+         ON i.recommendation_id = r.id AND i.user_id = r.user_id
        LEFT JOIN trades t ON t.intent_id = i.id
-      WHERE r.user_id = ?
-      ORDER BY r.created_at DESC
-      LIMIT ?`,
-    [input.userId, input.limit ?? 200],
+      WHERE r.user_id = ? AND r.direction IN ('buy','sell')
+      ORDER BY r.id DESC`,
+    [input.userId],
   ).catch(() => []);
 
-  const entries: JournalEntry[] = rows.map((row) => {
+  // One entry per recommendation. The first row that carries a filled trade wins,
+  // since a plan that was acted on is "followed" even if other intents lapsed.
+  const byRecommendation = new Map<string, JournalEntry>();
+  for (const row of rows) {
+    const id = String(row.id);
+    const existing = byRecommendation.get(id);
+    if (existing && existing.followState !== "ignored") continue;
+
     const followState: FollowState =
       row.trade_id == null
         ? "ignored"
@@ -101,29 +175,42 @@ export async function buildPerformanceJournal(input: {
           : "followed_manual";
 
     const entryDeviation =
-      row.avg_price != null && row.entry > 0
-        ? Number((row.avg_price - row.entry).toFixed(6))
+      row.avg_price != null && row.entry != null && row.entry > 0
+        ? Number(((row.avg_price - row.entry) / row.entry).toFixed(6))
         : null;
 
     const stopMatchedPlan =
-      row.intent_stop != null && row.stop_loss > 0
-        ? Math.abs(row.intent_stop - row.stop_loss) <= Math.abs(row.stop_loss) * 0.0005
+      row.intent_stop != null && row.stop_loss != null && row.stop_loss > 0
+        ? Math.abs(row.intent_stop - row.stop_loss) <= Math.abs(row.stop_loss) * PRICE_TOLERANCE
         : null;
 
-    return {
-      recommendationId: row.id,
+    const entry: JournalEntry = {
+      recommendationId: id,
       symbol: row.symbol,
       direction: row.direction === "sell" ? "sell" : "buy",
-      planType: null,
-      outcome: row.outcome as TrackedRecommendationOutcome,
+      planType: row.plan_type,
+      outcome: journalOutcome(row),
       followState,
       entryDeviation,
       stopMatchedPlan,
-      createdAt: Number(row.created_at),
+      createdAt: epochMs(row.created_at),
     };
-  });
+    if (!existing || followState !== "ignored") byRecommendation.set(id, entry);
+  }
 
+  const entries = [...byRecommendation.values()]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, limit);
   return { entries, summary: summarizeJournal(entries) };
+}
+
+/** created_at is a timestamp string on pg and an epoch-ish value on sqlite. */
+function epochMs(value: number | string): number {
+  if (typeof value === "number") return value;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /** Aggregate the entries into the comparisons worth making. */
@@ -141,8 +228,11 @@ export function summarizeJournal(entries: JournalEntry[]): JournalSummary {
   });
 
   const withDeviation = followed.filter((entry) => entry.entryDeviation != null);
+  // entryDeviation is a FRACTION of the plan price, so one threshold is
+  // meaningful on every instrument. Comparing raw price distances made 0.001
+  // mean ten pips on EURUSD and nothing at all on XAUUSD.
   const closeEnough = withDeviation.filter(
-    (entry) => Math.abs(entry.entryDeviation!) <= 0.001 * Math.max(1, Math.abs(entry.entryDeviation!) + 1),
+    (entry) => Math.abs(entry.entryDeviation!) <= PRICE_TOLERANCE,
   );
   const withStop = followed.filter((entry) => entry.stopMatchedPlan != null);
 

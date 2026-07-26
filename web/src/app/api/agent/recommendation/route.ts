@@ -74,7 +74,23 @@ const schema = z
   })
   .strict()
   .superRefine((body, ctx) => {
-    if (body.action === "wait") return;
+    // WAIT is not an analytical outcome (docs/UNIFIED_AGENT_PLAN.md — decision 1).
+    // Existing `wait` rows stay readable; writing a NEW one is refused, because
+    // this is the one externally reachable write path and leaving it open kept
+    // the exact asymmetry the doctrine exists to remove: the platform engine
+    // cannot express a wait, and an MCP-hosted model still could.
+    //
+    // The alternative is never silence: either a direction with a plan type, or
+    // a named operational blocker when the market genuinely cannot be read.
+    if (body.action === "wait") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["action"],
+        message:
+          "WAIT is not an analytical outcome. Return a direction (buy or sell) with a plan type — immediate, anticipatory, or conditional — or report the operational blocker that prevents reading the market.",
+      });
+      return;
+    }
     // Levels are required because a direction without them is not a plan.
     // Strategy evidence is NOT: a recommendation with no matching backtest is
     // recorded as direct analysis and labelled as such, never refused

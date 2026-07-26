@@ -1,6 +1,6 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-26T05:25:08.301Z",
+  "exportedAt": "2026-07-26T13:47:58.990Z",
   "toolCount": 57,
   "tools": [
     {
@@ -86,7 +86,7 @@
     {
       "name": "create_recommendation",
       "domain": "core",
-      "description": "When: after choosing a direction — record the recommendation. BUY/SELL require valid entry/SL/TP levels. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
+      "description": "When: after choosing a direction — record the recommendation. Only buy or sell: every successful analysis ends in a direction with a plan, and an unreadable market is reported as a named operational blocker rather than a recommendation. BUY/SELL require valid entry/SL/TP levels. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,

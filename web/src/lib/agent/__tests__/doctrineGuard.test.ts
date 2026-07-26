@@ -58,6 +58,46 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+describe("the write path cannot record a WAIT", () => {
+  /**
+   * The gap this guard was added for.
+   *
+   * The doctrine held inside the platform's own decision engine — its Zod
+   * contract has no `wait` — while `POST /api/agent/recommendation`, the one
+   * externally reachable write path, still accepted `action: "wait"` and stored
+   * it. That preserved the exact asymmetry the whole doctrine removes: the
+   * platform engine could not express a wait and an MCP-hosted model still
+   * could. Reading legacy `wait` rows stays untouched; writing a new one does
+   * not.
+   */
+  it("refuses a new wait recommendation at the API boundary", () => {
+    const route = readFileSync(
+      resolve(process.cwd(), "src/app/api/agent/recommendation/route.ts"),
+      "utf8",
+    );
+    // An early `return` for wait means it is validated as acceptable and stored.
+    assert.ok(
+      !/if\s*\(\s*body\.action\s*===\s*"wait"\s*\)\s*return\s*;/.test(route),
+      "the write route silently accepts a wait recommendation",
+    );
+    assert.ok(
+      /WAIT is not an analytical outcome/.test(route),
+      "the write route must refuse a wait and say what to return instead",
+    );
+  });
+
+  it("keeps the decision engine's own contract free of wait", () => {
+    const synth = readFileSync(
+      resolve(process.cwd(), "src/lib/agent/agents/finalDecisionSynthesizer.ts"),
+      "utf8",
+    );
+    assert.ok(
+      /direction:\s*z\.enum\(\["buy",\s*"sell"\]\)/.test(synth),
+      "the decision contract must offer only buy or sell",
+    );
+  });
+});
+
 describe("doctrine guard", () => {
   it("no source or prompt file reintroduces WAIT as an outcome", () => {
     const files = [...walk(WEB_SRC), ...walk(AGENT_WORKSPACE)].filter(

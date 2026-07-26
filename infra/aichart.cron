@@ -30,6 +30,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # distributed lease. GET the same path for per-series coverage.
 */15 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/case-memory >/dev/null 2>&1
 
+# OPTIONAL — 24/7 opportunity monitor. Left unscheduled on purpose: it runs an
+# LLM-heavy scan per active user, and the maintenance work it shares with
+# event-monitor already runs above. The same scan is available on demand at
+# /api/opportunities/scan. Uncomment only if you want the recurring cost.
+# */30 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor >/dev/null 2>&1
+
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 

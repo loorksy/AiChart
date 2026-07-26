@@ -256,30 +256,3 @@ export function detectCandlesticks(input: {
 }
 
 /** Compact operator-facing lines for the evidence bundle. */
-export function candlestickEvidenceLines(signals: CandlestickSignal[]): string[] {
-  return signals.map(
-    (signal) =>
-      `${CANDLESTICK_LABELS_AR[signal.name]} (${signal.bias === "bullish" ? "صاعد" : signal.bias === "bearish" ? "هابط" : "محايد"}، قوة ${signal.strength})`,
-  );
-}
-
-export const CANDLESTICK_LABELS_AR: Record<CandlestickName, string> = {
-  doji: "دوجي",
-  hammer: "مطرقة",
-  inverted_hammer: "مطرقة مقلوبة",
-  shooting_star: "شهاب",
-  hanging_man: "رجل مشنوق",
-  marubozu_bullish: "ماروبوزو صاعد",
-  marubozu_bearish: "ماروبوزو هابط",
-  spinning_top: "قمة دوّارة",
-  bullish_engulfing: "ابتلاع صاعد",
-  bearish_engulfing: "ابتلاع هابط",
-  morning_star: "نجمة الصباح",
-  evening_star: "نجمة المساء",
-  three_white_soldiers: "الجنود الثلاثة",
-  three_black_crows: "الغربان الثلاثة",
-  bullish_harami: "هارامي صاعد",
-  bearish_harami: "هارامي هابط",
-  tweezer_top: "ملقط علوي",
-  tweezer_bottom: "ملقط سفلي",
-};

@@ -4,14 +4,30 @@ import { createRecommendationInput } from "../schemas/coreSchemas.js";
 import { getToolDef } from "../schemas/index.js";
 
 describe("create_recommendation structural gate", () => {
-  it("accepts WAIT without strategy evidence", () => {
+  it("refuses WAIT — it is not an analytical outcome", () => {
+    // Every successful analysis ends in a direction with a plan. A market that
+    // genuinely cannot be read is a named operational blocker, reported as such,
+    // not a recommendation to do nothing. Leaving this open kept the exact
+    // asymmetry the doctrine removes: the platform engine cannot express a wait,
+    // so the MCP surface must not be able to either.
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "wait",
       rationale: "No clear setup yet — we wait for confirmation.",
       factors: ["mixed structure"],
     });
-    assert.equal(parsed.success, true);
+    assert.equal(parsed.success, false);
+  });
+
+  it("refuses a direction with no levels", () => {
+    // A direction with nowhere to enter, stop, or take profit is not a plan.
+    const parsed = createRecommendationInput.safeParse({
+      symbol: "EURUSD",
+      action: "buy",
+      rationale: "Structure is bullish and the zone held.",
+      factors: ["demand zone"],
+    });
+    assert.equal(parsed.success, false);
   });
 
   it("accepts BUY with levels but no strategy evidence (direct analysis)", () => {

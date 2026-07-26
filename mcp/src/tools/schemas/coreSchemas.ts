@@ -60,16 +60,6 @@ const recommendationSharedFields = {
  */
 export const createRecommendationInput = z.discriminatedUnion("action", [
   z.object({
-    action: z.literal("wait"),
-    ...recommendationSharedFields,
-    entry: z.number().positive().optional(),
-    stop_loss: z.number().positive().optional(),
-    take_profit: z.number().positive().optional(),
-    strategy_id: zBacktestStrategyId.optional(),
-    backtested_confidence: zConfidence.optional(),
-    market_regime: z.string().min(3).max(64).optional(),
-  }),
-  z.object({
     action: z.literal("buy"),
     ...recommendationSharedFields,
     strategy_id: zBacktestStrategyId.optional(),
@@ -129,7 +119,9 @@ export const findSimilarCasesInput = z.object(findSimilarCasesShape).strict();
 /** Catalog shape stays a ZodRawShape so MCP SDK handler inference remains intact. */
 const createRecommendationCatalogShape = {
   symbol: zSymbol,
-  action: z.enum(["buy", "sell", "wait"]),
+  // No "wait": every successful analysis ends in a direction. An unreadable
+  // market is an operational blocker reported as such, not a recommendation.
+  action: z.enum(["buy", "sell"]),
   confidence: zConfidence.optional(),
   rationale: z.string().min(10),
   factors: z.array(z.string()).min(1).max(8),
@@ -258,7 +250,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: after choosing a direction — record the recommendation. BUY/SELL require valid entry/SL/TP levels. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
+      "When: after choosing a direction — record the recommendation. Only buy or sell: every successful analysis ends in a direction with a plan, and an unreadable market is reported as a named operational blocker rather than a recommendation. BUY/SELL require valid entry/SL/TP levels. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },

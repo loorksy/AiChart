@@ -189,16 +189,18 @@ describe("create_recommendation visual audit fields", () => {
     assert.equal(parsed.data?.visual_confirmation, true);
   });
 
-  it("accepts visual review on WAIT decisions too", () => {
+  it("records a contradicted review on a real direction", () => {
+    // Charts disagreeing with the numbers lowers the DISPLAYED confidence and is
+    // recorded for audit. It does not remove the direction, and there is no
+    // "wait" to fall back to.
     const parsed = createRecommendationInput.safeParse({
-      symbol: "XAUUSD",
-      action: "wait",
-      rationale: "Chart and numbers disagree — we wait.",
-      factors: ["conflicting evidence"],
+      ...base,
       visual_confirmation: "contradicted",
       timeframes_reviewed: ["1h"],
     });
     assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.action, "buy");
+    assert.equal(parsed.data?.visual_confirmation, "contradicted");
   });
 
   it("rejects an invalid state rather than guessing", () => {

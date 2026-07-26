@@ -217,14 +217,6 @@ export function describeSimilarCases(result: SimilarCaseResult): string | null {
   return `${sampleSize} حالة مشابهة: وصل الهدف قبل الوقف في ${pct}%${net}.`;
 }
 
-/** Shape the evidence card expects, so a missing memory reports as missing. */
-export function caseEvidenceSummary(
-  result: SimilarCaseResult | null,
-): { count: number; winRate: number | null } | null {
-  if (!result || !result.cases.length) return null;
-  return { count: result.stats.sampleSize, winRate: result.stats.hitRate };
-}
-
 export interface DirectionalCaseEvidence {
   sampleSize: number;
   hitRate: number | null;

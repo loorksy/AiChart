@@ -1,14 +1,13 @@
-# AiChart cron jobs — replace YOUR_DOMAIN and CRON_SECRET
-# reviews open-trade theses hourly (agent/workspace/HEARTBEAT.md).
-
-# 24/7 market monitor every 30 min — deep AI runs only when candidates appear.
-*/30 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor
-
-# Recommendation-tracker sweep every 5 min (no browser / no LLM / no execution).
-*/5 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/recommendation-sweep
-
-# Candle-warehouse: 5y backfill + gap repair + completeness report (GET = report only).
-*/10 * * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/candle-warehouse
-
-# Daily Telegram summary at 20:00 UTC
-0 20 * * * curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary
+# AiChart cron jobs — see infra/aichart.cron
+#
+# This file used to carry its own copy of the schedule and drifted out of sync
+# with it: it listed a job as required that is deliberately optional, and omitted
+# three that were added since (event-monitor, strategy-pipeline, case-memory).
+# Two files describing one schedule is a trap, so the installable file is now the
+# only source.
+#
+#   sudo cp infra/aichart.cron /etc/cron.d/aichart
+#   sudo sed -i 's/YOUR_DOMAIN/your.domain/; s/YOUR_CRON_SECRET/<secret>/' /etc/cron.d/aichart
+#
+# For a user crontab instead of /etc/cron.d, copy the schedule lines out of
+# infra/aichart.cron and drop the leading `root` field from each.

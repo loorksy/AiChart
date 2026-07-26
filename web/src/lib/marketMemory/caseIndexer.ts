@@ -319,16 +319,38 @@ export async function resolvePendingCases(input: {
   ).catch(() => []);
   if (!pending.length) return 0;
 
+  /**
+   * Candles are read ONCE for the whole batch rather than once per case.
+   *
+   * The per-case read was a query per row — 500 sequential round-trips per series
+   * per cron tick, for windows that overlap almost completely. One read from the
+   * oldest pending case forward covers every case in the batch.
+   */
+  const oldest = Math.min(...pending.map((row) => Number(row.case_time)));
+  const window = await getCandles({
+    symbol: key.symbol,
+    interval: key.interval,
+    fromMs: oldest + 1,
+    order: "asc",
+    limit: 20_000,
+  });
+  /** Index of the first candle strictly after `time`, via binary search. */
+  const firstAfter = (time: number): number => {
+    let low = 0;
+    let high = window.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (window[mid]!.time <= time) low = mid + 1;
+      else high = mid;
+    }
+    return low;
+  };
+
   let resolved = 0;
   for (const row of pending) {
     const caseTime = Number(row.case_time);
-    const future = await getCandles({
-      symbol: key.symbol,
-      interval: key.interval,
-      fromMs: caseTime + 1,
-      order: "asc",
-      limit: FORWARD_HORIZON,
-    });
+    const start = firstAfter(caseTime);
+    const future = window.slice(start, start + FORWARD_HORIZON);
     if (future.length < FORWARD_HORIZON) continue;
 
     const outcome = resolveForwardOutcome({

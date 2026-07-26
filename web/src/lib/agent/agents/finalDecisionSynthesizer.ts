@@ -452,7 +452,11 @@ function buildModelContext(
     chartGeometry: input.geometry
       ? {
           summary: summarizeGeometry(input.geometry),
-          lines: geometryEvidenceLines(input.geometry).slice(0, 10),
+          // 20, not 10: the engine's own bounds allow 4 trendlines, a channel,
+          // 3 patterns and 8 candlestick signals, and candlesticks are appended
+          // last — a 10-line cap silently dropped them on any busy chart, which
+          // is exactly the evidence the candlestick detector was added to supply.
+          lines: geometryEvidenceLines(input.geometry).slice(0, 20),
           // Structures still building, with the boundary an early entry would
           // use. Offered so an anticipatory plan is grounded in a real level
           // rather than the idea of one.
