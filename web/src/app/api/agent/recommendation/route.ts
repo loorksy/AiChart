@@ -258,6 +258,9 @@ export async function POST(req: NextRequest) {
       symbol: normalizedSymbol,
       action: body.action,
       plan_type: body.plan_type ?? null,
+      // The real column, not just the context blob: rows must be queryable by
+      // where their support came from (plan §6 A).
+      evidence_source: deployment ? "strategy_supported" : "direct_analysis",
       confidence: displayedConfidence,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,

@@ -41,6 +41,10 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           include_live
             ? bridge.get("/api/agent/live/account", undefined, 10000)
             : Promise.resolve({ skipped: true }),
+          // Shared server-side state (plan §9): the overview carries the
+          // operator's trade mode so the session starts knowing it — mcp-core
+          // says ask ONCE when it is unset, never re-ask a stored choice.
+          bridge.get("/api/agent/trade-mode"),
         ]);
         const val = (r: PromiseSettledResult<unknown>) => {
           if (r.status !== "fulfilled") {
@@ -57,6 +61,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           connection: val(settled[0]),
           portfolio: val(settled[1]),
           live: include_live ? val(settled[2]) : { skipped: true },
+          trade_mode: val(settled[3]),
         };
       }, { structured: true });
     },

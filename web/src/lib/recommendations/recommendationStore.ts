@@ -167,6 +167,11 @@ export type CreateTrackedRecommendationInput = Omit<
      */
     evidence?: Record<string, unknown> | null;
     decisionTrace?: Record<string, unknown> | null;
+    /**
+     * Where the decision's support came from — distinct from the support GRADE:
+     * direct_analysis | strategy_supported | historical_memory | deep_research.
+     */
+    evidenceSource?: string | null;
   };
 
 function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unknown> {
@@ -177,6 +182,9 @@ function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unk
     createdCandleTime: input.createdCandleTime,
     priceAtCreation: input.priceAtCreation,
     lastCheckedAt: input.lastCheckedAt,
+    // Round-trips so the deterministic evaluator can enforce the contract's
+    // candle-count validity, not only its wall-clock expiry.
+    validityCandles: input.validityCandles,
   };
 }
 
@@ -281,6 +289,7 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     expiredAt: latestTimestamp(outcomes, "Expired"),
     priceAtCreation: numberValue(risk.priceAtCreation),
     lastCheckedAt: numberValue(risk.lastCheckedAt),
+    validityCandles: numberValue(risk.validityCandles),
   };
 }
 
@@ -317,6 +326,7 @@ export async function createTrackedRecommendation(
     planType: input.planType ?? null,
     executionState: input.executionState ?? null,
     statisticalSupport: input.statisticalSupport ?? null,
+    evidenceSource: input.evidenceSource ?? null,
     initialRevision: {
       entryLow: input.entryLow ?? null,
       entryHigh: input.entryHigh ?? null,

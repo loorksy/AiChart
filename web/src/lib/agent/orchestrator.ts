@@ -195,7 +195,14 @@ async function buildLessonsBlock(
           closedAt,
         };
       });
-    return renderLessonsForPrompt(summarizeTradeLessons({ symbol, outcomes }));
+    const summary = summarizeTradeLessons({ symbol, outcomes });
+    // Personal notes (plan §15): the operator's OWN session/R record, appended
+    // as further observations inside the same bounded block. Guidance only —
+    // the summary's insufficiency rule and note cap both still apply.
+    const { appendPersonalNotes } = await import(
+      "@/lib/recommendations/personalNotes"
+    );
+    return renderLessonsForPrompt(await appendPersonalNotes(userId, symbol, summary));
   } catch (error) {
     // History is an aid, never a gate: losing it must not affect the decision.
     log.warn("agent.lessons.unavailable", {
@@ -855,6 +862,23 @@ async function runUnifiedChartAgentInner(
     atr: market.atr,
   });
 
+  // Selective atlas loading keyed by what the engine ACTUALLY found (plan
+  // §11 F.1). Skill selection ran before candles existed; with the detected
+  // pattern names in hand the catalogue is re-selected so the atlas loads
+  // exactly when there is a pattern to read about — same caps, same budget.
+  const detectedPatternNames = geometry.patterns.map((p) => p.patternType);
+  const skillContextFinal =
+    detectedPatternNames.length && wantMarket && FEATURES.agentSkillsV1()
+      ? buildAgentSkillContext({
+          request: userMessage,
+          intent: intents,
+          locale,
+          market: "forex",
+          availableTools: ["render_cards", "detect_levels", "get_ohlc"],
+          detectedPatterns: detectedPatternNames,
+        })
+      : skillContext;
+
   // The evidence builder prepares price-valid candidates for the model. It is
   // not a policy gate and it does not own the direction.
   let risk: RiskAgentResult | null = null;
@@ -1013,7 +1037,7 @@ async function runUnifiedChartAgentInner(
           narrative,
           geometry,
           locale,
-          skillContextBlock: skillContext.block || null,
+          skillContextBlock: skillContextFinal.block || null,
           // Realised-outcome lessons (item 14): evidence the model weighs.
           lessonsBlock,
           visualSnapshots: visual.snapshots,
@@ -1548,8 +1572,8 @@ async function runUnifiedChartAgentInner(
     newsRisk: news ? { level: news.newsRisk, reason: news.reason } : undefined,
     activityEvents: collected,
     analysisId,
-    selectedSkills: skillContext.loaded.length ? skillContext.loaded : undefined,
-    skillLoadFailures: skillContext.failed.length ? skillContext.failed : undefined,
+    selectedSkills: skillContextFinal.loaded.length ? skillContextFinal.loaded : undefined,
+    skillLoadFailures: skillContextFinal.failed.length ? skillContextFinal.failed : undefined,
     // Full research kept for runTrace/admin — stripped before client SSE.
     researchEvidence: {
       ...researchEvidence,
@@ -2053,7 +2077,17 @@ async function storeFinalRecommendation(input: {
   // Best-effort: a storage failure must not break the agent's reply.
   if (input.userId != null) {
     await persistTrackedRecommendation(active, input.userId, input.sessionId, {
-      decisionTrace: input.finalDecision.decisionTrace,
+      // The timeframe-agreement ruling rides with the trace (plan §10 E): the
+      // model names which frame led and which gave context/timing, and that
+      // ruling must survive into revision 1 like every other part of the why.
+      decisionTrace: (input.finalDecision.decisionTrace
+        ? {
+            ...input.finalDecision.decisionTrace,
+            timeframeRoles: input.finalDecision.timeframeRoles ?? null,
+          }
+        : input.finalDecision.timeframeRoles
+          ? { timeframeRoles: input.finalDecision.timeframeRoles }
+          : undefined) as DecisionTrace | undefined,
       evidenceDimensions: input.finalDecision.evidenceDimensions,
     }).catch(() => {});
   }
@@ -2106,6 +2140,13 @@ async function persistTrackedRecommendation(
     planType: active.planType,
     executionState: active.executionState,
     statisticalSupport: active.statisticalSupport,
+    // The SOURCE of support, distinct from its grade: a verified strategy
+    // backed this plan, or it stands on direct analysis alone. Deep-research
+    // revisions record their own source through the revision mechanism.
+    evidenceSource:
+      active.statisticalSupport && active.statisticalSupport !== "unavailable"
+        ? "strategy_supported"
+        : "direct_analysis",
     entryLow: active.entryZone?.low,
     entryHigh: active.entryZone?.high,
     triggerCondition: active.triggerCondition,

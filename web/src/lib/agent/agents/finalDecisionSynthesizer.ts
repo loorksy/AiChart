@@ -832,7 +832,10 @@ function applyModelDecision(
           ? sanitizePublicText(parsed.timeframeRoles.timing).slice(0, 16)
           : null,
       }
-    : undefined;
+    : // The ruling is part of the contract (plan §10 E): when the model omits
+      // it, the analysis frame led by construction — recorded as such rather
+      // than dropped, so every decision carries a timeframe-agreement ruling.
+      { lead: input.market.interval, context: null, timing: null };
 
   return {
     decision: direction,

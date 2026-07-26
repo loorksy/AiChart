@@ -43,6 +43,7 @@ export interface EvaluateInput {
     | "createdAt"
     | "createdCandleTime"
     | "expiresAt"
+    | "validityCandles"
     | "triggeredAt"
     | "tp1HitAt"
     | "tp2HitAt"
@@ -140,8 +141,21 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     changed: true,
   });
 
+  let elapsedCandles = 0;
   for (const candle of candles) {
+    elapsedCandles += 1;
     if (!triggered) {
+      // Candle-count validity (plan §7 B.7): an untriggered plan is only
+      // meaningful for the number of candles the contract gave it. Checked
+      // alongside wall-clock expiry, per candle so the expiry lands on the
+      // candle that overran the budget, not on whenever the sweep next runs.
+      // Once triggered, SL/TP govern — a live position does not "expire".
+      if (r.validityCandles != null && r.validityCandles > 0 && elapsedCandles > r.validityCandles) {
+        return {
+          ...finalize("expired", "expired"),
+          expiredAt: candle.time,
+        };
+      }
       if (entryTouched(dir, candle, r.entry)) {
         triggered = true;
         triggeredAt = candle.time;

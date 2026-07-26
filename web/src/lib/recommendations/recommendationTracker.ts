@@ -91,6 +91,7 @@ export async function trackOneRecommendation(
       createdAt: toMs(rec.createdAt),
       createdCandleTime: createdCandleTimeMs,
       expiresAt: rec.expiresAt,
+      validityCandles: rec.validityCandles,
       triggeredAt: rec.triggeredAt,
       tp1HitAt: rec.tp1HitAt,
       tp2HitAt: rec.tp2HitAt,
@@ -116,6 +117,26 @@ export async function trackOneRecommendation(
   // status change — and because a sweep over unchanged candles must produce an
   // empty list, which is what keeps the notifications honest.
   const lastCandle = candles.at(-1);
+  const atr = approximateAtr(candles);
+  // Retest tracking inputs (plan §7 B.6). A breakout-retest plan's entry IS
+  // the broken level, and the excursion is how far price ran beyond it since
+  // creation — from the same candles the evaluator just walked. Without these
+  // the retest_started / breakout_no_retest events can never fire.
+  const isRetestPlan =
+    typeof rec.setupType === "string" && rec.setupType.includes("retest");
+  let retestLevel: number | null = null;
+  let excursionAtr: number | null = null;
+  if (isRetestPlan && Number.isFinite(rec.entry) && rec.entry > 0) {
+    retestLevel = rec.entry;
+    const since = candles.filter((c) => c.time > createdCandleTimeMs);
+    if (atr && atr > 0 && since.length) {
+      const excursion =
+        rec.direction === "buy"
+          ? Math.max(...since.map((c) => c.high)) - rec.entry
+          : rec.entry - Math.min(...since.map((c) => c.low));
+      excursionAtr = excursion > 0 ? excursion / atr : 0;
+    }
+  }
   const events = deriveLifecycleEvents({
     recommendation: {
       id: rec.id,
@@ -130,7 +151,9 @@ export async function trackOneRecommendation(
     previousStatus: rec.status,
     nextStatus: result.status,
     currentPrice: lastCandle?.close ?? null,
-    atr: approximateAtr(candles),
+    atr,
+    retestLevel,
+    excursionAtr,
     revisionNo: rec.revisionNo ?? null,
   });
 
@@ -289,12 +312,15 @@ export async function trackRecommendations(
     const cycles = await runReevaluationCycles(pendingCycles).catch(() => []);
     for (const cycle of cycles) {
       if (cycle.verdict === "skipped") continue;
-      // A confirmation is worth hearing too: "looked again and stood by it" is
-      // different information from silence.
+      // Labels match what actually happened: a revision moved the plan
+      // (entry_updated); an invalidation means the alternative scenario took
+      // over (scenario_changed); a confirmation is recorded in
+      // recommendation_reevaluations but is not a plan change to announce.
+      if (cycle.verdict === "confirmed") continue;
       byUser.set(cycle.trigger.userId, [
         ...(byUser.get(cycle.trigger.userId) ?? []),
         {
-          type: cycle.verdict === "confirmed" ? "scenario_changed" : "entry_updated",
+          type: cycle.verdict === "invalidated" ? "scenario_changed" : "entry_updated",
           recommendationId: cycle.trigger.recommendationId,
           symbol: cycle.trigger.symbol,
           revisionNo: cycle.revision?.revisionNo ?? cycle.trigger.revisionNo,

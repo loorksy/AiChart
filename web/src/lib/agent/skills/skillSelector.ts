@@ -65,6 +65,10 @@ export function selectAgentSkills(
   const requestTokens = [
     ...tokens(context.request),
     ...(context.intent ?? []).flatMap((i) => tokens(i)),
+    // Detected pattern names are selection signal like any request token — a
+    // chart showing a forming triangle asks for the atlas as loudly as a user
+    // typing the word.
+    ...(context.detectedPatterns ?? []).flatMap((p) => tokens(p.replace(/_/g, " "))),
   ];
   const available = new Set(context.availableTools ?? []);
   const intents = (context.intent ?? []).map((i) => i.toLocaleLowerCase());
@@ -115,6 +119,14 @@ export function selectAgentSkills(
       // Market is a soft boost only after request/intent overlap.
       if (score > 0 && context.market) {
         score += overlap(tokens(context.market), caps) > 0 ? 1 : 0;
+      }
+      // The atlas is FOR detected patterns: when the geometry engine found
+      // one, the atlas is selected on that fact, not on request phrasing.
+      if (
+        skill.metadata.name === ATLAS_SKILL &&
+        (context.detectedPatterns?.length ?? 0) > 0
+      ) {
+        score += 4;
       }
       return { skill, score };
     })

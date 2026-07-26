@@ -39,4 +39,10 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 
+# Weekly rollout report (plan §17) — Sundays 18:00 UTC. Aggregates the critical
+# invariants (hidden WAIT, wrong-mode execution, unexplained parity), 7-day
+# revision/re-evaluation activity from the tables, and process counters, then
+# sends one Telegram message per operator. GET the same path for a preview.
+0 18 * * 0 root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/weekly-report >/dev/null 2>&1
+
 # than 14 days so stale history never bloats disk or future context.

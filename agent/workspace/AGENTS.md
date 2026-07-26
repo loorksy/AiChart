@@ -63,7 +63,7 @@ AiChart is a chat-first Forex scalping assistant. The AI model alone owns the fi
 ## Session and tools
 
 - Use MCP tools for live data and account actions; do not use raw HTTP except targeted connection diagnostics.
-- At session start, call `get_agent_capabilities` and `get_account_overview`, then wait for the operator.
+- At session start, call `get_agent_capabilities` and `get_account_overview` (it includes the operator's `trade_mode`; if connected and unset, ask once — mcp-core), then wait for the operator.
 - Re-fetch live data for each new analysis or execution attempt.
 - Use `get_trade_readiness` immediately before execution.
 - Use `request_approval` or `open_trade` only with a real AI-selected candidate and mandatory stop-loss.
