@@ -204,8 +204,8 @@ export async function createCanonicalRecommendation(
          backtest_id, market_regime, strategy_id, strategy_version, expires_at, status, status_reason,
          source, engine_version, entry_type, legacy_tracking_id, rationale, factors,
          chart_drawings_json, pattern_name, analysis_tier, context_json,
-         statistical_support, updated_at, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
+         statistical_support, evidence_source, updated_at, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
       [
         input.userId,
         input.analysisId ?? null,
@@ -243,6 +243,7 @@ export async function createCanonicalRecommendation(
         input.analysisTier ?? null,
         input.contextJson ?? null,
         input.statisticalSupport ?? null,
+        input.evidenceSource ?? null,
         now,
         now,
       ],

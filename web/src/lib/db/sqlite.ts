@@ -97,6 +97,12 @@ const SCHEMA = `
     plan_type       TEXT,
     execution_state TEXT,
     statistical_support TEXT,
+    -- Where the decision's support actually came from. Named separately from
+    -- statistical_support (a GRADE) because the source and its strength are
+    -- different facts: direct_analysis | strategy_supported | historical_memory
+    -- | deep_research. NULL on rows written before it existed — never given a
+    -- value that would imply evidence the row does not have.
+    evidence_source TEXT,
     updated_at      INTEGER,
     rationale       TEXT,
     factors         TEXT,
@@ -1080,6 +1086,7 @@ function migrate(db: Database.Database) {
     ["plan_type", "TEXT"],
     ["execution_state", "TEXT"],
     ["statistical_support", "TEXT"],
+    ["evidence_source", "TEXT"],
   ];
   for (const [name, definition] of canonicalRecColumns) {
     if (!recCols.some((column) => column.name === name)) {

@@ -154,6 +154,7 @@ describe("create_recommendation visual audit fields", () => {
   const base = {
     symbol: "XAUUSD",
     action: "buy" as const,
+    plan_type: "immediate" as const,
     strategy_id: "ema_trend_follow_v1" as const,
     backtested_confidence: 62.5,
     market_regime: "trending",

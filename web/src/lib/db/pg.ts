@@ -91,6 +91,10 @@ const SCHEMA = `
     plan_type       TEXT,
     execution_state TEXT,
     statistical_support TEXT,
+    -- Where the decision's support came from, distinct from its grade above:
+    -- direct_analysis | strategy_supported | historical_memory | deep_research.
+    -- NULL on pre-existing rows; never backfilled with an implied source.
+    evidence_source TEXT,
     rationale       TEXT,
     factors         TEXT,
     chart_image_url TEXT,
@@ -1082,7 +1086,8 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS effective_revision_no INTEGER,
       ADD COLUMN IF NOT EXISTS plan_type TEXT,
       ADD COLUMN IF NOT EXISTS execution_state TEXT,
-      ADD COLUMN IF NOT EXISTS statistical_support TEXT
+      ADD COLUMN IF NOT EXISTS statistical_support TEXT,
+      ADD COLUMN IF NOT EXISTS evidence_source TEXT
   `).catch(() => {});
   await client.query(`
     UPDATE recommendations

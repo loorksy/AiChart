@@ -124,6 +124,12 @@ export interface CreateCanonicalRecommendationInput {
   /** Verified statistical backing: strong | moderate | weak | unavailable. */
   statisticalSupport?: string | null;
   /**
+   * Where the support came from — a different fact from how strong it is:
+   * direct_analysis | strategy_supported | historical_memory | deep_research.
+   * Left null rather than guessed, so a row never implies evidence it lacks.
+   */
+  evidenceSource?: string | null;
+  /**
    * The plan fields and evidence that seed revision 1.
    *
    * Every recommendation gets an effective revision at creation, so a later

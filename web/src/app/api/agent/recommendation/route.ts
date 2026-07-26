@@ -48,6 +48,13 @@ const schema = z
   .object({
     symbol: z.string().min(1),
     action: z.enum(["buy", "sell", "wait"]),
+    /**
+     * How the plan is entered — the contract's second layer. Optional in the
+     * SCHEMA so a legacy client is not broken at parse time, then required for a
+     * new buy/sell below: a direction with no plan type does not say whether to
+     * act now or wait for a condition.
+     */
+    plan_type: z.enum(["immediate", "anticipatory", "conditional"]).optional(),
     // Retained for WAIT/backward compatibility. BUY/SELL confidence is always
     // replaced by server-owned calibrated evidence below.
     confidence: z.number().min(0).max(100).optional(),
@@ -96,6 +103,16 @@ const schema = z
           "WAIT is not an analytical outcome. Return a direction (buy or sell) with a plan type — immediate, anticipatory, or conditional — or report the operational blocker that prevents reading the market.",
       });
       return;
+    }
+    // The plan type is required alongside the levels for the same reason: the
+    // direction says what, the levels say where, and the plan type says when.
+    if (body.plan_type == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["plan_type"],
+        message:
+          "plan_type is required for BUY/SELL: immediate (enter now), anticipatory (structure still forming), or conditional (waits for a stated trigger)",
+      });
     }
     // Levels are required because a direction without them is not a plan.
     // Strategy evidence is NOT: a recommendation with no matching backtest is
@@ -236,6 +253,7 @@ export async function POST(req: NextRequest) {
     const rec = await saveRecommendation(userId, {
       symbol: normalizedSymbol,
       action: body.action,
+      plan_type: body.plan_type ?? null,
       confidence: displayedConfidence,
       entry: body.entry ?? null,
       stop_loss: body.stop_loss ?? null,

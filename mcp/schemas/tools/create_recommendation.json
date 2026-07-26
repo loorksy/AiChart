@@ -12,6 +12,14 @@
         "sell"
       ]
     },
+    "plan_type": {
+      "type": "string",
+      "enum": [
+        "immediate",
+        "anticipatory",
+        "conditional"
+      ]
+    },
     "confidence": {
       "type": "number",
       "minimum": 0,
@@ -109,6 +117,7 @@
   "required": [
     "symbol",
     "action",
+    "plan_type",
     "rationale",
     "factors"
   ],

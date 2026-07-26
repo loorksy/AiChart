@@ -61,6 +61,17 @@ const recommendationSharedFields = {
 export const createRecommendationInput = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("buy"),
+  /**
+   * How the plan is entered — the contract's second layer, and mandatory.
+   * A direction with no plan type does not say whether the operator should act
+   * now or wait for a stated condition, which is the difference between a plan
+   * and an opinion.
+   */
+  plan_type: z
+    .enum(["immediate", "anticipatory", "conditional"])
+    .describe(
+      "immediate = price is in a valid entry area now. anticipatory = entering while the structure is still forming (higher risk, say so). conditional = the entry waits for a stated trigger.",
+    ),
     ...recommendationSharedFields,
     strategy_id: zBacktestStrategyId.optional(),
     backtested_confidence: zConfidence.optional(),
@@ -71,6 +82,17 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("sell"),
+  /**
+   * How the plan is entered — the contract's second layer, and mandatory.
+   * A direction with no plan type does not say whether the operator should act
+   * now or wait for a stated condition, which is the difference between a plan
+   * and an opinion.
+   */
+  plan_type: z
+    .enum(["immediate", "anticipatory", "conditional"])
+    .describe(
+      "immediate = price is in a valid entry area now. anticipatory = entering while the structure is still forming (higher risk, say so). conditional = the entry waits for a stated trigger.",
+    ),
     ...recommendationSharedFields,
     strategy_id: zBacktestStrategyId.optional(),
     backtested_confidence: zConfidence.optional(),
@@ -122,6 +144,7 @@ const createRecommendationCatalogShape = {
   // No "wait": every successful analysis ends in a direction. An unreadable
   // market is an operational blocker reported as such, not a recommendation.
   action: z.enum(["buy", "sell"]),
+  plan_type: z.enum(["immediate", "anticipatory", "conditional"]),
   confidence: zConfidence.optional(),
   rationale: z.string().min(10),
   factors: z.array(z.string()).min(1).max(8),
@@ -250,7 +273,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: after choosing a direction — record the recommendation. Only buy or sell: every successful analysis ends in a direction with a plan, and an unreadable market is reported as a named operational blocker rather than a recommendation. BUY/SELL require valid entry/SL/TP levels. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
+      "When: after choosing a direction — record the recommendation. Only buy or sell: every successful analysis ends in a direction with a plan, and an unreadable market is reported as a named operational blocker rather than a recommendation. BUY/SELL require valid entry/SL/TP levels AND plan_type (immediate | anticipatory | conditional) — a direction with no plan type does not say whether to act now or wait for a condition. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },

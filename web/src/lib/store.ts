@@ -613,6 +613,10 @@ export async function saveRecommendation(
     expires_at?: number | null;
     entry_type?: string | null;
     engine_version?: string | null;
+    /** The contract's second layer, carried through to the canonical row. */
+    plan_type?: string | null;
+    /** Where the support came from, distinct from its grade. */
+    evidence_source?: string | null;
   },
 ): Promise<Recommendation> {
   const action = rec.action === "buy" || rec.action === "sell" ? rec.action : "wait";
@@ -645,6 +649,8 @@ export async function saveRecommendation(
     source: rec.source ?? "web",
     engineVersion: rec.engine_version ?? "aichart-phase4-v1",
     entryType: rec.entry_type ?? undefined,
+    planType: rec.plan_type ?? null,
+    evidenceSource: rec.evidence_source ?? null,
     rationale: rec.rationale ?? undefined,
     factors: rec.factors ?? undefined,
     chartDrawingsJson: rec.chart_drawings_json ?? undefined,

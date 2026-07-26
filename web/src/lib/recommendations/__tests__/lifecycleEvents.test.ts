@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   deriveLifecycleEvents,
+  RETEST_ABANDONED_ATR,
   proximityThreshold,
 } from "@/lib/recommendations/lifecycleEvents";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
@@ -135,5 +136,88 @@ describe("lifecycle events", () => {
     assert.equal(proximityThreshold({ atr: 2, price: 4000 }), 1.5);
     // No ATR → a small fraction of price rather than a fixed pip count.
     assert.ok(proximityThreshold({ atr: null, price: 4000 }) > 0);
+  });
+});
+
+describe("retest events", () => {
+  /**
+   * A plan built on a broken level is waiting for one of exactly two things, and
+   * they mean opposite things to the operator: price came back (the entry is
+   * live) or price left without it (the plan will not fill). Announcing neither
+   * leaves a pending plan silently un-fillable.
+   */
+  it("announces the retest when price returns to the break level", () => {
+    const events = deriveLifecycleEvents({
+      recommendation: rec({ entry: 1.1, stopLoss: 1.09 }),
+      previousStatus: "pending_entry",
+      nextStatus: "pending_entry",
+      currentPrice: 1.1002,
+      atr: 0.002,
+      retestLevel: 1.1,
+    });
+    assert.ok(events.some((e) => e.type === "retest_started"));
+    assert.ok(!events.some((e) => e.type === "breakout_no_retest"));
+  });
+
+  it("says the move left without a retest once it runs past the threshold", () => {
+    const events = deriveLifecycleEvents({
+      recommendation: rec({ entry: 1.1, stopLoss: 1.09 }),
+      previousStatus: "pending_entry",
+      nextStatus: "pending_entry",
+      currentPrice: 1.118,
+      atr: 0.002,
+      retestLevel: 1.1,
+      excursionAtr: RETEST_ABANDONED_ATR,
+    });
+    assert.ok(events.some((e) => e.type === "breakout_no_retest"));
+    assert.ok(!events.some((e) => e.type === "retest_started"));
+  });
+
+  it("stays quiet while the excursion is still short of the threshold", () => {
+    const events = deriveLifecycleEvents({
+      recommendation: rec({ entry: 1.1, stopLoss: 1.09 }),
+      previousStatus: "pending_entry",
+      nextStatus: "pending_entry",
+      currentPrice: 1.108,
+      atr: 0.002,
+      retestLevel: 1.1,
+      excursionAtr: RETEST_ABANDONED_ATR - 0.5,
+    });
+    assert.ok(!events.some((e) => e.type === "breakout_no_retest"));
+    assert.ok(!events.some((e) => e.type === "retest_started"));
+  });
+
+  it("says nothing at all when no retest level was given", () => {
+    const events = deriveLifecycleEvents({
+      recommendation: rec({ entry: 1.1, stopLoss: 1.09 }),
+      previousStatus: "pending_entry",
+      nextStatus: "pending_entry",
+      currentPrice: 1.1,
+      atr: 0.002,
+    });
+    assert.ok(!events.some((e) => e.type === "retest_started"));
+    assert.ok(!events.some((e) => e.type === "breakout_no_retest"));
+  });
+
+  it("keys both events by revision so a re-plan re-announces", () => {
+    const [first] = deriveLifecycleEvents({
+      recommendation: rec({ entry: 1.1, stopLoss: 1.09 }),
+      previousStatus: "pending_entry",
+      nextStatus: "pending_entry",
+      currentPrice: 1.1002,
+      atr: 0.002,
+      retestLevel: 1.1,
+      revisionNo: 1,
+    }).filter((e) => e.type === "retest_started");
+    const [second] = deriveLifecycleEvents({
+      recommendation: rec({ entry: 1.1, stopLoss: 1.09 }),
+      previousStatus: "pending_entry",
+      nextStatus: "pending_entry",
+      currentPrice: 1.1002,
+      atr: 0.002,
+      retestLevel: 1.1,
+      revisionNo: 2,
+    }).filter((e) => e.type === "retest_started");
+    assert.notEqual(first!.dedupeKey, second!.dedupeKey);
   });
 });

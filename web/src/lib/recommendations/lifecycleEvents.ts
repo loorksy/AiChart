@@ -19,6 +19,10 @@ export type LifecycleEventType =
   | "approaching_invalidation"
   | "entry_updated"
   | "scenario_changed"
+  /** Price came back to a broken level — the retest an entry may wait for. */
+  | "retest_started"
+  /** It broke and ran without returning: a retest plan will not fill. */
+  | "breakout_no_retest"
   | "tp1_hit"
   | "tp2_hit"
   | "tp3_hit"
@@ -72,8 +76,28 @@ export interface DeriveEventsInput {
   revisionNo?: number | null;
   /** Set when this sweep followed a revision, so the change is announced. */
   revisionJustApplied?: { revisionNo: number; reason: string } | null;
+  /**
+   * A level the plan expects price to come back to before entering — the break
+   * level of the structure it was built on. A retest plan lives or dies on
+   * whether price returns here, so the two outcomes are announced separately.
+   */
+  retestLevel?: number | null;
+  /**
+   * Furthest price has travelled beyond `retestLevel` since the break, in ATR.
+   * Past RETEST_ABANDONED_ATR the move has run and a retest entry will not fill.
+   */
+  excursionAtr?: number | null;
   now?: number;
 }
+
+/**
+ * How far past the break level counts as "gone without a retest".
+ *
+ * Two ATR is the point where waiting for a return stops being a plan and starts
+ * being hope: the move has paid a whole target's distance without offering the
+ * entry.
+ */
+export const RETEST_ABANDONED_ATR = 2;
 
 const STATUS_EVENTS: Partial<Record<TrackedRecommendation["status"], LifecycleEventType>> = {
   triggered: "activated",
@@ -163,6 +187,30 @@ export function deriveLifecycleEvents(input: DeriveEventsInput): LifecycleEvent[
     }
   }
 
+  // Retest tracking. A plan built on a broken level is waiting for one of two
+  // things to happen, and the operator needs to hear which: price came back
+  // (the entry is live) or price left without it (the plan will not fill).
+  const retest = Number(input.retestLevel);
+  if (live && Number.isFinite(price) && price > 0 && Number.isFinite(retest) && retest > 0) {
+    const band = proximityThreshold({ atr: input.atr, price });
+    const excursion = Number(input.excursionAtr ?? 0);
+    const returned = Math.abs(price - retest) <= band;
+
+    if (returned && input.nextStatus === "pending_entry") {
+      push("retest_started", `${rec.symbol}: السعر عاد لاختبار مستوى الكسر (${retest}).`);
+    } else if (
+      !returned &&
+      Number.isFinite(excursion) &&
+      excursion >= RETEST_ABANDONED_ATR &&
+      input.nextStatus === "pending_entry"
+    ) {
+      push(
+        "breakout_no_retest",
+        `${rec.symbol}: الحركة تجاوزت ${RETEST_ABANDONED_ATR} ATR بعد الكسر دون إعادة اختبار — خطة إعادة الاختبار لن تُنفَّذ.`,
+      );
+    }
+  }
+
   return events;
 }
 
@@ -182,6 +230,10 @@ function statusDetail(type: LifecycleEventType, symbol: string): string {
       return `${symbol}: أُبطلت الخطة.`;
     case "expired":
       return `${symbol}: انتهت صلاحية الخطة.`;
+    case "retest_started":
+      return `${symbol}: بدأ اختبار مستوى الكسر.`;
+    case "breakout_no_retest":
+      return `${symbol}: اخترق وواصل دون إعادة اختبار.`;
     default:
       return symbol;
   }

@@ -19,11 +19,44 @@ describe("create_recommendation structural gate", () => {
     assert.equal(parsed.success, false);
   });
 
+  it("refuses a direction with no plan type", () => {
+    // The direction says what, the levels say where, and the plan type says
+    // when. Without it the operator cannot tell "enter now" from "wait for the
+    // trigger", which is the difference between a plan and an opinion.
+    const parsed = createRecommendationInput.safeParse({
+      symbol: "EURUSD",
+      action: "buy",
+      rationale: "Structure is bullish and the demand zone held twice.",
+      factors: ["demand zone"],
+      entry: 1.1,
+      stop_loss: 1.09,
+      take_profit: 1.12,
+    });
+    assert.equal(parsed.success, false);
+  });
+
+  it("accepts each of the three plan types", () => {
+    for (const planType of ["immediate", "anticipatory", "conditional"] as const) {
+      const parsed = createRecommendationInput.safeParse({
+        symbol: "EURUSD",
+        action: "buy",
+        plan_type: planType,
+        rationale: "Structure is bullish and the demand zone held twice.",
+        factors: ["demand zone"],
+        entry: 1.1,
+        stop_loss: 1.09,
+        take_profit: 1.12,
+      });
+      assert.equal(parsed.success, true, `${planType} must be accepted`);
+    }
+  });
+
   it("refuses a direction with no levels", () => {
     // A direction with nowhere to enter, stop, or take profit is not a plan.
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
+      plan_type: "immediate",
       rationale: "Structure is bullish and the zone held.",
       factors: ["demand zone"],
     });
@@ -35,6 +68,7 @@ describe("create_recommendation structural gate", () => {
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
+      plan_type: "immediate",
       confidence: 80,
       rationale: "We buy the bounce from demand.",
       factors: ["demand zone"],
@@ -49,6 +83,7 @@ describe("create_recommendation structural gate", () => {
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
+      plan_type: "immediate",
       confidence: 80,
       rationale: "We buy the bounce from demand.",
       factors: ["demand zone"],
@@ -60,6 +95,7 @@ describe("create_recommendation structural gate", () => {
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
+      plan_type: "immediate",
       strategy_id: "ema_trend_follow_v1",
       backtested_confidence: 62.5,
       market_regime: "trending_up",
@@ -99,6 +135,7 @@ describe("create_recommendation structural gate", () => {
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "sell",
+      plan_type: "conditional",
       strategy_id: "invented_edge_v9",
       backtested_confidence: 70,
       market_regime: "trending_down",
