@@ -2,7 +2,7 @@
 
 ## Last SHA
 
-Will be updated after push. Base of this window: `7bed487` (`feat: materialize platform MCP decision parity`).
+`b1b818b` (`docs: finalize unified-agent completion audit`) on top of `7bed487`.
 
 Worktree (do not use main checkout — branch is locked there):
 
