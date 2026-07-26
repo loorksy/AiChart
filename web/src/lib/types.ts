@@ -153,6 +153,10 @@ export interface TradeIntent {
   id: number;
   user_id: number;
   recommendation_id: number | null;
+  /** Revision of that recommendation the levels came from. */
+  recommendation_revision_no?: number | null;
+  /** Explicit per-trade approval, or the operator's standing auto mode. */
+  authorization_source?: "user_approved" | "standing_auto" | null;
   symbol: string;
   side: "buy" | "sell";
   notional: number;

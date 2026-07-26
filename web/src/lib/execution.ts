@@ -20,6 +20,7 @@ import {
 } from "./executionKillSwitch";
 import { getResolvedExecutionEnv } from "./executionEnv";
 import { getEaConnection } from "./eaStore";
+import { checkRevisionIsCurrent } from "./recommendations/canonical/revisions";
 import { BridgeErrorCode } from "./bridge/errors";
 import { getBrokerAdapter } from "./brokers";
 import { metrics } from "./metrics";
@@ -175,6 +176,42 @@ export async function executeIntent(
       denyCode: BridgeErrorCode.EXECUTION_UNAUTHORIZED,
       activities,
     };
+  }
+
+  // Are these still the levels the agent stands behind?
+  //
+  // An order can sit between being built and being sent — waiting on approval,
+  // or on a conditional plan's trigger — and in that gap deep research or a
+  // structure break can move the plan. Executing the old numbers would fill a
+  // trade the agent has already withdrawn, so a superseded revision is refused
+  // here rather than quietly sent (docs/UNIFIED_AGENT_PLAN.md §14).
+  if (intent.recommendation_id != null && intent.recommendation_revision_no != null) {
+    const revision = await checkRevisionIsCurrent({
+      userId,
+      recommendationId: intent.recommendation_id,
+      revisionNo: intent.recommendation_revision_no,
+    }).catch(() => null);
+    if (revision && !revision.ok) {
+      const reason =
+        revision.reason === "stale_revision"
+          ? `تغيّرت خطة التوصية (النسخة الفعالة الآن ${revision.effectiveRevisionNo}) — لم يُرسل الأمر بمستويات قديمة.`
+          : "لا توجد نسخة فعالة لهذه التوصية — لم يُرسل أي أمر.";
+      push({
+        id: "safety",
+        label: `النسخة الفعالة · ${intent.symbol}`,
+        status: "error",
+        detail: reason,
+      });
+      await updateIntentDenied(intentId, reason, BridgeErrorCode.VALIDATION_ERROR, userId);
+      metrics.executionDenials.inc({ code: "STALE_REVISION" });
+      return {
+        ok: false,
+        status: "failed",
+        reason,
+        denyCode: BridgeErrorCode.VALIDATION_ERROR,
+        activities,
+      };
+    }
   }
 
   push({ id: "safety", label: `التحقق التقني · ${intent.symbol}`, status: "running" });

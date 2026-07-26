@@ -86,6 +86,10 @@ const SCHEMA = `
     engine_version  TEXT NOT NULL DEFAULT 'legacy',
     entry_type      TEXT,
     legacy_tracking_id TEXT,
+    effective_revision_no INTEGER,
+    plan_type       TEXT,
+    execution_state TEXT,
+    statistical_support TEXT,
     updated_at      INTEGER,
     rationale       TEXT,
     factors         TEXT,
@@ -106,6 +110,10 @@ const SCHEMA = `
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id           INTEGER NOT NULL,
     recommendation_id INTEGER,
+    -- Which revision of that recommendation this order was built from, and who
+    -- authorised it. Both are checked again at execution time.
+    recommendation_revision_no INTEGER,
+    authorization_source TEXT,
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          REAL NOT NULL,
@@ -556,6 +564,42 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_recommendation_history_replay
     ON recommendation_history (user_id, recommendation_id, occurred_at, id);
 
+  -- Every edit to a live recommendation lands here as a new row; the pointer
+  -- column effective_revision_no on recommendations says which one is in force.
+  -- Prior revisions stay readable but stop being executable, so a level the
+  -- agent has since moved can never be filled, and "what did it say at the
+  -- time" always has an answer. evidence_json freezes the bundle it decided on.
+  CREATE TABLE IF NOT EXISTS recommendation_revisions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_id INTEGER NOT NULL,
+    user_id           INTEGER NOT NULL,
+    revision_no       INTEGER NOT NULL,
+    direction         TEXT NOT NULL,
+    plan_type         TEXT,
+    execution_state   TEXT,
+    entry             REAL,
+    entry_low         REAL,
+    entry_high        REAL,
+    stop_loss         REAL,
+    targets_json      TEXT NOT NULL DEFAULT '[]',
+    activation_condition TEXT,
+    invalidation_rule TEXT,
+    alternative_scenario TEXT,
+    validity_candles  INTEGER,
+    expires_at        INTEGER,
+    reason            TEXT NOT NULL,
+    source            TEXT NOT NULL,
+    evidence_hash     TEXT,
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    decision_trace_json TEXT NOT NULL DEFAULT '{}',
+    created_at        INTEGER NOT NULL,
+    UNIQUE (recommendation_id, revision_no),
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_revisions_lookup
+    ON recommendation_revisions (user_id, recommendation_id, revision_no DESC);
+
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     recommendation_id INTEGER NOT NULL,
@@ -765,6 +809,9 @@ const SCHEMA = `
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_history_update
     BEFORE UPDATE ON recommendation_history
     BEGIN SELECT RAISE(ABORT, 'recommendation history is append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_recommendation_revisions_update
+    BEFORE UPDATE ON recommendation_revisions
+    BEGIN SELECT RAISE(ABORT, 'recommendation revisions are append-only'); END;
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_transitions_update
     BEFORE UPDATE ON recommendation_transitions
     BEGIN SELECT RAISE(ABORT, 'recommendation transitions are append-only'); END;
@@ -947,6 +994,12 @@ function migrate(db: Database.Database) {
     ["entry_type", "TEXT"],
     ["legacy_tracking_id", "TEXT"],
     ["updated_at", "INTEGER"],
+    // Which revision is in force. NULL on rows written before revisions
+    // existed: those stay readable and are never treated as executable.
+    ["effective_revision_no", "INTEGER"],
+    ["plan_type", "TEXT"],
+    ["execution_state", "TEXT"],
+    ["statistical_support", "TEXT"],
   ];
   for (const [name, definition] of canonicalRecColumns) {
     if (!recCols.some((column) => column.name === name)) {
@@ -1121,6 +1174,12 @@ function migrate(db: Database.Database) {
   }
   if (!intentCols.some((c) => c.name === "limit_price")) {
     db.exec("ALTER TABLE trade_intents ADD COLUMN limit_price REAL");
+  }
+  if (!intentCols.some((c) => c.name === "recommendation_revision_no")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN recommendation_revision_no INTEGER");
+  }
+  if (!intentCols.some((c) => c.name === "authorization_source")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN authorization_source TEXT");
   }
   if (!tradeCols.some((c) => c.name === "limit_price")) {
     db.exec("ALTER TABLE trades ADD COLUMN limit_price REAL");

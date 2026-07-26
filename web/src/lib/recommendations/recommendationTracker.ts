@@ -16,6 +16,7 @@ import {
   evaluateRecommendation,
   type TrackerCandle,
 } from "./recommendationStatus";
+import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
 import type { TrackedRecommendation } from "./types";
 
 /** Normalize an epoch value to milliseconds (warehouse stores may use seconds). */
@@ -27,12 +28,20 @@ export interface TrackSweepResult {
   checked: number;
   updated: number;
   terminal: number;
+  /** Everything worth announcing from this sweep (see lifecycleEvents). */
+  events: LifecycleEvent[];
 }
 
 /** Evaluate one recommendation against fresh candles and persist any change. */
+export interface TrackOneResult {
+  recommendation: TrackedRecommendation | null;
+  /** Real changes since the last sweep; empty when nothing moved. */
+  events: LifecycleEvent[];
+}
+
 export async function trackOneRecommendation(
   rec: TrackedRecommendation,
-): Promise<TrackedRecommendation | null> {
+): Promise<TrackOneResult> {
   const symbol = forexCanonicalKey(rec.symbol);
   const interval = normalizeCanonicalInterval(rec.interval);
   const createdCandleTimeMs = toMs(rec.createdCandleTime);
@@ -74,7 +83,7 @@ export async function trackOneRecommendation(
     candles,
   });
 
-  return updateTrackedRecommendation(rec.userId, rec.id, {
+  const updated = await updateTrackedRecommendation(rec.userId, rec.id, {
     status: result.status,
     outcome: result.outcome,
     triggeredAt: result.triggeredAt,
@@ -85,6 +94,40 @@ export async function trackOneRecommendation(
     expiredAt: result.expiredAt,
     lastCheckedAt: Date.now(),
   });
+
+  // What changed, in operator terms. Derived here rather than inside the
+  // evaluator because approaching a level is worth announcing without being a
+  // status change — and because a sweep over unchanged candles must produce an
+  // empty list, which is what keeps the notifications honest.
+  const lastCandle = candles.at(-1);
+  const events = deriveLifecycleEvents({
+    recommendation: {
+      id: rec.id,
+      symbol: rec.symbol,
+      direction: rec.direction,
+      entry: rec.entry,
+      stopLoss: rec.stopLoss,
+      invalidationLevel: rec.invalidationLevel,
+      status: result.status,
+      outcome: result.outcome,
+    },
+    previousStatus: rec.status,
+    nextStatus: result.status,
+    currentPrice: lastCandle?.close ?? null,
+    atr: approximateAtr(candles),
+    revisionNo: rec.revisionNo ?? null,
+  });
+
+  return { recommendation: updated, events };
+}
+
+/** Cheap ATR over the tail, so proximity bands scale with the instrument. */
+function approximateAtr(candles: TrackerCandle[]): number | null {
+  const window = candles.slice(-14);
+  if (window.length < 5) return null;
+  const sum = window.reduce((acc, c) => acc + Math.abs(c.high - c.low), 0);
+  const atr = sum / window.length;
+  return atr > 0 ? atr : null;
 }
 
 /** Sweep all active recommendations (optionally for one user). */
@@ -97,9 +140,11 @@ export async function trackRecommendations(
   });
   let updated = 0;
   let terminal = 0;
+  const events: LifecycleEvent[] = [];
   for (const rec of active) {
     try {
-      const next = await trackOneRecommendation(rec);
+      const { recommendation: next, events: recEvents } = await trackOneRecommendation(rec);
+      events.push(...recEvents);
       if (!next) continue;
       if (next.status !== rec.status || next.outcome !== rec.outcome) updated += 1;
       if (next.outcome !== "pending") terminal += 1;
@@ -107,7 +152,7 @@ export async function trackRecommendations(
       // A single failing symbol must not abort the whole sweep.
     }
   }
-  return { checked: active.length, updated, terminal };
+  return { checked: active.length, updated, terminal, events };
 }
 
 export interface SweepRunResult extends TrackSweepResult {
@@ -143,6 +188,6 @@ export async function runRecommendationSweep(opts: {
       error: err instanceof Error ? err.name : "unknown",
       durationMs,
     });
-    return { checked: 0, updated: 0, terminal: 0, durationMs };
+    return { checked: 0, updated: 0, terminal: 0, events: [], durationMs };
   }
 }

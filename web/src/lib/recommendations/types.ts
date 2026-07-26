@@ -50,6 +50,10 @@ export interface TrackedRecommendation {
   netRr?: number;
   netRrTp2?: number;
   activationClass?: "immediate" | "conditional";
+  /** How the plan is entered — see the result contract's second layer. */
+  planType?: "immediate" | "anticipatory" | "conditional";
+  /** Which revision of the plan these levels belong to. */
+  revisionNo?: number;
   triggerCondition?: string;
   createdAt: number;
   createdCandleTime: number;

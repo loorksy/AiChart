@@ -81,6 +81,10 @@ const SCHEMA = `
     entry_type      TEXT,
     legacy_tracking_id TEXT,
     updated_at      BIGINT,
+    effective_revision_no INTEGER,
+    plan_type       TEXT,
+    execution_state TEXT,
+    statistical_support TEXT,
     rationale       TEXT,
     factors         TEXT,
     chart_image_url TEXT,
@@ -98,6 +102,10 @@ const SCHEMA = `
     id                SERIAL PRIMARY KEY,
     user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     recommendation_id INTEGER,
+    -- Which revision of that recommendation this order was built from, and who
+    -- authorised it. Both are checked again at execution time.
+    recommendation_revision_no INTEGER,
+    authorization_source TEXT,
     symbol            TEXT NOT NULL,
     side              TEXT NOT NULL,
     notional          DOUBLE PRECISION NOT NULL,
@@ -528,6 +536,27 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_recommendation_history_replay
     ON recommendation_history (user_id, recommendation_id, occurred_at, id);
 
+  -- See the SQLite schema for the rationale: one revision is in force at a
+  -- time, prior ones stay readable but stop being executable.
+  CREATE TABLE IF NOT EXISTS recommendation_revisions (
+    id BIGSERIAL PRIMARY KEY,
+    recommendation_id INTEGER NOT NULL REFERENCES recommendations(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    revision_no INTEGER NOT NULL,
+    direction TEXT NOT NULL, plan_type TEXT, execution_state TEXT,
+    entry DOUBLE PRECISION, entry_low DOUBLE PRECISION, entry_high DOUBLE PRECISION,
+    stop_loss DOUBLE PRECISION, targets_json TEXT NOT NULL DEFAULT '[]',
+    activation_condition TEXT, invalidation_rule TEXT, alternative_scenario TEXT,
+    validity_candles INTEGER, expires_at BIGINT,
+    reason TEXT NOT NULL, source TEXT NOT NULL,
+    evidence_hash TEXT, evidence_json TEXT NOT NULL DEFAULT '{}',
+    decision_trace_json TEXT NOT NULL DEFAULT '{}',
+    created_at BIGINT NOT NULL,
+    UNIQUE (recommendation_id, revision_no)
+  );
+  CREATE INDEX IF NOT EXISTS idx_recommendation_revisions_lookup
+    ON recommendation_revisions (user_id, recommendation_id, revision_no DESC);
+
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id BIGSERIAL PRIMARY KEY,
     recommendation_id INTEGER NOT NULL REFERENCES recommendations(id) ON DELETE CASCADE,
@@ -668,6 +697,11 @@ const SCHEMA = `
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_recommendation_history_update') THEN
       CREATE TRIGGER immutable_recommendation_history_update
         BEFORE UPDATE ON recommendation_history
+        FOR EACH ROW EXECUTE FUNCTION reject_recommendation_history_update();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_recommendation_revisions_update') THEN
+      CREATE TRIGGER immutable_recommendation_revisions_update
+        BEFORE UPDATE ON recommendation_revisions
         FOR EACH ROW EXECUTE FUNCTION reject_recommendation_history_update();
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'immutable_recommendation_transitions_update') THEN
@@ -898,7 +932,9 @@ async function migratePg(client: PoolClient) {
 
   await client.query(`
     ALTER TABLE trade_intents
-      ADD COLUMN IF NOT EXISTS deny_code TEXT
+      ADD COLUMN IF NOT EXISTS deny_code TEXT,
+      ADD COLUMN IF NOT EXISTS recommendation_revision_no INTEGER,
+      ADD COLUMN IF NOT EXISTS authorization_source TEXT
   `).catch(() => {});
 
   await client.query(`
@@ -965,7 +1001,11 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS engine_version TEXT NOT NULL DEFAULT 'legacy',
       ADD COLUMN IF NOT EXISTS entry_type TEXT,
       ADD COLUMN IF NOT EXISTS legacy_tracking_id TEXT,
-      ADD COLUMN IF NOT EXISTS updated_at BIGINT
+      ADD COLUMN IF NOT EXISTS updated_at BIGINT,
+      ADD COLUMN IF NOT EXISTS effective_revision_no INTEGER,
+      ADD COLUMN IF NOT EXISTS plan_type TEXT,
+      ADD COLUMN IF NOT EXISTS execution_state TEXT,
+      ADD COLUMN IF NOT EXISTS statistical_support TEXT
   `).catch(() => {});
   await client.query(`
     UPDATE recommendations

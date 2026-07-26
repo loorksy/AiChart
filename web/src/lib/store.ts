@@ -822,6 +822,10 @@ export async function createIntent(
   userId: number,
   intent: {
     recommendation_id?: number | null;
+    /** Revision of that recommendation these levels came from (CAS at execute). */
+    recommendation_revision_no?: number | null;
+    /** How this order was authorised: explicit approval or a standing mode. */
+    authorization_source?: "user_approved" | "standing_auto" | null;
     symbol: string;
     side: "buy" | "sell";
     notional: number;
@@ -846,11 +850,13 @@ export async function createIntent(
     intent.broker ?? (await resolveBrokerForMarket(userId, market));
   const id = await insertReturningId(
     `INSERT INTO trade_intents
-      (user_id, recommendation_id, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (user_id, recommendation_id, recommendation_revision_no, authorization_source, symbol, side, notional, market, broker, entry, stop_loss, take_profit, confidence, rationale, status, reason, practice, market_type, leverage, order_type, limit_price)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       intent.recommendation_id ?? null,
+      intent.recommendation_revision_no ?? null,
+      intent.authorization_source ?? null,
       intent.symbol.toUpperCase(),
       intent.side,
       intent.notional,
