@@ -22,9 +22,11 @@ import type {
 } from "@/lib/research/types";
 import { calibrateBootstrapWinRate } from "./calibration";
 
-// Re-exported from the dependency-free thresholds module so client-rendered
-// code can read the number without importing this file (which pulls in the DB).
-export { MIN_BACKTEST_TRADES } from "./thresholds";
+// Imported AND re-exported: this file uses the constant internally, and a bare
+// `export ... from` would expose it without binding it in local scope. Client
+// code imports it from ./thresholds directly so it never pulls in the DB.
+import { MIN_BACKTEST_TRADES } from "./thresholds";
+export { MIN_BACKTEST_TRADES };
 
 /**
  * How many strategy configurations the factory searches — the "trials" the
