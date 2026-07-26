@@ -15,6 +15,7 @@ import {
   getCanonicalRecommendation,
 } from "@/lib/recommendations/canonical/repository";
 import { isTerminalRecommendationStatus } from "@/lib/recommendations/canonical/stateMachine";
+import { applyRecommendationRevision } from "@/lib/recommendations/canonical/revisions";
 import {
   composeDeepAnalysisUpdate,
   mapProgressToUxPhase,
@@ -32,6 +33,13 @@ import {
   type UserSafeResearchProjection,
 } from "../userSafeOutbound";
 import type { ResearchEvidenceBundle } from "../researchEvidence";
+
+/**
+ * What deep research concluded about the plan it was asked to examine.
+ * Reported on every completed run, so "we looked and found nothing against it"
+ * is stated rather than indistinguishable from "we never looked".
+ */
+export type DeepResearchVerdict = "reinforced" | "neutral" | "contradicted";
 
 const log = createLogger("deepAnalysis.completion");
 
@@ -496,6 +504,14 @@ async function finalizeSuccess(
         },
       });
     } else {
+      // Deep research reaches a verdict on the plan it was asked about, and the
+      // verdict is announced rather than filed away. It used to write
+      // "originalDecisionPreserved: true" whatever it found — so a run that
+      // contradicted the thesis changed nothing and told no one, which made the
+      // whole layer decorative.
+      const verdict: DeepResearchVerdict =
+        scored.delta < 0 ? "contradicted" : scored.delta > 0 ? "reinforced" : "neutral";
+
       await appendRecommendationHistory({
         userId: run.userId,
         recommendationId,
@@ -505,6 +521,7 @@ async function finalizeSuccess(
         payload: {
           analysisId: run.analysisId,
           status: "completed",
+          verdict,
           originalDirection: rec.direction,
           originalConfidence: rec.confidence,
           historicalEvidenceTendency: scored.delta,
@@ -514,6 +531,38 @@ async function finalizeSuccess(
         },
       });
 
+      // A contradiction is a real change to what the operator is holding, so it
+      // becomes a recorded revision — which also retires the previous levels for
+      // execution, closing the window where an auto order could still fill a
+      // plan the research has just argued against.
+      if (verdict === "contradicted") {
+        await applyRecommendationRevision({
+          userId: run.userId,
+          recommendationId,
+          revision: {
+            direction: rec.direction === "sell" ? "sell" : "buy",
+            planType: "conditional",
+            executionState: "awaiting_activation",
+            entry: rec.entry ?? null,
+            stopLoss: rec.stopLoss ?? null,
+            targets: rec.targets ?? [],
+            reason:
+              "البحث العميق يعارض الأساس التاريخي لهذه الخطة — تحوّلت إلى مشروطة بانتظار تأكيد جديد.",
+            source: "deep_research",
+            decisionTrace: {
+              verdict,
+              historicalEvidenceTendency: scored.delta,
+              agreement: scored.agreement,
+            },
+          },
+        }).catch((error: unknown) => {
+          // A terminal or concurrently-revised recommendation legitimately
+          // refuses; the history entry above already records what was found.
+          log.info("deep analysis revision skipped", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
     }
   }
 
