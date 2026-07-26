@@ -235,6 +235,15 @@ export interface UnifiedAgentInput {
   locale?: AppLocale;
   /** Optional, bounded language context. It is never a market-data authority. */
   conversationContext?: AgentConversationContext;
+  /**
+   * Which surface invoked the engine, for the parity log.
+   *
+   * Both surfaces run the SAME brain — the MCP tool proxies to the bridge route,
+   * which calls this function. So the surface is a property of the entry point,
+   * not of a second decision path. Labelling it is what lets the parity log show
+   * that a decision made through MCP and one made in chat came from one engine.
+   */
+  surface?: "platform" | "mcp";
 }
 
 export async function runUnifiedChartAgent(
@@ -1305,7 +1314,7 @@ async function runUnifiedChartAgentInner(
     symbol: market.symbol,
     timeframeSet: visual.snapshots.map((snapshot) => snapshot.timeframe),
     marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
-    surface: "platform",
+    surface: input.surface ?? "platform",
     decision: {
       direction:
         finalDecision.decision === "buy" || finalDecision.decision === "sell"

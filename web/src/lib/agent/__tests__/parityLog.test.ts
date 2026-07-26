@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { before, describe, it } from "node:test";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-parity-"));
@@ -233,5 +233,50 @@ describe("the report", () => {
       ["upsert-1"],
     );
     assert.equal(Number(rows[0]!.count), 1);
+  });
+});
+
+describe("both surfaces are labelled at their entry points", () => {
+  /**
+   * Both surfaces run the SAME engine: the MCP tool proxies to the bridge route,
+   * which calls `runUnifiedChartAgent`. So the surface is a property of the entry
+   * point, and labelling it is what lets the log DEMONSTRATE one engine rather
+   * than assume it.
+   *
+   * A consequence worth stating: one run writes one row, so two rows sharing an
+   * evidence hash only occur when the same bundle is decided twice. In production
+   * that is rare and correctly classified as not-comparable; the reference fixture
+   * harness is what deliberately produces comparable pairs.
+   */
+  it("records the platform decision from the orchestrator", () => {
+    const orchestrator = readFileSync(
+      resolve(process.cwd(), "src/lib/agent/orchestrator.ts"),
+      "utf8",
+    );
+    assert.ok(
+      /recordDecisionForParity\(/.test(orchestrator),
+      "the decision path must record a parity observation",
+    );
+    assert.ok(
+      /surface: input\.surface \?\? "platform"/.test(orchestrator),
+      "the surface must come from the caller, defaulting to platform",
+    );
+    // Recorded from the frozen bundle, not re-derived afterwards — otherwise two
+    // surfaces could never produce a matching hash.
+    assert.ok(
+      /evidenceHash: evidenceFingerprint\(parityBundle\)/.test(orchestrator),
+      "the hash must be the fingerprint of the bundle the brain read",
+    );
+  });
+
+  it("labels the bridge route as the MCP surface", () => {
+    const route = readFileSync(
+      resolve(process.cwd(), "src/app/api/agent/market/analyze/route.ts"),
+      "utf8",
+    );
+    assert.ok(
+      /surface: "mcp"/.test(route),
+      "the route the MCP tool proxies to must identify itself as the MCP surface",
+    );
   });
 });

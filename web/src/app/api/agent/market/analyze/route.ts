@@ -98,6 +98,10 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await runUnifiedChartAgent({
+      // This route IS the MCP surface: the tool proxies here, and the engine it
+      // reaches is the same one chat uses. Labelling the surface is what lets the
+      // parity log demonstrate that rather than assume it.
+      surface: "mcp",
       userMessage: `حلّل ${symbol} على إطار ${interval} كفرصة سكالب واشرح قرارك.`,
       chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
       requestContext: {
