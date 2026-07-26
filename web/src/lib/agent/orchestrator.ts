@@ -86,6 +86,7 @@ import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
 import { collectVisualEvidence } from "./visualEvidence";
+import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
 import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
@@ -934,6 +935,18 @@ async function runUnifiedChartAgentInner(
     timeframe: market.interval,
   }).catch(() => null);
 
+  // What followed structurally similar moments. Read before the decision like
+  // every other piece of evidence, and for both directions — the memory must not
+  // be consulted to confirm a direction the brain has already leaned toward.
+  const historicalCases = FEATURES.caseMemoryV1()
+    ? await collectCaseEvidenceFor({
+        symbol: market.symbol,
+        interval: market.interval,
+        candles: market.currentTfCandles,
+        geometry,
+      }).catch(() => null)
+    : null;
+
   const visual = FEATURES.visionDecisionV1()
     ? await collectVisualEvidence({
         userId: ctx.userId,
@@ -970,6 +983,7 @@ async function runUnifiedChartAgentInner(
           lessonsBlock,
           visualSnapshots: visual.snapshots,
           statisticalSupport,
+          historicalCases,
         },
       ).catch((err) => {
         synthError = err;

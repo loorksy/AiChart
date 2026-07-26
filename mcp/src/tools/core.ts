@@ -6,6 +6,7 @@ import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
 import {
   createRecommendationInput,
+  findSimilarCasesInput,
   setAgentTradeModeInput,
 } from "./schemas/coreSchemas.js";
 import { discoverSkills, loadSkill } from "../skills/catalog.js";
@@ -455,6 +456,24 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
       return bridgeCall(() =>
         bridge.patch("/api/agent/trade-mode", { ...parsed.data, actor: "mcp" }),
       );
+    },
+  );
+
+  server.registerTool(
+    "find_similar_cases",
+    mcpToolConfig("find_similar_cases"),
+    async (body) => {
+      const parsed = findSimilarCasesInput.safeParse(body);
+      if (!parsed.success) {
+        return formatBridgeError(
+          new Error(
+            parsed.error.issues
+              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+              .join("; ") || "Invalid find_similar_cases payload",
+          ),
+        );
+      }
+      return bridgeCall(() => bridge.post("/api/agent/similar-cases", parsed.data));
     },
   );
 

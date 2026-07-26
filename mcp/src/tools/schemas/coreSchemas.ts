@@ -104,6 +104,28 @@ export const setAgentTradeModeShape = {
 
 export const setAgentTradeModeInput = z.object(setAgentTradeModeShape).strict();
 
+const findSimilarCasesShape = {
+  symbol: zSymbol,
+  interval: zInterval,
+  at_ms: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Ask about a past moment instead of now; cases at or after it are excluded so the answer is the one available then.",
+    ),
+  min_similarity: z
+    .number()
+    .min(0.5)
+    .max(1)
+    .optional()
+    .describe("Structural-similarity floor, 0.5–1. Default 0.82."),
+  limit: z.number().int().min(1).max(200).optional(),
+};
+
+export const findSimilarCasesInput = z.object(findSimilarCasesShape).strict();
+
 /** Catalog shape stays a ZodRawShape so MCP SDK handler inference remains intact. */
 const createRecommendationCatalogShape = {
   symbol: zSymbol,
@@ -358,6 +380,14 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       "When: the operator explicitly states which mode they want. 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met — set it ONLY when the operator asked for it in their own words, and pass confirmed_by_user:true to record that. 'advisory' means analysis and recommendations with no execution at all. auto requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation.",
     inputSchema: setAgentTradeModeShape,
     annotations: DESTRUCTIVE,
+  },
+  {
+    name: "find_similar_cases",
+    domain: "core",
+    description:
+      "When: during analysis, to ask what followed structurally similar past moments on this symbol and timeframe. Returns aggregated forward outcomes for BOTH directions (buy and short), so it is evidence to weigh and not confirmation of a direction already chosen. found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. This never gates a recommendation. read-only.",
+    inputSchema: findSimilarCasesShape,
+    annotations: READ_ONLY,
   },
   {
     name: "send_telegram_menu",

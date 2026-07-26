@@ -469,6 +469,45 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_market_candles_lookup
     ON market_candles(symbol, interval, source, time);
 
+  -- Historical case memory: one row per indexed market moment.
+  -- Features come from candles at or before case_time; the outcome_* columns are
+  -- computed from candles strictly after it. That split is the whole point, so
+  -- the two groups are written by different functions and never mixed.
+  CREATE TABLE IF NOT EXISTS market_cases (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol          TEXT NOT NULL,
+    interval        TEXT NOT NULL,
+    case_time       INTEGER NOT NULL,
+    direction       TEXT NOT NULL,
+    regime          TEXT NOT NULL,
+    trend           TEXT NOT NULL,
+    range_zone      TEXT NOT NULL,
+    pullback_depth  REAL NOT NULL,
+    impulse_atr     REAL NOT NULL,
+    volatility      REAL NOT NULL,
+    session         TEXT NOT NULL,
+    structure_run   INTEGER NOT NULL,
+    pattern_name    TEXT,
+    pattern_stage   TEXT,
+    entry_price     REAL NOT NULL,
+    atr             REAL NOT NULL,
+    -- NULL while the forward window is still open (a case at the edge of the
+    -- warehouse has no future yet); filled once the horizon is available.
+    outcome         TEXT,
+    outcome_bars    INTEGER,
+    max_favourable  REAL,
+    max_adverse     REAL,
+    net_r           REAL,
+    indexer_version INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(symbol, interval, case_time, direction, indexer_version)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_market_cases_lookup
+    ON market_cases(symbol, interval, regime, trend, direction);
+  CREATE INDEX IF NOT EXISTS idx_market_cases_pending
+    ON market_cases(symbol, interval, outcome, case_time);
+
   -- Smart Chart Agent decision audit (never stores raw model reasoning).
   CREATE TABLE IF NOT EXISTS agent_audit_logs (
     id                              INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -48,6 +48,7 @@ import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 import type { StatisticalSupport } from "@/lib/strategies/supportSummary";
 import { expectedSpreadNow } from "@/lib/strategies/sessionSpread";
+import type { HistoricalCaseEvidence } from "@/lib/marketMemory/caseQuery";
 
 const log = createLogger("final-decision");
 
@@ -241,6 +242,8 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - Conflicting timeframes: say which timeframe leads the decision, which is context, which times the entry. Conflict never removes the direction.
 - chartGeometry is deterministic evidence — cite a trendline/channel/pattern by name when it genuinely supports you. A "forming" pattern is weaker evidence that it will COMPLETE, but its boundary can be an excellent entry: that is what anticipatory means.
 - Never force price into a named pattern that does not fit. Describe the structure you actually see and call it hybrid or unclassified; that is a valid basis for a plan.
+- historicalCases carries what followed structurally similar moments, for BOTH directions, measured before you chose one. Read both sides. A memory leaning the other way is a real argument to weigh, not a veto — and when both sides are thin the memory simply has nothing to say.
+- Quote a historical rate ONLY when historicalCases gives you one. A null hitRate means the sample is too small for a percentage: cite the count, or say there is no comparable history. Never turn "3 of 4 similar cases worked" into a number.
 - Never claim statistical support you were not given, and never invent a win rate, a historical count, news, or any number.
 - Never claim news was checked when newsRisk is "unknown".
 
@@ -289,6 +292,11 @@ export async function runFinalDecisionSynthesizer(
      * plan; never decides whether one exists.
      */
     statisticalSupport?: StatisticalSupport | null;
+    /**
+     * What happened after structurally similar moments, both directions. Absent
+     * is normal on a thin memory and is reported as absent.
+     */
+    historicalCases?: HistoricalCaseEvidence | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -405,6 +413,7 @@ function buildModelContext(
     narrative?: MarketNarrative | null;
     geometry?: GeometrySnapshot | null;
     statisticalSupport?: StatisticalSupport | null;
+    historicalCases?: HistoricalCaseEvidence | null;
   },
 ): Record<string, unknown> {
   const playbook = input.risk?.playbook ?? null;
@@ -418,6 +427,11 @@ function buildModelContext(
       level: "unavailable",
       detail: "No verified strategy evidence for this symbol and timeframe.",
     },
+    // What followed structurally similar moments — both directions, so this is
+    // evidence to weigh and not a confirmation of a direction already picked.
+    // Null means the memory has nothing comparable, which is a fact about the
+    // memory and not an argument against the setup.
+    historicalCases: input.historicalCases ?? null,
     // What this trade costs in the session it would actually be taken in — the
     // Asian-session spread and the London one are different trades on the same
     // setup, and an average hides exactly the cases where a scalp stops paying.
@@ -565,6 +579,7 @@ function applyModelDecision(
   input: FinalDecisionInput & {
     geometry?: GeometrySnapshot | null;
     statisticalSupport?: StatisticalSupport | null;
+    historicalCases?: HistoricalCaseEvidence | null;
   },
 ): FinalDecisionResult {
   const confidence = Math.max(0, Math.min(1, parsed.confidence));
@@ -727,6 +742,7 @@ function applyModelDecision(
         netRr != null ? netRr + 1e-9 < SCALP_GEOMETRY.minNetTp1R : undefined,
       statisticalSupport: input.statisticalSupport?.level ?? "unavailable",
       statisticalDetail: input.statisticalSupport?.detail ?? null,
+      historicalCases: historicalCaseCard(input.historicalCases, direction),
       newsRisk: input.news?.newsRisk ?? "unknown",
       dataSufficient: input.market.dataQuality.sufficient,
       validityCandles: parsed.validityCandles,
@@ -821,6 +837,22 @@ function geometryLevelPrices(geometry: GeometrySnapshot): number[] {
     for (const anchor of pattern.anchors ?? []) out.push(anchor.price);
   }
   return out.filter((p) => Number.isFinite(p) && p > 0);
+}
+
+/**
+ * The case-memory row of the evidence card, for the direction actually chosen.
+ *
+ * The bundle carries both sides; the card reports the one the plan is on, since
+ * that is the number the operator is being asked to act against.
+ */
+function historicalCaseCard(
+  evidence: HistoricalCaseEvidence | null | undefined,
+  direction: "buy" | "sell",
+): { count: number; winRate?: number | null } | null {
+  if (!evidence) return null;
+  const side = direction === "buy" ? evidence.long : evidence.short;
+  if (side.sampleSize <= 0) return null;
+  return { count: side.sampleSize, winRate: side.hitRate };
 }
 
 /** Short human label for the most significant detected pattern. */

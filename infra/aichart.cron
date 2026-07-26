@@ -23,6 +23,13 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # REDIS_URL. GET the same path for state counts + gate-failure reasons.
 */10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/strategy-pipeline >/dev/null 2>&1
 
+# Historical case-memory indexer — every 15 min. Walks the warehouse in sliding
+# windows, describes each moment from candles at or before it, and fills in what
+# the following bars did once that window has actually arrived. No LLM, no trade
+# execution. Round-robins across series so none starves; overlap-safe via a
+# distributed lease. GET the same path for per-series coverage.
+*/15 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/case-memory >/dev/null 2>&1
+
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
 

@@ -288,6 +288,26 @@
       "requiredFeatureFlags": []
     },
     {
+      "name": "find_similar_cases",
+      "version": "1.1.1",
+      "description": "When: during analysis, to ask what followed structurally similar past moments on this symbol and timeframe. Returns aggregated forward outcomes for BOTH directions (buy and short), so it is evidence to weigh and not confirmation of a direction already chosen. found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. This never gates a recommendation. read-only.",
+      "permission": "market.read",
+      "riskClass": "read",
+      "surfaces": [
+        "mcp"
+      ],
+      "executor": "web-api-bridge",
+      "serverControlled": true,
+      "idempotent": true,
+      "cancellation": "http-abort",
+      "timeoutMs": 30000,
+      "telemetry": "server-audit-log",
+      "inputSchemaRef": "mcp/schemas/tools/find_similar_cases.json",
+      "outputValidation": "bridge-envelope",
+      "aliases": [],
+      "requiredFeatureFlags": []
+    },
+    {
       "name": "get_account_overview",
       "version": "1.1.1",
       "description": "When: inspect the connected account. Combines technical connection status, portfolio, and live broker data. read-only.",

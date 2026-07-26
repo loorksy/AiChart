@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-26T04:40:44.192Z",
-  "toolCount": 56,
+  "exportedAt": "2026-07-26T05:25:08.301Z",
+  "toolCount": 57,
   "tools": [
     {
       "name": "get_account_overview",
@@ -191,6 +191,16 @@
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": false
+      }
+    },
+    {
+      "name": "find_similar_cases",
+      "domain": "core",
+      "description": "When: during analysis, to ask what followed structurally similar past moments on this symbol and timeframe. Returns aggregated forward outcomes for BOTH directions (buy and short), so it is evidence to weigh and not confirmation of a direction already chosen. found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. This never gates a recommendation. read-only.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
       }
     },
     {

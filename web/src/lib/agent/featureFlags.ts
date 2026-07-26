@@ -35,6 +35,10 @@ export const FEATURES = {
   /** Redacted run/step/tool-call persistence. ON by default so selected
    *  skills/tools/routing are auditable; failure never blocks a run. */
   agentRunTraceV1: () => flag("AGENT_RUN_TRACE_V1", true),
+  /** Historical case memory in the evidence bundle. ON by default: an empty
+   *  memory contributes an explicit "no comparable history", which is the
+   *  honest answer either way. */
+  caseMemoryV1: () => flag("CASE_MEMORY_V1", true),
 };
 
 /** Snapshot of every feature flag's current runtime value (for /api/debug/features). */
@@ -46,5 +50,6 @@ export function featureFlagSnapshot(): Record<string, boolean> {
     agentMemoryWriteV1: FEATURES.agentMemoryWriteV1(),
     agentRunTraceV1: FEATURES.agentRunTraceV1(),
     visionDecisionV1: FEATURES.visionDecisionV1(),
+    caseMemoryV1: FEATURES.caseMemoryV1(),
   };
 }
