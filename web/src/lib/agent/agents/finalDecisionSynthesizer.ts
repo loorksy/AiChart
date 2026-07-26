@@ -49,9 +49,50 @@ import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 import type { StatisticalSupport } from "@/lib/strategies/supportSummary";
 import { expectedSpreadNow } from "@/lib/strategies/sessionSpread";
 import { FEATURES } from "../featureFlags";
+import { metrics } from "@/lib/metrics";
 import type { HistoricalCaseEvidence } from "@/lib/marketMemory/caseQuery";
 
 const log = createLogger("final-decision");
+
+/** Frames the model may request in the second round. */
+const EXTRA_FRAME_WHITELIST = new Set(["5m", "15m", "30m", "1h", "4h", "1d"]);
+
+/**
+ * Validate an extra-frame request: whitelisted, and not already attached.
+ * Anything else returns null and the request is refused rather than obeyed.
+ */
+function normalizeExtraFrameRequest(
+  requested: string | null | undefined,
+  attached: readonly VisualSnapshot[],
+): string | null {
+  if (!requested) return null;
+  const frame = requested.trim().toLowerCase();
+  if (!EXTRA_FRAME_WHITELIST.has(frame)) return null;
+  if (attached.some((s) => s.timeframe.toLowerCase() === frame)) return null;
+  return frame;
+}
+
+/** The default second-round model call, with the extra frame attached. */
+async function callModelWithBlocks(
+  system: string,
+  userMsg: string,
+  blocks: ContentBlock[],
+  ctx: AgentRunContext,
+): Promise<string> {
+  const res = await callLLM(
+    {
+      system,
+      messages: [{ role: "user", content: [{ type: "text", text: userMsg }, ...blocks] }],
+      maxTokens: 3072,
+    },
+    { tier: "deep", signal: ctx.signal },
+  );
+  return res.content
+    .filter((b): b is { type: "text"; text: string } => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+}
 
 const PlanLevelsSchema = z.object({
   entryLow: z.number().positive().optional(),
@@ -106,6 +147,13 @@ const FinalDecisionModelSchema = z.object({
     reason: z.string(),
   }),
   selectedCandidateIds: z.array(z.string()).max(8).optional(),
+  /**
+   * One specific additional timeframe the model wants to SEE before finalising —
+   * the plan's "extra frame on demand" (§10 E). Null when the attached views
+   * suffice, which is the normal answer. Honoured at most once, from a
+   * whitelist, on a separate budget; a failed capture keeps this first decision.
+   */
+  requestExtraTimeframe: z.string().max(8).nullable().optional(),
 });
 
 export type FinalDecisionModelOutput = z.infer<typeof FinalDecisionModelSchema>;
@@ -206,6 +254,11 @@ export interface SynthesizerDeps {
   /** Injectable model call (tests). Returns raw model text. */
   callModel?: (system: string, user: string) => Promise<string>;
   configured?: boolean;
+  /**
+   * Capture ONE extra timeframe for the second round. Injectable for tests;
+   * defaults to the same visual-evidence collector the first round used.
+   */
+  captureExtraFrame?: (timeframe: string) => Promise<VisualSnapshot | null>;
 }
 
 const SYNTH_SYSTEM_PROMPT = `You are the decision engine of a chart-connected Forex scalping agent — the only component that turns evidence into a decision.
@@ -257,6 +310,7 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - Do not reveal chain-of-thought, scratchpad, POI scores, ATR ratios, or machine ranking labels.
 - drawingAdvice.shouldDraw=false only when drawing would genuinely mislead (no usable levels, thin data).
 - selectedCandidateIds: at most 8 candidate ids worth drawing; omit or empty if none.
+- requestExtraTimeframe: null almost always. Set it (one of: 5m, 15m, 30m, 1h, 4h, 1d) ONLY when a specific missing view would genuinely change your read — you get at most one extra frame, once, and your current answer stands if the capture fails. Never request a frame you were already shown.
 - summary must be specific to THIS context (symbol, structure, the exact trigger or zone) — never a generic sentence.
 - scalpingContext is fixed; higher timeframes are context evidence only.
 - Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
@@ -394,6 +448,58 @@ export async function runFinalDecisionSynthesizer(
           attempts: 2,
         },
     };
+  }
+
+  // ── The extra-frame round (plan §10 E) ──────────────────────────────────
+  // At most ONE, from a whitelist, never a frame already shown, on its own
+  // budget. A failed capture or a failed second call keeps THIS decision — the
+  // extra view is an offer to refine, never a dependency.
+  const extraRequest = normalizeExtraFrameRequest(
+    parsed.requestExtraTimeframe,
+    input.visualSnapshots ?? [],
+  );
+  if (extraRequest && deps.captureExtraFrame) {
+    metrics.extraFrameRounds.inc({ outcome: "requested" });
+    const snapshot = await deps
+      .captureExtraFrame(extraRequest)
+      .catch(() => null);
+    if (snapshot?.imageBase64) {
+      try {
+        const extraBlocks = buildVisualBlocks([
+          ...(input.visualSnapshots ?? []),
+          snapshot,
+        ]);
+        const secondUser =
+          `${user}
+
+## Second round
+You asked for the ${extraRequest} view; it is now attached with its numbers. ` +
+          `Re-issue your FULL decision JSON. requestExtraTimeframe must be null — there is no third round.`;
+        const raw = await (deps.callModel
+          ? deps.callModel(system, secondUser)
+          : callModelWithBlocks(system, secondUser, extraBlocks, ctx));
+        const second = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
+        // No third round, whatever the model says.
+        second.requestExtraTimeframe = null;
+        metrics.extraFrameRounds.inc({ outcome: "completed" });
+        ctx.emitActivity({
+          type: "analysis",
+          status: "completed",
+          message: `طلب النموذج فريم ${extraRequest} الإضافي وأُرفق — القرار النهائي بعده.`,
+          metadata: { extraTimeframe: extraRequest },
+        });
+        parsed = second;
+      } catch {
+        // The first decision stands. That is the whole contract of the round.
+        metrics.extraFrameRounds.inc({ outcome: "second_call_failed" });
+      }
+    } else {
+      metrics.extraFrameRounds.inc({ outcome: "capture_failed" });
+    }
+  } else if (parsed.requestExtraTimeframe != null && !extraRequest) {
+    // Asked for a frame off the whitelist or one already shown: refused, and
+    // the first decision stands.
+    metrics.extraFrameRounds.inc({ outcome: "refused" });
   }
 
   return {

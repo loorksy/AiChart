@@ -1012,6 +1012,21 @@ async function runUnifiedChartAgentInner(
           statisticalSupport,
           historicalCases,
         },
+        {
+          // The extra-frame round captures through the SAME collector the first
+          // round used — one image, tight budget, failure returns null and the
+          // first decision stands.
+          captureExtraFrame: async (timeframe) => {
+            const extra = await collectVisualEvidence({
+              userId: ctx.userId,
+              symbol: market.symbol,
+              interval: market.interval,
+              timeframes: [timeframe],
+              timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+            }).catch(() => null);
+            return extra?.snapshots[0] ?? null;
+          },
+        },
       ).catch((err) => {
         synthError = err;
         return null;

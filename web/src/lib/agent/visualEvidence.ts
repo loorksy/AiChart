@@ -62,6 +62,8 @@ export async function collectVisualEvidence(input: {
   interval: string;
   maxImages?: number;
   timeoutMs?: number;
+  /** Override the default timeframe set — used by the extra-frame round. */
+  timeframes?: string[];
 }): Promise<VisualEvidenceResult> {
   const startedAt = Date.now();
   if (input.userId == null) {
@@ -71,7 +73,7 @@ export async function collectVisualEvidence(input: {
   try {
     const result = await captureMultiTimeframeSnapshot(input.userId, {
       symbol: input.symbol,
-      timeframes: visualTimeframesFor(input.interval),
+      timeframes: input.timeframes ?? visualTimeframesFor(input.interval),
       maxImages: input.maxImages ?? 3,
       imageTimeoutMs: input.timeoutMs,
       includeNumericContext: true,
