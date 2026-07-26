@@ -125,9 +125,12 @@ export function normalQuantile(p: number): number {
 const EULER_MASCHERONI = 0.5772156649015329;
 
 /**
- * Expected MAXIMUM Sharpe from `trials` independent strategies with NO real
- * edge. This is the bar luck alone clears — the number a genuine discovery
- * must beat.
+ * Expected maximum of `trials` draws from a standard normal — the order
+ * statistic at the heart of the deflation. It is DIMENSIONLESS: callers must
+ * scale it by the standard deviation of the trial Sharpe estimates to get a
+ * Sharpe-valued bar (see `deflatedSharpe`). Comparing a Sharpe against this
+ * number directly would demand a per-bar Sharpe above ~3, which no real
+ * strategy reaches, so the guard would reject everything.
  */
 export function expectedMaxSharpeUnderNull(trials: number): number {
   const n = Math.max(1, Math.floor(trials));
@@ -169,7 +172,6 @@ export function deflatedSharpe(input: {
 }): DeflatedSharpeVerdict {
   const confidence = input.confidence ?? 0.95;
   const n = Math.max(2, Math.floor(input.sampleSize));
-  const expectedMaxUnderNull = expectedMaxSharpeUnderNull(input.trials);
   const skew = input.skewness ?? 0;
   const kurt = input.kurtosis ?? 3;
   const sr = input.observedSharpe;
@@ -177,6 +179,13 @@ export function deflatedSharpe(input: {
   // Standard error of the Sharpe estimate, adjusted for non-normal returns.
   const variance = (1 - skew * sr + ((kurt - 1) / 4) * sr * sr) / (n - 1);
   const se = Math.sqrt(Math.max(variance, 1e-12));
+
+  // The luck bar is the order statistic SCALED INTO SHARPE UNITS by the spread
+  // of the trial estimates (approximated by this estimate's standard error).
+  // Skipping this scaling is the classic implementation error: it compares a
+  // Sharpe to a z-score, which either rejects every real strategy or — with an
+  // annualized Sharpe — accepts every fake one.
+  const expectedMaxUnderNull = se * expectedMaxSharpeUnderNull(input.trials);
   const z = (sr - expectedMaxUnderNull) / se;
   const probability = normalCdf(z);
   const passes = probability >= confidence;
@@ -200,4 +209,114 @@ export const SELECTION_GUARD_REQUIRED_ABOVE = 100;
 /** Is the guard mandatory for a catalog of this size? */
 export function selectionGuardRequired(catalogSize: number): boolean {
   return catalogSize > SELECTION_GUARD_REQUIRED_ABOVE;
+}
+
+export interface SelectionBiasVerdict {
+  passes: boolean;
+  reason: string;
+  probability: number | null;
+  expectedMaxUnderNull: number | null;
+  trials: number;
+}
+
+/**
+ * Bars per year per timeframe — MUST mirror `annual_periods` in
+ * research-service/app/backtest/policies.py. The stored `sharpe_ratio` is
+ * ANNUALIZED there (`mean/std * sqrt(annual_periods)`), while the deflated
+ * Sharpe compares against a standard-normal order statistic and therefore
+ * needs the PER-OBSERVATION Sharpe.
+ *
+ * Getting this wrong is not a rounding error: feeding an annualized 1m Sharpe
+ * (scaled by ~612x) straight in would clear any luck bar, so the guard would
+ * pass everything while looking like it was protecting the operator. A gate
+ * that cannot reject is worse than no gate, because it manufactures trust.
+ */
+const TIMEFRAME_MINUTES: Record<string, number> = {
+  "1m": 1,
+  "5m": 5,
+  "15m": 15,
+  "30m": 30,
+  "1h": 60,
+  "4h": 240,
+  "1d": 1440,
+};
+
+export function annualPeriodsForTimeframe(timeframe: string): number | null {
+  const tf = timeframe.trim().toLowerCase();
+  if (tf === "1d") return 260;
+  const minutes = TIMEFRAME_MINUTES[tf];
+  if (!minutes) return null;
+  return Math.round((52 * 5 * 24 * 60) / minutes);
+}
+
+/** Convert the stored annualized Sharpe back to a per-observation Sharpe. */
+export function deannualizeSharpe(
+  annualizedSharpe: number,
+  timeframe: string,
+): number | null {
+  const periods = annualPeriodsForTimeframe(timeframe);
+  if (!periods || periods <= 0) return null;
+  return annualizedSharpe / Math.sqrt(periods);
+}
+
+/**
+ * Apply the guard to a completed backtest at the eligibility decision.
+ *
+ * Missing inputs are handled by SIZE, not by assumption:
+ * - Below the mandatory catalog size the guard passes through (a small catalog
+ *   barely searches, and blocking on a missing Sharpe would break the existing
+ *   pipeline for no statistical gain).
+ * - At or above it, a missing Sharpe FAILS: once selection pressure is real,
+ *   "we could not measure it" must not read as "it passed".
+ */
+export function evaluateSelectionBias(input: {
+  /** The STORED (annualized) Sharpe from the backtest metrics. */
+  sharpeRatio: number | null | undefined;
+  /** Timeframe the Sharpe was annualized on — required to undo that scaling. */
+  timeframe: string;
+  /** Equity observations the Sharpe was computed over (bars, not trades). */
+  observationCount: number | null | undefined;
+  trials: number;
+}): SelectionBiasVerdict {
+  const trials = Math.max(1, Math.floor(input.trials));
+  const guardRequired = selectionGuardRequired(trials);
+  const annualized =
+    typeof input.sharpeRatio === "number" && Number.isFinite(input.sharpeRatio)
+      ? input.sharpeRatio
+      : null;
+  const sample =
+    typeof input.observationCount === "number" && input.observationCount > 1
+      ? Math.floor(input.observationCount)
+      : null;
+  // The Sharpe and the null distribution must live on the SAME scale.
+  const sharpe = annualized == null ? null : deannualizeSharpe(annualized, input.timeframe);
+
+  if (sharpe == null || sample == null) {
+    return {
+      passes: !guardRequired,
+      reason: guardRequired
+        ? "selection_guard_required_but_inputs_unavailable"
+        : "selection_guard_not_required_small_catalog",
+      probability: null,
+      expectedMaxUnderNull: null,
+      trials,
+    };
+  }
+
+  const verdict = deflatedSharpe({
+    observedSharpe: sharpe,
+    sampleSize: sample,
+    trials,
+  });
+  // Below the mandatory size the result is RECORDED but not enforced, so the
+  // number is visible before it starts rejecting anything.
+  return {
+    passes: guardRequired ? verdict.passes : true,
+    reason: guardRequired
+      ? verdict.reason
+      : `${verdict.reason} (advisory: catalog <= ${SELECTION_GUARD_REQUIRED_ABOVE})`,
+    probability: verdict.probability,
+    expectedMaxUnderNull: verdict.expectedMaxUnderNull,
+    trials,
+  };
 }

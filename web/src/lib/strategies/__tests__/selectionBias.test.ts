@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  annualPeriodsForTimeframe,
+  deannualizeSharpe,
   deflatedSharpe,
+  evaluateSelectionBias,
   expectedMaxSharpeUnderNull,
   informationCoefficient,
   MIN_ABS_IC,
@@ -78,11 +81,15 @@ describe("selection-bias guard (item 18, step 3)", () => {
     assert.ok(thousand > hundred, "searching more must raise the bar, never lower it");
   });
 
+  // NOTE: these are PER-OBSERVATION Sharpes (the scale the deflation works on).
+  // Realistic per-bar values are small — 0.01–0.2 — not the annualized figures
+  // shown in reports. Using annualized numbers here would make every case pass
+  // and the tests meaningless.
   it("the SAME Sharpe can pass alone and fail after a wide search", () => {
-    const common = { observedSharpe: 1.2, sampleSize: 500, confidence: 0.95 };
+    const common = { observedSharpe: 0.06, sampleSize: 1000, confidence: 0.95 };
     const alone = deflatedSharpe({ ...common, trials: 1 });
     const searched = deflatedSharpe({ ...common, trials: 1000 });
-    assert.equal(alone.passes, true, "a strong standalone result should pass");
+    assert.equal(alone.passes, true, "a solid standalone result should pass");
     assert.equal(
       searched.passes,
       false,
@@ -93,7 +100,7 @@ describe("selection-bias guard (item 18, step 3)", () => {
 
   it("a genuinely strong edge still passes a wide search", () => {
     const v = deflatedSharpe({
-      observedSharpe: 3.5,
+      observedSharpe: 0.2,
       sampleSize: 1000,
       trials: 500,
       confidence: 0.95,
@@ -101,33 +108,138 @@ describe("selection-bias guard (item 18, step 3)", () => {
     assert.equal(v.passes, true, "the guard must not reject real edge");
   });
 
-  it("more observations sharpen the verdict in BOTH directions", () => {
-    // Above the luck bar: more data raises confidence that the edge is real.
-    const strongMany = deflatedSharpe({ observedSharpe: 3.0, sampleSize: 1000, trials: 50 });
-    const strongFew = deflatedSharpe({ observedSharpe: 3.0, sampleSize: 30, trials: 50 });
+  it("a thin sample cannot claim the certainty of a thick one", () => {
+    const many = deflatedSharpe({ observedSharpe: 0.15, sampleSize: 1000, trials: 50 });
+    const few = deflatedSharpe({ observedSharpe: 0.15, sampleSize: 30, trials: 50 });
     assert.ok(
-      strongFew.probability < strongMany.probability,
-      "a thin sample must not claim as much certainty as a thick one",
+      few.probability < many.probability,
+      "the same Sharpe on 30 observations proves far less",
     );
-
-    // Below the luck bar the effect REVERSES, and that is correct: more data
-    // makes you more certain the result is NOT a discovery. A thin sample is
-    // merely uncertain — it must never be mistaken for evidence in favour.
-    const weakMany = deflatedSharpe({ observedSharpe: 1.0, sampleSize: 1000, trials: 50 });
-    const weakFew = deflatedSharpe({ observedSharpe: 1.0, sampleSize: 30, trials: 50 });
-    assert.ok(weakMany.probability < weakFew.probability);
-    assert.equal(weakMany.passes, false);
-    assert.equal(weakFew.passes, false, "uncertainty is never a pass");
+    assert.equal(many.passes, true);
+    assert.equal(few.passes, false, "uncertainty is never a pass");
   });
 
-  it("reports the luck bar it measured against", () => {
-    const v = deflatedSharpe({ observedSharpe: 0.5, sampleSize: 200, trials: 200 });
-    assert.ok(v.expectedMaxUnderNull > 0);
+  it("reports the luck bar it measured against when it rejects", () => {
+    const v = deflatedSharpe({ observedSharpe: 0.01, sampleSize: 200, trials: 200 });
+    assert.equal(v.passes, false);
+    assert.ok(v.expectedMaxUnderNull > 0, "the bar must be a real Sharpe-valued number");
     assert.match(v.reason, /luck_bar/);
+  });
+
+  it("the luck bar is expressed in SHARPE units, not z-units", () => {
+    // Regression: comparing a Sharpe against the raw order statistic (~3) would
+    // reject every real strategy, since per-bar Sharpes never approach 3.
+    const v = deflatedSharpe({ observedSharpe: 0.1, sampleSize: 5000, trials: 500 });
+    assert.ok(
+      v.expectedMaxUnderNull < 1,
+      `bar ${v.expectedMaxUnderNull} must be scaled by the estimate's standard error`,
+    );
   });
 
   it("names the catalog size that makes the guard mandatory", () => {
     assert.equal(selectionGuardRequired(SELECTION_GUARD_REQUIRED_ABOVE), false);
     assert.equal(selectionGuardRequired(SELECTION_GUARD_REQUIRED_ABOVE + 1), true);
+  });
+});
+
+describe("Sharpe scale must match the null distribution", () => {
+  // The stored Sharpe is ANNUALIZED (mean/std * sqrt(annual_periods)) in
+  // research-service/app/backtest/metrics.py. Comparing it directly against a
+  // standard-normal order statistic would clear any luck bar, so the guard
+  // would pass EVERYTHING while looking protective. That is worse than no
+  // guard, because it manufactures trust.
+  it("mirrors the Python annual_periods table exactly", () => {
+    assert.equal(annualPeriodsForTimeframe("1d"), 260);
+    assert.equal(annualPeriodsForTimeframe("1m"), Math.round((52 * 5 * 24 * 60) / 1));
+    assert.equal(annualPeriodsForTimeframe("5m"), Math.round((52 * 5 * 24 * 60) / 5));
+    assert.equal(annualPeriodsForTimeframe("1h"), Math.round((52 * 5 * 24 * 60) / 60));
+    assert.equal(annualPeriodsForTimeframe("nonsense"), null);
+  });
+
+  it("de-annualizing inverts the scaling", () => {
+    const perBar = 0.02;
+    const periods = annualPeriodsForTimeframe("5m")!;
+    const annualized = perBar * Math.sqrt(periods);
+    assert.ok(Math.abs(deannualizeSharpe(annualized, "5m")! - perBar) < 1e-9);
+  });
+
+  it("REGRESSION: a raw annualized Sharpe must not sail through the guard", () => {
+    // A mediocre per-bar edge (0.01) looks spectacular once annualized on 1m.
+    const periods = annualPeriodsForTimeframe("1m")!;
+    const annualized = 0.01 * Math.sqrt(periods); // ~6.1
+    const guarded = evaluateSelectionBias({
+      sharpeRatio: annualized,
+      timeframe: "1m",
+      observationCount: 40_000,
+      trials: 500,
+    });
+    // Correctly de-annualized, 0.01 per bar is nowhere near the luck bar.
+    assert.equal(guarded.passes, false, "the scale fix is what makes this gate real");
+
+    // Proof the naive wiring WOULD have passed it.
+    const naive = deflatedSharpe({ observedSharpe: annualized, sampleSize: 40_000, trials: 500 });
+    assert.equal(naive.passes, true, "…exactly the false-confidence trap being prevented");
+  });
+
+  it("an unknown timeframe cannot be scaled, so it is not silently trusted", () => {
+    const v = evaluateSelectionBias({
+      sharpeRatio: 5,
+      timeframe: "13m",
+      observationCount: 10_000,
+      trials: 500,
+    });
+    assert.equal(v.passes, false);
+    assert.match(v.reason, /inputs_unavailable/);
+  });
+});
+
+describe("guard wired to the eligibility decision", () => {
+  // A genuinely strong per-bar edge, expressed as the stored annualized value.
+  const strongAnnualized = 0.06 * Math.sqrt(annualPeriodsForTimeframe("5m")!);
+  const weakAnnualized = 0.002 * Math.sqrt(annualPeriodsForTimeframe("5m")!);
+  const base = { timeframe: "5m", observationCount: 20_000 };
+
+  it("is ADVISORY for today's small catalog — it records without rejecting", () => {
+    const v = evaluateSelectionBias({ ...base, sharpeRatio: weakAnnualized, trials: 75 });
+    assert.equal(v.passes, true, "a small catalog barely searches; do not block");
+    assert.match(v.reason, /advisory/);
+    assert.ok(v.probability != null, "the number is still measured and stored");
+  });
+
+  it("becomes ENFORCING automatically once the catalog crosses the line", () => {
+    const v = evaluateSelectionBias({
+      ...base,
+      sharpeRatio: weakAnnualized,
+      trials: SELECTION_GUARD_REQUIRED_ABOVE + 1,
+    });
+    assert.equal(v.passes, false, "expansion must switch the guard on by itself");
+    assert.doesNotMatch(v.reason, /advisory/);
+  });
+
+  it("still admits genuinely strong edge in a large catalog", () => {
+    const v = evaluateSelectionBias({ ...base, sharpeRatio: strongAnnualized, trials: 500 });
+    assert.equal(v.passes, true, "the guard must not reject real edge");
+  });
+
+  it("unmeasurable inputs FAIL once selection pressure is real", () => {
+    const missing = evaluateSelectionBias({
+      ...base,
+      sharpeRatio: null,
+      trials: 500,
+    });
+    assert.equal(missing.passes, false, "'could not measure' must not read as 'passed'");
+
+    // …but it does not break the existing small-catalog pipeline.
+    assert.equal(
+      evaluateSelectionBias({ ...base, sharpeRatio: null, trials: 50 }).passes,
+      true,
+    );
+  });
+
+  it("reports the trial count it corrected for", () => {
+    assert.equal(
+      evaluateSelectionBias({ ...base, sharpeRatio: strongAnnualized, trials: 321 }).trials,
+      321,
+    );
   });
 });

@@ -121,9 +121,52 @@ import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
 import { candleFreshnessToleranceMs } from "@/lib/markets/intervals";
 import { detectChartGeometry } from "@/lib/chart/geometry";
-import { createTrackedRecommendation } from "@/lib/recommendations/recommendationStore";
+import {
+  createTrackedRecommendation,
+  listTrackedRecommendations,
+} from "@/lib/recommendations/recommendationStore";
+import {
+  renderLessonsForPrompt,
+  summarizeTradeLessons,
+  type TradeOutcomeRecord,
+} from "./learningLoop";
 
 const log = createLogger("agent.orchestrator");
+
+/**
+ * Realised-outcome lessons for the decision prompt (RELIABILITY_PLAN item 14).
+ *
+ * Feeds what ACTUALLY happened on this symbol back into the next decision. It
+ * is strictly evidence: a failure to read history degrades to no block at all
+ * rather than blocking the run, and the block itself is phrased as context to
+ * weigh — the model keeps sole authority over BUY/SELL/WAIT.
+ */
+async function buildLessonsBlock(
+  userId: number | undefined,
+  symbol: string,
+): Promise<string | null> {
+  if (!userId || !symbol) return null;
+  try {
+    const tracked = await listTrackedRecommendations(userId, { limit: 60 });
+    const outcomes: TradeOutcomeRecord[] = tracked
+      .filter((r) => r.outcome === "loss" || r.outcome.startsWith("win_"))
+      .map((r) => ({
+        symbol: r.symbol,
+        direction: r.direction,
+        won: r.outcome.startsWith("win_"),
+        rMultiple: null,
+        session: null,
+        closedAt: r.slHitAt ?? r.tp3HitAt ?? r.tp2HitAt ?? r.tp1HitAt ?? r.createdAt,
+      }));
+    return renderLessonsForPrompt(summarizeTradeLessons({ symbol, outcomes }));
+  } catch (error) {
+    // History is an aid, never a gate: losing it must not affect the decision.
+    log.warn("agent.lessons.unavailable", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
 
 /**
  * Cancellation checkpoint (RELIABILITY_PLAN.md item 2). withDeadline degrades a
@@ -839,6 +882,10 @@ async function runUnifiedChartAgentInner(
   // the answer has no reader.
   if (ctx.signal?.aborted) return cancelledRunResult(ctx, collected, locale);
 
+  // Realised-outcome lessons are read BEFORE the decision call so the
+  // deadline-wrapped callback stays synchronous (item 14).
+  const lessonsBlock = await buildLessonsBlock(ctx.userId, market.symbol);
+
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
   // expensive stage, so its deadline must actually ABORT the provider request
@@ -854,6 +901,8 @@ async function runUnifiedChartAgentInner(
           geometry,
           locale,
           skillContextBlock: skillContext.block || null,
+          // Realised-outcome lessons (item 14): evidence the model weighs.
+          lessonsBlock,
         },
       ).catch((err) => {
         synthError = err;

@@ -1,4 +1,17 @@
-import { getFlag, getIntent, getLimits, getMtAccountMeta, getSettings, updateIntentDenied } from "./store";
+import {
+  getFlag,
+  getIntent,
+  getLimits,
+  getMtAccountMeta,
+  getSettings,
+  listOpenTrades,
+  updateIntentDenied,
+} from "./store";
+import {
+  evaluatePortfolioGate,
+  type OpenPositionView,
+  type PortfolioVerdict,
+} from "./agent/portfolioGate";
 import {
   checkExecutionHalt,
   isLiveTradingEnvironment,
@@ -12,6 +25,7 @@ import { metrics } from "./metrics";
 import { validateExecutionIntent } from "./executionSafety";
 import { emitActivity, type ActivityListener, type AgentActivity } from "./agentActivity";
 import type { BrokerKind } from "./markets/types";
+import type { TradeIntent } from "./types";
 
 export interface ExecutionResult {
   ok: boolean;
@@ -58,6 +72,55 @@ export interface ExecuteIntentOptions {
   onActivity?: ActivityListener;
   explicitApproval?: boolean;
   practiceMode?: boolean;
+}
+
+/**
+ * Adapt real open trades into the portfolio gate's view (item 16).
+ *
+ * Risk per open position is derived from its own stop when the originating
+ * intent is available (the honest number), and otherwise falls back to the
+ * account's configured risk-per-trade — the size it was opened at. The fallback
+ * is deliberately the CONFIGURED risk rather than zero: assuming an unknown
+ * position carries no risk would defeat the entire gate.
+ */
+async function evaluatePortfolioForIntent(
+  userId: number,
+  intent: TradeIntent,
+  budget: RiskBudget,
+): Promise<PortfolioVerdict> {
+  const configuredRisk = Math.max(0, budget.riskPct) / 100;
+  let openPositions: OpenPositionView[] = [];
+  try {
+    const trades = await listOpenTrades(userId, 50);
+    openPositions = trades.map((trade) => ({
+      symbol: trade.symbol,
+      direction: trade.side === "sell" ? ("sell" as const) : ("buy" as const),
+      riskFraction: configuredRisk,
+    }));
+  } catch {
+    // A portfolio read failure must not silently DISABLE the gate. With an
+    // unknown book we cannot prove the trade is safe, so fall through with an
+    // empty list but surface it as a warning rather than a false all-clear.
+    const verdict = evaluatePortfolioGate({
+      candidate: {
+        symbol: intent.symbol,
+        direction: intent.side,
+        riskFraction: configuredRisk,
+      },
+      openPositions: [],
+    });
+    verdict.warnings.push("تعذّر قراءة الصفقات المفتوحة — فحص المحفظة غير مكتمل.");
+    return verdict;
+  }
+
+  return evaluatePortfolioGate({
+    candidate: {
+      symbol: intent.symbol,
+      direction: intent.side,
+      riskFraction: configuredRisk,
+    },
+    openPositions,
+  });
 }
 
 export async function executeIntent(
@@ -133,6 +196,21 @@ export async function executeIntent(
     status: "done",
     detail: `${budget.riskAmount.toFixed(2)} ${budget.currency ?? "account currency"}`,
   });
+
+  // Portfolio-level gate (RELIABILITY_PLAN.md item 16). Every check above judges
+  // THIS trade alone; five "safe" 1% longs on correlated pairs are one 5% bet.
+  // Execution-only: it can block, never edit the decision.
+  const portfolio = await evaluatePortfolioForIntent(userId, intent, budget);
+  if (!portfolio.allowed) {
+    const reason = portfolio.reason ?? "تجاوز حدود المحفظة.";
+    push({ id: "safety", label: `حدود المحفظة · ${intent.symbol}`, status: "error", detail: reason });
+    await updateIntentDenied(intentId, reason, BridgeErrorCode.VALIDATION_ERROR, userId);
+    metrics.executionDenials.inc({ code: `PORTFOLIO_${(portfolio.code ?? "limit").toUpperCase()}` });
+    return { ok: false, status: "failed", reason, denyCode: BridgeErrorCode.VALIDATION_ERROR, activities };
+  }
+  for (const warning of portfolio.warnings) {
+    push({ id: "safety", label: `حدود المحفظة · ${intent.symbol}`, status: "done", detail: warning });
+  }
 
   const adapter = getBrokerAdapter(broker, "spot");
   const result = await adapter.placeOrder(userId, { intent, riskAmount: budget.riskAmount, push });
