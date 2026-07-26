@@ -140,7 +140,7 @@ const log = createLogger("agent.orchestrator");
  * Feeds what ACTUALLY happened on this symbol back into the next decision. It
  * is strictly evidence: a failure to read history degrades to no block at all
  * rather than blocking the run, and the block itself is phrased as context to
- * weigh — the model keeps sole authority over BUY/SELL/WAIT.
+ * weigh — the model keeps sole authority over the direction.
  */
 async function buildLessonsBlock(
   userId: number | undefined,
@@ -646,7 +646,7 @@ async function runUnifiedChartAgentInner(
 
   // Gap policy v1.2: only CATASTROPHIC data loss stops the analysis (the
   // series is unusable). Significant gaps become soft evidence below — the
-  // model stays the sole BUY/SELL/WAIT authority and weighs them itself.
+  // model stays the sole authority over the direction and weighs them itself.
   if (market.dataQuality.coverage.status === "gapped") {
     trackedCtx.emitActivity({
       type: "data",
@@ -802,7 +802,7 @@ async function runUnifiedChartAgentInner(
   }
 
   // The evidence builder prepares price-valid candidates for the model. It is
-  // not a policy gate and it does not own BUY/SELL/WAIT.
+  // not a policy gate and it does not own the direction.
   let risk: RiskAgentResult | null = null;
   try {
     risk = await withTimeout(
@@ -829,11 +829,16 @@ async function runUnifiedChartAgentInner(
     trackedCtx.emitActivity({
       type: "risk",
       status: "failed",
-      message: "تعذّر إكمال فحص المخاطر — القرار انتظار احترازياً.",
+      // A stage fault is an operational blocker with a name, never a market
+      // opinion — calling it a "precautionary wait" told the operator the agent
+      // had read the market and chosen to stand aside, which is not what
+      // happened. The returned envelope has always been informational; only the
+      // wording was lying.
+      message: "تعذّر إكمال فحص المخاطر — عائق تشغيلي، لا قرار سوقي.",
       metadata: { stage: "risk", code: riskFailure?.code ?? "timeout" },
     });
     return buildAgentFallbackResult(
-      "Risk agent failed — defaulting to WAIT.",
+      "Risk stage failed — operational blocker, no market decision was made.",
       collected,
       locale,
       {
@@ -877,7 +882,7 @@ async function runUnifiedChartAgentInner(
   // Evidence-based chart story for the synthesizer (real detector output only).
   const narrative = buildMarketNarrative({ market, structure, liquidity, mtf });
 
-  // The LLM chooses BUY, SELL, or WAIT and binds actionable choices to a real
+  // The LLM chooses the direction and binds the plan to a real
   // candidate. Model failure produces a technical no-recommendation state.
   // Cancelled before the decision: never pay for the most expensive call when
   // the answer has no reader.

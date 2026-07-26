@@ -24,14 +24,16 @@ describe("deepAnalysis triggers", () => {
     assert.equal(provisional.run, true);
     assert.equal(provisional.allowReason, "provisional_actionable");
 
-    const histWait = decideDeepAnalysisTrigger({
-      decision: "wait",
-      confidence: 0.5,
+    // Missing history is itself the trigger: a plan the agent issued with no
+    // statistical backing is precisely what deep research can strengthen.
+    const noHistory = decideDeepAnalysisTrigger({
+      decision: "buy",
+      confidence: 0.8,
       hardSafetyOrLiveDataFailure: false,
       historicalConfirmationInsufficient: true,
     });
-    assert.equal(histWait.run, true);
-    assert.equal(histWait.allowReason, "wait_insufficient_historical");
+    assert.equal(noHistory.run, true);
+    assert.equal(noHistory.allowReason, "insufficient_historical_confirmation");
   });
 
   it("blocks hard safety and live-data failures", () => {

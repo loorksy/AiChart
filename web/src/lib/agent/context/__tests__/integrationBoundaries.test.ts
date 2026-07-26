@@ -36,7 +36,7 @@ test("market sync, risk and explicit execution guard remain in the orchestrator"
 
 // Gap policy v1.2: "gapped" now means CATASTROPHIC data loss only — that tier
 // still stops the fleet. Significant gaps degrade to a warning + evidence and
-// analysis proceeds (the model stays the sole BUY/SELL/WAIT authority).
+// analysis proceeds (the model stays the sole authority over the direction).
 test("catastrophic candle gaps stop the market fleet before specialist analysis", () => {
   const gapGate = orchestrator.indexOf(
     'market.dataQuality.coverage.status === "gapped"',

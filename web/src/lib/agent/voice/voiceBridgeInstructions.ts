@@ -1,7 +1,7 @@
 /**
  * Instructions for the OpenAI Realtime speech bridge (official
  * realtime-voice-component). The realtime model only routes utterances through
- * `ask_aichart` and speaks the prepared answer — it never owns BUY/SELL/WAIT.
+ * `ask_aichart` and speaks the prepared answer — it never owns the decision.
  */
 import type { AppLocale } from "@/lib/i18n";
 

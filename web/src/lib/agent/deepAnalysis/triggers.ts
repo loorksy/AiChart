@@ -4,7 +4,7 @@
  */
 export type DeepAnalysisAllowReason =
   | "provisional_actionable"
-  | "wait_insufficient_historical"
+  | "insufficient_historical_confirmation"
   | "explicit_deep_intent"
   | "conflicting_evidence"
   | "novel_or_weak_setup";
@@ -109,14 +109,15 @@ export function decideDeepAnalysisTrigger(
     return { run: true, allowReason: "novel_or_weak_setup", reasons };
   }
 
-  if (
-    input.decision === "wait" &&
-    input.historicalConfirmationInsufficient
-  ) {
-    reasons.push("wait_due_to_insufficient_historical_confirmation");
+  // A plan with no statistical history behind it is exactly the case deep
+  // research can improve. It fires on the missing evidence itself — the old
+  // trigger keyed on a WAIT decision, which no longer exists, so this path had
+  // become unreachable for the plans that most need it.
+  if (input.historicalConfirmationInsufficient) {
+    reasons.push("insufficient_historical_confirmation");
     return {
       run: true,
-      allowReason: "wait_insufficient_historical",
+      allowReason: "insufficient_historical_confirmation",
       reasons,
     };
   }

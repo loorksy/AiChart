@@ -38,7 +38,7 @@ export interface TradeValidationResult {
   netRr?: number;
 }
 
-/** Produces evidence annotations and validates numbers without overriding BUY/SELL/WAIT. */
+/** Produces evidence annotations and validates numbers without overriding the decision. */
 export function validateTradeSetup(input: TradeValidationInput): TradeValidationResult {
   const warnings: string[] = [];
   const reasons: string[] = [];

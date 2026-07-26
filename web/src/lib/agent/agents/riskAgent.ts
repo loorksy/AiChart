@@ -64,7 +64,7 @@ export interface RiskAgentResult {
 
 /**
  * Builds structured evidence candidates for the final model. It annotates
- * risk and data concerns but never forces BUY/SELL/WAIT.
+ * risk and data concerns but never forces the direction or the plan.
  */
 export async function runRiskAgent(
   ctx: AgentRunContext,

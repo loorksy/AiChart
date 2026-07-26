@@ -302,7 +302,7 @@ describe("realtime session config builders", () => {
       const instructions = voiceSystemInstructions(locale);
       // Same constitution as text chat and MCP.
       assert.match(instructions, /AiChart is a chat-first Forex scalping assistant/);
-      assert.match(instructions, /sole authority for BUY, SELL, or WAIT/);
+      assert.match(instructions, /model alone owns the analytical decision/);
       assert.match(instructions, /Risk per Trade is the only trading setting/);
       // The old defect: the model must never self-describe as speech-to-text.
       assert.match(instructions, /never describe yourself as a transcription/i);

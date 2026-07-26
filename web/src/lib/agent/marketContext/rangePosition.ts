@@ -2,9 +2,12 @@
  * Dealing-range positioning: where the current price sits inside the recent
  * high↔low range (premium / discount / equilibrium / near extremes).
  *
- * Discipline rules built on top of this:
+ * How the decision engine uses it:
  * - Buys are preferred from DISCOUNT, sells from PREMIUM.
- * - Mid-range (equilibrium) = WAIT unless a clear breakout/retest exists.
+ * - Mid-range (equilibrium) is a poor IMMEDIATE entry, not an absent
+ *   opportunity: the plan usually becomes conditional at a range edge, at the
+ *   expected break, or after a liquidity sweep. Position is evidence that
+ *   shapes the plan type — it never removes the direction.
  */
 import type { AgentCandle } from "./detectors";
 
@@ -77,7 +80,11 @@ function labelFor(p: number): RangePositionLabel {
   return "mid_range";
 }
 
-/** True when this range position disfavors the given trade direction. */
+/**
+ * True when this range position disfavors an immediate entry in that direction.
+ * Evidence for the plan type — buying a premium usually wants a pullback or a
+ * confirmed break first — never a reason to withhold the direction itself.
+ */
 export function positionDisfavorsAction(
   label: RangePositionLabel,
   action: "buy" | "sell",

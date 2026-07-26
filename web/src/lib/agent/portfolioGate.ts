@@ -7,7 +7,7 @@
  * that hole using data the platform already has (portfolio + open trades).
  *
  * Strictly an EXECUTION gate: it runs after the model has decided and can only
- * BLOCK or WARN. It never edits the decision, never changes BUY/SELL/WAIT, and
+ * BLOCK or WARN. It never edits the decision, never changes the direction, and
  * never relaxes any existing check.
  */
 

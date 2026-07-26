@@ -249,7 +249,7 @@ export async function runFinalDecisionSynthesizer(
     skillContextBlock?: string | null;
     /**
      * Realised-outcome lessons for this symbol (item 14). Framed as context to
-     * weigh: the model keeps sole authority over BUY/SELL/WAIT, and these lines
+     * weigh: the model keeps sole authority over the direction, and these lines
      * never override live analysis or any statistical gate.
      */
     lessonsBlock?: string | null;

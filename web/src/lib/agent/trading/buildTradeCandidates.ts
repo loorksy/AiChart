@@ -1,6 +1,6 @@
 /**
  * Trade-candidate builder — produces structurally valid, executable scalp
- * geometry for the final AI model. Direction (BUY/SELL/WAIT) remains the
+ * geometry for the final AI model. The direction remains the
  * model's sole authority; this module only supplies truthful levels.
  *
  * Hard geometry rules (product contract, not user settings):
