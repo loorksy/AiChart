@@ -29,6 +29,9 @@ import { detectConvergingPatterns } from "./triangles";
 import { detectHeadShoulders } from "./headShoulders";
 import { detectDoubleExtremes } from "./doubleExtremes";
 import { detectFlags } from "./flags";
+import { detectRectangles } from "./rectangles";
+import { detectTripleExtremes } from "./tripleExtremes";
+import { detectCupHandle } from "./cupHandle";
 
 export const GEOMETRY_WINDOW_BARS = 500;
 export const MIN_GEOMETRY_CANDLES = 60;
@@ -101,6 +104,11 @@ export function detectChartGeometry(input: {
     ...detectConvergingPatterns(detectorInput),
     ...detectHeadShoulders(detectorInput, zigzag),
     ...detectDoubleExtremes(detectorInput, zigzag),
+    // Triple extremes run alongside doubles: on a chart with three touches the
+    // triple wins dedup because three defended touches score above two.
+    ...detectTripleExtremes(detectorInput, zigzag),
+    ...detectRectangles(detectorInput, zigzag),
+    ...detectCupHandle(detectorInput, zigzag),
     ...detectFlags(detectorInput),
   ].filter((pattern) => pattern.confidence >= threshold);
 

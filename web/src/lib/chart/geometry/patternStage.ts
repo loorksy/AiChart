@@ -118,7 +118,9 @@ export function assessPatternStage(input: {
 /** Anchors a complete template of each pattern family has. */
 export function expectedAnchorsFor(patternType: string): number {
   if (patternType.includes("head_shoulders")) return 5;
-  if (patternType.includes("triple")) return 6;
+  if (patternType.includes("triple")) return 5;
+  if (patternType.includes("cup")) return 4;
+  if (patternType === "rectangle") return 4;
   if (patternType.includes("double")) return 4;
   if (patternType.includes("triangle") || patternType.includes("wedge")) return 4;
   if (patternType.includes("flag") || patternType.includes("pennant")) return 3;
