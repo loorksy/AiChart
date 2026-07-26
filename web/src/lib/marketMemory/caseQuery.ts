@@ -15,6 +15,7 @@
  * and deserve least.
  */
 import { query } from "@/lib/db";
+import { createLogger } from "@/lib/logger";
 import { warehouseKey } from "@/lib/candles/candleRepository";
 import {
   fingerprintSimilarity,
@@ -26,12 +27,31 @@ import {
 } from "./caseFingerprint";
 import {
   MIN_STATS_SAMPLE,
+  summarizeFormingOutcomes,
   summarizeOutcomes,
   type CaseResolution,
+  type FormingResolution,
+  type FormingStageStats,
   type ForwardOutcome,
   type OutcomeStats,
 } from "./forwardOutcome";
 import { INDEXER_VERSION } from "./caseIndexer";
+import {
+  caseEmbeddingLiteral,
+  caseVectorSearchReady,
+  markCaseVectorUnavailable,
+} from "./caseVector";
+
+const log = createLogger("marketMemory:query");
+
+/** Partial-stage outcome carried by a case indexed on a forming pattern. */
+export interface SimilarCaseForming {
+  outcome: FormingResolution;
+  bars: number | null;
+  falseBreak: boolean;
+  earlyNetR: number | null;
+  confirmedNetR: number | null;
+}
 
 export interface SimilarCase {
   caseTime: number;
@@ -41,6 +61,8 @@ export interface SimilarCase {
   patternName: string | null;
   patternStage: string | null;
   outcome: ForwardOutcome;
+  /** Null for cases without a forming pattern (or indexed before plan §12). */
+  forming: SimilarCaseForming | null;
 }
 
 export interface SimilarCaseResult {
@@ -53,6 +75,12 @@ export interface SimilarCaseResult {
   statisticallyUsable: boolean;
   /** Same-pattern subset, when the live analysis found a named structure. */
   samePattern: { count: number; stats: OutcomeStats } | null;
+  /**
+   * Partial-stage outcomes across the matched forming-pattern cases; null
+   * when none of the matches carries one. Same minimum-sample discipline as
+   * `stats`: below it, counts only.
+   */
+  formingStages: FormingStageStats | null;
 }
 
 /** Below this the moments are different enough that averaging them misleads. */
@@ -79,6 +107,11 @@ interface CaseRow {
   max_favourable: number | string;
   max_adverse: number | string;
   net_r: number | string;
+  forming_outcome: string | null;
+  forming_bars: number | string | null;
+  false_break: number | string | null;
+  early_net_r: number | string | null;
+  confirmed_net_r: number | string | null;
 }
 
 function rowFingerprint(row: CaseRow): CaseFingerprint {
@@ -101,6 +134,86 @@ function rowOutcome(row: CaseRow): ForwardOutcome {
     maxFavourableAtr: Number(row.max_favourable),
     maxAdverseAtr: Number(row.max_adverse),
     netR: Number(row.net_r),
+  };
+}
+
+function rowForming(row: CaseRow): SimilarCaseForming | null {
+  if (row.forming_outcome == null) return null;
+  return {
+    outcome: row.forming_outcome as FormingResolution,
+    bars: row.forming_bars == null ? null : Number(row.forming_bars),
+    falseBreak: row.false_break != null && Number(row.false_break) !== 0,
+    earlyNetR: row.early_net_r == null ? null : Number(row.early_net_r),
+    confirmedNetR: row.confirmed_net_r == null ? null : Number(row.confirmed_net_r),
+  };
+}
+
+/** Column list shared verbatim by both candidate paths (shape parity). */
+const CASE_SELECT_COLUMNS = `case_time, direction, regime, trend, range_zone, pullback_depth,
+            impulse_atr, volatility, session, structure_run,
+            pattern_name, pattern_stage,
+            outcome, outcome_bars, max_favourable, max_adverse, net_r,
+            forming_outcome, forming_bars, false_break, early_net_r, confirmed_net_r`;
+
+/**
+ * Build the candidate prefilter for one direction.
+ *
+ * Two orderings, one contract. With `embedding` (Postgres + pgvector) the cap
+ * keeps the NEAREST candidates via `embedding <-> ?::vector`; without it, the
+ * most recent. Filters, columns, and everything downstream — the weighted
+ * similarity, its threshold, the minimum-sample discipline — are identical,
+ * so the paths can only differ in which candidates they read, never in what
+ * they claim about them. Exported for the dual-path contract tests.
+ */
+export function buildCandidateSql(input: {
+  symbol: string;
+  interval: string;
+  direction: "buy" | "sell";
+  trend: Trend;
+  beforeMs?: number;
+  /** pgvector literal for the query fingerprint; null → recency ordering. */
+  embedding: string | null;
+  candidateCap?: number;
+}): { sql: string; args: unknown[] } {
+  const conditions = [
+    "symbol = ?",
+    "interval = ?",
+    "indexer_version = ?",
+    "direction = ?",
+    "outcome IS NOT NULL",
+    // Trend is the heaviest feature in the similarity weights, so filtering on
+    // it in SQL removes the bulk of the rows that could never clear the
+    // threshold.
+    "trend = ?",
+  ];
+  const args: unknown[] = [
+    input.symbol,
+    input.interval,
+    INDEXER_VERSION,
+    input.direction,
+    input.trend,
+  ];
+  if (input.beforeMs != null) {
+    conditions.push("case_time < ?");
+    args.push(Math.floor(input.beforeMs));
+  }
+  let orderBy = "case_time DESC";
+  if (input.embedding != null) {
+    // Rows from before the column existed have no embedding; the KNN order is
+    // undefined over NULLs, so they are excluded here (the JS path still sees
+    // them, and the backfill erases the difference over time).
+    conditions.push("embedding IS NOT NULL");
+    orderBy = "embedding <-> ?::vector";
+    args.push(input.embedding);
+  }
+  args.push(input.candidateCap ?? CANDIDATE_CAP);
+  return {
+    sql: `SELECT ${CASE_SELECT_COLUMNS}
+       FROM market_cases
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY ${orderBy}
+      LIMIT ?`,
+    args,
   };
 }
 
@@ -127,35 +240,34 @@ export async function findSimilarCases(input: {
   const minSimilarity = input.minSimilarity ?? DEFAULT_MIN_SIMILARITY;
   const limit = Math.max(1, Math.min(input.limit ?? DEFAULT_LIMIT, 500));
 
-  const conditions = [
-    "symbol = ?",
-    "interval = ?",
-    "indexer_version = ?",
-    "direction = ?",
-    "outcome IS NOT NULL",
-  ];
-  const args: unknown[] = [key.symbol, key.interval, INDEXER_VERSION, input.direction];
-  // Trend is the heaviest feature in the similarity weights, so filtering on it
-  // in SQL removes the bulk of the rows that could never clear the threshold.
-  conditions.push("trend = ?");
-  args.push(input.fingerprint.trend);
-  if (input.beforeMs != null) {
-    conditions.push("case_time < ?");
-    args.push(Math.floor(input.beforeMs));
-  }
-  args.push(CANDIDATE_CAP);
+  const baseQuery = {
+    symbol: key.symbol,
+    interval: key.interval,
+    direction: input.direction,
+    trend: input.fingerprint.trend,
+    beforeMs: input.beforeMs,
+  };
+  const embedding = (await caseVectorSearchReady())
+    ? caseEmbeddingLiteral(input.fingerprint)
+    : null;
+  const candidate = buildCandidateSql({ ...baseQuery, embedding });
 
-  const rows = await query<CaseRow>(
-    `SELECT case_time, direction, regime, trend, range_zone, pullback_depth,
-            impulse_atr, volatility, session, structure_run,
-            pattern_name, pattern_stage,
-            outcome, outcome_bars, max_favourable, max_adverse, net_r
-       FROM market_cases
-      WHERE ${conditions.join(" AND ")}
-      ORDER BY case_time DESC
-      LIMIT ?`,
-    args,
-  ).catch(() => []);
+  let rows: CaseRow[];
+  if (embedding != null) {
+    // A vector-path failure downgrades to the JS path for the process
+    // lifetime rather than failing the query — the memory must degrade, not
+    // disappear.
+    rows = await query<CaseRow>(candidate.sql, candidate.args).catch(async (err) => {
+      markCaseVectorUnavailable();
+      log.warn("pgvector KNN failed; falling back to the JS similarity path", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      const fallback = buildCandidateSql({ ...baseQuery, embedding: null });
+      return query<CaseRow>(fallback.sql, fallback.args).catch(() => []);
+    });
+  } else {
+    rows = await query<CaseRow>(candidate.sql, candidate.args).catch(() => []);
+  }
 
   const ranked: SimilarCase[] = [];
   for (const row of rows) {
@@ -170,6 +282,7 @@ export async function findSimilarCases(input: {
       patternName: row.pattern_name,
       patternStage: row.pattern_stage,
       outcome: rowOutcome(row),
+      forming: rowForming(row),
     });
   }
 
@@ -190,12 +303,28 @@ export async function findSimilarCases(input: {
     }
   }
 
+  // Partial-stage evidence, under the same discipline as `stats`: below the
+  // minimum sample the counts survive and every rate is null.
+  const formingOutcomes = cases
+    .map((entry) => entry.forming)
+    .filter((forming): forming is SimilarCaseForming => forming != null)
+    .map((forming) => ({
+      formingOutcome: forming.outcome,
+      falseBreak: forming.falseBreak,
+      earlyNetR: forming.earlyNetR ?? 0,
+      confirmedNetR: forming.confirmedNetR,
+    }));
+  const formingStages = formingOutcomes.length
+    ? summarizeFormingOutcomes(formingOutcomes)
+    : null;
+
   return {
     cases,
     stats,
     candidatesConsidered: rows.length,
     statisticallyUsable: cases.length >= MIN_STATS_SAMPLE,
     samePattern,
+    formingStages,
   };
 }
 
@@ -223,6 +352,12 @@ export interface DirectionalCaseEvidence {
   averageNetR: number | null;
   averageBars: number | null;
   samePattern: { count: number; hitRate: number | null } | null;
+  /**
+   * What became of forming patterns among the matches (plan §12). Optional and
+   * additive: evidence built before partial-stage outcomes existed simply
+   * lacks it, exactly as old case rows lack the columns.
+   */
+  formingStages?: FormingStageStats | null;
   summary: string | null;
 }
 
@@ -243,6 +378,7 @@ function directional(result: SimilarCaseResult): DirectionalCaseEvidence {
     samePattern: result.samePattern
       ? { count: result.samePattern.count, hitRate: result.samePattern.stats.hitRate }
       : null,
+    formingStages: result.formingStages,
     summary: describeSimilarCases(result),
   };
 }

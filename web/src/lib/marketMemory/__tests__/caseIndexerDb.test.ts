@@ -237,6 +237,148 @@ describe("case indexer", () => {
   });
 });
 
+describe("partial-stage outcomes", () => {
+  const FORMING_SYMBOL = "GBPUSD";
+
+  /** One synthetic stored case; only the fields under test vary. */
+  function syntheticCase(
+    over: Partial<import("@/lib/marketMemory/caseIndexer").IndexedCase>,
+  ): import("@/lib/marketMemory/caseIndexer").IndexedCase {
+    return {
+      symbol: FORMING_SYMBOL,
+      interval: INTERVAL,
+      caseTime: START,
+      direction: "buy",
+      regime: "trend",
+      trend: "up",
+      rangeZone: "premium",
+      pullbackDepth: 0.3,
+      impulseAtr: 2,
+      volatility: 0.001,
+      session: "london",
+      structureRun: 3,
+      patternName: "ascending_triangle",
+      patternStage: "forming",
+      breakLevel: null,
+      breakDirection: null,
+      entryPrice: 0,
+      atr: 0.001,
+      outcome: null,
+      outcomeBars: null,
+      maxFavourable: null,
+      maxAdverse: null,
+      netR: null,
+      formingOutcome: null,
+      formingBars: null,
+      falseBreak: null,
+      earlyNetR: null,
+      confirmedNetR: null,
+      sessionCost: null,
+      ...over,
+    };
+  }
+
+  it("computes partial-stage outcomes for forming cases and leaves completed ones null", async () => {
+    await repo.upsertCandles(FORMING_SYMBOL, INTERVAL, rampCandles(400));
+    const candles = await repo.getCandles({
+      symbol: FORMING_SYMBOL,
+      interval: INTERVAL,
+      order: "asc",
+      limit: 400,
+    });
+    const at = candles[200]!;
+
+    // A forming pattern pressing a boundary just above the ramp, and a control
+    // case whose pattern had already confirmed by its case time.
+    const written = await indexer.storeCases([
+      syntheticCase({
+        caseTime: at.time,
+        direction: "buy",
+        patternStage: "forming",
+        breakLevel: at.close + 0.0005,
+        breakDirection: "up",
+        entryPrice: at.close,
+      }),
+      syntheticCase({
+        caseTime: at.time,
+        direction: "sell",
+        patternStage: "confirmed",
+        breakLevel: at.close + 0.0005,
+        breakDirection: "up",
+        entryPrice: at.close,
+      }),
+    ]);
+    assert.equal(written, 2);
+
+    await indexer.resolvePendingCases({ symbol: FORMING_SYMBOL, interval: INTERVAL });
+
+    const rows = await db.query<Record<string, unknown>>(
+      `SELECT direction, outcome, forming_outcome, forming_bars, false_break,
+              early_net_r, confirmed_net_r, session_cost
+         FROM market_cases
+        WHERE symbol = ? AND interval = ? AND case_time = ?
+        ORDER BY direction ASC`,
+      [FORMING_SYMBOL, INTERVAL, at.time],
+    );
+    assert.equal(rows.length, 2);
+
+    const forming = rows.find((row) => row.direction === "buy")!;
+    assert.ok(forming.outcome != null, "the plain outcome resolved");
+    assert.equal(
+      forming.forming_outcome,
+      "completed",
+      "the rising ramp closes beyond the boundary",
+    );
+    assert.ok(Number(forming.forming_bars) >= 1);
+    assert.ok(forming.early_net_r != null, "the early entry was measured");
+    assert.ok(forming.confirmed_net_r != null, "the confirmed entry was measured");
+    assert.ok(
+      forming.session_cost != null && Number(forming.session_cost) > 0,
+      "the session cost was charged",
+    );
+
+    // A pattern already past its forming stages answers no partial question.
+    const confirmed = rows.find((row) => row.direction === "sell")!;
+    assert.ok(confirmed.outcome != null, "the control case still resolves normally");
+    assert.equal(confirmed.forming_outcome, null);
+    assert.equal(confirmed.false_break, null);
+    assert.equal(confirmed.early_net_r, null);
+    assert.equal(confirmed.session_cost, null);
+  });
+
+  it("never fills partial outcomes for legacy rows without a frozen boundary", async () => {
+    const candles = await repo.getCandles({
+      symbol: FORMING_SYMBOL,
+      interval: INTERVAL,
+      order: "asc",
+      limit: 400,
+    });
+    const at = candles[220]!;
+    // A forming stage but no stored boundary — exactly the shape of a row
+    // indexed before the columns existed.
+    await indexer.storeCases([
+      syntheticCase({
+        caseTime: at.time,
+        direction: "buy",
+        patternStage: "forming",
+        breakLevel: null,
+        breakDirection: null,
+        entryPrice: at.close,
+      }),
+    ]);
+    await indexer.resolvePendingCases({ symbol: FORMING_SYMBOL, interval: INTERVAL });
+
+    const rows = await db.query<Record<string, unknown>>(
+      `SELECT outcome, forming_outcome FROM market_cases
+        WHERE symbol = ? AND interval = ? AND case_time = ? AND direction = 'buy'`,
+      [FORMING_SYMBOL, INTERVAL, at.time],
+    );
+    assert.equal(rows.length, 1);
+    assert.ok(rows[0]!.outcome != null, "the plain outcome still resolves");
+    assert.equal(rows[0]!.forming_outcome, null, "no boundary, no partial claim");
+  });
+});
+
 describe("similar-case queries", () => {
   it("only returns cases from before the moment asked about", async () => {
     const { findSimilarCases } = await import("@/lib/marketMemory/caseQuery");

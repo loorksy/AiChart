@@ -470,6 +470,11 @@ const SCHEMA = `
     pattern_stage   TEXT,
     entry_price     DOUBLE PRECISION NOT NULL,
     atr             DOUBLE PRECISION NOT NULL,
+    -- The boundary that would complete a forming pattern, frozen at case_time
+    -- like every other feature. NULL when no pattern (or no single boundary)
+    -- was present, and on rows indexed before partial-stage outcomes existed.
+    break_level     DOUBLE PRECISION,
+    break_direction TEXT,
     -- NULL while the forward window is still open (a case at the edge of the
     -- warehouse has no future yet); filled once the horizon is available.
     outcome         TEXT,
@@ -477,6 +482,14 @@ const SCHEMA = `
     max_favourable  DOUBLE PRECISION,
     max_adverse     DOUBLE PRECISION,
     net_r           DOUBLE PRECISION,
+    -- Partial-stage outcomes (plan §12): only cases indexed on a FORMING
+    -- pattern carry these; computed strictly from candles after case_time.
+    forming_outcome TEXT,
+    forming_bars    INTEGER,
+    false_break     INTEGER,
+    early_net_r     DOUBLE PRECISION,
+    confirmed_net_r DOUBLE PRECISION,
+    session_cost    DOUBLE PRECISION,
     indexer_version INTEGER NOT NULL DEFAULT 1,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(symbol, interval, case_time, direction, indexer_version)
@@ -1009,6 +1022,68 @@ async function migratePg(client: PoolClient) {
     .catch((err) => {
       console.warn("[db] trade_lessons HNSW index skipped:", err.message);
     });
+
+  // Partial-stage outcomes on the case memory (plan §12). Additive only: rows
+  // indexed before these columns existed keep NULLs — their features are
+  // frozen and never reinterpreted.
+  await client.query(`
+    ALTER TABLE market_cases
+      ADD COLUMN IF NOT EXISTS break_level     DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS break_direction TEXT,
+      ADD COLUMN IF NOT EXISTS forming_outcome TEXT,
+      ADD COLUMN IF NOT EXISTS forming_bars    INTEGER,
+      ADD COLUMN IF NOT EXISTS false_break     INTEGER,
+      ADD COLUMN IF NOT EXISTS early_net_r     DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS confirmed_net_r DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS session_cost    DOUBLE PRECISION
+  `).catch(() => {});
+
+  // Case-memory KNN (plan phase G infra). Every step is individually guarded:
+  // a Postgres without pgvector, or without ANN index support, keeps the JS
+  // similarity path — degraded and warned about, never fatal. The dimension
+  // must match CASE_EMBEDDING_DIM in lib/marketMemory/caseVector.ts (the
+  // fingerprint feature vector's length).
+  let caseVectorOk = true;
+  await client.query(`CREATE EXTENSION IF NOT EXISTS vector`).catch((err) => {
+    caseVectorOk = false;
+    console.warn(
+      "[db] pgvector unavailable; market_cases keeps the JS similarity path:",
+      err.message,
+    );
+  });
+  if (caseVectorOk) {
+    await client
+      .query(`ALTER TABLE market_cases ADD COLUMN IF NOT EXISTS embedding vector(8)`)
+      .catch((err) => {
+        caseVectorOk = false;
+        console.warn("[db] market_cases embedding column skipped:", err.message);
+      });
+  }
+  if (caseVectorOk) {
+    // HNSW where pgvector >= 0.5; ivfflat where only the older index exists;
+    // plain sequential KNN when neither builds. `<->` is L2, hence _l2_ops.
+    await client
+      .query(
+        `CREATE INDEX IF NOT EXISTS idx_market_cases_embedding_hnsw
+         ON market_cases USING hnsw (embedding vector_l2_ops)`,
+      )
+      .catch(async (hnswErr) => {
+        await client
+          .query(
+            `CREATE INDEX IF NOT EXISTS idx_market_cases_embedding_ivfflat
+             ON market_cases USING ivfflat (embedding vector_l2_ops)`,
+          )
+          .catch((ivfErr) => {
+            console.warn(
+              "[db] market_cases ANN index skipped (hnsw:",
+              hnswErr.message,
+              "; ivfflat:",
+              ivfErr.message,
+              ") — vector KNN will sequential-scan",
+            );
+          });
+      });
+  }
 
   await client.query(`
     UPDATE platform_config SET plain = TRUE

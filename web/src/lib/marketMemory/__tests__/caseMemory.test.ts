@@ -7,12 +7,17 @@ import {
   type FingerprintCandle,
 } from "@/lib/marketMemory/caseFingerprint";
 import {
+  isFormingStage,
   MIN_STATS_SAMPLE,
   resolveForwardOutcome,
+  resolveFormingOutcome,
+  summarizeFormingOutcomes,
   summarizeOutcomes,
+  type FormingOutcome,
   type ForwardOutcome,
 } from "@/lib/marketMemory/forwardOutcome";
 import { describeSimilarCases } from "@/lib/marketMemory/caseQuery";
+import { sessionCostFor } from "@/lib/marketMemory/caseIndexer";
 
 const HOUR = 3_600_000;
 
@@ -244,6 +249,7 @@ describe("describing the memory to the operator", () => {
         candidatesConsidered: 900,
         statisticallyUsable: false,
         samePattern: null,
+        formingStages: null,
       }),
       null,
     );
@@ -256,6 +262,7 @@ describe("describing the memory to the operator", () => {
       candidatesConsidered: 900,
       statisticallyUsable: false,
       samePattern: null,
+      formingStages: null,
     });
     assert.ok(text?.includes("عينة أصغر"), text ?? "expected a small-sample caveat");
     assert.ok(!text?.includes("100%"), "a 2-case sample must not be quoted as a percentage");
@@ -268,7 +275,167 @@ describe("describing the memory to the operator", () => {
       candidatesConsidered: 900,
       statisticallyUsable: true,
       samePattern: null,
+      formingStages: null,
     });
     assert.ok(text?.includes("67%"), text ?? "expected the hit rate");
+  });
+});
+
+describe("partial-stage outcomes", () => {
+  const atr = 1;
+  const entry = 100;
+  const breakLevel = 100.5;
+  // Enough quiet history for the re-detection window to be usable at all.
+  const history = series(70, flat);
+
+  it("only treats forming-family stages as forming", () => {
+    assert.equal(isFormingStage("starting"), true);
+    assert.equal(isFormingStage("forming"), true);
+    assert.equal(isFormingStage("near_completion"), true);
+    assert.equal(isFormingStage("completed_unconfirmed"), false);
+    assert.equal(isFormingStage("confirmed"), false);
+    assert.equal(isFormingStage("failed"), false);
+    assert.equal(isFormingStage(null), false);
+  });
+
+  it("marks the pattern completed when the boundary closes beyond", () => {
+    const future = series(20, (i) => ({ close: 100 + (i + 1) * 0.3, spread: 0.05 }), 0);
+    const outcome = resolveFormingOutcome({
+      history,
+      future,
+      patternType: "ascending_triangle",
+      breakDirection: "up",
+      breakLevel,
+      entry,
+      atr,
+      horizon: 20,
+    });
+    assert.ok(outcome);
+    assert.equal(outcome.formingOutcome, "completed");
+    assert.ok(outcome.formingBars != null && outcome.formingBars >= 1);
+    assert.equal(outcome.falseBreak, false, "a clean run-away is not a false break");
+    assert.ok(outcome.confirmedNetR != null, "a completed pattern has a confirmed entry");
+    assert.ok(outcome.earlyNetR > 0, "the early entry rode the same move");
+  });
+
+  it("flags a false break when the boundary is pierced but never closed beyond", () => {
+    const future: FingerprintCandle[] = [
+      // The spike: through the boundary intrabar, closed back inside.
+      { time: 0, open: 100, high: 100.8, low: 99.8, close: 99.9 },
+      ...series(39, (i) => ({ close: 99.8 - i * 0.05, spread: 0.05 }), HOUR),
+    ];
+    const outcome = resolveFormingOutcome({
+      history,
+      future,
+      patternType: "ascending_triangle",
+      breakDirection: "up",
+      breakLevel,
+      entry,
+      atr,
+      horizon: 40,
+    });
+    assert.ok(outcome);
+    assert.equal(outcome.falseBreak, true);
+    assert.notEqual(outcome.formingOutcome, "completed");
+    assert.equal(outcome.confirmedNetR, null, "no completion, no confirmed entry");
+  });
+
+  it("stays unresolved while the forward window is still arriving", () => {
+    const future = series(10, () => ({ close: 100.1, spread: 0.02 }), 0);
+    const outcome = resolveFormingOutcome({
+      history,
+      future,
+      patternType: "ascending_triangle",
+      breakDirection: "up",
+      breakLevel,
+      entry,
+      atr,
+      horizon: 40,
+    });
+    assert.ok(outcome);
+    assert.equal(outcome.formingOutcome, "unresolved");
+  });
+
+  it("charges the session cost to both entries", () => {
+    const future = series(20, (i) => ({ close: 100 + (i + 1) * 0.3, spread: 0.05 }), 0);
+    const args = {
+      history,
+      future,
+      patternType: "ascending_triangle",
+      breakDirection: "up" as const,
+      breakLevel,
+      entry,
+      atr,
+      horizon: 20,
+    };
+    const free = resolveFormingOutcome(args)!;
+    const costly = resolveFormingOutcome({ ...args, cost: 0.3 })!;
+    assert.ok(costly.earlyNetR < free.earlyNetR, "cost must reduce the early net R");
+    assert.ok(
+      costly.confirmedNetR! < free.confirmedNetR!,
+      "cost must reduce the confirmed net R",
+    );
+    assert.equal(costly.sessionCost, 0.3);
+  });
+
+  it("mirrors the geometry for a downward boundary", () => {
+    const future = series(20, (i) => ({ close: 100 - (i + 1) * 0.3, spread: 0.05 }), 0);
+    const outcome = resolveFormingOutcome({
+      history,
+      future,
+      patternType: "descending_triangle",
+      breakDirection: "down",
+      breakLevel: 99.5,
+      entry,
+      atr,
+      horizon: 20,
+    });
+    assert.ok(outcome);
+    assert.equal(outcome.formingOutcome, "completed");
+    assert.ok(outcome.earlyNetR > 0);
+  });
+
+  it("prices the session cost from the session spread model", () => {
+    const asia = sessionCostFor("EURUSD", Date.parse("2026-07-27T03:00:00Z"));
+    const london = sessionCostFor("EURUSD", Date.parse("2026-07-27T09:00:00Z"));
+    const overlap = sessionCostFor("EURUSD", Date.parse("2026-07-27T14:00:00Z"));
+    assert.ok(asia > london, "Asia must cost more than London");
+    assert.ok(overlap < london, "the overlap must cost less than London");
+    // JPY pairs pay in their own pip size.
+    assert.ok(sessionCostFor("USDJPY", Date.parse("2026-07-27T09:00:00Z")) > london);
+  });
+});
+
+describe("partial-stage statistics", () => {
+  const completed = (): Pick<
+    FormingOutcome,
+    "formingOutcome" | "falseBreak" | "earlyNetR" | "confirmedNetR"
+  > => ({ formingOutcome: "completed", falseBreak: false, earlyNetR: 1.5, confirmedNetR: 0.9 });
+  const failedCase = (): Pick<
+    FormingOutcome,
+    "formingOutcome" | "falseBreak" | "earlyNetR" | "confirmedNetR"
+  > => ({ formingOutcome: "failed", falseBreak: true, earlyNetR: -1, confirmedNetR: null });
+
+  it("reports counts but no rates below a usable sample", () => {
+    const stats = summarizeFormingOutcomes([completed(), completed(), failedCase()]);
+    assert.equal(stats.sampleSize, 3);
+    assert.equal(stats.completed, 2);
+    assert.equal(stats.falseBreaks, 1);
+    assert.equal(stats.completionRate, null, "2-of-3 is not a completion rate");
+    assert.equal(stats.falseBreakRate, null);
+    assert.equal(stats.averageEarlyNetR, null);
+  });
+
+  it("reports rates once the sample supports them", () => {
+    const outcomes = [
+      ...Array.from({ length: 6 }, completed),
+      ...Array.from({ length: 4 }, failedCase),
+    ];
+    assert.ok(outcomes.length >= MIN_STATS_SAMPLE);
+    const stats = summarizeFormingOutcomes(outcomes);
+    assert.equal(stats.completionRate, 0.6);
+    assert.equal(stats.falseBreakRate, 0.4);
+    assert.equal(stats.averageEarlyNetR, 0.5);
+    assert.equal(stats.averageConfirmedNetR, 0.9, "averaged over completions only");
   });
 });

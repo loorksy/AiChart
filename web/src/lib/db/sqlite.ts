@@ -497,6 +497,11 @@ const SCHEMA = `
     pattern_stage   TEXT,
     entry_price     REAL NOT NULL,
     atr             REAL NOT NULL,
+    -- The boundary that would complete a forming pattern, frozen at case_time
+    -- like every other feature. NULL when no pattern (or no single boundary)
+    -- was present, and on rows indexed before partial-stage outcomes existed.
+    break_level     REAL,
+    break_direction TEXT,
     -- NULL while the forward window is still open (a case at the edge of the
     -- warehouse has no future yet); filled once the horizon is available.
     outcome         TEXT,
@@ -504,6 +509,14 @@ const SCHEMA = `
     max_favourable  REAL,
     max_adverse     REAL,
     net_r           REAL,
+    -- Partial-stage outcomes (plan §12): only cases indexed on a FORMING
+    -- pattern carry these; computed strictly from candles after case_time.
+    forming_outcome TEXT,
+    forming_bars    INTEGER,
+    false_break     INTEGER,
+    early_net_r     REAL,
+    confirmed_net_r REAL,
+    session_cost    REAL,
     indexer_version INTEGER NOT NULL DEFAULT 1,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(symbol, interval, case_time, direction, indexer_version)
@@ -1717,6 +1730,27 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_trial_ledger_user
       ON trial_interaction_ledger(user_id, status);
   `);
+
+  // Partial-stage outcomes on the case memory (plan §12). Additive only: rows
+  // indexed before these columns existed keep NULLs — their features are
+  // frozen and never reinterpreted.
+  const marketCaseCols = db
+    .prepare("PRAGMA table_info(market_cases)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["break_level", "REAL"],
+    ["break_direction", "TEXT"],
+    ["forming_outcome", "TEXT"],
+    ["forming_bars", "INTEGER"],
+    ["false_break", "INTEGER"],
+    ["early_net_r", "REAL"],
+    ["confirmed_net_r", "REAL"],
+    ["session_cost", "REAL"],
+  ] as const) {
+    if (!marketCaseCols.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE market_cases ADD COLUMN ${name} ${definition}`);
+    }
+  }
 
   const entFlag = db
     .prepare("SELECT value FROM system_flags WHERE key = 'entitlement_migration_v1'")
