@@ -47,6 +47,8 @@ export interface TradingSettings {
   alerts_enabled: number;
   alert_trades: number;
   alert_signals: number;
+  /** Browser/mobile push channel. Defaults on; independent of Telegram. */
+  alert_push?: number;
   updated_at: string;
 }
 

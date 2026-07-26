@@ -43,6 +43,7 @@ const SCHEMA = `
     telegram_chat_id         TEXT,
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
     alerts_enabled           INTEGER NOT NULL DEFAULT 1,
+    alert_push               INTEGER NOT NULL DEFAULT 1,
     alert_trades             INTEGER NOT NULL DEFAULT 1,
     alert_signals            INTEGER NOT NULL DEFAULT 1,
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
@@ -369,6 +370,40 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_alert_log_user
     ON alert_log (user_id, id DESC);
+
+  -- One row per real change already announced. The unique key is what makes a
+  -- re-run of the sweep silent: the same recommendation, revision, and event
+  -- can only ever be delivered once, however many times it is evaluated.
+  CREATE TABLE IF NOT EXISTS alert_dedupe (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    dedupe_key  TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    symbol      TEXT,
+    created_at  INTEGER NOT NULL,
+    UNIQUE (user_id, dedupe_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_alert_dedupe_recent
+    ON alert_dedupe (user_id, created_at DESC);
+
+  -- Browser/mobile push endpoints. One row per device the operator opted in
+  -- from; a rejected endpoint is deleted on the next send rather than retried
+  -- forever, since the browser has already told us it is gone.
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    endpoint    TEXT NOT NULL,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    user_agent  TEXT,
+    created_at  INTEGER NOT NULL,
+    last_used_at INTEGER,
+    UNIQUE (endpoint),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
+    ON push_subscriptions (user_id);
 
   CREATE TABLE IF NOT EXISTS trade_lessons (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1048,6 +1083,11 @@ function migrate(db: Database.Database) {
   if (!settingsCols.some((c) => c.name === "onboarding_done")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN onboarding_done INTEGER NOT NULL DEFAULT 0",
+    );
+  }
+  if (!settingsCols.some((c) => c.name === "alert_push")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN alert_push INTEGER NOT NULL DEFAULT 1",
     );
   }
   if (!settingsCols.some((c) => c.name === "alerts_enabled")) {

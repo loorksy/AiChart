@@ -348,6 +348,34 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_alert_log_user
     ON alert_log (user_id, id DESC);
 
+  -- One row per real change already announced; the unique key is what makes a
+  -- re-run of the sweep silent. See the SQLite schema for the rationale.
+  CREATE TABLE IF NOT EXISTS alert_dedupe (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    dedupe_key  TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    symbol      TEXT,
+    created_at  BIGINT NOT NULL,
+    UNIQUE (user_id, dedupe_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_alert_dedupe_recent
+    ON alert_dedupe (user_id, created_at DESC);
+
+  -- Browser/mobile push endpoints; see the SQLite schema for the rationale.
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint    TEXT NOT NULL UNIQUE,
+    p256dh      TEXT NOT NULL,
+    auth        TEXT NOT NULL,
+    user_agent  TEXT,
+    created_at  BIGINT NOT NULL,
+    last_used_at BIGINT
+  );
+  CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
+    ON push_subscriptions (user_id);
+
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id
     ON users (telegram_id) WHERE telegram_id IS NOT NULL;
 
@@ -896,6 +924,7 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS alerts_enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS alert_push            BOOLEAN NOT NULL DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS alert_trades          BOOLEAN NOT NULL DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS alert_signals         BOOLEAN NOT NULL DEFAULT TRUE
   `).catch(() => {

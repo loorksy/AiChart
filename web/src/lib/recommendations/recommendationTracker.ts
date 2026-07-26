@@ -17,6 +17,7 @@ import {
   type TrackerCandle,
 } from "./recommendationStatus";
 import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
+import { notifyLifecycleEvents } from "./lifecycleNotifier";
 import type { TrackedRecommendation } from "./types";
 
 /** Normalize an epoch value to milliseconds (warehouse stores may use seconds). */
@@ -132,7 +133,14 @@ function approximateAtr(candles: TrackerCandle[]): number | null {
 
 /** Sweep all active recommendations (optionally for one user). */
 export async function trackRecommendations(
-  opts: { userId?: number; limit?: number } = {},
+  opts: {
+    userId?: number;
+    limit?: number;
+    /** Skip delivery entirely (tests, replays). */
+    notify?: boolean;
+    /** Record what would be sent without sending it (rollout window). */
+    silentAlerts?: boolean;
+  } = {},
 ): Promise<TrackSweepResult> {
   const active = await listActiveTrackedRecommendations({
     userId: opts.userId,
@@ -141,10 +149,14 @@ export async function trackRecommendations(
   let updated = 0;
   let terminal = 0;
   const events: LifecycleEvent[] = [];
+  const byUser = new Map<number, LifecycleEvent[]>();
   for (const rec of active) {
     try {
       const { recommendation: next, events: recEvents } = await trackOneRecommendation(rec);
       events.push(...recEvents);
+      if (recEvents.length) {
+        byUser.set(rec.userId, [...(byUser.get(rec.userId) ?? []), ...recEvents]);
+      }
       if (!next) continue;
       if (next.status !== rec.status || next.outcome !== rec.outcome) updated += 1;
       if (next.outcome !== "pending") terminal += 1;
@@ -152,6 +164,19 @@ export async function trackRecommendations(
       // A single failing symbol must not abort the whole sweep.
     }
   }
+
+  // Telling the operator is part of tracking, not an optional extra: a monitor
+  // that computes a stop-out and stays quiet is worse than no monitor, because
+  // it looks like coverage. Delivery is best-effort — a failed send must never
+  // roll back a correctly evaluated status.
+  if (opts.notify !== false) {
+    for (const [userId, userEvents] of byUser) {
+      await notifyLifecycleEvents(userId, userEvents, { silent: opts.silentAlerts }).catch(
+        () => undefined,
+      );
+    }
+  }
+
   return { checked: active.length, updated, terminal, events };
 }
 
@@ -168,11 +193,16 @@ export interface SweepRunResult extends TrackSweepResult {
  */
 export async function runRecommendationSweep(opts: {
   limit?: number;
+  /** Record events without delivering them (first rollout window). */
+  silentAlerts?: boolean;
   logger?: { info: (msg: string, meta?: Record<string, unknown>) => void; warn: (msg: string, meta?: Record<string, unknown>) => void };
 } = {}): Promise<SweepRunResult> {
   const startedAt = Date.now();
   try {
-    const summary = await trackRecommendations({ limit: opts.limit });
+    const summary = await trackRecommendations({
+      limit: opts.limit,
+      silentAlerts: opts.silentAlerts,
+    });
     const durationMs = Date.now() - startedAt;
     opts.logger?.info("recommendation.sweep.done", {
       checked: summary.checked,
