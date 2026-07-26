@@ -25,6 +25,7 @@ import { execute, queryOne } from "@/lib/db";
 import { getEaConnection, isEaOnlineDebounced } from "@/lib/eaStore";
 import { logAudit } from "@/lib/store";
 import { createLogger } from "@/lib/logger";
+import { FEATURES } from "./featureFlags";
 
 const log = createLogger("trade-mode");
 
@@ -43,7 +44,14 @@ export interface TradeModeView {
   /** True when MCP/the UI should ask the operator to choose. */
   needsChoice: boolean;
   /** Set when a stored `auto` was suspended because the connection dropped. */
-  downgradedReason?: "connection_lost";
+  /**
+   * Why the effective mode is below the stored one.
+   *
+   * `connection_lost` — the bridge went offline and the standing grant ended.
+   * `phase_disabled` — AGENT_TRADE_MODE_V1 is off, so the whole phase is rolled
+   * back and everyone is advisory whatever they stored.
+   */
+  downgradedReason?: "connection_lost" | "phase_disabled";
   updatedAt: number | null;
 }
 
@@ -66,6 +74,20 @@ async function connectionEpoch(userId: number): Promise<string | null> {
 }
 
 export async function getTradeMode(userId: number): Promise<TradeModeView> {
+  // Gated by AGENT_TRADE_MODE_V1. Off forces advisory for everyone regardless of
+  // what they stored — the stored choice is preserved, so turning the phase back
+  // on does not lose it.
+  if (!FEATURES.agentTradeModeV1()) {
+    return {
+      mode: "advisory",
+      storedMode: "unset",
+      connected: false,
+      needsChoice: false,
+      downgradedReason: "phase_disabled",
+      updatedAt: null,
+    };
+  }
+
   const row = await queryOne<ModeRow>(
     `SELECT agent_trade_mode, agent_trade_mode_updated_at, agent_trade_mode_epoch
        FROM trading_settings WHERE user_id = ?`,
@@ -113,6 +135,9 @@ export async function getTradeMode(userId: number): Promise<TradeModeView> {
 
 /** True only when the operator has standing authorisation on THIS connection. */
 export async function isAutoExecutionAuthorized(userId: number): Promise<boolean> {
+  // Standing authorisation cannot exist while the phase is off.
+  if (!FEATURES.agentTradeModeV1()) return false;
+
   const view = await getTradeMode(userId);
   return view.connected && view.mode === "auto";
 }

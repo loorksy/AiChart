@@ -33,6 +33,7 @@ import {
   requireRecommendationEvidence,
 } from "@/lib/strategies/evidence";
 import { isBacktestStrategyId } from "@/lib/strategies/catalog";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import {
   applyVisualConfidencePenalty,
   buildVisualConfirmationAudit,
@@ -83,6 +84,11 @@ const schema = z
     // The alternative is never silence: either a direction with a plan type, or
     // a named operational blocker when the market genuinely cannot be read.
     if (body.action === "wait") {
+      // Gated by AGENT_DOCTRINE_V3 — the ONLY reversible part of phase A. Off is
+      // a narrow escape hatch for an un-updated MCP client: it may still record
+      // something instead of failing every call. It does not resurrect WAIT
+      // inside the engine, whose contract has no such value structurally.
+      if (!FEATURES.agentDoctrineV3()) return;
       ctx.addIssue({
         code: "custom",
         path: ["action"],

@@ -17,6 +17,7 @@ import { execute, queryOne } from "@/lib/db";
 import { dispatchAlert } from "@/lib/alerts";
 import { createLogger } from "@/lib/logger";
 import type { LifecycleEvent } from "./lifecycleEvents";
+import { FEATURES } from "@/lib/agent/featureFlags";
 
 const log = createLogger("lifecycle-notify");
 
@@ -100,6 +101,15 @@ export async function notifyLifecycleEvents(
     suppressedSilent: 0,
   };
   if (!events.length) return result;
+  // Gated by REC_LIFECYCLE_ALERTS_V1. Off returns the pre-phase silence: events
+  // are still derived and recorded upstream, only DELIVERY stops. Counted as
+  // silent-suppressed so the sweep's own accounting still adds up. Distinct from
+  // RECOMMENDATION_ALERTS_SILENT, which is a temporary launch mode rather than a
+  // phase rollback.
+  if (!FEATURES.recLifecycleAlertsV1()) {
+    result.suppressedSilent = events.length;
+    return result;
+  }
 
   const byRecommendation = new Map<string, LifecycleEvent[]>();
   for (const event of events) {

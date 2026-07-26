@@ -1,5 +1,6 @@
 import { getDbBackend, query, queryOne, transaction } from "@/lib/db";
 import { createLogger } from "@/lib/logger";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import { assertRecommendationTransition, initialRecommendationStatus } from "./stateMachine";
 import { applyRecommendationRevision } from "./revisions";
 import {
@@ -313,7 +314,10 @@ export async function createCanonicalRecommendation(
    * been shown it, so a revision failure must not delete their answer. It costs
    * auto-execution eligibility, which is the safe direction to fail in.
    */
-  if (direction === "buy" || direction === "sell") {
+  // Gated by REC_REVISIONS_V1: turning the phase off stops SEEDING new
+  // revisions. It never stops reading existing ones — rollback must not make
+  // stored history unreadable.
+  if (FEATURES.recRevisionsV1() && (direction === "buy" || direction === "sell")) {
     const seed = input.initialRevision;
     await applyRecommendationRevision({
       userId: input.userId,

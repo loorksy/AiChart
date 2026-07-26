@@ -21,6 +21,7 @@ import {
 import { getResolvedExecutionEnv } from "./executionEnv";
 import { getEaConnection } from "./eaStore";
 import { checkRevisionIsCurrent } from "./recommendations/canonical/revisions";
+import { FEATURES } from "./agent/featureFlags";
 import { BridgeErrorCode } from "./bridge/errors";
 import { getBrokerAdapter } from "./brokers";
 import { metrics } from "./metrics";
@@ -185,7 +186,11 @@ export async function executeIntent(
   // structure break can move the plan. Executing the old numbers would fill a
   // trade the agent has already withdrawn, so a superseded revision is refused
   // here rather than quietly sent (docs/UNIFIED_AGENT_PLAN.md §14).
-  if (intent.recommendation_id != null && intent.recommendation_revision_no != null) {
+  if (
+    FEATURES.recRevisionsV1() &&
+    intent.recommendation_id != null &&
+    intent.recommendation_revision_no != null
+  ) {
     const revision = await checkRevisionIsCurrent({
       userId,
       recommendationId: intent.recommendation_id,

@@ -16,6 +16,7 @@
  * lesson — it never gates a recommendation.
  */
 import { query } from "@/lib/db";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import type { TrackedRecommendationOutcome } from "./types";
 
 export type FollowState = "followed_auto" | "followed_manual" | "ignored";
@@ -141,6 +142,13 @@ export async function buildPerformanceJournal(input: {
   userId: number;
   limit?: number;
 }): Promise<{ entries: JournalEntry[]; summary: JournalSummary }> {
+  // Gated by PERFORMANCE_JOURNAL_V1. Read-only and descriptive, so off simply
+  // returns an empty journal — it never gated a recommendation, and there is
+  // nothing else to withdraw.
+  if (!FEATURES.performanceJournalV1()) {
+    return { entries: [], summary: summarizeJournal([]) };
+  }
+
   const limit = input.limit ?? 200;
   const rows = await query<JoinedRow>(
     `SELECT r.id, r.symbol, r.direction, r.plan_type, r.status, r.created_at,

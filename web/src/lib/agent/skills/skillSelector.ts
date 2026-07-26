@@ -3,6 +3,10 @@
  * Parity with MCP `selectMcpSkills` — no skill-name if/else routing.
  */
 import type { AgentSkillDescriptor, AgentSkillSelectionContext } from "./types";
+import { FEATURES } from "../featureFlags";
+
+/** The Pattern Atlas skill, gated by phase F's flag. */
+const ATLAS_SKILL = "pattern-atlas";
 
 const STOP = new Set([
   "the", "and", "for", "with", "from", "that", "this", "are", "was", "were",
@@ -67,6 +71,10 @@ export function selectAgentSkills(
 
   const scored = skills
     .filter(({ metadata }) => metadata.enabled)
+    // Gated by PATTERN_ATLAS_V1 (phase F rollback). Off withholds the atlas
+    // entries only; the deterministic geometry engine keeps running, since the
+    // rest of the system already depends on its output as evidence.
+    .filter(({ metadata }) => metadata.name !== ATLAS_SKILL || FEATURES.patternAtlasV1())
     .filter(
       ({ metadata }) =>
         !metadata.supportedLocales?.length ||

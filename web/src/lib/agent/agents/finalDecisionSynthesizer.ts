@@ -48,6 +48,7 @@ import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 import type { StatisticalSupport } from "@/lib/strategies/supportSummary";
 import { expectedSpreadNow } from "@/lib/strategies/sessionSpread";
+import { FEATURES } from "../featureFlags";
 import type { HistoricalCaseEvidence } from "@/lib/marketMemory/caseQuery";
 
 const log = createLogger("final-decision");
@@ -423,7 +424,7 @@ function buildModelContext(
     scalpingContext: SCALPING_CONTEXT,
     // Say it plainly to the model too: strong backing is worth citing, and its
     // absence is worth stating rather than papering over.
-    statisticalSupport: input.statisticalSupport ?? {
+    statisticalSupport: (FEATURES.evidencePipelineV2() ? input.statisticalSupport : null) ?? {
       level: "unavailable",
       detail: "No verified strategy evidence for this symbol and timeframe.",
     },
@@ -435,10 +436,14 @@ function buildModelContext(
     // What this trade costs in the session it would actually be taken in — the
     // Asian-session spread and the London one are different trades on the same
     // setup, and an average hides exactly the cases where a scalp stops paying.
+    // Gated by EVIDENCE_PIPELINE_V2: off falls back to the single observed
+    // spread with no session shaping, never to a guessed number.
     executionCost: input.market.spread != null
       ? {
           observed_spread: input.market.spread,
-          ...expectedSpreadNow(input.market.spread),
+          ...(FEATURES.evidencePipelineV2()
+            ? expectedSpreadNow(input.market.spread)
+            : { session: null, expected_spread: input.market.spread }),
           note: "Session-adjusted expected spread. A move that does not clear it is a worse entry, not an absent one — say the better price instead.",
         }
       : null,

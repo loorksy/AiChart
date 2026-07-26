@@ -16,6 +16,7 @@ import {
 } from "@/lib/recommendations/canonical/repository";
 import { isTerminalRecommendationStatus } from "@/lib/recommendations/canonical/stateMachine";
 import { applyRecommendationRevision } from "@/lib/recommendations/canonical/revisions";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import {
   composeDeepAnalysisUpdate,
   mapProgressToUxPhase,
@@ -531,11 +532,15 @@ async function finalizeSuccess(
         },
       });
 
+      // Gated by DEEP_RESEARCH_V2: off returns deep research to reporting only.
+      // It still runs and still records its findings; it proposes no revision.
+      // Nothing silently edits a plan either way — that is structural.
+      //
       // A contradiction is a real change to what the operator is holding, so it
       // becomes a recorded revision — which also retires the previous levels for
       // execution, closing the window where an auto order could still fill a
       // plan the research has just argued against.
-      if (verdict === "contradicted") {
+      if (verdict === "contradicted" && FEATURES.deepResearchV2()) {
         await applyRecommendationRevision({
           userId: run.userId,
           recommendationId,
