@@ -69,6 +69,44 @@ describe("execution authorization paths", () => {
     );
   });
 
+  it("every creation site stamps how the order was authorised", () => {
+    // The choke point can only enforce a source that was written. Each module
+    // that creates an EXECUTABLE intent must say which of the two authorisations
+    // it is acting under — an unstamped intent is treated as legacy and only
+    // executes behind an explicit approval.
+    const stamped = new Map<string, RegExp>([
+      ["lib/approvalFlow.ts", /authorization_source: "user_approved"/],
+      ["lib/tradeFlow.ts", /authorization_source: "user_approved"/],
+      ["lib/recommendations/autoExecutor.ts", /authorization_source: "standing_auto"/],
+      // The bridge route serves BOTH authorisations and stamps whichever one
+      // actually applied to this call.
+      [
+        "app/api/agent/trade/open/route.ts",
+        /authorization_source: body\.approved_by_user \? "user_approved" : "standing_auto"/,
+      ],
+    ]);
+    for (const [file, pattern] of stamped) {
+      assert.match(
+        readFileSync(join(SRC, file), "utf8"),
+        pattern,
+        `${file} must stamp the intent's authorization_source`,
+      );
+    }
+  });
+
+  it("the choke point itself enforces the stamped source", () => {
+    // Route-level checks are advisory; the invariant lives in executeIntent.
+    // It must READ the source, re-verify standing authorisation at execution
+    // time, and refuse by name — not trust whatever route built the intent.
+    const execution = readFileSync(join(SRC, "lib/execution.ts"), "utf8");
+    assert.match(execution, /intent\.authorization_source/);
+    assert.match(execution, /isAutoExecutionAuthorized/);
+    assert.match(execution, /"auto_mode_revoked"/);
+    assert.match(execution, /"unauthorized_source"/);
+    // Explicit approval is consulted, not merely accepted and dropped.
+    assert.match(execution, /explicitApproval/);
+  });
+
   it("the auto path records that it was standing authorisation, not an approval", () => {
     const auto = readFileSync(
       join(SRC, "lib/recommendations/autoExecutor.ts"),

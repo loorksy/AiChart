@@ -20,8 +20,13 @@ import {
 } from "./executionKillSwitch";
 import { getResolvedExecutionEnv } from "./executionEnv";
 import { getEaConnection } from "./eaStore";
-import { checkRevisionIsCurrent } from "./recommendations/canonical/revisions";
+import {
+  checkRevisionIsCurrent,
+  getEffectiveRevision,
+} from "./recommendations/canonical/revisions";
+import { isAutoExecutionAuthorized } from "./agent/tradeMode";
 import { FEATURES } from "./agent/featureFlags";
+import { createLogger } from "./logger";
 import { BridgeErrorCode } from "./bridge/errors";
 import { getBrokerAdapter } from "./brokers";
 import { metrics } from "./metrics";
@@ -29,6 +34,8 @@ import { validateExecutionIntent } from "./executionSafety";
 import { emitActivity, type ActivityListener, type AgentActivity } from "./agentActivity";
 import type { BrokerKind } from "./markets/types";
 import type { TradeIntent } from "./types";
+
+const log = createLogger("execution");
 
 export interface ExecutionResult {
   ok: boolean;
@@ -73,8 +80,84 @@ export async function getRiskBudget(
 
 export interface ExecuteIntentOptions {
   onActivity?: ActivityListener;
+  /**
+   * True only when the operator approved THIS trade. Consulted by the
+   * authorization gate inside `executeIntent`: a `user_approved` intent (or a
+   * legacy row with no stamped source) is refused without it.
+   */
   explicitApproval?: boolean;
   practiceMode?: boolean;
+}
+
+/**
+ * Named refusal from the authorization gate (docs/UNIFIED_AGENT_PLAN.md §3).
+ *
+ * `unauthorized_source`  — the intent's `authorization_source` is not one that
+ *                          may place an order here (a `trade_management`
+ *                          SL/TP proposal, an unknown stamp, or a per-trade
+ *                          approval executed without the approval in hand).
+ * `auto_mode_revoked`    — the intent was stamped `standing_auto`, but the
+ *                          operator's standing authorisation no longer holds at
+ *                          this moment, so the grant it was created under is gone.
+ */
+export type AuthorizationRefusalCode = "unauthorized_source" | "auto_mode_revoked";
+
+/**
+ * WHO authorised this order — decided at the choke point itself, never trusted
+ * to the routes. Exactly two sources may reach a broker:
+ *
+ *  - `user_approved`  — the operator approved this specific trade, proven by the
+ *                       caller holding `explicitApproval === true`;
+ *  - `standing_auto`  — the operator's auto mode, re-verified RIGHT NOW rather
+ *                       than at intent-creation time, so a revoked grant cannot
+ *                       ride in on an old row.
+ *
+ * A NULL source is a legacy row from before creators stamped it; such a row is
+ * executable only under an explicit approval, which is the one authorisation
+ * that cannot be forged by a stale record. `trade_management` is an SL/TP
+ * modification proposal for an already-open position — never an order — and any
+ * unknown value is refused rather than guessed at.
+ */
+async function checkAuthorizationSource(
+  userId: number,
+  intent: TradeIntent,
+  explicitApproval: boolean,
+): Promise<{ ok: true } | { ok: false; code: AuthorizationRefusalCode; reason: string }> {
+  const source = intent.authorization_source ?? null;
+
+  if (source === "standing_auto") {
+    const stillAuthorized = await isAutoExecutionAuthorized(userId).catch(() => false);
+    if (!stillAuthorized) {
+      return {
+        ok: false,
+        code: "auto_mode_revoked",
+        reason:
+          "أُلغي التفويض التلقائي (auto_mode_revoked): الوضع التلقائي لم يعد مفعّلاً على هذا الاتصال — لم يُرسل أي أمر.",
+      };
+    }
+    return { ok: true };
+  }
+
+  if (source === "user_approved" || source === null) {
+    if (explicitApproval === true) return { ok: true };
+    return {
+      ok: false,
+      code: "unauthorized_source",
+      reason:
+        "لا يوجد تفويض لهذا الأمر (unauthorized_source): يتطلب موافقة صريحة من المشغّل على هذه الصفقة — لم يُرسل أي أمر.",
+    };
+  }
+
+  // trade_management (an SL/TP proposal for an open position, never an order)
+  // or a source this build does not recognise.
+  return {
+    ok: false,
+    code: "unauthorized_source",
+    reason:
+      source === "trade_management"
+        ? "هذا الطلب اقتراح تعديل وقف/هدف لصفقة مفتوحة (unauthorized_source) وليس أمر دخول — مساره اعتماد التعديل، وليس التنفيذ."
+        : `مصدر تفويض غير معروف (unauthorized_source): "${source}" — لم يُرسل أي أمر.`,
+  };
 }
 
 /**
@@ -179,6 +262,39 @@ export async function executeIntent(
     };
   }
 
+  // WHO authorised this order. The routes each ran their own check, but a
+  // route-level `if` is one refactor away from being bypassed — so the source
+  // stamped on the intent is enforced here, at the same choke point as the kill
+  // switch, before anything else is even evaluated.
+  const authorization = await checkAuthorizationSource(
+    userId,
+    intent,
+    options?.explicitApproval === true,
+  );
+  if (!authorization.ok) {
+    push({
+      id: "safety",
+      label: `تفويض التنفيذ · ${intent.symbol}`,
+      status: "error",
+      detail: authorization.reason,
+    });
+    await updateIntentDenied(
+      intentId,
+      authorization.reason,
+      BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+      userId,
+    );
+    metrics.executionDenials.inc({ code: authorization.code.toUpperCase() });
+    return {
+      ok: false,
+      status: "failed",
+      reason: authorization.reason,
+      denyCode: BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+      errorCode: authorization.code,
+      activities,
+    };
+  }
+
   // Are these still the levels the agent stands behind?
   //
   // An order can sit between being built and being sent — waiting on approval,
@@ -186,16 +302,36 @@ export async function executeIntent(
   // structure break can move the plan. Executing the old numbers would fill a
   // trade the agent has already withdrawn, so a superseded revision is refused
   // here rather than quietly sent (docs/UNIFIED_AGENT_PLAN.md §14).
-  if (
-    FEATURES.recRevisionsV1() &&
-    intent.recommendation_id != null &&
-    intent.recommendation_revision_no != null
-  ) {
-    const revision = await checkRevisionIsCurrent({
-      userId,
-      recommendationId: intent.recommendation_id,
-      revisionNo: intent.recommendation_revision_no,
-    }).catch(() => null);
+  if (FEATURES.recRevisionsV1() && intent.recommendation_id != null) {
+    let revisionNo = intent.recommendation_revision_no ?? null;
+    if (revisionNo == null) {
+      // Legacy intent from before creators stamped the revision. The correct
+      // legacy semantic is "execute the plan as it stands NOW", so the CAS is
+      // evaluated against the current effective revision rather than skipped.
+      // A recommendation with no effective revision at all predates revisions
+      // entirely; for those there is no pointer to compare and the check is
+      // waived, exactly as it always was for such rows.
+      const effective = await getEffectiveRevision(userId, intent.recommendation_id).catch(
+        () => null,
+      );
+      if (effective) {
+        revisionNo = effective.revisionNo;
+        log.info("execution.revision_backfill", {
+          userId,
+          intentId,
+          recommendationId: intent.recommendation_id,
+          revisionNo,
+        });
+      }
+    }
+    const revision =
+      revisionNo == null
+        ? null
+        : await checkRevisionIsCurrent({
+            userId,
+            recommendationId: intent.recommendation_id,
+            revisionNo,
+          }).catch(() => null);
     if (revision && !revision.ok) {
       metrics.staleRevisionDenials.inc();
       const reason =

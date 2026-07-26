@@ -11,6 +11,7 @@ import {
   resolveBrokerForMarket,
 } from "@/lib/store";
 import { executeIntent, getRiskBudget } from "@/lib/execution";
+import { getEffectiveRevision } from "@/lib/recommendations/canonical/revisions";
 import {
   bridgeError,
   bridgeSuccess,
@@ -190,8 +191,21 @@ export async function POST(req: NextRequest) {
 
     const leverage = 1;
 
+    // The revision the referenced plan is on RIGHT NOW, so the execution-time
+    // compare-and-swap has a number to hold the order to. Null when the trade
+    // references no recommendation, or a pre-revision one.
+    const effectiveRevision =
+      body.recommendation_id != null
+        ? await getEffectiveRevision(userId, body.recommendation_id).catch(() => null)
+        : null;
+
     const intent = await createIntent(userId, {
       recommendation_id: body.recommendation_id ?? null,
+      recommendation_revision_no: effectiveRevision?.revisionNo ?? null,
+      // Which of the two authorisations brought us here (checked above): the
+      // operator approving THIS trade, or their standing auto mode — which the
+      // execution choke point re-verifies at the moment the order is placed.
+      authorization_source: body.approved_by_user ? "user_approved" : "standing_auto",
       symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
       notional: budget.riskAmount,
