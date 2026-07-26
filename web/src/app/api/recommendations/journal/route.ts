@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePlatformAccess, handleError } from "@/lib/api";
 import { collectAdherenceFacts } from "@/lib/recommendations/canonical/analytics";
 import {
+  attachAdherenceToSummary,
   buildPerformanceJournal,
   type JournalEntry,
 } from "@/lib/recommendations/performanceJournal";
@@ -14,12 +15,8 @@ import {
  * the operator (and the agent, as a personal lesson) can see which behaviours
  * are actually paying.
  *
- * The route enriches each entry with facts the journal page needs but the core
- * journal does not compute: the realised R multiple (from the recorded
- * outcome), whether the trade was closed manually before the plan paid any
- * target (early exit), and how long after activation the order was actually
- * raised (delayed entry). The facts themselves come from the canonical
- * analytics module (`canonical/analytics.ts`), which is their one home.
+ * Per-entry facts and summary counts for delayed entry / early exit come from
+ * `canonical/analytics.ts`. This route only joins them onto the response.
  */
 
 export interface JournalEntryView extends JournalEntry {
@@ -50,7 +47,11 @@ export async function GET() {
     }));
 
     return NextResponse.json({
-      summary: journal.summary,
+      summary: attachAdherenceToSummary(journal.summary, {
+        entries,
+        entryDelayMsById: facts.entryDelayMsById,
+        earlyExitIds: facts.earlyExitIds,
+      }),
       entries: enriched,
     });
   } catch (err) {

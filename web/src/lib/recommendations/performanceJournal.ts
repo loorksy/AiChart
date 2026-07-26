@@ -19,8 +19,7 @@ import { query } from "@/lib/db";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import {
   ADHERENCE_PRICE_TOLERANCE,
-  computeEntryAdherence,
-  computeStopAdherence,
+  summarizeAdherence,
 } from "./canonical/analytics";
 import type { TrackedRecommendationOutcome } from "./types";
 
@@ -52,6 +51,13 @@ export interface JournalSummary {
   entryAdherence: number | null;
   /** Share of followed plans whose stop matched the plan. */
   stopAdherence: number | null;
+  /**
+   * Followed plans whose order was raised after the canonical delayed-entry
+   * threshold. Counts come from `summarizeAdherence` — the UI must not recompute.
+   */
+  delayedEntryCount: number;
+  /** Followed plans closed manually before any target paid. */
+  earlyExitCount: number;
   /** Plain observations for the operator — never instructions. */
   notes: string[];
 }
@@ -244,21 +250,62 @@ export function summarizeJournal(entries: JournalEntry[]): JournalSummary {
     losses: list.filter((entry) => !isWin(entry.outcome)).length,
   });
 
+  // Adherence aggregates (including delayed/early counts) live in canonical
+  // analytics. The journal supplies the followed rows; it does not own thresholds.
+  const adherence = summarizeAdherence({
+    entries: followed,
+    entryDelayMsList: [],
+    earlyExitFlags: [],
+  });
+
   const summary: JournalSummary = {
     followed: count(followed),
     ignored: count(ignored),
     auto: { count: auto.length, wins: auto.filter((e) => isWin(e.outcome)).length },
     manual: { count: manual.length, wins: manual.filter((e) => isWin(e.outcome)).length },
-    // entryDeviation is a FRACTION of the plan price, so one threshold is
-    // meaningful on every instrument. The aggregation itself lives in the
-    // canonical analytics module — this journal only supplies the entries.
-    entryAdherence: computeEntryAdherence(followed),
-    stopAdherence: computeStopAdherence(followed),
+    entryAdherence: adherence.entryAdherence,
+    stopAdherence: adherence.stopAdherence,
+    delayedEntryCount: 0,
+    earlyExitCount: 0,
     notes: [],
   };
 
   summary.notes = buildNotes(summary);
   return summary;
+}
+
+/**
+ * Merge lifecycle adherence facts (delay / early exit) into a journal summary.
+ * Kept separate from `summarizeJournal` so the pure journal path stays free of
+ * DB fact maps while the API still returns one coherent summary object.
+ */
+export function attachAdherenceToSummary(
+  summary: JournalSummary,
+  input: {
+    entries: readonly JournalEntry[];
+    entryDelayMsById: ReadonlyMap<string, number>;
+    earlyExitIds: ReadonlySet<string>;
+  },
+): JournalSummary {
+  const followed = input.entries.filter(
+    (entry) => entry.followState !== "ignored" && isResolved(entry.outcome),
+  );
+  const adherence = summarizeAdherence({
+    entries: followed,
+    entryDelayMsList: followed.map(
+      (entry) => input.entryDelayMsById.get(entry.recommendationId) ?? null,
+    ),
+    earlyExitFlags: followed.map((entry) =>
+      input.earlyExitIds.has(entry.recommendationId),
+    ),
+  });
+  return {
+    ...summary,
+    entryAdherence: adherence.entryAdherence ?? summary.entryAdherence,
+    stopAdherence: adherence.stopAdherence ?? summary.stopAdherence,
+    delayedEntryCount: adherence.delayedEntryCount,
+    earlyExitCount: adherence.earlyExitCount,
+  };
 }
 
 /**

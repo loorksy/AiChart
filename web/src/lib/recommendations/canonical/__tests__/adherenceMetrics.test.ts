@@ -118,6 +118,125 @@ describe("pure adherence definitions", () => {
     assert.equal(analytics.isEarlyExit({ manualCloseAt: null, firstTakeProfitAt: 20 }), false);
   });
 
+  it("classifies price late-entry with relative / ATR thresholds on buy and sell", () => {
+    const buyLate = analytics.classifyLateEntry({
+      direction: "buy",
+      preferredEntry: 1.1,
+      entryZone: { low: 1.099, high: 1.101 },
+      fillPrice: 1.1008,
+      atr: 0.001,
+    });
+    assert.equal(buyLate.verdict, "late");
+
+    const buyBetter = analytics.classifyLateEntry({
+      direction: "buy",
+      preferredEntry: 1.1,
+      entryZone: { low: 1.098, high: 1.101 },
+      // Clearly better than preferred beyond the relative tolerance.
+      fillPrice: 1.0988,
+      atr: 0.001,
+    });
+    assert.equal(buyBetter.verdict, "better");
+
+    const buyOnPlan = analytics.classifyLateEntry({
+      direction: "buy",
+      preferredEntry: 1.1,
+      entryZone: { low: 1.099, high: 1.101 },
+      fillPrice: 1.1,
+      atr: 0.001,
+    });
+    assert.equal(buyOnPlan.verdict, "on_plan");
+
+    const sellLate = analytics.classifyLateEntry({
+      direction: "sell",
+      preferredEntry: 2400,
+      entryZone: { low: 2388, high: 2405 },
+      // Adverse for a sell (lower fill) but still inside the zone.
+      fillPrice: 2390,
+      atr: 4,
+    });
+    assert.equal(sellLate.verdict, "late");
+
+    const outside = analytics.classifyLateEntry({
+      direction: "buy",
+      preferredEntry: 1.1,
+      entryZone: { low: 1.099, high: 1.1005 },
+      fillPrice: 1.102,
+      atr: 0.0005,
+    });
+    assert.equal(outside.verdict, "outside_zone");
+  });
+
+  it("classifies exit kinds without collapsing management into early exit", () => {
+    assert.equal(
+      analytics.classifyExit({
+        outcomeType: "ManualClose",
+        manualCloseAt: 10,
+        firstTakeProfitAt: null,
+      }),
+      "user_early_exit",
+    );
+    assert.equal(
+      analytics.classifyExit({
+        outcomeType: "SL",
+        manualCloseAt: null,
+        firstTakeProfitAt: null,
+        stopHitAt: 10,
+      }),
+      "stop_loss",
+    );
+    assert.equal(
+      analytics.classifyExit({
+        outcomeType: "TP1",
+        manualCloseAt: null,
+        firstTakeProfitAt: 10,
+      }),
+      "take_profit",
+    );
+    assert.equal(
+      analytics.classifyExit({
+        outcomeType: "ManualClose",
+        manualCloseAt: 30,
+        firstTakeProfitAt: 20,
+      }),
+      "trailing_or_management",
+    );
+    assert.equal(
+      analytics.classifyExit({
+        outcomeType: null,
+        closeReason: "partial_close",
+        manualCloseAt: null,
+        firstTakeProfitAt: null,
+      }),
+      "partial_close",
+    );
+    assert.equal(
+      analytics.classifyExit({
+        outcomeType: null,
+        closeReason: "broker_stop_out",
+        manualCloseAt: null,
+        firstTakeProfitAt: null,
+      }),
+      "broker_close",
+    );
+  });
+
+  it("summarizes delayed-entry and early-exit counts from canonical thresholds", () => {
+    const summary = analytics.summarizeAdherence({
+      entries: [
+        { entryDeviation: 0.0001, stopMatchedPlan: true },
+        { entryDeviation: 0.002, stopMatchedPlan: false },
+      ],
+      entryDelayMsList: [0, analytics.DELAYED_ENTRY_THRESHOLD_MS, null],
+      earlyExitFlags: [true, false, true],
+    });
+    assert.equal(summary.delayedEntryCount, 1);
+    assert.equal(summary.earlyExitCount, 2);
+    assert.equal(summary.entryAdherence, 0.5);
+    assert.equal(analytics.isDelayedEntry(analytics.DELAYED_ENTRY_THRESHOLD_MS), true);
+    assert.equal(analytics.isDelayedEntry(analytics.DELAYED_ENTRY_THRESHOLD_MS - 1), false);
+  });
+
   it("aggregates entry and stop adherence over the entries that carry data", () => {
     const entries = [
       { entryDeviation: 0.0001, stopMatchedPlan: true },

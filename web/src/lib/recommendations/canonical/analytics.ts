@@ -165,11 +165,178 @@ export async function computeCanonicalRecommendationAnalytics(
  */
 export const ADHERENCE_PRICE_TOLERANCE = 0.0005;
 
+/**
+ * An order raised this long after the plan first became enterable counts as a
+ * delayed (time) entry. Owned here so the journal API and UI cannot drift.
+ */
+export const DELAYED_ENTRY_THRESHOLD_MS = 10 * 60 * 1000;
+
+/**
+ * Adverse fill beyond this many ATRs past preferred entry is a price late entry.
+ * Absolute pip thresholds are forbidden — they lie across EURUSD vs XAUUSD.
+ */
+export const LATE_ENTRY_ATR_MULTIPLE = 0.25;
+
 export interface AdherenceEntry {
   /** Fill price minus plan price, as a fraction of the plan price. */
   entryDeviation: number | null;
   /** True when the executed stop matched the plan's. */
   stopMatchedPlan: boolean | null;
+}
+
+/** How the fill sat relative to the effective revision's entry geometry. */
+export type LateEntryVerdict =
+  | "on_plan"
+  | "better"
+  | "late"
+  | "outside_zone"
+  | "unknown";
+
+/**
+ * Price late-entry from the revision that was effective at execution — not the
+ * latest revision after later trade-management changes.
+ *
+ * BUY: fill above preferred (worse) is late; below preferred is better.
+ * SELL: fill below preferred is late; above preferred is better.
+ * Zone membership and ATR distance refine the label without absolute pip cuts.
+ */
+export function classifyLateEntry(input: {
+  direction: "buy" | "sell";
+  preferredEntry: number | null;
+  entryZone: { low: number; high: number } | null;
+  fillPrice: number | null;
+  atr: number | null;
+}): {
+  verdict: LateEntryVerdict;
+  /** Signed fraction of preferred: +adverse for the direction, −better. */
+  adverseFraction: number | null;
+  lateByAtr: number | null;
+} {
+  const { direction, preferredEntry, entryZone, fillPrice, atr } = input;
+  if (fillPrice == null || !Number.isFinite(fillPrice)) {
+    return { verdict: "unknown", adverseFraction: null, lateByAtr: null };
+  }
+  if (preferredEntry == null || !Number.isFinite(preferredEntry) || preferredEntry === 0) {
+    if (
+      entryZone &&
+      Number.isFinite(entryZone.low) &&
+      Number.isFinite(entryZone.high) &&
+      fillPrice >= Math.min(entryZone.low, entryZone.high) &&
+      fillPrice <= Math.max(entryZone.low, entryZone.high)
+    ) {
+      return { verdict: "on_plan", adverseFraction: null, lateByAtr: null };
+    }
+    return {
+      verdict: entryZone ? "outside_zone" : "unknown",
+      adverseFraction: null,
+      lateByAtr: null,
+    };
+  }
+
+  const signed =
+    direction === "buy"
+      ? (fillPrice - preferredEntry) / preferredEntry
+      : (preferredEntry - fillPrice) / preferredEntry;
+  const lateByAtr =
+    atr != null && Number.isFinite(atr) && atr > 0
+      ? (direction === "buy" ? fillPrice - preferredEntry : preferredEntry - fillPrice) / atr
+      : null;
+
+  const inZone =
+    entryZone &&
+    Number.isFinite(entryZone.low) &&
+    Number.isFinite(entryZone.high) &&
+    fillPrice >= Math.min(entryZone.low, entryZone.high) &&
+    fillPrice <= Math.max(entryZone.low, entryZone.high);
+
+  if (signed <= ADHERENCE_PRICE_TOLERANCE && signed >= -ADHERENCE_PRICE_TOLERANCE) {
+    return { verdict: "on_plan", adverseFraction: signed, lateByAtr };
+  }
+  if (signed < 0) {
+    return { verdict: "better", adverseFraction: signed, lateByAtr };
+  }
+  const atrLate =
+    lateByAtr != null && lateByAtr > LATE_ENTRY_ATR_MULTIPLE;
+  const fractionLate = signed > ADHERENCE_PRICE_TOLERANCE;
+  if (atrLate || fractionLate) {
+    if (inZone === false) {
+      return { verdict: "outside_zone", adverseFraction: signed, lateByAtr };
+    }
+    return { verdict: "late", adverseFraction: signed, lateByAtr };
+  }
+  return { verdict: "on_plan", adverseFraction: signed, lateByAtr };
+}
+
+/**
+ * Why the trade left the market — distinct from "early exit" which is only the
+ * user-abandonment case (manual close before any target paid).
+ */
+export type ExitKind =
+  | "user_early_exit"
+  | "stop_loss"
+  | "trailing_or_management"
+  | "broker_close"
+  | "partial_close"
+  | "take_profit"
+  | "unknown";
+
+export function classifyExit(input: {
+  outcomeType: string | null;
+  /** Explicit close reason when the broker/EA recorded one. */
+  closeReason?: string | null;
+  manualCloseAt: number | null;
+  firstTakeProfitAt: number | null;
+  stopHitAt?: number | null;
+}): ExitKind {
+  const reason = (input.closeReason ?? "").toLowerCase();
+  if (reason.includes("partial")) return "partial_close";
+  if (reason.includes("trail") || reason.includes("manage")) {
+    return "trailing_or_management";
+  }
+  if (reason.includes("broker") || reason.includes("margin") || reason.includes("stop_out")) {
+    return "broker_close";
+  }
+
+  const outcome = input.outcomeType ?? "";
+  if (outcome === "TP1" || outcome === "TP2" || outcome === "TP3") {
+    return "take_profit";
+  }
+  if (outcome === "SL" || input.stopHitAt != null) return "stop_loss";
+  if (
+    isEarlyExit({
+      manualCloseAt: input.manualCloseAt,
+      firstTakeProfitAt: input.firstTakeProfitAt,
+    })
+  ) {
+    return "user_early_exit";
+  }
+  if (outcome === "ManualClose" && input.firstTakeProfitAt != null) {
+    return "trailing_or_management";
+  }
+  return "unknown";
+}
+
+export function isDelayedEntry(entryDelayMs: number | null): boolean {
+  return entryDelayMs != null && entryDelayMs >= DELAYED_ENTRY_THRESHOLD_MS;
+}
+
+/** Aggregate adherence counts the journal UI used to recompute locally. */
+export function summarizeAdherence(input: {
+  entries: readonly AdherenceEntry[];
+  entryDelayMsList: readonly (number | null)[];
+  earlyExitFlags: readonly boolean[];
+}): {
+  entryAdherence: number | null;
+  stopAdherence: number | null;
+  delayedEntryCount: number;
+  earlyExitCount: number;
+} {
+  return {
+    entryAdherence: computeEntryAdherence(input.entries),
+    stopAdherence: computeStopAdherence(input.entries),
+    delayedEntryCount: input.entryDelayMsList.filter(isDelayedEntry).length,
+    earlyExitCount: input.earlyExitFlags.filter(Boolean).length,
+  };
 }
 
 /** Share of entries filled within tolerance of the plan price; null without data. */
