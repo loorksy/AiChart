@@ -46,6 +46,8 @@ import { breakLevelOf, offersAnticipatoryEntry } from "@/lib/chart/geometry/patt
 import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
+import type { StatisticalSupport } from "@/lib/strategies/supportSummary";
+import { expectedSpreadNow } from "@/lib/strategies/sessionSpread";
 
 const log = createLogger("final-decision");
 
@@ -282,6 +284,11 @@ export async function runFinalDecisionSynthesizer(
      * blocking the decision.
      */
     visualSnapshots?: VisualSnapshot[] | null;
+    /**
+     * Verified statistical backing for this symbol and timeframe. Grades the
+     * plan; never decides whether one exists.
+     */
+    statisticalSupport?: StatisticalSupport | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -397,6 +404,7 @@ function buildModelContext(
     candidates: DrawingCandidate[];
     narrative?: MarketNarrative | null;
     geometry?: GeometrySnapshot | null;
+    statisticalSupport?: StatisticalSupport | null;
   },
 ): Record<string, unknown> {
   const playbook = input.risk?.playbook ?? null;
@@ -404,6 +412,22 @@ function buildModelContext(
   return {
     // Fixed scalping context. Higher-timeframe facts remain evidence only.
     scalpingContext: SCALPING_CONTEXT,
+    // Say it plainly to the model too: strong backing is worth citing, and its
+    // absence is worth stating rather than papering over.
+    statisticalSupport: input.statisticalSupport ?? {
+      level: "unavailable",
+      detail: "No verified strategy evidence for this symbol and timeframe.",
+    },
+    // What this trade costs in the session it would actually be taken in — the
+    // Asian-session spread and the London one are different trades on the same
+    // setup, and an average hides exactly the cases where a scalp stops paying.
+    executionCost: input.market.spread != null
+      ? {
+          observed_spread: input.market.spread,
+          ...expectedSpreadNow(input.market.spread),
+          note: "Session-adjusted expected spread. A move that does not clear it is a worse entry, not an absent one — say the better price instead.",
+        }
+      : null,
     // --- Trading-brain context (Phase 2) ---
     narrative: input.narrative ?? null,
     // Deterministic chart geometry — trendlines, channels, and named patterns
@@ -538,7 +562,10 @@ function buildModelContext(
  */
 function applyModelDecision(
   parsed: FinalDecisionModelOutput,
-  input: FinalDecisionInput & { geometry?: GeometrySnapshot | null },
+  input: FinalDecisionInput & {
+    geometry?: GeometrySnapshot | null;
+    statisticalSupport?: StatisticalSupport | null;
+  },
 ): FinalDecisionResult {
   const confidence = Math.max(0, Math.min(1, parsed.confidence));
   const clean = (arr: string[], max: number) =>
@@ -698,7 +725,8 @@ function applyModelDecision(
       netR: netRr ?? null,
       belowPreferredNetR:
         netRr != null ? netRr + 1e-9 < SCALP_GEOMETRY.minNetTp1R : undefined,
-      statisticalSupport: "unavailable",
+      statisticalSupport: input.statisticalSupport?.level ?? "unavailable",
+      statisticalDetail: input.statisticalSupport?.detail ?? null,
       newsRisk: input.news?.newsRisk ?? "unknown",
       dataSufficient: input.market.dataQuality.sufficient,
       validityCandles: parsed.validityCandles,

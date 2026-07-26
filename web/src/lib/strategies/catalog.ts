@@ -1,6 +1,7 @@
 import type { ResearchJsonObject, ResearchTimeframe } from "@/lib/research";
 import { GENERATED_CATALOG, GENERATED_CATALOG_BY_ID } from "./catalogGen";
 import { riskPolicyFor } from "./riskPolicy";
+import { buildSessionSpreadSchedule } from "./sessionSpread";
 
 /**
  * Legacy hand-written ids. They MUST remain valid forever: deployed evidence
@@ -35,8 +36,12 @@ const STRATEGY_ID_SET = new Set(BACKTEST_STRATEGY_IDS);
  * but the language could not express them, so no strategy could use them.
  * Specs may now differ in their condition trees; revision-4 results were
  * produced without these leaves and must NOT be reused.
+ * Revision 6: costs became session-aware. Every earlier result was validated
+ * against a single averaged spread, which flattered strategies that trade the
+ * thin Asian session and penalised those that trade the overlap. A scalp's edge
+ * lives inside that difference, so revision-5 results must NOT be reused.
  */
-export const CATALOG_SPEC_REVISION = "5";
+export const CATALOG_SPEC_REVISION = "6";
 
 export interface StrategyCostProfile {
   spreadPips: number;
@@ -224,7 +229,13 @@ export function buildBacktestStrategySpec(input: {
       minimum_reward_risk: 1,
     },
     costs: {
-      spread: { type: "fixed_pips", value: Math.max(0, costs.spreadPips) },
+      // Session-aware rather than a single number: a scalp's edge lives in the
+      // difference between an Asian-session spread and a London one, and
+      // validating every strategy against one average hid exactly that.
+      spread: {
+        type: "session_schedule",
+        values: buildSessionSpreadSchedule(costs.spreadPips),
+      },
       slippage: {
         type: "fixed_pips",
         value: Math.max(0, costs.slippagePips),

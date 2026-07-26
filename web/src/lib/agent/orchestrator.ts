@@ -86,6 +86,7 @@ import { buildMarketNarrative } from "./marketContext/buildMarketNarrative";
 import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
 import { collectVisualEvidence } from "./visualEvidence";
+import { getStatisticalSupport } from "@/lib/strategies/supportSummary";
 import { handleDrawingCommand } from "./drawingCommands/handleDrawingCommand";
 import {
   clearActiveRecommendation,
@@ -897,6 +898,15 @@ async function runUnifiedChartAgentInner(
   // decision call rather than inside it, so a slow capture cannot eat the
   // decision's own deadline — and an empty result simply means the engine
   // reads numbers alone, as it always did.
+  // Verified statistical support, looked up rather than assembled: the factory's
+  // evidence never used to reach an answer because building it mid-request could
+  // not finish in time, and evidence that arrives after the decision is none.
+  const statisticalSupport = await getStatisticalSupport({
+    userId: ctx.userId,
+    symbol: market.symbol,
+    timeframe: market.interval,
+  }).catch(() => null);
+
   const visual = FEATURES.visionDecisionV1()
     ? await collectVisualEvidence({
         userId: ctx.userId,
@@ -932,6 +942,7 @@ async function runUnifiedChartAgentInner(
           // Realised-outcome lessons (item 14): evidence the model weighs.
           lessonsBlock,
           visualSnapshots: visual.snapshots,
+          statisticalSupport,
         },
       ).catch((err) => {
         synthError = err;
