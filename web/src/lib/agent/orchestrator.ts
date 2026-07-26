@@ -136,6 +136,7 @@ import {
   createTrackedRecommendation,
   listTrackedRecommendations,
 } from "@/lib/recommendations/recommendationStore";
+import { announceOpportunityCreated } from "@/lib/recommendations/lifecycleNotifier";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 import {
   renderLessonsForPrompt,
@@ -2160,4 +2161,16 @@ async function persistTrackedRecommendation(
       ? { evidenceDimensions: explanation.evidenceDimensions }
       : undefined,
   });
+  // The birth announcement (plan §8 C.1), through the lifecycle notifier so it
+  // shares the (recommendation, event, revision) dedupe with every later event
+  // — revision 1 announced exactly once, re-runs and the legacy chart alert
+  // both silenced by the same claimed key. Best-effort: a failed send never
+  // undoes the stored plan.
+  await announceOpportunityCreated(userId, {
+    recommendationId: active.id,
+    symbol: active.symbol,
+    direction: active.direction,
+    entry: active.entry,
+    planType: active.planType ?? null,
+  }).catch(() => {});
 }

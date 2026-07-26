@@ -25,6 +25,13 @@ export type LifecycleEventType =
   | "breakout_no_retest"
   /** A high-impact calendar release is imminent for the plan's currencies. */
   | "economic_event_near"
+  /**
+   * A re-evaluation cycle looked again and stood by the plan. Informational and
+   * NON-terminal: "the market moved, the agent re-checked, nothing changed" is
+   * different information from "nobody looked", and until this existed the two
+   * were indistinguishable to the operator.
+   */
+  | "reevaluation_confirmed"
   | "tp1_hit"
   | "tp2_hit"
   | "tp3_hit"
@@ -214,6 +221,40 @@ export function deriveLifecycleEvents(input: DeriveEventsInput): LifecycleEvent[
   }
 
   return events;
+}
+
+/**
+ * The birth announcement of a plan (plan §8 C.1).
+ *
+ * Built here — pure, deterministic — rather than at the call site, so the
+ * dedupe identity is fixed in one place: revision 1 IS part of the key, which is
+ * what lets the legacy creation alert and the lifecycle path share a single
+ * claim instead of racing to announce the same plan twice.
+ */
+export function opportunityCreatedEvent(input: {
+  recommendationId: string;
+  symbol: string;
+  direction: "buy" | "sell";
+  entry?: number | null;
+  planType?: string | null;
+  /** The revision the plan was born with; defaults to 1, like creation does. */
+  revisionNo?: number | null;
+  now?: number;
+}): LifecycleEvent {
+  const revisionNo = input.revisionNo ?? 1;
+  const side = input.direction === "sell" ? "بيع" : "شراء";
+  const entry = Number(input.entry);
+  const where = Number.isFinite(entry) && entry > 0 ? ` — الدخول قرب ${entry}` : "";
+  return {
+    type: "opportunity_created",
+    recommendationId: input.recommendationId,
+    symbol: input.symbol,
+    revisionNo,
+    dedupeKey: `${input.recommendationId}:${revisionNo}:opportunity_created`,
+    detail: `${input.symbol}: فرصة ${side} جديدة${where}.`,
+    terminal: false,
+    occurredAt: input.now ?? Date.now(),
+  };
 }
 
 function statusDetail(type: LifecycleEventType, symbol: string): string {

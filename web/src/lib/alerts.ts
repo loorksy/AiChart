@@ -35,7 +35,9 @@ export type DeliveryReason =
   | "telegram_not_linked"
   | "bot_not_configured"
   | "delivery_failed"
-  | "no_actionable_signal";
+  | "no_actionable_signal"
+  /** Creation already announced through the lifecycle notifier's dedupe. */
+  | "duplicate_creation_alert";
 
 export interface DeliveryResult {
   delivered: boolean;
@@ -52,6 +54,7 @@ const REASON_AR: Record<DeliveryReason, string> = {
   bot_not_configured: "بوت تليجرام غير مُعدّ",
   delivery_failed: "فشل الإرسال إلى تليجرام",
   no_actionable_signal: "لا إشارة تنفيذية",
+  duplicate_creation_alert: "أُعلنت هذه التوصية من قبل",
 };
 
 export function deliveryReasonAr(reason?: DeliveryReason): string {

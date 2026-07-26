@@ -16,7 +16,11 @@
 import { execute, queryOne } from "@/lib/db";
 import { dispatchAlert } from "@/lib/alerts";
 import { createLogger } from "@/lib/logger";
-import type { LifecycleEvent } from "./lifecycleEvents";
+import {
+  opportunityCreatedEvent,
+  type LifecycleEvent,
+  type LifecycleEventType,
+} from "./lifecycleEvents";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { metrics } from "@/lib/metrics";
 
@@ -35,16 +39,41 @@ async function claimDedupeKey(input: {
   userId: number;
   event: LifecycleEvent;
 }): Promise<boolean> {
+  return claimLifecycleDedupeKey({
+    userId: input.userId,
+    dedupeKey: input.event.dedupeKey,
+    eventType: input.event.type,
+    symbol: input.event.symbol,
+    occurredAt: input.event.occurredAt,
+  });
+}
+
+/**
+ * Claim one (recommendation, event, revision) identity directly.
+ *
+ * Exported for the LEGACY creation alert path (`recommendationChart.ts`), which
+ * predates lifecycle events and would otherwise announce a plan's creation with
+ * no dedupe at all. Claiming the same key the lifecycle path uses means whoever
+ * speaks first wins and the other stays silent — one announcement per plan,
+ * whichever path noticed it.
+ */
+export async function claimLifecycleDedupeKey(input: {
+  userId: number;
+  dedupeKey: string;
+  eventType: LifecycleEventType;
+  symbol: string;
+  occurredAt?: number;
+}): Promise<boolean> {
   try {
     const result = await execute(
       `INSERT INTO alert_dedupe (user_id, dedupe_key, event_type, symbol, created_at)
        VALUES (?,?,?,?,?)`,
       [
         input.userId,
-        input.event.dedupeKey,
-        input.event.type,
-        input.event.symbol,
-        input.event.occurredAt,
+        input.dedupeKey,
+        input.eventType,
+        input.symbol,
+        input.occurredAt ?? Date.now(),
       ],
     );
     return result.changes > 0;
@@ -177,6 +206,30 @@ export async function notifyLifecycleEvents(
   return result;
 }
 
+/**
+ * Announce a plan's creation through the SAME dedupe/rate-limit/flag pipeline
+ * as every other lifecycle event (plan §8 C.1).
+ *
+ * Called at canonical creation time with revision 1 — the revision the plan is
+ * born with — so re-running the persist path, or the legacy chart alert firing
+ * for the same plan, says nothing the second time. This is delivery only: it
+ * decides nothing and never touches the recommendation.
+ */
+export async function announceOpportunityCreated(
+  userId: number,
+  input: {
+    recommendationId: string;
+    symbol: string;
+    direction: "buy" | "sell";
+    entry?: number | null;
+    planType?: string | null;
+    revisionNo?: number | null;
+  },
+  options: NotifyOptions = {},
+): Promise<NotifyResult> {
+  return notifyLifecycleEvents(userId, [opportunityCreatedEvent(input)], options);
+}
+
 function groupTitle(events: LifecycleEvent[]): string {
   const symbol = events[0]!.symbol;
   if (events.length === 1) return `${symbol} · ${eventLabel(events[0]!.type)}`;
@@ -197,6 +250,8 @@ function eventLabel(type: LifecycleEvent["type"]): string {
       return "تحديث الخطة";
     case "scenario_changed":
       return "تغيّر السيناريو";
+    case "reevaluation_confirmed":
+      return "تأكيد الخطة بعد إعادة التقييم";
     case "tp1_hit":
       return "الهدف الأول";
     case "tp2_hit":

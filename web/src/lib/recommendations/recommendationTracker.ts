@@ -314,9 +314,28 @@ export async function trackRecommendations(
       if (cycle.verdict === "skipped") continue;
       // Labels match what actually happened: a revision moved the plan
       // (entry_updated); an invalidation means the alternative scenario took
-      // over (scenario_changed); a confirmation is recorded in
-      // recommendation_reevaluations but is not a plan change to announce.
-      if (cycle.verdict === "confirmed") continue;
+      // over (scenario_changed); a confirmation is announced as exactly what it
+      // is — "looked again, stood by the plan" — because an operator who cannot
+      // tell "re-checked and confirmed" from "nobody looked" can trust neither.
+      if (cycle.verdict === "confirmed") {
+        byUser.set(cycle.trigger.userId, [
+          ...(byUser.get(cycle.trigger.userId) ?? []),
+          {
+            type: "reevaluation_confirmed",
+            recommendationId: cycle.trigger.recommendationId,
+            symbol: cycle.trigger.symbol,
+            revisionNo: cycle.trigger.revisionNo,
+            // The trigger's reason is part of the identity: the SAME condition
+            // re-checked at the same revision stays silent, while a different
+            // reason to look again is a different confirmation worth hearing.
+            dedupeKey: `${cycle.trigger.recommendationId}:${cycle.trigger.revisionNo ?? 0}:reeval:confirmed:${cycle.trigger.reason}`,
+            detail: cycle.detail,
+            terminal: false,
+            occurredAt: Date.now(),
+          },
+        ]);
+        continue;
+      }
       byUser.set(cycle.trigger.userId, [
         ...(byUser.get(cycle.trigger.userId) ?? []),
         {

@@ -17,6 +17,11 @@
  */
 import { query } from "@/lib/db";
 import { FEATURES } from "@/lib/agent/featureFlags";
+import {
+  ADHERENCE_PRICE_TOLERANCE,
+  computeEntryAdherence,
+  computeStopAdherence,
+} from "./canonical/analytics";
 import type { TrackedRecommendationOutcome } from "./types";
 
 export type FollowState = "followed_auto" | "followed_manual" | "ignored";
@@ -121,8 +126,12 @@ function journalOutcome(row: JoinedRow): TrackedRecommendationOutcome {
   }
 }
 
-/** Relative tolerance for "entered where the plan said" / "kept the plan's stop". */
-const PRICE_TOLERANCE = 0.0005;
+/**
+ * Relative tolerance for "entered where the plan said" / "kept the plan's stop".
+ * One constant, owned by the canonical analytics module, so the deviation
+ * recorded here and the adherence aggregated there can never drift apart.
+ */
+const PRICE_TOLERANCE = ADHERENCE_PRICE_TOLERANCE;
 
 /**
  * Build the journal for one operator.
@@ -235,24 +244,16 @@ export function summarizeJournal(entries: JournalEntry[]): JournalSummary {
     losses: list.filter((entry) => !isWin(entry.outcome)).length,
   });
 
-  const withDeviation = followed.filter((entry) => entry.entryDeviation != null);
-  // entryDeviation is a FRACTION of the plan price, so one threshold is
-  // meaningful on every instrument. Comparing raw price distances made 0.001
-  // mean ten pips on EURUSD and nothing at all on XAUUSD.
-  const closeEnough = withDeviation.filter(
-    (entry) => Math.abs(entry.entryDeviation!) <= PRICE_TOLERANCE,
-  );
-  const withStop = followed.filter((entry) => entry.stopMatchedPlan != null);
-
   const summary: JournalSummary = {
     followed: count(followed),
     ignored: count(ignored),
     auto: { count: auto.length, wins: auto.filter((e) => isWin(e.outcome)).length },
     manual: { count: manual.length, wins: manual.filter((e) => isWin(e.outcome)).length },
-    entryAdherence: withDeviation.length ? closeEnough.length / withDeviation.length : null,
-    stopAdherence: withStop.length
-      ? withStop.filter((entry) => entry.stopMatchedPlan).length / withStop.length
-      : null,
+    // entryDeviation is a FRACTION of the plan price, so one threshold is
+    // meaningful on every instrument. The aggregation itself lives in the
+    // canonical analytics module — this journal only supplies the entries.
+    entryAdherence: computeEntryAdherence(followed),
+    stopAdherence: computeStopAdherence(followed),
     notes: [],
   };
 

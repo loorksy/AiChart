@@ -10,6 +10,8 @@ import { getSettings, updateRecommendationChartUrl } from "./store";
 import { buildAccountProfile } from "./accountProfile";
 import { recommendationCard } from "./telegramCards";
 import { dispatchAlert, type DeliveryResult } from "./alerts";
+import { claimLifecycleDedupeKey } from "./recommendations/lifecycleNotifier";
+import { FEATURES } from "./agent/featureFlags";
 import type { Recommendation } from "./types";
 import type { InlineButton } from "./telegram";
 import type { MarketType } from "./markets/types";
@@ -80,6 +82,27 @@ export async function notifyRecommendation(
 ): Promise<DeliveryResult> {
   if (rec.action === "wait") {
     return { delivered: false, reason: "no_actionable_signal" };
+  }
+
+  // Creation is announced through the lifecycle notifier's (recommendation,
+  // event, revision) dedupe (plan §8 C.1). This legacy path predates that and
+  // used to fire unconditionally; now it claims the SAME key the lifecycle
+  // `opportunity_created` event uses — whoever speaks first wins, the other
+  // stays silent. Gated so the OFF-flag behaviour is exactly today's: with
+  // lifecycle alerts rolled back, this path announces as it always has.
+  if (FEATURES.recLifecycleAlertsV1()) {
+    const referenceId =
+      (rec as { legacy_tracking_id?: string | null }).legacy_tracking_id ??
+      String(rec.id);
+    const claimed = await claimLifecycleDedupeKey({
+      userId,
+      dedupeKey: `${referenceId}:1:opportunity_created`,
+      eventType: "opportunity_created",
+      symbol: rec.symbol,
+    });
+    if (!claimed) {
+      return { delivered: false, reason: "duplicate_creation_alert" };
+    }
   }
 
   const settings = await getSettings(userId);
