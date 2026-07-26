@@ -51,16 +51,23 @@ export const KILL_SWITCH_FLAG = "trading_kill_switch";
 export const LIVE_ENABLED_FLAG = "live_trading_enabled";
 
 /**
- * Is this deployment pointed at a real-money account? Conservative by design:
- * anything not explicitly a practice/demo environment counts as live, so a
- * missing/unknown setting gets the STRICTER treatment, never the looser one.
+ * Is this execution going to a real-money account?
+ *
+ * IMPORTANT — this deliberately takes the BROKER'S REPORTED account type, not
+ * an environment variable. An earlier version of this file read `OANDA_ENV`,
+ * which was simply the wrong signal: on an EA/MT5 deployment OANDA is only the
+ * chart DATA source, so `OANDA_ENV=practice` said nothing about where orders
+ * actually go. The protection silently never engaged on exactly the setup it
+ * was meant to guard. Callers now pass the value resolved from the live broker
+ * connection (`getResolvedExecutionEnv`).
+ *
+ * `null` means the broker has not reported an account type. That is treated as
+ * NOT live, because an unidentified connection cannot execute anyway — verified
+ * broker equity is required upstream — so forcing dual enablement there would
+ * only block legitimate demo trading without protecting anything.
  */
-export function isLiveTradingEnvironment(): boolean {
-  const oanda = process.env.OANDA_ENV?.trim().toLowerCase();
-  if (oanda === "practice" || oanda === "demo") return false;
-  if (oanda === "live") return true;
-  // No explicit environment: treat as live so dual enablement is required.
-  return true;
+export function isRealMoneyExecution(resolvedEnv: "demo" | "live" | null): boolean {
+  return resolvedEnv === "live";
 }
 
 /**

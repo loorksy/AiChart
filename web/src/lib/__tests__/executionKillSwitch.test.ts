@@ -4,7 +4,7 @@ import {
   checkExecutionHalt,
   isKillSwitchEngaged,
   isLiveDualEnabled,
-  isLiveTradingEnvironment,
+  isRealMoneyExecution,
   reconcileAtStartup,
 } from "@/lib/executionKillSwitch";
 
@@ -77,13 +77,26 @@ describe("dual enablement for live execution", () => {
     assert.equal(check.halted, false, "demo must not need live dual enablement");
   });
 
-  it("treats an unknown environment as LIVE (stricter, never looser)", () => {
-    delete process.env.OANDA_ENV;
-    assert.equal(isLiveTradingEnvironment(), true, "unknown env must require dual enablement");
-    process.env.OANDA_ENV = "practice";
-    assert.equal(isLiveTradingEnvironment(), false);
-    process.env.OANDA_ENV = "live";
-    assert.equal(isLiveTradingEnvironment(), true);
+  it("decides real-money from the BROKER's account type, not an env var", () => {
+    // REGRESSION: this previously read OANDA_ENV, which on an EA/MT5 deployment
+    // only describes the chart DATA source. With OANDA_ENV=practice and orders
+    // routed through a real MT5 account, the guard silently never engaged —
+    // exactly the setup it exists to protect.
+    assert.equal(isRealMoneyExecution("live"), true);
+    assert.equal(isRealMoneyExecution("demo"), false);
+    assert.equal(
+      isRealMoneyExecution(null),
+      false,
+      "an unidentified broker cannot execute anyway (verified equity is required upstream)",
+    );
+  });
+
+  it("is unaffected by OANDA_ENV, whatever it says", () => {
+    for (const value of ["practice", "live", "demo", ""]) {
+      process.env.OANDA_ENV = value;
+      assert.equal(isRealMoneyExecution("live"), true, `OANDA_ENV=${value}`);
+      assert.equal(isRealMoneyExecution("demo"), false, `OANDA_ENV=${value}`);
+    }
   });
 });
 

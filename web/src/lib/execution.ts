@@ -14,10 +14,11 @@ import {
 } from "./agent/portfolioGate";
 import {
   checkExecutionHalt,
-  isLiveTradingEnvironment,
+  isRealMoneyExecution,
   KILL_SWITCH_FLAG,
   LIVE_ENABLED_FLAG,
 } from "./executionKillSwitch";
+import { getResolvedExecutionEnv } from "./executionEnv";
 import { getEaConnection } from "./eaStore";
 import { BridgeErrorCode } from "./bridge/errors";
 import { getBrokerAdapter } from "./brokers";
@@ -150,13 +151,17 @@ export async function executeIntent(
   //
   // Dual enablement: real-money execution needs the deploy-scoped env switch
   // AND an independently-set ops flag, so one wrong setting can't go live.
-  const [killFlag, liveRuntimeFlag] = await Promise.all([
+  const [killFlag, liveRuntimeFlag, resolvedEnv] = await Promise.all([
     getFlag(KILL_SWITCH_FLAG).catch(() => null),
     getFlag(LIVE_ENABLED_FLAG).catch(() => null),
+    // The BROKER's reported account type — the only signal that actually says
+    // where this order goes. Reading an env var here (the previous behaviour)
+    // meant the protection never engaged on EA/MT5 deployments.
+    getResolvedExecutionEnv(userId, intent.market).catch(() => null),
   ]);
   const halt = checkExecutionHalt({
     killSwitchFlag: killFlag,
-    isLive: isLiveTradingEnvironment(),
+    isLive: isRealMoneyExecution(resolvedEnv),
     liveRuntimeEnabled: liveRuntimeFlag === "1",
   });
   if (halt.halted) {
