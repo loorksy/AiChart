@@ -209,13 +209,17 @@ describe("create_recommendation visual audit fields", () => {
     assert.equal(parsed.success, false);
   });
 
-  it("never lets visual review stand in for backtest evidence", () => {
+  it("accepts a confirmed visual review with no backtest behind it", () => {
+    // The recommendation is recorded as direct analysis; what visual review
+    // must never do is imply statistical backing, and it does not — the server
+    // labels support separately from anything the chart showed.
     const { strategy_id: _s, backtested_confidence: _b, ...withoutEvidence } = base;
     const parsed = createRecommendationInput.safeParse({
       ...withoutEvidence,
       visual_confirmation: "confirmed",
       timeframes_reviewed: ["15m", "1h", "4h", "1D"],
     });
-    assert.equal(parsed.success, false);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.strategy_id, undefined);
   });
 });

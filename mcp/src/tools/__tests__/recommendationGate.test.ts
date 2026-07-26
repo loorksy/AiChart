@@ -14,7 +14,8 @@ describe("create_recommendation structural gate", () => {
     assert.equal(parsed.success, true);
   });
 
-  it("rejects BUY without strategy_id and backtested_confidence", () => {
+  it("accepts BUY with levels but no strategy evidence (direct analysis)", () => {
+    // A missing backtest downgrades the label, never the right to recommend.
     const parsed = createRecommendationInput.safeParse({
       symbol: "EURUSD",
       action: "buy",
@@ -24,6 +25,17 @@ describe("create_recommendation structural gate", () => {
       entry: 1.1,
       stop_loss: 1.09,
       take_profit: 1.12,
+    });
+    assert.equal(parsed.success, true);
+  });
+
+  it("rejects BUY without levels — a direction with nowhere to act is not a plan", () => {
+    const parsed = createRecommendationInput.safeParse({
+      symbol: "EURUSD",
+      action: "buy",
+      confidence: 80,
+      rationale: "We buy the bounce from demand.",
+      factors: ["demand zone"],
     });
     assert.equal(parsed.success, false);
   });

@@ -48,7 +48,16 @@ const recommendationSharedFields = {
   timeframes_reviewed: zTimeframesReviewed,
 };
 
-/** Structural BUY/SELL gate used by the MCP handler and unit tests. */
+/**
+ * Structural shape for a recommendation.
+ *
+ * BUY/SELL requires LEVELS — a direction with nowhere to enter, stop, or take
+ * profit is not a plan. It does NOT require a backtested strategy: send
+ * strategy_id (and optionally backtested_confidence) when real evidence exists,
+ * omit both otherwise and the server records the recommendation as direct
+ * analysis with no statistical support. Evidence grades a plan; it never
+ * decides whether the plan may exist.
+ */
 export const createRecommendationInput = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("wait"),
@@ -63,9 +72,9 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("buy"),
     ...recommendationSharedFields,
-    strategy_id: zBacktestStrategyId,
-    backtested_confidence: zConfidence,
-    market_regime: z.string().min(3).max(64),
+    strategy_id: zBacktestStrategyId.optional(),
+    backtested_confidence: zConfidence.optional(),
+    market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
     take_profit: z.number().positive(),
@@ -73,9 +82,9 @@ export const createRecommendationInput = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("sell"),
     ...recommendationSharedFields,
-    strategy_id: zBacktestStrategyId,
-    backtested_confidence: zConfidence,
-    market_regime: z.string().min(3).max(64),
+    strategy_id: zBacktestStrategyId.optional(),
+    backtested_confidence: zConfidence.optional(),
+    market_regime: z.string().min(3).max(64).optional(),
     entry: z.number().positive(),
     stop_loss: z.number().positive(),
     take_profit: z.number().positive(),
@@ -214,7 +223,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: before open_trade — record recommendation. BUY/SELL require strategy_id, backtested_confidence from get_strategy_performance, market_regime from detect_market_regime, and valid entry/SL/TP. WAIT needs rationale only. Server overwrites confidence with calibrated evidence. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
+      "When: after choosing a direction — record the recommendation. BUY/SELL require valid entry/SL/TP levels. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
