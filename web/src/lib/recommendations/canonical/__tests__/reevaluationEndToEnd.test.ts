@@ -375,11 +375,23 @@ describe("automatic trigger consumption through the real unified brain", () => {
       recommendation.recommendationId,
     );
     assert.equal(current?.revisionNo, 2);
-    const staleExecution = await execution.executeIntent(
-      userId,
-      waitingIntent.id,
-      { explicitApproval: true },
+    // Open the upstream stage gate and leave a real server-recorded approval so
+    // the refusal proven here is the stale-revision CAS, not an earlier gate.
+    await db.execute(
+      "UPDATE trade_intents SET approved_at = ?, approved_by_user_id = ? WHERE id = ?",
+      [Date.now(), userId, waitingIntent.id],
     );
+    process.env.AUTO_EXECUTION_STAGE = "live";
+    let staleExecution: Awaited<ReturnType<typeof execution.executeIntent>>;
+    try {
+      staleExecution = await execution.executeIntent(
+        userId,
+        waitingIntent.id,
+        { explicitApproval: true },
+      );
+    } finally {
+      process.env.AUTO_EXECUTION_STAGE = "off";
+    }
     assert.equal(staleExecution.ok, false);
     assert.equal(staleExecution.errorCode, "stale_revision");
     const notices = await db.query<{ count: number }>(

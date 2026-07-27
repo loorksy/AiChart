@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { before, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-source-enforcement-"));
 process.env.DB_PATH = join(dir, "enforcement.db");
@@ -32,6 +32,10 @@ const EQUITY_REASON = /equity/;
 let owner = 0;
 
 before(async () => {
+  // The stage gate sits UPSTREAM of every gate this file tests and fails
+  // closed (unset -> off). Open it so each test reaches its actual target;
+  // the stage gate's own behaviour is pinned in executionStageAndApproval.test.ts.
+  process.env.AUTO_EXECUTION_STAGE = "live";
   const db = await import("@/lib/db");
   await db.initDb();
   owner = await db.insertReturningId(
@@ -39,6 +43,24 @@ before(async () => {
     ["source-enforcement-owner@example.com", "x", "user", "active"],
   );
 });
+
+after(() => {
+  delete process.env.AUTO_EXECUTION_STAGE;
+});
+
+/**
+ * What the authenticated approval path (respondToApproval) leaves behind: the
+ * server's own record that THIS user approved THIS intent just now. Tests whose
+ * target gate lies beyond the approval-proof check need it; the choke point no
+ * longer accepts `explicitApproval` alone.
+ */
+async function stampServerApproval(intentId: number): Promise<void> {
+  const db = await import("@/lib/db");
+  await db.execute(
+    "UPDATE trade_intents SET approved_at = ?, approved_by_user_id = ? WHERE id = ?",
+    [Date.now(), owner, intentId],
+  );
+}
 
 /** An intent that is technically valid, so only the gates under test decide. */
 async function newIntent(
@@ -151,8 +173,9 @@ describe("authorization source enforcement at the choke point", () => {
     const { executeIntent } = await import("@/lib/execution");
     // A pending intent from before sources were stamped must still work when
     // the operator approves it — that is the one authorisation a stale row
-    // cannot forge.
+    // cannot forge. "Approves it" now means the server recorded the approval.
     const intent = await newIntent({ authorization_source: null });
+    await stampServerApproval(intent.id);
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
     assert.equal(result.errorCode, undefined, "the authorization gate must not refuse it");
@@ -196,6 +219,8 @@ describe("stale-revision CAS on every order that references a recommendation", (
       recommendationId: rec.recommendationId,
       revision: { direction: "buy", entry: 3988, reason: "market moved", source: "market_update" },
     });
+    // The approval is real — the CAS must be what refuses, not the auth gate.
+    await stampServerApproval(intent.id);
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
     assert.equal(result.ok, false);
@@ -225,6 +250,7 @@ describe("stale-revision CAS on every order that references a recommendation", (
       stop_loss: 3984,
       take_profit: 4008,
     });
+    await stampServerApproval(intent.id);
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
     assert.equal(result.errorCode, undefined);
@@ -249,6 +275,7 @@ describe("executeIntent locks every intent, even without a recommendation", () =
       recommendation_id: null,
       authorization_source: "user_approved",
     });
+    await stampServerApproval(intent.id);
 
     const [first, second] = await Promise.all([
       executeIntent(owner, intent.id, { explicitApproval: true }),

@@ -78,11 +78,14 @@ describe("execution authorization paths", () => {
       ["lib/approvalFlow.ts", /authorization_source: "user_approved"/],
       ["lib/tradeFlow.ts", /authorization_source: "user_approved"/],
       ["lib/recommendations/autoExecutor.ts", /authorization_source: "standing_auto"/],
-      // The bridge route serves BOTH authorisations and stamps whichever one
-      // actually applied to this call.
+      // The bridge route is STANDING-AUTO ONLY. Its body is composed by the
+      // caller — a model, on the MCP surface — so a body flag must never mint a
+      // `user_approved` intent. Real approvals are created pending and flipped
+      // by the authenticated approval path, which writes the server-side proof
+      // the choke point demands.
       [
         "app/api/agent/trade/open/route.ts",
-        /authorization_source: body\.approved_by_user \? "user_approved" : "standing_auto"/,
+        /authorization_source: "standing_auto"/,
       ],
     ]);
     for (const [file, pattern] of stamped) {
@@ -92,6 +95,24 @@ describe("execution authorization paths", () => {
         `${file} must stamp the intent's authorization_source`,
       );
     }
+
+    // The forgeable pattern must never come back: nothing a caller writes in
+    // the request body may decide the authorisation source or stand in for an
+    // approval at the choke point.
+    const openRoute = readFileSync(
+      join(SRC, "app/api/agent/trade/open/route.ts"),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      openRoute,
+      /authorization_source:[^,\n]*approved_by_user/,
+      "trade/open must not derive the authorisation source from the body",
+    );
+    assert.match(
+      openRoute,
+      /explicitApproval: false/,
+      "trade/open can never claim to hold an explicit approval",
+    );
   });
 
   it("the choke point itself enforces the stamped source", () => {

@@ -378,11 +378,24 @@ describe("critical reference scenario integrations", () => {
         source: "market_update",
       },
     });
-    const result = await execution.executeIntent(userId, intent.id, {
-      explicitApproval: true,
-    });
-    assert.equal(result.ok, false);
-    assert.match(String(result.reason ?? result.errorCode), /stale|النسخة|2/i);
+    // The stage gate sits upstream of the CAS and fails closed; open it so the
+    // refusal under test is the stale-revision one, then restore the file's
+    // default. The server-recorded approval is what a real operator leaves.
+    const dbForApproval = await import("@/lib/db");
+    await dbForApproval.execute(
+      "UPDATE trade_intents SET approved_at = ?, approved_by_user_id = ? WHERE id = ?",
+      [Date.now(), userId, intent.id],
+    );
+    process.env.AUTO_EXECUTION_STAGE = "live";
+    try {
+      const result = await execution.executeIntent(userId, intent.id, {
+        explicitApproval: true,
+      });
+      assert.equal(result.ok, false);
+      assert.match(String(result.reason ?? result.errorCode), /stale|النسخة|2/i);
+    } finally {
+      process.env.AUTO_EXECUTION_STAGE = "off";
+    }
   });
 
   it("auto_conditional does not place while stage is off or condition unmet", async () => {
@@ -487,16 +500,24 @@ describe("critical reference scenario integrations", () => {
       status: "approved",
       rationale: "after disconnect",
     });
-    const result = await execution.executeIntent(userId, intent.id, {
-      explicitApproval: true,
-    });
-    assert.equal(result.ok, false);
-    assert.ok(
-      ["auto_mode_revoked", "unauthorized_source", "not_authorized"].includes(
-        result.errorCode ?? "",
-      ),
-      `unexpected errorCode: ${result.errorCode}`,
-    );
+    // Open the upstream stage gate so the refusal proven here is the AUTH one:
+    // the standing grant died with the disconnect, and no stage may resurrect
+    // it. Restored to the file's default afterwards.
+    process.env.AUTO_EXECUTION_STAGE = "live";
+    try {
+      const result = await execution.executeIntent(userId, intent.id, {
+        explicitApproval: true,
+      });
+      assert.equal(result.ok, false);
+      assert.ok(
+        ["auto_mode_revoked", "unauthorized_source", "not_authorized"].includes(
+          result.errorCode ?? "",
+        ),
+        `unexpected errorCode: ${result.errorCode}`,
+      );
+    } finally {
+      process.env.AUTO_EXECUTION_STAGE = "off";
+    }
   });
 
   it("expired_or_invalidated emits execution_skipped once for a terminal plan", async () => {
