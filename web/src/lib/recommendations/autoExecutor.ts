@@ -59,6 +59,7 @@ export type AutoSkipCode =
   | "not_authorized"
   | "not_activated"
   | "plan_incomplete"
+  | "unbound_plan"
   | "daily_cap"
   | "wrong_account_type"
   | "execution_failed";
@@ -151,8 +152,24 @@ export async function maybeAutoExecute(
     return { placed: true, intentId: -1, dryRun: true };
   }
 
+  // An automatic order executes A PLAN — the latest effective revision of a
+  // real recommendation, re-verified at the choke point by the revision CAS.
+  // `rec.id` may be a legacy tracking UUID, and `Number("uuid")` is NaN, which
+  // used to silently write recommendation_id = NULL and skip the CAS entirely.
+  // No binding, no auto order.
+  const canonicalId =
+    rec.canonicalId ?? (Number.isFinite(Number(rec.id)) ? Number(rec.id) : null);
+  if (canonicalId == null || rec.revisionNo == null) {
+    return {
+      placed: false,
+      reason:
+        "the plan has no canonical recommendation/revision binding — an unbound automatic order would bypass the stale-revision check",
+      code: "unbound_plan",
+    };
+  }
+
   const intent = await createIntent(rec.userId, {
-    recommendation_id: Number.isFinite(Number(rec.id)) ? Number(rec.id) : null,
+    recommendation_id: canonicalId,
     recommendation_revision_no: rec.revisionNo ?? null,
     authorization_source: "standing_auto",
     symbol: rec.symbol,

@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
+import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-trade-mgmt-"));
 process.env.DB_PATH = join(dir, "mgmt.db");
@@ -48,7 +49,7 @@ async function livePlan(): Promise<number> {
     entry: 4000,
     stopLoss: 3980,
     targets: [4040],
-    planType: "immediate",
+    ...canonicalCompletePlan(),
     executionState: "valid_now",
     status: "active",
     source: "test",

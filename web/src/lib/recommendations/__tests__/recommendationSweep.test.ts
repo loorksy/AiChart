@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { describe, it, test } from "node:test";
+import { trackedCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -57,6 +58,7 @@ test("sweep: non-terminal filtering, idempotency, and safe no-op", async () => {
   assert.equal(empty.updated, 0);
 
   const baseRec = {
+    ...trackedCompletePlan(),
     userId,
     chatId: "c1",
     symbol: "XAUUSD",

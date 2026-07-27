@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
+import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-econ-events-"));
 process.env.DB_PATH = join(dir, "econ.db");
@@ -46,7 +47,7 @@ async function livePlan(symbol = "XAUUSD"): Promise<number> {
     entry: 4000,
     stopLoss: 3980,
     targets: [4040],
-    planType: "conditional",
+    ...canonicalCompletePlan({ planType: "conditional" }),
     executionState: "awaiting_activation",
     status: "active",
     source: "test",

@@ -16,7 +16,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { before, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
+import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-source-enforcement-"));
 process.env.DB_PATH = join(dir, "enforcement.db");
@@ -32,6 +33,10 @@ const EQUITY_REASON = /equity/;
 let owner = 0;
 
 before(async () => {
+  // The stage gate sits UPSTREAM of every gate this file tests and fails
+  // closed (unset -> off). Open it so each test reaches its actual target;
+  // the stage gate's own behaviour is pinned in executionStageAndApproval.test.ts.
+  process.env.AUTO_EXECUTION_STAGE = "live";
   const db = await import("@/lib/db");
   await db.initDb();
   owner = await db.insertReturningId(
@@ -39,6 +44,49 @@ before(async () => {
     ["source-enforcement-owner@example.com", "x", "user", "active"],
   );
 });
+
+after(() => {
+  delete process.env.AUTO_EXECUTION_STAGE;
+});
+
+/**
+ * What the authenticated approval path (respondToApproval) leaves behind: the
+ * server's own record that THIS user approved THIS intent just now. Tests whose
+ * target gate lies beyond the approval-proof check need it; the choke point no
+ * longer accepts `explicitApproval` alone.
+ */
+async function stampServerApproval(intentId: number): Promise<void> {
+  const db = await import("@/lib/db");
+  await db.execute(
+    "UPDATE trade_intents SET approved_at = ?, approved_by_user_id = ? WHERE id = ?",
+    [Date.now(), owner, intentId],
+  );
+}
+
+/**
+ * A fresh EA feed with a tight quote but ZERO equity. The quote-freshness
+ * preflight (added for the stale-spread finding) sits just before the equity
+ * check; without a live feed it refuses first with EA_OFFLINE. Giving it a live
+ * feed lets the order reach the equity check — which still fails, because
+ * equity is 0 — so a gate-passthrough test proves what it means to.
+ */
+async function seedLiveFeedNoEquity(): Promise<void> {
+  const db = await import("@/lib/db");
+  await db.execute("DELETE FROM ea_connections WHERE user_id = ?", [owner]);
+  await db.execute(
+    `INSERT INTO ea_connections
+       (user_id, platform, token_hash, account_currency, balance, equity, status,
+        account_trade_mode, symbol_specs_json, last_heartbeat_at)
+     VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`,
+    [
+      owner, "mt5", "src-enf-token", "USD", 0, 0, "online", "demo",
+      JSON.stringify([
+        { symbol: "EURUSD", bid: 1.1, ask: 1.10012, point: 0.00001, digits: 5 },
+        { symbol: "XAUUSD", bid: 3988, ask: 3988.2, point: 0.01, digits: 2 },
+      ]),
+    ],
+  );
+}
 
 /** An intent that is technically valid, so only the gates under test decide. */
 async function newIntent(
@@ -71,8 +119,7 @@ async function newIntent(
 async function newRecommendation() {
   const lifecycle = await import("@/lib/recommendations/canonical");
   return lifecycle.createCanonicalRecommendation({
-    planType: "conditional",
-    executionState: "awaiting_activation",
+    ...canonicalCompletePlan({ planType: "conditional" }),
     userId: owner,
     analysisId: `analysis-${Math.floor(performance.now() * 1000)}`,
     sessionId: "session-1",
@@ -151,15 +198,17 @@ describe("authorization source enforcement at the choke point", () => {
     const { executeIntent } = await import("@/lib/execution");
     // A pending intent from before sources were stamped must still work when
     // the operator approves it — that is the one authorisation a stale row
-    // cannot forge.
+    // cannot forge. "Approves it" now means the server recorded the approval.
     const intent = await newIntent({ authorization_source: null });
+    await stampServerApproval(intent.id);
+    await seedLiveFeedNoEquity();
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
-    assert.equal(result.errorCode, undefined, "the authorization gate must not refuse it");
+    assert.notEqual(result.errorCode, UNAUTHORIZED, "the authorization gate must not refuse it");
     assert.match(
       result.reason,
       EQUITY_REASON,
-      "it must reach the equity check — the first gate a broker-less test cannot pass",
+      "it must sail past the authorization gate into the equity check",
     );
   });
 
@@ -196,6 +245,8 @@ describe("stale-revision CAS on every order that references a recommendation", (
       recommendationId: rec.recommendationId,
       revision: { direction: "buy", entry: 3988, reason: "market moved", source: "market_update" },
     });
+    // The approval is real — the CAS must be what refuses, not the auth gate.
+    await stampServerApproval(intent.id);
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
     assert.equal(result.ok, false);
@@ -225,14 +276,41 @@ describe("stale-revision CAS on every order that references a recommendation", (
       stop_loss: 3984,
       take_profit: 4008,
     });
+    await stampServerApproval(intent.id);
+    await seedLiveFeedNoEquity();
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
-    assert.equal(result.errorCode, undefined);
     assert.doesNotMatch(result.reason, /النسخة|نسخة فعالة/, "the revision gate must not refuse it");
     assert.match(
       result.reason,
       EQUITY_REASON,
       "it must sail past the revision gate into the equity check",
     );
+  });
+});
+
+describe("executeIntent locks every intent, even without a recommendation", () => {
+  it("lets only one of two concurrent calls proceed for a standalone (recommendation_id=null) intent", async () => {
+    const { executeIntent } = await import("@/lib/execution");
+    // Standalone trades (no recommendation) are a legitimate, reachable state
+    // (web/src/app/api/agent/trade/open/route.ts passes recommendation_id ?? null).
+    // Before the fix, this path was completely unlocked: two concurrent
+    // executeIntent calls could both sail past every gate and both reach the
+    // broker. The fix locks on the intent itself unconditionally.
+    const intent = await newIntent({
+      recommendation_id: null,
+      authorization_source: "user_approved",
+    });
+    await stampServerApproval(intent.id);
+
+    const [first, second] = await Promise.all([
+      executeIntent(owner, intent.id, { explicitApproval: true }),
+      executeIntent(owner, intent.id, { explicitApproval: true }),
+    ]);
+
+    const busyCount = [first, second].filter((r) => r.errorCode === "intent_busy").length;
+    const throughCount = [first, second].filter((r) => r.errorCode !== "intent_busy").length;
+    assert.equal(busyCount, 1, "exactly one concurrent call must be rejected as intent_busy");
+    assert.equal(throughCount, 1, "exactly one concurrent call must proceed through the gates");
   });
 });

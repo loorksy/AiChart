@@ -93,7 +93,7 @@ describe("criterion 12 — a new evidence provider integrates without touching t
         candidates: [],
         // The extension point: a named field on the bundle. The provider needed
         // no change to the synthesizer, the contract, or the prompt.
-        liveCost: { experimental_lunar_phase: lunar } as Record<string, unknown>,
+        additionalEvidence: { experimental_lunar_phase: lunar } as Record<string, unknown>,
       } as unknown as FinalDecisionInput & { candidates: [] },
       {
         configured: true,

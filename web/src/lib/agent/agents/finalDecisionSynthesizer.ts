@@ -27,6 +27,7 @@ import {
   buildRecommendationConfidence,
 } from "../confidenceSemantics";
 import { buildEvidenceDimensions } from "../evidenceDimensions";
+import { activationRuleSchema } from "@/lib/recommendations/activationRule";
 import {
   buildEvidenceLevels,
   deriveExecutionState,
@@ -47,7 +48,7 @@ import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 import type { StatisticalSupport } from "@/lib/strategies/supportSummary";
-import { expectedSpreadNow } from "@/lib/strategies/sessionSpread";
+import { serializeCostEvidence } from "../marketContext/costEvidence";
 import { FEATURES } from "../featureFlags";
 import { metrics } from "@/lib/metrics";
 import type { HistoricalCaseEvidence } from "@/lib/marketMemory/caseQuery";
@@ -133,6 +134,13 @@ const FinalDecisionModelSchema = z.object({
     })
     .optional(),
   activationCondition: z.string().max(400).nullable().optional(),
+  /**
+   * The machine-checkable form of `activationCondition`. Emitted by the model
+   * rather than parsed out of its sentence: deriving a rule from free text
+   * would be guessing at what the plan meant, and a guessed trigger is how a
+   * plan ends up filling on something it never asked for.
+   */
+  activationRule: activationRuleSchema.nullable().optional(),
   invalidationRule: z.string().max(400),
   alternativeScenario: z.string().max(400),
   validityCandles: z.number().int().min(1).max(96),
@@ -196,6 +204,14 @@ export interface SynthesizerFailure {
 export interface SynthesizerOutcome {
   result: FinalDecisionResult | null;
   usedLLM: boolean;
+  /**
+   * The immutable, complete input the decision engine actually read.
+   *
+   * Re-evaluation persists this object verbatim. Keeping it on the outcome
+   * prevents callers from reconstructing a smaller, subtly different bundle
+   * after the model has already decided.
+   */
+  evidenceSnapshot?: Record<string, unknown>;
   selectedCandidateIds?: string[];
   drawingAdvice?: { shouldDraw: boolean; reason: string };
   /** Present only when `result` is null. */
@@ -261,6 +277,39 @@ export interface SynthesizerDeps {
   captureExtraFrame?: (timeframe: string) => Promise<VisualSnapshot | null>;
 }
 
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      deepFreeze(child);
+    }
+  }
+  return value;
+}
+
+function frozenEvidenceSnapshot(
+  input: Parameters<typeof buildModelContext>[0] & {
+    locale?: "ar" | "en";
+    skillContextBlock?: string | null;
+    lessonsBlock?: string | null;
+    visualSnapshots?: VisualSnapshot[] | null;
+  },
+): Record<string, unknown> {
+  // JSON cloning deliberately removes undefined values, exactly as the model
+  // serialization does, and detaches the snapshot from mutable pipeline data.
+  const detached = JSON.parse(
+    JSON.stringify({
+      schemaVersion: 1,
+      modelContext: buildModelContext(input),
+      visualSnapshots: input.visualSnapshots ?? [],
+      locale: input.locale ?? "ar",
+      skillContextBlock: input.skillContextBlock ?? null,
+      lessonsBlock: input.lessonsBlock ?? null,
+    }),
+  ) as Record<string, unknown>;
+  return deepFreeze(detached);
+}
+
 const SYNTH_SYSTEM_PROMPT = `You are the decision engine of a chart-connected Forex scalping agent — the only component that turns evidence into a decision.
 You receive the REAL outputs of the evidence pipeline (market data quality, structure, liquidity, supply/demand, multi-timeframe, chart geometry, news, cost-aware candidates) plus a menu of real price levels.
 
@@ -304,6 +353,7 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 ## Output rules
 - invalidationRule: what specifically kills this idea (a close beyond a level), in plain language.
 - activationCondition: required for conditional and anticipatory plans — the exact event that turns the plan on. null for immediate.
+- activationRule: the SAME condition as data, so the tracker can check it. Required whenever activationCondition is set; null for immediate. Pick the kind that matches what you actually wrote — price_touch ONLY if a bare touch really is enough. candle_close_above/below need level + timeframe (and closes when you demand more than one). breakout_confirmed needs level + direction. retest_confirmed needs the retestZone price band you expect the pullback into. rejection_confirmed means a wick through the level and a close back. Use composite {operator:"all"|"any"} for two conditions. Never state a rule looser than your sentence: if you wrote "close above", do not emit price_touch.
 - validityCandles: how many candles of THIS timeframe the plan stays meaningful.
 - alternativeScenario: the runner-up scenario and what would make you switch to it.
 - decisionTrace: the scenarios you weighed, what supported and opposed each, why this one won, and why this plan type. Operator-readable, no internal jargon.
@@ -316,7 +366,7 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
 
 Respond with ONLY a JSON object, no markdown fences:
-{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"timeframeRoles":{"lead":"15m","context":"4h","timing":"5m"},"activationCondition":"...|null","invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[]}`;
+{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"timeframeRoles":{"lead":"15m","context":"4h","timing":"5m"},"activationCondition":"...|null","activationRule":{"kind":"candle_close_above","level":0,"timeframe":"15m"}|null,"invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[]}`;
 
 export async function runFinalDecisionSynthesizer(
   ctx: AgentRunContext,
@@ -356,7 +406,6 @@ export async function runFinalDecisionSynthesizer(
      * Live session cost profile, when the sampler has enough data. Carries its
      * own `source` label so a static fallback never masquerades as measured.
      */
-    liveCost?: Record<string, unknown> | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -385,7 +434,8 @@ export async function runFinalDecisionSynthesizer(
   ]
     .filter(Boolean)
     .join("\n\n");
-  const user = JSON.stringify(buildModelContext(input));
+  let evidenceSnapshot = frozenEvidenceSnapshot(input);
+  const user = JSON.stringify(evidenceSnapshot.modelContext);
   // Charts, when we have them. The platform's decision engine used to read a
   // JSON summary while the MCP agent looked at the same market on real charts —
   // two different ways of seeing, and so two different answers to the same
@@ -445,6 +495,7 @@ export async function runFinalDecisionSynthesizer(
     return {
       result: null,
       usedLLM: false,
+      evidenceSnapshot,
       failure:
         failure ?? {
           kind: "unknown",
@@ -494,6 +545,10 @@ You asked for the ${extraRequest} view; it is now attached with its numbers. ` +
           metadata: { extraTimeframe: extraRequest },
         });
         parsed = second;
+        evidenceSnapshot = frozenEvidenceSnapshot({
+          ...input,
+          visualSnapshots: [...(input.visualSnapshots ?? []), snapshot],
+        });
       } catch {
         // The first decision stands. That is the whole contract of the round.
         metrics.extraFrameRounds.inc({ outcome: "second_call_failed" });
@@ -510,6 +565,7 @@ You asked for the ${extraRequest} view; it is now attached with its numbers. ` +
   return {
     result: applyModelDecision(parsed, input),
     usedLLM: true,
+    evidenceSnapshot,
     selectedCandidateIds: parsed.selectedCandidateIds?.slice(0, 8),
     drawingAdvice: {
       shouldDraw: parsed.drawingAdvice.shouldDraw,
@@ -526,7 +582,7 @@ function buildModelContext(
     geometry?: GeometrySnapshot | null;
     statisticalSupport?: StatisticalSupport | null;
     historicalCases?: HistoricalCaseEvidence | null;
-    liveCost?: Record<string, unknown> | null;
+    additionalEvidence?: Record<string, unknown> | null;
   },
 ): Record<string, unknown> {
   const playbook = input.risk?.playbook ?? null;
@@ -534,6 +590,11 @@ function buildModelContext(
   return {
     // Fixed scalping context. Higher-timeframe facts remain evidence only.
     scalpingContext: SCALPING_CONTEXT,
+    // The extension point, named on purpose. A new evidence provider adds a
+    // key here and it reaches the model without the brain, the contract or the
+    // prompt changing. It used to piggy-back on the live-cost field, which is
+    // why consolidating that field broke the property.
+    ...(input.additionalEvidence ?? {}),
     // Say it plainly to the model too: strong backing is worth citing, and its
     // absence is worth stating rather than papering over.
     statisticalSupport: (FEATURES.evidencePipelineV2() ? input.statisticalSupport : null) ?? {
@@ -550,15 +611,18 @@ function buildModelContext(
     // setup, and an average hides exactly the cases where a scalp stops paying.
     // Gated by EVIDENCE_PIPELINE_V2: off falls back to the single observed
     // spread with no session shaping, never to a guessed number.
-    executionCost: input.market.spread != null
-      ? {
-          observed_spread: input.market.spread,
-          ...(FEATURES.evidencePipelineV2()
-            ? input.liveCost ?? expectedSpreadNow(input.market.spread)
-            : { session: null, expected_spread: input.market.spread }),
-          note: "Session-adjusted expected spread. A move that does not clear it is a worse entry, not an absent one — say the better price instead.",
-        }
-      : null,
+    // Present whenever EITHER a live cost profile OR an observed spread exists.
+    // It used to be gated on the observed spread alone, so on every production
+    // request (where market.spread is not wired through) a real live-EA cost
+    // profile computed upstream was silently dropped and the model saw
+    // executionCost: null — the exact evidence the prompt asks it to weigh when
+    // rejecting a bad entry. Fall to null only when there is genuinely no cost
+    // signal from either source.
+    // ONE shape, always. This used to be a three-branch expression whose
+    // key sets were disjoint, so the only downstream reader looked for keys
+    // the enabled branch never produced and the spread-drift trigger read NaN.
+    // Every unit is named; `unavailable` is stated, never rendered as zero.
+    executionCost: serializeCostEvidence(input.market.costEvidence),
     // --- Trading-brain context (Phase 2) ---
     narrative: input.narrative ?? null,
     // Deterministic chart geometry — trendlines, channels, and named patterns
@@ -802,6 +866,10 @@ function applyModelDecision(
         triggerCondition:
           sanitizePublicText(parsed.activationCondition ?? "").slice(0, 400) ||
           selected?.triggerCondition,
+        // Carried only when the model actually stated one. A plan with no
+        // machine-checkable rule keeps entry semantics rather than inheriting
+        // a condition it never expressed.
+        activationRule: parsed.activationRule ?? undefined,
         invalidationLevel: resolved.levels.stopLoss,
         invalidationRule:
           sanitizePublicText(parsed.invalidationRule).slice(0, 400) ||

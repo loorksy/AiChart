@@ -1,14 +1,30 @@
 /**
- * Server-side recommendation tracker sweep. Deterministic and LLM-free: it
+ * Server-side recommendation tracker sweep. Its lifecycle pass is deterministic:
  * pulls candles from the Candle Warehouse (OANDA-backed), evaluates each active
- * recommendation, and persists status/outcome changes. Runs independently of any
- * browser session (called from an API route or a scheduled job). Never executes
- * trades.
+ * recommendation, and persists status/outcome changes. After that pass, a
+ * separate orchestration layer may consume durable re-evaluation claims through
+ * the unified brain. Runs independently of any browser session.
  */
-import { query } from "@/lib/db";
 import { getCandles } from "@/lib/candles/candleRepository";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
-import { normalizeCanonicalInterval } from "@/lib/markets/intervals";
+import {
+  getHigherInterval,
+  normalizeCanonicalInterval,
+} from "@/lib/markets/intervals";
+import {
+  biasFromCandles,
+  calculateAtr,
+  detectSwings,
+  type AgentCandle,
+} from "@/lib/agent/marketContext/detectors";
+import {
+  detectStructureEvents,
+  latestStructureEvent,
+} from "@/lib/agent/marketContext/structureEvents";
+import { detectChartGeometry } from "@/lib/chart/geometry";
+import { getEaLiveQuote } from "@/lib/eaLiveState";
+import { costEvidencePips } from "@/lib/agent/marketContext/costEvidence";
+import { spreadFromBidAsk } from "@/lib/spread";
 import {
   listActiveTrackedRecommendations,
   updateTrackedRecommendation,
@@ -21,10 +37,12 @@ import { deriveLifecycleEvents, type LifecycleEvent } from "./lifecycleEvents";
 import {
   admitTriggers,
   detectReevaluationTriggers,
-  recordTrigger,
   type ReevaluationTrigger,
 } from "./reevaluationTriggers";
-import { runReevaluationCycles } from "./reevaluationCycle";
+import {
+  consumePendingReevaluationTriggers,
+  type CycleDeps,
+} from "./reevaluationCycle";
 import { notifyLifecycleEvents } from "./lifecycleNotifier";
 import { maybeAutoExecute, autoExecutionStage } from "./autoExecutor";
 import type { TrackedRecommendation } from "./types";
@@ -156,10 +174,70 @@ export async function trackOneRecommendation(
     excursionAtr,
     revisionNo: rec.revisionNo ?? null,
   });
+  if (result.outcome !== "pending") {
+    return { recommendation: updated, events, reevaluations: [] };
+  }
 
   // Re-evaluation triggers (constitution §6). The tracker NOTICES; it does not
   // decide and it does not touch a level. Admitted triggers request a fresh
   // decision cycle whose output is the only thing allowed to change the plan.
+  const detectorCandles: AgentCandle[] = candles;
+  const structureEvents = detectStructureEvents(
+    detectorCandles,
+    detectSwings(detectorCandles),
+    calculateAtr(detectorCandles),
+  );
+  const latestStructure = latestStructureEvent(structureEvents);
+  const brokeSinceLastSweep =
+    latestStructure != null &&
+    latestStructure.breakCandleTime > (rec.lastCheckedAt ?? rec.createdAt);
+
+  const geometry = detectChartGeometry({ candles: detectorCandles, atr });
+  const foundingPattern = rec.setupType?.toLowerCase().replaceAll("-", "_");
+  const pattern = foundingPattern
+    ? geometry.patterns.find(
+        (candidate) =>
+          candidate.patternType === foundingPattern ||
+          foundingPattern.includes(candidate.patternType),
+      )
+    : null;
+  const [higherCandles, quote] = await Promise.all([
+    getCandles({
+      symbol,
+      interval: getHigherInterval(interval),
+      limit: 200,
+    }).catch(() => []),
+    getEaLiveQuote(rec.userId, symbol).catch(() => null),
+  ]);
+  const higherBias = biasFromCandles(
+    higherCandles.filter((candle) => candle.complete),
+  );
+  const modelContext =
+    rec.evidenceSnapshot &&
+    typeof rec.evidenceSnapshot.modelContext === "object"
+      ? (rec.evidenceSnapshot.modelContext as Record<string, unknown>)
+      : null;
+  const cost =
+    modelContext && typeof modelContext.executionCost === "object"
+      ? (modelContext.executionCost as Record<string, unknown>)
+      : null;
+  // Canonical PIPS keys, with the pre-contract price-unit names read as a
+  // fallback so old rows still compare. `currentSpread` below is in pips, so
+  // reading a price-unit number here was a ~10^4 error waiting to happen — and
+  // with the V2 pipeline on, neither old key existed, so this was NaN and the
+  // spread-drift trigger never fired at all.
+  const plannedSpread = costEvidencePips(cost);
+  const currentSpread =
+    quote && quote.quoteAgeMs <= 120_000
+      ? spreadFromBidAsk(quote.bid, quote.ask, symbol)?.spreadPips
+      : null;
+  const contextChanged =
+    brokeSinceLastSweep ||
+    (rec.direction === "buy" && higherBias === "bearish") ||
+    (rec.direction === "sell" && higherBias === "bullish") ||
+    pattern?.stage === "failed" ||
+    pattern?.status === "invalidated";
+
   const triggers = detectReevaluationTriggers({
     recommendation: {
       id: rec.id,
@@ -170,36 +248,48 @@ export async function trackOneRecommendation(
       stopLoss: rec.stopLoss,
       invalidationLevel: rec.invalidationLevel,
       revisionNo: rec.revisionNo ?? null,
+      foundingPattern: rec.setupType ?? null,
     },
+    structure: latestStructure
+      ? {
+          brokeSinceLastSweep,
+          bias: latestStructure.direction === "bullish" ? "up" : "down",
+          eventKey: String(latestStructure.breakCandleTime),
+        }
+      : null,
+    patternStage: pattern?.stage ?? pattern?.status ?? null,
+    patternStageKey: pattern
+      ? `${pattern.patternType}:${pattern.stage ?? pattern.status}:${pattern.anchors.at(-1)?.time ?? 0}`
+      : null,
+    higherTimeframeBias:
+      higherBias === "bullish"
+        ? "up"
+        : higherBias === "bearish"
+          ? "down"
+          : "flat",
+    spread:
+      currentSpread != null &&
+      Number.isFinite(plannedSpread) &&
+      plannedSpread > 0
+        ? { now: currentSpread, plannedFor: plannedSpread }
+        : null,
+    invalidationProximity:
+      lastCandle &&
+      atr &&
+      (rec.invalidationLevel ?? rec.stopLoss) > 0
+        ? {
+            currentPrice: lastCandle.close,
+            invalidationLevel: rec.invalidationLevel ?? rec.stopLoss,
+            atr,
+            contextChanged,
+          }
+        : null,
     now: Date.now(),
   });
   const { admitted, suppressed } = await admitTriggers(triggers);
-  for (const trigger of triggers) {
-    await recordTrigger(
-      trigger,
-      admitted.includes(trigger) ? "cycle_requested" : "suppressed",
-    );
-  }
   void suppressed;
 
   return { recommendation: updated, events, reevaluations: admitted };
-}
-
-/**
- * Canonical row id for a tracked recommendation.
- *
- * The tracked record carries a TEXT id; the canonical row it maps to carries the
- * INTEGER id everything else joins on (`legacy_tracking_id` is the link). The
- * cycle needs the canonical one because the revision mechanism is keyed on it.
- */
-async function canonicalIdFor(
-  rec: Pick<TrackedRecommendation, "id" | "userId">,
-): Promise<number | null> {
-  const rows = await query<{ id: number | string }>(
-    "SELECT id FROM recommendations WHERE legacy_tracking_id = ? AND user_id = ?",
-    [rec.id, rec.userId],
-  ).catch(() => []);
-  return rows[0] ? Number(rows[0].id) : null;
 }
 
 /** Cheap ATR over the tail, so proximity bands scale with the instrument. */
@@ -227,6 +317,8 @@ export async function trackRecommendations(
      * that assert deterministic sweep output, since a cycle calls the brain.
      */
     reevaluate?: boolean;
+    /** Provider seam for a full-pipeline integration test. */
+    reevaluationDeps?: CycleDeps;
   } = {},
 ): Promise<TrackSweepResult> {
   const active = await listActiveTrackedRecommendations({
@@ -237,7 +329,6 @@ export async function trackRecommendations(
   let terminal = 0;
   const events: LifecycleEvent[] = [];
   const byUser = new Map<number, LifecycleEvent[]>();
-  const pendingCycles: Array<{ trigger: ReevaluationTrigger; canonicalId: number }> = [];
   const placedToday = new Map<number, number>();
   const autoEnabled = opts.autoExecute !== false && autoExecutionStage() !== "off";
 
@@ -289,13 +380,8 @@ export async function trackRecommendations(
       if (recEvents.length) {
         byUser.set(rec.userId, [...(byUser.get(rec.userId) ?? []), ...recEvents]);
       }
-      // Admitted triggers are collected, not run inline: a model call inside the
-      // per-symbol loop would stretch the sweep unpredictably, and the sweep must
-      // stay LLM-free so a slow provider never delays a stop-out evaluation.
-      for (const trigger of tracked.reevaluations) {
-        const canonicalId = await canonicalIdFor(rec);
-        if (canonicalId != null) pendingCycles.push({ trigger, canonicalId });
-      }
+      // `admitTriggers` has already written durable claims. They are consumed
+      // only after every symbol's deterministic lifecycle pass finishes.
       if (!next) continue;
       if (next.status !== rec.status || next.outcome !== rec.outcome) updated += 1;
       if (next.outcome !== "pending") terminal += 1;
@@ -308,8 +394,16 @@ export async function trackRecommendations(
   // never delays a stop-out. Each one re-runs the whole evidence pipeline through
   // the same brain and its output goes through applyRecommendationRevision — the
   // tracker still has not decided anything.
-  if (opts.reevaluate !== false && pendingCycles.length) {
-    const cycles = await runReevaluationCycles(pendingCycles).catch(() => []);
+  if (opts.reevaluate !== false) {
+    const cycles = await consumePendingReevaluationTriggers({
+      userId: opts.userId,
+      limit: opts.limit,
+    }, {
+      ...opts.reevaluationDeps,
+      notifyInCycle: false,
+      silentNotifications:
+        opts.notify === false || opts.silentAlerts === true,
+    }).catch(() => []);
     for (const cycle of cycles) {
       if (cycle.verdict === "skipped") continue;
       // Labels match what actually happened: a revision moved the plan
@@ -373,10 +467,9 @@ export interface SweepRunResult extends TrackSweepResult {
 
 /**
  * Scheduled-sweep entry point: evaluates ALL non-terminal recommendations
- * (across every user), timing the run and logging aggregate counts + failure
- * classes. Idempotent (re-evaluating the same candles yields the same outcome),
- * LLM-free, and never executes trades. Safe no-op when nothing is active. The
- * caller (cron route) owns authentication and the distributed overlap lock.
+ * (across every user), then drains durable re-evaluation claims after the
+ * lifecycle pass. The caller (cron route) owns authentication and the
+ * distributed overlap lock.
  */
 export async function runRecommendationSweep(opts: {
   limit?: number;

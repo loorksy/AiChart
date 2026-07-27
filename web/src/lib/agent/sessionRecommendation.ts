@@ -1,4 +1,5 @@
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import {
   cancelTrackedRecommendation,
   listActiveTrackedRecommendations,
@@ -46,7 +47,14 @@ export type ActiveRecommendation = {
   takeProfit?: number;
   rr?: number;
   status: RecommendationStatus;
-  triggerCondition: string;
+  /**
+   * Absent when the plan has no stated condition — it activates on its entry.
+   * Never synthesized: a generic sentence here would read as a trigger nobody
+   * actually set.
+   */
+  triggerCondition?: string;
+  /** The machine-checkable form of `triggerCondition`; see activationRule.ts. */
+  activationRule?: ActivationRule;
   invalidationLevel: number;
   invalidationRule: string;
   /** The runner-up scenario and what would switch the plan to it. */

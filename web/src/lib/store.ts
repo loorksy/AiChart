@@ -8,6 +8,8 @@ import {
   getDbBackend,
 } from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
+import type { ActivationRule } from "./recommendations/activationRule";
+import { deriveExecutionState, type PlanType } from "./agent/trading/tradePlan";
 import { hashPassword } from "./auth";
 import type { TelegramLoginPayload } from "./telegramAuth";
 import { telegramDisplayEmail } from "./telegramAuth";
@@ -39,6 +41,7 @@ import {
   appendRecommendationHistory,
   createCanonicalRecommendation,
 } from "./recommendations/canonical";
+import { announceOpportunityCreated } from "./recommendations/lifecycleNotifier";
 
 /**
  * Broker kind for a user honoring their per-user forex backend choice (EA vs
@@ -617,9 +620,47 @@ export async function saveRecommendation(
     plan_type?: string | null;
     /** Where the support came from, distinct from its grade. */
     evidence_source?: string | null;
+    /**
+     * The contract's third layer and the revision-1 seed. This adapter is the
+     * MCP surface's only bridge to the canonical creator; before these fields
+     * existed it structurally could not carry the plan, which is how MCP rows
+     * were stored with every layer-3 column NULL.
+     */
+    execution_state?: string | null;
+    entry_low?: number | null;
+    entry_high?: number | null;
+    activation_condition?: string | null;
+    activation_rule?: ActivationRule | null;
+    invalidation_rule?: string | null;
+    alternative_scenario?: string | null;
+    validity_candles?: number | null;
+    evidence?: Record<string, unknown> | null;
+    decision_trace?: Record<string, unknown> | null;
   },
 ): Promise<Recommendation> {
   const action = rec.action === "buy" || rec.action === "sell" ? rec.action : "wait";
+  // Derive the third layer when the caller could not: without a live price the
+  // derivation fails safe to awaiting_activation, and a conditional plan is
+  // forced there regardless. A caller that DID derive (the API route, from a
+  // real price) wins.
+  const executionState =
+    rec.execution_state ??
+    (action !== "wait" && rec.plan_type
+      ? deriveExecutionState({
+          planType: rec.plan_type as PlanType,
+          levels:
+            rec.entry != null && rec.stop_loss != null && rec.take_profit != null
+              ? {
+                  entryLow: rec.entry_low ?? rec.entry,
+                  entryHigh: rec.entry_high ?? rec.entry,
+                  preferredEntry: rec.entry,
+                  stopLoss: rec.stop_loss,
+                  targets: [rec.take_profit],
+                }
+              : null,
+          currentPrice: null,
+        })
+      : null);
   const canonical = await createCanonicalRecommendation({
     userId,
     analysisId: rec.analysis_id ?? undefined,
@@ -651,6 +692,18 @@ export async function saveRecommendation(
     entryType: rec.entry_type ?? undefined,
     planType: rec.plan_type ?? null,
     evidenceSource: rec.evidence_source ?? null,
+    executionState,
+    initialRevision: {
+      entryLow: rec.entry_low ?? null,
+      entryHigh: rec.entry_high ?? null,
+      activationCondition: rec.activation_condition ?? null,
+      activationRule: rec.activation_rule ?? null,
+      invalidationRule: rec.invalidation_rule ?? null,
+      alternativeScenario: rec.alternative_scenario ?? null,
+      validityCandles: rec.validity_candles ?? null,
+      evidence: rec.evidence ?? null,
+      decisionTrace: rec.decision_trace ?? null,
+    },
     rationale: rec.rationale ?? undefined,
     factors: rec.factors ?? undefined,
     chartDrawingsJson: rec.chart_drawings_json ?? undefined,
@@ -658,6 +711,19 @@ export async function saveRecommendation(
     analysisTier: rec.analysis_tier ?? undefined,
     contextJson: rec.context_json ?? undefined,
   });
+  // MCP `create_recommendation` and every other store write land here. Birth
+  // announcements must share the lifecycle (recommendation, event, revision)
+  // dedupe with the orchestrator path — otherwise Platform and MCP can each
+  // fire once for the same plan. Best-effort: a failed send never undoes the row.
+  if (action === "buy" || action === "sell") {
+    await announceOpportunityCreated(userId, {
+      recommendationId: String(canonical.recommendationId),
+      symbol: rec.symbol,
+      direction: action,
+      entry: rec.entry ?? null,
+      planType: rec.plan_type ?? null,
+    }).catch(() => {});
+  }
   return (await queryOne<Recommendation>(
     "SELECT * FROM recommendations WHERE id = ?",
     [canonical.recommendationId],

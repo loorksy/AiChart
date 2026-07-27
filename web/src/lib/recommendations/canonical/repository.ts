@@ -3,6 +3,7 @@ import { createLogger } from "@/lib/logger";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { assertRecommendationTransition, initialRecommendationStatus } from "./stateMachine";
 import { applyRecommendationRevision } from "./revisions";
+import { assertCompletePlan, PlanContractViolation } from "./planContract";
 import {
   RecommendationLifecycleError,
   type CanonicalRecommendation,
@@ -188,6 +189,40 @@ export async function createCanonicalRecommendation(
       "Recommendations must be created as draft or active and then use the state machine",
     );
   }
+
+  // The Complete Plan Contract, enforced at the single creation choke point so
+  // no surface can store a plan another surface would refuse. Only a legacy
+  // import is exempt: a row written before the contract existed is history to
+  // keep readable, not a new claim to grade.
+  if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
+    const seed = input.initialRevision;
+    try {
+      assertCompletePlan({
+        direction,
+        planType: input.planType,
+        executionState: input.executionState,
+        entry: input.entry,
+        entryLow: seed?.entryLow ?? input.entry,
+        entryHigh: seed?.entryHigh ?? input.entry,
+        stopLoss: input.stopLoss,
+        targets,
+        activationCondition: seed?.activationCondition,
+        activationRule: seed?.activationRule,
+        invalidationRule: seed?.invalidationRule,
+        alternativeScenario: seed?.alternativeScenario,
+        validityCandles: seed?.validityCandles,
+      });
+    } catch (error) {
+      if (error instanceof PlanContractViolation) {
+        throw new RecommendationLifecycleError(
+          "RECOMMENDATION_INVALID_INPUT",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   const now = input.createdAt ?? Date.now();
   const expiresAt = input.expiresAt ?? now + 4 * 60 * 60 * 1000;
   const createdAtExpression =
@@ -204,8 +239,9 @@ export async function createCanonicalRecommendation(
          backtest_id, market_regime, strategy_id, strategy_version, expires_at, status, status_reason,
          source, engine_version, entry_type, legacy_tracking_id, rationale, factors,
          chart_drawings_json, pattern_name, analysis_tier, context_json,
-         statistical_support, evidence_source, updated_at, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
+         statistical_support, evidence_source, plan_type, execution_state,
+         updated_at, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
       [
         input.userId,
         input.analysisId ?? null,
@@ -244,6 +280,11 @@ export async function createCanonicalRecommendation(
         input.contextJson ?? null,
         input.statisticalSupport ?? null,
         input.evidenceSource ?? null,
+        // Written on the row itself, not only via the revision pointer: the
+        // revision seed below is best-effort, and a plan whose seed failed must
+        // not read as having no plan type or execution state.
+        input.planType ?? null,
+        input.executionState ?? null,
         now,
         now,
       ],
@@ -334,6 +375,7 @@ export async function createCanonicalRecommendation(
         stopLoss: input.stopLoss ?? null,
         targets,
         activationCondition: seed?.activationCondition ?? null,
+        activationRule: seed?.activationRule ?? null,
         invalidationRule: seed?.invalidationRule ?? null,
         alternativeScenario: seed?.alternativeScenario ?? null,
         validityCandles: seed?.validityCandles ?? null,
@@ -341,6 +383,8 @@ export async function createCanonicalRecommendation(
         reason: "initial recommendation",
         source: "agent",
         evidence: seed?.evidence ?? null,
+        evidenceSnapshot: seed?.evidenceSnapshot ?? null,
+        evidenceSourceSurface: seed?.evidenceSourceSurface ?? null,
         decisionTrace: seed?.decisionTrace ?? null,
       },
     }).catch((err) => {

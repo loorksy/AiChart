@@ -63,6 +63,13 @@ export interface ParityDecision {
 
 export interface ParityObservation {
   evidenceHash: string;
+  /**
+   * What makes two surfaces comparable: the same instrument, timeframe and
+   * closed candle. Derived, not hashed from the bundle — see parityKeyFor.
+   */
+  parityKey?: string;
+  /** The interval the decision was made on; part of the parity key. */
+  interval?: string;
   symbol: string;
   /** Timeframes in the bundle, so a partial capture is visible. */
   timeframeSet: string[];
@@ -74,6 +81,31 @@ export interface ParityObservation {
 }
 
 /**
+ * The identity of a DECISION MOMENT, shared by every surface that looks at it.
+ *
+ * Symbol, interval and the closed candle the surface decided on — nothing that
+ * varies per run. Two surfaces analysing the same instrument on the same closed
+ * candle are exactly the pair parity exists to compare; anything finer (the
+ * evidence hash) can never match, and anything coarser would compare decisions
+ * made about different market states.
+ */
+export function parityKeyFor(input: {
+  symbol: string;
+  interval?: string;
+  marketTimestamp: number;
+}): string {
+  return [
+    input.symbol.toUpperCase(),
+    (input.interval ?? "unspecified").toLowerCase(),
+    Math.trunc(input.marketTimestamp),
+  ].join("|");
+}
+
+function parityKeyOf(observation: ParityObservation): string {
+  return observation.parityKey ?? parityKeyFor(observation);
+}
+
+/**
  * Record one surface's decision.
  *
  * Best-effort: a parity write is diagnostics, and losing one must never affect
@@ -82,31 +114,40 @@ export interface ParityObservation {
 export async function recordDecisionForParity(
   observation: ParityObservation,
 ): Promise<void> {
-  await execute(
-    `INSERT INTO decision_parity
-       (evidence_hash, symbol, timeframe_set, market_timestamp, surface,
-        decision_json, created_at)
-     VALUES (?,?,?,?,?,?,?)
-     ON CONFLICT (evidence_hash, surface) DO UPDATE SET
-       decision_json = excluded.decision_json,
-       market_timestamp = excluded.market_timestamp,
-       timeframe_set = excluded.timeframe_set`,
-    [
-      observation.evidenceHash,
-      observation.symbol,
-      JSON.stringify(observation.timeframeSet),
-      observation.marketTimestamp,
-      observation.surface,
-      JSON.stringify(observation.decision),
-      observation.createdAt ?? Date.now(),
-    ],
-  ).catch((error: unknown) => {
+  try {
+    await execute(
+      `INSERT INTO decision_parity
+         (evidence_hash, symbol, timeframe_set, market_timestamp, surface,
+          decision_json, created_at, parity_key)
+       VALUES (?,?,?,?,?,?,?,?)
+       ON CONFLICT (evidence_hash, surface) DO UPDATE SET
+         decision_json = excluded.decision_json,
+         market_timestamp = excluded.market_timestamp,
+         timeframe_set = excluded.timeframe_set,
+         symbol = excluded.symbol,
+         created_at = excluded.created_at,
+         parity_key = excluded.parity_key`,
+      [
+        observation.evidenceHash,
+        observation.symbol,
+        JSON.stringify(observation.timeframeSet),
+        observation.marketTimestamp,
+        observation.surface,
+        JSON.stringify(observation.decision),
+        observation.createdAt ?? Date.now(),
+        parityKeyOf(observation),
+      ],
+    );
+    // The first observation remains unpaired. Whichever surface arrives second
+    // atomically materializes the durable comparison used by diagnostics.
+    await materializeParityComparison(parityKeyOf(observation));
+  } catch (error: unknown) {
     log.warn("failed to record parity observation", {
       symbol: observation.symbol,
       surface: observation.surface,
       error: error instanceof Error ? error.message : String(error),
     });
-  });
+  }
 }
 
 /** Price equality at instrument scale — a float artefact is not a divergence. */
@@ -219,7 +260,10 @@ export function compareDecisions(input: {
 
   const platformImages = new Set(platform.decision.imagesFor ?? []);
   const mcpImages = new Set(mcp.decision.imagesFor ?? []);
-  if (platformImages.size !== mcpImages.size) {
+  const imageGap =
+    platformImages.size !== mcpImages.size ||
+    [...platformImages].some((timeframe) => !mcpImages.has(timeframe));
+  if (imageGap) {
     return {
       identical: false,
       differingFields,
@@ -268,8 +312,112 @@ export function compareDecisions(input: {
   };
 }
 
+/**
+ * Persist the comparison itself, not only its two inputs.
+ *
+ * The JSON columns named after decision fields intentionally contain
+ * `{ platform, mcp }`: retaining both values makes an entry-zone or direction
+ * divergence inspectable without reconstructing it from application logs.
+ */
+async function materializeParityComparison(
+  parityKey: string,
+  updateMetrics = true,
+): Promise<void> {
+  // Joined on the PARITY KEY, not the evidence hash. The hash covers a snapshot
+  // embedding live candles, the live spread and per-run chart images, so two
+  // surfaces never shared one — every request bailed below and the comparisons
+  // table stayed permanently empty while the dashboard reported "all zero".
+  const rows = await query<ParityRow>(
+    `SELECT evidence_hash, parity_key, symbol, timeframe_set, market_timestamp, surface,
+            decision_json, created_at
+       FROM decision_parity
+      WHERE parity_key = ?
+      ORDER BY created_at DESC`,
+    [parityKey],
+  );
+  const observations = rows.map(toObservation);
+  const platform = observations.find((item) => item.surface === "platform");
+  const mcp = observations.find((item) => item.surface === "mcp");
+  if (!platform || !mcp) return;
+
+  const comparison = compareDecisions({ platform, mcp });
+  const paired = (platformValue: unknown, mcpValue: unknown) =>
+    JSON.stringify({ platform: platformValue, mcp: mcpValue });
+  const createdAt = Math.max(platform.createdAt ?? 0, mcp.createdAt ?? 0);
+
+  await execute(
+    `INSERT INTO decision_parity_comparisons
+       (evidence_hash, symbol, timeframe_set, market_timestamp,
+        platform_decision, mcp_decision, direction, plan_type, entry_zone,
+        stop, targets, execution_state, difference_classification, explained,
+        explanation, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT (evidence_hash) DO UPDATE SET
+       symbol = excluded.symbol,
+       timeframe_set = excluded.timeframe_set,
+       market_timestamp = excluded.market_timestamp,
+       platform_decision = excluded.platform_decision,
+       mcp_decision = excluded.mcp_decision,
+       direction = excluded.direction,
+       plan_type = excluded.plan_type,
+       entry_zone = excluded.entry_zone,
+       stop = excluded.stop,
+       targets = excluded.targets,
+       execution_state = excluded.execution_state,
+       difference_classification = excluded.difference_classification,
+       explained = excluded.explained,
+       explanation = excluded.explanation,
+       created_at = excluded.created_at`,
+    [
+      // The pair is identified by the parity key; this column keeps the
+      // platform-side bundle hash as the audit pointer into the snapshot that
+      // was compared.
+      platform.evidenceHash,
+      platform.symbol,
+      JSON.stringify(platform.timeframeSet),
+      Math.max(platform.marketTimestamp, mcp.marketTimestamp),
+      JSON.stringify(platform.decision),
+      JSON.stringify(mcp.decision),
+      paired(platform.decision.direction, mcp.decision.direction),
+      paired(platform.decision.planType, mcp.decision.planType),
+      paired(
+        { low: platform.decision.entryLow, high: platform.decision.entryHigh },
+        { low: mcp.decision.entryLow, high: mcp.decision.entryHigh },
+      ),
+      paired(platform.decision.stopLoss, mcp.decision.stopLoss),
+      paired(platform.decision.targets, mcp.decision.targets),
+      paired(platform.decision.executionState, mcp.decision.executionState),
+      comparison.classification,
+      comparison.explained ? 1 : 0,
+      comparison.explanation,
+      createdAt,
+    ],
+  );
+  if (updateMetrics) await refreshParityMetrics();
+}
+
+async function refreshParityMetrics(): Promise<void> {
+  const rows = await query<{
+    compared: number | string;
+    differing: number | string;
+    unexplained: number | string;
+  }>(
+    `SELECT COUNT(*) AS compared,
+            SUM(CASE WHEN difference_classification IS NOT NULL THEN 1 ELSE 0 END)
+              AS differing,
+            SUM(CASE WHEN difference_classification = 'unexplained' THEN 1 ELSE 0 END)
+              AS unexplained
+       FROM decision_parity_comparisons`,
+  ).catch(() => []);
+  const row = rows[0];
+  metrics.parityComparisons.set(Number(row?.compared ?? 0));
+  metrics.parityDifferences?.set(Number(row?.differing ?? 0));
+  metrics.parityUnexplained.set(Number(row?.unexplained ?? 0));
+}
+
 interface ParityRow {
   evidence_hash: string;
+  parity_key: string | null;
   symbol: string;
   timeframe_set: string;
   market_timestamp: number | string;
@@ -278,21 +426,23 @@ interface ParityRow {
   created_at: number | string;
 }
 
+function parseJson<T>(text: string, fallback: T): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 function toObservation(row: ParityRow): ParityObservation {
-  const parse = <T>(text: string, fallback: T): T => {
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      return fallback;
-    }
-  };
   return {
     evidenceHash: row.evidence_hash,
+    parityKey: row.parity_key ?? undefined,
     symbol: row.symbol,
-    timeframeSet: parse<string[]>(row.timeframe_set, []),
+    timeframeSet: parseJson<string[]>(row.timeframe_set, []),
     marketTimestamp: Number(row.market_timestamp),
     surface: row.surface === "mcp" ? "mcp" : "platform",
-    decision: parse<ParityDecision>(row.decision_json, {
+    decision: parseJson<ParityDecision>(row.decision_json, {
       direction: null,
       planType: null,
       entryLow: null,
@@ -309,6 +459,7 @@ export interface ParityReportEntry {
   evidenceHash: string;
   symbol: string;
   timeframeSet: string[];
+  marketTimestamp: number;
   platform: ParityDecision;
   mcp: ParityDecision;
   comparison: ParityComparison;
@@ -332,65 +483,125 @@ export interface ParityReport {
 /**
  * Build the report.
  *
- * Only moments where BOTH surfaces recorded a decision are compared; a moment one
- * surface never saw is counted as unpaired rather than silently treated as
- * agreement.
+ * Reads materialized comparisons. Only moments where BOTH surfaces recorded a
+ * decision reach this table; a moment one surface never saw is counted as
+ * unpaired rather than silently treated as agreement.
  */
 export async function buildParityReport(limit = 200): Promise<ParityReport> {
-  const rows = await query<ParityRow>(
-    `SELECT evidence_hash, symbol, timeframe_set, market_timestamp, surface,
-            decision_json, created_at
-       FROM decision_parity
-      ORDER BY created_at DESC
+  interface ComparisonRow {
+    evidence_hash: string;
+    symbol: string;
+    timeframe_set: string;
+    market_timestamp: number | string;
+    platform_decision: string;
+    mcp_decision: string;
+    difference_classification: string | null;
+    explained: number | string | boolean;
+    explanation: string;
+    created_at: number | string;
+  }
+  const boundedLimit = Math.max(1, Math.min(limit, 500));
+  // Additive schema upgrade: preserve comparable observations written before
+  // the durable comparison table existed.
+  const legacyPairs = await query<{ parity_key: string }>(
+    `SELECT d.parity_key
+       FROM decision_parity d
+      WHERE d.parity_key IS NOT NULL
+        AND NOT EXISTS (
+        SELECT 1 FROM decision_parity_comparisons c
+         WHERE c.evidence_hash = d.evidence_hash
+      )
+      GROUP BY d.parity_key
+     HAVING COUNT(DISTINCT d.surface) = 2
       LIMIT ?`,
-    [Math.max(2, Math.min(limit * 2, 2000))],
+    [boundedLimit],
   ).catch(() => []);
-
-  const bySurfacePair = new Map<string, { platform?: ParityObservation; mcp?: ParityObservation }>();
-  for (const row of rows) {
-    const observation = toObservation(row);
-    const pair = bySurfacePair.get(observation.evidenceHash) ?? {};
-    pair[observation.surface] = observation;
-    bySurfacePair.set(observation.evidenceHash, pair);
+  for (const pair of legacyPairs) {
+    await materializeParityComparison(pair.parity_key, false).catch(() => {});
   }
+  if (legacyPairs.length) await refreshParityMetrics();
 
-  const entries: ParityReportEntry[] = [];
+  const [rows, countRows, unpairedRows] = await Promise.all([
+    query<ComparisonRow>(
+      `SELECT evidence_hash, symbol, timeframe_set, market_timestamp,
+              platform_decision, mcp_decision, difference_classification,
+              explained, explanation, created_at
+         FROM decision_parity_comparisons
+        ORDER BY created_at DESC
+        LIMIT ?`,
+      [boundedLimit],
+    ).catch(() => []),
+    query<{ classification: string | null; count: number | string }>(
+      `SELECT difference_classification AS classification, COUNT(*) AS count
+         FROM decision_parity_comparisons
+        GROUP BY difference_classification`,
+    ).catch(() => []),
+    query<{ count: number | string }>(
+      `SELECT COUNT(*) AS count
+         FROM (
+           SELECT evidence_hash
+             FROM decision_parity
+            GROUP BY evidence_hash
+           HAVING COUNT(DISTINCT surface) < 2
+         ) AS unpaired_observations`,
+    ).catch(() => []),
+  ]);
+
+  const emptyDecision: ParityDecision = {
+    direction: null,
+    planType: null,
+    entryLow: null,
+    entryHigh: null,
+    stopLoss: null,
+    targets: [],
+    executionState: null,
+  };
+  const entries = rows.map<ParityReportEntry>((row) => {
+    const platform = parseJson<ParityDecision>(row.platform_decision, emptyDecision);
+    const mcp = parseJson<ParityDecision>(row.mcp_decision, emptyDecision);
+    const differingFields = decisionDifferences(platform, mcp);
+    const classification = (
+      row.difference_classification || null
+    ) as DifferenceClass | null;
+    return {
+      evidenceHash: row.evidence_hash,
+      symbol: row.symbol,
+      timeframeSet: parseJson<string[]>(row.timeframe_set, []),
+      marketTimestamp: Number(row.market_timestamp),
+      platform,
+      mcp,
+      comparison: {
+        identical: classification == null && differingFields.length === 0,
+        differingFields,
+        classification,
+        explained: Number(row.explained) === 1 || row.explained === true,
+        explanation: row.explanation,
+      },
+      createdAt: Number(row.created_at),
+    };
+  });
+
   const byClassification: Record<string, number> = {};
+  let compared = 0;
   let identical = 0;
-  let unexplained = 0;
-  let unpaired = 0;
-
-  for (const pair of bySurfacePair.values()) {
-    if (!pair.platform || !pair.mcp) {
-      unpaired += 1;
-      continue;
+  for (const row of countRows) {
+    const count = Number(row.count);
+    compared += count;
+    if (row.classification == null) {
+      identical += count;
+    } else {
+      byClassification[row.classification] = count;
     }
-    const comparison = compareDecisions({ platform: pair.platform, mcp: pair.mcp });
-    if (comparison.identical) identical += 1;
-    if (comparison.classification) {
-      byClassification[comparison.classification] =
-        (byClassification[comparison.classification] ?? 0) + 1;
-    }
-    if (!comparison.explained) unexplained += 1;
-    entries.push({
-      evidenceHash: pair.platform.evidenceHash,
-      symbol: pair.platform.symbol,
-      timeframeSet: pair.platform.timeframeSet,
-      platform: pair.platform.decision,
-      mcp: pair.mcp.decision,
-      comparison,
-      createdAt: Math.max(pair.platform.createdAt ?? 0, pair.mcp.createdAt ?? 0),
-    });
   }
-
-  entries.sort((a, b) => b.createdAt - a.createdAt);
-  const compared = entries.length;
+  const unexplained = byClassification.unexplained ?? 0;
+  const unpaired = Number(unpairedRows[0]?.count ?? 0);
 
   metrics.parityComparisons.set(compared);
+  metrics.parityDifferences?.set(compared - identical);
   metrics.parityUnexplained.set(unexplained);
 
   return {
-    entries: entries.slice(0, limit),
+    entries,
     totals: {
       compared,
       identical,

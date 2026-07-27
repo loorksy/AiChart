@@ -11,7 +11,7 @@ import { adaptSql, normalizeRow } from "./sql";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _pool: Pool | null = null;
-const SCHEMA_VERSION = "2026-07-18-nav-admin-subscription-v1";
+export const SCHEMA_VERSION = "2026-07-26-platform-mcp-parity-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -512,6 +512,11 @@ const SCHEMA = `
     -- Fingerprint of the bundle the cycle decided on, so a confirmed verdict is
     -- traceable to the evidence that confirmed it.
     evidence_hash     TEXT,
+    trigger_payload_json TEXT NOT NULL DEFAULT '{}',
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    decision_trace_json TEXT NOT NULL DEFAULT '{}',
+    claimed_at        BIGINT,
+    completed_at      BIGINT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (recommendation_id, dedupe_key)
   );
@@ -531,11 +536,43 @@ const SCHEMA = `
     surface          TEXT NOT NULL,
     decision_json    TEXT NOT NULL DEFAULT '{}',
     created_at       BIGINT NOT NULL,
+    -- What makes two surfaces COMPARABLE: symbol, interval and the closed
+    -- candle they decided on. evidence_hash cannot serve, because the snapshot
+    -- it covers embeds live candles, the live spread and per-run chart images.
+    parity_key       TEXT,
     UNIQUE (evidence_hash, surface)
   );
 
   CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
     ON decision_parity(created_at DESC);
+  ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS parity_key TEXT;
+  CREATE INDEX IF NOT EXISTS idx_decision_parity_key
+    ON decision_parity(parity_key, surface);
+
+  -- Durable paired Platform/MCP comparison once both surfaces used the same
+  -- Evidence Snapshot. Raw per-surface observations remain above.
+  CREATE TABLE IF NOT EXISTS decision_parity_comparisons (
+    id                        BIGSERIAL PRIMARY KEY,
+    evidence_hash             TEXT NOT NULL UNIQUE,
+    symbol                    TEXT NOT NULL,
+    timeframe_set             TEXT NOT NULL DEFAULT '[]',
+    market_timestamp          BIGINT NOT NULL,
+    platform_decision         TEXT NOT NULL DEFAULT '{}',
+    mcp_decision              TEXT NOT NULL DEFAULT '{}',
+    direction                 TEXT NOT NULL DEFAULT '{}',
+    plan_type                 TEXT NOT NULL DEFAULT '{}',
+    entry_zone                TEXT NOT NULL DEFAULT '{}',
+    stop                      TEXT NOT NULL DEFAULT '{}',
+    targets                   TEXT NOT NULL DEFAULT '{}',
+    execution_state           TEXT NOT NULL DEFAULT '{}',
+    difference_classification TEXT,
+    explained                 INTEGER NOT NULL DEFAULT 1,
+    explanation               TEXT NOT NULL DEFAULT '',
+    created_at                BIGINT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_decision_parity_comparisons_recent
+    ON decision_parity_comparisons(created_at DESC);
 
   -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
   -- from the EA's live quotes; aggregated on read, pruned past the window.
@@ -691,7 +728,11 @@ const SCHEMA = `
     direction TEXT NOT NULL, plan_type TEXT, execution_state TEXT,
     entry DOUBLE PRECISION, entry_low DOUBLE PRECISION, entry_high DOUBLE PRECISION,
     stop_loss DOUBLE PRECISION, targets_json TEXT NOT NULL DEFAULT '[]',
-    activation_condition TEXT, invalidation_rule TEXT, alternative_scenario TEXT,
+    -- activation_condition is the operator-facing sentence; only
+    -- activation_rule_json is machine-checked. A plan without the latter
+    -- cannot be activated by a condition, so it falls back to entry semantics.
+    activation_condition TEXT, activation_rule_json TEXT,
+    invalidation_rule TEXT, alternative_scenario TEXT,
     validity_candles INTEGER, expires_at BIGINT,
     reason TEXT NOT NULL, source TEXT NOT NULL,
     evidence_hash TEXT, evidence_json TEXT NOT NULL DEFAULT '{}',
@@ -701,6 +742,33 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_recommendation_revisions_lookup
     ON recommendation_revisions (user_id, recommendation_id, revision_no DESC);
+
+  -- Additive for databases created before the structured activation rule
+  -- existed. Nullable with no default: an existing revision genuinely has no
+  -- rule, and inventing one would make a plan claim a condition nobody stated.
+  ALTER TABLE recommendation_revisions
+    ADD COLUMN IF NOT EXISTS activation_rule_json TEXT;
+
+  -- The frozen evidence the brain actually decided on, stored whole and apart
+  -- from the operator-facing card. The revision used to keep only the graded
+  -- card while its evidence_hash claimed to fingerprint the bundle — two
+  -- different objects, so "what did it decide on" had no answer and parity
+  -- compared a hash nothing else held. snapshot_json is the CANONICAL text the
+  -- fingerprint was taken over, so the hash always matches what is stored.
+  CREATE TABLE IF NOT EXISTS recommendation_evidence_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recommendation_id INTEGER NOT NULL REFERENCES recommendations(id) ON DELETE CASCADE,
+    revision_no INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    source_surface TEXT NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    snapshot_json TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    UNIQUE (recommendation_id, revision_no)
+  );
+  CREATE INDEX IF NOT EXISTS idx_evidence_snapshots_lookup
+    ON recommendation_evidence_snapshots (user_id, recommendation_id, revision_no DESC);
 
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id BIGSERIAL PRIMARY KEY,
@@ -883,6 +951,26 @@ const SCHEMA = `
 `;
 
 async function migratePg(client: PoolClient) {
+  await client.query(`
+    ALTER TABLE recommendation_reevaluations
+      ADD COLUMN IF NOT EXISTS trigger_payload_json TEXT NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS evidence_json TEXT NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS decision_trace_json TEXT NOT NULL DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS claimed_at BIGINT,
+      ADD COLUMN IF NOT EXISTS completed_at BIGINT
+  `);
+  // Pre-queue rows have no claim timestamp. Close them during the additive
+  // migration so the first deploy cannot replay the historical trigger log.
+  await client.query(`
+    UPDATE recommendation_reevaluations
+       SET completed_at = raised_at
+     WHERE outcome = 'cycle_requested' AND completed_at IS NULL
+       AND claimed_at IS NULL
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_recommendation_reevaluations_pending
+      ON recommendation_reevaluations(outcome, completed_at, user_id, claimed_at)
+  `);
   await client.query(`
     CREATE TABLE IF NOT EXISTS dynamic_pages (
       slug          TEXT PRIMARY KEY,
@@ -1357,6 +1445,17 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trade_intents
       ADD COLUMN IF NOT EXISTS practice BOOLEAN NOT NULL DEFAULT FALSE
+  `).catch(() => {});
+
+  // Server-side proof that a human approved THIS order. Written only by the
+  // authenticated approval path; a caller-supplied "approved" flag can no longer
+  // stand in for it at the choke point. Nullable so legacy rows stay readable —
+  // and, having no proof, stay unexecutable under user_approved.
+  await client.query(`
+    ALTER TABLE trade_intents
+      ADD COLUMN IF NOT EXISTS approved_at BIGINT,
+      ADD COLUMN IF NOT EXISTS approved_by_user_id INTEGER,
+      ADD COLUMN IF NOT EXISTS approval_consumed_at BIGINT
   `).catch(() => {});
 
   await client.query(`

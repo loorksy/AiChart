@@ -1,3 +1,5 @@
+import type { ActivationRule } from "../activationRule";
+
 export const RECOMMENDATION_STATUSES = [
   "draft",
   "active",
@@ -115,12 +117,18 @@ export interface CreateCanonicalRecommendationInput {
   /**
    * The three-layer plan (docs/UNIFIED_AGENT_PLAN.md). `direction` above is the
    * analytical view; these two are how the plan is entered and whether it can
-   * be entered right now. Absent on legacy paths, which is why the columns are
-   * nullable — but the analysis path must supply them, or the tracker has no
-   * activation condition to evaluate and the journal no plan type to report.
+   * be entered right now. Mandatory for every NEW buy/sell — enforced by
+   * `assertCompletePlan` in the creator. Only `legacyImport` rows are exempt,
+   * which is why the columns stay nullable.
    */
   planType?: string | null;
   executionState?: string | null;
+  /**
+   * True only for `migrateLegacyTrackedRecommendations`: rows written before
+   * the Complete Plan Contract existed are history to keep readable, not new
+   * claims to grade. Nothing else may set this.
+   */
+  legacyImport?: boolean;
   /** Verified statistical backing: strong | moderate | weak | unavailable. */
   statisticalSupport?: string | null;
   /**
@@ -141,11 +149,22 @@ export interface CreateCanonicalRecommendationInput {
     entryLow?: number | null;
     entryHigh?: number | null;
     activationCondition?: string | null;
+    /** The machine-checked form of the condition; see revisions.ts. */
+    activationRule?: ActivationRule | null;
     invalidationRule?: string | null;
     alternativeScenario?: string | null;
     validityCandles?: number | null;
-    /** The frozen evidence bundle the decision was made on. */
+    /**
+     * The operator-facing evidence DESCRIPTOR — the graded card. Small and safe
+     * to project to a browser. NOT what the model reasoned over.
+     */
     evidence?: Record<string, unknown> | null;
+    /**
+     * The frozen bundle the brain actually decided on, stored whole in its own
+     * append-only table and used as the revision's evidence fingerprint.
+     */
+    evidenceSnapshot?: Record<string, unknown> | null;
+    evidenceSourceSurface?: string | null;
     decisionTrace?: Record<string, unknown> | null;
   };
 }

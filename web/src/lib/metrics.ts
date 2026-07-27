@@ -14,10 +14,14 @@ type Store = {
   executionDenials: client.Counter<string>;
   /** Re-evaluation cycles started, by what triggered them. */
   reevaluationCycles: client.Counter<string>;
+  /** Detected trigger admission outcomes: admitted | suppressed | duplicate. */
+  reevaluationTriggers: client.Counter<string>;
   /** What those cycles concluded: confirmed | revised | invalidated. */
   reevaluationVerdicts: client.Counter<string>;
   /** Moments where both surfaces decided and were compared. */
   parityComparisons: client.Gauge<string>;
+  /** Comparable Platform/MCP decisions whose contract fields differ. */
+  parityDifferences: client.Gauge<string>;
   /** Differences with no known cause. Completion criterion 2 requires zero. */
   parityUnexplained: client.Gauge<string>;
   // --- Plan §17 dashboards ---
@@ -27,6 +31,7 @@ type Store = {
   hiddenWaitWrites: client.Counter<string>;
   /** Recommendations that arrived without valid levels. */
   invalidLevelRecommendations: client.Counter<string>;
+  recommendationPersistFailures: client.Counter<string>;
   /** CRITICAL: an order attempt without valid mode/authorisation. */
   executionInWrongMode: client.Counter<string>;
   /** stale_revision denials — existence is health, a spike is a race alarm. */
@@ -92,6 +97,11 @@ function build(): Store {
     help: "Platform/MCP decisions compared on identical evidence",
     registers: [registry],
   });
+  const parityDifferences = new client.Gauge({
+    name: "aichart_parity_differences",
+    help: "Platform/MCP decisions with one or more differing contract fields",
+    registers: [registry],
+  });
   const parityUnexplained = new client.Gauge({
     name: "aichart_parity_unexplained",
     help: "Platform/MCP differences with no known cause (target: 0)",
@@ -113,6 +123,12 @@ function build(): Store {
     name: "aichart_invalid_level_recommendations_total",
     help: "Buy/sell recommendations arriving without valid levels",
     labelNames: ["source"],
+    registers: [registry],
+  });
+  const recommendationPersistFailures = new client.Counter({
+    name: "aichart_recommendation_persist_failures_total",
+    help: "Plans answered to the operator but never stored (target 0)",
+    labelNames: ["surface"],
     registers: [registry],
   });
   const executionInWrongMode = new client.Counter({
@@ -178,6 +194,12 @@ function build(): Store {
     name: "aichart_reevaluation_cycles_total",
     help: "Re-evaluation decision cycles started, by trigger reason",
     labelNames: ["reason"] as const,
+    registers: [registry],
+  });
+  const reevaluationTriggers = new client.Counter({
+    name: "aichart_reevaluation_triggers_total",
+    help: "Re-evaluation triggers by reason and durable claim outcome",
+    labelNames: ["reason", "outcome"] as const,
     registers: [registry],
   });
   const reevaluationVerdicts = new client.Counter({
@@ -273,12 +295,15 @@ function build(): Store {
     agentRuns,
     executionDenials,
     reevaluationCycles,
+    reevaluationTriggers,
     reevaluationVerdicts,
     parityComparisons,
+    parityDifferences,
     parityUnexplained,
     analysisContracts,
     hiddenWaitWrites,
     invalidLevelRecommendations,
+    recommendationPersistFailures,
     executionInWrongMode,
     staleRevisionDenials,
     duplicateNotifications,
@@ -414,6 +439,15 @@ export function criticalAlert(
   detail: Record<string, unknown> = {},
 ): void {
   metrics.criticalAlerts.inc({ kind });
+  // The diagnostics dashboard reads the PER-KIND series as well as the roll-up
+  // (aichart_hidden_wait_writes_total, aichart_execution_wrong_mode_total).
+  // Incrementing only the roll-up left those panels reading zero while a
+  // critical alert was firing — the one place an operator would look to see it.
+  // Done here, in the function that already knows the kind, so a new call site
+  // cannot forget half of it.
+  const source = typeof detail.source === "string" ? detail.source : "unknown";
+  if (kind === "hidden_wait_write") metrics.hiddenWaitWrites.inc({ source });
+  if (kind === "execution_wrong_mode") metrics.executionInWrongMode.inc({ source });
   // eslint-disable-next-line no-console
   console.error(`[CRITICAL] ${kind}`, JSON.stringify(detail));
 }

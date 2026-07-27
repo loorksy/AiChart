@@ -268,3 +268,41 @@ describe("explainability is a validity condition", () => {
     }
   });
 });
+
+/**
+ * Creation alerts must go through one producer. A second path that claims the
+ * same dedupe key but sends via raw `dispatchAlert` reintroduces the race the
+ * lifecycle notifier was built to close.
+ */
+const OPPORTUNITY_CREATED_PRODUCERS = new Set([
+  "lib/recommendations/lifecycleNotifier.ts", // the producer itself
+  "lib/agent/orchestrator.ts", // unified-agent persist
+  "lib/store.ts", // MCP / store adapter
+  "lib/recommendationChart.ts", // thin chart adapter → announceOpportunityCreated
+]);
+
+describe("opportunity_created has one producer", () => {
+  it("announces creation only through announceOpportunityCreated", () => {
+    const unexpected = callersOf("announceOpportunityCreated").filter(
+      (rel) => !OPPORTUNITY_CREATED_PRODUCERS.has(rel),
+    );
+    assert.deepEqual(
+      unexpected,
+      [],
+      `New callers of announceOpportunityCreated: ${unexpected.join(", ")}. ` +
+        "Add only when the caller is a creation seam that must share lifecycle dedupe.",
+    );
+  });
+
+  it("keeps claimLifecycleDedupeKey inside the notifier (no parallel creation claim)", () => {
+    const unexpected = callersOf("claimLifecycleDedupeKey").filter(
+      (rel) => rel !== "lib/recommendations/lifecycleNotifier.ts",
+    );
+    assert.deepEqual(
+      unexpected,
+      [],
+      `claimLifecycleDedupeKey leaked outside the notifier: ${unexpected.join(", ")}. ` +
+        "Creation adapters must call announceOpportunityCreated, not claim the key themselves.",
+    );
+  });
+});

@@ -20,6 +20,10 @@ import type {
   TrackedRecommendationStatus,
 } from "./types";
 import { isTerminalOutcome } from "./types";
+import {
+  createActivationEvaluator,
+  type ActivationEvidence,
+} from "./activationRule";
 
 export interface TrackerCandle {
   time: number;
@@ -48,6 +52,7 @@ export interface EvaluateInput {
     | "tp1HitAt"
     | "tp2HitAt"
     | "tp3HitAt"
+    | "activationRule"
   >;
   candles: TrackerCandle[];
   now?: number;
@@ -65,6 +70,8 @@ export interface EvaluateResult {
   slHitAt?: number;
   expiredAt?: number;
   changed: boolean;
+  /** Proof of WHICH candle satisfied a structured activation rule, for audit. */
+  activationEvidence?: ActivationEvidence;
 }
 
 const WIN_BY_TP: Record<1 | 2 | 3, TrackedRecommendationOutcome> = {
@@ -125,6 +132,13 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
   let slHitAt: number | undefined;
   let ambiguous = false;
 
+  // Built once per evaluation and fed candles in order: the conditions worth
+  // stating are sequences (a break THEN a return THEN a confirmation), which a
+  // per-candle predicate cannot express. An already-triggered plan needs none.
+  const activation =
+    !triggered && r.activationRule ? createActivationEvaluator(r.activationRule) : null;
+  let activationEvidence: ActivationEvidence | undefined;
+
   const finalize = (
     status: TrackedRecommendationStatus,
     outcome: TrackedRecommendationOutcome,
@@ -139,6 +153,7 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     tp3HitAt: tpAt[3],
     slHitAt,
     changed: true,
+    activationEvidence,
   });
 
   let elapsedCandles = 0;
@@ -156,9 +171,16 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
           expiredAt: candle.time,
         };
       }
-      if (entryTouched(dir, candle, r.entry)) {
+      // A plan carrying a structured activation rule must have that rule
+      // satisfied BEFORE its entry can fill. Without this gate a plan whose
+      // condition demanded a close, a confirmed break, a retest or a rejection
+      // filled on the first wick that grazed the entry — satisfying none of
+      // them. The rule gates; the entry still has to be reached to fill.
+      const conditionMet = activation ? activation.observe(candle).activated : true;
+      if (conditionMet && entryTouched(dir, candle, r.entry)) {
         triggered = true;
         triggeredAt = candle.time;
+        activationEvidence = activation?.evidence;
       } else {
         continue; // still waiting for entry — SL/TP do not count pre-trigger
       }
@@ -230,5 +252,6 @@ export function evaluateRecommendation(input: EvaluateInput): EvaluateResult {
     tp3HitAt: tpAt[3],
     slHitAt,
     changed,
+    activationEvidence,
   };
 }

@@ -43,6 +43,7 @@ export function NotificationCenter({ className }: { className?: string }) {
   const [pos, setPos] = useState<PanelPos | null>(null);
   const [connected, setConnected] = useState(true);
   const [error, setError] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
@@ -95,7 +96,9 @@ export function NotificationCenter({ className }: { className?: string }) {
       const attempt = attemptRef.current++;
       const delay = Math.min(BACKOFF_BASE_MS * 2 ** attempt, BACKOFF_MAX_MS);
       if (retryRef.current) clearTimeout(retryRef.current);
-      retryRef.current = setTimeout(() => connect(), delay);
+      retryRef.current = setTimeout(() => {
+        if (mounted.current) setReconnectAttempt((value) => value + 1);
+      }, delay);
     };
   }, [merge]);
 
@@ -118,7 +121,7 @@ export function NotificationCenter({ className }: { className?: string }) {
       sourceRef.current?.close();
       if (retryRef.current) clearTimeout(retryRef.current);
     };
-  }, [connect, merge]);
+  }, [connect, merge, reconnectAttempt]);
 
   const unread = alerts.filter((a) => a.read_at == null).length;
 

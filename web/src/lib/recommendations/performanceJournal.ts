@@ -19,8 +19,7 @@ import { query } from "@/lib/db";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import {
   ADHERENCE_PRICE_TOLERANCE,
-  computeEntryAdherence,
-  computeStopAdherence,
+  summarizeAdherence,
 } from "./canonical/analytics";
 import type { TrackedRecommendationOutcome } from "./types";
 
@@ -52,6 +51,13 @@ export interface JournalSummary {
   entryAdherence: number | null;
   /** Share of followed plans whose stop matched the plan. */
   stopAdherence: number | null;
+  /**
+   * Followed plans whose order was raised after the canonical delayed-entry
+   * threshold. Counts come from `summarizeAdherence` — the UI must not recompute.
+   */
+  delayedEntryCount: number;
+  /** Followed plans closed manually before any target paid. */
+  earlyExitCount: number;
   /** Plain observations for the operator — never instructions. */
   notes: string[];
 }
@@ -65,6 +71,10 @@ interface JoinedRow {
   created_at: number | string;
   entry: number | null;
   stop_loss: number | null;
+  /** The plan as it stood when the intent executed — see the query below. */
+  planned_entry: number | null;
+  planned_stop: number | null;
+  executed_revision_no: number | null;
   outcome_type: string | null;
   trade_id: number | null;
   avg_price: number | null;
@@ -160,8 +170,15 @@ export async function buildPerformanceJournal(input: {
 
   const limit = input.limit ?? 200;
   const rows = await query<JoinedRow>(
+    // Adherence is measured against the revision that was IN FORCE when the
+    // intent executed, joined through trade_intents.recommendation_revision_no.
+    // Reading r.entry / r.stop_loss instead would measure against the newest
+    // revision, because writeRevision overwrites exactly those columns — so a
+    // plan revised after the fill looked like the operator had disobeyed it.
     `SELECT r.id, r.symbol, r.direction, r.plan_type, r.status, r.created_at,
             r.entry, r.stop_loss,
+            rev.entry AS planned_entry, rev.stop_loss AS planned_stop,
+            i.recommendation_revision_no AS executed_revision_no,
             o.outcome_type AS outcome_type,
             t.id AS trade_id, t.avg_price AS avg_price,
             i.stop_loss AS intent_stop, i.authorization_source AS authorization_source
@@ -171,6 +188,9 @@ export async function buildPerformanceJournal(input: {
        LEFT JOIN trade_intents i
          ON i.recommendation_id = r.id AND i.user_id = r.user_id
        LEFT JOIN trades t ON t.intent_id = i.id
+       LEFT JOIN recommendation_revisions rev
+         ON rev.recommendation_id = r.id AND rev.user_id = r.user_id
+        AND rev.revision_no = i.recommendation_revision_no
       WHERE r.user_id = ? AND r.direction IN ('buy','sell')
       ORDER BY r.id DESC`,
     [input.userId],
@@ -191,14 +211,20 @@ export async function buildPerformanceJournal(input: {
           ? "followed_auto"
           : "followed_manual";
 
+    // Fall back to the row only for plans that never carried a revision at
+    // all (pre-revision history); never for a revised plan, or the deviation
+    // would be measured against levels the operator never saw.
+    const plannedEntry = row.planned_entry ?? row.entry;
+    const plannedStop = row.planned_stop ?? row.stop_loss;
+
     const entryDeviation =
-      row.avg_price != null && row.entry != null && row.entry > 0
-        ? Number(((row.avg_price - row.entry) / row.entry).toFixed(6))
+      row.avg_price != null && plannedEntry != null && plannedEntry > 0
+        ? Number(((row.avg_price - plannedEntry) / plannedEntry).toFixed(6))
         : null;
 
     const stopMatchedPlan =
-      row.intent_stop != null && row.stop_loss != null && row.stop_loss > 0
-        ? Math.abs(row.intent_stop - row.stop_loss) <= Math.abs(row.stop_loss) * PRICE_TOLERANCE
+      row.intent_stop != null && plannedStop != null && plannedStop > 0
+        ? Math.abs(row.intent_stop - plannedStop) <= Math.abs(plannedStop) * PRICE_TOLERANCE
         : null;
 
     const entry: JournalEntry = {
@@ -244,21 +270,62 @@ export function summarizeJournal(entries: JournalEntry[]): JournalSummary {
     losses: list.filter((entry) => !isWin(entry.outcome)).length,
   });
 
+  // Adherence aggregates (including delayed/early counts) live in canonical
+  // analytics. The journal supplies the followed rows; it does not own thresholds.
+  const adherence = summarizeAdherence({
+    entries: followed,
+    entryDelayMsList: [],
+    earlyExitFlags: [],
+  });
+
   const summary: JournalSummary = {
     followed: count(followed),
     ignored: count(ignored),
     auto: { count: auto.length, wins: auto.filter((e) => isWin(e.outcome)).length },
     manual: { count: manual.length, wins: manual.filter((e) => isWin(e.outcome)).length },
-    // entryDeviation is a FRACTION of the plan price, so one threshold is
-    // meaningful on every instrument. The aggregation itself lives in the
-    // canonical analytics module — this journal only supplies the entries.
-    entryAdherence: computeEntryAdherence(followed),
-    stopAdherence: computeStopAdherence(followed),
+    entryAdherence: adherence.entryAdherence,
+    stopAdherence: adherence.stopAdherence,
+    delayedEntryCount: 0,
+    earlyExitCount: 0,
     notes: [],
   };
 
   summary.notes = buildNotes(summary);
   return summary;
+}
+
+/**
+ * Merge lifecycle adherence facts (delay / early exit) into a journal summary.
+ * Kept separate from `summarizeJournal` so the pure journal path stays free of
+ * DB fact maps while the API still returns one coherent summary object.
+ */
+export function attachAdherenceToSummary(
+  summary: JournalSummary,
+  input: {
+    entries: readonly JournalEntry[];
+    entryDelayMsById: ReadonlyMap<string, number>;
+    earlyExitIds: ReadonlySet<string>;
+  },
+): JournalSummary {
+  const followed = input.entries.filter(
+    (entry) => entry.followState !== "ignored" && isResolved(entry.outcome),
+  );
+  const adherence = summarizeAdherence({
+    entries: followed,
+    entryDelayMsList: followed.map(
+      (entry) => input.entryDelayMsById.get(entry.recommendationId) ?? null,
+    ),
+    earlyExitFlags: followed.map((entry) =>
+      input.earlyExitIds.has(entry.recommendationId),
+    ),
+  });
+  return {
+    ...summary,
+    entryAdherence: adherence.entryAdherence ?? summary.entryAdherence,
+    stopAdherence: adherence.stopAdherence ?? summary.stopAdherence,
+    delayedEntryCount: adherence.delayedEntryCount,
+    earlyExitCount: adherence.earlyExitCount,
+  };
 }
 
 /**

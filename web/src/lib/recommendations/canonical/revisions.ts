@@ -21,8 +21,20 @@ import { createHash } from "node:crypto";
 import { query, queryOne, transaction } from "@/lib/db";
 import { withLock } from "@/lib/locks";
 import { metrics } from "@/lib/metrics";
+import {
+  parseActivationRule,
+  serializeActivationRule,
+  type ActivationRule,
+} from "../activationRule";
+import {
+  canonicalizeEvidence,
+  evidenceSnapshotFingerprint,
+} from "./evidenceSnapshots";
 import { RecommendationLifecycleError, type RecommendationStatus } from "./types";
-import { isTerminalRecommendationStatus } from "./stateMachine";
+import {
+  assertRecommendationTransition,
+  isTerminalRecommendationStatus,
+} from "./stateMachine";
 
 /** Who asked for this change. Recorded so a plan's history reads honestly. */
 export type RevisionSource =
@@ -51,6 +63,11 @@ export interface RecommendationRevision {
   stopLoss: number | null;
   targets: number[];
   activationCondition: string | null;
+  /**
+   * The machine-checkable form of `activationCondition`. The sentence is for
+   * the operator; only this decides whether the plan may activate.
+   */
+  activationRule: ActivationRule | null;
   invalidationRule: string | null;
   alternativeScenario: string | null;
   validityCandles: number | null;
@@ -74,14 +91,26 @@ export interface RevisionInput {
   stopLoss?: number | null;
   targets?: number[];
   activationCondition?: string | null;
+  activationRule?: ActivationRule | null;
   invalidationRule?: string | null;
   alternativeScenario?: string | null;
   validityCandles?: number | null;
   expiresAt?: number | null;
   reason: string;
   source: RevisionSource;
-  /** The frozen evidence bundle behind the decision, if the caller has it. */
+  /**
+   * The operator-facing evidence DESCRIPTOR — the graded card. Small, safe to
+   * project to a browser, and not what the model reasoned over.
+   */
   evidence?: Record<string, unknown> | null;
+  /**
+   * The frozen evidence bundle the brain actually decided on: model context,
+   * numeric level menu, chart images. Stored whole in its own append-only
+   * table, and the source of this revision's `evidenceHash`.
+   */
+  evidenceSnapshot?: Record<string, unknown> | null;
+  /** Which surface produced the snapshot — platform | mcp | research | worker. */
+  evidenceSourceSurface?: string | null;
   decisionTrace?: Record<string, unknown> | null;
 }
 
@@ -99,6 +128,7 @@ interface RevisionRow {
   stop_loss: number | null;
   targets_json: string | null;
   activation_condition: string | null;
+  activation_rule_json: string | null;
   invalidation_rule: string | null;
   alternative_scenario: string | null;
   validity_candles: number | null;
@@ -122,8 +152,7 @@ export function recommendationLockName(recommendationId: number): string {
 export function evidenceFingerprint(evidence: unknown): string {
   return createHash("sha256")
     .update(JSON.stringify(evidence ?? null))
-    .digest("hex")
-    .slice(0, 16);
+    .digest("hex");
 }
 
 function parseJson<T>(text: string | null | undefined, fallback: T): T {
@@ -150,6 +179,9 @@ function toRevision(row: RevisionRow): RecommendationRevision {
     stopLoss: row.stop_loss,
     targets: parseJson<number[]>(row.targets_json, []),
     activationCondition: row.activation_condition,
+    // A stored rule that no longer parses yields null, which leaves the plan
+    // un-activatable rather than silently falling back to a bare touch.
+    activationRule: parseActivationRule(row.activation_rule_json),
     invalidationRule: row.invalidation_rule,
     alternativeScenario: row.alternative_scenario,
     validityCandles: row.validity_candles,
@@ -199,11 +231,21 @@ async function writeRevision(
   timestamp: number,
 ): Promise<RecommendationRevision> {
   const r = input.revision;
-  const evidenceHash = r.evidence ? evidenceFingerprint(r.evidence) : null;
+  // The hash describes the FROZEN SNAPSHOT the brain decided on when there is
+  // one — computed over its canonical form, which is also exactly what gets
+  // stored, so the two can never drift. Falling back to the descriptor keeps
+  // pre-snapshot revisions hashing as they always did rather than silently
+  // changing their identity.
+  const evidenceHash = r.evidenceSnapshot
+    ? evidenceSnapshotFingerprint(r.evidenceSnapshot)
+    : r.evidence
+      ? evidenceFingerprint(r.evidence)
+      : null;
   // Snapshot size is a dashboard, not a limit: a snapshot quietly growing past
   // hundreds of KB per revision is how storage surprises start.
-  if (r.evidence) {
-    metrics.evidenceSnapshotBytes.observe(JSON.stringify(r.evidence).length);
+  const sized = r.evidenceSnapshot ?? r.evidence;
+  if (sized) {
+    metrics.evidenceSnapshotBytes.observe(JSON.stringify(sized).length);
   }
   let revisionNo = 1;
 
@@ -225,15 +267,23 @@ async function writeRevision(
         "A finished recommendation cannot be revised",
       );
     }
+    const invalidating = r.executionState === "invalidated";
+    if (invalidating) {
+      assertRecommendationTransition(
+        (current.status ?? "draft") as RecommendationStatus,
+        "invalidated",
+      );
+    }
     revisionNo = Number(current.effective_revision_no ?? 0) + 1;
 
     await db.execute(
       `INSERT INTO recommendation_revisions
         (recommendation_id, user_id, revision_no, direction, plan_type, execution_state,
          entry, entry_low, entry_high, stop_loss, targets_json, activation_condition,
+         activation_rule_json,
          invalidation_rule, alternative_scenario, validity_candles, expires_at,
          reason, source, evidence_hash, evidence_json, decision_trace_json, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         input.recommendationId,
         input.userId,
@@ -247,6 +297,7 @@ async function writeRevision(
         r.stopLoss ?? null,
         JSON.stringify(r.targets ?? []),
         r.activationCondition ?? null,
+        r.activationRule ? serializeActivationRule(r.activationRule) : null,
         r.invalidationRule ?? null,
         r.alternativeScenario ?? null,
         r.validityCandles ?? null,
@@ -260,16 +311,49 @@ async function writeRevision(
       ],
     );
 
+    // Inside the same transaction as the revision: a revision whose hash names
+    // a snapshot that was never written would be a claim with no evidence
+    // behind it, which is the failure this whole change exists to remove.
+    if (r.evidenceSnapshot) {
+      const canonical = canonicalizeEvidence(r.evidenceSnapshot);
+      const schemaVersion = Number(
+        (r.evidenceSnapshot as { schemaVersion?: unknown }).schemaVersion ?? 1,
+      );
+      await db.execute(
+        `INSERT INTO recommendation_evidence_snapshots
+           (user_id, recommendation_id, revision_no, fingerprint, source_surface,
+            schema_version, snapshot_json, created_at)
+         VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT (recommendation_id, revision_no) DO NOTHING`,
+        [
+          input.userId,
+          input.recommendationId,
+          revisionNo,
+          evidenceHash,
+          r.evidenceSourceSurface ?? r.source,
+          Number.isFinite(schemaVersion) ? schemaVersion : 1,
+          canonical,
+          timestamp,
+        ],
+      );
+    }
+
     // The pointer move is what actually retires the previous levels.
     await db.execute(
       `UPDATE recommendations
-          SET effective_revision_no = ?, plan_type = ?, execution_state = ?,
+          SET effective_revision_no = ?, direction = ?, action = ?,
+              plan_type = ?, execution_state = ?,
               entry = COALESCE(?, entry), stop_loss = COALESCE(?, stop_loss),
               targets_json = CASE WHEN ? = '[]' THEN targets_json ELSE ? END,
-              expires_at = COALESCE(?, expires_at), updated_at = ?
+              expires_at = COALESCE(?, expires_at),
+              status = CASE WHEN ? = 1 THEN 'invalidated' ELSE status END,
+              status_reason = CASE WHEN ? = 1 THEN ? ELSE status_reason END,
+              updated_at = ?
         WHERE id = ? AND user_id = ?`,
       [
         revisionNo,
+        r.direction,
+        r.direction,
         r.planType ?? null,
         r.executionState ?? null,
         r.entry ?? null,
@@ -277,11 +361,38 @@ async function writeRevision(
         JSON.stringify(r.targets ?? []),
         JSON.stringify(r.targets ?? []),
         r.expiresAt ?? null,
+        invalidating ? 1 : 0,
+        invalidating ? 1 : 0,
+        r.reason,
         timestamp,
         input.recommendationId,
         input.userId,
       ],
     );
+
+    if (invalidating) {
+      await db.execute(
+        `INSERT INTO recommendation_transitions
+          (recommendation_id, user_id, from_status, to_status, occurred_at,
+           trigger_name, actor, source, reason, metadata_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [
+          input.recommendationId,
+          input.userId,
+          current.status ?? "draft",
+          "invalidated",
+          timestamp,
+          "brain_reevaluation",
+          "agent",
+          r.source,
+          r.reason,
+          JSON.stringify({
+            revision_no: revisionNo,
+            evidence_hash: evidenceHash,
+          }),
+        ],
+      );
+    }
 
     // Revisions are recorded as evidence too, so a replay shows what changed
     // and why without having to diff two snapshots by hand.
@@ -365,7 +476,11 @@ export async function listRevisions(
 export interface RevisionCheck {
   ok: boolean;
   effectiveRevisionNo: number | null;
-  reason?: "stale_revision" | "no_effective_revision" | "not_found";
+  reason?:
+    | "stale_revision"
+    | "no_effective_revision"
+    | "not_found"
+    | "recommendation_terminal";
 }
 
 /**
@@ -381,11 +496,34 @@ export async function checkRevisionIsCurrent(input: {
   recommendationId: number;
   revisionNo: number | null | undefined;
 }): Promise<RevisionCheck> {
-  const row = await queryOne<{ effective_revision_no: number | null }>(
-    "SELECT effective_revision_no FROM recommendations WHERE id = ? AND user_id = ?",
+  const row = await queryOne<{
+    effective_revision_no: number | null;
+    status: string | null;
+    execution_state: string | null;
+  }>(
+    "SELECT effective_revision_no, status, execution_state FROM recommendations WHERE id = ? AND user_id = ?",
     [input.recommendationId, input.userId],
   );
   if (!row) return { ok: false, effectiveRevisionNo: null, reason: "not_found" };
+  // A finished plan is history, whatever its revision number says. Terminal
+  // status never bumps the revision (transitionRecommendation writes status
+  // only), so an intent stamped with the still-current revision of a
+  // stopped-out / expired / invalidated plan would sail through a pure
+  // number-compare — and a broker order for a dead plan is exactly what this
+  // gate exists to prevent.
+  const effectiveForTerminal =
+    row.effective_revision_no == null ? null : Number(row.effective_revision_no);
+  if (
+    isTerminalRecommendationStatus((row.status ?? "draft") as RecommendationStatus) ||
+    row.execution_state === "expired" ||
+    row.execution_state === "invalidated"
+  ) {
+    return {
+      ok: false,
+      effectiveRevisionNo: effectiveForTerminal,
+      reason: "recommendation_terminal",
+    };
+  }
   const effective = row.effective_revision_no == null ? null : Number(row.effective_revision_no);
   if (effective == null) {
     // Written before revisions existed. Such a row is readable but is never

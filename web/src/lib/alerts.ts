@@ -26,6 +26,9 @@ import { overlaysFromRecommendation } from "./chartOverlays";
 import { parseChartDrawingsJson } from "./chartDrawings";
 import { sendPushToUser } from "./push";
 import type { AlertType } from "./types";
+import { createLogger } from "./logger";
+
+const log = createLogger("alerts");
 
 export type DeliveryReason =
   | "delivered"
@@ -37,7 +40,11 @@ export type DeliveryReason =
   | "delivery_failed"
   | "no_actionable_signal"
   /** Creation already announced through the lifecycle notifier's dedupe. */
-  | "duplicate_creation_alert";
+  | "duplicate_creation_alert"
+  /** Lifecycle alerts flag / silent rollout window suppressed sending. */
+  | "silent_mode"
+  /** Per-symbol rate cap suppressed a non-terminal creation alert. */
+  | "rate_limited";
 
 export interface DeliveryResult {
   delivered: boolean;
@@ -55,6 +62,8 @@ const REASON_AR: Record<DeliveryReason, string> = {
   delivery_failed: "فشل الإرسال إلى تليجرام",
   no_actionable_signal: "لا إشارة تنفيذية",
   duplicate_creation_alert: "أُعلنت هذه التوصية من قبل",
+  silent_mode: "وضع صامت — سُجِّل دون إرسال",
+  rate_limited: "تجاوز حد التنبيهات للرمز",
 };
 
 export function deliveryReasonAr(reason?: DeliveryReason): string {
@@ -242,14 +251,25 @@ export async function dispatchAlert(
     // Telegram result or block the history write below.
   }
 
-  await recordAlert(userId, {
-    type: opts.type,
-    title: opts.title,
-    body: opts.text ?? null,
-    symbol: opts.symbol ?? null,
-    image_url: opts.photoUrl ?? null,
-    delivered: result.delivered || pushed,
-  });
+  try {
+    await recordAlert(userId, {
+      type: opts.type,
+      title: opts.title,
+      body: opts.text ?? null,
+      symbol: opts.symbol ?? null,
+      image_url: opts.photoUrl ?? null,
+      delivered: result.delivered || pushed,
+    });
+  } catch (error) {
+    // A transport failure is tolerated by design (see the comment above); a DB
+    // hiccup on this "always works" write must not invert that and report an
+    // already-delivered message as failed. Log and continue.
+    log.warn("failed to record alert_log entry", {
+      userId,
+      type: opts.type,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return pushed && !result.delivered
     ? { delivered: true, reason: "delivered", reasonAr: REASON_AR.delivered }

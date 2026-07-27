@@ -8,7 +8,7 @@
  *   3. "unknown" — never guessed
  */
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 
 /** Application release version (bump on release tags). */
 export const APP_VERSION = "1.2.0";
@@ -17,22 +17,57 @@ let cachedCommit: string | null = null;
 
 function readCommitFromGitDir(repoRoot: string): string | null {
   try {
-    const head = readFileSync(resolve(repoRoot, ".git", "HEAD"), "utf8").trim();
+    const dotGit = resolve(repoRoot, ".git");
+    let gitDir = dotGit;
+    try {
+      const pointer = readFileSync(dotGit, "utf8").trim();
+      const match = /^gitdir:\s*(.+)$/i.exec(pointer);
+      if (match) {
+        gitDir = isAbsolute(match[1]!)
+          ? match[1]!
+          : resolve(repoRoot, match[1]!);
+      }
+    } catch {
+      // Normal checkout: .git is a directory, not a worktree pointer file.
+    }
+    const head = readFileSync(resolve(gitDir, "HEAD"), "utf8").trim();
     if (/^[0-9a-f]{40}$/i.test(head)) return head;
     const refMatch = /^ref:\s*(.+)$/.exec(head);
     if (!refMatch) return null;
     const ref = refMatch[1]!.trim();
+    const candidates = [gitDir];
     try {
-      const sha = readFileSync(resolve(repoRoot, ".git", ref), "utf8").trim();
-      return /^[0-9a-f]{40}$/i.test(sha) ? sha : null;
+      const common = readFileSync(resolve(gitDir, "commondir"), "utf8").trim();
+      candidates.push(resolve(gitDir, common));
     } catch {
-      const packed = readFileSync(resolve(repoRoot, ".git", "packed-refs"), "utf8");
-      for (const line of packed.split("\n")) {
-        const [sha, name] = line.split(" ");
-        if (name?.trim() === ref && sha && /^[0-9a-f]{40}$/i.test(sha)) return sha;
-      }
-      return null;
+      // A normal checkout has no separate common directory.
     }
+    for (const candidate of candidates) {
+      try {
+        const sha = readFileSync(resolve(candidate, ref), "utf8").trim();
+        if (/^[0-9a-f]{40}$/i.test(sha)) return sha;
+      } catch {
+        try {
+          const packed = readFileSync(
+            resolve(candidate, "packed-refs"),
+            "utf8",
+          );
+          for (const line of packed.split("\n")) {
+            const [sha, name] = line.split(" ");
+            if (
+              name?.trim() === ref &&
+              sha &&
+              /^[0-9a-f]{40}$/i.test(sha)
+            ) {
+              return sha;
+            }
+          }
+        } catch {
+          // Try the next candidate directory.
+        }
+      }
+    }
+    return null;
   } catch {
     return null;
   }

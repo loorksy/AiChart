@@ -4,6 +4,7 @@
  * user sees one activity stream and one final result.
  */
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import type {
   SerializedChartDrawing,
   UserDrawingMutationCommand,
@@ -170,6 +171,8 @@ export interface AgentRecommendation {
   id?: string;
   status?: string;
   triggerCondition?: string;
+  /** The machine-checkable form of `triggerCondition`; see activationRule.ts. */
+  activationRule?: ActivationRule;
   invalidationLevel?: number;
   invalidationRule?: string;
   /** The runner-up scenario and what would switch the plan to it. */
@@ -225,6 +228,11 @@ export interface AgentFinalResult {
    * on strong structure with no statistical history behind it.
    */
   evidenceDimensions?: import("./evidenceDimensions").EvidenceDimension[];
+  /**
+   * Immutable snapshot of the complete evidence input consumed by the unified
+   * decision engine. Re-evaluations and revisions persist this exact object.
+   */
+  evidenceSnapshot?: Record<string, unknown>;
   confidence: number;
   /** Distinct confidence fields — UI must use displayKind/displayValue. */
   confidenceSemantics?: import("./confidenceSemantics").ConfidenceSemantics;

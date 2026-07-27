@@ -61,6 +61,7 @@ async function livePlan(): Promise<number> {
     engineVersion: "verdict-test",
     initialRevision: {
       activationCondition: "إغلاق فوق 4002",
+      activationRule: { kind: "candle_close_above", level: 4002, timeframe: "5m" },
       invalidationRule: "إغلاق تحت 3980",
       alternativeScenario: "كسر 3980 يقلب المشهد",
       validityCandles: 8,
@@ -92,6 +93,11 @@ function brainResult(over: {
       planTypeBecause: "السعر بعيد.",
     },
     evidenceDimensions: [{ key: "signal_strength", grade: "moderate", detail: "x" }],
+    evidenceSnapshot: {
+      schemaVersion: 1,
+      modelContext: { signalStrength: "moderate", symbol: "XAUUSD" },
+      visualSnapshots: [],
+    },
     recommendation: {
       action: over.direction ?? "buy",
       planType: over.planType ?? "conditional",
@@ -147,13 +153,21 @@ async function dedupeCount(keyLike: string): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
+async function dedupePrefixCount(prefix: string): Promise<number> {
+  const rows = await db.query<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM alert_dedupe WHERE user_id = ? AND dedupe_key LIKE ?",
+    [userId, `${prefix}%`],
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
 describe("a supporting research run confirms without touching the plan", () => {
   it("records confirmed, writes no revision, and announces it once", async () => {
     const id = await livePlan();
-    const outcome = await apply(id, supports);
+    const outcome = await apply(id, supports, async () => brainResult());
 
     assert.equal(outcome.verdict, "confirmed");
-    assert.equal(outcome.cycle, null);
+    assert.equal(outcome.cycle?.verdict, "confirmed");
 
     // Exactly one revision — the seed. Confirmation is not a plan change.
     assert.equal((await revisions.listRevisions(userId, id)).length, 1);
@@ -163,10 +177,10 @@ describe("a supporting research run confirms without touching the plan", () => {
       "SELECT outcome, reason, source FROM recommendation_reevaluations WHERE recommendation_id = ?",
       [`rec-${id}`],
     );
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0]!.outcome, "confirmed");
-    assert.equal(rows[0]!.reason, "deep_research");
-    assert.equal(rows[0]!.source, "deep_research");
+    const confirmed = rows.find((row) => row.outcome === "confirmed");
+    assert.ok(confirmed);
+    assert.equal(confirmed.reason, "deep_research");
+    assert.equal(confirmed.source, "deep_research");
 
     // In the plan's own history too.
     const history = await repository.listRecommendationHistory(userId, id);
@@ -176,12 +190,12 @@ describe("a supporting research run confirms without touching the plan", () => {
     assert.ok(entry, "the confirmed verdict must land in recommendation_history");
 
     // Announced through the lifecycle notifier's dedupe — once.
-    const key = `rec-${id}:1:reeval:confirmed:deep_research`;
-    assert.equal(await dedupeCount(key), 1);
+    const key = `rec-${id}:1:reeval:confirmed:deep_research:`;
+    assert.equal(await dedupePrefixCount(key), 1);
 
     // A re-run of the same completion says nothing new.
     await apply(id, supports);
-    assert.equal(await dedupeCount(key), 1);
+    assert.equal(await dedupePrefixCount(key), 1);
     assert.equal((await revisions.listRevisions(userId, id)).length, 1);
   });
 });
@@ -255,7 +269,10 @@ describe("a conflicting run goes through the unified cycle, never invents levels
     assert.equal(outcome.verdict, "confirmed");
     // The brain looked; the plan stands; no revision was manufactured.
     assert.equal((await revisions.listRevisions(userId, id)).length, 1);
-    assert.equal(await dedupeCount(`rec-${id}:1:reeval:confirmed:deep_research`), 1);
+    assert.equal(
+      await dedupePrefixCount(`rec-${id}:1:reeval:confirmed:deep_research:`),
+      1,
+    );
   });
 
   it("returns to reporting-only when DEEP_RESEARCH_V2 is rolled back", async () => {

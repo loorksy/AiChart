@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import type { BacktestEvidenceReference } from "@/lib/tradingDna";
+import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const directory = mkdtempSync(join(tmpdir(), "aichart-phase5-"));
 process.env.DB_PATH = join(directory, "phase5.db");
@@ -51,6 +52,7 @@ before(async () => {
   for (let index = 0; index < 10; index += 1) {
     const won = index < 7;
     const recommendation = await lifecycle.createCanonicalRecommendation({
+      ...canonicalCompletePlan(),
       userId: owner,
       analysisId: `phase5-analysis-${index}`,
       sessionId: `phase5-session-${index}`,

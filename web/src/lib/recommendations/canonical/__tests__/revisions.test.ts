@@ -12,6 +12,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
+import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-revisions-"));
 process.env.DB_PATH = join(dir, "revisions.db");
@@ -35,9 +36,10 @@ async function newRecommendation(initialRevision?: {
 }) {
   const lifecycle = await import("@/lib/recommendations/canonical");
   return lifecycle.createCanonicalRecommendation({
-    planType: "conditional",
-    executionState: "awaiting_activation",
-    initialRevision,
+    ...canonicalCompletePlan({
+      planType: "conditional",
+      evidence: initialRevision?.evidence ?? null,
+    }),
     userId: owner,
     analysisId: `analysis-${Math.floor(performance.now() * 1000)}`,
     sessionId: "session-1",

@@ -178,6 +178,25 @@ const answer = JSON.stringify({
 });
 
 describe("the evidence bundle is frozen before the brain reads it", () => {
+  it("returns a recursively frozen snapshot of exactly what the model read", async () => {
+    let sentToModel = "";
+    const out = await runFinalDecisionSynthesizer(ctx, bundle(), {
+      configured: true,
+      callModel: async (_system, user) => {
+        sentToModel = user;
+        return answer;
+      },
+    });
+    assert.ok(out.evidenceSnapshot);
+    assert.ok(Object.isFrozen(out.evidenceSnapshot));
+    assert.ok(Object.isFrozen(out.evidenceSnapshot!.modelContext));
+    assert.deepEqual(
+      out.evidenceSnapshot!.modelContext,
+      JSON.parse(sentToModel),
+      "the persisted snapshot must be the same object serialized for the brain",
+    );
+  });
+
   it("comes back byte-identical after a decision", async () => {
     const input = bundle();
     const before = fingerprint(input);

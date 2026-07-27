@@ -78,7 +78,10 @@ import {
   type RiskAgentResult,
 } from "./agents/riskAgent";
 import type { FinalDecisionResult } from "./agents/finalDecisionAgent";
-import { runFinalDecisionSynthesizer } from "./agents/finalDecisionSynthesizer";
+import {
+  runFinalDecisionSynthesizer,
+  type SynthesizerDeps,
+} from "./agents/finalDecisionSynthesizer";
 import { runDrawingAgent } from "./agents/drawingAgent";
 import {
   buildDrawingPlan,
@@ -89,7 +92,6 @@ import { runExecutionGuardAgent } from "./agents/executionGuardAgent";
 import { resolveValidity } from "./trading/tradePlan";
 import { collectVisualEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
-import { expectedSpreadFor } from "@/lib/strategies/liveCostProfile";
 import { recordDecisionForParity } from "./parityLog";
 import { metrics } from "@/lib/metrics";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
@@ -253,7 +255,14 @@ export interface UnifiedAgentInput {
    * not of a second decision path. Labelling it is what lets the parity log show
    * that a decision made through MCP and one made in chat came from one engine.
    */
-  surface?: "platform" | "mcp";
+  surface?: "platform" | "mcp" | "internal";
+  /**
+   * A re-evaluation runs the identical evidence and decision pipeline, but it
+   * must not create a second recommendation or recursively enqueue research.
+   */
+  purpose?: "analysis" | "reevaluation";
+  /** Model-provider seam used by integration tests; never a second brain. */
+  synthesizerDeps?: SynthesizerDeps;
 }
 
 export async function runUnifiedChartAgent(
@@ -980,12 +989,10 @@ async function runUnifiedChartAgentInner(
   // What followed structurally similar moments. Read before the decision like
   // every other piece of evidence, and for both directions — the memory must not
   // be consulted to confirm a direction the brain has already leaned toward.
-  // Live session cost, measured on this operator's broker. Falls back to the
-  // static session model WITH the fallback labelled — the label is what keeps a
-  // modelled number from posing as a measured one in the evidence card.
-  const liveCost = FEATURES.evidencePipelineV2()
-    ? await expectedSpreadFor(market.symbol, market.spread ?? null).catch(() => null)
-    : null;
+  // Cost evidence is resolved once, inside buildAgentMarketContext, and reaches
+  // the model as market.costEvidence. The old call here passed market.spread —
+  // PRICE units — as expectedSpreadFor's PIPS argument, an error of ~10^4 that
+  // stayed invisible only because market.spread was always null.
 
   const historicalCases = FEATURES.caseMemoryV1()
     ? await collectCaseEvidenceFor({
@@ -1013,16 +1020,6 @@ async function runUnifiedChartAgentInner(
     });
   }
 
-  // Parity observation point (completion criterion 2). Recorded from the SAME
-  // frozen bundle the decision was made on, so the MCP surface's row for the same
-  // hash is genuinely comparable. Diagnostics only — never affects the answer.
-  const parityBundle = {
-    statisticalSupport: statisticalSupport ?? null,
-    historicalCases: historicalCases ?? null,
-    geometry: geometry.patterns?.map((p) => `${p.patternType}:${p.status}`) ?? [],
-    dataQuality: market.dataQuality.sufficient,
-  };
-
   const decisionStartedAt = performance.now();
   let synthError: unknown = null;
   // withDeadline (not withTimeout): the decision call is the single most
@@ -1044,22 +1041,24 @@ async function runUnifiedChartAgentInner(
           visualSnapshots: visual.snapshots,
           statisticalSupport,
           historicalCases,
-          liveCost: liveCost as Record<string, unknown> | null,
         },
         {
+          ...input.synthesizerDeps,
           // The extra-frame round captures through the SAME collector the first
           // round used — one image, tight budget, failure returns null and the
           // first decision stands.
-          captureExtraFrame: async (timeframe) => {
-            const extra = await collectVisualEvidence({
-              userId: ctx.userId,
-              symbol: market.symbol,
-              interval: market.interval,
-              timeframes: [timeframe],
-              timeoutMs: AGENT_TIMEOUTS.visualEvidence,
-            }).catch(() => null);
-            return extra?.snapshots[0] ?? null;
-          },
+          captureExtraFrame:
+            input.synthesizerDeps?.captureExtraFrame ??
+            (async (timeframe) => {
+              const extra = await collectVisualEvidence({
+                userId: ctx.userId,
+                symbol: market.symbol,
+                interval: market.interval,
+                timeframes: [timeframe],
+                timeoutMs: AGENT_TIMEOUTS.visualEvidence,
+              }).catch(() => null);
+              return extra?.snapshots[0] ?? null;
+            }),
         },
       ).catch((err) => {
         synthError = err;
@@ -1378,38 +1377,62 @@ async function runUnifiedChartAgentInner(
     );
   }
 
-  // One row per surface per bundle. The MCP surface records its own against the
-  // same hash, and only a matching hash makes the two comparable at all.
-  void recordDecisionForParity({
-    evidenceHash: evidenceFingerprint(parityBundle),
-    symbol: market.symbol,
-    timeframeSet: visual.snapshots.map((snapshot) => snapshot.timeframe),
-    marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
-    surface: input.surface ?? "platform",
-    decision: {
-      direction:
-        finalDecision.decision === "buy" || finalDecision.decision === "sell"
-          ? finalDecision.decision
-          : null,
-      planType: finalDecision.planType ?? null,
-      entryLow: finalDecision.recommendation?.entryZone?.low ?? null,
-      entryHigh: finalDecision.recommendation?.entryZone?.high ?? null,
-      stopLoss: finalDecision.recommendation?.stop_loss ?? null,
-      targets: finalDecision.recommendation?.targets ?? [],
-      executionState: finalDecision.executionState ?? null,
-      blocked: !finalDecision.recommendation,
-      imagesFor: visual.snapshots.map((snapshot) => snapshot.timeframe),
-      providers: [
-        statisticalSupport ? "statistical_support" : null,
-        historicalCases ? "case_memory" : null,
-        news ? "calendar" : null,
-      ].filter((name): name is string => name != null),
-    },
-  });
+  // One row per surface per exact immutable Evidence Snapshot. A reduced or
+  // reconstructed hash could create false matches and is forbidden here.
+  if (synth.evidenceSnapshot && input.surface !== "internal") {
+    const snapshotImageTimeframes = Array.isArray(
+      synth.evidenceSnapshot.visualSnapshots,
+    )
+      ? synth.evidenceSnapshot.visualSnapshots
+          .map((item) =>
+            item && typeof item === "object" && "timeframe" in item
+              ? String((item as { timeframe: unknown }).timeframe)
+              : "",
+          )
+          .filter(Boolean)
+      : [];
+    const timeframeSet = [
+      ...new Set([
+        market.interval,
+        market.higherInterval,
+        "1d",
+        ...snapshotImageTimeframes,
+      ]),
+    ];
+    await recordDecisionForParity({
+      evidenceHash: evidenceFingerprint(synth.evidenceSnapshot),
+      symbol: market.symbol,
+      // The interval is part of what makes two surfaces comparable.
+      interval: market.interval,
+      timeframeSet,
+      marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
+      surface: input.surface ?? "platform",
+      decision: {
+        direction:
+          finalDecision.decision === "buy" || finalDecision.decision === "sell"
+            ? finalDecision.decision
+            : null,
+        planType: finalDecision.planType ?? null,
+        entryLow: finalDecision.recommendation?.entryZone?.low ?? null,
+        entryHigh: finalDecision.recommendation?.entryZone?.high ?? null,
+        stopLoss: finalDecision.recommendation?.stop_loss ?? null,
+        targets: finalDecision.recommendation?.targets ?? [],
+        executionState: finalDecision.executionState ?? null,
+        blocked: !finalDecision.recommendation,
+        imagesFor: snapshotImageTimeframes,
+        providers: [
+          statisticalSupport ? "statistical_support" : null,
+          historicalCases ? "case_memory" : null,
+          news ? "calendar" : null,
+        ].filter((name): name is string => name != null),
+      },
+    });
+  }
 
   if (
-    finalDecision.decision === "buy" ||
-    finalDecision.decision === "sell"
+    input.purpose !== "reevaluation" &&
+    (finalDecision.decision === "buy" ||
+      finalDecision.decision === "sell")
   ) {
     storedRecommendation = await storeFinalRecommendation({
       sessionId,
@@ -1423,10 +1446,16 @@ async function runUnifiedChartAgentInner(
       drawings,
       chartSnapshotHash,
       statisticalSupport: statisticalSupport?.level,
+      evidenceSnapshot: synth.evidenceSnapshot,
     });
   }
 
-  if (deepTrigger.run && ctx.userId && deepTrigger.allowReason) {
+  if (
+    input.purpose !== "reevaluation" &&
+    deepTrigger.run &&
+    ctx.userId &&
+    deepTrigger.allowReason
+  ) {
     const direction =
       finalDecision.decision === "buy" || finalDecision.decision === "sell"
         ? finalDecision.decision
@@ -1627,6 +1656,7 @@ async function runUnifiedChartAgentInner(
     // and the evidence card never reached the operator at all.
     decisionTrace: finalDecision.decisionTrace,
     evidenceDimensions: finalDecision.evidenceDimensions,
+    evidenceSnapshot: synth.evidenceSnapshot,
     debugDecisionFlow,
     options: contextualOptionsFor({
       decision: finalDecision.decision,
@@ -1991,6 +2021,12 @@ async function storeFinalRecommendation(input: {
   chartSnapshotHash: string;
   /** Verified backing grade, persisted so the card is not rebuilt from nothing. */
   statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
+  /**
+   * The frozen bundle the brain decided on. Lives on the synthesizer OUTCOME,
+   * not its result, so it is passed explicitly — the same object the parity
+   * log fingerprints, so revision 1 and parity describe one thing.
+   */
+  evidenceSnapshot?: Record<string, unknown>;
 }): Promise<ActiveRecommendation | null> {
   const rec = input.finalDecision.recommendation;
   if (
@@ -2047,8 +2083,11 @@ async function storeFinalRecommendation(input: {
         : "pending_entry",
     alternativeScenario: rec.alternativeScenario,
     validityCandles: rec.validityCandles,
-    triggerCondition:
-      rec.triggerCondition ?? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`,
+    // No manufactured sentence. A plan with no stated condition activates on
+    // its entry, and saying so in prose that looks like a trigger is how a
+    // generic string ends up standing in for a condition nobody set.
+    triggerCondition: rec.triggerCondition,
+    activationRule: rec.activationRule,
     invalidationLevel: rec.stop_loss,
     invalidationRule:
       rec.invalidationRule ??
@@ -2090,7 +2129,21 @@ async function storeFinalRecommendation(input: {
           ? { timeframeRoles: input.finalDecision.timeframeRoles }
           : undefined) as DecisionTrace | undefined,
       evidenceDimensions: input.finalDecision.evidenceDimensions,
-    }).catch(() => {});
+      // The object the model actually reasoned over — the same one the parity
+      // log fingerprints, so revision 1 and parity finally describe one thing.
+      evidenceSnapshot: input.evidenceSnapshot,
+    }).catch((error) => {
+      // Still best-effort — the operator gets their answer either way — but no
+      // longer silent. A swallowed failure here means the plan exists in the
+      // reply and nowhere else: nothing tracks it, nothing can revise it, and
+      // a contract violation at the write path would look like success.
+      log.error("failed to persist tracked recommendation", {
+        userId: input.userId,
+        symbol: active.symbol,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      metrics.recommendationPersistFailures.inc({ surface: "platform" });
+    });
   }
   return active;
 }
@@ -2103,6 +2156,8 @@ async function persistTrackedRecommendation(
   explanation?: {
     decisionTrace?: DecisionTrace;
     evidenceDimensions?: EvidenceDimension[];
+    /** The frozen bundle the brain decided on — stored whole, apart from the card. */
+    evidenceSnapshot?: Record<string, unknown>;
   },
 ): Promise<void> {
   const entryType: "market" | "limit" | "pending" =
@@ -2151,15 +2206,22 @@ async function persistTrackedRecommendation(
     entryLow: active.entryZone?.low,
     entryHigh: active.entryZone?.high,
     triggerCondition: active.triggerCondition,
+    activationRule: active.activationRule,
     invalidationRule: active.invalidationRule,
     alternativeScenario: active.alternativeScenario,
     validityCandles: active.validityCandles,
     // Stored with revision 1: why this plan, and on what evidence — so the
     // decision stays explainable after the market has moved past it.
     decisionTrace: explanation?.decisionTrace as unknown as Record<string, unknown> | undefined,
+    // Two different facts, kept apart on purpose: the CARD is the graded,
+    // operator-facing descriptor; the SNAPSHOT is the raw bundle the brain
+    // decided on. Storing only the card while claiming to fingerprint the
+    // bundle is the finding.
     evidence: explanation?.evidenceDimensions
       ? { evidenceDimensions: explanation.evidenceDimensions }
       : undefined,
+    evidenceSnapshot: explanation?.evidenceSnapshot,
+    evidenceSourceSurface: "platform",
   });
   // The birth announcement (plan §8 C.1), through the lifecycle notifier so it
   // shares the (recommendation, event, revision) dedupe with every later event

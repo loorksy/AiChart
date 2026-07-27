@@ -20,8 +20,6 @@ import type { JournalEntryView } from "@/app/api/recommendations/journal/route";
 
 /** Below this, a rate is shown only alongside the small-sample warning. */
 const SMALL_SAMPLE = 10;
-/** An order raised this long after activation counts as a delayed entry. */
-const DELAYED_ENTRY_MS = 10 * 60 * 1000;
 
 type SessionKey = "asia" | "london" | "newyork";
 
@@ -139,10 +137,9 @@ export function PerformanceJournalClient() {
     : null;
   const stopSample = followed.filter((e) => e.stopMatchedPlan != null).length;
 
-  const earlyExits = followed.filter((e) => e.earlyExit).length;
-  const delayedEntries = followed.filter(
-    (e) => e.entryDelayMs != null && e.entryDelayMs >= DELAYED_ENTRY_MS,
-  ).length;
+  // Counts are canonical — the server summary already applied the threshold.
+  const earlyExits = summary.earlyExitCount;
+  const delayedEntries = summary.delayedEntryCount;
 
   const rValues = entries
     .map((e) => e.rMultiple)

@@ -48,6 +48,16 @@ export async function POST(
     }
 
     await updateIntentStatus(intentId, "approved", "وافق المستخدم.", user.id);
+    // The server's own record that THIS authenticated user approved THIS
+    // intent, just now. It is the only proof the choke point accepts —
+    // `explicitApproval` below merely says the caller claims to hold one.
+    const { execute } = await import("@/lib/db");
+    await execute(
+      `UPDATE trade_intents
+          SET approved_at = ?, approved_by_user_id = ?
+        WHERE id = ? AND user_id = ?`,
+      [Date.now(), user.id, intentId, user.id],
+    );
 
     if (stream) {
       const body = new ReadableStream({

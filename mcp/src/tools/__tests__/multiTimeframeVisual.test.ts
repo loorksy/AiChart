@@ -164,6 +164,11 @@ describe("create_recommendation visual audit fields", () => {
     stop_loss: 4110,
     take_profit: 4180,
     timeframe: "1h",
+    // The Complete Plan Contract layers, present so these tests keep proving
+    // what they exist for — the VISUAL audit fields.
+    invalidation_rule: "A full-candle close beyond the stop kills the idea.",
+    alternative_scenario: "Failure flips the bias to the far side of the range.",
+    validity_candles: 24,
   };
 
   it("stays valid without the new fields (backward compatible)", () => {

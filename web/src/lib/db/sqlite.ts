@@ -15,7 +15,7 @@ import type { DbRow, ExecuteResult } from "./types";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
-const SCHEMA_VERSION = "2026-07-18-nav-admin-subscription-v1";
+const SCHEMA_VERSION = "2026-07-26-platform-mcp-parity-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -540,6 +540,11 @@ const SCHEMA = `
     -- Fingerprint of the bundle the cycle decided on, so a confirmed verdict is
     -- traceable to the evidence that confirmed it.
     evidence_hash     TEXT,
+    trigger_payload_json TEXT NOT NULL DEFAULT '{}',
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    decision_trace_json TEXT NOT NULL DEFAULT '{}',
+    claimed_at        INTEGER,
+    completed_at      INTEGER,
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (recommendation_id, dedupe_key)
   );
@@ -559,11 +564,41 @@ const SCHEMA = `
     surface          TEXT NOT NULL,
     decision_json    TEXT NOT NULL DEFAULT '{}',
     created_at       INTEGER NOT NULL,
+    -- What makes two surfaces COMPARABLE: symbol, interval and the closed
+    -- candle they decided on. evidence_hash cannot serve, because the snapshot
+    -- it covers embeds live candles, the live spread and per-run chart images,
+    -- so two surfaces never produced the same hash and no pair was ever formed.
+    parity_key       TEXT,
     UNIQUE (evidence_hash, surface)
   );
 
   CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
     ON decision_parity(created_at DESC);
+
+  -- Durable paired Platform/MCP comparison once both surfaces used the same
+  -- Evidence Snapshot. Raw per-surface observations remain above.
+  CREATE TABLE IF NOT EXISTS decision_parity_comparisons (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    evidence_hash             TEXT NOT NULL UNIQUE,
+    symbol                    TEXT NOT NULL,
+    timeframe_set             TEXT NOT NULL DEFAULT '[]',
+    market_timestamp          INTEGER NOT NULL,
+    platform_decision         TEXT NOT NULL DEFAULT '{}',
+    mcp_decision              TEXT NOT NULL DEFAULT '{}',
+    direction                 TEXT NOT NULL DEFAULT '{}',
+    plan_type                 TEXT NOT NULL DEFAULT '{}',
+    entry_zone                TEXT NOT NULL DEFAULT '{}',
+    stop                      TEXT NOT NULL DEFAULT '{}',
+    targets                   TEXT NOT NULL DEFAULT '{}',
+    execution_state           TEXT NOT NULL DEFAULT '{}',
+    difference_classification TEXT,
+    explained                 INTEGER NOT NULL DEFAULT 1,
+    explanation               TEXT NOT NULL DEFAULT '',
+    created_at                INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_decision_parity_comparisons_recent
+    ON decision_parity_comparisons(created_at DESC);
 
   -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
   -- from the EA's live quotes; aggregated on read, pruned past the window.
@@ -737,7 +772,11 @@ const SCHEMA = `
     entry_high        REAL,
     stop_loss         REAL,
     targets_json      TEXT NOT NULL DEFAULT '[]',
+    -- The operator-facing sentence, and beside it the only machine-checked
+    -- form. A revision without the JSON rule has no condition anything can
+    -- evaluate, so it falls back to entry semantics rather than guessing.
     activation_condition TEXT,
+    activation_rule_json TEXT,
     invalidation_rule TEXT,
     alternative_scenario TEXT,
     validity_candles  INTEGER,
@@ -754,6 +793,28 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_recommendation_revisions_lookup
     ON recommendation_revisions (user_id, recommendation_id, revision_no DESC);
+
+  -- The frozen evidence the brain actually decided on, stored whole and apart
+  -- from the operator-facing card. The revision used to keep only the graded
+  -- card while its evidence_hash claimed to fingerprint the bundle — two
+  -- different objects. snapshot_json is the CANONICAL text the fingerprint was
+  -- taken over, so the stored hash always matches what is stored.
+  CREATE TABLE IF NOT EXISTS recommendation_evidence_snapshots (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER NOT NULL,
+    recommendation_id INTEGER NOT NULL,
+    revision_no       INTEGER NOT NULL,
+    fingerprint       TEXT NOT NULL,
+    source_surface    TEXT NOT NULL,
+    schema_version    INTEGER NOT NULL DEFAULT 1,
+    snapshot_json     TEXT NOT NULL,
+    created_at        INTEGER NOT NULL,
+    UNIQUE (recommendation_id, revision_no),
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_evidence_snapshots_lookup
+    ON recommendation_evidence_snapshots (user_id, recommendation_id, revision_no DESC);
 
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -967,6 +1028,9 @@ const SCHEMA = `
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_revisions_update
     BEFORE UPDATE ON recommendation_revisions
     BEGIN SELECT RAISE(ABORT, 'recommendation revisions are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_evidence_snapshots_update
+    BEFORE UPDATE ON recommendation_evidence_snapshots
+    BEGIN SELECT RAISE(ABORT, 'evidence snapshots are append-only'); END;
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_transitions_update
     BEFORE UPDATE ON recommendation_transitions
     BEGIN SELECT RAISE(ABORT, 'recommendation transitions are append-only'); END;
@@ -1157,10 +1221,39 @@ function migrate(db: Database.Database) {
     ["statistical_support", "TEXT"],
     ["evidence_source", "TEXT"],
   ];
+  // Additive for databases created before the parity key existed.
+  const parityCols = db
+    .prepare("PRAGMA table_info(decision_parity)")
+    .all() as Array<{ name: string }>;
+  if (parityCols.length > 0 && !parityCols.some((c) => c.name === "parity_key")) {
+    db.exec("ALTER TABLE decision_parity ADD COLUMN parity_key TEXT");
+  }
+  // Created here, not in SCHEMA: on a database that predates the column the
+  // schema pass runs before this migration, so indexing it there would fail
+  // and take the whole initDb with it.
+  if (parityCols.length > 0) {
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_decision_parity_key ON decision_parity(parity_key, surface)",
+    );
+  }
+
   for (const [name, definition] of canonicalRecColumns) {
     if (!recCols.some((column) => column.name === name)) {
       db.exec(`ALTER TABLE recommendations ADD COLUMN ${name} ${definition}`);
     }
+  }
+
+  // Additive for databases created before the structured activation rule
+  // existed. Nullable with no default: an existing revision genuinely has no
+  // rule, and inventing one would make a plan claim a condition nobody stated.
+  const revisionCols = db
+    .prepare("PRAGMA table_info(recommendation_revisions)")
+    .all() as Array<{ name: string }>;
+  if (
+    revisionCols.length > 0 &&
+    !revisionCols.some((column) => column.name === "activation_rule_json")
+  ) {
+    db.exec("ALTER TABLE recommendation_revisions ADD COLUMN activation_rule_json TEXT");
   }
   db.exec(`
     UPDATE recommendations
@@ -1215,6 +1308,38 @@ function migrate(db: Database.Database) {
       db.exec(`ALTER TABLE trading_settings ADD COLUMN ${name} ${definition}`);
     }
   }
+
+  // Durable re-evaluation claims and the exact evidence/trace consumed by the
+  // unified brain. Additive for databases created before the end-to-end cycle.
+  const reevaluationCols = db
+    .prepare("PRAGMA table_info(recommendation_reevaluations)")
+    .all() as { name: string }[];
+  for (const [name, definition] of [
+    ["trigger_payload_json", "TEXT NOT NULL DEFAULT '{}'"],
+    ["evidence_json", "TEXT NOT NULL DEFAULT '{}'"],
+    ["decision_trace_json", "TEXT NOT NULL DEFAULT '{}'"],
+    ["claimed_at", "INTEGER"],
+    ["completed_at", "INTEGER"],
+  ] as const) {
+    if (!reevaluationCols.some((column) => column.name === name)) {
+      db.exec(
+        `ALTER TABLE recommendation_reevaluations ADD COLUMN ${name} ${definition}`,
+      );
+    }
+  }
+  // Rows written by the pre-queue implementation have no claimed_at marker.
+  // Treat them as historical so the first deploy cannot replay the entire old
+  // trigger log. Every claim written by the resumable consumer has claimed_at.
+  db.exec(
+    `UPDATE recommendation_reevaluations
+        SET completed_at = raised_at
+      WHERE outcome = 'cycle_requested' AND completed_at IS NULL
+        AND claimed_at IS NULL`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_recommendation_reevaluations_pending
+       ON recommendation_reevaluations(outcome, completed_at, user_id, claimed_at)`,
+  );
   if (!settingsCols.some((c) => c.name === "alert_push")) {
     db.exec(
       "ALTER TABLE trading_settings ADD COLUMN alert_push INTEGER NOT NULL DEFAULT 1",
@@ -1331,6 +1456,19 @@ function migrate(db: Database.Database) {
   }
   if (!intentCols.some((c) => c.name === "deny_code")) {
     db.exec("ALTER TABLE trade_intents ADD COLUMN deny_code TEXT");
+  }
+  // Server-side proof that a human approved THIS order. Written only by the
+  // authenticated approval path; a caller-supplied "approved" flag can no longer
+  // stand in for it at the choke point. Nullable so legacy rows stay readable —
+  // and, having no proof, stay unexecutable under user_approved.
+  if (!intentCols.some((c) => c.name === "approved_at")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN approved_at INTEGER");
+  }
+  if (!intentCols.some((c) => c.name === "approved_by_user_id")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN approved_by_user_id INTEGER");
+  }
+  if (!intentCols.some((c) => c.name === "approval_consumed_at")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN approval_consumed_at INTEGER");
   }
   if (!intentCols.some((c) => c.name === "leverage")) {
     db.exec(

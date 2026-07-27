@@ -34,7 +34,6 @@ import {
 } from "./lifecycleNotifier";
 import {
   admitTriggers,
-  recordTrigger,
   type ReevaluationTrigger,
 } from "./reevaluationTriggers";
 import {
@@ -190,12 +189,9 @@ export async function checkEconomicEventProximity(
       source: "monitor",
       revisionNo,
       raisedAt: now,
+      idempotencyKey: `event:${first.currency ?? ""}:${first.title}@${first.time}`,
     };
     const { admitted } = await admitTriggers([trigger]);
-    await recordTrigger(
-      trigger,
-      admitted.length ? "cycle_requested" : "suppressed",
-    );
     for (const admittedTrigger of admitted) {
       result.admittedTriggers.push(admittedTrigger);
     }
