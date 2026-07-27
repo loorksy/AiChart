@@ -27,6 +27,7 @@ import {
   buildRecommendationConfidence,
 } from "../confidenceSemantics";
 import { buildEvidenceDimensions } from "../evidenceDimensions";
+import { activationRuleSchema } from "@/lib/recommendations/activationRule";
 import {
   buildEvidenceLevels,
   deriveExecutionState,
@@ -133,6 +134,13 @@ const FinalDecisionModelSchema = z.object({
     })
     .optional(),
   activationCondition: z.string().max(400).nullable().optional(),
+  /**
+   * The machine-checkable form of `activationCondition`. Emitted by the model
+   * rather than parsed out of its sentence: deriving a rule from free text
+   * would be guessing at what the plan meant, and a guessed trigger is how a
+   * plan ends up filling on something it never asked for.
+   */
+  activationRule: activationRuleSchema.nullable().optional(),
   invalidationRule: z.string().max(400),
   alternativeScenario: z.string().max(400),
   validityCandles: z.number().int().min(1).max(96),
@@ -345,6 +353,7 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 ## Output rules
 - invalidationRule: what specifically kills this idea (a close beyond a level), in plain language.
 - activationCondition: required for conditional and anticipatory plans — the exact event that turns the plan on. null for immediate.
+- activationRule: the SAME condition as data, so the tracker can check it. Required whenever activationCondition is set; null for immediate. Pick the kind that matches what you actually wrote — price_touch ONLY if a bare touch really is enough. candle_close_above/below need level + timeframe (and closes when you demand more than one). breakout_confirmed needs level + direction. retest_confirmed needs the retestZone price band you expect the pullback into. rejection_confirmed means a wick through the level and a close back. Use composite {operator:"all"|"any"} for two conditions. Never state a rule looser than your sentence: if you wrote "close above", do not emit price_touch.
 - validityCandles: how many candles of THIS timeframe the plan stays meaningful.
 - alternativeScenario: the runner-up scenario and what would make you switch to it.
 - decisionTrace: the scenarios you weighed, what supported and opposed each, why this one won, and why this plan type. Operator-readable, no internal jargon.
@@ -357,7 +366,7 @@ Write the final user-facing decision in natural {{LANGUAGE}}, grounded ONLY in t
 - Risk per Trade is intentionally absent: sizing happens after the decision and must never influence direction or plan.
 
 Respond with ONLY a JSON object, no markdown fences:
-{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"timeframeRoles":{"lead":"15m","context":"4h","timing":"5m"},"activationCondition":"...|null","invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[]}`;
+{"direction":"buy|sell","planType":"immediate|anticipatory|conditional","selectedTradeCandidateId":"tc-0|null","proposedLevels":null,"timeframeRoles":{"lead":"15m","context":"4h","timing":"5m"},"activationCondition":"...|null","activationRule":{"kind":"candle_close_above","level":0,"timeframe":"15m"}|null,"invalidationRule":"...","alternativeScenario":"...","validityCandles":6,"confidence":0..1,"summary":"...","keyReasons":[],"riskWarnings":[],"publicReasoningSummary":[],"decisionTrace":{"hypotheses":[{"scenario":"...","supporting":[],"opposing":[]}],"chosenBecause":"...","planTypeBecause":"..."},"drawingAdvice":{"shouldDraw":true,"reason":"..."},"selectedCandidateIds":[]}`;
 
 export async function runFinalDecisionSynthesizer(
   ctx: AgentRunContext,
@@ -861,6 +870,10 @@ function applyModelDecision(
         triggerCondition:
           sanitizePublicText(parsed.activationCondition ?? "").slice(0, 400) ||
           selected?.triggerCondition,
+        // Carried only when the model actually stated one. A plan with no
+        // machine-checkable rule keeps entry semantics rather than inheriting
+        // a condition it never expressed.
+        activationRule: parsed.activationRule ?? undefined,
         invalidationLevel: resolved.levels.stopLoss,
         invalidationRule:
           sanitizePublicText(parsed.invalidationRule).slice(0, 400) ||

@@ -2078,8 +2078,11 @@ async function storeFinalRecommendation(input: {
         : "pending_entry",
     alternativeScenario: rec.alternativeScenario,
     validityCandles: rec.validityCandles,
-    triggerCondition:
-      rec.triggerCondition ?? `تتفعّل عند لمس منطقة الدخول حول ${rec.entry}.`,
+    // No manufactured sentence. A plan with no stated condition activates on
+    // its entry, and saying so in prose that looks like a trigger is how a
+    // generic string ends up standing in for a condition nobody set.
+    triggerCondition: rec.triggerCondition,
+    activationRule: rec.activationRule,
     invalidationLevel: rec.stop_loss,
     invalidationRule:
       rec.invalidationRule ??
@@ -2121,7 +2124,18 @@ async function storeFinalRecommendation(input: {
           ? { timeframeRoles: input.finalDecision.timeframeRoles }
           : undefined) as DecisionTrace | undefined,
       evidenceDimensions: input.finalDecision.evidenceDimensions,
-    }).catch(() => {});
+    }).catch((error) => {
+      // Still best-effort — the operator gets their answer either way — but no
+      // longer silent. A swallowed failure here means the plan exists in the
+      // reply and nowhere else: nothing tracks it, nothing can revise it, and
+      // a contract violation at the write path would look like success.
+      log.error("failed to persist tracked recommendation", {
+        userId: input.userId,
+        symbol: active.symbol,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      metrics.recommendationPersistFailures.inc({ surface: "platform" });
+    });
   }
   return active;
 }
@@ -2182,6 +2196,7 @@ async function persistTrackedRecommendation(
     entryLow: active.entryZone?.low,
     entryHigh: active.entryZone?.high,
     triggerCondition: active.triggerCondition,
+    activationRule: active.activationRule,
     invalidationRule: active.invalidationRule,
     alternativeScenario: active.alternativeScenario,
     validityCandles: active.validityCandles,

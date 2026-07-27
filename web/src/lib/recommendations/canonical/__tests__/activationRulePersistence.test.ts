@@ -120,7 +120,7 @@ describe("activation rule persistence", () => {
         alternativeScenario: "فشل الاختراق",
         validityCandles: 12,
         reason: "deep research tightened the trigger",
-        source: "research",
+        source: "deep_research",
       },
     });
 

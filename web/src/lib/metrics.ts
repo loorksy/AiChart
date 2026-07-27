@@ -31,6 +31,7 @@ type Store = {
   hiddenWaitWrites: client.Counter<string>;
   /** Recommendations that arrived without valid levels. */
   invalidLevelRecommendations: client.Counter<string>;
+  recommendationPersistFailures: client.Counter<string>;
   /** CRITICAL: an order attempt without valid mode/authorisation. */
   executionInWrongMode: client.Counter<string>;
   /** stale_revision denials — existence is health, a spike is a race alarm. */
@@ -122,6 +123,12 @@ function build(): Store {
     name: "aichart_invalid_level_recommendations_total",
     help: "Buy/sell recommendations arriving without valid levels",
     labelNames: ["source"],
+    registers: [registry],
+  });
+  const recommendationPersistFailures = new client.Counter({
+    name: "aichart_recommendation_persist_failures_total",
+    help: "Plans answered to the operator but never stored (target 0)",
+    labelNames: ["surface"],
     registers: [registry],
   });
   const executionInWrongMode = new client.Counter({
@@ -296,6 +303,7 @@ function build(): Store {
     analysisContracts,
     hiddenWaitWrites,
     invalidLevelRecommendations,
+    recommendationPersistFailures,
     executionInWrongMode,
     staleRevisionDenials,
     duplicateNotifications,
