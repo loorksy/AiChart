@@ -334,6 +334,7 @@ export async function createCanonicalRecommendation(
         stopLoss: input.stopLoss ?? null,
         targets,
         activationCondition: seed?.activationCondition ?? null,
+        activationRule: seed?.activationRule ?? null,
         invalidationRule: seed?.invalidationRule ?? null,
         alternativeScenario: seed?.alternativeScenario ?? null,
         validityCandles: seed?.validityCandles ?? null,

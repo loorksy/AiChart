@@ -767,7 +767,11 @@ const SCHEMA = `
     entry_high        REAL,
     stop_loss         REAL,
     targets_json      TEXT NOT NULL DEFAULT '[]',
+    -- The operator-facing sentence, and beside it the only machine-checked
+    -- form. A revision without the JSON rule has no condition anything can
+    -- evaluate, so it falls back to entry semantics rather than guessing.
     activation_condition TEXT,
+    activation_rule_json TEXT,
     invalidation_rule TEXT,
     alternative_scenario TEXT,
     validity_candles  INTEGER,
@@ -1191,6 +1195,19 @@ function migrate(db: Database.Database) {
     if (!recCols.some((column) => column.name === name)) {
       db.exec(`ALTER TABLE recommendations ADD COLUMN ${name} ${definition}`);
     }
+  }
+
+  // Additive for databases created before the structured activation rule
+  // existed. Nullable with no default: an existing revision genuinely has no
+  // rule, and inventing one would make a plan claim a condition nobody stated.
+  const revisionCols = db
+    .prepare("PRAGMA table_info(recommendation_revisions)")
+    .all() as Array<{ name: string }>;
+  if (
+    revisionCols.length > 0 &&
+    !revisionCols.some((column) => column.name === "activation_rule_json")
+  ) {
+    db.exec("ALTER TABLE recommendation_revisions ADD COLUMN activation_rule_json TEXT");
   }
   db.exec(`
     UPDATE recommendations

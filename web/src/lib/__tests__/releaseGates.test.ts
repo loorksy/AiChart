@@ -76,7 +76,7 @@ describe("the Redis release validator refuses the deployed instance", () => {
   const script = path.join(WEB_ROOT, "scripts", "validate-redis-release.ts");
 
   /** Run the validator and return its combined output, expecting a non-zero exit. */
-  function expectRefusal(env: NodeJS.ProcessEnv): string {
+  function expectRefusal(env: Record<string, string>): string {
     try {
       execFileSync("npx", ["tsx", script], {
         cwd: WEB_ROOT,

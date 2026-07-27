@@ -1,3 +1,5 @@
+import type { ActivationRule } from "../activationRule";
+
 export const RECOMMENDATION_STATUSES = [
   "draft",
   "active",
@@ -141,6 +143,8 @@ export interface CreateCanonicalRecommendationInput {
     entryLow?: number | null;
     entryHigh?: number | null;
     activationCondition?: string | null;
+    /** The machine-checked form of the condition; see revisions.ts. */
+    activationRule?: ActivationRule | null;
     invalidationRule?: string | null;
     alternativeScenario?: string | null;
     validityCandles?: number | null;

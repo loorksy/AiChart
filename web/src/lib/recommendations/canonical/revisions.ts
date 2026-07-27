@@ -21,6 +21,11 @@ import { createHash } from "node:crypto";
 import { query, queryOne, transaction } from "@/lib/db";
 import { withLock } from "@/lib/locks";
 import { metrics } from "@/lib/metrics";
+import {
+  parseActivationRule,
+  serializeActivationRule,
+  type ActivationRule,
+} from "../activationRule";
 import { RecommendationLifecycleError, type RecommendationStatus } from "./types";
 import {
   assertRecommendationTransition,
@@ -54,6 +59,11 @@ export interface RecommendationRevision {
   stopLoss: number | null;
   targets: number[];
   activationCondition: string | null;
+  /**
+   * The machine-checkable form of `activationCondition`. The sentence is for
+   * the operator; only this decides whether the plan may activate.
+   */
+  activationRule: ActivationRule | null;
   invalidationRule: string | null;
   alternativeScenario: string | null;
   validityCandles: number | null;
@@ -77,6 +87,7 @@ export interface RevisionInput {
   stopLoss?: number | null;
   targets?: number[];
   activationCondition?: string | null;
+  activationRule?: ActivationRule | null;
   invalidationRule?: string | null;
   alternativeScenario?: string | null;
   validityCandles?: number | null;
@@ -102,6 +113,7 @@ interface RevisionRow {
   stop_loss: number | null;
   targets_json: string | null;
   activation_condition: string | null;
+  activation_rule_json: string | null;
   invalidation_rule: string | null;
   alternative_scenario: string | null;
   validity_candles: number | null;
@@ -152,6 +164,9 @@ function toRevision(row: RevisionRow): RecommendationRevision {
     stopLoss: row.stop_loss,
     targets: parseJson<number[]>(row.targets_json, []),
     activationCondition: row.activation_condition,
+    // A stored rule that no longer parses yields null, which leaves the plan
+    // un-activatable rather than silently falling back to a bare touch.
+    activationRule: parseActivationRule(row.activation_rule_json),
     invalidationRule: row.invalidation_rule,
     alternativeScenario: row.alternative_scenario,
     validityCandles: row.validity_candles,
@@ -240,9 +255,10 @@ async function writeRevision(
       `INSERT INTO recommendation_revisions
         (recommendation_id, user_id, revision_no, direction, plan_type, execution_state,
          entry, entry_low, entry_high, stop_loss, targets_json, activation_condition,
+         activation_rule_json,
          invalidation_rule, alternative_scenario, validity_candles, expires_at,
          reason, source, evidence_hash, evidence_json, decision_trace_json, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         input.recommendationId,
         input.userId,
@@ -256,6 +272,7 @@ async function writeRevision(
         r.stopLoss ?? null,
         JSON.stringify(r.targets ?? []),
         r.activationCondition ?? null,
+        r.activationRule ? serializeActivationRule(r.activationRule) : null,
         r.invalidationRule ?? null,
         r.alternativeScenario ?? null,
         r.validityCandles ?? null,

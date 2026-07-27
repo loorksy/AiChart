@@ -317,6 +317,10 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     entryLow: effective?.entryLow ?? undefined,
     entryHigh: effective?.entryHigh ?? undefined,
     triggerCondition: effective?.activationCondition ?? undefined,
+    // Read from the EFFECTIVE revision, so a plan whose condition was revised
+    // is graded against the condition currently in force — never a superseded
+    // one, and never a newer one the operator has not seen.
+    activationRule: effective?.activationRule ?? undefined,
     invalidationRule: effective?.invalidationRule ?? undefined,
     alternativeScenario: effective?.alternativeScenario ?? undefined,
     evidenceSnapshot: effective?.evidence,
@@ -361,6 +365,7 @@ export async function createTrackedRecommendation(
       entryLow: input.entryLow ?? null,
       entryHigh: input.entryHigh ?? null,
       activationCondition: input.triggerCondition ?? null,
+      activationRule: input.activationRule ?? null,
       invalidationRule: input.invalidationRule ?? null,
       alternativeScenario: input.alternativeScenario ?? null,
       validityCandles: input.validityCandles ?? null,

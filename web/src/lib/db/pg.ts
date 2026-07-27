@@ -721,7 +721,11 @@ const SCHEMA = `
     direction TEXT NOT NULL, plan_type TEXT, execution_state TEXT,
     entry DOUBLE PRECISION, entry_low DOUBLE PRECISION, entry_high DOUBLE PRECISION,
     stop_loss DOUBLE PRECISION, targets_json TEXT NOT NULL DEFAULT '[]',
-    activation_condition TEXT, invalidation_rule TEXT, alternative_scenario TEXT,
+    -- activation_condition is the operator-facing sentence; only
+    -- activation_rule_json is machine-checked. A plan without the latter
+    -- cannot be activated by a condition, so it falls back to entry semantics.
+    activation_condition TEXT, activation_rule_json TEXT,
+    invalidation_rule TEXT, alternative_scenario TEXT,
     validity_candles INTEGER, expires_at BIGINT,
     reason TEXT NOT NULL, source TEXT NOT NULL,
     evidence_hash TEXT, evidence_json TEXT NOT NULL DEFAULT '{}',
@@ -731,6 +735,12 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_recommendation_revisions_lookup
     ON recommendation_revisions (user_id, recommendation_id, revision_no DESC);
+
+  -- Additive for databases created before the structured activation rule
+  -- existed. Nullable with no default: an existing revision genuinely has no
+  -- rule, and inventing one would make a plan claim a condition nobody stated.
+  ALTER TABLE recommendation_revisions
+    ADD COLUMN IF NOT EXISTS activation_rule_json TEXT;
 
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id BIGSERIAL PRIMARY KEY,
