@@ -1409,6 +1409,17 @@ async function migratePg(client: PoolClient) {
       ADD COLUMN IF NOT EXISTS practice BOOLEAN NOT NULL DEFAULT FALSE
   `).catch(() => {});
 
+  // Server-side proof that a human approved THIS order. Written only by the
+  // authenticated approval path; a caller-supplied "approved" flag can no longer
+  // stand in for it at the choke point. Nullable so legacy rows stay readable —
+  // and, having no proof, stay unexecutable under user_approved.
+  await client.query(`
+    ALTER TABLE trade_intents
+      ADD COLUMN IF NOT EXISTS approved_at BIGINT,
+      ADD COLUMN IF NOT EXISTS approved_by_user_id INTEGER,
+      ADD COLUMN IF NOT EXISTS approval_consumed_at BIGINT
+  `).catch(() => {});
+
   await client.query(`
     ALTER TABLE ea_connections
       ADD COLUMN IF NOT EXISTS account_trade_mode TEXT,

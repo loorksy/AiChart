@@ -245,6 +245,16 @@ export async function respondToApproval(
   }
 
   await updateIntentStatus(intentId, "approved", "وافق المشغّل.");
+  // The server's own record that THIS user approved THIS intent, just now. This
+  // is the only thing the choke point accepts as proof; a caller asserting
+  // "approved_by_user" in a request body no longer authorises anything.
+  const { execute } = await import("./db");
+  await execute(
+    `UPDATE trade_intents
+        SET approved_at = ?, approved_by_user_id = ?
+      WHERE id = ? AND user_id = ?`,
+    [Date.now(), userId, intentId, userId],
+  );
   const result = await executeIntent(userId, intentId, {
     explicitApproval: true,
     practiceMode: intent.practice === 1,

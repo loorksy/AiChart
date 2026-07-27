@@ -27,6 +27,7 @@ import {
 } from "./recommendations/canonical/revisions";
 import { withLock } from "./locks";
 import { isAutoExecutionAuthorized } from "./agent/tradeMode";
+import { autoExecutionStage } from "./recommendations/autoExecutor";
 import { FEATURES } from "./agent/featureFlags";
 import { createLogger } from "./logger";
 import { BridgeErrorCode } from "./bridge/errors";
@@ -102,7 +103,40 @@ export interface ExecuteIntentOptions {
  *                          operator's standing authorisation no longer holds at
  *                          this moment, so the grant it was created under is gone.
  */
-export type AuthorizationRefusalCode = "unauthorized_source" | "auto_mode_revoked";
+export type AuthorizationRefusalCode =
+  | "unauthorized_source"
+  | "auto_mode_revoked"
+  | "approval_not_verified";
+
+/**
+ * How long a human approval stays good for.
+ *
+ * An approval is consent to take THIS trade at THIS moment. A scalp plan that
+ * sat in an inbox overnight is a different trade by morning, so proof of consent
+ * expires rather than accumulating.
+ */
+const APPROVAL_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Did the SERVER record this approval, for this user, unspent and still fresh?
+ *
+ * The choke point used to accept `explicitApproval === true` from its caller.
+ * That boolean travels up to a request body (`approved_by_user` on
+ * `/api/agent/trade/open`), and on the MCP surface the request body is composed
+ * by a model — so the thing being asked "did a human approve?" was the same
+ * thing answering. Only a row the authenticated approval path wrote counts now.
+ */
+function approvalIsProven(
+  userId: number,
+  intent: TradeIntent,
+  now: number,
+): boolean {
+  const approvedAt = Number(intent.approved_at ?? 0);
+  if (!Number.isFinite(approvedAt) || approvedAt <= 0) return false;
+  if (Number(intent.approved_by_user_id ?? 0) !== userId) return false;
+  if (intent.approval_consumed_at != null) return false;
+  return now - approvedAt <= APPROVAL_TTL_MS;
+}
 
 /**
  * WHO authorised this order — decided at the choke point itself, never trusted
@@ -141,13 +175,25 @@ async function checkAuthorizationSource(
   }
 
   if (source === "user_approved" || source === null) {
-    if (explicitApproval === true) return { ok: true };
-    return {
-      ok: false,
-      code: "unauthorized_source",
-      reason:
-        "لا يوجد تفويض لهذا الأمر (unauthorized_source): يتطلب موافقة صريحة من المشغّل على هذه الصفقة — لم يُرسل أي أمر.",
-    };
+    // The caller must still SAY it holds an approval, but saying so is no longer
+    // sufficient: the server has to have recorded that approval itself.
+    if (explicitApproval !== true) {
+      return {
+        ok: false,
+        code: "unauthorized_source",
+        reason:
+          "لا يوجد تفويض لهذا الأمر (unauthorized_source): يتطلب موافقة صريحة من المشغّل على هذه الصفقة — لم يُرسل أي أمر.",
+      };
+    }
+    if (!approvalIsProven(userId, intent, Date.now())) {
+      return {
+        ok: false,
+        code: "approval_not_verified",
+        reason:
+          "لا يوجد إثبات خادمي للموافقة (approval_not_verified): الموافقة الصريحة تُثبَت بسجل يكتبه الخادم عند فعل المستخدم، لا بادعاء في الطلب — لم يُرسل أي أمر.",
+      };
+    }
+    return { ok: true };
   }
 
   // trade_management (an SL/TP proposal for an open position, never an order)
@@ -308,6 +354,59 @@ async function executeIntentUnderRevisionLock(
       status: "failed",
       reason: halt.reason,
       denyCode: BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+      activities,
+    };
+  }
+
+  // The rollout stage, enforced HERE rather than only in the automatic executor.
+  // `AUTO_EXECUTION_STAGE` was previously read by autoExecutor/tracker/trade
+  // management only, so `off` stopped the tracker while leaving every other
+  // route — the agent/MCP trade-open path included — a clear run at the broker.
+  // The stage can only ever BLOCK; it never authorises anything by itself.
+  // `autoExecutionStage()` maps any unset or unrecognised value to `off`, so an
+  // unreadable configuration fails closed.
+  const stage = autoExecutionStage();
+  if (stage === "off" || stage === "dry_run") {
+    const stageReason =
+      stage === "off"
+        ? "التنفيذ موقوف على مستوى النشر (execution_stage_off): AUTO_EXECUTION_STAGE=off — لم يُرسل أي أمر."
+        : "وضع التجربة (dry_run): كل الفحوصات تعمل ولا يُرسل أي أمر إلى الوسيط.";
+    push({
+      id: "safety",
+      label: `مرحلة التنفيذ · ${intent.symbol}`,
+      status: "error",
+      detail: stageReason,
+    });
+    await updateIntentDenied(
+      intentId,
+      stageReason,
+      BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+      userId,
+    );
+    metrics.executionDenials.inc({ code: `STAGE_${stage.toUpperCase()}` });
+    return {
+      ok: false,
+      status: "failed",
+      reason: stageReason,
+      denyCode: BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+      errorCode: stage === "off" ? "execution_stage_off" : "execution_stage_dry_run",
+      activities,
+    };
+  }
+  // `demo` may only reach an account the BROKER reports as demo/practice; an
+  // unknown environment is not assumed safe.
+  if (stage === "demo" && isRealMoneyExecution(resolvedEnv)) {
+    const demoReason =
+      "مرحلة demo لا تسمح بحساب حقيقي (execution_stage_demo_only): الحساب المتصل ليس حساب تجربة — لم يُرسل أي أمر.";
+    push({ id: "safety", label: `مرحلة التنفيذ · ${intent.symbol}`, status: "error", detail: demoReason });
+    await updateIntentDenied(intentId, demoReason, BridgeErrorCode.EXECUTION_UNAUTHORIZED, userId);
+    metrics.executionDenials.inc({ code: "STAGE_DEMO_ONLY" });
+    return {
+      ok: false,
+      status: "failed",
+      reason: demoReason,
+      denyCode: BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+      errorCode: "execution_stage_demo_only",
       activities,
     };
   }

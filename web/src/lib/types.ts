@@ -163,6 +163,14 @@ export interface TradeIntent {
    * trade — such an intent is NEVER an order and must not reach executeIntent.
    */
   authorization_source?: "user_approved" | "standing_auto" | "trade_management" | null;
+  /**
+   * Server-side proof of a human approval, written only by the authenticated
+   * approval path — never from a field in a request body. The choke point
+   * requires it before any `user_approved` order reaches a broker.
+   */
+  approved_at?: number | null;
+  approved_by_user_id?: number | null;
+  approval_consumed_at?: number | null;
   symbol: string;
   side: "buy" | "sell";
   notional: number;

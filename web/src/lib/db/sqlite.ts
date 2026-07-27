@@ -1394,6 +1394,19 @@ function migrate(db: Database.Database) {
   if (!intentCols.some((c) => c.name === "deny_code")) {
     db.exec("ALTER TABLE trade_intents ADD COLUMN deny_code TEXT");
   }
+  // Server-side proof that a human approved THIS order. Written only by the
+  // authenticated approval path; a caller-supplied "approved" flag can no longer
+  // stand in for it at the choke point. Nullable so legacy rows stay readable —
+  // and, having no proof, stay unexecutable under user_approved.
+  if (!intentCols.some((c) => c.name === "approved_at")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN approved_at INTEGER");
+  }
+  if (!intentCols.some((c) => c.name === "approved_by_user_id")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN approved_by_user_id INTEGER");
+  }
+  if (!intentCols.some((c) => c.name === "approval_consumed_at")) {
+    db.exec("ALTER TABLE trade_intents ADD COLUMN approval_consumed_at INTEGER");
+  }
   if (!intentCols.some((c) => c.name === "leverage")) {
     db.exec(
       "ALTER TABLE trade_intents ADD COLUMN leverage REAL NOT NULL DEFAULT 1",

@@ -138,7 +138,11 @@ export async function POST(req: NextRequest) {
     // old "autonomous if the strategy is active" route is gone, because whether
     // a trade may be placed is the operator's decision to make, not a
     // statistical property of a strategy (docs/UNIFIED_AGENT_PLAN.md §3).
-    if (!body.approved_by_user) {
+    // Standing authorisation is the ONLY thing this route can act on. It used to
+    // skip this check whenever the body said `approved_by_user: true`, which
+    // made a caller's own claim about a human the gate — so the check now runs
+    // unconditionally.
+    {
       const authorized = await isAutoExecutionAuthorized(userId);
       if (!authorized) {
         criticalAlert("execution_wrong_mode", { source: "trade_open_api", userId });
@@ -205,7 +209,13 @@ export async function POST(req: NextRequest) {
       // Which of the two authorisations brought us here (checked above): the
       // operator approving THIS trade, or their standing auto mode — which the
       // execution choke point re-verifies at the moment the order is placed.
-      authorization_source: body.approved_by_user ? "user_approved" : "standing_auto",
+      // Always `standing_auto`. This route's caller composes its own body — on
+      // the MCP surface that caller is a model — so `approved_by_user` cannot
+      // mint a `user_approved` intent here. A real per-trade approval is created
+      // as a PENDING intent and turned into an executable one by the
+      // authenticated approval path (`respondToApproval`), which is what writes
+      // the server-side proof the choke point demands.
+      authorization_source: "standing_auto",
       symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
       notional: budget.riskAmount,
@@ -225,7 +235,8 @@ export async function POST(req: NextRequest) {
     });
 
     const result = await executeIntent(userId, intent.id, {
-      explicitApproval: body.approved_by_user,
+      // Never from the body: this route cannot prove a human approved anything.
+      explicitApproval: false,
       practiceMode: body.practice,
     });
 
