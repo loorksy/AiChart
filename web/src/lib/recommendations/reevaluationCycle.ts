@@ -225,6 +225,25 @@ export function decisionChanged(
 }
 
 /**
+ * Was the revision this cycle would transition FROM already recorded as the
+ * origin of a completed "revised"/"invalidated" cycle? Used to recognize a
+ * crash-recovery retry: a revision that committed but whose cycle (recordCycle
+ * + broker sync + notification) never ran because the process died in between.
+ */
+async function hasRecordedTransitionFrom(
+  recommendationId: string,
+  fromRevisionNo: number,
+): Promise<boolean> {
+  const rows = await query<{ found: number }>(
+    `SELECT 1 AS found FROM recommendation_reevaluations
+      WHERE recommendation_id = ? AND revision_no = ? AND outcome IN ('revised', 'invalidated')
+      LIMIT 1`,
+    [recommendationId, fromRevisionNo],
+  );
+  return rows.length > 0;
+}
+
+/**
  * Record what a cycle concluded, whether or not it produced a revision.
  *
  * `confirmed` is a real outcome and must be visible: "the market moved and the
@@ -386,6 +405,58 @@ export async function runReevaluationCycle(
         trigger.revisionNo != null &&
         trigger.revisionNo !== effective.revisionNo
       ) {
+        // Recovery path: a crash between applyRecommendationRevision (committed)
+        // and recordCycle (never ran) would otherwise let this retry silently
+        // close the claim as "stale trigger, nothing happened" — losing the
+        // notification, the broker SL/TP sync, and the audit trail for a
+        // revision that really did land. Only this function's own "changed"
+        // branch writes source:"market_update", and a cycle that finished
+        // normally always records the transition it made in the same
+        // synchronous flow. If the effective revision looks like ours but was
+        // never recorded, finish its bookkeeping instead of burying it.
+        const orphaned =
+          effective.source === "market_update" &&
+          !(await hasRecordedTransitionFrom(
+            trigger.recommendationId,
+            effective.revisionNo - 1,
+          ));
+        if (orphaned) {
+          const verdict: CycleVerdict =
+            effective.executionState === "invalidated" ? "invalidated" : "revised";
+          const detail = `${rec.symbol}: استُؤنفت دورة إعادة تقييم توقفت بعد تطبيق النسخة ${effective.revisionNo} — لم تصل الإشعارات أو مزامنة الصفقة سابقاً.`;
+          await recordCycle({
+            trigger,
+            verdict,
+            evidenceHash: effective.evidenceHash,
+            detail,
+            evidence: effective.evidence,
+            decisionTrace: effective.decisionTrace,
+          });
+          metrics.reevaluationVerdicts.inc({ verdict });
+          await manageOpenTradeAfterRevision({
+            userId: trigger.userId,
+            recommendationId: canonicalId,
+            revision: effective,
+          }).catch((error: unknown) => {
+            log.warn("post-open trade management failed (resumed cycle)", {
+              recommendationId: trigger.recommendationId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+          const resumed: CycleResult = {
+            recommendationId: trigger.recommendationId,
+            canonicalId,
+            verdict,
+            revision: effective,
+            evidenceHash: effective.evidenceHash,
+            detail,
+            trigger,
+          };
+          if (deps.notifyInCycle !== false) {
+            await announceCycle(resumed, deps.silentNotifications === true);
+          }
+          return resumed;
+        }
         return skip(
           `stale trigger revision ${trigger.revisionNo}; effective ${effective.revisionNo}`,
           false,

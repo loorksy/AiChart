@@ -280,6 +280,67 @@ describe("the cycle refuses to run where it should not", () => {
     assert.equal(called, false);
   });
 
+  it("resumes a crashed cycle instead of silently burying it as stale", async () => {
+    const id = await livePlan();
+    const recommendationId = "rec-cycle-crash-recovery";
+    // Simulate the crash: applyRecommendationRevision committed (source
+    // "market_update" — exactly what this module's own "changed" branch
+    // writes), but recordCycle/manageOpenTradeAfterRevision/announceCycle never
+    // ran because the process died in between.
+    await revisions.applyRecommendationRevision({
+      userId,
+      recommendationId: id,
+      revision: {
+        direction: "buy",
+        planType: "conditional",
+        executionState: "awaiting_activation",
+        entry: 3990,
+        stopLoss: 3970,
+        targets: [4040],
+        reason: "إعادة تقييم (structure_break): تغيّر entry.",
+        source: "market_update",
+        evidence: { schemaVersion: 1 },
+      },
+    });
+
+    let called = false;
+    // The retry reconstructs the SAME original trigger (revisionNo: 1, the
+    // revision in force when it was first raised) — exactly what re-consuming
+    // a crashed claim on the next sweep looks like.
+    const result = await cycle.runReevaluationCycle(
+      trigger({ recommendationId, revisionNo: 1 }),
+      id,
+      {
+        runBrain: async () => {
+          called = true;
+          return brainResult();
+        },
+      },
+    );
+
+    assert.equal(called, false, "must not re-run the brain for a revision that already landed");
+    assert.equal(result.verdict, "revised");
+    assert.equal(result.revision?.revisionNo, 2, "must carry the already-applied revision forward");
+    assert.match(result.detail, /استُؤنفت دورة إعادة تقييم توقفت/);
+
+    const rows = await db.query<{ outcome: string; revision_no: number }>(
+      "SELECT outcome, revision_no FROM recommendation_reevaluations WHERE recommendation_id = ? AND outcome = 'revised'",
+      [recommendationId],
+    );
+    assert.equal(rows.length, 1, "the orphaned transition must be durably recorded exactly once");
+    assert.equal(rows[0].revision_no, 1);
+
+    // A second retry of the same now-closed claim must fall through to the
+    // ordinary stale-skip — reconciliation must be idempotent, not repeated.
+    const second = await cycle.runReevaluationCycle(
+      trigger({ recommendationId, revisionNo: 1 }),
+      id,
+      { runBrain: async () => brainResult() },
+    );
+    assert.equal(second.verdict, "skipped");
+    assert.match(second.detail, /stale trigger revision/);
+  });
+
   it("skips a terminal recommendation", async () => {
     const id = await livePlan();
     const { transitionRecommendation } = repository;
