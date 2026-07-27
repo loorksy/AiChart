@@ -19,6 +19,7 @@ import {
   LIVE_ENABLED_FLAG,
 } from "./executionKillSwitch";
 import { getResolvedExecutionEnv } from "./executionEnv";
+import { execute } from "./db";
 import { getEaConnection } from "./eaStore";
 import {
   checkRevisionIsCurrent,
@@ -393,11 +394,12 @@ async function executeIntentUnderRevisionLock(
       activities,
     };
   }
-  // `demo` may only reach an account the BROKER reports as demo/practice; an
-  // unknown environment is not assumed safe.
-  if (stage === "demo" && isRealMoneyExecution(resolvedEnv)) {
+  // `demo` may only reach an account the BROKER positively reports as
+  // demo/practice. Fail closed: an UNKNOWN environment is refused, not assumed
+  // safe — "not provably live" is not the same thing as "verified demo".
+  if (stage === "demo" && resolvedEnv !== "demo") {
     const demoReason =
-      "مرحلة demo لا تسمح بحساب حقيقي (execution_stage_demo_only): الحساب المتصل ليس حساب تجربة — لم يُرسل أي أمر.";
+      "مرحلة demo لا تسمح إلا بحساب تجريبي مؤكد من الوسيط (execution_stage_demo_only): بيئة الحساب حقيقية أو غير معروفة — لم يُرسل أي أمر.";
     push({ id: "safety", label: `مرحلة التنفيذ · ${intent.symbol}`, status: "error", detail: demoReason });
     await updateIntentDenied(intentId, demoReason, BridgeErrorCode.EXECUTION_UNAUTHORIZED, userId);
     metrics.executionDenials.inc({ code: "STAGE_DEMO_ONLY" });
@@ -442,6 +444,31 @@ async function executeIntentUnderRevisionLock(
       errorCode: authorization.code,
       activities,
     };
+  }
+
+  // Fail closed on an unreadable account environment. A CONNECTED account whose
+  // broker-reported trade mode we cannot classify must not trade under the
+  // `live` stage: the dual-enablement halt above keys on "provably live", so an
+  // unrecognised mode would otherwise slip past the one protection real money
+  // gets. (No connection at all is refused further down by verified equity —
+  // nothing can reach a broker without one.)
+  if (stage === "live" && resolvedEnv == null) {
+    const envConnection = await getEaConnection(userId).catch(() => null);
+    if (envConnection && envConnection.status !== "revoked") {
+      const envReason =
+        "بيئة الحساب غير معروفة (execution_stage_env_unknown): الوسيط لم يُبلغ نوع الحساب (تجريبي/حقيقي) بشكل يمكن التحقق منه — لم يُرسل أي أمر.";
+      push({ id: "safety", label: `مرحلة التنفيذ · ${intent.symbol}`, status: "error", detail: envReason });
+      await updateIntentDenied(intentId, envReason, BridgeErrorCode.EXECUTION_UNAUTHORIZED, userId);
+      metrics.executionDenials.inc({ code: "STAGE_ENV_UNKNOWN" });
+      return {
+        ok: false,
+        status: "failed",
+        reason: envReason,
+        denyCode: BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+        errorCode: "execution_stage_env_unknown",
+        activities,
+      };
+    }
   }
 
   // Are these still the levels the agent stands behind?
@@ -544,6 +571,39 @@ async function executeIntentUnderRevisionLock(
   }
   for (const warning of portfolio.warnings) {
     push({ id: "safety", label: `حدود المحفظة · ${intent.symbol}`, status: "done", detail: warning });
+  }
+
+  // The approval is SPENT here — atomically, at the last gate before the
+  // broker. `WHERE approval_consumed_at IS NULL` makes the claim single-winner:
+  // a replay of the same approval (the intent retried after success, or a
+  // concurrent duplicate that slipped every earlier check) finds the row
+  // already claimed and stops with no order. A refusal upstream of this point
+  // deliberately leaves the approval unspent, so an operator's consent survives
+  // a transient failure (unreadable equity, portfolio block) for the rest of
+  // its 30-minute window instead of dying with the retry.
+  const consumingSource = intent.authorization_source ?? null;
+  if (consumingSource === "user_approved" || consumingSource === null) {
+    const claimed = await execute(
+      `UPDATE trade_intents
+          SET approval_consumed_at = ?
+        WHERE id = ? AND user_id = ? AND approval_consumed_at IS NULL`,
+      [Date.now(), intentId, userId],
+    );
+    if (claimed.changes < 1) {
+      const reason =
+        "استُهلكت هذه الموافقة بالفعل (approval_not_verified): كل موافقة تصلح لأمر واحد فقط — لم يُرسل أي أمر.";
+      push({ id: "safety", label: `تفويض التنفيذ · ${intent.symbol}`, status: "error", detail: reason });
+      await updateIntentDenied(intentId, reason, BridgeErrorCode.EXECUTION_UNAUTHORIZED, userId);
+      metrics.executionDenials.inc({ code: "APPROVAL_ALREADY_CONSUMED" });
+      return {
+        ok: false,
+        status: "failed",
+        reason,
+        denyCode: BridgeErrorCode.EXECUTION_UNAUTHORIZED,
+        errorCode: "approval_not_verified",
+        activities,
+      };
+    }
   }
 
   const adapter = getBrokerAdapter(broker, "spot");

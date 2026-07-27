@@ -114,11 +114,10 @@ export async function POST(req: NextRequest) {
     // Failure brake: if a recent attempt on this symbol was denied, reject
     // immediately with a clear reason instead of re-running the full
     // intent → technical execution safety → broker pipeline.
-    // Explicit human approval bypasses the brake.
-    if (
-      !body.approved_by_user &&
-      (await hasRecentTradeOpenFailure(userId, body.symbol))
-    ) {
+    // It used to be skippable via `approved_by_user` — a body flag the caller
+    // (a model, on MCP) writes about itself. Real human approvals no longer
+    // travel through this route at all, so nothing here may bypass the brake.
+    if (await hasRecentTradeOpenFailure(userId, body.symbol)) {
       const envelope = bridgeSuccess(
         tradeOpenPayload(
           false,
@@ -150,7 +149,7 @@ export async function POST(req: NextRequest) {
           tradeOpenPayload(
             false,
             "denied",
-            "لا يوجد تفويض للتنفيذ: إمّا موافقة صريحة على هذه الصفقة (approved_by_user)، أو تفعيل الوضع التلقائي من المستخدم مع حساب متصل.",
+            "لا يوجد تفويض للتنفيذ: هذا المسار يعمل بالتفويض التلقائي القائم فقط. الموافقة اليدوية تمر عبر طلب اعتماد يوافق عليه المستخدم بنفسه (approval flow) — لا عبر حقل في الطلب.",
             null,
             null,
             null,
