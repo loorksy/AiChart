@@ -28,7 +28,7 @@ assert.match(
   "Refusing to run PostgreSQL release validation outside an aichart_rel* database",
 );
 
-const expectedSettingsColumns = [
+const requiredSettingsColumns = [
   "user_id",
   "per_trade_pct",
   "allowed_assets",
@@ -42,7 +42,7 @@ const expectedSettingsColumns = [
   "updated_at",
 ];
 
-const expectedAdminColumns = [
+const requiredAdminColumns = [
   "user_id",
   "can_execute",
   "claude_quota",
@@ -128,11 +128,35 @@ async function columnNames(table: string): Promise<string[]> {
   return rows.map((row) => row.column_name);
 }
 
+/**
+ * Every required column must be present — deliberately a SUBSET check, not an
+ * exact match.
+ *
+ * The schema policy is additive (see the plan's rollback rule: roll back by
+ * turning a flag off, never by reversing a migration). An equality assertion
+ * therefore fails on every legitimate migration that adds a column, which turns
+ * this release gate into a false alarm on correct schemas — it already did, for
+ * the six columns the trade-mode and push-preference work added. Columns that
+ * must be GONE are covered independently by the `removedColumns` check below.
+ */
+function assertHasColumns(actual: string[], required: string[], table: string): void {
+  const missing = required.filter((column) => !actual.includes(column));
+  assert.deepEqual(
+    missing,
+    [],
+    `${table} is missing required columns: ${missing.join(", ")}`,
+  );
+}
+
 async function run(): Promise<void> {
   await initDb();
 
-  assert.deepEqual(await columnNames("trading_settings"), expectedSettingsColumns);
-  assert.deepEqual(await columnNames("admin_limits"), expectedAdminColumns);
+  assertHasColumns(
+    await columnNames("trading_settings"),
+    requiredSettingsColumns,
+    "trading_settings",
+  );
+  assertHasColumns(await columnNames("admin_limits"), requiredAdminColumns, "admin_limits");
 
   const tables = new Set(
     (
