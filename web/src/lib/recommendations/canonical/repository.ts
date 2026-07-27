@@ -383,6 +383,8 @@ export async function createCanonicalRecommendation(
         reason: "initial recommendation",
         source: "agent",
         evidence: seed?.evidence ?? null,
+        evidenceSnapshot: seed?.evidenceSnapshot ?? null,
+        evidenceSourceSurface: seed?.evidenceSourceSurface ?? null,
         decisionTrace: seed?.decisionTrace ?? null,
       },
     }).catch((err) => {

@@ -742,6 +742,27 @@ const SCHEMA = `
   ALTER TABLE recommendation_revisions
     ADD COLUMN IF NOT EXISTS activation_rule_json TEXT;
 
+  -- The frozen evidence the brain actually decided on, stored whole and apart
+  -- from the operator-facing card. The revision used to keep only the graded
+  -- card while its evidence_hash claimed to fingerprint the bundle — two
+  -- different objects, so "what did it decide on" had no answer and parity
+  -- compared a hash nothing else held. snapshot_json is the CANONICAL text the
+  -- fingerprint was taken over, so the hash always matches what is stored.
+  CREATE TABLE IF NOT EXISTS recommendation_evidence_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recommendation_id INTEGER NOT NULL REFERENCES recommendations(id) ON DELETE CASCADE,
+    revision_no INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    source_surface TEXT NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    snapshot_json TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    UNIQUE (recommendation_id, revision_no)
+  );
+  CREATE INDEX IF NOT EXISTS idx_evidence_snapshots_lookup
+    ON recommendation_evidence_snapshots (user_id, recommendation_id, revision_no DESC);
+
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id BIGSERIAL PRIMARY KEY,
     recommendation_id INTEGER NOT NULL REFERENCES recommendations(id) ON DELETE CASCADE,

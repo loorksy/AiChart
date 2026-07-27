@@ -8,6 +8,10 @@ import {
   type RecommendationRevision,
 } from "@/lib/recommendations/canonical/revisions";
 import { listTriggers } from "@/lib/recommendations/reevaluationTriggers";
+import {
+  toPublicEvidenceProjection,
+  type PublicEvidenceProjection,
+} from "@/lib/recommendations/publicEvidenceProjection";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 
 /**
@@ -23,7 +27,7 @@ import type { TrackedRecommendation } from "@/lib/recommendations/types";
 
 export interface ActiveRecommendationView extends TrackedRecommendation {
   activationCondition: string | null;
-  evidence: Record<string, unknown> | null;
+  evidence: PublicEvidenceProjection | null;
   decisionTrace: Record<string, unknown> | null;
   revisionReason: string | null;
   revisionSource: string | null;
@@ -75,7 +79,7 @@ function overlayRevision(
   revision: RecommendationRevision | null,
 ): Partial<TrackedRecommendation> & {
   activationCondition: string | null;
-  evidence: Record<string, unknown> | null;
+  evidence: PublicEvidenceProjection | null;
   decisionTrace: Record<string, unknown> | null;
   revisionReason: string | null;
   revisionSource: string | null;
@@ -104,7 +108,17 @@ function overlayRevision(
     validityCandles: revision.validityCandles ?? rec.validityCandles,
     expiresAt: revision.expiresAt ?? rec.expiresAt,
     activationCondition: revision.activationCondition ?? rec.triggerCondition ?? null,
-    evidence: Object.keys(revision.evidence).length ? revision.evidence : null,
+    // The PUBLIC projection, never the internal snapshot: the card the UI
+    // renders plus the identity of the frozen bundle behind it. The snapshot
+    // itself carries megabytes of chart base64 and stays server-side.
+    evidence: toPublicEvidenceProjection({
+      descriptor: revision.evidence,
+      fingerprint: revision.evidenceHash,
+      revisionNo: revision.revisionNo,
+      capturedAt: revision.createdAt,
+      sourceSurface: revision.source,
+      snapshotStored: Boolean(revision.evidenceHash),
+    }),
     decisionTrace: Object.keys(revision.decisionTrace).length ? revision.decisionTrace : null,
     revisionReason: revision.reason || null,
     revisionSource: revision.source || null,

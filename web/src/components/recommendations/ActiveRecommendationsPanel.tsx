@@ -43,7 +43,9 @@ const EXEC_STATE_CLASSES: Record<string, string> = {
 };
 
 /** Both spellings the revision bundles use for the dimension list. */
-function dimensionsOf(evidence: Record<string, unknown> | null): EvidenceDimension[] {
+function dimensionsOf(
+  evidence: { evidenceDimensions?: unknown; dimensions?: unknown } | null,
+): EvidenceDimension[] {
   if (!evidence) return [];
   const raw = evidence.evidenceDimensions ?? evidence.dimensions;
   if (!Array.isArray(raw)) return [];

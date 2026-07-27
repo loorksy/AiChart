@@ -1448,6 +1448,7 @@ async function runUnifiedChartAgentInner(
       drawings,
       chartSnapshotHash,
       statisticalSupport: statisticalSupport?.level,
+      evidenceSnapshot: synth.evidenceSnapshot,
     });
   }
 
@@ -2022,6 +2023,12 @@ async function storeFinalRecommendation(input: {
   chartSnapshotHash: string;
   /** Verified backing grade, persisted so the card is not rebuilt from nothing. */
   statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
+  /**
+   * The frozen bundle the brain decided on. Lives on the synthesizer OUTCOME,
+   * not its result, so it is passed explicitly — the same object the parity
+   * log fingerprints, so revision 1 and parity describe one thing.
+   */
+  evidenceSnapshot?: Record<string, unknown>;
 }): Promise<ActiveRecommendation | null> {
   const rec = input.finalDecision.recommendation;
   if (
@@ -2124,6 +2131,9 @@ async function storeFinalRecommendation(input: {
           ? { timeframeRoles: input.finalDecision.timeframeRoles }
           : undefined) as DecisionTrace | undefined,
       evidenceDimensions: input.finalDecision.evidenceDimensions,
+      // The object the model actually reasoned over — the same one the parity
+      // log fingerprints, so revision 1 and parity finally describe one thing.
+      evidenceSnapshot: input.evidenceSnapshot,
     }).catch((error) => {
       // Still best-effort — the operator gets their answer either way — but no
       // longer silent. A swallowed failure here means the plan exists in the
@@ -2148,6 +2158,8 @@ async function persistTrackedRecommendation(
   explanation?: {
     decisionTrace?: DecisionTrace;
     evidenceDimensions?: EvidenceDimension[];
+    /** The frozen bundle the brain decided on — stored whole, apart from the card. */
+    evidenceSnapshot?: Record<string, unknown>;
   },
 ): Promise<void> {
   const entryType: "market" | "limit" | "pending" =
@@ -2203,9 +2215,15 @@ async function persistTrackedRecommendation(
     // Stored with revision 1: why this plan, and on what evidence — so the
     // decision stays explainable after the market has moved past it.
     decisionTrace: explanation?.decisionTrace as unknown as Record<string, unknown> | undefined,
+    // Two different facts, kept apart on purpose: the CARD is the graded,
+    // operator-facing descriptor; the SNAPSHOT is the raw bundle the brain
+    // decided on. Storing only the card while claiming to fingerprint the
+    // bundle is the finding.
     evidence: explanation?.evidenceDimensions
       ? { evidenceDimensions: explanation.evidenceDimensions }
       : undefined,
+    evidenceSnapshot: explanation?.evidenceSnapshot,
+    evidenceSourceSurface: "platform",
   });
   // The birth announcement (plan §8 C.1), through the lifecycle notifier so it
   // shares the (recommendation, event, revision) dedupe with every later event

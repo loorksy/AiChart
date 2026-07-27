@@ -26,6 +26,10 @@ import {
   serializeActivationRule,
   type ActivationRule,
 } from "../activationRule";
+import {
+  canonicalizeEvidence,
+  evidenceSnapshotFingerprint,
+} from "./evidenceSnapshots";
 import { RecommendationLifecycleError, type RecommendationStatus } from "./types";
 import {
   assertRecommendationTransition,
@@ -94,8 +98,19 @@ export interface RevisionInput {
   expiresAt?: number | null;
   reason: string;
   source: RevisionSource;
-  /** The frozen evidence bundle behind the decision, if the caller has it. */
+  /**
+   * The operator-facing evidence DESCRIPTOR — the graded card. Small, safe to
+   * project to a browser, and not what the model reasoned over.
+   */
   evidence?: Record<string, unknown> | null;
+  /**
+   * The frozen evidence bundle the brain actually decided on: model context,
+   * numeric level menu, chart images. Stored whole in its own append-only
+   * table, and the source of this revision's `evidenceHash`.
+   */
+  evidenceSnapshot?: Record<string, unknown> | null;
+  /** Which surface produced the snapshot — platform | mcp | research | worker. */
+  evidenceSourceSurface?: string | null;
   decisionTrace?: Record<string, unknown> | null;
 }
 
@@ -216,11 +231,21 @@ async function writeRevision(
   timestamp: number,
 ): Promise<RecommendationRevision> {
   const r = input.revision;
-  const evidenceHash = r.evidence ? evidenceFingerprint(r.evidence) : null;
+  // The hash describes the FROZEN SNAPSHOT the brain decided on when there is
+  // one — computed over its canonical form, which is also exactly what gets
+  // stored, so the two can never drift. Falling back to the descriptor keeps
+  // pre-snapshot revisions hashing as they always did rather than silently
+  // changing their identity.
+  const evidenceHash = r.evidenceSnapshot
+    ? evidenceSnapshotFingerprint(r.evidenceSnapshot)
+    : r.evidence
+      ? evidenceFingerprint(r.evidence)
+      : null;
   // Snapshot size is a dashboard, not a limit: a snapshot quietly growing past
   // hundreds of KB per revision is how storage surprises start.
-  if (r.evidence) {
-    metrics.evidenceSnapshotBytes.observe(JSON.stringify(r.evidence).length);
+  const sized = r.evidenceSnapshot ?? r.evidence;
+  if (sized) {
+    metrics.evidenceSnapshotBytes.observe(JSON.stringify(sized).length);
   }
   let revisionNo = 1;
 
@@ -285,6 +310,33 @@ async function writeRevision(
         timestamp,
       ],
     );
+
+    // Inside the same transaction as the revision: a revision whose hash names
+    // a snapshot that was never written would be a claim with no evidence
+    // behind it, which is the failure this whole change exists to remove.
+    if (r.evidenceSnapshot) {
+      const canonical = canonicalizeEvidence(r.evidenceSnapshot);
+      const schemaVersion = Number(
+        (r.evidenceSnapshot as { schemaVersion?: unknown }).schemaVersion ?? 1,
+      );
+      await db.execute(
+        `INSERT INTO recommendation_evidence_snapshots
+           (user_id, recommendation_id, revision_no, fingerprint, source_surface,
+            schema_version, snapshot_json, created_at)
+         VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT (recommendation_id, revision_no) DO NOTHING`,
+        [
+          input.userId,
+          input.recommendationId,
+          revisionNo,
+          evidenceHash,
+          r.evidenceSourceSurface ?? r.source,
+          Number.isFinite(schemaVersion) ? schemaVersion : 1,
+          canonical,
+          timestamp,
+        ],
+      );
+    }
 
     // The pointer move is what actually retires the previous levels.
     await db.execute(

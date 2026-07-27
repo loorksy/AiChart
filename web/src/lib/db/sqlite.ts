@@ -789,6 +789,28 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_recommendation_revisions_lookup
     ON recommendation_revisions (user_id, recommendation_id, revision_no DESC);
 
+  -- The frozen evidence the brain actually decided on, stored whole and apart
+  -- from the operator-facing card. The revision used to keep only the graded
+  -- card while its evidence_hash claimed to fingerprint the bundle — two
+  -- different objects. snapshot_json is the CANONICAL text the fingerprint was
+  -- taken over, so the stored hash always matches what is stored.
+  CREATE TABLE IF NOT EXISTS recommendation_evidence_snapshots (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER NOT NULL,
+    recommendation_id INTEGER NOT NULL,
+    revision_no       INTEGER NOT NULL,
+    fingerprint       TEXT NOT NULL,
+    source_surface    TEXT NOT NULL,
+    schema_version    INTEGER NOT NULL DEFAULT 1,
+    snapshot_json     TEXT NOT NULL,
+    created_at        INTEGER NOT NULL,
+    UNIQUE (recommendation_id, revision_no),
+    FOREIGN KEY (recommendation_id) REFERENCES recommendations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_evidence_snapshots_lookup
+    ON recommendation_evidence_snapshots (user_id, recommendation_id, revision_no DESC);
+
   CREATE TABLE IF NOT EXISTS recommendation_transitions (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     recommendation_id INTEGER NOT NULL,
@@ -1001,6 +1023,9 @@ const SCHEMA = `
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_revisions_update
     BEFORE UPDATE ON recommendation_revisions
     BEGIN SELECT RAISE(ABORT, 'recommendation revisions are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS immutable_evidence_snapshots_update
+    BEFORE UPDATE ON recommendation_evidence_snapshots
+    BEGIN SELECT RAISE(ABORT, 'evidence snapshots are append-only'); END;
   CREATE TRIGGER IF NOT EXISTS immutable_recommendation_transitions_update
     BEFORE UPDATE ON recommendation_transitions
     BEGIN SELECT RAISE(ABORT, 'recommendation transitions are append-only'); END;

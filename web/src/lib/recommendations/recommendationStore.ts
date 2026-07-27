@@ -171,6 +171,9 @@ export type CreateTrackedRecommendationInput = Omit<
      * and the evidence has changed underneath it.
      */
     evidence?: Record<string, unknown> | null;
+    /** The frozen bundle the brain decided on; see canonical/evidenceSnapshots.ts. */
+    evidenceSnapshot?: Record<string, unknown> | null;
+    evidenceSourceSurface?: string | null;
     decisionTrace?: Record<string, unknown> | null;
     /**
      * Where the decision's support came from — distinct from the support GRADE:
@@ -377,6 +380,8 @@ export async function createTrackedRecommendation(
       alternativeScenario: input.alternativeScenario ?? null,
       validityCandles: input.validityCandles ?? null,
       evidence: input.evidence ?? null,
+      evidenceSnapshot: input.evidenceSnapshot ?? null,
+      evidenceSourceSurface: input.evidenceSourceSurface ?? null,
       decisionTrace: input.decisionTrace ?? null,
     },
   });

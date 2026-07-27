@@ -154,8 +154,17 @@ export interface CreateCanonicalRecommendationInput {
     invalidationRule?: string | null;
     alternativeScenario?: string | null;
     validityCandles?: number | null;
-    /** The frozen evidence bundle the decision was made on. */
+    /**
+     * The operator-facing evidence DESCRIPTOR — the graded card. Small and safe
+     * to project to a browser. NOT what the model reasoned over.
+     */
     evidence?: Record<string, unknown> | null;
+    /**
+     * The frozen bundle the brain actually decided on, stored whole in its own
+     * append-only table and used as the revision's evidence fingerprint.
+     */
+    evidenceSnapshot?: Record<string, unknown> | null;
+    evidenceSourceSurface?: string | null;
     decisionTrace?: Record<string, unknown> | null;
   };
 }
