@@ -4,6 +4,8 @@
  * lifecycle state (for the card's progress bar); `outcome` is the final trade
  * result (drives statistics). A record is TERMINAL when `outcome !== "pending"`.
  */
+import type { ActivationRule } from "./activationRule";
+
 export type TrackedRecommendationStatus =
   | "pending_entry"
   | "triggered"
@@ -74,6 +76,12 @@ export interface TrackedRecommendation {
   /** Frozen evidence consumed by the brain for the effective revision. */
   evidenceSnapshot?: Record<string, unknown>;
   triggerCondition?: string;
+  /**
+   * The machine-checkable form of `triggerCondition`. The free text says what
+   * the plan waits for; only this decides whether it has happened. A plan
+   * carrying one is never activated by a bare price touch.
+   */
+  activationRule?: ActivationRule;
   createdAt: number;
   createdCandleTime: number;
   expiresAt: number;
