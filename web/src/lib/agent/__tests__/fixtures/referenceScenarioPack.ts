@@ -653,6 +653,22 @@ export function fixtureBars(input: {
     cursor -= input.intervalMs;
   }
   return times.reverse().map((time, index) => {
+    if (input.shape === "corrupt") {
+      // Genuinely malformed — high below low, the kind of impossible candle a
+      // broken parser/feed can actually emit. Deliberately NOT run through the
+      // isFinite fallback below (which would launder a NaN into an ordinary
+      // finite candle): both numbers here are finite, just logically invalid,
+      // so any pipeline stage that assumes high >= low must reject or flag it.
+      return {
+        time,
+        open: input.start,
+        high: input.start - 0.0006,
+        low: input.start + 0.0006,
+        close: input.start,
+        volume: 100 + index,
+        complete: true,
+      };
+    }
     let center = input.start;
     switch (input.shape) {
       case "trend_up":
@@ -669,11 +685,10 @@ export function fixtureBars(input: {
         center = input.start + (index % 20 < 10 ? 0.0003 : -0.00025);
         break;
       case "thin":
-      case "corrupt":
         center = input.start;
         break;
     }
-    const noise = input.shape === "corrupt" ? Number.NaN : 0.00005;
+    const noise = 0.00005;
     const open = center - noise;
     const close = center + noise;
     return {

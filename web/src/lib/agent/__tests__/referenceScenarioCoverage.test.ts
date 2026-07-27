@@ -6,7 +6,7 @@
  * lacks an integration-class executable assertion.
  */
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { REFERENCE_SCENARIOS } from "./fixtures/referenceScenarioPack";
@@ -61,6 +61,29 @@ describe("reference scenario coverage map", () => {
       assert.ok(existsSync(full), `missing test file for ${owner.scenarioId}: ${owner.testFile}`);
       assert.ok(owner.testName.trim(), `${owner.scenarioId} missing test name`);
       assert.ok(owner.kinds.length > 0, `${owner.scenarioId} missing coverage kinds`);
+    }
+  });
+
+  it("names a real test that exists in its owner file, not just a file that exists", () => {
+    // "points every owner at a real test file" above only proves the FILE
+    // exists — a testName can be a typo, a renamed/deleted test, or fabricated
+    // metadata and that check would still pass. Read each owner file (once,
+    // cached) and require the exact testName to appear as a real it(...) title.
+    const cache = new Map<string, string>();
+    for (const owner of REFERENCE_SCENARIO_COVERAGE) {
+      const full = join(WEB_ROOT, owner.testFile);
+      let text = cache.get(full);
+      if (text === undefined) {
+        text = readFileSync(full, "utf8");
+        cache.set(full, text);
+      }
+      const escaped = owner.testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`\\bit(?:\\.\\w+)?\\(\\s*["'\`]${escaped}["'\`]`);
+      assert.ok(
+        pattern.test(text),
+        `${owner.scenarioId}: no test named "${owner.testName}" found in ${owner.testFile} — ` +
+          "the coverage map's testName must match a real test title verbatim",
+      );
     }
   });
 

@@ -42,6 +42,23 @@ describe("critical reference scenario integrations", () => {
     const scenario = scenarioById("corrupt_market_data");
     assert.equal(scenario.expected.operationalBlock, true);
     const orchestrator = await import("@/lib/agent/orchestrator");
+    // Seed genuinely MALFORMED candles (high < low), not an empty dataset — the
+    // scenario exists to prove bad feed data never becomes an invented price,
+    // which an empty table cannot demonstrate.
+    const { fixtureBars } = await import("./fixtures/referenceScenarioPack");
+    const candleRepository = await import("@/lib/candles/candleRepository");
+    const corruptBars = fixtureBars({
+      count: 650,
+      intervalMs: 15 * 60_000,
+      endAt: Date.UTC(2026, 4, 15, 12, 0, 0),
+      start: 1.08,
+      shape: scenario.fixture.shape,
+    });
+    assert.ok(
+      corruptBars.every((bar) => bar.high < bar.low),
+      "the corrupt fixture must actually be malformed, not silently sanitized",
+    );
+    await candleRepository.upsertCandles("EURUSD", "15m", corruptBars);
     const beforeCount = await db.query<{ n: number }>(
       "SELECT COUNT(*) AS n FROM recommendations WHERE user_id = ?",
       [userId],
@@ -80,13 +97,9 @@ describe("critical reference scenario integrations", () => {
       [userId],
     );
     assert.equal(Number(afterCount[0]?.n), Number(beforeCount[0]?.n));
-    for (const forbidden of scenario.forbidden) {
-      assert.ok(forbidden.length > 0);
-    }
   });
 
   it("calendar_provider_absent invents no events and still stores a plan", async () => {
-    const scenario = scenarioById("calendar_provider_absent");
     const { saveRecommendation } = await import("@/lib/store");
     const { runFinalDecisionSynthesizer } = await import(
       "@/lib/agent/agents/finalDecisionSynthesizer"
@@ -184,11 +197,9 @@ describe("critical reference scenario integrations", () => {
       source: "agent",
     });
     assert.ok(saved.id);
-    assert.ok(scenario.forbidden.some((item) => /fabricat/i.test(item)));
   });
 
   it("cost_ruins_entry keeps a conditional plan and never distorts levels", async () => {
-    const scenario = scenarioById("cost_ruins_entry");
     const { runFinalDecisionSynthesizer } = await import(
       "@/lib/agent/agents/finalDecisionSynthesizer"
     );
@@ -312,7 +323,6 @@ describe("critical reference scenario integrations", () => {
     assert.equal(out.result!.recommendation.levelSource, "evidence_levels");
     assert.equal(out.result!.recommendation.entry, 3992);
     assert.equal(out.result!.recommendation.stop_loss, 3990);
-    assert.ok(scenario.forbidden.some((item) => /distorted|WAIT/i.test(item)));
   });
 
   it("condition_during_revision: lock prefers revision apply; old intent is stale", async () => {
@@ -409,24 +419,29 @@ describe("critical reference scenario integrations", () => {
     assert.equal(outcome.placed, false);
     assert.equal(outcome.code, "stage_off");
 
-    process.env.AUTO_EXECUTION_STAGE = "dry_run";
-    const waiting = await maybeAutoExecute({
-      recommendation: {
-        id: "auto-cond-2",
-        userId,
-        symbol: "EURUSD",
-        direction: "buy",
-        entry: 1.1,
-        stopLoss: 1.09,
-        targets: [1.12],
-        revisionNo: 1,
-        status: "pending_entry",
-      } as never,
-      events: [],
-    });
-    assert.equal(waiting.placed, false);
-    assert.equal(waiting.code, "not_activated");
-    process.env.AUTO_EXECUTION_STAGE = "off";
+    // try/finally: an assertion failure below must not leak a non-off stage
+    // into the tests that run after this one in the same process.
+    try {
+      process.env.AUTO_EXECUTION_STAGE = "dry_run";
+      const waiting = await maybeAutoExecute({
+        recommendation: {
+          id: "auto-cond-2",
+          userId,
+          symbol: "EURUSD",
+          direction: "buy",
+          entry: 1.1,
+          stopLoss: 1.09,
+          targets: [1.12],
+          revisionNo: 1,
+          status: "pending_entry",
+        } as never,
+        events: [],
+      });
+      assert.equal(waiting.placed, false);
+      assert.equal(waiting.code, "not_activated");
+    } finally {
+      process.env.AUTO_EXECUTION_STAGE = "off";
+    }
   });
 
   it("account_disconnected refuses auto and still analyzes", async () => {
@@ -477,10 +492,10 @@ describe("critical reference scenario integrations", () => {
     });
     assert.equal(result.ok, false);
     assert.ok(
-      result.errorCode === "auto_mode_revoked" ||
-        result.errorCode === "unauthorized_source" ||
-        result.errorCode === "not_authorized" ||
-        typeof result.errorCode === "string",
+      ["auto_mode_revoked", "unauthorized_source", "not_authorized"].includes(
+        result.errorCode ?? "",
+      ),
+      `unexpected errorCode: ${result.errorCode}`,
     );
   });
 
