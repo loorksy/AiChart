@@ -144,12 +144,10 @@ export async function runOpportunityScan(
           confidence: Math.round(decision.confidence * 100),
           timeframe: candidate.interval,
         } as Recommendation;
-        finalDelivery = await dispatchAlert(userId, {
-          type: "signal",
-          title: `${rec.action === "buy" ? "BUY" : "SELL"} — ${candidate.symbol}`,
-          text: decision.summary,
-          symbol: candidate.symbol,
-        });
+        // runUnifiedChartAgent already persisted this recommendation and announced it
+        // exactly once through the lifecycle notifier's dedupe path (opportunity_created).
+        // Sending a second, undeduped alert here would double-notify the user for one
+        // opportunity — see docs/UNIFIED_AGENT_COMPLETION_AUDIT.md single-announcer contract.
         break;
       }
     } catch (error) {
