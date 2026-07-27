@@ -5,6 +5,7 @@ import { collectTradeWatchAlerts } from "./tradeWatch";
 import { checkEconomicEventProximity } from "./recommendations/economicEventMonitor";
 import { listUsersForMonitor } from "./store";
 import { notifyUser } from "./telegram";
+import { selectUnannouncedAlerts } from "./recommendations/lifecycleNotifier";
 import { refreshAllStrategyDecay } from "./strategies/evidence";
 
 export interface MonitorCycleEvent {
@@ -88,7 +89,14 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
           delivered: economic.notify.delivered > 0,
         });
       }
-      const alerts = await collectTradeWatchAlerts(userId);
+      // Proximity alerts go through the SAME claim-before-send path as every
+      // lifecycle event. They used to call notifyUser directly with no dedupe
+      // key and no alert record, so an operator holding a position near its
+      // stop was messaged again on every monitor cycle, indefinitely.
+      const alerts = await selectUnannouncedAlerts(
+        userId,
+        await collectTradeWatchAlerts(userId),
+      );
       if (alerts.length) {
         const detail = alerts.map((alert) => alert.detail).join("\n");
         let delivered = true;

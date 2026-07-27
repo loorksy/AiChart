@@ -439,6 +439,15 @@ export function criticalAlert(
   detail: Record<string, unknown> = {},
 ): void {
   metrics.criticalAlerts.inc({ kind });
+  // The diagnostics dashboard reads the PER-KIND series as well as the roll-up
+  // (aichart_hidden_wait_writes_total, aichart_execution_wrong_mode_total).
+  // Incrementing only the roll-up left those panels reading zero while a
+  // critical alert was firing — the one place an operator would look to see it.
+  // Done here, in the function that already knows the kind, so a new call site
+  // cannot forget half of it.
+  const source = typeof detail.source === "string" ? detail.source : "unknown";
+  if (kind === "hidden_wait_write") metrics.hiddenWaitWrites.inc({ source });
+  if (kind === "execution_wrong_mode") metrics.executionInWrongMode.inc({ source });
   // eslint-disable-next-line no-console
   console.error(`[CRITICAL] ${kind}`, JSON.stringify(detail));
 }

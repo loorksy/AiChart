@@ -214,6 +214,32 @@ export async function notifyLifecycleEvents(
  * for the same plan, says nothing the second time. This is delivery only: it
  * decides nothing and never touches the recommendation.
  */
+/**
+ * Filter proximity alerts down to the ones not already announced.
+ *
+ * Lives here, not in the monitor, because the dedupe claim belongs to the
+ * notifier — a second module claiming keys is exactly the parallel path the
+ * single-brain guard forbids. The monitor collects; this decides what is new.
+ *
+ * Proximity alerts used to bypass this entirely and call Telegram directly, so
+ * an operator holding a position near its stop was messaged on every cycle.
+ */
+export async function selectUnannouncedAlerts<
+  T extends { dedupeKey: string; symbol: string },
+>(userId: number, alerts: readonly T[]): Promise<T[]> {
+  const fresh: T[] = [];
+  for (const alert of alerts) {
+    const claimed = await claimLifecycleDedupeKey({
+      userId,
+      dedupeKey: alert.dedupeKey,
+      eventType: "approaching_invalidation",
+      symbol: alert.symbol,
+    });
+    if (claimed) fresh.push(alert);
+  }
+  return fresh;
+}
+
 export async function announceOpportunityCreated(
   userId: number,
   input: {

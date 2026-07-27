@@ -63,6 +63,13 @@ export interface ParityDecision {
 
 export interface ParityObservation {
   evidenceHash: string;
+  /**
+   * What makes two surfaces comparable: the same instrument, timeframe and
+   * closed candle. Derived, not hashed from the bundle — see parityKeyFor.
+   */
+  parityKey?: string;
+  /** The interval the decision was made on; part of the parity key. */
+  interval?: string;
   symbol: string;
   /** Timeframes in the bundle, so a partial capture is visible. */
   timeframeSet: string[];
@@ -71,6 +78,31 @@ export interface ParityObservation {
   surface: DecisionSurface;
   decision: ParityDecision;
   createdAt?: number;
+}
+
+/**
+ * The identity of a DECISION MOMENT, shared by every surface that looks at it.
+ *
+ * Symbol, interval and the closed candle the surface decided on — nothing that
+ * varies per run. Two surfaces analysing the same instrument on the same closed
+ * candle are exactly the pair parity exists to compare; anything finer (the
+ * evidence hash) can never match, and anything coarser would compare decisions
+ * made about different market states.
+ */
+export function parityKeyFor(input: {
+  symbol: string;
+  interval?: string;
+  marketTimestamp: number;
+}): string {
+  return [
+    input.symbol.toUpperCase(),
+    (input.interval ?? "unspecified").toLowerCase(),
+    Math.trunc(input.marketTimestamp),
+  ].join("|");
+}
+
+function parityKeyOf(observation: ParityObservation): string {
+  return observation.parityKey ?? parityKeyFor(observation);
 }
 
 /**
@@ -86,14 +118,15 @@ export async function recordDecisionForParity(
     await execute(
       `INSERT INTO decision_parity
          (evidence_hash, symbol, timeframe_set, market_timestamp, surface,
-          decision_json, created_at)
-       VALUES (?,?,?,?,?,?,?)
+          decision_json, created_at, parity_key)
+       VALUES (?,?,?,?,?,?,?,?)
        ON CONFLICT (evidence_hash, surface) DO UPDATE SET
          decision_json = excluded.decision_json,
          market_timestamp = excluded.market_timestamp,
          timeframe_set = excluded.timeframe_set,
          symbol = excluded.symbol,
-         created_at = excluded.created_at`,
+         created_at = excluded.created_at,
+         parity_key = excluded.parity_key`,
       [
         observation.evidenceHash,
         observation.symbol,
@@ -102,11 +135,12 @@ export async function recordDecisionForParity(
         observation.surface,
         JSON.stringify(observation.decision),
         observation.createdAt ?? Date.now(),
+        parityKeyOf(observation),
       ],
     );
     // The first observation remains unpaired. Whichever surface arrives second
     // atomically materializes the durable comparison used by diagnostics.
-    await materializeParityComparison(observation.evidenceHash);
+    await materializeParityComparison(parityKeyOf(observation));
   } catch (error: unknown) {
     log.warn("failed to record parity observation", {
       symbol: observation.symbol,
@@ -286,15 +320,20 @@ export function compareDecisions(input: {
  * divergence inspectable without reconstructing it from application logs.
  */
 async function materializeParityComparison(
-  evidenceHash: string,
+  parityKey: string,
   updateMetrics = true,
 ): Promise<void> {
+  // Joined on the PARITY KEY, not the evidence hash. The hash covers a snapshot
+  // embedding live candles, the live spread and per-run chart images, so two
+  // surfaces never shared one — every request bailed below and the comparisons
+  // table stayed permanently empty while the dashboard reported "all zero".
   const rows = await query<ParityRow>(
-    `SELECT evidence_hash, symbol, timeframe_set, market_timestamp, surface,
+    `SELECT evidence_hash, parity_key, symbol, timeframe_set, market_timestamp, surface,
             decision_json, created_at
        FROM decision_parity
-      WHERE evidence_hash = ?`,
-    [evidenceHash],
+      WHERE parity_key = ?
+      ORDER BY created_at DESC`,
+    [parityKey],
   );
   const observations = rows.map(toObservation);
   const platform = observations.find((item) => item.surface === "platform");
@@ -330,7 +369,10 @@ async function materializeParityComparison(
        explanation = excluded.explanation,
        created_at = excluded.created_at`,
     [
-      evidenceHash,
+      // The pair is identified by the parity key; this column keeps the
+      // platform-side bundle hash as the audit pointer into the snapshot that
+      // was compared.
+      platform.evidenceHash,
       platform.symbol,
       JSON.stringify(platform.timeframeSet),
       Math.max(platform.marketTimestamp, mcp.marketTimestamp),
@@ -375,6 +417,7 @@ async function refreshParityMetrics(): Promise<void> {
 
 interface ParityRow {
   evidence_hash: string;
+  parity_key: string | null;
   symbol: string;
   timeframe_set: string;
   market_timestamp: number | string;
@@ -394,6 +437,7 @@ function parseJson<T>(text: string, fallback: T): T {
 function toObservation(row: ParityRow): ParityObservation {
   return {
     evidenceHash: row.evidence_hash,
+    parityKey: row.parity_key ?? undefined,
     symbol: row.symbol,
     timeframeSet: parseJson<string[]>(row.timeframe_set, []),
     marketTimestamp: Number(row.market_timestamp),
@@ -459,20 +503,21 @@ export async function buildParityReport(limit = 200): Promise<ParityReport> {
   const boundedLimit = Math.max(1, Math.min(limit, 500));
   // Additive schema upgrade: preserve comparable observations written before
   // the durable comparison table existed.
-  const legacyPairs = await query<{ evidence_hash: string }>(
-    `SELECT d.evidence_hash
+  const legacyPairs = await query<{ parity_key: string }>(
+    `SELECT d.parity_key
        FROM decision_parity d
-      WHERE NOT EXISTS (
+      WHERE d.parity_key IS NOT NULL
+        AND NOT EXISTS (
         SELECT 1 FROM decision_parity_comparisons c
          WHERE c.evidence_hash = d.evidence_hash
       )
-      GROUP BY d.evidence_hash
+      GROUP BY d.parity_key
      HAVING COUNT(DISTINCT d.surface) = 2
       LIMIT ?`,
     [boundedLimit],
   ).catch(() => []);
   for (const pair of legacyPairs) {
-    await materializeParityComparison(pair.evidence_hash, false).catch(() => {});
+    await materializeParityComparison(pair.parity_key, false).catch(() => {});
   }
   if (legacyPairs.length) await refreshParityMetrics();
 

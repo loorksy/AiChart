@@ -30,11 +30,18 @@ let tracker: typeof import("@/lib/recommendations/recommendationTracker");
 let eaLive: typeof import("@/lib/eaLiveState");
 let userId = 0;
 
+/**
+ * skipWeekends is off for the DAILY series: a weekday-only daily seed reads as
+ * roughly 28% of calendar days missing, so the coverage check can classify the
+ * fixture as a data outage and return an operational blocker instead of a
+ * decision — and whether it did depended on the wall clock when the suite ran.
+ */
 function weekdayBars(
   count: number,
   intervalMs: number,
   endAt: number,
   start: number,
+  skipWeekends = true,
 ) {
   const times: number[] = [];
   let cursor = endAt;
@@ -42,7 +49,9 @@ function weekdayBars(
     const day = new Date(cursor).getUTCDay();
     // Keep the fixture tail recent so the source-lock sync guard can accept the
     // warehouse when no live OANDA key exists; older bars still skip weekends.
-    if (times.length === 0 || (day !== 0 && day !== 6)) times.push(cursor);
+    if (!skipWeekends || times.length === 0 || (day !== 0 && day !== 6)) {
+      times.push(cursor);
+    }
     cursor -= intervalMs;
   }
   return times.reverse().map((time, index) => {
@@ -179,7 +188,7 @@ before(async () => {
   await candles.upsertCandles(
     "EURUSD",
     "1d",
-    weekdayBars(130, 24 * 60 * 60_000, friday, 1.06),
+    weekdayBars(130, 24 * 60 * 60_000, friday, 1.06, false),
   );
 });
 

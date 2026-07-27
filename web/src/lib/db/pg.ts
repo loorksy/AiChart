@@ -536,11 +536,18 @@ const SCHEMA = `
     surface          TEXT NOT NULL,
     decision_json    TEXT NOT NULL DEFAULT '{}',
     created_at       BIGINT NOT NULL,
+    -- What makes two surfaces COMPARABLE: symbol, interval and the closed
+    -- candle they decided on. evidence_hash cannot serve, because the snapshot
+    -- it covers embeds live candles, the live spread and per-run chart images.
+    parity_key       TEXT,
     UNIQUE (evidence_hash, surface)
   );
 
   CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
     ON decision_parity(created_at DESC);
+  ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS parity_key TEXT;
+  CREATE INDEX IF NOT EXISTS idx_decision_parity_key
+    ON decision_parity(parity_key, surface);
 
   -- Durable paired Platform/MCP comparison once both surfaces used the same
   -- Evidence Snapshot. Raw per-surface observations remain above.

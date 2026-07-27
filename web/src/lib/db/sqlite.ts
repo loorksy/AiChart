@@ -564,6 +564,11 @@ const SCHEMA = `
     surface          TEXT NOT NULL,
     decision_json    TEXT NOT NULL DEFAULT '{}',
     created_at       INTEGER NOT NULL,
+    -- What makes two surfaces COMPARABLE: symbol, interval and the closed
+    -- candle they decided on. evidence_hash cannot serve, because the snapshot
+    -- it covers embeds live candles, the live spread and per-run chart images,
+    -- so two surfaces never produced the same hash and no pair was ever formed.
+    parity_key       TEXT,
     UNIQUE (evidence_hash, surface)
   );
 
@@ -1216,6 +1221,22 @@ function migrate(db: Database.Database) {
     ["statistical_support", "TEXT"],
     ["evidence_source", "TEXT"],
   ];
+  // Additive for databases created before the parity key existed.
+  const parityCols = db
+    .prepare("PRAGMA table_info(decision_parity)")
+    .all() as Array<{ name: string }>;
+  if (parityCols.length > 0 && !parityCols.some((c) => c.name === "parity_key")) {
+    db.exec("ALTER TABLE decision_parity ADD COLUMN parity_key TEXT");
+  }
+  // Created here, not in SCHEMA: on a database that predates the column the
+  // schema pass runs before this migration, so indexing it there would fail
+  // and take the whole initDb with it.
+  if (parityCols.length > 0) {
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_decision_parity_key ON decision_parity(parity_key, surface)",
+    );
+  }
+
   for (const [name, definition] of canonicalRecColumns) {
     if (!recCols.some((column) => column.name === name)) {
       db.exec(`ALTER TABLE recommendations ADD COLUMN ${name} ${definition}`);

@@ -24,12 +24,30 @@ let revisions: typeof import("@/lib/recommendations/canonical/revisions");
 let userId = 0;
 const fixtureNow = Date.now();
 
-function fixtureBars(count: number, intervalMs: number, endAt: number, start: number) {
+/**
+ * `skipWeekends` is off for the daily series on purpose.
+ *
+ * A weekday-only DAILY seed reads as roughly 28% of calendar days missing, so
+ * the coverage check could classify this fixture as a data outage and return an
+ * operational blocker instead of a decision — and whether it did depended on
+ * the wall clock at the moment the suite ran. This test is about Platform/MCP
+ * parity, so its data is seeded contiguously and the gap detector is left to
+ * the suites that actually test it.
+ */
+function fixtureBars(
+  count: number,
+  intervalMs: number,
+  endAt: number,
+  start: number,
+  skipWeekends = true,
+) {
   const times: number[] = [];
   let cursor = endAt;
   while (times.length < count) {
     const day = new Date(cursor).getUTCDay();
-    if (times.length === 0 || (day !== 0 && day !== 6)) times.push(cursor);
+    if (!skipWeekends || times.length === 0 || (day !== 0 && day !== 6)) {
+      times.push(cursor);
+    }
     cursor -= intervalMs;
   }
   return times.reverse().map((time, index) => {
@@ -143,7 +161,7 @@ before(async () => {
   await candleRepository.upsertCandles(
     "EURUSD",
     "1d",
-    fixtureBars(130, 24 * 60 * 60_000, fixtureNow, 1.06),
+    fixtureBars(130, 24 * 60 * 60_000, fixtureNow, 1.06, false),
   );
 });
 

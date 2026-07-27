@@ -1402,6 +1402,8 @@ async function runUnifiedChartAgentInner(
     await recordDecisionForParity({
       evidenceHash: evidenceFingerprint(synth.evidenceSnapshot),
       symbol: market.symbol,
+      // The interval is part of what makes two surfaces comparable.
+      interval: market.interval,
       timeframeSet,
       marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
       surface: input.surface ?? "platform",
