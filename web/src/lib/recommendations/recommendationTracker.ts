@@ -23,6 +23,7 @@ import {
 } from "@/lib/agent/marketContext/structureEvents";
 import { detectChartGeometry } from "@/lib/chart/geometry";
 import { getEaLiveQuote } from "@/lib/eaLiveState";
+import { costEvidencePips } from "@/lib/agent/marketContext/costEvidence";
 import { spreadFromBidAsk } from "@/lib/spread";
 import {
   listActiveTrackedRecommendations,
@@ -220,9 +221,12 @@ export async function trackOneRecommendation(
     modelContext && typeof modelContext.executionCost === "object"
       ? (modelContext.executionCost as Record<string, unknown>)
       : null;
-  const plannedSpread = Number(
-    cost?.expected_spread ?? cost?.observed_spread ?? Number.NaN,
-  );
+  // Canonical PIPS keys, with the pre-contract price-unit names read as a
+  // fallback so old rows still compare. `currentSpread` below is in pips, so
+  // reading a price-unit number here was a ~10^4 error waiting to happen — and
+  // with the V2 pipeline on, neither old key existed, so this was NaN and the
+  // spread-drift trigger never fired at all.
+  const plannedSpread = costEvidencePips(cost);
   const currentSpread =
     quote && quote.quoteAgeMs <= 120_000
       ? spreadFromBidAsk(quote.bid, quote.ask, symbol)?.spreadPips

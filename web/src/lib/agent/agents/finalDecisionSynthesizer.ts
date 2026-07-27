@@ -48,7 +48,7 @@ import { summarizeChartDrawings } from "../chartDrawingContext";
 import { SCALPING_CONTEXT } from "@/lib/productModel";
 import { SCALP_GEOMETRY } from "../trading/scalpGeometry";
 import type { StatisticalSupport } from "@/lib/strategies/supportSummary";
-import { expectedSpreadNow } from "@/lib/strategies/sessionSpread";
+import { serializeCostEvidence } from "../marketContext/costEvidence";
 import { FEATURES } from "../featureFlags";
 import { metrics } from "@/lib/metrics";
 import type { HistoricalCaseEvidence } from "@/lib/marketMemory/caseQuery";
@@ -406,7 +406,6 @@ export async function runFinalDecisionSynthesizer(
      * Live session cost profile, when the sampler has enough data. Carries its
      * own `source` label so a static fallback never masquerades as measured.
      */
-    liveCost?: Record<string, unknown> | null;
   },
   deps: SynthesizerDeps = {},
 ): Promise<SynthesizerOutcome> {
@@ -583,7 +582,7 @@ function buildModelContext(
     geometry?: GeometrySnapshot | null;
     statisticalSupport?: StatisticalSupport | null;
     historicalCases?: HistoricalCaseEvidence | null;
-    liveCost?: Record<string, unknown> | null;
+    additionalEvidence?: Record<string, unknown> | null;
   },
 ): Record<string, unknown> {
   const playbook = input.risk?.playbook ?? null;
@@ -591,6 +590,11 @@ function buildModelContext(
   return {
     // Fixed scalping context. Higher-timeframe facts remain evidence only.
     scalpingContext: SCALPING_CONTEXT,
+    // The extension point, named on purpose. A new evidence provider adds a
+    // key here and it reaches the model without the brain, the contract or the
+    // prompt changing. It used to piggy-back on the live-cost field, which is
+    // why consolidating that field broke the property.
+    ...(input.additionalEvidence ?? {}),
     // Say it plainly to the model too: strong backing is worth citing, and its
     // absence is worth stating rather than papering over.
     statisticalSupport: (FEATURES.evidencePipelineV2() ? input.statisticalSupport : null) ?? {
@@ -614,19 +618,11 @@ function buildModelContext(
     // executionCost: null — the exact evidence the prompt asks it to weigh when
     // rejecting a bad entry. Fall to null only when there is genuinely no cost
     // signal from either source.
-    executionCost:
-      input.liveCost != null || input.market.spread != null
-        ? {
-            observed_spread: input.market.spread ?? null,
-            ...(FEATURES.evidencePipelineV2()
-              ? input.liveCost ??
-                (input.market.spread != null
-                  ? expectedSpreadNow(input.market.spread)
-                  : { session: null, expected_spread: null, source: "unavailable" })
-              : { session: null, expected_spread: input.market.spread ?? null }),
-            note: "Session-adjusted expected spread. A move that does not clear it is a worse entry, not an absent one — say the better price instead.",
-          }
-        : null,
+    // ONE shape, always. This used to be a three-branch expression whose
+    // key sets were disjoint, so the only downstream reader looked for keys
+    // the enabled branch never produced and the spread-drift trigger read NaN.
+    // Every unit is named; `unavailable` is stated, never rendered as zero.
+    executionCost: serializeCostEvidence(input.market.costEvidence),
     // --- Trading-brain context (Phase 2) ---
     narrative: input.narrative ?? null,
     // Deterministic chart geometry — trendlines, channels, and named patterns
