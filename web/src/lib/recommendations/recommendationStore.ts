@@ -261,6 +261,7 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
   const triggeredAt = transitions.find((item) => item.toStatus === "triggered")?.occurredAt;
   return {
     id: recommendation.legacyTrackingId ?? String(recommendation.recommendationId),
+    canonicalId: recommendation.recommendationId,
     userId: recommendation.userId,
     chatId: recommendation.chatId,
     analysisId: recommendation.analysisId,

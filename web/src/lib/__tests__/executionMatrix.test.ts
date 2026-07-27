@@ -67,9 +67,21 @@ async function connectAccount(tradeMode: "demo" | "real" | "garbage"): Promise<v
   await db.execute(
     `INSERT INTO ea_connections
        (user_id, platform, token_hash, account_currency, balance, equity, status,
-        account_trade_mode, last_heartbeat_at)
-     VALUES (?,?,?,?,?,?,?,?,datetime('now'))`,
-    [owner, "mt5", "matrix-token-hash", "USD", 10_000, 10_000, "online", tradeMode],
+        account_trade_mode, symbol_specs_json, last_heartbeat_at)
+     VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`,
+    [
+      owner,
+      "mt5",
+      "matrix-token-hash",
+      "USD",
+      10_000,
+      10_000,
+      "online",
+      tradeMode,
+      // A fresh, tight quote: the choke point's preflight refuses a stale or
+      // absent price, so the permitted rows must look like a live feed.
+      JSON.stringify([{ symbol: "EURUSD", bid: 1.1, ask: 1.10012, point: 0.00001, digits: 5 }]),
+    ],
   );
 }
 
@@ -361,5 +373,97 @@ describe("execution matrix: downstream gates still hold with the stage open", ()
     const okCount = [a, b].filter((r) => r.ok).length;
     assert.equal(okCount, 1, "exactly one of two concurrent calls may place");
     assert.equal(placeOrderCalls, 1, "the broker must see exactly one order");
+  });
+
+  it("demo × a terminal (stopped-out) recommendation → refused, zero broker calls", async () => {
+    process.env.AUTO_EXECUTION_STAGE = "demo";
+    await connectAccount("demo");
+    const { createCanonicalRecommendation, transitionRecommendation } = await import(
+      "@/lib/recommendations/canonical"
+    );
+    const rec = await createCanonicalRecommendation({
+      planType: "conditional",
+      executionState: "awaiting_activation",
+      userId: owner,
+      analysisId: `matrix-term-${Math.floor(performance.now() * 1000)}`,
+      sessionId: "s",
+      chatId: "c",
+      symbol: "EURUSD",
+      market: "forex",
+      timeframe: "5m",
+      direction: "buy",
+      entry: 1.1,
+      stopLoss: 1.09,
+      targets: [1.12],
+      risk: { riskPercent: 1 },
+      confidence: 70,
+      strategyId: "unspecified",
+      strategyVersion: "1",
+      expiresAt: Date.now() + 3_600_000,
+      source: "test",
+      engineVersion: "matrix",
+      entryType: "buy_limit",
+    });
+    const intent = await newIntent({
+      recommendation_id: rec.recommendationId,
+      recommendation_revision_no: 1,
+    });
+    await stampApproval(intent.id);
+    // The plan hits its stop — a terminal status that never bumps the revision.
+    await transitionRecommendation({
+      userId: owner,
+      recommendationId: rec.recommendationId,
+      toStatus: "sl_hit",
+      trigger: "stop",
+      actor: "tracker",
+      source: "test",
+      reason: "stopped out",
+    });
+    const result = await run(intent.id);
+    assert.equal(result.ok, false, "a finished plan is history, not an order");
+    assert.equal(result.errorCode, "recommendation_terminal");
+    assert.equal(placeOrderCalls, 0);
+  });
+
+  it("standing_auto with NO recommendation binding → refused, zero broker calls", async () => {
+    process.env.AUTO_EXECUTION_STAGE = "demo";
+    await connectAccount("demo");
+    // Genuinely enable auto so the refusal proven here is the binding check,
+    // which sits AFTER the standing-grant check.
+    const { setTradeMode } = await import("@/lib/agent/tradeMode");
+    await setTradeMode({ userId: owner, mode: "auto", actor: "platform" });
+    const intent = await newIntent({
+      authorization_source: "standing_auto",
+      recommendation_id: null,
+      recommendation_revision_no: null,
+    });
+    const result = await run(intent.id, false);
+    assert.equal(result.ok, false, "an unbound auto order has no revision to verify");
+    assert.equal(result.errorCode, "unauthorized_source");
+    assert.equal(placeOrderCalls, 0);
+  });
+
+  it("demo × a stale/absent live quote → refused by preflight, zero broker calls", async () => {
+    process.env.AUTO_EXECUTION_STAGE = "demo";
+    const db = await import("@/lib/db");
+    // Connected and demo, but the last heartbeat is ancient — the EA feed is
+    // stale, exactly the state a spread blowout hides behind.
+    await db.execute("DELETE FROM ea_connections WHERE user_id = ?", [owner]);
+    await db.execute(
+      `INSERT INTO ea_connections
+         (user_id, platform, token_hash, account_currency, balance, equity, status,
+          account_trade_mode, symbol_specs_json, last_heartbeat_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [
+        owner, "mt5", "matrix-token-hash", "USD", 10_000, 10_000, "online", "demo",
+        JSON.stringify([{ symbol: "EURUSD", bid: 1.1, ask: 1.10012, point: 0.00001, digits: 5 }]),
+        "2020-01-01 00:00:00",
+      ],
+    );
+    const intent = await newIntent();
+    await stampApproval(intent.id);
+    const result = await run(intent.id);
+    assert.equal(result.ok, false, "a stale feed must not reach the broker");
+    assert.equal(placeOrderCalls, 0);
   });
 });

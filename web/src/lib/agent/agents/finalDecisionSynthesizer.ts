@@ -598,15 +598,26 @@ function buildModelContext(
     // setup, and an average hides exactly the cases where a scalp stops paying.
     // Gated by EVIDENCE_PIPELINE_V2: off falls back to the single observed
     // spread with no session shaping, never to a guessed number.
-    executionCost: input.market.spread != null
-      ? {
-          observed_spread: input.market.spread,
-          ...(FEATURES.evidencePipelineV2()
-            ? input.liveCost ?? expectedSpreadNow(input.market.spread)
-            : { session: null, expected_spread: input.market.spread }),
-          note: "Session-adjusted expected spread. A move that does not clear it is a worse entry, not an absent one — say the better price instead.",
-        }
-      : null,
+    // Present whenever EITHER a live cost profile OR an observed spread exists.
+    // It used to be gated on the observed spread alone, so on every production
+    // request (where market.spread is not wired through) a real live-EA cost
+    // profile computed upstream was silently dropped and the model saw
+    // executionCost: null — the exact evidence the prompt asks it to weigh when
+    // rejecting a bad entry. Fall to null only when there is genuinely no cost
+    // signal from either source.
+    executionCost:
+      input.liveCost != null || input.market.spread != null
+        ? {
+            observed_spread: input.market.spread ?? null,
+            ...(FEATURES.evidencePipelineV2()
+              ? input.liveCost ??
+                (input.market.spread != null
+                  ? expectedSpreadNow(input.market.spread)
+                  : { session: null, expected_spread: null, source: "unavailable" })
+              : { session: null, expected_spread: input.market.spread ?? null }),
+            note: "Session-adjusted expected spread. A move that does not clear it is a worse entry, not an absent one — say the better price instead.",
+          }
+        : null,
     // --- Trading-brain context (Phase 2) ---
     narrative: input.narrative ?? null,
     // Deterministic chart geometry — trendlines, channels, and named patterns

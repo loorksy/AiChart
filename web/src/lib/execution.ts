@@ -5,6 +5,7 @@ import {
   getMtAccountMeta,
   getSettings,
   listOpenTrades,
+  todayRealizedPnlUsd,
   updateIntentDenied,
 } from "./store";
 import {
@@ -31,7 +32,8 @@ import { isAutoExecutionAuthorized } from "./agent/tradeMode";
 import { autoExecutionStage } from "./recommendations/autoExecutor";
 import { FEATURES } from "./agent/featureFlags";
 import { createLogger } from "./logger";
-import { BridgeErrorCode } from "./bridge/errors";
+import { BridgeErrorCode, bridgeError } from "./bridge/errors";
+import { checkForexTradePreflight } from "./bridge/forexPreflight";
 import { getBrokerAdapter } from "./brokers";
 import { metrics } from "./metrics";
 import { validateExecutionIntent } from "./executionSafety";
@@ -172,6 +174,18 @@ async function checkAuthorizationSource(
           "أُلغي التفويض التلقائي (auto_mode_revoked): الوضع التلقائي لم يعد مفعّلاً على هذا الاتصال — لم يُرسل أي أمر.",
       };
     }
+    // Standing authorisation executes PLANS — the latest effective revision of
+    // a real recommendation. An auto intent with no recommendation binding has
+    // nothing for the stale-revision CAS to verify, so the CAS would simply be
+    // skipped; that unverifiable order is refused here instead.
+    if (intent.recommendation_id == null || intent.recommendation_revision_no == null) {
+      return {
+        ok: false,
+        code: "unauthorized_source",
+        reason:
+          "أمر تلقائي غير مرتبط بتوصية ونسخة فعالة (unauthorized_source): التنفيذ التلقائي ينفّذ خطة قائمة فقط، والارتباط بالنسخة شرط للتحقق منها لحظة التنفيذ — لم يُرسل أي أمر.",
+      };
+    }
     return { ok: true };
   }
 
@@ -224,6 +238,18 @@ async function evaluatePortfolioForIntent(
   budget: RiskBudget,
 ): Promise<PortfolioVerdict> {
   const configuredRisk = Math.max(0, budget.riskPct) / 100;
+
+  // Today's REALISED loss as a fraction of verified equity. The gate's
+  // daily-loss deny compares against this; it was previously never passed, so
+  // `realisedDailyLossFraction ?? 0` made the limit structurally unreachable —
+  // a sequential losing streak (each trade closed before the next opened)
+  // could never trip any cap. Profit maps to 0; only losses count.
+  const todayPnl = await todayRealizedPnlUsd(userId).catch(() => null);
+  const realisedDailyLossFraction =
+    todayPnl == null || !(budget.equity > 0)
+      ? null
+      : Math.max(0, -todayPnl) / budget.equity;
+
   let openPositions: OpenPositionView[] = [];
   try {
     const trades = await listOpenTrades(userId, 50);
@@ -243,19 +269,28 @@ async function evaluatePortfolioForIntent(
         riskFraction: configuredRisk,
       },
       openPositions: [],
+      realisedDailyLossFraction: realisedDailyLossFraction ?? 0,
     });
     verdict.warnings.push("تعذّر قراءة الصفقات المفتوحة — فحص المحفظة غير مكتمل.");
+    if (realisedDailyLossFraction == null) {
+      verdict.warnings.push("تعذّر قراءة خسارة اليوم — حد الخسارة اليومي غير مكتمل.");
+    }
     return verdict;
   }
 
-  return evaluatePortfolioGate({
+  const verdict = evaluatePortfolioGate({
     candidate: {
       symbol: intent.symbol,
       direction: intent.side,
       riskFraction: configuredRisk,
     },
     openPositions,
+    realisedDailyLossFraction: realisedDailyLossFraction ?? 0,
   });
+  if (realisedDailyLossFraction == null) {
+    verdict.warnings.push("تعذّر قراءة خسارة اليوم — حد الخسارة اليومي غير مكتمل.");
+  }
+  return verdict;
 }
 
 export async function executeIntent(
@@ -544,6 +579,40 @@ async function executeIntentUnderRevisionLock(
   }
 
   const broker = intent.broker;
+
+  // Quote freshness / spread ceiling, HERE rather than only on some routes.
+  // The same order that /api/agent/trade/open would refuse with STALE_QUOTE or
+  // SPREAD_TOO_WIDE used to sail through when it arrived via the approval flow
+  // or the auto executor — the exact moments (news spikes, session rollover)
+  // a spread blowout makes a fill most dangerous. EA-path only: the other
+  // adapters do not publish quotes through the EA heartbeat channel.
+  if (broker === "mt_ea") {
+    const preflight = await checkForexTradePreflight(userId, intent.symbol).catch(
+      () =>
+        bridgeError(
+          BridgeErrorCode.STALE_QUOTE,
+          "Quote preflight failed.",
+          "تعذّر التحقق من السعر الحي — لا ننفّذ.",
+          { symbol: intent.symbol },
+        ),
+    );
+    if (preflight) {
+      const reason = preflight.error.message_ar ?? preflight.error.message;
+      const denyCode = preflight.error.code as BridgeErrorCode;
+      push({ id: "safety", label: `فحص السعر · ${intent.symbol}`, status: "error", detail: reason });
+      await updateIntentDenied(intentId, reason, denyCode, userId);
+      metrics.executionDenials.inc({ code: String(preflight.error.code) });
+      return {
+        ok: false,
+        status: "failed",
+        reason,
+        denyCode,
+        errorCode: String(preflight.error.code).toLowerCase(),
+        activities,
+      };
+    }
+  }
+
   const budget = await getRiskBudget(userId, broker);
   if (!budget) {
     const reason = "تعذّر التحقق من رصيد equity للحساب المتصل؛ لم يُرسل أي أمر.";

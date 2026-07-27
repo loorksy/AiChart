@@ -153,6 +153,20 @@ describe("explicit approval must be proved by the server, not asserted by the ca
       "UPDATE trade_intents SET approved_at = ?, approved_by_user_id = ? WHERE id = ?",
       [Date.now(), owner, intent.id],
     );
+    // A fresh EA feed with a tight quote but zero equity: the quote preflight
+    // (just before the equity check) passes, and the order stops at equity —
+    // proving the approval gate itself let it through.
+    await db.execute("DELETE FROM ea_connections WHERE user_id = ?", [owner]);
+    await db.execute(
+      `INSERT INTO ea_connections
+         (user_id, platform, token_hash, account_currency, balance, equity, status,
+          account_trade_mode, symbol_specs_json, last_heartbeat_at)
+       VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`,
+      [
+        owner, "mt5", "stage-approval-token", "USD", 0, 0, "online", "demo",
+        JSON.stringify([{ symbol: "EURUSD", bid: 1.1, ask: 1.10012, point: 0.00001, digits: 5 }]),
+      ],
+    );
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
 

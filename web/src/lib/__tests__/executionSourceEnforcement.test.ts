@@ -62,6 +62,31 @@ async function stampServerApproval(intentId: number): Promise<void> {
   );
 }
 
+/**
+ * A fresh EA feed with a tight quote but ZERO equity. The quote-freshness
+ * preflight (added for the stale-spread finding) sits just before the equity
+ * check; without a live feed it refuses first with EA_OFFLINE. Giving it a live
+ * feed lets the order reach the equity check — which still fails, because
+ * equity is 0 — so a gate-passthrough test proves what it means to.
+ */
+async function seedLiveFeedNoEquity(): Promise<void> {
+  const db = await import("@/lib/db");
+  await db.execute("DELETE FROM ea_connections WHERE user_id = ?", [owner]);
+  await db.execute(
+    `INSERT INTO ea_connections
+       (user_id, platform, token_hash, account_currency, balance, equity, status,
+        account_trade_mode, symbol_specs_json, last_heartbeat_at)
+     VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`,
+    [
+      owner, "mt5", "src-enf-token", "USD", 0, 0, "online", "demo",
+      JSON.stringify([
+        { symbol: "EURUSD", bid: 1.1, ask: 1.10012, point: 0.00001, digits: 5 },
+        { symbol: "XAUUSD", bid: 3988, ask: 3988.2, point: 0.01, digits: 2 },
+      ]),
+    ],
+  );
+}
+
 /** An intent that is technically valid, so only the gates under test decide. */
 async function newIntent(
   overrides: Partial<{
@@ -176,13 +201,14 @@ describe("authorization source enforcement at the choke point", () => {
     // cannot forge. "Approves it" now means the server recorded the approval.
     const intent = await newIntent({ authorization_source: null });
     await stampServerApproval(intent.id);
+    await seedLiveFeedNoEquity();
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
-    assert.equal(result.errorCode, undefined, "the authorization gate must not refuse it");
+    assert.notEqual(result.errorCode, UNAUTHORIZED, "the authorization gate must not refuse it");
     assert.match(
       result.reason,
       EQUITY_REASON,
-      "it must reach the equity check — the first gate a broker-less test cannot pass",
+      "it must sail past the authorization gate into the equity check",
     );
   });
 
@@ -251,9 +277,9 @@ describe("stale-revision CAS on every order that references a recommendation", (
       take_profit: 4008,
     });
     await stampServerApproval(intent.id);
+    await seedLiveFeedNoEquity();
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });
-    assert.equal(result.errorCode, undefined);
     assert.doesNotMatch(result.reason, /النسخة|نسخة فعالة/, "the revision gate must not refuse it");
     assert.match(
       result.reason,

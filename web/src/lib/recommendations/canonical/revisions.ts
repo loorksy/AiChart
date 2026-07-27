@@ -407,7 +407,11 @@ export async function listRevisions(
 export interface RevisionCheck {
   ok: boolean;
   effectiveRevisionNo: number | null;
-  reason?: "stale_revision" | "no_effective_revision" | "not_found";
+  reason?:
+    | "stale_revision"
+    | "no_effective_revision"
+    | "not_found"
+    | "recommendation_terminal";
 }
 
 /**
@@ -423,11 +427,34 @@ export async function checkRevisionIsCurrent(input: {
   recommendationId: number;
   revisionNo: number | null | undefined;
 }): Promise<RevisionCheck> {
-  const row = await queryOne<{ effective_revision_no: number | null }>(
-    "SELECT effective_revision_no FROM recommendations WHERE id = ? AND user_id = ?",
+  const row = await queryOne<{
+    effective_revision_no: number | null;
+    status: string | null;
+    execution_state: string | null;
+  }>(
+    "SELECT effective_revision_no, status, execution_state FROM recommendations WHERE id = ? AND user_id = ?",
     [input.recommendationId, input.userId],
   );
   if (!row) return { ok: false, effectiveRevisionNo: null, reason: "not_found" };
+  // A finished plan is history, whatever its revision number says. Terminal
+  // status never bumps the revision (transitionRecommendation writes status
+  // only), so an intent stamped with the still-current revision of a
+  // stopped-out / expired / invalidated plan would sail through a pure
+  // number-compare — and a broker order for a dead plan is exactly what this
+  // gate exists to prevent.
+  const effectiveForTerminal =
+    row.effective_revision_no == null ? null : Number(row.effective_revision_no);
+  if (
+    isTerminalRecommendationStatus((row.status ?? "draft") as RecommendationStatus) ||
+    row.execution_state === "expired" ||
+    row.execution_state === "invalidated"
+  ) {
+    return {
+      ok: false,
+      effectiveRevisionNo: effectiveForTerminal,
+      reason: "recommendation_terminal",
+    };
+  }
   const effective = row.effective_revision_no == null ? null : Number(row.effective_revision_no);
   if (effective == null) {
     // Written before revisions existed. Such a row is readable but is never

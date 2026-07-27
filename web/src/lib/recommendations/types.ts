@@ -42,6 +42,12 @@ export interface TrackedRecommendation {
   stopLoss: number;
   targets: number[];
   invalidationLevel?: number;
+  /**
+   * Numeric id of the canonical recommendations row. `id` above may be a
+   * legacy tracking UUID; anything that must BIND to the plan (an auto-executed
+   * intent, the revision CAS) uses this, never a parse of `id`.
+   */
+  canonicalId?: number;
   status: TrackedRecommendationStatus;
   outcome: TrackedRecommendationOutcome;
   setupType?: string;
