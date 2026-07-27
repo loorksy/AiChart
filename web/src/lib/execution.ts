@@ -216,26 +216,47 @@ export async function executeIntent(
   intentId: number,
   options?: ExecuteIntentOptions,
 ): Promise<ExecutionResult & { activities: AgentActivity[] }> {
-  const intent = await getIntent(intentId, userId);
-  if (intent?.recommendation_id == null || !FEATURES.recRevisionsV1()) {
-    return executeIntentUnderRevisionLock(userId, intentId, options);
-  }
-  const locked = await withLock(
-    recommendationLockName(intent.recommendation_id),
+  // Every intent gets its own lock regardless of recommendation_id/feature flag,
+  // so two concurrent calls for the SAME intent (double-tap Approve, a client
+  // retry) can never both reach the broker. This is layered outside the
+  // recommendation-level lock below, which still serializes an intent against
+  // revisions/other intents on the same recommendation when one is attached.
+  const intentLocked = await withLock(
+    `intent:${intentId}`,
     120_000,
-    () => executeIntentUnderRevisionLock(userId, intentId, options),
+    async (): Promise<ExecutionResult & { activities: AgentActivity[] }> => {
+      const intent = await getIntent(intentId, userId);
+      if (intent?.recommendation_id == null || !FEATURES.recRevisionsV1()) {
+        return executeIntentUnderRevisionLock(userId, intentId, options);
+      }
+      const locked = await withLock(
+        recommendationLockName(intent.recommendation_id),
+        120_000,
+        () => executeIntentUnderRevisionLock(userId, intentId, options),
+      );
+      if (!locked.ran) {
+        return {
+          ok: false,
+          status: "failed",
+          reason:
+            "The recommendation is being revised or executed concurrently; no order was sent.",
+          errorCode: "recommendation_busy",
+          activities: [],
+        };
+      }
+      return locked.result!;
+    },
   );
-  if (!locked.ran) {
+  if (!intentLocked.ran) {
     return {
       ok: false,
       status: "failed",
-      reason:
-        "The recommendation is being revised or executed concurrently; no order was sent.",
-      errorCode: "recommendation_busy",
+      reason: "This trade request is already being executed; no duplicate order was sent.",
+      errorCode: "intent_busy",
       activities: [],
     };
   }
-  return locked.result!;
+  return intentLocked.result!;
 }
 
 async function executeIntentUnderRevisionLock(

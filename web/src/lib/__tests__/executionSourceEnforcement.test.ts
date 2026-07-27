@@ -236,3 +236,28 @@ describe("stale-revision CAS on every order that references a recommendation", (
     );
   });
 });
+
+describe("executeIntent locks every intent, even without a recommendation", () => {
+  it("lets only one of two concurrent calls proceed for a standalone (recommendation_id=null) intent", async () => {
+    const { executeIntent } = await import("@/lib/execution");
+    // Standalone trades (no recommendation) are a legitimate, reachable state
+    // (web/src/app/api/agent/trade/open/route.ts passes recommendation_id ?? null).
+    // Before the fix, this path was completely unlocked: two concurrent
+    // executeIntent calls could both sail past every gate and both reach the
+    // broker. The fix locks on the intent itself unconditionally.
+    const intent = await newIntent({
+      recommendation_id: null,
+      authorization_source: "user_approved",
+    });
+
+    const [first, second] = await Promise.all([
+      executeIntent(owner, intent.id, { explicitApproval: true }),
+      executeIntent(owner, intent.id, { explicitApproval: true }),
+    ]);
+
+    const busyCount = [first, second].filter((r) => r.errorCode === "intent_busy").length;
+    const throughCount = [first, second].filter((r) => r.errorCode !== "intent_busy").length;
+    assert.equal(busyCount, 1, "exactly one concurrent call must be rejected as intent_busy");
+    assert.equal(throughCount, 1, "exactly one concurrent call must proceed through the gates");
+  });
+});
