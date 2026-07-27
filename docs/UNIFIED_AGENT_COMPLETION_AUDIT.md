@@ -94,12 +94,10 @@
 |---|---|
 | هجرة PostgreSQL على قاعدة حقيقية | لا Postgres في البيئة |
 | فهرس pgvector الفعلي | يحتاج إضافة `vector` على خادم حقيقي |
-| Redis الحقيقي | اختبار واحد متخطى |
 | MT5 / EA / وسيط / سوق حي | لا جسر |
 | تيليجرام الحقيقي | لا رمز بوت |
 | Push في متصفح + Service Worker | لا متصفح مع أذونات |
 | SSL / reverse proxy / cron على VPS | خارج البيئة |
-| `npm run build` كاملاً | يحتاج سرّ ترخيص TradingView |
 | dry-run / demo / live | يحتاج حساباً |
 
 ---
@@ -160,12 +158,12 @@
 |---|---|---|
 | GitHub Actions automatic (`push`/`pull_request`) | **DISABLED** بقرار المالك | `.github/workflows/ci.yml` → `workflow_dispatch` فقط؛ الخطوات محفوظة |
 | بوابة التحقق الرسمية | المصفوفة المحلية الكاملة | `docs/LOCAL_RELEASE_QUALIFICATION.md` |
-| خريطة تغطية السيناريوهات المرجعية | `implemented` | `referenceScenarioCoverage.ts` + `referenceScenarioCoverage.test.ts` (5)؛ 30/30 مغطاة؛ 18 حرجة بتكامل |
+| خريطة تغطية السيناريوهات المرجعية | `implemented` | `referenceScenarioCoverage.ts` + `referenceScenarioCoverage.test.ts` (6)؛ 30/30 مغطاة؛ 20 حرجة بتكامل |
 | تكامل السيناريوهات الحرجة الناقصة سابقاً | `implemented` | `criticalReferenceScenarios.integration.test.ts` (10) |
 | `opportunity_created` / adherence / fixtures | `implemented` | إعادة تحقق: نفس المسارات القانونية؛ لا مسار قديم |
-| Redis integration | `operational-only` | Docker غير متوفر على مضيف التأهيل |
-| Production build (TradingView) | `operational-only` | أسرار المكتبة غائبة — بلا stub |
-| Typecheck التطبيق | أخضر لملفات الوكيل/التحليل | أخطاء `tsc` المتبقية = مكتبة TradingView غير مُزوَّدة فقط |
+| Redis integration | `verified` | Redis حقيقي على VPS: 3/3 ناجحة بلا تخطٍّ — BullMQ round-trip شغّل فعلاً |
+| Production build (TradingView) | `verified` | `npm run build` Exit 0 بالمكتبة المرخصة على VPS — بلا stub |
+| Typecheck التطبيق | `verified` | `npx tsc --noEmit` Exit 0 نظيف |
 | `AUTO_EXECUTION_STAGE` | `off` | لم يُغيَّر |
 | PR #82 | انظر تقرير التأهيل النهائي | GitHub CI **ليس** شرط دمج |
 
@@ -195,4 +193,33 @@
 |---|---|
 | برمجي `missing` / `partial` في بنود الخطة المغلقة أعلاه | **none** بعد إغلاق المجموعة 10 + opportunity + adherence + coverage map |
 | تشغيل GitHub Actions التلقائي | `operational-only` — قرار المالك؛ ليس بوابة |
-| تحقق VPS / Postgres / Redis / TradingView / MT5 / Telegram / Push / dry-run→demo→live | `operational-only` — انظر `docs/LOCAL_AND_VPS_VALIDATION.md` |
+| تحقق Postgres / pgvector / MT5 / Telegram / Push / dry-run→demo→live | `operational-only` — انظر `docs/LOCAL_AND_VPS_VALIDATION.md` |
+| Redis / TradingView build / Typecheck | `verified` على VPS بـNode 22 — انظر `docs/LOCAL_RELEASE_QUALIFICATION.md` |
+
+---
+
+## ز) نافذة التأهيل النهائي النظيف والمراجعة البشرية (SHA `ad38243` → `29eb20a`)
+
+تأهيل مستقل على **VPS بـNode 22** في worktree منفصل و`npm ci` نظيف والمكتبة المرخصة حاضرة. أُغلقت ثلاث فجوات تحقق كانت `operational-only`، ووُجدت عيوب حقيقية في مراجعة الفرق لم يكشفها أي تقرير سابق.
+
+| البند | ما كان معلناً | ما ثبت فعلاً | النتيجة |
+|---|---|---|---|
+| Typecheck | Exit 2 (أخطاء مكتبة فقط) | **Exit 0 نظيف** بعد توفير المكتبة | `verified` |
+| Production build | `operational-only` | **Exit 0** بناء إنتاجي حقيقي | `verified` |
+| Redis integration | تخطٍّ واحد | **3/3 بلا تخطٍّ** (BullMQ شغّل فعلاً) | `verified` |
+| عدد السيناريوهات الحرجة | 18 | **20** في `CRITICAL_INTEGRATION_SCENARIOS` | صُحِّح |
+| `CURSOR_HANDOFF.md` | يوجّه لفكّ قفل الفوترة و«PR (Draft)» | القرار النهائي: CI يدوي دائماً، وPR ليس Draft | صُحِّح |
+
+### عيوب أُصلحت في هذه النافذة
+
+| الخطورة | العيب | الإصلاح |
+|---|---|---|
+| Critical | انهيار بين كتابة النسخة وإنهاء الدورة يُسقط الإشعار ومزامنة الوقف/الهدف عند الوسيط والسجل، ثم يُغلق الطلب كـ«stale» كاذب | `4a27fb9` — استئناف الدورة المتوقفة، وidempotent |
+| Critical | `executeIntent` يتخطى القفل كلياً عند `recommendation_id = null` فيبقى سباق التنفيذ المزدوج مفتوحاً | `141a5dd` — قفل لكل intent دون شرط |
+| High | مسح الفرص العميق يرسل تنبيهاً ثانياً بلا dedupe لخطة أعلنها المُبلِّغ أصلاً | `c08ab40` — مُعلِن واحد |
+| High | حارس التغطية يقبل `testName` لا يقابل أي اختبار حقيقي | `1ae2611` — التحقق من وجود العنوان فعلاً |
+| High | `corrupt_market_data` لا يمرّ ببيانات تالفة قط (الـfixture يُبطل نفسه، والاختبار لا يزرع شموعاً) | `1ae2611` — شموع مشوَّهة حقيقية + إثبات رفض المُنقِّي |
+
+بنود Medium/Low أُصلحت أيضاً: كتابة `alert_log` غير معزولة، غياب rate limit على مسار إعادة التقييم، `SCHEMA_VERSION` مثبَّت يدوياً في بوابة Postgres، تأكيد `errorCode` غير قابل للتكذيب، تأكيدات «forbidden» تفحص نص الـfixture لا سلوك النظام، وتعديل `AUTO_EXECUTION_STAGE` بلا `try/finally`.
+
+**ملاحظة معمارية (ليست عيباً)**: `create_recommendation` عبر MCP لا يتحقق من أن الاتجاه/المستويات صدرت عن المنسّق. هذا **مقصود وموثَّق** — الخطة (§42) تُعرّف عقلين (المنصة ونموذج MCP المضيف) موحَّدين على حزمة الأدلة والعقد ومسار الكتابة الواحد، والاختلاف غير المفسَّر يُرصد عبر `parityLog` لا يُمنع بنيوياً. `singleBrainGuard` يحرس **نقطة الكتابة**، لا منشأ القرار.

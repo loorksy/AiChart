@@ -1,68 +1,87 @@
-# Cursor Handoff — Unified Agent PR #82
+# Handoff — Unified Agent PR #82
 
 ## Last SHA
 
-`6c171e9` (includes opportunity_created, adherence analytics, reference fixtures, audit/ops docs).
+`29eb20a` — clean qualification on Node 22 + human PR review fixes, on top of `ad38243`.
 
-Worktree (do not use main checkout — branch is locked there):
-
-`C:\Users\ALALMIA\Documents\GitHub\AiChart\.claude\worktrees\aichart-agent-updates-test-b3e068`
-
-Branch: `claude/aichart-agent-development-plan-mflw6l`  
-PR: https://github.com/loorksy/AiChart/pull/82 (Draft)  
+Branch: `claude/aichart-agent-development-plan-mflw6l`
+PR: https://github.com/loorksy/AiChart/pull/82 — **open, Ready for Review, not merged**
 `AUTO_EXECUTION_STAGE=off`
 
-## Completed in this window
+## State
 
-1. **CI root cause** — GitHub account billing lock; jobs never start (not code).
-2. **`opportunity_created` unified** — orchestrator + `saveRecommendation` + chart adapter → `announceOpportunityCreated` only; guard against parallel `claimLifecycleDedupeKey`.
-3. **Canonical adherence** — price late-entry (relative/ATR), exit kinds, delayed-entry threshold, summary counts; UI reads server summary.
-4. **Reference scenario pack** — 30 §16 scenarios + images/costs/calendar fixtures + integration suite.
-5. **Audit + ops docs** — `UNIFIED_AGENT_COMPLETION_AUDIT.md`, `LOCAL_AND_VPS_VALIDATION.md`.
+The local verification matrix is the official merge gate. It is now **fully green**, including the three checks previous windows could not run:
+
+| Check | Result |
+|---|---|
+| Clean `npm ci` (web + mcp) on Node 22 | PASS |
+| `npm run lint` | PASS — 0 errors |
+| `npx tsc --noEmit` | PASS — Exit 0, clean |
+| `npm run test:ci` | PASS — 823 + 79 |
+| `npm run test:integration` with real Redis | PASS — 3/3, **no skip** |
+| `npm run build` with the licensed library | PASS — Exit 0 |
+| MCP typecheck / catalog / schemas | PASS — 98/98, 57 tools |
+
+Details and the exact environment: `docs/LOCAL_RELEASE_QUALIFICATION.md`.
+
+Qualification ran on the **VPS** in a detached worktree at `/root/aichart-qualification-996dcb`, isolated from `/opt/aichart` and from the live pm2 services. That is where Node 22, Docker, and the licensed TradingView library already exist. The Windows workstation has none of the three, which is why earlier windows recorded them as pending.
+
+## GitHub Actions
+
+Automatic execution is **intentionally disabled by owner decision** and is **not** a merge gate. `.github/workflows/ci.yml` is `workflow_dispatch` only, with all job steps preserved for manual runs. Do not re-enable the `push` / `pull_request` triggers, and do not treat red or absent PR checks as a code defect. If branch protection still requires Actions status checks, the owner adjusts that in GitHub Settings → Branches by hand.
+
+## Completed in the last window
+
+Human review of the full `origin/main...HEAD` diff across decision authority, execution safety, database, concurrency, notifications, UI, security, and test quality. Two Critical and three High findings were fixed, each with a test:
+
+- `141a5dd` — `executeIntent` skipped its lock entirely when `recommendation_id` was null, leaving the double-execution race open for standalone trades.
+- `4a27fb9` — a crash between a revision write and cycle finalization dropped the notification, the broker SL/TP sync, and the audit record, then closed the claim as a false "stale".
+- `c08ab40` — the deep opportunity scan sent a second, undeduped alert for a plan already announced.
+- `1ae2611` — the coverage guard accepted a `testName` naming no real test, and `corrupt_market_data` never exercised corrupt data.
+- `29eb20a` — unisolated `alert_log` write, missing rate limit on the re-evaluation route, stale hard-coded `SCHEMA_VERSION` in the Postgres gate.
 
 ## Remaining
 
 ### Programming
 
-- Optional: extend `referenceScenarios.integration.test.ts` so every one of the 30 IDs has a dedicated pipeline assertion (registry + clear_trend + MCP dedupe + image/cost/calendar already green).
-- Optional: fold chart-photo delivery into lifecycle payload (today flag-ON creation is text lifecycle only).
+None known. No `missing` or `partial` items remain in the plan's programmatic scope.
 
-### Operational-only
+### Operational-only — needs a real environment
 
-- Unlock GitHub billing → re-run CI.
-- Set TradingView secrets for Build step.
-- VPS: Postgres migrate, vector extension, Redis, EA, Telegram, Push, SSL/cron.
-- Never enable live auto without owner ladder.
+See `docs/LOCAL_AND_VPS_VALIDATION.md` for the per-item gate table.
 
-## Open files / key paths
+- Postgres migration on a safe copy, then `npm run test:postgres-release`.
+- `CREATE EXTENSION vector` + HNSW/ivfflat, or confirm the JS fallback in prod.
+- MT5 / EA / broker demo, live quotes.
+- Telegram, Push, Service Worker delivery in a real browser.
+- Disconnect/reconnect: auto must drop to advisory and must not self-restore.
+- `dry_run` → `demo` → `live`: owner promotes one step at a time. Never skip a step.
 
-- `web/src/lib/store.ts`
-- `web/src/lib/recommendationChart.ts`
-- `web/src/lib/recommendations/canonical/analytics.ts`
-- `web/src/lib/recommendations/performanceJournal.ts`
-- `web/src/lib/agent/__tests__/fixtures/referenceScenarioPack.ts`
-- `web/src/lib/agent/__tests__/referenceScenarios.integration.test.ts`
+## Key paths
+
+- `web/src/lib/execution.ts`
+- `web/src/lib/recommendations/reevaluationCycle.ts`
+- `web/src/lib/opportunityScan.ts`
+- `web/src/lib/agent/__tests__/fixtures/referenceScenarioCoverage.ts`
+- `web/src/lib/agent/__tests__/referenceScenarioCoverage.test.ts`
+- `docs/LOCAL_RELEASE_QUALIFICATION.md`
 - `docs/UNIFIED_AGENT_COMPLETION_AUDIT.md`
 - `docs/LOCAL_AND_VPS_VALIDATION.md`
 
 ## Failed tests
 
-None in the suites run this window (opportunity / adherence / journal / singleBrainGuard / referenceScenarios).
+None.
 
-## First step next session
+## Reproducing the qualification
 
-1. `cd` into the worktree above.
-2. `git status -sb && git log -3 --oneline`
-3. Unlock GitHub billing if possible; `gh pr checks 82`
-4. `cd web && npm run test:ci` then `cd ../mcp && npm run typecheck && npm run test:catalog && npm run schemas:check`
-5. Keep PR Draft until CI green (or billing blocker still documented).
-
-## Resume commands
+The licensed TradingView library is gitignored and exists only locally and on the VPS. A fresh worktree will not have it — copy it in before typecheck or build:
 
 ```bash
-cd "C:/Users/ALALMIA/Documents/GitHub/AiChart/.claude/worktrees/aichart-agent-updates-test-b3e068"
-git status -sb
-cd web && npm run test:ci
-cd ../mcp && npm run typecheck && npm run test:catalog && npm run schemas:check
-gh pr checks 82
+cd /opt/aichart && git worktree add --detach /root/aichart-qual <SHA>
+cp -r /opt/aichart/web/public/charting_library /root/aichart-qual/web/public/charting_library
+cp -r /opt/aichart/web/src/vendor/tradingview /root/aichart-qual/web/src/vendor/tradingview
+cd /root/aichart-qual/web && npm ci --no-audit --no-fund
+npm run lint && npx tsc --noEmit && npm run test:ci && npm run build
 ```
+
+Never commit the library, and never substitute a stub for it.

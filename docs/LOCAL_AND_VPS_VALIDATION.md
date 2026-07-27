@@ -134,9 +134,27 @@ Do **not** change repo settings from automation unless the owner asks.
 
 ---
 
-## Current local pass notes (2026-07-26 / Final Qualification)
+## Current pass notes (2026-07-27 / Clean Qualification + Human Review)
 
 - Full local matrix is the merge gate (see `LOCAL_RELEASE_QUALIFICATION.md`).
-- Redis integration: pending (no Docker on qualification host).
-- TradingView build: pending secrets.
+- Qualification ran on the **VPS** (Node 22, Docker, licensed TradingView library present) in an isolated detached `git worktree` at `/root/aichart-qualification-996dcb`, outside `/opt/aichart`. The live pm2 services and the production `aichart-redis-rel` container were never touched.
+- **Redis integration: VERIFIED** — real `redis:7-alpine` on a throwaway port, 3/3 pass, no skip, container removed.
+- **TradingView production build: VERIFIED** — `npm run build` Exit 0 against the licensed library, no stub, nothing committed.
+- **Full typecheck: VERIFIED** — `npx tsc --noEmit` Exit 0, clean.
 - GitHub Actions automatic triggers: disabled (`workflow_dispatch` only).
+
+### Still requiring a real environment
+
+Everything below is genuinely untested here and stays `operational-only`. None of it blocks code review or merge; the first three block VPS deployment.
+
+| Item | Where | Command / action | Blocks |
+|---|---|---|---|
+| PostgreSQL migration | VPS, safe DB copy | apply migrations, then `npm run test:postgres-release` (now asserts the live `SCHEMA_VERSION`) | deploy |
+| Environment variables | VPS | full secret set; `AUTO_EXECUTION_STAGE=off` initially | deploy |
+| Cron / reverse proxy / SSL | VPS | already provisioned in production; re-verify after deploy | deploy |
+| pgvector | VPS Postgres | `CREATE EXTENSION vector`; confirm HNSW/ivfflat or the JS fallback | dry-run |
+| MT5 / EA / broker demo | VPS + terminal | bridge up, verified account, live quotes | dry-run → demo |
+| Telegram / Push / Service Worker | VPS + real browser | one delivered test alert per channel | dry-run |
+| disconnect / reconnect | VPS | auto must drop to advisory and must NOT self-restore | demo |
+| `stale_revision` against the real bridge | VPS | wrong `revision_no` must be refused on the live path | demo |
+| dry_run → demo → live | VPS | owner promotes the stage explicitly, one step at a time | live |
