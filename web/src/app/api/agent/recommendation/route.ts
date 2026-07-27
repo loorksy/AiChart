@@ -34,7 +34,11 @@ import {
 } from "@/lib/strategies/evidence";
 import { isBacktestStrategyId } from "@/lib/strategies/catalog";
 import { FEATURES } from "@/lib/agent/featureFlags";
-import { criticalAlert } from "@/lib/metrics";
+import { criticalAlert, metrics } from "@/lib/metrics";
+import { validateCompletePlan } from "@/lib/recommendations/canonical/planContract";
+import { activationRuleSchema } from "@/lib/recommendations/activationRule";
+import { deriveExecutionState, type PlanType } from "@/lib/agent/trading/tradePlan";
+import { getUnifiedPrice } from "@/lib/markets";
 import {
   applyVisualConfidencePenalty,
   buildVisualConfirmationAudit,
@@ -80,6 +84,20 @@ const schema = z
       ])
       .nullish(),
     timeframes_reviewed: z.array(z.string().min(1).max(16)).max(8).optional(),
+    /**
+     * The rest of the plan contract (docs/UNIFIED_AGENT_PLAN.md layers 2–3).
+     * Nullish at parse level so the message the model gets back comes from the
+     * shared contract check below — one voice, both surfaces — rather than a
+     * bare "required" per field. execution_state is deliberately NOT accepted:
+     * it is a server fact, derived after parse.
+     */
+    entry_low: z.number().positive().nullish(),
+    entry_high: z.number().positive().nullish(),
+    activation_condition: z.string().trim().min(8).max(400).nullish(),
+    activation_rule: activationRuleSchema.nullish(),
+    invalidation_rule: z.string().trim().min(8).max(400).nullish(),
+    alternative_scenario: z.string().trim().min(8).max(400).nullish(),
+    validity_candles: z.number().int().min(1).max(96).nullish(),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -157,6 +175,49 @@ const schema = z
           message: "Entry, stop loss, and take profit geometry is invalid for the action",
         });
       }
+    }
+
+    // The Complete Plan Contract — the same function the canonical creator
+    // enforces. Running it here turns what would be a 500 at the write path
+    // into a 400 the model can self-correct on, with one shared voice.
+    // Paths already refused above (plan_type, levels) are skipped; so is
+    // executionState, which is server-derived after parse.
+    const skip = new Set(["planType", "executionState", "entry", "stopLoss", "targets"]);
+    const pathMap: Record<string, string> = {
+      entryZone: "entry_low",
+      activationCondition: "activation_condition",
+      activationRule: "activation_rule",
+      invalidationRule: "invalidation_rule",
+      alternativeScenario: "alternative_scenario",
+      validityCandles: "validity_candles",
+    };
+    const contractIssues = validateCompletePlan({
+      direction: body.action,
+      planType: body.plan_type,
+      // Placeholder for the non-null leg only; the real value is derived
+      // server-side after parse and never trusted from the client.
+      executionState: "awaiting_activation",
+      entry: body.entry,
+      entryLow: body.entry_low ?? body.entry,
+      entryHigh: body.entry_high ?? body.entry,
+      stopLoss: body.stop_loss,
+      targets: body.take_profit != null ? [body.take_profit] : [],
+      activationCondition: body.activation_condition,
+      activationRule: body.activation_rule,
+      invalidationRule: body.invalidation_rule,
+      alternativeScenario: body.alternative_scenario,
+      validityCandles: body.validity_candles,
+    }).filter((entry) => !skip.has(entry.path));
+    if (contractIssues.length > 0) {
+      // The Platform-only counter was why this gap was invisible in telemetry.
+      metrics.invalidLevelRecommendations.inc({ source: "mcp" });
+    }
+    for (const entry of contractIssues) {
+      ctx.addIssue({
+        code: "custom",
+        path: [pathMap[entry.path] ?? entry.path],
+        message: entry.message,
+      });
     }
   });
 
@@ -254,10 +315,53 @@ export async function POST(req: NextRequest) {
         ? `${body.rationale}\n\n${memoryBlock}`
         : body.rationale;
 
+    // Execution state is a server fact — layer 3 belongs to whoever can see
+    // the live price, never to the caller's claim. Conditional plans are
+    // forced to awaiting_activation inside the derivation, and an unreadable
+    // price fails to the same safe side.
+    const entryLow = body.entry_low ?? body.entry ?? null;
+    const entryHigh = body.entry_high ?? body.entry ?? null;
+    let executionState: string | null = null;
+    if (body.action !== "wait" && body.plan_type != null) {
+      let currentPrice: number | null = null;
+      try {
+        const { price } = await getUnifiedPrice(body.symbol, DEFAULT_MARKET, userId);
+        currentPrice = price > 0 ? price : null;
+      } catch {
+        currentPrice = null;
+      }
+      executionState = deriveExecutionState({
+        planType: body.plan_type as PlanType,
+        levels:
+          body.entry != null &&
+          body.stop_loss != null &&
+          body.take_profit != null &&
+          entryLow != null &&
+          entryHigh != null
+            ? {
+                entryLow,
+                entryHigh,
+                preferredEntry: body.entry,
+                stopLoss: body.stop_loss,
+                targets: [body.take_profit],
+              }
+            : null,
+        currentPrice,
+      });
+    }
+
     const rec = await saveRecommendation(userId, {
       symbol: normalizedSymbol,
       action: body.action,
       plan_type: body.plan_type ?? null,
+      execution_state: executionState,
+      entry_low: entryLow,
+      entry_high: entryHigh,
+      activation_condition: body.activation_condition ?? null,
+      activation_rule: body.activation_rule ?? null,
+      invalidation_rule: body.invalidation_rule ?? null,
+      alternative_scenario: body.alternative_scenario ?? null,
+      validity_candles: body.validity_candles ?? null,
       // The real column, not just the context blob: rows must be queryable by
       // where their support came from (plan §6 A).
       evidence_source: deployment ? "strategy_supported" : "direct_analysis",

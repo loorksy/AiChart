@@ -61,6 +61,7 @@ async function livePlan(): Promise<number> {
     engineVersion: "verdict-test",
     initialRevision: {
       activationCondition: "إغلاق فوق 4002",
+      activationRule: { kind: "candle_close_above", level: 4002, timeframe: "5m" },
       invalidationRule: "إغلاق تحت 3980",
       alternativeScenario: "كسر 3980 يقلب المشهد",
       validityCandles: 8,

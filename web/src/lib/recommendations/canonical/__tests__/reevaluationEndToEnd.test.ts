@@ -201,10 +201,18 @@ describe("automatic trigger consumption through the real unified brain", () => {
       status: "pending_entry",
       outcome: "pending",
       createdAt: Date.now(),
-      createdCandleTime: 1,
+      // Created NOW: with candle-count validity real under the plan contract,
+      // a createdCandleTime in the past would expire the plan across the 650
+      // seeded bars before the spread detector ever saw it.
+      createdCandleTime: Date.now(),
       expiresAt: Date.now() + 3_600_000,
       planType: "conditional",
       executionState: "awaiting_activation",
+      triggerCondition: "إغلاق شمعة 15m فوق 1.2",
+      activationRule: { kind: "candle_close_above", level: 1.2, timeframe: "15m" },
+      invalidationRule: "إغلاق شمعة تحت وقف الخطة يلغيها",
+      alternativeScenario: "فشل التفعيل يعيد السعر إلى النطاق",
+      validityCandles: 24,
       evidence: {
         schemaVersion: 1,
         modelContext: {

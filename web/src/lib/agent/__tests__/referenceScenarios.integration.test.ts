@@ -27,6 +27,7 @@ import {
   FIXTURE_PNG_MISSING,
   FIXTURE_PNG_PRIMARY_B64,
 } from "./fixtures/tinyPng";
+import { saveCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-reference-scenarios-"));
 process.env.DB_PATH = join(dir, "reference.db");
@@ -306,7 +307,7 @@ describe("reference pipeline: candles → decision → canonical → notify", ()
       entry: 1.27,
       stop_loss: 1.265,
       take_profit: 1.28,
-      plan_type: "conditional",
+      ...saveCompletePlan({ plan_type: "conditional" }),
       source: "agent",
     });
     const viaChart = await notifyRecommendation(userId, saved);

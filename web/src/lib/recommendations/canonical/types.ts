@@ -117,12 +117,18 @@ export interface CreateCanonicalRecommendationInput {
   /**
    * The three-layer plan (docs/UNIFIED_AGENT_PLAN.md). `direction` above is the
    * analytical view; these two are how the plan is entered and whether it can
-   * be entered right now. Absent on legacy paths, which is why the columns are
-   * nullable — but the analysis path must supply them, or the tracker has no
-   * activation condition to evaluate and the journal no plan type to report.
+   * be entered right now. Mandatory for every NEW buy/sell — enforced by
+   * `assertCompletePlan` in the creator. Only `legacyImport` rows are exempt,
+   * which is why the columns stay nullable.
    */
   planType?: string | null;
   executionState?: string | null;
+  /**
+   * True only for `migrateLegacyTrackedRecommendations`: rows written before
+   * the Complete Plan Contract existed are history to keep readable, not new
+   * claims to grade. Nothing else may set this.
+   */
+  legacyImport?: boolean;
   /** Verified statistical backing: strong | moderate | weak | unavailable. */
   statisticalSupport?: string | null;
   /**

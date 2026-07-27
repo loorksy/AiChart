@@ -9,6 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import { scenarioById } from "./fixtures/referenceScenarioPack";
+import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
+import { saveCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-critical-ref-"));
 process.env.DB_PATH = join(dir, "critical.db");
@@ -193,7 +195,7 @@ describe("critical reference scenario integrations", () => {
       entry: 1.084,
       stop_loss: 1.08,
       take_profit: 1.09,
-      plan_type: "immediate",
+      ...saveCompletePlan(),
       source: "agent",
     });
     assert.ok(saved.id);
@@ -345,8 +347,7 @@ describe("critical reference scenario integrations", () => {
       strategyVersion: "1",
       source: "agent",
       engineVersion: "critical-ref",
-      planType: "conditional",
-      executionState: "awaiting_activation",
+      ...canonicalCompletePlan({ planType: "conditional" }),
       expiresAt: Date.now() + 3_600_000,
     });
     const intent = await createIntent(userId, {

@@ -44,11 +44,16 @@ before(async () => {
 async function newRecommendation(activationRule?: ActivationRule | null) {
   const lifecycle = await import("@/lib/recommendations/canonical");
   counter += 1;
+  // A conditional plan REQUIRES a rule under the contract, so the no-rule case
+  // is an immediate plan — the only honest plan type without one.
+  const conditional = activationRule != null;
   return lifecycle.createCanonicalRecommendation({
-    planType: "conditional",
-    executionState: "awaiting_activation",
+    planType: conditional ? "conditional" : "immediate",
+    executionState: conditional ? "awaiting_activation" : "valid_now",
     initialRevision: {
-      activationCondition: "كسر 3990 ثم إعادة اختباره وتأكيد الإغلاق",
+      activationCondition: conditional
+        ? "كسر 3990 ثم إعادة اختباره وتأكيد الإغلاق"
+        : null,
       activationRule,
       invalidationRule: "إغلاق 15m تحت 3980 يلغي الفكرة",
       alternativeScenario: "فشل الكسر يفتح بيعًا نحو 3970",

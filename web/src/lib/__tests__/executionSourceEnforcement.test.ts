@@ -17,6 +17,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-source-enforcement-"));
 process.env.DB_PATH = join(dir, "enforcement.db");
@@ -118,8 +119,7 @@ async function newIntent(
 async function newRecommendation() {
   const lifecycle = await import("@/lib/recommendations/canonical");
   return lifecycle.createCanonicalRecommendation({
-    planType: "conditional",
-    executionState: "awaiting_activation",
+    ...canonicalCompletePlan({ planType: "conditional" }),
     userId: owner,
     analysisId: `analysis-${Math.floor(performance.now() * 1000)}`,
     sessionId: "session-1",

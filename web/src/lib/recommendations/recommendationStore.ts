@@ -71,6 +71,10 @@ function legacyTargets(raw: string): number[] {
 
 function legacyRowInput(row: LegacyTrackedRow): CreateTrackedRecommendationInput {
   return {
+    // Pre-contract rows migrate as they are. Grading them against the Complete
+    // Plan Contract would make every tracked read throw for tenants with
+    // history, and inventing plan fields to pass it would be worse.
+    legacyImport: true,
     id: row.id,
     userId: Number(row.user_id),
     chatId: row.chat_id ?? undefined,
@@ -173,6 +177,8 @@ export type CreateTrackedRecommendationInput = Omit<
      * direct_analysis | strategy_supported | historical_memory | deep_research.
      */
     evidenceSource?: string | null;
+    /** See CreateCanonicalRecommendationInput.legacyImport — migration only. */
+    legacyImport?: boolean;
   };
 
 function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unknown> {
@@ -331,6 +337,7 @@ export async function createTrackedRecommendation(
   input: CreateTrackedRecommendationInput,
 ): Promise<TrackedRecommendation> {
   const recommendation = await createCanonicalRecommendation({
+    legacyImport: input.legacyImport,
     userId: input.userId,
     analysisId: input.analysisId,
     sessionId: input.chatId,

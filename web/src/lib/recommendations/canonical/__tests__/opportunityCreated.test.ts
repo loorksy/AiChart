@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
+import { saveCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-opportunity-"));
 process.env.DB_PATH = join(dir, "opportunity.db");
@@ -132,7 +133,7 @@ describe("every creation adapter shares the same dedupe", () => {
       entry: 1.27,
       stop_loss: 1.275,
       take_profit: 1.26,
-      plan_type: "immediate",
+      ...saveCompletePlan(),
       source: "agent",
     });
     const second = await saveRecommendation(userId, {
@@ -142,7 +143,7 @@ describe("every creation adapter shares the same dedupe", () => {
       entry: 1.27,
       stop_loss: 1.275,
       take_profit: 1.26,
-      plan_type: "immediate",
+      ...saveCompletePlan(),
       source: "agent",
     });
     // Two rows, but each birth key is unique — one alert per recommendation id.

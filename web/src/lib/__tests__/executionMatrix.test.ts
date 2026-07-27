@@ -15,6 +15,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, beforeEach, describe, it } from "node:test";
+import { canonicalCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 const dir = mkdtempSync(join(tmpdir(), "aichart-exec-matrix-"));
 process.env.DB_PATH = join(dir, "matrix.db");
@@ -288,8 +289,7 @@ describe("execution matrix: downstream gates still hold with the stage open", ()
       "@/lib/recommendations/canonical/revisions"
     );
     const rec = await createCanonicalRecommendation({
-      planType: "conditional",
-      executionState: "awaiting_activation",
+      ...canonicalCompletePlan({ planType: "conditional" }),
       userId: owner,
       analysisId: `matrix-${Math.floor(performance.now() * 1000)}`,
       sessionId: "s",
@@ -382,8 +382,7 @@ describe("execution matrix: downstream gates still hold with the stage open", ()
       "@/lib/recommendations/canonical"
     );
     const rec = await createCanonicalRecommendation({
-      planType: "conditional",
-      executionState: "awaiting_activation",
+      ...canonicalCompletePlan({ planType: "conditional" }),
       userId: owner,
       analysisId: `matrix-term-${Math.floor(performance.now() * 1000)}`,
       sessionId: "s",

@@ -72,6 +72,7 @@ function create(id: string, over: Record<string, unknown> = {}) {
     entryLow: 1.098,
     entryHigh: 1.102,
     triggerCondition: "إغلاق شمعة فوق 1.1005",
+    activationRule: { kind: "candle_close_above", level: 1.1005, timeframe: "5m" },
     invalidationRule: "إغلاق شمعة تحت 1.09",
     alternativeScenario: "كسر 1.09 يقلب المشهد إلى بيع",
     validityCandles: 8,
