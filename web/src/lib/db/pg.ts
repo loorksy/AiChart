@@ -11,7 +11,7 @@ import { adaptSql, normalizeRow } from "./sql";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _pool: Pool | null = null;
-const SCHEMA_VERSION = "2026-07-26-platform-mcp-parity-v1";
+export const SCHEMA_VERSION = "2026-07-26-platform-mcp-parity-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (

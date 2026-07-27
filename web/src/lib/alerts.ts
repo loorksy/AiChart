@@ -26,6 +26,9 @@ import { overlaysFromRecommendation } from "./chartOverlays";
 import { parseChartDrawingsJson } from "./chartDrawings";
 import { sendPushToUser } from "./push";
 import type { AlertType } from "./types";
+import { createLogger } from "./logger";
+
+const log = createLogger("alerts");
 
 export type DeliveryReason =
   | "delivered"
@@ -248,14 +251,25 @@ export async function dispatchAlert(
     // Telegram result or block the history write below.
   }
 
-  await recordAlert(userId, {
-    type: opts.type,
-    title: opts.title,
-    body: opts.text ?? null,
-    symbol: opts.symbol ?? null,
-    image_url: opts.photoUrl ?? null,
-    delivered: result.delivered || pushed,
-  });
+  try {
+    await recordAlert(userId, {
+      type: opts.type,
+      title: opts.title,
+      body: opts.text ?? null,
+      symbol: opts.symbol ?? null,
+      image_url: opts.photoUrl ?? null,
+      delivered: result.delivered || pushed,
+    });
+  } catch (error) {
+    // A transport failure is tolerated by design (see the comment above); a DB
+    // hiccup on this "always works" write must not invert that and report an
+    // already-delivered message as failed. Log and continue.
+    log.warn("failed to record alert_log entry", {
+      userId,
+      type: opts.type,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return pushed && !result.delivered
     ? { delivered: true, reason: "delivered", reasonAr: REASON_AR.delivered }

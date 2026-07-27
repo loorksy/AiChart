@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   ApiError,
+  checkRateLimit,
+  clientKey,
   handleError,
   requirePaidAccess,
 } from "@/lib/api";
@@ -22,6 +24,12 @@ export async function POST(
 ) {
   try {
     const user = await requirePaidAccess();
+    // Each accepted request runs a full unified-brain cycle. `user_request` is
+    // exempt from the trigger cooldown/cap by design, so this is the only thing
+    // standing between one paid account and unbounded LLM spend.
+    if (!checkRateLimit(`reevaluate:${user.id}:${clientKey(req)}`, 10, 60_000)) {
+      throw new ApiError(429, "Too many re-evaluation requests; try again shortly.");
+    }
     const { id } = await ctx.params;
     const recommendation = await getCanonicalRecommendationByReference(
       user.id,

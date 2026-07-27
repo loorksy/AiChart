@@ -7,6 +7,7 @@ import {
   query,
   queryOne,
 } from "../src/lib/db";
+import { SCHEMA_VERSION } from "../src/lib/db/pg";
 import {
   computeCanonicalRecommendationAnalytics,
   createCanonicalRecommendation,
@@ -173,10 +174,7 @@ async function run(): Promise<void> {
   const schemaVersion = await queryOne<{ value: string }>(
     "SELECT value FROM system_flags WHERE key = 'schema_version'",
   );
-  assert.equal(
-    schemaVersion?.value,
-    "2026-07-16-aichart-simplification-v1",
-  );
+  assert.equal(schemaVersion?.value, SCHEMA_VERSION);
 
   const suffix = crypto.randomUUID();
   const owner = await insertReturningId(
