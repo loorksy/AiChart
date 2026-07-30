@@ -69,17 +69,33 @@ describe("advertised activation_rule schema", () => {
       const rule = (tool.inputSchema.properties as Record<string, unknown>)
         .activation_rule as Record<string, unknown>;
       assert.ok(rule, "activation_rule must be advertised");
-      const branches = (rule.anyOf ?? rule.oneOf) as Array<Record<string, unknown>>;
-      assert.ok(Array.isArray(branches), "the union must be a flat branch list");
-      assert.equal(branches.length, 7, "all seven kinds advertised as siblings");
-      for (const branch of branches) {
-        assert.equal(branch.type, "object", "every branch is a concrete object");
+      // Flatten one wrapper level: the generator may emit the 7 kind branches
+      // directly, or group them in a single oneOf beside the string variant.
+      // Both are const-keyed and fine; DEEPER nesting is the regression.
+      const top = (rule.anyOf ?? rule.oneOf) as Array<Record<string, unknown>>;
+      assert.ok(Array.isArray(top), "the union must be a branch list");
+      const branches = top.flatMap((entry) =>
+        Array.isArray(entry.oneOf)
+          ? (entry.oneOf as Array<Record<string, unknown>>)
+          : Array.isArray(entry.anyOf)
+            ? (entry.anyOf as Array<Record<string, unknown>>)
+            : [entry],
+      );
+      // 7 rule kinds + exactly ONE string branch (stale-cached-schema clients
+      // serialize the rule as JSON text; it is decoded and re-validated by the
+      // same strict schema in the handler).
+      assert.equal(branches.length, 8, "seven kinds + the string compatibility variant");
+      const stringBranches = branches.filter((b) => b.type === "string");
+      assert.equal(stringBranches.length, 1, "exactly one string variant");
+      const objectBranches = branches.filter((b) => b.type === "object");
+      assert.equal(objectBranches.length, 7);
+      for (const branch of objectBranches) {
         const kind = (branch.properties as Record<string, { const?: string }>).kind;
-        assert.ok(kind?.const, "every branch names its kind as a const");
+        assert.ok(kind?.const, "every object branch names its kind as a const");
         // The nested-union regression, stated as the thing that must not return.
         assert.ok(!branch.anyOf && !branch.oneOf, "no branch hides another union");
       }
-      const kinds = branches.map(
+      const kinds = objectBranches.map(
         (b) => (b.properties as Record<string, { const?: string }>).kind.const,
       );
       assert.ok(kinds.includes("composite"), "composite is a sibling, not a wrapper");
@@ -92,7 +108,11 @@ describe("advertised activation_rule schema", () => {
       const tool = tools.tools.find((t) => t.name === "create_recommendation")!;
       const rule = (tool.inputSchema.properties as Record<string, unknown>)
         .activation_rule as { anyOf?: Array<Record<string, unknown>> };
-      for (const branch of rule.anyOf ?? []) {
+      const flat = (rule.anyOf ?? []).flatMap((entry: Record<string, unknown>) =>
+        Array.isArray(entry.oneOf) ? (entry.oneOf as Array<Record<string, unknown>>) : [entry],
+      );
+      for (const branch of flat) {
+        if (branch.type !== "object") continue;
         const required = (branch.required ?? []) as string[];
         assert.ok(!required.includes("timeframe"), "timeframe must be optional");
         const kind = (branch.properties as Record<string, { const?: string }>).kind
@@ -187,6 +207,57 @@ describe("tools/call through the SDK validation layer", () => {
       });
       assert.equal(result.isError, true);
       assert.equal(calls.length, 0);
+    });
+  });
+});
+
+describe("stale-client transport compatibility", () => {
+  it("accepts the plan-contract fields serialized as STRINGS — the measured Claude-connector behaviour", async () => {
+    await withClient(async (client, calls) => {
+      const result = await client.callTool({
+        name: "create_recommendation",
+        arguments: {
+          ...completePlan,
+          plan_type: "conditional",
+          activation_condition: "Return to 4053.31 and reject it upward on a 15m close.",
+          // Exactly what a connector with a cached pre-contract schema sends.
+          activation_rule: JSON.stringify({ kind: "rejection_confirmed", level: 4053.31, direction: "above" }),
+          validity_candles: "32" as unknown as number,
+        },
+      });
+      assert.notEqual(result.isError, true, JSON.stringify(result.content).slice(0, 300));
+      assert.equal(calls.length, 1);
+      // The web API receives TYPED canonical values, never the wire strings.
+      const forwarded = (calls[0] as { body: Record<string, unknown> }).body;
+      assert.equal(typeof forwarded.activation_rule, "object");
+      assert.equal((forwarded.activation_rule as { kind?: string }).kind, "rejection_confirmed");
+      assert.equal(forwarded.validity_candles, 32);
+    });
+  });
+
+  it("a string rule is validated by the SAME strict schema — garbage still refused", async () => {
+    await withClient(async (client, calls) => {
+      const bad = await client.callTool({
+        name: "create_recommendation",
+        arguments: {
+          ...completePlan,
+          plan_type: "conditional",
+          activation_condition: "Some stated trigger for the plan.",
+          activation_rule: JSON.stringify({ kind: "teleport", level: 1 }),
+        },
+      });
+      assert.equal(bad.isError, true);
+      const notJson = await client.callTool({
+        name: "create_recommendation",
+        arguments: {
+          ...completePlan,
+          plan_type: "conditional",
+          activation_condition: "Some stated trigger for the plan.",
+          activation_rule: "not json at all",
+        },
+      });
+      assert.equal(notJson.isError, true);
+      assert.equal(calls.length, 0, "neither refusal reached the web API");
     });
   });
 });
