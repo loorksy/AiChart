@@ -207,15 +207,29 @@ export function runTradingPlaybook(
       atr: market.atr ?? 0,
       stopDistance: Math.abs(c.entry - c.stop_loss),
     });
+  // Deferred #16: a modelled/fallback figure is real evidence with lower
+  // confidence — that is a WARNING with its reason, not "unknown". `unknown`
+  // now means exactly one thing: the cost contract itself says unavailable.
+  const cost = market.costEvidence;
+  const spreadIsFallback =
+    cost != null && cost.fallbackUsed && cost.source !== "unavailable";
   add(
     "spread",
     "السبريد مقبول",
-    market.spread == null ? "unknown" : spreadBad ? "fail" : "pass",
+    market.spread == null
+      ? "unknown"
+      : spreadBad
+        ? "fail"
+        : spreadIsFallback
+          ? "warning"
+          : "pass",
     market.spread == null
       ? "السبريد غير متاح."
       : spreadBad
         ? "السبريد مرتفع نسبةً إلى التذبذب/الوقف."
-        : "السبريد ضمن الحدود.",
+        : spreadIsFallback
+          ? `السبريد تقديري (${cost.source})${cost.fallbackReason ? ": " + cost.fallbackReason : ""} — ليس عرضًا حيًا.`
+          : "السبريد ضمن الحدود.",
     6,
   );
 

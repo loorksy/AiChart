@@ -177,6 +177,9 @@ export async function POST(req: NextRequest) {
       activityEvents: result.activityEvents,
       decision: result.decision,
       envelope: result.envelope,
+      // Deferred #16: the execution-cost contract, unit-named keys and explicit
+      // source/fallback. unavailable is stated, never rendered as zero.
+      cost_evidence: result.costEvidence ?? null,
       newsRisk: result.newsRisk,
       requiresConfirmation: result.requiresConfirmation ?? false,
       data_source: dataSource,

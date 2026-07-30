@@ -200,6 +200,12 @@ export interface AgentOption {
 export interface AgentFinalResult {
   decision: AgentDecision;
   /**
+   * The resolved execution-cost evidence for this analysis, in the serialized
+   * wire shape (unit-named keys, explicit source and fallback). Deferred #16:
+   * the MCP surface consumes this from the analyze response.
+   */
+  costEvidence?: Record<string, unknown>;
+  /**
    * Three-state outcome contract (execution_validated / descriptive_only /
    * operational_blocker). Additive: legacy clients keep reading `decision`.
    * The orchestrator guarantees this is set on every returned result.

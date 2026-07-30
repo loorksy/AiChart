@@ -93,6 +93,7 @@ import { resolveValidity } from "./trading/tradePlan";
 import { collectVisualEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { recordDecisionForParity } from "./parityLog";
+import { serializeCostEvidence } from "./marketContext/costEvidence";
 import { metrics } from "@/lib/metrics";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
@@ -1657,6 +1658,9 @@ async function runUnifiedChartAgentInner(
     decisionTrace: finalDecision.decisionTrace,
     evidenceDimensions: finalDecision.evidenceDimensions,
     evidenceSnapshot: synth.evidenceSnapshot,
+    // Deferred #16: the serialized cost contract rides the result so the MCP
+    // analyze response can expose it without re-resolving anything.
+    costEvidence: serializeCostEvidence(market.costEvidence),
     debugDecisionFlow,
     options: contextualOptionsFor({
       decision: finalDecision.decision,
