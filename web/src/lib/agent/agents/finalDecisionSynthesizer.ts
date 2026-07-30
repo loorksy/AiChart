@@ -27,7 +27,10 @@ import {
   buildRecommendationConfidence,
 } from "../confidenceSemantics";
 import { buildEvidenceDimensions } from "../evidenceDimensions";
-import { activationRuleSchema } from "@/lib/recommendations/activationRule";
+import {
+  activationRuleSchema,
+  normalizeActivationRule,
+} from "@/lib/recommendations/activationRule";
 import {
   buildEvidenceLevels,
   deriveExecutionState,
@@ -470,15 +473,29 @@ export async function runFinalDecisionSynthesizer(
   // and unknown faults fail immediately — retrying them only wastes the budget.
   let parsed: z.infer<typeof FinalDecisionModelSchema> | null = null;
   let failure: SynthesizerFailure | null = null;
+  // Attempt 2 carries the validator's objections. Without this the retry
+  // re-sent the identical prompt and the model repeated the identical mistake
+  // — measured on XAUUSD conditional plans, where both attempts failed on the
+  // same activationRule shape and the operator saw a generic timeout.
+  let correction: string | null = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const raw = await callModel(system, user);
+      const userMsg = correction
+        ? `${user}
+
+[SCHEMA CORRECTION — أعد نفس القرار مع إصلاح هذه الحقول فقط]
+${correction}`
+        : user;
+      const raw = await callModel(system, userMsg);
       parsed = FinalDecisionModelSchema.parse(JSON.parse(extractJson(raw)));
       failure = null;
       break;
     } catch (error) {
       const classified = classifySynthesizerError(error);
       failure = { ...classified, attempts: attempt };
+      if (classified.kind === "schema_mismatch" || classified.kind === "invalid_json") {
+        correction = classified.detail;
+      }
       log.warn("final decision synthesis failed", {
         attempt,
         kind: classified.kind,
@@ -869,7 +886,9 @@ function applyModelDecision(
         // Carried only when the model actually stated one. A plan with no
         // machine-checkable rule keeps entry semantics rather than inheriting
         // a condition it never expressed.
-        activationRule: parsed.activationRule ?? undefined,
+        activationRule: parsed.activationRule
+          ? normalizeActivationRule(parsed.activationRule, input.market.interval)
+          : undefined,
         invalidationLevel: resolved.levels.stopLoss,
         invalidationRule:
           sanitizePublicText(parsed.invalidationRule).slice(0, 400) ||

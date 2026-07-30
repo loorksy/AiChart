@@ -100,7 +100,13 @@ export const AGENT_TIMEOUTS = {
   // tightly: a missing view costs the decision some context, a slow one would
   // cost it the whole run.
   visualEvidence: 9_000,
-  finalDecision: 60_000,
+  // Sized from measurement, not hope: single deep-tier calls on live XAUUSD
+  // run 29-38s (probe of 2026-07-30), and the loop above promises ONE retry.
+  // 60s structurally forbade that retry — attempt 2 was always killed mid-
+  // flight and the operator saw a generic timeout instead of the real fault.
+  // 95s fits two worst-case attempts plus the 700ms pause, and stays inside
+  // TOTAL_RUN_BUDGET_MS with the earlier stages' worst case.
+  finalDecision: 95_000,
   general: 20_000,
 } as const;
 

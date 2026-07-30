@@ -36,15 +36,24 @@ import { isBacktestStrategyId } from "@/lib/strategies/catalog";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { criticalAlert, metrics } from "@/lib/metrics";
 import { validateCompletePlan } from "@/lib/recommendations/canonical/planContract";
-import { activationRuleSchema } from "@/lib/recommendations/activationRule";
+import {
+  activationRuleSchema,
+  normalizeActivationRule,
+} from "@/lib/recommendations/activationRule";
 import { deriveExecutionState, type PlanType } from "@/lib/agent/trading/tradePlan";
 import { getUnifiedPrice } from "@/lib/markets";
+import { getCandles } from "@/lib/candles/candleRepository";
+import { parityKeyFor, recordDecisionForParity } from "@/lib/agent/parityLog";
+import { createHash } from "node:crypto";
+import { createLogger } from "@/lib/logger";
 import {
   applyVisualConfidencePenalty,
   buildVisualConfirmationAudit,
   normalizeTimeframesReviewed,
   normalizeVisualConfirmation,
 } from "@/lib/recommendations/visualConfirmation";
+
+const log = createLogger("api.agent.recommendation");
 
 /** How much verified statistical weight sits behind a recommendation. */
 type StatisticalSupport = "strong" | "moderate" | "weak" | "unavailable";
@@ -358,7 +367,11 @@ export async function POST(req: NextRequest) {
       entry_low: entryLow,
       entry_high: entryHigh,
       activation_condition: body.activation_condition ?? null,
-      activation_rule: body.activation_rule ?? null,
+      // The one mechanical default: a rule that names no timeframe gets the
+      // plan's own, so the STORED rule is always complete and gradable.
+      activation_rule: body.activation_rule
+        ? normalizeActivationRule(body.activation_rule, storedTimeframe)
+        : null,
       invalidation_rule: body.invalidation_rule ?? null,
       alternative_scenario: body.alternative_scenario ?? null,
       validity_candles: body.validity_candles ?? null,
@@ -402,6 +415,61 @@ export async function POST(req: NextRequest) {
       source: "agent",
       market: DEFAULT_MARKET,
     });
+
+    // Deferred #10: the MCP-hosted model writing its own plan IS a decision on
+    // the MCP surface, and until now it recorded no parity observation at all —
+    // the one producer that could genuinely diverge was invisible to the
+    // comparison. Anchored to the same decision moment the platform uses
+    // (symbol + interval + latest CLOSED warehouse candle), so the two become
+    // comparable. Idempotent: the observation id derives from that moment and
+    // the user, so a client retry updates one row instead of adding another.
+    // Best-effort — parity is diagnostics and must never fail the create.
+    if (body.action !== "wait") {
+      try {
+        const recent = await getCandles({
+          symbol: normalizedSymbol,
+          interval: storedTimeframe,
+          limit: 3,
+          order: "desc",
+        });
+        const lastClosed = recent.find((candle) => candle.complete);
+        if (lastClosed) {
+          const parityKey = parityKeyFor({
+            symbol: normalizedSymbol,
+            interval: storedTimeframe,
+            marketTimestamp: lastClosed.time,
+          });
+          await recordDecisionForParity({
+            evidenceHash: createHash("sha256")
+              .update(`mcp-create:${userId}:${parityKey}`)
+              .digest("hex"),
+            parityKey,
+            symbol: normalizedSymbol,
+            interval: storedTimeframe,
+            timeframeSet: [storedTimeframe],
+            marketTimestamp: lastClosed.time,
+            surface: "mcp",
+            decision: {
+              direction: body.action,
+              planType: body.plan_type ?? null,
+              entryLow,
+              entryHigh,
+              stopLoss: body.stop_loss ?? null,
+              targets: body.take_profit != null ? [body.take_profit] : [],
+              executionState,
+              blocked: false,
+              imagesFor: [],
+              providers: ["mcp_create_recommendation"],
+            },
+          });
+        }
+      } catch (error) {
+        log.warn("mcp create parity observation failed", {
+          recommendationId: rec.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     await updateRecommendationIntelligence(rec.id, {
       memory_refs_json: similarLessons.length
@@ -491,6 +559,22 @@ export async function POST(req: NextRequest) {
             },
     });
   } catch (e) {
+    // A contract violation is the CALLER's to fix, and it must read as such: a
+    // short 400 naming the fields, never a 500 (and never the full zod dump,
+    // whose flattened union paths present as contradictions). Full detail still
+    // reaches the server log through the response being deterministic.
+    if (e instanceof z.ZodError) {
+      const issues = e.issues
+        .slice(0, 6)
+        .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`);
+      return NextResponse.json(
+        {
+          error: issues.join("; "),
+          hint: "Fix ONLY the fields above and call again. A conditional/anticipatory plan needs activation_condition + activation_rule + invalidation_rule + alternative_scenario + validity_candles; activation_rule.timeframe may be omitted (the plan's timeframe is used).",
+        },
+        { status: 400 },
+      );
+    }
     return handleError(e);
   }
 }

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   createActivationEvaluator,
+  normalizeActivationRule,
   describeActivationRule,
   evaluateActivationRule,
   parseActivationRule,
@@ -308,8 +309,13 @@ describe("parsing", () => {
     assert.equal(parseActivationRule(null), null);
     assert.equal(parseActivationRule(""), null);
     assert.equal(parseActivationRule({ kind: "teleport", level: 1 }), null);
-    // A close rule with no timeframe cannot be graded, so it is not a rule.
-    assert.equal(parseActivationRule({ kind: "candle_close_above", level: 100 }), null);
+    // timeframe is OPTIONAL by design now: producers kept omitting it and the
+    // plan's own timeframe is a mechanical default, filled by
+    // normalizeActivationRule before storage. This parse must SUCCEED.
+    assert.deepEqual(parseActivationRule({ kind: "candle_close_above", level: 100 }), {
+      kind: "candle_close_above",
+      level: 100,
+    });
     // A retest with an inverted zone is incoherent.
     assert.equal(
       parseActivationRule({
@@ -352,5 +358,61 @@ describe("describeActivationRule", () => {
       }),
       /100/,
     );
+  });
+});
+
+describe("producer ergonomics — the traps that burned real runs", () => {
+  it("a directionless price_touch means the candle range contained the level", () => {
+    const rule: ActivationRule = { kind: "price_touch", level: 100 };
+    // Touched from above on the way down.
+    assert.equal(evaluateActivationRule(rule, [candle(1, 101, 102, 99.8, 100.5)]).activated, true);
+    // Touched from below on the way up.
+    assert.equal(evaluateActivationRule(rule, [candle(1, 99, 100.2, 98.5, 99.4)]).activated, true);
+    // Never reached.
+    assert.equal(evaluateActivationRule(rule, [candle(1, 95, 97, 94, 96)]).activated, false);
+  });
+
+  it("normalizeActivationRule fills ONLY the missing timeframe, from the plan", () => {
+    const rule: ActivationRule = { kind: "candle_close_above", level: 100 };
+    assert.deepEqual(normalizeActivationRule(rule, "15m"), {
+      kind: "candle_close_above",
+      level: 100,
+      timeframe: "15m",
+    });
+    // A stated timeframe is never overwritten — the rule may genuinely mean 1h
+    // on a 15m plan.
+    const stated: ActivationRule = { kind: "candle_close_above", level: 100, timeframe: "1h" };
+    assert.deepEqual(normalizeActivationRule(stated, "15m"), stated);
+  });
+
+  it("normalization reaches composite leaves too", () => {
+    const rule: ActivationRule = {
+      kind: "composite",
+      operator: "all",
+      rules: [
+        { kind: "price_touch", level: 4000 },
+        { kind: "candle_close_above", level: 4000, timeframe: "1h" },
+      ],
+    };
+    const normalized = normalizeActivationRule(rule, "15m");
+    assert.equal(normalized.kind, "composite");
+    if (normalized.kind === "composite") {
+      assert.equal(normalized.rules[0]!.timeframe, "15m");
+      assert.equal(normalized.rules[1]!.timeframe, "1h");
+    }
+  });
+
+  it("the exact shape the platform model emitted on 2026-07-28 now parses", () => {
+    // Verbatim from the incident probe: a composite whose price_touch leaf has
+    // no direction and no timeframe. Both production attempts died on this.
+    const emitted = {
+      kind: "composite",
+      operator: "all",
+      rules: [
+        { kind: "price_touch", level: 4000 },
+        { kind: "candle_close_above", level: 4000, timeframe: "15m" },
+      ],
+    };
+    assert.ok(parseActivationRule(emitted));
   });
 });
