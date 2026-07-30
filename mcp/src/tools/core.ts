@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/client.js";
+import {
+  BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/client.js";
 import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
@@ -8,6 +9,7 @@ import {
   createRecommendationInput,
   findSimilarCasesInput,
   setAgentTradeModeInput,
+  zActivationRuleStrict,
 } from "./schemas/coreSchemas.js";
 import { discoverSkills, loadSkill } from "../skills/catalog.js";
 import { selectMcpSkills } from "../skills/select.js";
@@ -388,9 +390,34 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           ),
         );
       }
-      return bridgeCall(() =>
-        bridge.post("/api/agent/recommendation", parsed.data),
-      );
+      // Stale-client transport decode. A connector whose cached tool schema
+      // predates the plan-contract fields serializes them as STRINGS (measured
+      // on a live Claude connector). Decode deterministically, then validate
+      // against the SAME strict schema — the contract does not get looser, the
+      // wire just gets read.
+      const body2: Record<string, unknown> = { ...parsed.data };
+      if (typeof body2.activation_rule === "string") {
+        let decoded: unknown;
+        try {
+          decoded = JSON.parse(body2.activation_rule);
+        } catch {
+          return formatBridgeError(
+            new Error("activation_rule: not valid JSON — send the rule object itself."),
+          );
+        }
+        const strict = zActivationRuleStrict.safeParse(decoded);
+        if (!strict.success) {
+          const issues = strict.error.issues
+            .slice(0, 4)
+            .map((issue) => `activation_rule.${issue.path.join(".") || "kind"}: ${issue.message}`);
+          return formatBridgeError(new Error(issues.join("; ")));
+        }
+        body2.activation_rule = strict.data;
+      }
+      for (const key of ["validity_candles", "entry_low", "entry_high"] as const) {
+        if (typeof body2[key] === "string") body2[key] = Number(body2[key]);
+      }
+      return bridgeCall(() => bridge.post("/api/agent/recommendation", body2));
     },
   );
 

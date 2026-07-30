@@ -115,13 +115,29 @@
     },
     "entry_low": {
       "description": "Lower bound of the entry ZONE. Omit for a single entry price.",
-      "type": "number",
-      "exclusiveMinimum": 0
+      "anyOf": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^\\d+(\\.\\d+)?$"
+        }
+      ]
     },
     "entry_high": {
       "description": "Upper bound of the entry ZONE. Omit for a single entry price.",
-      "type": "number",
-      "exclusiveMinimum": 0
+      "anyOf": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^\\d+(\\.\\d+)?$"
+        }
+      ]
     },
     "activation_condition": {
       "description": "REQUIRED for conditional and anticipatory plans: the exact event that turns the plan on, in the operator's language.",
@@ -130,569 +146,577 @@
       "maxLength": 400
     },
     "activation_rule": {
-      "oneOf": [
+      "anyOf": [
         {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "price_touch"
-            },
-            "level": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "direction": {
-              "type": "string",
-              "enum": [
-                "above",
-                "below"
-              ]
-            },
-            "tolerance": {
-              "type": "number",
-              "minimum": 0
-            },
-            "timeframe": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8
-            },
-            "expiresAt": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "kind",
-            "level"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "candle_close_above"
-            },
-            "level": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "tolerance": {
-              "type": "number",
-              "minimum": 0
-            },
-            "closes": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 10
-            },
-            "timeframe": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8
-            },
-            "expiresAt": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "kind",
-            "level"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "candle_close_below"
-            },
-            "level": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "tolerance": {
-              "type": "number",
-              "minimum": 0
-            },
-            "closes": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 10
-            },
-            "timeframe": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8
-            },
-            "expiresAt": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "kind",
-            "level"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "breakout_confirmed"
-            },
-            "level": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "direction": {
-              "type": "string",
-              "enum": [
-                "above",
-                "below"
-              ]
-            },
-            "tolerance": {
-              "type": "number",
-              "minimum": 0
-            },
-            "closes": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 10
-            },
-            "timeframe": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8
-            },
-            "expiresAt": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "kind",
-            "level",
-            "direction"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "retest_confirmed"
-            },
-            "level": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "direction": {
-              "type": "string",
-              "enum": [
-                "above",
-                "below"
-              ]
-            },
-            "retestZone": {
+          "oneOf": [
+            {
               "type": "object",
               "properties": {
-                "low": {
+                "kind": {
+                  "type": "string",
+                  "const": "price_touch"
+                },
+                "level": {
                   "type": "number",
                   "exclusiveMinimum": 0
                 },
-                "high": {
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "above",
+                    "below"
+                  ]
+                },
+                "tolerance": {
                   "type": "number",
-                  "exclusiveMinimum": 0
+                  "minimum": 0
+                },
+                "timeframe": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8
+                },
+                "expiresAt": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
                 }
               },
               "required": [
-                "low",
-                "high"
+                "kind",
+                "level"
               ],
               "additionalProperties": false
             },
-            "tolerance": {
-              "type": "number",
-              "minimum": 0
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "candle_close_above"
+                },
+                "level": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "tolerance": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "closes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "timeframe": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8
+                },
+                "expiresAt": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "kind",
+                "level"
+              ],
+              "additionalProperties": false
             },
-            "closes": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 10
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "candle_close_below"
+                },
+                "level": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "tolerance": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "closes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "timeframe": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8
+                },
+                "expiresAt": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "kind",
+                "level"
+              ],
+              "additionalProperties": false
             },
-            "timeframe": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "breakout_confirmed"
+                },
+                "level": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "above",
+                    "below"
+                  ]
+                },
+                "tolerance": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "closes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "timeframe": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8
+                },
+                "expiresAt": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "kind",
+                "level",
+                "direction"
+              ],
+              "additionalProperties": false
             },
-            "expiresAt": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "kind",
-            "level",
-            "direction",
-            "retestZone"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "rejection_confirmed"
-            },
-            "level": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "direction": {
-              "type": "string",
-              "enum": [
-                "above",
-                "below"
-              ]
-            },
-            "tolerance": {
-              "type": "number",
-              "minimum": 0
-            },
-            "timeframe": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8
-            },
-            "expiresAt": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "kind",
-            "level",
-            "direction"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "composite"
-            },
-            "operator": {
-              "type": "string",
-              "enum": [
-                "all",
-                "any"
-              ]
-            },
-            "rules": {
-              "minItems": 2,
-              "maxItems": 4,
-              "type": "array",
-              "items": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "const": "price_touch"
-                      },
-                      "level": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "direction": {
-                        "type": "string",
-                        "enum": [
-                          "above",
-                          "below"
-                        ]
-                      },
-                      "tolerance": {
-                        "type": "number",
-                        "minimum": 0
-                      },
-                      "timeframe": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 8
-                      },
-                      "expiresAt": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991
-                      }
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "retest_confirmed"
+                },
+                "level": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "above",
+                    "below"
+                  ]
+                },
+                "retestZone": {
+                  "type": "object",
+                  "properties": {
+                    "low": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
                     },
-                    "required": [
-                      "kind",
-                      "level"
-                    ],
-                    "additionalProperties": false
+                    "high": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
                   },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "const": "candle_close_above"
-                      },
-                      "level": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "tolerance": {
-                        "type": "number",
-                        "minimum": 0
-                      },
-                      "closes": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 10
-                      },
-                      "timeframe": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 8
-                      },
-                      "expiresAt": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "level"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "const": "candle_close_below"
-                      },
-                      "level": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "tolerance": {
-                        "type": "number",
-                        "minimum": 0
-                      },
-                      "closes": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 10
-                      },
-                      "timeframe": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 8
-                      },
-                      "expiresAt": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "level"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "const": "breakout_confirmed"
-                      },
-                      "level": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "direction": {
-                        "type": "string",
-                        "enum": [
-                          "above",
-                          "below"
-                        ]
-                      },
-                      "tolerance": {
-                        "type": "number",
-                        "minimum": 0
-                      },
-                      "closes": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 10
-                      },
-                      "timeframe": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 8
-                      },
-                      "expiresAt": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "level",
-                      "direction"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "const": "retest_confirmed"
-                      },
-                      "level": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "direction": {
-                        "type": "string",
-                        "enum": [
-                          "above",
-                          "below"
-                        ]
-                      },
-                      "retestZone": {
+                  "required": [
+                    "low",
+                    "high"
+                  ],
+                  "additionalProperties": false
+                },
+                "tolerance": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "closes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "timeframe": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8
+                },
+                "expiresAt": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "kind",
+                "level",
+                "direction",
+                "retestZone"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "rejection_confirmed"
+                },
+                "level": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "above",
+                    "below"
+                  ]
+                },
+                "tolerance": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "timeframe": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 8
+                },
+                "expiresAt": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "kind",
+                "level",
+                "direction"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "composite"
+                },
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "all",
+                    "any"
+                  ]
+                },
+                "rules": {
+                  "minItems": 2,
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
                         "type": "object",
                         "properties": {
-                          "low": {
+                          "kind": {
+                            "type": "string",
+                            "const": "price_touch"
+                          },
+                          "level": {
                             "type": "number",
                             "exclusiveMinimum": 0
                           },
-                          "high": {
+                          "direction": {
+                            "type": "string",
+                            "enum": [
+                              "above",
+                              "below"
+                            ]
+                          },
+                          "tolerance": {
                             "type": "number",
-                            "exclusiveMinimum": 0
+                            "minimum": 0
+                          },
+                          "timeframe": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 8
+                          },
+                          "expiresAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
                           }
                         },
                         "required": [
-                          "low",
-                          "high"
+                          "kind",
+                          "level"
                         ],
                         "additionalProperties": false
                       },
-                      "tolerance": {
-                        "type": "number",
-                        "minimum": 0
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "candle_close_above"
+                          },
+                          "level": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "tolerance": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "closes": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10
+                          },
+                          "timeframe": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 8
+                          },
+                          "expiresAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "level"
+                        ],
+                        "additionalProperties": false
                       },
-                      "closes": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 10
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "candle_close_below"
+                          },
+                          "level": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "tolerance": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "closes": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10
+                          },
+                          "timeframe": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 8
+                          },
+                          "expiresAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "level"
+                        ],
+                        "additionalProperties": false
                       },
-                      "timeframe": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 8
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "breakout_confirmed"
+                          },
+                          "level": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "direction": {
+                            "type": "string",
+                            "enum": [
+                              "above",
+                              "below"
+                            ]
+                          },
+                          "tolerance": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "closes": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10
+                          },
+                          "timeframe": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 8
+                          },
+                          "expiresAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "level",
+                          "direction"
+                        ],
+                        "additionalProperties": false
                       },
-                      "expiresAt": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "retest_confirmed"
+                          },
+                          "level": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "direction": {
+                            "type": "string",
+                            "enum": [
+                              "above",
+                              "below"
+                            ]
+                          },
+                          "retestZone": {
+                            "type": "object",
+                            "properties": {
+                              "low": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              "high": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              }
+                            },
+                            "required": [
+                              "low",
+                              "high"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "tolerance": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "closes": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10
+                          },
+                          "timeframe": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 8
+                          },
+                          "expiresAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "level",
+                          "direction",
+                          "retestZone"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "rejection_confirmed"
+                          },
+                          "level": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "direction": {
+                            "type": "string",
+                            "enum": [
+                              "above",
+                              "below"
+                            ]
+                          },
+                          "tolerance": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "timeframe": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 8
+                          },
+                          "expiresAt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "level",
+                          "direction"
+                        ],
+                        "additionalProperties": false
                       }
-                    },
-                    "required": [
-                      "kind",
-                      "level",
-                      "direction",
-                      "retestZone"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "type": "string",
-                        "const": "rejection_confirmed"
-                      },
-                      "level": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "direction": {
-                        "type": "string",
-                        "enum": [
-                          "above",
-                          "below"
-                        ]
-                      },
-                      "tolerance": {
-                        "type": "number",
-                        "minimum": 0
-                      },
-                      "timeframe": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 8
-                      },
-                      "expiresAt": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "level",
-                      "direction"
-                    ],
-                    "additionalProperties": false
+                    ]
                   }
-                ]
-              }
-            },
-            "expiresAt": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
+                },
+                "expiresAt": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "kind",
+                "operator",
+                "rules"
+              ],
+              "additionalProperties": false
             }
-          },
-          "required": [
-            "kind",
-            "operator",
-            "rules"
           ],
-          "additionalProperties": false
+          "description": "The activation condition as DATA, so the tracker can grade it. Pick the kind that matches your sentence exactly — price_touch ONLY if a bare touch is genuinely enough; candle_close_above/below need level+timeframe; retest_confirmed needs the retestZone band you expect the pullback into; rejection_confirmed means a wick through the level and a close back. Never emit a rule looser than your sentence."
+        },
+        {
+          "type": "string",
+          "description": "JSON-encoded activation_rule (stale cached schema compatibility)"
         }
-      ],
-      "description": "The activation condition as DATA, so the tracker can grade it. Pick the kind that matches your sentence exactly — price_touch ONLY if a bare touch is genuinely enough; candle_close_above/below need level+timeframe; retest_confirmed needs the retestZone band you expect the pullback into; rejection_confirmed means a wick through the level and a close back. Never emit a rule looser than your sentence."
+      ]
     },
     "invalidation_rule": {
       "type": "string",
@@ -707,10 +731,18 @@
       "description": "REQUIRED: the runner-up scenario and what would switch the plan to it."
     },
     "validity_candles": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 96,
-      "description": "REQUIRED: how many candles of THIS timeframe the plan stays meaningful."
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 96
+        },
+        {
+          "type": "string",
+          "pattern": "^\\d{1,2}$"
+        }
+      ],
+      "description": "REQUIRED: how many candles of THIS timeframe the plan stays meaningful (1..96)."
     }
   },
   "required": [

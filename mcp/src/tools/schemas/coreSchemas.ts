@@ -111,7 +111,7 @@ const zActivationComposite = z.object({
 // anyOf[oneOf[...], {...}] advertised shape made MCP clients flatten error
 // paths into contradicting -32602 walls; keying on kind first gives producers
 // exactly one branch's real problem.
-const zActivationRule = z
+export const zActivationRuleStrict = z
   .discriminatedUnion("kind", [
     ...zActivationLeaf.options,
     zActivationComposite,
@@ -127,13 +127,11 @@ const zActivationRule = z
  */
 const planContractFields = {
   entry_low: z
-    .number()
-    .positive()
+    .union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?$/)])
     .optional()
     .describe("Lower bound of the entry ZONE. Omit for a single entry price."),
   entry_high: z
-    .number()
-    .positive()
+    .union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?$/)])
     .optional()
     .describe("Upper bound of the entry ZONE. Omit for a single entry price."),
   activation_condition: z
@@ -144,7 +142,18 @@ const planContractFields = {
     .describe(
       "REQUIRED for conditional and anticipatory plans: the exact event that turns the plan on, in the operator's language.",
     ),
-  activation_rule: zActivationRule.optional(),
+  /**
+   * Stale-client compatibility, measured on a live Claude connector: a client
+   * whose cached tool schema predates these fields serializes them as STRINGS.
+   * The string variant is decoded and validated against the SAME rule schema in
+   * the handler — a deterministic transport decode, not a looser contract.
+   */
+  activation_rule: z
+    .union([
+      zActivationRuleStrict,
+      z.string().describe("JSON-encoded activation_rule (stale cached schema compatibility)"),
+    ])
+    .optional(),
   invalidation_rule: z
     .string()
     .min(8)
@@ -156,11 +165,8 @@ const planContractFields = {
     .max(400)
     .describe("REQUIRED: the runner-up scenario and what would switch the plan to it."),
   validity_candles: z
-    .number()
-    .int()
-    .min(1)
-    .max(96)
-    .describe("REQUIRED: how many candles of THIS timeframe the plan stays meaningful."),
+    .union([z.number().int().min(1).max(96), z.string().regex(/^\d{1,2}$/)])
+    .describe("REQUIRED: how many candles of THIS timeframe the plan stays meaningful (1..96)."),
 };
 
 const recommendationSharedFields = {
