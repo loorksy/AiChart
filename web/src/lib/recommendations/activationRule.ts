@@ -53,12 +53,27 @@ export type ActivationDirection = (typeof ACTIVATION_DIRECTIONS)[number];
 const zLevel = z.number().finite().positive();
 /** Absolute price units, never a percentage — the caller owns instrument scale. */
 const zTolerance = z.number().finite().nonnegative().optional();
+/**
+ * OPTIONAL at the contract boundary, filled by `normalizeActivationRule` with
+ * the plan's own timeframe before storage.
+ *
+ * Requiring it here was a producer trap, and a measured one: the platform's
+ * decision model and MCP agents both emitted otherwise-perfect rules that
+ * failed only on a missing `timeframe` — burning both synthesis attempts (the
+ * operator saw "timeout") and spraying -32602 at MCP clients. A rule that
+ * names no timeframe on a 15m plan means the 15m — that is a mechanical
+ * default, not an inference from prose. A rule that MEANS another timeframe
+ * must still say so.
+ */
 const zTimeframe = z
   .string()
   .trim()
   .min(1)
   .max(8)
-  .describe("The timeframe whose closes count, e.g. 15m, 1h, 4h.");
+  .optional()
+  .describe(
+    "The timeframe whose candles are graded, e.g. 15m, 1h. Omit to use the plan's own timeframe.",
+  );
 const zCloses = z
   .number()
   .int()
@@ -92,7 +107,13 @@ const zRetestZone = z
 const priceTouchSchema = z.object({
   kind: z.literal("price_touch"),
   level: zLevel,
-  direction: z.enum(ACTIVATION_DIRECTIONS),
+  /**
+   * Optional, with exact absent semantics: no direction means "the candle's
+   * range contained the level" — a plain touch from either side, which is what
+   * the sentence "لمس السعر 4000" says. Producers kept omitting it because the
+   * question "touched from which side?" often has no analytical answer.
+   */
+  direction: z.enum(ACTIVATION_DIRECTIONS).optional(),
   tolerance: zTolerance,
   ...baseFields,
 });
@@ -161,7 +182,26 @@ const compositeSchema = z.object({
   expiresAt: zExpiry,
 });
 
-export const activationRuleSchema = z.union([leafSchema, compositeSchema]);
+/**
+ * ONE flat discriminated union over all seven kinds — composite included.
+ *
+ * The previous shape, `union([discriminatedUnion(leaves), composite])`,
+ * advertised to MCP clients as `anyOf[oneOf[...], {...}]`: validators flattened
+ * its error paths into a wall of contradicting messages ("level: expected
+ * number, received undefined" beside "operator: expected all|any") that told a
+ * producer nothing about which branch it was in. With a single discriminator,
+ * both zod and JSON-Schema consumers key on `kind` first and report only the
+ * chosen branch's real problem.
+ */
+export const activationRuleSchema = z.discriminatedUnion("kind", [
+  priceTouchSchema,
+  candleCloseAboveSchema,
+  candleCloseBelowSchema,
+  breakoutSchema,
+  retestSchema,
+  rejectionSchema,
+  compositeSchema,
+]);
 
 export type ActivationRule = z.infer<typeof activationRuleSchema>;
 export type LeafActivationRule = z.infer<typeof leafSchema>;
@@ -206,6 +246,31 @@ export function parseActivationRule(raw: unknown): ActivationRule | null {
 
 export function serializeActivationRule(rule: ActivationRule): string {
   return JSON.stringify(rule);
+}
+
+/**
+ * Fill mechanical defaults so the STORED rule is always complete.
+ *
+ * Exactly one default exists: a leaf that names no timeframe gets the plan's
+ * own. That is the boundary between ergonomics and inference — the plan's
+ * timeframe is a fact the producer already stated elsewhere in the same
+ * payload, not a guess about what its prose meant. Nothing else is defaulted:
+ * no invented direction, no invented level, no rule synthesized from text.
+ */
+export function normalizeActivationRule(
+  rule: ActivationRule,
+  planTimeframe: string,
+): ActivationRule {
+  const tf = planTimeframe.trim();
+  if (rule.kind === "composite") {
+    return {
+      ...rule,
+      rules: rule.rules.map((leaf) =>
+        leaf.timeframe ? leaf : { ...leaf, timeframe: tf },
+      ),
+    };
+  }
+  return rule.timeframe ? rule : { ...rule, timeframe: tf };
 }
 
 /** Did this candle close beyond `level` on the required side, past tolerance? */
@@ -279,8 +344,17 @@ function observeLeaf(
   switch (rule.kind) {
     case "price_touch": {
       // The only kind a wick may satisfy — and it says so in its name.
-      if (touched(candle, rule.level, rule.direction, tolerance)) {
-        satisfy(`لمس السعر ${fmt(rule.level)} (${rule.direction})`);
+      // No direction = the candle's range contained the level: a plain touch
+      // from either side, exactly what the sentence says when it names none.
+      const hit = rule.direction
+        ? touched(candle, rule.level, rule.direction, tolerance)
+        : candle.low <= rule.level + tolerance && candle.high >= rule.level - tolerance;
+      if (hit) {
+        satisfy(
+          rule.direction
+            ? `لمس السعر ${fmt(rule.level)} (${rule.direction})`
+            : `لمس السعر ${fmt(rule.level)}`,
+        );
       }
       return;
     }
@@ -467,11 +541,11 @@ export function describeActivationRule(rule: ActivationRule): string {
     case "price_touch":
       return `لمس السعر ${level}`;
     case "candle_close_above":
-      return `إغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe} فوق ${level}`;
+      return `إغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe ?? "الإطار المعتمد"} فوق ${level}`;
     case "candle_close_below":
-      return `إغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe} تحت ${level}`;
+      return `إغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe ?? "الإطار المعتمد"} تحت ${level}`;
     case "breakout_confirmed":
-      return `كسر مؤكد ${rule.direction === "above" ? "فوق" : "تحت"} ${level} بإغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe}`;
+      return `كسر مؤكد ${rule.direction === "above" ? "فوق" : "تحت"} ${level} بإغلاق ${rule.closes ?? 1} شمعة ${rule.timeframe ?? "الإطار المعتمد"}`;
     case "retest_confirmed":
       return `كسر ${level} ثم إعادة اختباره بين ${fmt(rule.retestZone.low)} و${fmt(rule.retestZone.high)} ثم تأكيد الإغلاق`;
     case "rejection_confirmed":
