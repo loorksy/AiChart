@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { toPublicEvidenceProjection } from "@/lib/recommendations/publicEvidenceProjection";
 import {
   ApiError,
   checkRateLimit,
@@ -77,7 +78,27 @@ export async function POST(
       admitted[0]!,
       recommendation.recommendationId,
     );
-    return NextResponse.json({ result });
+    // The cycle result carries the full revision — whose evidence field, on
+    // legacy rows, is the raw frozen bundle with chart base64. Project it at
+    // the boundary: the UI gets the card and the snapshot's identity only.
+    return NextResponse.json({
+      result: result.revision
+        ? {
+            ...result,
+            revision: {
+              ...result.revision,
+              evidence: toPublicEvidenceProjection({
+                descriptor: result.revision.evidence,
+                fingerprint: result.revision.evidenceHash,
+                revisionNo: result.revision.revisionNo,
+                capturedAt: result.revision.createdAt,
+                sourceSurface: result.revision.source,
+                snapshotStored: Boolean(result.revision.evidenceHash),
+              }),
+            },
+          }
+        : result,
+    });
   } catch (error) {
     return handleError(error);
   }

@@ -268,6 +268,34 @@ export async function getCandles(params: {
 }
 
 /**
+ * The newest CLOSED candle for a symbol/interval, or null when none exists.
+ *
+ * This exists because `getCandles` returns chronological (ascending) order even
+ * when `order: "desc"` is passed — `desc` chooses the newest window, then
+ * reverses it so callers get a chart-ready series. Two call sites read that as
+ * "newest first" and used `.find(c => c.complete)`, which returns the OLDEST
+ * candle of the window: on a 15m series the anchor was ~30 minutes stale, which
+ * is why no parity pair could ever form.
+ *
+ * Nobody should re-derive this. Ask for the candle you mean, and let this own
+ * the ordering — an assumption about array direction is not something each
+ * caller should have to get right.
+ */
+export async function getLatestClosedCandle(params: {
+  symbol: string;
+  interval: string;
+}): Promise<StoredCandle | null> {
+  // A small window, because the forming candle sits at the end and a provider
+  // may leave one older bar un-flagged briefly.
+  const recent = await getCandles({ ...params, limit: 5, order: "desc" });
+  for (let index = recent.length - 1; index >= 0; index -= 1) {
+    const candle = recent[index]!;
+    if (candle.complete) return candle;
+  }
+  return null;
+}
+
+/**
  * Idempotent batch upsert. The forming candle is re-upserted on every refresh
  * until OANDA marks it complete, so re-ingesting a window is always safe.
  * Returns the number of rows written.

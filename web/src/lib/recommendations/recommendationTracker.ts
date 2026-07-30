@@ -6,6 +6,7 @@
  * the unified brain. Runs independently of any browser session.
  */
 import { getCandles } from "@/lib/candles/candleRepository";
+import { barDurationMs } from "@/lib/intervals";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import {
   getHigherInterval,
@@ -85,6 +86,11 @@ export async function trackOneRecommendation(
     interval,
     fromMs: createdCandleTimeMs,
     limit: 2000,
+    // Chronological from creation: the evaluator replays the plan's life in
+    // order. The default window keeps the NEWEST 2000 bars, which on a
+    // long-lived plan silently drops the earliest candles — including,
+    // possibly, the one that hit the stop.
+    order: "asc",
   });
   const candles: TrackerCandle[] = stored
     .filter((c) => c.complete)
@@ -188,9 +194,15 @@ export async function trackOneRecommendation(
     calculateAtr(detectorCandles),
   );
   const latestStructure = latestStructureEvent(structureEvents);
+  // The event fires when the break candle CLOSED after the last sweep. Its
+  // OPEN time is almost always older than the previous sweep on any timeframe
+  // at or above the sweep cadence — comparing opens meant structure_break
+  // could never fire on 1h+ plans.
+  const barMs = barDurationMs(interval);
   const brokeSinceLastSweep =
     latestStructure != null &&
-    latestStructure.breakCandleTime > (rec.lastCheckedAt ?? rec.createdAt);
+    toMs(latestStructure.breakCandleTime) + barMs >
+      (rec.lastCheckedAt ?? rec.createdAt);
 
   const geometry = detectChartGeometry({ candles: detectorCandles, atr });
   const foundingPattern = rec.setupType?.toLowerCase().replaceAll("-", "_");

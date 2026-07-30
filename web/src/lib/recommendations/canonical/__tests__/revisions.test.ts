@@ -33,12 +33,14 @@ before(async () => {
 
 async function newRecommendation(initialRevision?: {
   evidence?: Record<string, unknown> | null;
+  evidenceSnapshot?: Record<string, unknown> | null;
 }) {
   const lifecycle = await import("@/lib/recommendations/canonical");
   return lifecycle.createCanonicalRecommendation({
     ...canonicalCompletePlan({
       planType: "conditional",
       evidence: initialRevision?.evidence ?? null,
+      evidenceSnapshot: initialRevision?.evidenceSnapshot ?? null,
     }),
     userId: owner,
     analysisId: `analysis-${Math.floor(performance.now() * 1000)}`,
@@ -71,12 +73,15 @@ describe("effective recommendation revisions", () => {
     // revision always has a predecessor to supersede.
     const rec = await newRecommendation({
       evidence: { atr: 2, zone: [3990, 3994] },
+      evidenceSnapshot: { schemaVersion: 1, modelContext: { atr: 2 }, visualSnapshots: [] },
     });
 
     const first = await getEffectiveRevision(owner, rec.recommendationId);
     assert.equal(first?.revisionNo, 1, "creation must seed revision 1");
     assert.equal(first?.entry, 3992);
-    assert.ok(first?.evidenceHash, "the evidence bundle is fingerprinted");
+    // evidence_hash fingerprints the frozen SNAPSHOT — set if and only if one
+    // was stored alongside this revision.
+    assert.ok(first?.evidenceHash, "a revision created with a snapshot carries its fingerprint");
 
     const second = await applyRecommendationRevision({
       userId: owner,
@@ -91,6 +96,7 @@ describe("effective recommendation revisions", () => {
         reason: "deep research moved the entry to a better price",
         source: "deep_research",
         evidence: { atr: 2.4, zone: [3986, 3990] },
+        evidenceSnapshot: { schemaVersion: 1, modelContext: { atr: 2.4 }, visualSnapshots: [] },
       },
     });
     assert.equal(second.revisionNo, 2);
@@ -104,7 +110,17 @@ describe("effective recommendation revisions", () => {
     const all = await listRevisions(owner, rec.recommendationId);
     assert.deepEqual(all.map((r) => r.revisionNo), [1, 2]);
     assert.equal(all[0]!.entry, 3992);
+    // Different frozen bundles → different fingerprints, and each hash names a
+    // snapshot that genuinely exists in the snapshot table.
     assert.notEqual(all[0]!.evidenceHash, all[1]!.evidenceHash);
+    const { getEvidenceSnapshot } = await import(
+      "@/lib/recommendations/canonical/evidenceSnapshots"
+    );
+    for (const revision of all) {
+      const stored = await getEvidenceSnapshot(owner, rec.recommendationId, revision.revisionNo);
+      assert.ok(stored, "every hashed revision has its snapshot on file");
+      assert.equal(stored!.fingerprint, revision.evidenceHash);
+    }
   });
 
   it("refuses an order built from a superseded revision", async () => {

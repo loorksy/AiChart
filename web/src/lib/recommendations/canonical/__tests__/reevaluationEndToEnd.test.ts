@@ -339,8 +339,23 @@ describe("automatic trigger consumption through the real unified brain", () => {
     );
     assert.equal(result.revision?.revisionNo, 2);
     assert.equal(result.evidenceHash, result.revision?.evidenceHash);
-    assert.equal(result.revision?.evidence.schemaVersion, 1);
-    assert.ok(result.revision?.evidence.modelContext);
+    // The card slot carries the descriptor now; the frozen bundle lives in the
+    // snapshot table, named by the hash asserted equal above.
+    assert.ok(Array.isArray(result.revision?.evidence.evidenceDimensions));
+    const { getEvidenceSnapshot } = await import(
+      "@/lib/recommendations/canonical/evidenceSnapshots"
+    );
+    const storedSnapshot = await getEvidenceSnapshot(
+      userId,
+      result.revision!.recommendationId,
+      result.revision!.revisionNo,
+    );
+    assert.ok(storedSnapshot, "the re-evaluated bundle is stored whole");
+    assert.equal(storedSnapshot!.snapshot.schemaVersion, 1);
+    assert.equal(storedSnapshot!.fingerprint, result.evidenceHash);
+    // modelContext lives in the SNAPSHOT now, not in the card slot — that
+    // relocation is the fix this suite exists to pin.
+    assert.ok(storedSnapshot!.snapshot.modelContext);
     assert.ok(result.revision?.decisionTrace.chosenBecause);
 
     const afterCount = await db.query<{ count: number }>(

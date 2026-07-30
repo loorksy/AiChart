@@ -98,10 +98,16 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await runUnifiedChartAgent({
-      // This route IS the MCP surface: the tool proxies here, and the engine it
-      // reaches is the same one chat uses. Labelling the surface is what lets the
-      // parity log demonstrate that rather than assume it.
-      surface: "mcp",
+      // The parity surface is the BRAIN that decided, not the transport that
+      // asked. This route runs `runUnifiedChartAgent` — the platform decision
+      // engine — so it records as `platform` even though an MCP tool proxied
+      // here. Labelling it `mcp` compared the platform engine against itself
+      // (vacuous), and simultaneously collided with the one producer that can
+      // genuinely diverge: the MCP-hosted model writing its own plan through
+      // `create_recommendation`. That is what `mcp` now means, and the ordinary
+      // Claude flow — analyse, then create — produces both halves of a real
+      // pair on the same symbol and candle.
+      surface: "platform",
       userMessage: `حلّل ${symbol} على إطار ${interval} كفرصة سكالب واشرح قرارك.`,
       chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
       requestContext: {

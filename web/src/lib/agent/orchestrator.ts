@@ -94,6 +94,7 @@ import { collectVisualEvidence } from "./visualEvidence";
 import { collectCaseEvidenceFor } from "@/lib/marketMemory/liveCases";
 import { recordDecisionForParity } from "./parityLog";
 import { serializeCostEvidence } from "./marketContext/costEvidence";
+import { barDurationMs } from "@/lib/intervals";
 import { metrics } from "@/lib/metrics";
 import { evidenceFingerprint } from "@/lib/recommendations/canonical/revisions";
 import { sessionOf } from "@/lib/recommendations/performanceJournal";
@@ -1401,12 +1402,19 @@ async function runUnifiedChartAgentInner(
       ]),
     ];
     await recordDecisionForParity({
+      // Parity is per-operator; an unscoped internal run records but never pairs.
+      userId: ctx.userId ?? null,
       evidenceHash: evidenceFingerprint(synth.evidenceSnapshot),
       symbol: market.symbol,
       // The interval is part of what makes two surfaces comparable.
       interval: market.interval,
       timeframeSet,
-      marketTimestamp: market.currentTfCandles.at(-1)?.time ?? Date.now(),
+      // The anchor is the last CLOSED bar — the same definition the MCP
+      // create path uses. Anchoring to .at(-1) took the FORMING bar, which put
+      // the two surfaces one candle apart on every request, so no pair could
+      // ever form. Judged by close time (open + bar length <= now) so it holds
+      // for any candle source, whether or not it carries a complete flag.
+      marketTimestamp: lastClosedBarTime(market.currentTfCandles, market.interval),
       surface: input.surface ?? "platform",
       decision: {
         direction:
@@ -2153,6 +2161,25 @@ async function storeFinalRecommendation(input: {
 }
 
 /** Map the in-memory recommendation to a persisted tracker record. */
+/**
+ * The open time of the newest bar that has already CLOSED, in the series'
+ * native units. Falls back to the newest bar, then to now, when the series is
+ * empty — a degraded anchor is better than none for a diagnostics row.
+ */
+function lastClosedBarTime(
+  candles: ReadonlyArray<{ time: number }>,
+  interval: string,
+): number {
+  const barMs = barDurationMs(interval);
+  const nowMs = Date.now();
+  for (let index = candles.length - 1; index >= 0; index -= 1) {
+    const raw = candles[index]!.time;
+    const timeMs = raw < 1_000_000_000_000 ? raw * 1000 : raw;
+    if (timeMs + barMs <= nowMs) return raw;
+  }
+  return candles.at(-1)?.time ?? Date.now();
+}
+
 async function persistTrackedRecommendation(
   active: ActiveRecommendation,
   userId: number,

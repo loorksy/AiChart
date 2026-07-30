@@ -24,6 +24,7 @@ process.env.AICHART_SINGLE_USER = "0";
 delete process.env.DATABASE_URL;
 
 const EMAIL = "mcp-parity@example.com";
+let ownerId = 0;
 
 function signedHeaders(): Record<string, string> {
   const sig = createHmac("sha256", process.env.AICHART_SERVICE_TOKEN!)
@@ -70,7 +71,7 @@ async function post(body: unknown) {
 before(async () => {
   const db = await import("@/lib/db");
   await db.initDb();
-  const userId = await db.insertReturningId(
+  ownerId = await db.insertReturningId(
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     [EMAIL, "x", "user", "active"],
   );
@@ -78,7 +79,7 @@ before(async () => {
   // out after three calls — which is a subscription test, not a parity one.
   await db.execute(
     "INSERT INTO user_entitlements (user_id, plan_status, trial_interactions_used, trial_in_flight, subscription_expires_at) VALUES (?,?,?,?,?)",
-    [userId, "active", 0, 0, Date.now() + 30 * 24 * 3600_000],
+    [ownerId, "active", 0, 0, Date.now() + 30 * 24 * 3600_000],
   );
   // The parity anchor: a CLOSED warehouse candle for the plan's symbol+interval.
   const candles = await import("@/lib/candles/candleRepository");
@@ -142,6 +143,8 @@ describe("MCP create_recommendation parity observation", () => {
     assert.ok(mcpRow);
 
     await parity.recordDecisionForParity({
+      // Parity is per-operator: the pair forms only inside one user's scope.
+      userId: ownerId,
       evidenceHash: "platform-snapshot-hash-for-the-same-moment",
       parityKey: mcpRow!.parity_key,
       symbol: "EURUSD",

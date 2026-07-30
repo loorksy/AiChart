@@ -42,7 +42,7 @@ import {
 } from "@/lib/recommendations/activationRule";
 import { deriveExecutionState, type PlanType } from "@/lib/agent/trading/tradePlan";
 import { getUnifiedPrice } from "@/lib/markets";
-import { getCandles } from "@/lib/candles/candleRepository";
+import { getLatestClosedCandle } from "@/lib/candles/candleRepository";
 import { parityKeyFor, recordDecisionForParity } from "@/lib/agent/parityLog";
 import { createHash } from "node:crypto";
 import { createLogger } from "@/lib/logger";
@@ -332,12 +332,28 @@ export async function POST(req: NextRequest) {
     const entryHigh = body.entry_high ?? body.entry ?? null;
     let executionState: string | null = null;
     if (body.action !== "wait" && body.plan_type != null) {
+      // getUnifiedPrice reads the operator's BROKER mid, which is 0 whenever
+      // the EA is offline — so every immediate plan created through this
+      // surface read `awaiting_activation` even with price sitting inside the
+      // entry zone. The warehouse close is a real observed price and is the
+      // honest second source; only when neither exists do we fail safe.
       let currentPrice: number | null = null;
       try {
         const { price } = await getUnifiedPrice(body.symbol, DEFAULT_MARKET, userId);
         currentPrice = price > 0 ? price : null;
       } catch {
         currentPrice = null;
+      }
+      if (currentPrice == null) {
+        try {
+          const lastClosed = await getLatestClosedCandle({
+            symbol: normalizedSymbol,
+            interval: storedTimeframe,
+          });
+          if (lastClosed && lastClosed.close > 0) currentPrice = lastClosed.close;
+        } catch {
+          currentPrice = null;
+        }
       }
       executionState = deriveExecutionState({
         planType: body.plan_type as PlanType,
@@ -426,13 +442,10 @@ export async function POST(req: NextRequest) {
     // Best-effort — parity is diagnostics and must never fail the create.
     if (body.action !== "wait") {
       try {
-        const recent = await getCandles({
+        const lastClosed = await getLatestClosedCandle({
           symbol: normalizedSymbol,
           interval: storedTimeframe,
-          limit: 3,
-          order: "desc",
         });
-        const lastClosed = recent.find((candle) => candle.complete);
         if (lastClosed) {
           const parityKey = parityKeyFor({
             symbol: normalizedSymbol,
@@ -440,6 +453,7 @@ export async function POST(req: NextRequest) {
             marketTimestamp: lastClosed.time,
           });
           await recordDecisionForParity({
+            userId,
             evidenceHash: createHash("sha256")
               .update(`mcp-create:${userId}:${parityKey}`)
               .digest("hex"),

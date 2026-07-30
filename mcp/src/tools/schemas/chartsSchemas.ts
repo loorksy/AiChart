@@ -105,7 +105,10 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       layout_id: zLayoutId,
       symbol: zSymbol.optional().describe("Change chart symbol (optional)"),
       interval: zInterval,
-      dataSource: z.enum(["oanda", "ea"]).optional(),
+      // oanda only: drawings are time-anchored against warehouse candles, which
+  // are OANDA-sourced. "ea" was advertised, accepted, and silently ignored —
+  // a contract that lies is worse than a narrower one.
+  dataSource: z.literal("oanda").optional(),
       mode: z.enum(["set", "add"]).default("set"),
       drawings: z.array(zDrawing).max(24),
       recommendation: zRecommendation.nullable().optional(),

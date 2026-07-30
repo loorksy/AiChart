@@ -170,6 +170,10 @@ async function recordSyncRevision(input: {
       stopLoss: r.stopLoss,
       targets: r.targets,
       activationCondition: r.activationCondition,
+      // Carried forward: a broker sync re-decides nothing, so dropping the
+      // machine-checked rule here would silently downgrade a conditional plan
+      // to entry-touch semantics the moment its stop was synced.
+      activationRule: r.activationRule,
       invalidationRule: r.invalidationRule,
       alternativeScenario: r.alternativeScenario,
       validityCandles: r.validityCandles,

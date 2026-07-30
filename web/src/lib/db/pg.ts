@@ -574,6 +574,18 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_decision_parity_comparisons_recent
     ON decision_parity_comparisons(created_at DESC);
 
+  -- Parity is per-operator: two different users deciding on the same candle is
+  -- not a parity pair. NULL on legacy rows, which therefore never pair — the
+  -- honest reading of rows written before scoping existed. The unique moment
+  -- index is what makes re-analysis inside one candle an UPDATE, not a
+  -- duplicate comparison row.
+  ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
+  ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
+  ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS parity_key TEXT;
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_parity_comparison_moment
+    ON decision_parity_comparisons(user_id, parity_key)
+    WHERE user_id IS NOT NULL AND parity_key IS NOT NULL;
+
   -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
   -- from the EA's live quotes; aggregated on read, pruned past the window.
   CREATE TABLE IF NOT EXISTS cost_samples (
