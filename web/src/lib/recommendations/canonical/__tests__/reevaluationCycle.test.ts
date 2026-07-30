@@ -233,9 +233,25 @@ describe("a changed decision produces a revision through the one mechanism", () 
       (effective!.decisionTrace as { chosenBecause?: string }).chosenBecause,
       "الطلب صمد.",
     );
-    // The revision keeps the exact complete object consumed by the brain.
-    assert.equal(effective!.evidence.schemaVersion, 1);
-    assert.deepEqual(effective!.evidence.visualSnapshots, []);
+
+    // The two are SEPARATE. evidence_json holds the operator-facing descriptor;
+    // the frozen bundle the brain read goes to its own append-only table. They
+    // used to be the same field, which wrote hundreds of KB of chart base64
+    // into every revision row and left the snapshot table empty for revised
+    // plans — so a re-evaluated decision could not be reproduced.
+    assert.equal(effective!.evidence.schemaVersion, undefined, "no snapshot in the card slot");
+    assert.ok(Array.isArray(effective!.evidence.evidenceDimensions), "the card is the descriptor");
+
+    const { getEvidenceSnapshot } = await import(
+      "@/lib/recommendations/canonical/evidenceSnapshots"
+    );
+    const stored = await getEvidenceSnapshot(userId, id, effective!.revisionNo);
+    assert.ok(stored, "a re-evaluated revision must store the bundle it decided on");
+    assert.equal(stored!.snapshot.schemaVersion, 1);
+    assert.deepEqual(stored!.snapshot.visualSnapshots, []);
+    assert.equal(stored!.sourceSurface, "reevaluation");
+    // The hash names what is actually stored.
+    assert.equal(effective!.evidenceHash, stored!.fingerprint);
   });
 
   it("ignores wording drift that is not a plan change", async () => {

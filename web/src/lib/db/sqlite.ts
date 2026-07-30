@@ -1255,6 +1255,29 @@ function migrate(db: Database.Database) {
   ) {
     db.exec("ALTER TABLE recommendation_revisions ADD COLUMN activation_rule_json TEXT");
   }
+
+  // Parity is per-operator; the unique moment index turns re-analysis inside
+  // one candle into an UPDATE rather than a duplicate comparison row.
+  const parityUserCols = db
+    .prepare("PRAGMA table_info(decision_parity)")
+    .all() as Array<{ name: string }>;
+  if (parityUserCols.length > 0 && !parityUserCols.some((c) => c.name === "user_id")) {
+    db.exec("ALTER TABLE decision_parity ADD COLUMN user_id INTEGER");
+  }
+  const cmpCols = db
+    .prepare("PRAGMA table_info(decision_parity_comparisons)")
+    .all() as Array<{ name: string }>;
+  if (cmpCols.length > 0) {
+    if (!cmpCols.some((c) => c.name === "user_id")) {
+      db.exec("ALTER TABLE decision_parity_comparisons ADD COLUMN user_id INTEGER");
+    }
+    if (!cmpCols.some((c) => c.name === "parity_key")) {
+      db.exec("ALTER TABLE decision_parity_comparisons ADD COLUMN parity_key TEXT");
+    }
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS uq_parity_comparison_moment ON decision_parity_comparisons(user_id, parity_key) WHERE user_id IS NOT NULL AND parity_key IS NOT NULL",
+    );
+  }
   db.exec(`
     UPDATE recommendations
        SET direction = COALESCE(direction, action),

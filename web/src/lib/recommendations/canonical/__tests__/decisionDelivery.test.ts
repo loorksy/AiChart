@@ -139,9 +139,13 @@ describe("the three layers reach storage", () => {
     const row = await planRow("rec-explained");
     const effective = await revisions.getEffectiveRevision(userId, Number(row!.id));
     assert.ok(effective);
-    assert.ok(
+    // The fingerprint names a stored SNAPSHOT. This path supplies only the
+    // graded card, so there is no bundle to name — and claiming a hash for one
+    // that was never kept is the defect the snapshot table exists to remove.
+    assert.equal(
       effective.evidenceHash,
-      "a revision with evidence must carry its fingerprint, or two revisions cannot be compared",
+      null,
+      "a descriptor-only revision must not claim a snapshot fingerprint",
     );
     assert.equal(
       (effective.decisionTrace as { chosenBecause?: string }).chosenBecause,

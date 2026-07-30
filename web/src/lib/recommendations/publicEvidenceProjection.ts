@@ -90,6 +90,19 @@ export function toPublicEvidenceProjection(input: {
  * projection above is allow-list shaped, so this should never fire — which is
  * exactly why it is worth checking.
  */
+/**
+ * Strip the INTERNAL evidence bundle from a tracked recommendation before it
+ * crosses to a browser. The field exists for the tracker and re-evaluation —
+ * on legacy revised rows it carries the full frozen snapshot, chart base64
+ * included. The card the UI renders travels separately as the projection.
+ */
+export function toPublicTrackedRecommendation<
+  T extends { evidenceSnapshot?: unknown },
+>(rec: T): Omit<T, "evidenceSnapshot"> {
+  const { evidenceSnapshot: _internal, ...safe } = rec;
+  return safe;
+}
+
 export function containsRawImagery(value: unknown, depth = 0): boolean {
   if (depth > 8 || value == null) return false;
   if (Array.isArray(value)) return value.some((entry) => containsRawImagery(entry, depth + 1));

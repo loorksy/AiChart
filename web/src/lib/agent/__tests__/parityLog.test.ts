@@ -50,6 +50,8 @@ function observation(
   over: Partial<import("@/lib/agent/parityLog").ParityObservation> = {},
 ): import("@/lib/agent/parityLog").ParityObservation {
   return {
+    // Parity is per-operator now; unscoped observations never pair.
+    userId: 7,
     evidenceHash: "hash-a",
     symbol: "XAUUSD",
     timeframeSet: ["15m", "1h"],
@@ -67,15 +69,19 @@ describe("comparability comes before comparison", () => {
    * would be a misattribution. So it is neither, and it never counts as
    * unexplained.
    */
-  it("refuses to call two decisions identical when the evidence hash differs", () => {
+  it("compares decisions across DIFFERENT evidence hashes — the key is the moment", () => {
+    // Each surface fingerprints its own frozen bundle, so the hashes are
+    // EXPECTED to differ (the platform's embeds per-run chart images; the MCP
+    // plan has no bundle at all). Comparability is the parity key — same
+    // instrument, timeframe, candle — which the caller already joined on.
+    // Short-circuiting on hash inequality made every real pair 'not
+    // comparable' and the comparison table structurally empty.
     const result = parity.compareDecisions({
       platform: observation("platform", { evidenceHash: "hash-a" }),
-      // Byte-identical decision, different inputs.
       mcp: observation("mcp", { evidenceHash: "hash-b" }),
     });
-    assert.equal(result.identical, false, "same output on different inputs is not parity");
-    assert.equal(result.classification, "different_evidence_hash");
-    assert.equal(result.explained, true, "not comparable is not a finding");
+    assert.equal(result.identical, true, "same decision on the same candle IS parity");
+    assert.equal(result.classification, null);
   });
 
   it("calls them identical only on the same evidence", () => {
@@ -195,9 +201,13 @@ describe("the report", () => {
       observation("platform", { evidenceHash: "paired-1" }),
     );
     await parity.recordDecisionForParity(observation("mcp", { evidenceHash: "paired-1" }));
-    // Only one surface saw this one.
+    // Only one surface saw this one — a DIFFERENT candle, or it would share
+    // the paired moment's key and correctly count as covered.
     await parity.recordDecisionForParity(
-      observation("platform", { evidenceHash: "lonely-1" }),
+      observation("platform", {
+        evidenceHash: "lonely-1",
+        marketTimestamp: 1_700_000_000_000 + 15 * 60_000,
+      }),
     );
 
     const report = await parity.buildParityReport();
@@ -285,14 +295,82 @@ describe("both surfaces are labelled at their entry points", () => {
     );
   });
 
-  it("labels the bridge route as the MCP surface", () => {
+  it("labels the bridge route by the BRAIN that decided, not the transport", () => {
+    // The route runs runUnifiedChartAgent — the platform engine — so it records
+    // as platform even though an MCP tool proxied to it. Labelling it "mcp"
+    // compared the platform engine against itself, and collided with the one
+    // producer that can genuinely diverge: the MCP-hosted model writing its own
+    // plan through create_recommendation.
     const route = readFileSync(
       resolve(process.cwd(), "src/app/api/agent/market/analyze/route.ts"),
       "utf8",
     );
     assert.ok(
-      /surface: "mcp"/.test(route),
-      "the route the MCP tool proxies to must identify itself as the MCP surface",
+      /surface: "platform"/.test(route),
+      "the analyze route runs the platform engine and must record as platform",
     );
+    assert.equal(/surface: "mcp"/.test(route), false);
+  });
+
+  it("records the MCP surface where a DIFFERENT brain writes the plan", () => {
+    const route = readFileSync(
+      resolve(process.cwd(), "src/app/api/agent/recommendation/route.ts"),
+      "utf8",
+    );
+    assert.ok(
+      /surface: "mcp"/.test(route),
+      "create_recommendation is the MCP-hosted model own plan — the comparable surface",
+    );
+    // The anchor must never re-derive candle ordering by hand.
+    assert.ok(
+      route.includes("getLatestClosedCandle("),
+      "the parity anchor must use the shared newest-closed-candle helper",
+    );
+    assert.equal(
+      route.includes(".find((candle) => candle.complete)"),
+      false,
+      "find() on an ascending series picks the OLDEST candle of the window",
+    );
+  });
+});
+
+describe("the parity key identifies the same candle from either surface", () => {
+  it("floors to the candle boundary, so a forming bar and its closed bar agree", async () => {
+    const { parityKeyFor } = await import("@/lib/agent/parityLog");
+    // Measured in production: the platform keyed the bar it was building while
+    // the bridge keyed the last CLOSED bar — two decisions 40s apart keyed to
+    // candles 15 minutes apart, so no pair could ever form.
+    const closed = 1785424500000;
+    const forming = closed + 7 * 60_000;
+    assert.equal(
+      parityKeyFor({ symbol: "XAUUSD", interval: "15m", marketTimestamp: forming }),
+      parityKeyFor({ symbol: "XAUUSD", interval: "15m", marketTimestamp: closed }),
+    );
+  });
+
+  it("still separates genuinely different candles", async () => {
+    const { parityKeyFor } = await import("@/lib/agent/parityLog");
+    const a = parityKeyFor({ symbol: "XAUUSD", interval: "15m", marketTimestamp: 1785424500000 });
+    const b = parityKeyFor({ symbol: "XAUUSD", interval: "15m", marketTimestamp: 1785424500000 + 900_000 });
+    assert.notEqual(a, b);
+  });
+
+  it("separates instruments and timeframes", async () => {
+    const { parityKeyFor } = await import("@/lib/agent/parityLog");
+    const at = 1785424500000;
+    assert.notEqual(
+      parityKeyFor({ symbol: "XAUUSD", interval: "15m", marketTimestamp: at }),
+      parityKeyFor({ symbol: "EURUSD", interval: "15m", marketTimestamp: at }),
+    );
+    assert.notEqual(
+      parityKeyFor({ symbol: "XAUUSD", interval: "15m", marketTimestamp: at }),
+      parityKeyFor({ symbol: "XAUUSD", interval: "1h", marketTimestamp: at }),
+    );
+  });
+
+  it("leaves an unknown interval untouched rather than inventing a bucket", async () => {
+    const { parityKeyFor } = await import("@/lib/agent/parityLog");
+    const key = parityKeyFor({ symbol: "XAUUSD", interval: "7s", marketTimestamp: 1785424512345 });
+    assert.match(key, /1785424512345$/);
   });
 });

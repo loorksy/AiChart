@@ -16,6 +16,7 @@ export function canonicalCompletePlan(overrides?: {
   activationCondition?: string | null;
   activationRule?: ActivationRule | null;
   evidence?: Record<string, unknown> | null;
+  evidenceSnapshot?: Record<string, unknown> | null;
   decisionTrace?: Record<string, unknown> | null;
   entryLow?: number | null;
   entryHigh?: number | null;
@@ -46,6 +47,7 @@ export function canonicalCompletePlan(overrides?: {
       alternativeScenario: "فشل الحركة يعكس الانحياز نحو الطرف الآخر من النطاق",
       validityCandles: overrides?.validityCandles ?? 24,
       evidence: overrides?.evidence ?? null,
+      evidenceSnapshot: overrides?.evidenceSnapshot ?? null,
       decisionTrace: overrides?.decisionTrace ?? null,
     },
   };

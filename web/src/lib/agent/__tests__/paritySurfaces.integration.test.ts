@@ -273,7 +273,11 @@ describe("reference Platform/MCP surface parity", () => {
       assert.equal(report.totals.unexplained, 0);
       assert.equal(report.entries[0]?.evidenceHash, evidenceHash);
       assert.equal(report.entries[0]?.comparison.identical, true);
-      assert.equal(report.entries[0]?.marketTimestamp, fixtureNow);
+      // The anchor is the last CLOSED bar. The fixture's final bar opens AT
+      // fixtureNow, so it is still forming at decision time and the anchor
+      // steps back one 15m span — the same candle the MCP create path names,
+      // which is exactly what lets the two surfaces pair.
+      assert.equal(report.entries[0]?.marketTimestamp, fixtureNow - 15 * 60_000);
       assert.deepEqual(report.entries[0]?.timeframeSet, ["15m", "1h", "1d"]);
 
       const { metrics } = await import("@/lib/metrics");

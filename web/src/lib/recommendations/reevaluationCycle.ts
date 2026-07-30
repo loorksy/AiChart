@@ -40,6 +40,7 @@ import {
   type RecommendationRevision,
 } from "./canonical/revisions";
 import { getCanonicalRecommendation } from "./canonical/repository";
+import { evidenceSnapshotFingerprint } from "./canonical/evidenceSnapshots";
 import { isTerminalRecommendationStatus } from "./canonical/stateMachine";
 import { manageOpenTradeAfterRevision } from "./tradeManagement";
 import { notifyLifecycleEvents } from "./lifecycleNotifier";
@@ -495,7 +496,11 @@ export async function runReevaluationCycle(
       if (!evidence) return skip("brain returned no complete evidence snapshot");
       const decisionTrace =
         (result.decisionTrace as Record<string, unknown> | undefined) ?? {};
-      const evidenceHash = evidenceFingerprint(evidence);
+      // ONE hash function for snapshots everywhere: the canonical (key-sorted)
+      // fingerprint the snapshot table stores. Using the legacy JSON.stringify
+      // hash here made the cycle's hash disagree with the revision's for the
+      // same object.
+      const evidenceHash = evidenceSnapshotFingerprint(evidence);
       const before = comparableFromRevision(effective);
       const { changed, fields } = decisionChanged(before, after);
 
@@ -540,12 +545,24 @@ export async function runReevaluationCycle(
           stopLoss: after.stopLoss,
           targets: after.targets,
           activationCondition: result.recommendation?.triggerCondition ?? null,
+          // The machine-checked half. Omitting it silently downgraded every
+          // revised conditional plan to entry-touch semantics — the exact
+          // defect the structured rule exists to prevent, re-entering through
+          // the revision path instead of the creation path.
+          activationRule: result.recommendation?.activationRule ?? null,
           invalidationRule: result.recommendation?.invalidationRule ?? null,
           alternativeScenario: after.alternativeScenario,
           validityCandles: after.validityCandles,
           reason: `إعادة تقييم (${trigger.reason}): تغيّر ${fields.join("، ")}.`,
           source: "market_update",
-          evidence,
+          // The CARD is the operator-facing descriptor; the SNAPSHOT is the
+          // frozen bundle. Passing the snapshot in the card slot wrote 232KB of
+          // chart base64 into evidence_json, left the snapshot table empty for
+          // revised plans, and made the Evidence Card render nothing because
+          // the dimensions were not there to read.
+          evidence: { evidenceDimensions: result.evidenceDimensions ?? [] },
+          evidenceSnapshot: evidence,
+          evidenceSourceSurface: "reevaluation",
           decisionTrace,
         },
       });

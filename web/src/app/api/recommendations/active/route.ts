@@ -10,6 +10,7 @@ import {
 import { listTriggers } from "@/lib/recommendations/reevaluationTriggers";
 import {
   toPublicEvidenceProjection,
+  toPublicTrackedRecommendation,
   type PublicEvidenceProjection,
 } from "@/lib/recommendations/publicEvidenceProjection";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
@@ -147,7 +148,7 @@ export async function GET(req: NextRequest) {
         const triggers = await listTriggers(rec.id).catch(() => []);
         const latestTrigger = triggers[0] ?? null;
         return {
-          ...rec,
+          ...toPublicTrackedRecommendation(rec),
           ...overlayRevision(rec, revision),
           lastReevaluation: latestTrigger
             ? {

@@ -274,7 +274,9 @@ export const setAgentTradeModeInput = z.object(setAgentTradeModeShape).strict();
 
 const findSimilarCasesShape = {
   symbol: zSymbol,
-  interval: zInterval,
+  // REQUIRED — the web route refuses a caseless interval, and advertising it
+  // optional turned that refusal into an opaque 500 for the client.
+  interval: z.string().min(2).max(4),
   at_ms: z
     .number()
     .int()

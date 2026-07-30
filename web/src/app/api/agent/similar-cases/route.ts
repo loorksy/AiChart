@@ -77,6 +77,12 @@ export async function POST(req: NextRequest) {
       ...evidence,
     });
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      const issues = err.issues
+        .slice(0, 6)
+        .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`);
+      return NextResponse.json({ error: issues.join("; ") }, { status: 400 });
+    }
     return handleError(err);
   }
 }

@@ -236,11 +236,16 @@ async function writeRevision(
   // stored, so the two can never drift. Falling back to the descriptor keeps
   // pre-snapshot revisions hashing as they always did rather than silently
   // changing their identity.
+  // INVARIANT: evidence_hash is the fingerprint of the frozen SNAPSHOT, so it
+  // is set if and only if a snapshot row is written below. Hashing the
+  // descriptor instead produced revisions whose hash named a bundle that was
+  // never stored — a claim with no evidence behind it, which is precisely what
+  // the snapshot table exists to prevent. A revision that re-decided nothing
+  // (a broker sync) legitimately has no snapshot, and therefore no hash; its
+  // descriptor still lands in evidence_json.
   const evidenceHash = r.evidenceSnapshot
     ? evidenceSnapshotFingerprint(r.evidenceSnapshot)
-    : r.evidence
-      ? evidenceFingerprint(r.evidence)
-      : null;
+    : null;
   // Snapshot size is a dashboard, not a limit: a snapshot quietly growing past
   // hundreds of KB per revision is how storage surprises start.
   const sized = r.evidenceSnapshot ?? r.evidence;
