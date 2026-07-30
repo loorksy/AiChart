@@ -44,9 +44,10 @@ const zActivationLeaf = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("price_touch"),
     level: z.number().positive(),
-    direction: z.enum(["above", "below"]),
+    // Optional: absent = the candle range contained the level (either side).
+    direction: z.enum(["above", "below"]).optional(),
     tolerance: z.number().nonnegative().optional(),
-    timeframe: z.string().min(1).max(8),
+    timeframe: z.string().min(1).max(8).optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
   z.object({
@@ -54,7 +55,8 @@ const zActivationLeaf = z.discriminatedUnion("kind", [
     level: z.number().positive(),
     tolerance: z.number().nonnegative().optional(),
     closes: z.number().int().min(1).max(10).optional(),
-    timeframe: z.string().min(1).max(8),
+    // Optional — defaults server-side to the plan's own timeframe.
+    timeframe: z.string().min(1).max(8).optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
   z.object({
@@ -62,7 +64,8 @@ const zActivationLeaf = z.discriminatedUnion("kind", [
     level: z.number().positive(),
     tolerance: z.number().nonnegative().optional(),
     closes: z.number().int().min(1).max(10).optional(),
-    timeframe: z.string().min(1).max(8),
+    // Optional — defaults server-side to the plan's own timeframe.
+    timeframe: z.string().min(1).max(8).optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
   z.object({
@@ -71,7 +74,8 @@ const zActivationLeaf = z.discriminatedUnion("kind", [
     direction: z.enum(["above", "below"]),
     tolerance: z.number().nonnegative().optional(),
     closes: z.number().int().min(1).max(10).optional(),
-    timeframe: z.string().min(1).max(8),
+    // Optional — defaults server-side to the plan's own timeframe.
+    timeframe: z.string().min(1).max(8).optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
   z.object({
@@ -81,7 +85,8 @@ const zActivationLeaf = z.discriminatedUnion("kind", [
     retestZone: z.object({ low: z.number().positive(), high: z.number().positive() }),
     tolerance: z.number().nonnegative().optional(),
     closes: z.number().int().min(1).max(10).optional(),
-    timeframe: z.string().min(1).max(8),
+    // Optional — defaults server-side to the plan's own timeframe.
+    timeframe: z.string().min(1).max(8).optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
   z.object({
@@ -89,20 +94,27 @@ const zActivationLeaf = z.discriminatedUnion("kind", [
     level: z.number().positive(),
     direction: z.enum(["above", "below"]),
     tolerance: z.number().nonnegative().optional(),
-    timeframe: z.string().min(1).max(8),
+    // Optional — defaults server-side to the plan's own timeframe.
+    timeframe: z.string().min(1).max(8).optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
 ]);
 
+const zActivationComposite = z.object({
+  kind: z.literal("composite"),
+  operator: z.enum(["all", "any"]),
+  rules: z.array(zActivationLeaf).min(2).max(4),
+  expiresAt: z.number().int().positive().optional(),
+});
+
+// ONE flat discriminated union over all seven kinds. The previous
+// anyOf[oneOf[...], {...}] advertised shape made MCP clients flatten error
+// paths into contradicting -32602 walls; keying on kind first gives producers
+// exactly one branch's real problem.
 const zActivationRule = z
-  .union([
-    zActivationLeaf,
-    z.object({
-      kind: z.literal("composite"),
-      operator: z.enum(["all", "any"]),
-      rules: z.array(zActivationLeaf).min(2).max(4),
-      expiresAt: z.number().int().positive().optional(),
-    }),
+  .discriminatedUnion("kind", [
+    ...zActivationLeaf.options,
+    zActivationComposite,
   ])
   .describe(
     "The activation condition as DATA, so the tracker can grade it. Pick the kind that matches your sentence exactly — price_touch ONLY if a bare touch is genuinely enough; candle_close_above/below need level+timeframe; retest_confirmed needs the retestZone band you expect the pullback into; rejection_confirmed means a wick through the level and a close back. Never emit a rule looser than your sentence.",
@@ -412,7 +424,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: after choosing a direction — record the recommendation. Only buy or sell: every successful analysis ends in a direction with a plan, and an unreadable market is reported as a named operational blocker rather than a recommendation. BUY/SELL require valid entry/SL/TP levels AND plan_type (immediate | anticipatory | conditional) — a direction with no plan type does not say whether to act now or wait for a condition. The COMPLETE plan is required: invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), validity_candles (1..96 of THIS timeframe), and for conditional/anticipatory plans BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). execution_state is derived server-side; do not send it. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
+      "When: after choosing a direction — record the recommendation. Only buy or sell: every successful analysis ends in a direction with a plan, and an unreadable market is reported as a named operational blocker rather than a recommendation. BUY/SELL require valid entry/SL/TP levels AND plan_type (immediate | anticipatory | conditional) — a direction with no plan type does not say whether to act now or wait for a condition. The COMPLETE plan is required: invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), validity_candles (1..96 of THIS timeframe), and for conditional/anticipatory plans BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). execution_state is derived server-side; do not send it. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },

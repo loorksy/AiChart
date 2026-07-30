@@ -366,11 +366,25 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     async (body) => {
       const parsed = createRecommendationInput.safeParse(body);
       if (!parsed.success) {
+        // Agent-facing: a short, fixable list — never the full zod dump, whose
+        // flattened union paths read as contradictions. Full detail to stderr
+        // with the payload keys, so an operator can still reconstruct the call.
+        const issues = parsed.error.issues
+          .slice(0, 6)
+          .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`);
+        console.error(
+          "[create_recommendation] rejected:",
+          JSON.stringify({
+            keys: Object.keys((body as Record<string, unknown>) ?? {}),
+            issues: parsed.error.issues.slice(0, 20),
+          }),
+        );
         return formatBridgeError(
           new Error(
-            parsed.error.issues
-              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
-              .join("; ") || "Invalid create_recommendation payload",
+            `${issues.join("; ")}\n` +
+              `Fix ONLY the fields above and call again. A conditional/anticipatory plan needs: ` +
+              `activation_condition (string) + activation_rule {kind,...} + invalidation_rule + alternative_scenario + validity_candles. ` +
+              `activation_rule.timeframe may be omitted (plan timeframe is used).`,
           ),
         );
       }
