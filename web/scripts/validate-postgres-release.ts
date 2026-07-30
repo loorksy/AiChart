@@ -246,6 +246,16 @@ async function run(): Promise<void> {
       source: "postgres-release-validation",
       engineVersion: "canonical-agent",
       entryType: "market",
+      // The Complete Plan Contract applies to this writer like every other:
+      // the release gate must create the same complete plan production does,
+      // or a green gate would prove the validator can be dodged.
+      planType: "immediate",
+      executionState: "valid_now",
+      initialRevision: {
+        invalidationRule: "A full 5m close below 2298 kills the idea.",
+        alternativeScenario: "Losing 2298 flips the bias toward 2294.",
+        validityCandles: 24,
+      },
     });
 
     assert.equal(
