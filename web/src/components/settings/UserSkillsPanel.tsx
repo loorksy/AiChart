@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Trash2, Upload } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
+import { SkeletonBlock, SkeletonLine } from "@/components/ui/skeleton";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
@@ -109,7 +110,20 @@ export function UserSkillsPanel() {
         </div>
 
         {skills === null ? (
-          <p className="text-sm text-muted-foreground">…</p>
+          <ul className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
+              >
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <SkeletonLine width="w-36" className="h-3.5" />
+                  <SkeletonLine width="w-52" className="h-2.5" />
+                </div>
+                <SkeletonBlock className="h-5 w-16 rounded-md" />
+              </li>
+            ))}
+          </ul>
         ) : skills.length === 0 ? (
           <p className="rounded-lg border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
             {t("skills.empty")}

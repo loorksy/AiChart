@@ -87,6 +87,8 @@ export const ar: Record<TranslationKey, string> = {
   "bt.equity_curve": "منحنى الأرباح والخسائر",
   "bt.rolling_win_rate": "نسبة النجاح عبر الصفقات (نافذة 20)",
   "bt.curves_unavailable": "بيانات المنحنى غير متاحة لهذا الاختبار حالياً.",
+  "model.picker_title": "اختر نموذج الذكاء الاصطناعي",
+  "model.platform_default": "الافتراضي (إعداد المنصة)",
   "skills.title": "مهاراتي",
   "skills.description": "أضف ملفات SKILL.md خاصة بك لتخصيص أسلوب التحليل والتوصيات حسب استراتيجيتك. المهارات إرشادية فقط — لا تمنح صلاحيات ولا تتجاوز ضوابط المخاطر والتنفيذ.",
   "skills.empty": "لا توجد مهارات مخصّصة بعد — أضف أول مهارة أدناه.",

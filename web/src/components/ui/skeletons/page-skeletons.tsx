@@ -7,27 +7,6 @@ import { SkeletonBlock, SkeletonCircle, SkeletonLine } from "@/components/ui/ske
    Mimics: sidebar history list · message bubbles · input bar
    ──────────────────────────────────────────────────────────── */
 
-function SidebarSkeleton() {
-  return (
-    <div className="hidden w-60 shrink-0 flex-col border-l border-border bg-sidebar lg:flex">
-      {/* Brand row */}
-      <div className="flex h-16 items-center gap-2 border-b border-border/70 px-4">
-        <SkeletonCircle size="sm" />
-        <SkeletonLine width="w-20" />
-      </div>
-      {/* Fake nav items */}
-      <div className="flex-1 space-y-2 p-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-xl px-3 py-2.5">
-            <SkeletonBlock className="h-4.5 w-4.5 shrink-0 rounded-md" />
-            <SkeletonLine width={i % 2 === 0 ? "w-24" : "w-16"} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function MessageRowSkeleton({
   isUser = false,
   lineCount = 2,
@@ -74,119 +53,6 @@ export function ChatLayoutSkeleton() {
         </div>
       </div>
     </div>
-  );
-}
-
-/* ────────────────────────────────────────────────────────────
-   Console / Dashboard Layout Skeleton
-   Mimics: user card · metric cards · KPI grid · equity chart
-   ──────────────────────────────────────────────────────────── */
-
-function MetricCardSkeleton() {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-3 text-center">
-      <SkeletonLine width="w-12" className="mx-auto mb-2 h-2.5" />
-      <SkeletonBlock className="mx-auto h-7 w-16 rounded-lg" />
-    </div>
-  );
-}
-
-function KpiCardSkeleton() {
-  return (
-    <div className="flex flex-col gap-1 rounded-2xl border border-border bg-card p-3">
-      <div className="flex items-center justify-between gap-2">
-        <SkeletonLine width="w-16" className="h-2.5" />
-        <SkeletonBlock className="h-4 w-4 rounded-md" />
-      </div>
-      <SkeletonBlock className="h-6 w-20 rounded-lg" />
-      <SkeletonLine width="w-14" className="h-2" />
-    </div>
-  );
-}
-
-export function DashboardLayoutSkeleton() {
-  return (
-    <main className="page-shell max-w-6xl space-y-5">
-      {/* Title area */}
-      <div>
-        <SkeletonLine width="w-28" className="h-6 mb-1" />
-        <SkeletonLine width="w-40" className="h-3.5" />
-      </div>
-
-      {/* Agent status bar */}
-      <SkeletonBlock className="h-14 w-full rounded-2xl" />
-
-      {/* User profile card */}
-      <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4">
-        <SkeletonCircle size="lg" className="rounded-2xl" />
-        <div className="min-w-0 flex-1 space-y-2">
-          <SkeletonLine width="w-32" className="h-5" />
-          <SkeletonLine width="w-48" className="h-3" />
-          <div className="flex gap-2">
-            <SkeletonBlock className="h-5 w-14 rounded-full" />
-            <SkeletonBlock className="h-5 w-20 rounded-full" />
-          </div>
-        </div>
-      </div>
-
-      {/* 3 metric cards */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <MetricCardSkeleton />
-        <MetricCardSkeleton />
-        <MetricCardSkeleton />
-      </div>
-
-      {/* Performance section header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <SkeletonLine width="w-20" className="h-5 mb-1" />
-          <SkeletonLine width="w-44" className="h-3" />
-        </div>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4].map((i) => (
-            <SkeletonBlock key={i} className="h-7 w-10 rounded-lg" />
-          ))}
-        </div>
-      </div>
-
-      {/* 8 KPI cards */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <KpiCardSkeleton key={i} />
-        ))}
-      </div>
-
-      {/* Equity curve chart placeholder */}
-      <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
-        <div className="flex items-center justify-between">
-          <SkeletonLine width="w-40" className="h-4" />
-          <SkeletonLine width="w-20" className="h-3" />
-        </div>
-        <SkeletonBlock className="h-48 w-full rounded-xl" />
-      </div>
-
-      {/* Asset distribution chart placeholder */}
-      <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
-        <SkeletonLine width="w-48" className="h-4" />
-        <SkeletonBlock className="h-36 w-full rounded-xl" />
-      </div>
-
-      {/* Quick action grid */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4"
-          >
-            <SkeletonBlock className="h-5 w-5 shrink-0 rounded-md" />
-            <div className="space-y-1.5 flex-1">
-              <SkeletonLine width="w-24" className="h-3.5" />
-              <SkeletonLine width="w-16" className="h-2.5" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </main>
   );
 }
 
@@ -241,53 +107,96 @@ export function ChartPreviewSkeleton({ className }: { className?: string }) {
 }
 
 /* ────────────────────────────────────────────────────────────
-   Console Overview Skeleton (admin & user home)
+   Workspace Skeleton — chart pane + chat pane side by side.
+   This is what /console actually renders for a subscribed trader
+   (SmartChartWorkspace), so its loading state must look like the
+   workspace, not like a metrics dashboard.
    ──────────────────────────────────────────────────────────── */
 
-export function ConsoleOverviewSkeleton() {
+export function WorkspaceSkeleton() {
   return (
-    <div className="mx-auto max-w-3xl space-y-6 px-4 pb-4 pt-16 sm:px-6 sm:pb-6 lg:pt-6">
-      <div>
-        <SkeletonLine width="w-44" className="h-7 mb-1.5" />
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden">
+      <ChartPreviewSkeleton className="hidden min-w-0 flex-1 xl:flex" />
+      {/* Chat pane: header, a couple of turns, composer */}
+      <div className="flex min-h-0 w-full flex-col xl:w-[26rem] xl:shrink-0">
+        <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2.5">
+          <SkeletonCircle size="sm" />
+          <SkeletonLine width="w-24" className="h-3.5" />
+        </div>
+        <div className="flex-1 space-y-4 overflow-hidden px-3 py-4">
+          <MessageRowSkeleton lineCount={2} />
+          <MessageRowSkeleton isUser lineCount={1} />
+          <MessageRowSkeleton lineCount={3} />
+        </div>
+        <div className="px-3 pb-3">
+          <SkeletonBlock className="h-11 w-full rounded-3xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────
+   Generic building blocks reused by page-level loading states.
+   ──────────────────────────────────────────────────────────── */
+
+/** Page header: title + subtitle, optional trailing action. */
+export function PageHeaderSkeleton({ withAction = false }: { withAction?: boolean }) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="space-y-1.5">
+        <SkeletonLine width="w-40" className="h-6" />
         <SkeletonLine width="w-56" className="h-3.5" />
       </div>
+      {withAction && <SkeletonBlock className="h-9 w-28 rounded-lg" />}
+    </div>
+  );
+}
 
-      {/* CTA card */}
-      <SkeletonBlock className="h-20 w-full rounded-xl" />
-
-      {/* Status card */}
-      <div className="rounded-2xl border border-border bg-card p-4 space-y-2">
-        <SkeletonLine width="w-28" className="h-4" />
-        <SkeletonLine width="w-40" className="h-3" />
+/** A bordered card with a heading and a few body lines. */
+export function CardSkeleton({
+  lines = 3,
+  className,
+}: {
+  lines?: number;
+  className?: string;
+}) {
+  return (
+    <div className={`space-y-3 rounded-xl border border-border bg-card p-4 ${className ?? ""}`}>
+      <SkeletonLine width="w-32" className="h-4" />
+      <div className="space-y-2">
+        {Array.from({ length: lines }).map((_, i) => (
+          <SkeletonLine key={i} width={i === lines - 1 ? "w-2/3" : "w-full"} className="h-3" />
+        ))}
       </div>
+    </div>
+  );
+}
 
-      {/* MCP card */}
-      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <SkeletonBlock className="h-5 w-5 rounded-md" />
-          <SkeletonLine width="w-24" className="h-4" />
-        </div>
-        <SkeletonLine width="w-64" className="h-3" />
-        <SkeletonBlock className="h-10 w-full rounded-lg" />
-        <div className="flex gap-2">
-          <SkeletonBlock className="h-9 w-24 rounded-full" />
-          <SkeletonBlock className="h-9 w-36 rounded-full" />
-        </div>
+/** Compact list row: leading icon, two text lines, trailing pill. */
+export function ListRowSkeleton() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+      <SkeletonBlock className="h-8 w-8 shrink-0 rounded-lg" />
+      <div className="flex-1 space-y-1.5">
+        <SkeletonLine width="w-32" className="h-3.5" />
+        <SkeletonLine width="w-20" className="h-2.5" />
       </div>
+      <SkeletonBlock className="h-6 w-16 rounded-md" />
+    </div>
+  );
+}
 
-      {/* Connections card */}
-      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <SkeletonBlock className="h-5 w-5 rounded-md" />
-          <SkeletonLine width="w-20" className="h-4" />
+/** Row of stat tiles (label + value). */
+export function StatTilesSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="rounded-xl border border-border bg-card p-3">
+          <SkeletonLine width="w-16" className="mb-2 h-2.5" />
+          <SkeletonBlock className="h-6 w-20 rounded-lg" />
         </div>
-        <div className="space-y-1.5">
-          <SkeletonLine width="w-36" className="h-3" />
-          <SkeletonLine width="w-28" className="h-3" />
-          <SkeletonLine width="w-32" className="h-3" />
-        </div>
-        <SkeletonBlock className="h-9 w-32 rounded-full" />
-      </div>
+      ))}
     </div>
   );
 }

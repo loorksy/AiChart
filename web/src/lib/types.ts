@@ -41,6 +41,12 @@ export interface TradingSettings {
    * global default (FOREX_BACKEND / MT5_BRIDGE_URL / METAAPI_TOKEN).
    */
   forex_backend?: "ea" | "mt5local" | "metaapi" | null;
+  /**
+   * "provider/model" the user chose for their own analyses (e.g.
+   * "openai/gpt-5.6-sol", "anthropic/claude-opus-5"). null = platform default.
+   * The admin supplies the API keys; the user picks which brain answers.
+   */
+  preferred_model_ref?: string | null;
   send_screenshot: number;
   telegram_chat_id: string | null;
   onboarding_done: number;

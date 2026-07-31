@@ -576,13 +576,15 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_chart_snapshot",
     domain: "core",
     description:
-      "Captures a chart image for one symbol and interval and returns the PNG inline, optionally annotated with a pattern name and chart drawings. When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval, and returns the PNG inline. Set source=mt5 to photograph the connected MetaTrader terminal instead — only meaningful while the EA is online and the operator asked for it. When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
       market: zMarket,
       pattern_name: z.string().optional(),
       chart_drawings: zChartDrawings,
+      layout_id: z.string().optional(),
+      source: z.enum(["platform", "mt5"]).optional(),
     },
     annotations: READ_ONLY,
   },

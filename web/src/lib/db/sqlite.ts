@@ -39,6 +39,9 @@ const SCHEMA = `
     -- User-chosen forex connection: 'ea' (bridge installed on the user's MT5)
     -- or 'mt5local' (server-side, no download). NULL = operator's global default.
     forex_backend            TEXT,
+    -- "provider/model" the USER picked for their own analyses; NULL = the
+    -- platform default. The admin supplies keys, the user picks the brain.
+    preferred_model_ref      TEXT,
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
@@ -1397,6 +1400,9 @@ function migrate(db: Database.Database) {
   }
   if (!settingsCols.some((c) => c.name === "forex_backend")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN forex_backend TEXT");
+  }
+  if (!settingsCols.some((c) => c.name === "preferred_model_ref")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN preferred_model_ref TEXT");
   }
   // Forward-only product simplification migration. Existing databases may
   // still contain legacy policy columns; no runtime code reads them, and they

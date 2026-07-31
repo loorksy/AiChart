@@ -21,7 +21,7 @@ type ConfigField = {
 
 const GROUPS: { id: ConfigField["group"]; title: string }[] = [
   { id: "core", title: "الأساس والأمان" },
-  { id: "ai", title: "الذكاء الاصطناعي — المزوّد والنماذج" },
+  { id: "ai", title: "الذكاء الاصطناعي — المفاتيح والافتراضي" },
   { id: "telegram", title: "تليجرام" },
   { id: "ops", title: "التشغيل والمراقبة" },
 ];
@@ -191,11 +191,18 @@ export function AdminKeysPanel() {
             <div className="space-y-4">
               {group.id === "ai" && apiKeyField && (
                 <>
-                  {/* Active provider — which brain answers the platform. */}
+                  <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">
+                    دورك هنا إتاحة المفاتيح فقط — كل مستخدم يختار النموذج الذي
+                    يريده من صندوق الكتابة في المحادثة. ما تضبطه أدناه هو
+                    <b> الافتراضي </b>
+                    لمن لم يختر.
+                  </p>
+                  {/* Default provider — the fallback brain for users who have
+                      not picked one themselves. */}
                   <div>
                     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-sm font-medium">
-                        مزوّد الذكاء الاصطناعي النشط
+                        المزوّد الافتراضي
                         <span className="mr-2 text-[10px] text-muted-foreground" dir="ltr">
                           AI_PROVIDER
                         </span>

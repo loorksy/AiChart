@@ -35,6 +35,9 @@ const SCHEMA = `
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     -- 'ea' | 'mt5local' | NULL (operator's global default).
     forex_backend            TEXT,
+    -- "provider/model" the USER picked for their own analyses; NULL = the
+    -- platform default. The admin supplies keys, the user picks the brain.
+    preferred_model_ref      TEXT,
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
     onboarding_done          BOOLEAN NOT NULL DEFAULT FALSE,
@@ -1228,6 +1231,11 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS forex_backend TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS preferred_model_ref TEXT
   `).catch(() => {});
 
   await client.query(`

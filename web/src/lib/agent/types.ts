@@ -212,6 +212,12 @@ export interface AgentFinalResult {
    */
   envelope?: import("./resultEnvelope").ResultEnvelope;
   /**
+   * SERVER-ONLY machine cause for an operational blocker (provider message,
+   * stage detail). Persisted into the audit row so a Request ID stays
+   * diagnosable after logs rotate; stripped before the browser sees the result.
+   */
+  operatorFailureDetail?: string;
+  /**
    * Evidence behind the answer (RELIABILITY_PLAN.md item 13): the matched
    * strategy, its historical trade count, walk-forward verdict and deployment
    * state. Present only when validated factory evidence was actually found —

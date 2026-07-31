@@ -1136,6 +1136,8 @@ async function runUnifiedChartAgentInner(
       metadata: { stage: "final_decision", kind: failure?.kind ?? "unknown" },
     });
     return buildAgentFallbackResult(operatorReason, collected, locale, {
+      // The provider's raw message rides along to the audit row.
+      detail: failure?.detail ?? operatorReason,
       retryable: failure?.retryable ?? false,
       failureStage: "final_decision",
       failureCode: code,

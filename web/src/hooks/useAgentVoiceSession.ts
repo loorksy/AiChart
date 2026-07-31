@@ -312,7 +312,9 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
       },
       instructions: voiceBridgeInstructions(opts.locale),
       tools: [askAichartTool, ...quickTools],
-      model: "gpt-realtime-2.1",
+      // No model pinned here on purpose: the session proxy overwrites
+      // session.model with the newest realtime model the account can use, so a
+      // hardcoded id would only be a stale duplicate of that decision.
       audio: {
         output: { voice: "alloy" },
         input: {

@@ -21,10 +21,75 @@ import {
   callOpenAICompatStream,
   type OpenAICompatTarget,
 } from "./openaiCompat";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
 import { createLogger } from "./logger";
 
 const llmLog = createLogger("llm");
+
+/**
+ * Per-request model selection.
+ *
+ * The operator supplies API keys; the USER picks which brain answers their
+ * request, from the chat composer. The choice must apply to every LLM call
+ * inside that one request — the decision synthesizer, the ticker, suggestions —
+ * without threading a parameter through a dozen call sites, and without leaking
+ * into concurrent requests from other users. AsyncLocalStorage is exactly that
+ * scope: set once at the route boundary, read by `getActiveProvider`/
+ * `modelForTier`, and gone when the request ends.
+ */
+export interface RequestModelSelection {
+  provider: LLMProvider;
+  model: string;
+}
+
+const requestModel = new AsyncLocalStorage<RequestModelSelection>();
+
+/** Run `fn` with every LLM call inside it pinned to `selection`. */
+export function withRequestModel<T>(
+  selection: RequestModelSelection | null,
+  fn: () => T,
+): T {
+  return selection ? requestModel.run(selection, fn) : fn();
+}
+
+export function currentRequestModel(): RequestModelSelection | undefined {
+  return requestModel.getStore();
+}
+
+/**
+ * Parse a "provider/model" reference. Returns null for anything unusable so a
+ * stale or hand-edited preference silently falls back to the platform default
+ * rather than failing the request.
+ */
+/**
+ * Resolve a user's stored preference into an applicable selection.
+ *
+ * Returns null — meaning "use the platform default" — when the preference is
+ * unset, malformed, or names a provider whose key the operator has not
+ * configured. A user must never be able to point the platform at a provider it
+ * cannot authenticate against.
+ */
+export async function resolveUserModelSelection(
+  ref?: string | null,
+): Promise<RequestModelSelection | null> {
+  const parsed = parseModelRef(ref);
+  if (!parsed) return null;
+  const key = await getPlatformValueAsync(PROVIDER_KEY_FIELD[parsed.provider]);
+  return key ? parsed : null;
+}
+
+export function parseModelRef(ref?: string | null): RequestModelSelection | null {
+  const raw = ref?.trim();
+  if (!raw) return null;
+  const slash = raw.indexOf("/");
+  if (slash <= 0) return null;
+  const provider = raw.slice(0, slash);
+  const model = raw.slice(slash + 1).trim();
+  if (!model) return null;
+  if (provider !== "openai" && provider !== "anthropic") return null;
+  return { provider, model };
+}
 
 export type LLMProvider = "openai" | "anthropic";
 
@@ -41,6 +106,9 @@ const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
 const DEFAULT_MODEL = "gpt-4.1";
 
 export function getActiveProvider(): LLMProvider {
+  // The user's per-request pick wins over the platform default.
+  const picked = requestModel.getStore();
+  if (picked) return picked.provider;
   return getPlatformValue("AI_PROVIDER")?.trim() === "anthropic"
     ? "anthropic"
     : "openai";
@@ -48,6 +116,8 @@ export function getActiveProvider(): LLMProvider {
 
 /** Active model for the active provider (with safe defaults). */
 export function getActiveModel(): string {
+  const picked = requestModel.getStore();
+  if (picked) return picked.model;
   if (getActiveProvider() === "anthropic") {
     return getPlatformValue("ANTHROPIC_MODEL")?.trim() || DEFAULT_ANTHROPIC_MODEL;
   }
@@ -71,6 +141,9 @@ export function getDeepModel(): string {
 
 /** Fast/cheap model for auxiliary generations; defaults to the deep model. */
 export function getQuickModel(): string {
+  // An explicit user pick is honoured for every tier — splitting their chosen
+  // model across tiers would silently answer with a model they did not choose.
+  if (requestModel.getStore()) return getDeepModel();
   if (getActiveProvider() === "anthropic") {
     return getPlatformValue("ANTHROPIC_QUICK_MODEL")?.trim() || getDeepModel();
   }

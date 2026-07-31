@@ -88,6 +88,8 @@ export const en = {
   "bt.equity_curve": "Equity curve (PnL)",
   "bt.rolling_win_rate": "Win rate across trades (window 20)",
   "bt.curves_unavailable": "Curve data is not available for this backtest yet.",
+  "model.picker_title": "Choose the AI model",
+  "model.platform_default": "Default (platform setting)",
   "skills.title": "My skills",
   "skills.description": "Upload your own SKILL.md files to tailor analysis and recommendations to your strategy. Skills are advisory only — they grant no permissions and never override risk or execution controls.",
   "skills.empty": "No custom skills yet — add your first one below.",

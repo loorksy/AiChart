@@ -188,6 +188,7 @@ export type SynthesizerFailureKind =
   | "provider_rate_limit"
   | "provider_unavailable"
   | "provider_bad_request"
+  | "provider_billing"
   | "timeout"
   | "network"
   | "empty_response"
@@ -251,6 +252,17 @@ export function classifySynthesizerError(error: unknown): {
 
   if (/\b(401|403)\b/.test(message) || lower.includes("api key") || message.includes("مفتاح")) {
     return { kind: "provider_auth", retryable: false, detail: message };
+  }
+  // Out of credit also arrives as 429 — but it is permanent until someone
+  // tops up the account, so it must not be reported as a transient busy signal.
+  if (
+    lower.includes("no credits") ||
+    lower.includes("insufficient_quota") ||
+    lower.includes("insufficient quota") ||
+    lower.includes("exceeded your current quota") ||
+    lower.includes("billing")
+  ) {
+    return { kind: "provider_billing", retryable: false, detail: message };
   }
   if (/\b429\b/.test(message) || lower.includes("rate limit") || lower.includes("quota")) {
     return { kind: "provider_rate_limit", retryable: true, detail: message };

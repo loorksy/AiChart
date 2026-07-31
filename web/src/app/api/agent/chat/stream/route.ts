@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePlatformAccess, handleError } from "@/lib/api";
-import { getLimits } from "@/lib/store";
-import { isLLMConfiguredAsync } from "@/lib/llm";
+import { getLimits, getSettings } from "@/lib/store";
+import {
+  isLLMConfiguredAsync,
+  resolveUserModelSelection,
+  withRequestModel,
+} from "@/lib/llm";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
@@ -446,23 +450,31 @@ export async function POST(req: NextRequest) {
         void tickerTask;
 
         try {
-          const result = await runUnifiedChartAgent({
-            userMessage: resolvedMessage,
-            chartContext: body.chartContext,
-            locale: body.locale,
-            requestContext: {
-              requestId,
-              userId: user.id,
-              sessionId,
-              emitActivity,
-              emitDebug: () => {},
-              signal: req.signal,
-              session,
-            },
-            account: null,
-            canExecute,
-            conversationContext,
-          });
+          // The user's own model choice governs every LLM call in this run.
+          // Falls back to the platform default when unset or when its
+          // provider has no configured key.
+          const modelSelection = await resolveUserModelSelection(
+            (await getSettings(user.id)).preferred_model_ref,
+          );
+          const result = await withRequestModel(modelSelection, () =>
+            runUnifiedChartAgent({
+              userMessage: resolvedMessage,
+              chartContext: body.chartContext,
+              locale: body.locale,
+              requestContext: {
+                requestId,
+                userId: user.id,
+                sessionId,
+                emitActivity,
+                emitDebug: () => {},
+                signal: req.signal,
+                session,
+              },
+              account: null,
+              canExecute,
+              conversationContext,
+            }),
+          );
 
           if (traceRunId) {
             await addAgentRunStep({
@@ -522,6 +534,10 @@ export async function POST(req: NextRequest) {
                     failure_code: result.envelope.failure_code ?? null,
                     failure_stage: result.envelope.failure_stage ?? null,
                     retryable: result.envelope.retryable ?? null,
+                    // The provider's own words (e.g. "no credits remaining") —
+                    // the difference between a diagnosable Request ID and a
+                    // dead end once pm2 logs rotate.
+                    error_detail: result.operatorFailureDetail ?? null,
                   }
                 : {}),
               ...(result.envelope?.degraded_stages?.length
