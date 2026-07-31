@@ -534,7 +534,11 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "capture_chart_snapshot",
     mcpToolConfig("capture_chart_snapshot"),
     async (body) => {
-      const input = (body ?? {}) as { symbol?: string; interval?: string };
+      const { inline_image: inlineImage, ...rest } = (body ?? {}) as Record<
+        string,
+        unknown
+      > & { inline_image?: boolean };
+      const input = rest as { symbol?: string; interval?: string };
       try {
         // 45s bridge budget: the EA render path queues behind the MT5 terminal
         // and routinely outlives the default 15s, which surfaced as a fake
@@ -542,18 +546,24 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         const res = (await bridge.post(
           "/api/agent/chart/snapshot",
           {
-            ...body,
+            ...rest,
             response_format: "json",
           },
           45_000,
         )) as ChartSnapshotBridgeResult;
         // Poll the MT5 capture as long as capture_mt5_chart does (30s) — the
         // old 8s ceiling timed out before the EA's own budget even mattered.
-        return resolveChartSnapshotResponse(bridge, res, DRAW_CAPTURE_MAX_MS, {
-          tool: "capture_chart_snapshot",
-          symbol: input.symbol,
-          timeframe: input.interval,
-        });
+        return resolveChartSnapshotResponse(
+          bridge,
+          res,
+          DRAW_CAPTURE_MAX_MS,
+          {
+            tool: "capture_chart_snapshot",
+            symbol: input.symbol,
+            timeframe: input.interval,
+          },
+          { inlineImage: inlineImage === true },
+        );
       } catch (e) {
         return formatBridgeError(e);
       }
@@ -566,8 +576,12 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     async (args) => {
       const {
         inline_base64: inlineBase64,
+        inline_image: inlineImage,
         ...body
-      } = (args ?? {}) as Record<string, unknown> & { inline_base64?: boolean };
+      } = (args ?? {}) as Record<string, unknown> & {
+        inline_base64?: boolean;
+        inline_image?: boolean;
+      };
       try {
         // The bridge fans out across timeframes itself — one round trip keeps
         // the images and their numbers in the same response.
@@ -578,6 +592,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         )) as MultiTimeframeBridgeResult;
         return multiTimeframeContent(res, {
           inlineBase64: inlineBase64 === true,
+          inlineImage: inlineImage === true,
         });
       } catch (e) {
         return formatBridgeError(e);
@@ -589,7 +604,11 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "get_recommendation_chart",
     mcpToolConfig("get_recommendation_chart"),
     async (args) => {
-      const { recommendation_id } = args as { recommendation_id: number };
+      const { recommendation_id, inline_image } = args as {
+        recommendation_id: number;
+        inline_image?: boolean;
+      };
+      const inlineOpts = { inlineImage: inline_image === true };
       try {
         const res = (await bridge.get(`/api/agent/chart/${recommendation_id}`, {
           format: "json",
@@ -607,6 +626,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
             },
             res.image_base64,
             { tool: "get_recommendation_chart" },
+            inlineOpts,
           );
         }
 
@@ -627,6 +647,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
             { ok: true, recommendation_id, chartUrl },
             polled.png,
             { tool: "get_recommendation_chart" },
+            inlineOpts,
           );
         }
 
@@ -653,6 +674,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
               { ok: true, recommendation_id, chartUrl },
               polled.png,
               { tool: "get_recommendation_chart" },
+              inlineOpts,
             );
           }
           return {

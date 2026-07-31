@@ -77,14 +77,19 @@ export async function pollBridgeMt5ChartPng(
 /**
  * The single delivery path for a one-image capture.
  *
- * Accepts a Buffer (MT5 poll) or base64 (bridge JSON), validates it, persists
- * the full-resolution PNG for its URL, and attaches a downscaled inline block
- * only when that block is small enough to survive the host's payload cap.
+ * Accepts a Buffer (MT5 poll) or base64 (bridge JSON), validates it, and
+ * persists the full-resolution PNG for its short-lived URL. The URL **is** the
+ * delivery: neither the Claude consumer app nor ChatGPT rendered the inline
+ * MCP image block to the operator, so by default the ~100KB of base64 was dead
+ * weight in every response. An inline block is attached only when the caller
+ * passes `inlineImage` (the host model wants to *see* the chart, e.g. for
+ * visual confirmation before a recommendation) and it fits the payload cap.
  */
 export async function chartInlineContent(
   meta: Record<string, unknown>,
   image: Buffer | string,
   ctx: ImageDeliveryContext = { tool: "capture_chart_snapshot" },
+  opts: { inlineImage?: boolean } = {},
 ): Promise<ChartInlineResponse> {
   const buffer = Buffer.isBuffer(image)
     ? image
@@ -95,7 +100,11 @@ export async function chartInlineContent(
     return brokenImageResult(prepared.reason, meta, ctx);
   }
 
-  const attached = !prepared.inline.overCap;
+  const wantsInline = opts.inlineImage === true;
+  const attached = wantsInline && !prepared.inline.overCap;
+  const skipReason = !wantsInline
+    ? ("inline_not_requested" as const)
+    : ("over_cap" as const);
   const content: McpContentBlock[] = [
     {
       type: "text",
@@ -103,7 +112,7 @@ export async function chartInlineContent(
         {
           ...meta,
           chartUrl: meta.chartUrl ?? meta.chart_url,
-          ...imageDeliveryFields(prepared, attached),
+          ...imageDeliveryFields(prepared, attached, skipReason),
         },
         null,
         2,
@@ -195,7 +204,7 @@ export interface MultiTimeframeBridgeResult {
  */
 export async function multiTimeframeContent(
   result: MultiTimeframeBridgeResult,
-  options: { inlineBase64?: boolean } = {},
+  options: { inlineBase64?: boolean; inlineImage?: boolean } = {},
 ): Promise<ChartInlineResponse> {
   const candidates = (result.snapshots ?? []).filter(
     (snapshot) => typeof snapshot.image_base64 === "string" && snapshot.image_base64,
@@ -204,6 +213,9 @@ export async function multiTimeframeContent(
   const symbol = result.symbol;
   const totalBudget = maxTotalInlineImageBytes();
   let remainingBudget = totalBudget;
+  // inline_base64 implies wanting the pixels — it existed before inline_image
+  // and callers using it expect image data in the response.
+  const wantsInline = options.inlineImage === true || options.inlineBase64 === true;
 
   const frames = [];
   for (const snapshot of candidates) {
@@ -220,17 +232,20 @@ export async function multiTimeframeContent(
       continue;
     }
     const fitsBudget = prepared.inline.buffer.length <= remainingBudget;
-    const attached = !prepared.inline.overCap && fitsBudget;
+    const attached = wantsInline && !prepared.inline.overCap && fitsBudget;
     if (attached) remainingBudget -= prepared.inline.buffer.length;
     frames.push({
       snapshot,
       prepared,
       attached,
-      // Distinguishing the two is what tells the operator whether the frame was
-      // inherently too big or simply queued behind earlier ones.
-      skipReason: prepared.inline.overCap
-        ? ("over_cap" as const)
-        : ("budget_exhausted" as const),
+      // Distinguishing the causes is what tells the operator whether the frame
+      // was never requested inline, inherently too big, or queued behind
+      // earlier ones.
+      skipReason: !wantsInline
+        ? ("inline_not_requested" as const)
+        : prepared.inline.overCap
+          ? ("over_cap" as const)
+          : ("budget_exhausted" as const),
     });
   }
 
@@ -261,7 +276,9 @@ export async function multiTimeframeContent(
     image_delivery:
       usable.length === 0
         ? "NO images captured — do not describe any chart image"
-        : "full-resolution PNGs at each snapshot's image_url; frames that fit the payload budget are also attached as inline image blocks",
+        : wantsInline
+          ? "full-resolution PNGs at each snapshot's image_url (links expire in ~3 minutes); frames that fit the payload budget are also attached as inline image blocks"
+          : "full-resolution PNGs at each snapshot's image_url (links expire in ~3 minutes) — give the operator the links; pass inline_image=true only when YOU need to inspect the charts yourself",
     inline_budget_bytes: totalBudget,
     ...(usable.length === 0
       ? {
@@ -329,6 +346,7 @@ export async function resolveChartSnapshotResponse(
   res: ChartSnapshotBridgeResult,
   pollMaxMs = DEFAULT_MAX_MS,
   ctx: ImageDeliveryContext = { tool: "capture_chart_snapshot" },
+  opts: { inlineImage?: boolean } = {},
 ): Promise<ChartInlineResponse> {
   const context: ImageDeliveryContext = {
     ...ctx,
@@ -358,6 +376,7 @@ export async function resolveChartSnapshotResponse(
         },
         polled.png,
         context,
+        opts,
       );
     }
   }
@@ -371,6 +390,7 @@ export async function resolveChartSnapshotResponse(
       },
       res.image_base64,
       context,
+      opts,
     );
   }
 

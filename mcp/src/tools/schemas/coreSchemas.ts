@@ -576,7 +576,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_chart_snapshot",
     domain: "core",
     description:
-      "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. Always returns image_url for the full-resolution PNG, and attaches a downscaled copy inline when it fits the response budget — if image_attached is false, give the operator the image_url link. Set source=mt5 to photograph the connected MetaTrader terminal instead — only meaningful while the EA is online and the operator asked for it. When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. Returns image_url for the full-resolution PNG — SHARE THAT LINK with the operator; it expires after ~3 minutes. No image is attached inline by default: pass inline_image=true only when YOU need to see the chart pixels (e.g. visual confirmation before a recommendation). Set source=mt5 to photograph the connected MetaTrader terminal instead — only meaningful while the EA is online and the operator asked for it. When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -585,6 +585,12 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       chart_drawings: zChartDrawings,
       layout_id: z.string().optional(),
       source: z.enum(["platform", "mt5"]).optional(),
+      inline_image: z
+        .boolean()
+        .optional()
+        .describe(
+          "Attach the chart as an inline image block so the assistant can see it (default false — the operator gets the image_url link either way).",
+        ),
     },
     annotations: READ_ONLY,
   },
@@ -592,7 +598,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_multi_timeframe_snapshot",
     domain: "core",
     description:
-      "Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels); a timeframe that fails to render is reported in missing_timeframes while the rest still return. Every frame carries an image_url for its full-resolution PNG; frames that fit the response budget are also attached inline (image_attached). When: before every recommendation — use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
+      "Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels); a timeframe that fails to render is reported in missing_timeframes while the rest still return. Every frame returns an image_url (expires ~3 minutes) — SHARE THE LINKS with the operator. No images are attached inline by default: pass inline_image=true only when YOU need to inspect the charts (visual confirmation before a recommendation). When: before every recommendation — use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
     inputSchema: {
       symbol: zSymbol,
       timeframes: z
@@ -614,11 +620,17 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         .boolean()
         .optional()
         .describe("Attach per-timeframe numbers (default true). Turn off only for a pure visual look."),
+      inline_image: z
+        .boolean()
+        .optional()
+        .describe(
+          "Attach the charts as inline image blocks so the assistant can see them (default false — the operator gets the image_url links either way).",
+        ),
       inline_base64: z
         .boolean()
         .optional()
         .describe(
-          "Also repeat raw base64 inside the JSON block (default false — images already arrive as inline image blocks).",
+          "Also repeat raw base64 inside the JSON block (default false; implies inline_image).",
         ),
       fresh: z
         .boolean()
@@ -631,8 +643,16 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_recommendation_chart",
     domain: "core",
     description:
-      "Fetches the stored chart PNG for a previously created recommendation and returns it inline. When: after create_recommendation, to show the chart recorded with it. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for a live chart instead. read-only.",
-    inputSchema: { recommendation_id: zTradeId },
+      "Fetches the stored chart PNG for a previously created recommendation and returns an image_url link (expires ~3 minutes) — share it with the operator; pass inline_image=true only when YOU need to see the chart. When: after create_recommendation, to show the chart recorded with it. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for a live chart instead. read-only.",
+    inputSchema: {
+      recommendation_id: zTradeId,
+      inline_image: z
+        .boolean()
+        .optional()
+        .describe(
+          "Attach the chart as an inline image block so the assistant can see it (default false — the operator gets the image_url link either way).",
+        ),
+    },
     annotations: READ_ONLY,
   },
   {

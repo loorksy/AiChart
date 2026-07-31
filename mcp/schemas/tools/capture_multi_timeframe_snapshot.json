@@ -29,8 +29,12 @@
       "description": "Attach per-timeframe numbers (default true). Turn off only for a pure visual look.",
       "type": "boolean"
     },
+    "inline_image": {
+      "description": "Attach the charts as inline image blocks so the assistant can see them (default false — the operator gets the image_url links either way).",
+      "type": "boolean"
+    },
     "inline_base64": {
-      "description": "Also repeat raw base64 inside the JSON block (default false — images already arrive as inline image blocks).",
+      "description": "Also repeat raw base64 inside the JSON block (default false; implies inline_image).",
       "type": "boolean"
     },
     "fresh": {

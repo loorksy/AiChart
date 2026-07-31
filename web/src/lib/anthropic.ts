@@ -14,13 +14,9 @@ import { getPlatformValue } from "./platformConfig";
 
 export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
 
-/** Models the platform offers in the admin picker (id → display label). */
-export const ANTHROPIC_MODEL_CHOICES: { id: string; label: string }[] = [
-  { id: "claude-fable-5", label: "Claude Fable 5" },
-  { id: "claude-opus-5", label: "Claude Opus 5" },
-  { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-  { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
-];
+// Single source of truth for the offered models lives in the leaf catalogue —
+// the picker, the settings validator, and this client must never disagree.
+export { ANTHROPIC_MODEL_CHOICES } from "./modelCatalog";
 
 export function getAnthropicModel(): string {
   return getPlatformValue("ANTHROPIC_MODEL") || DEFAULT_ANTHROPIC_MODEL;

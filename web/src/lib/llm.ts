@@ -22,6 +22,7 @@ import {
   type OpenAICompatTarget,
 } from "./openaiCompat";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { isAllowedModelRef } from "./modelCatalog";
 import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
 import { createLogger } from "./logger";
 
@@ -66,17 +67,34 @@ export function currentRequestModel(): RequestModelSelection | undefined {
  * Resolve a user's stored preference into an applicable selection.
  *
  * Returns null — meaning "use the platform default" — when the preference is
- * unset, malformed, or names a provider whose key the operator has not
- * configured. A user must never be able to point the platform at a provider it
- * cannot authenticate against.
+ * unset, malformed, outside the curated model catalogue, or names a provider
+ * whose key the operator has not configured. A user must never be able to
+ * point the platform at a provider it cannot authenticate against, nor at a
+ * model the platform has not committed to.
  */
 export async function resolveUserModelSelection(
   ref?: string | null,
 ): Promise<RequestModelSelection | null> {
   const parsed = parseModelRef(ref);
   if (!parsed) return null;
+  if (!(await isOfferedModelRef(parsed))) return null;
   const key = await getPlatformValueAsync(PROVIDER_KEY_FIELD[parsed.provider]);
   return key ? parsed : null;
+}
+
+/**
+ * The catalogue plus the admin's own configured default — a stored preference
+ * equal to the platform default must keep working even if that default was set
+ * outside the curated list.
+ */
+export async function isOfferedModelRef(
+  parsed: RequestModelSelection,
+): Promise<boolean> {
+  if (isAllowedModelRef(`${parsed.provider}/${parsed.model}`)) return true;
+  const configuredField =
+    parsed.provider === "anthropic" ? "ANTHROPIC_MODEL" : "AI_MODEL";
+  const configured = (await getPlatformValueAsync(configuredField))?.trim();
+  return Boolean(configured) && configured === parsed.model;
 }
 
 export function parseModelRef(ref?: string | null): RequestModelSelection | null {

@@ -109,8 +109,21 @@ describe("capture_multi_timeframe_snapshot tool definition", () => {
 });
 
 describe("multiTimeframeContent", () => {
-  it("emits one image block per captured timeframe", async () => {
+  it("returns URL-only frames by default", async () => {
     const result = await multiTimeframeContent(BRIDGE_RESULT);
+    assert.equal(result.content.filter((b) => b.type === "image").length, 0);
+    const parsed = JSON.parse((result.content[0] as { text: string }).text);
+    for (const snap of parsed.snapshots) {
+      assert.equal(snap.image_attached, false);
+      assert.equal(snap.image_block_index, null);
+      assert.ok(snap.image_url);
+    }
+  });
+
+  it("emits one image block per captured timeframe when inline is requested", async () => {
+    const result = await multiTimeframeContent(BRIDGE_RESULT, {
+      inlineImage: true,
+    });
     const images = result.content.filter((block) => block.type === "image");
     assert.equal(images.length, 3);
     for (const block of images) {
@@ -122,7 +135,9 @@ describe("multiTimeframeContent", () => {
   });
 
   it("labels each image with its own timeframe and numbers", async () => {
-    const result = await multiTimeframeContent(BRIDGE_RESULT);
+    const result = await multiTimeframeContent(BRIDGE_RESULT, {
+      inlineImage: true,
+    });
     // Blocks after the summary alternate label → image, so the model can bind
     // a chart to the timeframe it belongs to.
     const [, firstLabel, firstImage] = result.content;
@@ -134,7 +149,9 @@ describe("multiTimeframeContent", () => {
   });
 
   it("keeps base64 out of the JSON summary by default", async () => {
-    const summary = (await multiTimeframeContent(BRIDGE_RESULT)).content[0] as {
+    const summary = (
+      await multiTimeframeContent(BRIDGE_RESULT, { inlineImage: true })
+    ).content[0] as {
       text: string;
     };
     const parsed = JSON.parse(summary.text);

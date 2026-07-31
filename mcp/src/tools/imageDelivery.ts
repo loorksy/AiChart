@@ -356,8 +356,11 @@ export async function prepareImage(
   };
 }
 
-/** Why an image did not travel inline — the two causes need different advice. */
-export type InlineSkipReason = "over_cap" | "budget_exhausted";
+/** Why an image did not travel inline — each cause needs different advice. */
+export type InlineSkipReason =
+  | "over_cap"
+  | "budget_exhausted"
+  | "inline_not_requested";
 
 function skipExplanation(
   prepared: PreparedImage,
@@ -365,6 +368,9 @@ function skipExplanation(
 ): string {
   if (!prepared.stored) {
     return "image could not be inlined and no storage URL is available";
+  }
+  if (reason === "inline_not_requested") {
+    return "give the operator the image_url link (it expires in ~3 minutes). No inline image was attached — pass inline_image=true only when YOU need to inspect the chart pixels yourself.";
   }
   const bytes = prepared.inline.buffer.length;
   return reason === "budget_exhausted"
@@ -393,8 +399,15 @@ export function imageDeliveryFields(
     inline_width: attached ? prepared.inline.width : null,
     inline_height: attached ? prepared.inline.height : null,
     image_delivery: attached
-      ? "full-resolution PNG at image_url; a downscaled copy is attached as the image block below"
+      ? "full-resolution PNG at image_url (link expires in ~3 minutes); a downscaled copy is attached as the image block below"
       : skipExplanation(prepared, skipReason),
+    ...(attached
+      ? {}
+      : {
+          // Anti-hallucination: with no inline block the model has seen NOTHING.
+          note:
+            "You did NOT receive this chart's pixels. Do not describe or imply what the chart looks like — share image_url with the operator instead.",
+        }),
   };
 }
 

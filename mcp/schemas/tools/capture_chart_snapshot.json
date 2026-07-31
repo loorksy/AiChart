@@ -34,6 +34,10 @@
         "platform",
         "mt5"
       ]
+    },
+    "inline_image": {
+      "description": "Attach the chart as an inline image block so the assistant can see it (default false — the operator gets the image_url link either way).",
+      "type": "boolean"
     }
   },
   "required": [

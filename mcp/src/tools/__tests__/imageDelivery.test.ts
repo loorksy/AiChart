@@ -244,11 +244,29 @@ describe("prepareImage", () => {
 });
 
 describe("chartInlineContent", () => {
-  it("attaches the image block and reports the bytes actually sent", async () => {
+  it("returns URL-only by default — no inline image block", async () => {
     const res = await chartInlineContent({ ok: true, status: "ready" }, TINY_PNG, {
       tool: "capture_chart_snapshot",
       symbol: "XAUUSD",
     });
+    assert.equal(res.content.filter((b) => b.type === "image").length, 0);
+
+    const meta = JSON.parse((res.content[0] as { text: string }).text);
+    assert.equal(meta.ok, true);
+    assert.equal(meta.image_attached, false);
+    assert.equal(meta.image_bytes, 0);
+    assert.ok(meta.image_url, "the URL is the delivery");
+    assert.match(meta.image_delivery, /inline_image=true/);
+    assert.match(meta.note, /Do not describe/);
+  });
+
+  it("attaches the image block when inline_image is requested", async () => {
+    const res = await chartInlineContent(
+      { ok: true, status: "ready" },
+      TINY_PNG,
+      { tool: "capture_chart_snapshot", symbol: "XAUUSD" },
+      { inlineImage: true },
+    );
     const images = res.content.filter((b) => b.type === "image");
     assert.equal(images.length, 1);
 
@@ -264,14 +282,16 @@ describe("chartInlineContent", () => {
     assert.equal(meta.image_bytes, sent.length);
   });
 
-  it("returns the URL alone, with NO image block, when over the cap", async () => {
+  it("returns the URL alone even with inline_image when over the cap", async () => {
     process.env.MCP_MAX_INLINE_IMAGE_BYTES = "500";
     try {
       const big = await noisyPng(1400, 900);
-      const res = await chartInlineContent({ ok: true, status: "ready" }, big, {
-        tool: "capture_chart_snapshot",
-        symbol: "XAUUSD",
-      });
+      const res = await chartInlineContent(
+        { ok: true, status: "ready" },
+        big,
+        { tool: "capture_chart_snapshot", symbol: "XAUUSD" },
+        { inlineImage: true },
+      );
 
       assert.equal(res.content.filter((b) => b.type === "image").length, 0);
       const meta = JSON.parse((res.content[0] as { text: string }).text);
@@ -290,6 +310,7 @@ describe("chartInlineContent", () => {
       { ok: true, status: "ready" },
       TINY_PNG.subarray(0, TINY_PNG.length - 12),
       { tool: "capture_mt5_chart", symbol: "XAUUSD" },
+      { inlineImage: true },
     );
 
     assert.equal(res.isError, true);
@@ -307,6 +328,7 @@ describe("chartInlineContent", () => {
       { ok: true },
       TINY_PNG.toString("base64"),
       { tool: "capture_chart_snapshot" },
+      { inlineImage: true },
     );
     assert.equal(res.content.filter((b) => b.type === "image").length, 1);
   });
@@ -323,14 +345,36 @@ describe("multiTimeframeContent image delivery", () => {
     numeric_context: { price: 4130.02 },
   });
 
-  it("keeps a broken frame out of the images and names it in missing_timeframes", async () => {
+  it("returns URL-only frames by default — no inline image blocks", async () => {
     const good = TINY_PNG.toString("base64");
-    const broken = TINY_PNG.subarray(0, 20).toString("base64");
     const res = await multiTimeframeContent({
       ok: true,
       symbol: "XAUUSD",
-      snapshots: [frame("15m", good), frame("1h", broken)],
+      snapshots: [frame("15m", good), frame("1h", good)],
     });
+
+    assert.equal(res.content.filter((b) => b.type === "image").length, 0);
+    const summary = JSON.parse((res.content[0] as { text: string }).text);
+    assert.equal(summary.ok, true);
+    for (const snap of summary.snapshots) {
+      assert.equal(snap.image_attached, false);
+      assert.ok(snap.image_url);
+      assert.match(snap.image_delivery, /inline_image=true/);
+    }
+    assert.match(summary.image_delivery, /give the operator the links/);
+  });
+
+  it("keeps a broken frame out of the images and names it in missing_timeframes", async () => {
+    const good = TINY_PNG.toString("base64");
+    const broken = TINY_PNG.subarray(0, 20).toString("base64");
+    const res = await multiTimeframeContent(
+      {
+        ok: true,
+        symbol: "XAUUSD",
+        snapshots: [frame("15m", good), frame("1h", broken)],
+      },
+      { inlineImage: true },
+    );
 
     assert.equal(res.content.filter((b) => b.type === "image").length, 1);
     const summary = JSON.parse((res.content[0] as { text: string }).text);
@@ -344,11 +388,14 @@ describe("multiTimeframeContent image delivery", () => {
     process.env.MCP_MAX_TOTAL_INLINE_IMAGE_BYTES = "1";
     try {
       const good = TINY_PNG.toString("base64");
-      const res = await multiTimeframeContent({
-        ok: true,
-        symbol: "XAUUSD",
-        snapshots: [frame("15m", good), frame("1h", good)],
-      });
+      const res = await multiTimeframeContent(
+        {
+          ok: true,
+          symbol: "XAUUSD",
+          snapshots: [frame("15m", good), frame("1h", good)],
+        },
+        { inlineImage: true },
+      );
 
       // Budget of 1 byte fits nothing, so every frame falls back to its URL.
       assert.equal(res.content.filter((b) => b.type === "image").length, 0);

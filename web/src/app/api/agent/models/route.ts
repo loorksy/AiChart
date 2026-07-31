@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requirePaidAccess, handleError } from "@/lib/api";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
-import { listOpenAIChatModels } from "@/lib/openaiCompat";
-import { ANTHROPIC_MODEL_CHOICES, DEFAULT_ANTHROPIC_MODEL } from "@/lib/anthropic";
+import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/anthropic";
+import {
+  ANTHROPIC_MODEL_CHOICES,
+  OPENAI_MODEL_CHOICES,
+} from "@/lib/modelCatalog";
 import { getSettings } from "@/lib/store";
-import { createLogger } from "@/lib/logger";
-
-const log = createLogger("agent.models");
 
 export interface AgentModelOption {
   /** "provider/model" — what the client stores as the preference. */
@@ -16,15 +16,14 @@ export interface AgentModelOption {
   label: string;
 }
 
-/** Cache the OpenAI catalogue briefly — it changes rarely and the list is paged. */
-let openaiCache: { at: number; models: AgentModelOption[] } | null = null;
-const CACHE_MS = 10 * 60 * 1000;
-
 /**
  * Models THIS user may pick from, for the chat composer's model selector.
  *
- * A provider appears only when the operator has configured its key: the admin
- * owns credentials, the user owns the choice. Never exposes key material.
+ * The list is the platform's curated catalogue, not the provider's: an API key
+ * exposes dozens of ids the platform never vetted, and offering them all put
+ * broken or unintended choices one tap away. A provider appears only when the
+ * operator has configured its key — the admin owns credentials, the user picks
+ * among the committed models. Never exposes key material.
  */
 export async function GET() {
   try {
@@ -41,25 +40,24 @@ export async function GET() {
     const options: AgentModelOption[] = [];
 
     if (openaiKey) {
-      if (openaiCache && Date.now() - openaiCache.at < CACHE_MS) {
-        options.push(...openaiCache.models);
-      } else {
-        try {
-          const models = await listOpenAIChatModels(openaiKey);
-          const mapped: AgentModelOption[] = models.map((m) => ({
-            ref: `openai/${m.id}`,
-            provider: "openai" as const,
-            model: m.id,
-            label: m.id,
-          }));
-          openaiCache = { at: Date.now(), models: mapped };
-          options.push(...mapped);
-        } catch (error) {
-          // A provider outage must not empty the picker for the other provider.
-          log.warn("agent.models.openai_list_failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+      options.push(
+        ...OPENAI_MODEL_CHOICES.map((m) => ({
+          ref: `openai/${m.id}`,
+          provider: "openai" as const,
+          model: m.id,
+          label: m.label,
+        })),
+      );
+      // The admin's configured default must stay pickable even if it predates
+      // (or was deliberately set outside) the curated catalogue.
+      const adminModel = defaultOpenAiModel?.trim();
+      if (adminModel && !OPENAI_MODEL_CHOICES.some((m) => m.id === adminModel)) {
+        options.push({
+          ref: `openai/${adminModel}`,
+          provider: "openai",
+          model: adminModel,
+          label: adminModel,
+        });
       }
     }
 

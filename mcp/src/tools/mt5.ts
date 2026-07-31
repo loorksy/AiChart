@@ -75,7 +75,12 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "capture_mt5_chart",
     mcpToolConfig("capture_mt5_chart"),
-    async (body) => {
+    async (rawBody) => {
+      const { inline_image: inlineImageRaw, ...body } = (rawBody ?? {}) as Record<
+        string,
+        unknown
+      > & { inline_image?: boolean };
+      const inlineOpts = { inlineImage: inlineImageRaw === true };
       const input = body as {
         symbol: string;
         interval?: string;
@@ -102,11 +107,17 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
             market: "forex",
             response_format: "json",
           })) as ChartSnapshotBridgeResult;
-          return resolveChartSnapshotResponse(bridge, snapRes, undefined, {
-            tool: "capture_mt5_chart",
-            symbol: input.symbol,
-            timeframe: input.interval,
-          });
+          return resolveChartSnapshotResponse(
+            bridge,
+            snapRes,
+            undefined,
+            {
+              tool: "capture_mt5_chart",
+              symbol: input.symbol,
+              timeframe: input.interval,
+            },
+            inlineOpts,
+          );
         } catch (e) {
           return formatBridgeError(e);
         }
@@ -181,6 +192,7 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
             symbol: input.symbol,
             timeframe: input.interval,
           },
+          inlineOpts,
         );
       } catch (e) {
         return formatBridgeError(e);
