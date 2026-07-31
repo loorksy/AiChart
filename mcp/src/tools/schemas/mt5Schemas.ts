@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { DESTRUCTIVE, READ_ONLY } from "../registry.js";
 import type { ToolDefinition } from "./types.js";
-import { zChartDrawings, zInterval, zSymbol } from "./shapes.js";
+import { zChartDrawings, zInterval, zLooseBoolean, zSymbol } from "./shapes.js";
 
 export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -84,8 +84,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
       stop_loss: z.number().optional(),
       take_profit: z.number().optional(),
       drawings: zChartDrawings,
-      inline_image: z
-        .boolean()
+      inline_image: zLooseBoolean
         .optional()
         .describe(
           "Attach the chart as an inline image block so the assistant can see it (default false — the operator gets the image_url link either way).",

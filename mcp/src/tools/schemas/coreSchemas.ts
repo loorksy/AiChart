@@ -7,6 +7,7 @@ import {
   zChartDrawings,
   zConfidence,
   zInterval,
+  zLooseBoolean,
   zMarket,
   zSide,
   zSymbol,
@@ -585,8 +586,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       chart_drawings: zChartDrawings,
       layout_id: z.string().optional(),
       source: z.enum(["platform", "mt5"]).optional(),
-      inline_image: z
-        .boolean()
+      inline_image: zLooseBoolean
         .optional()
         .describe(
           "Attach the chart as an inline image block so the assistant can see it (default false — the operator gets the image_url link either way).",
@@ -620,14 +620,12 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         .boolean()
         .optional()
         .describe("Attach per-timeframe numbers (default true). Turn off only for a pure visual look."),
-      inline_image: z
-        .boolean()
+      inline_image: zLooseBoolean
         .optional()
         .describe(
           "Attach the charts as inline image blocks so the assistant can see them (default false — the operator gets the image_url links either way).",
         ),
-      inline_base64: z
-        .boolean()
+      inline_base64: zLooseBoolean
         .optional()
         .describe(
           "Also repeat raw base64 inside the JSON block (default false; implies inline_image).",
@@ -646,8 +644,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Fetches the stored chart PNG for a previously created recommendation and returns an image_url link (expires ~3 minutes) — share it with the operator; pass inline_image=true only when YOU need to see the chart. When: after create_recommendation, to show the chart recorded with it. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for a live chart instead. read-only.",
     inputSchema: {
       recommendation_id: zTradeId,
-      inline_image: z
-        .boolean()
+      inline_image: zLooseBoolean
         .optional()
         .describe(
           "Attach the chart as an inline image block so the assistant can see it (default false — the operator gets the image_url link either way).",
