@@ -180,6 +180,25 @@ const SCHEMA = `
     ts   BIGINT NOT NULL
   );
 
+  -- V2-B: MetaApi deploy-hour metering (billed only while deployed).
+  CREATE TABLE IF NOT EXISTS metaapi_deploy_sessions (
+    id            BIGSERIAL PRIMARY KEY,
+    user_id       INTEGER NOT NULL,
+    account_id    TEXT NOT NULL,
+    deployed_at   BIGINT NOT NULL,
+    undeployed_at BIGINT,
+    hours         DOUBLE PRECISION,
+    retail_usd    DOUBLE PRECISION,
+    reason        TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_metaapi_sessions_user ON metaapi_deploy_sessions(user_id, deployed_at);
+
+  -- V2-B: presence heartbeat driving deploy/undeploy.
+  CREATE TABLE IF NOT EXISTS mt_presence (
+    user_id   INTEGER PRIMARY KEY,
+    last_seen BIGINT NOT NULL
+  );
+
   -- V2-A6: fine-grained admin roles (role='admin' users are implicit owners).
   CREATE TABLE IF NOT EXISTS admin_roles (
     user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

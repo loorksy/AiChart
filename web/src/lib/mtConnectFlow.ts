@@ -76,6 +76,21 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
     connectionStatus: account.connectionStatus,
   });
 
+  // V2-B (#96): metering starts the moment the account exists, and the
+  // one-time year backfill runs in the background — a backfill failure
+  // never fails the link (the warehouse gap-fix covers the rest later).
+  void (async () => {
+    try {
+      const { openDeploySession, markPresence } = await import("./metaapi/lifecycle");
+      await openDeploySession(userId, account.id, "first_link");
+      await markPresence(userId);
+      const { backfillYearForUser } = await import("./metaapi/backfill");
+      await backfillYearForUser(userId, account.id);
+    } catch (e) {
+      console.error("[mtConnect] post-link setup failed:", e instanceof Error ? e.message : e);
+    }
+  })();
+
   return {
     ok: true as const,
     platform: input.platform,

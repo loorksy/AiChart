@@ -119,6 +119,26 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     plainStorage: false,
   },
   {
+    // V2-B: MetaApi linking UX (wizard, presence deploy, backfill).
+    key: "METAAPI_UX_ENABLED",
+    label: "تفعيل ربط MT5 السحابي (MetaApi)",
+    labelEn: "METAAPI_UX_ENABLED",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    type: "toggle",
+  },
+  {
+    // V2-B: measured deploy-hour rate — set from the first real MetaApi invoice.
+    key: "METAAPI_HOURLY_USD",
+    label: "تكلفة ساعة النشر في MetaApi (دولار)",
+    labelEn: "METAAPI_HOURLY_USD",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    placeholder: "0.02",
+  },
+  {
     // V2-A4: Google Sign-In — paste the OAuth client and flip the toggle.
     key: "GOOGLE_AUTH_ENABLED",
     label: "تفعيل تسجيل الدخول عبر Google",

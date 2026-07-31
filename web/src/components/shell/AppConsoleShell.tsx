@@ -12,6 +12,7 @@ import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
 import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
 import { useLocale } from "@/hooks/useLocale";
 import { useMe } from "@/hooks/useMe";
+import { Mt5PresencePing } from "@/components/Mt5PresencePing";
 import { cn } from "@/lib/utils";
 
 /**
@@ -205,6 +206,8 @@ export function AppConsoleShell({
 
   return (
     <ShellMenuProvider value={menuApi}>
+      {/* V2-B: presence beat drives the MetaApi deploy/undeploy cost saver. */}
+      <Mt5PresencePing />
       <div
         dir={dir}
         data-testid="app-console-shell"
