@@ -9,6 +9,7 @@ import {
   EA_COMMAND_TTL_MS,
 } from "./eaStore";
 import { resolveMt5Symbol } from "./mt5SymbolMap";
+import { isCompletePng } from "./pngIntegrity";
 import type { EaCommand, EaDrawAndCapturePayload } from "./types";
 
 const DRAW_CAPTURE_TTL_MS = 120_000;
@@ -32,11 +33,26 @@ export function mt5ChartUrl(recId: number | string): string {
   return `/api/agent/chart/${recId}/mt5`;
 }
 
+/**
+ * Ready means "a complete PNG is on disk", not "a path exists".
+ *
+ * `existsSync` alone turned true the instant the upload handler created the
+ * file, so a poller running every 500ms could read a partially-written image:
+ * correct signature, plausible size, no IEND, renders blank. Checking the whole
+ * file costs one read of a file we are about to read anyway.
+ */
 export function isEaChartFileReady(userId: number, captureKey: string): boolean {
+  return readEaChartPngSync(userId, captureKey) !== null;
+}
+
+function readEaChartPngSync(userId: number, captureKey: string): Buffer | null {
+  const filePath = eaChartPngPath(userId, captureKey);
   try {
-    return fs.existsSync(eaChartPngPath(userId, captureKey));
+    if (!fs.existsSync(filePath)) return null;
+    const buffer = fs.readFileSync(filePath);
+    return isCompletePng(buffer) ? buffer : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -44,13 +60,7 @@ export async function readEaChartPng(
   userId: number,
   captureKey: string,
 ): Promise<Buffer | null> {
-  const filePath = eaChartPngPath(userId, captureKey);
-  try {
-    if (!fs.existsSync(filePath)) return null;
-    return fs.readFileSync(filePath);
-  } catch {
-    return null;
-  }
+  return readEaChartPngSync(userId, captureKey);
 }
 
 export async function writeEaChartPng(
@@ -60,7 +70,14 @@ export async function writeEaChartPng(
 ): Promise<string> {
   const filePath = eaChartPngPath(userId, captureKey);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, data);
+  // Write-then-rename: `writeFileSync` on a ~150KB buffer is several syscalls,
+  // and rename is the only way to make the new bytes appear to a concurrent
+  // reader all at once. This is the fix for MT5 captures that arrived truncated
+  // at ~52KB — far below any payload cap, because the poller simply won the
+  // race against the writer.
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, filePath);
   return filePath;
 }
 

@@ -102,7 +102,11 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
             market: "forex",
             response_format: "json",
           })) as ChartSnapshotBridgeResult;
-          return resolveChartSnapshotResponse(bridge, snapRes);
+          return resolveChartSnapshotResponse(bridge, snapRes, undefined, {
+            tool: "capture_mt5_chart",
+            symbol: input.symbol,
+            timeframe: input.interval,
+          });
         } catch (e) {
           return formatBridgeError(e);
         }
@@ -169,8 +173,14 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
             chartUrl: queued.chartUrl,
             captureKey: chartId,
             mt5Symbol: (queued as { mt5Symbol?: string }).mt5Symbol,
+            image_source: "mt5",
           },
-          polled.base64,
+          polled.png,
+          {
+            tool: "capture_mt5_chart",
+            symbol: input.symbol,
+            timeframe: input.interval,
+          },
         );
       } catch (e) {
         return formatBridgeError(e);

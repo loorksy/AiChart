@@ -1,9 +1,38 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { Buffer } from "node:buffer";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { after, before, describe, it } from "node:test";
 import { z } from "zod";
 import { multiTimeframeContent } from "../chartInline.js";
 import { createRecommendationInput } from "../schemas/coreSchemas.js";
 import { getToolDef } from "../schemas/index.js";
+
+/**
+ * Real 1×1 PNGs, one per frame. Placeholder strings no longer work: the
+ * delivery layer validates every buffer before it will attach an image block.
+ */
+const PNG_15M = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+const PNG_1H = PNG_15M;
+const PNG_4H = PNG_15M;
+
+let storeDir: string;
+
+before(() => {
+  storeDir = fs.mkdtempSync(path.join(os.tmpdir(), "aichart-mtf-"));
+  process.env.MCP_IMAGE_STORE_DIR = storeDir;
+  process.env.MCP_IMAGE_PUBLIC_BASE = "https://example.test/mcp-images";
+});
+
+after(() => {
+  fs.rmSync(storeDir, { recursive: true, force: true });
+  delete process.env.MCP_IMAGE_STORE_DIR;
+  delete process.env.MCP_IMAGE_PUBLIC_BASE;
+});
 
 const BRIDGE_RESULT = {
   ok: true,
@@ -19,7 +48,7 @@ const BRIDGE_RESULT = {
     {
       timeframe: "15m",
       content_type: "image/png",
-      image_base64: "AAAA",
+      image_base64: PNG_15M.toString("base64"),
       captured_at: "2026-07-25T10:00:00.000Z",
       image_source: "mt5",
       from_cache: false,
@@ -28,7 +57,7 @@ const BRIDGE_RESULT = {
     {
       timeframe: "1h",
       content_type: "image/png",
-      image_base64: "BBBB",
+      image_base64: PNG_1H.toString("base64"),
       captured_at: "2026-07-25T10:00:01.000Z",
       image_source: "quickchart",
       from_cache: true,
@@ -37,7 +66,7 @@ const BRIDGE_RESULT = {
     {
       timeframe: "4h",
       content_type: "image/png",
-      image_base64: "CCCC",
+      image_base64: PNG_4H.toString("base64"),
       captured_at: "2026-07-25T10:00:02.000Z",
       image_source: "quickchart",
       from_cache: false,
@@ -80,18 +109,20 @@ describe("capture_multi_timeframe_snapshot tool definition", () => {
 });
 
 describe("multiTimeframeContent", () => {
-  it("emits one image block per captured timeframe", () => {
-    const result = multiTimeframeContent(BRIDGE_RESULT);
+  it("emits one image block per captured timeframe", async () => {
+    const result = await multiTimeframeContent(BRIDGE_RESULT);
     const images = result.content.filter((block) => block.type === "image");
     assert.equal(images.length, 3);
-    assert.deepEqual(
-      images.map((block) => (block as { data: string }).data),
-      ["AAAA", "BBBB", "CCCC"],
-    );
+    for (const block of images) {
+      // Every block carries the re-encoded copy, not the raw capture bytes.
+      assert.ok(
+        Buffer.from((block as { data: string }).data, "base64").length > 0,
+      );
+    }
   });
 
-  it("labels each image with its own timeframe and numbers", () => {
-    const result = multiTimeframeContent(BRIDGE_RESULT);
+  it("labels each image with its own timeframe and numbers", async () => {
+    const result = await multiTimeframeContent(BRIDGE_RESULT);
     // Blocks after the summary alternate label → image, so the model can bind
     // a chart to the timeframe it belongs to.
     const [, firstLabel, firstImage] = result.content;
@@ -102,26 +133,27 @@ describe("multiTimeframeContent", () => {
     assert.equal(label.numeric_context.rsi, 54.7);
   });
 
-  it("keeps base64 out of the JSON summary by default", () => {
-    const summary = multiTimeframeContent(BRIDGE_RESULT).content[0] as {
+  it("keeps base64 out of the JSON summary by default", async () => {
+    const summary = (await multiTimeframeContent(BRIDGE_RESULT)).content[0] as {
       text: string;
     };
-    assert.ok(!summary.text.includes("AAAA"));
     const parsed = JSON.parse(summary.text);
     assert.equal(parsed.snapshots[0].imageBase64, undefined);
     assert.equal(parsed.snapshots[0].image_block_index, 0);
     assert.equal(parsed.snapshots[0].numeric_context.price, 4130.02);
+    assert.ok(parsed.snapshots[0].image_url, "each frame keeps a durable URL");
   });
 
-  it("inlines base64 only when the caller asks", () => {
-    const summary = multiTimeframeContent(BRIDGE_RESULT, {
-      inlineBase64: true,
-    }).content[0] as { text: string };
-    assert.equal(JSON.parse(summary.text).snapshots[0].imageBase64, "AAAA");
+  it("inlines base64 only when the caller asks", async () => {
+    const summary = (
+      await multiTimeframeContent(BRIDGE_RESULT, { inlineBase64: true })
+    ).content[0] as { text: string };
+    const first = JSON.parse(summary.text).snapshots[0];
+    assert.ok(typeof first.imageBase64 === "string" && first.imageBase64.length > 0);
   });
 
-  it("reports the missing timeframe without failing the whole call", () => {
-    const result = multiTimeframeContent(BRIDGE_RESULT);
+  it("reports the missing timeframe without failing the whole call", async () => {
+    const result = await multiTimeframeContent(BRIDGE_RESULT);
     assert.notEqual(result.isError, true);
     const parsed = JSON.parse((result.content[0] as { text: string }).text);
     assert.equal(parsed.ok, true);
@@ -131,8 +163,8 @@ describe("multiTimeframeContent", () => {
     ]);
   });
 
-  it("is an error only when nothing was captured", () => {
-    const result = multiTimeframeContent({
+  it("is an error only when nothing was captured", async () => {
+    const result = await multiTimeframeContent({
       ...BRIDGE_RESULT,
       snapshots: [],
       captured_timeframes: [],
@@ -141,8 +173,8 @@ describe("multiTimeframeContent", () => {
     assert.equal(result.content.filter((b) => b.type === "image").length, 0);
   });
 
-  it("drops snapshot entries that carry no image", () => {
-    const result = multiTimeframeContent({
+  it("drops snapshot entries that carry no image", async () => {
+    const result = await multiTimeframeContent({
       ...BRIDGE_RESULT,
       snapshots: [{ timeframe: "1h", image_base64: "" }],
     });

@@ -22,6 +22,7 @@ import { wildcardPath } from "./http/wildcardPath.js";
 import { logPublicWidgetFetch, widgetHtmlByPublicPath } from "./ui/index.js";
 import { STATIC_ASSETS } from "./ui/runtime.js";
 import { normalizeWidgetPublicPath } from "./ui/publicPath.js";
+import { getImage } from "./tools/imageStore.js";
 import { MCP_SERVER_VERSION } from "./tools/registry.js";
 import { gitCommit } from "./version.js";
 
@@ -56,6 +57,29 @@ app.get("/health", (_req, res) => {
     authMode: cfg.authMode,
     mcpUrl: mcpServerUrl.href,
   });
+});
+
+/**
+ * Captured chart images — the reliable delivery path for the capture tools.
+ *
+ * Unauthenticated by design: the MCP host that has to render the image holds no
+ * OAuth token of its own. The 128-bit random id in the path is the capability,
+ * and entries expire (`MCP_IMAGE_TTL_MS`, 24h default).
+ *
+ * No nginx rule is needed — `location ^~ /mcp` is a prefix match, so
+ * `/mcp-images/...` already forwards to this process.
+ */
+app.get("/mcp-images/:name", (req, res) => {
+  const image = getImage(req.params.name);
+  if (!image) {
+    res.status(404).json({ error: "Image not found or expired" });
+    return;
+  }
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Content-Type", image.contentType);
+  res.setHeader("Cache-Control", `public, max-age=${image.maxAgeSeconds}`);
+  res.removeHeader("X-Frame-Options");
+  res.send(image.buffer);
 });
 
 /** Static MCP App templates — no auth; hosts may fetch markup outside the MCP session. */

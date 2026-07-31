@@ -6,6 +6,7 @@ import {
   mt5ChartUrl,
   writeEaChartPng,
 } from "@/lib/eaChartDraw";
+import { isCompletePng } from "@/lib/pngIntegrity";
 import { getRecommendation, updateRecommendationChartUrl } from "@/lib/store";
 
 /**
@@ -43,8 +44,17 @@ export async function POST(req: NextRequest) {
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    if (bytes.length < 100 || bytes[0] !== 0x89) {
-      return NextResponse.json({ error: "Invalid PNG payload." }, { status: 400 });
+    // Reject at the door rather than storing an image that renders blank: the
+    // old `bytes[0] !== 0x89` sniff passed any truncated upload, since the
+    // signature survives a cut-short transfer intact.
+    if (!isCompletePng(bytes)) {
+      return NextResponse.json(
+        {
+          error: "Invalid or truncated PNG payload.",
+          bytes: bytes.length,
+        },
+        { status: 400 },
+      );
     }
 
     const storedPath = await writeEaChartPng(conn.user_id, captureKey, bytes);
