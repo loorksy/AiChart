@@ -194,6 +194,18 @@ const SCHEMA = `
     ts   INTEGER NOT NULL
   );
 
+  -- V2-A4: external identity links (Google today; provider column keeps it open).
+  CREATE TABLE IF NOT EXISTS oauth_identities (
+    provider   TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    user_id    INTEGER NOT NULL,
+    email      TEXT,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (provider, subject),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_oauth_identities_user ON oauth_identities(user_id);
+
   CREATE TABLE IF NOT EXISTS trade_intents (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id           INTEGER NOT NULL,

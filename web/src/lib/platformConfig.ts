@@ -119,6 +119,34 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     plainStorage: false,
   },
   {
+    // V2-A4: Google Sign-In — paste the OAuth client and flip the toggle.
+    key: "GOOGLE_AUTH_ENABLED",
+    label: "تفعيل تسجيل الدخول عبر Google",
+    labelEn: "GOOGLE_AUTH_ENABLED",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    type: "toggle",
+  },
+  {
+    key: "GOOGLE_OAUTH_CLIENT_ID",
+    label: "معرّف عميل Google OAuth",
+    labelEn: "GOOGLE_OAUTH_CLIENT_ID",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    placeholder: "xxxx.apps.googleusercontent.com",
+  },
+  {
+    key: "GOOGLE_OAUTH_CLIENT_SECRET",
+    label: "سر عميل Google OAuth",
+    labelEn: "GOOGLE_OAUTH_CLIENT_SECRET",
+    group: "ops",
+    secret: true,
+    plainStorage: false,
+    placeholder: "GOCSPX-...",
+  },
+  {
     // V2-A3: Stripe goes live the moment these are pasted — no deploy needed.
     key: "STRIPE_SECRET_KEY",
     label: "مفتاح Stripe السري",
