@@ -84,6 +84,7 @@ export default async function ChartSymbolPage({
           layoutId={layout.id}
           initialInterval={qsInterval || layout.interval}
           initialState={state}
+          capture={search.capture === "1"}
         />
       );
     }

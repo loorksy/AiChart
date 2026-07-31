@@ -94,6 +94,13 @@ export function SmartChartWorkspace(props: {
   initialInterval?: string;
   /** Saved drawings/recommendation restored on load (no re-analysis). */
   initialState?: ChartLayoutState | null;
+  /**
+   * Headless screenshot render. The layout poll and autosave are suspended:
+   * during a capture they would pull the SAVED symbol/interval back over the
+   * requested one — the screenshot must show what was asked for, and must not
+   * write the capture's transient state back to the operator's layout.
+   */
+  capture?: boolean;
 }) {
   return (
     <Suspense fallback={<ChartLoading />}>
@@ -110,6 +117,7 @@ function SmartChartWorkspaceInner({
   layoutId,
   initialInterval,
   initialState,
+  capture = false,
 }: {
   recommendations?: Recommendation[];
   agentReady?: boolean;
@@ -122,6 +130,8 @@ function SmartChartWorkspaceInner({
   initialInterval?: string;
   /** Saved drawings/recommendation restored on load (no re-analysis). */
   initialState?: ChartLayoutState | null;
+  /** Headless screenshot render — see the wrapper's doc comment. */
+  capture?: boolean;
 }) {
   const chartRef = useRef<TvChartHandle>(null);
   const agentRef = useRef<SmartChartAgentHandle>(null);
@@ -260,7 +270,9 @@ function SmartChartWorkspaceInner({
   const layoutCursorRef = useRef<string | null>(null);
   const savePendingRef = useRef(false);
   useEffect(() => {
-    if (guest || !layoutId) return;
+    // A capture is a read-only render of someone's chart; writing its
+    // transient symbol/interval back would corrupt the operator's saved layout.
+    if (guest || !layoutId || capture) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     savePendingRef.current = true;
     saveTimerRef.current = setTimeout(() => {
@@ -292,6 +304,7 @@ function SmartChartWorkspaceInner({
   }, [
     guest,
     layoutId,
+    capture,
     symbol,
     interval,
     dataSource,
@@ -307,7 +320,9 @@ function SmartChartWorkspaceInner({
   // drawings appear without a reload. Skips while a local save/analysis is
   // in flight to avoid clobbering fresher local state.
   useEffect(() => {
-    if (guest || !layoutId) return;
+    // During a capture the poll would yank symbol/interval back to the SAVED
+    // layout mid-screenshot — the requested frame would never be photographed.
+    if (guest || !layoutId || capture) return;
     let stopped = false;
 
     const tick = async () => {
@@ -361,7 +376,7 @@ function SmartChartWorkspaceInner({
       stopped = true;
       window.clearInterval(t);
     };
-  }, [guest, layoutId, isAnalyzing, symbol, interval, hydrateFromSnapshot]);
+  }, [guest, layoutId, capture, isAnalyzing, symbol, interval, hydrateFromSnapshot]);
 
   useEffect(() => {
     prefetchKlines(symbol, interval, market);
@@ -736,6 +751,7 @@ function SmartChartWorkspaceInner({
               locale={locale}
               direction={dir}
               theme={chartTheme}
+              capture={capture}
               className="h-full min-h-0 w-full"
               onSymbolChange={handleSymbolChange}
               onIntervalChange={handleIntervalChange}

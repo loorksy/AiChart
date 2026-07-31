@@ -58,6 +58,7 @@ export default function ChartPageClient({
   layoutId,
   initialInterval,
   initialState,
+  capture = false,
 }: {
   email: string | null;
   role: "user" | "admin";
@@ -67,6 +68,8 @@ export default function ChartPageClient({
   layoutId?: string;
   initialInterval?: string;
   initialState?: import("@/components/SmartChartWorkspace").ChartLayoutState | null;
+  /** Headless screenshot render: static chart, no chrome, no background sync. */
+  capture?: boolean;
 }) {
   if (guest) {
     return (
@@ -95,6 +98,7 @@ export default function ChartPageClient({
             layoutId={layoutId}
             initialInterval={initialInterval}
             initialState={initialState}
+            capture={capture}
           />
         </ChartErrorBoundary>
       </div>

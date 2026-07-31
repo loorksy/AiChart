@@ -163,6 +163,8 @@ interface Props {
   locale?: AppLocale;
   direction?: Direction;
   theme?: "light" | "dark";
+  /** Headless screenshot render: drop every toolbar so the PNG is chart only. */
+  capture?: boolean;
   className?: string;
   onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
   onIntervalChange?: (interval: string) => void;
@@ -205,6 +207,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     locale = "ar",
     direction = "rtl",
     theme = "dark",
+    capture = false,
     className,
     onSymbolChange,
     onIntervalChange,
@@ -219,8 +222,12 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const headerButtonsRef = useRef<Map<string, HTMLElement>>(new Map());
   const headerActionsRef = useRef<TvHeaderAction[] | undefined>(headerActions);
   const directionRef = useRef<Direction>(direction);
+  // Read inside the mount effect, which runs once and must not re-run when
+  // unrelated props change.
+  const captureRef = useRef(capture);
   headerActionsRef.current = headerActions;
   directionRef.current = direction;
+  captureRef.current = capture;
   // Stable indirection so the mount effect can call the latest applyDrawings.
   const applyDrawingsRef = useRef<(opts?: { force?: boolean }) => void>(() => {});
   const pushSyncRef = useRef(false);
@@ -363,9 +370,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         // Capture mode: the server opens this page headlessly to photograph the
         // operator's chart. Toolbars are application chrome, not chart content,
         // so they are stripped — the PNG should be the chart and nothing else.
-        const isCapture =
-          typeof window !== "undefined" &&
-          new URLSearchParams(window.location.search).get("capture") === "1";
+        // Read from the prop (the server resolved it) rather than sniffing the
+        // URL, which a client-side navigation can rewrite before this runs.
+        const isCapture = captureRef.current;
 
         const options: ChartingLibraryWidgetOptions = {
           container: el,
