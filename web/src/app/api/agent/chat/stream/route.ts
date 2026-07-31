@@ -511,7 +511,23 @@ export async function POST(req: NextRequest) {
             executionRequiresConfirmation: result.requiresConfirmation,
             executionConfirmed: false,
             summary: result.summary,
-            metadata: { sessionId },
+            metadata: {
+              sessionId,
+              // Blocker diagnostics — without these, a Request ID resolved from
+              // the DB said only "unexpected error" while the real cause lived
+              // (briefly) in stdout. Codes only, never provider payloads.
+              ...(result.envelope?.outcome_class === "operational_blocker"
+                ? {
+                    outcome_class: result.envelope.outcome_class,
+                    failure_code: result.envelope.failure_code ?? null,
+                    failure_stage: result.envelope.failure_stage ?? null,
+                    retryable: result.envelope.retryable ?? null,
+                  }
+                : {}),
+              ...(result.envelope?.degraded_stages?.length
+                ? { degraded_stages: result.envelope.degraded_stages }
+                : {}),
+            },
           });
 
           // Dynamic, model-generated follow-up suggestions for THIS turn/state.
@@ -563,14 +579,37 @@ export async function POST(req: NextRequest) {
             }
             // Cancelled by the user — no partial result, no error badge.
           } else {
+            const classified = classifyAgentError(error);
             if (traceRunId) {
               await finalizeAgentRun({
                 userId: user.id,
                 runId: traceRunId,
                 status: "failed",
-                errorCode: "AGENT_RUN_FAILED",
+                // The taxonomy code, not a constant — "AGENT_RUN_FAILED" told
+                // a Request ID lookup nothing about what actually broke.
+                errorCode: classified.code,
               });
             }
+            // A thrown run previously wrote NO audit row at all, so the
+            // Request ID shown to the operator resolved to nothing.
+            await writeAgentAudit({
+              userId: user.id,
+              requestId,
+              sessionId,
+              symbol: body.chartContext?.symbol,
+              interval: body.chartContext?.interval,
+              decision: "informational",
+              summary: userMessageForFailure(classified.code, body.locale ?? "ar"),
+              metadata: {
+                sessionId,
+                outcome_class: "operational_blocker",
+                failure_code: classified.code,
+                failure_stage: "transport",
+                retryable: classified.retryable,
+                error_name: error instanceof Error ? error.name : typeof error,
+                error_detail: classified.detail.slice(0, 500),
+              },
+            });
             const failed = createActivityEvent({
               type: "final",
               status: "failed",
@@ -580,7 +619,6 @@ export async function POST(req: NextRequest) {
             // Contract guarantee (RELIABILITY_PLAN.md phase-0 SLO): even a
             // crashed run ends with a COMPLETE `final` event carrying an
             // operational_blocker envelope — never only a bare `error` event.
-            const classified = classifyAgentError(error);
             const fallbackResult = buildAgentFallbackResult(
               "Agent run failed before producing a result.",
               activityEvents,

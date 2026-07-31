@@ -21,6 +21,8 @@ export type AgentFailureCode =
   | "timeout"
   | "network"
   | "provider_unavailable"
+  /** Provider rejected the request itself (HTTP 4xx): bad model id, unsupported parameter, oversized context. */
+  | "provider_bad_request"
   | "invalid_payload"
   | "schema_mismatch"
   | "stale_data"
@@ -96,6 +98,20 @@ export function classifyAgentError(error: unknown): {
   }
   if (/\b429\b/.test(message) || lower.includes("rate limit") || lower.includes("quota")) {
     return { code: "rate_limit", retryable: true, detail: message };
+  }
+  // Provider-side request rejections. Before this branch existed, an OpenAI 400
+  // (bad model id, unsupported parameter, context overflow) fell through to
+  // "unknown" and surfaced as "unexpected error — retrying won't help" with no
+  // hint that the model configuration was the problem.
+  if (
+    /\b(400|404|409|413|422)\b/.test(message) ||
+    lower.includes("bad request") ||
+    lower.includes("does not exist") ||
+    lower.includes("context length") ||
+    lower.includes("maximum context") ||
+    lower.includes("unsupported parameter")
+  ) {
+    return { code: "provider_bad_request", retryable: false, detail: message };
   }
   if (/\b(500|502|503|504)\b/.test(message) || lower.includes("overloaded") || lower.includes("unavailable")) {
     return { code: "provider_unavailable", retryable: true, detail: message };
@@ -184,6 +200,8 @@ export function failureCodeFromSynthesizerKind(
       return "rate_limit";
     case "provider_unavailable":
       return "provider_unavailable";
+    case "provider_bad_request":
+      return "provider_bad_request";
     case "timeout":
       return "timeout";
     case "network":
@@ -210,6 +228,8 @@ export function userMessageForFailure(
     timeout: "استغرقت العملية وقتاً أطول من المسموح — أعد المحاولة بعد قليل.",
     network: "تعذّر الاتصال بالشبكة — أعد المحاولة بعد قليل.",
     provider_unavailable: "مزوّد الخدمة غير متاح مؤقتاً — أعد المحاولة بعد قليل.",
+    provider_bad_request:
+      "رفض مزوّد الذكاء الاصطناعي الطلب (نموذج غير موجود أو معاملات غير مدعومة) — راجع إعداد النموذج في لوحة التحكم.",
     invalid_payload: "وصل رد غير صالح من مزوّد الخدمة — أعد المحاولة بعد قليل.",
     schema_mismatch: "رد النموذج لا يطابق العقد المتوقع — أعد المحاولة بعد قليل.",
     stale_data: "الأسعار المتاحة ليست حديثة بما يكفي لقرار موثوق — انتظر ثوانٍ ثم أعد المحاولة.",
@@ -226,6 +246,8 @@ export function userMessageForFailure(
     timeout: "The operation took longer than allowed — try again shortly.",
     network: "A network connection problem occurred — try again shortly.",
     provider_unavailable: "The service provider is temporarily unavailable — try again shortly.",
+    provider_bad_request:
+      "The AI provider rejected the request (missing model or unsupported parameters) — review the model configuration in the admin panel.",
     invalid_payload: "An invalid response arrived from the service provider — try again shortly.",
     schema_mismatch: "The model reply did not match the expected contract — try again shortly.",
     stale_data: "Available prices are not fresh enough for a reliable decision — wait a few seconds and retry.",

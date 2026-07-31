@@ -187,6 +187,7 @@ export type SynthesizerFailureKind =
   | "provider_auth"
   | "provider_rate_limit"
   | "provider_unavailable"
+  | "provider_bad_request"
   | "timeout"
   | "network"
   | "empty_response"
@@ -253,6 +254,18 @@ export function classifySynthesizerError(error: unknown): {
   }
   if (/\b429\b/.test(message) || lower.includes("rate limit") || lower.includes("quota")) {
     return { kind: "provider_rate_limit", retryable: true, detail: message };
+  }
+  // A 4xx from the provider is a request/configuration problem (bad model id,
+  // unsupported parameter, context overflow) — surfacing it as "unknown" hid
+  // the one thing the operator needed to hear: fix the model settings.
+  if (
+    /\b(400|404|409|413|422)\b/.test(message) ||
+    lower.includes("bad request") ||
+    lower.includes("does not exist") ||
+    lower.includes("context length") ||
+    lower.includes("unsupported parameter")
+  ) {
+    return { kind: "provider_bad_request", retryable: false, detail: message };
   }
   if (/\b(500|502|503|504)\b/.test(message) || lower.includes("overloaded")) {
     return { kind: "provider_unavailable", retryable: true, detail: message };

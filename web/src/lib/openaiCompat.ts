@@ -223,7 +223,11 @@ async function readError(res: Response, label: string): Promise<string> {
     return "النموذج النشط حالياً لا يدعم تحليل صور الشارت. يرجى تعديل خيارات نموذج الذكاء الاصطناعي في لوحة التحكم الإدارية (المفاتيح) وتفعيل نموذج يدعم الرؤية (مثل GPT-4o أو Claude 3.5 Sonnet).";
   }
 
-  return apiMsg || `خطأ من ${label} (HTTP ${res.status})`;
+  // Always carry the HTTP status + model: the error classifier keys on the
+  // status code, and the operator log needs to say WHICH model was rejected.
+  return apiMsg
+    ? `HTTP ${res.status} من ${label}: ${apiMsg}`
+    : `خطأ من ${label} (HTTP ${res.status})`;
 }
 
 // ---------- public API ----------
