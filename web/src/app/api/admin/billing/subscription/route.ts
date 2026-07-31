@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { auditAdminAction, requireAdminWith } from "@/lib/adminRoles";
 import { execute, initDb, queryOne } from "@/lib/db";
 import { grantMonthly } from "@/lib/billing/creditLedger";
 import { TIERS, tierDef } from "@/lib/billing/tiers";
@@ -25,7 +26,7 @@ const postSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const admin = await requireAdmin();
+    const { admin } = await requireAdminWith("billing_write");
     await initDb();
     const parsed = postSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -57,6 +58,12 @@ export async function POST(req: Request) {
       periodEnd,
       gift ? "gift" : "monthly_grant",
       gift ? `launch gift by admin:${admin.id}` : `manual activation by admin:${admin.id}`,
+    );
+    await auditAdminAction(
+      admin.id,
+      gift ? "gift_subscription" : "manual_subscription",
+      String(user_id),
+      `${tier} x${months}`,
     );
     const sub = await queryOne("SELECT * FROM subscriptions WHERE user_id = ?", [user_id]);
     return NextResponse.json({ ok: true, subscription: sub, tiers: Object.keys(TIERS) });

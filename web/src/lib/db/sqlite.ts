@@ -194,6 +194,26 @@ const SCHEMA = `
     ts   INTEGER NOT NULL
   );
 
+  -- V2-A6: fine-grained admin roles (role='admin' users are implicit owners).
+  CREATE TABLE IF NOT EXISTS admin_roles (
+    user_id    INTEGER PRIMARY KEY,
+    admin_role TEXT NOT NULL,
+    granted_by INTEGER,
+    granted_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- V2-A6: who did what in the admin panel — money and permission actions.
+  CREATE TABLE IF NOT EXISTS admin_audit (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER NOT NULL,
+    action   TEXT NOT NULL,
+    target   TEXT,
+    detail   TEXT,
+    ts       INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_admin_audit_ts ON admin_audit(ts);
+
   -- V2-A4: external identity links (Google today; provider column keeps it open).
   CREATE TABLE IF NOT EXISTS oauth_identities (
     provider   TEXT NOT NULL,

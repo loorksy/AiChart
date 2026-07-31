@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { auditAdminAction, requireAdminWith } from "@/lib/adminRoles";
 import { execute, query, initDb } from "@/lib/db";
 import { ensureSeedPrices } from "@/lib/billing/usageMeter";
 
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireAdminWith("billing_read");
     await initDb();
     await ensureSeedPrices();
     const rows = await query(
@@ -37,7 +38,7 @@ const putSchema = z.object({
 
 export async function PUT(req: Request) {
   try {
-    await requireAdmin();
+    const { admin } = await requireAdminWith("billing_write");
     await initDb();
     const parsed = putSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -57,6 +58,12 @@ export async function PUT(req: Request) {
         [provider, model, input_usd_per_m, output_usd_per_m, Date.now()],
       );
     }
+    await auditAdminAction(
+      admin.id,
+      "model_price_update",
+      model,
+      `${input_usd_per_m}/${output_usd_per_m}`,
+    );
     return NextResponse.json({ ok: true });
   } catch (err) {
     return handleError(err);

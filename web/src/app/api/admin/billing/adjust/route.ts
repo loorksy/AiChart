@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { auditAdminAction, requireAdminWith } from "@/lib/adminRoles";
 import { initDb } from "@/lib/db";
 import { adjustAdmin, getBalance } from "@/lib/billing/creditLedger";
 
@@ -16,7 +17,7 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const admin = await requireAdmin();
+    const { admin } = await requireAdminWith("billing_write");
     await initDb();
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -27,6 +28,12 @@ export async function POST(req: Request) {
     }
     const { user_id, amount_usd, reason } = parsed.data;
     await adjustAdmin(user_id, amount_usd, reason, admin.id);
+    await auditAdminAction(
+      admin.id,
+      "credit_adjust",
+      String(user_id),
+      `${amount_usd} — ${reason}`,
+    );
     return NextResponse.json({ ok: true, balance: await getBalance(user_id) });
   } catch (err) {
     return handleError(err);
