@@ -223,7 +223,11 @@ async function readError(res: Response, label: string): Promise<string> {
     return "النموذج النشط حالياً لا يدعم تحليل صور الشارت. يرجى تعديل خيارات نموذج الذكاء الاصطناعي في لوحة التحكم الإدارية (المفاتيح) وتفعيل نموذج يدعم الرؤية (مثل GPT-4o أو Claude 3.5 Sonnet).";
   }
 
-  return apiMsg || `خطأ من ${label} (HTTP ${res.status})`;
+  // Always carry the HTTP status + model: the error classifier keys on the
+  // status code, and the operator log needs to say WHICH model was rejected.
+  return apiMsg
+    ? `HTTP ${res.status} من ${label}: ${apiMsg}`
+    : `خطأ من ${label} (HTTP ${res.status})`;
 }
 
 // ---------- public API ----------
@@ -573,6 +577,9 @@ export async function callOpenAICompatStructured<T extends Record<string, unknow
 export interface CompatModelInfo {
   id: string;
   display_name: string;
+  /** Provider-reported creation time (unix seconds) — the only reliable
+   *  "newest" signal; version strings do not sort lexically (…-10 < …-2). */
+  created?: number;
 }
 
 export async function listOpenAIChatModels(
@@ -610,11 +617,14 @@ export async function listOpenAIRealtimeModels(
     { timeoutMs: httpTimeoutMs(), label: "OpenAI models" },
   );
   if (!res.ok) throw new Error(await readError(res, "OpenAI"));
-  const data = (await res.json()) as { data?: { id: string }[] };
-  // Keep only realtime-capable models.
+  const data = (await res.json()) as { data?: { id: string; created?: number }[] };
+  // Keep only models that can host a speech-to-speech session. The
+  // transcribe / whisper / translate variants are realtime-named but do a
+  // different job, and offering them would silently break the voice agent.
   const include = /realtime/i;
+  const exclude = /transcribe|whisper|translate/i;
   return (data.data ?? [])
-    .filter((m) => include.test(m.id))
-    .map((m) => ({ id: m.id, display_name: m.id }))
-    .sort((a, b) => b.id.localeCompare(a.id));
+    .filter((m) => include.test(m.id) && !exclude.test(m.id))
+    .map((m) => ({ id: m.id, display_name: m.id, created: m.created }))
+    .sort((a, b) => (b.created ?? 0) - (a.created ?? 0) || b.id.localeCompare(a.id));
 }

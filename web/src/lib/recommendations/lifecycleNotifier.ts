@@ -16,6 +16,7 @@
 import { execute, queryOne } from "@/lib/db";
 import { dispatchAlert } from "@/lib/alerts";
 import { createLogger } from "@/lib/logger";
+import { lifecycleCard, lifecycleEventLabel } from "@/lib/telegramCards";
 import {
   opportunityCreatedEvent,
   type LifecycleEvent,
@@ -185,7 +186,7 @@ export async function notifyLifecycleEvents(
     }
 
     const title = groupTitle(fresh);
-    const text = fresh.map((event) => `• ${event.detail}`).join("\n");
+    const text = lifecycleCard(fresh);
     const delivery = await dispatchAlert(userId, {
       type: "signal",
       title,
@@ -257,45 +258,6 @@ export async function announceOpportunityCreated(
 
 function groupTitle(events: LifecycleEvent[]): string {
   const symbol = events[0]!.symbol;
-  if (events.length === 1) return `${symbol} · ${eventLabel(events[0]!.type)}`;
+  if (events.length === 1) return `${symbol} · ${lifecycleEventLabel(events[0]!.type)}`;
   return `${symbol} · ${events.length} تحديثات على التوصية`;
-}
-
-function eventLabel(type: LifecycleEvent["type"]): string {
-  switch (type) {
-    case "opportunity_created":
-      return "فرصة جديدة";
-    case "approaching_entry":
-      return "اقتراب من الدخول";
-    case "activated":
-      return "تفعّلت";
-    case "approaching_invalidation":
-      return "اقتراب من الإبطال";
-    case "entry_updated":
-      return "تحديث الخطة";
-    case "scenario_changed":
-      return "تغيّر السيناريو";
-    case "reevaluation_confirmed":
-      return "تأكيد الخطة بعد إعادة التقييم";
-    case "tp1_hit":
-      return "الهدف الأول";
-    case "tp2_hit":
-      return "الهدف الثاني";
-    case "tp3_hit":
-      return "الهدف الثالث";
-    case "sl_hit":
-      return "وقف الخسارة";
-    case "invalidated":
-      return "أُبطلت";
-    case "expired":
-      return "انتهت الصلاحية";
-    case "executed_auto":
-      return "نُفّذت آلياً";
-    case "execution_skipped":
-      return "امتنع التنفيذ";
-    case "economic_event_near":
-      return "حدث اقتصادي وشيك";
-    default:
-      return "تحديث";
-  }
 }

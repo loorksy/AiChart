@@ -99,3 +99,26 @@ async def get_json_artifact_content(
         artifact_id=artifact_id,
         max_bytes=2 * 1024 * 1024,
     )
+
+
+@router.get("/{job_id}/artifacts/{artifact_id}/csv")
+async def get_csv_artifact_rows(
+    job_id: str,
+    artifact_id: str,
+    context: CallerContext = Depends(require_caller),
+    service: JobManager = Depends(manager),
+) -> dict[str, Any]:
+    """Bounded CSV artifact rows (equity curve, trade list) for web visualization."""
+    job = await service.store.get_for_user(job_id, context.user_id)
+    if job is None:
+        raise ServiceError("JOB_NOT_FOUND", "research job not found", 404)
+    reader = JobArtifactService(service.artifacts, service.store)
+    rows = await reader.read_csv_rows(
+        user_id=context.user_id,
+        source_job_id=job_id,
+        artifact_id=artifact_id,
+        required_fields=frozenset(),
+        max_bytes=8 * 1024 * 1024,
+        max_rows=50_000,
+    )
+    return {"rows": rows}

@@ -279,6 +279,19 @@ export async function getStrategyBacktest(
   return row ? toEvidence(row) : null;
 }
 
+/** Most recent backtests for a user — the visual backtest section's feed. */
+export async function listStrategyBacktests(
+  userId: number,
+  limit = 30,
+): Promise<StrategyBacktestEvidence[]> {
+  const rows = await query<StrategyBacktestRow>(
+    `SELECT * FROM strategy_backtests WHERE user_id = ?
+     ORDER BY created_at DESC, id DESC LIMIT ?`,
+    [userId, Math.max(1, Math.min(limit, 100))],
+  );
+  return rows.map(toEvidence);
+}
+
 export async function getLatestStrategyBacktest(
   userId: number,
   strategyId: string,

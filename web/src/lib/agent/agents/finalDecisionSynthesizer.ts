@@ -187,6 +187,8 @@ export type SynthesizerFailureKind =
   | "provider_auth"
   | "provider_rate_limit"
   | "provider_unavailable"
+  | "provider_bad_request"
+  | "provider_billing"
   | "timeout"
   | "network"
   | "empty_response"
@@ -251,8 +253,31 @@ export function classifySynthesizerError(error: unknown): {
   if (/\b(401|403)\b/.test(message) || lower.includes("api key") || message.includes("مفتاح")) {
     return { kind: "provider_auth", retryable: false, detail: message };
   }
+  // Out of credit also arrives as 429 — but it is permanent until someone
+  // tops up the account, so it must not be reported as a transient busy signal.
+  if (
+    lower.includes("no credits") ||
+    lower.includes("insufficient_quota") ||
+    lower.includes("insufficient quota") ||
+    lower.includes("exceeded your current quota") ||
+    lower.includes("billing")
+  ) {
+    return { kind: "provider_billing", retryable: false, detail: message };
+  }
   if (/\b429\b/.test(message) || lower.includes("rate limit") || lower.includes("quota")) {
     return { kind: "provider_rate_limit", retryable: true, detail: message };
+  }
+  // A 4xx from the provider is a request/configuration problem (bad model id,
+  // unsupported parameter, context overflow) — surfacing it as "unknown" hid
+  // the one thing the operator needed to hear: fix the model settings.
+  if (
+    /\b(400|404|409|413|422)\b/.test(message) ||
+    lower.includes("bad request") ||
+    lower.includes("does not exist") ||
+    lower.includes("context length") ||
+    lower.includes("unsupported parameter")
+  ) {
+    return { kind: "provider_bad_request", retryable: false, detail: message };
   }
   if (/\b(500|502|503|504)\b/.test(message) || lower.includes("overloaded")) {
     return { kind: "provider_unavailable", retryable: true, detail: message };

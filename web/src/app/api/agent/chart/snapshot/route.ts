@@ -12,6 +12,7 @@ import {
   mt5ChartUrl,
   queueMt5ChartCapture,
 } from "@/lib/eaChartDraw";
+import { capturePlatformChart } from "@/lib/chart/platformChartCapture";
 
 const schema = z.object({
   symbol: z.string().min(1),
@@ -19,6 +20,13 @@ const schema = z.object({
   market: z.string().optional(),
   pattern_name: z.string().nullish(),
   chart_drawings: z.array(z.record(z.string(), z.unknown())).optional(),
+  /** Open a specific saved layout instead of the user's default chart. */
+  layout_id: z.string().optional(),
+  /**
+   * Capture source. Defaults to the platform chart (what the operator sees);
+   * "mt5" explicitly asks for the connected broker terminal instead.
+   */
+  source: z.enum(["platform", "mt5"]).optional(),
   /** json = base64 PNG for MCP; png = raw image (default for curl). */
   response_format: z.enum(["json", "png"]).optional().default("json"),
 });
@@ -45,6 +53,32 @@ export async function POST(req: NextRequest) {
       100,
       profileForInterval(body.interval),
     );
+
+    // Source order is deliberate: the PLATFORM chart first — that is the chart
+    // the operator is looking at, drawings and all. The broker terminal (EA) is
+    // a picture of a different application and is used only when it is
+    // connected AND explicitly requested; QuickChart is a last-resort redraw.
+    if (body.source !== "mt5") {
+      const platform = await capturePlatformChart({
+        userId,
+        symbol: body.symbol.toUpperCase(),
+        interval: body.interval,
+        layoutId: body.layout_id,
+      });
+      if (platform) {
+        if (body.response_format === "json") {
+          return NextResponse.json({
+            ok: true,
+            content_type: "image/png",
+            image_source: "platform_chart",
+            image_base64: platform.buffer.toString("base64"),
+          });
+        }
+        return new NextResponse(new Uint8Array(platform.buffer), {
+          headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
+        });
+      }
+    }
 
     const mt5 = await canUseMt5ChartCapture(userId, body.symbol);
     if (mt5.ok) {

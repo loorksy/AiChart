@@ -179,6 +179,51 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
     if (snap.connected) armIdleTimer();
   }, [armIdleTimer, assistantSpeaking, controller, error, muted]);
 
+  // Low-latency data lookups: price / account / open trades resolve in about
+  // a second through /api/agent/voice/tools, so the conversation stays natural.
+  // Anything analytical still routes through ask_aichart → the canonical agent.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const quickTools = useMemo((): VoiceTool<any>[] => {
+    const call = async (name: string, args: Record<string, unknown>) => {
+      try {
+        const res = await fetch("/api/agent/voice/tools", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, args }),
+        });
+        return (await res.json()) as Record<string, unknown>;
+      } catch {
+        return { ok: false, error: "network" };
+      }
+    };
+    return [
+      defineVoiceTool({
+        name: "get_market_price",
+        description:
+          "Get the CURRENT live price of a trading symbol (e.g. XAUUSD, EURUSD). Use for quick price questions only.",
+        parameters: z.object({
+          symbol: z.string().min(3).describe("Trading symbol, e.g. XAUUSD"),
+        }),
+        execute: ({ symbol }) => call("get_market_price", { symbol }),
+      }),
+      defineVoiceTool({
+        name: "get_account_overview",
+        description:
+          "Get the connected trading account's balance and equity. Use for quick account questions only.",
+        parameters: z.object({}),
+        execute: () => call("get_account_overview", {}),
+      }),
+      defineVoiceTool({
+        name: "get_open_trades",
+        description:
+          "List currently open positions (symbol, side, quantity, entry price). Use for quick position questions only.",
+        parameters: z.object({}),
+        execute: () => call("get_open_trades", {}),
+      }),
+    ];
+  }, []);
+
   const askAichartTool = useMemo((): VoiceTool<{ message: string }> => {
     // The refs below are read only when the voice runtime invokes `execute`,
     // never while React renders. The compiler cannot see through defineVoiceTool.
@@ -266,8 +311,10 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
         sessionRequestInit: { credentials: "include" },
       },
       instructions: voiceBridgeInstructions(opts.locale),
-      tools: [askAichartTool],
-      model: "gpt-realtime-2.1",
+      tools: [askAichartTool, ...quickTools],
+      // No model pinned here on purpose: the session proxy overwrites
+      // session.model with the newest realtime model the account can use, so a
+      // hardcoded id would only be a stale duplicate of that decision.
       audio: {
         output: { voice: "alloy" },
         input: {

@@ -39,6 +39,9 @@ const SCHEMA = `
     -- User-chosen forex connection: 'ea' (bridge installed on the user's MT5)
     -- or 'mt5local' (server-side, no download). NULL = operator's global default.
     forex_backend            TEXT,
+    -- "provider/model" the USER picked for their own analyses; NULL = the
+    -- platform default. The admin supplies keys, the user picks the brain.
+    preferred_model_ref      TEXT,
     send_screenshot          INTEGER NOT NULL DEFAULT 1,
     telegram_chat_id         TEXT,
     onboarding_done          INTEGER NOT NULL DEFAULT 0,
@@ -639,6 +642,18 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user
     ON agent_audit_logs (user_id, id DESC);
+
+  -- Per-user custom agent skills (full SKILL.md text; trust is always "user").
+  CREATE TABLE IF NOT EXISTS user_agent_skills (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    name       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, name)
+  );
 
   CREATE TABLE IF NOT EXISTS agent_runs (
     run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
@@ -1385,6 +1400,9 @@ function migrate(db: Database.Database) {
   }
   if (!settingsCols.some((c) => c.name === "forex_backend")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN forex_backend TEXT");
+  }
+  if (!settingsCols.some((c) => c.name === "preferred_model_ref")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN preferred_model_ref TEXT");
   }
   // Forward-only product simplification migration. Existing databases may
   // still contain legacy policy columns; no runtime code reads them, and they

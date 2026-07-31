@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { AgentModelPicker } from "@/components/agent/AgentModelPicker";
 
 export function AgentChatInput({
   running,
@@ -45,6 +46,7 @@ export function AgentChatInput({
           disabled={running}
           className="min-h-9 w-full bg-transparent px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
+        <AgentModelPicker />
         {voiceControl}
         {running ? (
           <button

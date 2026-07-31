@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "symbol": {
@@ -185,8 +185,7 @@
               "required": [
                 "kind",
                 "level"
-              ],
-              "additionalProperties": false
+              ]
             },
             {
               "type": "object",
@@ -222,8 +221,7 @@
               "required": [
                 "kind",
                 "level"
-              ],
-              "additionalProperties": false
+              ]
             },
             {
               "type": "object",
@@ -259,8 +257,7 @@
               "required": [
                 "kind",
                 "level"
-              ],
-              "additionalProperties": false
+              ]
             },
             {
               "type": "object",
@@ -304,8 +301,7 @@
                 "kind",
                 "level",
                 "direction"
-              ],
-              "additionalProperties": false
+              ]
             },
             {
               "type": "object",
@@ -340,8 +336,7 @@
                   "required": [
                     "low",
                     "high"
-                  ],
-                  "additionalProperties": false
+                  ]
                 },
                 "tolerance": {
                   "type": "number",
@@ -368,8 +363,7 @@
                 "level",
                 "direction",
                 "retestZone"
-              ],
-              "additionalProperties": false
+              ]
             },
             {
               "type": "object",
@@ -408,8 +402,7 @@
                 "kind",
                 "level",
                 "direction"
-              ],
-              "additionalProperties": false
+              ]
             },
             {
               "type": "object",
@@ -467,8 +460,7 @@
                         "required": [
                           "kind",
                           "level"
-                        ],
-                        "additionalProperties": false
+                        ]
                       },
                       {
                         "type": "object",
@@ -504,8 +496,7 @@
                         "required": [
                           "kind",
                           "level"
-                        ],
-                        "additionalProperties": false
+                        ]
                       },
                       {
                         "type": "object",
@@ -541,8 +532,7 @@
                         "required": [
                           "kind",
                           "level"
-                        ],
-                        "additionalProperties": false
+                        ]
                       },
                       {
                         "type": "object",
@@ -586,8 +576,7 @@
                           "kind",
                           "level",
                           "direction"
-                        ],
-                        "additionalProperties": false
+                        ]
                       },
                       {
                         "type": "object",
@@ -622,8 +611,7 @@
                             "required": [
                               "low",
                               "high"
-                            ],
-                            "additionalProperties": false
+                            ]
                           },
                           "tolerance": {
                             "type": "number",
@@ -650,8 +638,7 @@
                           "level",
                           "direction",
                           "retestZone"
-                        ],
-                        "additionalProperties": false
+                        ]
                       },
                       {
                         "type": "object",
@@ -690,8 +677,7 @@
                           "kind",
                           "level",
                           "direction"
-                        ],
-                        "additionalProperties": false
+                        ]
                       }
                     ]
                   }
@@ -706,8 +692,7 @@
                 "kind",
                 "operator",
                 "rules"
-              ],
-              "additionalProperties": false
+              ]
             }
           ],
           "description": "The activation condition as DATA, so the tracker can grade it. Pick the kind that matches your sentence exactly — price_touch ONLY if a bare touch is genuinely enough; candle_close_above/below need level+timeframe; retest_confirmed needs the retestZone band you expect the pullback into; rejection_confirmed means a wick through the level and a close back. Never emit a rule looser than your sentence."
@@ -754,6 +739,5 @@
     "invalidation_rule",
     "alternative_scenario",
     "validity_candles"
-  ],
-  "additionalProperties": false
+  ]
 }

@@ -21,6 +21,10 @@ export type AgentFailureCode =
   | "timeout"
   | "network"
   | "provider_unavailable"
+  /** Provider rejected the request itself (HTTP 4xx): bad model id, unsupported parameter, oversized context. */
+  | "provider_bad_request"
+  /** The provider account is out of credit / over its billing quota. Retrying never helps. */
+  | "provider_billing"
   | "invalid_payload"
   | "schema_mismatch"
   | "stale_data"
@@ -94,8 +98,34 @@ export function classifyAgentError(error: unknown): {
   if (/\b(401|403)\b/.test(message) || lower.includes("api key") || lower.includes("unauthorized") || message.includes("مفتاح")) {
     return { code: "auth", retryable: false, detail: message };
   }
+  // Billing exhaustion arrives as a 429 but is NOT a transient rate limit:
+  // telling the operator to "try again shortly" is wrong forever. Checked
+  // before the rate-limit branch precisely because it shares the status code.
+  if (
+    lower.includes("no credits") ||
+    lower.includes("insufficient_quota") ||
+    lower.includes("insufficient quota") ||
+    lower.includes("exceeded your current quota") ||
+    lower.includes("billing")
+  ) {
+    return { code: "provider_billing", retryable: false, detail: message };
+  }
   if (/\b429\b/.test(message) || lower.includes("rate limit") || lower.includes("quota")) {
     return { code: "rate_limit", retryable: true, detail: message };
+  }
+  // Provider-side request rejections. Before this branch existed, an OpenAI 400
+  // (bad model id, unsupported parameter, context overflow) fell through to
+  // "unknown" and surfaced as "unexpected error — retrying won't help" with no
+  // hint that the model configuration was the problem.
+  if (
+    /\b(400|404|409|413|422)\b/.test(message) ||
+    lower.includes("bad request") ||
+    lower.includes("does not exist") ||
+    lower.includes("context length") ||
+    lower.includes("maximum context") ||
+    lower.includes("unsupported parameter")
+  ) {
+    return { code: "provider_bad_request", retryable: false, detail: message };
   }
   if (/\b(500|502|503|504)\b/.test(message) || lower.includes("overloaded") || lower.includes("unavailable")) {
     return { code: "provider_unavailable", retryable: true, detail: message };
@@ -184,6 +214,10 @@ export function failureCodeFromSynthesizerKind(
       return "rate_limit";
     case "provider_unavailable":
       return "provider_unavailable";
+    case "provider_bad_request":
+      return "provider_bad_request";
+    case "provider_billing":
+      return "provider_billing";
     case "timeout":
       return "timeout";
     case "network":
@@ -210,6 +244,10 @@ export function userMessageForFailure(
     timeout: "استغرقت العملية وقتاً أطول من المسموح — أعد المحاولة بعد قليل.",
     network: "تعذّر الاتصال بالشبكة — أعد المحاولة بعد قليل.",
     provider_unavailable: "مزوّد الخدمة غير متاح مؤقتاً — أعد المحاولة بعد قليل.",
+    provider_bad_request:
+      "رفض مزوّد الذكاء الاصطناعي الطلب (نموذج غير موجود أو معاملات غير مدعومة) — راجع إعداد النموذج في لوحة التحكم.",
+    provider_billing:
+      "رصيد حساب الذكاء الاصطناعي منتهٍ لدى المزوّد. أضف رصيداً في حساب المزوّد أو بدّل إلى مزوّد آخر مُعدّ من لوحة المفاتيح — إعادة المحاولة لن تُجدي.",
     invalid_payload: "وصل رد غير صالح من مزوّد الخدمة — أعد المحاولة بعد قليل.",
     schema_mismatch: "رد النموذج لا يطابق العقد المتوقع — أعد المحاولة بعد قليل.",
     stale_data: "الأسعار المتاحة ليست حديثة بما يكفي لقرار موثوق — انتظر ثوانٍ ثم أعد المحاولة.",
@@ -226,6 +264,10 @@ export function userMessageForFailure(
     timeout: "The operation took longer than allowed — try again shortly.",
     network: "A network connection problem occurred — try again shortly.",
     provider_unavailable: "The service provider is temporarily unavailable — try again shortly.",
+    provider_bad_request:
+      "The AI provider rejected the request (missing model or unsupported parameters) — review the model configuration in the admin panel.",
+    provider_billing:
+      "The AI provider account is out of credit. Add credit with the provider or switch to another configured provider in the keys panel — retrying will not help.",
     invalid_payload: "An invalid response arrived from the service provider — try again shortly.",
     schema_mismatch: "The model reply did not match the expected contract — try again shortly.",
     stale_data: "Available prices are not fresh enough for a reliable decision — wait a few seconds and retry.",

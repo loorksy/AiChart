@@ -65,6 +65,11 @@ export function buildAgentFallbackResult(
       : `تعذّر إكمال الطلب. ${safeMessage}`;
   return {
     decision: "informational",
+    // Server-only: the machine cause, carried to the audit writer so a Request
+    // ID resolves to WHY it failed. Stripped before the result reaches the
+    // browser (stripInternalFieldsFromClientResult) — the user still sees only
+    // the safe, code-specific sentence above.
+    operatorFailureDetail: (options.detail ?? reason)?.slice(0, 500),
     envelope: operationalBlockerEnvelope({
       failureStage: options.failureStage ?? "final_decision",
       failureCode,

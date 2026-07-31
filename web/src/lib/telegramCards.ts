@@ -1,7 +1,21 @@
 import { buildAccountProfile, accountFooterLines, type AccountProfile } from "./accountProfile";
 import { formatSpreadAr } from "./spread";
+import type { LifecycleEvent, LifecycleEventType } from "./recommendations/lifecycleEvents";
 
 export const CARD_SEPARATOR = "─────────────────";
+
+/** Footer carried by every card — the one line that makes them read as one product. */
+export const BRAND_FOOTER = "<i>Lonora · AiChart</i>";
+
+/** Escape a dynamic value for Telegram HTML parse mode. */
+export function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Wrap prices/levels in <code> so they stand out and copy in one tap. */
+function highlightNumbers(escaped: string): string {
+  return escaped.replace(/(\d+(?:\.\d+)?)/g, "<code>$1</code>");
+}
 
 function envLine(profile: AccountProfile): string {
   const env = profile.accountType === "—" ? "—" : profile.accountType;
@@ -23,9 +37,105 @@ function envLine(profile: AccountProfile): string {
 }
 
 export function formatCard(title: string, fields: string[], footer?: AccountProfile): string {
-  const lines = [CARD_SEPARATOR, title, ...fields];
-  if (footer) lines.push(...accountFooterLines(footer));
-  lines.push(CARD_SEPARATOR);
+  const lines = [`<b>${title}</b>`, CARD_SEPARATOR, ...fields];
+  if (footer) lines.push(...accountFooterLines(footer).map((line) => `<i>${escapeHtml(line)}</i>`));
+  lines.push(CARD_SEPARATOR, BRAND_FOOTER);
+  return lines.join("\n");
+}
+
+/** Per-event visual identity for recommendation lifecycle notifications. */
+const LIFECYCLE_EMOJI: Record<LifecycleEventType, string> = {
+  opportunity_created: "🆕",
+  approaching_entry: "🎯",
+  activated: "⚡",
+  approaching_invalidation: "⚠️",
+  entry_updated: "🔄",
+  scenario_changed: "🔀",
+  retest_started: "🔁",
+  breakout_no_retest: "🏃",
+  economic_event_near: "📅",
+  reevaluation_confirmed: "🔎",
+  tp1_hit: "✅",
+  tp2_hit: "✅",
+  tp3_hit: "🏆",
+  sl_hit: "🛑",
+  invalidated: "❌",
+  expired: "⌛",
+  executed_auto: "🤖",
+  execution_skipped: "⏸️",
+};
+
+export function lifecycleEventEmoji(type: LifecycleEventType): string {
+  return LIFECYCLE_EMOJI[type] ?? "🔔";
+}
+
+export function lifecycleEventLabel(type: LifecycleEventType): string {
+  switch (type) {
+    case "opportunity_created":
+      return "فرصة جديدة";
+    case "approaching_entry":
+      return "اقتراب من الدخول";
+    case "activated":
+      return "تفعّلت الخطة";
+    case "approaching_invalidation":
+      return "اقتراب من الإبطال";
+    case "entry_updated":
+      return "تحديث الخطة";
+    case "scenario_changed":
+      return "تغيّر السيناريو";
+    case "reevaluation_confirmed":
+      return "تأكيد الخطة بعد إعادة التقييم";
+    case "retest_started":
+      return "بدأ إعادة الاختبار";
+    case "breakout_no_retest":
+      return "اختراق دون إعادة اختبار";
+    case "economic_event_near":
+      return "حدث اقتصادي وشيك";
+    case "tp1_hit":
+      return "تحقق الهدف الأول";
+    case "tp2_hit":
+      return "تحقق الهدف الثاني";
+    case "tp3_hit":
+      return "تحقق الهدف الثالث";
+    case "sl_hit":
+      return "ضُرب وقف الخسارة";
+    case "invalidated":
+      return "أُبطلت الخطة";
+    case "expired":
+      return "انتهت الصلاحية";
+    case "executed_auto":
+      return "نُفّذت آلياً";
+    case "execution_skipped":
+      return "امتنع التنفيذ";
+    default:
+      return "تحديث";
+  }
+}
+
+/**
+ * One professional Telegram card for a group of lifecycle events on one plan.
+ *
+ * Header carries the strongest event (terminal wins), each change gets its own
+ * emoji-labelled line with prices in <code>, and the shared brand footer closes
+ * the card so lifecycle alerts read like the rest of the product.
+ */
+export function lifecycleCard(
+  events: ReadonlyArray<Pick<LifecycleEvent, "type" | "symbol" | "detail" | "terminal">>,
+): string {
+  if (!events.length) return "";
+  const head = events.find((event) => event.terminal) ?? events[0]!;
+  const symbol = escapeHtml(head.symbol);
+  const title = `${lifecycleEventEmoji(head.type)} <b>${lifecycleEventLabel(head.type)}</b> — <b>${symbol}</b>`;
+  const lines = [title, CARD_SEPARATOR];
+  for (const event of events) {
+    // Strip the leading "SYMBOL:" the derivation embeds — the header already names it.
+    const prefix = `${event.symbol}:`;
+    const detail = event.detail.startsWith(prefix)
+      ? event.detail.slice(prefix.length).trim()
+      : event.detail;
+    lines.push(`${lifecycleEventEmoji(event.type)} ${highlightNumbers(escapeHtml(detail))}`);
+  }
+  lines.push(CARD_SEPARATOR, BRAND_FOOTER);
   return lines.join("\n");
 }
 

@@ -94,6 +94,13 @@ export function SmartChartWorkspace(props: {
   initialInterval?: string;
   /** Saved drawings/recommendation restored on load (no re-analysis). */
   initialState?: ChartLayoutState | null;
+  /**
+   * Headless screenshot render. The layout poll and autosave are suspended:
+   * during a capture they would pull the SAVED symbol/interval back over the
+   * requested one — the screenshot must show what was asked for, and must not
+   * write the capture's transient state back to the operator's layout.
+   */
+  capture?: boolean;
 }) {
   return (
     <Suspense fallback={<ChartLoading />}>
@@ -110,6 +117,7 @@ function SmartChartWorkspaceInner({
   layoutId,
   initialInterval,
   initialState,
+  capture = false,
 }: {
   recommendations?: Recommendation[];
   agentReady?: boolean;
@@ -122,13 +130,18 @@ function SmartChartWorkspaceInner({
   initialInterval?: string;
   /** Saved drawings/recommendation restored on load (no re-analysis). */
   initialState?: ChartLayoutState | null;
+  /** Headless screenshot render — see the wrapper's doc comment. */
+  capture?: boolean;
 }) {
   const chartRef = useRef<TvChartHandle>(null);
   const agentRef = useRef<SmartChartAgentHandle>(null);
   // Last final agent result — surfaced read-only via the dev/test debug bridge.
   const lastFinalResultRef = useRef<AgentFinalResult | null>(null);
   const [mobilePane, setMobilePane] = useState<MobilePane>(DEFAULT_MOBILE_PANE);
-  const chatEnabled = !guest;
+  // A capture renders the chart alone. Leaving chat on also left its URL sync
+  // on, which rewrote the address to /console mid-load — so the screenshot was
+  // of the console workspace at the SAVED timeframe, not the requested chart.
+  const chatEnabled = !guest && !capture;
 
   const { locale, t, dir } = useLocale();
   const { resolved: chartTheme } = useTheme();
@@ -260,7 +273,9 @@ function SmartChartWorkspaceInner({
   const layoutCursorRef = useRef<string | null>(null);
   const savePendingRef = useRef(false);
   useEffect(() => {
-    if (guest || !layoutId) return;
+    // A capture is a read-only render of someone's chart; writing its
+    // transient symbol/interval back would corrupt the operator's saved layout.
+    if (guest || !layoutId || capture) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     savePendingRef.current = true;
     saveTimerRef.current = setTimeout(() => {
@@ -292,6 +307,7 @@ function SmartChartWorkspaceInner({
   }, [
     guest,
     layoutId,
+    capture,
     symbol,
     interval,
     dataSource,
@@ -307,7 +323,9 @@ function SmartChartWorkspaceInner({
   // drawings appear without a reload. Skips while a local save/analysis is
   // in flight to avoid clobbering fresher local state.
   useEffect(() => {
-    if (guest || !layoutId) return;
+    // During a capture the poll would yank symbol/interval back to the SAVED
+    // layout mid-screenshot — the requested frame would never be photographed.
+    if (guest || !layoutId || capture) return;
     let stopped = false;
 
     const tick = async () => {
@@ -331,6 +349,13 @@ function SmartChartWorkspaceInner({
           return;
         }
         if (d.updated_at === layoutCursorRef.current) return;
+        // Order the timestamps instead of comparing for inequality: a poll that
+        // started before our own save landed returns an OLDER updated_at, and
+        // treating it as a "remote change" hydrated stale state, rolled the
+        // cursor back, and flip-flopped the chart (visible as drawings jumping).
+        const seen = Date.parse(layoutCursorRef.current ?? "");
+        const incoming = Date.parse(d.updated_at);
+        if (Number.isFinite(seen) && Number.isFinite(incoming) && incoming <= seen) return;
         // Remote change (MCP draw / analysis finished elsewhere) — hydrate.
         layoutCursorRef.current = d.updated_at;
         if (savePendingRef.current) return;
@@ -354,7 +379,7 @@ function SmartChartWorkspaceInner({
       stopped = true;
       window.clearInterval(t);
     };
-  }, [guest, layoutId, isAnalyzing, symbol, interval, hydrateFromSnapshot]);
+  }, [guest, layoutId, capture, isAnalyzing, symbol, interval, hydrateFromSnapshot]);
 
   useEffect(() => {
     prefetchKlines(symbol, interval, market);
@@ -729,6 +754,7 @@ function SmartChartWorkspaceInner({
               locale={locale}
               direction={dir}
               theme={chartTheme}
+              capture={capture}
               className="h-full min-h-0 w-full"
               onSymbolChange={handleSymbolChange}
               onIntervalChange={handleIntervalChange}

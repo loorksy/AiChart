@@ -12,11 +12,65 @@ import {
 } from "./externalFetch";
 import { getPlatformValue } from "./platformConfig";
 
+export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
+
+/** Models the platform offers in the admin picker (id → display label). */
+export const ANTHROPIC_MODEL_CHOICES: { id: string; label: string }[] = [
+  { id: "claude-fable-5", label: "Claude Fable 5" },
+  { id: "claude-opus-5", label: "Claude Opus 5" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
+];
+
 export function getAnthropicModel(): string {
-  return getPlatformValue("ANTHROPIC_MODEL") || "claude-sonnet-4-6";
+  return getPlatformValue("ANTHROPIC_MODEL") || DEFAULT_ANTHROPIC_MODEL;
 }
 
 const API_URL = "https://api.anthropic.com/v1/messages";
+
+/**
+ * Claude 4.7+/5-family models reason before answering (adaptive thinking) and
+ * thinking tokens count against max_tokens — a 4K budget can be consumed
+ * before the visible answer starts. Give these models real headroom.
+ */
+const THINKING_MODELS = /^claude-(fable-5|mythos-5|opus-5|opus-4-[78]|sonnet-5)/;
+const THINKING_MIN_TOKENS = 8192;
+const THINKING_MAX_TOKENS = 16000;
+
+function requestBudget(model: string, requested?: number): number {
+  if (THINKING_MODELS.test(model)) {
+    const v = requested ?? THINKING_MIN_TOKENS;
+    return Math.min(Math.max(v, THINKING_MIN_TOKENS), THINKING_MAX_TOKENS);
+  }
+  return clampMaxTokens(requested);
+}
+
+/**
+ * Fable/Mythos run thinking always-on and reject any explicit config; Opus 5
+ * and Sonnet 5 run adaptive when the field is omitted. Only Opus 4.8/4.7 need
+ * the explicit adaptive opt-in.
+ */
+function thinkingConfig(model: string): Record<string, unknown> {
+  if (/^claude-opus-4-[78]/.test(model)) {
+    return { thinking: { type: "adaptive" } };
+  }
+  return {};
+}
+
+/**
+ * Thinking blocks are internal — callers of this client are single-turn
+ * generations that read text/tool_use only, so the blocks are stripped rather
+ * than leaked into summaries or JSON parsers.
+ */
+function stripThinking(content: ContentBlock[]): ContentBlock[] {
+  return content.filter((block) => {
+    const type = (block as { type?: string }).type;
+    return type !== "thinking" && type !== "redacted_thinking";
+  });
+}
+
+const REFUSAL_MESSAGE =
+  "رفضت أنظمة الحماية لدى مزوّد النموذج هذا الطلب — أعد الصياغة أو اختر نموذج Claude آخر (مثل Opus).";
 
 export interface ToolDef {
   name: string;
@@ -202,13 +256,18 @@ export async function callAnthropic(params: {
   messages: Message[];
   tools?: ToolDef[];
   maxTokens?: number;
+  /** Model override (tiering); defaults to the configured platform model. */
+  model?: string;
+  /** Caller cancellation — tears down the in-flight HTTP request. */
+  signal?: AbortSignal;
 }): Promise<AnthropicResponse> {
   const apiKey = getPlatformValue("ANTHROPIC_API_KEY");
   if (!apiKey) {
     throw new Error(
-      "مفتاح Claude غير مُعدّ على الخادم بعد. أضِف ANTHROPIC_API_KEY في متغيرات البيئة.",
+      "مفتاح Claude غير مُعدّ. أضِفه من لوحة المفاتيح الإدارية.",
     );
   }
+  const model = params.model?.trim() || getAnthropicModel();
 
   const res = await fetchWithTimeout(
     API_URL,
@@ -220,13 +279,15 @@ export async function callAnthropic(params: {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: getAnthropicModel(),
-        max_tokens: clampMaxTokens(params.maxTokens),
+        model,
+        max_tokens: requestBudget(model, params.maxTokens),
         system: buildSystemBlocks(params.system),
         messages: cachedMessages(params.messages),
+        ...thinkingConfig(model),
         ...(params.tools ? { tools: cachedTools(params.tools) } : {}),
       }),
       cache: "no-store",
+      signal: params.signal ?? null,
     },
     { timeoutMs: llmTotalTimeoutMs(), label: "Claude" },
   );
@@ -238,16 +299,19 @@ export async function callAnthropic(params: {
         ? (body as { error: { message?: string; type?: string } }).error
             ?.message
         : undefined;
-    const model = getAnthropicModel();
     const msg =
-      apiMsg ||
+      (apiMsg ? `HTTP ${res.status} من ${model}: ${apiMsg}` : undefined) ||
       (res.status === 404
         ? `النموذج «${model}» غير متاح. اختر نموذجاً آخر من إعدادات المفاتيح.`
-        : `خطأ من Claude (HTTP ${res.status})`);
+        : `خطأ من Claude ${model} (HTTP ${res.status})`);
     throw new Error(msg);
   }
 
-  return (await res.json()) as AnthropicResponse;
+  const data = (await res.json()) as AnthropicResponse;
+  if (data.stop_reason === "refusal") {
+    throw new Error(REFUSAL_MESSAGE);
+  }
+  return { ...data, content: stripThinking(data.content) };
 }
 
 export interface StreamHandlers {
@@ -261,17 +325,26 @@ export async function callAnthropicStream(
     messages: Message[];
     tools?: ToolDef[];
     maxTokens?: number;
+    /** Model override (tiering); defaults to the configured platform model. */
+    model?: string;
+    /** Caller cancellation — tears down the in-flight stream. */
+    signal?: AbortSignal;
   },
   handlers?: StreamHandlers,
 ): Promise<AnthropicResponse> {
   const apiKey = getPlatformValue("ANTHROPIC_API_KEY");
   if (!apiKey) {
     throw new Error(
-      "مفتاح Claude غير مُعدّ على الخادم بعد. أضِف ANTHROPIC_API_KEY في متغيرات البيئة.",
+      "مفتاح Claude غير مُعدّ. أضِفه من لوحة المفاتيح الإدارية.",
     );
   }
+  const model = params.model?.trim() || getAnthropicModel();
 
   const watchdog = new IdleWatchdog(llmIdleTimeoutMs(), "Claude");
+  const watchdogSignal = watchdog.start();
+  const signal = params.signal
+    ? AbortSignal.any([watchdogSignal, params.signal])
+    : watchdogSignal;
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -280,15 +353,16 @@ export async function callAnthropicStream(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: getAnthropicModel(),
-      max_tokens: clampMaxTokens(params.maxTokens),
+      model,
+      max_tokens: requestBudget(model, params.maxTokens),
       system: buildSystemBlocks(params.system),
       messages: cachedMessages(params.messages),
       stream: true,
+      ...thinkingConfig(model),
       ...(params.tools ? { tools: cachedTools(params.tools) } : {}),
     }),
     cache: "no-store",
-    signal: watchdog.start(),
+    signal,
   }).catch((err) => {
     watchdog.clear();
     if (watchdog.timedOut) throw watchdog.error();
@@ -302,12 +376,11 @@ export async function callAnthropicStream(
       body && typeof body === "object" && "error" in body
         ? (body as { error: { message?: string } }).error?.message
         : undefined;
-    const model = getAnthropicModel();
     throw new Error(
-      apiMsg ||
+      (apiMsg ? `HTTP ${res.status} من ${model}: ${apiMsg}` : undefined) ||
         (res.status === 404
           ? `النموذج «${model}» غير متاح. اختر نموذجاً آخر من إعدادات المفاتيح.`
-          : `خطأ من Claude (HTTP ${res.status})`),
+          : `خطأ من Claude ${model} (HTTP ${res.status})`),
     );
   }
 
@@ -427,6 +500,10 @@ export async function callAnthropicStream(
 
   finishTextBlock();
   finishToolBlock();
+
+  if (stopReason === "refusal") {
+    throw new Error(REFUSAL_MESSAGE);
+  }
 
   return {
     id: messageId,

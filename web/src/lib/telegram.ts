@@ -137,6 +137,7 @@ export async function sendMessageWithReplyKeyboard(
   const result = (await call("sendMessage", {
     chat_id: chatId,
     text,
+    parse_mode: "HTML",
     disable_web_page_preview: true,
     reply_markup: {
       keyboard: keyboardRows.map((row) => row.map((label) => ({ text: label }))),

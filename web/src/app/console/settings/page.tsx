@@ -3,8 +3,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { loadConsoleSettingsProps } from "@/lib/consoleSettingsLoader";
 import SettingsClient from "@/components/SettingsClient";
 
-type Tab = "profile" | "appearance" | "integrations" | "alerts" | "trading";
-const TABS = new Set<Tab>(["profile", "appearance", "integrations", "alerts", "trading"]);
+type Tab = "profile" | "appearance" | "integrations" | "alerts" | "trading" | "skills";
+const TABS = new Set<Tab>(["profile", "appearance", "integrations", "alerts", "trading", "skills"]);
 
 export default async function SettingsPage({
   searchParams,

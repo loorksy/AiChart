@@ -12,7 +12,13 @@
  * a bounded local map is for.
  */
 
-export type ChartSnapshotSource = "mt5" | "quickchart";
+/**
+ * Where a snapshot image came from.
+ * - `platform_chart`: the operator's own TradingView view (preferred).
+ * - `mt5`: a photo of the connected MetaTrader terminal.
+ * - `quickchart`: a server-side redraw of the same candles (last resort).
+ */
+export type ChartSnapshotSource = "platform_chart" | "mt5" | "quickchart";
 
 export interface CachedChartSnapshot {
   imageBase64: string;

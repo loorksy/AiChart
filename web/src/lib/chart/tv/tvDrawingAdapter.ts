@@ -131,9 +131,25 @@ function styleOverrides(d: ChartDrawing): Record<string, unknown> {
   };
 }
 
+/**
+ * Stable time anchor for a recommendation's position tool: its creation time
+ * when parseable, else the current bar's open — never raw wall-clock, which
+ * drifts between redraws.
+ */
+function stableAnchorSec(rec: Recommendation, barSec: number): number {
+  const raw = rec.created_at;
+  const parsed =
+    typeof raw === "number" ? Number(raw) : raw ? Date.parse(String(raw)) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) return toSec(parsed);
+  const now = nowSec();
+  const step = Math.max(60, barSec);
+  return now - (now % step);
+}
+
 /** Manages TradingView shapes for one chart — mirrors ChartDrawing[] onto it. */
 export class TvDrawingManager {
   private ids: EntityId[] = [];
+  private lastFingerprint = "";
 
   constructor(private readonly chart: IChartWidgetApi) {}
 
@@ -152,6 +168,7 @@ export class TvDrawingManager {
       }
     }
     this.ids = [];
+    this.lastFingerprint = "";
   }
 
   private track(p: Promise<EntityId>): void {
@@ -229,16 +246,30 @@ export class TvDrawingManager {
     takeProfit: number,
     stopLoss: number,
     minTick: number,
+    barSec: number,
   ): void {
     const profitLevel = Math.max(1, Math.round(Math.abs(takeProfit - entry.price) / minTick));
     const stopLevel = Math.max(1, Math.round(Math.abs(entry.price - stopLoss) / minTick));
+    // The risk/reward tools carry TWO anchors: the entry and a lateral-extent
+    // point. Created with a single point, the second anchor is left for
+    // TradingView to complete on the first pointer interaction — which is
+    // exactly the reported "the tool moves the moment the entry is touched".
+    // Give it both anchors up front so it stays where it was drawn; fall back
+    // to the single-point form if this library build rejects the pair.
+    const extent: PricedPointLike = {
+      time: entry.time + Math.max(60, barSec) * 24,
+      price: entry.price,
+    };
+    const options = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      shape: kind as any,
+      ...EDITABLE,
+      overrides: { profitLevel, stopLevel },
+    };
     this.track(
-      this.chart.createShape(entry as ShapePoint, {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        shape: kind as any,
-        ...EDITABLE,
-        overrides: { profitLevel, stopLevel },
-      }),
+      this.chart
+        .createMultipointShape([entry, extent] as ShapePoint[], options)
+        .catch(() => this.chart.createShape(entry as ShapePoint, options)),
     );
   }
 
@@ -256,7 +287,7 @@ export class TvDrawingManager {
       const tp = (d.meta?.takeProfit as number) ?? pts[1]?.price;
       const sl = (d.meta?.stopLoss as number) ?? pts[2]?.price;
       if (entry && tp && sl) {
-        this.position(t, entry, tp, sl, minTickFor(symbol));
+        this.position(t, entry, tp, sl, minTickFor(symbol), barSec);
       }
       return;
     }
@@ -368,8 +399,25 @@ export class TvDrawingManager {
     drawings: ChartDrawing[],
     trade?: { recommendation?: Recommendation | null; targets?: number[] },
     ctx?: { symbol?: string; interval?: string },
+    opts?: { force?: boolean },
   ): void {
+    const rec0 = trade?.recommendation;
+    // Idempotence guard: the layout poll and unrelated re-renders re-deliver the
+    // same payload every few seconds. Destroying and re-creating every shape for
+    // an unchanged payload is what made agent drawings flicker and the position
+    // tool jump — and it also snapped back any in-progress user adjustment.
+    const fingerprint = JSON.stringify([
+      drawings,
+      rec0
+        ? [rec0.action, rec0.entry, rec0.stop_loss, rec0.take_profit, rec0.created_at]
+        : null,
+      trade?.targets ?? [],
+      ctx?.symbol ?? "",
+      ctx?.interval ?? "",
+    ]);
+    if (!opts?.force && fingerprint === this.lastFingerprint) return;
     this.clear();
+    this.lastFingerprint = fingerprint;
     const symbol = ctx?.symbol ?? "";
     const barSec = Math.max(
       60,
@@ -395,12 +443,16 @@ export class TvDrawingManager {
       const tp1 = tps[0];
       if (entry != null && entry > 0 && sl != null && sl > 0 && tp1 != null) {
         // Native TV position tool: entry/target/stop with automatic R/R stats.
+        // Anchored at the recommendation's creation time (bar-quantized fallback)
+        // so re-applies reproduce the exact same shape instead of drifting to
+        // wall-clock "now" on every redraw.
         this.position(
           rec.action === "buy" ? "long_position" : "short_position",
-          { time: nowSec(), price: entry },
+          { time: stableAnchorSec(rec, barSec), price: entry },
           tp1,
           sl,
           minTickFor(symbol),
+          barSec,
         );
         // Extra targets beyond TP1 as labeled blue lines.
         tps.slice(1).forEach((price, i) => {

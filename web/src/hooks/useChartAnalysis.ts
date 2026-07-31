@@ -17,19 +17,29 @@ export interface ChartHydrateSnapshot {
   liveReasoningLog?: LiveReasoningEntry[];
 }
 
+/** Return the previous reference when the next value is structurally identical. */
+function keepIfEqual<T>(prev: T, next: T): T {
+  if (prev === next) return prev;
+  try {
+    return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+  } catch {
+    return next;
+  }
+}
+
 /**
  * Owns persisted chart presentation state only. Market decisions are produced
  * exclusively by the canonical chat agent and applied through its onResult.
  */
 export function useChartAnalysis({
   symbol,
-  interval,
   market,
   dataSource,
   hydrateSnapshot,
 }: {
   symbol: string;
-  interval: string;
+  /** Accepted for call-site compatibility; interval changes never clear layers. */
+  interval?: string;
   market: MarketType;
   dataSource?: "oanda" | "ea";
   hydrateSnapshot?: ChartHydrateSnapshot | null;
@@ -40,7 +50,11 @@ export function useChartAnalysis({
   const [targets, setTargets] = useState<number[]>([]);
   const [liveReasoningLog, setLiveReasoningLog] = useState<LiveReasoningEntry[]>([]);
   const [, setHighlightDrawingIndex] = useState<number | null>(null);
-  const contextRef = useRef(`${symbol}|${interval}|${market}|${dataSource ?? "default"}`);
+  // Interval is deliberately NOT part of the reset key: drawings are anchored by
+  // absolute time+price, so a recommendation drawn on 15m must survive a switch
+  // to 1h and re-render when the operator returns. Only a different instrument
+  // (or market/data source) makes the layers meaningless.
+  const contextRef = useRef(`${symbol}|${market}|${dataSource ?? "default"}`);
 
   const riskReward = useMemo(() => {
     if (!recommendation?.entry || !recommendation.stop_loss || !recommendation.take_profit) return null;
@@ -57,11 +71,17 @@ export function useChartAnalysis({
   }, []);
 
   const hydrateFromSnapshot = useCallback((snapshot: ChartHydrateSnapshot) => {
-    setDrawings(snapshot.drawings ?? []);
-    setOverlays(snapshot.overlays ?? []);
-    setTargets((snapshot.targets ?? []).filter((target) => target > 0));
-    setLiveReasoningLog(snapshot.liveReasoningLog ?? []);
-    if (snapshot.recommendation !== undefined) setRecommendation(snapshot.recommendation);
+    // Keep previous references when the payload is unchanged. The layout poll
+    // re-delivers identical state every few seconds; handing the chart a fresh
+    // array each time forces a full clear+redraw of every shape — which is what
+    // made agent drawings visibly flicker and position tools jump.
+    setDrawings((prev) => keepIfEqual(prev, snapshot.drawings ?? []));
+    setOverlays((prev) => keepIfEqual(prev, snapshot.overlays ?? []));
+    setTargets((prev) => keepIfEqual(prev, (snapshot.targets ?? []).filter((target) => target > 0)));
+    setLiveReasoningLog((prev) => keepIfEqual(prev, snapshot.liveReasoningLog ?? []));
+    if (snapshot.recommendation !== undefined) {
+      setRecommendation((prev) => keepIfEqual(prev, snapshot.recommendation ?? null));
+    }
   }, []);
 
   useEffect(() => {
@@ -69,11 +89,11 @@ export function useChartAnalysis({
   }, [hydrateSnapshot, hydrateFromSnapshot]);
 
   useEffect(() => {
-    const next = `${symbol}|${interval}|${market}|${dataSource ?? "default"}`;
+    const next = `${symbol}|${market}|${dataSource ?? "default"}`;
     if (next === contextRef.current) return;
     contextRef.current = next;
     clearLayers();
-  }, [symbol, interval, market, dataSource, clearLayers]);
+  }, [symbol, market, dataSource, clearLayers]);
 
   return {
     isAnalyzing: false,

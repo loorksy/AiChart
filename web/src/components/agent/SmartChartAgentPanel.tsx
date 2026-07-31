@@ -19,7 +19,7 @@ import {
   isDirectionalOpinionOnly,
   trackedRecommendationFromResult,
 } from "@/lib/recommendations/fromAgentResult";
-import { TriangleAlert } from "lucide-react";
+import { ChevronDown, TriangleAlert } from "lucide-react";
 import type { AgentSuggestion } from "@/lib/agent/suggestions/types";
 
 export interface SmartChartAgentHandle {
@@ -248,36 +248,81 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                   ) : null}
                 </div>
               )}
-              <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
               {(() => {
-                if (!m.result) return null;
-                const tracked = trackedRecommendationFromResult(m.result);
-                if (tracked) {
-                  return (
-                    <div className="mt-2">
-                      <RecommendationTrackerCard rec={tracked} />
-                    </div>
-                  );
-                }
-                if (isDirectionalOpinionOnly(m.result)) {
-                  return (
-                    <div className="mt-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                      {t("rec.market_view")}
-                    </div>
-                  );
-                }
-                return null;
+                const tracked = m.result
+                  ? trackedRecommendationFromResult(m.result)
+                  : null;
+                // A recommendation reads best as the card, not as prose: lead
+                // with the compact card and fold the long analysis text (plus
+                // the reason lists) behind an expandable section. Warnings and
+                // evidence never collapse.
+                const collapseText =
+                  Boolean(tracked) && m.content.trim().length > 200;
+                const reasonList = m.result?.keyReasons?.length ? (
+                  <ul className="mt-1 list-inside list-disc text-[12px] text-muted-foreground">
+                    {m.result.keyReasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                ) : null;
+                const reasoningSummary = m.result?.publicReasoningSummary
+                  ?.length ? (
+                  <div className="mt-2 rounded-md bg-background/50 p-2 text-[12px]">
+                    <p className="mb-1 font-medium text-muted-foreground">
+                      {t("agent.decision_reason")}
+                    </p>
+                    <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
+                      {m.result.publicReasoningSummary.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null;
+                return (
+                  <>
+                    {tracked ? (
+                      <div className="mt-1">
+                        <RecommendationTrackerCard rec={tracked} />
+                      </div>
+                    ) : m.result && isDirectionalOpinionOnly(m.result) ? (
+                      <div className="mt-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                        {t("rec.market_view")}
+                      </div>
+                    ) : null}
+                    {collapseText ? (
+                      <details className="group mt-2 rounded-lg border border-border/50 bg-muted/20">
+                        <summary className="flex min-h-9 cursor-pointer select-none list-none items-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                          <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+                          <span className="group-open:hidden">
+                            {t("agent.details_expand")}
+                          </span>
+                          <span className="hidden group-open:inline">
+                            {t("agent.details_collapse")}
+                          </span>
+                        </summary>
+                        <div className="border-t border-border/40 px-3 py-2">
+                          <p className="whitespace-pre-wrap leading-relaxed">
+                            {m.content}
+                          </p>
+                          {reasonList}
+                          {reasoningSummary}
+                        </div>
+                      </details>
+                    ) : (
+                      <>
+                        <p className="whitespace-pre-wrap leading-relaxed">
+                          {m.content}
+                        </p>
+                        {reasonList}
+                        {reasoningSummary}
+                      </>
+                    )}
+                  </>
+                );
               })()}
               {/* What the read actually rests on (item 13) — never a bare number. */}
               {m.result?.evidenceCard ? (
                 <AgentEvidenceCard card={m.result.evidenceCard} />
-              ) : null}
-              {m.result?.keyReasons?.length ? (
-                <ul className="mt-1 list-inside list-disc text-[12px] text-muted-foreground">
-                  {m.result.keyReasons.map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
-                </ul>
               ) : null}
               {m.result?.riskWarnings?.length ? (
                 <ul className="mt-1 space-y-0.5 text-[12px] text-amber-500">
@@ -288,18 +333,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                     </li>
                   ))}
                 </ul>
-              ) : null}
-              {m.result?.publicReasoningSummary?.length ? (
-                <div className="mt-2 rounded-md bg-background/50 p-2 text-[12px]">
-                  <p className="mb-1 font-medium text-muted-foreground">
-                    {t("agent.decision_reason")}
-                  </p>
-                  <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
-                    {m.result.publicReasoningSummary.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
               ) : null}
                 </>
               )}

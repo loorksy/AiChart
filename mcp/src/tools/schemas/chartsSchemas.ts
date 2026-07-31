@@ -69,7 +69,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_chart_layouts",
     domain: "charts",
     description:
-      "When: before drawing — fetch user saved charts (id + symbol + link). read-only.",
+      "Lists the user's saved chart layouts, returning each one's id, symbol, and link. When: before drawing or reading chart state, to find the right layout_id. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -77,7 +77,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_chart_state",
     domain: "charts",
     description:
-      "When: read current user chart state (symbol/frame/drawings/recommendation) before editing. read-only. Example: optional layout_id.",
+      "Reads the current state of the user's chart — symbol, timeframe, drawings, and active recommendation — for the given layout_id, defaulting to the primary chart. When: before editing a chart, so existing drawings and the recommendation are known. read-only. Example: optional layout_id.",
     inputSchema: { layout_id: zLayoutId },
     annotations: READ_ONLY,
     ui: { widget: "live-chart" },
@@ -86,7 +86,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "show_live_chart",
     domain: "charts",
     description:
-      "When: show live mini chart card in chat (candles refresh ~every 4s + Claude drawings and recommendation on chart). read-only — does not draw or execute. Pass symbol or layout_id; defaults to user primary chart.",
+      "Shows a live mini chart card in chat, with candles refreshing about every 4s plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch a pair live inside the conversation. Pass symbol or layout_id; defaults to the user's primary chart. read-only.",
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
@@ -100,7 +100,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "draw_on_chart",
     domain: "charts",
     description:
-      "When: draw directly on user live chart (TradingView) — supports all tools: lines/channels/zones/fibonacci/patterns/long-short positions/forecast, with colors, width, and style. Drawings appear on user screen within seconds without refresh. mode=set replaces, add appends. Pass recommendation for full trade box (entry/stop/targets).",
+      "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. mode=set replaces existing drawings, add appends. Pass recommendation for a full trade box (entry/stop/targets).",
     inputSchema: {
       layout_id: zLayoutId,
       symbol: zSymbol.optional().describe("Change chart symbol (optional)"),
@@ -125,7 +125,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "clear_chart_drawings",
     domain: "charts",
     description:
-      "When: clear all user chart drawings and recommendation. Does not touch candles or manual TradingView drawings.",
+      "Clears every agent-drawn shape and the active recommendation from the user's chart, leaving candles and manually drawn TradingView objects untouched. When: the operator asks to clean the chart, or the current recommendation should be retracted.",
     inputSchema: { layout_id: zLayoutId },
     annotations: {
       readOnlyHint: false,
@@ -137,7 +137,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_market_analysis",
     domain: "charts",
     description:
-      "When: full AI analysis for a pair (same as platform Analyze button): recommendation + technical drawings auto-drawn on user chart when layout_id passed. Consumes user credits (4). May take up to 120 seconds. The response includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
+      "Runs the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns a recommendation with technical drawings auto-drawn on the user's chart when layout_id is passed. When: the operator asks for a complete analysis rather than individual indicator calls. Consumes 4 user credits and may take up to two minutes. The response includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),

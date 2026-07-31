@@ -25,6 +25,13 @@ const settingsPatchSchema = z
       ])
       .optional(),
     forex_backend: z.enum(["ea", "mt5local", "metaapi"]).nullable().optional(),
+    // "provider/model" the user picked in the chat composer; null = default.
+    preferred_model_ref: z
+      .string()
+      .trim()
+      .regex(/^(openai|anthropic)\/[A-Za-z0-9._:-]{1,80}$/, "معرّف نموذج غير صالح.")
+      .nullable()
+      .optional(),
     send_screenshot: z.boolean().optional(),
     telegram_chat_id: z.string().trim().max(64).nullable().optional(),
     alerts_enabled: z.boolean().optional(),
@@ -63,6 +70,9 @@ export async function PUT(request: NextRequest) {
 
     if (input.per_trade_pct !== undefined) patch.per_trade_pct = input.per_trade_pct;
     if (input.forex_backend !== undefined) patch.forex_backend = input.forex_backend;
+    if (input.preferred_model_ref !== undefined) {
+      patch.preferred_model_ref = input.preferred_model_ref;
+    }
     if (input.telegram_chat_id !== undefined) patch.telegram_chat_id = input.telegram_chat_id;
     if (input.send_screenshot !== undefined) patch.send_screenshot = input.send_screenshot ? 1 : 0;
     if (input.alerts_enabled !== undefined) patch.alerts_enabled = input.alerts_enabled ? 1 : 0;

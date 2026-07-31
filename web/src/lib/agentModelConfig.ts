@@ -11,12 +11,13 @@ export function modelRefFromPlatform(model?: string): string {
   return id.startsWith(`${provider}/`) ? id : `${provider}/${id}`;
 }
 
-// OpenAI-internal fallback: drop to a cheaper/faster OpenAI model on failure.
+// Same-provider fallback: drop to a cheaper/faster sibling model on failure.
 const SAME_PROVIDER_ALT: Partial<Record<LLMProvider, string>> = {
   openai: "openai/gpt-4.1-mini",
+  anthropic: "anthropic/claude-opus-4-8",
 };
 
-const SYNC_PROVIDERS: LLMProvider[] = ["openai"];
+const SYNC_PROVIDERS: LLMProvider[] = ["openai", "anthropic"];
 
 function isAllowedModelRef(ref: string): boolean {
   const lower = ref.toLowerCase();
@@ -73,7 +74,8 @@ export function getAgentModelStatus(): AgentModelStatus {
   };
 }
 
-/** Provider base URLs for OpenAI-compatible APIs (platform / MCP context). */
+/** Provider base URLs (platform / MCP context). */
 export const PROVIDER_BASE_URL: Partial<Record<LLMProvider, string>> = {
   openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
 };

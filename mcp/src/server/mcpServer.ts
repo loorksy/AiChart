@@ -12,8 +12,28 @@ export function createAiChartMcpServer(bridge: BridgeClient): McpServer {
   const server = new McpServer(
     {
       name: "aichart-trading",
+      title: "Lonora — AiChart Trading",
       version: MCP_SERVER_VERSION,
       websiteUrl: "https://aichart.lork.cloud",
+      // Current Lonora brand mark (web origin — the MCP origin serves no
+      // statics). Theme variants let hosts pick the right contrast.
+      icons: [
+        {
+          src: "https://aichart.lork.cloud/icon-512.png",
+          mimeType: "image/png",
+          sizes: ["512x512"],
+        },
+        {
+          src: "https://aichart.lork.cloud/brand/aichart-mark-dark.png",
+          mimeType: "image/png",
+          theme: "dark",
+        },
+        {
+          src: "https://aichart.lork.cloud/brand/aichart-mark-light.png",
+          mimeType: "image/png",
+          theme: "light",
+        },
+      ],
     },
     {
       capabilities: {

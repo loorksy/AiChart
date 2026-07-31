@@ -8,7 +8,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_snapshot",
     domain: "market",
     description:
-      "When: quick analysis of one pair. RSI/MACD/SMA + trend. read-only. Do not use instead of get_ohlc for full indicators. Example: symbol=EURUSD&interval=1h.",
+      "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. read-only. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol.describe("e.g. EURUSD"),
       interval: zInterval,
@@ -21,7 +21,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_multi_timeframe_snapshot",
     domain: "market",
     description:
-      "When: numeric-only multi-timeframe analysis for one pair — fetches all frames in one parallel call (faster than get_market_snapshot per frame). For a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
     inputSchema: {
       symbol: zSymbol.describe("e.g. EURUSD"),
       intervals: z
@@ -38,7 +38,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_price",
     domain: "market",
     description:
-      "When: live price only. read-only. For forex check quoteAgeMs via get_ea_live_quotes. Example: symbol=EURUSD.",
+      "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — for forex, verify freshness via quoteAgeMs from get_ea_live_quotes before acting on it. read-only. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol, market: zMarket },
     annotations: READ_ONLY,
   },
@@ -46,7 +46,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_instruments",
     domain: "market",
     description:
-      "When: browse/search forex pairs via OANDA, or source=ea for full broker symbols via MT5 bridge (not Market Watch only). read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
+      "Lists tradable forex instruments — from OANDA by default, or the full broker symbol list via the MT5 bridge with source=ea (not Market Watch only) — with an optional q search filter. When: browsing or searching for a pair, or checking whether a broker-specific symbol exists. read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
     inputSchema: {
       market: zMarket,
       q: z.string().max(20).optional().describe("Optional search e.g. EUR or XAU"),
@@ -62,7 +62,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_chart_link",
     domain: "market",
     description:
-      "When: live AiChart chart link for a pair to share with user. read-only. Example: symbol=EURUSD.",
+      "Builds the public AiChart live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. read-only. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol },
     annotations: READ_ONLY,
   },
@@ -70,7 +70,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_context",
     domain: "market",
     description:
-      "When: news/mood context. read-only. No side-effects. Example: symbol=EURUSD.",
+      "Returns news and market-mood context for a symbol on the given interval. When: the analysis needs the narrative around the pair — sentiment and news — on top of the numbers. read-only. No side-effects. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol, interval: zInterval },
     annotations: READ_ONLY,
   },
@@ -78,7 +78,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "scan_market",
     domain: "market",
     description:
-      "scan market · compare symbols · best entry · pick a trade. When: 'take a trade' or 'best opportunity'. read-only. Example: symbols=[EURUSD,GBPUSD].",
+      "Scans and compares multiple symbols on one interval to surface the best current trading opportunity. When: the operator says 'take a trade' or asks for the best opportunity without naming a pair. read-only. scan market · compare symbols · best entry · pick a trade. Example: symbols=[EURUSD,GBPUSD].",
     inputSchema: {
       symbols: z.array(z.string()).max(30).optional(),
       interval: zInterval,
@@ -91,7 +91,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_ohlc",
     domain: "market",
     description:
-      "When: before indicators/detect_levels. Forex via OANDA or EA. read-only. cursor/limit≤500. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "Returns raw OHLC candles for a symbol and interval, from OANDA by default or the EA bridge with source=ea (required for broker-suffix symbols such as XAUUSDM), paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed. read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
     inputSchema: {
       symbol: zSymbol.describe("EURUSD"),
       interval: zInterval,
@@ -109,7 +109,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_forex_indicators",
     domain: "market",
     description:
-      "When: after get_ohlc. RSI/MACD/Bollinger/ATR + trend. read-only. Not with stale quote. Example: symbol=EURUSD&interval=1h.",
+      "Computes the full indicator set for a pair on the requested interval: RSI, MACD, Bollinger, ATR, and trend. When: after get_ohlc, as the numeric backbone of an analysis — not while the quote is stale. read-only. Example: symbol=EURUSD&interval=1h.",
     inputSchema: { symbol: zSymbol, interval: zInterval, market: zMarket },
     annotations: READ_ONLY,
   },
@@ -117,7 +117,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "detect_levels",
     domain: "market",
     description:
-      "When: before SL/TP. Support/resistance + structure with volume-weighted strength scoring. read-only. Not a sole entry signal. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "Detects support and resistance levels plus market structure, with volume-weighted strength scoring per level. When: before placing SL/TP — treat the levels as context, not a sole entry signal. read-only. Example: symbol=EURUSD&interval=4h&limit=120.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -131,7 +131,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "detect_market_regime",
     domain: "market",
     description:
-      "When: before choosing a backtested strategy. Numeric regime from ATR/ADX/Bollinger/volume (trend/range/high_volatility/low_liquidity) — not a textual guess. read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
+      "Classifies the current market regime numerically from ATR/ADX/Bollinger/volume as trend, range, high_volatility, or low_liquidity — not a textual guess. When: before choosing a backtested strategy, so the strategy matches the regime. read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,

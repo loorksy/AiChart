@@ -35,6 +35,9 @@ const SCHEMA = `
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     -- 'ea' | 'mt5local' | NULL (operator's global default).
     forex_backend            TEXT,
+    -- "provider/model" the USER picked for their own analyses; NULL = the
+    -- platform default. The admin supplies keys, the user picks the brain.
+    preferred_model_ref      TEXT,
     send_screenshot          BOOLEAN NOT NULL DEFAULT TRUE,
     telegram_chat_id         TEXT,
     onboarding_done          BOOLEAN NOT NULL DEFAULT FALSE,
@@ -626,6 +629,18 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user
     ON agent_audit_logs (user_id, id DESC);
 
+  -- Per-user custom agent skills (full SKILL.md text; trust is always "user").
+  CREATE TABLE IF NOT EXISTS user_agent_skills (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    name       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, name)
+  );
+
   CREATE TABLE IF NOT EXISTS agent_runs (
     run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
     request_id TEXT NOT NULL, symbol TEXT, timeframe TEXT, intent TEXT,
@@ -1216,6 +1231,11 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trading_settings
       ADD COLUMN IF NOT EXISTS forex_backend TEXT
+  `).catch(() => {});
+
+  await client.query(`
+    ALTER TABLE trading_settings
+      ADD COLUMN IF NOT EXISTS preferred_model_ref TEXT
   `).catch(() => {});
 
   await client.query(`

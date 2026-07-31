@@ -163,6 +163,8 @@ interface Props {
   locale?: AppLocale;
   direction?: Direction;
   theme?: "light" | "dark";
+  /** Headless screenshot render: drop every toolbar so the PNG is chart only. */
+  capture?: boolean;
   className?: string;
   onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
   onIntervalChange?: (interval: string) => void;
@@ -205,6 +207,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     locale = "ar",
     direction = "rtl",
     theme = "dark",
+    capture = false,
     className,
     onSymbolChange,
     onIntervalChange,
@@ -219,10 +222,14 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const headerButtonsRef = useRef<Map<string, HTMLElement>>(new Map());
   const headerActionsRef = useRef<TvHeaderAction[] | undefined>(headerActions);
   const directionRef = useRef<Direction>(direction);
+  // Read inside the mount effect, which runs once and must not re-run when
+  // unrelated props change.
+  const captureRef = useRef(capture);
   headerActionsRef.current = headerActions;
   directionRef.current = direction;
+  captureRef.current = capture;
   // Stable indirection so the mount effect can call the latest applyDrawings.
-  const applyDrawingsRef = useRef<() => void>(() => {});
+  const applyDrawingsRef = useRef<(opts?: { force?: boolean }) => void>(() => {});
   const pushSyncRef = useRef(false);
   const latestCandleRef = useRef<TvLatestCandle | null>(null);
   const clearLatestCandle = () => {
@@ -360,6 +367,13 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           typeof window !== "undefined" &&
           window.matchMedia("(max-width: 767px)").matches;
 
+        // Capture mode: the server opens this page headlessly to photograph the
+        // operator's chart. Toolbars are application chrome, not chart content,
+        // so they are stripped — the PNG should be the chart and nothing else.
+        // Read from the prop (the server resolved it) rather than sniffing the
+        // URL, which a client-side navigation can rewrite before this runs.
+        const isCapture = captureRef.current;
+
         const options: ChartingLibraryWidgetOptions = {
           container: el,
           library_path: LIBRARY_PATH,
@@ -385,6 +399,15 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             "header_compare",
             // Manual drawing toolbar hidden on mobile only.
             ...(isMobile ? (["left_toolbar"] as const) : []),
+            ...(isCapture
+              ? ([
+                  "left_toolbar",
+                  "header_widget",
+                  "timeframes_toolbar",
+                  "control_bar",
+                  "legend_context_menu",
+                ] as const)
+              : []),
           ],
           enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
           overrides: {
@@ -431,7 +454,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           chart.onDataLoaded().subscribe(null, () => {
             if (pendingReapplyRef.current) {
               pendingReapplyRef.current = false;
-              applyDrawingsRef.current();
+              // Force: after a frame/symbol switch the shapes must be rebuilt
+              // even when the payload fingerprint is unchanged.
+              applyDrawingsRef.current({ force: true });
             }
           });
           chart.onSymbolChanged().subscribe(null, () => {
@@ -527,7 +552,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   drawArgsRef.current = { drawings, overlays, recommendation, targets, symbol, interval };
   const pendingReapplyRef = useRef(false);
 
-  const applyDrawings = useCallback(() => {
+  const applyDrawings = useCallback((opts?: { force?: boolean }) => {
     const mgr = managerRef.current;
     if (!mgr || !readyRef.current) return;
     const a = drawArgsRef.current;
@@ -536,6 +561,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       combined,
       { recommendation: a.recommendation, targets: a.targets },
       { symbol: a.symbol, interval: a.interval },
+      opts,
     );
   }, []);
   applyDrawingsRef.current = applyDrawings;

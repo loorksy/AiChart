@@ -31,9 +31,12 @@ const STATUS_CLASS: Record<string, string> = {
 export default function TradesClient({
   initialIntents,
   initialTrades,
+  embedded = false,
 }: {
   initialIntents: TradeIntent[];
   initialTrades: Trade[];
+  /** Render as a section inside another page (no <main>, no page title). */
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const { t, dir } = useLocale();
@@ -125,8 +128,8 @@ export default function TradesClient({
   const sideLabel = (side: string) =>
     side === "buy" ? t("trades.buy") : t("trades.sell");
 
-  return (
-    <PageLayout title={t("trades.title")} subtitle={t("trades.subtitle")}>
+  const body = (
+    <>
       <section className="space-y-3">
         <SectionTitle>
           {t("trades.pending", { count: String(pending.length) })}
@@ -311,6 +314,21 @@ export default function TradesClient({
           </div>
         </section>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <section id="trades" className="scroll-mt-24 space-y-4">
+        <h2 className="text-lg font-semibold text-foreground">{t("trades.title")}</h2>
+        {body}
+      </section>
+    );
+  }
+
+  return (
+    <PageLayout title={t("trades.title")} subtitle={t("trades.subtitle")}>
+      {body}
     </PageLayout>
   );
 }
