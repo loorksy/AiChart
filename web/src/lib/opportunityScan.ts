@@ -1,6 +1,7 @@
 import { DEFAULT_MARKET, resolveActiveMarket } from "@/lib/marketPolicy";
 import { resolveScanAssetsForMarket } from "./allowedAssets.server";
 import { isLLMConfigured } from "./llm";
+import { withUsageContext } from "./billing/usageMeter";
 import {
   getLimits,
   getSettings,
@@ -80,7 +81,9 @@ export async function runOpportunityScan(
   for (const symbol of symbols) {
     if (!opts?.skipCooldown && await isOnCooldown(userId, symbol)) continue;
     try {
-      const candidate = await scanForexSymbol(userId, symbol, interval);
+      const candidate = await withUsageContext({ userId, kind: "scan" }, () =>
+        scanForexSymbol(userId, symbol, interval),
+      );
       result.symbolsChecked += 1;
       if (!candidate) continue;
       result.candidates.push({

@@ -111,6 +111,33 @@ const SCHEMA = `
     PRIMARY KEY (user_id, day)
   );
 
+  -- V2-A1: one row per LLM call. user_id NULL = platform/system spend.
+  CREATE TABLE IF NOT EXISTS usage_events (
+    id                BIGSERIAL PRIMARY KEY,
+    user_id           INTEGER,
+    ts                BIGINT NOT NULL,
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    kind              TEXT NOT NULL DEFAULT 'other',
+    input_tokens      INTEGER NOT NULL DEFAULT 0,
+    output_tokens     INTEGER NOT NULL DEFAULT 0,
+    provider_cost_usd DOUBLE PRECISION,
+    retail_cost_usd   DOUBLE PRECISION,
+    request_id        TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_usage_events_user_ts ON usage_events(user_id, ts);
+  CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts);
+
+  -- V2-A1: admin-editable provider list prices (USD per 1M tokens).
+  CREATE TABLE IF NOT EXISTS model_prices (
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    input_usd_per_m   DOUBLE PRECISION NOT NULL,
+    output_usd_per_m  DOUBLE PRECISION NOT NULL,
+    updated_at        BIGINT NOT NULL,
+    PRIMARY KEY (provider, model)
+  );
+
   CREATE TABLE IF NOT EXISTS trade_intents (
     id                SERIAL PRIMARY KEY,
     user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

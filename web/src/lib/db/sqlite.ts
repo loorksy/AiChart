@@ -122,6 +122,33 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  -- V2-A1: one row per LLM call. user_id NULL = platform/system spend.
+  CREATE TABLE IF NOT EXISTS usage_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER,
+    ts                INTEGER NOT NULL,
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    kind              TEXT NOT NULL DEFAULT 'other',
+    input_tokens      INTEGER NOT NULL DEFAULT 0,
+    output_tokens     INTEGER NOT NULL DEFAULT 0,
+    provider_cost_usd REAL,
+    retail_cost_usd   REAL,
+    request_id        TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_usage_events_user_ts ON usage_events(user_id, ts);
+  CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts);
+
+  -- V2-A1: admin-editable provider list prices (USD per 1M tokens).
+  CREATE TABLE IF NOT EXISTS model_prices (
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    input_usd_per_m   REAL NOT NULL,
+    output_usd_per_m  REAL NOT NULL,
+    updated_at        INTEGER NOT NULL,
+    PRIMARY KEY (provider, model)
+  );
+
   CREATE TABLE IF NOT EXISTS trade_intents (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id           INTEGER NOT NULL,

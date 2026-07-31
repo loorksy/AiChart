@@ -7,6 +7,7 @@ import {
   resolveUserModelSelection,
   withRequestModel,
 } from "@/lib/llm";
+import { withUsageContext } from "@/lib/billing/usageMeter";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
@@ -456,8 +457,11 @@ export async function POST(req: NextRequest) {
           const modelSelection = await resolveUserModelSelection(
             (await getSettings(user.id)).preferred_model_ref,
           );
-          const result = await withRequestModel(modelSelection, () =>
-            runUnifiedChartAgent({
+          const result = await withUsageContext(
+            { userId: user.id, kind: "chat" },
+            () =>
+              withRequestModel(modelSelection, () =>
+                runUnifiedChartAgent({
               userMessage: resolvedMessage,
               chartContext: body.chartContext,
               locale: body.locale,
@@ -474,6 +478,7 @@ export async function POST(req: NextRequest) {
               canExecute,
               conversationContext,
             }),
+              ),
           );
 
           if (traceRunId) {

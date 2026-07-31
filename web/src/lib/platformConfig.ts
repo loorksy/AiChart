@@ -119,6 +119,17 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     plainStorage: false,
   },
   {
+    // V2-A1: retail multiplier over provider cost for credits burn. Lives in
+    // the DB so the platform's margin never appears in this public repo.
+    key: "BILLING_RETAIL_MULTIPLIER",
+    label: "معامل تسعير الاستهلاك (تجزئة ÷ تكلفة)",
+    labelEn: "BILLING_RETAIL_MULTIPLIER",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    placeholder: "1.0",
+  },
+  {
     key: "APP_URL",
     label: "رابط الموقع العام",
     labelEn: "APP_URL",

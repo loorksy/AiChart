@@ -17,6 +17,7 @@ import {
   resolveUserModelSelection,
   withRequestModel,
 } from "@/lib/llm";
+import { withUsageContext } from "@/lib/billing/usageMeter";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
@@ -106,7 +107,8 @@ export async function POST(req: NextRequest) {
     const modelSelection = await resolveUserModelSelection(
       (await getSettings(userId)).preferred_model_ref,
     );
-    const result = await withRequestModel(modelSelection, () => runUnifiedChartAgent({
+    const result = await withUsageContext({ userId, kind: "analysis" }, () =>
+      withRequestModel(modelSelection, () => runUnifiedChartAgent({
       // The parity surface is the BRAIN that decided, not the transport that
       // asked. This route runs `runUnifiedChartAgent` — the platform decision
       // engine — so it records as `platform` even though an MCP tool proxied
@@ -132,7 +134,7 @@ export async function POST(req: NextRequest) {
       },
       account: null,
       canExecute: false,
-    }));
+    })));
     const recommendation = result.recommendation;
     const mapped: Recommendation | null = recommendation && (recommendation.action === "buy" || recommendation.action === "sell")
       ? ({
