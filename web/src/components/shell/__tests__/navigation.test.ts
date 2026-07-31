@@ -7,17 +7,22 @@ import { activeNav, APP_NAV, ADMIN_NAV, navForRole } from "@/components/shell/na
 const root = resolve(process.cwd(), "src");
 const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
 
-test("APP_NAV has Chart/Chat, Statistics, Trades, Recommendations, Journal — no Chat History page", () => {
+test("APP_NAV has Chart/Chat, unified Performance, Journal — no Chat History page", () => {
   const userHrefs = navForRole("user", "full").map((i) => i.href);
-  assert.deepEqual(userHrefs, [
-    "/console",
-    "/statistics",
-    "/console/trades",
-    "/recommendations",
-    "/journal",
-  ]);
+  assert.deepEqual(userHrefs, ["/console", "/performance", "/journal"]);
   assert.ok(!userHrefs.includes("/console/chats"));
   assert.ok(!APP_NAV.some((i) => i.labelKey === "nav.chat_history"));
+});
+
+test("old recommendation/trade/statistics routes redirect into /performance", () => {
+  assert.match(read("app/statistics/page.tsx"), /redirect\("\/performance#statistics"\)/);
+  assert.match(read("app/recommendations/page.tsx"), /redirect\("\/performance#recommendations"\)/);
+  assert.match(read("app/console/trades/page.tsx"), /redirect\("\/performance#trades"\)/);
+  // The unified page hosts all three sections.
+  const page = read("app/performance/page.tsx");
+  assert.match(page, /RecommendationsSection/);
+  assert.match(page, /StatisticsSection/);
+  assert.match(page, /TradesClient/);
 });
 
 test("trial nav is limited to console only", () => {
@@ -46,10 +51,10 @@ test("Account, Integrations, Settings are not primary destinations", () => {
 
 test("activeNav exact vs prefix", () => {
   const overview = APP_NAV.find((i) => i.href === "/console")!;
-  const trades = APP_NAV.find((i) => i.href === "/console/trades")!;
+  const performance = APP_NAV.find((i) => i.href === "/performance")!;
   assert.equal(activeNav("/console", overview), true);
-  assert.equal(activeNav("/console/trades", overview), false);
-  assert.equal(activeNav("/console/trades", trades), true);
+  assert.equal(activeNav("/performance", overview), false);
+  assert.equal(activeNav("/performance", performance), true);
 });
 
 test("shell mounts conversations for traders; admin uses admin nav", () => {
@@ -165,7 +170,7 @@ test("MCP login uses neutral tokens and preserves oauth routes", () => {
 });
 
 test("shell-less pages still use AppConsoleShell", () => {
-  assert.match(read("app/statistics/layout.tsx"), /AppConsoleShell/);
+  assert.match(read("app/performance/layout.tsx"), /AppConsoleShell/);
   assert.match(read("app/recommendations/layout.tsx"), /AppConsoleShell/);
 });
 
