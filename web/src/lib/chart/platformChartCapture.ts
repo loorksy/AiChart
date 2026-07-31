@@ -16,6 +16,7 @@ import { chromium, type Browser } from "playwright";
 import { createSessionToken } from "@/lib/auth";
 import { getPublicAppUrl } from "@/lib/appUrl";
 import { queryOne } from "@/lib/db";
+import { getOrCreateChartLayout } from "@/lib/store";
 import { createLogger } from "@/lib/logger";
 
 const log = createLogger("chart.platform-capture");
@@ -139,9 +140,17 @@ export async function capturePlatformChart(
     const page = await context.newPage();
     page.setDefaultTimeout(NAV_TIMEOUT_MS);
 
+    // Resolve the layout up front and navigate straight to it. Going through
+    // /chart/<SYMBOL> would bounce through a redirect, and any query the
+    // redirect does not re-emit (interval, capture) is lost on the way.
+    const layoutId =
+      input.layoutId ??
+      (await getOrCreateChartLayout(input.userId, input.symbol.toUpperCase())
+        .then((l) => l.id)
+        .catch(() => null));
     const target = new URL(
-      input.layoutId
-        ? `/chart/${encodeURIComponent(input.layoutId)}`
+      layoutId
+        ? `/chart/${encodeURIComponent(layoutId)}`
         : `/chart/${encodeURIComponent(input.symbol.toUpperCase())}`,
       base,
     );

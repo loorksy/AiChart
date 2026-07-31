@@ -88,10 +88,16 @@ export default async function ChartSymbolPage({
       );
     }
 
-    // Param is a symbol → send the user to their own layout URL.
+    // Param is a symbol → send the user to their own layout URL, CARRYING the
+    // query through. Dropping it here silently discarded ?interval= and
+    // ?capture=, so a requested timeframe (and headless capture mode) never
+    // reached the chart.
     const sym = cleanSymbol(raw) || "EURUSD";
     const mine = await getOrCreateChartLayout(user.id, sym);
-    redirect(`/chart/${mine.id}?symbol=${encodeURIComponent(sym)}`);
+    const forward = new URLSearchParams({ symbol: sym });
+    if (typeof search.interval === "string") forward.set("interval", search.interval);
+    if (typeof search.capture === "string") forward.set("capture", search.capture);
+    redirect(`/chart/${mine.id}?${forward.toString()}`);
   }
 
   return (
