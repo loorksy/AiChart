@@ -60,6 +60,21 @@ async function withClient<T>(
   }
 }
 
+/** V2-A0: one tool call = the recommendation POST + the automatic chart capture. */
+function assertRecommendationPosts(calls: unknown[]) {
+  const typed = calls as Array<{ path: string }>;
+  assert.equal(
+    typed.filter((c) => c.path === "/api/agent/recommendation").length,
+    1,
+    "exactly one recommendation POST",
+  );
+  assert.equal(typed[0]!.path, "/api/agent/recommendation");
+  // The follow-up capture is part of the contract now (auto-attached chart).
+  for (const extra of typed.slice(1)) {
+    assert.equal(extra.path, "/api/agent/chart/snapshot");
+  }
+}
+
 describe("advertised activation_rule schema", () => {
   it("is ONE flat union keyed on kind — never a nested anyOf[oneOf[...]]", async () => {
     await withClient(async (client) => {
@@ -147,7 +162,7 @@ describe("tools/call through the SDK validation layer", () => {
         },
       });
       assert.notEqual(result.isError, true, JSON.stringify(result.content).slice(0, 300));
-      assert.equal(calls.length, 1, "exactly one bridge POST for one tool call");
+      assertRecommendationPosts(calls);
     });
   });
 
@@ -163,7 +178,7 @@ describe("tools/call through the SDK validation layer", () => {
         },
       });
       assert.notEqual(result.isError, true, JSON.stringify(result.content).slice(0, 300));
-      assert.equal(calls.length, 1);
+      assertRecommendationPosts(calls);
     });
   });
 
@@ -174,7 +189,7 @@ describe("tools/call through the SDK validation layer", () => {
         arguments: { ...completePlan, plan_type: "immediate" },
       });
       assert.notEqual(result.isError, true, JSON.stringify(result.content).slice(0, 300));
-      assert.equal(calls.length, 1);
+      assertRecommendationPosts(calls);
     });
   });
 
@@ -226,7 +241,7 @@ describe("stale-client transport compatibility", () => {
         },
       });
       assert.notEqual(result.isError, true, JSON.stringify(result.content).slice(0, 300));
-      assert.equal(calls.length, 1);
+      assertRecommendationPosts(calls);
       // The web API receives TYPED canonical values, never the wire strings.
       const forwarded = (calls[0] as { body: Record<string, unknown> }).body;
       assert.equal(typeof forwarded.activation_rule, "object");

@@ -20,6 +20,7 @@ import {
   DRAW_CAPTURE_MAX_MS,
   multiTimeframeContent,
   pollBridgeMt5ChartPng,
+  recommendationWithAutoChart,
   resolveChartSnapshotResponse,
   type ChartSnapshotBridgeResult,
   type MultiTimeframeBridgeResult,
@@ -418,7 +419,17 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
       for (const key of ["validity_candles", "entry_low", "entry_high"] as const) {
         if (typeof body2[key] === "string") body2[key] = Number(body2[key]);
       }
-      return bridgeCall(() => bridge.post("/api/agent/recommendation", body2));
+      try {
+        const rec = await bridge.post("/api/agent/recommendation", body2);
+        // V2-A0: the chart and card travel WITH the recommendation — the
+        // operator sees the deliverable without a second tool call.
+        return recommendationWithAutoChart(bridge, rec, {
+          symbol: body2.symbol as string | undefined,
+          timeframe: body2.timeframe as string | undefined,
+        });
+      } catch (e) {
+        return formatBridgeError(e);
+      }
     },
   );
 

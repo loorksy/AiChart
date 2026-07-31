@@ -428,4 +428,89 @@ export async function resolveChartSnapshotResponse(
   };
 }
 
+/**
+ * V2-A0: a recommendation is not "delivered" until the operator can SEE it.
+ *
+ * Wraps a successful create_recommendation bridge payload with an automatic
+ * platform-chart capture (same source ladder as capture_chart_snapshot) plus a
+ * compact recommendation_card, so one tool call yields the full deliverable:
+ * JSON + card + image + display_markdown. A capture failure NEVER fails the
+ * recommendation — it degrades to an explicit image_captured:false with the
+ * anti-hallucination note, because the recommendation row already exists.
+ */
+export async function recommendationWithAutoChart(
+  bridge: BridgeClient,
+  recommendation: unknown,
+  req: { symbol?: string; timeframe?: string },
+): Promise<ChartInlineResponse> {
+  const rec = (recommendation ?? {}) as Record<string, unknown>;
+  const inner = (rec.recommendation ?? rec) as Record<string, unknown>;
+  const symbol = String(inner.symbol ?? req.symbol ?? "").toUpperCase();
+  const timeframe = String(inner.timeframe ?? req.timeframe ?? "1h");
+  const card = {
+    id: inner.id ?? rec.id,
+    symbol,
+    side: inner.side,
+    timeframe,
+    entry: inner.entry ?? inner.entry_price,
+    entry_low: inner.entry_low,
+    entry_high: inner.entry_high,
+    stop_loss: inner.stop_loss,
+    take_profit: inner.take_profit,
+    take_profits: inner.take_profits,
+    confidence: inner.confidence,
+    plan_type: inner.plan_type,
+    status: inner.status,
+  };
+  const meta: Record<string, unknown> = {
+    ...(typeof recommendation === "object" && recommendation !== null
+      ? (recommendation as Record<string, unknown>)
+      : { result: recommendation }),
+    recommendation_card: card,
+    chart_auto_attached: true,
+    presentation:
+      "Present recommendation_card to the operator AND paste display_markdown verbatim so they see the chart.",
+  };
+
+  if (symbol) {
+    try {
+      const snap = (await bridge.post(
+        "/api/agent/chart/snapshot",
+        { symbol, interval: timeframe, market: "forex", response_format: "json" },
+        45_000,
+      )) as ChartSnapshotBridgeResult;
+      if (snap?.image_base64) {
+        const delivered = await chartInlineContent(meta, snap.image_base64, {
+          tool: "create_recommendation",
+          symbol,
+          timeframe,
+        });
+        // A broken capture must not surface as a failed recommendation.
+        if (!delivered.isError) return delivered;
+      }
+    } catch {
+      /* fall through to the explicit no-image result */
+    }
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            ...meta,
+            chart_auto_attached: false,
+            image_captured: false,
+            note:
+              "Recommendation CREATED successfully, but the automatic chart capture failed. Do NOT describe any chart image — present recommendation_card and offer capture_chart_snapshot as a retry.",
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
 export { DRAW_CAPTURE_MAX_MS };
