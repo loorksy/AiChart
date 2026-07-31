@@ -138,7 +138,10 @@ function SmartChartWorkspaceInner({
   // Last final agent result — surfaced read-only via the dev/test debug bridge.
   const lastFinalResultRef = useRef<AgentFinalResult | null>(null);
   const [mobilePane, setMobilePane] = useState<MobilePane>(DEFAULT_MOBILE_PANE);
-  const chatEnabled = !guest;
+  // A capture renders the chart alone. Leaving chat on also left its URL sync
+  // on, which rewrote the address to /console mid-load — so the screenshot was
+  // of the console workspace at the SAVED timeframe, not the requested chart.
+  const chatEnabled = !guest && !capture;
 
   const { locale, t, dir } = useLocale();
   const { resolved: chartTheme } = useTheme();
