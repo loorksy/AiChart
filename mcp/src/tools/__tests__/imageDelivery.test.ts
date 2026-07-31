@@ -244,10 +244,11 @@ describe("prepareImage", () => {
 });
 
 describe("chartInlineContent", () => {
-  it("attaches the image block and reports the bytes actually sent", async () => {
+  it("attaches the image block by default and carries display_markdown", async () => {
     const res = await chartInlineContent({ ok: true, status: "ready" }, TINY_PNG, {
       tool: "capture_chart_snapshot",
       symbol: "XAUUSD",
+      timeframe: "1h",
     });
     const images = res.content.filter((b) => b.type === "image");
     assert.equal(images.length, 1);
@@ -258,13 +259,33 @@ describe("chartInlineContent", () => {
     assert.ok(meta.image_url);
     assert.equal(meta.bytes, TINY_PNG.length);
     assert.equal(meta.width, 1);
+    // The operator-facing delivery: a ready markdown image for the reply.
+    assert.match(meta.display_markdown, /^!\[XAUUSD 1h chart\]\(https:\/\//);
+    assert.match(meta.image_delivery, /display_markdown/);
 
     // image_bytes must describe the block on the wire, not the capture size.
     const sent = Buffer.from((images[0] as { data: string }).data, "base64");
     assert.equal(meta.image_bytes, sent.length);
   });
 
-  it("returns the URL alone, with NO image block, when over the cap", async () => {
+  it("skips the inline block only when inline_image=false", async () => {
+    const res = await chartInlineContent(
+      { ok: true, status: "ready" },
+      TINY_PNG,
+      { tool: "capture_chart_snapshot", symbol: "XAUUSD" },
+      { inlineImage: false },
+    );
+    assert.equal(res.content.filter((b) => b.type === "image").length, 0);
+
+    const meta = JSON.parse((res.content[0] as { text: string }).text);
+    assert.equal(meta.image_attached, false);
+    assert.equal(meta.image_bytes, 0);
+    assert.ok(meta.image_url);
+    assert.ok(meta.display_markdown);
+    assert.match(meta.note, /Do not describe/);
+  });
+
+  it("returns the URL alone even by default when over the cap", async () => {
     process.env.MCP_MAX_INLINE_IMAGE_BYTES = "500";
     try {
       const big = await noisyPng(1400, 900);
@@ -321,6 +342,48 @@ describe("multiTimeframeContent image delivery", () => {
     image_source: "platform_chart",
     from_cache: false,
     numeric_context: { price: 4130.02 },
+  });
+
+  it("attaches frames by default with per-frame display_markdown", async () => {
+    const good = TINY_PNG.toString("base64");
+    const res = await multiTimeframeContent({
+      ok: true,
+      symbol: "XAUUSD",
+      snapshots: [frame("15m", good), frame("1h", good)],
+    });
+
+    assert.equal(res.content.filter((b) => b.type === "image").length, 2);
+    const summary = JSON.parse((res.content[0] as { text: string }).text);
+    assert.equal(summary.ok, true);
+    assert.match(
+      summary.snapshots[0].display_markdown,
+      /^!\[XAUUSD 15m chart\]\(https:\/\//,
+    );
+    assert.match(
+      summary.snapshots[1].display_markdown,
+      /^!\[XAUUSD 1h chart\]\(https:\/\//,
+    );
+  });
+
+  it("skips inline frames when inline_image=false but keeps the markdown", async () => {
+    const good = TINY_PNG.toString("base64");
+    const res = await multiTimeframeContent(
+      {
+        ok: true,
+        symbol: "XAUUSD",
+        snapshots: [frame("15m", good), frame("1h", good)],
+      },
+      { inlineImage: false },
+    );
+
+    assert.equal(res.content.filter((b) => b.type === "image").length, 0);
+    const summary = JSON.parse((res.content[0] as { text: string }).text);
+    for (const snap of summary.snapshots) {
+      assert.equal(snap.image_attached, false);
+      assert.ok(snap.image_url);
+      assert.ok(snap.display_markdown);
+    }
+    assert.match(summary.image_delivery, /display_markdown/);
   });
 
   it("keeps a broken frame out of the images and names it in missing_timeframes", async () => {

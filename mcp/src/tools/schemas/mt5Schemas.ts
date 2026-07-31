@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { DESTRUCTIVE, READ_ONLY } from "../registry.js";
 import type { ToolDefinition } from "./types.js";
-import { zChartDrawings, zInterval, zSymbol } from "./shapes.js";
+import { zChartDrawings, zInterval, zLooseBoolean, zSymbol } from "./shapes.js";
 
 export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -74,7 +74,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_mt5_chart",
     domain: "mt5",
     description:
-      "Captures an MT5 chart image: with entry/SL/TP, drawings, or a recommendation_id it queues a draw_and_capture on the EA and polls up to 30s for the annotated PNG; without annotations it falls back to a plain chart snapshot. When: an MT5 chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
+      "Captures an MT5 chart image: with entry/SL/TP, drawings, or a recommendation_id it queues a draw_and_capture on the EA and polls up to 30s for the annotated PNG; without annotations it falls back to a plain chart snapshot. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: an MT5 chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -84,6 +84,11 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
       stop_loss: z.number().optional(),
       take_profit: z.number().optional(),
       drawings: zChartDrawings,
+      inline_image: zLooseBoolean
+        .optional()
+        .describe(
+          "Set false to skip the inline image copy (default true). The operator-facing display_markdown is returned either way.",
+        ),
     },
     annotations: READ_ONLY,
   },

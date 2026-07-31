@@ -22,7 +22,7 @@ import { wildcardPath } from "./http/wildcardPath.js";
 import { logPublicWidgetFetch, widgetHtmlByPublicPath } from "./ui/index.js";
 import { STATIC_ASSETS } from "./ui/runtime.js";
 import { normalizeWidgetPublicPath } from "./ui/publicPath.js";
-import { getImage } from "./tools/imageStore.js";
+import { getImage, startImageStoreSweeper } from "./tools/imageStore.js";
 import { MCP_SERVER_VERSION } from "./tools/registry.js";
 import { gitCommit } from "./version.js";
 
@@ -432,6 +432,9 @@ if (authMiddleware) {
   app.get("/mcp", mcpGetHandler);
   app.delete("/mcp", mcpDeleteHandler);
 }
+
+// Captured chart links are promised to disappear ~3 minutes after creation.
+startImageStoreSweeper();
 
 app.listen(cfg.port, () => {
   console.log(

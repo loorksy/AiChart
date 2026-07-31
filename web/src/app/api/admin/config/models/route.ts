@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError } from "@/lib/api";
 import { listOpenAIChatModels } from "@/lib/openaiCompat";
+import { OPENAI_MODEL_CHOICES } from "@/lib/modelCatalog";
 import { getActiveModel, getProviderApiKey, providerKeyField } from "@/lib/llm";
 
 const bodySchema = z.object({
@@ -12,6 +13,16 @@ function missingKeyError(): string {
   return `أدخل مفتاح ${providerKeyField("openai")} أو احفظه أولاً.`;
 }
 
+/**
+ * The admin picks the platform default from the same curated catalogue users
+ * see — not from the provider's full listing. The live API call remains solely
+ * to prove the key works before it is trusted.
+ */
+async function curatedModels(key: string) {
+  await listOpenAIChatModels(key);
+  return OPENAI_MODEL_CHOICES.map((m) => ({ id: m.id, label: m.label }));
+}
+
 export async function GET() {
   try {
     await requireAdmin();
@@ -19,10 +30,9 @@ export async function GET() {
     if (!key) {
       return NextResponse.json({ error: missingKeyError() }, { status: 400 });
     }
-    const models = await listOpenAIChatModels(key);
     return NextResponse.json({
       provider: "openai",
-      models,
+      models: await curatedModels(key),
       defaultModel: getActiveModel(),
     });
   } catch (err) {
@@ -33,7 +43,7 @@ export async function GET() {
   }
 }
 
-/** Fetch models using stored key or a draft key before save. */
+/** Validate the stored key or a draft key before save, then list the catalogue. */
 export async function POST(req: NextRequest) {
   try {
     await requireAdmin();
@@ -42,10 +52,9 @@ export async function POST(req: NextRequest) {
     if (!key) {
       return NextResponse.json({ error: missingKeyError() }, { status: 400 });
     }
-    const models = await listOpenAIChatModels(key);
     return NextResponse.json({
       provider: "openai",
-      models,
+      models: await curatedModels(key),
       defaultModel: getActiveModel(),
     });
   } catch (err) {

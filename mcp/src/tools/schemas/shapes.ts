@@ -12,6 +12,23 @@ export const zTradeId = z.number().int().positive();
 export const zChartDrawings = z.array(z.record(z.string(), z.unknown())).optional();
 
 /**
+ * Boolean that tolerates the string forms MCP hosts actually send.
+ *
+ * Observed live: a host serialized `inline_image: true` as the STRING "true",
+ * and a strict z.boolean() rejected the whole call with -32602. Host JSON
+ * encoders are outside our control; the schema must accept "true"/"false" (and
+ * "1"/"0") rather than fail a working request over a quoting choice.
+ */
+export const zLooseBoolean = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const lower = value.trim().toLowerCase();
+    if (lower === "true" || lower === "1") return true;
+    if (lower === "false" || lower === "0" || lower === "") return false;
+  }
+  return value;
+}, z.boolean());
+
+/**
  * Known catalog strategies at the time of writing — informational only.
  * The WEB CATALOG (web/src/lib/strategies/catalog.ts) is the single source of
  * truth; the server rejects unknown ids with 409 and, for BUY/SELL, requires a

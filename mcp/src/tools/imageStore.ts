@@ -30,8 +30,14 @@ export interface StoredImage {
   expiresAt: string;
 }
 
-const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
-const MIN_SWEEP_INTERVAL_MS = 60_000;
+/**
+ * Short by design: the operator asked for capture links that live ~3 minutes
+ * and then disappear on their own. The link is a view of "the chart right
+ * now" — an hour-old chart link would be misleading, not convenient.
+ */
+const DEFAULT_TTL_MS = 3 * 60 * 1000;
+const MIN_SWEEP_INTERVAL_MS = 30_000;
+const SWEEP_TIMER_MS = 30_000;
 /** Ids are hex so the route can reject anything else before touching the disk. */
 const ID_PATTERN = /^[0-9a-f]{32}$/;
 const EXTENSIONS: Record<string, string> = {
@@ -72,6 +78,10 @@ export function imagePublicBase(): string {
 function sweep(now: number): void {
   if (now - lastSweep < MIN_SWEEP_INTERVAL_MS) return;
   lastSweep = now;
+  sweepNow(now);
+}
+
+function sweepNow(now: number): void {
   const dir = imageStoreDir();
   const ttl = imageStoreTtlMs();
   try {
@@ -86,6 +96,19 @@ function sweep(now: number): void {
   } catch {
     /* directory not created yet */
   }
+}
+
+/**
+ * Guaranteed deletion, not just guaranteed 404.
+ *
+ * The on-read and on-write sweeps make an expired link *behave* deleted, but a
+ * quiet server would keep the bytes on disk indefinitely. The timer makes
+ * "deleted after 3 minutes" literally true, within one sweep interval.
+ */
+export function startImageStoreSweeper(): NodeJS.Timeout {
+  const timer = setInterval(() => sweepNow(Date.now()), SWEEP_TIMER_MS);
+  timer.unref();
+  return timer;
 }
 
 /**

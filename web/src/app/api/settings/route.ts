@@ -7,6 +7,7 @@ import {
   setMarketAssets,
   setWatchlist,
 } from "@/lib/allowedAssets";
+import { isOfferedModelRef, parseModelRef } from "@/lib/llm";
 import { RISK_PER_TRADE, riskPerTradeSchema } from "@/lib/productModel";
 
 const assetList = z.array(z.string().trim().min(1).max(20)).max(200);
@@ -71,6 +72,18 @@ export async function PUT(request: NextRequest) {
     if (input.per_trade_pct !== undefined) patch.per_trade_pct = input.per_trade_pct;
     if (input.forex_backend !== undefined) patch.forex_backend = input.forex_backend;
     if (input.preferred_model_ref !== undefined) {
+      // Only the curated catalogue (plus the admin's configured default) may be
+      // saved — the regex alone would accept any well-formed id the provider's
+      // key happens to serve.
+      if (input.preferred_model_ref !== null) {
+        const parsed = parseModelRef(input.preferred_model_ref);
+        if (!parsed || !(await isOfferedModelRef(parsed))) {
+          return NextResponse.json(
+            { error: "هذا النموذج غير متاح على المنصة." },
+            { status: 400 },
+          );
+        }
+      }
       patch.preferred_model_ref = input.preferred_model_ref;
     }
     if (input.telegram_chat_id !== undefined) patch.telegram_chat_id = input.telegram_chat_id;

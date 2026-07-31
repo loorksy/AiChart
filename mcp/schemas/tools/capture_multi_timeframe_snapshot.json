@@ -29,8 +29,12 @@
       "description": "Attach per-timeframe numbers (default true). Turn off only for a pure visual look.",
       "type": "boolean"
     },
+    "inline_image": {
+      "description": "Set false to skip the inline image copies (default true). The operator-facing display_markdown is returned either way.",
+      "type": "boolean"
+    },
     "inline_base64": {
-      "description": "Also repeat raw base64 inside the JSON block (default false — images already arrive as inline image blocks).",
+      "description": "Also repeat raw base64 inside the JSON block (default false; implies inline_image).",
       "type": "boolean"
     },
     "fresh": {

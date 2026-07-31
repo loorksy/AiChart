@@ -142,6 +142,7 @@ describe("multiTimeframeContent", () => {
     assert.equal(parsed.snapshots[0].image_block_index, 0);
     assert.equal(parsed.snapshots[0].numeric_context.price, 4130.02);
     assert.ok(parsed.snapshots[0].image_url, "each frame keeps a durable URL");
+    assert.ok(parsed.snapshots[0].display_markdown, "and a ready markdown image");
   });
 
   it("inlines base64 only when the caller asks", async () => {

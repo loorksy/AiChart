@@ -78,13 +78,20 @@ export async function pollBridgeMt5ChartPng(
  * The single delivery path for a one-image capture.
  *
  * Accepts a Buffer (MT5 poll) or base64 (bridge JSON), validates it, persists
- * the full-resolution PNG for its URL, and attaches a downscaled inline block
- * only when that block is small enough to survive the host's payload cap.
+ * the full-resolution PNG for its short-lived URL, and attaches the downscaled
+ * inline block by default so the host model *sees* the chart. The operator must
+ * see it too, and consumer hosts differ in what they render — some show the
+ * tool-result image, some (ChatGPT, the Claude consumer app) only render
+ * markdown in the assistant's reply. So the response also carries
+ * `display_markdown`, a ready `![…](url)` line the model is told to paste into
+ * its answer verbatim. Belt and braces: whichever path the host supports, the
+ * operator gets a picture, not a bare link.
  */
 export async function chartInlineContent(
   meta: Record<string, unknown>,
   image: Buffer | string,
   ctx: ImageDeliveryContext = { tool: "capture_chart_snapshot" },
+  opts: { inlineImage?: boolean } = {},
 ): Promise<ChartInlineResponse> {
   const buffer = Buffer.isBuffer(image)
     ? image
@@ -95,7 +102,12 @@ export async function chartInlineContent(
     return brokenImageResult(prepared.reason, meta, ctx);
   }
 
-  const attached = !prepared.inline.overCap;
+  const wantsInline = opts.inlineImage !== false;
+  const attached = wantsInline && !prepared.inline.overCap;
+  const skipReason = !wantsInline
+    ? ("inline_not_requested" as const)
+    : ("over_cap" as const);
+  const label = [ctx.symbol, ctx.timeframe, "chart"].filter(Boolean).join(" ");
   const content: McpContentBlock[] = [
     {
       type: "text",
@@ -103,7 +115,7 @@ export async function chartInlineContent(
         {
           ...meta,
           chartUrl: meta.chartUrl ?? meta.chart_url,
-          ...imageDeliveryFields(prepared, attached),
+          ...imageDeliveryFields(prepared, attached, skipReason, label),
         },
         null,
         2,
@@ -195,7 +207,7 @@ export interface MultiTimeframeBridgeResult {
  */
 export async function multiTimeframeContent(
   result: MultiTimeframeBridgeResult,
-  options: { inlineBase64?: boolean } = {},
+  options: { inlineBase64?: boolean; inlineImage?: boolean } = {},
 ): Promise<ChartInlineResponse> {
   const candidates = (result.snapshots ?? []).filter(
     (snapshot) => typeof snapshot.image_base64 === "string" && snapshot.image_base64,
@@ -204,6 +216,9 @@ export async function multiTimeframeContent(
   const symbol = result.symbol;
   const totalBudget = maxTotalInlineImageBytes();
   let remainingBudget = totalBudget;
+  // Inline is the default — the analysis doctrine depends on the model seeing
+  // the frames. inline_image=false opts out; inline_base64 keeps implying it.
+  const wantsInline = options.inlineImage !== false || options.inlineBase64 === true;
 
   const frames = [];
   for (const snapshot of candidates) {
@@ -220,17 +235,20 @@ export async function multiTimeframeContent(
       continue;
     }
     const fitsBudget = prepared.inline.buffer.length <= remainingBudget;
-    const attached = !prepared.inline.overCap && fitsBudget;
+    const attached = wantsInline && !prepared.inline.overCap && fitsBudget;
     if (attached) remainingBudget -= prepared.inline.buffer.length;
     frames.push({
       snapshot,
       prepared,
       attached,
-      // Distinguishing the two is what tells the operator whether the frame was
-      // inherently too big or simply queued behind earlier ones.
-      skipReason: prepared.inline.overCap
-        ? ("over_cap" as const)
-        : ("budget_exhausted" as const),
+      // Distinguishing the causes is what tells the operator whether the frame
+      // was never requested inline, inherently too big, or queued behind
+      // earlier ones.
+      skipReason: !wantsInline
+        ? ("inline_not_requested" as const)
+        : prepared.inline.overCap
+          ? ("over_cap" as const)
+          : ("budget_exhausted" as const),
     });
   }
 
@@ -261,7 +279,9 @@ export async function multiTimeframeContent(
     image_delivery:
       usable.length === 0
         ? "NO images captured — do not describe any chart image"
-        : "full-resolution PNGs at each snapshot's image_url; frames that fit the payload budget are also attached as inline image blocks",
+        : wantsInline
+          ? "Frames that fit the payload budget are attached as inline image blocks. ALSO paste each snapshot's display_markdown in your reply so the operator sees the charts even on hosts that hide tool images. Links expire in ~3 minutes."
+          : "Inline images skipped by request (inline_image=false). SHOW the operator the charts by pasting each snapshot's display_markdown in your reply — links expire in ~3 minutes.",
     inline_budget_bytes: totalBudget,
     ...(usable.length === 0
       ? {
@@ -281,7 +301,12 @@ export async function multiTimeframeContent(
         image_source: frame.snapshot.image_source,
         from_cache: frame.snapshot.from_cache === true,
         image_block_index: attached ? blockIndex++ : null,
-        ...imageDeliveryFields(prepared, attached, frame.skipReason),
+        ...imageDeliveryFields(
+          prepared,
+          attached,
+          frame.skipReason,
+          [symbol, frame.snapshot.timeframe, "chart"].filter(Boolean).join(" "),
+        ),
         ...(options.inlineBase64 && attached
           ? { imageBase64: prepared.inline.buffer.toString("base64") }
           : {}),
@@ -329,6 +354,7 @@ export async function resolveChartSnapshotResponse(
   res: ChartSnapshotBridgeResult,
   pollMaxMs = DEFAULT_MAX_MS,
   ctx: ImageDeliveryContext = { tool: "capture_chart_snapshot" },
+  opts: { inlineImage?: boolean } = {},
 ): Promise<ChartInlineResponse> {
   const context: ImageDeliveryContext = {
     ...ctx,
@@ -358,6 +384,7 @@ export async function resolveChartSnapshotResponse(
         },
         polled.png,
         context,
+        opts,
       );
     }
   }
@@ -371,6 +398,7 @@ export async function resolveChartSnapshotResponse(
       },
       res.image_base64,
       context,
+      opts,
     );
   }
 
