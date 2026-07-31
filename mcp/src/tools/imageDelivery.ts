@@ -188,6 +188,32 @@ export async function encodeForInline(
     };
   }
 
+  /**
+   * The untouched capture, when it already fits.
+   *
+   * Resizing is not monotonic in bytes: interpolation blurs the hard edges of a
+   * chart into intermediate colours, so a 1200px re-encode can compress *worse*
+   * than the 2040px original (observed live: 95,604B in, 105,646B out). Where
+   * that happens the original wins on both size and resolution.
+   */
+  const originalCandidate: EncodedImage | null =
+    buffer.length <= maxBytes
+      ? {
+          buffer,
+          mimeType: "image/png",
+          width: original.width ?? 0,
+          height: original.height ?? 0,
+          encoding: "original",
+          overCap: false,
+        }
+      : null;
+
+  /** Whichever of the two is fewer bytes — both are lossless. */
+  const preferSmaller = (candidate: EncodedImage): EncodedImage =>
+    originalCandidate && originalCandidate.buffer.length < candidate.buffer.length
+      ? originalCandidate
+      : candidate;
+
   try {
     const resized = sharp(buffer).resize({
       width: maxWidth,
@@ -200,14 +226,14 @@ export async function encodeForInline(
       .png({ compressionLevel: 9 })
       .toBuffer({ resolveWithObject: true });
     if (png.data.length <= maxBytes) {
-      return {
+      return preferSmaller({
         buffer: png.data,
         mimeType: "image/png",
         width: png.info.width,
         height: png.info.height,
         encoding: "png",
         overCap: false,
-      };
+      });
     }
 
     let smallest: EncodedImage = {
@@ -232,11 +258,11 @@ export async function encodeForInline(
         encoding: "jpeg",
         overCap: jpeg.data.length > maxBytes,
       };
-      if (!candidate.overCap) return candidate;
+      if (!candidate.overCap) return preferSmaller(candidate);
       if (candidate.buffer.length < smallest.buffer.length) smallest = candidate;
     }
 
-    return smallest;
+    return preferSmaller(smallest);
   } catch (e) {
     console.warn(
       `[mcp:image] re-encode failed, falling back to the original buffer: ${

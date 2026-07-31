@@ -146,6 +146,23 @@ describe("encodeForInline", () => {
     assert.ok(encoded.buffer.length <= MAX_INLINE_IMAGE_BYTES);
   });
 
+  it("keeps the original when downscaling would make it bigger", async () => {
+    // Real behaviour, measured: a chart's hard edges blur under interpolation,
+    // so the 1200px re-encode is LARGER than the 2040px capture. Sending it
+    // would be pure loss — more bytes and less resolution.
+    const chart = await chartLikePng(2040, 1440);
+    const resized = await sharp(chart)
+      .resize({ width: 1200, withoutEnlargement: true, fit: "inside" })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+    assert.ok(resized.length > chart.length, "fixture must exhibit the inversion");
+
+    const encoded = await encodeForInline(chart);
+    assert.equal(encoded.encoding, "original");
+    assert.equal(encoded.width, 2040);
+    assert.ok(encoded.buffer.length <= chart.length);
+  });
+
   it("downscales a wide capture to the 1200px inline width", async () => {
     const wide = await sharp({
       create: {
@@ -162,14 +179,13 @@ describe("encodeForInline", () => {
     assert.equal(encoded.height, 600);
   });
 
-  it("keeps a realistic chart capture as PNG under the shipped cap", async () => {
-    // The everyday case: real captures land around 150KB at 2040px wide and
-    // compress well once the long edge comes down to 1200.
+  it("keeps a realistic chart capture as lossless PNG under the shipped cap", async () => {
+    // The everyday case: real captures land around 150KB at 2040px wide, and
+    // one of the lossless routes gets under the cap without touching JPEG.
     const chart = await chartLikePng(2040, 1440);
     const encoded = await encodeForInline(chart);
     assert.equal(encoded.overCap, false);
     assert.equal(encoded.mimeType, "image/png");
-    assert.equal(encoded.width, 1200);
     assert.ok(encoded.buffer.length <= MAX_INLINE_IMAGE_BYTES);
   });
 
