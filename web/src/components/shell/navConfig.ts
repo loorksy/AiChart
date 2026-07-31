@@ -4,6 +4,7 @@ import {
   Bot,
   CreditCard,
   KeyRound,
+  LifeBuoy,
   NotebookPen,
   Shield,
   Stethoscope,
@@ -37,6 +38,8 @@ export const APP_NAV: NavItem[] = [
   { href: "/journal", labelKey: "nav.journal", icon: NotebookPen },
   // V2-A5: balance, statement, top-ups and subscription management.
   { href: "/console/billing", labelKey: "nav.billing", icon: Wallet },
+  // V2-C: tickets — instant AI answer, human escalation on request.
+  { href: "/console/support", labelKey: "nav.support", icon: LifeBuoy },
 ];
 
 /**

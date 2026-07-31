@@ -180,6 +180,30 @@ const SCHEMA = `
     ts   BIGINT NOT NULL
   );
 
+  -- V2-C: support tickets, answered first by the docs-grounded bot.
+  CREATE TABLE IF NOT EXISTS support_tickets (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject     TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',
+    assigned_to INTEGER,
+    needs_human INTEGER NOT NULL DEFAULT 0,
+    created_at  BIGINT NOT NULL,
+    updated_at  BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status, updated_at);
+
+  CREATE TABLE IF NOT EXISTS support_messages (
+    id         BIGSERIAL PRIMARY KEY,
+    ticket_id  BIGINT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+    author     TEXT NOT NULL,
+    author_id  INTEGER,
+    body       TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages(ticket_id, created_at);
+
   -- V2-B: MetaApi deploy-hour metering (billed only while deployed).
   CREATE TABLE IF NOT EXISTS metaapi_deploy_sessions (
     id            BIGSERIAL PRIMARY KEY,
@@ -667,6 +691,8 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_decision_parity_recent
     ON decision_parity(created_at DESC);
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS parity_key TEXT;
+  -- V2-C: dynamic_pages carries blog posts and docs alongside legal pages.
+  ALTER TABLE dynamic_pages ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'page';
   CREATE INDEX IF NOT EXISTS idx_decision_parity_key
     ON decision_parity(parity_key, surface);
 

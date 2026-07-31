@@ -14,6 +14,7 @@ test("APP_NAV has Chart/Chat, unified Performance, Journal — no Chat History p
     "/performance",
     "/journal",
     "/console/billing",
+    "/console/support",
   ]);
   assert.ok(!userHrefs.includes("/console/chats"));
   assert.ok(!APP_NAV.some((i) => i.labelKey === "nav.chat_history"));

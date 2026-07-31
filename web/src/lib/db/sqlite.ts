@@ -194,6 +194,32 @@ const SCHEMA = `
     ts   INTEGER NOT NULL
   );
 
+  -- V2-C: support tickets, answered first by the docs-grounded bot.
+  CREATE TABLE IF NOT EXISTS support_tickets (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    subject     TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',
+    assigned_to INTEGER,
+    needs_human INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status, updated_at);
+
+  CREATE TABLE IF NOT EXISTS support_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id  INTEGER NOT NULL,
+    author     TEXT NOT NULL,
+    author_id  INTEGER,
+    body       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages(ticket_id, created_at);
+
   -- V2-B: MetaApi deploy-hour metering (billed only while deployed).
   CREATE TABLE IF NOT EXISTS metaapi_deploy_sessions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1304,6 +1330,13 @@ function migrate(db: Database.Database) {
   const recCols = db
     .prepare("PRAGMA table_info(recommendations)")
     .all() as { name: string }[];
+  // V2-C: dynamic_pages carries blog posts and docs alongside legal pages.
+  const dpCols = db
+    .prepare("PRAGMA table_info(dynamic_pages)")
+    .all() as { name: string }[];
+  if (!dpCols.some((c) => c.name === "kind")) {
+    db.exec("ALTER TABLE dynamic_pages ADD COLUMN kind TEXT NOT NULL DEFAULT 'page'");
+  }
   if (!recCols.some((c) => c.name === "factors")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN factors TEXT");
   }
