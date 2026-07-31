@@ -1,10 +1,15 @@
 /**
- * Unified LLM layer. The platform standardizes on OpenAI: every chat/analysis
- * call routes through the OpenAI-compatible client (openaiCompat.ts). AI_MODEL
- * stays configurable, but only within OpenAI.
+ * Unified LLM layer. Two first-class providers: OpenAI (via the
+ * OpenAI-compatible client) and Anthropic Claude (native Messages API client).
+ * The operator picks the provider + model from the admin keys panel
+ * (AI_PROVIDER / AI_MODEL / ANTHROPIC_MODEL); every chat/analysis call routes
+ * through the active provider.
  */
 
 import {
+  callAnthropic,
+  callAnthropicStream,
+  DEFAULT_ANTHROPIC_MODEL,
   type AnthropicResponse,
   type Message,
   type StreamHandlers,
@@ -21,25 +26,31 @@ import { createLogger } from "./logger";
 
 const llmLog = createLogger("llm");
 
-/** OpenAI is the only supported provider. Kept as a named type for callers. */
-export type LLMProvider = "openai";
+export type LLMProvider = "openai" | "anthropic";
 
 export const LLM_PROVIDERS: { id: LLMProvider; label: string }[] = [
   { id: "openai", label: "OpenAI" },
+  { id: "anthropic", label: "Anthropic (Claude)" },
 ];
 
 const PROVIDER_KEY_FIELD: Record<LLMProvider, string> = {
   openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
 };
 
 const DEFAULT_MODEL = "gpt-4.1";
 
 export function getActiveProvider(): LLMProvider {
-  return "openai";
+  return getPlatformValue("AI_PROVIDER")?.trim() === "anthropic"
+    ? "anthropic"
+    : "openai";
 }
 
-/** Active OpenAI model (AI_MODEL, with a safe default). */
+/** Active model for the active provider (with safe defaults). */
 export function getActiveModel(): string {
+  if (getActiveProvider() === "anthropic") {
+    return getPlatformValue("ANTHROPIC_MODEL")?.trim() || DEFAULT_ANTHROPIC_MODEL;
+  }
   return getPlatformValue("AI_MODEL")?.trim() || DEFAULT_MODEL;
 }
 
@@ -60,6 +71,9 @@ export function getDeepModel(): string {
 
 /** Fast/cheap model for auxiliary generations; defaults to the deep model. */
 export function getQuickModel(): string {
+  if (getActiveProvider() === "anthropic") {
+    return getPlatformValue("ANTHROPIC_QUICK_MODEL")?.trim() || getDeepModel();
+  }
   return getPlatformValue("AI_QUICK_MODEL")?.trim() || getDeepModel();
 }
 
@@ -76,16 +90,20 @@ export function getProviderApiKey(provider: LLMProvider = "openai"): string | un
 }
 
 export function isLLMConfigured(): boolean {
-  return Boolean(getProviderApiKey("openai"));
+  return Boolean(getProviderApiKey(getActiveProvider()));
 }
 
 /**
  * Accurate LLM-configured check for server components: `getPlatformValue`
- * (sync) only sees the cache + env, so a DB-stored `OPENAI_API_KEY` reads as
- * missing on a cold render. This awaits the DB, avoiding a false "AI off".
+ * (sync) only sees the cache + env, so a DB-stored key reads as missing on a
+ * cold render. This awaits the DB, avoiding a false "AI off".
  */
 export async function isLLMConfiguredAsync(): Promise<boolean> {
-  return Boolean(await getPlatformValueAsync(PROVIDER_KEY_FIELD.openai));
+  const provider: LLMProvider =
+    (await getPlatformValueAsync("AI_PROVIDER"))?.trim() === "anthropic"
+      ? "anthropic"
+      : "openai";
+  return Boolean(await getPlatformValueAsync(PROVIDER_KEY_FIELD[provider]));
 }
 
 function compatModelId(model: string): string {
@@ -134,10 +152,16 @@ export async function callLLM(
   params: LLMCallParams,
   opts?: LLMCallOptions,
 ): Promise<AnthropicResponse> {
+  const provider = getActiveProvider();
   const tier = opts?.tier ?? "deep";
   const model = modelForTier(tier);
   const started = performance.now();
   try {
+    if (provider === "anthropic") {
+      // Native Messages API — the platform's internal wire shape already IS
+      // Anthropic's, so no translation layer is needed on this path.
+      return await callAnthropic({ ...params, model, signal: opts?.signal });
+    }
     return await callOpenAICompat(compatTarget(model), {
       ...params,
       system: flattenSystem(params.system),
@@ -145,7 +169,7 @@ export async function callLLM(
     });
   } finally {
     // Before/after measurement (item 15): tier + model + wall time, no content.
-    llmLog.debug("llm.call", { tier, model, durationMs: Math.round(performance.now() - started) });
+    llmLog.debug("llm.call", { provider, tier, model, durationMs: Math.round(performance.now() - started) });
   }
 }
 
@@ -154,17 +178,24 @@ export async function callLLMStream(
   handlers?: StreamHandlers,
   opts?: LLMCallOptions,
 ): Promise<AnthropicResponse> {
+  const provider = getActiveProvider();
   const tier = opts?.tier ?? "deep";
   const model = modelForTier(tier);
   const started = performance.now();
   try {
+    if (provider === "anthropic") {
+      return await callAnthropicStream(
+        { ...params, model, signal: opts?.signal },
+        handlers,
+      );
+    }
     return await callOpenAICompatStream(
       compatTarget(model),
       { ...params, system: flattenSystem(params.system), signal: opts?.signal },
       handlers,
     );
   } finally {
-    llmLog.debug("llm.call.stream", { tier, model, durationMs: Math.round(performance.now() - started) });
+    llmLog.debug("llm.call.stream", { provider, tier, model, durationMs: Math.round(performance.now() - started) });
   }
 }
 

@@ -21,9 +21,22 @@ type ConfigField = {
 
 const GROUPS: { id: ConfigField["group"]; title: string }[] = [
   { id: "core", title: "الأساس والأمان" },
-  { id: "ai", title: "OpenAI — المفتاح والنموذج" },
+  { id: "ai", title: "الذكاء الاصطناعي — المزوّد والنماذج" },
   { id: "telegram", title: "تليجرام" },
   { id: "ops", title: "التشغيل والمراقبة" },
+];
+
+/** Fixed Claude catalog offered by the platform (id → label). */
+const ANTHROPIC_MODELS: { id: string; label: string }[] = [
+  { id: "claude-fable-5", label: "Claude Fable 5" },
+  { id: "claude-opus-5", label: "Claude Opus 5" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8" },
+];
+
+const PROVIDERS: { id: string; label: string }[] = [
+  { id: "openai", label: "OpenAI" },
+  { id: "anthropic", label: "Anthropic (Claude)" },
 ];
 
 export function AdminKeysPanel() {
@@ -98,7 +111,7 @@ export function AdminKeysPanel() {
       await loadAgentModelStatus();
       setMsg({
         type: "ok",
-        text: "تم حفظ المفاتيح — المنصة و Claude MCP يستخدمان نموذج OpenAI من هنا.",
+        text: "تم حفظ المفاتيح — المنصة و MCP يستخدمان المزوّد والنموذج المحدّدين هنا.",
       });
     } finally {
       setSaving(false);
@@ -114,13 +127,25 @@ export function AdminKeysPanel() {
     (f) => f.key === "OPENAI_REALTIME_MODEL",
   );
   const currentRealtimeModel = realtimeModelField?.value ?? "gpt-realtime";
+  const providerField = fields.find((f) => f.key === "AI_PROVIDER");
+  const anthropicKeyField = fields.find((f) => f.key === "ANTHROPIC_API_KEY");
+  const anthropicModelField = fields.find((f) => f.key === "ANTHROPIC_MODEL");
+  const activeProvider =
+    (draft.AI_PROVIDER ?? providerField?.value ?? "openai") === "anthropic"
+      ? "anthropic"
+      : "openai";
+  const currentAnthropicModel =
+    draft.ANTHROPIC_MODEL ?? anthropicModelField?.value ?? "claude-opus-5";
 
   const aiExtraFields = fields.filter(
     (f) =>
       f.group === "ai" &&
       f.key !== "OPENAI_API_KEY" &&
       f.key !== "AI_MODEL" &&
-      f.key !== "OPENAI_REALTIME_MODEL",
+      f.key !== "OPENAI_REALTIME_MODEL" &&
+      f.key !== "AI_PROVIDER" &&
+      f.key !== "ANTHROPIC_API_KEY" &&
+      f.key !== "ANTHROPIC_MODEL",
   );
 
   return (
@@ -166,6 +191,34 @@ export function AdminKeysPanel() {
             <div className="space-y-4">
               {group.id === "ai" && apiKeyField && (
                 <>
+                  {/* Active provider — which brain answers the platform. */}
+                  <div>
+                    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        مزوّد الذكاء الاصطناعي النشط
+                        <span className="mr-2 text-[10px] text-muted-foreground" dir="ltr">
+                          AI_PROVIDER
+                        </span>
+                      </span>
+                    </div>
+                    <div className="inline-flex gap-1 rounded-lg border border-border bg-card p-1">
+                      {PROVIDERS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setDraftValue("AI_PROVIDER", p.id)}
+                          className={cn(
+                            "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                            activeProvider === p.id
+                              ? "bg-foreground text-background"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <ConfigFieldRow
                     f={apiKeyField}
                     draft={draft}
@@ -191,6 +244,41 @@ export function AdminKeysPanel() {
                     emptyHint="أدخل مفتاح OpenAI أعلاه لعرض نماذج المحادثة الصوتية المتاحة."
                     loadingHint="جارٍ جلب نماذج المحادثة الصوتية من OpenAI…"
                   />
+                  {anthropicKeyField && (
+                    <ConfigFieldRow
+                      f={anthropicKeyField}
+                      draft={draft}
+                      setDraftValue={setDraftValue}
+                    />
+                  )}
+                  {anthropicModelField && (
+                    <div>
+                      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                        <label className="text-sm font-medium" htmlFor="ANTHROPIC_MODEL">
+                          نموذج Claude
+                          <span className="mr-2 text-[10px] text-muted-foreground" dir="ltr">
+                            ANTHROPIC_MODEL
+                          </span>
+                        </label>
+                      </div>
+                      <select
+                        id="ANTHROPIC_MODEL"
+                        dir="ltr"
+                        className="admin-input w-full text-sm"
+                        value={currentAnthropicModel}
+                        onChange={(e) => setDraftValue("ANTHROPIC_MODEL", e.target.value)}
+                      >
+                        {ANTHROPIC_MODELS.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label} — {m.id}
+                          </option>
+                        ))}
+                        {!ANTHROPIC_MODELS.some((m) => m.id === currentAnthropicModel) && (
+                          <option value={currentAnthropicModel}>{currentAnthropicModel}</option>
+                        )}
+                      </select>
+                    </div>
+                  )}
                   {agentModel && (
                     <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">
                       نموذج المنصة (MCP):{" "}
