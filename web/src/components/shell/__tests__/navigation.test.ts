@@ -7,9 +7,15 @@ import { activeNav, APP_NAV, ADMIN_NAV, navForRole } from "@/components/shell/na
 const root = resolve(process.cwd(), "src");
 const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
 
-test("APP_NAV has Chart/Chat, Statistics, Trades — no Chat History page", () => {
+test("APP_NAV has Chart/Chat, Statistics, Trades, Recommendations, Journal — no Chat History page", () => {
   const userHrefs = navForRole("user", "full").map((i) => i.href);
-  assert.deepEqual(userHrefs, ["/console", "/statistics", "/console/trades"]);
+  assert.deepEqual(userHrefs, [
+    "/console",
+    "/statistics",
+    "/console/trades",
+    "/recommendations",
+    "/journal",
+  ]);
   assert.ok(!userHrefs.includes("/console/chats"));
   assert.ok(!APP_NAV.some((i) => i.labelKey === "nav.chat_history"));
 });

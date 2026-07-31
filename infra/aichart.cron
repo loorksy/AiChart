@@ -23,7 +23,26 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # REDIS_URL. GET the same path for state counts + gate-failure reasons.
 */10 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/strategy-pipeline >/dev/null 2>&1
 
+# Historical case-memory indexer — every 15 min. Walks the warehouse in sliding
+# windows, describes each moment from candles at or before it, and fills in what
+# the following bars did once that window has actually arrived. No LLM, no trade
+# execution. Round-robins across series so none starves; overlap-safe via a
+# distributed lease. GET the same path for per-series coverage.
+*/15 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/case-memory >/dev/null 2>&1
+
+# OPTIONAL — 24/7 opportunity monitor. Left unscheduled on purpose: it runs an
+# LLM-heavy scan per active user, and the maintenance work it shares with
+# event-monitor already runs above. The same scan is available on demand at
+# /api/opportunities/scan. Uncomment only if you want the recurring cost.
+# */30 * * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/monitor >/dev/null 2>&1
+
 # Daily Telegram summary at 20:00 UTC + MEMORY wake (one AI call/day)
 0 20 * * * root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/daily-summary >/dev/null 2>&1
+
+# Weekly rollout report (plan §17) — Sundays 18:00 UTC. Aggregates the critical
+# invariants (hidden WAIT, wrong-mode execution, unexplained parity), 7-day
+# revision/re-evaluation activity from the tables, and process counters, then
+# sends one Telegram message per operator. GET the same path for a preview.
+0 18 * * 0 root curl -sS -X POST -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR_DOMAIN/api/cron/weekly-report >/dev/null 2>&1
 
 # than 14 days so stale history never bloats disk or future context.

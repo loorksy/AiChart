@@ -1,5 +1,6 @@
 import { createIntent, getLimits, getSettings, resolveBrokerForMarket } from "./store";
 import { getRiskBudget } from "./execution";
+import { getEffectiveRevision } from "./recommendations/canonical/revisions";
 import { planOrderFromRecommendation } from "./orderPlan";
 import { buildAccountProfile } from "./accountProfile";
 import { buildApprovalButtonsForIntent } from "./approvalFlow";
@@ -51,8 +52,16 @@ export async function processRecommendations(
   for (const recommendation of recommendations) {
     if (recommendation.action !== "buy" && recommendation.action !== "sell") continue;
     const orderPlan = planOrderFromRecommendation(recommendation);
+    // Stamp the revision these levels came from, so the execution-time CAS can
+    // refuse the order if the plan is revised before the operator approves.
+    const effectiveRevision = await getEffectiveRevision(userId, recommendation.id).catch(
+      () => null,
+    );
     const intent = await createIntent(userId, {
       recommendation_id: recommendation.id,
+      recommendation_revision_no: effectiveRevision?.revisionNo ?? null,
+      // Executable only through the operator approving THIS trade.
+      authorization_source: "user_approved",
       symbol: recommendation.symbol,
       side: recommendation.action,
       notional: budget.riskAmount,

@@ -77,12 +77,25 @@ export interface DataFreshness {
   reason?: string;
 }
 
+import { resolveCostEvidence, type CostEvidence } from "./costEvidence";
+
 export interface AgentMarketContext {
   symbol: string;
   interval: string;
   higherInterval: string;
   currentPrice: number | null;
+  /**
+   * Observed spread in PRICE units, when a caller supplied one. Prefer
+   * costEvidence: this field carries no unit in its name, which is how the
+   * price/pips mismatch stayed latent.
+   */
   spread: number | null;
+  /**
+   * The resolved cost evidence for this analysis. Built HERE because every
+   * entry point — chat, MCP analyze, opportunity scan, re-evaluation — funnels
+   * through this builder, so wiring it once wires all of them.
+   */
+  costEvidence: CostEvidence;
   atr: number | null;
   marketRegime: ReturnType<typeof detectMarketRegime>;
   dataQuality: {
@@ -136,6 +149,8 @@ export async function buildAgentMarketContext(input: {
   latestCandle?: AgentChartContext["latestCandle"];
   dataSource?: AgentChartContext["dataSource"];
   spread?: number | null;
+  /** A bid/ask the caller already holds — replayed moments, worker paths. */
+  observedQuote?: { bid: number; ask: number; observedAt?: number } | null;
   analysisKind?: CoverageAnalysisKind;
 }): Promise<AgentMarketContext> {
   const symbol = forexCanonicalKey(input.symbol);
@@ -298,6 +313,16 @@ export async function buildAgentMarketContext(input: {
   };
 
   const atr = calculateAtr(currentTfCandles);
+  // Resolved before the sync guard so every consumer sees the same object.
+  const costEvidence = await resolveCostEvidence({
+    userId: input.userId,
+    symbol,
+    referencePrice: currentPrice,
+    observedOverride:
+      input.observedQuote && input.observedQuote.bid > 0 && input.observedQuote.ask > 0
+        ? input.observedQuote
+        : null,
+  });
   const sync = evaluateMarketSync({
     symbol,
     interval,
@@ -314,7 +339,12 @@ export async function buildAgentMarketContext(input: {
     interval,
     higherInterval,
     currentPrice,
-    spread: input.spread ?? null,
+    // Falls back to the resolved cost evidence, in the SAME price units this
+    // field has always carried. Every consumer — net R, the spread gate, the
+    // execution guard — reads this, and every production caller left it null,
+    // so expected cost was 0 and net R equalled gross R on every plan.
+    spread: input.spread ?? costEvidence.spreadPrice,
+    costEvidence,
     atr,
     marketRegime: detectMarketRegime(currentTfCandles),
     dataQuality: {

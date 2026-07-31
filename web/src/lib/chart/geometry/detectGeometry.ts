@@ -16,6 +16,12 @@ import type {
   GeometrySnapshot,
   PatternInstance,
 } from "./types";
+import {
+  assessPatternStage,
+  breakLevelOf,
+  expectedAnchorsFor,
+} from "./patternStage";
+import { detectCandlesticks } from "./candlesticks";
 import { geometryAtr, zigzagPivots, allConfirmedPivots } from "./pivots";
 import { detectTrendlines } from "./trendlines";
 import { detectChannels } from "./channels";
@@ -23,6 +29,9 @@ import { detectConvergingPatterns } from "./triangles";
 import { detectHeadShoulders } from "./headShoulders";
 import { detectDoubleExtremes } from "./doubleExtremes";
 import { detectFlags } from "./flags";
+import { detectRectangles } from "./rectangles";
+import { detectTripleExtremes } from "./tripleExtremes";
+import { detectCupHandle } from "./cupHandle";
 
 export const GEOMETRY_WINDOW_BARS = 500;
 export const MIN_GEOMETRY_CANDLES = 60;
@@ -41,6 +50,7 @@ function emptySnapshot(candleCount: number, atr: number): GeometrySnapshot {
     trendlines: [],
     channels: [],
     patterns: [],
+    candlesticks: [],
     candleCount,
     atr,
   };
@@ -94,6 +104,11 @@ export function detectChartGeometry(input: {
     ...detectConvergingPatterns(detectorInput),
     ...detectHeadShoulders(detectorInput, zigzag),
     ...detectDoubleExtremes(detectorInput, zigzag),
+    // Triple extremes run alongside doubles: on a chart with three touches the
+    // triple wins dedup because three defended touches score above two.
+    ...detectTripleExtremes(detectorInput, zigzag),
+    ...detectRectangles(detectorInput, zigzag),
+    ...detectCupHandle(detectorInput, zigzag),
     ...detectFlags(detectorInput),
   ].filter((pattern) => pattern.confidence >= threshold);
 
@@ -131,11 +146,33 @@ export function detectChartGeometry(input: {
   }
   patterns.sort((a, b) => b.confidence - a.confidence);
 
+  // Where each surviving pattern is in its own life. Added after selection so
+  // every detector keeps its own break logic untouched, and so a structure that
+  // is nearly finished can be recognised as an opportunity rather than lumped in
+  // with one that has barely started.
+  const staged: PatternInstance[] = patterns.map((pattern) => {
+    const assessment = assessPatternStage({
+      status: pattern.status,
+      anchorCount: pattern.anchors.length,
+      expectedAnchors: expectedAnchorsFor(pattern.patternType),
+      candles,
+      breakLevel: breakLevelOf(pattern),
+      atr,
+    });
+    return {
+      ...pattern,
+      stage: assessment.stage,
+      completionRatio: Number(assessment.completionRatio.toFixed(2)),
+    };
+  });
+
   return {
     pivots: zigzag,
     trendlines,
     channels,
-    patterns,
+    patterns: staged,
+    // The bar-level shapes the agent could previously only describe in prose.
+    candlesticks: detectCandlesticks({ candles, atr }),
     candleCount: candles.length,
     atr,
   };

@@ -22,6 +22,7 @@ import {
   type TradeCandidatesResult,
 } from "../trading/buildTradeCandidates";
 import { chartDrawingZones } from "../trading/chartDrawingZones";
+import { patternBoundaryZones } from "../trading/patternBoundaryZones";
 import {
   runTradingPlaybook,
   type TradingPlaybookResult,
@@ -40,6 +41,8 @@ export interface AccountRiskSnapshot {
 }
 
 export interface RiskAgentInput {
+  /** Shared geometry snapshot: forming boundaries become anticipatory zones. */
+  geometry?: import("@/lib/chart/geometry").GeometrySnapshot | null;
   market: AgentMarketContext;
   structure: StructureResult | null;
   supplyDemand: SupplyDemandResult | null;
@@ -64,7 +67,7 @@ export interface RiskAgentResult {
 
 /**
  * Builds structured evidence candidates for the final model. It annotates
- * risk and data concerns but never forces BUY/SELL/WAIT.
+ * risk and data concerns but never forces the direction or the plan.
  */
 export async function runRiskAgent(
   ctx: AgentRunContext,
@@ -112,7 +115,14 @@ export async function runRiskAgent(
     trend: input.structure?.trend ?? "unknown",
     htfBias: input.mtf?.higherBias ?? "unknown",
     htfConflict: Boolean(input.mtf?.conflict),
-    zones: [...(input.supplyDemand?.zones ?? []), ...userDrawingZones],
+    zones: [
+      ...(input.supplyDemand?.zones ?? []),
+      ...userDrawingZones,
+      // Forming-pattern boundaries, offered as ordinary zones so the candidate
+      // engine scores them with the same geometry rules — anticipatory entries
+      // grounded in a validated level, not in prompt prose.
+      ...patternBoundaryZones(input.geometry, market.atr),
+    ],
     structureEvents,
     sweeps,
     rangePosition,

@@ -229,6 +229,10 @@ export function stripInternalFieldsFromClientResult(
     selectedSkills: _sk,
     skillLoadFailures: _sf,
     debugDecisionFlow: _dbg,
+    // The frozen bundle the brain decided on: model context, the numeric level
+    // menu, and up to three full base64 chart PNGs. It exists for audit and
+    // re-evaluation on the server; the browser gets the public projection.
+    evidenceSnapshot: _snap,
     ...safe
   } = result;
   const factors = safe.confidenceSemantics?.factors;

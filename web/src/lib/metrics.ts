@@ -12,6 +12,46 @@ type Store = {
   jobs: client.Counter<string>;
   agentRuns: client.Counter<string>;
   executionDenials: client.Counter<string>;
+  /** Re-evaluation cycles started, by what triggered them. */
+  reevaluationCycles: client.Counter<string>;
+  /** Detected trigger admission outcomes: admitted | suppressed | duplicate. */
+  reevaluationTriggers: client.Counter<string>;
+  /** What those cycles concluded: confirmed | revised | invalidated. */
+  reevaluationVerdicts: client.Counter<string>;
+  /** Moments where both surfaces decided and were compared. */
+  parityComparisons: client.Gauge<string>;
+  /** Comparable Platform/MCP decisions whose contract fields differ. */
+  parityDifferences: client.Gauge<string>;
+  /** Differences with no known cause. Completion criterion 2 requires zero. */
+  parityUnexplained: client.Gauge<string>;
+  // --- Plan §17 dashboards ---
+  /** Successful analyses that produced the full three-layer contract vs not. */
+  analysisContracts: client.Counter<string>;
+  /** CRITICAL: attempts to WRITE a new analytical WAIT. Target: zero, forever. */
+  hiddenWaitWrites: client.Counter<string>;
+  /** Recommendations that arrived without valid levels. */
+  invalidLevelRecommendations: client.Counter<string>;
+  recommendationPersistFailures: client.Counter<string>;
+  /** CRITICAL: an order attempt without valid mode/authorisation. */
+  executionInWrongMode: client.Counter<string>;
+  /** stale_revision denials — existence is health, a spike is a race alarm. */
+  staleRevisionDenials: client.Counter<string>;
+  /** Duplicate notification suppressions (dedupe working = these grow, sends do not). */
+  duplicateNotifications: client.Counter<string>;
+  /** Planned net R after costs, per successful plan. */
+  plannedNetR: client.Histogram<string>;
+  /** Decision latency with/without vision, seconds. */
+  visionLatency: client.Histogram<string>;
+  /** Serialized evidence-snapshot size in bytes. */
+  evidenceSnapshotBytes: client.Histogram<string>;
+  /** Case-memory rows by state (resolved/pending) — set by the indexer cron. */
+  caseMemoryRows: client.Gauge<string>;
+  /** Extra-frame second rounds requested / completed / failed. */
+  extraFrameRounds: client.Counter<string>;
+  /** Age in seconds of the freshest live cost-profile sample per symbol. */
+  costProfileFreshness: client.Gauge<string>;
+  /** Critical alerts raised, by kind — any nonzero value is a page. */
+  criticalAlerts: client.Counter<string>;
   tradesExecuted: client.Counter<string>;
   brokerUp: client.Gauge<string>;
   // --- Reliability metrics (RELIABILITY_PLAN.md item 9) ---
@@ -50,6 +90,122 @@ function build(): Store {
     name: "aichart_agent_runs_total",
     help: "Agent runs by mode and status",
     labelNames: ["mode", "status"],
+    registers: [registry],
+  });
+  const parityComparisons = new client.Gauge({
+    name: "aichart_parity_comparisons",
+    help: "Platform/MCP decisions compared on identical evidence",
+    registers: [registry],
+  });
+  const parityDifferences = new client.Gauge({
+    name: "aichart_parity_differences",
+    help: "Platform/MCP decisions with one or more differing contract fields",
+    registers: [registry],
+  });
+  const parityUnexplained = new client.Gauge({
+    name: "aichart_parity_unexplained",
+    help: "Platform/MCP differences with no known cause (target: 0)",
+    registers: [registry],
+  });
+  const analysisContracts = new client.Counter({
+    name: "aichart_analysis_contracts_total",
+    help: "Successful analyses by contract completeness (complete|incomplete)",
+    labelNames: ["completeness"],
+    registers: [registry],
+  });
+  const hiddenWaitWrites = new client.Counter({
+    name: "aichart_hidden_wait_writes_total",
+    help: "Attempts to write a new analytical WAIT (critical, target 0)",
+    labelNames: ["source"],
+    registers: [registry],
+  });
+  const invalidLevelRecommendations = new client.Counter({
+    name: "aichart_invalid_level_recommendations_total",
+    help: "Buy/sell recommendations arriving without valid levels",
+    labelNames: ["source"],
+    registers: [registry],
+  });
+  const recommendationPersistFailures = new client.Counter({
+    name: "aichart_recommendation_persist_failures_total",
+    help: "Plans answered to the operator but never stored (target 0)",
+    labelNames: ["surface"],
+    registers: [registry],
+  });
+  const executionInWrongMode = new client.Counter({
+    name: "aichart_execution_wrong_mode_total",
+    help: "Order attempts without valid mode/authorisation (critical, target 0)",
+    labelNames: ["source"],
+    registers: [registry],
+  });
+  const staleRevisionDenials = new client.Counter({
+    name: "aichart_stale_revision_denials_total",
+    help: "Executions refused because the plan was superseded",
+    registers: [registry],
+  });
+  const duplicateNotifications = new client.Counter({
+    name: "aichart_duplicate_notifications_total",
+    help: "Notification sends suppressed by the dedupe key",
+    registers: [registry],
+  });
+  const plannedNetR = new client.Histogram({
+    name: "aichart_planned_net_r",
+    help: "Planned net R after modelled costs, per successful plan",
+    buckets: [0.5, 1, 1.5, 2, 2.5, 3, 4, 6],
+    registers: [registry],
+  });
+  const visionLatency = new client.Histogram({
+    name: "aichart_vision_latency_seconds",
+    help: "Decision latency by whether chart images were attached",
+    labelNames: ["vision"],
+    buckets: [2, 5, 10, 20, 30, 45, 60, 90],
+    registers: [registry],
+  });
+  const evidenceSnapshotBytes = new client.Histogram({
+    name: "aichart_evidence_snapshot_bytes",
+    help: "Serialized evidence snapshot size per revision",
+    buckets: [512, 2048, 8192, 32768, 131072, 524288],
+    registers: [registry],
+  });
+  const caseMemoryRows = new client.Gauge({
+    name: "aichart_case_memory_rows",
+    help: "Indexed market cases by state",
+    labelNames: ["state"],
+    registers: [registry],
+  });
+  const extraFrameRounds = new client.Counter({
+    name: "aichart_extra_frame_rounds_total",
+    help: "Second-round timeframe requests by outcome",
+    labelNames: ["outcome"],
+    registers: [registry],
+  });
+  const costProfileFreshness = new client.Gauge({
+    name: "aichart_cost_profile_freshness_seconds",
+    help: "Age of the freshest live cost sample per symbol",
+    labelNames: ["symbol"],
+    registers: [registry],
+  });
+  const criticalAlerts = new client.Counter({
+    name: "aichart_critical_alerts_total",
+    help: "Critical invariant violations — any nonzero value is a page",
+    labelNames: ["kind"],
+    registers: [registry],
+  });
+  const reevaluationCycles = new client.Counter({
+    name: "aichart_reevaluation_cycles_total",
+    help: "Re-evaluation decision cycles started, by trigger reason",
+    labelNames: ["reason"] as const,
+    registers: [registry],
+  });
+  const reevaluationTriggers = new client.Counter({
+    name: "aichart_reevaluation_triggers_total",
+    help: "Re-evaluation triggers by reason and durable claim outcome",
+    labelNames: ["reason", "outcome"] as const,
+    registers: [registry],
+  });
+  const reevaluationVerdicts = new client.Counter({
+    name: "aichart_reevaluation_verdicts_total",
+    help: "Re-evaluation outcomes — confirmed is as important as revised",
+    labelNames: ["verdict"] as const,
     registers: [registry],
   });
   const executionDenials = new client.Counter({
@@ -138,6 +294,26 @@ function build(): Store {
     jobs,
     agentRuns,
     executionDenials,
+    reevaluationCycles,
+    reevaluationTriggers,
+    reevaluationVerdicts,
+    parityComparisons,
+    parityDifferences,
+    parityUnexplained,
+    analysisContracts,
+    hiddenWaitWrites,
+    invalidLevelRecommendations,
+    recommendationPersistFailures,
+    executionInWrongMode,
+    staleRevisionDenials,
+    duplicateNotifications,
+    plannedNetR,
+    visionLatency,
+    evidenceSnapshotBytes,
+    caseMemoryRows,
+    extraFrameRounds,
+    costProfileFreshness,
+    criticalAlerts,
     tradesExecuted,
     brokerUp,
     outcomes,
@@ -249,4 +425,29 @@ export function startEventLoopLagSampler(intervalMs = 5_000): () => void {
   return () => {
     stopped = true;
   };
+}
+
+/**
+ * A critical alert is an INVARIANT violation, not a bad day: a new analytical
+ * WAIT reaching a write path, an order attempt outside the authorised mode, a
+ * plan edit outside the revision mechanism. Each increments its counter and logs
+ * at error level so any alerting stack pages on it — the correct steady-state
+ * count for every kind is zero.
+ */
+export function criticalAlert(
+  kind: "hidden_wait_write" | "execution_wrong_mode" | "plan_edit_outside_revisions" | "unexplained_parity",
+  detail: Record<string, unknown> = {},
+): void {
+  metrics.criticalAlerts.inc({ kind });
+  // The diagnostics dashboard reads the PER-KIND series as well as the roll-up
+  // (aichart_hidden_wait_writes_total, aichart_execution_wrong_mode_total).
+  // Incrementing only the roll-up left those panels reading zero while a
+  // critical alert was firing — the one place an operator would look to see it.
+  // Done here, in the function that already knows the kind, so a new call site
+  // cannot forget half of it.
+  const source = typeof detail.source === "string" ? detail.source : "unknown";
+  if (kind === "hidden_wait_write") metrics.hiddenWaitWrites.inc({ source });
+  if (kind === "execution_wrong_mode") metrics.executionInWrongMode.inc({ source });
+  // eslint-disable-next-line no-console
+  console.error(`[CRITICAL] ${kind}`, JSON.stringify(detail));
 }

@@ -29,7 +29,7 @@ function candle(i: number, o: number, h: number, l: number, c: number): AgentCan
 }
 
 describe("scalp geometry contract", () => {
-  it("rejects the reported XAUUSD-like 0.75R sell as non-executable", () => {
+  it("labels the reported XAUUSD-like 0.75R sell as weak instead of deleting it", () => {
     const geometry = meetsExecutableGeometry({
       action: "sell",
       entry: 3981.675,
@@ -44,9 +44,24 @@ describe("scalp geometry contract", () => {
       target: 3980.84,
     });
     assert.ok(gross < 1, `gross R ${gross} should be ~0.75`);
-    assert.equal(geometry.ok, false);
+    // The levels are orderable, so they survive to the model — carrying the
+    // fact that they do not pay for their own costs at this price.
+    assert.equal(geometry.ok, true);
+    assert.equal(geometry.belowPreferredNetR, true);
     assert.equal(geometry.reason, "tp1_net_r_below_minimum");
     assert.ok(geometry.netTp1R < SCALP_GEOMETRY.minNetTp1R);
+  });
+
+  it("still refuses impossible level order outright", () => {
+    const geometry = meetsExecutableGeometry({
+      action: "sell",
+      entry: 3981,
+      stop: 3980,
+      targets: [3985],
+      spread: 0.2,
+    });
+    assert.equal(geometry.ok, false);
+    assert.equal(geometry.reason, "level_order_invalid");
   });
 
   it("POI score of 90 cannot override unusable geometry in quality ranking", () => {
@@ -118,7 +133,7 @@ describe("scalp geometry contract", () => {
 });
 
 describe("validateTradeSetup geometry gate", () => {
-  it("rejects weak TP1 below minimum net R", () => {
+  it("accepts weak TP1 with a cost warning instead of rejecting it", () => {
     const result = validateTradeSetup({
       currentPrice: 3975.26,
       dataSufficient: true,
@@ -130,8 +145,27 @@ describe("validateTradeSetup geometry gate", () => {
       },
       spread: 0.2,
     });
-    assert.equal(result.accepted, false);
+    assert.equal(result.accepted, true);
     assert.ok((result.netRr ?? 0) < SCALP_GEOMETRY.minNetTp1R);
+    assert.ok(
+      result.warnings.some((w) => w.includes("العائد الصافي")),
+      "the weak net R must reach the model as a warning",
+    );
+  });
+
+  it("rejects impossible level order", () => {
+    const result = validateTradeSetup({
+      currentPrice: 3975.26,
+      dataSufficient: true,
+      trade: {
+        action: "sell",
+        entry: 3981,
+        stop_loss: 3980,
+        targets: [3985],
+      },
+      spread: 0.2,
+    });
+    assert.equal(result.accepted, false);
   });
 
   it("accepts executable scalp geometry", () => {
@@ -328,7 +362,32 @@ describe("AI direction preserved without executable levels", () => {
     };
   }
 
-  it("keeps model SELL when no candidate levels exist", async () => {
+  function modelAnswer(over: Record<string, unknown>): string {
+    return JSON.stringify({
+      direction: "sell",
+      planType: "conditional",
+      selectedTradeCandidateId: null,
+      proposedLevels: null,
+      activationCondition: "عودة السعر إلى منطقة العرض ورفض واضح.",
+      invalidationRule: "إغلاق فوق قمة العرض يبطل الفكرة.",
+      alternativeScenario: "اختراق العرض يقلب المشهد إلى شراء.",
+      validityCandles: 8,
+      confidence: 0.88,
+      summary: "XAUUSD remains bearish; the plan waits for the supply retest.",
+      keyReasons: ["structure"],
+      riskWarnings: [],
+      publicReasoningSummary: ["bearish structure"],
+      decisionTrace: {
+        hypotheses: [{ scenario: "استمرار هبوطي", supporting: ["كسر هيكل"], opposing: [] }],
+        chosenBecause: "الهيكل هابط والعرض لم يُخترق.",
+        planTypeBecause: "السعر بعيد عن منطقة الدخول.",
+      },
+      drawingAdvice: { shouldDraw: false, reason: "none" },
+      ...over,
+    });
+  }
+
+  it("keeps the SELL direction when no candidate levels exist", async () => {
     const out = await runFinalDecisionSynthesizer(
       ctx,
       {
@@ -341,25 +400,15 @@ describe("AI direction preserved without executable levels", () => {
         mtf: null,
         candidates: [],
       },
-      {
-        configured: true,
-        callModel: async () =>
-          JSON.stringify({
-            decision: "sell",
-            selectedTradeCandidateId: null,
-            confidence: 0.88,
-            summary: "XAUUSD remains bearish but no executable scalp geometry yet.",
-            keyReasons: ["structure"],
-            riskWarnings: [],
-            publicReasoningSummary: ["bearish structure"],
-            drawingAdvice: { shouldDraw: false, reason: "none" },
-          }),
-      },
+      { configured: true, callModel: async () => modelAnswer({}) },
     );
     assert.equal(out.result?.decision, "sell");
     assert.equal(out.result?.recommendation.action, "sell");
     assert.equal(out.result?.recommendation.entry, undefined);
-    assert.match(out.result?.riskWarnings[0] ?? "", /قابلة للتنفيذ/);
+    // The direction and the conditions survive even with no numbers to bind.
+    assert.equal(out.result?.planType, "conditional");
+    assert.ok(out.result?.recommendation.invalidationRule);
+    assert.match(out.result?.riskWarnings[0] ?? "", /مستويات/);
   });
 
   it("binds executable levels only from a real same-side candidate", async () => {
@@ -387,20 +436,19 @@ describe("AI direction preserved without executable levels", () => {
       {
         configured: true,
         callModel: async () =>
-          JSON.stringify({
-            decision: "sell",
+          modelAnswer({
+            planType: "immediate",
             selectedTradeCandidateId: "sell-1",
+            activationCondition: null,
             confidence: 0.9,
             summary: "Sell XAUUSD from supply with valid scalp geometry.",
-            keyReasons: ["supply"],
-            riskWarnings: [],
-            publicReasoningSummary: ["valid geometry"],
             drawingAdvice: { shouldDraw: true, reason: "zone" },
           }),
       },
     );
     assert.equal(out.result?.recommendation.stop_loss, 3986);
     assert.equal(out.result?.recommendation.activationClass, "immediate");
+    assert.equal(out.result?.recommendation.levelSource, "candidate");
     assert.ok((out.result?.recommendation.netRr ?? 0) >= 2.5);
   });
 });

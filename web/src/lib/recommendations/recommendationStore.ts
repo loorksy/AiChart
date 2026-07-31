@@ -3,7 +3,7 @@
  * `tracked_recommendations` is retained only as a non-destructive legacy table;
  * no Phase 4 write or read path uses it as authority.
  */
-import { query } from "@/lib/db";
+import { execute, query } from "@/lib/db";
 import {
   createCanonicalRecommendation,
   getCanonicalRecommendationByReference,
@@ -22,6 +22,7 @@ import type {
   TrackedRecommendationOutcome,
   TrackedRecommendationStatus,
 } from "./types";
+import { getEffectiveRevision } from "./canonical/revisions";
 
 interface LegacyTrackedRow {
   id: string;
@@ -70,6 +71,10 @@ function legacyTargets(raw: string): number[] {
 
 function legacyRowInput(row: LegacyTrackedRow): CreateTrackedRecommendationInput {
   return {
+    // Pre-contract rows migrate as they are. Grading them against the Complete
+    // Plan Contract would make every tracked read throw for tenants with
+    // history, and inventing plan fields to pass it would be worse.
+    legacyImport: true,
     id: row.id,
     userId: Number(row.user_id),
     chatId: row.chat_id ?? undefined,
@@ -157,7 +162,27 @@ export type CreateTrackedRecommendationInput = Omit<
       | "expiredAt"
       | "lastCheckedAt"
     >
-  >;
+  > & {
+    /**
+     * The frozen evidence bundle and decision trace behind revision 1.
+     *
+     * Not part of the tracked record itself — they belong to the revision, so a
+     * plan stays explainable from its own snapshot after the market has moved on
+     * and the evidence has changed underneath it.
+     */
+    evidence?: Record<string, unknown> | null;
+    /** The frozen bundle the brain decided on; see canonical/evidenceSnapshots.ts. */
+    evidenceSnapshot?: Record<string, unknown> | null;
+    evidenceSourceSurface?: string | null;
+    decisionTrace?: Record<string, unknown> | null;
+    /**
+     * Where the decision's support came from — distinct from the support GRADE:
+     * direct_analysis | strategy_supported | historical_memory | deep_research.
+     */
+    evidenceSource?: string | null;
+    /** See CreateCanonicalRecommendationInput.legacyImport — migration only. */
+    legacyImport?: boolean;
+  };
 
 function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unknown> {
   return {
@@ -167,6 +192,9 @@ function legacyRisk(input: CreateTrackedRecommendationInput): Record<string, unk
     createdCandleTime: input.createdCandleTime,
     priceAtCreation: input.priceAtCreation,
     lastCheckedAt: input.lastCheckedAt,
+    // Round-trips so the deterministic evaluator can enforce the contract's
+    // candle-count validity, not only its wall-clock expiry.
+    validityCandles: input.validityCandles,
   };
 }
 
@@ -230,29 +258,36 @@ function legacyOutcome(
 }
 
 async function toTracked(recommendation: CanonicalRecommendation): Promise<TrackedRecommendation> {
-  const [outcomes, transitions] = await Promise.all([
+  const [outcomes, transitions, effective] = await Promise.all([
     listRecommendationOutcomes(recommendation.userId, recommendation.recommendationId),
     listRecommendationTransitions(recommendation.userId, recommendation.recommendationId),
+    getEffectiveRevision(
+      recommendation.userId,
+      recommendation.recommendationId,
+    ).catch(() => null),
   ]);
   const risk = recommendation.risk;
   const triggeredAt = transitions.find((item) => item.toStatus === "triggered")?.occurredAt;
   return {
     id: recommendation.legacyTrackingId ?? String(recommendation.recommendationId),
+    canonicalId: recommendation.recommendationId,
     userId: recommendation.userId,
     chatId: recommendation.chatId,
     analysisId: recommendation.analysisId,
     symbol: recommendation.symbol,
     interval: recommendation.timeframe,
-    direction: recommendation.direction === "sell" ? "sell" : "buy",
+    direction:
+      effective?.direction ??
+      (recommendation.direction === "sell" ? "sell" : "buy"),
     entryType:
       recommendation.entryType === "market"
         ? "market"
         : recommendation.entryType?.includes("limit")
           ? "limit"
           : "pending",
-    entry: recommendation.entry ?? 0,
-    stopLoss: recommendation.stopLoss ?? 0,
-    targets: recommendation.targets,
+    entry: effective?.entry ?? recommendation.entry ?? 0,
+    stopLoss: effective?.stopLoss ?? recommendation.stopLoss ?? 0,
+    targets: effective?.targets.length ? effective.targets : recommendation.targets,
     invalidationLevel: numberValue(risk.invalidationLevel),
     status: legacyStatus(recommendation, outcomes),
     outcome: legacyOutcome(recommendation, outcomes),
@@ -271,6 +306,33 @@ async function toTracked(recommendation: CanonicalRecommendation): Promise<Track
     expiredAt: latestTimestamp(outcomes, "Expired"),
     priceAtCreation: numberValue(risk.priceAtCreation),
     lastCheckedAt: numberValue(risk.lastCheckedAt),
+    validityCandles:
+      effective?.validityCandles ?? numberValue(risk.validityCandles),
+    revisionNo: effective?.revisionNo,
+    planType:
+      effective?.planType === "immediate" ||
+      effective?.planType === "anticipatory" ||
+      effective?.planType === "conditional"
+        ? effective.planType
+        : undefined,
+    executionState:
+      effective?.executionState === "valid_now" ||
+      effective?.executionState === "awaiting_activation" ||
+      effective?.executionState === "expired" ||
+      effective?.executionState === "invalidated" ||
+      effective?.executionState === "blocked"
+        ? effective.executionState
+        : undefined,
+    entryLow: effective?.entryLow ?? undefined,
+    entryHigh: effective?.entryHigh ?? undefined,
+    triggerCondition: effective?.activationCondition ?? undefined,
+    // Read from the EFFECTIVE revision, so a plan whose condition was revised
+    // is graded against the condition currently in force — never a superseded
+    // one, and never a newer one the operator has not seen.
+    activationRule: effective?.activationRule ?? undefined,
+    invalidationRule: effective?.invalidationRule ?? undefined,
+    alternativeScenario: effective?.alternativeScenario ?? undefined,
+    evidenceSnapshot: effective?.evidence,
   };
 }
 
@@ -278,6 +340,7 @@ export async function createTrackedRecommendation(
   input: CreateTrackedRecommendationInput,
 ): Promise<TrackedRecommendation> {
   const recommendation = await createCanonicalRecommendation({
+    legacyImport: input.legacyImport,
     userId: input.userId,
     analysisId: input.analysisId,
     sessionId: input.chatId,
@@ -301,6 +364,26 @@ export async function createTrackedRecommendation(
     engineVersion: "aichart-phase4-v1",
     entryType: input.entryType,
     legacyTrackingId: input.id,
+    // The three layers and the evidence grade, persisted rather than kept in
+    // memory: the tracker needs the activation condition to evaluate, and the
+    // journal needs the plan type to report.
+    planType: input.planType ?? null,
+    executionState: input.executionState ?? null,
+    statisticalSupport: input.statisticalSupport ?? null,
+    evidenceSource: input.evidenceSource ?? null,
+    initialRevision: {
+      entryLow: input.entryLow ?? null,
+      entryHigh: input.entryHigh ?? null,
+      activationCondition: input.triggerCondition ?? null,
+      activationRule: input.activationRule ?? null,
+      invalidationRule: input.invalidationRule ?? null,
+      alternativeScenario: input.alternativeScenario ?? null,
+      validityCandles: input.validityCandles ?? null,
+      evidence: input.evidence ?? null,
+      evidenceSnapshot: input.evidenceSnapshot ?? null,
+      evidenceSourceSurface: input.evidenceSourceSurface ?? null,
+      decisionTrace: input.decisionTrace ?? null,
+    },
   });
   if (
     input.status !== "pending_entry" ||
@@ -553,6 +636,24 @@ export async function updateTrackedRecommendation(
       now,
       patch.reason ?? `legacy partial outcome ${patch.outcome}`,
     );
+  }
+  if (patch.lastCheckedAt != null) {
+    const nextRisk = {
+      ...recommendation.risk,
+      lastCheckedAt: patch.lastCheckedAt,
+    };
+    await execute(
+      `UPDATE recommendations
+          SET risk_json = ?, updated_at = ?
+        WHERE id = ? AND user_id = ?`,
+      [
+        JSON.stringify(nextRisk),
+        patch.lastCheckedAt,
+        recommendation.recommendationId,
+        userId,
+      ],
+    );
+    recommendation = { ...recommendation, risk: nextRisk };
   }
   return toTracked(recommendation);
 }

@@ -105,7 +105,10 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       layout_id: zLayoutId,
       symbol: zSymbol.optional().describe("Change chart symbol (optional)"),
       interval: zInterval,
-      dataSource: z.enum(["oanda", "ea"]).optional(),
+      // oanda only: drawings are time-anchored against warehouse candles, which
+  // are OANDA-sourced. "ea" was advertised, accepted, and silently ignored —
+  // a contract that lies is worse than a narrower one.
+  dataSource: z.literal("oanda").optional(),
       mode: z.enum(["set", "add"]).default("set"),
       drawings: z.array(zDrawing).max(24),
       recommendation: zRecommendation.nullable().optional(),
@@ -134,7 +137,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_market_analysis",
     domain: "charts",
     description:
-      "When: full AI analysis for a pair (same as platform Analyze button): recommendation + technical drawings auto-drawn on user chart when layout_id passed. Consumes user credits (4). May take up to 120 seconds.",
+      "When: full AI analysis for a pair (same as platform Analyze button): recommendation + technical drawings auto-drawn on user chart when layout_id passed. Consumes user credits (4). May take up to 120 seconds. The response includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
     inputSchema: {
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),

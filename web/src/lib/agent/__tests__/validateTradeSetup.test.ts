@@ -18,14 +18,16 @@ describe("validateTradeSetup evidence annotations", () => {
     assert.equal(result.accepted, false);
   });
 
-  it("rejects weak reward/risk even when levels are ordered", () => {
+  it("flags weak reward/risk instead of rejecting ordered levels", () => {
     const result = validateTradeSetup({
       ...base,
       newsRisk: "high",
       trade: { action: "buy", entry: 100, stop_loss: 99, targets: [100.2] },
     });
-    assert.equal(result.accepted, false);
-    assert.ok(result.warnings.length > 0);
+    // The move does not pay for its costs — that is a fact for the model to act
+    // on (better price, different plan), not grounds to delete the setup.
+    assert.equal(result.accepted, true);
+    assert.ok(result.warnings.some((w) => w.includes("العائد الصافي")));
     assert.ok((result.rr ?? 0) < 1);
   });
 

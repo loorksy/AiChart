@@ -15,8 +15,13 @@ const SWEEP_LOCK_MS = 290_000;
 
 /**
  * Scheduled recommendation-tracker sweep. Evaluates every non-terminal tracked
- * recommendation against fresh warehouse candles and persists status/outcome
- * changes. Runs with NO browser session, NO LLM, and NO trade execution.
+ * recommendation against fresh warehouse candles, persists status/outcome
+ * changes, and tells the operator what actually changed. Runs with NO browser
+ * session, NO LLM, and NO trade execution.
+ *
+ * Set RECOMMENDATION_ALERTS_SILENT=1 to record events without delivering them —
+ * the first rollout window, so the real message volume on a live book can be
+ * measured before anyone's phone starts buzzing.
  *
  * Auth: the platform cron secret (Authorization: Bearer <CRON_SECRET> or the
  * `x-cron-secret` header). Overlap-safe via a distributed lease lock. Idempotent
@@ -31,7 +36,10 @@ export async function POST(req: NextRequest) {
   }
 
   const outcome = await withLock("cron:recommendation-sweep", SWEEP_LOCK_MS, () =>
-    runRecommendationSweep({ logger: log }),
+    runRecommendationSweep({
+      logger: log,
+      silentAlerts: (process.env.RECOMMENDATION_ALERTS_SILENT ?? "").trim() === "1",
+    }),
   );
 
   if (!outcome.ran) {

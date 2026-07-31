@@ -1,3 +1,5 @@
+import type { ActivationRule } from "../activationRule";
+
 export const RECOMMENDATION_STATUSES = [
   "draft",
   "active",
@@ -112,6 +114,59 @@ export interface CreateCanonicalRecommendationInput {
   patternName?: string;
   analysisTier?: string;
   contextJson?: string;
+  /**
+   * The three-layer plan (docs/UNIFIED_AGENT_PLAN.md). `direction` above is the
+   * analytical view; these two are how the plan is entered and whether it can
+   * be entered right now. Mandatory for every NEW buy/sell — enforced by
+   * `assertCompletePlan` in the creator. Only `legacyImport` rows are exempt,
+   * which is why the columns stay nullable.
+   */
+  planType?: string | null;
+  executionState?: string | null;
+  /**
+   * True only for `migrateLegacyTrackedRecommendations`: rows written before
+   * the Complete Plan Contract existed are history to keep readable, not new
+   * claims to grade. Nothing else may set this.
+   */
+  legacyImport?: boolean;
+  /** Verified statistical backing: strong | moderate | weak | unavailable. */
+  statisticalSupport?: string | null;
+  /**
+   * Where the support came from — a different fact from how strong it is:
+   * direct_analysis | strategy_supported | historical_memory | deep_research.
+   * Left null rather than guessed, so a row never implies evidence it lacks.
+   */
+  evidenceSource?: string | null;
+  /**
+   * The plan fields and evidence that seed revision 1.
+   *
+   * Every recommendation gets an effective revision at creation, so a later
+   * update has something to supersede and the compare-and-swap on execution has
+   * a number to compare. A recommendation created without this has no effective
+   * revision, and nothing can revise or auto-execute it.
+   */
+  initialRevision?: {
+    entryLow?: number | null;
+    entryHigh?: number | null;
+    activationCondition?: string | null;
+    /** The machine-checked form of the condition; see revisions.ts. */
+    activationRule?: ActivationRule | null;
+    invalidationRule?: string | null;
+    alternativeScenario?: string | null;
+    validityCandles?: number | null;
+    /**
+     * The operator-facing evidence DESCRIPTOR — the graded card. Small and safe
+     * to project to a browser. NOT what the model reasoned over.
+     */
+    evidence?: Record<string, unknown> | null;
+    /**
+     * The frozen bundle the brain actually decided on, stored whole in its own
+     * append-only table and used as the revision's evidence fingerprint.
+     */
+    evidenceSnapshot?: Record<string, unknown> | null;
+    evidenceSourceSurface?: string | null;
+    decisionTrace?: Record<string, unknown> | null;
+  };
 }
 
 export interface RecommendationTransition {
@@ -199,7 +254,9 @@ export type RecommendationHistoryKind =
   | "updated"
   | "drawing_snapshot"
   | "research_revision"
-  | "research_completion";
+  | "research_completion"
+  /** Post-open trade management: proposals and broker syncs (plan §14). */
+  | "trade_management";
 
 export interface RecommendationHistoryEntry {
   id: number;

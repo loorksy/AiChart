@@ -607,7 +607,7 @@ const en: LandingCopy = {
         eyebrow: "Decision",
         value: "3",
         title: "Clear outcomes",
-        body: "BUY, SELL, or WAIT — one decision with reasons and levels when available.",
+        body: "Buy or sell — one direction, with the plan, the levels, and what invalidates it.",
         note: "No auto execution",
         linkLabel: "How it works",
         href: "#how",
@@ -736,7 +736,7 @@ const en: LandingCopy = {
       "Clear recommendation status and historical review",
     ],
     riskNote:
-      "Risk per Trade controls position size only; it does not force the market decision BUY, SELL, or WAIT.",
+      "Risk per Trade controls position size only; it never forces the direction or the plan.",
   },
   integrations: {
     title: "Real integrations",

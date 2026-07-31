@@ -1,4 +1,5 @@
 import type { ChartDrawing } from "@/lib/chartDrawings";
+import type { ActivationRule } from "@/lib/recommendations/activationRule";
 import {
   cancelTrackedRecommendation,
   listActiveTrackedRecommendations,
@@ -31,16 +32,35 @@ export type ActiveRecommendation = {
   createdCandleTime?: number;
   expiresAt?: number;
   direction: "buy" | "sell";
+  /** How this plan is entered (result contract layer 2). */
+  planType?: "immediate" | "anticipatory" | "conditional";
+  /** Whether it can be entered right now (result contract layer 3). */
+  executionState?: "valid_now" | "awaiting_activation" | "expired" | "invalidated" | "blocked";
+  /** Verified statistical backing behind the plan, or its absence stated. */
+  statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
   entry: number;
+  /** The area the plan accepts, not only the ideal price. */
+  entryZone?: { low: number; high: number };
   entryType?: "market" | "buy_limit" | "buy_stop" | "sell_limit" | "sell_stop";
   stopLoss: number;
   targets: number[];
   takeProfit?: number;
   rr?: number;
   status: RecommendationStatus;
-  triggerCondition: string;
+  /**
+   * Absent when the plan has no stated condition — it activates on its entry.
+   * Never synthesized: a generic sentence here would read as a trigger nobody
+   * actually set.
+   */
+  triggerCondition?: string;
+  /** The machine-checkable form of `triggerCondition`; see activationRule.ts. */
+  activationRule?: ActivationRule;
   invalidationLevel: number;
   invalidationRule: string;
+  /** The runner-up scenario and what would switch the plan to it. */
+  alternativeScenario?: string;
+  /** Validity in candles of this timeframe, as decided by the agent. */
+  validityCandles?: number;
   setupType?: string;
   poi?: {
     type: "demand" | "supply" | "retest";

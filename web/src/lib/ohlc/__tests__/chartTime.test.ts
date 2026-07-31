@@ -40,6 +40,29 @@ describe("sanitizeCandlesForMarket", () => {
     assert.equal(out.length, 1);
     assert.equal(out[0]!.close, 1.135);
   });
+
+  it("rejects the reference-scenario 'corrupt' fixture shape (high < low)", async () => {
+    // The corrupt_market_data reference scenario (§16) exists to prove the
+    // pipeline never invents prices from malformed feed data. This proves the
+    // fixture that scenario is built on actually produces bars this real
+    // sanitizer rejects — not an ordinary finite candle indistinguishable from
+    // a quiet market (which is what the unfixed generator used to emit).
+    const { fixtureBars } = await import("@/lib/agent/__tests__/fixtures/referenceScenarioPack");
+    const bars = fixtureBars({
+      count: 5,
+      intervalMs: 5 * 60_000,
+      endAt: Date.now(),
+      start: 1.1,
+      shape: "corrupt",
+    });
+    assert.ok(bars.every((bar) => bar.high < bar.low), "the fixture must actually be malformed");
+    const out = sanitizeCandlesForMarket(bars, "forex");
+    assert.equal(
+      out.length,
+      0,
+      "every corrupt bar must be rejected, none silently laundered into a usable candle",
+    );
+  });
 });
 
 describe("livePriceConsistent", () => {

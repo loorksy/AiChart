@@ -1,10 +1,16 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/client.js";
+import {
+  BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/client.js";
 import { bridgeCall, bridgeWrap } from "./helpers.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
-import { createRecommendationInput } from "./schemas/coreSchemas.js";
+import {
+  createRecommendationInput,
+  findSimilarCasesInput,
+  setAgentTradeModeInput,
+  zActivationRuleStrict,
+} from "./schemas/coreSchemas.js";
 import { discoverSkills, loadSkill } from "../skills/catalog.js";
 import { selectMcpSkills } from "../skills/select.js";
 import { gitCommit } from "../version.js";
@@ -37,6 +43,10 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           include_live
             ? bridge.get("/api/agent/live/account", undefined, 10000)
             : Promise.resolve({ skipped: true }),
+          // Shared server-side state (plan §9): the overview carries the
+          // operator's trade mode so the session starts knowing it — mcp-core
+          // says ask ONCE when it is unset, never re-ask a stored choice.
+          bridge.get("/api/agent/trade-mode"),
         ]);
         const val = (r: PromiseSettledResult<unknown>) => {
           if (r.status !== "fulfilled") {
@@ -53,6 +63,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           connection: val(settled[0]),
           portfolio: val(settled[1]),
           live: include_live ? val(settled[2]) : { skipped: true },
+          trade_mode: val(settled[3]),
         };
       }, { structured: true });
     },
@@ -357,17 +368,56 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     async (body) => {
       const parsed = createRecommendationInput.safeParse(body);
       if (!parsed.success) {
+        // Agent-facing: a short, fixable list — never the full zod dump, whose
+        // flattened union paths read as contradictions. Full detail to stderr
+        // with the payload keys, so an operator can still reconstruct the call.
+        const issues = parsed.error.issues
+          .slice(0, 6)
+          .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`);
+        console.error(
+          "[create_recommendation] rejected:",
+          JSON.stringify({
+            keys: Object.keys((body as Record<string, unknown>) ?? {}),
+            issues: parsed.error.issues.slice(0, 20),
+          }),
+        );
         return formatBridgeError(
           new Error(
-            parsed.error.issues
-              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
-              .join("; ") || "Invalid create_recommendation payload",
+            `${issues.join("; ")}\n` +
+              `Fix ONLY the fields above and call again. A conditional/anticipatory plan needs: ` +
+              `activation_condition (string) + activation_rule {kind,...} + invalidation_rule + alternative_scenario + validity_candles. ` +
+              `activation_rule.timeframe may be omitted (plan timeframe is used).`,
           ),
         );
       }
-      return bridgeCall(() =>
-        bridge.post("/api/agent/recommendation", parsed.data),
-      );
+      // Stale-client transport decode. A connector whose cached tool schema
+      // predates the plan-contract fields serializes them as STRINGS (measured
+      // on a live Claude connector). Decode deterministically, then validate
+      // against the SAME strict schema — the contract does not get looser, the
+      // wire just gets read.
+      const body2: Record<string, unknown> = { ...parsed.data };
+      if (typeof body2.activation_rule === "string") {
+        let decoded: unknown;
+        try {
+          decoded = JSON.parse(body2.activation_rule);
+        } catch {
+          return formatBridgeError(
+            new Error("activation_rule: not valid JSON — send the rule object itself."),
+          );
+        }
+        const strict = zActivationRuleStrict.safeParse(decoded);
+        if (!strict.success) {
+          const issues = strict.error.issues
+            .slice(0, 4)
+            .map((issue) => `activation_rule.${issue.path.join(".") || "kind"}: ${issue.message}`);
+          return formatBridgeError(new Error(issues.join("; ")));
+        }
+        body2.activation_rule = strict.data;
+      }
+      for (const key of ["validity_candles", "entry_low", "entry_high"] as const) {
+        if (typeof body2[key] === "string") body2[key] = Number(body2[key]);
+      }
+      return bridgeCall(() => bridge.post("/api/agent/recommendation", body2));
     },
   );
 
@@ -425,6 +475,52 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "get_agent_settings",
     mcpToolConfig("get_agent_settings"),
     bridgeWrap(bridge, () => bridge.get("/api/agent/settings")),
+  );
+
+  server.registerTool(
+    "get_agent_trade_mode",
+    mcpToolConfig("get_agent_trade_mode"),
+    bridgeWrap(bridge, () => bridge.get("/api/agent/trade-mode")),
+  );
+
+  server.registerTool(
+    "set_agent_trade_mode",
+    mcpToolConfig("set_agent_trade_mode"),
+    async (body) => {
+      const parsed = setAgentTradeModeInput.safeParse(body);
+      if (!parsed.success) {
+        return formatBridgeError(
+          new Error(
+            parsed.error.issues
+              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+              .join("; ") || "Invalid set_agent_trade_mode payload",
+          ),
+        );
+      }
+      // The server re-checks confirmed_by_user for auto; sending actor lets the
+      // audit trail say which surface the operator used.
+      return bridgeCall(() =>
+        bridge.patch("/api/agent/trade-mode", { ...parsed.data, actor: "mcp" }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "find_similar_cases",
+    mcpToolConfig("find_similar_cases"),
+    async (body) => {
+      const parsed = findSimilarCasesInput.safeParse(body);
+      if (!parsed.success) {
+        return formatBridgeError(
+          new Error(
+            parsed.error.issues
+              .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+              .join("; ") || "Invalid find_similar_cases payload",
+          ),
+        );
+      }
+      return bridgeCall(() => bridge.post("/api/agent/similar-cases", parsed.data));
+    },
   );
 
   server.registerTool(

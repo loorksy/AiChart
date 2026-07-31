@@ -36,6 +36,8 @@ describe("Phase 4 static contracts", () => {
       "recommendation_learning_events",
       "trade_lesson_candidates",
       "gold_agent_weight_versions",
+      "decision_parity",
+      "decision_parity_comparisons",
     ];
     for (const table of tables) {
       assert.match(sqlite, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));

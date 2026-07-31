@@ -4,7 +4,10 @@ import {
   Bot,
   CreditCard,
   KeyRound,
+  ListChecks,
+  NotebookPen,
   Shield,
+  Stethoscope,
   TrendingUp,
   Users,
   type LucideIcon,
@@ -30,6 +33,12 @@ export const APP_NAV: NavItem[] = [
   { href: "/console", labelKey: "nav.workspace", icon: Bot, exact: true },
   { href: "/statistics", labelKey: "nav.statistics", icon: BarChart3 },
   { href: "/console/trades", labelKey: "nav.trades", icon: TrendingUp },
+  // The plans themselves: execution state, revision history, the Evidence Card
+  // and the Decision Trace. The page and its detail view already existed and
+  // nothing linked to them, so everything the operator needs to audit a plan
+  // was reachable only by typing the URL.
+  { href: "/recommendations", labelKey: "nav.recommendations", icon: ListChecks },
+  { href: "/journal", labelKey: "nav.journal", icon: NotebookPen },
 ];
 
 /**
@@ -48,6 +57,11 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/console/platform?tab=system", labelKey: "nav.admin_system", icon: Bot },
   { href: "/console/platform?tab=security", labelKey: "nav.admin_security", icon: Shield },
   { href: "/console/platform?tab=usage", labelKey: "nav.admin_usage", icon: BarChart3 },
+  {
+    href: "/console/platform?tab=diagnostics",
+    labelKey: "nav.admin_diagnostics",
+    icon: Stethoscope,
+  },
 ];
 
 export type AccessTier = "admin" | "full" | "trial" | "blocked";

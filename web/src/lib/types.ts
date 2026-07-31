@@ -47,6 +47,8 @@ export interface TradingSettings {
   alerts_enabled: number;
   alert_trades: number;
   alert_signals: number;
+  /** Browser/mobile push channel. Defaults on; independent of Telegram. */
+  alert_push?: number;
   updated_at: string;
 }
 
@@ -153,6 +155,22 @@ export interface TradeIntent {
   id: number;
   user_id: number;
   recommendation_id: number | null;
+  /** Revision of that recommendation the levels came from. */
+  recommendation_revision_no?: number | null;
+  /**
+   * Explicit per-trade approval, or the operator's standing auto mode.
+   * `trade_management` marks an SL/TP-modification proposal for an already-open
+   * trade — such an intent is NEVER an order and must not reach executeIntent.
+   */
+  authorization_source?: "user_approved" | "standing_auto" | "trade_management" | null;
+  /**
+   * Server-side proof of a human approval, written only by the authenticated
+   * approval path — never from a field in a request body. The choke point
+   * requires it before any `user_approved` order reaches a broker.
+   */
+  approved_at?: number | null;
+  approved_by_user_id?: number | null;
+  approval_consumed_at?: number | null;
   symbol: string;
   side: "buy" | "sell";
   notional: number;

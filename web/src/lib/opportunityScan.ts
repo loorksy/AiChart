@@ -123,6 +123,7 @@ export async function runOpportunityScan(
   for (const candidate of top) {
     try {
       const decision = await runUnifiedChartAgent({
+        surface: "internal",
         userMessage: `راجع ${candidate.symbol} على ${candidate.interval} كفرصة سكالب. هذه مؤشرات أولية وليست قراراً: ${candidate.signals.join("، ")}. اختر BUY أو SELL أو WAIT من بيانات السوق الفعلية.`,
         chartContext: { symbol: candidate.symbol, interval: candidate.interval, dataSource: "oanda" },
         requestContext: { requestId: newId(), userId, emitActivity: () => {} },
@@ -143,12 +144,10 @@ export async function runOpportunityScan(
           confidence: Math.round(decision.confidence * 100),
           timeframe: candidate.interval,
         } as Recommendation;
-        finalDelivery = await dispatchAlert(userId, {
-          type: "signal",
-          title: `${rec.action === "buy" ? "BUY" : "SELL"} — ${candidate.symbol}`,
-          text: decision.summary,
-          symbol: candidate.symbol,
-        });
+        // runUnifiedChartAgent already persisted this recommendation and announced it
+        // exactly once through the lifecycle notifier's dedupe path (opportunity_created).
+        // Sending a second, undeduped alert here would double-notify the user for one
+        // opportunity — see docs/UNIFIED_AGENT_COMPLETION_AUDIT.md single-announcer contract.
         break;
       }
     } catch (error) {

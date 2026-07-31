@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
+import { isAutoExecutionAuthorized } from "@/lib/agent/tradeMode";
+import { criticalAlert } from "@/lib/metrics";
 import { handleError } from "@/lib/api";
 import {
   createIntent,
@@ -9,6 +11,7 @@ import {
   resolveBrokerForMarket,
 } from "@/lib/store";
 import { executeIntent, getRiskBudget } from "@/lib/execution";
+import { getEffectiveRevision } from "@/lib/recommendations/canonical/revisions";
 import {
   bridgeError,
   bridgeSuccess,
@@ -28,7 +31,6 @@ import {
 } from "@/lib/marketPolicy";
 import type { MarketType } from "@/lib/markets/types";
 import { normalizeIntentSymbol } from "@/lib/markets/resolve";
-import { checkRecommendationExecutionEligibility } from "@/lib/strategies/evidence";
 
 const schema = z
   .object({
@@ -112,11 +114,10 @@ export async function POST(req: NextRequest) {
     // Failure brake: if a recent attempt on this symbol was denied, reject
     // immediately with a clear reason instead of re-running the full
     // intent → technical execution safety → broker pipeline.
-    // Explicit human approval bypasses the brake.
-    if (
-      !body.approved_by_user &&
-      (await hasRecentTradeOpenFailure(userId, body.symbol))
-    ) {
+    // It used to be skippable via `approved_by_user` — a body flag the caller
+    // (a model, on MCP) writes about itself. Real human approvals no longer
+    // travel through this route at all, so nothing here may bypass the brake.
+    if (await hasRecentTradeOpenFailure(userId, body.symbol)) {
       const envelope = bridgeSuccess(
         tradeOpenPayload(
           false,
@@ -130,35 +131,25 @@ export async function POST(req: NextRequest) {
       return respondWithIdempotency(userId, idempotencyKey, envelope);
     }
 
-    // Autonomous execution is only allowed from a recommendation whose
-    // validated strategy has completed shadow trading and is currently active.
-    // A human's explicit order remains possible and is separately audited.
-    if (!body.approved_by_user) {
-      if (body.recommendation_id == null) {
+    // An order arrives here from exactly one of two authorisations: the
+    // operator approved THIS trade, or they earlier chose the auto mode and
+    // this plan's conditions have now been met. There is no third path — the
+    // old "autonomous if the strategy is active" route is gone, because whether
+    // a trade may be placed is the operator's decision to make, not a
+    // statistical property of a strategy (docs/UNIFIED_AGENT_PLAN.md §3).
+    // Standing authorisation is the ONLY thing this route can act on. It used to
+    // skip this check whenever the body said `approved_by_user: true`, which
+    // made a caller's own claim about a human the gate — so the check now runs
+    // unconditionally.
+    {
+      const authorized = await isAutoExecutionAuthorized(userId);
+      if (!authorized) {
+        criticalAlert("execution_wrong_mode", { source: "trade_open_api", userId });
         const envelope = bridgeSuccess(
           tradeOpenPayload(
             false,
             "denied",
-            "A backtest-gated active recommendation_id is required for autonomous execution",
-            null,
-            null,
-            null,
-          ),
-        );
-        return respondWithIdempotency(userId, idempotencyKey, envelope);
-      }
-      const eligibility = await checkRecommendationExecutionEligibility({
-        userId,
-        recommendationId: body.recommendation_id,
-        symbol: normalizeIntentSymbol(body.symbol, DEFAULT_MARKET),
-        side: body.side,
-      });
-      if (!eligibility.ok) {
-        const envelope = bridgeSuccess(
-          tradeOpenPayload(
-            false,
-            "denied",
-            eligibility.reason,
+            "لا يوجد تفويض للتنفيذ: هذا المسار يعمل بالتفويض التلقائي القائم فقط. الموافقة اليدوية تمر عبر طلب اعتماد يوافق عليه المستخدم بنفسه (approval flow) — لا عبر حقل في الطلب.",
             null,
             null,
             null,
@@ -203,8 +194,27 @@ export async function POST(req: NextRequest) {
 
     const leverage = 1;
 
+    // The revision the referenced plan is on RIGHT NOW, so the execution-time
+    // compare-and-swap has a number to hold the order to. Null when the trade
+    // references no recommendation, or a pre-revision one.
+    const effectiveRevision =
+      body.recommendation_id != null
+        ? await getEffectiveRevision(userId, body.recommendation_id).catch(() => null)
+        : null;
+
     const intent = await createIntent(userId, {
       recommendation_id: body.recommendation_id ?? null,
+      recommendation_revision_no: effectiveRevision?.revisionNo ?? null,
+      // Which of the two authorisations brought us here (checked above): the
+      // operator approving THIS trade, or their standing auto mode — which the
+      // execution choke point re-verifies at the moment the order is placed.
+      // Always `standing_auto`. This route's caller composes its own body — on
+      // the MCP surface that caller is a model — so `approved_by_user` cannot
+      // mint a `user_approved` intent here. A real per-trade approval is created
+      // as a PENDING intent and turned into an executable one by the
+      // authenticated approval path (`respondToApproval`), which is what writes
+      // the server-side proof the choke point demands.
+      authorization_source: "standing_auto",
       symbol: normalizeIntentSymbol(body.symbol, market),
       side: body.side,
       notional: budget.riskAmount,
@@ -224,7 +234,8 @@ export async function POST(req: NextRequest) {
     });
 
     const result = await executeIntent(userId, intent.id, {
-      explicitApproval: body.approved_by_user,
+      // Never from the body: this route cannot prove a human approved anything.
+      explicitApproval: false,
       practiceMode: body.practice,
     });
 

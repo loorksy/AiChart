@@ -98,6 +98,16 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await runUnifiedChartAgent({
+      // The parity surface is the BRAIN that decided, not the transport that
+      // asked. This route runs `runUnifiedChartAgent` — the platform decision
+      // engine — so it records as `platform` even though an MCP tool proxied
+      // here. Labelling it `mcp` compared the platform engine against itself
+      // (vacuous), and simultaneously collided with the one producer that can
+      // genuinely diverge: the MCP-hosted model writing its own plan through
+      // `create_recommendation`. That is what `mcp` now means, and the ordinary
+      // Claude flow — analyse, then create — produces both halves of a real
+      // pair on the same symbol and candle.
+      surface: "platform",
       userMessage: `حلّل ${symbol} على إطار ${interval} كفرصة سكالب واشرح قرارك.`,
       chartContext: { symbol, interval, layoutId: body.layout_id, dataSource },
       requestContext: {
@@ -173,6 +183,9 @@ export async function POST(req: NextRequest) {
       activityEvents: result.activityEvents,
       decision: result.decision,
       envelope: result.envelope,
+      // Deferred #16: the execution-cost contract, unit-named keys and explicit
+      // source/fallback. unavailable is stated, never rendered as zero.
+      cost_evidence: result.costEvidence ?? null,
       newsRisk: result.newsRisk,
       requiresConfirmation: result.requiresConfirmation ?? false,
       data_source: dataSource,

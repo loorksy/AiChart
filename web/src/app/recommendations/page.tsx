@@ -5,6 +5,7 @@ import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
+import { ActiveRecommendationsPanel } from "@/components/recommendations/ActiveRecommendationsPanel";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
 
 export default function RecommendationsPage() {
@@ -69,19 +70,12 @@ export default function RecommendationsPage() {
         </p>
       )}
 
+      {/* Active plans render with their full explainable state (revision,
+          evidence dimensions, decision trace, triggers) — Group 9. */}
       {active.length > 0 && (
-        <section className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-            {t("rec.page.active")} ({active.length})
-          </h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            {active.map((r) => (
-              <Link key={r.id} href={`/recommendations/${r.id}`} className="block">
-                <RecommendationTrackerCard rec={r} />
-              </Link>
-            ))}
-          </div>
-        </section>
+        <div className="mb-6">
+          <ActiveRecommendationsPanel />
+        </div>
       )}
 
       {history.length > 0 && (

@@ -64,6 +64,14 @@ export interface PatternInstance {
   breakDirection?: "up" | "down";
   confidence: number;
   evidence: string[];
+  /**
+   * Where the structure is in its own life — starting, forming, near
+   * completion, completed-but-unconfirmed, confirmed, or failed. Distinct from
+   * `status`, which only answers whether a boundary has been closed beyond.
+   */
+  stage?: import("./patternStage").PatternStage;
+  /** 0–1 estimate of how much of the expected shape has formed. */
+  completionRatio?: number;
 }
 
 export interface GeometrySnapshot {
@@ -72,6 +80,8 @@ export interface GeometrySnapshot {
   trendlines: TrendlineGeometry[];
   channels: ChannelGeometry[];
   patterns: PatternInstance[];
+  /** Bar-level candlestick shapes over the recent tail. */
+  candlesticks: import("./candlesticks").CandlestickSignal[];
   /** Window actually analysed (after the 500-bar cap). */
   candleCount: number;
   atr: number;

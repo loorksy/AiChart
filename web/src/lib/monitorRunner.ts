@@ -1,8 +1,11 @@
 import { runCronPostScan } from "./cronPostScan";
 import { monitorEaBridgeHealth } from "./eaHealthMonitor";
+import { sampleLiveCosts } from "./strategies/liveCostProfile";
 import { collectTradeWatchAlerts } from "./tradeWatch";
+import { checkEconomicEventProximity } from "./recommendations/economicEventMonitor";
 import { listUsersForMonitor } from "./store";
 import { notifyUser } from "./telegram";
+import { selectUnannouncedAlerts } from "./recommendations/lifecycleNotifier";
 import { refreshAllStrategyDecay } from "./strategies/evidence";
 
 export interface MonitorCycleEvent {
@@ -12,7 +15,8 @@ export interface MonitorCycleEvent {
     | "ea_offline"
     | "ea_recovered"
     | "strategy_promoted"
-    | "strategy_suspended";
+    | "strategy_suspended"
+    | "economic_event";
   detail: string;
   delivered: boolean;
 }
@@ -36,6 +40,10 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
   for (const { id: userId } of users) {
     try {
       const eaEvent = await monitorEaBridgeHealth(userId);
+      // Spread sampling piggybacks on the health check: the quotes are already
+      // in memory, and ten-minute samples describe the session distribution as
+      // well as a tick stream would (plan §13 H.1). Best-effort by design.
+      await sampleLiveCosts(userId).catch(() => undefined);
       if (eaEvent) {
         let delivered = true;
         try {
@@ -68,7 +76,27 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
           delivered,
         });
       }
-      const alerts = await collectTradeWatchAlerts(userId);
+      // Calendar proximity (plan §8 C.6): a factual "release in N minutes"
+      // alert for plans the operator holds, plus a re-evaluation trigger so the
+      // brain — never the monitor — can re-decide. With no news provider this
+      // produces nothing at all; delivery and dedupe live in the notifier.
+      const economic = await checkEconomicEventProximity(userId).catch(() => null);
+      if (economic?.events.length) {
+        result.events.push({
+          userId,
+          type: "economic_event",
+          detail: economic.events.map((event) => event.detail).join("\n"),
+          delivered: economic.notify.delivered > 0,
+        });
+      }
+      // Proximity alerts go through the SAME claim-before-send path as every
+      // lifecycle event. They used to call notifyUser directly with no dedupe
+      // key and no alert record, so an operator holding a position near its
+      // stop was messaged again on every monitor cycle, indefinitely.
+      const alerts = await selectUnannouncedAlerts(
+        userId,
+        await collectTradeWatchAlerts(userId),
+      );
       if (alerts.length) {
         const detail = alerts.map((alert) => alert.detail).join("\n");
         let delivered = true;

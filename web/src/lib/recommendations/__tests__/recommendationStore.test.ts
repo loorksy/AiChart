@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { trackedCompletePlan } from "@/lib/recommendations/__tests__/fixtures/completePlan";
 
 /**
  * Tracked recommendations persist, list, update, and cancel on the real SQLite
@@ -30,6 +31,7 @@ test("tracked recommendation store: create/list/update/cancel + tenant isolation
   const now = Date.now();
 
   const created = await store.createTrackedRecommendation({
+    ...trackedCompletePlan(),
     id: "rec-1",
     userId: owner,
     chatId: "chat-1",
@@ -83,6 +85,7 @@ test("tracked recommendation store: create/list/update/cancel + tenant isolation
 
   // cancel a pending record
   await store.createTrackedRecommendation({
+    ...trackedCompletePlan(),
     id: "rec-2",
     userId: owner,
     symbol: "EURUSD",

@@ -103,7 +103,7 @@ describe("generateAgentSuggestions", () => {
           JSON.stringify({
             suggestions: [
               { label: "Analyze the current chart", prompt: "Analyze the current chart." },
-              { label: "Buy / sell / wait opinion", prompt: "Give me a buy/sell/wait opinion." },
+              { label: "Buy or sell opinion", prompt: "Give me your direction and a full plan." },
               { label: "Empty", prompt: "" },
             ],
           }) +

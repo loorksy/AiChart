@@ -39,7 +39,7 @@ function exportSchemas(targetDir: string) {
   );
 
   for (const tool of TOOL_CATALOG) {
-    const schema = z.toJSONSchema(z.object(tool.inputSchema));
+    const schema = z.toJSONSchema(z.object(tool.inputSchema), { io: "input", target: "draft-7" });
     writeFileSync(
       join(targetDir, "tools", `${tool.name}.json`),
       `${JSON.stringify(schema, null, 2)}\n`,

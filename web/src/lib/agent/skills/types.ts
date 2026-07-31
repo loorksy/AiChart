@@ -36,4 +36,11 @@ export interface AgentSkillSelectionContext {
   availableTools?: string[];
   maxSkills?: number;
   allowExecutionSkills?: boolean;
+  /**
+   * Pattern names the deterministic geometry engine ACTUALLY detected in the
+   * running analysis (plan §11 F.1) — the selection key that pulls the atlas
+   * in when there is a pattern to read about, instead of guessing from the
+   * request text.
+   */
+  detectedPatterns?: string[];
 }

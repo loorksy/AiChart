@@ -245,8 +245,24 @@ export function geometryEvidenceLines(snapshot: GeometrySnapshot): string[] {
       pattern.projectedTarget != null
         ? `, target ~${pattern.projectedTarget.toFixed(5)}`
         : "";
+    // The stage and how far along the shape is travel with the pattern: a
+    // structure pressing its boundary is a different opportunity from one that
+    // has barely started, and both used to read as simply "forming".
+    const stage =
+      pattern.stage != null
+        ? `, stage ${pattern.stage}${
+            pattern.completionRatio != null
+              ? ` (${Math.round(pattern.completionRatio * 100)}% formed)`
+              : ""
+          }`
+        : "";
     lines.push(
-      `${pattern.patternType} ${STATUS_LABEL_EN[pattern.status]}${pattern.breakDirection ? ` (${pattern.breakDirection} break)` : ""}${target} (conf ${pattern.confidence})`,
+      `${pattern.patternType} ${STATUS_LABEL_EN[pattern.status]}${pattern.breakDirection ? ` (${pattern.breakDirection} break)` : ""}${target}${stage} (conf ${pattern.confidence})`,
+    );
+  }
+  for (const signal of snapshot.candlesticks ?? []) {
+    lines.push(
+      `candlestick ${signal.name} (${signal.bias}, strength ${signal.strength}, ${signal.bars} bar${signal.bars > 1 ? "s" : ""})`,
     );
   }
   return lines;

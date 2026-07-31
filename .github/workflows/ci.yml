@@ -1,9 +1,19 @@
 name: CI
 
+# GitHub Actions automatic execution is intentionally disabled by owner decision.
+# Release qualification currently relies on the full local verification matrix
+# (see docs/LOCAL_RELEASE_QUALIFICATION.md).
+#
+# push / pull_request triggers are OFF so Actions minutes are not consumed while
+# the account cannot run workflows. Preserve this file and all job steps so the
+# same matrix can be re-enabled later by restoring:
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main, master]
+#     workflow_dispatch:
 on:
-  pull_request:
-  push:
-    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   web:

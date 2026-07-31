@@ -10,6 +10,8 @@ import { getSettings, updateRecommendationChartUrl } from "./store";
 import { buildAccountProfile } from "./accountProfile";
 import { recommendationCard } from "./telegramCards";
 import { dispatchAlert, type DeliveryResult } from "./alerts";
+import { announceOpportunityCreated } from "./recommendations/lifecycleNotifier";
+import { FEATURES } from "./agent/featureFlags";
 import type { Recommendation } from "./types";
 import type { InlineButton } from "./telegram";
 import type { MarketType } from "./markets/types";
@@ -37,7 +39,6 @@ export async function attachChartToRecommendation(
 ): Promise<{ rec: Recommendation; delivery?: DeliveryResult }> {
   if (rec.action === "wait") return { rec };
 
-  const settings = await getSettings(userId);
   const market = (rec.market ?? DEFAULT_MARKET) as MarketType;
   const overlays = overlaysFromRecommendation(rec);
   const drawings =
@@ -71,7 +72,15 @@ export async function attachChartToRecommendation(
 }
 
 /**
- * Unified notification: Telegram (photo buffer) + in-app alert with image URL.
+ * Creation notification for a recommendation.
+ *
+ * When lifecycle alerts are on (plan §8 C.1), this is a thin adapter over
+ * `announceOpportunityCreated` — the only legal producer of
+ * `opportunity_created`. It never claims a dedupe key or calls `dispatchAlert`
+ * itself for creation; that kept a parallel path alive and made retries race.
+ *
+ * When the flag is off, the pre-lifecycle Telegram+in-app card is kept so a
+ * rollback restores today's behaviour without losing the chart caption.
  */
 export async function notifyRecommendation(
   userId: number,
@@ -81,7 +90,35 @@ export async function notifyRecommendation(
   if (rec.action === "wait") {
     return { delivered: false, reason: "no_actionable_signal" };
   }
+  if (rec.action !== "buy" && rec.action !== "sell") {
+    return { delivered: false, reason: "no_actionable_signal" };
+  }
 
+  if (FEATURES.recLifecycleAlertsV1()) {
+    const referenceId =
+      (rec as { legacy_tracking_id?: string | null }).legacy_tracking_id ??
+      String(rec.id);
+    const announced = await announceOpportunityCreated(userId, {
+      recommendationId: referenceId,
+      symbol: rec.symbol,
+      direction: rec.action,
+      entry: rec.entry,
+      planType: (rec as { plan_type?: string | null }).plan_type ?? null,
+    });
+    if (announced.delivered > 0) return { delivered: true };
+    if (announced.suppressedDuplicate > 0) {
+      return { delivered: false, reason: "duplicate_creation_alert" };
+    }
+    if (announced.suppressedSilent > 0) {
+      return { delivered: false, reason: "silent_mode" };
+    }
+    if (announced.suppressedRateLimit > 0) {
+      return { delivered: false, reason: "rate_limited" };
+    }
+    return { delivered: false, reason: "delivery_failed" };
+  }
+
+  // Flag OFF — keep the legacy card so rollback is behaviour-identical.
   const settings = await getSettings(userId);
   const profile = await buildAccountProfile(userId, rec.symbol);
   const caption = recommendationCard({
@@ -94,14 +131,12 @@ export async function notifyRecommendation(
     profile,
   });
 
-  const imageUrl = rec.chart_image_url;
-
   return dispatchAlert(userId, {
     type: "signal",
     title: `توصية ${rec.action === "buy" ? "شراء" : "بيع"} ${rec.symbol}`,
     text: caption,
     symbol: rec.symbol,
-    photoUrl: settings.send_screenshot === 1 ? imageUrl : null,
+    photoUrl: settings.send_screenshot === 1 ? rec.chart_image_url : null,
     buttons: options.buttons,
   });
 }

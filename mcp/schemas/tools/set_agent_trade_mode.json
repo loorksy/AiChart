@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "advisory"
+      ]
+    },
+    "confirmed_by_user": {
+      "description": "Required true for mode=auto: proof the operator asked for standing execution authorisation in their own words.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "mode"
+  ],
+  "additionalProperties": false
+}

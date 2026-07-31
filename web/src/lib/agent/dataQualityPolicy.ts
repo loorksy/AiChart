@@ -3,7 +3,8 @@
  * each have their own gate so the thresholds never drift apart between files.
  *
  * - Analysis may proceed below the trade threshold WITH warnings.
- * - A trade recommendation requires the trade threshold (else WAIT).
+ * - A trade recommendation requires the trade threshold; below it the run ends
+ *   as a named operational blocker, never as a market decision to wait.
  * - Drawings / structural trendlines require the drawing threshold.
  * Insufficient coverage triggers refill upstream but never invents data.
  */
@@ -476,12 +477,12 @@ export function buildCandleCoverageReport(input: {
     ? `فجوات بيانات حرجة أثناء فتح السوق. ${gapDetailAr}. بدأ الإصلاح التلقائي — أعد المحاولة خلال دقائق.`
     : sufficientForTrade
       ? `تغطية الشموع كافية (${frames.map((f) => `${f.interval}:${f.available}`).join(", ")}).${significantGapNoteAr}`
-      : `انتظار — تغطية الشموع غير كافية. ${detailAr || "لا بيانات"}. لم تُنشأ توصية ولا خط اتجاه هيكلي.${significantGapNoteAr}`;
+      : `تغطية الشموع غير كافية. ${detailAr || "لا بيانات"}. عائق تشغيلي: لم تُنشأ توصية ولا خط اتجاه هيكلي.${significantGapNoteAr}`;
   const summaryEn = hasCriticalGaps
     ? `Catastrophic open-market candle gaps. ${gapDetailEn}. Automatic repair started — retry in a few minutes.`
     : sufficientForTrade
       ? `Candle coverage sufficient (${frames.map((f) => `${f.interval}:${f.available}`).join(", ")}).${significantGapNoteEn}`
-      : `WAIT — candle coverage insufficient. ${detailEn || "no data"}. No recommendation or structural trendline produced.${significantGapNoteEn}`;
+      : `Candle coverage insufficient. ${detailEn || "no data"}. Operational blocker: no recommendation or structural trendline produced.${significantGapNoteEn}`;
 
   return {
     policyVersion: CANDLE_COVERAGE_POLICY_VERSION,

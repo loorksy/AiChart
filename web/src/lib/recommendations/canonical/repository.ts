@@ -1,5 +1,9 @@
 import { getDbBackend, query, queryOne, transaction } from "@/lib/db";
+import { createLogger } from "@/lib/logger";
+import { FEATURES } from "@/lib/agent/featureFlags";
 import { assertRecommendationTransition, initialRecommendationStatus } from "./stateMachine";
+import { applyRecommendationRevision } from "./revisions";
+import { assertCompletePlan, PlanContractViolation } from "./planContract";
 import {
   RecommendationLifecycleError,
   type CanonicalRecommendation,
@@ -9,6 +13,8 @@ import {
   type RecommendationTransition,
   type TransitionRecommendationInput,
 } from "./types";
+
+const log = createLogger("recommendations:canonical");
 
 interface RecommendationRow {
   id: number;
@@ -183,6 +189,40 @@ export async function createCanonicalRecommendation(
       "Recommendations must be created as draft or active and then use the state machine",
     );
   }
+
+  // The Complete Plan Contract, enforced at the single creation choke point so
+  // no surface can store a plan another surface would refuse. Only a legacy
+  // import is exempt: a row written before the contract existed is history to
+  // keep readable, not a new claim to grade.
+  if (!input.legacyImport && (direction === "buy" || direction === "sell")) {
+    const seed = input.initialRevision;
+    try {
+      assertCompletePlan({
+        direction,
+        planType: input.planType,
+        executionState: input.executionState,
+        entry: input.entry,
+        entryLow: seed?.entryLow ?? input.entry,
+        entryHigh: seed?.entryHigh ?? input.entry,
+        stopLoss: input.stopLoss,
+        targets,
+        activationCondition: seed?.activationCondition,
+        activationRule: seed?.activationRule,
+        invalidationRule: seed?.invalidationRule,
+        alternativeScenario: seed?.alternativeScenario,
+        validityCandles: seed?.validityCandles,
+      });
+    } catch (error) {
+      if (error instanceof PlanContractViolation) {
+        throw new RecommendationLifecycleError(
+          "RECOMMENDATION_INVALID_INPUT",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   const now = input.createdAt ?? Date.now();
   const expiresAt = input.expiresAt ?? now + 4 * 60 * 60 * 1000;
   const createdAtExpression =
@@ -198,8 +238,10 @@ export async function createCanonicalRecommendation(
          confidence, backtested_confidence, confidence_low, confidence_high,
          backtest_id, market_regime, strategy_id, strategy_version, expires_at, status, status_reason,
          source, engine_version, entry_type, legacy_tracking_id, rationale, factors,
-         chart_drawings_json, pattern_name, analysis_tier, context_json, updated_at, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
+         chart_drawings_json, pattern_name, analysis_tier, context_json,
+         statistical_support, evidence_source, plan_type, execution_state,
+         updated_at, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${createdAtExpression})`,
       [
         input.userId,
         input.analysisId ?? null,
@@ -236,6 +278,13 @@ export async function createCanonicalRecommendation(
         input.patternName ?? null,
         input.analysisTier ?? null,
         input.contextJson ?? null,
+        input.statisticalSupport ?? null,
+        input.evidenceSource ?? null,
+        // Written on the row itself, not only via the revision pointer: the
+        // revision seed below is best-effort, and a plan whose seed failed must
+        // not read as having no plan type or execution state.
+        input.planType ?? null,
+        input.executionState ?? null,
         now,
         now,
       ],
@@ -291,6 +340,61 @@ export async function createCanonicalRecommendation(
     );
     return id;
   });
+
+  /**
+   * Seed revision 1.
+   *
+   * Every recommendation needs an effective revision from birth: a later update
+   * has to have something to supersede, and the compare-and-swap on execution
+   * has to have a number to compare against. Without it a recommendation can be
+   * neither revised nor auto-executed.
+   *
+   * Legacy `wait` rows are skipped deliberately — they carry no plan to revise
+   * and must never become executable.
+   *
+   * Best-effort: the recommendation already exists and the operator has already
+   * been shown it, so a revision failure must not delete their answer. It costs
+   * auto-execution eligibility, which is the safe direction to fail in.
+   */
+  // Gated by REC_REVISIONS_V1: turning the phase off stops SEEDING new
+  // revisions. It never stops reading existing ones — rollback must not make
+  // stored history unreadable.
+  if (FEATURES.recRevisionsV1() && (direction === "buy" || direction === "sell")) {
+    const seed = input.initialRevision;
+    await applyRecommendationRevision({
+      userId: input.userId,
+      recommendationId,
+      timestamp: now,
+      revision: {
+        direction,
+        planType: input.planType ?? null,
+        executionState: input.executionState ?? null,
+        entry: input.entry ?? null,
+        entryLow: seed?.entryLow ?? null,
+        entryHigh: seed?.entryHigh ?? null,
+        stopLoss: input.stopLoss ?? null,
+        targets,
+        activationCondition: seed?.activationCondition ?? null,
+        activationRule: seed?.activationRule ?? null,
+        invalidationRule: seed?.invalidationRule ?? null,
+        alternativeScenario: seed?.alternativeScenario ?? null,
+        validityCandles: seed?.validityCandles ?? null,
+        expiresAt,
+        reason: "initial recommendation",
+        source: "agent",
+        evidence: seed?.evidence ?? null,
+        evidenceSnapshot: seed?.evidenceSnapshot ?? null,
+        evidenceSourceSurface: seed?.evidenceSourceSurface ?? null,
+        decisionTrace: seed?.decisionTrace ?? null,
+      },
+    }).catch((err) => {
+      log.warn("failed to seed revision 1", {
+        recommendationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
   const stored = await getCanonicalRecommendation(input.userId, recommendationId);
   if (!stored) {
     throw new RecommendationLifecycleError(

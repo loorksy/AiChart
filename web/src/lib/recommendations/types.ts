@@ -4,6 +4,8 @@
  * lifecycle state (for the card's progress bar); `outcome` is the final trade
  * result (drives statistics). A record is TERMINAL when `outcome !== "pending"`.
  */
+import type { ActivationRule } from "./activationRule";
+
 export type TrackedRecommendationStatus =
   | "pending_entry"
   | "triggered"
@@ -42,6 +44,12 @@ export interface TrackedRecommendation {
   stopLoss: number;
   targets: number[];
   invalidationLevel?: number;
+  /**
+   * Numeric id of the canonical recommendations row. `id` above may be a
+   * legacy tracking UUID; anything that must BIND to the plan (an auto-executed
+   * intent, the revision CAS) uses this, never a parse of `id`.
+   */
+  canonicalId?: number;
   status: TrackedRecommendationStatus;
   outcome: TrackedRecommendationOutcome;
   setupType?: string;
@@ -50,7 +58,30 @@ export interface TrackedRecommendation {
   netRr?: number;
   netRrTp2?: number;
   activationClass?: "immediate" | "conditional";
+  /** How the plan is entered — see the result contract's second layer. */
+  planType?: "immediate" | "anticipatory" | "conditional";
+  /** Whether the plan can be entered right now — the contract's third layer. */
+  executionState?: "valid_now" | "awaiting_activation" | "expired" | "invalidated" | "blocked";
+  /** Verified statistical backing, or its absence stated plainly. */
+  statisticalSupport?: "strong" | "moderate" | "weak" | "unavailable";
+  /** Entry zone bounds, when the plan defines a zone rather than a price. */
+  entryLow?: number;
+  entryHigh?: number;
+  /** What kills the idea, what replaces it, and how long it stays meaningful. */
+  invalidationRule?: string;
+  alternativeScenario?: string;
+  validityCandles?: number;
+  /** Which revision of the plan these levels belong to. */
+  revisionNo?: number;
+  /** Frozen evidence consumed by the brain for the effective revision. */
+  evidenceSnapshot?: Record<string, unknown>;
   triggerCondition?: string;
+  /**
+   * The machine-checkable form of `triggerCondition`. The free text says what
+   * the plan waits for; only this decides whether it has happened. A plan
+   * carrying one is never activated by a bare price touch.
+   */
+  activationRule?: ActivationRule;
   createdAt: number;
   createdCandleTime: number;
   expiresAt: number;

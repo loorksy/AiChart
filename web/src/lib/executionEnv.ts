@@ -22,6 +22,11 @@ export interface ExecutionEnvSnapshot {
 
 export function normalizeMtTradeMode(raw: string | null | undefined): MtAccountTradeMode {
   const value = (raw ?? "").toLowerCase();
+  // MT5's own enum calls a real-money account ACCOUNT_TRADE_MODE_REAL — an EA
+  // reporting "real" IS a live account. Treating it as unrecognised (null) made
+  // isRealMoneyExecution() false, so the live dual-enablement silently never
+  // engaged for exactly the accounts it exists to protect.
+  if (value === "real") return "live";
   return value === "demo" || value === "live" || value === "contest" ? value : null;
 }
 

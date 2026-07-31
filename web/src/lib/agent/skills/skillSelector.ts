@@ -3,6 +3,10 @@
  * Parity with MCP `selectMcpSkills` — no skill-name if/else routing.
  */
 import type { AgentSkillDescriptor, AgentSkillSelectionContext } from "./types";
+import { FEATURES } from "../featureFlags";
+
+/** The Pattern Atlas skill, gated by phase F's flag. */
+const ATLAS_SKILL = "pattern-atlas";
 
 const STOP = new Set([
   "the", "and", "for", "with", "from", "that", "this", "are", "was", "were",
@@ -61,12 +65,20 @@ export function selectAgentSkills(
   const requestTokens = [
     ...tokens(context.request),
     ...(context.intent ?? []).flatMap((i) => tokens(i)),
+    // Detected pattern names are selection signal like any request token — a
+    // chart showing a forming triangle asks for the atlas as loudly as a user
+    // typing the word.
+    ...(context.detectedPatterns ?? []).flatMap((p) => tokens(p.replace(/_/g, " "))),
   ];
   const available = new Set(context.availableTools ?? []);
   const intents = (context.intent ?? []).map((i) => i.toLocaleLowerCase());
 
   const scored = skills
     .filter(({ metadata }) => metadata.enabled)
+    // Gated by PATTERN_ATLAS_V1 (phase F rollback). Off withholds the atlas
+    // entries only; the deterministic geometry engine keeps running, since the
+    // rest of the system already depends on its output as evidence.
+    .filter(({ metadata }) => metadata.name !== ATLAS_SKILL || FEATURES.patternAtlasV1())
     .filter(
       ({ metadata }) =>
         !metadata.supportedLocales?.length ||
@@ -107,6 +119,14 @@ export function selectAgentSkills(
       // Market is a soft boost only after request/intent overlap.
       if (score > 0 && context.market) {
         score += overlap(tokens(context.market), caps) > 0 ? 1 : 0;
+      }
+      // The atlas is FOR detected patterns: when the geometry engine found
+      // one, the atlas is selected on that fact, not on request phrasing.
+      if (
+        skill.metadata.name === ATLAS_SKILL &&
+        (context.detectedPatterns?.length ?? 0) > 0
+      ) {
+        score += 4;
       }
       return { skill, score };
     })

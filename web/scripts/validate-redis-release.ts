@@ -19,12 +19,38 @@ if (!configuredRedisUrl) {
 const redisUrl: string = configuredRedisUrl;
 
 const parsedUrl = new URL(redisUrl);
+
+/**
+ * Isolation guard.
+ *
+ * This suite enqueues real jobs and clears EA live-quote state, so aiming it at
+ * the instance the app is using would let a deployed worker consume test jobs
+ * and would wipe live quote keys. The previous guard pinned the target to port
+ * 6380 — which is exactly the port the deployed `REDIS_URL` uses — so it
+ * mandated the one instance it existed to protect.
+ *
+ * Isolation cannot be read off a port number, so it is declared and then
+ * checked: the operator states it, and the target must differ from the deployed
+ * Redis whenever that is discoverable.
+ */
 assert.equal(
-  parsedUrl.port,
-  "6380",
-  "Refusing to run Redis release validation outside isolated port 6380",
+  process.env.REDIS_RELEASE_ISOLATED,
+  "1",
+  "Refusing to run Redis release validation without REDIS_RELEASE_ISOLATED=1 — " +
+    "point REDIS_URL at a dedicated instance and set the flag to confirm it is " +
+    "not the one the app is using.",
 );
 assert.ok(parsedUrl.password, "The isolated Redis release test must require auth");
+
+const deployedRedisUrl = process.env.DEPLOYED_REDIS_URL?.trim();
+if (deployedRedisUrl) {
+  const deployed = new URL(deployedRedisUrl);
+  assert.notEqual(
+    `${parsedUrl.hostname}:${parsedUrl.port}`,
+    `${deployed.hostname}:${deployed.port}`,
+    "Refusing to run Redis release validation against the deployed instance",
+  );
+}
 
 const phase = process.argv[2] ?? "roundtrip";
 const namespace = `aichart-release-${crypto.randomUUID()}`;

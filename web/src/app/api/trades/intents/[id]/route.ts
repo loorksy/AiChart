@@ -31,12 +31,33 @@ export async function POST(
 
     const { action, stream } = schema.parse(await req.json());
 
+    // A trade-management intent proposes an SL/TP modify for an ALREADY-OPEN
+    // position. Approving it must go to the broker's modify path — executing
+    // it as an order would open a second position on top of the live one.
+    if (intent.authorization_source === "trade_management") {
+      const { respondToTradeManagementIntent } = await import(
+        "@/lib/recommendations/tradeManagement"
+      );
+      const result = await respondToTradeManagementIntent(user.id, intent, action);
+      return NextResponse.json(result);
+    }
+
     if (action === "reject") {
       await updateIntentStatus(intentId, "rejected", "رفضه المستخدم.", user.id);
       return NextResponse.json({ ok: true, status: "rejected" });
     }
 
     await updateIntentStatus(intentId, "approved", "وافق المستخدم.", user.id);
+    // The server's own record that THIS authenticated user approved THIS
+    // intent, just now. It is the only proof the choke point accepts —
+    // `explicitApproval` below merely says the caller claims to hold one.
+    const { execute } = await import("@/lib/db");
+    await execute(
+      `UPDATE trade_intents
+          SET approved_at = ?, approved_by_user_id = ?
+        WHERE id = ? AND user_id = ?`,
+      [Date.now(), user.id, intentId, user.id],
+    );
 
     if (stream) {
       const body = new ReadableStream({
@@ -47,6 +68,8 @@ export async function POST(
           try {
             const result = await executeIntent(user.id, intentId, {
               onActivity: (a) => send("activity", a),
+              // The operator pressed approve on this specific trade.
+              explicitApproval: true,
             });
             await notifyUser(
               user.id,
@@ -78,7 +101,7 @@ export async function POST(
       });
     }
 
-    const result = await executeIntent(user.id, intentId);
+    const result = await executeIntent(user.id, intentId, { explicitApproval: true });
     await notifyUser(
       user.id,
       result.ok
