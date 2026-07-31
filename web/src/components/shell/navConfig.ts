@@ -8,6 +8,7 @@ import {
   Shield,
   Stethoscope,
   Users,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import type { TranslationKey } from "@/lib/i18n";
@@ -34,6 +35,8 @@ export const APP_NAV: NavItem[] = [
   // routes. Old URLs redirect here with section anchors.
   { href: "/performance", labelKey: "nav.performance", icon: BarChart3 },
   { href: "/journal", labelKey: "nav.journal", icon: NotebookPen },
+  // V2-A5: balance, statement, top-ups and subscription management.
+  { href: "/console/billing", labelKey: "nav.billing", icon: Wallet },
 ];
 
 /**
