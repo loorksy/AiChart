@@ -343,6 +343,9 @@ describe("multiTimeframeContent image delivery", () => {
         assert.equal(snap.image_attached, false);
         assert.equal(snap.image_bytes, 0);
         assert.ok(snap.image_url);
+        // The frame is small — it lost to the budget, and must say so rather
+        // than claim it breached the per-image cap.
+        assert.match(snap.image_delivery, /response image budget/);
       }
     } finally {
       delete process.env.MCP_MAX_TOTAL_INLINE_IMAGE_BYTES;

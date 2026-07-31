@@ -44,12 +44,15 @@ export const MAX_INLINE_IMAGE_WIDTH = 1200;
 /**
  * Ceiling across *all* inline blocks in one response.
  *
- * capture_multi_timeframe_snapshot returns four charts. Four images that each
- * clear the per-image cap still add up to ~640 KB of base64 and trip the same
- * host limit, so frames are attached in order until this budget is spent and
- * the remainder degrade to URL-only.
+ * Sized so the default four-frame multi-timeframe capture fits, because
+ * measurement says the host caps per *block*, not per response: a single
+ * ~211 KB base64 block failed while a two-block response totalling ~242 KB
+ * base64 rendered both. So the per-image cap above is the load-bearing fix and
+ * this budget is a backstop against a pathological response (six dense frames),
+ * not the everyday constraint. Frames are attached in order until it is spent;
+ * the remainder degrade to URL-only rather than being dropped.
  */
-export const MAX_TOTAL_INLINE_IMAGE_BYTES = 240_000;
+export const MAX_TOTAL_INLINE_IMAGE_BYTES = 480_000;
 
 /**
  * Effective per-image cap. The real limit belongs to the host, not to us, so
@@ -327,10 +330,27 @@ export async function prepareImage(
   };
 }
 
+/** Why an image did not travel inline — the two causes need different advice. */
+export type InlineSkipReason = "over_cap" | "budget_exhausted";
+
+function skipExplanation(
+  prepared: PreparedImage,
+  reason: InlineSkipReason | undefined,
+): string {
+  if (!prepared.stored) {
+    return "image could not be inlined and no storage URL is available";
+  }
+  const bytes = prepared.inline.buffer.length;
+  return reason === "budget_exhausted"
+    ? `response image budget spent on earlier frames (this frame needed ${bytes}B) — open image_url to view it`
+    : `image too large to inline (${bytes}B > ${maxInlineImageBytes()}B cap) — open image_url to view it`;
+}
+
 /** The `image_*` fields shared by every capture tool's text block. */
 export function imageDeliveryFields(
   prepared: PreparedImage,
   attached: boolean,
+  skipReason?: InlineSkipReason,
 ): Record<string, unknown> {
   return {
     content_type: attached ? prepared.inline.mimeType : "image/png",
@@ -348,9 +368,7 @@ export function imageDeliveryFields(
     inline_height: attached ? prepared.inline.height : null,
     image_delivery: attached
       ? "full-resolution PNG at image_url; a downscaled copy is attached as the image block below"
-      : prepared.stored
-        ? `image too large to inline (${prepared.inline.buffer.length}B > ${maxInlineImageBytes()}B cap) — open image_url to view it`
-        : "image could not be inlined and no storage URL is available",
+      : skipExplanation(prepared, skipReason),
   };
 }
 

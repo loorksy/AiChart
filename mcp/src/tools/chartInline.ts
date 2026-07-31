@@ -219,10 +219,19 @@ export async function multiTimeframeContent(
       frames.push({ snapshot, prepared: null, reason: prepared.reason });
       continue;
     }
-    const attached =
-      !prepared.inline.overCap && prepared.inline.buffer.length <= remainingBudget;
+    const fitsBudget = prepared.inline.buffer.length <= remainingBudget;
+    const attached = !prepared.inline.overCap && fitsBudget;
     if (attached) remainingBudget -= prepared.inline.buffer.length;
-    frames.push({ snapshot, prepared, attached });
+    frames.push({
+      snapshot,
+      prepared,
+      attached,
+      // Distinguishing the two is what tells the operator whether the frame was
+      // inherently too big or simply queued behind earlier ones.
+      skipReason: prepared.inline.overCap
+        ? ("over_cap" as const)
+        : ("budget_exhausted" as const),
+    });
   }
 
   const usable = frames.filter((f) => f.prepared !== null);
@@ -272,7 +281,7 @@ export async function multiTimeframeContent(
         image_source: frame.snapshot.image_source,
         from_cache: frame.snapshot.from_cache === true,
         image_block_index: attached ? blockIndex++ : null,
-        ...imageDeliveryFields(prepared, attached),
+        ...imageDeliveryFields(prepared, attached, frame.skipReason),
         ...(options.inlineBase64 && attached
           ? { imageBase64: prepared.inline.buffer.toString("base64") }
           : {}),
