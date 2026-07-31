@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, Cable, Moon, Save, SlidersHorizontal, Sun, User } from "lucide-react";
+import { Bell, Cable, Moon, Save, SlidersHorizontal, Sparkles, Sun, User } from "lucide-react";
 import { EaConnectCard } from "@/components/settings/EaConnectCard";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
+import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
 
 import { PageLayout, SurfaceCard } from "@/components/ui/shell";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
@@ -14,7 +15,7 @@ import { RISK_PER_TRADE } from "@/lib/productModel";
 import { cn } from "@/lib/utils";
 import type { AdminLimits, EaConnectionMeta, PublicUser, TradingSettings } from "@/lib/types";
 
-type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "trading";
+type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "trading" | "skills";
 
 const TABS = [
   { id: "profile", labelKey: "settings.tab.account", icon: User },
@@ -22,6 +23,7 @@ const TABS = [
   { id: "integrations", labelKey: "settings.tab.connections", icon: Cable },
   { id: "alerts", labelKey: "settings.tab.alerts", icon: Bell },
   { id: "trading", labelKey: "settings.trading.risk_label", icon: SlidersHorizontal },
+  { id: "skills", labelKey: "skills.title", icon: Sparkles },
 ] as const satisfies ReadonlyArray<{
   id: TabId;
   labelKey: TranslationKey;
@@ -193,6 +195,8 @@ export default function SettingsClient({
           </button>
         </SurfaceCard>
       )}
+
+      {tab === "skills" && <UserSkillsPanel />}
 
       {tab === "trading" && (
         <SurfaceCard className="space-y-5">

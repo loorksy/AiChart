@@ -640,6 +640,18 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user
     ON agent_audit_logs (user_id, id DESC);
 
+  -- Per-user custom agent skills (full SKILL.md text; trust is always "user").
+  CREATE TABLE IF NOT EXISTS user_agent_skills (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    name       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, name)
+  );
+
   CREATE TABLE IF NOT EXISTS agent_runs (
     run_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, chat_id TEXT, session_id TEXT,
     request_id TEXT NOT NULL, symbol TEXT, timeframe TEXT, intent TEXT,

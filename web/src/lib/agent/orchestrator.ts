@@ -131,6 +131,7 @@ import {
   EMPTY_SKILL_CONTEXT,
   type AgentSkillContext,
 } from "./skills/skillContext";
+import { enabledUserSkills } from "./skills/userSkillStore";
 import { bilingual, composeStatusReply } from "./statusReply";
 import { contextualOptionsFor } from "./contextualOptions";
 import { answerChartDrawingQuestion } from "./chartDrawingAnswer";
@@ -515,17 +516,25 @@ async function runUnifiedChartAgentInner(
 
   // Canonical skill catalogue: discover metadata, select by intent/locale/
   // market, and lazily load only the relevant bodies. Read-only guidance —
-  // failure degrades to zero skills and never blocks the run.
+  // failure degrades to zero skills and never blocks the run. The user's own
+  // uploaded skills join the candidate pool (trust "user", never execution).
+  const userSkills =
+    wantMarket && FEATURES.agentSkillsV1() && ctx.userId
+      ? await enabledUserSkills(ctx.userId).catch(() => [])
+      : [];
   const skillContext: AgentSkillContext =
     wantMarket && FEATURES.agentSkillsV1()
-      ? buildAgentSkillContext({
-          request: userMessage,
-          intent: intents,
-          locale,
-          market: "forex",
-          // Tools the chart agent can surface in this path (enables cards skill).
-          availableTools: ["render_cards", "detect_levels", "get_ohlc"],
-        })
+      ? buildAgentSkillContext(
+          {
+            request: userMessage,
+            intent: intents,
+            locale,
+            market: "forex",
+            // Tools the chart agent can surface in this path (enables cards skill).
+            availableTools: ["render_cards", "detect_levels", "get_ohlc"],
+          },
+          userSkills,
+        )
       : EMPTY_SKILL_CONTEXT;
 
   // News-only path (news requested but no chart context needed).
@@ -881,14 +890,17 @@ async function runUnifiedChartAgentInner(
   const detectedPatternNames = geometry.patterns.map((p) => p.patternType);
   const skillContextFinal =
     detectedPatternNames.length && wantMarket && FEATURES.agentSkillsV1()
-      ? buildAgentSkillContext({
-          request: userMessage,
-          intent: intents,
-          locale,
-          market: "forex",
-          availableTools: ["render_cards", "detect_levels", "get_ohlc"],
-          detectedPatterns: detectedPatternNames,
-        })
+      ? buildAgentSkillContext(
+          {
+            request: userMessage,
+            intent: intents,
+            locale,
+            market: "forex",
+            availableTools: ["render_cards", "detect_levels", "get_ohlc"],
+            detectedPatterns: detectedPatternNames,
+          },
+          userSkills,
+        )
       : skillContext;
 
   // The evidence builder prepares price-valid candidates for the model. It is
