@@ -77,13 +77,15 @@ export async function pollBridgeMt5ChartPng(
 /**
  * The single delivery path for a one-image capture.
  *
- * Accepts a Buffer (MT5 poll) or base64 (bridge JSON), validates it, and
- * persists the full-resolution PNG for its short-lived URL. The URL **is** the
- * delivery: neither the Claude consumer app nor ChatGPT rendered the inline
- * MCP image block to the operator, so by default the ~100KB of base64 was dead
- * weight in every response. An inline block is attached only when the caller
- * passes `inlineImage` (the host model wants to *see* the chart, e.g. for
- * visual confirmation before a recommendation) and it fits the payload cap.
+ * Accepts a Buffer (MT5 poll) or base64 (bridge JSON), validates it, persists
+ * the full-resolution PNG for its short-lived URL, and attaches the downscaled
+ * inline block by default so the host model *sees* the chart. The operator must
+ * see it too, and consumer hosts differ in what they render — some show the
+ * tool-result image, some (ChatGPT, the Claude consumer app) only render
+ * markdown in the assistant's reply. So the response also carries
+ * `display_markdown`, a ready `![…](url)` line the model is told to paste into
+ * its answer verbatim. Belt and braces: whichever path the host supports, the
+ * operator gets a picture, not a bare link.
  */
 export async function chartInlineContent(
   meta: Record<string, unknown>,
@@ -100,11 +102,12 @@ export async function chartInlineContent(
     return brokenImageResult(prepared.reason, meta, ctx);
   }
 
-  const wantsInline = opts.inlineImage === true;
+  const wantsInline = opts.inlineImage !== false;
   const attached = wantsInline && !prepared.inline.overCap;
   const skipReason = !wantsInline
     ? ("inline_not_requested" as const)
     : ("over_cap" as const);
+  const label = [ctx.symbol, ctx.timeframe, "chart"].filter(Boolean).join(" ");
   const content: McpContentBlock[] = [
     {
       type: "text",
@@ -112,7 +115,7 @@ export async function chartInlineContent(
         {
           ...meta,
           chartUrl: meta.chartUrl ?? meta.chart_url,
-          ...imageDeliveryFields(prepared, attached, skipReason),
+          ...imageDeliveryFields(prepared, attached, skipReason, label),
         },
         null,
         2,
@@ -213,9 +216,9 @@ export async function multiTimeframeContent(
   const symbol = result.symbol;
   const totalBudget = maxTotalInlineImageBytes();
   let remainingBudget = totalBudget;
-  // inline_base64 implies wanting the pixels — it existed before inline_image
-  // and callers using it expect image data in the response.
-  const wantsInline = options.inlineImage === true || options.inlineBase64 === true;
+  // Inline is the default — the analysis doctrine depends on the model seeing
+  // the frames. inline_image=false opts out; inline_base64 keeps implying it.
+  const wantsInline = options.inlineImage !== false || options.inlineBase64 === true;
 
   const frames = [];
   for (const snapshot of candidates) {
@@ -277,8 +280,8 @@ export async function multiTimeframeContent(
       usable.length === 0
         ? "NO images captured — do not describe any chart image"
         : wantsInline
-          ? "full-resolution PNGs at each snapshot's image_url (links expire in ~3 minutes); frames that fit the payload budget are also attached as inline image blocks"
-          : "full-resolution PNGs at each snapshot's image_url (links expire in ~3 minutes) — give the operator the links; pass inline_image=true only when YOU need to inspect the charts yourself",
+          ? "Frames that fit the payload budget are attached as inline image blocks. ALSO paste each snapshot's display_markdown in your reply so the operator sees the charts even on hosts that hide tool images. Links expire in ~3 minutes."
+          : "Inline images skipped by request (inline_image=false). SHOW the operator the charts by pasting each snapshot's display_markdown in your reply — links expire in ~3 minutes.",
     inline_budget_bytes: totalBudget,
     ...(usable.length === 0
       ? {
@@ -298,7 +301,12 @@ export async function multiTimeframeContent(
         image_source: frame.snapshot.image_source,
         from_cache: frame.snapshot.from_cache === true,
         image_block_index: attached ? blockIndex++ : null,
-        ...imageDeliveryFields(prepared, attached, frame.skipReason),
+        ...imageDeliveryFields(
+          prepared,
+          attached,
+          frame.skipReason,
+          [symbol, frame.snapshot.timeframe, "chart"].filter(Boolean).join(" "),
+        ),
         ...(options.inlineBase64 && attached
           ? { imageBase64: prepared.inline.buffer.toString("base64") }
           : {}),

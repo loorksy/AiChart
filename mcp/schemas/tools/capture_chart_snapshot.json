@@ -36,7 +36,7 @@
       ]
     },
     "inline_image": {
-      "description": "Attach the chart as an inline image block so the assistant can see it (default false — the operator gets the image_url link either way).",
+      "description": "Set false to skip the inline image copy (default true). The operator-facing display_markdown is returned either way.",
       "type": "boolean"
     }
   },

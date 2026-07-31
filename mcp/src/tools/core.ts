@@ -562,7 +562,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
             symbol: input.symbol,
             timeframe: input.interval,
           },
-          { inlineImage: inlineImage === true },
+          { inlineImage: inlineImage !== false },
         );
       } catch (e) {
         return formatBridgeError(e);
@@ -592,7 +592,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         )) as MultiTimeframeBridgeResult;
         return multiTimeframeContent(res, {
           inlineBase64: inlineBase64 === true,
-          inlineImage: inlineImage === true,
+          inlineImage: inlineImage !== false,
         });
       } catch (e) {
         return formatBridgeError(e);
@@ -608,7 +608,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         recommendation_id: number;
         inline_image?: boolean;
       };
-      const inlineOpts = { inlineImage: inline_image === true };
+      const inlineOpts = { inlineImage: inline_image !== false };
       try {
         const res = (await bridge.get(`/api/agent/chart/${recommendation_id}`, {
           format: "json",

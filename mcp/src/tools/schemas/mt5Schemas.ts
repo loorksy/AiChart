@@ -74,7 +74,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_mt5_chart",
     domain: "mt5",
     description:
-      "Captures an MT5 chart image: with entry/SL/TP, drawings, or a recommendation_id it queues a draw_and_capture on the EA and polls up to 30s for the annotated PNG; without annotations it falls back to a plain chart snapshot. Returns an image_url link (expires ~3 minutes) — share it with the operator; pass inline_image=true only when YOU need to see the chart. When: an MT5 chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
+      "Captures an MT5 chart image: with entry/SL/TP, drawings, or a recommendation_id it queues a draw_and_capture on the EA and polls up to 30s for the annotated PNG; without annotations it falls back to a plain chart snapshot. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: an MT5 chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -87,7 +87,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
       inline_image: zLooseBoolean
         .optional()
         .describe(
-          "Attach the chart as an inline image block so the assistant can see it (default false — the operator gets the image_url link either way).",
+          "Set false to skip the inline image copy (default true). The operator-facing display_markdown is returned either way.",
         ),
     },
     annotations: READ_ONLY,

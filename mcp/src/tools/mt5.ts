@@ -80,7 +80,7 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
         string,
         unknown
       > & { inline_image?: boolean };
-      const inlineOpts = { inlineImage: inlineImageRaw === true };
+      const inlineOpts = { inlineImage: inlineImageRaw !== false };
       const input = body as {
         symbol: string;
         interval?: string;

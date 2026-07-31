@@ -370,7 +370,7 @@ function skipExplanation(
     return "image could not be inlined and no storage URL is available";
   }
   if (reason === "inline_not_requested") {
-    return "give the operator the image_url link (it expires in ~3 minutes). No inline image was attached — pass inline_image=true only when YOU need to inspect the chart pixels yourself.";
+    return "inline image skipped by request (inline_image=false). SHOW the chart to the operator by pasting display_markdown verbatim in your reply — the link expires in ~3 minutes.";
   }
   const bytes = prepared.inline.buffer.length;
   return reason === "budget_exhausted"
@@ -383,6 +383,7 @@ export function imageDeliveryFields(
   prepared: PreparedImage,
   attached: boolean,
   skipReason?: InlineSkipReason,
+  markdownLabel = "chart",
 ): Record<string, unknown> {
   return {
     content_type: attached ? prepared.inline.mimeType : "image/png",
@@ -398,15 +399,21 @@ export function imageDeliveryFields(
     expires_at: prepared.stored?.expiresAt ?? null,
     inline_width: attached ? prepared.inline.width : null,
     inline_height: attached ? prepared.inline.height : null,
+    // The one field that makes the picture reach the OPERATOR on hosts that
+    // render only the assistant's markdown (ChatGPT, the Claude consumer app):
+    // the model pastes this line into its reply and the chart displays there.
+    display_markdown: prepared.stored
+      ? `![${markdownLabel}](${prepared.stored.url})`
+      : null,
     image_delivery: attached
-      ? "full-resolution PNG at image_url (link expires in ~3 minutes); a downscaled copy is attached as the image block below"
+      ? "The chart is attached as the image block below. ALSO paste display_markdown verbatim in your reply so the operator sees the chart even on hosts that hide tool images. Link expires in ~3 minutes."
       : skipExplanation(prepared, skipReason),
     ...(attached
       ? {}
       : {
           // Anti-hallucination: with no inline block the model has seen NOTHING.
           note:
-            "You did NOT receive this chart's pixels. Do not describe or imply what the chart looks like — share image_url with the operator instead.",
+            "You did NOT receive this chart's pixels. Do not describe or imply what the chart looks like — paste display_markdown in your reply so the operator can see it.",
         }),
   };
 }

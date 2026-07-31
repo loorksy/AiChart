@@ -30,7 +30,7 @@
       "type": "boolean"
     },
     "inline_image": {
-      "description": "Attach the charts as inline image blocks so the assistant can see them (default false — the operator gets the image_url links either way).",
+      "description": "Set false to skip the inline image copies (default true). The operator-facing display_markdown is returned either way.",
       "type": "boolean"
     },
     "inline_base64": {
