@@ -119,6 +119,34 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     plainStorage: false,
   },
   {
+    // V2-A3: Stripe goes live the moment these are pasted — no deploy needed.
+    key: "STRIPE_SECRET_KEY",
+    label: "مفتاح Stripe السري",
+    labelEn: "STRIPE_SECRET_KEY",
+    group: "ops",
+    secret: true,
+    plainStorage: false,
+    placeholder: "sk_live_...",
+  },
+  {
+    key: "STRIPE_WEBHOOK_SECRET",
+    label: "سر Stripe Webhook",
+    labelEn: "STRIPE_WEBHOOK_SECRET",
+    group: "ops",
+    secret: true,
+    plainStorage: false,
+    placeholder: "whsec_...",
+  },
+  {
+    key: "STRIPE_PUBLISHABLE_KEY",
+    label: "مفتاح Stripe المعلن",
+    labelEn: "STRIPE_PUBLISHABLE_KEY",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    placeholder: "pk_live_...",
+  },
+  {
     // V2-A2: master switch for credits enforcement. Off = today's behavior.
     key: "BILLING_ENFORCED",
     label: "تفعيل فرض الرصيد والباقات",

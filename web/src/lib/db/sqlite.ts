@@ -187,6 +187,13 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  -- V2-A3: webhook idempotency — one row per applied Stripe event.
+  CREATE TABLE IF NOT EXISTS stripe_events (
+    id   TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    ts   INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS trade_intents (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id           INTEGER NOT NULL,

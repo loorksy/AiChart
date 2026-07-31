@@ -173,6 +173,13 @@ const SCHEMA = `
     updated_at  BIGINT NOT NULL
   );
 
+  -- V2-A3: webhook idempotency — one row per applied Stripe event.
+  CREATE TABLE IF NOT EXISTS stripe_events (
+    id   TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    ts   BIGINT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS trade_intents (
     id                SERIAL PRIMARY KEY,
     user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
