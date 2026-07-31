@@ -73,7 +73,14 @@ export function chartInlineContent(
       {
         type: "text",
         text: JSON.stringify(
-          { ...meta, imageBase64: base64, chartUrl: meta.chartUrl ?? meta.chart_url },
+          {
+            ...meta,
+            chartUrl: meta.chartUrl ?? meta.chart_url,
+            // The PNG travels in the image block below — repeating it here as
+            // base64 doubled the payload for nothing and got truncated by hosts.
+            image_delivery: "PNG attached as the image block after this text",
+            image_bytes: Math.floor((base64.length * 3) / 4),
+          },
           null,
           2,
         ),
@@ -95,8 +102,15 @@ export function chartTimeoutContent(
           {
             ok: false,
             status: "timeout",
+            image_captured: false,
             retryAfterMs,
             ...meta,
+            // Guardrail against hallucinated screenshots: the model must state
+            // the failure, never narrate a chart it was not given.
+            note:
+              "NO image was captured. Do NOT describe or imply a chart image — tell the user the snapshot failed and offer to retry.",
+            user_message:
+              "تعذّر التقاط صورة الشارت الآن (انتهت مهلة الالتقاط). لم تُرفق أي صورة — أعد المحاولة بعد قليل.",
           },
           null,
           2,
@@ -160,9 +174,20 @@ export function multiTimeframeContent(
     missing_timeframes: result.missing_timeframes ?? [],
     partial_success: result.partial_success === true,
     elapsed_ms: result.elapsed_ms,
-    image_delivery: options.inlineBase64
-      ? "imageBase64 in this JSON and as inline image blocks"
-      : "inline image blocks below, one per timeframe (set inline_base64=true to also receive raw base64)",
+    image_delivery:
+      snapshots.length === 0
+        ? "NO images captured — do not describe any chart image"
+        : options.inlineBase64
+          ? "imageBase64 in this JSON and as inline image blocks"
+          : "inline image blocks below, one per timeframe (set inline_base64=true to also receive raw base64)",
+    ...(snapshots.length === 0
+      ? {
+          note:
+            "NO snapshot was captured for any timeframe. Do NOT describe or imply chart images — report the failure and its reasons to the user.",
+          user_message:
+            "تعذّر التقاط صور الشارت لهذه الفريمات. لم تُرفق أي صورة — راجع الأسباب في missing_timeframes وأعد المحاولة.",
+        }
+      : {}),
     guardrails: result.guardrails ?? [],
     snapshots: snapshots.map((snapshot, index) => ({
       timeframe: snapshot.timeframe,
@@ -247,8 +272,29 @@ export async function resolveChartSnapshotResponse(
     );
   }
 
+  // No image and no pending capture — say so explicitly. A bare echo of the
+  // bridge payload reads like success and invites the model to invent a chart.
   return {
-    content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            ...res,
+            ok: false,
+            status: res.status ?? "no_image",
+            image_captured: false,
+            note:
+              "NO image was captured. Do NOT describe or imply a chart image — tell the user the snapshot is unavailable.",
+            user_message:
+              "تعذّر توليد صورة الشارت من أي مصدر متاح. لم تُرفق أي صورة.",
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+    isError: true,
   };
 }
 

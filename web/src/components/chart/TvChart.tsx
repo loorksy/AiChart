@@ -222,7 +222,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   headerActionsRef.current = headerActions;
   directionRef.current = direction;
   // Stable indirection so the mount effect can call the latest applyDrawings.
-  const applyDrawingsRef = useRef<() => void>(() => {});
+  const applyDrawingsRef = useRef<(opts?: { force?: boolean }) => void>(() => {});
   const pushSyncRef = useRef(false);
   const latestCandleRef = useRef<TvLatestCandle | null>(null);
   const clearLatestCandle = () => {
@@ -431,7 +431,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           chart.onDataLoaded().subscribe(null, () => {
             if (pendingReapplyRef.current) {
               pendingReapplyRef.current = false;
-              applyDrawingsRef.current();
+              // Force: after a frame/symbol switch the shapes must be rebuilt
+              // even when the payload fingerprint is unchanged.
+              applyDrawingsRef.current({ force: true });
             }
           });
           chart.onSymbolChanged().subscribe(null, () => {
@@ -527,7 +529,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   drawArgsRef.current = { drawings, overlays, recommendation, targets, symbol, interval };
   const pendingReapplyRef = useRef(false);
 
-  const applyDrawings = useCallback(() => {
+  const applyDrawings = useCallback((opts?: { force?: boolean }) => {
     const mgr = managerRef.current;
     if (!mgr || !readyRef.current) return;
     const a = drawArgsRef.current;
@@ -536,6 +538,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       combined,
       { recommendation: a.recommendation, targets: a.targets },
       { symbol: a.symbol, interval: a.interval },
+      opts,
     );
   }, []);
   applyDrawingsRef.current = applyDrawings;

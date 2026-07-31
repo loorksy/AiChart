@@ -62,8 +62,34 @@ export const INTERVAL_GROUPS: { label: string; items: string[] }[] = [
 export function normalizeInterval(interval: string): string {
   const iv = interval.trim();
   if (INTERVAL_SET.has(iv) || iv in DERIVED_INTERVALS) return iv;
-  return "1h";
+  // Understand TradingView/MetaTrader spellings ("1D", "60", "M15") before
+  // falling back — silently coercing an agent's "1D" to 1h re-anchored its
+  // drawings on the wrong timeframe and yanked the operator's chart to 1h.
+  return canonicalizeInterval(iv) ?? "1h";
 }
+
+/** TradingView bare-minute resolutions → canonical intervals. */
+const MINUTES_TO_INTERVAL: Record<number, string> = {
+  1: "1m",
+  3: "3m",
+  5: "5m",
+  10: "10m",
+  15: "15m",
+  30: "30m",
+  45: "45m",
+  60: "1h",
+  120: "2h",
+  240: "4h",
+  360: "6h",
+  480: "8h",
+  720: "12h",
+  1440: "1d",
+  2880: "2d",
+  4320: "3d",
+  10080: "1w",
+  20160: "2w",
+  43200: "1M",
+};
 
 const UNIT_SUFFIX: Record<string, string> = {
   m: "m",
@@ -103,6 +129,36 @@ export function canonicalizeInterval(interval: string): string | null {
   const raw = interval.trim();
   if (!raw) return null;
   if (INTERVAL_SET.has(raw) || raw in DERIVED_INTERVALS) return raw;
+
+  const upper = raw.toUpperCase();
+
+  // TradingView bare resolutions: "15" (minutes), "60", "240", "D", "W", "M".
+  if (/^\d{1,5}$/.test(upper)) {
+    return MINUTES_TO_INTERVAL[Number(upper)] ?? null;
+  }
+  if (/^(D|W|MN?)1?$/.test(upper)) {
+    return upper.startsWith("D") ? "1d" : upper.startsWith("W") ? "1w" : "1M";
+  }
+
+  // MetaTrader prefix labels: "M15", "H4", "D1", "W1", "MN1".
+  const mt = /^(MN|M|H|D|W)(\d{1,3})$/.exec(upper);
+  if (mt) {
+    const n = Number(mt[2]);
+    const unit = mt[1]!;
+    const candidate =
+      unit === "M"
+        ? MINUTES_TO_INTERVAL[n] ?? null
+        : unit === "H"
+          ? MINUTES_TO_INTERVAL[n * 60] ?? null
+          : unit === "D"
+            ? `${n}d`
+            : unit === "W"
+              ? `${n}w`
+              : "1M";
+    return candidate && (INTERVAL_SET.has(candidate) || candidate in DERIVED_INTERVALS)
+      ? candidate
+      : null;
+  }
 
   const match = /^(\d{1,4})\s*([a-zA-Z]{1,6})$/.exec(raw);
   if (!match) return null;

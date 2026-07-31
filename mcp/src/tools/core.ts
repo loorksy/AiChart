@@ -17,6 +17,7 @@ import { gitCommit } from "../version.js";
 import {
   chartInlineContent,
   chartTimeoutContent,
+  DRAW_CAPTURE_MAX_MS,
   multiTimeframeContent,
   pollBridgeMt5ChartPng,
   resolveChartSnapshotResponse,
@@ -534,11 +535,20 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("capture_chart_snapshot"),
     async (body) => {
       try {
-        const res = (await bridge.post("/api/agent/chart/snapshot", {
-          ...body,
-          response_format: "json",
-        })) as ChartSnapshotBridgeResult;
-        return resolveChartSnapshotResponse(bridge, res);
+        // 45s bridge budget: the EA render path queues behind the MT5 terminal
+        // and routinely outlives the default 15s, which surfaced as a fake
+        // "bridge timeout" while the PNG was still on its way.
+        const res = (await bridge.post(
+          "/api/agent/chart/snapshot",
+          {
+            ...body,
+            response_format: "json",
+          },
+          45_000,
+        )) as ChartSnapshotBridgeResult;
+        // Poll the MT5 capture as long as capture_mt5_chart does (30s) — the
+        // old 8s ceiling timed out before the EA's own budget even mattered.
+        return resolveChartSnapshotResponse(bridge, res, DRAW_CAPTURE_MAX_MS);
       } catch (e) {
         return formatBridgeError(e);
       }

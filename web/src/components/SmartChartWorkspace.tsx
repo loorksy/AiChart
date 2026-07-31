@@ -331,6 +331,13 @@ function SmartChartWorkspaceInner({
           return;
         }
         if (d.updated_at === layoutCursorRef.current) return;
+        // Order the timestamps instead of comparing for inequality: a poll that
+        // started before our own save landed returns an OLDER updated_at, and
+        // treating it as a "remote change" hydrated stale state, rolled the
+        // cursor back, and flip-flopped the chart (visible as drawings jumping).
+        const seen = Date.parse(layoutCursorRef.current ?? "");
+        const incoming = Date.parse(d.updated_at);
+        if (Number.isFinite(seen) && Number.isFinite(incoming) && incoming <= seen) return;
         // Remote change (MCP draw / analysis finished elsewhere) — hydrate.
         layoutCursorRef.current = d.updated_at;
         if (savePendingRef.current) return;
