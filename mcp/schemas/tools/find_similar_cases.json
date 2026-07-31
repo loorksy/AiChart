@@ -1,12 +1,14 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "symbol": {
       "type": "string"
     },
     "interval": {
-      "type": "string"
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4
     },
     "at_ms": {
       "description": "Ask about a past moment instead of now; cases at or after it are excluded so the answer is the one available then.",
@@ -27,7 +29,7 @@
     }
   },
   "required": [
-    "symbol"
-  ],
-  "additionalProperties": false
+    "symbol",
+    "interval"
+  ]
 }

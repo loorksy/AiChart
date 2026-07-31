@@ -326,7 +326,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_account_overview",
     domain: "core",
     description:
-      "When: inspect the connected account. Combines technical connection status, portfolio, and live broker data. read-only.",
+      "Returns a combined view of the connected account in one call: technical connection status, portfolio summary, the operator's standing trade mode, and (unless include_live=false) live broker account data. When: at session start, or whenever a full picture of the account is needed before discussing balance, exposure, or execution. read-only.",
     inputSchema: {
       include_live: z
         .boolean()
@@ -340,7 +340,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_readiness",
     domain: "core",
     description:
-      "Technical preflight before open_trade: authorization, connection, session, heartbeat, quote freshness, and spread. read-only.",
+      "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, EA heartbeat, quote freshness, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
     inputSchema: {
       symbol: z.string().optional().describe("Pair symbol — for quote/spread check"),
       market: zMarket,
@@ -353,7 +353,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_capabilities",
     domain: "core",
     description:
-      "When: first message in session. serverVersion, featureFlags, EA debounce. read-only. No side-effects.",
+      "Reports what this deployment supports: server version, git commit, feature flags, EA debounce settings, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -361,7 +361,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_portfolio",
     domain: "core",
     description:
-      "When: after get_account_overview or to refresh PnL. Balance and summary. read-only. Not for execution.",
+      "Returns the account balance and portfolio summary, including current PnL. When: after get_account_overview when only the portfolio needs refreshing, or when the operator asks about balance or PnL. read-only. Not for execution.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "portfolio" },
@@ -370,7 +370,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_open_trades",
     domain: "core",
     description:
-      "When: before evaluate_trade or close. Open trades + summary_ar. read-only.",
+      "Lists all currently open trades together with an Arabic summary (summary_ar). When: before evaluate_trade or any close action, or when the operator asks what positions are open. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "open-trades" },
@@ -379,7 +379,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_lessons",
     domain: "core",
     description:
-      "When: before every analysis or after a loss. Returns structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar. recent=true for latest lessons. read-only. Example: symbol=EURUSD&recent=true.",
+      "Retrieves lessons learned from past trades as structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. read-only. Example: symbol=EURUSD&recent=true.",
     inputSchema: {
       symbol: z.string().optional(),
       pattern: z.string().optional(),
@@ -393,7 +393,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_backtest",
     domain: "core",
     description:
-      "When: before trusting a catalog strategy live. Runs deterministic historical backtest for strategy_id/symbol/timeframe/date_range and records server evidence. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity. Not trade execution. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
+      "Runs a deterministic historical backtest of a catalog strategy over the given symbol, timeframe, and date_range, and records the result as server-side evidence. When: before trusting a catalog strategy live, or before citing statistical support for it. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity — and executes no trades. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
     inputSchema: {
       strategy_id: zBacktestStrategyId,
       symbol: zSymbol,
@@ -420,7 +420,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_strategy_performance",
     domain: "core",
     description:
-      "When: after run_backtest or before create_recommendation. Compares live outcomes vs backtest expectation and reports deployment state (shadow/active/suspended). read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "Compares a strategy's live outcomes against its backtest expectation and reports its deployment state (shadow/active/suspended). When: after run_backtest, or before create_recommendation to obtain a server-issued backtested_confidence. read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
     inputSchema: {
       strategy_id: zBacktestStrategyId,
       symbol: z.string().optional(),
@@ -432,7 +432,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "create_recommendation",
     domain: "core",
     description:
-      "When: after choosing a direction — record the recommendation. Only buy or sell: every successful analysis ends in a direction with a plan, and an unreadable market is reported as a named operational blocker rather than a recommendation. BUY/SELL require valid entry/SL/TP levels AND plan_type (immediate | anticipatory | conditional) — a direction with no plan type does not say whether to act now or wait for a condition. The COMPLETE plan is required: invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), validity_candles (1..96 of THIS timeframe), and for conditional/anticipatory plans BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). execution_state is derived server-side; do not send it. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded, labelled as direct analysis with no statistical support. Never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit. side-effect: writes recommendation.",
+      "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
     inputSchema: createRecommendationCatalogShape,
     annotations: DESTRUCTIVE,
     ui: { widget: "recommendation-card" },
@@ -441,7 +441,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_trade",
     domain: "core",
     description:
-      "When: after explicit approval. stop_loss is mandatory. Position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata. Rejects unsafe technical execution state. confidence is audit-only.",
+      "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. stop_loss is mandatory; confidence is audit-only. side-effect: places a real order (idempotencyKey deduplicates for 24h).",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -465,7 +465,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "close_trade",
     domain: "core",
     description:
-      "Close trade · close position · exit · close position · fully exit. When: operator request or after record_exit_decision=close. side-effect: closes trade/all. Example: trade_id=123.",
+      "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123.",
     inputSchema: {
       trade_id: zTradeId.optional(),
       all: z.boolean().optional(),
@@ -476,7 +476,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "evaluate_trade",
     domain: "core",
     description:
-      "When: open trade and operator request. Live PnL + context. read-only. Example: trade_id=42.",
+      "Evaluates one open trade, returning its live PnL together with current market context. When: a trade is open and the operator asks how it is doing, or before making an exit decision. read-only. Example: trade_id=42.",
     inputSchema: { trade_id: zTradeId },
     annotations: READ_ONLY,
   },
@@ -484,7 +484,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "record_exit_decision",
     domain: "core",
     description:
-      "When: after evaluate_trade. audit hold/close/adjust_sl. side-effect: records decision. Does not auto-close.",
+      "Records an exit-management decision (hold | close | adjust_sl) with its reason in the audit trail; it documents the decision only and never closes or modifies the position itself. When: after evaluate_trade, once a management decision has been made — follow with close_trade or modify_sl_tp to act on it. side-effect: records decision. Does not auto-close.",
     inputSchema: {
       trade_id: zTradeId,
       decision: z.enum(["hold", "close", "adjust_sl"]),
@@ -497,7 +497,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_approval",
     domain: "core",
     description:
-      "Request approval · trade approval · send for approval · approval buttons. When: mode=approval. Sends Telegram buttons. side-effect: pending intent. Do not use in direct mode.",
+      "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram. When: mode=approval — do not use in direct mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -516,7 +516,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "respond_approval",
     domain: "core",
     description:
-      "When: pending intent. approve/reject. side-effect: may execute on approve.",
+      "Resolves a pending trade intent by approving or rejecting it; approving may immediately execute the trade. When: a pending intent exists and the operator has given a decision. side-effect: may execute the trade on approve.",
     inputSchema: {
       intent_id: zTradeId,
       action: z.enum(["approve", "reject"]),
@@ -526,7 +526,8 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_pending_approvals",
     domain: "core",
-    description: "When: mode=approval. List of pending intents. read-only.",
+    description:
+      "Lists every trade intent still awaiting operator approval. When: mode=approval, to review what is pending before requesting or responding. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "pending-approvals" },
@@ -535,7 +536,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_settings",
     domain: "core",
     description:
-      "Current fixed product settings: Forex, scalping, and Risk per Trade. read-only.",
+      "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -543,7 +544,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_trade_mode",
     domain: "core",
     description:
-      "When: at session start after get_account_overview, and before offering execution — the operator's standing trading mode, shared with the platform. Returns mode (auto | advisory), connected, and needs_choice. needs_choice=true means a connected operator has not chosen yet: ask ONCE which mode they want, then remember the answer. Never re-ask on every analysis. read-only.",
+      "Returns the operator's standing trading mode, shared with the platform: mode (auto | advisory), connected, and needs_choice. When: at session start after get_account_overview, and before offering execution. needs_choice=true means a connected operator has not chosen yet — ask ONCE which mode they want, remember the answer, and never re-ask on every analysis. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -551,7 +552,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "set_agent_trade_mode",
     domain: "core",
     description:
-      "When: the operator explicitly states which mode they want. 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met — set it ONLY when the operator asked for it in their own words, and pass confirmed_by_user:true to record that. 'advisory' means analysis and recommendations with no execution at all. auto requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation.",
+      "Sets the operator's standing trading mode: 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met, and 'advisory' means analysis and recommendations with no execution at all. When: ONLY when the operator explicitly states which mode they want in their own words — for auto, pass confirmed_by_user:true to record that. auto additionally requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation.",
     inputSchema: setAgentTradeModeShape,
     annotations: DESTRUCTIVE,
   },
@@ -559,7 +560,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "find_similar_cases",
     domain: "core",
     description:
-      "When: during analysis, to ask what followed structurally similar past moments on this symbol and timeframe. Returns aggregated forward outcomes for BOTH directions (buy and short), so it is evidence to weigh and not confirmation of a direction already chosen. found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. This never gates a recommendation. read-only.",
+      "Finds structurally similar past moments for this symbol and timeframe and returns aggregated forward outcomes for BOTH directions (buy and short) — evidence to weigh, never confirmation of a direction already chosen, and never a gate on a recommendation. When: during analysis, to ask what historically followed setups like the current one. found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. read-only.",
     inputSchema: findSimilarCasesShape,
     annotations: READ_ONLY,
   },
@@ -567,7 +568,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "send_telegram_menu",
     domain: "core",
     description:
-      "When: outbound notification. side-effect: Telegram message. Not interactive chat.",
+      "Sends the agent's menu to the operator's Telegram as an outbound notification. When: the operator should be notified on Telegram; this is not an interactive chat channel. side-effect: sends a Telegram message.",
     inputSchema: {},
     annotations: DESTRUCTIVE,
   },
@@ -575,7 +576,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_chart_snapshot",
     domain: "core",
     description:
-      "When: with every recommendation. PNG inline + drawings. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "Captures a chart image for one symbol and interval and returns the PNG inline, optionally annotated with a pattern name and chart drawings. When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -589,7 +590,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_multi_timeframe_snapshot",
     domain: "core",
     description:
-      "When: before every recommendation. Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels). Use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). A timeframe that fails to render is reported in missing_timeframes while the rest still return. Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
+      "Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels); a timeframe that fails to render is reported in missing_timeframes while the rest still return. When: before every recommendation — use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
     inputSchema: {
       symbol: zSymbol,
       timeframes: z
@@ -628,7 +629,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_recommendation_chart",
     domain: "core",
     description:
-      "When: after create_recommendation. PNG chart for recommendation. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for live chart. read-only.",
+      "Fetches the stored chart PNG for a previously created recommendation and returns it inline. When: after create_recommendation, to show the chart recorded with it. Old recommendations without chart_image_url may fail — use capture_chart_snapshot for a live chart instead. read-only.",
     inputSchema: { recommendation_id: zTradeId },
     annotations: READ_ONLY,
   },
@@ -636,7 +637,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_agent_skills",
     domain: "core",
     description:
-      "When: session start (after get_agent_capabilities). Discovers the canonical skill catalogue — metadata only (name, version, category, riskLevel, description). Never loads content. read-only.",
+      "Discovers the canonical skill catalogue and returns metadata only (name, version, category, riskLevel, description) — it never loads skill content, and a listed skill does NOT count as loaded. When: at session start, after get_agent_capabilities, to learn which skills exist. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -644,7 +645,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "resolve_agent_skills",
     domain: "core",
     description:
-      "When: before answering a trading/analysis request. Discovers the catalogue, selects the most relevant skills for the user request, and returns metadata only (selected + rejected with reasons). Does NOT load bodies — follow with load_agent_skill for each selected name. Prefer this over manually attaching skill files. read-only.",
+      "Selects the most relevant skills for the operator's current request from the catalogue and returns metadata only — the selected names plus the rejected ones with reasons, never skill bodies. When: before answering a trading or analysis request; follow with load_agent_skill for each selected name, and prefer this over manually attaching skill files. read-only.",
     inputSchema: {
       request: z
         .string()
@@ -670,7 +671,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "load_agent_skill",
     domain: "core",
     description:
-      "When: after resolve_agent_skills (or when a specific skill is clearly needed). Loads the FULL skill content explicitly and traceably. Fails honestly if missing — never assume a skill was read without a successful load. Skills never grant permissions. read-only.",
+      "Loads the FULL content of one named skill explicitly and traceably, and fails honestly if the skill is missing — never assume a skill was read without a successful load. When: after resolve_agent_skills, or when a specific skill is clearly needed. Skills never grant permissions. read-only.",
     inputSchema: {
       name: z
         .string()

@@ -1,12 +1,13 @@
 "use client";
 
-import { BarChart3, ListChecks, TrendingUp } from "lucide-react";
+import { BarChart3, FlaskConical, ListChecks, TrendingUp } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 
 const SECTIONS = [
   { id: "recommendations", labelKey: "rec.page.title", icon: ListChecks },
   { id: "trades", labelKey: "trades.title", icon: TrendingUp },
   { id: "statistics", labelKey: "stats.title", icon: BarChart3 },
+  { id: "backtests", labelKey: "bt.title", icon: FlaskConical },
 ] as const;
 
 /** Sticky in-page jump pills — one page, three sections, zero route hops. */

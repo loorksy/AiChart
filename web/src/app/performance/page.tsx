@@ -4,6 +4,7 @@ import { listIntents, listTrades } from "@/lib/store";
 import TradesClient from "@/components/TradesClient";
 import { StatisticsSection } from "@/components/performance/StatisticsSection";
 import { RecommendationsSection } from "@/components/performance/RecommendationsSection";
+import { BacktestSection } from "@/components/performance/BacktestSection";
 import { PerformanceSectionNav } from "@/components/performance/PerformanceSectionNav";
 
 /**
@@ -26,6 +27,7 @@ export default async function PerformancePage() {
       <RecommendationsSection />
       <TradesClient initialIntents={intents} initialTrades={trades} embedded />
       <StatisticsSection />
+      <BacktestSection />
     </main>
   );
 }

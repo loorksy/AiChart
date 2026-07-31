@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "symbol": {
@@ -24,6 +24,5 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9]{8,16}$"
     }
-  },
-  "additionalProperties": false
+  }
 }

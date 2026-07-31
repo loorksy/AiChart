@@ -231,6 +231,19 @@ export function getResearchJsonArtifact(
   );
 }
 
+/** Read bounded CSV artifact rows (equity curve, trade list) for visualization. */
+export function getResearchCsvArtifact(
+  context: ResearchCallerContext,
+  jobId: string,
+  artifactId: string,
+): Promise<{ rows: Record<string, string>[] }> {
+  requireResearchBacktestEnabled();
+  return serviceRequest(
+    context,
+    `/internal/research/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(artifactId)}/csv`,
+  );
+}
+
 export function cancelResearchJob(
   context: ResearchCallerContext,
   jobId: string,
