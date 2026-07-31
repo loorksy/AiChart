@@ -8,6 +8,7 @@ import {
   withRequestModel,
 } from "@/lib/llm";
 import { withUsageContext } from "@/lib/billing/usageMeter";
+import { checkSpendAllowed } from "@/lib/billing/gate";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { sseEncode } from "@/lib/sse";
 import { FEATURES, featureFlagSnapshot } from "@/lib/agent/featureFlags";
@@ -451,6 +452,18 @@ export async function POST(req: NextRequest) {
         void tickerTask;
 
         try {
+          // V2-A2: the balance gate refuses NEW paid work with a clear,
+          // actionable message on the stream — never a silent failure.
+          const gate = await checkSpendAllowed(user.id);
+          if (!gate.allowed) {
+            send("error", {
+              error: gate.message,
+              code: "no_credits",
+              balance_usd: gate.balanceUsd,
+            });
+            // The finally block below releases the slot and closes the stream.
+            return;
+          }
           // The user's own model choice governs every LLM call in this run.
           // Falls back to the platform default when unset or when its
           // provider has no configured key.

@@ -149,6 +149,44 @@ const SCHEMA = `
     PRIMARY KEY (provider, model)
   );
 
+  -- V2-A2: one active subscription per user (v0 model: tier + included credits).
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    user_id                INTEGER PRIMARY KEY,
+    tier                   TEXT NOT NULL,
+    status                 TEXT NOT NULL DEFAULT 'active',
+    started_at             INTEGER NOT NULL,
+    current_period_start   INTEGER NOT NULL,
+    current_period_end     INTEGER NOT NULL,
+    stripe_customer_id     TEXT,
+    stripe_subscription_id TEXT,
+    updated_at             INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- V2-A2: audit trail of every credit movement (USD retail).
+  CREATE TABLE IF NOT EXISTS credit_ledger (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    ts          INTEGER NOT NULL,
+    kind        TEXT NOT NULL,
+    amount_usd  REAL NOT NULL,
+    bucket      TEXT NOT NULL DEFAULT 'monthly',
+    ref         TEXT,
+    note        TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_credit_ledger_user_ts ON credit_ledger(user_id, ts);
+
+  -- V2-A2: fast-path balances the gate reads (ledger stays the audit truth).
+  CREATE TABLE IF NOT EXISTS credit_balances (
+    user_id     INTEGER PRIMARY KEY,
+    monthly_usd REAL NOT NULL DEFAULT 0,
+    topup_usd   REAL NOT NULL DEFAULT 0,
+    period_end  INTEGER,
+    updated_at  INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS trade_intents (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id           INTEGER NOT NULL,

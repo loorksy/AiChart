@@ -49,7 +49,7 @@ const SEED_PRICES: Array<[provider: string, model: string, inUsd: number, outUsd
 ];
 
 let seeded = false;
-async function ensureSeedPrices(): Promise<void> {
+export async function ensureSeedPrices(): Promise<void> {
   if (seeded) return;
   seeded = true;
   for (const [provider, model, inUsd, outUsd] of SEED_PRICES) {
@@ -167,6 +167,13 @@ export function recordLLMUsage(entry: LLMUsageEntry): void {
       );
       if (!price) {
         log.warn("price.missing", { provider: entry.provider, model: priceModelKey(entry.model) });
+      }
+      // V2-A2: the retail cost drains the user's credit buckets. Dynamic
+      // import keeps the ledger out of this module's dependency edge for
+      // callers that only need the context helpers.
+      if (ctx?.userId != null && costs.retail != null && costs.retail > 0) {
+        const { burn } = await import("./creditLedger");
+        await burn(ctx.userId, costs.retail, ctx.requestId);
       }
     } catch (e) {
       log.warn("record.failed", { error: e instanceof Error ? e.message : String(e) });

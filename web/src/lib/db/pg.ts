@@ -138,6 +138,41 @@ const SCHEMA = `
     PRIMARY KEY (provider, model)
   );
 
+  -- V2-A2: one active subscription per user (v0 model: tier + included credits).
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    user_id                INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    tier                   TEXT NOT NULL,
+    status                 TEXT NOT NULL DEFAULT 'active',
+    started_at             BIGINT NOT NULL,
+    current_period_start   BIGINT NOT NULL,
+    current_period_end     BIGINT NOT NULL,
+    stripe_customer_id     TEXT,
+    stripe_subscription_id TEXT,
+    updated_at             BIGINT NOT NULL
+  );
+
+  -- V2-A2: audit trail of every credit movement (USD retail).
+  CREATE TABLE IF NOT EXISTS credit_ledger (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ts          BIGINT NOT NULL,
+    kind        TEXT NOT NULL,
+    amount_usd  DOUBLE PRECISION NOT NULL,
+    bucket      TEXT NOT NULL DEFAULT 'monthly',
+    ref         TEXT,
+    note        TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_credit_ledger_user_ts ON credit_ledger(user_id, ts);
+
+  -- V2-A2: fast-path balances the gate reads (ledger stays the audit truth).
+  CREATE TABLE IF NOT EXISTS credit_balances (
+    user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    monthly_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    topup_usd   DOUBLE PRECISION NOT NULL DEFAULT 0,
+    period_end  BIGINT,
+    updated_at  BIGINT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS trade_intents (
     id                SERIAL PRIMARY KEY,
     user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

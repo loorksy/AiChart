@@ -18,6 +18,7 @@ import {
   withRequestModel,
 } from "@/lib/llm";
 import { withUsageContext } from "@/lib/billing/usageMeter";
+import { checkSpendAllowed } from "@/lib/billing/gate";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
 import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
@@ -100,6 +101,22 @@ export async function POST(req: NextRequest) {
       symbol = forexCanonicalKey(symbol);
     } else {
       symbol = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
+    }
+
+    // V2-A2: refuse NEW paid work when the balance is gone (flag-gated; a
+    // disabled flag means the gate always allows). Browsing routes never ask.
+    const gate = await checkSpendAllowed(userId);
+    if (!gate.allowed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "no_credits",
+          failure_code: "no_credits",
+          message: gate.message,
+          balance_usd: gate.balanceUsd,
+        },
+        { status: 402 },
+      );
     }
 
     // The same per-user model choice applies when the request arrives through

@@ -119,6 +119,26 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     plainStorage: false,
   },
   {
+    // V2-A2: master switch for credits enforcement. Off = today's behavior.
+    key: "BILLING_ENFORCED",
+    label: "تفعيل فرض الرصيد والباقات",
+    labelEn: "BILLING_ENFORCED",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    type: "toggle",
+  },
+  {
+    // V2-A2: one-time trial credit (retail USD) for accounts with no subscription.
+    key: "TRIAL_CREDIT_USD",
+    label: "رصيد التجربة المجاني (دولار)",
+    labelEn: "TRIAL_CREDIT_USD",
+    group: "ops",
+    secret: false,
+    plainStorage: false,
+    placeholder: "3",
+  },
+  {
     // V2-A1: retail multiplier over provider cost for credits burn. Lives in
     // the DB so the platform's margin never appears in this public repo.
     key: "BILLING_RETAIL_MULTIPLIER",

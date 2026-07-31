@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError } from "@/lib/api";
 import { execute, query, initDb } from "@/lib/db";
+import { ensureSeedPrices } from "@/lib/billing/usageMeter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export async function GET() {
   try {
     await requireAdmin();
     await initDb();
+    await ensureSeedPrices();
     const rows = await query(
       "SELECT provider, model, input_usd_per_m, output_usd_per_m, updated_at FROM model_prices ORDER BY provider, model",
     );
