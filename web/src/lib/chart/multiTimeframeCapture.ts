@@ -11,6 +11,7 @@
  */
 
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
+import { capturePlatformChart } from "@/lib/chart/platformChartCapture";
 import {
   canUseMt5ChartCapture,
   pollMt5ChartPng,
@@ -200,6 +201,25 @@ export async function captureTimeframeImage(
     setCachedChartSnapshot(cacheKey, { imageBase64, source, capturedAt });
     return { ok: true, imageBase64, source, capturedAt, fromCache: false };
   };
+
+  // The platform chart is the operator's own view — try it first. The broker
+  // terminal and the QuickChart redraw are both pictures of something else,
+  // and are only worth falling back to when this one cannot be produced.
+  try {
+    const platform = await withDeadline(
+      capturePlatformChart({
+        userId,
+        symbol: input.symbol.toUpperCase(),
+        interval: input.interval,
+      }),
+      Math.max(0, deadline - Date.now()),
+    );
+    if (platform !== TIMED_OUT && platform) {
+      return store(platform.buffer.toString("base64"), "platform_chart");
+    }
+  } catch {
+    /* fall through to the broker / renderer sources */
+  }
 
   let mt5Reason: string | null = null;
   try {

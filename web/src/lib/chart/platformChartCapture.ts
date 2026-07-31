@@ -53,6 +53,38 @@ function chromiumLaunchOptions(): Parameters<typeof chromium.launch>[0] {
 }
 
 /**
+ * One shared browser process, many capture contexts.
+ *
+ * A multi-timeframe request captures four charts concurrently. Launching a
+ * Chromium per capture would put four full browsers on a small VPS at once —
+ * each capture instead gets its own isolated context (own cookies, own page)
+ * inside a single process, which is the isolation that actually matters here.
+ * The process is reference-counted and closed when the last capture finishes,
+ * so an idle server holds no browser.
+ */
+let sharedBrowser: Promise<Browser> | null = null;
+let activeCaptures = 0;
+
+async function acquireBrowser(): Promise<Browser> {
+  activeCaptures += 1;
+  if (!sharedBrowser) {
+    sharedBrowser = chromium.launch(chromiumLaunchOptions()).catch((error) => {
+      sharedBrowser = null;
+      throw error;
+    });
+  }
+  return sharedBrowser;
+}
+
+async function releaseBrowser(): Promise<void> {
+  activeCaptures = Math.max(0, activeCaptures - 1);
+  if (activeCaptures > 0 || !sharedBrowser) return;
+  const pending = sharedBrowser;
+  sharedBrowser = null;
+  await pending.then((b) => b.close()).catch(() => {});
+}
+
+/**
  * Render the operator's chart headlessly and return a PNG of the chart area.
  *
  * Returns null on any failure — the caller reports an honest "no image"
@@ -73,7 +105,8 @@ export async function capturePlatformChart(
 
   const width = input.width ?? 1280;
   const height = input.height ?? 720;
-  let browser: Browser | null = null;
+  let acquired = false;
+  let context: Awaited<ReturnType<Browser["newContext"]>> | null = null;
 
   try {
     const token = await createSessionToken({
@@ -82,8 +115,9 @@ export async function capturePlatformChart(
       role: user.role === "admin" ? "admin" : "user",
     });
 
-    browser = await chromium.launch(chromiumLaunchOptions());
-    const context = await browser.newContext({
+    const browser = await acquireBrowser();
+    acquired = true;
+    context = await browser.newContext({
       viewport: { width, height },
       deviceScaleFactor: 2,
     });
@@ -148,6 +182,9 @@ export async function capturePlatformChart(
     });
     return null;
   } finally {
-    await browser?.close().catch(() => {});
+    // Close the context (page + cookies) always; the browser process is only
+    // torn down once no other capture is still using it.
+    await context?.close().catch(() => {});
+    if (acquired) await releaseBrowser();
   }
 }

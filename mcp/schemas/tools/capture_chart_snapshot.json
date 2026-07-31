@@ -24,6 +24,16 @@
         },
         "additionalProperties": {}
       }
+    },
+    "layout_id": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "platform",
+        "mt5"
+      ]
     }
   },
   "required": [

@@ -4,6 +4,7 @@ import { hasPlatformAccess } from "@/lib/platformAccess";
 import { needsMcpCredentials } from "@/lib/userCredentials";
 import { isLLMConfiguredAsync } from "@/lib/llm";
 import { getChartLayoutById, getOrCreateChartLayout } from "@/lib/store";
+import { canonicalizeInterval } from "@/lib/intervals";
 import { initDb } from "@/lib/db";
 import ChartPageClient from "@/components/ChartPageClient";
 import { BRAND_NAME } from "@/lib/brand";
@@ -59,6 +60,13 @@ export default async function ChartSymbolPage({
     if (layout) {
       const qsSymbol =
         typeof search.symbol === "string" ? cleanSymbol(search.symbol) : "";
+      // An explicit ?interval= opens the chart on that timeframe instead of the
+      // layout's saved one. Without this a multi-timeframe capture would render
+      // the same frame four times, and a shared link could not name a frame.
+      const qsInterval =
+        typeof search.interval === "string"
+          ? canonicalizeInterval(search.interval)
+          : null;
       let state: import("@/components/SmartChartWorkspace").ChartLayoutState | null =
         null;
       try {
@@ -74,7 +82,7 @@ export default async function ChartSymbolPage({
           guest={false}
           initialSymbol={qsSymbol || layout.symbol}
           layoutId={layout.id}
-          initialInterval={layout.interval}
+          initialInterval={qsInterval || layout.interval}
           initialState={state}
         />
       );

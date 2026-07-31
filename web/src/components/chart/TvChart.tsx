@@ -360,6 +360,13 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           typeof window !== "undefined" &&
           window.matchMedia("(max-width: 767px)").matches;
 
+        // Capture mode: the server opens this page headlessly to photograph the
+        // operator's chart. Toolbars are application chrome, not chart content,
+        // so they are stripped — the PNG should be the chart and nothing else.
+        const isCapture =
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("capture") === "1";
+
         const options: ChartingLibraryWidgetOptions = {
           container: el,
           library_path: LIBRARY_PATH,
@@ -385,6 +392,15 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             "header_compare",
             // Manual drawing toolbar hidden on mobile only.
             ...(isMobile ? (["left_toolbar"] as const) : []),
+            ...(isCapture
+              ? ([
+                  "left_toolbar",
+                  "header_widget",
+                  "timeframes_toolbar",
+                  "control_bar",
+                  "legend_context_menu",
+                ] as const)
+              : []),
           ],
           enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
           overrides: {
