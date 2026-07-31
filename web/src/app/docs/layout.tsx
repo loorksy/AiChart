@@ -15,7 +15,7 @@ export default async function DocsLayout({
   await initDb();
   await seedContentPages();
   const docs = await query<{ slug: string; title_ar: string }>(
-    "SELECT slug, title_ar FROM dynamic_pages WHERE kind = 'doc' AND is_published = 1 ORDER BY slug",
+    "SELECT slug, title_ar FROM dynamic_pages WHERE kind = 'doc'  ORDER BY slug",
   );
 
   return (

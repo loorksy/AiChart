@@ -20,7 +20,7 @@ export default async function BlogIndexPage() {
     content_ar: string;
     updated_at: string;
   }>(
-    "SELECT slug, title_ar, content_ar, updated_at FROM dynamic_pages WHERE kind = 'blog' AND is_published = 1 ORDER BY updated_at DESC",
+    "SELECT slug, title_ar, content_ar, updated_at FROM dynamic_pages WHERE kind = 'blog'  ORDER BY updated_at DESC",
   );
 
   return (

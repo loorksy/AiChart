@@ -17,7 +17,7 @@ export default async function BlogPostPage({
   await initDb();
   await seedContentPages();
   const post = await queryOne<{ title_ar: string; content_ar: string; updated_at: string }>(
-    "SELECT title_ar, content_ar, updated_at FROM dynamic_pages WHERE slug = ? AND kind = 'blog' AND is_published = 1",
+    "SELECT title_ar, content_ar, updated_at FROM dynamic_pages WHERE slug = ? AND kind = 'blog' ",
     [slug],
   );
   if (!post) notFound();

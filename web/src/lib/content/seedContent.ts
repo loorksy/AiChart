@@ -114,7 +114,7 @@ export async function seedContentPages(): Promise<void> {
       }
       await execute(
         `INSERT INTO dynamic_pages (slug, title_ar, title_en, content_ar, content_en, is_published, metadata_json, kind)
-         VALUES (?, ?, ?, ?, ?, 1, '{}', ?)`,
+         VALUES (?, ?, ?, ?, ?, TRUE, '{}', ?)`,
         [page.slug, page.title_ar, page.title_en, page.content_ar, page.content_en, page.kind],
       );
     } catch {
@@ -128,7 +128,7 @@ export async function docsCorpus(): Promise<string> {
   await seedContentPages();
   const { query } = await import("@/lib/db");
   const rows = await query<{ title_ar: string; content_ar: string }>(
-    "SELECT title_ar, content_ar FROM dynamic_pages WHERE kind = 'doc' AND is_published = 1",
+    "SELECT title_ar, content_ar FROM dynamic_pages WHERE kind = 'doc' ",
   );
   return rows.map((r) => `# ${r.title_ar}\n${r.content_ar}`).join("\n\n---\n\n");
 }

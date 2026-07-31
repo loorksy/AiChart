@@ -15,7 +15,7 @@ export default async function DocPage({
   await initDb();
   await seedContentPages();
   const doc = await queryOne<{ title_ar: string; content_ar: string }>(
-    "SELECT title_ar, content_ar FROM dynamic_pages WHERE slug = ? AND kind = 'doc' AND is_published = 1",
+    "SELECT title_ar, content_ar FROM dynamic_pages WHERE slug = ? AND kind = 'doc' ",
     [slug],
   );
   if (!doc) notFound();

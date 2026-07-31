@@ -17,7 +17,7 @@ export async function GET() {
     (await getPlatformValueAsync("APP_URL"))?.replace(/\/$/, "") ??
     "https://aichart.lork.cloud";
   const posts = await query<{ slug: string; title_ar: string; content_ar: string; updated_at: string }>(
-    "SELECT slug, title_ar, content_ar, updated_at FROM dynamic_pages WHERE kind = 'blog' AND is_published = 1 ORDER BY updated_at DESC LIMIT 20",
+    "SELECT slug, title_ar, content_ar, updated_at FROM dynamic_pages WHERE kind = 'blog'  ORDER BY updated_at DESC LIMIT 20",
   );
   const items = posts
     .map(
