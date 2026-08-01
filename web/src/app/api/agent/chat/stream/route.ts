@@ -287,6 +287,24 @@ export async function POST(req: NextRequest) {
     }
     const trialMetered = trialClaim.mode === "trial";
 
+    // V2-A2: refuse a spent balance HERE — before the burst slot, before the
+    // ticker, before any model call. Checking inside the stream meant a user
+    // with no credits still paid for the ticker's own LLM call before being
+    // told no. A plain 402 also leaves the SSE crash path as the only place
+    // that emits an error event, which is the contract phase-0 locks.
+    const gate = await checkSpendAllowed(user.id);
+    if (!gate.allowed) {
+      if (trialMetered) await releaseTrialInteraction(user.id, requestId);
+      return NextResponse.json(
+        {
+          error: gate.message,
+          code: "no_credits",
+          balance_usd: gate.balanceUsd,
+        },
+        { status: 402 },
+      );
+    }
+
     // Burst guard: one heavy agent run per user + global cap (rate limiting).
     const slot = acquireAnalyzeSlot(user.id);
     if (!slot.ok) {
@@ -452,18 +470,6 @@ export async function POST(req: NextRequest) {
         void tickerTask;
 
         try {
-          // V2-A2: the balance gate refuses NEW paid work with a clear,
-          // actionable message on the stream — never a silent failure.
-          const gate = await checkSpendAllowed(user.id);
-          if (!gate.allowed) {
-            send("error", {
-              error: gate.message,
-              code: "no_credits",
-              balance_usd: gate.balanceUsd,
-            });
-            // The finally block below releases the slot and closes the stream.
-            return;
-          }
           // The user's own model choice governs every LLM call in this run.
           // Falls back to the platform default when unset or when its
           // provider has no configured key.
