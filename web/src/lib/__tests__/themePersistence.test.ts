@@ -9,7 +9,8 @@ describe("theme persistence architecture", () => {
   it("uses a single aichart-theme storage key", () => {
     const provider = readFileSync(resolve(root, "components/ThemeProvider.tsx"), "utf8");
     assert.match(provider, /aichart-theme/);
-    assert.match(provider, /localStorage/);
+    assert.match(provider, /storageKey="aichart-theme"/);
+    assert.match(provider, /next-themes/);
   });
 
   it("boots theme before paint from layout script", () => {

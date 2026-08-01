@@ -1,8 +1,19 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import type { ComponentProps } from "react";
 import type { ClaudeUsageRow } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import type { AdminPermission } from "@/lib/adminRoles";
+import { DirectionProvider } from "@base-ui/react/direction-provider";
+import { AdminHeader } from "@/components/admin/chrome/AdminHeader";
+import {
+  adminLabel,
+  adminNavItem,
+  canOpenAdminTab,
+  resolveAdminTab,
+} from "@/components/admin/chrome/adminNavTree";
+import { useLocale } from "@/hooks/useLocale";
+import { PlatformDashboard } from "@/components/admin/dashboard/PlatformDashboard";
 import { AdminDiagnosticsPanel } from "@/components/admin/AdminDiagnosticsPanel";
 import { AdminKeysPanel } from "@/components/admin/AdminKeysPanel";
 import { AdminSystemPanel } from "@/components/admin/AdminSystemPanel";
@@ -14,23 +25,6 @@ import { AdminBillingPanel } from "@/components/admin/AdminBillingPanel";
 import { AdminTeamPanel } from "@/components/admin/AdminTeamPanel";
 import { AdminSupportPanel } from "@/components/admin/AdminSupportPanel";
 import { ProfileSection } from "@/components/bridge/sections/ProfileSection";
-import type { ComponentProps } from "react";
-
-const TABS = [
-  { id: "users", label: "المستخدمون" },
-  { id: "team", label: "المشرفون" },
-  { id: "support", label: "الدعم" },
-  { id: "billing", label: "الفوترة والأرباح" },
-  { id: "subscriptions", label: "الاشتراكات" },
-  { id: "keys", label: "المفاتيح" },
-  { id: "system", label: "النظام" },
-  { id: "security", label: "الأمن" },
-  { id: "usage", label: "الاستهلاك" },
-  { id: "diagnostics", label: "التشخيص" },
-  { id: "profile", label: "الملف" },
-] as const;
-
-type TabId = (typeof TABS)[number]["id"];
 
 type AuditRow = {
   id: number;
@@ -40,10 +34,26 @@ type AuditRow = {
   created_at: string;
 };
 
+const DENIED = {
+  label: "ليست لديك صلاحية لهذا القسم.",
+  labelEn: "You do not have permission for this section.",
+};
+
+const NON_ADMIN_HEADING = {
+  label: "المنصة والمفاتيح",
+  labelEn: "Platform and keys",
+};
+
+const NON_ADMIN_SUBHEADING = {
+  label: "MCP، مفاتيح API، الأمن",
+  labelEn: "MCP, API keys, security",
+};
+
 type ProfileProps = ComponentProps<typeof ProfileSection>;
 
 export function PlatformSection({
   isAdmin,
+  permissions,
   profileProps,
   audit = [],
   usage = [],
@@ -51,6 +61,7 @@ export function PlatformSection({
   adminId = 0,
 }: {
   isAdmin: boolean;
+  permissions: AdminPermission[];
   profileProps: ProfileProps;
   audit?: AuditRow[];
   usage?: ClaudeUsageRow[];
@@ -58,60 +69,69 @@ export function PlatformSection({
   adminId?: number;
 }) {
   const params = useSearchParams();
-  const tabParam = params.get("tab") as TabId | null;
-  const defaultTab: TabId = isAdmin ? "users" : "profile";
-  const requestedTab =
-    tabParam && TABS.some((t) => t.id === tabParam) ? tabParam : defaultTab;
-  const tab: TabId =
-    !isAdmin && requestedTab !== "profile" ? "profile" : requestedTab;
+  const { dir, locale } = useLocale();
+  const tab = resolveAdminTab(params.get("tab"), isAdmin);
+
+  // A non-admin only ever had the profile tab here.
+  if (!isAdmin) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-bold">{adminLabel(NON_ADMIN_HEADING, locale)}</h2>
+          <p className="text-sm text-muted-foreground">
+            {adminLabel(NON_ADMIN_SUBHEADING, locale)}
+          </p>
+        </div>
+        <ProfileSection {...profileProps} />
+      </div>
+    );
+  }
+
+  const allowed = canOpenAdminTab(adminNavItem(tab), permissions);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold">المنصة والمفاتيح</h2>
-        <p className="text-sm text-muted-foreground">
-          MCP، مفاتيح API، الأمن
-        </p>
+    // Base UI reads direction from context and defaults to "ltr", so without
+    // this every logical side/align (menu alignment, submenu arrow keys) inside
+    // the admin panels resolves to the wrong physical edge. It follows the live
+    // locale rather than a hard-coded "rtl" so switching to English flips it.
+    <DirectionProvider direction={dir}>
+      {/* No rail of its own: the console's single navigation is AppConsoleShell's
+          sidebar, which now carries the full grouped admin tree. A second
+          <Sidebar> here was the duplicate-navigation defect. */}
+      <div
+        data-testid="admin-console-chrome"
+        className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
+      >
+        <AdminHeader tab={tab} permissions={permissions} />
+        <div className="min-w-0 flex-1 py-4 sm:px-4">
+          {!allowed ? (
+            <p className="text-sm text-muted-foreground">{adminLabel(DENIED, locale)}</p>
+          ) : (
+            <>
+              {tab === "overview" && (
+                <PlatformDashboard adminId={adminId} permissions={permissions} />
+              )}
+              {tab === "users" && (
+                <AdminUsersTable
+                  initialUsers={adminUsers}
+                  adminId={adminId}
+                  mode="full"
+                />
+              )}
+              {tab === "team" && <AdminTeamPanel />}
+              {tab === "support" && <AdminSupportPanel />}
+              {tab === "billing" && <AdminBillingPanel />}
+              {tab === "subscriptions" && <AdminSubscriptionsPanel />}
+              {tab === "keys" && <AdminKeysPanel />}
+              {tab === "system" && <AdminSystemPanel />}
+              {tab === "diagnostics" && <AdminDiagnosticsPanel />}
+              {tab === "security" && <AdminSecurityPanel audit={audit} />}
+              {tab === "usage" && <AdminUsagePanel initialUsage={usage} />}
+              {tab === "profile" && <ProfileSection {...profileProps} />}
+            </>
+          )}
+        </div>
       </div>
-
-      <div className="flex flex-wrap gap-2 border-b border-border pb-2">
-        {TABS.filter((t) => isAdmin || t.id === "profile").map((t) => (
-          <a
-            key={t.id}
-            href={`/console/platform?tab=${t.id}`}
-            className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-medium transition",
-              tab === t.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </a>
-        ))}
-      </div>
-
-      {tab === "users" && isAdmin && (
-        <AdminUsersTable
-          initialUsers={adminUsers}
-          adminId={adminId}
-          mode="full"
-        />
-      )}
-      {tab === "team" && isAdmin && <AdminTeamPanel />}
-      {tab === "support" && isAdmin && <AdminSupportPanel />}
-      {tab === "billing" && isAdmin && <AdminBillingPanel />}
-      {tab === "subscriptions" && isAdmin && <AdminSubscriptionsPanel />}
-      {tab === "keys" && isAdmin && <AdminKeysPanel />}
-      {tab === "system" && isAdmin && <AdminSystemPanel />}
-      {tab === "diagnostics" && isAdmin && <AdminDiagnosticsPanel />}
-      {tab === "security" && isAdmin && (
-        <AdminSecurityPanel audit={audit} />
-      )}
-      {tab === "usage" && isAdmin && (
-        <AdminUsagePanel initialUsage={usage} />
-      )}
-      {tab === "profile" && <ProfileSection {...profileProps} />}
-    </div>
+    </DirectionProvider>
   );
 }

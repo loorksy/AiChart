@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleError, requireAdmin } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { initDb, query } from "@/lib/db";
 import { ensureEntitlementRow } from "@/lib/subscription/entitlement";
 
 export async function GET(req: NextRequest) {
   try {
-    await requireAdmin();
+    await requireAdminWith("billing_read");
     await initDb();
     const q = (req.nextUrl.searchParams.get("q") ?? "").trim().toLowerCase();
     if (!q || q.length < 2) {

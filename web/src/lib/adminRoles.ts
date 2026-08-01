@@ -53,6 +53,34 @@ export function roleAllows(role: AdminRole, permission: AdminPermission): boolea
 }
 
 /**
+ * Typed as Record<AdminPermission, true> on purpose: adding a permission to the
+ * union without listing it here is a COMPILE error, so "all" can never quietly
+ * expand to fewer permissions than an owner actually holds.
+ */
+const PERMISSION_KEYS: Record<AdminPermission, true> = {
+  users_read: true,
+  users_write: true,
+  billing_read: true,
+  billing_write: true,
+  profit_read: true,
+  content_write: true,
+  tickets: true,
+  keys_write: true,
+  roles_write: true,
+};
+
+/**
+ * Expand a role into the concrete permission list a client can reason about.
+ * Server routes still gate with requireAdminWith — this exists so the admin UI
+ * can hide what an admin cannot use, which is cosmetics, never enforcement.
+ */
+export function permissionsForRole(role: AdminRole): AdminPermission[] {
+  const grants = ROLE_PERMISSIONS[role];
+  const all = Object.keys(PERMISSION_KEYS) as AdminPermission[];
+  return grants === "all" ? all : all.filter((p) => grants.includes(p));
+}
+
+/**
  * Gate an admin API on a specific permission. Throws the same errors
  * requireAdmin throws (handled by handleError) plus a 403-shaped one.
  */

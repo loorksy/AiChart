@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { listUsersForAdmin } from "@/lib/store";
 
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireAdminWith("users_read");
     return NextResponse.json({ users: await listUsersForAdmin() });
   } catch (err) {
     return handleError(err);

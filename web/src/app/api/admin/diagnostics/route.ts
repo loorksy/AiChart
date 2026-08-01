@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { query } from "@/lib/db";
 import { featureFlagSnapshot } from "@/lib/agent/featureFlags";
 import { buildParityReport } from "@/lib/agent/parityLog";
@@ -15,7 +16,7 @@ import { metrics } from "@/lib/metrics";
  */
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireAdminWith("keys_write");
 
     const [parity, caseRows, reevalRows] = await Promise.all([
       buildParityReport(50),

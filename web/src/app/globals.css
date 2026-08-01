@@ -1,4 +1,10 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* The app toggles a `.dark` class on <html> (see ThemeProvider / THEME_BOOT_SCRIPT).
+   Without this, Tailwind v4's default `dark:` variant follows prefers-color-scheme
+   instead of the app's own toggle. */
+@custom-variant dark (&:is(.dark *));
 
 /* ==========================================================================
    AiChart design tokens — calm neutral surfaces. No purple in normal UI.
@@ -141,6 +147,11 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-surface-elevated: var(--surface-elevated);
   --color-buy: var(--buy);
   --color-sell: var(--sell);
@@ -731,5 +742,516 @@ label {
   overflow: hidden;
   white-space: nowrap;
   animation: thinkingDots 1.1s steps(3, end) infinite;
+}
+
+/* Required by the vendored Square-UI kit (components/squareui/sidebar.tsx).
+   Upstream it ships in shadcn/tailwind.css, which we deliberately do not import. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   FOUNDATION LAYER
+   Motion, elevation, focus, z-index, containers and typography.
+   Purely additive: no colour token above is redefined here. Everything is
+   expressed as a custom property first and a utility second, so a component
+   can either compose the utility or read the raw value in its own rule.
+   ========================================================================== */
+
+/* --- Motion -------------------------------------------------------------
+   Durations stay inside the 150-250ms band the design brief asks for; the
+   two outliers exist for micro-feedback (instant) and for full-panel
+   transitions (slower), never for anything that blocks input.
+   Travel distances are tokens too, because that is what makes the
+   reduced-motion path below possible: collapsing them to 0 turns every
+   translate-based entrance into a pure opacity fade without touching the
+   keyframes themselves. */
+:root {
+  --motion-duration-instant: 100ms;
+  --motion-duration-fast: 150ms;
+  --motion-duration-base: 200ms;
+  --motion-duration-slow: 250ms;
+  --motion-duration-slower: 320ms;
+
+  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --motion-ease-emphasis: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --motion-distance-sm: 4px;
+  --motion-distance-md: 8px;
+  --motion-distance-lg: 16px;
+  --motion-distance-xl: 24px;
+
+  /* Sign flip that turns a physical translateX into a logical one.
+     LTR: inline-start is -X. RTL: inline-start is +X. */
+  --motion-inline-factor: 1;
+}
+
+[dir="ltr"] {
+  --motion-inline-factor: 1;
+}
+
+[dir="rtl"] {
+  --motion-inline-factor: -1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  [dir="ltr"],
+  [dir="rtl"] {
+    --motion-duration-instant: 1ms;
+    --motion-duration-fast: 1ms;
+    --motion-duration-base: 1ms;
+    --motion-duration-slow: 1ms;
+    --motion-duration-slower: 1ms;
+
+    --motion-distance-sm: 0px;
+    --motion-distance-md: 0px;
+    --motion-distance-lg: 0px;
+    --motion-distance-xl: 0px;
+  }
+}
+
+@keyframes foundation-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes foundation-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-distance-md));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes foundation-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes foundation-slide-in-start {
+  from {
+    opacity: 0;
+    transform: translateX(
+      calc(var(--motion-distance-lg) * -1 * var(--motion-inline-factor))
+    );
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes foundation-slide-in-end {
+  from {
+    opacity: 0;
+    transform: translateX(
+      calc(var(--motion-distance-lg) * var(--motion-inline-factor))
+    );
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@utility motion-fade-in {
+  animation: foundation-fade-in var(--motion-duration-base)
+    var(--motion-ease-out) both;
+}
+
+@utility motion-rise-in {
+  animation: foundation-rise-in var(--motion-duration-slow)
+    var(--motion-ease-out) both;
+}
+
+@utility motion-scale-in {
+  animation: foundation-scale-in var(--motion-duration-fast)
+    var(--motion-ease-out) both;
+}
+
+@utility motion-slide-in-start {
+  animation: foundation-slide-in-start var(--motion-duration-slow)
+    var(--motion-ease-out) both;
+}
+
+@utility motion-slide-in-end {
+  animation: foundation-slide-in-end var(--motion-duration-slow)
+    var(--motion-ease-out) both;
+}
+
+/* Stagger helper: set --motion-index on the child (inline style or CSS) and
+   the entrance is offset without a per-item class. Capped so a long list
+   never delays its tail past a quarter second. */
+@utility motion-stagger {
+  animation-delay: min(
+    calc(var(--motion-index, 0) * 40ms),
+    var(--motion-duration-slow)
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-fade-in,
+  .motion-rise-in,
+  .motion-scale-in,
+  .motion-slide-in-start,
+  .motion-slide-in-end,
+  .motion-stagger {
+    animation: none;
+    animation-delay: 0ms;
+  }
+}
+
+/* --- Elevation ----------------------------------------------------------
+   Light mode carries real shadows; dark mode replaces most of the lift with
+   a lighter surface plus a very low-alpha shadow, because a black shadow on
+   a near-black background reads as dirt rather than depth. */
+:root {
+  --elevation-0: none;
+  --elevation-1: 0 1px 2px 0 rgb(9 9 11 / 0.05);
+  --elevation-2: 0 1px 3px 0 rgb(9 9 11 / 0.07), 0 1px 2px -1px rgb(9 9 11 / 0.06);
+  --elevation-3: 0 4px 12px -2px rgb(9 9 11 / 0.1), 0 2px 4px -2px rgb(9 9 11 / 0.06);
+  --elevation-4: 0 12px 32px -8px rgb(9 9 11 / 0.16), 0 4px 8px -4px rgb(9 9 11 / 0.08);
+}
+
+.dark {
+  --elevation-0: none;
+  --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --elevation-2: 0 2px 6px -1px rgb(0 0 0 / 0.4);
+  --elevation-3: 0 8px 20px -6px rgb(0 0 0 / 0.5);
+  --elevation-4: 0 18px 44px -12px rgb(0 0 0 / 0.6);
+}
+
+@utility elevation-0 {
+  box-shadow: var(--elevation-0);
+}
+
+@utility elevation-1 {
+  box-shadow: var(--elevation-1);
+}
+
+@utility elevation-2 {
+  box-shadow: var(--elevation-2);
+}
+
+@utility elevation-3 {
+  box-shadow: var(--elevation-3);
+}
+
+@utility elevation-4 {
+  box-shadow: var(--elevation-4);
+}
+
+/* Hover lift. Translate rather than margin/height so it can never cause CLS. */
+@utility elevation-interactive {
+  box-shadow: var(--elevation-1);
+  transition: box-shadow var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out),
+    border-color var(--motion-duration-fast) var(--motion-ease-out);
+
+  &:hover {
+    box-shadow: var(--elevation-3);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    box-shadow: var(--elevation-1);
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .elevation-interactive {
+    transition: none;
+  }
+  .elevation-interactive:hover {
+    transform: none;
+  }
+}
+
+/* --- Focus ---------------------------------------------------------------
+   The base rule is wrapped in :where() so its specificity is zero — any
+   component that already draws its own ring (the Square-UI kit does) keeps
+   winning, and everything else gets a visible ring for free. */
+:root {
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: var(--ring);
+}
+
+@layer base {
+  :where(
+      a[href],
+      button,
+      summary,
+      select,
+      textarea,
+      input:not([type="hidden"]),
+      [role="button"],
+      [role="link"],
+      [role="tab"],
+      [role="menuitem"],
+      [role="option"],
+      [role="switch"],
+      [role="checkbox"],
+      [role="radio"],
+      [tabindex]:not([tabindex="-1"])
+    ):focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+  }
+}
+
+@utility focus-ring {
+  outline: none;
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+  }
+}
+
+/* For controls flush against a container edge, where an outset ring would be
+   clipped by the parent's overflow. */
+@utility focus-ring-inset {
+  outline: none;
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: calc(var(--focus-ring-offset) * -1);
+  }
+}
+
+/* Skips the sidebar/header for keyboard users. Off-screen until focused. */
+.skip-link {
+  position: absolute;
+  inset-inline-start: 0.75rem;
+  top: 0.75rem;
+  z-index: var(--z-skip-link);
+  transform: translateY(-200%);
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* --- Z-index -------------------------------------------------------------
+   One ordering for the whole app. Existing hard-coded values (chat composer
+   at 20, drawers/menus at 50) are preserved by these numbers rather than
+   re-numbered, so nothing re-stacks. */
+:root {
+  --z-base: 0;
+  --z-raised: 10;
+  --z-sticky: 20;
+  --z-header: 30;
+  --z-drawer: 40;
+  --z-overlay: 50;
+  --z-modal: 60;
+  --z-popover: 70;
+  --z-toast: 80;
+  --z-tooltip: 90;
+  --z-skip-link: 100;
+}
+
+@utility z-raised {
+  z-index: var(--z-raised);
+}
+
+@utility z-sticky {
+  z-index: var(--z-sticky);
+}
+
+@utility z-header {
+  z-index: var(--z-header);
+}
+
+@utility z-drawer {
+  z-index: var(--z-drawer);
+}
+
+@utility z-overlay {
+  z-index: var(--z-overlay);
+}
+
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+
+@utility z-popover {
+  z-index: var(--z-popover);
+}
+
+@utility z-toast {
+  z-index: var(--z-toast);
+}
+
+@utility z-tooltip {
+  z-index: var(--z-tooltip);
+}
+
+/* --- Containers ----------------------------------------------------------
+   Registered through @theme so Tailwind emits `max-w-*` for each one and
+   also exposes them as plain custom properties for hand-written CSS.
+   Names avoid Tailwind's built-ins (`prose`, `screen-*`) on purpose. */
+@theme {
+  --container-form: 32rem;
+  --container-reading: 45rem;
+  --container-panel: 64rem;
+  --container-dashboard: 88rem;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-emphasis: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* --- Typography ----------------------------------------------------------
+   A named scale on top of the existing .page-title/.section-title rules,
+   which keep working untouched. Sizes step up once at the sm breakpoint for
+   the two display sizes only — body copy stays put so line length is stable. */
+:root {
+  --type-display: 1.75rem;
+  --type-title: 1.25rem;
+  --type-heading: 1.0625rem;
+  --type-subheading: 0.9375rem;
+  --type-body: 0.875rem;
+  --type-caption: 0.8125rem;
+  --type-micro: 0.6875rem;
+
+  --type-tracking-tight: -0.02em;
+  --type-tracking-normal: 0;
+  --type-tracking-wide: 0.08em;
+}
+
+.type-display {
+  font-size: var(--type-display);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: var(--type-tracking-tight);
+  color: var(--foreground);
+}
+
+.type-title {
+  font-size: var(--type-title);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: var(--type-tracking-tight);
+  color: var(--foreground);
+}
+
+.type-heading {
+  font-size: var(--type-heading);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--foreground);
+}
+
+.type-subheading {
+  font-size: var(--type-subheading);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+
+.type-body {
+  font-size: var(--type-body);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.type-caption {
+  font-size: var(--type-caption);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.type-overline {
+  font-size: var(--type-micro);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: var(--type-tracking-wide);
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Numbers that must not jitter as they tick — prices, counters, table cells. */
+.type-numeric {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --type-display: 2.125rem;
+    --type-title: 1.5rem;
+  }
+}
+
+/* --- Interaction surface -------------------------------------------------
+   Pointer-coarse only: on touch the hit area is padded out to the 44px
+   minimum without inflating the same control on a mouse-driven desktop. */
+@utility tap-target {
+  @media (pointer: coarse) {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}
+
+/* Extra hit area for a small control (a 24px icon button in a table row)
+   without changing its painted size or the row height. */
+@utility tap-target-expand {
+  position: relative;
+
+  /* Symmetric negative inset: collapses to 0 once the control is already
+     44px on an axis, so it only ever grows the hit area outward and stays
+     direction-agnostic (no left/right involved). */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: calc((100% - max(100%, 2.75rem)) / 2);
+  }
+}
+
+/* Rounds out the existing ok/warn/error/neutral set. */
+.status-dot-info {
+  background: var(--info);
+  animation: status-pulse 2.4s ease-in-out infinite;
+}
+
+/* A dot in a dense table or a long list should not breathe — dozens of them
+   pulsing out of phase is the noisiest thing on the page. */
+.status-dot[data-pulse="false"] {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot-info {
+    animation: none;
+  }
 }
 

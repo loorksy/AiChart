@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
+
+import { Button } from "@/components/squareui/button";
 import { cn } from "@/lib/utils";
+import { InlineAlert, Spinner } from "@/components/admin/ui/AdminKit";
 
 export interface OpenAIModelOption {
   id: string;
@@ -54,7 +57,7 @@ export function OpenAIModelPicker({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "تعذّر جلب النماذج.");
+        setError(data.error ?? "تعذّر جلب النماذج — تأكّد من صلاحية المفتاح.");
         setModels([]);
         return;
       }
@@ -71,7 +74,7 @@ export function OpenAIModelPicker({
         onSelectModel(data.models[0].id);
       }
     } catch {
-      setError("تعذّر الاتصال بالخادم.");
+      setError("تعذّر الاتصال بالخادم — لم تُجلب أي نماذج.");
     } finally {
       setLoading(false);
     }
@@ -95,48 +98,45 @@ export function OpenAIModelPicker({
   }
 
   return (
-    <div className="mt-4 space-y-3 rounded-lg border border-white/10 bg-black/20 p-4">
+    <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <p className="text-sm font-semibold">{title}</p>
-        </div>
-        <button
+        <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Sparkles className="size-4 text-primary" aria-hidden />
+          {title}
+        </p>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
+          className="tap-target"
           onClick={() => void fetchModels()}
           disabled={loading}
-          className="rounded-lg border border-white/10 px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          {loading ? (
-            <span className="inline-flex items-center gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              جارٍ التحميل…
-            </span>
-          ) : (
-            "تحديث القائمة"
-          )}
-        </button>
+          {loading ? <Spinner /> : null}
+          {loading ? "جارٍ التحميل…" : "تحديث القائمة"}
+        </Button>
       </div>
 
       {selected && (
         <p className="text-xs text-muted-foreground">
           المختار:{" "}
-          <span className="text-primary" dir="ltr">
+          <span className="type-numeric text-foreground" dir="ltr">
             {selected}
           </span>
         </p>
       )}
 
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
       {!fetched && !loading && apiKeyDraft.trim() && (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          className="tap-target h-10 w-full"
           onClick={() => void fetchModels()}
-          className="w-full rounded-lg bg-primary/15 py-2 text-sm font-medium text-primary"
         >
           جلب النماذج المتاحة
-        </button>
+        </Button>
       )}
 
       {loading && models.length === 0 && (
@@ -146,37 +146,44 @@ export function OpenAIModelPicker({
       )}
 
       {models.length > 0 && (
-        <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+        <ul
+          role="radiogroup"
+          aria-label={title}
+          className="max-h-64 space-y-1.5 overflow-y-auto"
+        >
           {models.map((m) => {
             const isSelected = selected === m.id;
             return (
               <li key={m.id}>
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={isSelected}
                   onClick={() => onSelectModel(m.id)}
                   className={cn(
-                    "flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-right transition",
+                    "focus-ring tap-target flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors duration-150 ease-out",
                     isSelected
                       ? "border-primary/50 bg-primary/10"
-                      : "border-white/5 hover:border-white/15 hover:bg-white/5",
+                      : "border-border hover:bg-muted/50",
                   )}
                 >
                   <span
+                    aria-hidden
                     className={cn(
-                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                      "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border",
                       isSelected
                         ? "border-primary bg-primary text-primary-foreground"
-                        : "border-white/20",
+                        : "border-border",
                     )}
                   >
-                    {isSelected && <Check className="h-3 w-3" />}
+                    {isSelected && <Check className="size-3" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-foreground">
                       {m.display_name}
                     </span>
                     <span
-                      className="block text-[10px] text-muted-foreground"
+                      className="type-numeric block text-start text-[10px] text-muted-foreground"
                       dir="ltr"
                     >
                       {m.id}

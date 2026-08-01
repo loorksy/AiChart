@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { listAuditLogs, listUsersForAdmin } from "@/lib/store";
 import { getActiveProvider, isLLMConfigured } from "@/lib/llm";
 import { isTelegramConfigured } from "@/lib/telegram";
@@ -7,7 +8,7 @@ import { getPlatformValue } from "@/lib/platformConfig";
 
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireAdminWith("keys_write");
     const users = await listUsersForAdmin();
     const audit = await listAuditLogs(20);
 

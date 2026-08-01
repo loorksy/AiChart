@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Check, Minus } from "lucide-react";
+
+import { Surface } from "@/components/foundation";
+import { cn } from "@/lib/utils";
 
 interface TierCard {
   id: string;
@@ -71,52 +75,80 @@ export function PricingCards({
   return (
     <div className="mt-10">
       {error && (
-        <p role="alert" className="mx-auto mb-6 max-w-md rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
+        <p
+          role="alert"
+          className="mx-auto mb-6 max-w-md rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-sm text-destructive"
+        >
           {error}
         </p>
       )}
       <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
         {tiers.map((tier, i) => {
           const highlight = tier.id === "pro";
+          const headingId = `tier-${tier.id}`;
           return (
-            <div
+            <Surface
               key={tier.id}
-              className={`relative flex flex-col rounded-2xl border p-6 ${
-                highlight
-                  ? "border-primary bg-primary/5 shadow-lg shadow-primary/10"
-                  : "border-border bg-card"
-              }`}
+              as="section"
+              aria-labelledby={headingId}
+              padding="lg"
+              elevation={highlight ? 3 : 1}
+              className={cn(
+                "relative flex flex-col",
+                highlight && "border-primary bg-primary/5",
+              )}
             >
               {highlight && (
-                <span className="absolute -top-3 right-6 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground">
+                // Logical inset so the ribbon mirrors with the document
+                // direction instead of pinning itself to the right edge.
+                <span className="absolute -top-3 end-6 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground">
                   الأكثر اختياراً
                 </span>
               )}
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-lg font-bold text-foreground">{tier.nameEn}</h3>
-                <span className="text-xs text-muted-foreground">{tier.nameAr}</span>
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 id={headingId} className="text-lg font-bold text-foreground">
+                  {tier.nameEn}
+                </h3>
+                <span className="type-caption">{tier.nameAr}</span>
               </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-foreground">${tier.priceUsd}</span>
-                <span className="text-sm text-muted-foreground">/شهرياً</span>
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                رصيد استخدام <span className="font-semibold text-foreground">${tier.includedCreditsUsd}</span> كل شهر
+              <p className="mt-4 flex items-baseline gap-1">
+                <span className="text-4xl font-extrabold tabular-nums text-foreground">
+                  ${tier.priceUsd}
+                </span>
+                <span className="type-caption">/شهرياً</span>
+              </p>
+              <p className="type-caption mt-2">
+                رصيد استخدام{" "}
+                <span className="font-semibold text-foreground">
+                  ${tier.includedCreditsUsd}
+                </span>{" "}
+                كل شهر
               </p>
 
               <ul className="mt-6 flex-1 space-y-2.5 text-sm">
                 {featureRows.map((row) => {
-                  const on =
-                    row.key === "models" ? true : tier.features[row.key];
+                  const on = row.key === "models" ? true : tier.features[row.key];
                   return (
                     <li
                       key={row.key}
-                      className={`flex items-center gap-2 ${on ? "text-foreground" : "text-muted-foreground/50 line-through"}`}
+                      className={cn(
+                        "flex items-center gap-2",
+                        on ? "text-foreground" : "text-muted-foreground/60",
+                      )}
                     >
-                      <span aria-hidden>{on ? "✓" : "—"}</span>
-                      {row.key === "models"
-                        ? `${row.label} (${tier.modelCount === 8 ? "الكل" : tier.modelCount})`
-                        : row.label}
+                      {on ? (
+                        <Check aria-hidden="true" className="size-4 shrink-0 text-primary" />
+                      ) : (
+                        <Minus aria-hidden="true" className="size-4 shrink-0" />
+                      )}
+                      {/* Strike-through and a glyph are both visual-only; name
+                          the state so it survives a screen reader. */}
+                      <span className="sr-only">{on ? "مضمّن:" : "غير مضمّن:"}</span>
+                      <span className={cn(!on && "line-through")}>
+                        {row.key === "models"
+                          ? `${row.label} (${tier.modelCount === 8 ? "الكل" : tier.modelCount})`
+                          : row.label}
+                      </span>
                     </li>
                   );
                 })}
@@ -125,11 +157,13 @@ export function PricingCards({
               <button
                 onClick={() => subscribe(tier.id)}
                 disabled={busy != null || !stripeReady}
-                className={`mt-6 inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                aria-busy={busy === tier.id}
+                className={cn(
+                  "mt-6 inline-flex min-h-11 items-center justify-center rounded-[var(--radius)] px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
                   highlight
                     ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                    : "border border-border bg-background text-foreground hover:bg-muted"
-                }`}
+                    : "border border-border bg-background text-foreground hover:bg-muted",
+                )}
               >
                 {busy === tier.id
                   ? "جارٍ التحويل…"
@@ -140,11 +174,11 @@ export function PricingCards({
                     : "قريباً — تواصل مع الإدارة"}
               </button>
               {i === 0 && (
-                <p className="mt-3 text-center text-[11px] text-muted-foreground">
+                <p className="type-caption mt-3 text-center">
                   تجربة مجانية برصيد محدود عند التسجيل
                 </p>
               )}
-            </div>
+            </Surface>
           );
         })}
       </div>

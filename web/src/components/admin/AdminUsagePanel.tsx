@@ -1,10 +1,87 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, BarChart3, Cpu, Users } from "lucide-react";
+
 import type { ClaudeUsageRow } from "@/lib/store";
+import { Badge } from "@/components/squareui/badge";
 import { cn } from "@/lib/utils";
-import { Cpu, Users, BarChart3, Activity } from "lucide-react";
-import { StatusChip } from "@/components/bridge/StatusChip";
+import {
+  AdminCard,
+  AdminCardHeader,
+  AdminPage,
+  AdminTable,
+  RecordCard,
+  SectionHeader,
+  SortTh,
+  StatGrid,
+  StatTile,
+  THead,
+  Td,
+  Th,
+  TableEmptyRow,
+  TableWrap,
+  Tr,
+  sortSign,
+  useAdminSort,
+} from "@/components/admin/ui/AdminKit";
+
+/** `natural` = the order the API returned. */
+type UsageSortKey = "natural" | "email" | "used" | "quota" | "pct";
+
+function statusAr(status: string) {
+  if (status === "active") return "مفعّل";
+  if (status === "pending") return "معلّق";
+  if (status === "suspended") return "موقوف";
+  return status;
+}
+
+function statusVariant(status: string): "default" | "secondary" | "destructive" {
+  if (status === "active") return "default";
+  if (status === "pending") return "secondary";
+  return "destructive";
+}
+
+function usagePct(row: ClaudeUsageRow): number {
+  return row.quota > 0 ? Math.round((row.used_today / row.quota) * 100) : 0;
+}
+
+/**
+ * The consumption bar. It is a plain block in normal flow, so it grows from the
+ * inline start and mirrors with the document direction for free — an absolutely
+ * positioned fill would have had to be flipped by hand in Arabic.
+ */
+function UsageBar({ pct, hot }: { pct: number; hot: boolean }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="نسبة الاستهلاك من الحصة اليومية"
+        className="relative h-1.5 w-24 overflow-hidden rounded-full bg-secondary"
+      >
+        <div
+          className={cn(
+            "h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none",
+            hot ? "bg-destructive" : "bg-primary",
+          )}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+      <span
+        dir="ltr"
+        className={cn(
+          "type-numeric text-xs font-semibold",
+          hot ? "text-destructive" : "text-muted-foreground",
+        )}
+      >
+        {pct}%
+      </span>
+    </div>
+  );
+}
 
 export function AdminUsagePanel({
   initialUsage,
@@ -12,6 +89,7 @@ export function AdminUsagePanel({
   initialUsage: ClaudeUsageRow[];
 }) {
   const [usage, setUsage] = useState(initialUsage);
+  const { key: sortKey, dir, sortProps } = useAdminSort<UsageSortKey>("natural");
 
   useEffect(() => {
     const id = setInterval(async () => {
@@ -27,135 +105,153 @@ export function AdminUsagePanel({
   const totalCalls = usage.reduce((acc, curr) => acc + curr.used_today, 0);
   const totalQuota = usage.reduce((acc, curr) => acc + curr.quota, 0);
   const avgUsagePct = totalQuota > 0 ? Math.round((totalCalls / totalQuota) * 100) : 0;
+  const hotAccounts = usage.filter((r) => usagePct(r) >= 90).length;
+
+  const rows = useMemo(() => {
+    if (sortKey === "natural") return usage;
+    const sign = sortSign(dir);
+    return [...usage].sort((a, b) => {
+      switch (sortKey) {
+        case "email":
+          return sign * a.email.localeCompare(b.email, "en");
+        case "used":
+          return sign * (a.used_today - b.used_today);
+        case "quota":
+          return sign * (a.quota - b.quota);
+        case "pct":
+          return sign * (usagePct(a) - usagePct(b));
+        default:
+          return 0;
+      }
+    });
+  }, [usage, sortKey, dir]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-bold">
-            <Cpu className="h-5 w-5 text-primary" />
-            مراقبة استهلاك Claude
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            استهلاك كل مستخدم اليوم مقابل الحصة المحددة — لمنع استنزاف الرصيد.
-          </p>
-        </div>
-      </div>
+    <AdminPage dir="rtl" data-testid="admin-usage-panel">
+      <SectionHeader
+        title="مراقبة استهلاك Claude"
+        description="استهلاك كل مستخدم اليوم مقابل الحصة المحددة — لمنع استنزاف الرصيد. يُحدَّث كل ٣٠ ثانية."
+        icon={Cpu}
+        actions={
+          hotAccounts > 0 ? (
+            <Badge variant="destructive">{hotAccounts} حساب قارب الحصة</Badge>
+          ) : null
+        }
+      />
 
-      {/* Top Stat Cards (21st.dev Bento Grid style) */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card/45 backdrop-blur-md p-4">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-medium">إجمالي الاستدعاءات اليوم</span>
-            <Activity className="h-4 w-4 text-primary" />
-          </div>
-          <p className="text-2xl font-bold mt-1.5 tracking-tight font-mono text-foreground">
-            {totalCalls.toLocaleString()}
-          </p>
+      <StatGrid columns={3}>
+        <StatTile
+          index={0}
+          icon={Activity}
+          label="إجمالي الاستدعاءات اليوم"
+          value={totalCalls.toLocaleString("en-US")}
+        />
+        <StatTile
+          index={1}
+          icon={Users}
+          label="إجمالي الحصص اليومية"
+          value={totalQuota.toLocaleString("en-US")}
+        />
+        <StatTile
+          index={2}
+          icon={BarChart3}
+          label="معدل الاستهلاك العام"
+          value={`${avgUsagePct}%`}
+          tone={avgUsagePct >= 90 ? "negative" : "positive"}
+        />
+      </StatGrid>
+
+      <AdminCard>
+        <AdminCardHeader
+          title="الاستهلاك لكل حساب"
+          description={`${usage.length} حساب`}
+        />
+
+        <div className="space-y-2 p-3 sm:hidden">
+          {rows.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              لا استهلاك مسجّل اليوم.
+            </p>
+          ) : (
+            rows.map((row, i) => {
+              const pct = usagePct(row);
+              return (
+                <RecordCard
+                  key={row.user_id}
+                  index={i}
+                  title={row.email}
+                  badge={
+                    <Badge variant={statusVariant(row.status)}>
+                      {statusAr(row.status)}
+                    </Badge>
+                  }
+                  fields={[
+                    { label: "الاستخدام اليوم", value: row.used_today },
+                    { label: "الحصة", value: row.quota },
+                    {
+                      label: "النسبة",
+                      value: <UsageBar pct={pct} hot={pct >= 90} />,
+                    },
+                  ]}
+                />
+              );
+            })
+          )}
         </div>
 
-        <div className="rounded-xl border border-border bg-card/45 backdrop-blur-md p-4">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-medium">إجمالي الحصص اليومية</span>
-            <Users className="h-4 w-4 text-amber-500" />
-          </div>
-          <p className="text-2xl font-bold mt-1.5 tracking-tight font-mono text-foreground">
-            {totalQuota.toLocaleString()}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card/45 backdrop-blur-md p-4">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-medium">معدل الاستهلاك العام</span>
-            <BarChart3 className="h-4 w-4 text-emerald-500" />
-          </div>
-          <p className="text-2xl font-bold mt-1.5 tracking-tight font-mono text-emerald-500">
-            {avgUsagePct}%
-          </p>
-        </div>
-      </div>
-
-      {/* Data Table */}
-      <div className="overflow-hidden rounded-xl border border-border/65 bg-card/35 backdrop-blur-sm shadow-md">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/20 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-3">المستخدم</th>
-                <th className="px-4 py-3">الحالة</th>
-                <th className="px-4 py-3">الاستخدام اليوم</th>
-                <th className="px-4 py-3">الحصة</th>
-                <th className="px-4 py-3">النسبة</th>
+        <TableWrap className="hidden sm:block" maxHeight="max-h-[34rem]">
+          <AdminTable className="min-w-[42rem]">
+            <caption className="sr-only">
+              استهلاك Claude اليومي لكل حساب مقابل حصته
+            </caption>
+            <THead sticky>
+              <tr>
+                <SortTh label="المستخدم" {...sortProps("email")} />
+                <Th>الحالة</Th>
+                <SortTh label="الاستخدام اليوم" numeric {...sortProps("used")} />
+                <SortTh label="الحصة" numeric {...sortProps("quota")} />
+                <SortTh label="النسبة" {...sortProps("pct")} />
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border/40">
-              {usage.map((row) => {
-                const pct =
-                  row.quota > 0
-                    ? Math.round((row.used_today / row.quota) * 100)
-                    : 0;
-                const hot = pct >= 90;
-                return (
-                  <tr key={row.user_id} className="transition-colors hover:bg-muted/15">
-                    <td className="px-4 py-3 font-medium text-foreground" dir="ltr">
-                      {row.email}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusChip
-                        label={statusAr(row.status)}
-                        tone={
-                          row.status === "active"
-                            ? "ok"
-                            : row.status === "pending"
-                              ? "warn"
-                              : "error"
-                        }
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-mono font-medium text-foreground">
-                      {row.used_today}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">
-                      {row.quota}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-secondary">
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-all duration-500",
-                              hot
-                                ? "bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.5)]"
-                                : "bg-primary shadow-[0_0_8px_rgba(16,185,129,0.3)]",
-                            )}
-                            style={{ width: `${Math.min(pct, 100)}%` }}
-                          />
-                        </div>
-                        <span
-                          className={cn(
-                            "text-xs font-mono font-semibold",
-                            hot ? "text-destructive" : "text-muted-foreground",
-                          )}
-                        >
-                          {pct}%
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+            </THead>
+            <tbody>
+              {rows.length === 0 ? (
+                <TableEmptyRow
+                  colSpan={5}
+                  icon={Cpu}
+                  title="لا استهلاك مسجّل اليوم"
+                  description="يظهر كل حساب هنا فور أول استدعاء له خلال اليوم الجاري."
+                />
+              ) : (
+                rows.map((row) => {
+                  const pct = usagePct(row);
+                  const hot = pct >= 90;
+                  return (
+                    <Tr key={row.user_id}>
+                      <Td className="font-medium text-foreground" dir="ltr">
+                        <span className="block text-start">{row.email}</span>
+                      </Td>
+                      <Td>
+                        <Badge variant={statusVariant(row.status)}>
+                          {statusAr(row.status)}
+                        </Badge>
+                      </Td>
+                      <Td numeric className="font-medium text-foreground">
+                        {row.used_today}
+                      </Td>
+                      <Td numeric className="text-muted-foreground">
+                        {row.quota}
+                      </Td>
+                      <Td>
+                        <UsageBar pct={pct} hot={hot} />
+                      </Td>
+                    </Tr>
+                  );
+                })
+              )}
             </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+          </AdminTable>
+        </TableWrap>
+      </AdminCard>
+    </AdminPage>
   );
-}
-
-function statusAr(status: string) {
-  if (status === "active") return "مفعّل";
-  if (status === "pending") return "معلّق";
-  if (status === "suspended") return "موقوف";
-  return status;
 }

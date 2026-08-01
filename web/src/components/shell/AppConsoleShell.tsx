@@ -3,20 +3,78 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Menu, PanelLeft, PanelLeftClose, X } from "lucide-react";
+import { ChevronDown, Menu, PanelLeft, PanelLeftClose, X } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { AiChartLogo } from "@/components/AiChartLogo";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { NotificationCenter } from "@/components/agent/NotificationCenter";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
-import { navForRole, activeNav, type NavRole } from "@/components/shell/navConfig";
+import {
+  ADMIN_NAV,
+  navForRole,
+  activeNav,
+  type NavItem,
+  type NavRole,
+} from "@/components/shell/navConfig";
+import {
+  ADMIN_CONSOLE_TITLE,
+  ADMIN_PROFILE_ITEM,
+  adminGroupsFor,
+  adminLabel,
+  adminTabHref,
+  isAdminTabId,
+  type AdminNavItem,
+  type AdminTabId,
+} from "@/components/admin/chrome/adminNavTree";
 import { useLocale } from "@/hooks/useLocale";
 import { useMe } from "@/hooks/useMe";
 import { Mt5PresencePing } from "@/components/Mt5PresencePing";
 import { cn } from "@/lib/utils";
 
+/** The admin's non-platform destination — the bridge overview at /console. */
+const ADMIN_HOME_ITEM = ADMIN_NAV.find((item) => item.href === "/console");
+
+const PLATFORM_PATH = "/console/platform";
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-sidebar";
+
+/**
+ * Shared geometry for every destination in the rail, so the trader's flat list
+ * and the admin's grouped tree are literally the same control. 44px on touch,
+ * tightened to 40px from `lg` where the pointer is a mouse.
+ */
+function navLinkClass(active: boolean, iconOnly: boolean): string {
+  return cn(
+    "relative flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors duration-150 ease-out lg:min-h-10",
+    FOCUS_RING,
+    iconOnly && "justify-center px-0",
+    active
+      ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]"
+      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+  );
+}
+
+/** Start-edge marker; `start-0` keeps it on the reading edge in both directions. */
+function ActiveMarker() {
+  return (
+    <span
+      aria-hidden
+      className="absolute inset-y-2 start-0 w-0.5 rounded-full bg-foreground"
+    />
+  );
+}
+
 /**
  * Canonical console shell — role-aware sidebar / one mobile drawer.
+ *
+ * This is the ONLY navigation on any console surface. `/console/platform` used
+ * to mount a second rail of its own next to this one; the admin's grouped
+ * destination tree was folded in here instead, so an admin sees one nav with
+ * every `?tab=` deep link in it rather than two competing ones.
+ *
  * Trader shell includes conversations; admin shell is admin destinations only.
  */
 export function AppConsoleShell({
@@ -35,18 +93,23 @@ export function AppConsoleShell({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { t, dir } = useLocale();
+  const { t, dir, locale } = useLocale();
   const { data: me } = useMe();
   const currentTab = searchParams.get("tab");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [navPath, setNavPath] = useState(pathname);
+  const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const isAdmin = role === "admin";
   // Until /api/me resolves, keep non-admin nav conservative (trial-sized).
   const access =
     me?.entitlement?.access ?? (isAdmin ? "admin" : "trial");
-  const items = navForRole(role, access);
+  const items = navForRole(role, access, me?.admin_permissions);
+  const adminGroups = useMemo(
+    () => (isAdmin ? adminGroupsFor(me?.admin_permissions) : []),
+    [isAdmin, me?.admin_permissions],
+  );
   const paidWorkspace = access === "full" || access === "admin";
   const conversationsEnabled =
     showConversations ?? (!isAdmin && paidWorkspace);
@@ -61,6 +124,17 @@ export function AppConsoleShell({
     pathname === "/subscribe";
   /** Chart pages host the menu in the chart toolbar; other pages use a page header. */
   const needsPageMenu = !showChartMenu;
+  /**
+   * Which admin panel the platform route is showing. An absent or unknown
+   * `?tab=` lands on the overview server-side (resolveAdminTab), so the rail has
+   * to highlight the same thing or a bare /console/platform looks unvisited.
+   */
+  const platformTab: AdminTabId | null =
+    pathname === PLATFORM_PATH
+      ? isAdminTabId(currentTab)
+        ? currentTab
+        : "overview"
+      : null;
 
   if (pathname !== navPath) {
     setNavPath(pathname);
@@ -114,42 +188,141 @@ export function AppConsoleShell({
     [mobileOpen, setMobileOpen],
   );
 
-  const navList = (onNavigate?: () => void) => (
+  const productLink = (item: NavItem, iconOnly: boolean, onNavigate?: () => void) => {
+    const active = activeNav(pathname, item, currentTab);
+    const Icon = item.icon;
+    const label = t(item.labelKey);
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={onNavigate}
+        title={iconOnly ? label : undefined}
+        aria-current={active ? "page" : undefined}
+        data-active={active ? "true" : undefined}
+        className={navLinkClass(active, iconOnly)}
+      >
+        {active && <ActiveMarker />}
+        <Icon className={cn("shrink-0", iconOnly ? "h-5 w-5" : "h-4 w-4")} />
+        {!iconOnly && <span className="truncate">{label}</span>}
+        {iconOnly && <span className="sr-only">{label}</span>}
+      </Link>
+    );
+  };
+
+  const adminLink = (item: AdminNavItem, iconOnly: boolean, onNavigate?: () => void) => {
+    const active = platformTab === item.id;
+    const label = adminLabel(item, locale);
+    return (
+      <Link
+        key={item.id}
+        href={adminTabHref(item.id)}
+        onClick={onNavigate}
+        title={iconOnly ? label : undefined}
+        aria-current={active ? "page" : undefined}
+        data-active={active ? "true" : undefined}
+        className={navLinkClass(active, iconOnly)}
+      >
+        {active && <ActiveMarker />}
+        <HugeiconsIcon
+          icon={item.icon}
+          strokeWidth={2}
+          className={cn("shrink-0", iconOnly ? "size-5" : "size-4")}
+        />
+        {!iconOnly && <span className="truncate">{label}</span>}
+        {iconOnly && <span className="sr-only">{label}</span>}
+      </Link>
+    );
+  };
+
+  const adminNav = (iconOnly: boolean, onNavigate?: () => void) => (
     <nav
-      data-testid={isAdmin ? "canonical-admin-nav" : "canonical-product-nav"}
-      className="flex shrink-0 flex-col gap-0.5 px-2 py-2"
+      data-testid="canonical-admin-nav"
+      aria-label={adminLabel(ADMIN_CONSOLE_TITLE, locale)}
+      className={cn(
+        "flex min-h-0 flex-col gap-0.5 overflow-y-auto px-2 py-2",
+        // Owns the leftover height unless the conversation list is also mounted,
+        // in which case that section is the one that should stretch.
+        !conversationsEnabled && "flex-1",
+      )}
     >
-      {items.map((item) => {
-        const active = activeNav(pathname, item, currentTab);
-        const Icon = item.icon;
-        const label = t(item.labelKey);
+      {ADMIN_HOME_ITEM ? productLink(ADMIN_HOME_ITEM, iconOnly, onNavigate) : null}
+      {adminGroups.map((group) => {
+        // The disclosure control is the group label, and the label is what the
+        // icon rail hides — so a folded group would become unreachable there.
+        // Force every group open for as long as the rail is icon-only.
+        const expanded = iconOnly || !closedGroups[group.id];
+        const groupId = `admin-nav-group-${group.id}`;
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            title={collapsed && !onNavigate ? label : undefined}
-            data-active={active ? "true" : undefined}
-            className={cn(
-              "relative flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
-              collapsed && !onNavigate && "justify-center px-0",
-              active
-                ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            {active && (
+          <div key={group.id} className={cn("flex flex-col", iconOnly && "mt-1")}>
+            {iconOnly ? (
               <span
                 aria-hidden
-                className="absolute inset-y-2 start-0 w-0.5 rounded-full bg-foreground"
+                className="mx-auto my-1 h-px w-6 shrink-0 rounded-full bg-sidebar-border"
               />
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  setClosedGroups((previous) => ({
+                    ...previous,
+                    [group.id]: !previous[group.id],
+                  }))
+                }
+                aria-expanded={expanded}
+                // A folded group is unmounted, not display:none — leaving its
+                // links in the DOM would put unreachable nodes in the mobile
+                // drawer's focus trap. So the controlled id only exists when open.
+                aria-controls={expanded ? groupId : undefined}
+                className={cn(
+                  "mt-2 flex min-h-9 w-full items-center gap-2 rounded-md px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground",
+                  FOCUS_RING,
+                )}
+              >
+                <span className="truncate">{adminLabel(group, locale)}</span>
+                <ChevronDown
+                  aria-hidden
+                  className={cn(
+                    "ms-auto h-3.5 w-3.5 shrink-0 transition-transform duration-200 ease-out",
+                    !expanded && "ltr:-rotate-90 rtl:rotate-90",
+                  )}
+                />
+              </button>
             )}
-            <Icon className={cn("shrink-0", collapsed && !onNavigate ? "h-5 w-5" : "h-4 w-4")} />
-            {(!collapsed || onNavigate) && <span className="truncate">{label}</span>}
-          </Link>
+            {expanded ? (
+              <div id={groupId} className="flex flex-col gap-0.5">
+                {group.items.map((item) => adminLink(item, iconOnly, onNavigate))}
+              </div>
+            ) : null}
+          </div>
         );
       })}
+      <span aria-hidden className="my-2 h-px shrink-0 bg-sidebar-border" />
+      {adminLink(ADMIN_PROFILE_ITEM, iconOnly, onNavigate)}
     </nav>
+  );
+
+  const productNav = (iconOnly: boolean, onNavigate?: () => void) => (
+    <nav
+      data-testid="canonical-product-nav"
+      aria-label={t("shell.product")}
+      className="flex shrink-0 flex-col gap-0.5 px-2 py-2"
+    >
+      {items.map((item) => productLink(item, iconOnly, onNavigate))}
+    </nav>
+  );
+
+  const navList = (onNavigate?: () => void) => {
+    // The drawer is never icon-only: it is only ever mounted at full width.
+    const iconOnly = collapsed && !onNavigate;
+    return isAdmin ? adminNav(iconOnly, onNavigate) : productNav(iconOnly, onNavigate);
+  };
+
+  /** The switcher's permanent home: sidebar footer, one row above identity. */
+  const languageRow = (iconOnly: boolean) => (
+    <div className="shrink-0 border-t border-sidebar-border px-2 py-2">
+      {iconOnly ? <LanguageSwitcher variant="rail" /> : <LanguageSwitcher variant="row" />}
+    </div>
   );
 
   const brandHref = isAdmin ? "/console" : "/console";
@@ -164,7 +337,10 @@ export function AppConsoleShell({
       {!collapsed ? (
         <Link
           href={brandHref}
-          className="flex min-w-0 items-center gap-2 overflow-visible"
+          className={cn(
+            "flex min-w-0 items-center gap-2 overflow-visible rounded-lg",
+            FOCUS_RING,
+          )}
           data-testid="sidebar-brand"
         >
           <AiChartLogo
@@ -174,7 +350,13 @@ export function AppConsoleShell({
           />
         </Link>
       ) : (
-        <Link href={brandHref} className="flex items-center justify-center overflow-visible">
+        <Link
+          href={brandHref}
+          className={cn(
+            "flex items-center justify-center overflow-visible rounded-lg",
+            FOCUS_RING,
+          )}
+        >
           <AiChartLogo size={30} />
         </Link>
       )}
@@ -185,20 +367,26 @@ export function AppConsoleShell({
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
-            className="hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground lg:flex"
+            className={cn(
+              "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
+              FOCUS_RING,
+            )}
             aria-label={t("shell.collapse_sidebar")}
           >
-            <PanelLeftClose className="h-4 w-4" />
+            <PanelLeftClose className="h-4 w-4 rtl:-scale-x-100" />
           </button>
         </div>
       ) : (
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground lg:flex"
+          className={cn(
+            "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
+            FOCUS_RING,
+          )}
           aria-label={t("shell.expand_sidebar")}
         >
-          <PanelLeft className="h-4 w-4" />
+          <PanelLeft className="h-4 w-4 rtl:-scale-x-100" />
         </button>
       )}
     </div>
@@ -217,15 +405,15 @@ export function AppConsoleShell({
         <aside
           data-testid="canonical-desktop-sidebar"
           className={cn(
-            "z-20 hidden h-full shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex",
+            "z-20 hidden h-full shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-out lg:flex",
             collapsed ? "w-[3.75rem]" : "w-[260px]",
           )}
         >
           {sidebarHeader}
           {navList()}
-          {conversationsEnabled ? <SidebarConversations collapsed={collapsed} /> : (
-            <div className="flex-1" />
-          )}
+          {conversationsEnabled ? <SidebarConversations collapsed={collapsed} /> : null}
+          {!isAdmin && !conversationsEnabled ? <div className="flex-1" /> : null}
+          {languageRow(collapsed)}
           <SidebarProfileMenu collapsed={collapsed} displayName={displayName} />
         </aside>
 
@@ -246,13 +434,16 @@ export function AppConsoleShell({
               className="absolute inset-y-0 start-0 flex w-[min(86%,17.5rem)] flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl"
             >
               <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
-                <Link href={brandHref} className="flex min-w-0 items-center overflow-visible">
+                <Link href={brandHref} className={cn("flex min-w-0 items-center overflow-visible rounded-lg", FOCUS_RING)}>
                   <AiChartLogo size={32} showName nameClassName="truncate text-[15px] font-semibold" />
                 </Link>
                 <button
                   type="button"
                   onClick={() => setMobileOpen(false)}
-                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+                  className={cn(
+                    "flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted",
+                    FOCUS_RING,
+                  )}
                   aria-label={t("shell.close")}
                 >
                   <X className="h-5 w-5" />
@@ -261,9 +452,9 @@ export function AppConsoleShell({
               {navList(() => setMobileOpen(false))}
               {conversationsEnabled ? (
                 <SidebarConversations onNavigate={() => setMobileOpen(false)} />
-              ) : (
-                <div className="flex-1" />
-              )}
+              ) : null}
+              {!isAdmin && !conversationsEnabled ? <div className="flex-1" /> : null}
+              {languageRow(false)}
               <SidebarProfileMenu displayName={displayName} />
             </aside>
           </div>
@@ -273,13 +464,16 @@ export function AppConsoleShell({
           {needsPageMenu ? (
             <div
               data-testid="page-toolbar-menu"
-              className="flex h-12 shrink-0 items-center border-b border-border px-3 lg:hidden"
+              className="flex h-14 shrink-0 items-center border-b border-border px-3 lg:hidden"
             >
               <button
                 type="button"
                 data-testid="mobile-menu-trigger"
                 onClick={() => setMobileOpen(true)}
-                className="flex size-10 items-center justify-center rounded-lg border border-border bg-background text-foreground"
+                className={cn(
+                  "flex size-11 items-center justify-center rounded-lg border border-border bg-background text-foreground transition-colors duration-150 ease-out hover:bg-muted",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                )}
                 aria-label={t("shell.open_menu")}
                 aria-expanded={mobileOpen}
                 aria-controls="mobile-navigation-drawer"

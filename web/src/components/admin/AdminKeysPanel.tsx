@@ -2,8 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, KeyRound, RefreshCw } from "lucide-react";
+
 import { OpenAIModelPicker } from "@/components/admin/OpenAIModelPicker";
+import { Button } from "@/components/squareui/button";
+import { Input } from "@/components/squareui/input";
+import {
+  CardSkeleton,
+  PageHeaderSkeleton,
+} from "@/components/ui/skeletons/page-skeletons";
 import { cn } from "@/lib/utils";
+import {
+  AdminCard,
+  AdminCardBody,
+  AdminCardHeader,
+  AdminPage,
+  Field,
+  InlineAlert,
+  SectionHeader,
+  Spinner,
+} from "@/components/admin/ui/AdminKit";
 
 type ConfigField = {
   key: string;
@@ -19,11 +36,23 @@ type ConfigField = {
   secret?: boolean;
 };
 
-const GROUPS: { id: ConfigField["group"]; title: string }[] = [
-  { id: "core", title: "الأساس والأمان" },
-  { id: "ai", title: "الذكاء الاصطناعي — المفاتيح والافتراضي" },
-  { id: "telegram", title: "تليجرام" },
-  { id: "ops", title: "التشغيل والمراقبة" },
+const GROUPS: { id: ConfigField["group"]; title: string; description: string }[] = [
+  {
+    id: "core",
+    title: "الأساس والأمان",
+    description: "مفاتيح التشفير والوصول التي تقوم عليها بقية المنصة.",
+  },
+  {
+    id: "ai",
+    title: "الذكاء الاصطناعي — المفاتيح والافتراضي",
+    description: "المزوّد والنموذج اللذان يعملان لمن لم يختر بنفسه.",
+  },
+  { id: "telegram", title: "تليجرام", description: "البوت وقنوات الإشعار." },
+  {
+    id: "ops",
+    title: "التشغيل والمراقبة",
+    description: "المهام المجدولة، السجلات، وقنوات الإنذار.",
+  },
 ];
 
 /** Fixed Claude catalog offered by the platform (id → label). */
@@ -90,7 +119,10 @@ export function AdminKeysPanel() {
       if (value.trim()) patch[key] = value.trim();
     }
     if (Object.keys(patch).length === 0) {
-      setMsg({ type: "err", text: "أدخل قيمة واحدة على الأقل للحفظ." });
+      setMsg({
+        type: "err",
+        text: "لا يوجد ما يُحفظ — اكتب قيمة جديدة في حقل واحد على الأقل ثم اضغط حفظ.",
+      });
       return;
     }
     setSaving(true);
@@ -103,7 +135,10 @@ export function AdminKeysPanel() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setMsg({ type: "err", text: data.error ?? "فشل الحفظ." });
+        setMsg({
+          type: "err",
+          text: data.error ?? "فشل الحفظ — القيم القديمة ما زالت سارية. أعد المحاولة.",
+        });
         return;
       }
       setFields(data.fields);
@@ -113,12 +148,18 @@ export function AdminKeysPanel() {
         type: "ok",
         text: "تم حفظ المفاتيح — المنصة و MCP يستخدمان المزوّد والنموذج المحدّدين هنا.",
       });
+    } catch {
+      setMsg({
+        type: "err",
+        text: "تعذّر الوصول إلى الخادم — لم يُحفظ أي مفتاح.",
+      });
     } finally {
       setSaving(false);
     }
   }
 
   const configuredCount = fields.filter((f) => f.configured).length;
+  const pendingCount = Object.values(draft).filter((v) => v.trim()).length;
 
   const apiKeyField = fields.find((f) => f.key === "OPENAI_API_KEY");
   const aiModelField = fields.find((f) => f.key === "AI_MODEL");
@@ -148,35 +189,55 @@ export function AdminKeysPanel() {
       f.key !== "ANTHROPIC_MODEL",
   );
 
-  return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-bold">
-            <KeyRound className="h-5 w-5 text-primary" />
-            المفاتيح والإعدادات
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            ضع مفتاح OpenAI والنموذج من لوحة الإدارة — تُخزَّن مشفّرة في قاعدة
-            البيانات. القيم من <code dir="ltr">.env</code> تبقى احتياطاً.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-          تحديث
-        </button>
-      </div>
+  if (loading && fields.length === 0) {
+    return (
+      <AdminPage width="narrow" dir="rtl">
+        <PageHeaderSkeleton withAction />
+        <CardSkeleton lines={4} />
+        <CardSkeleton lines={6} />
+      </AdminPage>
+    );
+  }
 
-      <div className="admin-card flex items-center gap-3 p-4 text-sm">
-        <span className="text-muted-foreground">الحالة:</span>
-        <span className="font-semibold text-primary">
-          {configuredCount}/{fields.length} مُعدّ
-        </span>
-      </div>
+  return (
+    <AdminPage width="narrow" dir="rtl" data-testid="admin-keys-panel">
+      <SectionHeader
+        title="المفاتيح والإعدادات"
+        icon={KeyRound}
+        description={
+          <>
+            ضع مفتاح المزوّد والنموذج من لوحة الإدارة — تُخزَّن مشفّرة في قاعدة
+            البيانات. القيم من <code dir="ltr">.env</code> تبقى احتياطاً.
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="tap-target"
+            disabled={loading}
+            onClick={() => void load()}
+          >
+            {loading ? <Spinner /> : <RefreshCw className="size-3.5" aria-hidden />}
+            تحديث
+          </Button>
+        }
+      />
+
+      <AdminCard>
+        <AdminCardBody className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <span className="text-muted-foreground">الحالة:</span>
+          <span className="type-numeric font-semibold text-foreground" dir="ltr">
+            {configuredCount}/{fields.length}
+          </span>
+          <span className="text-muted-foreground">مفتاح مُعدّ</span>
+          {pendingCount > 0 && (
+            <span className="ms-auto text-xs text-amber-600 dark:text-amber-400">
+              {pendingCount} تعديل غير محفوظ
+            </span>
+          )}
+        </AdminCardBody>
+      </AdminCard>
 
       {GROUPS.map((group) => {
         const groupFields =
@@ -186,36 +247,41 @@ export function AdminKeysPanel() {
         if (!groupFields.length && group.id !== "ai") return null;
         if (group.id === "ai" && !apiKeyField) return null;
         return (
-          <section key={group.id} className="admin-card p-4">
-            <h3 className="mb-4 font-bold text-foreground">{group.title}</h3>
-            <div className="space-y-4">
+          <AdminCard key={group.id}>
+            <AdminCardHeader title={group.title} description={group.description} />
+            <AdminCardBody className="space-y-5">
               {group.id === "ai" && apiKeyField && (
                 <>
-                  <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">
+                  <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                     دورك هنا إتاحة المفاتيح فقط — كل مستخدم يختار النموذج الذي
                     يريده من صندوق الكتابة في المحادثة. ما تضبطه أدناه هو
                     <b> الافتراضي </b>
                     لمن لم يختر.
                   </p>
+
                   {/* Default provider — the fallback brain for users who have
                       not picked one themselves. */}
-                  <div>
-                    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-medium">
-                        المزوّد الافتراضي
-                        <span className="mr-2 text-[10px] text-muted-foreground" dir="ltr">
-                          AI_PROVIDER
-                        </span>
+                  <fieldset className="min-w-0 space-y-1.5">
+                    <legend className="text-sm font-medium text-foreground">
+                      المزوّد الافتراضي
+                      <span className="ms-2 text-[10px] text-muted-foreground" dir="ltr">
+                        AI_PROVIDER
                       </span>
-                    </div>
-                    <div className="inline-flex gap-1 rounded-lg border border-border bg-card p-1">
+                    </legend>
+                    <div
+                      role="radiogroup"
+                      aria-label="المزوّد الافتراضي"
+                      className="inline-flex gap-1 rounded-lg border border-border bg-background p-1"
+                    >
                       {PROVIDERS.map((p) => (
                         <button
                           key={p.id}
                           type="button"
+                          role="radio"
+                          aria-checked={activeProvider === p.id}
                           onClick={() => setDraftValue("AI_PROVIDER", p.id)}
                           className={cn(
-                            "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                            "focus-ring tap-target rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150 ease-out",
                             activeProvider === p.id
                               ? "bg-foreground text-background"
                               : "text-muted-foreground hover:text-foreground",
@@ -225,7 +291,8 @@ export function AdminKeysPanel() {
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </fieldset>
+
                   <ConfigFieldRow
                     f={apiKeyField}
                     draft={draft}
@@ -259,19 +326,21 @@ export function AdminKeysPanel() {
                     />
                   )}
                   {anthropicModelField && (
-                    <div>
-                      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                        <label className="text-sm font-medium" htmlFor="ANTHROPIC_MODEL">
+                    <Field
+                      label={
+                        <>
                           نموذج Claude
-                          <span className="mr-2 text-[10px] text-muted-foreground" dir="ltr">
+                          <span className="ms-2 text-[10px] text-muted-foreground" dir="ltr">
                             ANTHROPIC_MODEL
                           </span>
-                        </label>
-                      </div>
+                        </>
+                      }
+                      htmlFor="ANTHROPIC_MODEL"
+                    >
                       <select
                         id="ANTHROPIC_MODEL"
                         dir="ltr"
-                        className="admin-input w-full text-sm"
+                        className="admin-input focus-ring tap-target h-10 w-full text-sm"
                         value={currentAnthropicModel}
                         onChange={(e) => setDraftValue("ANTHROPIC_MODEL", e.target.value)}
                       >
@@ -284,19 +353,17 @@ export function AdminKeysPanel() {
                           <option value={currentAnthropicModel}>{currentAnthropicModel}</option>
                         )}
                       </select>
-                    </div>
+                    </Field>
                   )}
                   {agentModel && (
-                    <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">
+                    <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                       نموذج المنصة (MCP):{" "}
                       <code dir="ltr">{agentModel.platformRef}</code>
                       {agentModel.fallbacks.length > 0 && (
                         <>
                           {" · "}
                           fallbacks:{" "}
-                          <code dir="ltr">
-                            {agentModel.fallbacks.join(", ")}
-                          </code>
+                          <code dir="ltr">{agentModel.fallbacks.join(", ")}</code>
                         </>
                       )}
                     </p>
@@ -311,40 +378,31 @@ export function AdminKeysPanel() {
                   setDraftValue={setDraftValue}
                 />
               ))}
-            </div>
-          </section>
+            </AdminCardBody>
+          </AdminCard>
         );
       })}
 
       {msg && (
-        <p
-          className={cn(
-            "rounded-lg px-3 py-2 text-sm",
-            msg.type === "ok"
-              ? "bg-green-500/10 text-green-600 dark:text-green-400"
-              : "bg-destructive/10 text-destructive",
-          )}
-        >
-          {msg.text}
-        </p>
+        <InlineAlert tone={msg.type === "ok" ? "ok" : "error"}>{msg.text}</InlineAlert>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <button
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3">
+        <Button
           type="button"
+          className="tap-target h-10"
           onClick={() => void save()}
           disabled={saving}
-          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
         >
+          {saving ? <Spinner /> : null}
           {saving ? "جارٍ الحفظ…" : "حفظ المفاتيح"}
-        </button>
+        </Button>
+        <p className="max-w-md text-xs text-muted-foreground">
+          تحذير: تغيير <span dir="ltr">ENCRYPTION_KEY</span> بعد ربط حسابات
+          MetaTrader يمنع فك تشفير المفاتيح القديمة. غيّره فقط عند بداية التشغيل.
+        </p>
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        تحذير: تغيير <span dir="ltr">ENCRYPTION_KEY</span> بعد ربط حسابات MetaTrader
-        يمنع فك تشفير المفاتيح القديمة. غيّره فقط عند بداية التشغيل.
-      </p>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -357,60 +415,71 @@ function ConfigFieldRow({
   draft: Record<string, string>;
   setDraftValue: (key: string, value: string) => void;
 }) {
-  return (
-    <div>
-      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-        <label className="text-sm font-medium" htmlFor={f.key}>
-          {f.label}
-          <span className="mr-2 text-[10px] text-muted-foreground" dir="ltr">
-            {f.labelEn}
-          </span>
-        </label>
-        <StatusBadge field={f} />
-      </div>
-
-      {f.type === "toggle" ? (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={
-              (draft[f.key] ?? f.value ?? "0") === "1" || f.value === "1"
-            }
-            onChange={(e) =>
-              setDraftValue(f.key, e.target.checked ? "1" : "0")
-            }
-          />
-          مفعّل
-        </label>
-      ) : (
-        <>
-          {f.configured && f.masked && (
-            <p className="mb-1 text-xs text-muted-foreground" dir="ltr">
-              الحالي: {f.masked}
-            </p>
-          )}
-          {!f.configured && f.value && (
-            <p className="mb-1 text-xs text-muted-foreground" dir="ltr">
-              {f.value}
-            </p>
-          )}
+  if (f.type === "toggle") {
+    const on = (draft[f.key] ?? f.value ?? "0") === "1" || f.value === "1";
+    return (
+      <Field
+        label={
+          <>
+            {f.label}
+            <span className="ms-2 text-[10px] text-muted-foreground" dir="ltr">
+              {f.labelEn}
+            </span>
+          </>
+        }
+        htmlFor={f.key}
+        suffix={<StatusBadge field={f} />}
+      >
+        {/* The Field above already labels this control, so the word beside the
+            box is a plain span — a second <label> would name it twice. */}
+        <span className="tap-target flex items-center gap-2 text-sm text-muted-foreground">
           <input
             id={f.key}
-            type={
-              f.type === "url" ? "url" : f.secret ? "password" : "text"
-            }
-            className="admin-input w-full text-sm"
-            dir="ltr"
-            placeholder={
-              draft[f.key] ? undefined : f.placeholder ?? "أدخل قيمة جديدة…"
-            }
-            value={draft[f.key] ?? ""}
-            onChange={(e) => setDraftValue(f.key, e.target.value)}
-            autoComplete="off"
+            type="checkbox"
+            checked={on}
+            onChange={(e) => setDraftValue(f.key, e.target.checked ? "1" : "0")}
+            className="focus-ring size-4 accent-[var(--primary)]"
           />
+          مفعّل
+        </span>
+      </Field>
+    );
+  }
+
+  const current = f.configured && f.masked ? `الحالي: ${f.masked}` : !f.configured && f.value ? f.value : undefined;
+
+  return (
+    <Field
+      label={
+        <>
+          {f.label}
+          <span className="ms-2 text-[10px] text-muted-foreground" dir="ltr">
+            {f.labelEn}
+          </span>
         </>
-      )}
-    </div>
+      }
+      htmlFor={f.key}
+      hint={
+        current ? (
+          <span dir="ltr" className="block text-start">
+            {current}
+          </span>
+        ) : undefined
+      }
+      suffix={<StatusBadge field={f} />}
+    >
+      <Input
+        id={f.key}
+        type={f.type === "url" ? "url" : f.secret ? "password" : "text"}
+        className="tap-target h-10 text-sm"
+        dir="ltr"
+        placeholder={draft[f.key] ? undefined : (f.placeholder ?? "أدخل قيمة جديدة…")}
+        value={draft[f.key] ?? ""}
+        onChange={(e) => setDraftValue(f.key, e.target.value)}
+        aria-describedby={current ? `${f.key}-hint` : undefined}
+        autoComplete="off"
+      />
+    </Field>
   );
 }
 
@@ -420,20 +489,16 @@ function StatusBadge({ field }: { field: ConfigField }) {
       className={cn(
         "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium",
         field.configured
-          ? "bg-green-500/15 text-green-600 dark:text-green-400"
+          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
           : "bg-secondary text-muted-foreground",
       )}
     >
       {field.configured ? (
-        <CheckCircle2 className="h-3 w-3" />
+        <CheckCircle2 className="size-3" aria-hidden />
       ) : (
-        <Circle className="h-3 w-3" />
+        <Circle className="size-3" aria-hidden />
       )}
-      {field.configured
-        ? field.source === "db"
-          ? "محفوظ"
-          : ".env"
-        : "غير مُعدّ"}
+      {field.configured ? (field.source === "db" ? "محفوظ" : ".env") : "غير مُعدّ"}
     </span>
   );
 }

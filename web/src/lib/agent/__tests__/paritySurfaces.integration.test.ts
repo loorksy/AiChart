@@ -22,7 +22,14 @@ let orchestrator: typeof import("@/lib/agent/orchestrator");
 let parity: typeof import("@/lib/agent/parityLog");
 let revisions: typeof import("@/lib/recommendations/canonical/revisions");
 let userId = 0;
-const fixtureNow = Date.now();
+/**
+ * Frozen to a mid-session Wednesday (2026-07-15 12:00 UTC), NOT Date.now().
+ * The live clock made this suite fail every weekend: with forex closed, the
+ * "last closed bar" anchor steps back to Friday's close instead of 15 minutes,
+ * so the two surfaces were compared against different bars. A fixture that
+ * changes meaning by the day of the week tests the calendar, not parity.
+ */
+const fixtureNow = Date.UTC(2026, 6, 15, 12, 0, 0);
 
 /**
  * `skipWeekends` is off for the daily series on purpose.

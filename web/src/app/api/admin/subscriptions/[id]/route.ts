@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, handleError, requireAdmin } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { initDb, queryOne } from "@/lib/db";
 import { logAudit } from "@/lib/store";
 import {
@@ -20,7 +21,7 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> },
 ) {
   try {
-    const admin = await requireAdmin();
+    const { admin } = await requireAdminWith("billing_write");
     await initDb();
     const { id } = await ctx.params;
     const userId = Number(id);
