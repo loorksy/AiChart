@@ -11,11 +11,15 @@ import { AdminUsagePanel } from "@/components/admin/AdminUsagePanel";
 import { AdminUsersTable } from "@/components/admin/AdminUsersTable";
 import { AdminSubscriptionsPanel } from "@/components/admin/AdminSubscriptionsPanel";
 import { AdminBillingPanel } from "@/components/admin/AdminBillingPanel";
+import { AdminTeamPanel } from "@/components/admin/AdminTeamPanel";
+import { AdminSupportPanel } from "@/components/admin/AdminSupportPanel";
 import { ProfileSection } from "@/components/bridge/sections/ProfileSection";
 import type { ComponentProps } from "react";
 
 const TABS = [
   { id: "users", label: "المستخدمون" },
+  { id: "team", label: "المشرفون" },
+  { id: "support", label: "الدعم" },
   { id: "billing", label: "الفوترة والأرباح" },
   { id: "subscriptions", label: "الاشتراكات" },
   { id: "keys", label: "المفاتيح" },
@@ -94,6 +98,8 @@ export function PlatformSection({
           mode="full"
         />
       )}
+      {tab === "team" && isAdmin && <AdminTeamPanel />}
+      {tab === "support" && isAdmin && <AdminSupportPanel />}
       {tab === "billing" && isAdmin && <AdminBillingPanel />}
       {tab === "subscriptions" && isAdmin && <AdminSubscriptionsPanel />}
       {tab === "keys" && isAdmin && <AdminKeysPanel />}
