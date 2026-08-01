@@ -9,7 +9,13 @@ const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
 
 test("APP_NAV has Chart/Chat, unified Performance, Journal — no Chat History page", () => {
   const userHrefs = navForRole("user", "full").map((i) => i.href);
-  assert.deepEqual(userHrefs, ["/console", "/performance", "/journal"]);
+  assert.deepEqual(userHrefs, [
+    "/console",
+    "/performance",
+    "/journal",
+    "/console/billing",
+    "/console/support",
+  ]);
   assert.ok(!userHrefs.includes("/console/chats"));
   assert.ok(!APP_NAV.some((i) => i.labelKey === "nav.chat_history"));
 });

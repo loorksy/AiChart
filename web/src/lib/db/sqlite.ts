@@ -122,6 +122,155 @@ const SCHEMA = `
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  -- V2-A1: one row per LLM call. user_id NULL = platform/system spend.
+  CREATE TABLE IF NOT EXISTS usage_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER,
+    ts                INTEGER NOT NULL,
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    kind              TEXT NOT NULL DEFAULT 'other',
+    input_tokens      INTEGER NOT NULL DEFAULT 0,
+    output_tokens     INTEGER NOT NULL DEFAULT 0,
+    provider_cost_usd REAL,
+    retail_cost_usd   REAL,
+    request_id        TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_usage_events_user_ts ON usage_events(user_id, ts);
+  CREATE INDEX IF NOT EXISTS idx_usage_events_ts ON usage_events(ts);
+
+  -- V2-A1: admin-editable provider list prices (USD per 1M tokens).
+  CREATE TABLE IF NOT EXISTS model_prices (
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    input_usd_per_m   REAL NOT NULL,
+    output_usd_per_m  REAL NOT NULL,
+    updated_at        INTEGER NOT NULL,
+    PRIMARY KEY (provider, model)
+  );
+
+  -- V2-A2: one active subscription per user (v0 model: tier + included credits).
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    user_id                INTEGER PRIMARY KEY,
+    tier                   TEXT NOT NULL,
+    status                 TEXT NOT NULL DEFAULT 'active',
+    started_at             INTEGER NOT NULL,
+    current_period_start   INTEGER NOT NULL,
+    current_period_end     INTEGER NOT NULL,
+    stripe_customer_id     TEXT,
+    stripe_subscription_id TEXT,
+    updated_at             INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- V2-A2: audit trail of every credit movement (USD retail).
+  CREATE TABLE IF NOT EXISTS credit_ledger (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    ts          INTEGER NOT NULL,
+    kind        TEXT NOT NULL,
+    amount_usd  REAL NOT NULL,
+    bucket      TEXT NOT NULL DEFAULT 'monthly',
+    ref         TEXT,
+    note        TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_credit_ledger_user_ts ON credit_ledger(user_id, ts);
+
+  -- V2-A2: fast-path balances the gate reads (ledger stays the audit truth).
+  CREATE TABLE IF NOT EXISTS credit_balances (
+    user_id     INTEGER PRIMARY KEY,
+    monthly_usd REAL NOT NULL DEFAULT 0,
+    topup_usd   REAL NOT NULL DEFAULT 0,
+    period_end  INTEGER,
+    updated_at  INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- V2-A3: webhook idempotency — one row per applied Stripe event.
+  CREATE TABLE IF NOT EXISTS stripe_events (
+    id   TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    ts   INTEGER NOT NULL
+  );
+
+  -- V2-C: support tickets, answered first by the docs-grounded bot.
+  CREATE TABLE IF NOT EXISTS support_tickets (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    subject     TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',
+    assigned_to INTEGER,
+    needs_human INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status, updated_at);
+
+  CREATE TABLE IF NOT EXISTS support_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id  INTEGER NOT NULL,
+    author     TEXT NOT NULL,
+    author_id  INTEGER,
+    body       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages(ticket_id, created_at);
+
+  -- V2-B: MetaApi deploy-hour metering (billed only while deployed).
+  CREATE TABLE IF NOT EXISTS metaapi_deploy_sessions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    account_id    TEXT NOT NULL,
+    deployed_at   INTEGER NOT NULL,
+    undeployed_at INTEGER,
+    hours         REAL,
+    retail_usd    REAL,
+    reason        TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_metaapi_sessions_user ON metaapi_deploy_sessions(user_id, deployed_at);
+
+  -- V2-B: presence heartbeat driving deploy/undeploy.
+  CREATE TABLE IF NOT EXISTS mt_presence (
+    user_id   INTEGER PRIMARY KEY,
+    last_seen INTEGER NOT NULL
+  );
+
+  -- V2-A6: fine-grained admin roles (role='admin' users are implicit owners).
+  CREATE TABLE IF NOT EXISTS admin_roles (
+    user_id    INTEGER PRIMARY KEY,
+    admin_role TEXT NOT NULL,
+    granted_by INTEGER,
+    granted_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- V2-A6: who did what in the admin panel — money and permission actions.
+  CREATE TABLE IF NOT EXISTS admin_audit (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id INTEGER NOT NULL,
+    action   TEXT NOT NULL,
+    target   TEXT,
+    detail   TEXT,
+    ts       INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_admin_audit_ts ON admin_audit(ts);
+
+  -- V2-A4: external identity links (Google today; provider column keeps it open).
+  CREATE TABLE IF NOT EXISTS oauth_identities (
+    provider   TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    user_id    INTEGER NOT NULL,
+    email      TEXT,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (provider, subject),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_oauth_identities_user ON oauth_identities(user_id);
+
   CREATE TABLE IF NOT EXISTS trade_intents (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id           INTEGER NOT NULL,
@@ -1181,6 +1330,13 @@ function migrate(db: Database.Database) {
   const recCols = db
     .prepare("PRAGMA table_info(recommendations)")
     .all() as { name: string }[];
+  // V2-C: dynamic_pages carries blog posts and docs alongside legal pages.
+  const dpCols = db
+    .prepare("PRAGMA table_info(dynamic_pages)")
+    .all() as { name: string }[];
+  if (!dpCols.some((c) => c.name === "kind")) {
+    db.exec("ALTER TABLE dynamic_pages ADD COLUMN kind TEXT NOT NULL DEFAULT 'page'");
+  }
   if (!recCols.some((c) => c.name === "factors")) {
     db.exec("ALTER TABLE recommendations ADD COLUMN factors TEXT");
   }

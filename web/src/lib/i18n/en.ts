@@ -564,6 +564,8 @@ export const en = {
 
   // Performance journal
   "nav.journal": "Journal",
+  "nav.billing": "Billing",
+  "nav.support": "Support",
   "journal.title": "Performance Journal",
   "journal.subtitle":
     "What you followed, what you skipped, and how closely executed trades matched their plans. Descriptive only — it never gates a recommendation.",

@@ -3,6 +3,7 @@ import { Cairo, Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { SkipLink } from "@/components/SkipLink";
+import { CookieConsent } from "@/components/CookieConsent";
 import "./globals.css";
 
 const cairo = Cairo({
@@ -77,6 +78,7 @@ export default function RootLayout({
             >
               {children}
             </div>
+            <CookieConsent />
           </ThemeProvider>
         </LocaleProvider>
       </body>

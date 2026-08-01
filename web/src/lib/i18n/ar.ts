@@ -563,6 +563,8 @@ export const ar: Record<TranslationKey, string> = {
 
   // Performance journal
   "nav.journal": "سجل الأداء",
+  "nav.billing": "الفوترة والرصيد",
+  "nav.support": "الدعم",
   "journal.title": "سجل الأداء",
   "journal.subtitle":
     "ما اتبعته وما تجاهلته، ومدى تطابق الصفقات المنفَّذة مع خططها. وصفي فقط — لا يؤثر على أي توصية.",

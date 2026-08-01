@@ -24,6 +24,7 @@ import {
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isAllowedModelRef } from "./modelCatalog";
 import { getPlatformValue, getPlatformValueAsync } from "./platformConfig";
+import { recordLLMUsage } from "./billing/usageMeter";
 import { createLogger } from "./logger";
 
 const llmLog = createLogger("llm");
@@ -214,6 +215,19 @@ function compatTarget(model: string): OpenAICompatTarget {
   };
 }
 
+/**
+ * V2-A1: every successful call meters its provider-reported token counts.
+ * Fire-and-forget by design — metering must never slow or fail a call.
+ */
+function meterUsage(provider: LLMProvider, model: string, res: AnthropicResponse): void {
+  recordLLMUsage({
+    provider,
+    model,
+    inputTokens: res.usage?.input_tokens ?? 0,
+    outputTokens: res.usage?.output_tokens ?? 0,
+  });
+}
+
 export interface LLMCallParams {
   system: SystemPromptInput;
   messages: Message[];
@@ -248,16 +262,18 @@ export async function callLLM(
   const model = modelForTier(tier);
   const started = performance.now();
   try {
-    if (provider === "anthropic") {
-      // Native Messages API — the platform's internal wire shape already IS
-      // Anthropic's, so no translation layer is needed on this path.
-      return await callAnthropic({ ...params, model, signal: opts?.signal });
-    }
-    return await callOpenAICompat(compatTarget(model), {
-      ...params,
-      system: flattenSystem(params.system),
-      signal: opts?.signal,
-    });
+    const res =
+      provider === "anthropic"
+        ? // Native Messages API — the platform's internal wire shape already IS
+          // Anthropic's, so no translation layer is needed on this path.
+          await callAnthropic({ ...params, model, signal: opts?.signal })
+        : await callOpenAICompat(compatTarget(model), {
+            ...params,
+            system: flattenSystem(params.system),
+            signal: opts?.signal,
+          });
+    meterUsage(provider, model, res);
+    return res;
   } finally {
     // Before/after measurement (item 15): tier + model + wall time, no content.
     llmLog.debug("llm.call", { provider, tier, model, durationMs: Math.round(performance.now() - started) });
@@ -274,17 +290,19 @@ export async function callLLMStream(
   const model = modelForTier(tier);
   const started = performance.now();
   try {
-    if (provider === "anthropic") {
-      return await callAnthropicStream(
-        { ...params, model, signal: opts?.signal },
-        handlers,
-      );
-    }
-    return await callOpenAICompatStream(
-      compatTarget(model),
-      { ...params, system: flattenSystem(params.system), signal: opts?.signal },
-      handlers,
-    );
+    const res =
+      provider === "anthropic"
+        ? await callAnthropicStream(
+            { ...params, model, signal: opts?.signal },
+            handlers,
+          )
+        : await callOpenAICompatStream(
+            compatTarget(model),
+            { ...params, system: flattenSystem(params.system), signal: opts?.signal },
+            handlers,
+          );
+    meterUsage(provider, model, res);
+    return res;
   } finally {
     llmLog.debug("llm.call.stream", { provider, tier, model, durationMs: Math.round(performance.now() - started) });
   }
