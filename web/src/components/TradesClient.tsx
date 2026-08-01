@@ -8,6 +8,7 @@ import { AgentActivityFeed } from "@/components/ui/agent-activity-feed";
 import { useAgentActivities } from "@/hooks/useAgentActivities";
 import { MessageLoading } from "@/components/ui/message-loading";
 import { PageLayout, SectionTitle, SurfaceCard } from "@/components/ui/shell";
+import { Button } from "@/components/squareui/button";
 import { consumeSse } from "@/lib/sse";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n";
@@ -148,8 +149,8 @@ export default function TradesClient({
                     className={cn(
                       "shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold",
                       intent.side === "buy"
-                        ? "bg-primary/10 text-primary"
-                        : "bg-destructive/10 text-destructive",
+                        ? "bg-buy/10 text-buy"
+                        : "bg-sell/10 text-sell",
                     )}
                   >
                     {sideLabel(intent.side)} ·{" "}
@@ -172,9 +173,9 @@ export default function TradesClient({
                   />
                 )}
                 <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    className="btn btn-primary flex-1 py-2 text-sm"
+                  <Button
+                    size="xl"
+                    className="flex-1"
                     disabled={busyId === intent.id}
                     onClick={() => void act(intent.id, "approve")}
                   >
@@ -185,15 +186,16 @@ export default function TradesClient({
                     ) : (
                       t("trades.approve_execute")
                     )}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger flex-1 py-2 text-sm"
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="xl"
+                    className="flex-1"
                     disabled={busyId === intent.id}
                     onClick={() => void act(intent.id, "reject")}
                   >
                     {t("trades.reject")}
-                  </button>
+                  </Button>
                 </div>
               </SurfaceCard>
             ))}
@@ -221,14 +223,15 @@ export default function TradesClient({
                   {sideLabel(trade.side)} · <span dir="ltr">{trade.qty}</span> @{" "}
                   <span dir="ltr">{trade.avg_price}</span>
                 </p>
-                <button
-                  type="button"
-                  className="btn btn-secondary w-full py-2 text-sm"
+                <Button
+                  variant="outline"
+                  size="xl"
+                  className="w-full"
                   disabled={closingId === trade.id}
                   onClick={() => void closeTrade(trade.id)}
                 >
                   {closingId === trade.id ? t("trades.closing") : t("trades.close")}
-                </button>
+                </Button>
               </SurfaceCard>
             ))}
           </div>
@@ -269,7 +272,7 @@ export default function TradesClient({
                     <td
                       className={cn(
                         "p-3 font-mono",
-                        trade.pnl >= 0 ? "text-primary" : "text-destructive",
+                        trade.pnl >= 0 ? "text-buy" : "text-sell",
                       )}
                       dir="ltr"
                     >

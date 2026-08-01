@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useLocale } from "@/components/LocaleProvider";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
+import { buttonVariants } from "@/components/squareui/button";
 
 export function LandingCta() {
   const { locale } = useLocale();
@@ -18,13 +19,20 @@ export function LandingCta() {
         <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <Link
             href={LANDING_ROUTES.signup}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-foreground px-5 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
+            className={buttonVariants({
+              size: "xl",
+              className: "w-full px-6 sm:w-auto",
+            })}
           >
             {c.primary}
           </Link>
           <Link
             href={LANDING_ROUTES.login}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto"
+            className={buttonVariants({
+              variant: "outline",
+              size: "xl",
+              className: "w-full px-6 sm:w-auto",
+            })}
           >
             {c.secondary}
           </Link>

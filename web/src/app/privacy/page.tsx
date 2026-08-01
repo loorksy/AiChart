@@ -8,16 +8,16 @@ export const metadata = {
 /** Privacy policy — required for the ChatGPT Apps store listing. */
 export default function PrivacyPage() {
   return (
-    <main dir="rtl" className="mx-auto max-w-3xl px-6 py-14 text-slate-200">
-      <h1 className="mb-6 text-2xl font-bold text-white">سياسة الخصوصية</h1>
-      <p className="mb-4 text-sm leading-7 text-slate-400">
+    <main dir="rtl" className="mx-auto max-w-3xl bg-background px-6 py-14 text-foreground">
+      <h1 className="mb-6 text-2xl font-bold text-foreground">سياسة الخصوصية</h1>
+      <p className="mb-4 text-sm leading-7 text-muted-foreground">
         آخر تحديث: يوليو 2026 — تنطبق هذه السياسة على منصة {BRAND_NAME}
         {" "}({BRAND_DOMAIN}) وتكاملاتها مع مساعدي الذكاء الاصطناعي (Claude،
         ChatGPT) عبر موصل آمن.
       </p>
-      <section className="space-y-5 text-sm leading-7">
+      <section className="space-y-5 text-sm leading-7 text-foreground/90">
         <div>
-          <h2 className="mb-1 font-semibold text-white">البيانات التي نجمعها</h2>
+          <h2 className="mb-1 font-semibold text-foreground">البيانات التي نجمعها</h2>
           <p>
             بيانات الحساب (البريد الإلكتروني، اسم المستخدم)، إعدادات التداول،
             التوصيات والرسومات المحفوظة على شارتاتك، وسجلّ استخدام أدوات
@@ -26,7 +26,7 @@ export default function PrivacyPage() {
           </p>
         </div>
         <div>
-          <h2 className="mb-1 font-semibold text-white">
+          <h2 className="mb-1 font-semibold text-foreground">
             التكامل مع مساعدي الذكاء الاصطناعي
           </h2>
           <p>
@@ -37,7 +37,7 @@ export default function PrivacyPage() {
           </p>
         </div>
         <div>
-          <h2 className="mb-1 font-semibold text-white">أوامر التداول</h2>
+          <h2 className="mb-1 font-semibold text-foreground">أوامر التداول</h2>
           <p>
             أي أمر تنفيذ (فتح/إغلاق/تعديل صفقة) يمر عبر ضوابط إدارة المخاطر
             الخاصة بك ووضع الموافقة الذي تحدده. المنصة لا تنفّذ صفقات دون
@@ -45,7 +45,7 @@ export default function PrivacyPage() {
           </p>
         </div>
         <div>
-          <h2 className="mb-1 font-semibold text-white">مشاركة البيانات</h2>
+          <h2 className="mb-1 font-semibold text-foreground">مشاركة البيانات</h2>
           <p>
             لا نبيع بياناتك. تُستخدم خدمات طرف ثالث لتشغيل المنصة فقط: مزوّد
             نماذج الذكاء الاصطناعي (لتحليل السوق)، ومزوّدو بيانات الأسعار
@@ -53,7 +53,7 @@ export default function PrivacyPage() {
           </p>
         </div>
         <div>
-          <h2 className="mb-1 font-semibold text-white">حقوقك</h2>
+          <h2 className="mb-1 font-semibold text-foreground">حقوقك</h2>
           <p>
             يمكنك طلب حذف حسابك وبياناتك كاملةً بمراسلتنا. للدعم والاستفسارات:
             loorksy@gmail.com

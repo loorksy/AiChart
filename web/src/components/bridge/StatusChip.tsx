@@ -7,24 +7,28 @@ const TONE: Record<
   StatusChipTone,
   { pill: string; dot: string; ping: string }
 > = {
+  // Tokens, not raw palette steps: a fixed `*-400` foreground is tuned for the
+  // dark surface only, so on the light console these pills rendered as dark
+  // slugs with near-unreadable text. Every token below carries its own
+  // light/dark pair.
   ok: {
-    pill: "bg-green-500/10 text-green-400 border-green-500/25",
-    dot: "bg-green-400",
-    ping: "bg-green-400",
+    pill: "bg-buy/10 text-buy border-buy/25",
+    dot: "bg-buy",
+    ping: "bg-buy",
   },
   warn: {
-    pill: "bg-amber-500/10 text-amber-400 border-amber-500/25",
-    dot: "bg-amber-400",
-    ping: "bg-amber-400",
+    pill: "bg-warning/10 text-warning border-warning/25",
+    dot: "bg-warning",
+    ping: "bg-warning",
   },
   error: {
-    pill: "bg-red-500/10 text-red-400 border-red-500/25",
-    dot: "bg-red-400",
-    ping: "bg-red-400",
+    pill: "bg-destructive/10 text-destructive border-destructive/25",
+    dot: "bg-destructive",
+    ping: "bg-destructive",
   },
   neutral: {
-    pill: "bg-zinc-800/60 text-zinc-500 border-zinc-700/40",
-    dot: "bg-zinc-600",
+    pill: "bg-muted text-muted-foreground border-border",
+    dot: "bg-muted-foreground/60",
     ping: "",
   },
 };

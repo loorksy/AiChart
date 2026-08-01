@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, RefreshCw } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
+import { Button, buttonVariants } from "@/components/squareui/button";
+import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/useLocale";
 import type { EaConnectionMeta } from "@/lib/types";
 import type { MtPlatform } from "@/lib/markets/types";
@@ -120,20 +122,21 @@ export function EaConnectCard({
         <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
           <div className="text-sm">
             <span
-              className={connection.online ? "text-accent-gold" : "text-amber-500"}
+              className={connection.online ? "text-buy" : "text-warning"}
             >
               ● {statusLabel}
             </span>{" "}
             — {connection.platform.toUpperCase()}
             {connection.broker_name ? ` · ${connection.broker_name}` : ""}
           </div>
-          <button
+          <Button
+            variant="destructive"
+            size="xl"
             onClick={revoke}
             disabled={busy}
-            className="btn btn-danger min-h-11 text-sm"
           >
             {isRtl ? "إلغاء" : "Disconnect"}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -165,16 +168,17 @@ export function EaConnectCard({
               >
                 {token}
               </code>
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11 shrink-0 sm:min-h-8"
                 onClick={() => void copyToken()}
-                className="btn btn-secondary min-h-11 shrink-0 gap-1 text-xs"
               >
-                <Copy className="h-3.5 w-3.5" />
+                <Copy className="h-3.5 w-3.5" aria-hidden />
                 {copied
                   ? (isRtl ? "نُسخ" : "Copied")
                   : (isRtl ? "نسخ" : "Copy")}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -192,27 +196,26 @@ export function EaConnectCard({
           </p>
         )}
 
-        <button
-          type="button"
+        <Button
+          size="xl"
           onClick={() => void generate()}
           disabled={busy}
-          className="btn btn-primary min-h-11 gap-2"
         >
-          <RefreshCw className="h-4 w-4" />
+          <RefreshCw className="h-4 w-4" aria-hidden />
           {busy
             ? (isRtl ? "جارٍ…" : "Working…")
             : connection
               ? (isRtl ? "توليد رمز جديد (تدوير)" : "Generate a new token (rotate)")
               : (isRtl ? "توليد رمز الربط" : "Generate connection token")}
-        </button>
+        </Button>
 
         {canDownloadEa ? (
           <a
             href="/api/ea/download"
-            className="btn btn-secondary inline-flex min-h-11 gap-2"
+            className={cn(buttonVariants({ variant: "outline", size: "xl" }))}
             download="AiChartBridge.ex5"
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-4 w-4" aria-hidden />
             {isRtl ? "تحميل AiChartBridge.ex5" : "Download AiChartBridge.ex5"}
           </a>
         ) : (

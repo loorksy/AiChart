@@ -51,7 +51,7 @@ function StatusPill({
     <div
       style={{ "--motion-index": index } as CSSProperties}
       className={cn(
-        "motion-rise-in motion-stagger flex items-start gap-3 rounded-xl border p-4",
+        "motion-rise-in motion-stagger elevation-1 flex items-start gap-3 rounded-[var(--radius-lg)] border p-4",
         ok
           ? "border-emerald-500/30 bg-emerald-500/[0.07]"
           : "border-destructive/40 bg-destructive/10",

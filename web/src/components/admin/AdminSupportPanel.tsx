@@ -257,19 +257,22 @@ export function AdminSupportPanel() {
 
           <AdminCardBody className="max-h-[50vh] space-y-3 overflow-y-auto">
             {(thread ?? []).length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                لا رسائل في هذه التذكرة بعد.
-              </p>
+              <EmptyState
+                icon={MessageSquare}
+                title="لا رسائل بعد"
+                description="لا رسائل في هذه التذكرة بعد."
+                className="py-6"
+              />
             ) : (
               (thread ?? []).map((m, i) => (
+                // Insets inside the card, not bordered boxes — the tint alone
+                // separates the two voices.
                 <div
                   key={m.id}
                   style={{ "--motion-index": i } as CSSProperties}
                   className={cn(
-                    "motion-fade-in motion-stagger rounded-xl border px-4 py-3 text-sm leading-relaxed",
-                    m.author === "admin"
-                      ? "border-primary/30 bg-primary/5"
-                      : "border-border bg-muted/30",
+                    "motion-fade-in motion-stagger rounded-[var(--radius)] px-4 py-3 text-sm leading-relaxed",
+                    m.author === "admin" ? "bg-primary/10" : "bg-muted/50",
                   )}
                 >
                   <p className="mb-1 text-[11px] font-semibold text-muted-foreground">

@@ -53,8 +53,15 @@
   --glow-brand: none;
   --glass-bg: #ffffff;
   --glass-border: #e4e4e7;
-  --buy: #16a34a;
+  /* 5.0:1 on white — all P&L text routes through text-buy, so it must pass AA.
+     Chart tokens (--chart-3) intentionally keep the brighter green. */
+  --buy: #15803d;
   --sell: #dc2626;
+  /* Non-trading "healthy" state (account active, service connected).
+     Separate from --buy on purpose: buy/sell mean trade DIRECTION, and
+     reusing them for status drains that meaning — and would drag status
+     along if the trading palette is ever retuned. */
+  --success: #15803d;
   --info: #0284c7;
   --warning: #d97706;
   --chart-1: #52525b;
@@ -107,6 +114,7 @@
   --glass-border: #262626;
   --buy: #22c55e;
   --sell: #ef4444;
+  --success: #22c55e;
   --info: #38bdf8;
   --warning: #f59e0b;
   --chart-1: #a1a1aa;
@@ -155,6 +163,7 @@
   --color-surface-elevated: var(--surface-elevated);
   --color-buy: var(--buy);
   --color-sell: var(--sell);
+  --color-success: var(--success);
   --color-info: var(--info);
   --color-warning: var(--warning);
   --font-sans: var(--font-cairo), Inter, sans-serif;

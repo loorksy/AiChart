@@ -11,11 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  ArrowDown01Icon,
-  Calendar01Icon,
-  Settings01Icon,
-} from "@hugeicons/core-free-icons";
+import { Settings01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/squareui/button";
 import {
   ChartContainer,
@@ -28,28 +24,37 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/squareui/dropdown-menu";
+import { EmptyState } from "@/components/admin/ui/AdminKit";
 import { SkeletonBlock } from "@/components/ui/skeleton";
-import type { DashboardPeriod, OverviewSeriesPoint } from "@/lib/admin/overviewQueries";
+import type { OverviewSeriesPoint } from "@/lib/admin/overviewQueries";
 import { cn } from "@/lib/utils";
-import { useAdminDashboardStore, type SeriesKey } from "./dashboardStore";
+import {
+  useAdminDashboardStore,
+  type ChartKind,
+  type SeriesKey,
+} from "./dashboardStore";
 import { formatDayLabel, formatDayTick, formatUsd, formatUsdCompact } from "./format";
 
 /**
  * Daily revenue / provider cost / net profit for the selected window.
+ *
+ * The window itself is owned by the page-level 7/30/90 segmented control in
+ * PlatformDashboard's SectionHeader — this card deliberately carries no second
+ * period picker.
  *
  * Colours come from the product's own --chart-* tokens rather than a `useTheme()`
  * read: an SVG `stroke="var(--chart-1)"` re-resolves the moment the `dark` class
  * flips, so the chart follows the theme with no re-render and no risk of a
  * server/client mismatch on first paint.
  */
-
-const PERIODS: DashboardPeriod[] = [7, 30, 90];
 
 const SERIES_META: { key: SeriesKey; label: string; color: string }[] = [
   { key: "revenue", label: "الإيراد", color: "var(--chart-1)" },
@@ -112,8 +117,6 @@ export function DashboardProfitChart({
   loading: boolean;
   className?: string;
 }) {
-  const period = useAdminDashboardStore((s) => s.period);
-  const setPeriod = useAdminDashboardStore((s) => s.setPeriod);
   const chartKind = useAdminDashboardStore((s) => s.chartKind);
   const setChartKind = useAdminDashboardStore((s) => s.setChartKind);
   const showGrid = useAdminDashboardStore((s) => s.showGrid);
@@ -141,13 +144,13 @@ export function DashboardProfitChart({
   return (
     <div
       className={cn(
-        "bg-card text-card-foreground flex min-w-0 flex-col rounded-xl border",
+        "elevation-1 flex min-w-0 flex-col rounded-[var(--radius-lg)] border border-border bg-card text-card-foreground",
         className,
       )}
     >
-      <div className="flex flex-col gap-3 border-b border-border/50 p-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium sm:text-base">الإيراد مقابل التكلفة</h3>
+          <h3 className="type-subheading">الإيراد مقابل التكلفة</h3>
           <div className="flex flex-wrap items-center gap-3">
             {SERIES_META.map((s) => (
               <button
@@ -156,7 +159,7 @@ export function DashboardProfitChart({
                 onClick={() => toggleSeries(s.key)}
                 aria-pressed={visibleSeries[s.key]}
                 className={cn(
-                  "flex items-center gap-1.5 text-xs transition-colors",
+                  "focus-ring tap-target-expand flex items-center gap-1.5 rounded text-xs transition-colors duration-150 ease-out",
                   visibleSeries[s.key]
                     ? "text-foreground"
                     : "text-muted-foreground/60 line-through",
@@ -178,31 +181,10 @@ export function DashboardProfitChart({
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button variant="outline" size="sm" className="h-7 gap-1.5">
-                  <HugeiconsIcon icon={Calendar01Icon} className="size-3.5" />
-                  <span className="text-sm">{period} يوم</span>
-                  <HugeiconsIcon icon={ArrowDown01Icon} className="size-3" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuGroup>
-                {PERIODS.map((p) => (
-                  <DropdownMenuItem key={p} onClick={() => setPeriod(p)}>
-                    آخر {p} يوم {period === p && "✓"}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
                 <Button
                   variant="outline"
-                  size="icon"
-                  className="size-7"
+                  size="icon-sm"
+                  className="tap-target-expand"
                   aria-label="إعدادات الرسم"
                 >
                   <HugeiconsIcon icon={Settings01Icon} className="size-3.5" />
@@ -213,14 +195,13 @@ export function DashboardProfitChart({
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>نوع الرسم</DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => setChartKind("line")}>
-                      خطي {chartKind === "line" && "✓"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setChartKind("area")}>
-                      مساحي {chartKind === "area" && "✓"}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
+                  <DropdownMenuRadioGroup
+                    value={chartKind}
+                    onValueChange={(value) => setChartKind(value as ChartKind)}
+                  >
+                    <DropdownMenuRadioItem value="line">خطي</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="area">مساحي</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
               <DropdownMenuSeparator />
@@ -261,13 +242,12 @@ export function DashboardProfitChart({
         {loading ? (
           <SkeletonBlock className="h-[280px] w-full rounded-lg" />
         ) : !hasData ? (
-          <div className="flex h-[280px] flex-col items-center justify-center gap-1 text-center">
-            <p className="text-sm text-muted-foreground">
-              لا توجد حركة مالية خلال هذه الفترة.
-            </p>
-            <p className="text-xs text-muted-foreground/70">
-              جرّب توسيع الفترة إلى 90 يوماً.
-            </p>
+          <div className="flex h-[280px] items-center justify-center">
+            <EmptyState
+              title="لا توجد حركة مالية خلال هذه الفترة"
+              description="جرّب توسيع الفترة إلى 90 يوماً."
+              className="py-0"
+            />
           </div>
         ) : shown.length === 0 ? (
           <div className="flex h-[280px] items-center justify-center">

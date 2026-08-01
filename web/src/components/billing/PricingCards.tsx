@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { Check, Minus } from "lucide-react";
 
 import { Surface } from "@/components/foundation";
+import { Button, buttonVariants } from "@/components/squareui/button";
+// Existing contact destination — used only when Stripe checkout is not
+// configured, replacing the former dead disabled button (spec §3 /pricing).
+import { AICHART_PLAN } from "@/lib/subscription/plan";
 import { cn } from "@/lib/utils";
 
 interface TierCard {
@@ -95,13 +99,15 @@ export function PricingCards({
               elevation={highlight ? 3 : 1}
               className={cn(
                 "relative flex flex-col",
-                highlight && "border-primary bg-primary/5",
+                // Brand-premium gold — this highlight is one of the few legal
+                // consumers of --accent-gold (spec §1).
+                highlight && "border-accent-gold/70 bg-accent-gold/5",
               )}
             >
               {highlight && (
                 // Logical inset so the ribbon mirrors with the document
                 // direction instead of pinning itself to the right edge.
-                <span className="absolute -top-3 end-6 rounded-full bg-primary px-3 py-0.5 text-xs font-semibold text-primary-foreground">
+                <span className="absolute -top-3 end-6 rounded-full bg-accent-gold px-3 py-0.5 text-xs font-semibold text-black">
                   الأكثر اختياراً
                 </span>
               )}
@@ -112,7 +118,7 @@ export function PricingCards({
                 <span className="type-caption">{tier.nameAr}</span>
               </div>
               <p className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold tabular-nums text-foreground">
+                <span className="font-serif text-4xl font-bold tabular-nums text-foreground">
                   ${tier.priceUsd}
                 </span>
                 <span className="type-caption">/شهرياً</span>
@@ -154,25 +160,39 @@ export function PricingCards({
                 })}
               </ul>
 
-              <button
-                onClick={() => subscribe(tier.id)}
-                disabled={busy != null || !stripeReady}
-                aria-busy={busy === tier.id}
-                className={cn(
-                  "mt-6 inline-flex min-h-11 items-center justify-center rounded-[var(--radius)] px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
-                  highlight
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                    : "border border-border bg-background text-foreground hover:bg-muted",
-                )}
-              >
-                {busy === tier.id
-                  ? "جارٍ التحويل…"
-                  : stripeReady
-                    ? signedIn
+              {stripeReady ? (
+                <Button
+                  type="button"
+                  variant={highlight ? "default" : "outline"}
+                  size="xl"
+                  className="mt-6 w-full font-semibold"
+                  onClick={() => subscribe(tier.id)}
+                  disabled={busy != null}
+                  aria-busy={busy === tier.id}
+                >
+                  {busy === tier.id
+                    ? "جارٍ التحويل…"
+                    : signedIn
                       ? "اشترك الآن"
-                      : "ابدأ الآن"
-                    : "قريباً — تواصل مع الإدارة"}
-              </button>
+                      : "ابدأ الآن"}
+                </Button>
+              ) : (
+                // No checkout configured → a live contact link instead of a
+                // dead disabled button. Same destination the platform already
+                // uses for manual activation.
+                <a
+                  href={AICHART_PLAN.telegramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonVariants({
+                    variant: highlight ? "default" : "outline",
+                    size: "xl",
+                    className: "mt-6 w-full font-semibold",
+                  })}
+                >
+                  تواصل لتفعيل الاشتراك
+                </a>
+              )}
               {i === 0 && (
                 <p className="type-caption mt-3 text-center">
                   تجربة مجانية برصيد محدود عند التسجيل

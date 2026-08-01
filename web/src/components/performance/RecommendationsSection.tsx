@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ListChecks, RefreshCw } from "lucide-react";
+import { Button } from "@/components/squareui/button";
 import { useLocale } from "@/hooks/useLocale";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import { ActiveRecommendationsPanel } from "@/components/recommendations/ActiveRecommendationsPanel";
@@ -55,18 +56,19 @@ export function RecommendationsSection() {
       <SectionHeader
         title={t("rec.page.title")}
         actions={
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11 sm:min-h-8"
             onClick={() => void sweep()}
             disabled={busy}
-            className="flex min-h-11 items-center gap-1.5 rounded-[var(--radius)] border border-border/60 bg-background px-3 text-xs font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:min-h-9"
           >
             <RefreshCw
               aria-hidden="true"
               className={`h-3.5 w-3.5 ${busy ? "animate-spin motion-reduce:animate-none" : ""}`}
             />
             {t("rec.page.refresh")}
-          </button>
+          </Button>
         }
       />
 
@@ -80,18 +82,18 @@ export function RecommendationsSection() {
             title={t("agent.error")}
             description={t("agent.fault.retryable")}
             action={
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="xl"
                 onClick={() => void sweep()}
                 disabled={busy}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius)] border border-border bg-background px-4 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
                 <RefreshCw
                   aria-hidden="true"
                   className={`h-3.5 w-3.5 ${busy ? "animate-spin motion-reduce:animate-none" : ""}`}
                 />
                 {t("rec.page.refresh")}
-              </button>
+              </Button>
             }
           />
         </Surface>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Activity01Icon,
@@ -44,13 +44,16 @@ import {
   SelectValue,
 } from "@/components/squareui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/squareui/table";
+  AdminTable,
+  RecordCard,
+  TableEmptyRow,
+  TableSkeletonRows,
+  TableWrap,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from "@/components/admin/ui/AdminKit";
 import { SkeletonLine } from "@/components/ui/skeleton";
 import type { AdminOverviewUserRow } from "@/lib/admin/overviewQueries";
 import { tierDef } from "@/lib/billing/tiers";
@@ -72,6 +75,10 @@ import {
  * Deliberately has no edit affordances: every mutation (status, access window,
  * quota, deletion) already lives in AdminUsersTable under the المستخدمون tab,
  * and two write paths over one table is how they drift apart.
+ *
+ * Below 640px each row renders as an AdminKit `RecordCard` instead of a
+ * squashed table; both forms are driven by the same filtered/paged data, so
+ * they cannot drift.
  */
 
 /** Filter sentinel for "no tier"/"no subscription" — the store's "" means all. */
@@ -121,6 +128,17 @@ function compareRows(
   }
 }
 
+/**
+ * Account state, not trade direction — so this uses --success/--destructive
+ * rather than --buy/--sell. Reusing the trading pair here would make "active"
+ * read as a long position at a glance.
+ */
+function statusToneClass(status: string): string {
+  if (status === "active") return "text-success";
+  if (status === "suspended") return "text-destructive";
+  return "text-warning";
+}
+
 function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   if (!active) return <HugeiconsIcon icon={ArrowUpDownIcon} className="size-3" />;
   return (
@@ -152,7 +170,7 @@ function SortableHead({
       type="button"
       onClick={() => toggleSort(sortKey)}
       className={cn(
-        "flex items-center gap-1.5 hover:text-foreground",
+        "focus-ring tap-target-expand -mx-1 flex items-center gap-1.5 rounded px-1 py-1 transition-colors duration-150 ease-out hover:text-foreground",
         active ? "text-foreground" : "text-muted-foreground",
       )}
     >
@@ -176,9 +194,9 @@ function SortableTableHead({
   const activeKey = useAdminDashboardStore((s) => s.sortKey);
   const dir = useAdminDashboardStore((s) => s.sortDir);
   return (
-    <TableHead aria-sort={ariaSort(activeKey === sortKey, dir)}>
+    <Th aria-sort={ariaSort(activeKey === sortKey, dir)}>
       <SortableHead label={label} icon={icon} sortKey={sortKey} />
-    </TableHead>
+    </Th>
   );
 }
 
@@ -212,7 +230,7 @@ function FacetFilter({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 gap-1.5 border-border/50 bg-muted/50"
+            className="tap-target-expand h-8 gap-1.5 border-border/50 bg-muted/50"
           >
             <HugeiconsIcon icon={icon} className="size-3.5" />
             <span className="max-w-[10rem] truncate">
@@ -367,10 +385,10 @@ export function DashboardUsersTable({
   });
 
   return (
-    <div className="bg-card text-card-foreground overflow-hidden rounded-xl border">
-      <div className="flex flex-col gap-3 border-b px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="elevation-1 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-card text-card-foreground">
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <h3 className="text-base font-medium">المستخدمون والمال</h3>
+          <h3 className="type-subheading">المستخدمون والمال</h3>
           <div className="hidden h-5 w-px bg-border sm:block" />
 
           <div className="relative">
@@ -409,7 +427,12 @@ export function DashboardUsersTable({
           />
 
           {hasActiveFilters && (
-            <Button variant="ghost" size="sm" className="h-8" onClick={clearFilters}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="tap-target-expand h-8"
+              onClick={clearFilters}
+            >
               مسح كل عوامل التصفية
             </Button>
           )}
@@ -421,7 +444,7 @@ export function DashboardUsersTable({
           href="/console/platform?tab=users"
           className={cn(
             buttonVariants({ variant: "outline", size: "sm" }),
-            "h-8 gap-1.5 self-start sm:self-auto",
+            "tap-target-expand h-8 gap-1.5 self-start sm:self-auto",
           )}
         >
           <HugeiconsIcon icon={UserMultiple02Icon} className="size-3.5" />
@@ -429,230 +452,344 @@ export function DashboardUsersTable({
         </a>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/30 hover:bg-transparent">
-            <TableHead
-              className="min-w-[240px]"
-              aria-sort={ariaSort(sortKey === "email", sortDir)}
-            >
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={allOnPageSelected}
-                  onCheckedChange={() => toggleSelectAll(pageIds)}
-                  aria-label="تحديد كل الصفوف في هذه الصفحة"
-                  className="border-border/50 bg-background/70"
+      {/* ≥640px: the table, vertically bounded so the sticky header earns its keep. */}
+      <TableWrap maxHeight="max-h-[32rem]" className="hidden sm:block">
+        <AdminTable>
+          <THead sticky>
+            <tr>
+              <Th
+                className="min-w-[240px]"
+                aria-sort={ariaSort(sortKey === "email", sortDir)}
+              >
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={allOnPageSelected}
+                    onCheckedChange={() => toggleSelectAll(pageIds)}
+                    aria-label="تحديد كل الصفوف في هذه الصفحة"
+                    className="tap-target-expand border-border/50 bg-background/70"
+                  />
+                  <SortableHead label="البريد" icon={Mail01Icon} sortKey="email" />
+                </div>
+              </Th>
+              <Th>
+                <StaticHead label="المستخدم" icon={UserIcon} />
+              </Th>
+              <SortableTableHead label="الحالة" icon={Activity01Icon} sortKey="status" />
+              <SortableTableHead label="الباقة" icon={PackageIcon} sortKey="tier" />
+              <Th>
+                <StaticHead label="حالة الاشتراك" icon={CreditCardIcon} />
+              </Th>
+              <SortableTableHead
+                label="التسجيل"
+                icon={Calendar01Icon}
+                sortKey="created_at_ms"
+              />
+              {moneyVisible && (
+                <Th>
+                  <StaticHead label="الرصيد" icon={Wallet01Icon} />
+                </Th>
+              )}
+              <SortableTableHead label="الطلبات" icon={FlashIcon} sortKey="events" />
+              {moneyVisible && (
+                <SortableTableHead
+                  label="التكلفة"
+                  icon={ServerStack01Icon}
+                  sortKey="provider_cost_usd"
                 />
-                <SortableHead label="البريد" icon={Mail01Icon} sortKey="email" />
-              </div>
-            </TableHead>
-            <TableHead>
-              <StaticHead label="المستخدم" icon={UserIcon} />
-            </TableHead>
-            <SortableTableHead label="الحالة" icon={Activity01Icon} sortKey="status" />
-            <SortableTableHead label="الباقة" icon={PackageIcon} sortKey="tier" />
-            <TableHead>
-              <StaticHead label="حالة الاشتراك" icon={CreditCardIcon} />
-            </TableHead>
-            <SortableTableHead
-              label="التسجيل"
-              icon={Calendar01Icon}
-              sortKey="created_at_ms"
-            />
-            {moneyVisible && (
-              <TableHead>
-                <StaticHead label="الرصيد" icon={Wallet01Icon} />
-              </TableHead>
-            )}
-            <SortableTableHead label="الطلبات" icon={FlashIcon} sortKey="events" />
-            {moneyVisible && (
+              )}
+              {moneyVisible && (
+                <Th>
+                  <StaticHead label="الاستهلاك" icon={Invoice01Icon} />
+                </Th>
+              )}
+              {profitVisible && (
+                <SortableTableHead
+                  label="الإيراد"
+                  icon={CoinsDollarIcon}
+                  sortKey="revenue_usd"
+                />
+              )}
+              {profitVisible && (
+                <SortableTableHead
+                  label="الربح"
+                  icon={MoneyBag02Icon}
+                  sortKey="profit_usd"
+                />
+              )}
               <SortableTableHead
-                label="التكلفة"
-                icon={ServerStack01Icon}
-                sortKey="provider_cost_usd"
+                label="آخر نشاط"
+                icon={Activity01Icon}
+                sortKey="last_event_ms"
               />
-            )}
-            {moneyVisible && (
-              <TableHead>
-                <StaticHead label="الاستهلاك" icon={Invoice01Icon} />
-              </TableHead>
-            )}
-            {profitVisible && (
-              <SortableTableHead
-                label="الإيراد"
-                icon={CoinsDollarIcon}
-                sortKey="revenue_usd"
+            </tr>
+          </THead>
+
+          <tbody>
+            {loading ? (
+              <TableSkeletonRows rows={6} cols={columnCount} />
+            ) : filtered.length === 0 ? (
+              <TableEmptyRow
+                colSpan={columnCount}
+                title={
+                  rows.length === 0
+                    ? "لا توجد بيانات مستخدمين بعد"
+                    : "لا يوجد مستخدم مطابق"
+                }
+                description={
+                  rows.length === 0
+                    ? undefined
+                    : "لا يوجد مستخدم مطابق لعوامل التصفية الحالية."
+                }
               />
-            )}
-            {profitVisible && (
-              <SortableTableHead
-                label="الربح"
-                icon={MoneyBag02Icon}
-                sortKey="profit_usd"
-              />
-            )}
-            <SortableTableHead
-              label="آخر نشاط"
-              icon={Activity01Icon}
-              sortKey="last_event_ms"
-            />
-          </TableRow>
-        </TableHeader>
+            ) : (
+              pageRows.map((row) => {
+                const isSelected = selected.includes(row.user_id);
+                return (
+                  <Tr
+                    key={row.user_id}
+                    className="data-[state=selected]:bg-muted"
+                    data-state={isSelected ? "selected" : undefined}
+                  >
+                    <Td className="max-w-[280px]">
+                      <div className="flex items-center gap-2.5">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelect(row.user_id)}
+                          aria-label={`تحديد ${row.email}`}
+                          className="tap-target-expand border-border/50 bg-background/70"
+                        />
+                        <span dir="ltr" title={row.email} className="truncate text-sm font-medium">
+                          {row.email}
+                        </span>
+                      </div>
+                    </Td>
 
-        <TableBody>
-          {loading ? (
-            Array.from({ length: 6 }).map((_, i) => (
-              <TableRow key={i} className="border-border/50">
-                {Array.from({ length: columnCount }).map((__, j) => (
-                  <TableCell key={j}>
-                    <SkeletonLine width={j === 0 ? "w-48" : "w-16"} />
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : filtered.length === 0 ? (
-            <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={columnCount} className="py-10 text-center">
-                <p className="text-sm text-muted-foreground">
-                  {rows.length === 0
-                    ? "لا توجد بيانات مستخدمين بعد."
-                    : "لا يوجد مستخدم مطابق لعوامل التصفية الحالية."}
-                </p>
-              </TableCell>
-            </TableRow>
-          ) : (
-            pageRows.map((row) => {
-              const isSelected = selected.includes(row.user_id);
-              return (
-                <TableRow
-                  key={row.user_id}
-                  className="border-border/50"
-                  data-state={isSelected ? "selected" : undefined}
-                >
-                  <TableCell className="max-w-[280px]">
-                    <div className="flex items-center gap-2.5">
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleSelect(row.user_id)}
-                        aria-label={`تحديد ${row.email}`}
-                        className="border-border/50 bg-background/70"
-                      />
-                      <span dir="ltr" title={row.email} className="truncate text-sm font-medium">
-                        {row.email}
+                    <Td className="max-w-[160px]">
+                      <span dir="ltr" className="block truncate text-sm text-muted-foreground">
+                        {row.username ? `@${row.username}` : EM_DASH}
                       </span>
-                    </div>
-                  </TableCell>
+                    </Td>
 
-                  <TableCell className="max-w-[160px]">
-                    <span dir="ltr" className="block truncate text-sm text-muted-foreground">
-                      {row.username ? `@${row.username}` : EM_DASH}
-                    </span>
-                  </TableCell>
-
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "text-sm",
-                        row.status === "active"
-                          ? "text-emerald-400"
-                          : row.status === "suspended"
-                            ? "text-pink-400"
-                            : "text-amber-400",
-                      )}
-                    >
-                      {userStatusLabelAr(row.status)}
-                    </span>
-                  </TableCell>
-
-                  <TableCell>
-                    <span className="text-sm">{tierLabelAr(row.tier)}</span>
-                  </TableCell>
-
-                  <TableCell>
-                    <span
-                      className={cn(
-                        "text-sm",
-                        row.sub_status === "active"
-                          ? "text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {subStatusLabelAr(row.sub_status)}
-                    </span>
-                  </TableCell>
-
-                  <TableCell>
-                    <span className="text-sm text-muted-foreground">
-                      {formatDate(row.created_at_ms)}
-                    </span>
-                  </TableCell>
-
-                  {moneyVisible && (
-                    <TableCell>
-                      <span className="text-sm tabular-nums" dir="ltr">
-                        {formatUsd(row.balance_usd)}
+                    <Td>
+                      <span className={cn("text-sm", statusToneClass(row.status))}>
+                        {userStatusLabelAr(row.status)}
                       </span>
-                    </TableCell>
-                  )}
+                    </Td>
 
-                  <TableCell>
-                    <span className="text-sm tabular-nums" dir="ltr">
-                      {formatInt(row.events)}
-                    </span>
-                  </TableCell>
+                    <Td>
+                      <span className="text-sm">{tierLabelAr(row.tier)}</span>
+                    </Td>
 
-                  {moneyVisible && (
-                    <TableCell>
-                      <span className="text-sm tabular-nums" dir="ltr">
-                        {formatUsd(row.provider_cost_usd)}
-                      </span>
-                    </TableCell>
-                  )}
-
-                  {moneyVisible && (
-                    <TableCell>
-                      <span className="text-sm tabular-nums text-muted-foreground" dir="ltr">
-                        {formatUsd(row.retail_burn_usd)}
-                      </span>
-                    </TableCell>
-                  )}
-
-                  {profitVisible && (
-                    <TableCell>
-                      <span className="text-sm tabular-nums" dir="ltr">
-                        {formatUsd(row.revenue_usd)}
-                      </span>
-                    </TableCell>
-                  )}
-
-                  {profitVisible && (
-                    <TableCell>
+                    <Td>
                       <span
                         className={cn(
-                          "text-sm font-medium tabular-nums",
-                          row.profit_usd < 0 ? "text-pink-400" : "text-emerald-400",
+                          "text-sm",
+                          row.sub_status === "active"
+                            ? "text-foreground"
+                            : "text-muted-foreground",
                         )}
-                        dir="ltr"
                       >
-                        {formatUsd(row.profit_usd)}
+                        {subStatusLabelAr(row.sub_status)}
                       </span>
-                    </TableCell>
-                  )}
+                    </Td>
 
-                  <TableCell>
-                    <span className="text-sm text-muted-foreground">
-                      {row.last_event_ms === null ? EM_DASH : formatDate(row.last_event_ms)}
+                    <Td>
+                      <span className="text-sm text-muted-foreground">
+                        {formatDate(row.created_at_ms)}
+                      </span>
+                    </Td>
+
+                    {moneyVisible && (
+                      <Td>
+                        <span className="text-sm tabular-nums" dir="ltr">
+                          {formatUsd(row.balance_usd)}
+                        </span>
+                      </Td>
+                    )}
+
+                    <Td>
+                      <span className="text-sm tabular-nums" dir="ltr">
+                        {formatInt(row.events)}
+                      </span>
+                    </Td>
+
+                    {moneyVisible && (
+                      <Td>
+                        <span className="text-sm tabular-nums" dir="ltr">
+                          {formatUsd(row.provider_cost_usd)}
+                        </span>
+                      </Td>
+                    )}
+
+                    {moneyVisible && (
+                      <Td>
+                        <span className="text-sm tabular-nums text-muted-foreground" dir="ltr">
+                          {formatUsd(row.retail_burn_usd)}
+                        </span>
+                      </Td>
+                    )}
+
+                    {profitVisible && (
+                      <Td>
+                        <span className="text-sm tabular-nums" dir="ltr">
+                          {formatUsd(row.revenue_usd)}
+                        </span>
+                      </Td>
+                    )}
+
+                    {profitVisible && (
+                      <Td>
+                        <span
+                          className={cn(
+                            "text-sm font-medium tabular-nums",
+                            row.profit_usd < 0 ? "text-sell" : "text-buy",
+                          )}
+                          dir="ltr"
+                        >
+                          {formatUsd(row.profit_usd)}
+                        </span>
+                      </Td>
+                    )}
+
+                    <Td>
+                      <span className="text-sm text-muted-foreground">
+                        {row.last_event_ms === null ? EM_DASH : formatDate(row.last_event_ms)}
+                      </span>
+                    </Td>
+                  </Tr>
+                );
+              })
+            )}
+          </tbody>
+        </AdminTable>
+      </TableWrap>
+
+      {/* <640px: the same page of rows as labelled cards — never a squashed grid. */}
+      <div className="space-y-3 p-3 sm:hidden">
+        {loading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="space-y-2 rounded-[var(--radius-lg)] border border-border bg-card p-3.5"
+            >
+              <SkeletonLine width="w-40" />
+              <SkeletonLine width="w-24" />
+            </div>
+          ))
+        ) : filtered.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+            {rows.length === 0
+              ? "لا توجد بيانات مستخدمين بعد."
+              : "لا يوجد مستخدم مطابق لعوامل التصفية الحالية."}
+          </p>
+        ) : (
+          pageRows.map((row, i) => {
+            const isSelected = selected.includes(row.user_id);
+            const fields: { label: string; value: ReactNode }[] = [
+              { label: "الباقة", value: tierLabelAr(row.tier) },
+              { label: "حالة الاشتراك", value: subStatusLabelAr(row.sub_status) },
+              { label: "التسجيل", value: formatDate(row.created_at_ms) },
+              {
+                label: "الطلبات",
+                value: (
+                  <span dir="ltr" className="tabular-nums">
+                    {formatInt(row.events)}
+                  </span>
+                ),
+              },
+            ];
+            if (moneyVisible) {
+              fields.push(
+                {
+                  label: "الرصيد",
+                  value: (
+                    <span dir="ltr" className="tabular-nums">
+                      {formatUsd(row.balance_usd)}
                     </span>
-                  </TableCell>
-                </TableRow>
+                  ),
+                },
+                {
+                  label: "التكلفة",
+                  value: (
+                    <span dir="ltr" className="tabular-nums">
+                      {formatUsd(row.provider_cost_usd)}
+                    </span>
+                  ),
+                },
               );
-            })
-          )}
-        </TableBody>
-      </Table>
+            }
+            if (profitVisible) {
+              fields.push(
+                {
+                  label: "الإيراد",
+                  value: (
+                    <span dir="ltr" className="tabular-nums">
+                      {formatUsd(row.revenue_usd)}
+                    </span>
+                  ),
+                },
+                {
+                  label: "الربح",
+                  value: (
+                    <span
+                      dir="ltr"
+                      className={cn(
+                        "font-medium tabular-nums",
+                        row.profit_usd < 0 ? "text-sell" : "text-buy",
+                      )}
+                    >
+                      {formatUsd(row.profit_usd)}
+                    </span>
+                  ),
+                },
+              );
+            }
+            fields.push({
+              label: "آخر نشاط",
+              value: row.last_event_ms === null ? EM_DASH : formatDate(row.last_event_ms),
+            });
+
+            return (
+              <RecordCard
+                key={row.user_id}
+                index={i}
+                title={
+                  <span dir="ltr" title={row.email} className="block truncate text-start">
+                    {row.email}
+                  </span>
+                }
+                subtitle={
+                  row.username ? (
+                    <span dir="ltr" className="block truncate text-start">
+                      @{row.username}
+                    </span>
+                  ) : undefined
+                }
+                badge={
+                  <span className={cn("text-xs", statusToneClass(row.status))}>
+                    {userStatusLabelAr(row.status)}
+                  </span>
+                }
+                fields={fields}
+                actions={
+                  <label className="flex min-h-11 items-center gap-2 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => toggleSelect(row.user_id)}
+                      aria-label={`تحديد ${row.email}`}
+                      className="tap-target-expand border-border/50 bg-background/70"
+                    />
+                    <span>تحديد للحساب الجماعي</span>
+                  </label>
+                }
+              />
+            );
+          })
+        )}
+      </div>
 
       {selected.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t bg-muted/30 px-4 py-2.5 text-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border bg-muted/30 px-4 py-2.5 text-sm">
           <span className="font-medium">
             محدد: {formatInt(selected.length)} مستخدم
           </span>
@@ -670,7 +807,7 @@ export function DashboardUsersTable({
                   dir="ltr"
                   className={cn(
                     "tabular-nums",
-                    selectedTotals.profit < 0 ? "text-pink-400" : "text-emerald-400",
+                    selectedTotals.profit < 0 ? "text-sell" : "text-buy",
                   )}
                 >
                   {formatUsd(selectedTotals.profit)}
@@ -689,7 +826,7 @@ export function DashboardUsersTable({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 ms-auto"
+            className="tap-target-expand h-7 ms-auto"
             onClick={() => toggleSelectAll(selected)}
           >
             إلغاء التحديد
@@ -697,7 +834,7 @@ export function DashboardUsersTable({
         </div>
       )}
 
-      <div className="flex flex-col items-center justify-between gap-4 border-t px-4 py-3 sm:flex-row">
+      <div className="flex flex-col items-center justify-between gap-4 border-t border-border px-4 py-3 sm:flex-row">
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span>
             عرض {formatInt(filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1)} إلى{" "}
@@ -732,8 +869,8 @@ export function DashboardUsersTable({
         <div className="flex items-center gap-1">
           <Button
             variant="outline"
-            size="icon"
-            className="size-8"
+            size="icon-sm"
+            className="tap-target-expand"
             aria-label="الصفحة الأولى"
             onClick={() => setPage(1)}
             disabled={safePage === 1}
@@ -742,8 +879,8 @@ export function DashboardUsersTable({
           </Button>
           <Button
             variant="outline"
-            size="icon"
-            className="size-8"
+            size="icon-sm"
+            className="tap-target-expand"
             aria-label="الصفحة السابقة"
             onClick={() => setPage(safePage - 1)}
             disabled={safePage === 1}
@@ -756,8 +893,8 @@ export function DashboardUsersTable({
               <Button
                 key={pageNum}
                 variant={safePage === pageNum ? "default" : "outline"}
-                size="icon"
-                className="size-8 tabular-nums"
+                size="icon-sm"
+                className="tap-target-expand tabular-nums"
                 aria-current={safePage === pageNum ? "page" : undefined}
                 onClick={() => setPage(pageNum)}
               >
@@ -768,8 +905,8 @@ export function DashboardUsersTable({
 
           <Button
             variant="outline"
-            size="icon"
-            className="size-8"
+            size="icon-sm"
+            className="tap-target-expand"
             aria-label="الصفحة التالية"
             onClick={() => setPage(safePage + 1)}
             disabled={safePage === totalPages}
@@ -778,8 +915,8 @@ export function DashboardUsersTable({
           </Button>
           <Button
             variant="outline"
-            size="icon"
-            className="size-8"
+            size="icon-sm"
+            className="tap-target-expand"
             aria-label="الصفحة الأخيرة"
             onClick={() => setPage(totalPages)}
             disabled={safePage === totalPages}

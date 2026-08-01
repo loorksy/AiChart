@@ -6,6 +6,8 @@ import { useLocale } from "@/components/LocaleProvider";
 import { ProductPreview } from "@/components/landing/ProductPreview";
 import { SparklesBackground } from "@/components/landing/SparklesBackground";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
+import { buttonVariants } from "@/components/squareui/button";
+import { Surface } from "@/components/foundation";
 
 /** Hero with sparkles + moon-chat style quick prompts inspired by 21st.dev @ruixen.ui/ruixen-moon-chat */
 export function LandingHero() {
@@ -23,7 +25,7 @@ export function LandingHero() {
           <p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
             {c.eyebrow}
           </p>
-          <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-4xl lg:text-[2.65rem] lg:leading-[1.15]">
+          <h1 className="text-balance text-4xl font-semibold tracking-tight text-foreground sm:text-5xl sm:leading-[1.12] lg:text-[3.1rem] lg:leading-[1.12]">
             {c.title}
           </h1>
           <p className="mt-4 max-w-prose text-pretty text-base leading-relaxed text-muted-foreground sm:text-[1.05rem]">
@@ -45,13 +47,17 @@ export function LandingHero() {
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
               href={LANDING_ROUTES.signup}
-              className="inline-flex min-h-11 items-center justify-center rounded-lg bg-foreground px-5 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className={buttonVariants({ size: "xl", className: "px-6" })}
             >
               {c.primaryCta}
             </Link>
             <Link
               href={LANDING_ROUTES.chart}
-              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-background/80 px-5 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className={buttonVariants({
+                variant: "outline",
+                size: "xl",
+                className: "bg-background/80 px-6 backdrop-blur-sm",
+              })}
             >
               {c.secondaryCta}
             </Link>
@@ -66,16 +72,17 @@ export function LandingHero() {
                     ? MessageSquare
                     : ShieldCheck;
               return (
-                <div
+                <Surface
                   key={item.label}
-                  className="rounded-xl border border-border/80 bg-card/70 px-3 py-3 backdrop-blur-sm"
+                  padding="none"
+                  className="bg-card/70 px-3 py-3 backdrop-blur-sm"
                 >
                   <Icon className="mb-2 size-4 text-foreground" strokeWidth={1.5} />
                   <p className="text-sm font-medium text-foreground">{item.label}</p>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                     {item.detail}
                   </p>
-                </div>
+                </Surface>
               );
             })}
           </div>

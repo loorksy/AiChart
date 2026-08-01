@@ -28,18 +28,18 @@ import type { ActiveRecommendationView } from "@/app/api/recommendations/active/
 import type { DimensionGrade, EvidenceDimension } from "@/lib/agent/evidenceDimensions";
 
 const GRADE_CLASSES: Record<DimensionGrade, string> = {
-  strong: "text-emerald-700 dark:text-emerald-300",
-  moderate: "text-sky-700 dark:text-sky-300",
-  weak: "text-amber-700 dark:text-amber-300",
+  strong: "text-buy",
+  moderate: "text-info",
+  weak: "text-warning",
   unavailable: "text-muted-foreground",
 };
 
 const EXEC_STATE_CLASSES: Record<string, string> = {
-  valid_now: "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  awaiting_activation: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  valid_now: "border-buy/45 bg-buy/10 text-buy",
+  awaiting_activation: "border-warning/40 bg-warning/10 text-warning",
   expired: "border-border bg-muted/40 text-muted-foreground",
-  invalidated: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300",
-  blocked: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300",
+  invalidated: "border-destructive/40 bg-destructive/10 text-destructive",
+  blocked: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
 /** Both spellings the revision bundles use for the dimension list. */
@@ -215,12 +215,12 @@ function ActiveRecommendationDetailCard({ rec }: { rec: ActiveRecommendationView
                   <li key={i} className="text-[11px] text-muted-foreground">
                     <span className="text-foreground">{h.scenario}</span>
                     {h.supporting?.length ? (
-                      <span className="ms-1 text-emerald-700 dark:text-emerald-300">
+                      <span className="ms-1 text-buy">
                         {t("rec.detail.trace.supporting")}: {h.supporting.join("، ")}
                       </span>
                     ) : null}
                     {h.opposing?.length ? (
-                      <span className="ms-1 text-red-700 dark:text-red-300">
+                      <span className="ms-1 text-sell">
                         {t("rec.detail.trace.opposing")}: {h.opposing.join("، ")}
                       </span>
                     ) : null}
@@ -258,7 +258,7 @@ function ActiveRecommendationDetailCard({ rec }: { rec: ActiveRecommendationView
       ) : null}
 
       {rec.lastExecutionSkip ? (
-        <p className="mt-1 flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+        <p className="mt-1 flex items-start gap-1.5 text-[11px] text-warning">
           <SkipForward className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>
             <span className="font-medium">{t("rec.detail.last_skip")}:</span>{" "}

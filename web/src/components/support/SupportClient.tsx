@@ -173,7 +173,7 @@ export function SupportClient() {
               title="تعذّر تحميل التذاكر"
               description={error ?? "حدث خطأ غير متوقع."}
               action={
-                <Button size="lg" className="min-h-11" onClick={() => void loadTickets()}>
+                <Button size="xl" onClick={() => void loadTickets()}>
                   <RotateCw aria-hidden="true" />
                   إعادة المحاولة
                 </Button>
@@ -197,6 +197,36 @@ export function SupportClient() {
 
       {active == null ? (
         <>
+          {/* Ticket list first — the returning user's context — then the form. */}
+          <Surface as="section" padding="none">
+            <SectionHeader title="تذاكري" className="border-b border-border px-5 py-3" />
+            {tickets.length === 0 ? (
+              <EmptyState
+                size="sm"
+                icon={<Inbox aria-hidden="true" />}
+                title="لا تذاكر بعد"
+                description="افتح تذكرة من النموذج بالأسفل وسيصلك رد فوري."
+              />
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {tickets.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      onClick={() => void loadThread(t.id)}
+                      className="flex min-h-11 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-3 text-start text-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                    >
+                      <span className="min-w-0 flex-1 text-foreground">{t.subject}</span>
+                      <span className="type-caption shrink-0">
+                        {STATUS_AR[t.status] ?? t.status}
+                        {t.needs_human === 1 && " · بانتظار مشرف"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Surface>
+
           <Surface as="section" padding="lg" className="space-y-3">
             <SectionHeader
               title="تذكرة جديدة"
@@ -228,50 +258,21 @@ export function SupportClient() {
               />
             </div>
             <Button
-              size="lg"
-              className="min-h-11 w-full sm:w-auto"
+              size="xl"
+              className="w-full sm:w-auto"
               onClick={openTicket}
               disabled={busy || subject.length < 3 || body.length < 5}
             >
               {busy ? "جارٍ الفتح…" : "فتح التذكرة"}
             </Button>
           </Surface>
-
-          <Surface as="section" padding="none">
-            <SectionHeader title="تذاكري" className="border-b border-border px-5 py-3" />
-            {tickets.length === 0 ? (
-              <EmptyState
-                size="sm"
-                icon={<Inbox aria-hidden="true" />}
-                title="لا تذاكر بعد"
-                description="افتح تذكرة من النموذج بالأعلى وسيصلك رد فوري."
-              />
-            ) : (
-              <ul className="divide-y divide-border/60">
-                {tickets.map((t) => (
-                  <li key={t.id}>
-                    <button
-                      onClick={() => void loadThread(t.id)}
-                      className="flex min-h-11 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-3 text-start text-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                    >
-                      <span className="min-w-0 flex-1 text-foreground">{t.subject}</span>
-                      <span className="type-caption shrink-0">
-                        {STATUS_AR[t.status] ?? t.status}
-                        {t.needs_human === 1 && " · بانتظار مشرف"}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Surface>
         </>
       ) : (
         <Surface as="section" padding="lg" className="space-y-4">
           <Button
             variant="ghost"
-            size="lg"
-            className="min-h-11 -ms-2"
+            size="xl"
+            className="-ms-2"
             onClick={() => {
               setActive(null);
               setThread(null);
@@ -319,8 +320,7 @@ export function SupportClient() {
               className="min-h-11 flex-1 rounded-[var(--radius)] border border-border bg-background px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             <Button
-              size="lg"
-              className="min-h-11"
+              size="xl"
               onClick={sendReply}
               disabled={busy || !reply.trim()}
             >

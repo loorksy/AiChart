@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Link2, Loader2 } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
+import { Button } from "@/components/squareui/button";
 import type { MtAccountMeta } from "@/lib/types";
 import type { MtPlatform } from "@/lib/markets/types";
 
@@ -101,7 +102,7 @@ export function MtConnectCard({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-secondary px-4 py-3">
           <div className="text-sm">
             <span
-              className={account.online ? "text-accent-gold" : "text-amber-500"}
+              className={account.online ? "text-buy" : "text-warning"}
             >
               ● {statusLabel}
             </span>{" "}
@@ -114,13 +115,14 @@ export function MtConnectCard({
               </span>
             )}
           </div>
-          <button
+          <Button
+            variant="destructive"
+            size="xl"
             onClick={() => void disconnect()}
             disabled={busy}
-            className="btn btn-danger py-1.5 text-sm"
           >
             إلغاء الربط
-          </button>
+          </Button>
         </div>
       )}
 
@@ -199,18 +201,19 @@ export function MtConnectCard({
           </p>
         )}
 
-        <button
+        <Button
           type="submit"
+          size="xl"
           disabled={busy}
-          className="btn btn-primary w-full gap-2 sm:w-auto"
+          className="w-full sm:w-auto"
         >
           {busy ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
           ) : (
-            <Link2 className="h-4 w-4" />
+            <Link2 className="h-4 w-4" aria-hidden />
           )}
           {busy ? "جارٍ الربط…" : account ? "تحديث الربط" : "ربط الحساب"}
-        </button>
+        </Button>
 
         <ol className="list-decimal space-y-1 rounded-xl bg-secondary/60 p-4 ps-8 text-xs text-muted-foreground">
           <li>افتح MetaTrader على هاتفك.</li>

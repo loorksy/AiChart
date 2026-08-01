@@ -2,8 +2,9 @@ import Link from "next/link";
 import { Newspaper } from "lucide-react";
 import { initDb, query } from "@/lib/db";
 import { seedContentPages } from "@/lib/content/seedContent";
-import { EmptyState, SkipLink, Surface } from "@/components/foundation";
-import { AiChartLogo } from "@/components/AiChartLogo";
+import { EmptyState, Surface } from "@/components/foundation";
+import { LandingNav } from "@/components/landing/LandingNav";
+import { LandingFooter } from "@/components/landing/LandingFooter";
 import { BRAND_NAME } from "@/lib/brand";
 
 export const metadata = {
@@ -27,36 +28,15 @@ export default async function BlogIndexPage() {
 
   return (
     <div dir="rtl" className="min-h-dvh bg-background">
-      <SkipLink targetId="blog-main">تخطَّ إلى المحتوى</SkipLink>
-
-      <header className="flex min-h-14 items-center justify-between border-b border-border/60 bg-card/80 px-4 backdrop-blur-md sm:px-8">
-        <Link
-          href="/"
-          className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <AiChartLogo size={22} showName />
-        </Link>
-        <nav aria-label="روابط الموقع" className="flex items-center gap-1 text-sm">
-          <Link
-            href="/docs"
-            className="inline-flex min-h-11 items-center rounded-md px-2.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            التوثيق
-          </Link>
-          <Link
-            href="/pricing"
-            className="inline-flex min-h-11 items-center rounded-md px-2.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            الأسعار
-          </Link>
-          <a
-            href="/blog/rss.xml"
-            className="inline-flex min-h-11 items-center rounded-md px-2.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            RSS
-          </a>
-        </nav>
-      </header>
+      <LandingNav
+        variant="compact"
+        skipTargetId="blog-main"
+        links={[
+          { href: "/docs", label: "التوثيق" },
+          { href: "/pricing", label: "الأسعار" },
+          { href: "/blog/rss.xml", label: "RSS", external: true },
+        ]}
+      />
 
       <main id="blog-main" tabIndex={-1} className="mx-auto max-w-3xl px-4 py-12 sm:px-8">
         <h1 className="type-title text-3xl">المدونة</h1>
@@ -91,6 +71,8 @@ export default async function BlogIndexPage() {
           </div>
         )}
       </main>
+
+      <LandingFooter />
     </div>
   );
 }

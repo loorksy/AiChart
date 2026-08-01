@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plug } from "lucide-react";
 import { AiChartLogo } from "@/components/AiChartLogo";
+import { Button } from "@/components/squareui/button";
 import type { PublicUser } from "@/lib/types";
 
 export function CompleteProfileClient({ user }: { user: PublicUser }) {
@@ -106,9 +107,9 @@ export function CompleteProfileClient({ user }: { user: PublicUser }) {
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <button type="submit" className="btn btn-primary w-full" disabled={loading}>
+          <Button type="submit" size="xl" className="w-full" disabled={loading}>
             {loading ? "جاري الحفظ…" : "حفظ والمتابعة"}
-          </button>
+          </Button>
         </form>
 
         <p className="text-center text-xs text-muted-foreground">

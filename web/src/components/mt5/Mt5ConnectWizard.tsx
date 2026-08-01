@@ -243,8 +243,8 @@ export function Mt5ConnectWizard({
           <div className="space-y-4">
             <h2 className="type-heading">2 · سجّل الدخول إلى حسابك — {server}</h2>
 
-            <div className="flex gap-2.5 rounded-[var(--radius)] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-foreground">
-              <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <div className="flex gap-2.5 rounded-[var(--radius)] border border-warning/30 bg-warning/10 px-4 py-3 text-xs leading-relaxed text-foreground">
+              <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
               <p>
                 أنت تسجّل الدخول إلى حساب MetaTrader <b>الحقيقي</b> الخاص بك عبر
                 سحابة MetaApi المرخّصة. تُخزَّن بيانات الدخول <b>مشفَّرة</b> (AES-256)
@@ -336,7 +336,7 @@ export function Mt5ConnectWizard({
               className={cn(
                 "flex size-12 items-center justify-center rounded-full border",
                 step === "done"
-                  ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-500"
+                  ? "border-buy/35 bg-buy/10 text-buy"
                   : "border-border bg-muted text-muted-foreground",
               )}
             >

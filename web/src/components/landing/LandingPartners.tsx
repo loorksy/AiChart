@@ -19,7 +19,7 @@ export function LandingPartners() {
   return (
     <section
       data-testid="landing-partners"
-      className="border-b border-border bg-muted/20 py-10 sm:py-12"
+      className="border-b border-border bg-muted/20 py-16 sm:py-20"
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-center text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -29,9 +29,9 @@ export function LandingPartners() {
           {PARTNER_LOGOS.map((logo) => (
             <div
               key={logo.name}
-              className="group relative flex min-h-16 items-center justify-center rounded-xl border border-border/80 bg-card px-4 py-5 shadow-sm transition-colors hover:border-foreground/20"
+              className="group relative flex min-h-16 items-center justify-center rounded-[var(--radius-lg)] border border-border bg-card px-4 py-5 elevation-1 transition-colors hover:border-foreground/20"
             >
-              <span className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-b from-foreground/[0.03] to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+              <span className="pointer-events-none absolute inset-0 rounded-[var(--radius-lg)] bg-gradient-to-b from-foreground/[0.03] to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
               <Image
                 src={logo.src}
                 alt={logo.name}

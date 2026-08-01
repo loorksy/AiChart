@@ -21,13 +21,13 @@ import {
 
 const TONE_CLASSES: Record<BadgeTone, string> = {
   descriptive:
-    "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    "border-warning/40 bg-warning/10 text-warning",
   shadow:
-    "border-slate-400/40 bg-slate-400/10 text-slate-600 dark:text-slate-300",
-  demo: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  live: "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    "border-border bg-muted/40 text-muted-foreground",
+  demo: "border-info/40 bg-info/10 text-info",
+  live: "border-buy/45 bg-buy/10 text-buy",
   blocker:
-    "border-red-500/45 bg-red-500/10 text-red-700 dark:text-red-300",
+    "border-destructive/45 bg-destructive/10 text-destructive",
 };
 
 export function AgentModeBadge({
@@ -72,7 +72,7 @@ export function AgentEvidenceCard({ card }: { card: EvidenceCard }) {
     <div
       className={`mt-2 rounded-lg border px-3 py-2 text-[12px] ${
         gated
-          ? "border-emerald-500/35 bg-emerald-500/[0.06]"
+          ? "border-buy/35 bg-buy/[0.06]"
           : "border-border/60 bg-muted/30"
       }`}
     >
@@ -110,7 +110,7 @@ export function AgentEvidenceCard({ card }: { card: EvidenceCard }) {
         ) : null}
       </dl>
       {!gated ? (
-        <p className="mt-1.5 text-amber-600 dark:text-amber-400">
+        <p className="mt-1.5 text-warning">
           {t("agent.evidence.not_execution_grade")}
         </p>
       ) : null}
@@ -125,8 +125,8 @@ export function AgentFaultCard({ envelope }: { envelope: ResultEnvelope }) {
     ? t("agent.fault.retryable")
     : t("agent.fault.permanent");
   return (
-    <div className="mt-1 rounded-lg border border-red-500/40 bg-red-500/[0.06] px-3 py-2 text-[12px]">
-      <div className="flex items-center gap-1.5 font-semibold text-red-700 dark:text-red-300">
+    <div className="mt-1 rounded-lg border border-destructive/40 bg-destructive/[0.06] px-3 py-2 text-[12px]">
+      <div className="flex items-center gap-1.5 font-semibold text-destructive">
         <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span>{t("agent.fault.title")}</span>
       </div>

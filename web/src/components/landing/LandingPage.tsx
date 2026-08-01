@@ -24,13 +24,16 @@ export default function LandingPage() {
       className="min-h-dvh bg-background text-foreground"
     >
       <LandingNav />
-      <main id="main">
+      {/* Spec §3 order: hero (single preview) → features → workspace
+          (preview-free) → capability strip → testimonials → pricing summary
+          → FAQ → final CTA. The remaining sections keep their relative slots. */}
+      <main id="main" tabIndex={-1}>
         <LandingHero />
         <LandingPartners />
         <LandingBenefits />
         <LandingHowItWorks />
-        <LandingStats />
         <LandingWorkspace />
+        <LandingStats />
         <LandingTrust />
         <LandingTestimonials />
         <LandingHistory />

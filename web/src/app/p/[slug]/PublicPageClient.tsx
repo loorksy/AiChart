@@ -25,7 +25,7 @@ export function PublicPageClient({ page }: PublicPageClientProps) {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <LandingNav />
-      <main id="main" className="flex min-h-[75vh] flex-col px-4 pb-16 pt-10">
+      <main id="main" tabIndex={-1} className="flex min-h-[75vh] flex-col px-4 pb-16 pt-10">
         <article className="prose prose-neutral dark:prose-invert mx-auto w-full max-w-4xl flex-1 space-y-6">
           <header className="border-b border-border pb-4">
             <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">

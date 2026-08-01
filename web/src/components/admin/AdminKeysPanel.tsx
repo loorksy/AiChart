@@ -232,7 +232,7 @@ export function AdminKeysPanel() {
           </span>
           <span className="text-muted-foreground">مفتاح مُعدّ</span>
           {pendingCount > 0 && (
-            <span className="ms-auto text-xs text-amber-600 dark:text-amber-400">
+            <span className="ms-auto text-xs text-warning">
               {pendingCount} تعديل غير محفوظ
             </span>
           )}
@@ -387,7 +387,7 @@ export function AdminKeysPanel() {
         <InlineAlert tone={msg.type === "ok" ? "ok" : "error"}>{msg.text}</InlineAlert>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-border bg-muted/20 px-4 py-3">
         <Button
           type="button"
           className="tap-target h-10"

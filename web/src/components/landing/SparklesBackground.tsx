@@ -34,7 +34,7 @@ export function SparklesBackground({ className, density = 28 }: SparklesProps) {
       {dots.map((dot) => (
         <span
           key={dot.id}
-          className="absolute rounded-full bg-foreground animate-pulse"
+          className="absolute rounded-full bg-foreground animate-pulse motion-reduce:animate-none"
           style={{
             left: dot.left,
             top: dot.top,

@@ -13,14 +13,15 @@ import { Button } from "@/components/squareui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/squareui/dropdown-menu";
+import { EmptyState } from "@/components/admin/ui/AdminKit";
 import { SkeletonBlock, SkeletonCircle } from "@/components/ui/skeleton";
 import type { OverviewLeader } from "@/lib/admin/overviewQueries";
 import { cn } from "@/lib/utils";
-import { useAdminDashboardStore } from "./dashboardStore";
+import { useAdminDashboardStore, type LeaderMetric } from "./dashboardStore";
 import { formatInt, formatUsd, initialFor } from "./format";
 
 /**
@@ -29,38 +30,32 @@ import { formatInt, formatUsd, initialFor } from "./format";
  * The bar always measures REVENUE against the window's top earner; the metric
  * toggle only re-orders the same eight rows. Rescaling the bar per mode would
  * make two screenshots of the same data look like different numbers.
+ *
+ * Rank colours come from the product's --chart-* scale — the same palette the
+ * revenue chart next to this card draws with — so the two money views read as
+ * one system. Borders are solid: the dash pattern encoded nothing.
  */
 
 const BAR_STYLES = [
   {
-    border: "border-pink-500",
-    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-pink-500/40 via-pink-500/20 to-transparent",
-    dashed: false,
+    border: "border-chart-1",
+    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-chart-1/40 via-chart-1/20 to-transparent",
   },
   {
-    border: "border-cyan-400",
-    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-cyan-400/30 via-cyan-400/15 to-transparent",
-    dashed: true,
+    border: "border-chart-2",
+    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-chart-2/30 via-chart-2/15 to-transparent",
   },
   {
-    border: "border-green-400",
-    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-green-400/30 via-green-400/15 to-transparent",
-    dashed: true,
+    border: "border-chart-3",
+    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-chart-3/30 via-chart-3/15 to-transparent",
   },
   {
-    border: "border-amber-400",
-    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-amber-400/30 via-amber-400/15 to-transparent",
-    dashed: true,
+    border: "border-chart-4",
+    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-chart-4/30 via-chart-4/15 to-transparent",
   },
   {
-    border: "border-purple-400",
-    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-purple-400/30 via-purple-400/15 to-transparent",
-    dashed: true,
-  },
-  {
-    border: "border-rose-400",
-    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-rose-400/30 via-rose-400/15 to-transparent",
-    dashed: true,
+    border: "border-chart-5",
+    fill: "ltr:bg-linear-to-r rtl:bg-linear-to-l from-chart-5/30 via-chart-5/15 to-transparent",
   },
 ] as const;
 
@@ -79,9 +74,8 @@ function LeaderRow({ leader, rank, share }: { leader: OverviewLeader; rank: numb
       <div className="min-w-0 flex-1">
         <div
           className={cn(
-            "relative h-[42px] overflow-hidden rounded-lg border",
+            "relative h-[42px] overflow-hidden rounded-lg border border-solid",
             style.border,
-            style.dashed ? "border-dashed" : "border-solid",
           )}
         >
           <div
@@ -89,12 +83,12 @@ function LeaderRow({ leader, rank, share }: { leader: OverviewLeader; rank: numb
             style={{ width: `${share}%` }}
           />
           <div className="absolute inset-y-0 start-2 end-2 flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm dark:bg-neutral-900/90">
+            <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-card/90 px-2 py-1 shadow-sm">
               <HugeiconsIcon
                 icon={isFirst ? StarIcon : UserIcon}
                 className={cn(
                   "size-3.5 shrink-0",
-                  isFirst ? "text-amber-400" : "text-muted-foreground",
+                  isFirst ? "text-warning" : "text-muted-foreground",
                 )}
               />
               <span
@@ -120,7 +114,7 @@ function LeaderRow({ leader, rank, share }: { leader: OverviewLeader; rank: numb
             dir="ltr"
             className={cn(
               "tabular-nums",
-              leader.profit_usd < 0 ? "text-pink-400" : "text-foreground",
+              leader.profit_usd < 0 ? "text-sell" : "text-buy",
             )}
           >
             {formatUsd(leader.profit_usd)}
@@ -165,13 +159,13 @@ export function DashboardTopUsers({
   return (
     <div
       className={cn(
-        "bg-card text-card-foreground w-full shrink-0 rounded-xl border lg:w-[360px]",
+        "elevation-1 w-full shrink-0 rounded-[var(--radius-lg)] border border-border bg-card text-card-foreground lg:w-[360px]",
         className,
       )}
     >
-      <div className="flex items-center justify-between border-b border-border/50 p-4">
+      <div className="flex items-center justify-between border-b border-border p-4">
         <div className="min-w-0">
-          <h3 className="text-sm font-medium sm:text-base">أعلى المستخدمين</h3>
+          <h3 className="type-subheading">أعلى المستخدمين</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {leaderMetric === "revenue"
               ? "مرتّبون حسب الإيراد"
@@ -185,8 +179,8 @@ export function DashboardTopUsers({
               render={
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="size-7"
+                  size="icon-sm"
+                  className="tap-target-expand"
                   aria-label="خيارات الترتيب"
                 >
                   <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
@@ -194,14 +188,19 @@ export function DashboardTopUsers({
               }
             />
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => setLeaderMetric("revenue")}>
-                  الأكثر ربحاً {leaderMetric === "revenue" && "✓"}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setLeaderMetric("loss")}>
-                  الأكثر خسارة {leaderMetric === "loss" && "✓"}
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
+              {/* Labels name what actually happens: the bar measures revenue,
+                  so the first ordering is "most revenue", not "most profit". */}
+              <DropdownMenuRadioGroup
+                value={leaderMetric}
+                onValueChange={(value) => setLeaderMetric(value as LeaderMetric)}
+              >
+                <DropdownMenuRadioItem value="revenue">
+                  الأكثر إيراداً
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="loss">
+                  الأكثر خسارة
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -216,9 +215,11 @@ export function DashboardTopUsers({
             </div>
           ))
         ) : ordered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            لا توجد بيانات كافية لترتيب المستخدمين في هذه الفترة.
-          </p>
+          <EmptyState
+            title="لا ترتيب بعد"
+            description="لا توجد بيانات كافية لترتيب المستخدمين في هذه الفترة."
+            className="py-8"
+          />
         ) : (
           ordered.map((leader, index) => (
             <LeaderRow

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, BarChart3, RefreshCw } from "lucide-react";
+import { Button } from "@/components/squareui/button";
 import { useLocale } from "@/hooks/useLocale";
 import { RecommendationStatsOverview } from "@/components/recommendations/RecommendationStatsOverview";
 import { RecommendationOutcomeBreakdown } from "@/components/recommendations/RecommendationOutcomeBreakdown";
@@ -112,17 +113,17 @@ export function StatisticsSection() {
             title={t("agent.error")}
             description={t("agent.fault.retryable")}
             action={
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="xl"
                 onClick={() => {
                   setFailed(false);
                   setReloadKey((k) => k + 1);
                 }}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius)] border border-border bg-background px-4 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
                 {t("rec.page.refresh")}
-              </button>
+              </Button>
             }
           />
         </Surface>

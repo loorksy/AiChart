@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowUpRight, BarChart3, ShieldCheck, Sparkles } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
-import { Card, CardContent } from "@/components/ui/card";
+import { Surface } from "@/components/foundation";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
 
 /** Bento features grid inspired by 21st.dev @meschacirung/features-8 */
@@ -28,8 +28,11 @@ export function LandingBenefits() {
 
         <div className="relative mt-12">
           <div className="relative z-10 grid grid-cols-6 gap-3">
-            <Card className="relative col-span-full overflow-hidden lg:col-span-2">
-              <CardContent className="relative m-auto flex size-fit flex-col items-center px-6 pb-6 pt-8 text-center">
+            <Surface
+              padding="none"
+              className="relative col-span-full overflow-hidden lg:col-span-2"
+            >
+              <div className="relative m-auto flex size-fit flex-col items-center px-6 pb-6 pt-8 text-center">
                 <div className="mb-4 flex size-12 items-center justify-center rounded-full border border-border bg-muted/40">
                   <Sparkles className="size-5 text-foreground" strokeWidth={1.5} />
                 </div>
@@ -37,11 +40,14 @@ export function LandingBenefits() {
                 <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
                   {first.body}
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </Surface>
 
-            <Card className="relative col-span-full overflow-hidden sm:col-span-3 lg:col-span-2">
-              <CardContent className="flex h-full flex-col justify-between pt-6">
+            <Surface
+              padding="none"
+              className="relative col-span-full overflow-hidden sm:col-span-3 lg:col-span-2"
+            >
+              <div className="flex h-full flex-col justify-between p-6">
                 <div className="mx-auto flex aspect-square size-24 items-center justify-center rounded-full border border-border before:absolute before:-inset-2 before:rounded-full before:border before:border-border/50">
                   <BarChart3 className="size-8 text-foreground" strokeWidth={1.25} />
                 </div>
@@ -49,11 +55,14 @@ export function LandingBenefits() {
                   <h3 className="text-lg font-semibold text-foreground">{second.title}</h3>
                   <p className="text-sm leading-relaxed text-muted-foreground">{second.body}</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </Surface>
 
-            <Card className="relative col-span-full overflow-hidden sm:col-span-3 lg:col-span-2">
-              <CardContent className="flex h-full flex-col justify-between pt-6">
+            <Surface
+              padding="none"
+              className="relative col-span-full overflow-hidden sm:col-span-3 lg:col-span-2"
+            >
+              <div className="flex h-full flex-col justify-between p-6">
                 <div className="mx-auto flex aspect-square size-24 items-center justify-center rounded-full border border-border">
                   <ShieldCheck className="size-8 text-foreground" strokeWidth={1.25} />
                 </div>
@@ -61,11 +70,14 @@ export function LandingBenefits() {
                   <h3 className="text-lg font-semibold text-foreground">{third.title}</h3>
                   <p className="text-sm leading-relaxed text-muted-foreground">{third.body}</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </Surface>
 
-            <Card className="relative col-span-full overflow-hidden lg:col-span-3">
-              <CardContent className="grid gap-6 pt-6 sm:grid-cols-2">
+            <Surface
+              padding="none"
+              className="relative col-span-full overflow-hidden lg:col-span-3"
+            >
+              <div className="grid gap-6 p-6 sm:grid-cols-2">
                 <div className="space-y-3">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     {c.workspaceLabel}
@@ -79,22 +91,27 @@ export function LandingBenefits() {
                     ))}
                   </ul>
                 </div>
-                <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4">
+                {/* Inset region — the one legal card-in-card (spec §2): muted,
+                    borderless, base radius. */}
+                <div className="rounded-[var(--radius)] bg-muted/50 p-4">
                   <p className="text-sm font-medium text-foreground">{c.panelTitle}</p>
                   <p className="mt-2 text-sm text-muted-foreground">{c.panelBody}</p>
                   <Link
                     href={LANDING_ROUTES.chart}
-                    className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline"
+                    className="mt-4 inline-flex min-h-11 items-center gap-1 rounded-[var(--radius)] text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
                   >
                     {c.panelCta}
-                    <ArrowUpRight className="size-4" />
+                    <ArrowUpRight className="size-4 rtl:-rotate-90" />
                   </Link>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </Surface>
 
-            <Card className="relative col-span-full overflow-hidden lg:col-span-3">
-              <CardContent className="grid h-full gap-6 pt-6 sm:grid-cols-[1fr_auto] sm:items-center">
+            <Surface
+              padding="none"
+              className="relative col-span-full overflow-hidden lg:col-span-3"
+            >
+              <div className="grid h-full gap-6 p-6 sm:grid-cols-[1fr_auto] sm:items-center">
                 <div className="space-y-3">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     {c.executionLabel}
@@ -102,14 +119,14 @@ export function LandingBenefits() {
                   <h3 className="text-lg font-semibold text-foreground">{c.executionTitle}</h3>
                   <p className="text-sm leading-relaxed text-muted-foreground">{c.executionBody}</p>
                 </div>
-                <div className="rounded-2xl border border-border bg-background px-5 py-4 text-center">
+                <div className="rounded-[var(--radius)] bg-muted/50 px-5 py-4 text-center">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     {c.executionBadge}
                   </p>
                   <p className="mt-2 text-2xl font-semibold text-foreground">BUY · SELL · WAIT</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </Surface>
           </div>
         </div>
       </div>

@@ -144,10 +144,11 @@ function classificationLabel(entry: ParityEntry): string {
 
 function classificationTone(entry: ParityEntry): string {
   if (entry.comparison.identical) return "text-emerald-600 dark:text-emerald-400";
+  // An unexplained divergence is a system failure — destructive's actual job.
   if (entry.comparison.classification === "unexplained")
-    return "font-semibold text-red-600 dark:text-red-400";
+    return "font-semibold text-destructive";
   if (entry.comparison.classification === "contract_mismatch")
-    return "font-semibold text-amber-600 dark:text-amber-400";
+    return "font-semibold text-warning";
   return "text-muted-foreground";
 }
 
@@ -168,14 +169,16 @@ function CriticalTile({
       data-testid={`critical-${metric}`}
       style={{ "--motion-index": index } as CSSProperties}
       className={cn(
-        "motion-rise-in motion-stagger rounded-xl border p-3",
-        bad ? "border-red-500/50 bg-red-500/10" : "border-emerald-500/30 bg-emerald-500/[0.06]",
+        "motion-rise-in motion-stagger elevation-1 rounded-[var(--radius-lg)] border p-3",
+        bad
+          ? "border-destructive/50 bg-destructive/10"
+          : "border-emerald-500/30 bg-emerald-500/[0.06]",
       )}
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-[12px] font-medium text-muted-foreground">{label}</p>
         {bad ? (
-          <ShieldAlert className="size-4 shrink-0 text-red-500" aria-hidden />
+          <ShieldAlert className="size-4 shrink-0 text-destructive" aria-hidden />
         ) : (
           <CheckCircle2 className="size-4 shrink-0 text-emerald-500" aria-hidden />
         )}
@@ -183,7 +186,7 @@ function CriticalTile({
       <p
         className={cn(
           "type-numeric mt-1 text-2xl font-bold",
-          bad ? "text-red-600 dark:text-red-400" : "text-foreground",
+          bad ? "text-destructive" : "text-foreground",
         )}
         dir="ltr"
       >
@@ -447,7 +450,7 @@ export function AdminDiagnosticsPanel() {
                       key={`${entry.evidenceHash}-${entry.createdAt}`}
                       className={
                         entry.comparison.classification === "unexplained"
-                          ? "bg-red-500/[0.06]"
+                          ? "bg-destructive/5"
                           : undefined
                       }
                     >

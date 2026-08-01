@@ -105,7 +105,9 @@ export function AdminCard({
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden rounded-xl border border-border bg-card text-card-foreground",
+        // Card level of the container hierarchy — the same surface the user
+        // console's `Surface` renders, so both consoles read as one product.
+        "elevation-1 min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-card text-card-foreground",
         className,
       )}
       {...rest}
@@ -178,9 +180,12 @@ export type StatTone = "neutral" | "positive" | "negative" | "warning";
 
 const STAT_VALUE_TONE: Record<StatTone, string> = {
   neutral: "text-foreground",
-  positive: "text-emerald-600 dark:text-emerald-400",
-  negative: "text-destructive",
-  warning: "text-amber-600 dark:text-amber-400",
+  // buy/sell are the product's good/bad number pair (profit, active accounts /
+  // loss, suspensions) and carry their own light/dark values. `text-destructive`
+  // stays reserved for system failures, never for a number that is merely bad.
+  positive: "text-buy",
+  negative: "text-sell",
+  warning: "text-warning",
 };
 
 export function StatGrid({
@@ -211,6 +216,8 @@ export function StatTile({
   icon: Icon,
   tone = "neutral",
   index = 0,
+  trailing,
+  footer,
   className,
   ...rest
 }: Omit<React.ComponentProps<"div">, "children"> & {
@@ -221,30 +228,38 @@ export function StatTile({
   tone?: StatTone;
   /** Position in the row — drives the staggered entrance. */
   index?: number;
+  /** Inline-end companion to the value — a trend delta, a unit badge. */
+  trailing?: React.ReactNode;
+  /** Block content under the tile (footnotes) — unlike `hint`, not a `<p>`. */
+  footer?: React.ReactNode;
 }) {
   return (
     <div
       style={{ "--motion-index": index } as React.CSSProperties}
       className={cn(
-        "motion-rise-in motion-stagger min-w-0 rounded-xl border border-border bg-card p-4",
+        "motion-rise-in motion-stagger elevation-1 min-w-0 rounded-[var(--radius-lg)] border border-border bg-card p-4",
         className,
       )}
       {...rest}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="type-caption truncate">{label}</p>
+        <div className="type-caption flex min-w-0 items-center gap-1.5">{label}</div>
         {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" />}
       </div>
-      <p
-        dir="ltr"
-        className={cn(
-          "type-numeric mt-1.5 text-start text-2xl font-bold",
-          STAT_VALUE_TONE[tone],
-        )}
-      >
-        {value}
-      </p>
+      <div className="mt-1.5 flex items-center justify-between gap-3">
+        <p
+          dir="ltr"
+          className={cn(
+            "type-numeric min-w-0 text-start text-2xl font-bold",
+            STAT_VALUE_TONE[tone],
+          )}
+        >
+          {value}
+        </p>
+        {trailing && <div className="shrink-0">{trailing}</div>}
+      </div>
       {hint && <p className="type-caption mt-0.5 text-xs">{hint}</p>}
+      {footer}
     </div>
   );
 }
@@ -253,11 +268,13 @@ export function StatTile({
 
 export type AlertTone = "ok" | "error" | "info" | "warning";
 
+// Tokens throughout: StatTile in this same file already routes through
+// --buy/--sell, and two colour systems inside one kit is how drift starts.
 const ALERT_STYLES: Record<AlertTone, string> = {
-  ok: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  ok: "border-buy/30 bg-buy/10 text-buy",
   error: "border-destructive/40 bg-destructive/10 text-destructive",
   info: "border-border bg-muted/40 text-foreground",
-  warning: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  warning: "border-warning/30 bg-warning/10 text-warning",
 };
 
 const ALERT_ICONS: Record<AlertTone, React.ComponentType<{ className?: string }>> = {
@@ -585,7 +602,7 @@ export function RecordCard({
     <div
       style={{ "--motion-index": index } as React.CSSProperties}
       className={cn(
-        "motion-rise-in motion-stagger rounded-xl border border-border bg-card p-3.5",
+        "motion-rise-in motion-stagger elevation-1 rounded-[var(--radius-lg)] border border-border bg-card p-3.5",
         className,
       )}
     >

@@ -44,7 +44,7 @@ export function AdminHeader({
   return (
     <header
       data-testid="admin-console-header"
-      className="sticky top-0 z-20 flex shrink-0 items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-6"
+      className="sticky top-0 z-raised flex shrink-0 items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-6"
     >
       <HugeiconsIcon
         icon={item.icon}
