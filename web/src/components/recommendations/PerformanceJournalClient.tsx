@@ -12,8 +12,10 @@
  * nothing here gates a recommendation.
  */
 import { useEffect, useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { AlertTriangle, RefreshCw, TriangleAlert } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { EmptyState, Surface } from "@/components/foundation";
+import { SkeletonBlock } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { JournalSummary } from "@/lib/recommendations/performanceJournal";
 import type { JournalEntryView } from "@/app/api/recommendations/journal/route";
@@ -89,6 +91,7 @@ export function PerformanceJournalClient() {
     entries: JournalEntryView[];
   } | null>(null);
   const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -100,8 +103,13 @@ export function PerformanceJournalClient() {
           summary?: JournalSummary;
           entries?: JournalEntryView[];
         };
-        if (alive && json.summary) {
+        if (!alive) return;
+        // A 200 with no summary used to leave the page blank forever, because
+        // neither the data nor the error branch was taken.
+        if (json.summary) {
           setData({ summary: json.summary, entries: json.entries ?? [] });
+        } else {
+          setError(true);
         }
       } catch {
         if (alive) setError(true);
@@ -110,18 +118,52 @@ export function PerformanceJournalClient() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   if (error) {
     return (
       <div dir={dir} className="mx-auto w-full max-w-6xl">
-        <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-6 text-center text-sm text-destructive-foreground">
-          {t("journal.error")}
-        </p>
+        <Surface padding="none">
+          <EmptyState
+            announce
+            tone="danger"
+            icon={<AlertTriangle aria-hidden="true" />}
+            title={t("journal.error")}
+            description={t("agent.fault.retryable")}
+            action={
+              <button
+                type="button"
+                onClick={() => {
+                  setError(false);
+                  setReloadKey((k) => k + 1);
+                }}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius)] border border-border bg-background px-4 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("rec.page.refresh")}
+              </button>
+            }
+          />
+        </Surface>
       </div>
     );
   }
-  if (!data) return null;
+
+  // Returning null here rendered a blank page for the whole fetch.
+  if (!data) {
+    return (
+      <div dir={dir} className="mx-auto w-full max-w-6xl space-y-3" aria-busy="true">
+        <span className="sr-only">{t("journal.title")}</span>
+        <SkeletonBlock className="h-24" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonBlock key={i} className="h-24" />
+          ))}
+        </div>
+        <SkeletonBlock className="h-64" />
+      </div>
+    );
+  }
 
   const { summary, entries } = data;
   const resolved = entries.filter((e) => isResolved(e.outcome));

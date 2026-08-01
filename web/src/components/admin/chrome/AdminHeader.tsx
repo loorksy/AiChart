@@ -4,13 +4,25 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { RefreshIcon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/squareui/badge";
 import { Button } from "@/components/squareui/button";
-import { SidebarTrigger } from "@/components/squareui/sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useLocale } from "@/hooks/useLocale";
 import { useMe } from "@/hooks/useMe";
 import type { AdminPermission } from "@/lib/adminRoles";
-import { adminNavItem, adminRoleLabel, type AdminTabId } from "./adminNavTree";
+import {
+  ADMIN_CONSOLE_TITLE,
+  adminLabel,
+  adminNavItem,
+  adminRoleLabel,
+  type AdminTabId,
+} from "./adminNavTree";
+
+const REFRESH_LABEL = { label: "تحديث البيانات", labelEn: "Refresh data" };
 
 /**
+ * Section header for the platform console. It no longer carries a rail toggle:
+ * the console's one navigation lives in AppConsoleShell, which owns both the
+ * desktop collapse control and the mobile drawer trigger.
+ *
  * The identity strip is the signed-in admin, read from /api/me — never a decorative
  * roster. While the request is in flight the block is a skeleton, because showing a
  * placeholder name would be showing the wrong person.
@@ -22,9 +34,10 @@ export function AdminHeader({
   tab: AdminTabId;
   permissions: AdminPermission[];
 }) {
+  const { locale } = useLocale();
   const item = adminNavItem(tab);
   const { data, loading } = useMe();
-  const roleLabel = adminRoleLabel(permissions);
+  const roleLabel = adminRoleLabel(permissions, locale);
   const displayName = data?.displayName ?? "";
   const initial = displayName.trim().charAt(0).toUpperCase();
 
@@ -33,13 +46,17 @@ export function AdminHeader({
       data-testid="admin-console-header"
       className="sticky top-0 z-20 flex shrink-0 items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-6"
     >
-      <SidebarTrigger className="-ms-1 shrink-0" />
       <HugeiconsIcon
         icon={item.icon}
         strokeWidth={2}
         className="size-4 shrink-0 text-muted-foreground"
       />
-      <h2 className="truncate text-sm font-medium">{item.label}</h2>
+      <div className="flex min-w-0 flex-col leading-tight">
+        <span className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+          {adminLabel(ADMIN_CONSOLE_TITLE, locale)}
+        </span>
+        <h2 className="truncate text-sm font-medium">{adminLabel(item, locale)}</h2>
+      </div>
 
       <div className="ms-auto flex min-w-0 items-center gap-2">
         {loading && !data ? (
@@ -76,9 +93,9 @@ export function AdminHeader({
         <Button
           variant="outline"
           size="icon-sm"
-          className="shrink-0"
-          aria-label="تحديث البيانات"
-          title="تحديث البيانات"
+          className="size-11 shrink-0 transition-colors duration-150 ease-out sm:size-8"
+          aria-label={adminLabel(REFRESH_LABEL, locale)}
+          title={adminLabel(REFRESH_LABEL, locale)}
           onClick={() => window.location.reload()}
         >
           <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} />
@@ -86,7 +103,7 @@ export function AdminHeader({
 
         <ThemeToggle
           collapsed
-          className="h-8 min-h-8 w-8 shrink-0 rounded-md border-border bg-background"
+          className="size-11 min-h-11 shrink-0 rounded-md border-border bg-background sm:size-8 sm:min-h-8"
         />
       </div>
     </header>

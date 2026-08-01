@@ -11,9 +11,36 @@
  * classification, because an explained difference is normal and an unexplained
  * one means the two surfaces are not running the same decision path.
  */
-import { useEffect, useState } from "react";
-import { CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { CheckCircle2, GitCompare, RefreshCw, ShieldAlert, Stethoscope } from "lucide-react";
+
+import { Badge } from "@/components/squareui/badge";
+import { Button } from "@/components/squareui/button";
+import {
+  CardSkeleton,
+  StatTilesSkeleton,
+} from "@/components/ui/skeletons/page-skeletons";
 import { cn } from "@/lib/utils";
+import {
+  AdminCard,
+  AdminCardBody,
+  AdminCardHeader,
+  AdminPage,
+  AdminTable,
+  InlineAlert,
+  RecordCard,
+  SectionHeader,
+  SortTh,
+  Spinner,
+  THead,
+  Td,
+  Th,
+  TableEmptyRow,
+  TableWrap,
+  Tr,
+  sortSign,
+  useAdminSort,
+} from "@/components/admin/ui/AdminKit";
 
 interface DiagnosticsPayload {
   critical: {
@@ -69,6 +96,9 @@ interface ParityPayload {
   entries: ParityEntry[];
 }
 
+/** `natural` = newest-first as the API returned it. */
+type ParitySortKey = "natural" | "symbol" | "createdAt" | "classification";
+
 const CRITICAL_LABELS: Array<{
   key: keyof DiagnosticsPayload["critical"];
   metric: string;
@@ -121,34 +151,45 @@ function classificationTone(entry: ParityEntry): string {
   return "text-muted-foreground";
 }
 
-function CriticalTile({ label, metric, value }: { label: string; metric: string; value: number }) {
+function CriticalTile({
+  label,
+  metric,
+  value,
+  index,
+}: {
+  label: string;
+  metric: string;
+  value: number;
+  index: number;
+}) {
   const bad = value > 0;
   return (
     <div
       data-testid={`critical-${metric}`}
+      style={{ "--motion-index": index } as CSSProperties}
       className={cn(
-        "rounded-xl border p-3",
+        "motion-rise-in motion-stagger rounded-xl border p-3",
         bad ? "border-red-500/50 bg-red-500/10" : "border-emerald-500/30 bg-emerald-500/[0.06]",
       )}
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-[12px] font-medium text-muted-foreground">{label}</p>
         {bad ? (
-          <ShieldAlert className="h-4 w-4 shrink-0 text-red-500" aria-hidden />
+          <ShieldAlert className="size-4 shrink-0 text-red-500" aria-hidden />
         ) : (
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-500" aria-hidden />
         )}
       </div>
       <p
         className={cn(
-          "mt-1 font-mono text-2xl font-bold",
+          "type-numeric mt-1 text-2xl font-bold",
           bad ? "text-red-600 dark:text-red-400" : "text-foreground",
         )}
         dir="ltr"
       >
         {value}
       </p>
-      <p className="mt-0.5 font-mono text-[10px] text-muted-foreground/70" dir="ltr">
+      <p className="type-numeric mt-0.5 text-[10px] text-muted-foreground/70" dir="ltr">
         {metric} · target 0
       </p>
     </div>
@@ -166,6 +207,7 @@ export function AdminDiagnosticsPanel() {
   const [parity, setParity] = useState<ParityPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { key: sortKey, dir, sortProps } = useAdminSort<ParitySortKey>("natural");
 
   async function load() {
     setBusy(true);
@@ -179,7 +221,9 @@ export function AdminDiagnosticsPanel() {
       setParity((await parityRes.json()) as ParityPayload);
       setError(null);
     } catch {
-      setError("تعذّر جلب بيانات التشخيص.");
+      setError(
+        "تعذّر جلب بيانات التشخيص — الأرقام أدناه قد تكون قديمة. تأكّد من تشغيل الخدمة ثم اضغط تحديث.",
+      );
     } finally {
       setBusy(false);
     }
@@ -191,36 +235,59 @@ export function AdminDiagnosticsPanel() {
     return () => clearInterval(id);
   }, []);
 
+  const entries = useMemo(() => {
+    const base = parity?.entries ?? [];
+    if (sortKey === "natural") return base;
+    const sign = sortSign(dir);
+    return [...base].sort((a, b) => {
+      switch (sortKey) {
+        case "symbol":
+          return sign * a.symbol.localeCompare(b.symbol, "en");
+        case "createdAt":
+          return sign * (a.createdAt - b.createdAt);
+        case "classification":
+          return sign * classificationLabel(a).localeCompare(classificationLabel(b), "ar");
+        default:
+          return 0;
+      }
+    });
+  }, [parity, sortKey, dir]);
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-xl font-bold">تشخيص الوكيل الموحّد</h2>
-          <p className="text-sm text-muted-foreground">
-            عدّادات الثوابت الحرجة (قيمتها الصحيحة صفر)، ثم العدّادات التشغيلية، ثم سجل التطابق
-            بين المنصة و MCP.
-          </p>
-        </div>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void load()}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-medium hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} aria-hidden />
-          تحديث
-        </button>
-      </div>
+    <AdminPage dir="rtl" data-testid="admin-diagnostics-panel">
+      <SectionHeader
+        title="تشخيص الوكيل الموحّد"
+        description="عدّادات الثوابت الحرجة (قيمتها الصحيحة صفر)، ثم العدّادات التشغيلية، ثم سجل التطابق بين المنصة و MCP."
+        icon={Stethoscope}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="tap-target"
+            disabled={busy}
+            onClick={() => void load()}
+          >
+            {busy ? <Spinner /> : <RefreshCw className="size-3.5" aria-hidden />}
+            تحديث
+          </Button>
+        }
+      />
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
-      {diag && (
+      {!diag ? (
+        <>
+          <StatTilesSkeleton count={4} />
+          <CardSkeleton lines={5} />
+        </>
+      ) : (
         <>
           {/* 1 — critical counters, red on anything above zero. */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {CRITICAL_LABELS.map((item) => (
+            {CRITICAL_LABELS.map((item, i) => (
               <CriticalTile
                 key={item.metric}
+                index={i}
                 label={item.label}
                 metric={item.metric}
                 value={Number(diag.critical[item.key] ?? 0)}
@@ -229,134 +296,193 @@ export function AdminDiagnosticsPanel() {
           </div>
 
           {/* 2 — the rest of the counters. */}
-          <div className="admin-card p-4">
-            <h3 className="text-sm font-bold">العدّادات التشغيلية</h3>
-            <div className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-              {Object.entries(diag.counters).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="text-muted-foreground">{COUNTER_LABELS[key] ?? key}</span>
-                  <span className="font-mono font-semibold" dir="ltr">
-                    {value}
-                  </span>
+          <AdminCard>
+            <AdminCardHeader title="العدّادات التشغيلية" />
+            <AdminCardBody>
+              <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(diag.counters).map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-2 border-b border-border/40 pb-1.5 text-sm"
+                  >
+                    <dt className="text-muted-foreground">{COUNTER_LABELS[key] ?? key}</dt>
+                    <dd className="type-numeric font-semibold" dir="ltr">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-1.5 text-sm">
+                  <dt className="text-muted-foreground">تنبيهات حرجة (إجمالي)</dt>
+                  <dd className="type-numeric font-semibold" dir="ltr">
+                    {diag.critical.criticalAlerts}
+                  </dd>
                 </div>
-              ))}
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-muted-foreground">تنبيهات حرجة (إجمالي)</span>
-                <span className="font-mono font-semibold" dir="ltr">
-                  {diag.critical.criticalAlerts}
-                </span>
-              </div>
-            </div>
-            {Object.keys(diag.reevaluation).length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-[12px] font-semibold text-muted-foreground">
-                  نتائج إعادة التقييم
-                </h4>
-                <div className="mt-1.5 flex flex-wrap gap-2">
-                  {Object.entries(diag.reevaluation).map(([key, value]) => (
-                    <span
-                      key={key}
-                      className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px]"
-                    >
-                      {key}: <span dir="ltr">{value}</span>
-                    </span>
-                  ))}
+              </dl>
+
+              {Object.keys(diag.reevaluation).length > 0 && (
+                <div className="mt-4">
+                  <h4 className="type-overline">نتائج إعادة التقييم</h4>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {Object.entries(diag.reevaluation).map(([key, value]) => (
+                      <Badge key={key} variant="outline">
+                        {key}: <span dir="ltr">{value}</span>
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-            {Object.keys(diag.caseMemory).length > 0 && (
-              <div className="mt-3">
-                <h4 className="text-[12px] font-semibold text-muted-foreground">ذاكرة الحالات</h4>
-                <div className="mt-1.5 flex flex-wrap gap-2">
-                  {Object.entries(diag.caseMemory).map(([key, value]) => (
-                    <span
-                      key={key}
-                      className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px]"
-                    >
-                      {key}: <span dir="ltr">{value}</span>
-                    </span>
-                  ))}
+              )}
+
+              {Object.keys(diag.caseMemory).length > 0 && (
+                <div className="mt-3">
+                  <h4 className="type-overline">ذاكرة الحالات</h4>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {Object.entries(diag.caseMemory).map(([key, value]) => (
+                      <Badge key={key} variant="outline">
+                        {key}: <span dir="ltr">{value}</span>
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </AdminCardBody>
+          </AdminCard>
         </>
       )}
 
       {/* 3 — parity log, classification per row. */}
       {parity && (
-        <div className="admin-card p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-bold">سجل التطابق (المنصة مقابل MCP)</h3>
-            <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-              <span>مقارنات: <span dir="ltr">{parity.totals.compared}</span></span>
-              <span>متطابقة: <span dir="ltr">{parity.totals.identical}</span></span>
-              <span>مختلفة: <span dir="ltr">{parity.totals.differing}</span></span>
-              <span
-                className={cn(
-                  parity.totals.unexplained > 0 &&
-                    "font-semibold text-red-600 dark:text-red-400",
-                )}
-              >
-                غير مفسَّرة: <span dir="ltr">{parity.totals.unexplained}</span>
-              </span>
-              <span>أحادية الجانب: <span dir="ltr">{parity.unpaired}</span></span>
-            </div>
+        <AdminCard>
+          <AdminCardHeader
+            title="سجل التطابق (المنصة مقابل MCP)"
+            actions={
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="outline">
+                  مقارنات: <span dir="ltr">{parity.totals.compared}</span>
+                </Badge>
+                <Badge variant="outline">
+                  متطابقة: <span dir="ltr">{parity.totals.identical}</span>
+                </Badge>
+                <Badge variant="outline">
+                  مختلفة: <span dir="ltr">{parity.totals.differing}</span>
+                </Badge>
+                <Badge
+                  variant={parity.totals.unexplained > 0 ? "destructive" : "outline"}
+                >
+                  غير مفسَّرة: <span dir="ltr">{parity.totals.unexplained}</span>
+                </Badge>
+                <Badge variant="outline">
+                  أحادية الجانب: <span dir="ltr">{parity.unpaired}</span>
+                </Badge>
+              </div>
+            }
+          />
+
+          <div className="space-y-2 p-3 sm:hidden">
+            {entries.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                لا لحظات قرار مشتركة بعد.
+              </p>
+            ) : (
+              entries.map((entry, i) => (
+                <RecordCard
+                  key={`${entry.evidenceHash}-${entry.createdAt}`}
+                  index={i}
+                  title={entry.symbol}
+                  subtitle={entry.timeframeSet.join(", ")}
+                  badge={
+                    <span className={cn("text-xs", classificationTone(entry))}>
+                      {classificationLabel(entry)}
+                    </span>
+                  }
+                  fields={[
+                    {
+                      label: "قرار المنصة",
+                      value: <span dir="ltr">{decisionSummary(entry.platform)}</span>,
+                    },
+                    {
+                      label: "قرار MCP",
+                      value: <span dir="ltr">{decisionSummary(entry.mcp)}</span>,
+                    },
+                    {
+                      label: "الحقول المختلفة",
+                      value: (
+                        <span dir="ltr">
+                          {entry.comparison.differingFields.join(", ") || "—"}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
+              ))
+            )}
           </div>
 
-          {parity.entries.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">لا لحظات قرار مشتركة بعد.</p>
-          ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[44rem] text-[12px]">
-                <thead>
-                  <tr className="border-b border-border text-[11px] text-muted-foreground">
-                    <th className="py-1.5 text-start font-medium">الرمز</th>
-                    <th className="py-1.5 text-start font-medium">الأطر</th>
-                    <th className="py-1.5 text-start font-medium">قرار المنصة</th>
-                    <th className="py-1.5 text-start font-medium">قرار MCP</th>
-                    <th className="py-1.5 text-start font-medium">الحقول المختلفة</th>
-                    <th className="py-1.5 text-start font-medium">التصنيف</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parity.entries.map((entry) => (
-                    <tr
+          <TableWrap className="hidden sm:block" maxHeight="max-h-[34rem]">
+            <AdminTable className="min-w-[46rem] text-[12px]">
+              <caption className="sr-only">
+                مقارنة قرارات المنصة و MCP على نفس الأدلة
+              </caption>
+              <THead sticky>
+                <tr>
+                  <SortTh label="الرمز" {...sortProps("symbol")} />
+                  <Th>الأطر</Th>
+                  <Th>قرار المنصة</Th>
+                  <Th>قرار MCP</Th>
+                  <Th>الحقول المختلفة</Th>
+                  <SortTh label="التصنيف" {...sortProps("classification")} />
+                  <SortTh label="الوقت" {...sortProps("createdAt")} />
+                </tr>
+              </THead>
+              <tbody>
+                {entries.length === 0 ? (
+                  <TableEmptyRow
+                    colSpan={7}
+                    icon={GitCompare}
+                    title="لا لحظات قرار مشتركة بعد"
+                    description="يظهر صف هنا كلما اتخذت المنصة و MCP قراراً على نفس الأدلة."
+                  />
+                ) : (
+                  entries.map((entry) => (
+                    <Tr
                       key={`${entry.evidenceHash}-${entry.createdAt}`}
-                      className={cn(
-                        "border-b border-border/40",
-                        entry.comparison.classification === "unexplained" && "bg-red-500/[0.06]",
-                      )}
+                      className={
+                        entry.comparison.classification === "unexplained"
+                          ? "bg-red-500/[0.06]"
+                          : undefined
+                      }
                     >
-                      <td className="py-1.5 font-mono">{entry.symbol}</td>
-                      <td className="py-1.5 text-muted-foreground" dir="ltr">
+                      <Td className="type-numeric">{entry.symbol}</Td>
+                      <Td className="text-muted-foreground" dir="ltr">
                         {entry.timeframeSet.join(", ")}
-                      </td>
-                      <td className="py-1.5 text-muted-foreground" dir="ltr">
+                      </Td>
+                      <Td className="text-muted-foreground" dir="ltr">
                         {decisionSummary(entry.platform)}
-                      </td>
-                      <td className="py-1.5 text-muted-foreground" dir="ltr">
+                      </Td>
+                      <Td className="text-muted-foreground" dir="ltr">
                         {decisionSummary(entry.mcp)}
-                      </td>
-                      <td className="py-1.5 font-mono text-[11px] text-muted-foreground" dir="ltr">
+                      </Td>
+                      <Td className="type-numeric text-[11px] text-muted-foreground" dir="ltr">
                         {entry.comparison.differingFields.join(", ") || "—"}
-                      </td>
-                      <td className={cn("py-1.5", classificationTone(entry))}>
+                      </Td>
+                      <Td className={classificationTone(entry)}>
                         {classificationLabel(entry)}
                         {entry.comparison.explanation && !entry.comparison.identical ? (
                           <span className="block text-[10px] text-muted-foreground/80">
                             {entry.comparison.explanation}
                           </span>
                         ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                      </Td>
+                      <Td className="type-numeric whitespace-nowrap text-[11px] text-muted-foreground" dir="ltr">
+                        {new Date(entry.createdAt).toISOString().slice(0, 16).replace("T", " ")}
+                      </Td>
+                    </Tr>
+                  ))
+                )}
+              </tbody>
+            </AdminTable>
+          </TableWrap>
+        </AdminCard>
       )}
-    </div>
+    </AdminPage>
   );
 }

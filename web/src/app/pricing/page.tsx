@@ -4,6 +4,7 @@ import { initDb } from "@/lib/db";
 import { getStripeKeys } from "@/lib/billing/stripe";
 import { TIER_ORDER, TIERS } from "@/lib/billing/tiers";
 import { PricingCards } from "@/components/billing/PricingCards";
+import { SkipLink, Surface } from "@/components/foundation";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { BRAND_NAME } from "@/lib/brand";
 
@@ -26,22 +27,27 @@ export default async function PricingPage() {
 
   return (
     <div dir="rtl" className="min-h-dvh bg-background">
+      <SkipLink targetId="pricing-main">تخطَّ إلى المحتوى</SkipLink>
+
       <header className="flex min-h-14 items-center justify-between border-b border-border/60 bg-card/80 px-4 backdrop-blur-md sm:px-8">
-        <Link href="/" className="flex items-center gap-2">
+        <Link
+          href="/"
+          className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <AiChartLogo size={22} showName />
         </Link>
         <div className="flex items-center gap-2">
           {user ? (
             <Link
               href="/console/billing"
-              className="inline-flex min-h-10 items-center rounded-md px-3 text-sm font-medium text-foreground hover:bg-muted"
+              className="inline-flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               الفوترة والرصيد
             </Link>
           ) : (
             <Link
               href="/signup"
-              className="inline-flex min-h-10 items-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+              className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               إنشاء حساب
             </Link>
@@ -49,7 +55,7 @@ export default async function PricingPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-12 sm:px-8">
+      <main id="pricing-main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-12 sm:px-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-foreground sm:text-4xl">
             باقة واحدة، كل القوة
@@ -97,10 +103,10 @@ export default async function PricingPage() {
               a: "نعم — الاشتراك شهري بلا التزام، وتديره بالكامل من بوابة الفوترة.",
             },
           ].map((item) => (
-            <div key={item.q} className="rounded-xl border border-border bg-card p-5">
+            <Surface key={item.q} as="article" padding="lg">
               <h3 className="font-semibold text-foreground">{item.q}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.a}</p>
-            </div>
+            </Surface>
           ))}
         </section>
       </main>

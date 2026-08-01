@@ -11,6 +11,12 @@ import type {
   OverviewLeader,
   OverviewSeriesPoint,
 } from "@/lib/admin/overviewQueries";
+import { Lock } from "lucide-react";
+import {
+  AdminPage,
+  EmptyState,
+  SectionHeader,
+} from "@/components/admin/ui/AdminKit";
 import { DashboardProfitChart } from "./DashboardProfitChart";
 import { DashboardStatsCards } from "./DashboardStatsCards";
 import { DashboardTopUsers } from "./DashboardTopUsers";
@@ -83,9 +89,17 @@ async function loadJson<T>(url: string, signal: AbortSignal): Promise<Load<T>> {
 
 function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-6 text-center">
+    <div
+      role="alert"
+      className="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-center"
+    >
       <p className="text-sm text-foreground">{message}</p>
-      <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="tap-target mt-3"
+        onClick={onRetry}
+      >
         إعادة المحاولة
       </Button>
     </div>
@@ -189,36 +203,39 @@ export function PlatformDashboard({
     : null;
 
   return (
-    <div dir="rtl" className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">نظرة عامة</h2>
-          <p className="text-sm text-muted-foreground">
-            {overviewLoading
-              ? "جارٍ تحميل بيانات المنصة…"
-              : rangeLabel
-                ? `آخر ${period} يوم · ${rangeLabel}${
-                    fetchedAt ? ` · آخر تحديث ${formatTime(fetchedAt)}` : ""
-                  }`
-                : `آخر ${period} يوم`}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5">
-          {PERIODS.map((p) => (
-            <Button
-              key={p}
-              variant={period === p ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2.5"
-              aria-pressed={period === p}
-              onClick={() => setPeriod(p)}
-            >
-              {p} يوم
-            </Button>
-          ))}
-        </div>
-      </div>
+    <AdminPage dir="rtl" data-testid="admin-overview-panel">
+      <SectionHeader
+        title="نظرة عامة"
+        description={
+          overviewLoading
+            ? "جارٍ تحميل بيانات المنصة…"
+            : rangeLabel
+              ? `آخر ${period} يوم · ${rangeLabel}${
+                  fetchedAt ? ` · آخر تحديث ${formatTime(fetchedAt)}` : ""
+                }`
+              : `آخر ${period} يوم`
+        }
+        actions={
+          <div
+            role="group"
+            aria-label="نافذة التقرير"
+            className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5"
+          >
+            {PERIODS.map((p) => (
+              <Button
+                key={p}
+                variant={period === p ? "secondary" : "ghost"}
+                size="sm"
+                className="tap-target h-7 px-2.5 transition-colors duration-150 ease-out"
+                aria-pressed={period === p}
+                onClick={() => setPeriod(p)}
+              >
+                {p} يوم
+              </Button>
+            ))}
+          </div>
+        }
+      />
 
       {overviewLoad?.status === "error" && (
         <ErrorCard message={overviewLoad.message} onRetry={retry} />
@@ -262,12 +279,14 @@ export function PlatformDashboard({
         ))}
 
       {nothingPermitted && (
-        <div className="rounded-xl border border-border bg-card p-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            ليست لديك صلاحية لعرض أي قسم في هذه النظرة العامة.
-          </p>
+        <div className="rounded-xl border border-border bg-card">
+          <EmptyState
+            icon={Lock}
+            title="لا صلاحية لعرض هذه النظرة"
+            description="دورك الحالي لا يغطي أي قسم في هذه الصفحة. راجع مالك الحساب لتوسيع الصلاحيات."
+          />
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

@@ -45,16 +45,13 @@ function TrendDelta({
 
   const good = direction === goodWhen;
   return (
+    // Semantic tokens, no glow: the surfaces in this console are opaque and a
+    // text-shadow halo was the one place the KPI row left the design language.
     <div
       className={cn(
         "flex items-center gap-1.5",
-        good ? "text-green-400" : "text-pink-400",
+        good ? "text-emerald-600 dark:text-emerald-400" : "text-destructive",
       )}
-      style={{
-        textShadow: good
-          ? "0 1px 6px rgba(68, 255, 118, 0.25)"
-          : "0 1px 6px rgba(255, 68, 193, 0.25)",
-      }}
     >
       <HugeiconsIcon
         icon={direction === "up" ? ArrowUpRight01Icon : ArrowDownRight01Icon}

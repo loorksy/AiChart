@@ -177,7 +177,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                       key={suggestion.id}
                       type="button"
                       onClick={() => void sendMessage(suggestion.prompt)}
-                      className="min-h-9 rounded-full border border-border bg-background px-3 text-xs text-foreground hover:bg-muted"
+                      className="min-h-11 rounded-full border border-border bg-background px-3.5 text-xs text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9"
                     >
                       {suggestion.label}
                     </button>

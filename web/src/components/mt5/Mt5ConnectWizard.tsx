@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, CheckCircle2, Link2, Loader2, ShieldCheck } from "lucide-react";
+
+import { PageHeader, Surface } from "@/components/foundation";
+import { Button, buttonVariants } from "@/components/squareui/button";
+import { cn } from "@/lib/utils";
 
 interface ExistingAccount {
   platform: string;
@@ -10,6 +15,15 @@ interface ExistingAccount {
 }
 
 type Step = "server" | "credentials" | "progress" | "done";
+
+const STEPS: { key: Step; label: string }[] = [
+  { key: "server", label: "الخادم" },
+  { key: "credentials", label: "تسجيل الدخول" },
+  { key: "progress", label: "الربط" },
+];
+
+const FIELD =
+  "min-h-11 w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm";
 
 /**
  * V2-B (#96): the transparent linking wizard.
@@ -87,51 +101,101 @@ export function Mt5ConnectWizard({
 
   if (!enabled) {
     return (
-      <div dir="rtl" className="rounded-xl border border-border bg-card p-6">
-        <h1 className="text-xl font-bold text-foreground">ربط حساب MetaTrader 5</h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          الربط السحابي غير مفعَّل بعد على هذه المنصة. سيتاح فور اكتمال إعداده —
-          وحتى ذلك الحين يمكن استخدام جسر الـ EA كما هو.
-        </p>
+      <div dir="rtl" className="space-y-6">
+        <PageHeader
+          title="ربط حساب MetaTrader 5"
+          icon={<Link2 aria-hidden="true" />}
+        />
+        <Surface padding="lg">
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            الربط السحابي غير مفعَّل بعد على هذه المنصة. سيتاح فور اكتمال إعداده —
+            وحتى ذلك الحين يمكن استخدام جسر الـ EA كما هو.
+          </p>
+        </Surface>
       </div>
     );
   }
 
+  const activeIndex = step === "done" ? STEPS.length - 1 : STEPS.findIndex((s) => s.key === step);
+
   return (
-    <div dir="rtl" className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">ربط حساب MetaTrader 5</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          ربط شفاف عبر سحابة MetaApi — أنت تسجّل الدخول إلى حسابك الحقيقي لدى وسيطك.
-        </p>
-      </div>
+    <div dir="rtl" className="space-y-6">
+      <PageHeader
+        title="ربط حساب MetaTrader 5"
+        description="ربط شفاف عبر سحابة MetaApi — أنت تسجّل الدخول إلى حسابك الحقيقي لدى وسيطك."
+        icon={<Link2 aria-hidden="true" />}
+      />
+
+      {/* An ordered list so the wizard's shape is available to a screen reader,
+          not just implied by the colour of three bars. */}
+      <ol className="flex items-center gap-2" aria-label="خطوات الربط">
+        {STEPS.map((s, i) => {
+          const state = i < activeIndex ? "done" : i === activeIndex ? "current" : "todo";
+          return (
+            <li key={s.key} className="flex flex-1 flex-col gap-1.5">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-1 rounded-full transition-colors duration-200",
+                  state === "todo" ? "bg-border" : "bg-primary",
+                )}
+              />
+              <span
+                className={cn(
+                  "type-caption",
+                  state === "current" && "font-semibold text-foreground",
+                )}
+                aria-current={state === "current" ? "step" : undefined}
+              >
+                {i + 1} · {s.label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
 
       {existing && step === "server" && (
-        <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-          حساب مرتبط حالياً: {existing.platform.toUpperCase()} · {existing.login} @{" "}
-          {existing.server} — إكمال المعالج يستبدله.
-        </div>
+        <Surface padding="sm" className="bg-muted/30">
+          <p className="type-caption">
+            حساب مرتبط حالياً: {existing.platform.toUpperCase()} · {existing.login} @{" "}
+            {existing.server} — إكمال المعالج يستبدله.
+          </p>
+        </Surface>
       )}
 
-      <div className="rounded-xl border border-border bg-card p-6">
+      <Surface padding="lg">
         {step === "server" && (
           <div className="space-y-4">
-            <h2 className="text-sm font-semibold text-foreground">1 · اختر خادم وسيطك</h2>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="ابحث باسم الوسيط (مثال: Exness, IC Markets…)"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
-            />
-            {searchState === "loading" && (
-              <p className="text-xs text-muted-foreground">جارٍ البحث…</p>
-            )}
-            {searchState === "unavailable" && (
-              <p className="text-xs text-muted-foreground">
-                البحث اللحظي غير متاح الآن — أدخل اسم الخادم يدوياً كما يظهر في
-                منصة MT5 لديك (مثال: Exness-MT5Real8).
-              </p>
-            )}
+            <h2 className="type-heading">1 · اختر خادم وسيطك</h2>
+
+            <div className="space-y-1.5">
+              <label htmlFor="mt5-broker-search" className="type-caption block font-medium">
+                ابحث عن وسيطك
+              </label>
+              <input
+                id="mt5-broker-search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="مثال: Exness, IC Markets…"
+                className={FIELD}
+              />
+            </div>
+
+            <div aria-live="polite">
+              {searchState === "loading" && (
+                <p className="type-caption flex items-center gap-1.5">
+                  <Loader2 aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none" />
+                  جارٍ البحث…
+                </p>
+              )}
+              {searchState === "unavailable" && (
+                <p className="type-caption">
+                  البحث اللحظي غير متاح الآن — أدخل اسم الخادم يدوياً كما يظهر في
+                  منصة MT5 لديك (مثال: Exness-MT5Real8).
+                </p>
+              )}
+            </div>
+
             {servers.length > 0 && (
               <ul className="max-h-48 space-y-1 overflow-y-auto">
                 {servers.map((name) => (
@@ -141,7 +205,7 @@ export function Mt5ConnectWizard({
                         setServer(name);
                         setStep("credentials");
                       }}
-                      className="w-full rounded-lg border border-border px-3 py-2 text-right text-sm hover:bg-muted"
+                      className="min-h-11 w-full rounded-[var(--radius)] border border-border px-3 py-2 text-start text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {name}
                     </button>
@@ -149,99 +213,160 @@ export function Mt5ConnectWizard({
                 ))}
               </ul>
             )}
-            <div className="flex items-center gap-2">
-              <input
-                value={server}
-                onChange={(e) => setServer(e.target.value)}
-                placeholder="أو اكتب اسم الخادم يدوياً"
-                className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
-              />
-              <button
-                onClick={() => server.trim() && setStep("credentials")}
-                disabled={!server.trim()}
-                className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-              >
-                متابعة
-              </button>
+
+            <div className="space-y-1.5">
+              <label htmlFor="mt5-server" className="type-caption block font-medium">
+                أو اكتب اسم الخادم يدوياً
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  id="mt5-server"
+                  value={server}
+                  onChange={(e) => setServer(e.target.value)}
+                  placeholder="Exness-MT5Real8"
+                  className={cn(FIELD, "sm:flex-1")}
+                />
+                <Button
+                  size="lg"
+                  className="min-h-11"
+                  onClick={() => server.trim() && setStep("credentials")}
+                  disabled={!server.trim()}
+                >
+                  متابعة
+                </Button>
+              </div>
             </div>
           </div>
         )}
 
         {step === "credentials" && (
           <div className="space-y-4">
-            <h2 className="text-sm font-semibold text-foreground">
-              2 · سجّل الدخول إلى حسابك — {server}
-            </h2>
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-foreground">
-              أنت تسجّل الدخول إلى حساب MetaTrader <b>الحقيقي</b> الخاص بك عبر
-              سحابة MetaApi المرخّصة. تُخزَّن بيانات الدخول <b>مشفَّرة</b> (AES-256)
-              وتُستخدم فقط لتشغيل نسخة الطرفية السحابية الخاصة بك. لخفض التكلفة،
-              يُوقَف الاتصال تلقائياً عند مغادرتك المنصة ويعود وحده عند عودتك.
+            <h2 className="type-heading">2 · سجّل الدخول إلى حسابك — {server}</h2>
+
+            <div className="flex gap-2.5 rounded-[var(--radius)] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-foreground">
+              <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-amber-500" />
+              <p>
+                أنت تسجّل الدخول إلى حساب MetaTrader <b>الحقيقي</b> الخاص بك عبر
+                سحابة MetaApi المرخّصة. تُخزَّن بيانات الدخول <b>مشفَّرة</b> (AES-256)
+                وتُستخدم فقط لتشغيل نسخة الطرفية السحابية الخاصة بك. لخفض التكلفة،
+                يُوقَف الاتصال تلقائياً عند مغادرتك المنصة ويعود وحده عند عودتك.
+              </p>
             </div>
+
             {error && (
-              <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p
+                role="alert"
+                className="rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
                 {error}
               </p>
             )}
+
             <div className="grid gap-3 sm:grid-cols-2">
-              <select
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value as "mt5" | "mt4")}
-                className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
-              >
-                <option value="mt5">MetaTrader 5</option>
-                <option value="mt4">MetaTrader 4</option>
-              </select>
+              <div className="space-y-1.5">
+                <label htmlFor="mt5-platform" className="type-caption block font-medium">
+                  المنصة
+                </label>
+                <select
+                  id="mt5-platform"
+                  value={platform}
+                  onChange={(e) => setPlatform(e.target.value as "mt5" | "mt4")}
+                  className={FIELD}
+                >
+                  <option value="mt5">MetaTrader 5</option>
+                  <option value="mt4">MetaTrader 4</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="mt5-login" className="type-caption block font-medium">
+                  رقم الحساب (Login)
+                </label>
+                <input
+                  id="mt5-login"
+                  value={login}
+                  onChange={(e) => setLogin(e.target.value)}
+                  placeholder="123456789"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className={FIELD}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="mt5-password" className="type-caption block font-medium">
+                كلمة المرور (Investor أو Master)
+              </label>
               <input
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
-                placeholder="رقم الحساب (Login)"
-                inputMode="numeric"
-                className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
+                id="mt5-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                autoComplete="off"
+                className={FIELD}
               />
             </div>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              placeholder="كلمة المرور (Investor أو Master)"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
-            />
-            <div className="flex items-center justify-between">
-              <button
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <Button
+                variant="ghost"
+                size="lg"
+                className="min-h-11 sm:-ms-2"
                 onClick={() => setStep("server")}
-                className="text-sm text-muted-foreground hover:text-foreground"
               >
-                ← تغيير الخادم
-              </button>
-              <button
+                <ArrowLeft aria-hidden="true" className="rtl:rotate-180" />
+                تغيير الخادم
+              </Button>
+              <Button
+                size="lg"
+                className="min-h-11"
                 onClick={connect}
                 disabled={!login.trim() || !password}
-                className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
               >
                 ربط الحساب
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {(step === "progress" || step === "done") && (
-          <div className="space-y-4 text-center">
-            <h2 className="text-sm font-semibold text-foreground">
-              {step === "done" ? "تم الربط بنجاح ✓" : "3 · جارٍ الربط…"}
+          <div className="flex flex-col items-center gap-4 py-4 text-center">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "flex size-12 items-center justify-center rounded-full border",
+                step === "done"
+                  ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-500"
+                  : "border-border bg-muted text-muted-foreground",
+              )}
+            >
+              {step === "done" ? (
+                <CheckCircle2 className="size-6" />
+              ) : (
+                <Loader2 className="size-6 animate-spin motion-reduce:animate-none" />
+              )}
+            </span>
+
+            <h2 className="type-heading">
+              {step === "done" ? "تم الربط بنجاح" : "3 · جارٍ الربط…"}
             </h2>
-            <p className="text-sm text-muted-foreground">{status}</p>
+
+            {/* The connect call is slow; announce each status change. */}
+            <p className="type-caption" role="status" aria-live="polite">
+              {status}
+            </p>
+
             {step === "done" && (
               <a
                 href="/console"
-                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground"
+                className={cn(buttonVariants({ size: "lg" }), "min-h-11 px-6")}
               >
                 الانتقال إلى الشارت
               </a>
             )}
           </div>
         )}
-      </div>
+      </Surface>
     </div>
   );
 }

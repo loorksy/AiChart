@@ -1,7 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { ArrowLeft, Inbox, MessageSquare } from "lucide-react";
+
+import { Badge } from "@/components/squareui/badge";
+import { Button } from "@/components/squareui/button";
 import { CardSkeleton } from "@/components/ui/skeletons/page-skeletons";
+import { cn } from "@/lib/utils";
+import {
+  AdminCard,
+  AdminCardBody,
+  AdminCardFooter,
+  AdminCardHeader,
+  AdminPage,
+  EmptyState,
+  Field,
+  InlineAlert,
+  SectionHeader,
+  Spinner,
+} from "@/components/admin/ui/AdminKit";
 
 interface Ticket {
   id: number;
@@ -26,6 +43,12 @@ const STATUS_AR: Record<string, string> = {
   closed: "مغلقة",
 };
 
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
+  open: "default",
+  in_progress: "secondary",
+  closed: "outline",
+};
+
 const AUTHOR_AR: Record<string, string> = {
   user: "العميل",
   bot: "المساعد الذكي",
@@ -44,6 +67,8 @@ export function AdminSupportPanel() {
   const [thread, setThread] = useState<Message[] | null>(null);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/support");
@@ -74,8 +99,9 @@ export function AdminSupportPanel() {
   async function act(action: "reply" | "close" | "assign") {
     if (!active) return;
     setBusy(true);
+    setError(null);
     try {
-      await fetch("/api/admin/support", {
+      const res = await fetch("/api/admin/support", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -84,7 +110,18 @@ export function AdminSupportPanel() {
             : { action, ticket_id: active.id },
         ),
       });
-      if (action === "reply") setReply("");
+      if (!res.ok) {
+        setError(
+          action === "reply"
+            ? "لم يُرسل الرد — نصّك ما زال في الصندوق، أعد المحاولة."
+            : "تعذّر تنفيذ الإجراء على التذكرة — أعد المحاولة.",
+        );
+        return;
+      }
+      if (action === "reply") {
+        setReply("");
+        setTouched(false);
+      }
       if (action === "close") {
         setActive(null);
         setThread(null);
@@ -92,31 +129,66 @@ export function AdminSupportPanel() {
         await openThread(active);
       }
       await load();
+    } catch {
+      setError("تعذّر الوصول إلى الخادم — لم يُنفَّذ أي إجراء.");
     } finally {
       setBusy(false);
     }
   }
 
-  if (tickets === null) return <CardSkeleton lines={5} />;
+  if (tickets === null) {
+    return (
+      <AdminPage dir="rtl">
+        <CardSkeleton lines={6} />
+      </AdminPage>
+    );
+  }
+
+  const waiting = tickets.filter((t) => t.needs_human === 1).length;
+  const replyError =
+    touched && reply.trim().length === 0 ? "اكتب نص الرد قبل الإرسال." : undefined;
 
   return (
-    <div className="space-y-4" dir="rtl">
-      {active == null ? (
-        <section className="rounded-xl border border-border bg-card">
-          <h3 className="border-b border-border px-4 py-3 text-sm font-semibold">
-            صندوق التذاكر ({tickets.length})
-          </h3>
-          {tickets.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              لا تذاكر — كل العملاء سعداء 🎉
-            </p>
+    <AdminPage dir="rtl" data-testid="admin-support-panel">
+      <SectionHeader
+        title="الدعم"
+        description="تذاكر العملاء — المُصعَّدة إلى مشرف تظهر أولاً."
+        icon={MessageSquare}
+        actions={
+          waiting > 0 ? (
+            <Badge variant="destructive">{waiting} بانتظار مشرف</Badge>
           ) : (
-            <ul className="divide-y divide-border/60">
-              {tickets.map((t) => (
-                <li key={t.id}>
+            <Badge variant="secondary">لا تذاكر مُصعَّدة</Badge>
+          )
+        }
+      />
+
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
+
+      {active == null ? (
+        <AdminCard>
+          <AdminCardHeader
+            title="صندوق التذاكر"
+            description={`${tickets.length} تذكرة`}
+          />
+          {tickets.length === 0 ? (
+            <EmptyState
+              icon={Inbox}
+              title="لا تذاكر مفتوحة"
+              description="كل العملاء مخدومون — ستظهر أي تذكرة جديدة هنا فور وصولها."
+            />
+          ) : (
+            <ul>
+              {tickets.map((t, i) => (
+                <li
+                  key={t.id}
+                  style={{ "--motion-index": i } as CSSProperties}
+                  className="motion-fade-in motion-stagger border-b border-border/60 last:border-0"
+                >
                   <button
+                    type="button"
                     onClick={() => void openThread(t)}
-                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-right text-sm hover:bg-muted/40"
+                    className="focus-ring-inset tap-target flex w-full items-center justify-between gap-3 px-4 py-3 text-start text-sm transition-colors duration-150 ease-out hover:bg-muted/40"
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-foreground">{t.subject}</span>
@@ -124,88 +196,130 @@ export function AdminSupportPanel() {
                         عميل #{t.user_id} · {new Date(t.updated_at).toLocaleString("ar")}
                       </span>
                     </span>
-                    <span className="shrink-0 text-xs">
+                    <span className="flex shrink-0 items-center gap-2">
                       {t.needs_human === 1 && (
-                        <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-500">
-                          بانتظار مشرف
-                        </span>
+                        <Badge variant="destructive">بانتظار مشرف</Badge>
                       )}
-                      <span className="text-muted-foreground">
+                      <Badge variant={STATUS_VARIANT[t.status] ?? "outline"}>
                         {STATUS_AR[t.status] ?? t.status}
-                      </span>
+                      </Badge>
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-        </section>
+        </AdminCard>
       ) : (
-        <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => {
-                setActive(null);
-                setThread(null);
-                void load();
+        <AdminCard>
+          <AdminCardHeader
+            title={active.subject}
+            description={`عميل #${active.user_id} · ${STATUS_AR[active.status] ?? active.status}`}
+            actions={
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="tap-target"
+                  onClick={() => {
+                    setActive(null);
+                    setThread(null);
+                    setError(null);
+                    void load();
+                  }}
+                >
+                  {/* Mirrors with the document direction: in RTL "back" points
+                      toward the inline start, which is the right edge. */}
+                  <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />
+                  الصندوق
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="tap-target"
+                  onClick={() => act("assign")}
+                  disabled={busy}
+                >
+                  إسناد لي
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="tap-target"
+                  onClick={() => act("close")}
+                  disabled={busy}
+                >
+                  إغلاق التذكرة
+                </Button>
+              </>
+            }
+          />
+
+          <AdminCardBody className="max-h-[50vh] space-y-3 overflow-y-auto">
+            {(thread ?? []).length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                لا رسائل في هذه التذكرة بعد.
+              </p>
+            ) : (
+              (thread ?? []).map((m, i) => (
+                <div
+                  key={m.id}
+                  style={{ "--motion-index": i } as CSSProperties}
+                  className={cn(
+                    "motion-fade-in motion-stagger rounded-xl border px-4 py-3 text-sm leading-relaxed",
+                    m.author === "admin"
+                      ? "border-primary/30 bg-primary/5"
+                      : "border-border bg-muted/30",
+                  )}
+                >
+                  <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
+                    {AUTHOR_AR[m.author]} · {new Date(m.created_at).toLocaleString("ar")}
+                  </p>
+                  <p className="whitespace-pre-wrap text-foreground">{m.body}</p>
+                </div>
+              ))
+            )}
+          </AdminCardBody>
+
+          <AdminCardFooter className="block">
+            <form
+              className="flex flex-col gap-2 sm:flex-row sm:items-end"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setTouched(true);
+                if (reply.trim()) void act("reply");
               }}
-              className="text-sm text-muted-foreground hover:text-foreground"
             >
-              ← الصندوق
-            </button>
-            <div className="flex gap-2">
-              <button
-                onClick={() => act("assign")}
-                disabled={busy}
-                className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted"
+              <Field
+                label="ردّك للعميل"
+                htmlFor="support-reply"
+                error={replyError}
+                className="flex-1"
               >
-                إسناد لي
-              </button>
-              <button
-                onClick={() => act("close")}
-                disabled={busy}
-                className="rounded-md border border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                <textarea
+                  id="support-reply"
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  onBlur={() => setTouched(true)}
+                  placeholder="اكتب ردك للعميل…"
+                  rows={2}
+                  aria-invalid={replyError ? true : undefined}
+                  aria-describedby={replyError ? "support-reply-error" : undefined}
+                  className="admin-input focus-ring w-full resize-y text-sm"
+                />
+              </Field>
+              <Button
+                type="submit"
+                className="tap-target h-10 shrink-0"
+                disabled={busy || !reply.trim()}
               >
-                إغلاق التذكرة
-              </button>
-            </div>
-          </div>
-          <h3 className="text-sm font-semibold text-foreground">{active.subject}</h3>
-          <div className="max-h-[50vh] space-y-3 overflow-y-auto">
-            {(thread ?? []).map((m) => (
-              <div
-                key={m.id}
-                className={`rounded-xl border px-4 py-3 text-sm leading-relaxed ${
-                  m.author === "admin"
-                    ? "border-primary/30 bg-primary/5"
-                    : "border-border bg-muted/30"
-                }`}
-              >
-                <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
-                  {AUTHOR_AR[m.author]} · {new Date(m.created_at).toLocaleString("ar")}
-                </p>
-                <p className="whitespace-pre-wrap text-foreground">{m.body}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <textarea
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              placeholder="اكتب ردك للعميل…"
-              rows={2}
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
-            />
-            <button
-              onClick={() => act("reply")}
-              disabled={busy || !reply.trim()}
-              className="self-end rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-            >
-              إرسال الرد
-            </button>
-          </div>
-        </section>
+                {busy ? <Spinner /> : null}
+                إرسال الرد
+              </Button>
+            </form>
+          </AdminCardFooter>
+        </AdminCard>
       )}
-    </div>
+    </AdminPage>
   );
 }

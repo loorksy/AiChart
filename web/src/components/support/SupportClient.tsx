@@ -1,7 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, ArrowLeft, LifeBuoy, RotateCw, Send, Inbox } from "lucide-react";
+
+import { EmptyState, PageHeader, SectionHeader, Surface } from "@/components/foundation";
+import { Button } from "@/components/squareui/button";
 import { CardSkeleton } from "@/components/ui/skeletons/page-skeletons";
+import { cn } from "@/lib/utils";
 
 interface Ticket {
   id: number;
@@ -39,17 +44,38 @@ export function SupportClient() {
   const [body, setBody] = useState("");
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
 
   const loadTickets = useCallback(async () => {
-    const res = await fetch("/api/support/tickets");
-    if (res.ok) setTickets(((await res.json()) as { tickets: Ticket[] }).tickets);
+    setLoadFailed(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/support/tickets");
+      if (res.ok) {
+        setTickets(((await res.json()) as { tickets: Ticket[] }).tickets);
+      } else {
+        setError("تعذّر تحميل التذاكر.");
+        setLoadFailed(true);
+      }
+    } catch {
+      setError("تعذّر الاتصال بالخادم.");
+      setLoadFailed(true);
+    }
   }, []);
 
   const loadThread = useCallback(async (id: number) => {
-    const res = await fetch(`/api/support/tickets/${id}`);
-    if (res.ok) {
-      setThread(((await res.json()) as { messages: Message[] }).messages);
-      setActive(id);
+    try {
+      const res = await fetch(`/api/support/tickets/${id}`);
+      if (res.ok) {
+        setThread(((await res.json()) as { messages: Message[] }).messages);
+        setActive(id);
+      } else {
+        setError("تعذّر تحميل المحادثة.");
+      }
+    } catch {
+      setError("تعذّر الاتصال بالخادم.");
     }
   }, []);
 
@@ -64,8 +90,20 @@ export function SupportClient() {
     return () => clearInterval(t);
   }, [active, loadThread]);
 
+  // A reply that lands below the fold reads as "nothing happened".
+  useEffect(() => {
+    if (!thread?.length) return;
+    threadEndRef.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      block: "nearest",
+    });
+  }, [thread]);
+
   async function openTicket() {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch("/api/support/tickets", {
         method: "POST",
@@ -78,7 +116,11 @@ export function SupportClient() {
         setBody("");
         await loadTickets();
         await loadThread(data.ticket_id);
+      } else {
+        setError("تعذّر فتح التذكرة. حاول مرة أخرى.");
       }
+    } catch {
+      setError("تعذّر الاتصال بالخادم.");
     } finally {
       setBusy(false);
     }
@@ -87,6 +129,7 @@ export function SupportClient() {
   async function sendReply() {
     if (active == null || !reply.trim()) return;
     setBusy(true);
+    setError(null);
     try {
       await fetch(`/api/support/tickets/${active}`, {
         method: "POST",
@@ -95,65 +138,124 @@ export function SupportClient() {
       });
       setReply("");
       await loadThread(active);
+    } catch {
+      setError("تعذّر إرسال الرد.");
     } finally {
       setBusy(false);
     }
   }
 
-  if (tickets === null) return <CardSkeleton lines={5} />;
+  const header = (
+    <PageHeader
+      title="الدعم الفني"
+      description="مساعد ذكي يجيب فوراً من التوثيق — واكتب «أريد مشرفاً» في أي وقت لتصعيد تذكرتك لفريق الدعم."
+      icon={<LifeBuoy aria-hidden="true" />}
+    />
+  );
+
+  const errorBanner = error ? (
+    <Surface role="alert" padding="sm" className="border-destructive/30 bg-destructive/10">
+      <p className="type-caption text-destructive">{error}</p>
+    </Surface>
+  ) : null;
+
+  // Previously a failed first load left the skeleton on screen forever.
+  if (tickets === null) {
+    return (
+      <div className="space-y-6" dir="rtl">
+        {header}
+        {loadFailed ? (
+          <Surface padding="none">
+            <EmptyState
+              announce
+              tone="danger"
+              icon={<AlertTriangle aria-hidden="true" />}
+              title="تعذّر تحميل التذاكر"
+              description={error ?? "حدث خطأ غير متوقع."}
+              action={
+                <Button size="lg" className="min-h-11" onClick={() => void loadTickets()}>
+                  <RotateCw aria-hidden="true" />
+                  إعادة المحاولة
+                </Button>
+              }
+            />
+          </Surface>
+        ) : (
+          <div aria-busy="true" aria-live="polite">
+            <span className="sr-only">جارٍ تحميل التذاكر…</span>
+            <CardSkeleton lines={5} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">الدعم الفني</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          مساعد ذكي يجيب فوراً من التوثيق — واكتب «أريد مشرفاً» في أي وقت لتصعيد
-          تذكرتك لفريق الدعم.
-        </p>
-      </div>
+      {header}
+      {errorBanner}
 
       {active == null ? (
         <>
-          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-            <h2 className="text-sm font-semibold text-foreground">تذكرة جديدة</h2>
-            <input
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="الموضوع"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
+          <Surface as="section" padding="lg" className="space-y-3">
+            <SectionHeader
+              title="تذكرة جديدة"
+              description="اشرح المشكلة بأكبر قدر من التفاصيل — يجيبك المساعد فوراً."
             />
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="صف مشكلتك أو سؤالك…"
-              rows={4}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
-            />
-            <button
+            <div className="space-y-1.5">
+              <label htmlFor="support-subject" className="type-caption block font-medium">
+                الموضوع
+              </label>
+              <input
+                id="support-subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="مثال: لا يظهر حسابي بعد الربط"
+                className="min-h-11 w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="support-body" className="type-caption block font-medium">
+                التفاصيل
+              </label>
+              <textarea
+                id="support-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="صف مشكلتك أو سؤالك…"
+                rows={4}
+                className="w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+            <Button
+              size="lg"
+              className="min-h-11 w-full sm:w-auto"
               onClick={openTicket}
               disabled={busy || subject.length < 3 || body.length < 5}
-              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
             >
               {busy ? "جارٍ الفتح…" : "فتح التذكرة"}
-            </button>
-          </section>
+            </Button>
+          </Surface>
 
-          <section className="rounded-xl border border-border bg-card">
-            <h2 className="border-b border-border px-5 py-3 text-sm font-semibold">تذاكري</h2>
+          <Surface as="section" padding="none">
+            <SectionHeader title="تذاكري" className="border-b border-border px-5 py-3" />
             {tickets.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-                لا تذاكر بعد.
-              </p>
+              <EmptyState
+                size="sm"
+                icon={<Inbox aria-hidden="true" />}
+                title="لا تذاكر بعد"
+                description="افتح تذكرة من النموذج بالأعلى وسيصلك رد فوري."
+              />
             ) : (
               <ul className="divide-y divide-border/60">
                 {tickets.map((t) => (
                   <li key={t.id}>
                     <button
                       onClick={() => void loadThread(t.id)}
-                      className="flex w-full items-center justify-between px-5 py-3 text-right text-sm hover:bg-muted/40"
+                      className="flex min-h-11 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-3 text-start text-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                     >
-                      <span className="text-foreground">{t.subject}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="min-w-0 flex-1 text-foreground">{t.subject}</span>
+                      <span className="type-caption shrink-0">
                         {STATUS_AR[t.status] ?? t.status}
                         {t.needs_human === 1 && " · بانتظار مشرف"}
                       </span>
@@ -162,54 +264,71 @@ export function SupportClient() {
                 ))}
               </ul>
             )}
-          </section>
+          </Surface>
         </>
       ) : (
-        <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-          <button
+        <Surface as="section" padding="lg" className="space-y-4">
+          <Button
+            variant="ghost"
+            size="lg"
+            className="min-h-11 -ms-2"
             onClick={() => {
               setActive(null);
               setThread(null);
               void loadTickets();
             }}
-            className="text-sm text-muted-foreground hover:text-foreground"
           >
-            ← العودة للتذاكر
-          </button>
-          <div className="space-y-3">
+            {/* Mirrors under RTL so "back" still points the way the reader came from. */}
+            <ArrowLeft aria-hidden="true" className="rtl:rotate-180" />
+            العودة للتذاكر
+          </Button>
+
+          <div className="space-y-3" aria-live="polite" aria-label="محادثة التذكرة">
             {(thread ?? []).map((m) => (
               <div
                 key={m.id}
-                className={`rounded-xl border px-4 py-3 text-sm leading-relaxed ${
+                className={cn(
+                  "rounded-[var(--radius-lg)] border px-4 py-3 text-sm leading-relaxed",
                   m.author === "user"
                     ? "border-primary/30 bg-primary/5"
-                    : "border-border bg-muted/30"
-                }`}
+                    : "border-border bg-muted/30",
+                )}
               >
-                <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
-                  {AUTHOR_AR[m.author]} · {new Date(m.created_at).toLocaleString("ar")}
+                <p className="type-caption mb-1 font-semibold">
+                  {AUTHOR_AR[m.author]} ·{" "}
+                  <time dateTime={new Date(m.created_at).toISOString()}>
+                    {new Date(m.created_at).toLocaleString("ar")}
+                  </time>
                 </p>
                 <p className="whitespace-pre-wrap text-foreground">{m.body}</p>
               </div>
             ))}
+            <div ref={threadEndRef} />
           </div>
-          <div className="flex gap-2">
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <label htmlFor="support-reply" className="sr-only">
+              ردك على التذكرة
+            </label>
             <input
+              id="support-reply"
               value={reply}
               onChange={(e) => setReply(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void sendReply()}
               placeholder="اكتب ردك… (أو «أريد مشرفاً» للتصعيد)"
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm"
+              className="min-h-11 flex-1 rounded-[var(--radius)] border border-border bg-background px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
-            <button
+            <Button
+              size="lg"
+              className="min-h-11"
               onClick={sendReply}
               disabled={busy || !reply.trim()}
-              className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
             >
+              <Send aria-hidden="true" className="rtl:rotate-180" />
               إرسال
-            </button>
+            </Button>
           </div>
-        </section>
+        </Surface>
       )}
     </div>
   );
