@@ -63,7 +63,7 @@ export function ForexMethodSelector({
             جهازك مفتوحاً.
           </span>
           {!platformAvailable && (
-            <span className="mt-1 text-[11px] font-medium text-amber-500">
+            <span className="mt-1 text-[11px] font-medium text-warning">
               {platformHint ??
                 "غير مفعّل حالياً — أضِف METAAPI_TOKEN من لوحة المنصّة أو استخدم جسر EA."}
             </span>

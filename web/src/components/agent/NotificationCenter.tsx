@@ -26,13 +26,13 @@ type PanelPos = { top: number; left: number; width: number; maxHeight: number };
 function typeTone(type: AlertLog["type"]): string {
   switch (type) {
     case "trade_executed":
-      return "bg-emerald-500";
+      return "bg-buy";
     case "trade_closed":
-      return "bg-sky-500";
+      return "bg-info";
     case "trade_failed":
-      return "bg-red-500";
+      return "bg-destructive";
     default:
-      return "bg-amber-500";
+      return "bg-warning";
   }
 }
 
@@ -164,7 +164,7 @@ export function NotificationCenter({ className }: { className?: string }) {
         aria-expanded={open}
         data-testid="notification-bell"
         className={cn(
-          "relative flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground",
+          "relative flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-ring tap-target-expand",
           className,
         )}
       >
@@ -172,7 +172,7 @@ export function NotificationCenter({ className }: { className?: string }) {
         {unread > 0 ? (
           <span
             data-testid="notification-unread-badge"
-            className="absolute -end-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+            className="absolute -end-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground"
           >
             {unread > 99 ? "99+" : unread}
           </span>
@@ -192,7 +192,7 @@ export function NotificationCenter({ className }: { className?: string }) {
                 role="dialog"
                 aria-label={t("alerts.title")}
                 data-testid="notification-center"
-                className="absolute flex flex-col overflow-hidden rounded-xl border border-border shadow-xl"
+                className="absolute flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border elevation-4"
                 style={{
                   top: pos?.top ?? 56,
                   left: pos?.left ?? 16,
@@ -208,7 +208,7 @@ export function NotificationCenter({ className }: { className?: string }) {
                       <button
                         type="button"
                         onClick={() => void markAllRead()}
-                        className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-ring sm:min-h-8"
                       >
                         <CheckCheck className="h-3.5 w-3.5" aria-hidden />
                         {t("alerts.mark_all")}
@@ -218,7 +218,7 @@ export function NotificationCenter({ className }: { className?: string }) {
                       type="button"
                       onClick={() => setOpen(false)}
                       aria-label={t("shell.close")}
-                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-ring tap-target-expand"
                     >
                       <X className="h-3.5 w-3.5" aria-hidden />
                     </button>
@@ -226,12 +226,12 @@ export function NotificationCenter({ className }: { className?: string }) {
                 </div>
 
                 {!connected ? (
-                  <p className="shrink-0 border-b border-border bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300">
+                  <p className="shrink-0 border-b border-border bg-warning/10 px-3 py-1 text-[11px] text-warning">
                     {t("alerts.reconnecting")}
                   </p>
                 ) : null}
                 {error ? (
-                  <p className="shrink-0 border-b border-border bg-destructive/10 px-3 py-1 text-[11px] text-destructive-foreground">
+                  <p className="shrink-0 border-b border-border bg-destructive/10 px-3 py-1 text-[11px] text-destructive">
                     {t("alerts.error")}
                   </p>
                 ) : null}
@@ -267,7 +267,7 @@ export function NotificationCenter({ className }: { className?: string }) {
                                 {alert.body}
                               </p>
                             ) : null}
-                            <p className="mt-0.5 text-[10px] text-muted-foreground/70">
+                            <p className="mt-0.5 text-[11px] text-muted-foreground/70">
                               {alert.symbol ? `${alert.symbol} · ` : ""}
                               {alert.created_at}
                             </p>

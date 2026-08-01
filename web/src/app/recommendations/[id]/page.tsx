@@ -3,6 +3,8 @@
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
+import { Button } from "@/components/squareui/button";
+import { EmptyState, Surface } from "@/components/foundation";
 import { useLocale } from "@/hooks/useLocale";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import type { TrackedRecommendation } from "@/lib/recommendations/types";
@@ -48,9 +50,10 @@ export default function RecommendationDetailsPage({
     <div dir={dir} className="mx-auto max-w-lg p-4">
       <Link
         href="/recommendations"
-        className="mb-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+        className="mb-4 inline-flex min-h-11 items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-ring sm:min-h-0"
       >
-        <ArrowLeft className="h-3.5 w-3.5" />
+        {/* Mirrors under RTL so "back" points the way the reader came from. */}
+        <ArrowLeft className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden />
         {t("rec.page.back")}
       </Link>
 
@@ -58,23 +61,27 @@ export default function RecommendationDetailsPage({
         <p className="text-center text-sm text-muted-foreground">…</p>
       )}
       {rec === null && (
-        <p className="rounded-lg border border-border/60 bg-card p-6 text-center text-sm text-muted-foreground">
-          {t("rec.page.empty")}
-        </p>
+        <Surface padding="none">
+          <EmptyState size="sm" title={t("rec.page.empty")} />
+        </Surface>
       )}
       {rec && (
         <>
           <RecommendationTrackerCard rec={rec} />
           <div className="mt-3 flex gap-2">
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="xl"
               onClick={() => void refresh()}
               disabled={busy}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              className="flex-1"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
+              <RefreshCw
+                aria-hidden
+                className={`h-3.5 w-3.5 ${busy ? "animate-spin motion-reduce:animate-none" : ""}`}
+              />
               {t("rec.page.refresh")}
-            </button>
+            </Button>
           </div>
         </>
       )}

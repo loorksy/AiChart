@@ -18,17 +18,17 @@ export function VoiceStatusIndicator({
 
   const dotClass =
     status === "user_speaking"
-      ? "bg-emerald-500 animate-pulse"
+      ? "bg-success animate-pulse motion-reduce:animate-none"
       : status === "assistant_speaking"
-        ? "bg-primary animate-pulse"
+        ? "bg-primary animate-pulse motion-reduce:animate-none"
         : status === "processing"
-          ? "bg-amber-500 animate-pulse"
+          ? "bg-warning animate-pulse motion-reduce:animate-none"
           : status === "reconnecting"
-            ? "bg-amber-500 animate-pulse"
+            ? "bg-warning animate-pulse motion-reduce:animate-none"
             : status === "error"
               ? "bg-destructive"
               : status === "listening"
-                ? "bg-emerald-500"
+                ? "bg-success"
                 : "bg-muted-foreground";
 
   return (

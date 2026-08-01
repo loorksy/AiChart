@@ -3,10 +3,10 @@
 import type { AgentActivityEvent } from "@/lib/agent/types";
 
 const STATUS_DOT: Record<AgentActivityEvent["status"], string> = {
-  started: "bg-blue-500 animate-pulse",
-  completed: "bg-emerald-500",
-  warning: "bg-amber-500",
-  failed: "bg-red-500",
+  started: "bg-info animate-pulse",
+  completed: "bg-buy",
+  warning: "bg-warning",
+  failed: "bg-destructive",
 };
 
 /**

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FlaskConical } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { SkeletonBlock } from "@/components/ui/skeleton";
+import { Surface } from "@/components/foundation";
 import { cn } from "@/lib/utils";
 
 interface BacktestSummary {
@@ -125,13 +126,13 @@ function MetricTile({
   tone?: "good" | "bad" | "neutral";
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3">
+    <Surface padding="sm">
       <p className="text-[11px] text-muted-foreground">{label}</p>
       <p
         className={cn(
           "mt-0.5 text-lg font-bold",
-          tone === "good" && "text-emerald-500",
-          tone === "bad" && "text-red-500",
+          tone === "good" && "text-buy",
+          tone === "bad" && "text-sell",
         )}
         dir="ltr"
       >
@@ -142,7 +143,7 @@ function MetricTile({
           {hint}
         </p>
       )}
-    </div>
+    </Surface>
   );
 }
 
@@ -274,7 +275,7 @@ export function BacktestSection() {
           {curves?.available && (
             <div className="grid gap-4 lg:grid-cols-2">
               {curves.equity && curves.equity.length > 1 && (
-                <div className="min-w-0 rounded-xl border border-border bg-card p-3">
+                <Surface padding="sm" className="min-w-0">
                   <p className="mb-1 text-xs font-medium text-muted-foreground">
                     {t("bt.equity_curve")}
                   </p>
@@ -283,13 +284,13 @@ export function BacktestSection() {
                       x: p.time ?? i,
                       y: p.equity,
                     }))}
-                    className="text-emerald-500"
+                    className="text-chart-3"
                     fillArea
                   />
-                </div>
+                </Surface>
               )}
               {curves.rollingWinRate && curves.rollingWinRate.length > 1 && (
-                <div className="min-w-0 rounded-xl border border-border bg-card p-3">
+                <Surface padding="sm" className="min-w-0">
                   <p className="mb-1 text-xs font-medium text-muted-foreground">
                     {t("bt.rolling_win_rate")}
                   </p>
@@ -298,11 +299,11 @@ export function BacktestSection() {
                       x: p.trade,
                       y: p.winRate,
                     }))}
-                    className="text-sky-500"
+                    className="text-chart-2"
                     yFormat={(v) => `${Math.round(v * 100)}%`}
                     referenceY={0.5}
                   />
-                </div>
+                </Surface>
               )}
             </div>
           )}

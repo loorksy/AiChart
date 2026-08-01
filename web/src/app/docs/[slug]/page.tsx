@@ -21,7 +21,7 @@ export default async function DocPage({
   if (!doc) notFound();
 
   return (
-    <article className="prose prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-p:leading-relaxed prose-li:text-muted-foreground">
+    <article className="prose dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-p:leading-relaxed prose-li:text-muted-foreground">
       <ReactMarkdown>{doc!.content_ar}</ReactMarkdown>
     </article>
   );

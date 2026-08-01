@@ -355,9 +355,7 @@ export function AdminBillingPanel() {
                       dir="ltr"
                       className={cn(
                         "font-semibold",
-                        row.profit_usd < 0
-                          ? "text-destructive"
-                          : "text-emerald-600 dark:text-emerald-400",
+                        row.profit_usd < 0 ? "text-sell" : "text-buy",
                       )}
                     >
                       {usd(row.profit_usd)}

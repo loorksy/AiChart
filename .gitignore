@@ -45,3 +45,4 @@ test-results/
 # Editor / OS
 .DS_Store
 *.swp
+.gstack/

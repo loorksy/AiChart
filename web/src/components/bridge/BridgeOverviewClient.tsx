@@ -109,14 +109,15 @@ export function BridgeOverviewClient({
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">نظرة عامة</h1>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="mt-1 text-sm text-muted-foreground">
               جسر MCP — اتصالات، مخاطر، وصفقات حية.
             </p>
           </div>
-          {/* Live indicator */}
-          <div className="flex items-center gap-2 rounded-full border border-green-500/20 bg-green-500/5 px-3 py-1.5">
+          {/* Live indicator — tokens so the console's front door matches the
+              rooms behind it, and so it survives the light theme. */}
+          <div className="flex items-center gap-2 rounded-full border border-buy/20 bg-buy/5 px-3 py-1.5">
             <span className="status-dot status-dot-ok" />
-            <span className="text-xs font-medium text-green-400">مباشر</span>
+            <span className="text-xs font-medium text-buy">مباشر</span>
           </div>
         </div>
 

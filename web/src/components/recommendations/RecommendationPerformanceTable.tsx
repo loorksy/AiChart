@@ -36,8 +36,8 @@ export function RecommendationPerformanceTable({
                   {renderKey ? renderKey(g.key) : g.key}
                 </td>
                 <td className="py-1 text-center text-muted-foreground">{g.total}</td>
-                <td className="py-1 text-center text-emerald-500">{g.wins}</td>
-                <td className="py-1 text-center text-red-500">{g.losses}</td>
+                <td className="py-1 text-center text-buy">{g.wins}</td>
+                <td className="py-1 text-center text-sell">{g.losses}</td>
                 <td className="py-1 text-center font-semibold text-foreground">
                   {g.winRate}%
                 </td>

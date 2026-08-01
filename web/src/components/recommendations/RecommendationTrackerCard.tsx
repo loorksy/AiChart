@@ -75,14 +75,14 @@ export function RecommendationTrackerCard({
 
   const dotClass = (s: Step) => {
     if (!s.reached) return "bg-muted-foreground/30";
-    if (s.tone === "sl") return "bg-red-500";
-    if (s.tone === "entered") return "bg-amber-500";
-    return "bg-emerald-500";
+    if (s.tone === "sl") return "bg-sell";
+    if (s.tone === "entered") return "bg-warning";
+    return "bg-buy";
   };
 
   const netLabels = [fmtR(rec.netRr), fmtR(rec.netRrTp2), null];
   const rows = [
-    { labelKey: "rec.row.entry", value: rec.entry, color: "text-amber-500", extra: null as string | null },
+    { labelKey: "rec.row.entry", value: rec.entry, color: "text-warning", extra: null as string | null },
     { labelKey: "rec.row.stop_loss", value: rec.stopLoss, color: "text-sell", extra: null },
     ...rec.targets.slice(0, 3).map((v, i) => ({
       labelKey: `rec.row.target${i + 1}`,
@@ -98,7 +98,7 @@ export function RecommendationTrackerCard({
     <div
       dir={dir}
       className={`rounded-xl border border-border bg-card p-3 text-sm shadow-none ${
-        waiting ? "border-amber-500/35 bg-amber-500/[0.04]" : ""
+        waiting ? "border-warning/35 bg-warning/[0.04]" : ""
       }`}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -114,8 +114,8 @@ export function RecommendationTrackerCard({
       <div
         className={`mb-3 rounded-lg px-2 py-1.5 text-xs font-semibold ${
           waiting
-            ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-            : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+            ? "bg-warning/15 text-warning"
+            : "bg-buy/15 text-buy"
         }`}
       >
         {waiting ? t("rec.lifecycle.waiting_entry") : t("rec.lifecycle.active_now")}

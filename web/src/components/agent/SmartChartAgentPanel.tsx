@@ -31,9 +31,9 @@ export interface SmartChartAgentHandle {
 const DECISION_COLOR: Record<AgentFinalResult["decision"], string> = {
   buy: "text-buy",
   sell: "text-sell",
-  wait: "text-amber-500",
-  informational: "text-sky-500",
-  action_required: "text-fuchsia-500",
+  wait: "text-warning",
+  informational: "text-info",
+  action_required: "text-warning",
 };
 
 interface Props {
@@ -325,7 +325,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 <AgentEvidenceCard card={m.result.evidenceCard} />
               ) : null}
               {m.result?.riskWarnings?.length ? (
-                <ul className="mt-1 space-y-0.5 text-[12px] text-amber-500">
+                <ul className="mt-1 space-y-0.5 text-[12px] text-warning">
                   {m.result.riskWarnings.map((w, i) => (
                     <li key={i} className="flex items-start gap-1.5">
                       <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -343,7 +343,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                       key={option.id}
                       onClick={() => void sendMessage(option.prompt)}
                       disabled={running}
-                      className="min-h-8 rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+                      className="min-h-11 rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50 focus-ring sm:min-h-8"
                     >
                       {option.label}
                     </button>
@@ -351,8 +351,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 </div>
               ) : null}
               {m.result?.requiresConfirmation && m.result.confirmationPayload && (
-                <div className="mt-2 rounded-lg border border-amber-500/35 bg-amber-500/[0.06] p-2 text-[12px]">
-                  <p className="font-semibold text-amber-700 dark:text-amber-300">
+                <div className="mt-2 rounded-lg border border-warning/35 bg-warning/[0.06] p-2 text-[12px]">
+                  <p className="font-semibold text-warning">
                     {t("agent.needs_confirmation")}
                   </p>
                   <p className="text-muted-foreground">
@@ -369,7 +369,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
           ))}
 
           {error && (
-            <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+            <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {error}
             </p>
           )}

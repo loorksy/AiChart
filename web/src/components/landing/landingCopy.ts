@@ -8,6 +8,7 @@ export const LANDING_ROUTES = {
   login: "/login",
   chart: "/chart",
   console: "/console",
+  pricing: "/pricing",
   privacy: "/p/privacy-policy",
   terms: "/p/terms-of-service",
   agreement: "/p/user-agreement",
@@ -30,6 +31,7 @@ export type LandingCopy = {
     closeMenu: string;
     theme: string;
     language: string;
+    skip: string;
   };
   hero: {
     eyebrow: string;
@@ -104,14 +106,20 @@ export type LandingCopy = {
   };
   pricing: {
     eyebrow: string;
+    title: string;
     subtitle: string;
-    trialTitle: string;
-    trialBody: string;
-    trialPoints: string[];
-    priceNote: string;
-    features: string[];
+    perMonth: string;
+    creditsPrefix: string;
+    highlightBadge: string;
+    modelsAll: string;
+    modelsCount: string;
+    featureLabels: Record<
+      "mt5Link" | "liveExecution" | "voice" | "scalpEngine" | "prioritySupport",
+      string
+    >;
     cta: string;
-    activationNote: string;
+    contactCta: string;
+    ctaNote: string;
   };
   how: {
     title: string;
@@ -185,6 +193,7 @@ const ar: LandingCopy = {
     closeMenu: "إغلاق القائمة",
     theme: "المظهر",
     language: "اللغة",
+    skip: "تخطَّ إلى المحتوى",
   },
   hero: {
     eyebrow: "مساحة تداول بالذكاء الاصطناعي",
@@ -353,24 +362,25 @@ const ar: LandingCopy = {
     ],
   },
   pricing: {
-    eyebrow: "الاشتراك",
-    subtitle: "خطة واحدة للوصول الكامل إلى مساحة AiChart. التفعيل يدوي بعد التواصل.",
-    trialTitle: "ابدأ بتجربة محدودة",
-    trialBody: "جرّب المحادثة والشارت قبل تفعيل الوصول الكامل.",
-    trialPoints: [
-      "3 تفاعلات مجانية",
-      "بدون ادّعاء مدة فوترة",
-      "تفعيل يدوي بعد التواصل",
-    ],
-    priceNote:
-      "السعر الحالي والسعر المعتاد — دون ادّعاء مدة فوترة غير مُعدّة.",
-    features: [
-      "الشارت ومساحة المحادثة",
-      "توصيات وسجل وإحصائيات",
-      "تنفيذ MetaTrader بعد الموافقة",
-    ],
-    cta: "تواصل لتفعيل الاشتراك",
-    activationNote: "التفعيل يتم يدوياً بعد التواصل عبر Telegram.",
+    eyebrow: "الأسعار",
+    title: "أربع باقات برصيد استخدام حقيقي",
+    subtitle:
+      "كل باقة تمنحك رصيد استخدام شهرياً يُستهلك حسب استخدامك الفعلي. الأسعار هنا من المصدر نفسه الذي يقرأه نظام الفوترة.",
+    perMonth: "/شهرياً",
+    creditsPrefix: "رصيد استخدام شهري",
+    highlightBadge: "الأكثر اختياراً",
+    modelsAll: "كل مودلات الذكاء الاصطناعي",
+    modelsCount: "مودلات ذكاء اصطناعي",
+    featureLabels: {
+      mt5Link: "ربط حساب MT5",
+      liveExecution: "تنفيذ الصفقات الحي",
+      voice: "الوكيل الصوتي",
+      scalpEngine: "محرك السكالب الآلي",
+      prioritySupport: "أولوية الدعم",
+    },
+    cta: "قارن الباقات كاملة",
+    contactCta: "تواصل عبر Telegram",
+    ctaNote: "التفاصيل الكاملة والأسئلة الشائعة في صفحة الأسعار.",
   },
   how: {
     title: "كيف يعمل",
@@ -507,6 +517,7 @@ const en: LandingCopy = {
     closeMenu: "Close menu",
     theme: "Theme",
     language: "Language",
+    skip: "Skip to content",
   },
   hero: {
     eyebrow: "AI trading workspace",
@@ -676,23 +687,24 @@ const en: LandingCopy = {
   },
   pricing: {
     eyebrow: "Pricing",
-    subtitle: "One plan for full AiChart access. Activation is manual after contact.",
-    trialTitle: "Start with a limited trial",
-    trialBody: "Try chat and chart before full access is activated.",
-    trialPoints: [
-      "3 free interactions",
-      "No fabricated billing period",
-      "Manual activation after contact",
-    ],
-    priceNote:
-      "Current price and regular price — no fabricated billing period.",
-    features: [
-      "Chart and conversation workspace",
-      "Recommendations, history, and statistics",
-      "MetaTrader execution after approval",
-    ],
-    cta: "Contact to subscribe",
-    activationNote: "Activation is manual after contact via Telegram.",
+    title: "Four plans with real usage credit",
+    subtitle:
+      "Every plan includes a monthly usage credit consumed by what you actually run. These prices come from the same source the billing system reads.",
+    perMonth: "/month",
+    creditsPrefix: "Monthly usage credit",
+    highlightBadge: "Most popular",
+    modelsAll: "All AI models",
+    modelsCount: "AI models",
+    featureLabels: {
+      mt5Link: "MT5 account link",
+      liveExecution: "Live trade execution",
+      voice: "Voice agent",
+      scalpEngine: "Automated scalp engine",
+      prioritySupport: "Priority support",
+    },
+    cta: "Compare full plans",
+    contactCta: "Contact via Telegram",
+    ctaNote: "Full details and FAQ on the pricing page.",
   },
   how: {
     title: "How it works",

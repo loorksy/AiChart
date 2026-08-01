@@ -12,9 +12,10 @@
  * nothing here gates a recommendation.
  */
 import { useEffect, useState } from "react";
-import { AlertTriangle, RefreshCw, TriangleAlert } from "lucide-react";
+import { AlertTriangle, BookOpen, RefreshCw, TriangleAlert } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import { EmptyState, Surface } from "@/components/foundation";
+import { EmptyState, PageHeader, Surface } from "@/components/foundation";
+import { Button } from "@/components/squareui/button";
 import { SkeletonBlock } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { JournalSummary } from "@/lib/recommendations/performanceJournal";
@@ -48,7 +49,7 @@ function pct(value: number): string {
 function SmallSampleWarning({ n }: { n: number }) {
   const { t } = useLocale();
   return (
-    <p className="mt-1 flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+    <p className="mt-1 flex items-start gap-1 text-[11px] text-warning">
       <TriangleAlert className="mt-px h-3 w-3 shrink-0" aria-hidden />
       {t("journal.small_sample", { n: String(n) })}
     </p>
@@ -77,10 +78,10 @@ function Rate({ wins, count }: { wins: number; count: number }) {
 
 function Tile({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3">
+    <Surface padding="sm">
       <p className="text-[11px] font-medium text-muted-foreground">{title}</p>
       <div className="mt-1">{children}</div>
-    </div>
+    </Surface>
   );
 }
 
@@ -131,17 +132,17 @@ export function PerformanceJournalClient() {
             title={t("journal.error")}
             description={t("agent.fault.retryable")}
             action={
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="xl"
                 onClick={() => {
                   setError(false);
                   setReloadKey((k) => k + 1);
                 }}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius)] border border-border bg-background px-4 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
                 {t("rec.page.refresh")}
-              </button>
+              </Button>
             }
           />
         </Surface>
@@ -221,15 +222,19 @@ export function PerformanceJournalClient() {
 
   return (
     <div dir={dir} className="mx-auto w-full max-w-6xl space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">{t("journal.title")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t("journal.subtitle")}</p>
-      </div>
+      <PageHeader
+        title={t("journal.title")}
+        description={t("journal.subtitle")}
+        icon={<BookOpen aria-hidden="true" />}
+      />
 
       {empty ? (
-        <p className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          {t("journal.empty")}
-        </p>
+        <Surface padding="none">
+          <EmptyState
+            icon={<BookOpen aria-hidden="true" />}
+            title={t("journal.empty")}
+          />
+        </Surface>
       ) : (
         <>
           {/* Followed / ignored / auto / manual breakdown. */}
@@ -292,7 +297,7 @@ export function PerformanceJournalClient() {
 
           <div className="grid gap-3 lg:grid-cols-2">
             {/* Per-session performance. */}
-            <div className="rounded-xl border border-border bg-card p-3">
+            <Surface padding="sm">
               <p className="text-[12px] font-semibold text-foreground">
                 {t("journal.sessions.title")}
               </p>
@@ -306,10 +311,10 @@ export function PerformanceJournalClient() {
                   </div>
                 ))}
               </div>
-            </div>
+            </Surface>
 
             {/* R multiples. */}
-            <div className="rounded-xl border border-border bg-card p-3">
+            <Surface padding="sm">
               <p className="text-[12px] font-semibold text-foreground">{t("journal.r.title")}</p>
               {rValues.length === 0 ? (
                 <p className="mt-2 text-xs text-muted-foreground">{t("journal.no_data")}</p>
@@ -323,16 +328,13 @@ export function PerformanceJournalClient() {
                   </div>
                   <div>
                     <p className="text-[11px] text-muted-foreground">{t("journal.r.best")}</p>
-                    <p
-                      className="text-lg font-bold text-emerald-700 dark:text-emerald-300"
-                      dir="ltr"
-                    >
+                    <p className="text-lg font-bold text-buy" dir="ltr">
                       {Math.max(...rValues).toFixed(2)}R
                     </p>
                   </div>
                   <div>
                     <p className="text-[11px] text-muted-foreground">{t("journal.r.worst")}</p>
-                    <p className="text-lg font-bold text-red-700 dark:text-red-300" dir="ltr">
+                    <p className="text-lg font-bold text-sell" dir="ltr">
                       {Math.min(...rValues).toFixed(2)}R
                     </p>
                   </div>
@@ -341,23 +343,23 @@ export function PerformanceJournalClient() {
               {rValues.length > 0 && rValues.length < SMALL_SAMPLE ? (
                 <SmallSampleWarning n={rValues.length} />
               ) : null}
-            </div>
+            </Surface>
           </div>
 
           {/* Personal observations (server-built, phrased as observations). */}
           {summary.notes.length > 0 ? (
-            <div className="rounded-xl border border-border bg-card p-3">
+            <Surface padding="sm">
               <p className="text-[12px] font-semibold text-foreground">{t("journal.notes")}</p>
               <ul className="mt-1.5 list-inside list-disc space-y-1 text-[12px] text-muted-foreground">
                 {summary.notes.map((note, i) => (
                   <li key={i}>{note}</li>
                 ))}
               </ul>
-            </div>
+            </Surface>
           ) : null}
 
           {/* Entry list. */}
-          <div className="rounded-xl border border-border bg-card p-3">
+          <Surface padding="sm">
             <p className="text-[12px] font-semibold text-foreground">
               {t("journal.entries.title")} ({entries.length})
             </p>
@@ -414,7 +416,12 @@ export function PerformanceJournalClient() {
                 </tbody>
               </table>
             </div>
-          </div>
+            {entries.length > 50 ? (
+              <p className="mt-2 text-[11px] text-muted-foreground" dir="ltr">
+                1–50 / {entries.length}
+              </p>
+            ) : null}
+          </Surface>
         </>
       )}
     </div>

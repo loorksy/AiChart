@@ -3,15 +3,31 @@
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+// Sanctioned data-only import (spec §3): tiers.ts is a leaf module — the
+// summary can never drift from what billing enforces. No other logic touched.
+import { TIER_ORDER, TIERS } from "@/lib/billing/tiers";
+// Existing contact destination — the same manual-activation channel the
+// platform already links to.
 import { AICHART_PLAN } from "@/lib/subscription/plan";
-import { Card, CardContent } from "@/components/ui/card";
-import { getLandingCopy } from "@/components/landing/landingCopy";
+import { Surface } from "@/components/foundation";
+import { buttonVariants } from "@/components/squareui/button";
+import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
+import { cn } from "@/lib/utils";
 
-/** Pricing section inspired by 21st.dev pricing blocks */
+const FEATURE_KEYS = [
+  "mt5Link",
+  "liveExecution",
+  "scalpEngine",
+  "voice",
+  "prioritySupport",
+] as const;
+
+/** Compact 4-tier pricing summary — the full comparison lives on /pricing. */
 export function LandingPricing() {
   const { locale, dir } = useLocale();
   const isAr = locale === "ar";
   const c = getLandingCopy(locale).pricing;
+  const tiers = TIER_ORDER.map((id) => TIERS[id]);
 
   return (
     <section
@@ -26,63 +42,108 @@ export function LandingPricing() {
             {c.eyebrow}
           </p>
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            {isAr ? AICHART_PLAN.titleAr : AICHART_PLAN.titleEn}
+            {c.title}
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground">
             {c.subtitle}
           </p>
         </div>
 
-        <div className="mx-auto mt-10 grid max-w-4xl gap-6 lg:grid-cols-[1fr_1.05fr]">
-          <Card className="border-border/80 bg-muted/20 shadow-none">
-            <CardContent className="p-6 sm:p-8">
-              <p className="text-sm font-medium text-foreground">{c.trialTitle}</p>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {c.trialBody}
-              </p>
-              <ul className="mt-5 space-y-2 text-sm text-foreground/90">
-                {c.trialPoints.map((point) => (
-                  <li key={point} className="flex gap-2">
-                    <Check className="mt-0.5 size-4 shrink-0 text-foreground" />
-                    <span>{point}</span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="relative overflow-hidden border-foreground/15 shadow-lg shadow-black/5 dark:shadow-black/20">
-            <div className="absolute inset-x-0 top-0 h-1 bg-foreground" />
-            <CardContent className="p-6 text-start sm:p-8">
-              <div className="flex items-baseline gap-3">
-                <span className="text-4xl font-semibold text-foreground">
-                  ${AICHART_PLAN.promotionalPriceUsd}
-                </span>
-                <span className="text-base text-muted-foreground line-through">
-                  ${AICHART_PLAN.regularPriceUsd}
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">{c.priceNote}</p>
-              <ul className="mt-5 space-y-2 text-sm text-foreground">
-                {c.features.map((feature) => (
-                  <li key={feature} className="flex gap-2">
-                    <Check className="mt-0.5 size-4 shrink-0 text-foreground" />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <a
-                href={AICHART_PLAN.telegramUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="landing-subscribe-cta"
-                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-foreground text-sm font-medium text-background transition-opacity hover:opacity-90"
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {tiers.map((tier) => {
+            const highlight = tier.id === "pro";
+            const enabled = FEATURE_KEYS.filter((key) => tier.features[key]);
+            return (
+              <Surface
+                key={tier.id}
+                as="section"
+                padding="md"
+                elevation={highlight ? 2 : 1}
+                className={cn(
+                  "relative flex flex-col",
+                  // Brand-premium gold is reserved for exactly this moment
+                  // (spec §1 --accent-gold policy).
+                  highlight && "border-accent-gold/70",
+                )}
               >
-                {c.cta}
-              </a>
-              <p className="mt-3 text-xs text-muted-foreground">{c.activationNote}</p>
-            </CardContent>
-          </Card>
+                {highlight && (
+                  <span className="absolute -top-3 end-4 rounded-full bg-accent-gold px-3 py-0.5 text-xs font-semibold text-black">
+                    {c.highlightBadge}
+                  </span>
+                )}
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="text-base font-bold text-foreground">
+                    {isAr ? tier.nameAr : tier.nameEn}
+                  </h3>
+                  <span className="text-xs text-muted-foreground">
+                    {isAr ? tier.nameEn : tier.nameAr}
+                  </span>
+                </div>
+                <p className="mt-3 flex items-baseline gap-1" dir="ltr">
+                  <span className="font-serif text-3xl font-semibold tabular-nums text-foreground">
+                    ${tier.priceUsd}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {c.perMonth}
+                  </span>
+                </p>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {c.creditsPrefix}{" "}
+                  <span className="font-semibold tabular-nums text-foreground" dir="ltr">
+                    ${tier.includedCreditsUsd}
+                  </span>
+                </p>
+                <ul className="mt-4 flex-1 space-y-1.5 text-xs text-foreground/90">
+                  <li className="flex items-center gap-1.5">
+                    <Check
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                    />
+                    {tier.allowedModels.length === 0
+                      ? c.modelsAll
+                      : `${tier.allowedModels.length} ${c.modelsCount}`}
+                  </li>
+                  {enabled.map((key) => (
+                    <li key={key} className="flex items-center gap-1.5">
+                      <Check
+                        aria-hidden="true"
+                        className="size-3.5 shrink-0 text-muted-foreground"
+                      />
+                      {c.featureLabels[key]}
+                    </li>
+                  ))}
+                </ul>
+              </Surface>
+            );
+          })}
+        </div>
+
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <div className="flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row sm:justify-center">
+            <Link
+              href={LANDING_ROUTES.pricing}
+              data-testid="landing-subscribe-cta"
+              className={buttonVariants({
+                size: "xl",
+                className: "w-full px-6 sm:w-auto",
+              })}
+            >
+              {c.cta}
+            </Link>
+            <a
+              href={AICHART_PLAN.telegramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={buttonVariants({
+                variant: "outline",
+                size: "xl",
+                className: "w-full px-6 sm:w-auto",
+              })}
+            >
+              {c.contactCta}
+            </a>
+          </div>
+          <p className="text-xs text-muted-foreground">{c.ctaNote}</p>
         </div>
       </div>
     </section>

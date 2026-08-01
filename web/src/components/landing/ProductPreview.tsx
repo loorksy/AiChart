@@ -14,7 +14,7 @@ export function ProductPreview({ className }: { className?: string }) {
     <figure
       data-testid="landing-product-preview"
       className={cn(
-        "overflow-hidden rounded-2xl border border-border bg-card text-start shadow-sm",
+        "overflow-hidden rounded-[var(--radius-lg)] border border-border bg-card text-start elevation-1",
         className,
       )}
     >
@@ -42,8 +42,10 @@ export function ProductPreview({ className }: { className?: string }) {
                 <div
                   key={i}
                   className={cn(
+                    // Trading semantics (spec §1): up = buy, down = sell —
+                    // never destructive/raw greens for market direction.
                     "w-full max-w-[14px] rounded-sm",
-                    i % 3 === 0 ? "bg-destructive/55" : "bg-emerald-600/55",
+                    i % 3 === 0 ? "bg-sell/55" : "bg-buy/55",
                   )}
                   style={{ height: `${h}%` }}
                 />
@@ -62,7 +64,7 @@ export function ProductPreview({ className }: { className?: string }) {
           <p className="mb-3 text-sm leading-relaxed text-foreground/90">
             {c.agentGreeting}
           </p>
-          <div className="mt-auto rounded-xl border border-border bg-card p-3">
+          <div className="mt-auto rounded-[var(--radius)] bg-muted/50 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-xs font-semibold text-foreground">
                 {c.recommendationTitle}

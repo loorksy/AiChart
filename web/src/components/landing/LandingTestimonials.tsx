@@ -41,9 +41,12 @@ export function LandingTestimonials() {
               )}
             >
               {[...column, ...column].map((item, index) => (
+                // The second copy exists only to balance the staggered column
+                // — hide the clones from assistive tech.
                 <figure
                   key={`${item.name}-${index}`}
-                  className="rounded-2xl border border-border bg-card p-5 shadow-sm"
+                  aria-hidden={index >= column.length || undefined}
+                  className="rounded-[var(--radius-lg)] border border-border bg-card p-5 elevation-1"
                 >
                   <blockquote className="text-sm leading-relaxed text-foreground/90">
                     “{item.quote}”
@@ -67,7 +70,7 @@ export function LandingTestimonials() {
           {c.items.map((item) => (
             <figure
               key={item.name}
-              className="rounded-2xl border border-border bg-card p-5 shadow-sm"
+              className="rounded-[var(--radius-lg)] border border-border bg-card p-5 elevation-1"
             >
               <blockquote className="text-sm leading-relaxed text-foreground/90">
                 “{item.quote}”

@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { ArrowUpRight, LineChart, Shield, Sparkles } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
-import { Card, CardContent } from "@/components/ui/card";
-import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
+import { getLandingCopy } from "@/components/landing/landingCopy";
 
 const ICONS = {
   chart: LineChart,
@@ -12,7 +11,10 @@ const ICONS = {
   trial: Sparkles,
 } as const;
 
-/** Stats cards inspired by 21st.dev @ephraimduncan/stats-cards-with-links */
+/**
+ * Capability strip — the former stat cards recast as non-numeric chips
+ * (spec §3/§6: Stats&KPIs → capability chips). Hrefs are kept verbatim.
+ */
 export function LandingStats() {
   const { locale } = useLocale();
   const c = getLandingCopy(locale).stats;
@@ -31,46 +33,33 @@ export function LandingStats() {
           <p className="mt-3 text-muted-foreground">{c.subtitle}</p>
         </div>
 
-        <div className="mt-10 grid gap-4 md:grid-cols-3">
+        <ul className="mt-10 flex flex-wrap items-stretch justify-center gap-3">
           {c.items.map((item) => {
             const Icon = ICONS[item.icon];
             return (
-              <Card key={item.title} className="overflow-hidden">
-                <CardContent className="p-0">
-                  <div className="border-b border-border px-5 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {item.eyebrow}
-                        </p>
-                        <p className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
-                          {item.value}
-                        </p>
-                        <p className="mt-1 text-sm font-medium text-foreground">{item.title}</p>
-                      </div>
-                      <div className="rounded-lg border border-border bg-muted/40 p-2">
-                        <Icon className="size-4 text-foreground" strokeWidth={1.5} />
-                      </div>
-                    </div>
-                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                      {item.body}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between px-5 py-3">
-                    <span className="text-xs text-muted-foreground">{item.note}</span>
-                    <Link
-                      href={item.href}
-                      className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline"
-                    >
-                      {item.linkLabel}
-                      <ArrowUpRight className="size-4" />
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
+              <li key={item.title} className="flex">
+                <Link
+                  href={item.href}
+                  className="inline-flex min-h-11 items-center gap-2.5 rounded-full border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:border-foreground/20 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Icon
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                  <span className="font-medium">{item.title}</span>
+                  <span className="hidden text-xs text-muted-foreground sm:inline">
+                    {item.note}
+                  </span>
+                  <ArrowUpRight
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-muted-foreground rtl:-rotate-90"
+                  />
+                </Link>
+              </li>
             );
           })}
-        </div>
+        </ul>
 
         <p className="mx-auto mt-8 max-w-3xl text-center text-xs text-muted-foreground">
           {c.disclaimer}

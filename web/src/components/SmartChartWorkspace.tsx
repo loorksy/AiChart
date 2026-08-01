@@ -687,7 +687,7 @@ function SmartChartWorkspaceInner({
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       {!guest && !agentReady && (
-        <p className="pointer-events-none absolute inset-x-0 top-12 z-40 mx-auto w-fit max-w-[90%] rounded-md border border-amber-500/30 bg-amber-500/90 px-3 py-1 text-xs text-amber-950 shadow">
+        <p className="pointer-events-none absolute inset-x-0 top-12 z-40 mx-auto w-fit max-w-[90%] rounded-md border border-warning/30 bg-warning/90 px-3 py-1 text-xs text-black shadow">
           {t("layout.agent_unavailable")}
         </p>
       )}

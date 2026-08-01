@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/squareui/button";
+
 const KEY = "aichart_cookie_consent";
 
 /**
@@ -37,29 +39,31 @@ export function CookieConsent() {
       dir="rtl"
       role="dialog"
       aria-label="موافقة ملفات تعريف الارتباط"
-      className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-xl rounded-2xl border border-border bg-card/95 p-4 shadow-xl backdrop-blur-md"
+      className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-xl rounded-[var(--radius-lg)] border border-border bg-card/95 p-4 elevation-3 backdrop-blur-md"
     >
       <p className="text-sm leading-relaxed text-foreground">
         نستخدم ملفات تعريف ارتباط أساسية لتشغيل المنصة (الجلسة والتفضيلات) ولا
         نستخدم أي متتبعات طرف ثالث. التفاصيل في{" "}
-        <a href="/p/privacy-policy" className="text-primary underline">
+        <a
+          href="/p/privacy-policy"
+          className="rounded-sm text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           سياسة الخصوصية
         </a>
         .
       </p>
       <div className="mt-3 flex gap-2">
-        <button
-          onClick={() => choose("all")}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
-        >
+        <Button type="button" size="xl" onClick={() => choose("all")}>
           موافق
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="xl"
           onClick={() => choose("essential")}
-          className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-muted"
         >
           الأساسية فقط
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -8,12 +8,12 @@ const TYPE_ICON: Record<
   LiveReasoningEntry["type"],
   { icon: typeof Eye; className: string }
 > = {
-  observation: { icon: Eye, className: "text-sky-500" },
-  structure: { icon: Layers, className: "text-sky-500" },
-  pattern: { icon: Sparkles, className: "text-amber-500" },
-  risk: { icon: Shield, className: "text-red-400" },
+  observation: { icon: Eye, className: "text-info" },
+  structure: { icon: Layers, className: "text-info" },
+  pattern: { icon: Sparkles, className: "text-warning" },
+  risk: { icon: Shield, className: "text-sell" },
   decision: { icon: Target, className: "text-primary" },
-  drawing: { icon: TrendingUp, className: "text-emerald-500" },
+  drawing: { icon: TrendingUp, className: "text-buy" },
 };
 
 export function LiveAnalysisLog({
@@ -55,7 +55,7 @@ export function LiveAnalysisLog({
       )}
 
       {waitMessage && (
-        <p className="mb-2 text-[10px] text-amber-600 dark:text-amber-400">{waitMessage}</p>
+        <p className="mb-2 text-[11px] text-warning">{waitMessage}</p>
       )}
 
       {list.length > 0 && (

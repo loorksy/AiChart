@@ -13,6 +13,7 @@ import type {
 } from "@/lib/admin/overviewQueries";
 import { Lock } from "lucide-react";
 import {
+  AdminCard,
   AdminPage,
   EmptyState,
   SectionHeader,
@@ -91,7 +92,7 @@ function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void 
   return (
     <div
       role="alert"
-      className="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-center"
+      className="rounded-[var(--radius-lg)] border border-destructive/40 bg-destructive/10 p-6 text-center"
     >
       <p className="text-sm text-foreground">{message}</p>
       <Button
@@ -216,22 +217,22 @@ export function PlatformDashboard({
               : `آخر ${period} يوم`
         }
         actions={
-          <div
-            role="group"
-            aria-label="نافذة التقرير"
-            className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5"
-          >
+          <div role="group" aria-label="نافذة التقرير" className="flex items-center gap-1">
             {PERIODS.map((p) => (
-              <Button
+              <button
                 key={p}
-                variant={period === p ? "secondary" : "ghost"}
-                size="sm"
-                className="tap-target h-7 px-2.5 transition-colors duration-150 ease-out"
+                type="button"
                 aria-pressed={period === p}
+                aria-current={period === p ? "true" : undefined}
                 onClick={() => setPeriod(p)}
+                className={
+                  period === p
+                    ? "focus-ring inline-flex min-h-11 items-center rounded-full bg-primary px-3 text-sm text-primary-foreground transition-colors duration-150 ease-out sm:min-h-9"
+                    : "focus-ring inline-flex min-h-11 items-center rounded-full px-3 text-sm text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground sm:min-h-9"
+                }
               >
                 {p} يوم
-              </Button>
+              </button>
             ))}
           </div>
         }
@@ -279,13 +280,13 @@ export function PlatformDashboard({
         ))}
 
       {nothingPermitted && (
-        <div className="rounded-xl border border-border bg-card">
+        <AdminCard>
           <EmptyState
             icon={Lock}
             title="لا صلاحية لعرض هذه النظرة"
             description="دورك الحالي لا يغطي أي قسم في هذه الصفحة. راجع مالك الحساب لتوسيع الصلاحيات."
           />
-        </div>
+        </AdminCard>
       )}
     </AdminPage>
   );

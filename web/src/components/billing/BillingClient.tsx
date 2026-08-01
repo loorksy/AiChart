@@ -114,7 +114,7 @@ export function BillingClient() {
       actions={
         <Link
           href="/pricing"
-          className={cn(buttonVariants({ variant: "outline", size: "lg" }), "min-h-11")}
+          className={cn(buttonVariants({ variant: "outline", size: "xl" }))}
         >
           عرض الباقات
         </Link>
@@ -137,7 +137,7 @@ export function BillingClient() {
               title="تعذّر تحميل الفوترة"
               description={error ?? "حدث خطأ غير متوقع."}
               action={
-                <Button size="lg" className="min-h-11" onClick={() => void load()}>
+                <Button size="xl" onClick={() => void load()}>
                   <RotateCw aria-hidden="true" />
                   إعادة المحاولة
                 </Button>
@@ -215,33 +215,34 @@ export function BillingClient() {
               ? `التجديد: ${new Date(data.subscription.period_end).toLocaleDateString("ar")}`
               : undefined
           }
-          actions={
-            <>
-              {TOPUP_AMOUNTS.map((amount) => (
-                <Button
-                  key={amount}
-                  variant="outline"
-                  size="lg"
-                  className="min-h-11"
-                  onClick={() => topup(amount)}
-                  disabled={busy != null}
-                >
-                  {busy === `topup-${amount}` ? "جارٍ…" : `شحن $${amount}`}
-                </Button>
-              ))}
-              {data.subscription && (
-                <Button
-                  size="lg"
-                  className="min-h-11"
-                  onClick={openPortal}
-                  disabled={busy != null}
-                >
-                  {busy === "portal" ? "جارٍ…" : "إدارة الاشتراك"}
-                </Button>
-              )}
-            </>
-          }
         />
+
+        {/* Dedicated action row — actions live under the subscription line,
+            not squeezed into the SectionHeader. */}
+        {data.subscription && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button size="xl" onClick={openPortal} disabled={busy != null}>
+              {busy === "portal" ? "جارٍ…" : "إدارة الاشتراك"}
+            </Button>
+          </div>
+        )}
+
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="type-overline">شحن رصيد إضافي</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {TOPUP_AMOUNTS.map((amount) => (
+              <Button
+                key={amount}
+                variant="outline"
+                size="xl"
+                onClick={() => topup(amount)}
+                disabled={busy != null}
+              >
+                {busy === `topup-${amount}` ? "جارٍ…" : `شحن $${amount}`}
+              </Button>
+            ))}
+          </div>
+        </div>
       </Surface>
 
       <Surface as="section" padding="none">
@@ -271,7 +272,7 @@ export function BillingClient() {
                 <span
                   className={cn(
                     "shrink-0 font-medium tabular-nums",
-                    row.amount_usd < 0 ? "text-destructive" : "text-emerald-500",
+                    row.amount_usd < 0 ? "text-sell" : "text-buy",
                   )}
                 >
                   {row.amount_usd < 0 ? "-" : "+"}
@@ -286,6 +287,11 @@ export function BillingClient() {
               </li>
             ))}
           </ul>
+        )}
+        {data.ledger.length >= 50 && (
+          <p className="type-caption border-t border-border/60 px-5 py-2">
+            يعرض أول 50 حركة فقط.
+          </p>
         )}
       </Surface>
     </div>

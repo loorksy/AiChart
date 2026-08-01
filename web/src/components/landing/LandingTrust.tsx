@@ -24,7 +24,7 @@ export function LandingTrust() {
           {c.items.map((item) => (
             <li
               key={item}
-              className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground/90"
+              className="rounded-[var(--radius-lg)] border border-border bg-card px-4 py-3 text-sm text-foreground/90 elevation-1"
             >
               {item}
             </li>

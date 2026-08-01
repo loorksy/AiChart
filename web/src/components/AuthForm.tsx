@@ -10,6 +10,7 @@ import type { CountryCode } from "libphonenumber-js";
 import { PhoneInput } from "@/components/PhoneInput";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { Button, buttonVariants } from "@/components/squareui/button";
 import { useLocale } from "@/hooks/useLocale";
 import { BRAND_NAME } from "@/lib/brand";
 
@@ -122,7 +123,11 @@ export default function AuthForm({
             <div className="mt-8">
               <a
                 href="/api/auth/google"
-                className="flex min-h-11 w-full items-center justify-center gap-3 rounded-lg border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={buttonVariants({
+                  variant: "outline",
+                  size: "xl",
+                  className: "w-full gap-3",
+                })}
               >
                 <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
                   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -229,9 +234,10 @@ export default function AuthForm({
                 autoFocus={gateMode}
               />
             </div>
-            <button
+            <Button
               type="submit"
-              className="btn btn-primary w-full py-3"
+              size="xl"
+              className="w-full"
               disabled={loading}
             >
               {loading
@@ -242,7 +248,7 @@ export default function AuthForm({
                     ? t("auth.login_action")
                     : t("auth.register_action")}
               {!loading && <ArrowUpRight className="h-4 w-4 rtl:-rotate-90" />}
-            </button>
+            </Button>
           </form>
 
           {isLogin && allowRegister && (

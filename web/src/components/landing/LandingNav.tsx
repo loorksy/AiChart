@@ -8,6 +8,8 @@ import { AiChartLogo } from "@/components/AiChartLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import { useLocale } from "@/components/LocaleProvider";
 import { getLandingCopy, LANDING_ROUTES } from "@/components/landing/landingCopy";
+import { Button, buttonVariants } from "@/components/squareui/button";
+import { SkipLink } from "@/components/foundation";
 import { cn } from "@/lib/utils";
 
 const ANCHORS = [
@@ -19,7 +21,35 @@ const ANCHORS = [
   { href: "#faq", key: "faq" as const },
 ];
 
-export function LandingNav() {
+export interface LandingNavLink {
+  /** Href rendered verbatim — must be an existing route (or file, e.g. RSS). */
+  href: string;
+  label: string;
+  /** Plain anchor instead of a client-side <Link> (e.g. /blog/rss.xml). */
+  external?: boolean;
+}
+
+export interface LandingNavProps {
+  /**
+   * `full` (default): the landing anchors — used on `/` and `/p/[slug]`.
+   * `compact`: host-page route links only — used on /pricing, /blog, /docs.
+   * Both keep logo + theme/lang toggles + login/signup.
+   */
+  variant?: "full" | "compact";
+  /** Compact-variant route links, hrefs passed through untouched. */
+  links?: LandingNavLink[];
+  /** Optional server-rendered action slot (e.g. pricing's billing link). */
+  actions?: React.ReactNode;
+  /** The one skip link per page lives in this shared header. */
+  skipTargetId?: string;
+}
+
+export function LandingNav({
+  variant = "full",
+  links = [],
+  actions,
+  skipTargetId = "main",
+}: LandingNavProps) {
   const { locale, setLocale } = useLocale();
   const { resolved, setTheme } = useTheme();
   const c = getLandingCopy(locale);
@@ -71,20 +101,48 @@ export function LandingNav() {
     };
   }, [open]);
 
-  const navLinks = (
-    <>
-      {ANCHORS.map((item) => (
-        <a
-          key={item.href}
-          href={item.href}
-          onClick={() => setOpen(false)}
-          className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {c.nav[item.key]}
-        </a>
-      ))}
-    </>
-  );
+  const linkClass =
+    "flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9";
+
+  const navLinks =
+    variant === "full" ? (
+      <>
+        {ANCHORS.map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            onClick={() => setOpen(false)}
+            className={linkClass}
+          >
+            {c.nav[item.key]}
+          </a>
+        ))}
+      </>
+    ) : (
+      <>
+        {links.map((item) =>
+          item.external ? (
+            <a
+              key={item.href}
+              href={item.href}
+              onClick={() => setOpen(false)}
+              className={linkClass}
+            >
+              {item.label}
+            </a>
+          ) : (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setOpen(false)}
+              className={linkClass}
+            >
+              {item.label}
+            </Link>
+          ),
+        )}
+      </>
+    );
 
   const mobileMenu =
     mounted && open
@@ -107,7 +165,7 @@ export function LandingNav() {
                 id={titleId}
                 data-testid="landing-mobile-drawer"
                 className={cn(
-                  "pointer-events-auto flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border shadow-xl animate-landing-modal",
+                  "pointer-events-auto flex w-full max-w-sm flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border elevation-3 animate-landing-modal",
                 )}
                 style={{
                   backgroundColor: "var(--background)",
@@ -120,14 +178,16 @@ export function LandingNav() {
                     showName
                     nameClassName="text-sm font-semibold"
                   />
-                  <button
+                  <Button
                     type="button"
-                    className="inline-flex size-10 items-center justify-center rounded-lg hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    variant="ghost"
+                    size="icon-lg"
+                    className="tap-target"
                     aria-label={c.nav.closeMenu}
                     onClick={() => setOpen(false)}
                   >
                     <X className="h-5 w-5" />
-                  </button>
+                  </Button>
                 </div>
                 <nav className="flex flex-col gap-0.5 p-3" aria-label="Mobile">
                   {navLinks}
@@ -136,7 +196,7 @@ export function LandingNav() {
                   <button
                     type="button"
                     onClick={() => setTheme(isDark ? "light" : "dark")}
-                    className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex min-h-11 w-full items-center gap-2 rounded-[var(--radius)] px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {isDark ? (
                       <Sun className="h-4 w-4" />
@@ -148,7 +208,7 @@ export function LandingNav() {
                   <button
                     type="button"
                     onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
-                    className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex min-h-11 w-full items-center gap-2 rounded-[var(--radius)] px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Globe className="h-4 w-4" />
                     {c.nav.language}
@@ -156,14 +216,21 @@ export function LandingNav() {
                   <Link
                     href={LANDING_ROUTES.login}
                     onClick={() => setOpen(false)}
-                    className="flex min-h-11 w-full items-center justify-center rounded-lg border border-border text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={buttonVariants({
+                      variant: "outline",
+                      size: "xl",
+                      className: "w-full",
+                    })}
                   >
                     {c.nav.signIn}
                   </Link>
                   <Link
                     href={LANDING_ROUTES.signup}
                     onClick={() => setOpen(false)}
-                    className="flex min-h-11 w-full items-center justify-center rounded-lg bg-foreground text-sm font-medium text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={buttonVariants({
+                      size: "xl",
+                      className: "w-full",
+                    })}
                   >
                     {c.nav.primaryCta}
                   </Link>
@@ -176,77 +243,91 @@ export function LandingNav() {
       : null;
 
   return (
-    <header
-      data-testid="landing-header"
-      className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90"
-    >
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <Link
-          href={LANDING_ROUTES.home}
-          className="flex shrink-0 items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <AiChartLogo
-            size={32}
-            showName
-            nameClassName="text-base font-semibold tracking-tight text-foreground"
-          />
-        </Link>
-
-        <nav
-          className="ms-auto hidden items-center gap-0.5 md:flex"
-          aria-label="Primary"
-        >
-          {navLinks}
-        </nav>
-
-        <div className="ms-auto flex items-center gap-1.5 md:ms-2">
-          <button
-            type="button"
-            data-testid="landing-theme-toggle"
-            onClick={() => setTheme(isDark ? "light" : "dark")}
-            className="hidden size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
-            aria-label={c.nav.theme}
-            title={c.nav.theme}
-          >
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
-          <button
-            type="button"
-            data-testid="landing-locale-toggle"
-            onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
-            className="hidden size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
-            aria-label={c.nav.language}
-            title={c.nav.language}
-          >
-            <Globe className="h-4 w-4" />
-          </button>
+    <>
+      <SkipLink targetId={skipTargetId}>{c.nav.skip}</SkipLink>
+      <header
+        data-testid="landing-header"
+        className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/90"
+      >
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
           <Link
-            href={LANDING_ROUTES.login}
-            className="hidden min-h-10 items-center rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
+            href={LANDING_ROUTES.home}
+            className="flex shrink-0 items-center gap-2 rounded-[var(--radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {c.nav.signIn}
+            <AiChartLogo
+              size={32}
+              showName
+              nameClassName="text-base font-semibold tracking-tight text-foreground"
+            />
           </Link>
-          <Link
-            href={LANDING_ROUTES.signup}
-            data-testid="landing-primary-cta"
-            className="inline-flex min-h-10 items-center rounded-lg bg-foreground px-3.5 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+          <nav
+            className="ms-auto hidden items-center gap-0.5 md:flex"
+            aria-label="Primary"
           >
-            {c.nav.primaryCta}
-          </Link>
-          <button
-            type="button"
-            data-testid="landing-menu-trigger"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
-            aria-expanded={open}
-            aria-controls={titleId}
-            aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
-            onClick={() => setOpen((v) => !v)}
-          >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+            {navLinks}
+          </nav>
+
+          <div className="ms-auto flex items-center gap-1.5 md:ms-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              data-testid="landing-theme-toggle"
+              onClick={() => setTheme(isDark ? "light" : "dark")}
+              className="hidden text-muted-foreground tap-target hover:text-foreground sm:inline-flex"
+              aria-label={c.nav.theme}
+              title={c.nav.theme}
+            >
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              data-testid="landing-locale-toggle"
+              onClick={() => setLocale(locale === "ar" ? "en" : "ar")}
+              className="hidden text-muted-foreground tap-target hover:text-foreground sm:inline-flex"
+              aria-label={c.nav.language}
+              title={c.nav.language}
+            >
+              <Globe className="h-4 w-4" />
+            </Button>
+            {actions}
+            <Link
+              href={LANDING_ROUTES.login}
+              className={buttonVariants({
+                variant: "ghost",
+                className:
+                  "hidden text-muted-foreground hover:text-foreground sm:inline-flex",
+              })}
+            >
+              {c.nav.signIn}
+            </Link>
+            <Link
+              href={LANDING_ROUTES.signup}
+              data-testid="landing-primary-cta"
+              className={buttonVariants({ className: "px-3.5" })}
+            >
+              {c.nav.primaryCta}
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              data-testid="landing-menu-trigger"
+              className="text-foreground tap-target md:hidden"
+              aria-expanded={open}
+              aria-controls={titleId}
+              aria-label={open ? c.nav.closeMenu : c.nav.openMenu}
+              onClick={() => setOpen((v) => !v)}
+            >
+              {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+          </div>
         </div>
-      </div>
-      {mobileMenu}
-    </header>
+        {mobileMenu}
+      </header>
+    </>
   );
 }

@@ -12,10 +12,10 @@ export function RecommendationOutcomeBreakdown({
   const { t } = useLocale();
   const b = stats.breakdown;
   const rows: { labelKey: string; value: number; tone: string }[] = [
-    { labelKey: "stats.tp1_only", value: b.win_tp1, tone: "text-emerald-500" },
-    { labelKey: "stats.tp2_reached", value: b.win_tp2, tone: "text-emerald-500" },
-    { labelKey: "stats.tp3_reached", value: b.win_tp3, tone: "text-emerald-500" },
-    { labelKey: "stats.sl_hit", value: b.loss, tone: "text-red-500" },
+    { labelKey: "stats.tp1_only", value: b.win_tp1, tone: "text-buy" },
+    { labelKey: "stats.tp2_reached", value: b.win_tp2, tone: "text-buy" },
+    { labelKey: "stats.tp3_reached", value: b.win_tp3, tone: "text-buy" },
+    { labelKey: "stats.sl_hit", value: b.loss, tone: "text-sell" },
     { labelKey: "stats.expired", value: b.expired, tone: "text-muted-foreground" },
     { labelKey: "stats.cancelled", value: b.cancelled, tone: "text-muted-foreground" },
     { labelKey: "stats.invalidated", value: b.invalidated, tone: "text-muted-foreground" },

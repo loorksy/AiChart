@@ -519,7 +519,7 @@ export function AdminUsersTable({
                         </p>
                         <p className="text-muted-foreground">{u.email}</p>
                         {isSyntheticTelegramEmail(u.email) && (
-                          <span className="mt-1 inline-block rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                          <span className="mt-1 inline-block rounded bg-warning/15 px-1.5 py-0.5 text-[10px] text-warning">
                             Telegram — بريد MCP ناقص
                           </span>
                         )}

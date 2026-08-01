@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { AICHART_PLAN } from "@/lib/subscription/plan";
+import { buttonVariants } from "@/components/squareui/button";
 import { useLocale } from "@/hooks/useLocale";
+import { cn } from "@/lib/utils";
 
 export function SubscribeClient({
   trialRemaining = 0,
@@ -30,7 +32,7 @@ export function SubscribeClient({
         </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-background p-5">
+      <div className="rounded-[var(--radius-lg)] border border-border bg-card p-5 elevation-1">
         <div className="flex items-baseline gap-3">
           <span className="text-3xl font-semibold text-foreground">
             ${AICHART_PLAN.promotionalPriceUsd}
@@ -65,7 +67,7 @@ export function SubscribeClient({
         target="_blank"
         rel="noopener noreferrer"
         data-testid="subscribe-telegram-cta"
-        className="inline-flex min-h-11 items-center justify-center rounded-lg bg-foreground px-4 text-sm font-medium text-background"
+        className={cn(buttonVariants({ size: "xl" }), "w-full")}
       >
         {isAr ? "تواصل لتفعيل الاشتراك" : "Contact to subscribe"}
       </a>

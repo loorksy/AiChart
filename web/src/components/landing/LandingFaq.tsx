@@ -34,7 +34,7 @@ export function LandingFaq() {
             <Accordion
               type="single"
               collapsible
-              className="w-full rounded-2xl border border-border bg-card px-6 py-2 shadow-sm"
+              className="w-full rounded-[var(--radius-lg)] border border-border bg-card px-6 py-2 elevation-1"
             >
               {c.items.map((item, index) => (
                 <AccordionItem key={item.q} value={`item-${index + 1}`}>

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Clock, LogOut, ShieldAlert } from "lucide-react";
+import { Button } from "@/components/squareui/button";
 import type { AccessBlockReason } from "@/lib/platformAccess";
 import { accessBlockMessage } from "@/lib/platformAccess";
 
@@ -50,7 +51,7 @@ export function AwaitingApprovalClient({
 
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-lg">
+      <div className="motion-rise-in w-full max-w-md rounded-[var(--radius-lg)] border border-border bg-card p-8 text-center elevation-2">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-secondary">
           <Icon className="h-7 w-7 text-primary" />
         </div>
@@ -59,14 +60,15 @@ export function AwaitingApprovalClient({
         <p className="mt-4 text-xs text-muted-foreground" dir="ltr">
           {email}
         </p>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="xl"
           onClick={() => void logout()}
-          className="btn btn-secondary mx-auto mt-6 gap-2"
+          className="mx-auto mt-6"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-4 w-4" aria-hidden />
           تسجيل الخروج
-        </button>
+        </Button>
       </div>
     </div>
   );
