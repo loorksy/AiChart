@@ -47,5 +47,7 @@ next-env.d.ts
 /testsprite_tests/
 
 # TradingView Advanced Charting Library (proprietary - never commit)
-/public/charting_library/
-/src/vendor/tradingview/
+
+# TradingView Advanced Charts is committed here deliberately (2026-08-01).
+# It is LICENSED, not open source: this repository is PRIVATE for that reason
+# and must stay private. Making it public would redistribute the library.
