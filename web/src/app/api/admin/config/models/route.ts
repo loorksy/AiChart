@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { listOpenAIChatModels } from "@/lib/openaiCompat";
 import { OPENAI_MODEL_CHOICES } from "@/lib/modelCatalog";
 import { getActiveModel, getProviderApiKey, providerKeyField } from "@/lib/llm";
@@ -25,7 +26,7 @@ async function curatedModels(key: string) {
 
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireAdminWith("keys_write");
     const key = getProviderApiKey("openai");
     if (!key) {
       return NextResponse.json({ error: missingKeyError() }, { status: 400 });
@@ -46,7 +47,7 @@ export async function GET() {
 /** Validate the stored key or a draft key before save, then list the catalogue. */
 export async function POST(req: NextRequest) {
   try {
-    await requireAdmin();
+    await requireAdminWith("keys_write");
     const { apiKey } = bodySchema.parse(await req.json().catch(() => ({})));
     const key = apiKey ?? getProviderApiKey("openai");
     if (!key) {

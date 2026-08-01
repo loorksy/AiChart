@@ -72,8 +72,40 @@ export const TRIAL_NAV: NavItem[] = [
   { href: "/console", labelKey: "nav.workspace", icon: Bot, exact: true },
 ];
 
-export function navForRole(role: NavRole, access: AccessTier = "full"): NavItem[] {
-  if (role === "admin" || access === "admin") return ADMIN_NAV;
+/**
+ * Which admin permission each ?tab= destination needs, mirroring the console's
+ * own gate. Kept as a plain map so this leaf module never imports the DB-backed
+ * adminRoles module into the client bundle.
+ */
+const ADMIN_NAV_PERMISSION: Record<string, string> = {
+  users: "users_read",
+  subscriptions: "billing_read",
+  keys: "keys_write",
+  system: "keys_write",
+  security: "keys_write",
+  usage: "keys_write",
+  diagnostics: "keys_write",
+};
+
+export function navForRole(
+  role: NavRole,
+  access: AccessTier = "full",
+  /**
+   * Admin permissions of the signed-in user. Omitted (or empty) means "show
+   * everything" — that is the implicit-owner case and today's single operator.
+   * Passing a real list stops a scoped admin being offered destinations the
+   * console will refuse, which read as dead links.
+   */
+  permissions?: readonly string[],
+): NavItem[] {
+  if (role === "admin" || access === "admin") {
+    if (!permissions?.length) return ADMIN_NAV;
+    return ADMIN_NAV.filter((item) => {
+      const tab = item.href.split("?tab=")[1];
+      const needed = tab ? ADMIN_NAV_PERMISSION[tab] : undefined;
+      return !needed || permissions.includes(needed);
+    });
+  }
   if (access === "trial" || access === "blocked") return TRIAL_NAV;
   return APP_NAV;
 }

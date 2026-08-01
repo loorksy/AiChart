@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { query, execute, getDbBackend } from "@/lib/db";
 
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireAdminWith("content_write");
     const rows = await query("SELECT * FROM dynamic_pages ORDER BY created_at DESC");
     // Normalize boolean values for is_published
     const normalized = rows.map((r: any) => ({
@@ -19,7 +20,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await requireAdmin();
+    await requireAdminWith("content_write");
     const body = await req.json();
     const { slug, title_ar, title_en, content_ar, content_en, is_published, metadata_json } = body;
 

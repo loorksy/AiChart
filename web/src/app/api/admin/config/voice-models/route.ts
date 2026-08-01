@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { listOpenAIRealtimeModels } from "@/lib/openaiCompat";
 import { getProviderApiKey, providerKeyField } from "@/lib/llm";
 import { getPlatformValueAsync } from "@/lib/platformConfig";
@@ -19,7 +20,7 @@ async function defaultModel(): Promise<string> {
 
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireAdminWith("keys_write");
     const key = getProviderApiKey("openai");
     if (!key) {
       return NextResponse.json({ error: missingKeyError() }, { status: 400 });
@@ -41,7 +42,7 @@ export async function GET() {
 /** Fetch models using stored key or a draft key before save. */
 export async function POST(req: NextRequest) {
   try {
-    await requireAdmin();
+    await requireAdminWith("keys_write");
     const { apiKey } = bodySchema.parse(await req.json().catch(() => ({})));
     const key = apiKey ?? getProviderApiKey("openai");
     if (!key) {

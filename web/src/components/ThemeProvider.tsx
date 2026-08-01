@@ -1,98 +1,41 @@
 "use client";
 
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+  ThemeProvider as NextThemesProvider,
+  useTheme as useNextTheme,
+} from "next-themes";
 
 export type ThemePreference = "light" | "dark" | "system";
 
 type ResolvedTheme = "light" | "dark";
 
-interface ThemeContextValue {
-  theme: ThemePreference;
-  resolved: ResolvedTheme;
-  setTheme: (theme: ThemePreference) => void;
-}
-
-const STORAGE_KEY = "aichart-theme";
-
-const ThemeContext = createContext<ThemeContextValue | null>(null);
-
-function getSystemTheme(): ResolvedTheme {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
-function resolveTheme(preference: ThemePreference): ResolvedTheme {
-  if (preference === "system") return getSystemTheme();
-  return preference;
-}
-
-function applyTheme(resolved: ResolvedTheme) {
-  const root = document.documentElement;
-  root.classList.toggle("dark", resolved === "dark");
-  root.style.colorScheme = resolved;
-}
-
+/**
+ * next-themes persists the raw preference string ("light" | "dark" | "system")
+ * under storageKey="aichart-theme" — byte-compatible with the values the
+ * previous hand-rolled provider wrote to localStorage, so existing users keep
+ * their theme. attribute="class" reproduces the `dark` class on <html>, and
+ * enableColorScheme (on by default) reproduces root.style.colorScheme.
+ */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<ThemePreference>("dark");
-  const [resolved, setResolved] = useState<ResolvedTheme>("dark");
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as ThemePreference | null;
-    const initial: ThemePreference =
-      stored === "light" || stored === "dark" || stored === "system"
-        ? stored
-        : "dark";
-    const next = resolveTheme(initial);
-    setThemeState(initial);
-    setResolved(next);
-    applyTheme(next);
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    const next = resolveTheme(theme);
-    setResolved(next);
-    applyTheme(next);
-    localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme, mounted]);
-
-  useEffect(() => {
-    if (!mounted || theme !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => {
-      const next = resolveTheme("system");
-      setResolved(next);
-      applyTheme(next);
-    };
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [theme, mounted]);
-
-  const setTheme = useCallback((next: ThemePreference) => {
-    setThemeState(next);
-  }, []);
-
   return (
-    <ThemeContext.Provider value={{ theme, resolved, setTheme }}>
+    <NextThemesProvider
+      attribute="class"
+      storageKey="aichart-theme"
+      defaultTheme="dark"
+      enableSystem
+      disableTransitionOnChange
+    >
       {children}
-    </ThemeContext.Provider>
+    </NextThemesProvider>
   );
 }
 
 export function useTheme() {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) {
-    throw new Error("useTheme must be used within ThemeProvider");
-  }
-  return ctx;
+  const { theme, resolvedTheme, setTheme } = useNextTheme();
+  return {
+    theme: (theme ?? "dark") as ThemePreference,
+    // never undefined — consumers index straight into this before hydration
+    resolved: (resolvedTheme === "light" ? "light" : "dark") as ResolvedTheme,
+    setTheme: setTheme as (theme: ThemePreference) => void,
+  };
 }

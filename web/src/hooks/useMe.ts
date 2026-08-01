@@ -20,6 +20,8 @@ export interface EntitlementInfo {
 }
 
 export interface MeData {
+  /** Admin permission slugs; empty for non-admins and implicit owners. */
+  admin_permissions?: string[];
   user: PublicUser;
   settings: { telegram_chat_id: string | null };
   limits: AdminLimits;

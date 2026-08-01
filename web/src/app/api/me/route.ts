@@ -13,6 +13,7 @@ import {
   countUnreadAlerts,
 } from "@/lib/store";
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
+import { getAdminRole, permissionsForRole } from "@/lib/adminRoles";
 import { AICHART_PLAN } from "@/lib/subscription/plan";
 
 export async function GET() {
@@ -29,9 +30,14 @@ export async function GET() {
   const platformAccess = hasPlatformAccess(user);
   const accessBlockReason = platformAccess ? null : getAccessBlockReason(user);
   const entitlement = await getEntitlementForUser(user);
+  // Cosmetic only: lets the shell hide admin destinations the console would
+  // refuse. Every admin API still re-checks with requireAdminWith.
+  const adminPermissions =
+    user.role === "admin" ? permissionsForRole(await getAdminRole(user.id)) : [];
   return NextResponse.json({
     user,
     needs_mcp_credentials: needsMcpCredentials(user),
+    admin_permissions: adminPermissions,
     platform_access: platformAccess,
     access_block_reason: accessBlockReason,
     entitlement: {

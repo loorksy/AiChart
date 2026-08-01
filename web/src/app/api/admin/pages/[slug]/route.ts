@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { queryOne, execute, getDbBackend } from "@/lib/db";
 
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    await requireAdmin();
+    await requireAdminWith("content_write");
     const { slug } = await params;
     const row: any = await queryOne("SELECT * FROM dynamic_pages WHERE slug = ?", [slug]);
     if (!row) {
@@ -20,7 +21,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
 export async function PUT(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    await requireAdmin();
+    await requireAdminWith("content_write");
     const { slug } = await params;
     const body = await req.json();
     const { title_ar, title_en, content_ar, content_en, is_published, metadata_json } = body;
@@ -50,7 +51,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ slug: st
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    await requireAdmin();
+    await requireAdminWith("content_write");
     const { slug } = await params;
     const row = await queryOne("SELECT slug FROM dynamic_pages WHERE slug = ?", [slug]);
     if (!row) {

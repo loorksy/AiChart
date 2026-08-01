@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import { buildParityReport } from "@/lib/agent/parityLog";
 
 /**
@@ -14,7 +15,7 @@ import { buildParityReport } from "@/lib/agent/parityLog";
  */
 export async function GET(req: NextRequest) {
   try {
-    await requireAdmin();
+    await requireAdminWith("keys_write");
     const limit = Number(req.nextUrl.searchParams.get("limit") ?? 100);
     const report = await buildParityReport(
       Number.isFinite(limit) ? Math.max(1, Math.min(limit, 500)) : 100,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, handleError, ApiError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import {
   setUserAccess,
   deleteUser,
@@ -23,7 +24,7 @@ export async function PATCH(
   ctx: { params: Promise<{ id: string }> },
 ) {
   try {
-    const admin = await requireAdmin();
+    const { admin } = await requireAdminWith("users_write");
     const { id } = await ctx.params;
     const userId = Number(id);
     if (!Number.isInteger(userId)) throw new ApiError(400, "معرّف غير صالح.");
@@ -89,7 +90,7 @@ export async function DELETE(
   ctx: { params: Promise<{ id: string }> },
 ) {
   try {
-    const admin = await requireAdmin();
+    const { admin } = await requireAdminWith("users_write");
     const { id } = await ctx.params;
     const userId = Number(id);
     if (!Number.isInteger(userId)) throw new ApiError(400, "معرّف غير صالح.");

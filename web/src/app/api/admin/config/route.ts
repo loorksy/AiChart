@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin, handleError } from "@/lib/api";
+import { handleError } from "@/lib/api";
+import { requireAdminWith } from "@/lib/adminRoles";
 import {
   listPlatformConfigStatus,
   savePlatformConfig,
@@ -12,7 +13,7 @@ const patchSchema = z.record(z.string(), z.union([z.string(), z.boolean()]).opti
 
 export async function GET() {
   try {
-    await requireAdmin();
+    await requireAdminWith("keys_write");
     return NextResponse.json({ fields: await listPlatformConfigStatus() });
   } catch (err) {
     return handleError(err);
@@ -21,7 +22,7 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   try {
-    const admin = await requireAdmin();
+    const { admin } = await requireAdminWith("keys_write");
     const body = patchSchema.parse(await req.json());
     const allowed = new Set(PLATFORM_CONFIG_FIELDS.map((f) => f.key));
     const patch: Record<string, string | boolean | undefined> = {};

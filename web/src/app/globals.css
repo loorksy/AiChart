@@ -1,4 +1,10 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* The app toggles a `.dark` class on <html> (see ThemeProvider / THEME_BOOT_SCRIPT).
+   Without this, Tailwind v4's default `dark:` variant follows prefers-color-scheme
+   instead of the app's own toggle. */
+@custom-variant dark (&:is(.dark *));
 
 /* ==========================================================================
    AiChart design tokens — calm neutral surfaces. No purple in normal UI.
@@ -141,6 +147,11 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-surface-elevated: var(--surface-elevated);
   --color-buy: var(--buy);
   --color-sell: var(--sell);
@@ -731,5 +742,14 @@ label {
   overflow: hidden;
   white-space: nowrap;
   animation: thinkingDots 1.1s steps(3, end) infinite;
+}
+
+/* Required by the vendored Square-UI kit (components/squareui/sidebar.tsx).
+   Upstream it ships in shadcn/tailwind.css, which we deliberately do not import. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 

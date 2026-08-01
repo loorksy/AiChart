@@ -46,7 +46,7 @@ export function AppConsoleShell({
   // Until /api/me resolves, keep non-admin nav conservative (trial-sized).
   const access =
     me?.entitlement?.access ?? (isAdmin ? "admin" : "trial");
-  const items = navForRole(role, access);
+  const items = navForRole(role, access, me?.admin_permissions);
   const paidWorkspace = access === "full" || access === "admin";
   const conversationsEnabled =
     showConversations ?? (!isAdmin && paidWorkspace);
