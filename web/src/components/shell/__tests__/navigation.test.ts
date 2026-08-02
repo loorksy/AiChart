@@ -192,13 +192,20 @@ test("collapsed rail brand expands the sidebar and does not navigate", () => {
   assert.match(shell, /group-focus-visible:opacity-100/);
 });
 
-test("composer stacks the text over its controls and hosts the chart toggle", () => {
+test("composer stacks the text over controls and ends in one adaptive slot", () => {
   const input = read("components/agent/AgentChatInput.tsx");
-  assert.match(input, /data-testid="composer-chart-toggle"/);
-  assert.match(input, /aria-pressed=\{chartOpen\}/);
+  // The chart toggle left the composer for the top bar; the mic stopped being a
+  // permanent icon — stop while running, send once typed, voice when empty.
+  assert.doesNotMatch(input, /composer-chart-toggle/);
+  assert.match(input, /running \?/);
+  assert.match(input, /value\.trim\(\) \?/);
+  assert.match(input, /voiceControl \?\?/);
   // Logical alignment only, so the row mirrors under dir="rtl".
   assert.match(input, /ms-auto/);
   assert.doesNotMatch(input, /\bml-auto\b|\bmr-auto\b/);
+  const topBar = read("components/shell/ConsoleTopBar.tsx");
+  assert.match(topBar, /data-testid="topbar-chart-toggle"/);
+  assert.match(topBar, /CHART_TOGGLE_EVENT/);
 });
 
 test("composer has bottom fade; upper chat shadow removed", () => {

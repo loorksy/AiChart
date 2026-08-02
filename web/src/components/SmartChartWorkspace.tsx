@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
-import { CHART_RELOAD_EVENT } from "@/components/shell/ConsoleTopBar";
+import { CHART_RELOAD_EVENT, CHART_TOGGLE_EVENT } from "@/components/shell/ConsoleTopBar";
 import { useConsoleChatUrl } from "@/hooks/useConsoleChatUrl";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 
@@ -781,7 +781,6 @@ function SmartChartWorkspaceInner({
     return () => query.removeEventListener("change", sync);
   }, []);
 
-  const chartShowing = isWide ? chartVisibleDesktop : chartSheetOpen;
   const toggleChart = useCallback(() => {
     if (isWide) {
       applyDesktopLayout(desktopLayout === "chatOnly" ? "split" : "chatOnly");
@@ -789,6 +788,18 @@ function SmartChartWorkspaceInner({
     }
     setChartSheetOpen(!chartSheetOpen);
   }, [isWide, desktopLayout, applyDesktopLayout, chartSheetOpen, setChartSheetOpen]);
+
+  // The chart toggle moved to the top bar; the workspace still owns the state.
+  // A ref keeps the window listener stable while `toggleChart` re-derives.
+  const toggleChartRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    toggleChartRef.current = toggleChart;
+  });
+  useEffect(() => {
+    const toggle = () => toggleChartRef.current();
+    window.addEventListener(CHART_TOGGLE_EVENT, toggle);
+    return () => window.removeEventListener(CHART_TOGGLE_EVENT, toggle);
+  }, []);
 
 
   // Desktop chat resize: chat is the right column, so dragging the handle left
@@ -969,8 +980,6 @@ function SmartChartWorkspaceInner({
                     }
                   : undefined
               }
-              chartOpen={chartShowing}
-              onToggleChart={toggleChart}
               brokerConnected={forexOnline}
               onSymbolChange={handleSymbolChange}
               onIntervalChange={handleIntervalChange}

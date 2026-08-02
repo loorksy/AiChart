@@ -504,6 +504,9 @@ function ConsoleShellBody({
             onToggleSidebar={() => setMobileOpen(!mobileOpen)}
             refreshMode={isAdmin ? "page" : "chart"}
             showBalance={!isAdmin}
+            showChartToggle={
+              !isAdmin && (pathname === "/console" || pathname.startsWith("/chart"))
+            }
           />
           <main
             className={cn(

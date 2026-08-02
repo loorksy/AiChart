@@ -58,9 +58,6 @@ interface Props {
   ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
   voiceControl?: ReactNode;
-  /** Whether the chart surface is showing, for the composer's chart toggle. */
-  chartOpen?: boolean;
-  onToggleChart?: () => void;
   /** Broker link state + market setters for the composer's pair/interval row. */
   brokerConnected?: boolean;
   onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
@@ -89,8 +86,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       applyDrawingMutations,
       onPersistMessage,
       voiceControl,
-      chartOpen,
-      onToggleChart,
       brokerConnected,
       onSymbolChange,
       onIntervalChange,
@@ -178,8 +173,6 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         onSend={sendMessage}
         onCancel={cancel}
         voiceControl={voiceControl}
-        chartOpen={chartOpen}
-        onToggleChart={onToggleChart}
         symbol={symbol}
         interval={interval}
         brokerConnected={brokerConnected}

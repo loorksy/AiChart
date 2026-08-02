@@ -124,7 +124,7 @@ export async function getOrCreateChartLayout(
   );
   if (existing) return existing;
   const id = newLayoutId();
-  const sym = (symbol ?? "EURUSD").toUpperCase();
+  const sym = (symbol ?? "XAUUSD").toUpperCase();
   await execute(
     "INSERT INTO chart_layouts (id, user_id, symbol) VALUES (?, ?, ?)",
     [id, userId, sym],
