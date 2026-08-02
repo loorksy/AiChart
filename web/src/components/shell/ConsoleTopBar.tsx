@@ -58,9 +58,13 @@ export function ConsoleTopBar({
       data-testid="console-top-bar"
       className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2 sm:px-3"
     >
-      {/* Order is fixed: account, alerts, navigation, refresh. */}
-      <SidebarProfileMenu variant="topbar" displayName={displayName} />
-      <NotificationCenter />
+      {/*
+        The navigation toggle sits on the edge the navigation itself comes from
+        — the start edge, mirrored automatically under dir="rtl" — so the button
+        points at where the drawer will appear rather than across the bar from
+        it. Everything else is grouped against the opposite edge, with the
+        avatar in the outer corner.
+      */}
       <button
         type="button"
         data-testid="mobile-menu-trigger"
@@ -72,18 +76,23 @@ export function ConsoleTopBar({
       >
         <PanelLeft className="h-5 w-5 rtl:-scale-x-100" />
       </button>
-      <button
-        type="button"
-        data-testid="console-refresh"
-        onClick={refresh}
-        aria-label={t("shell.refresh")}
-        title={t("shell.refresh")}
-        className={ICON_BUTTON}
-      >
-        <RefreshCw
-          className={cn("h-5 w-5", spinning && "animate-spin motion-reduce:animate-none")}
-        />
-      </button>
+
+      <div className="ms-auto flex items-center gap-1">
+        <button
+          type="button"
+          data-testid="console-refresh"
+          onClick={refresh}
+          aria-label={t("shell.refresh")}
+          title={t("shell.refresh")}
+          className={ICON_BUTTON}
+        >
+          <RefreshCw
+            className={cn("h-5 w-5", spinning && "animate-spin motion-reduce:animate-none")}
+          />
+        </button>
+        <NotificationCenter />
+        <SidebarProfileMenu variant="topbar" displayName={displayName} />
+      </div>
     </div>
   );
 }

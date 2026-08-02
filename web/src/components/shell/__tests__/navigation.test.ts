@@ -86,8 +86,9 @@ test("both consoles share one top bar: account, alerts, nav, refresh", () => {
   // Read past the imports so the order below is the rendered order, not the
   // import order.
   const bar = read("components/shell/ConsoleTopBar.tsx").split('data-testid="console-top-bar"')[1]!;
-  // Fixed order; the drawer trigger lives here rather than in each page's chrome.
-  const order = ["SidebarProfileMenu", "NotificationCenter", "mobile-menu-trigger", "console-refresh"];
+  // The drawer trigger leads, on the edge the drawer opens from; the rest are
+  // grouped against the far edge with the avatar in the corner.
+  const order = ["mobile-menu-trigger", "ms-auto", "console-refresh", "NotificationCenter", "SidebarProfileMenu"];
   let cursor = -1;
   for (const marker of order) {
     const at = bar.indexOf(marker);
