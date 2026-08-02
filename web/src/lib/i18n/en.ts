@@ -90,6 +90,21 @@ export const en = {
   "bt.curves_unavailable": "Curve data is not available for this backtest yet.",
   "model.picker_title": "Choose the AI model",
   "model.platform_default": "Default (platform setting)",
+
+  // Composer options menu (the plus beside the mic)
+  "composer.more": "More options",
+  "composer.more_title": "Conversation options",
+  "composer.more_empty":
+    "Nothing to set here yet — connect your broker account to choose an execution mode.",
+
+  // Pair catalogue
+  "symbol.picker.title": "Choose a pair",
+  "symbol.picker.search": "Search a pair or a currency",
+  "symbol.picker.source_broker": "Your broker account's symbols",
+  "symbol.picker.source_platform": "Platform market data",
+  "symbol.picker.none": "No pair matches this search.",
+  "symbol.card.to": "to",
+  "symbol.card.window": "1 day",
   "skills.title": "My skills",
   "skills.description": "Upload your own SKILL.md files to tailor analysis and recommendations to your strategy. Skills are advisory only — they grant no permissions and never override risk or execution controls.",
   "skills.empty": "No custom skills yet — add your first one below.",

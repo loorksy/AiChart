@@ -33,7 +33,9 @@ export function ComposerPopover({
   const panelRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const [compact, setCompact] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(
+    null,
+  );
 
   useEffect(() => setMounted(true), []);
 
@@ -60,17 +62,29 @@ export function ComposerPopover({
       const width = panel.offsetWidth;
       const gutter = 8;
       const raw = dir === "rtl" ? rect.right - width : rect.left;
+      // The panel sits ON the gap above the control, so its height is bounded
+      // by that gap — a menu that loads its options late must scroll rather
+      // than grow down across the control that opened it.
+      const available = Math.max(rect.top - gutter * 2, 120);
+      const height = Math.min(panel.offsetHeight, available);
       setPos({
-        top: Math.max(gutter, rect.top - panel.offsetHeight - 8),
+        top: Math.max(gutter, rect.top - height - 8),
         left: Math.max(gutter, Math.min(raw, window.innerWidth - width - gutter)),
+        maxHeight: available,
       });
     };
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
+    // Sections that arrive after their fetch (models, execution mode) change
+    // the panel's height after it was first measured; re-place when they do.
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => place());
+    if (panelRef.current) observer?.observe(panelRef.current);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      observer?.disconnect();
     };
   }, [open, compact, dir, anchorRef]);
 
@@ -116,7 +130,11 @@ export function ComposerPopover({
         aria-label={labelledBy ? undefined : title}
         aria-labelledby={labelledBy}
         data-testid="composer-popover"
-        style={pos ? { top: pos.top, left: pos.left } : undefined}
+        style={
+          pos
+            ? { top: pos.top, left: pos.left, maxHeight: pos.maxHeight, overflowY: "auto" }
+            : undefined
+        }
         className={cn(
           "z-[151] overflow-hidden border border-border bg-background text-foreground shadow-2xl",
           compact

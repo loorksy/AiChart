@@ -3,7 +3,7 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import { AgentModelPicker } from "@/components/agent/AgentModelPicker";
+import { ComposerMoreMenu } from "@/components/agent/ComposerMoreMenu";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
 import {
   ComposerIntervalPicker,
@@ -108,15 +108,16 @@ export function AgentChatInput({
             <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
           )}
           <RiskPerTradeControl />
-          <AgentModelPicker />
 
           {/*
-            Logical end of the row, ONE adaptive slot — the reference pattern.
-            Generating → stop. Text typed → send. Empty → the mic. The voice
-            control stops being a second permanent icon fighting the pickers for
-            width on a 390px row; it appears exactly when it is the action.
+            End of the row: the plus holds what is set once and left alone (the
+            model, the execution mode), and beside it ONE adaptive slot —
+            generating → stop, text typed → send, empty → the mic. The voice
+            control stops being a permanent icon fighting the pickers for width
+            on a 390px row; it appears exactly when it is the action.
           */}
-          <div className="ms-auto flex items-center">
+          <div className="ms-auto flex items-center gap-0.5">
+            <ComposerMoreMenu />
             {running ? (
               <button
                 type="button"

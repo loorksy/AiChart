@@ -89,6 +89,21 @@ export const ar: Record<TranslationKey, string> = {
   "bt.curves_unavailable": "بيانات المنحنى غير متاحة لهذا الاختبار حالياً.",
   "model.picker_title": "اختر نموذج الذكاء الاصطناعي",
   "model.platform_default": "الافتراضي (إعداد المنصة)",
+
+  // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
+  "composer.more": "خيارات إضافية",
+  "composer.more_title": "خيارات المحادثة",
+  "composer.more_empty":
+    "لا خيارات هنا بعد — اربط حسابك لدى الوسيط لاختيار وضع التنفيذ.",
+
+  // كتالوج الأزواج
+  "symbol.picker.title": "اختر الزوج",
+  "symbol.picker.search": "ابحث عن زوج أو عملة",
+  "symbol.picker.source_broker": "رموز حسابك لدى الوسيط",
+  "symbol.picker.source_platform": "بيانات السوق من المنصة",
+  "symbol.picker.none": "لا يوجد زوج يطابق هذا البحث.",
+  "symbol.card.to": "إلى",
+  "symbol.card.window": "يوم واحد",
   "skills.title": "مهاراتي",
   "skills.description": "أضف ملفات SKILL.md خاصة بك لتخصيص أسلوب التحليل والتوصيات حسب استراتيجيتك. المهارات إرشادية فقط — لا تمنح صلاحيات ولا تتجاوز ضوابط المخاطر والتنفيذ.",
   "skills.empty": "لا توجد مهارات مخصّصة بعد — أضف أول مهارة أدناه.",
