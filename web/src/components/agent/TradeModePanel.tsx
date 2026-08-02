@@ -15,25 +15,16 @@
  *    next poll, and NOTHING here ever re-sends `auto` on reconnect. Re-arming
  *    is a fresh human decision, taken through the same dialog.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Bot, ChevronDown, ShieldAlert, Wifi, WifiOff } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import {
+  useTradeMode,
+  type AutoExecutionStage,
+  type TradeModeState,
+} from "@/hooks/useTradeMode";
+import { AccountTypeBadge } from "@/components/agent/AccountTypeBadge";
 import { cn } from "@/lib/utils";
-
-type TradeModeState = "auto" | "advisory" | "unset";
-type AutoExecutionStage = "off" | "dry_run" | "demo" | "live";
-
-interface TradeModeView {
-  mode: TradeModeState;
-  stored_mode: TradeModeState;
-  connected: boolean;
-  needs_choice: boolean;
-  downgraded_reason: "connection_lost" | "phase_disabled" | null;
-  updated_at: number | null;
-  auto_execution_stage?: AutoExecutionStage;
-}
-
-const POLL_MS = 7_000;
 
 const BADGE_CLASSES: Record<TradeModeState, string> = {
   auto: "border-buy/45 bg-buy/10 text-buy",
@@ -50,68 +41,25 @@ const STAGE_CLASSES: Record<AutoExecutionStage, string> = {
 
 export function TradeModePanel() {
   const { t, dir } = useLocale();
-  const [view, setView] = useState<TradeModeView | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Presentation-only: the panel collapses to its badge row by default and
   // expands on demand. Collapse is CSS display, never unmount — polling,
   // confirmation flow and error state live on regardless.
   const [expanded, setExpanded] = useState(false);
-  const alive = useRef(true);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/agent/trade-mode", { cache: "no-store" });
-      if (!res.ok) return;
-      const data = (await res.json()) as TradeModeView;
-      if (alive.current) setView(data);
-    } catch {
-      /* transient — the next poll retries */
-    }
-  }, []);
-
-  useEffect(() => {
-    alive.current = true;
-    void load();
-    // Polling doubles as the disconnect watcher: the server downgrades auto
-    // the moment the debounced EA signal drops, and the next tick shows it.
-    const id = setInterval(() => void load(), POLL_MS);
-    return () => {
-      alive.current = false;
-      clearInterval(id);
-    };
-  }, [load]);
+  // Shared with the composer's options menu, so the two surfaces can never
+  // disagree about whether execution is armed.
+  const { view, saving, applyMode: setTradeMode } = useTradeMode();
 
   const applyMode = useCallback(
     async (mode: "auto" | "advisory") => {
-      setSaving(true);
       setError(null);
-      try {
-        const res = await fetch("/api/agent/trade-mode", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            mode === "auto"
-              ? // The dialog's accept button is the only caller with mode=auto,
-                // so this flag is literally "the user pressed confirm".
-                { mode, confirmed_by_user: true, actor: "platform" }
-              : { mode, actor: "platform" },
-          ),
-        });
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(body?.error ?? t("trade_mode.error"));
-        }
-        await load();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : t("trade_mode.error"));
-      } finally {
-        setSaving(false);
-        setConfirming(false);
-      }
+      const result = await setTradeMode(mode);
+      if (!result.ok) setError(result.error ?? t("trade_mode.error"));
+      setConfirming(false);
     },
-    [load, t],
+    [setTradeMode, t],
   );
 
   if (!view) return null;
@@ -140,6 +88,10 @@ export function TradeModePanel() {
           <Bot className="h-3.5 w-3.5" aria-hidden />
           {t(`trade_mode.mode.${mode}`)}
         </span>
+
+        {/* Demo or real — the single most consequential fact about the
+            account the numbers on this screen belong to. */}
+        {view.connected && <AccountTypeBadge type={view.account_type ?? null} />}
 
         <span
           className={cn(

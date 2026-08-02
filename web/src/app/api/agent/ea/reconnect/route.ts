@@ -5,7 +5,7 @@ import {
   eaReconnectFlagKey,
   eaResyncCandlesFlagKey,
 } from "@/lib/eaTradeCommands";
-import { setFlag } from "@/lib/store";
+import { resolveForexBackendForUser, setFlag } from "@/lib/store";
 import { ApiError } from "@/lib/api";
 
 const bodySchema = z.object({
@@ -14,6 +14,14 @@ const bodySchema = z.object({
 
 /** Bridge: request EA reconnect on next heartbeat (optional candle resync). */
 export const POST = withBridge(async ({ req, userId }) => {
+  const backend = await resolveForexBackendForUser(userId);
+  if (backend !== "ea") {
+    // Nothing to reconnect: there is no EA in this account's path at all.
+    throw new ApiError(
+      400,
+      "إعادة اتصال EA لا تنطبق — حسابك مربوط عبر المنصة (MetaApi/جسر MT5).",
+    );
+  }
   const conn = await getEaConnection(userId);
   if (!conn || conn.status === "revoked") {
     throw new ApiError(404, "لا يوجد ربط EA — ولّد رمزاً من الإعدادات.");

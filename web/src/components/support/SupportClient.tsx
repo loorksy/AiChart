@@ -297,7 +297,10 @@ export function SupportClient() {
               >
                 <p className="type-caption mb-1 font-semibold">
                   {AUTHOR_AR[m.author]} ·{" "}
-                  <time dateTime={new Date(m.created_at).toISOString()}>
+                  {/* Number() first: an Invalid Date makes toISOString THROW,
+                      and a thrown render is how "open ticket" became a dead
+                      page when the driver delivered this timestamp as a string. */}
+                  <time dateTime={new Date(Number(m.created_at)).toISOString()}>
                     {new Date(m.created_at).toLocaleString("ar")}
                   </time>
                 </p>

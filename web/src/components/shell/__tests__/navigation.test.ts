@@ -106,12 +106,49 @@ test("risk per trade is a composer control, not a settings section", () => {
   assert.doesNotMatch(settings, /id: "trading"/);
   const input = read("components/agent/AgentChatInput.tsx");
   assert.match(input, /RiskPerTradeControl/);
-  assert.match(input, /AgentModelPicker/);
   // Both open on the one shared composer surface.
   const risk = read("components/agent/RiskPerTradeControl.tsx");
-  const model = read("components/agent/AgentModelPicker.tsx");
   assert.match(risk, /ComposerPopover/);
-  assert.match(model, /ComposerPopover/);
+});
+
+test("model and execution mode live behind the composer's plus", () => {
+  const input = read("components/agent/AgentChatInput.tsx");
+  assert.match(input, /ComposerMoreMenu/);
+  // The chips they replaced are gone from the row itself.
+  assert.doesNotMatch(input, /AgentModelPicker/);
+  const menu = read("components/agent/ComposerMoreMenu.tsx");
+  assert.match(menu, /data-testid="composer-more"/);
+  assert.match(menu, /ComposerPopover/);
+  assert.match(menu, /ModelChoiceList/);
+  assert.match(menu, /data-testid="composer-execution-mode"/);
+  // Execution authority is never one tap, and never offered while offline.
+  assert.match(menu, /view\?\.connected/);
+  assert.match(menu, /setConfirming\(true\)/);
+  assert.match(menu, /trade_mode\.confirm\.body/);
+  // One shared source of truth with the panel above the conversation.
+  const panel = read("components/agent/TradeModePanel.tsx");
+  assert.match(panel, /useTradeMode/);
+  const hook = read("hooks/useTradeMode.ts");
+  assert.match(hook, /confirmed_by_user: true/);
+});
+
+test("pair picker is a card catalogue with flags, quotes and live search", () => {
+  const sheet = read("components/agent/SymbolPickerSheet.tsx");
+  // Two columns on a phone, four on a desktop — the requested responsive grid.
+  assert.match(sheet, /grid-cols-2 gap-2 lg:grid-cols-4/);
+  assert.match(sheet, /data-testid="symbol-picker-search"/);
+  assert.match(sheet, /data-testid="pair-card"/);
+  assert.match(sheet, /PairFlags/);
+  assert.match(sheet, /sparklineGeometry/);
+  assert.match(sheet, /IntersectionObserver/);
+  // It is a change of surface, so it takes the one sheet slot.
+  const pickers = read("components/agent/ComposerMarketPickers.tsx");
+  assert.match(pickers, /useSheetSlot\("symbolPicker"\)/);
+  assert.match(pickers, /PairFlags/);
+  // Flags are served from the app, never from a third-party CDN.
+  const flags = read("components/agent/CurrencyFlag.tsx");
+  assert.doesNotMatch(flags, /https?:\/\//);
+  assert.match(flags, /currencyMark/);
 });
 
 test("billing page reads from the dictionaries, not hardcoded Arabic", () => {
@@ -192,13 +229,20 @@ test("collapsed rail brand expands the sidebar and does not navigate", () => {
   assert.match(shell, /group-focus-visible:opacity-100/);
 });
 
-test("composer stacks the text over its controls and hosts the chart toggle", () => {
+test("composer stacks the text over controls and ends in one adaptive slot", () => {
   const input = read("components/agent/AgentChatInput.tsx");
-  assert.match(input, /data-testid="composer-chart-toggle"/);
-  assert.match(input, /aria-pressed=\{chartOpen\}/);
+  // The chart toggle left the composer for the top bar; the mic stopped being a
+  // permanent icon — stop while running, send once typed, voice when empty.
+  assert.doesNotMatch(input, /composer-chart-toggle/);
+  assert.match(input, /running \?/);
+  assert.match(input, /value\.trim\(\) \?/);
+  assert.match(input, /voiceControl \?\?/);
   // Logical alignment only, so the row mirrors under dir="rtl".
   assert.match(input, /ms-auto/);
   assert.doesNotMatch(input, /\bml-auto\b|\bmr-auto\b/);
+  const topBar = read("components/shell/ConsoleTopBar.tsx");
+  assert.match(topBar, /data-testid="topbar-chart-toggle"/);
+  assert.match(topBar, /CHART_TOGGLE_EVENT/);
 });
 
 test("composer has bottom fade; upper chat shadow removed", () => {

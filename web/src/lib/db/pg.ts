@@ -1,4 +1,23 @@
-import { Pool, type PoolClient } from "pg";
+import { Pool, types, type PoolClient } from "pg";
+
+/**
+ * BIGINT (int8) comes back as a NUMBER, matching the SQLite backend.
+ *
+ * node-postgres returns int8 as a string by default, but every query in this
+ * codebase was written against SQLite semantics, where ids and millisecond
+ * timestamps are numbers. On Postgres that mismatch was live breakage, not
+ * theory: `new Date(created_at).toISOString()` threw mid-render when a support
+ * thread opened (string in, Invalid Date out), and the admin reply endpoint
+ * 400-ed because the ticket id from its own list came back "5", failing
+ * `z.number()`. Every BIGINT the schema declares — ids, epoch-ms columns,
+ * Telegram ids — fits comfortably inside Number's 2^53 safe range, so the
+ * parse is loss-free; anything unsafely large passes through untouched rather
+ * than silently rounding.
+ */
+types.setTypeParser(types.builtins.INT8, (value) => {
+  const n = Number(value);
+  return Number.isSafeInteger(n) ? n : value;
+});
 import bcrypt from "bcryptjs";
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from "../constants";
 import {
@@ -35,6 +54,7 @@ const SCHEMA = `
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     -- 'ea' | 'mt5local' | NULL (operator's global default).
     forex_backend            TEXT,
+    market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
@@ -360,6 +380,7 @@ const SCHEMA = `
     balance             DOUBLE PRECISION NOT NULL DEFAULT 0,
     equity              DOUBLE PRECISION NOT NULL DEFAULT 0,
     currency            TEXT,
+    account_trade_mode  TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -726,6 +747,13 @@ const SCHEMA = `
   -- honest reading of rows written before scoping existed. The unique moment
   -- index is what makes re-analysis inside one candle an UPDATE, not a
   -- duplicate comparison row.
+  -- The broker's own account type for cloud/bridge connections; without it the
+  -- live-money dual-enablement gate cannot tell a real MetaApi account from a
+  -- demo one.
+  ALTER TABLE mt_accounts ADD COLUMN IF NOT EXISTS account_trade_mode TEXT;
+  -- Which pipe charts and quotes are read from: platform data, the user's
+  -- own terminal, or their cloud account.
+  ALTER TABLE trading_settings ADD COLUMN IF NOT EXISTS market_data_source TEXT;
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS parity_key TEXT;

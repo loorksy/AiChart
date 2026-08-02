@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import {
   Suspense,
   useCallback,
@@ -17,7 +18,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
-import { CHART_RELOAD_EVENT } from "@/components/shell/ConsoleTopBar";
+import { CHART_RELOAD_EVENT, CHART_TOGGLE_EVENT } from "@/components/shell/ConsoleTopBar";
 import { useConsoleChatUrl } from "@/hooks/useConsoleChatUrl";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 
@@ -84,7 +85,7 @@ const DEFAULT_SYMBOL = "XAUUSD";
 export interface ChartLayoutState extends ChartHydrateSnapshot {
   targets?: number[];
   /** Candle source for the active symbol: OANDA or the user's broker (EA). */
-  dataSource?: "oanda" | "ea";
+  dataSource?: MarketDataSource;
 }
 
 export function SmartChartWorkspace(props: {
@@ -214,7 +215,7 @@ function SmartChartWorkspaceInner({
     return localStorage.getItem(LS_INTERVAL) ?? "15m";
   });
 
-  const [dataSource, setDataSource] = useState<"oanda" | "ea">("oanda");
+  const [dataSource, setDataSource] = useState<MarketDataSource>("oanda");
   const [tradesOpen, setTradesOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
   const [forexOnline, setForexOnline] = useState(false);
@@ -435,7 +436,7 @@ function SmartChartWorkspaceInner({
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
-  const handleSymbolChange = useCallback((s: string, source: "oanda" | "ea" = "oanda") => {
+  const handleSymbolChange = useCallback((s: string, source: MarketDataSource = "oanda") => {
     setSymbol(s.toUpperCase());
     setDataSource(source);
   }, []);
@@ -781,7 +782,6 @@ function SmartChartWorkspaceInner({
     return () => query.removeEventListener("change", sync);
   }, []);
 
-  const chartShowing = isWide ? chartVisibleDesktop : chartSheetOpen;
   const toggleChart = useCallback(() => {
     if (isWide) {
       applyDesktopLayout(desktopLayout === "chatOnly" ? "split" : "chatOnly");
@@ -789,6 +789,18 @@ function SmartChartWorkspaceInner({
     }
     setChartSheetOpen(!chartSheetOpen);
   }, [isWide, desktopLayout, applyDesktopLayout, chartSheetOpen, setChartSheetOpen]);
+
+  // The chart toggle moved to the top bar; the workspace still owns the state.
+  // A ref keeps the window listener stable while `toggleChart` re-derives.
+  const toggleChartRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    toggleChartRef.current = toggleChart;
+  });
+  useEffect(() => {
+    const toggle = () => toggleChartRef.current();
+    window.addEventListener(CHART_TOGGLE_EVENT, toggle);
+    return () => window.removeEventListener(CHART_TOGGLE_EVENT, toggle);
+  }, []);
 
 
   // Desktop chat resize: chat is the right column, so dragging the handle left
@@ -969,8 +981,6 @@ function SmartChartWorkspaceInner({
                     }
                   : undefined
               }
-              chartOpen={chartShowing}
-              onToggleChart={toggleChart}
               brokerConnected={forexOnline}
               onSymbolChange={handleSymbolChange}
               onIntervalChange={handleIntervalChange}

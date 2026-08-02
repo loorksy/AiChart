@@ -229,6 +229,8 @@ describe("reference pipeline: candles → decision → canonical → notify", ()
     try {
       const result = await orchestrator.runUnifiedChartAgent({
         surface: "platform",
+        // A frozen fixture is a replay of a past window, not today's tape.
+        timeBasis: "replay" as const,
         purpose: "analysis",
         userMessage: "Analyze EURUSD from the clear_trend reference fixture.",
         chartContext: { symbol, interval: "15m", dataSource: "oanda" },

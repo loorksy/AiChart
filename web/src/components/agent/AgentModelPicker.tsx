@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Cpu } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { cn } from "@/lib/utils";
 
 interface ModelOption {
@@ -26,21 +25,22 @@ const PROVIDER_LABEL: Record<string, string> = {
 };
 
 /**
- * The user's own model choice, in the composer where they type.
+ * The user's own model choice.
  *
  * The operator supplies API keys; which brain answers is the user's call, so
- * the control lives next to the message box rather than in an admin panel.
- * Renders nothing when no provider key is configured — an empty picker would
- * only offer a choice that cannot work.
+ * the control lives with the message box rather than in an admin panel — now
+ * one section of the composer's options menu, since a permanently visible
+ * model chip was one control too many on a phone-width row.
+ *
+ * Loads on demand: `enabled` is the menu's open state, so a console that never
+ * opens the menu never asks for the catalogue.
  */
-export function AgentModelPicker() {
-  const { t, dir } = useLocale();
+export function useAgentModels(enabled: boolean) {
   const [data, setData] = useState<ModelsResponse | null>(null);
-  const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    if (!enabled || data) return;
     let alive = true;
     void (async () => {
       try {
@@ -49,13 +49,13 @@ export function AgentModelPicker() {
         const json = (await res.json()) as ModelsResponse;
         if (alive) setData(json);
       } catch {
-        /* picker simply stays hidden */
+        /* the section simply stays hidden */
       }
     })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [enabled, data]);
 
   const choose = useCallback(async (ref: string | null) => {
     setSaving(true);
@@ -65,98 +65,83 @@ export function AgentModelPicker() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preferred_model_ref: ref }),
       });
-      if (res.ok) {
-        setData((prev) => (prev ? { ...prev, selected: ref } : prev));
-        setOpen(false);
-      }
+      if (res.ok) setData((prev) => (prev ? { ...prev, selected: ref } : prev));
+      return res.ok;
     } finally {
       setSaving(false);
     }
   }, []);
 
-  if (!data?.configured || data.models.length === 0) return null;
+  const activeRef = data ? (data.selected ?? data.platformDefault) : null;
+  const activeLabel = data
+    ? (data.models.find((m) => m.ref === activeRef)?.label ??
+      activeRef?.split("/").pop() ??
+      activeRef)
+    : null;
 
-  const activeRef = data.selected ?? data.platformDefault;
-  const active = data.models.find((m) => m.ref === activeRef);
-  const activeLabel = active?.label ?? activeRef.split("/").pop() ?? activeRef;
+  return {
+    data,
+    saving,
+    choose,
+    activeLabel,
+    /** Nothing to offer when no provider key is configured. */
+    available: Boolean(data?.configured) && (data?.models.length ?? 0) > 0,
+  };
+}
 
-  const grouped = data.models.reduce<Record<string, ModelOption[]>>((acc, m) => {
+const ROW_CLASS =
+  "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-start text-xs transition-colors hover:bg-muted sm:min-h-10";
+
+/** The model list itself, rendered inside whatever surface hosts it. */
+export function ModelChoiceList({
+  models,
+  selected,
+  saving,
+  onChoose,
+}: {
+  models: ModelOption[];
+  selected: string | null;
+  saving: boolean;
+  onChoose: (ref: string | null) => void;
+}) {
+  const { t } = useLocale();
+  const grouped = models.reduce<Record<string, ModelOption[]>>((acc, m) => {
     (acc[m.provider] ??= []).push(m);
     return acc;
   }, {});
 
   return (
-    <>
+    <div>
       <button
-        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        title={t("model.picker_title")}
-        aria-label={t("model.picker_title")}
-        aria-expanded={open}
-        data-testid="composer-model"
-        className={cn(
-          "flex min-h-11 max-w-[9rem] shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-medium transition-colors duration-150 ease-out sm:min-h-9",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          open
-            ? "bg-muted text-foreground"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-        )}
+        disabled={saving}
+        onClick={() => onChoose(null)}
+        className={cn(ROW_CLASS, !selected && "font-semibold")}
       >
-        <Cpu className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span className="truncate" dir="ltr">
-          {activeLabel}
-        </span>
-        <ChevronDown className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+        <span>{t("model.platform_default")}</span>
+        {!selected && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
       </button>
-
-      <ComposerPopover
-        open={open}
-        onClose={() => setOpen(false)}
-        anchorRef={triggerRef}
-        title={t("model.picker_title")}
-      >
-        <div className="max-h-[min(60vh,20rem)] overflow-y-auto p-1">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void choose(null)}
-            className={cn(
-              "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-start text-xs transition-colors hover:bg-muted sm:min-h-9",
-              !data.selected && "font-semibold",
-            )}
-          >
-            <span>{t("model.platform_default")}</span>
-            {!data.selected && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
-          </button>
-          {Object.entries(grouped).map(([provider, models]) => (
-            <div key={provider}>
-              <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {PROVIDER_LABEL[provider] ?? provider}
-              </p>
-              {models.map((m) => (
-                <button
-                  key={m.ref}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void choose(m.ref)}
-                  className={cn(
-                    "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-start text-xs transition-colors hover:bg-muted sm:min-h-9",
-                    data.selected === m.ref && "font-semibold",
-                  )}
-                >
-                  <span className="truncate" dir="ltr">
-                    {m.label}
-                  </span>
-                  {data.selected === m.ref && (
-                    <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                  )}
-                </button>
-              ))}
-            </div>
+      {Object.entries(grouped).map(([provider, options]) => (
+        <div key={provider}>
+          <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {PROVIDER_LABEL[provider] ?? provider}
+          </p>
+          {options.map((m) => (
+            <button
+              key={m.ref}
+              type="button"
+              disabled={saving}
+              onClick={() => onChoose(m.ref)}
+              className={cn(ROW_CLASS, selected === m.ref && "font-semibold")}
+            >
+              <span className="truncate" dir="ltr">
+                {m.label}
+              </span>
+              {selected === m.ref && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+            </button>
           ))}
         </div>
-      </ComposerPopover>
-    </>
+      ))}
+    </div>
   );
 }

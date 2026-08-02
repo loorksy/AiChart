@@ -16,6 +16,7 @@ import type { AppLocale } from "@/lib/i18n";
 import type { AgentConversationContext } from "./context";
 import { contextualizeIntentMessage } from "./context";
 import { newId } from "./activity";
+import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
   isGeneralOnly,
   isDrawingOnly,
@@ -264,6 +265,16 @@ export interface UnifiedAgentInput {
    * must not create a second recommendation or recursively enqueue research.
    */
   purpose?: "analysis" | "reevaluation";
+  /**
+   * Is this run reading the market as it is RIGHT NOW?
+   *
+   * Live runs refuse a closed instrument — there is no tape to read. Replays
+   * (reference fixtures, evaluation of a past decision, backtests) deliberately
+   * analyse a frozen historical window and must not be judged against today's
+   * session clock, so they say so instead of being silently exempted by some
+   * test-only seam.
+   */
+  timeBasis?: "live" | "replay";
   /** Model-provider seam used by integration tests; never a second brain. */
   synthesizerDeps?: SynthesizerDeps;
 }
@@ -511,6 +522,65 @@ async function runUnifiedChartAgentInner(
 
   const wantMarket = needsMarketContext(intents);
   const educationalOnly = Boolean(ctx.session?.preferences.educationalOnly);
+
+  /**
+   * A closed market is an operational blocker, and it is named as one before a
+   * single byte of market data or model spend is committed.
+   *
+   * The check is per SYMBOL, not per session: metals halt for their daily
+   * maintenance hour while FX is still trading, and an operator asking about
+   * gold in the middle of a EURUSD conversation must be told about gold's
+   * session, not the one the chart happens to be on. There is no reading of
+   * structure to be had from a market that is not printing — answering anyway
+   * would be inventing a plan from a frozen tape.
+   */
+  const analysisSymbol = chartContext?.symbol;
+  if (
+    wantMarket &&
+    !educationalOnly &&
+    analysisSymbol &&
+    (input.timeBasis ?? "live") === "live" &&
+    // A re-evaluation revisits a plan that already exists against the latest
+    // data there is — including Friday's close over a weekend. Refusing it
+    // would strand open plans exactly when they most need reviewing. The rule
+    // here is about a FRESH read the operator asked for.
+    input.purpose !== "reevaluation"
+  ) {
+    const session = getSessionStatus(analysisSymbol);
+    if (!session.isOpen) {
+      trackedCtx.emitActivity({
+        type: "data",
+        status: "failed",
+        message: `${analysisSymbol}: ${session.reason}`,
+        metadata: { stage: "market_data", code: "market_closed" },
+      });
+      return {
+        decision: "action_required",
+        envelope: operationalBlockerEnvelope({
+          failureStage: "market_data",
+          failureCode: "market_closed",
+          // It reopens on its own; the operator only has to come back.
+          retryable: true,
+          traceId: ctx.requestId,
+        }),
+        confidence: 0,
+        summary: bilingual(
+          locale,
+          `${analysisSymbol}: ${session.reason} لا يمكن تحليل زوج مغلق — لا توجد حركة سعر تُقرأ. عد عند فتح السوق.`,
+          `${analysisSymbol}: the market is closed. A closed pair cannot be analysed — there is no price action to read. Come back when the session opens.`,
+        ),
+        keyReasons: [`Market closed for ${analysisSymbol} (${session.reason}).`],
+        riskWarnings: [
+          bilingual(
+            locale,
+            "لم تصدر أي توصية لأن السوق مغلق.",
+            "No recommendation was issued because the market is closed.",
+          ),
+        ],
+        activityEvents: collected,
+      };
+    }
+  }
 
   const analysisKind = "scalp" as const;
 

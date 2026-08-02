@@ -3,7 +3,8 @@ import { getOptionalUser, checkRateLimit, clientKey } from "@/lib/api";
 import { rejectNonForexMarket } from "@/lib/marketPolicy";
 import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
+import { isMarketOpenAt } from "@/lib/markets/tradingCalendar";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import {
   fetchOandaInstruments,
   oandaAccountId,
@@ -14,6 +15,8 @@ interface Instrument {
   symbol: string;
   base: string;
   quote: string;
+  /** False while the instrument's session is closed — no tape to analyse. */
+  market_open: boolean;
 }
 
 function symbolMatchesQuery(symbol: string, query: string): boolean {
@@ -29,6 +32,7 @@ async function oandaForexInstruments(
 ): Promise<{ instruments: Instrument[]; total: number }> {
   const map = new Map<string, Instrument>();
   const query = q.trim().toUpperCase();
+  const now = Date.now();
   const rows = await fetchOandaInstruments();
   for (const row of rows) {
     if (row.type !== "CURRENCY" && row.type !== "METAL") continue;
@@ -36,7 +40,7 @@ async function oandaForexInstruments(
     if (!symbolMatchesQuery(symbol, query)) continue;
     if (!map.has(symbol)) {
       const { base, quote } = forexBaseQuote(symbol);
-      map.set(symbol, { symbol, base, quote });
+      map.set(symbol, { symbol, base, quote, market_open: isMarketOpenAt(symbol, now) });
     }
   }
   const instruments = Array.from(map.values()).sort((a, b) =>
@@ -55,10 +59,50 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (
-      !isOandaDataOnly() &&
-      request.nextUrl.searchParams.get("source") === "ea"
-    ) {
+    // Broker symbols only where a broker can actually answer. A MetaApi or
+    // MT5-bridge account is connected but has no EA to serve `list_symbols`,
+    // so it falls through to the platform universe instead of waiting out
+    // fifteen command timeouts and returning nothing.
+    const requestedSource = request.nextUrl.searchParams.get("source");
+    const decision = await resolveMarketDataSource(user?.id ?? null, requestedSource);
+
+    if (decision.source === "metaapi" && user) {
+      // The cloud account's own instrument list — the symbols this trader's
+      // orders will actually reference, suffixes and all.
+      const { getMtAccount } = await import("@/lib/store");
+      const account = await getMtAccount(user.id);
+      const accountId = account?.metaapi_account_id;
+      if (accountId && accountId !== "mt5local") {
+        try {
+          const { getRpcConnection } = await import("@/lib/metaapi/client");
+          const conn = await getRpcConnection(user.id, accountId);
+          const query = (
+            request.nextUrl.searchParams.get("q") ??
+            request.nextUrl.searchParams.get("search") ??
+            ""
+          )
+            .trim()
+            .toUpperCase();
+          const all = await conn.getSymbols();
+          const rows = (query ? all.filter((sym) => sym.toUpperCase().includes(query)) : all)
+            .slice()
+            .sort((a, b) => a.localeCompare(b));
+          const now = Date.now();
+          return NextResponse.json({
+            instruments: rows.map((sym) => {
+              const { base, quote } = forexBaseQuote(sym);
+              return { symbol: sym, base, quote, market_open: isMarketOpenAt(sym, now) };
+            }),
+            total: rows.length,
+            source: "metaapi",
+          });
+        } catch {
+          // Fall through to the platform universe rather than an empty list.
+        }
+      }
+    }
+
+    if (decision.source === "ea") {
       if (!user) {
         return NextResponse.json(
           { error: "أزواج الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },
@@ -87,6 +131,7 @@ export async function GET(request: NextRequest) {
           quote: s.symbol.slice(3, 6),
           digits: s.digits,
           description: s.description,
+          market_open: isMarketOpenAt(s.symbol, Date.now()),
         })),
         total: rows.length,
         source,
@@ -112,7 +157,14 @@ export async function GET(request: NextRequest) {
 
     const wrapped = request.nextUrl.searchParams.get("wrapped") === "1";
     if (wrapped) {
-      return NextResponse.json({ instruments, total, source: "oanda" });
+      // `sourceReason` lets the client say *why* it is looking at platform
+      // pairs rather than its broker's, instead of guessing.
+      return NextResponse.json({
+        instruments,
+        total,
+        source: "oanda",
+        sourceReason: decision.reason,
+      });
     }
     return NextResponse.json(instruments);
   } catch (e) {

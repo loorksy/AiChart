@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PanelLeft, RefreshCw } from "lucide-react";
+import { CandlestickChart, PanelLeft, RefreshCw } from "lucide-react";
 import { NotificationCenter } from "@/components/agent/NotificationCenter";
 import { BalanceChip } from "@/components/shell/BalanceChip";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils";
 
 /** Fired at the workspace so the chart re-requests its bars in place. */
 export const CHART_RELOAD_EVENT = "aichart:reload-chart";
+
+/** Fired at the workspace to raise/lower the chart surface. */
+export const CHART_TOGGLE_EVENT = "aichart:toggle-chart";
 
 /**
  * Bare icons, no boxes. A row of outlined buttons reads as four competing
@@ -34,6 +37,7 @@ export function ConsoleTopBar({
   /** Admins reload the page; traders reload the chart in place. */
   refreshMode,
   showBalance = false,
+  showChartToggle = false,
 }: {
   displayName: string;
   onToggleSidebar: () => void;
@@ -41,6 +45,8 @@ export function ConsoleTopBar({
   refreshMode: "page" | "chart";
   /** Traders see their credit; the admin console is not a metered account. */
   showBalance?: boolean;
+  /** Only where a chart exists to summon — the workspace route. */
+  showChartToggle?: boolean;
 }) {
   const { t } = useLocale();
   const router = useRouter();
@@ -76,13 +82,25 @@ export function ConsoleTopBar({
         aria-label={sidebarOpen ? t("shell.close") : t("shell.open_menu")}
         aria-expanded={sidebarOpen}
         aria-controls="mobile-navigation-drawer"
-        className={ICON_BUTTON}
+        className={cn(ICON_BUTTON, "lg:hidden")}
       >
         <PanelLeft className="h-5 w-5 rtl:-scale-x-100" />
       </button>
 
       <div className="ms-auto flex items-center gap-1">
         {showBalance && <BalanceChip />}
+        {showChartToggle && (
+          <button
+            type="button"
+            data-testid="topbar-chart-toggle"
+            onClick={() => window.dispatchEvent(new CustomEvent(CHART_TOGGLE_EVENT))}
+            aria-label={t("layout.show_chart")}
+            title={t("layout.show_chart")}
+            className={ICON_BUTTON}
+          >
+            <CandlestickChart className="h-5 w-5" />
+          </button>
+        )}
         <button
           type="button"
           data-testid="console-refresh"

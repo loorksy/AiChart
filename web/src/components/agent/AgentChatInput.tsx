@@ -1,29 +1,24 @@
 "use client";
 
+import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { CandlestickChart, Send, Square } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
-import { AgentModelPicker } from "@/components/agent/AgentModelPicker";
+import { ComposerMoreMenu } from "@/components/agent/ComposerMoreMenu";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
 import {
   ComposerIntervalPicker,
   ComposerSymbolPicker,
 } from "@/components/agent/ComposerMarketPickers";
-import { cn } from "@/lib/utils";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
 const MAX_COMPOSER_HEIGHT = 148;
-
-const ACTION_BUTTON =
-  "flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9";
 
 export function AgentChatInput({
   running,
   onSend,
   onCancel,
   voiceControl,
-  chartOpen,
-  onToggleChart,
   symbol,
   interval,
   brokerConnected = false,
@@ -33,16 +28,13 @@ export function AgentChatInput({
   running: boolean;
   onSend: (message: string) => void;
   onCancel: () => void;
+  /** Rendered in the adaptive end slot while the box is empty. */
   voiceControl?: ReactNode;
-  /** Whether the chart surface is currently showing, for the toggle's state. */
-  chartOpen?: boolean;
-  /** Absent when there is no chart to summon (guest / capture renders). */
-  onToggleChart?: () => void;
   /** Market context row: the pair and frame the next question is about. */
   symbol?: string;
   interval?: string;
   brokerConnected?: boolean;
-  onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
+  onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
 }) {
   const { t, dir } = useLocale();
@@ -106,23 +98,6 @@ export function AgentChatInput({
             to live somewhere else — a floating switcher, a settings section, and
             a differently-shaped dropdown.
           */}
-          {onToggleChart && (
-            <button
-              type="button"
-              onClick={onToggleChart}
-              aria-pressed={chartOpen}
-              aria-label={chartOpen ? t("layout.close_chart") : t("layout.show_chart")}
-              title={chartOpen ? t("layout.close_chart") : t("layout.show_chart")}
-              data-testid="composer-chart-toggle"
-              className={cn(
-                ACTION_BUTTON,
-                // A toggle, so its on-state is permanent rather than a hover.
-                chartOpen && "bg-muted text-foreground",
-              )}
-            >
-              <CandlestickChart className="h-5 w-5 sm:h-4 sm:w-4" />
-            </button>
-          )}
           {symbol && onSymbolChange && (
             <ComposerSymbolPicker
               symbol={symbol}
@@ -134,11 +109,16 @@ export function AgentChatInput({
             <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
           )}
           <RiskPerTradeControl />
-          <AgentModelPicker />
 
-          {/* Logical end of the row: mirrors under dir="rtl" with no branch. */}
-          <div className="ms-auto flex items-center gap-1">
-            {voiceControl}
+          {/*
+            End of the row: the plus holds what is set once and left alone (the
+            model, the execution mode), and beside it ONE adaptive slot —
+            generating → stop, text typed → send, empty → the mic. The voice
+            control stops being a permanent icon fighting the pickers for width
+            on a 390px row; it appears exactly when it is the action.
+          */}
+          <div className="ms-auto flex items-center gap-0.5">
+            <ComposerMoreMenu />
             {running ? (
               <button
                 type="button"
@@ -149,16 +129,26 @@ export function AgentChatInput({
               >
                 <Square className="h-3 w-3 fill-current" />
               </button>
-            ) : (
+            ) : value.trim() ? (
               <button
                 type="submit"
-                disabled={!value.trim()}
                 aria-label={t("agent.send")}
                 title={t("agent.send")}
-                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 sm:size-9"
+                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9"
               >
                 <Send className="h-4 w-4 rtl:rotate-180" />
               </button>
+            ) : (
+              voiceControl ?? (
+                <button
+                  type="submit"
+                  disabled
+                  aria-label={t("agent.send")}
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background opacity-40 sm:size-9"
+                >
+                  <Send className="h-4 w-4 rtl:rotate-180" />
+                </button>
+              )
             )}
           </div>
         </div>

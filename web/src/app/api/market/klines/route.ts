@@ -15,7 +15,7 @@ import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 import { normalizeInterval } from "@/lib/intervals";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { serveWarehouseOhlc } from "@/lib/candles/warehouseOhlc";
 import type { MarketType } from "@/lib/markets/types";
@@ -60,34 +60,41 @@ export async function GET(req: NextRequest) {
     const toMs =
       toRaw != null && toRaw !== "" ? Number(toRaw) : undefined;
 
-    // Second data source: the user's own broker via the EA bridge (MT5).
-    if (
-      !isOandaDataOnly() &&
-      req.nextUrl.searchParams.get("source") === "ea"
-    ) {
+    // Second data source: the user's own broker via the EA bridge (MT5). Only
+    // an EA-backed account can answer — a MetaApi or MT5-bridge connection has
+    // no terminal listening for `get_ohlc`, so it reads the platform's candles
+    // rather than waiting out the command timeout on every bar request.
+    const requestedSource = req.nextUrl.searchParams.get("source");
+    const dataSource = await resolveMarketDataSource(user?.id ?? null, requestedSource);
+    if (requestedSource && requestedSource !== "oanda" && dataSource.source !== "oanda") {
       if (!user) {
         return NextResponse.json(
           { error: "بيانات الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },
           { status: 401 },
         );
       }
-      const ea = await fetchEaOhlc(user.id, symbol, interval, {
+      const broker = await fetchOhlc({
+        userId: user.id,
+        symbol,
+        interval,
+        limit,
+        source: dataSource.source,
         fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
         toMs: Number.isFinite(toMs) ? toMs : undefined,
-        limit,
       });
-      const normalized = normalizeCandlesForChart(ea.candles);
+      const normalized = normalizeCandlesForChart(broker.candles);
       const candles = sanitizeCandlesForMarket(normalized, "forex");
       return NextResponse.json({
         symbol,
         interval,
         market: "forex",
-        source: "ea",
+        source: dataSource.source,
         candles,
-        // Empty WITHOUT a warning = genuine market gap (EA acked success) —
-        // don't flag pending, or the client burns retries on every weekend.
-        pending: candles.length === 0 && Boolean(ea.warning),
-        ...(ea.warning ? { error: ea.warning } : {}),
+        // Empty WITHOUT a warning = genuine market gap (the broker acked
+        // success) — don't flag pending, or the client burns retries every
+        // weekend.
+        pending: candles.length === 0 && Boolean(broker.warning),
+        ...(broker.warning ? { error: broker.warning } : {}),
       });
     }
 

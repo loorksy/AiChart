@@ -1,5 +1,6 @@
 "use client";
 
+import { SidebarListSkeleton } from "@/components/ui/skeletons/page-skeletons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, X } from "lucide-react";
@@ -131,9 +132,8 @@ export function NotificationPanel({
             </p>
 
             {loading && alerts.length === 0 ? (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                جارٍ التحميل…
-              </p>
+              // The rows that are coming, not a sentence saying they are.
+              <SidebarListSkeleton rows={4} />
             ) : alerts.length === 0 ? (
               <p className="px-2 py-4 text-center text-xs text-muted-foreground">
                 لا توجد تنبيهات حديثة.

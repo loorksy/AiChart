@@ -33,11 +33,13 @@ export async function GET(req: NextRequest) {
 }
 
 const actionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("assign"), ticket_id: z.number().int().positive() }),
-  z.object({ action: z.literal("close"), ticket_id: z.number().int().positive() }),
+  z.object({ action: z.literal("assign"), ticket_id: z.coerce.number().int().positive() }),
+  z.object({ action: z.literal("close"), ticket_id: z.coerce.number().int().positive() }),
   z.object({
     action: z.literal("reply"),
-    ticket_id: z.number().int().positive(),
+    // Coerced: the id round-trips through the panel's own list response, and a
+    // driver or cache that stringifies it must not turn a reply into a 400.
+    ticket_id: z.coerce.number().int().positive(),
     body: z.string().min(1).max(4000),
   }),
 ]);

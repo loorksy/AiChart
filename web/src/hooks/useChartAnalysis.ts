@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { ChartDrawing } from "@/lib/chartDrawings";
@@ -41,7 +42,7 @@ export function useChartAnalysis({
   /** Accepted for call-site compatibility; interval changes never clear layers. */
   interval?: string;
   market: MarketType;
-  dataSource?: "oanda" | "ea";
+  dataSource?: MarketDataSource;
   hydrateSnapshot?: ChartHydrateSnapshot | null;
 }) {
   const [overlays, setOverlays] = useState<ChartOverlay[]>([]);

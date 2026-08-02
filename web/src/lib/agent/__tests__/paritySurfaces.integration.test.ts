@@ -181,6 +181,9 @@ describe("reference Platform/MCP surface parity", () => {
         orchestrator.runUnifiedChartAgent({
           surface,
           purpose: "reevaluation",
+          // One frozen snapshot replayed through both surfaces — the session
+          // clock of the day the suite runs is not part of the comparison.
+          timeBasis: "replay" as const,
           userMessage: "Analyze EURUSD from the shared parity fixture.",
           chartContext: {
             symbol: "EURUSD",

@@ -1,5 +1,6 @@
 "use client";
 
+import { TableSkeleton } from "@/components/ui/skeletons/page-skeletons";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
@@ -40,6 +41,15 @@ export function ActiveTradesTable({ className }: { className?: string }) {
     const t = setInterval(() => void refresh(), 30_000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  /* ─── First paint: the table's own shape, not a bare header ─── */
+  if (rows.length === 0 && loading) {
+    return (
+      <div className={cn("space-y-3", className)} aria-busy="true">
+        <TableSkeleton rows={3} columns={5} />
+      </div>
+    );
+  }
 
   /* ─── Empty state ─── */
   if (rows.length === 0 && !loading) {

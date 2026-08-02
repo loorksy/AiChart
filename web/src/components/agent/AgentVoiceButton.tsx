@@ -32,7 +32,7 @@ export function AgentVoiceButton({
       disabled={disabled}
       onClick={() => (active ? void voice.stop() : void voice.start())}
       className={cn(
-        "flex size-9 shrink-0 items-center justify-center rounded-full disabled:opacity-50",
+        "flex size-11 shrink-0 items-center justify-center rounded-full disabled:opacity-50 sm:size-9",
         active
           ? liveFace
             ? "bg-muted text-foreground ring-1 ring-border"

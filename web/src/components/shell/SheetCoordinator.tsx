@@ -6,7 +6,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
  * Every full-bleed overlay surface in the console that can be summoned from a
  * different corner of the UI than the one it covers.
  */
-export type SheetId = "sidebarDrawer" | "profileMenu" | "chart";
+export type SheetId = "sidebarDrawer" | "profileMenu" | "chart" | "symbolPicker";
 
 type SheetCoordinator = {
   activeSheet: SheetId | null;

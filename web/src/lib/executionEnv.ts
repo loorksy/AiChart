@@ -1,4 +1,5 @@
 import { getEaConnection, isHeartbeatFresh } from "./eaStore";
+import { getMtAccountMeta, resolveForexBackendForUser } from "./store";
 import type { MarketType } from "./markets/types";
 
 export type ExecutionEnv = "demo" | "live";
@@ -21,7 +22,11 @@ export interface ExecutionEnvSnapshot {
 }
 
 export function normalizeMtTradeMode(raw: string | null | undefined): MtAccountTradeMode {
-  const value = (raw ?? "").toLowerCase();
+  // MetaApi reports the MT5 enum verbatim (ACCOUNT_TRADE_MODE_REAL); the EA
+  // sends the bare word. Both mean the same account, so both must normalize to
+  // the same value — a cloud account that reads as "unrecognised" is exactly
+  // how a real-money connection slips past the live gate.
+  const value = (raw ?? "").toLowerCase().replace(/^account_trade_mode_/, "").trim();
   // MT5's own enum calls a real-money account ACCOUNT_TRADE_MODE_REAL — an EA
   // reporting "real" IS a live account. Treating it as unrecognised (null) made
   // isRealMoneyExecution() false, so the live dual-enablement silently never
@@ -58,8 +63,34 @@ export function parseEaPositions(json: string | null): EaBrokerPosition[] {
   }
 }
 
-/** Reports the broker's actual account type; there is no user env preference. */
+/**
+ * Reports the broker's actual account type; there is no user env preference.
+ *
+ * Read from whichever backend the account is actually connected through. This
+ * used to read the EA connection unconditionally, which meant a MetaApi or
+ * MT5-bridge account — connected, funded and able to execute — always resolved
+ * to `null`. Downstream that reads as "not real money", so the live
+ * dual-enablement gate never engaged for cloud accounts, and the demo rollout
+ * stage refused demo cloud accounts it should have allowed. Both followed from
+ * asking the wrong connection.
+ */
 export async function getExecutionEnvSnapshot(userId: number): Promise<ExecutionEnvSnapshot> {
+  const backend = await resolveForexBackendForUser(userId).catch(() => "ea" as const);
+
+  if (backend !== "ea") {
+    const meta = await getMtAccountMeta(userId).catch(() => null);
+    const actual = normalizeMtTradeMode(meta?.account_trade_mode);
+    return {
+      activeMarket: "forex",
+      forex: {
+        connected: Boolean(meta),
+        actual,
+        resolved: mtModeToExecution(actual),
+        online: Boolean(meta?.online),
+      },
+    };
+  }
+
   const connection = await getEaConnection(userId);
   const connected = Boolean(connection && connection.status !== "revoked");
   const online = Boolean(connected && isHeartbeatFresh(connection?.last_heartbeat_at ?? null));

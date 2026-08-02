@@ -200,3 +200,247 @@ export function StatTilesSkeleton({ count = 4 }: { count?: number }) {
     </div>
   );
 }
+
+/* ────────────────────────────────────────────────────────────
+   Shapes the rest of the product is built from.
+
+   Every one of these is fluid by construction — no fixed pixel
+   widths on containers, grids that collapse by breakpoint, and
+   logical spacing — so the same skeleton describes the page at
+   360px and at 1920px, in either writing direction.
+   ──────────────────────────────────────────────────────────── */
+
+/** A table: header strip then rows. Collapses to stacked rows on phones. */
+export function TableSkeleton({
+  rows = 6,
+  columns = 4,
+}: {
+  rows?: number;
+  columns?: number;
+}) {
+  return (
+    <div
+      data-testid="skeleton-table"
+      className="overflow-hidden rounded-xl border border-border bg-card"
+    >
+      <div className="hidden gap-3 border-b border-border px-4 py-3 sm:flex">
+        {Array.from({ length: columns }).map((_, i) => (
+          <SkeletonLine key={i} width="w-full" className="h-3" />
+        ))}
+      </div>
+      <div className="divide-y divide-border">
+        {Array.from({ length: rows }).map((_, r) => (
+          <div key={r} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
+            {Array.from({ length: columns }).map((_, c) => (
+              <SkeletonLine
+                key={c}
+                width={c === 0 ? "w-2/5 sm:w-full" : "w-1/3 sm:w-full"}
+                className="h-3"
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A form: labelled fields and a submit row. */
+export function FormSkeleton({ fields = 3 }: { fields?: number }) {
+  return (
+    <div data-testid="skeleton-form" className="space-y-4 rounded-xl border border-border bg-card p-4">
+      {Array.from({ length: fields }).map((_, i) => (
+        <div key={i} className="space-y-1.5">
+          <SkeletonLine width="w-24" className="h-3" />
+          <SkeletonBlock className="h-11 w-full rounded-lg" />
+        </div>
+      ))}
+      <SkeletonBlock className="h-11 w-full rounded-lg sm:w-40" />
+    </div>
+  );
+}
+
+/** A row of tabs above its panel. */
+export function TabsSkeleton({ tabs = 4 }: { tabs?: number }) {
+  return (
+    <div data-testid="skeleton-tabs" className="flex flex-wrap gap-2">
+      {Array.from({ length: tabs }).map((_, i) => (
+        <SkeletonBlock key={i} className="h-9 w-24 rounded-full" />
+      ))}
+    </div>
+  );
+}
+
+/** A vertical list of navigation/history rows (sidebars, drawers). */
+export function SidebarListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div data-testid="skeleton-sidebar-list" className="space-y-1.5">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-2 rounded-lg px-2 py-2">
+          <SkeletonBlock className="h-4 w-4 shrink-0 rounded" />
+          <SkeletonLine width={i % 3 === 0 ? "w-2/3" : "w-full"} className="h-3" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A responsive grid of cards — the pair catalogue, plan tiles, panels.
+ * Column counts mirror the real grids: two up on a phone, four on a desktop.
+ */
+export function CardGridSkeleton({
+  count = 8,
+  className,
+}: {
+  count?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      data-testid="skeleton-card-grid"
+      className={`grid grid-cols-2 gap-2 lg:grid-cols-4 ${className ?? ""}`}
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="space-y-2 rounded-[var(--radius-lg)] border border-border bg-card p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <SkeletonLine width="w-20" className="h-3.5" />
+              <SkeletonLine width="w-16" className="h-2.5" />
+            </div>
+            <SkeletonCircle size="sm" className="h-5 w-5" />
+          </div>
+          <SkeletonLine width="w-24" className="h-4" />
+          <SkeletonBlock className="h-[34px] w-full rounded-md" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Long-form content: title, lead, paragraphs (docs, blog, legal pages). */
+export function ArticleSkeleton({ paragraphs = 4 }: { paragraphs?: number }) {
+  return (
+    <div data-testid="skeleton-article" className="space-y-6">
+      <div className="space-y-2">
+        <SkeletonLine width="w-3/4 sm:w-1/2" className="h-7" />
+        <SkeletonLine width="w-1/2 sm:w-1/3" className="h-3.5" />
+      </div>
+      {Array.from({ length: paragraphs }).map((_, p) => (
+        <div key={p} className="space-y-2">
+          {Array.from({ length: 4 }).map((_, l) => (
+            <SkeletonLine key={l} width={l === 3 ? "w-2/3" : "w-full"} className="h-3" />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A centred authentication card (sign in, sign up, approval, checkout). */
+export function AuthFormSkeleton() {
+  return (
+    <div
+      data-testid="skeleton-auth"
+      className="flex min-h-dvh items-center justify-center bg-background p-4"
+    >
+      <div className="w-full max-w-sm space-y-5">
+        <div className="flex flex-col items-center gap-3">
+          <SkeletonCircle size="lg" />
+          <SkeletonLine width="w-40" className="h-5" />
+          <SkeletonLine width="w-56" className="h-3" />
+        </div>
+        <FormSkeleton fields={2} />
+        <SkeletonLine width="w-2/3" className="mx-auto h-3" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The standard console page: header, optional tiles, then its content.
+ * `shape` picks what the body looks like so a route's skeleton describes
+ * that route rather than a generic grey rectangle.
+ */
+export function ConsolePageSkeleton({
+  shape = "cards",
+  withTiles = false,
+  withTabs = false,
+  maxWidth = "max-w-5xl",
+}: {
+  shape?: "cards" | "table" | "form" | "rows" | "article";
+  withTiles?: boolean;
+  withTabs?: boolean;
+  maxWidth?: string;
+}) {
+  return (
+    <main className={`page-shell ${maxWidth} space-y-5`} data-testid="skeleton-page">
+      <PageHeaderSkeleton withAction={shape === "table"} />
+      {withTabs && <TabsSkeleton />}
+      {withTiles && <StatTilesSkeleton />}
+      {shape === "table" && <TableSkeleton />}
+      {shape === "form" && <FormSkeleton />}
+      {shape === "article" && <ArticleSkeleton />}
+      {shape === "rows" && (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <ListRowSkeleton key={i} />
+          ))}
+        </div>
+      )}
+      {shape === "cards" && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <CardSkeleton key={i} lines={3} />
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+
+/**
+ * A marketing/landing page: hero, feature grid, closing band. Used by the
+ * public routes, which are the first thing a cold visitor waits on.
+ */
+export function MarketingPageSkeleton() {
+  return (
+    <div data-testid="skeleton-marketing" className="min-h-dvh bg-background">
+      <div className="mx-auto w-full max-w-6xl space-y-10 px-4 py-10 sm:px-6 sm:py-16">
+        <div className="space-y-4 text-center">
+          <SkeletonLine width="w-3/4 sm:w-1/2" className="mx-auto h-8" />
+          <SkeletonLine width="w-full sm:w-2/3" className="mx-auto h-4" />
+          <div className="flex justify-center gap-3 pt-2">
+            <SkeletonBlock className="h-11 w-32 rounded-full" />
+            <SkeletonBlock className="h-11 w-32 rounded-full" />
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <CardSkeleton key={i} lines={2} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The last resort: a route that redirects, or one whose content cannot be
+ * predicted. Still a skeleton rather than a blank screen, still centred and
+ * fluid at any width.
+ */
+export function RouteSkeleton() {
+  return (
+    <div
+      data-testid="skeleton-route"
+      className="flex min-h-[60dvh] w-full flex-1 items-center justify-center p-6"
+    >
+      <div className="w-full max-w-md space-y-3">
+        <SkeletonLine width="w-1/2" className="h-5" />
+        <SkeletonLine width="w-full" className="h-3" />
+        <SkeletonLine width="w-2/3" className="h-3" />
+      </div>
+    </div>
+  );
+}

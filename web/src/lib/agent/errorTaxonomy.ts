@@ -28,6 +28,8 @@ export type AgentFailureCode =
   | "invalid_payload"
   | "schema_mismatch"
   | "stale_data"
+  /** The instrument's session is closed — no tape to read, not a fault. */
+  | "market_closed"
   | "insufficient_data"
   | "artifact_missing"
   | "resource_exhausted"
@@ -251,6 +253,7 @@ export function userMessageForFailure(
     invalid_payload: "وصل رد غير صالح من مزوّد الخدمة — أعد المحاولة بعد قليل.",
     schema_mismatch: "رد النموذج لا يطابق العقد المتوقع — أعد المحاولة بعد قليل.",
     stale_data: "الأسعار المتاحة ليست حديثة بما يكفي لقرار موثوق — انتظر ثوانٍ ثم أعد المحاولة.",
+    market_closed: "سوق هذا الزوج مغلق حالياً — لا حركة سعر لتحليلها. عد عند فتح الجلسة.",
     insufficient_data: "البيانات التاريخية المتاحة غير كافية لإكمال هذا التحليل.",
     artifact_missing: "نتيجة مطلوبة غير موجودة — تحتاج مراجعة تشغيلية.",
     resource_exhausted: "الموارد التشغيلية ممتلئة مؤقتاً — أعد المحاولة بعد قليل.",
@@ -271,6 +274,8 @@ export function userMessageForFailure(
     invalid_payload: "An invalid response arrived from the service provider — try again shortly.",
     schema_mismatch: "The model reply did not match the expected contract — try again shortly.",
     stale_data: "Available prices are not fresh enough for a reliable decision — wait a few seconds and retry.",
+    market_closed:
+      "This pair's market is closed right now — there is no price action to analyse. Come back when the session opens.",
     insufficient_data: "The available historical data is not enough to complete this analysis.",
     artifact_missing: "A required result is missing — operational review needed.",
     resource_exhausted: "Operational resources are temporarily exhausted — try again shortly.",

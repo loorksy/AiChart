@@ -18,6 +18,7 @@ import {
   updateMtAccountStatus,
 } from "./store";
 import { getEaConnectionMeta } from "./eaStore";
+import { mtModeToExecution, normalizeMtTradeMode } from "./executionEnv";
 import type { MtPlatform } from "./markets/types";
 
 export const mtConnectSchema = z.object({
@@ -84,6 +85,18 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
       const { openDeploySession, markPresence } = await import("./metaapi/lifecycle");
       await openDeploySession(userId, account.id, "first_link");
       await markPresence(userId);
+      // Establish demo-vs-real as soon as the RPC is synchronized. The status
+      // poll would get there eventually, but execution must never be evaluated
+      // against an account whose type was simply never asked for.
+      try {
+        const conn = await getRpcConnection(userId, account.id);
+        const info = await conn.getAccountInformation();
+        if (info.type) {
+          await updateMtAccountStatus(userId, { accountTradeMode: info.type });
+        }
+      } catch {
+        /* the next status poll retries */
+      }
       const { backfillYearForUser } = await import("./metaapi/backfill");
       await backfillYearForUser(userId, account.id);
     } catch (e) {
@@ -148,6 +161,7 @@ export async function connectMtAccount(userId: number, input: MtConnectInput) {
         balance: account.balance,
         equity: account.equity,
         currency: account.currency,
+        accountTradeMode: account.trade_mode ?? null,
       });
       return {
         ok: true as const,
@@ -225,6 +239,7 @@ export async function getMtConnectionStatus(userId: number) {
       balance: meta.balance,
       equity: meta.equity,
       currency: meta.account_currency,
+      account_type: mtModeToExecution(normalizeMtTradeMode(meta.account_trade_mode)),
       last_heartbeat_at: meta.last_heartbeat_at,
       missedHeartbeats: meta.missedHeartbeats,
       settledOnlineSeconds: meta.settledOnlineSeconds,
@@ -252,6 +267,7 @@ export async function getMtConnectionStatus(userId: number) {
               balance: status.account.balance,
               equity: status.account.equity,
               currency: status.account.currency,
+              accountTradeMode: status.account.trade_mode ?? null,
             }
           : {}),
       });
@@ -264,6 +280,9 @@ export async function getMtConnectionStatus(userId: number) {
         balance: status.account?.balance ?? meta.balance,
         equity: status.account?.equity ?? meta.equity,
         currency: status.account?.currency ?? meta.currency,
+        account_type: mtModeToExecution(
+          normalizeMtTradeMode(status.account?.trade_mode ?? meta.account_trade_mode),
+        ),
       };
     } catch (e) {
       return {
@@ -303,6 +322,9 @@ export async function getMtConnectionStatus(userId: number) {
     let balance = meta.balance;
     let equity = meta.equity;
     let currency = meta.currency;
+    // The broker's own demo/real verdict. Nothing else on a cloud connection
+    // can tell the two apart, and the live-execution gate depends on it.
+    let tradeMode: string | null = null;
 
     if (
       account.state === "DEPLOYED" &&
@@ -314,6 +336,7 @@ export async function getMtConnectionStatus(userId: number) {
         balance = Number(info.balance) || balance;
         equity = Number(info.equity) || equity;
         currency = info.currency ?? currency;
+        tradeMode = info.type ?? null;
       } catch {
         /* RPC may still be syncing */
       }
@@ -325,6 +348,7 @@ export async function getMtConnectionStatus(userId: number) {
       balance,
       equity,
       currency,
+      accountTradeMode: tradeMode,
     });
 
     const online =
@@ -341,6 +365,9 @@ export async function getMtConnectionStatus(userId: number) {
       balance,
       equity,
       currency,
+      account_type: mtModeToExecution(
+        normalizeMtTradeMode(tradeMode ?? meta.account_trade_mode),
+      ),
       state: account.state,
       connectionStatus: account.connectionStatus,
       updated_at: new Date().toISOString(),
@@ -356,6 +383,7 @@ export async function getMtConnectionStatus(userId: number) {
       balance: meta.balance,
       equity: meta.equity,
       currency: meta.currency,
+      account_type: mtModeToExecution(normalizeMtTradeMode(meta.account_trade_mode)),
       state: meta.state,
       connectionStatus: meta.connection_status,
       updated_at: meta.updated_at,
