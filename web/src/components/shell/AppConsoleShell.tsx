@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, PanelLeft, X } from "lucide-react";
+import { ChevronDown, PanelLeft, PanelLeftClose, X } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { ProfileAccountSheet } from "@/components/agent/SidebarProfileMenu";
@@ -359,6 +359,21 @@ function ConsoleShellBody({
               nameClassName="truncate text-[15px] font-semibold tracking-tight"
             />
           </Link>
+          {/* The collapse control lives on the surface it collapses — reaching
+              across the screen to the top bar to fold the rail put cause and
+              effect in different corners. */}
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            data-testid="sidebar-collapse"
+            className={cn(
+              "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
+              FOCUS_RING,
+            )}
+            aria-label={t("shell.collapse_sidebar")}
+          >
+            <PanelLeftClose className="h-4 w-4 rtl:-scale-x-100" />
+          </button>
         </>
       ) : (
         /**
@@ -486,11 +501,7 @@ function ConsoleShellBody({
           <ConsoleTopBar
             displayName={displayName}
             sidebarOpen={mobileOpen}
-            onToggleSidebar={() =>
-              window.matchMedia("(min-width: 1024px)").matches
-                ? setCollapsed((c) => !c)
-                : setMobileOpen(!mobileOpen)
-            }
+            onToggleSidebar={() => setMobileOpen(!mobileOpen)}
             refreshMode={isAdmin ? "page" : "chart"}
             showBalance={!isAdmin}
           />

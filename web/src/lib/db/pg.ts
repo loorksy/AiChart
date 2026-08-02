@@ -1,4 +1,23 @@
-import { Pool, type PoolClient } from "pg";
+import { Pool, types, type PoolClient } from "pg";
+
+/**
+ * BIGINT (int8) comes back as a NUMBER, matching the SQLite backend.
+ *
+ * node-postgres returns int8 as a string by default, but every query in this
+ * codebase was written against SQLite semantics, where ids and millisecond
+ * timestamps are numbers. On Postgres that mismatch was live breakage, not
+ * theory: `new Date(created_at).toISOString()` threw mid-render when a support
+ * thread opened (string in, Invalid Date out), and the admin reply endpoint
+ * 400-ed because the ticket id from its own list came back "5", failing
+ * `z.number()`. Every BIGINT the schema declares — ids, epoch-ms columns,
+ * Telegram ids — fits comfortably inside Number's 2^53 safe range, so the
+ * parse is loss-free; anything unsafely large passes through untouched rather
+ * than silently rounding.
+ */
+types.setTypeParser(types.builtins.INT8, (value) => {
+  const n = Number(value);
+  return Number.isSafeInteger(n) ? n : value;
+});
 import bcrypt from "bcryptjs";
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from "../constants";
 import {

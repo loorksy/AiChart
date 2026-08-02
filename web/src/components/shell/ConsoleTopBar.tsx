@@ -76,7 +76,7 @@ export function ConsoleTopBar({
         aria-label={sidebarOpen ? t("shell.close") : t("shell.open_menu")}
         aria-expanded={sidebarOpen}
         aria-controls="mobile-navigation-drawer"
-        className={ICON_BUTTON}
+        className={cn(ICON_BUTTON, "lg:hidden")}
       >
         <PanelLeft className="h-5 w-5 rtl:-scale-x-100" />
       </button>
