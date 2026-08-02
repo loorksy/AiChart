@@ -70,15 +70,16 @@ describe("market data source", () => {
     assert.equal((await resolveMarketDataSource(eaUser, null)).source, "oanda");
     assert.equal((await resolveMarketDataSource(eaUser, "oanda")).source, "oanda");
 
-    // EA chosen but nothing linked yet: still platform data, and it says why.
+    // EA asked for but nothing linked yet: platform data, and it says why.
     const unlinked = await resolveMarketDataSource(eaUser, "ea");
     assert.equal(unlinked.source, "oanda");
     assert.equal(unlinked.reason, "ea_not_connected");
+    assert.equal(unlinked.available.ea, false);
 
-    // A cloud account is connected and online, but has no EA to answer.
+    // A cloud account has no EA to answer either — same honest fallback.
     const cloud = await resolveMarketDataSource(cloudUser, "ea");
     assert.equal(cloud.source, "oanda");
-    assert.equal(cloud.reason, "backend_not_ea");
+    assert.equal(cloud.reason, "ea_not_connected");
 
     // Guests get platform data rather than a 401 they cannot act on.
     assert.equal((await resolveMarketDataSource(null, "ea")).source, "oanda");
@@ -95,7 +96,50 @@ describe("market data source", () => {
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
     const linked = await resolveMarketDataSource(eaUser, "ea");
     assert.equal(linked.source, "ea");
-    assert.equal(linked.reason, "ea");
+    assert.equal(linked.reason, "user_choice");
+    assert.equal(linked.available.ea, true);
+  });
+
+  it("defaults to the cloud account once it is linked, and honours a pin", async () => {
+    process.env.FOREX_DATA_SOURCE = "ea";
+    const store = await import("@/lib/store");
+    const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
+
+    // Nothing pinned: an EA-only account reads its own terminal…
+    await store.updateSettings(eaUser, { market_data_source: "auto" });
+    const eaAuto = await resolveMarketDataSource(eaUser);
+    assert.equal(eaAuto.source, "ea");
+    assert.equal(eaAuto.reason, "auto_ea");
+
+    // …and a linked cloud account wins over everything, per the product rule:
+    // linking a broker is a statement about which market you want to see.
+    await store.saveMtAccount(cloudUser, {
+      platform: "mt5",
+      server: "Broker-Demo",
+      login: "9001",
+      password: "secret",
+      metaapiAccountId: "acct-cloud",
+      state: "DEPLOYED",
+      connectionStatus: "CONNECTED",
+    });
+    await store.updateSettings(cloudUser, { market_data_source: "auto" });
+    const cloudAuto = await resolveMarketDataSource(cloudUser);
+    assert.equal(cloudAuto.source, "metaapi");
+    assert.equal(cloudAuto.reason, "auto_metaapi");
+    assert.equal(cloudAuto.available.metaapi, true);
+
+    // A pin is obeyed — the free platform feed stays one tap away.
+    await store.updateSettings(cloudUser, { market_data_source: "oanda" });
+    const pinned = await resolveMarketDataSource(cloudUser);
+    assert.equal(pinned.source, "oanda");
+    assert.equal(pinned.preference, "oanda");
+
+    // A pin on a pipe that is not connected never strands the user.
+    await store.updateSettings(eaUser, { market_data_source: "metaapi" });
+    const impossible = await resolveMarketDataSource(eaUser);
+    assert.equal(impossible.source, "oanda");
+    assert.equal(impossible.reason, "metaapi_not_connected");
+    await store.updateSettings(eaUser, { market_data_source: "auto" });
   });
 });
 

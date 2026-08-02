@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { useRef, useState } from "react";
 import { ChevronDown, Clock3 } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
@@ -27,7 +28,7 @@ export function ComposerSymbolPicker({
 }: {
   symbol: string;
   brokerConnected: boolean;
-  onSelect: (symbol: string, source: "oanda" | "ea") => void;
+  onSelect: (symbol: string, source: MarketDataSource) => void;
 }) {
   const { t } = useLocale();
   const [open, setOpen] = useSheetSlot("symbolPicker");

@@ -23,10 +23,20 @@ interface InstrumentRow {
   market_open?: boolean;
 }
 
+/** The three pipes a pair list can come from. */
+type MarketSource = "oanda" | "ea" | "metaapi";
+
 interface InstrumentsResponse {
   instruments?: InstrumentRow[];
-  /** What the server actually served — "ea" only when a terminal answered. */
+  /** What the server actually served — the client never assumes. */
   source?: string;
+}
+
+function normalizeSource(raw: string | undefined): MarketSource {
+  if (raw === "metaapi") return "metaapi";
+  // "ea_all" / "market_watch" both mean a terminal answered.
+  if (raw && raw !== "oanda") return "ea";
+  return "oanda";
 }
 
 /** Matches the server's per-request cap, so one flush is one request. */
@@ -64,7 +74,7 @@ export function SymbolPickerSheet({
   onClose: () => void;
   symbol: string;
   brokerConnected: boolean;
-  onSelect: (symbol: string, source: "oanda" | "ea") => void;
+  onSelect: (symbol: string, source: MarketSource) => void;
 }) {
   const { t, dir } = useLocale();
   const [mounted, setMounted] = useState(false);
@@ -74,12 +84,12 @@ export function SymbolPickerSheet({
   const [loading, setLoading] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
   const panelRef = useRef<HTMLDivElement>(null);
-  // What the client ASKS for. Whether a broker can actually answer is the
-  // server's call — an account connected through MetaApi or the MT5 bridge is
-  // online but has no EA to serve its symbol list — so the served source comes
-  // back in the response and is what gets displayed and passed on.
-  const requested: "oanda" | "ea" = brokerConnected ? "ea" : "oanda";
-  const [served, setServed] = useState<"oanda" | "ea">("oanda");
+  // The client does not choose the pipe. Three can serve the same pair — the
+  // platform feed, the trader's own terminal, their cloud account — and which
+  // one is connected and preferred is the server's call. It answers with the
+  // source it really used, and that is what gets displayed and passed on.
+  void brokerConnected;
+  const [served, setServed] = useState<MarketSource>("oanda");
 
   useEffect(() => setMounted(true), []);
 
@@ -97,22 +107,20 @@ export function SymbolPickerSheet({
     const handle = window.setTimeout(() => {
       setLoading(true);
       const params = new URLSearchParams({ wrapped: "1" });
-      if (requested === "ea") params.set("source", "ea");
       if (query.trim()) params.set("q", query.trim());
       fetch(`/api/instruments?${params}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then((d: InstrumentsResponse | null) => {
           setRows(d?.instruments ?? []);
           setVisible(PAGE_SIZE);
-          // "ea_all" / "market_watch" both mean a terminal answered.
-          setServed(d?.source && d.source !== "oanda" ? "ea" : "oanda");
+          setServed(normalizeSource(d?.source));
         })
         .catch(() => setRows([]))
         .finally(() => setLoading(false));
       // Debounced: one request per pause in typing, not one per keystroke.
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [open, query, requested]);
+  }, [open, query]);
 
   // --- Quote loading -------------------------------------------------------
   // Cards ask for their own quote when they scroll into view; the asks are
@@ -132,7 +140,7 @@ export function SymbolPickerSheet({
       while (pending.current.length > 0) {
         const batch = pending.current.splice(0, QUOTE_BATCH);
         const params = new URLSearchParams({ symbols: batch.join(",") });
-        if (served === "ea") params.set("source", "ea");
+        if (served !== "oanda") params.set("source", served);
         try {
           const res = await fetch(`/api/instruments/quotes?${params}`, { cache: "no-store" });
           if (!res.ok) continue;
@@ -233,10 +241,11 @@ export function SymbolPickerSheet({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const sourceNote = useMemo(
-    () => (served === "ea" ? t("symbol.picker.source_broker") : t("symbol.picker.source_platform")),
-    [served, t],
-  );
+  const sourceNote = useMemo(() => {
+    if (served === "metaapi") return t("symbol.picker.source_cloud");
+    if (served === "ea") return t("symbol.picker.source_broker");
+    return t("symbol.picker.source_platform");
+  }, [served, t]);
 
   if (!mounted || !open) return null;
 

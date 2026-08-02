@@ -181,7 +181,7 @@ export async function getSettings(userId: number): Promise<TradingSettings> {
   await ensureUserDefaults(userId);
   const row = (await queryOne<TradingSettings>(
     `SELECT user_id, per_trade_pct, allowed_assets,
-            forex_backend, preferred_model_ref, send_screenshot, telegram_chat_id,
+            forex_backend, market_data_source, preferred_model_ref, send_screenshot, telegram_chat_id,
             onboarding_done, alerts_enabled, alert_trades, alert_signals, updated_at
        FROM trading_settings
       WHERE user_id = ?`,
@@ -204,6 +204,7 @@ const SETTABLE_FIELDS = [
   "per_trade_pct",
   "allowed_assets",
   "forex_backend",
+  "market_data_source",
   "preferred_model_ref",
   "send_screenshot",
   "telegram_chat_id",

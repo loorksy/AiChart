@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOptionalUser, checkRateLimit, clientKey, handleError } from "@/lib/api";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { changePct, downsample, type PairQuote } from "@/lib/markets/pairQuote";
-import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
+import {
+  resolveMarketDataSource,
+  type MarketDataSource,
+} from "@/lib/markets/marketDataSource";
 
 /** One card's worth of history: ~a day of hourly closes. */
 const WINDOW_INTERVAL = "1h";
@@ -21,7 +24,7 @@ const CONCURRENCY = 4;
 async function quoteFor(
   userId: number,
   symbol: string,
-  source: "oanda" | "ea",
+  source: MarketDataSource,
 ): Promise<PairQuote> {
   try {
     const { candles } = await fetchOhlc({

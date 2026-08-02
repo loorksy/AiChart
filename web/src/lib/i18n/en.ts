@@ -96,6 +96,21 @@ export const en = {
   "account.type.live": "Live account",
   "account.type.unknown": "Account type unknown",
 
+  // Market data source (the three pipes: platform, own terminal, cloud account)
+  "data_source.title": "Market data",
+  "data_source.active": "in use",
+  "data_source.auto": "Automatic",
+  "data_source.auto_hint":
+    "Your broker account when it is linked, then your own terminal, then platform data.",
+  "data_source.metaapi": "Cloud MetaTrader account",
+  "data_source.metaapi_hint": "Your broker's own candles and prices, through MetaApi.",
+  "data_source.ea": "Your MetaTrader terminal (EA)",
+  "data_source.ea_hint": "Candles and quotes straight from the terminal you run.",
+  "data_source.oanda": "Platform data (OANDA)",
+  "data_source.oanda_hint": "The platform's own feed — always available, free.",
+  "data_source.needs_link": "Link a MetaTrader account through the platform to use it.",
+  "data_source.needs_ea": "Install the Expert Advisor on your terminal to use it.",
+
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",
   "composer.more_title": "Conversation options",
@@ -107,6 +122,7 @@ export const en = {
   "symbol.picker.search": "Search a pair or a currency",
   "symbol.picker.source_broker": "Your broker account's symbols",
   "symbol.picker.source_platform": "Platform market data",
+  "symbol.picker.source_cloud": "Your cloud MetaTrader account",
   "symbol.picker.none": "No pair matches this search.",
   "symbol.card.to": "to",
   "symbol.card.window": "1 day",

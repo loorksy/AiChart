@@ -66,30 +66,35 @@ export async function GET(req: NextRequest) {
     // rather than waiting out the command timeout on every bar request.
     const requestedSource = req.nextUrl.searchParams.get("source");
     const dataSource = await resolveMarketDataSource(user?.id ?? null, requestedSource);
-    if (requestedSource === "ea" && dataSource.source === "ea") {
+    if (requestedSource && requestedSource !== "oanda" && dataSource.source !== "oanda") {
       if (!user) {
         return NextResponse.json(
           { error: "بيانات الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },
           { status: 401 },
         );
       }
-      const ea = await fetchEaOhlc(user.id, symbol, interval, {
+      const broker = await fetchOhlc({
+        userId: user.id,
+        symbol,
+        interval,
+        limit,
+        source: dataSource.source,
         fromMs: Number.isFinite(fromMs) ? fromMs : undefined,
         toMs: Number.isFinite(toMs) ? toMs : undefined,
-        limit,
       });
-      const normalized = normalizeCandlesForChart(ea.candles);
+      const normalized = normalizeCandlesForChart(broker.candles);
       const candles = sanitizeCandlesForMarket(normalized, "forex");
       return NextResponse.json({
         symbol,
         interval,
         market: "forex",
-        source: "ea",
+        source: dataSource.source,
         candles,
-        // Empty WITHOUT a warning = genuine market gap (EA acked success) —
-        // don't flag pending, or the client burns retries on every weekend.
-        pending: candles.length === 0 && Boolean(ea.warning),
-        ...(ea.warning ? { error: ea.warning } : {}),
+        // Empty WITHOUT a warning = genuine market gap (the broker acked
+        // success) — don't flag pending, or the client burns retries every
+        // weekend.
+        pending: candles.length === 0 && Boolean(broker.warning),
+        ...(broker.warning ? { error: broker.warning } : {}),
       });
     }
 

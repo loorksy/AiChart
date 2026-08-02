@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import {
   Suspense,
   useCallback,
@@ -84,7 +85,7 @@ const DEFAULT_SYMBOL = "XAUUSD";
 export interface ChartLayoutState extends ChartHydrateSnapshot {
   targets?: number[];
   /** Candle source for the active symbol: OANDA or the user's broker (EA). */
-  dataSource?: "oanda" | "ea";
+  dataSource?: MarketDataSource;
 }
 
 export function SmartChartWorkspace(props: {
@@ -214,7 +215,7 @@ function SmartChartWorkspaceInner({
     return localStorage.getItem(LS_INTERVAL) ?? "15m";
   });
 
-  const [dataSource, setDataSource] = useState<"oanda" | "ea">("oanda");
+  const [dataSource, setDataSource] = useState<MarketDataSource>("oanda");
   const [tradesOpen, setTradesOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
   const [forexOnline, setForexOnline] = useState(false);
@@ -435,7 +436,7 @@ function SmartChartWorkspaceInner({
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
-  const handleSymbolChange = useCallback((s: string, source: "oanda" | "ea" = "oanda") => {
+  const handleSymbolChange = useCallback((s: string, source: MarketDataSource = "oanda") => {
     setSymbol(s.toUpperCase());
     setDataSource(source);
   }, []);

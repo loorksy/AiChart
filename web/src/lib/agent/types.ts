@@ -96,7 +96,7 @@ export interface AgentChartContext {
   /** Recommendation currently rendered/restored on the chart, if any. */
   recommendation?: AgentRecommendation;
   /** oanda (default) or the user's broker bridge. */
-  dataSource?: "oanda" | "ea";
+  dataSource?: "oanda" | "ea" | "metaapi";
 }
 
 /** Short-term, per-session preferences the agent honors within a chart session. */

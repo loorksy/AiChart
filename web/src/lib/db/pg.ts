@@ -54,6 +54,7 @@ const SCHEMA = `
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
     -- 'ea' | 'mt5local' | NULL (operator's global default).
     forex_backend            TEXT,
+    market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
@@ -750,6 +751,9 @@ const SCHEMA = `
   -- live-money dual-enablement gate cannot tell a real MetaApi account from a
   -- demo one.
   ALTER TABLE mt_accounts ADD COLUMN IF NOT EXISTS account_trade_mode TEXT;
+  -- Which pipe charts and quotes are read from: platform data, the user's
+  -- own terminal, or their cloud account.
+  ALTER TABLE trading_settings ADD COLUMN IF NOT EXISTS market_data_source TEXT;
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS parity_key TEXT;

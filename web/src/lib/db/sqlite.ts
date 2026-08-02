@@ -39,6 +39,11 @@ const SCHEMA = `
     -- User-chosen forex connection: 'ea' (bridge installed on the user's MT5)
     -- or 'mt5local' (server-side, no download). NULL = operator's global default.
     forex_backend            TEXT,
+    -- Which pipe the CHARTS and quotes are read from: 'oanda' (platform
+    -- data), 'ea' (the user's own terminal) or 'metaapi' (their cloud
+    -- account). NULL/'auto' = the cloud account when linked, else the EA,
+    -- else the platform.
+    market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
     -- platform default. The admin supplies keys, the user picks the brain.
     preferred_model_ref      TEXT,
@@ -1587,6 +1592,13 @@ function migrate(db: Database.Database) {
   // live-money dual-enablement gate could not tell a real MetaApi account from
   // a demo one, and defaulted to "not live" — the exact protection failure the
   // EA path was fixed for.
+  const currentDataSourceColumns = db
+    .prepare("PRAGMA table_info(trading_settings)")
+    .all() as { name: string }[];
+  if (!currentDataSourceColumns.some((column) => column.name === "market_data_source")) {
+    db.exec("ALTER TABLE trading_settings ADD COLUMN market_data_source TEXT");
+  }
+
   const currentMtColumns = db
     .prepare("PRAGMA table_info(mt_accounts)")
     .all() as { name: string }[];

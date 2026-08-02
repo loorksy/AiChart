@@ -95,6 +95,21 @@ export const ar: Record<TranslationKey, string> = {
   "account.type.live": "حساب حقيقي",
   "account.type.unknown": "نوع الحساب غير معروف",
 
+  // مصدر بيانات السوق (ثلاث قنوات: المنصة، طرفيتك، حسابك السحابي)
+  "data_source.title": "مصدر بيانات السوق",
+  "data_source.active": "المستخدم الآن",
+  "data_source.auto": "تلقائي",
+  "data_source.auto_hint":
+    "حساب الوسيط عند ربطه، ثم طرفيتك الخاصة، ثم بيانات المنصة.",
+  "data_source.metaapi": "حساب MetaTrader السحابي",
+  "data_source.metaapi_hint": "شموع وأسعار وسيطك نفسه عبر MetaApi.",
+  "data_source.ea": "طرفية MetaTrader لديك (EA)",
+  "data_source.ea_hint": "شموع وأسعار مباشرة من الطرفية التي تشغّلها.",
+  "data_source.oanda": "بيانات المنصة (OANDA)",
+  "data_source.oanda_hint": "تغذية المنصة الخاصة — متاحة دائماً ومجاناً.",
+  "data_source.needs_link": "اربط حساب MetaTrader عبر المنصة لاستخدامه.",
+  "data_source.needs_ea": "ثبّت Expert Advisor على طرفيتك لاستخدامه.",
+
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
   "composer.more": "خيارات إضافية",
   "composer.more_title": "خيارات المحادثة",
@@ -106,6 +121,7 @@ export const ar: Record<TranslationKey, string> = {
   "symbol.picker.search": "ابحث عن زوج أو عملة",
   "symbol.picker.source_broker": "رموز حسابك لدى الوسيط",
   "symbol.picker.source_platform": "بيانات السوق من المنصة",
+  "symbol.picker.source_cloud": "حساب MetaTrader السحابي لديك",
   "symbol.picker.none": "لا يوجد زوج يطابق هذا البحث.",
   "symbol.card.to": "إلى",
   "symbol.card.window": "يوم واحد",

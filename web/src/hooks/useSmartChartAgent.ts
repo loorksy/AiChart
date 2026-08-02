@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentActivityEvent,
@@ -49,7 +50,7 @@ export interface UseSmartChartAgentOptions {
   symbol: string;
   interval: string;
   layoutId?: string;
-  dataSource?: "oanda" | "ea";
+  dataSource?: MarketDataSource;
   /** Chat/session id — also used as the agent sessionId so recommendation
    *  memory is scoped per chat. When omitted, an ephemeral id is used. */
   chatId?: string;

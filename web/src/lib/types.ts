@@ -42,6 +42,12 @@ export interface TradingSettings {
    */
   forex_backend?: "ea" | "mt5local" | "metaapi" | null;
   /**
+   * Which pipe the CHARTS and quotes are read from — a different question from
+   * where orders go. null / "auto" = the cloud account when it is linked, then
+   * the user's own terminal, then the platform's own data.
+   */
+  market_data_source?: "auto" | "oanda" | "ea" | "metaapi" | null;
+  /**
    * "provider/model" the user chose for their own analyses (e.g.
    * "openai/gpt-5.6-sol", "anthropic/claude-opus-5"). null = platform default.
    * The admin supplies the API keys; the user picks which brain answers.

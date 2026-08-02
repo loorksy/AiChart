@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import {
   forwardRef,
   useCallback,
@@ -160,7 +161,7 @@ interface Props {
   /** Offer the user's broker (EA/MT5) as a second data source in symbol search. */
   eaEnabled?: boolean;
   /** Active data source for the current symbol. */
-  dataSource?: "oanda" | "ea";
+  dataSource?: MarketDataSource;
   /** TradingView language is selected when the widget is created. */
   locale?: AppLocale;
   direction?: Direction;
@@ -168,7 +169,7 @@ interface Props {
   /** Headless screenshot render: drop every toolbar so the PNG is chart only. */
   capture?: boolean;
   className?: string;
-  onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
+  onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
 }
 

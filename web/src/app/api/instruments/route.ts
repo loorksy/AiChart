@@ -65,7 +65,44 @@ export async function GET(request: NextRequest) {
     // fifteen command timeouts and returning nothing.
     const requestedSource = request.nextUrl.searchParams.get("source");
     const decision = await resolveMarketDataSource(user?.id ?? null, requestedSource);
-    if (requestedSource === "ea" && decision.source === "ea") {
+
+    if (decision.source === "metaapi" && user) {
+      // The cloud account's own instrument list — the symbols this trader's
+      // orders will actually reference, suffixes and all.
+      const { getMtAccount } = await import("@/lib/store");
+      const account = await getMtAccount(user.id);
+      const accountId = account?.metaapi_account_id;
+      if (accountId && accountId !== "mt5local") {
+        try {
+          const { getRpcConnection } = await import("@/lib/metaapi/client");
+          const conn = await getRpcConnection(user.id, accountId);
+          const query = (
+            request.nextUrl.searchParams.get("q") ??
+            request.nextUrl.searchParams.get("search") ??
+            ""
+          )
+            .trim()
+            .toUpperCase();
+          const all = await conn.getSymbols();
+          const rows = (query ? all.filter((sym) => sym.toUpperCase().includes(query)) : all)
+            .slice()
+            .sort((a, b) => a.localeCompare(b));
+          const now = Date.now();
+          return NextResponse.json({
+            instruments: rows.map((sym) => {
+              const { base, quote } = forexBaseQuote(sym);
+              return { symbol: sym, base, quote, market_open: isMarketOpenAt(sym, now) };
+            }),
+            total: rows.length,
+            source: "metaapi",
+          });
+        } catch {
+          // Fall through to the platform universe rather than an empty list.
+        }
+      }
+    }
+
+    if (decision.source === "ea") {
       if (!user) {
         return NextResponse.json(
           { error: "أزواج الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },

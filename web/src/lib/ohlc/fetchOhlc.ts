@@ -16,6 +16,7 @@ import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
+import { fetchMetaApiOhlc } from "@/lib/ohlc/metaApiOhlc";
 
 /** @deprecated Prefer interval-aware {@link ohlcCacheTtlMs}. Kept for callers. */
 export const OHLC_CACHE_TTL_MS = 45_000;
@@ -30,7 +31,7 @@ export interface OhlcCandle {
   volume?: number;
 }
 
-export type OhlcSource = "oanda" | "ea";
+export type OhlcSource = "oanda" | "ea" | "metaapi";
 
 export interface FetchOhlcResult {
   symbol: string;
@@ -61,8 +62,11 @@ export interface FetchOhlcOptions {
   /** Inclusive range for Pro datafeed (milliseconds). */
   fromMs?: number;
   toMs?: number;
-  /** Forex candle source: OANDA public data or the user's live EA/MT5 bridge. */
-  source?: "oanda" | "ea";
+  /**
+   * Forex candle source: the platform's OANDA feed, the user's own terminal
+   * over the EA bridge, or their cloud MetaTrader account via MetaApi.
+   */
+  source?: OhlcSource;
 }
 
 export function ohlcCacheResource(symbol: string, interval: string): string {
@@ -129,14 +133,15 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
     OHLC_MAX_LIMIT,
   );
 
-  const forexSource =
+  const forexSource: OhlcSource =
     isOandaDataOnly()
       ? "oanda"
       : (options.source ?? "oanda");
   const symbol =
     forexSource === "oanda"
       ? forexCanonicalKey(options.symbol)
-      : options.symbol.toUpperCase().trim();
+      : // Broker feeds answer to the broker's own spelling (EURUSDm, XAUUSD.pro).
+        options.symbol.toUpperCase().trim();
   const sourceKey = forexSource;
   const cacheKey = `${ohlcCacheResource(symbol, interval)}:${sourceKey}`;
   if (
@@ -162,7 +167,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   let hasMore = false;
 
   const live =
-    !isOandaDataOnly() && options.source === "ea"
+    !isOandaDataOnly() && forexSource === "ea"
       ? {
           ...(await fetchEaOhlc(options.userId, symbol, interval, {
             fromMs: options.fromMs,
@@ -170,6 +175,15 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
             limit,
           })),
           source: "ea" as const,
+          hasMore: false,
+        }
+      : !isOandaDataOnly() && forexSource === "metaapi"
+      ? {
+          ...(await fetchMetaApiOhlc(options.userId, symbol, interval, {
+            toMs: options.toMs,
+            limit,
+          })),
+          source: "metaapi" as const,
           hasMore: false,
         }
       : await fetchForexOhlcLive(symbol, interval, limit, {

@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketDataSource } from "@/lib/markets/marketDataSource";
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
@@ -33,7 +34,7 @@ export function AgentChatInput({
   symbol?: string;
   interval?: string;
   brokerConnected?: boolean;
-  onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
+  onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
 }) {
   const { t, dir } = useLocale();
