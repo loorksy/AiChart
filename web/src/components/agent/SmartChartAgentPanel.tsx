@@ -58,6 +58,9 @@ interface Props {
   ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
   voiceControl?: ReactNode;
+  /** Whether the chart surface is showing, for the composer's chart toggle. */
+  chartOpen?: boolean;
+  onToggleChart?: () => void;
   voicePanel?: ReactNode;
 }
 
@@ -82,6 +85,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       applyDrawingMutations,
       onPersistMessage,
       voiceControl,
+      chartOpen,
+      onToggleChart,
       voicePanel,
     },
     ref,
@@ -190,12 +195,23 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
           {messages.map((m) => (
             <div
               key={m.id}
+              data-role={m.role}
               className={
+                // Logical auto-margins: `ml-auto` pinned the operator's own
+                // messages to the physical right, which is the START edge under
+                // dir="rtl" — the side the agent speaks from.
                 m.role === "user"
-                  ? "ml-auto max-w-[min(85%,36rem)] rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm text-foreground"
-                  : "mr-auto max-w-[min(95%,42rem)] px-1 py-2 text-sm text-foreground"
+                  ? "ms-auto max-w-[min(85%,36rem)] rounded-2xl bg-[var(--user-bubble)] px-3.5 py-2 text-sm text-foreground"
+                  : "me-auto flex max-w-[min(95%,42rem)] gap-2.5 px-1 py-2 text-sm text-foreground"
               }
             >
+              {/* Who is speaking, on every agent turn rather than only while it
+                  is still thinking. The operator's own messages carry the bubble
+                  as their marker and need no avatar. */}
+              {m.role === "assistant" && !m.pending ? (
+                <AgentAvatar size={24} state="idle" className="mt-0.5 shrink-0" />
+              ) : null}
+              <div className={m.role === "assistant" ? "min-w-0 flex-1" : undefined}>
               {/* Temporary assistant bubble: live thinking ticker while the run
                   is in flight. Replaced in place by the final answer. */}
               {m.pending ? (
@@ -365,6 +381,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
               )}
                 </>
               )}
+              </div>
             </div>
           ))}
 
@@ -377,7 +394,14 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
 
         {voicePanel}
         <div className="chat-composer-fade" aria-hidden data-testid="composer-fade" />
-        <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} voiceControl={voiceControl} />
+        <AgentChatInput
+          running={running}
+          onSend={sendMessage}
+          onCancel={cancel}
+          voiceControl={voiceControl}
+          chartOpen={chartOpen}
+          onToggleChart={onToggleChart}
+        />
       </div>
     );
   },

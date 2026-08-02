@@ -3,7 +3,7 @@ import { afterEach, describe, it } from "node:test";
 import {
   CHAT_WIDTH_STORAGE_KEY,
   DEFAULT_CHAT_WIDTH,
-  DEFAULT_MOBILE_PANE,
+  DEFAULT_DESKTOP_LAYOUT,
   MAX_CHAT_WIDTH,
   MIN_CHAT_WIDTH,
   clampChatWidth,
@@ -24,8 +24,8 @@ describe("chat layout width", () => {
     assert.equal(clampChatWidth(Infinity), DEFAULT_CHAT_WIDTH);
   });
 
-  it("mobile tab state defaults to the chart", () => {
-    assert.equal(DEFAULT_MOBILE_PANE, "chart");
+  it("a new workspace opens on the conversation, not the chart", () => {
+    assert.equal(DEFAULT_DESKTOP_LAYOUT, "chatOnly");
   });
 });
 

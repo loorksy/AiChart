@@ -5,8 +5,10 @@ import Link from "next/link";
 import { AlertTriangle, ReceiptText, RotateCw, Wallet } from "lucide-react";
 
 import { EmptyState, PageHeader, SectionHeader, Surface } from "@/components/foundation";
+import { useLocale } from "@/hooks/useLocale";
 import { Button, buttonVariants } from "@/components/squareui/button";
 import { CardSkeleton } from "@/components/ui/skeletons/page-skeletons";
+import type { TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface LedgerRow {
@@ -30,14 +32,15 @@ interface BalanceData {
   ledger: LedgerRow[];
 }
 
-const KIND_LABELS: Record<string, string> = {
-  monthly_grant: "منحة الباقة الشهرية",
-  trial_grant: "رصيد التجربة",
-  gift: "شهر هدية",
-  topup: "شحن رصيد",
-  burn: "استهلاك",
-  adjust: "تعديل إداري",
-};
+/** Ledger kinds the API emits, mapped to their translation keys. */
+const KIND_KEYS = {
+  monthly_grant: "billing.kind.monthly_grant",
+  trial_grant: "billing.kind.trial_grant",
+  gift: "billing.kind.gift",
+  topup: "billing.kind.topup",
+  burn: "billing.kind.burn",
+  adjust: "billing.kind.adjust",
+} as const satisfies Record<string, TranslationKey>;
 
 const TOPUP_AMOUNTS = [20, 50, 100];
 
@@ -46,6 +49,7 @@ const fmtUsd = (v: number) =>
 
 /** V2-A5 (#94): the operator's money page — balance, statement, actions. */
 export function BillingClient() {
+  const { t, dir, locale } = useLocale();
   const [data, setData] = useState<BalanceData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -59,11 +63,11 @@ export function BillingClient() {
       if (res.ok) {
         setData((await res.json()) as BalanceData);
       } else {
-        setError("تعذّر تحميل بيانات الفوترة.");
+        setError(t("billing.load_failed"));
         setLoadFailed(true);
       }
     } catch {
-      setError("تعذّر الاتصال بالخادم.");
+      setError(t("billing.network_failed"));
       setLoadFailed(true);
     }
   }, []);
@@ -85,7 +89,7 @@ export function BillingClient() {
         window.location.href = out.url;
         return;
       }
-      setError(out.message ?? "الدفع غير مفعَّل بعد.");
+      setError(out.message ?? t("billing.checkout_unavailable"));
     } finally {
       setBusy(null);
     }
@@ -100,7 +104,7 @@ export function BillingClient() {
         window.location.href = out.url;
         return;
       }
-      setError("بوابة الإدارة غير متاحة (لا اشتراك Stripe نشط).");
+      setError(t("billing.portal_unavailable"));
     } finally {
       setBusy(null);
     }
@@ -108,15 +112,15 @@ export function BillingClient() {
 
   const header = (
     <PageHeader
-      title="الفوترة والاستخدام"
-      description="رصيدك الحالي، وكشف الحركة، وإدارة الاشتراك."
+      title={t("billing.title")}
+      description={t("billing.subtitle")}
       icon={<Wallet aria-hidden="true" />}
       actions={
         <Link
           href="/pricing"
           className={cn(buttonVariants({ variant: "outline", size: "xl" }))}
         >
-          عرض الباقات
+          {t("billing.view_plans")}
         </Link>
       }
     />
@@ -126,7 +130,7 @@ export function BillingClient() {
   // the error was set but the early return never rendered it. Give it a way out.
   if (!data) {
     return (
-      <div className="space-y-6" dir="rtl">
+      <div className="space-y-6" dir={dir}>
         {header}
         {loadFailed ? (
           <Surface padding="none">
@@ -134,19 +138,19 @@ export function BillingClient() {
               announce
               tone="danger"
               icon={<AlertTriangle aria-hidden="true" />}
-              title="تعذّر تحميل الفوترة"
-              description={error ?? "حدث خطأ غير متوقع."}
+              title={t("billing.load_failed_title")}
+              description={error ?? t("billing.unexpected")}
               action={
                 <Button size="xl" onClick={() => void load()}>
                   <RotateCw aria-hidden="true" />
-                  إعادة المحاولة
+                  {t("billing.retry")}
                 </Button>
               }
             />
           </Surface>
         ) : (
           <div className="space-y-4" aria-busy="true" aria-live="polite">
-            <span className="sr-only">جارٍ تحميل بيانات الفوترة…</span>
+            <span className="sr-only">{t("billing.loading")}</span>
             <CardSkeleton lines={4} />
             <CardSkeleton lines={6} />
           </div>
@@ -156,7 +160,7 @@ export function BillingClient() {
   }
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6" dir={dir}>
       {header}
 
       {error && (
@@ -172,31 +176,33 @@ export function BillingClient() {
       {!data.billing_enforced && (
         <Surface padding="sm" className="bg-muted/40">
           <p className="type-caption">
-            نظام الرصيد في وضع المعاينة — لا يُفرض أي خصم حالياً.
+            {t("billing.preview_mode")}
           </p>
         </Surface>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-3" aria-label="الأرصدة">
+      <section className="grid gap-4 sm:grid-cols-3" aria-label={t("billing.balances")}>
         <Surface padding="lg">
-          <p className="type-caption">الرصيد الكلي</p>
+          <p className="type-caption">{t("billing.total_balance")}</p>
           <p className="mt-1 text-3xl font-extrabold tabular-nums text-foreground">
             {fmtUsd(data.balance.totalUsd)}
           </p>
         </Surface>
         <Surface padding="lg">
-          <p className="type-caption">رصيد الباقة الشهري</p>
+          <p className="type-caption">{t("billing.monthly_balance")}</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
             {fmtUsd(data.balance.monthlyUsd)}
           </p>
           {data.balance.periodEnd && (
             <p className="type-caption mt-1">
-              يتجدد {new Date(data.balance.periodEnd).toLocaleDateString("ar")}
+              {t("billing.renews_on", {
+                date: new Date(data.balance.periodEnd).toLocaleDateString(locale),
+              })}
             </p>
           )}
         </Surface>
         <Surface padding="lg">
-          <p className="type-caption">رصيد الشحن (لا ينتهي)</p>
+          <p className="type-caption">{t("billing.topup_balance")}</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
             {fmtUsd(data.balance.topupUsd)}
           </p>
@@ -207,12 +213,20 @@ export function BillingClient() {
         <SectionHeader
           title={
             data.subscription
-              ? `باقة ${data.subscription.tier_name_ar} — ${data.subscription.status === "active" ? "نشطة" : data.subscription.status}`
-              : "لا يوجد اشتراك نشط"
+              ? t("billing.plan_line", {
+                  tier: data.subscription.tier_name_ar,
+                  status:
+                    data.subscription.status === "active"
+                      ? t("billing.status_active")
+                      : data.subscription.status,
+                })
+              : t("billing.no_subscription")
           }
           description={
             data.subscription
-              ? `التجديد: ${new Date(data.subscription.period_end).toLocaleDateString("ar")}`
+              ? t("billing.renewal", {
+                  date: new Date(data.subscription.period_end).toLocaleDateString(locale),
+                })
               : undefined
           }
         />
@@ -222,13 +236,13 @@ export function BillingClient() {
         {data.subscription && (
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Button size="xl" onClick={openPortal} disabled={busy != null}>
-              {busy === "portal" ? "جارٍ…" : "إدارة الاشتراك"}
+              {busy === "portal" ? t("billing.working") : t("billing.manage_subscription")}
             </Button>
           </div>
         )}
 
         <div className="mt-4 border-t border-border pt-4">
-          <p className="type-overline">شحن رصيد إضافي</p>
+          <p className="type-overline">{t("billing.add_credit")}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {TOPUP_AMOUNTS.map((amount) => (
               <Button
@@ -238,7 +252,9 @@ export function BillingClient() {
                 onClick={() => topup(amount)}
                 disabled={busy != null}
               >
-                {busy === `topup-${amount}` ? "جارٍ…" : `شحن $${amount}`}
+                {busy === `topup-${amount}`
+                  ? t("billing.working")
+                  : t("billing.topup_amount", { amount: String(amount) })}
               </Button>
             ))}
           </div>
@@ -247,15 +263,15 @@ export function BillingClient() {
 
       <Surface as="section" padding="none">
         <SectionHeader
-          title="كشف الحركة (آخر 50)"
+          title={t("billing.statement")}
           className="border-b border-border px-5 py-3"
         />
         {data.ledger.length === 0 ? (
           <EmptyState
             size="sm"
             icon={<ReceiptText aria-hidden="true" />}
-            title="لا حركة بعد"
-            description="أول تحليل تشغّله سيظهر هنا كبند في كشف الحركة."
+            title={t("billing.statement_empty_title")}
+            description={t("billing.statement_empty")}
           />
         ) : (
           <ul className="divide-y divide-border/60">
@@ -267,7 +283,9 @@ export function BillingClient() {
                 {/* Wrapping row + min-w-0: at 375px the timestamp drops to its
                     own line instead of shoving the amount off-screen. */}
                 <span className="min-w-0 flex-1 text-foreground">
-                  {KIND_LABELS[row.kind] ?? row.kind}
+                  {row.kind in KIND_KEYS
+                    ? t(KIND_KEYS[row.kind as keyof typeof KIND_KEYS])
+                    : row.kind}
                 </span>
                 <span
                   className={cn(
@@ -282,7 +300,7 @@ export function BillingClient() {
                   dateTime={new Date(row.ts).toISOString()}
                   className="type-caption w-full"
                 >
-                  {new Date(row.ts).toLocaleString("ar")}
+                  {new Date(row.ts).toLocaleString(locale)}
                 </time>
               </li>
             ))}
@@ -290,7 +308,7 @@ export function BillingClient() {
         )}
         {data.ledger.length >= 50 && (
           <p className="type-caption border-t border-border/60 px-5 py-2">
-            يعرض أول 50 حركة فقط.
+            {t("billing.statement_truncated")}
           </p>
         )}
       </Surface>

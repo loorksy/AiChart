@@ -1,23 +1,34 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Send, Square } from "lucide-react";
+import { CandlestickChart, Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { AgentModelPicker } from "@/components/agent/AgentModelPicker";
+import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
+import { cn } from "@/lib/utils";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
 const MAX_COMPOSER_HEIGHT = 148;
+
+const ACTION_BUTTON =
+  "flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9";
 
 export function AgentChatInput({
   running,
   onSend,
   onCancel,
   voiceControl,
+  chartOpen,
+  onToggleChart,
 }: {
   running: boolean;
   onSend: (message: string) => void;
   onCancel: () => void;
   voiceControl?: ReactNode;
+  /** Whether the chart surface is currently showing, for the toggle's state. */
+  chartOpen?: boolean;
+  /** Absent when there is no chart to summon (guest / capture renders). */
+  onToggleChart?: () => void;
 }) {
   const { t, dir } = useLocale();
   const [value, setValue] = useState("");
@@ -48,12 +59,13 @@ export function AgentChatInput({
         submit();
       }}
     >
-      <div className="chat-gpt-input flex items-end gap-1 px-2 py-1">
-        <div
-          data-switcher-dock="composer"
-          data-testid="switcher-composer-dock"
-          className="mb-0.5 flex shrink-0 items-center empty:hidden xl:hidden"
-        />
+      {/*
+        Two tiers, not one row: the text gets the full width to grow into, and
+        the controls sit on their own line underneath. Crowding a model picker, a
+        mic, a chart toggle and a send button into the same line as the caret
+        left the message itself the narrowest thing in the composer.
+      */}
+      <div className="chat-gpt-input flex flex-col gap-1 px-2 py-1.5">
         <textarea
           ref={textareaRef}
           value={value}
@@ -69,31 +81,62 @@ export function AgentChatInput({
           placeholder={t("agent.input_placeholder")}
           aria-label={t("agent.input_placeholder")}
           disabled={running}
-          className="max-h-[148px] min-h-11 w-full resize-none bg-transparent px-2 py-2.5 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:min-h-9 sm:py-2 sm:text-sm"
+          className="max-h-[148px] min-h-9 w-full resize-none bg-transparent px-1 py-1.5 text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:text-sm"
         />
-        <AgentModelPicker />
-        {voiceControl}
-        {running ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            aria-label={t("agent.cancel")}
-            title={t("agent.cancel")}
-            className="mb-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-opacity hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-8"
-          >
-            <Square className="h-3 w-3 fill-current" />
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!value.trim()}
-            aria-label={t("agent.send")}
-            title={t("agent.send")}
-            className="mb-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 sm:size-8"
-          >
-            <Send className="h-4 w-4 rtl:rotate-180 sm:h-3.5 sm:w-3.5" />
-          </button>
-        )}
+
+        <div className="flex items-center gap-1">
+          {/*
+            One row for what governs the next turn: which chart is up, how much
+            of the account is at stake, and which model answers. All three used
+            to live somewhere else — a floating switcher, a settings section, and
+            a differently-shaped dropdown.
+          */}
+          {onToggleChart && (
+            <button
+              type="button"
+              onClick={onToggleChart}
+              aria-pressed={chartOpen}
+              aria-label={chartOpen ? t("layout.close_chart") : t("layout.show_chart")}
+              title={chartOpen ? t("layout.close_chart") : t("layout.show_chart")}
+              data-testid="composer-chart-toggle"
+              className={cn(
+                ACTION_BUTTON,
+                // A toggle, so its on-state is permanent rather than a hover.
+                chartOpen && "bg-muted text-foreground",
+              )}
+            >
+              <CandlestickChart className="h-5 w-5 sm:h-4 sm:w-4" />
+            </button>
+          )}
+          <RiskPerTradeControl />
+          <AgentModelPicker />
+
+          {/* Logical end of the row: mirrors under dir="rtl" with no branch. */}
+          <div className="ms-auto flex items-center gap-1">
+            {voiceControl}
+            {running ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                aria-label={t("agent.cancel")}
+                title={t("agent.cancel")}
+                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors duration-150 hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-9"
+              >
+                <Square className="h-3 w-3 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!value.trim()}
+                aria-label={t("agent.send")}
+                title={t("agent.send")}
+                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity duration-150 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 sm:size-9"
+              >
+                <Send className="h-4 w-4 rtl:rotate-180" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </form>
   );

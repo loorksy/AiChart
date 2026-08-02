@@ -3,8 +3,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { loadConsoleSettingsProps } from "@/lib/consoleSettingsLoader";
 import SettingsClient from "@/components/SettingsClient";
 
-type Tab = "profile" | "appearance" | "integrations" | "alerts" | "trading" | "skills";
-const TABS = new Set<Tab>(["profile", "appearance", "integrations", "alerts", "trading", "skills"]);
+// `trading` is gone: risk per trade lives in the composer now. An old
+// ?tab=trading bookmark falls through to the default section rather than 404ing.
+type Tab = "profile" | "appearance" | "integrations" | "alerts" | "skills";
+const TABS = new Set<Tab>(["profile", "appearance", "integrations", "alerts", "skills"]);
 
 export default async function SettingsPage({
   searchParams,

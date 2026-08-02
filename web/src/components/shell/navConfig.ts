@@ -47,7 +47,14 @@ export const APP_NAV: NavItem[] = [
  * Do not reuse trader Chart/Chat/Statistics/Trades here.
  */
 export const ADMIN_NAV: NavItem[] = [
-  { href: "/console", labelKey: "nav.admin_overview", icon: Activity, exact: true },
+  // The admin's home is the platform overview. It used to be /console — the
+  // trader bridge — which put an operator surface at the top of the admin rail
+  // and gave admins a landing page built for somebody else's job.
+  {
+    href: "/console/platform?tab=overview",
+    labelKey: "nav.admin_overview",
+    icon: Activity,
+  },
   { href: "/console/platform?tab=users", labelKey: "nav.admin_users", icon: Users },
   {
     href: "/console/platform?tab=subscriptions",
@@ -78,6 +85,7 @@ export const TRIAL_NAV: NavItem[] = [
  * adminRoles module into the client bundle.
  */
 const ADMIN_NAV_PERMISSION: Record<string, string> = {
+  overview: "users_read",
   users: "users_read",
   subscriptions: "billing_read",
   keys: "keys_write",

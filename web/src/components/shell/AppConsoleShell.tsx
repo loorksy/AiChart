@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Menu, PanelLeft, PanelLeftClose, X } from "lucide-react";
+import { ChevronDown, PanelLeft, X } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AiChartLogo } from "@/components/AiChartLogo";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { NotificationCenter } from "@/components/agent/NotificationCenter";
-import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
+import { ProfileAccountSheet } from "@/components/agent/SidebarProfileMenu";
+import { SettingsModal } from "@/components/SettingsModal";
+import { ConsoleOverlaysProvider } from "@/components/shell/ConsoleOverlays";
+import type { SettingsTabId } from "@/components/SettingsClient";
 import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
+import { SheetCoordinatorProvider, useSheetSlot } from "@/components/shell/SheetCoordinator";
+import { ConsoleTopBar } from "@/components/shell/ConsoleTopBar";
 import {
-  ADMIN_NAV,
   navForRole,
   activeNav,
   type NavItem,
@@ -32,9 +34,6 @@ import { useLocale } from "@/hooks/useLocale";
 import { useMe } from "@/hooks/useMe";
 import { Mt5PresencePing } from "@/components/Mt5PresencePing";
 import { cn } from "@/lib/utils";
-
-/** The admin's non-platform destination — the bridge overview at /console. */
-const ADMIN_HOME_ITEM = ADMIN_NAV.find((item) => item.href === "/console");
 
 const PLATFORM_PATH = "/console/platform";
 
@@ -77,29 +76,43 @@ function ActiveMarker() {
  *
  * Trader shell includes conversations; admin shell is admin destinations only.
  */
-export function AppConsoleShell({
-  role,
-  displayName,
-  children,
-  noPadding = false,
-  showConversations,
-}: {
+type AppConsoleShellProps = {
   role: NavRole;
   displayName: string;
   children: React.ReactNode;
   noPadding?: boolean;
   /** Override conversation section (default: traders only). */
   showConversations?: boolean;
-}) {
+};
+
+export function AppConsoleShell(props: AppConsoleShellProps) {
+  // Wraps `children` too: the workspace's chart sheet has to share the single
+  // overlay slot with this shell's nav drawer and profile sheet.
+  return (
+    <SheetCoordinatorProvider>
+      <ConsoleShellBody {...props} />
+    </SheetCoordinatorProvider>
+  );
+}
+
+function ConsoleShellBody({
+  role,
+  displayName,
+  children,
+  noPadding = false,
+  showConversations,
+}: AppConsoleShellProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t, dir, locale } = useLocale();
   const { data: me } = useMe();
   const currentTab = searchParams.get("tab");
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useSheetSlot("sidebarDrawer");
   const [navPath, setNavPath] = useState(pathname);
   const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>("profile");
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const isAdmin = role === "admin";
   // Until /api/me resolves, keep non-admin nav conservative (trial-sized).
@@ -113,17 +126,11 @@ export function AppConsoleShell({
   const paidWorkspace = access === "full" || access === "admin";
   const conversationsEnabled =
     showConversations ?? (!isAdmin && paidWorkspace);
-  const showChartMenu =
-    !isAdmin &&
-    paidWorkspace &&
-    (pathname === "/console" || pathname.startsWith("/chart"));
   const workspaceNoPadding =
     noPadding ||
     pathname === "/console" ||
     pathname.startsWith("/chart") ||
     pathname === "/subscribe";
-  /** Chart pages host the menu in the chart toolbar; other pages use a page header. */
-  const needsPageMenu = !showChartMenu;
   /**
    * Which admin panel the platform route is showing. An absent or unknown
    * `?tab=` lands on the overview server-side (resolveAdminTab), so the rail has
@@ -188,6 +195,16 @@ export function AppConsoleShell({
     [mobileOpen, setMobileOpen],
   );
 
+  const overlaysApi = useMemo(
+    () => ({
+      openSettings: (tab?: SettingsTabId) => {
+        setSettingsTab(tab ?? "profile");
+        setSettingsOpen(true);
+      },
+    }),
+    [setSettingsTab, setSettingsOpen],
+  );
+
   const productLink = (item: NavItem, iconOnly: boolean, onNavigate?: () => void) => {
     const active = activeNav(pathname, item, currentTab);
     const Icon = item.icon;
@@ -246,7 +263,6 @@ export function AppConsoleShell({
         !conversationsEnabled && "flex-1",
       )}
     >
-      {ADMIN_HOME_ITEM ? productLink(ADMIN_HOME_ITEM, iconOnly, onNavigate) : null}
       {adminGroups.map((group) => {
         // The disclosure control is the group label, and the label is what the
         // icon rail hides — so a folded group would become unreachable there.
@@ -318,13 +334,6 @@ export function AppConsoleShell({
     return isAdmin ? adminNav(iconOnly, onNavigate) : productNav(iconOnly, onNavigate);
   };
 
-  /** The switcher's permanent home: sidebar footer, one row above identity. */
-  const languageRow = (iconOnly: boolean) => (
-    <div className="shrink-0 border-t border-sidebar-border px-2 py-2">
-      {iconOnly ? <LanguageSwitcher variant="rail" /> : <LanguageSwitcher variant="row" />}
-    </div>
-  );
-
   const brandHref = isAdmin ? "/console" : "/console";
 
   const sidebarHeader = (
@@ -335,58 +344,56 @@ export function AppConsoleShell({
       )}
     >
       {!collapsed ? (
-        <Link
-          href={brandHref}
-          className={cn(
-            "flex min-w-0 items-center gap-2 overflow-visible rounded-lg",
-            FOCUS_RING,
-          )}
-          data-testid="sidebar-brand"
-        >
-          <AiChartLogo
-            size={36}
-            showName
-            nameClassName="truncate text-[15px] font-semibold tracking-tight"
-          />
-        </Link>
-      ) : (
-        <Link
-          href={brandHref}
-          className={cn(
-            "flex items-center justify-center overflow-visible rounded-lg",
-            FOCUS_RING,
-          )}
-        >
-          <AiChartLogo size={30} />
-        </Link>
-      )}
-      {!collapsed ? (
-        <div className="flex shrink-0 items-center gap-0.5">
-          {/* Alert bell + notification center (Group 9). */}
-          <NotificationCenter />
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
+        <>
+          <Link
+            href={brandHref}
             className={cn(
-              "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
+              "flex min-w-0 items-center gap-2 overflow-visible rounded-lg",
               FOCUS_RING,
             )}
-            aria-label={t("shell.collapse_sidebar")}
+            data-testid="sidebar-brand"
           >
-            <PanelLeftClose className="h-4 w-4 rtl:-scale-x-100" />
-          </button>
-        </div>
+            <AiChartLogo
+              size={36}
+              showName
+              nameClassName="truncate text-[15px] font-semibold tracking-tight"
+            />
+          </Link>
+        </>
       ) : (
+        /**
+         * Collapsed rail: ONE control, not a brand link sitting next to an
+         * expand button — 60px of rail cannot host both legibly. The mark is
+         * what you see at rest; pointing at it (or tabbing to it) crossfades to
+         * the expand affordance. `focus-visible` mirrors `hover` so the control
+         * is not mouse-only, and it earns a visible ring because the swap costs
+         * it the logo as its resting identity cue.
+         *
+         * Clicking it ALWAYS expands and never navigates: a control that both
+         * navigates and toggles gives one hit target two outcomes the user
+         * cannot tell apart. Home stays reachable from the nav list below, and
+         * the brand is a real link again the moment the rail is expanded.
+         */
         <button
           type="button"
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={() => setCollapsed(false)}
+          data-testid="sidebar-expand-brand"
           className={cn(
-            "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
+            "group relative hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
             FOCUS_RING,
           )}
           aria-label={t("shell.expand_sidebar")}
         >
-          <PanelLeft className="h-4 w-4 rtl:-scale-x-100" />
+          <span
+            aria-hidden
+            className="pointer-events-none flex items-center justify-center opacity-100 transition-opacity duration-200 ease-in-out group-hover:opacity-0 group-focus-visible:opacity-0 motion-reduce:duration-100"
+          >
+            <AiChartLogo size={30} />
+          </span>
+          <PanelLeft
+            aria-hidden
+            className="pointer-events-none absolute h-4 w-4 opacity-0 transition-opacity duration-200 ease-in-out group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:duration-100 rtl:-scale-x-100"
+          />
         </button>
       )}
     </div>
@@ -394,6 +401,7 @@ export function AppConsoleShell({
 
   return (
     <ShellMenuProvider value={menuApi}>
+      <ConsoleOverlaysProvider value={overlaysApi}>
       {/* V2-B: presence beat drives the MetaApi deploy/undeploy cost saver. */}
       <Mt5PresencePing />
       <div
@@ -413,8 +421,6 @@ export function AppConsoleShell({
           {navList()}
           {conversationsEnabled ? <SidebarConversations collapsed={collapsed} /> : null}
           {!isAdmin && !conversationsEnabled ? <div className="flex-1" /> : null}
-          {languageRow(collapsed)}
-          <SidebarProfileMenu collapsed={collapsed} displayName={displayName} />
         </aside>
 
         {mobileOpen && (
@@ -454,36 +460,39 @@ export function AppConsoleShell({
                 <SidebarConversations onNavigate={() => setMobileOpen(false)} />
               ) : null}
               {!isAdmin && !conversationsEnabled ? <div className="flex-1" /> : null}
-              {languageRow(false)}
-              <SidebarProfileMenu displayName={displayName} />
+              {/*
+                No language row here. The drawer used to show this switcher AND
+                a language submenu inside the account sheet one row below it —
+                two different controls for one setting, stacked. The account
+                sheet keeps it; the drawer footer gives it up.
+              */}
             </aside>
           </div>
         )}
 
+        {/*
+          Mounted by the shell, not by the menus that open them: the drawer that
+          hosts the account trigger is unmounted the moment the account sheet
+          takes the overlay slot, and an overlay cannot outlive its own trigger.
+        */}
+        <ProfileAccountSheet displayName={displayName} />
+        <SettingsModal
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          initialTab={settingsTab}
+        />
+
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-          {needsPageMenu ? (
-            <div
-              data-testid="page-toolbar-menu"
-              className="flex h-14 shrink-0 items-center border-b border-border px-3 lg:hidden"
-            >
-              <button
-                type="button"
-                data-testid="mobile-menu-trigger"
-                onClick={() => setMobileOpen(true)}
-                className={cn(
-                  "flex size-11 items-center justify-center rounded-lg border border-border bg-background text-foreground transition-colors duration-150 ease-out hover:bg-muted",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-                )}
-                aria-label={t("shell.open_menu")}
-                aria-expanded={mobileOpen}
-                aria-controls="mobile-navigation-drawer"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-              {/* Mobile bell: the sidebar (and its bell) is hidden below lg. */}
-              <NotificationCenter className="ms-auto" />
-            </div>
-          ) : null}
+          <ConsoleTopBar
+            displayName={displayName}
+            sidebarOpen={mobileOpen}
+            onToggleSidebar={() =>
+              window.matchMedia("(min-width: 1024px)").matches
+                ? setCollapsed((c) => !c)
+                : setMobileOpen(!mobileOpen)
+            }
+            refreshMode={isAdmin ? "page" : "chart"}
+          />
           <main
             className={cn(
               "aichart-scroll flex min-h-0 flex-1 flex-col",
@@ -496,6 +505,7 @@ export function AppConsoleShell({
           </main>
         </div>
       </div>
+      </ConsoleOverlaysProvider>
     </ShellMenuProvider>
   );
 }

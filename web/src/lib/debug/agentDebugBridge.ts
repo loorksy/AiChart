@@ -26,7 +26,9 @@ export interface AgentDebugSnapshot {
   } | null;
   activeChatId: string | null;
   locale: string;
-  mobilePane: string;
+  /** Chart sheet state below `xl`, and the pane layout from `xl` up. */
+  chartSheetOpen: boolean;
+  desktopLayout: string;
   voiceStatus: string;
   lastFinalResult: {
     decision: string;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Cpu } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
+import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { cn } from "@/lib/utils";
 
 interface ModelOption {
@@ -37,7 +38,7 @@ export function AgentModelPicker() {
   const [data, setData] = useState<ModelsResponse | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const boxRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -55,24 +56,6 @@ export function AgentModelPicker() {
       alive = false;
     };
   }, []);
-
-  // Close on outside click / Escape — a dropdown pinned over the chat must not
-  // swallow the next thing the user does.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
 
   const choose = useCallback(async (ref: string | null) => {
     setSaving(true);
@@ -103,35 +86,48 @@ export function AgentModelPicker() {
   }, {});
 
   return (
-    <div ref={boxRef} className="relative mb-0.5 shrink-0" dir={dir}>
+    <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={t("model.picker_title")}
         aria-label={t("model.picker_title")}
         aria-expanded={open}
-        className="flex min-h-8 max-w-[9rem] items-center gap-1 rounded-full px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        data-testid="composer-model"
+        className={cn(
+          "flex min-h-11 max-w-[9rem] shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-medium transition-colors duration-150 ease-out sm:min-h-9",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          open
+            ? "bg-muted text-foreground"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
       >
-        <Cpu className="h-3.5 w-3.5 shrink-0" />
+        <Cpu className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span className="truncate" dir="ltr">
           {activeLabel}
         </span>
-        <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
+        <ChevronDown className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
       </button>
 
-      {open && (
-        <div className="absolute bottom-full z-40 mb-2 max-h-72 w-64 overflow-y-auto rounded-xl border border-border bg-background p-1 shadow-lg end-0">
+      <ComposerPopover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={triggerRef}
+        title={t("model.picker_title")}
+      >
+        <div className="max-h-[min(60vh,20rem)] overflow-y-auto p-1">
           <button
             type="button"
             disabled={saving}
             onClick={() => void choose(null)}
             className={cn(
-              "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-start text-xs hover:bg-muted",
+              "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-start text-xs transition-colors hover:bg-muted sm:min-h-9",
               !data.selected && "font-semibold",
             )}
           >
             <span>{t("model.platform_default")}</span>
-            {!data.selected && <Check className="h-3.5 w-3.5 shrink-0" />}
+            {!data.selected && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />}
           </button>
           {Object.entries(grouped).map(([provider, models]) => (
             <div key={provider}>
@@ -145,20 +141,22 @@ export function AgentModelPicker() {
                   disabled={saving}
                   onClick={() => void choose(m.ref)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-start text-xs hover:bg-muted",
+                    "flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-start text-xs transition-colors hover:bg-muted sm:min-h-9",
                     data.selected === m.ref && "font-semibold",
                   )}
                 >
                   <span className="truncate" dir="ltr">
                     {m.label}
                   </span>
-                  {data.selected === m.ref && <Check className="h-3.5 w-3.5 shrink-0" />}
+                  {data.selected === m.ref && (
+                    <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  )}
                 </button>
               ))}
             </div>
           ))}
         </div>
-      )}
-    </div>
+      </ComposerPopover>
+    </>
   );
 }

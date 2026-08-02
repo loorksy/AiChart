@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 
 import { SkeletonLine } from "@/components/ui/skeleton";
+import { Button } from "@/components/squareui/button";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -746,4 +748,108 @@ export function useAdminSort<K extends string>(
 /** `asc`/`desc` sign for a comparator, so panels never re-derive it. */
 export function sortSign(dir: SortDir): 1 | -1 {
   return dir === "asc" ? 1 : -1;
+}
+
+/**
+ * A save control that stays with you.
+ *
+ * The keys panel is two dozen fields across four groups; its Save button used to
+ * live past the last of them, so committing one edit near the top meant
+ * scrolling the whole form to reach it and scrolling back to check. Pinned to
+ * the bottom of the scroll area, the button is wherever the edit was — and it
+ * only appears once there is something to save, so a page being read is not also
+ * a page being nagged.
+ */
+export function StickySaveBar({
+  visible,
+  saving,
+  pendingCount,
+  onSave,
+  savingLabel,
+  saveLabel,
+  pendingLabel,
+  children,
+}: {
+  visible: boolean;
+  saving: boolean;
+  pendingCount: number;
+  onSave: () => void;
+  savingLabel: string;
+  saveLabel: string;
+  /** Rendered with the count, e.g. "3 unsaved changes". */
+  pendingLabel: (count: number) => string;
+  /** Optional caveat shown beside the button on wide screens. */
+  children?: React.ReactNode;
+}) {
+  if (!visible) return null;
+  return (
+    <div
+      data-testid="admin-sticky-save"
+      className={cn(
+        "sticky bottom-0 z-raised -mx-1 mt-2 flex flex-wrap items-center gap-3 rounded-[var(--radius-lg)]",
+        "border border-border bg-card/95 px-4 py-3 shadow-lg backdrop-blur",
+        "duration-200 animate-in slide-in-from-bottom-2 fade-in motion-reduce:animate-none",
+      )}
+    >
+      <Button type="button" className="tap-target h-10" onClick={onSave} disabled={saving}>
+        {saving ? <Spinner /> : null}
+        {saving ? savingLabel : saveLabel}
+      </Button>
+      <span className="type-numeric text-xs font-medium text-warning" dir="auto">
+        {pendingLabel(pendingCount)}
+      </span>
+      {children ? (
+        <p className="hidden max-w-md text-xs text-muted-foreground sm:block">{children}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * A card whose body folds away, with the summary staying visible.
+ *
+ * Long configuration surfaces are easier to work through when the groups you are
+ * not editing collapse to one line that still tells you where they stand.
+ */
+export function CollapsibleCard({
+  title,
+  description,
+  summary,
+  defaultOpen = true,
+  children,
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  /** Shown in the header at all times — typically a configured/total count. */
+  summary?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="group elevation-1 min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-card text-card-foreground"
+    >
+      <summary
+        className={cn(
+          "flex cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors duration-150",
+          "hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40",
+          "[&::-webkit-details-marker]:hidden",
+        )}
+      >
+        <ChevronDown
+          aria-hidden
+          className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-foreground">{title}</span>
+          {description ? (
+            <span className="type-caption mt-0.5 block">{description}</span>
+          ) : null}
+        </span>
+        {summary ? <span className="shrink-0">{summary}</span> : null}
+      </summary>
+      <div className="border-t border-border px-4 py-4">{children}</div>
+    </details>
+  );
 }

@@ -129,6 +129,8 @@ export type TvChartHandle = {
   getSelectedUserDrawingId: () => string | undefined;
   /** Apply the agent's validated user-drawing mutations onto the native shapes. */
   applyUserDrawingMutations: (commands: UserDrawingMutationCommand[]) => void;
+  /** Re-request bars from the datafeed without tearing the widget down. */
+  reload: () => void;
   /** Underlying widget (for drawing overlays in later phases). */
   widget: () => IChartingLibraryWidget | null;
 };
@@ -335,6 +337,16 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         /* chart not ready / TV rejected — no-op */
       }
     },
+    reload: () => {
+      // resetData, not a remount: the operator's drawings and the agent's
+      // levels are widget state, and a remount would take both with it.
+      if (!readyRef.current) return;
+      try {
+        widgetRef.current?.activeChart().resetData();
+      } catch {
+        /* widget torn down mid-click */
+      }
+    },
     widget: () => widgetRef.current,
   }));
 
@@ -359,13 +371,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       try {
         await loadTvScript();
         if (cancelled || !window.TradingView?.widget) return;
-
-        // Manual drawing tools are desktop-only: on mobile the left drawing
-        // toolbar is removed entirely (existing drawings still render; the
-        // agent can still draw via chat). Computed once at mount.
-        const isMobile =
-          typeof window !== "undefined" &&
-          window.matchMedia("(max-width: 767px)").matches;
 
         // Capture mode: the server opens this page headlessly to photograph the
         // operator's chart. Toolbars are application chrome, not chart content,
@@ -397,19 +402,23 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             // timeframe, and screenshot controls stay (TV-native).
             "header_indicators",
             "header_compare",
-            // Manual drawing toolbar hidden on mobile only.
-            ...(isMobile ? (["left_toolbar"] as const) : []),
+            // Drawing tools are the agent's job here, not the operator's: levels
+            // arrive from an analysis and get drawn programmatically. The manual
+            // toolbar only ever competed with them for the same canvas, so it is
+            // gone on every viewport rather than just on phones.
+            "left_toolbar",
+            // The timeframe strip along the bottom duplicates the interval
+            // control already in the top bar; one of the two had to go.
+            "timeframes_toolbar",
             ...(isCapture
               ? ([
-                  "left_toolbar",
                   "header_widget",
-                  "timeframes_toolbar",
                   "control_bar",
                   "legend_context_menu",
                 ] as const)
               : []),
           ],
-          enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
+          enabled_features: [],
           overrides: {
             "paneProperties.background": bootTheme === "dark" ? "#050505" : "#f4f5f7",
             "paneProperties.backgroundType": "solid",

@@ -1,7 +1,6 @@
+import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { getAdminPlatformStats, getOrCreateChartLayout, getSettings, listIntents } from "@/lib/store";
-import { getForexConnectionView } from "@/lib/forexConnection";
-import { BridgeOverviewClient } from "@/components/bridge/BridgeOverviewClient";
+import { getOrCreateChartLayout } from "@/lib/store";
 import { SmartChartWorkspace } from "@/components/SmartChartWorkspace";
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { TrialChatWorkspace } from "@/components/subscription/TrialChatWorkspace";
@@ -14,20 +13,11 @@ export default async function ConsoleOverviewPage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
+  // An admin's console is the platform console. This route used to render the
+  // trader bridge for them, which mixed an operator workspace into the admin's
+  // landing page; the admin surfaces all live under ?tab= instead.
   if (user.role === "admin") {
-    const settings = await getSettings(user.id);
-    const forex = await getForexConnectionView(user.id);
-    const pendingIntents = await listIntents(user.id, "pending", 50);
-    return (
-      <BridgeOverviewClient
-        settings={settings}
-        eaConnected={forex.connected}
-        eaOnline={forex.online}
-        pendingIntents={pendingIntents}
-        isAdmin
-        adminStats={await getAdminPlatformStats()}
-      />
-    );
+    redirect("/console/platform?tab=overview");
   }
 
   await initDb();

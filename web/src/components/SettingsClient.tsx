@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, Cable, Moon, Save, SlidersHorizontal, Sparkles, Sun, User } from "lucide-react";
+import { Bell, Cable, Moon, Save, Sparkles, Sun, User } from "lucide-react";
 import { EaConnectCard } from "@/components/settings/EaConnectCard";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
@@ -13,24 +13,30 @@ import { Checkbox } from "@/components/squareui/checkbox";
 import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n";
-import { RISK_PER_TRADE } from "@/lib/productModel";
 import { cn } from "@/lib/utils";
 import type { AdminLimits, EaConnectionMeta, PublicUser, TradingSettings } from "@/lib/types";
 
-type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "trading" | "skills";
+type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "skills";
 
-const TABS = [
+/**
+ * Ordered by how often a trader actually opens each one, not by how the ids
+ * happened to be declared. Risk per Trade is not here: it sizes the next
+ * position, so it belongs in the composer beside the send button, not two
+ * navigations away.
+ */
+export const TABS = [
   { id: "profile", labelKey: "settings.tab.account", icon: User },
+  { id: "alerts", labelKey: "settings.tab.alerts", icon: Bell },
   { id: "appearance", labelKey: "settings.tab.appearance", icon: Sun },
   { id: "integrations", labelKey: "settings.tab.connections", icon: Cable },
-  { id: "alerts", labelKey: "settings.tab.alerts", icon: Bell },
-  { id: "trading", labelKey: "settings.trading.risk_label", icon: SlidersHorizontal },
   { id: "skills", labelKey: "skills.title", icon: Sparkles },
 ] as const satisfies ReadonlyArray<{
   id: TabId;
   labelKey: TranslationKey;
   icon: typeof User;
 }>;
+
+export type SettingsTabId = TabId;
 
 export default function SettingsClient({
   user,
@@ -41,6 +47,9 @@ export default function SettingsClient({
   initialTab,
   embedMode = false,
   visibleTabs,
+  tab: controlledTab,
+  onTabChange,
+  onDirtyChange,
 }: {
   user: PublicUser;
   settings: TradingSettings;
@@ -55,17 +64,38 @@ export default function SettingsClient({
   initialTab?: TabId;
   embedMode?: boolean;
   visibleTabs?: TabId[];
+  /** Controlled tab. When set, the host owns navigation and the pill row hides. */
+  tab?: TabId;
+  onTabChange?: (tab: TabId) => void;
+  /** Fires when local edits diverge from (or return to) what the server holds. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const tabs = visibleTabs ? TABS.filter((item) => visibleTabs.includes(item.id)) : TABS;
-  const [tab, setTab] = useState<TabId>(
+  const [uncontrolledTab, setTab] = useState<TabId>(
     initialTab && tabs.some((item) => item.id === initialTab) ? initialTab : tabs[0]?.id ?? "profile",
   );
+  const tab = controlledTab ?? uncontrolledTab;
   const [settings, setSettings] = useState(initialSettings);
+  const [saved, setSaved] = useState(initialSettings);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const { theme, setTheme } = useTheme();
   const { t, dir } = useLocale();
   void _limits;
+
+  /**
+   * Edits live here until their section's Save button lands them, so switching
+   * tabs must not be what discards them. Reporting dirtiness upward lets a host
+   * (the settings modal) refuse to close on top of unsaved input.
+   */
+  const dirty =
+    Boolean(settings.alerts_enabled) !== Boolean(saved.alerts_enabled) ||
+    Boolean(settings.alert_trades) !== Boolean(saved.alert_trades) ||
+    Boolean(settings.alert_signals) !== Boolean(saved.alert_signals);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function save(patch: Record<string, unknown>) {
     setSaving(true);
@@ -78,7 +108,12 @@ export default function SettingsClient({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? t("settings.save_failed"));
-      if (data.settings) setSettings(data.settings as TradingSettings);
+      if (data.settings) {
+        setSettings(data.settings as TradingSettings);
+        setSaved(data.settings as TradingSettings);
+      } else {
+        setSaved(settings);
+      }
       setMessage(t("settings.saved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("settings.save_failed"));
@@ -89,7 +124,7 @@ export default function SettingsClient({
 
   const content = (
     <div className="space-y-4" dir={dir}>
-      {tabs.length > 1 && (
+      {controlledTab === undefined && tabs.length > 1 && (
         <nav className="flex gap-1.5 overflow-x-auto pb-1" aria-label={t("settings.sections")}>
           {tabs.map((item) => {
             const Icon = item.icon;
@@ -97,7 +132,10 @@ export default function SettingsClient({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setTab(item.id)}
+                onClick={() => {
+                  setTab(item.id);
+                  onTabChange?.(item.id);
+                }}
                 aria-current={tab === item.id ? "true" : undefined}
                 className={cn(
                   "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors focus-ring sm:min-h-9",
@@ -218,45 +256,18 @@ export default function SettingsClient({
             onClick={() => void save({ alerts_enabled: Boolean(settings.alerts_enabled), alert_trades: Boolean(settings.alert_trades), alert_signals: Boolean(settings.alert_signals) })}
           >
             <Save className="h-4 w-4" aria-hidden />
-            {t("settings.alerts.save")}
+            {saving ? t("settings.saving") : t("settings.alerts.save")}
           </Button>
+          {message && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {message}
+            </p>
+          )}
         </Surface>
       )}
 
       {tab === "skills" && <UserSkillsPanel />}
 
-      {tab === "trading" && (
-        <Surface padding="lg" className="space-y-5">
-          <div>
-            <p className="type-overline">
-              {t("settings.trading.only_setting")}
-            </p>
-            <h2 className="mt-1 text-xl font-semibold">Risk per Trade</h2>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              {t("settings.trading.description")}
-            </p>
-          </div>
-          <div className="rounded-[var(--radius)] bg-muted/50 p-4">
-            <div className="mb-4 flex items-end justify-between gap-4">
-              <label htmlFor="risk-per-trade" className="font-medium">
-                {t("settings.trading.risk_label")}
-              </label>
-              <output htmlFor="risk-per-trade" className="text-3xl font-semibold tabular-nums">{settings.per_trade_pct.toFixed(1)}%</output>
-            </div>
-            <input id="risk-per-trade" type="range" min={RISK_PER_TRADE.min} max={RISK_PER_TRADE.max} step={RISK_PER_TRADE.step} value={settings.per_trade_pct} onChange={(event) => setSettings((current) => ({ ...current, per_trade_pct: Number(event.target.value) }))} className="h-11 w-full cursor-pointer accent-foreground" />
-            <div className="flex justify-between text-xs text-muted-foreground"><span>{RISK_PER_TRADE.min}%</span><span>{RISK_PER_TRADE.max}%</span></div>
-          </div>
-          <Button
-            size="xl"
-            disabled={saving}
-            onClick={() => void save({ per_trade_pct: settings.per_trade_pct })}
-          >
-            <Save className="h-4 w-4" aria-hidden />
-            {saving ? t("settings.saving") : t("settings.save")}
-          </Button>
-          {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
-        </Surface>
-      )}
     </div>
   );
 

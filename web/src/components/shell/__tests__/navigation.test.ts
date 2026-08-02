@@ -40,8 +40,11 @@ test("trial nav is limited to console only", () => {
 
 test("admin nav is dedicated and excludes trader destinations", () => {
   const adminHrefs = navForRole("admin").map((i) => i.href);
-  assert.ok(adminHrefs.includes("/console"));
-  assert.ok(adminHrefs.some((h) => h.includes("/console/platform")));
+  // The admin's home is the platform overview, not the trader bridge at /console.
+  assert.ok(!adminHrefs.includes("/console"));
+  assert.ok(adminHrefs.includes("/console/platform?tab=overview"));
+  assert.ok(adminHrefs.every((h) => h.startsWith("/console/platform")));
+  assert.match(read("app/console/page.tsx"), /redirect\("\/console\/platform\?tab=overview"\)/);
   assert.ok(!adminHrefs.includes("/statistics"));
   assert.ok(!adminHrefs.includes("/console/trades"));
   assert.deepEqual(navForRole("admin"), ADMIN_NAV);
@@ -76,13 +79,45 @@ test("shell mounts conversations for traders; admin uses admin nav", () => {
   assert.doesNotMatch(shell, /glass-panel/);
 });
 
-test("floating switcher hosts the mobile menu trigger on chart workspace", () => {
-  const switcher = read("components/workspace/FloatingWorkspaceSwitcher.tsx");
-  assert.match(switcher, /data-testid="mobile-menu-trigger"/);
-  assert.match(switcher, /useShellMenu/);
-  assert.match(switcher, /shell\.open_menu/);
-  const workspace = read("components/SmartChartWorkspace.tsx");
-  assert.doesNotMatch(workspace, /ChartToolbarMenuButton/);
+test("both consoles share one top bar: account, alerts, nav, refresh", () => {
+  const shell = read("components/shell/AppConsoleShell.tsx");
+  assert.match(shell, /<ConsoleTopBar/);
+  assert.doesNotMatch(shell, /needsPageMenu/);
+  // Read past the imports so the order below is the rendered order, not the
+  // import order.
+  const bar = read("components/shell/ConsoleTopBar.tsx").split('data-testid="console-top-bar"')[1]!;
+  // The drawer trigger leads, on the edge the drawer opens from; the rest are
+  // grouped against the far edge with the avatar in the corner.
+  const order = ["mobile-menu-trigger", "ms-auto", "console-refresh", "NotificationCenter", "SidebarProfileMenu"];
+  let cursor = -1;
+  for (const marker of order) {
+    const at = bar.indexOf(marker);
+    assert.ok(at > cursor, marker);
+    cursor = at;
+  }
+  // The admin console had its own header carrying the same three controls.
+  const adminHeader = read("components/admin/chrome/AdminHeader.tsx");
+  assert.doesNotMatch(adminHeader, /ThemeToggle|window\.location\.reload/);
+  assert.doesNotMatch(adminHeader, /sticky/);
+});
+
+test("risk per trade is a composer control, not a settings section", () => {
+  const settings = read("components/SettingsClient.tsx");
+  assert.doesNotMatch(settings, /id: "trading"/);
+  const input = read("components/agent/AgentChatInput.tsx");
+  assert.match(input, /RiskPerTradeControl/);
+  assert.match(input, /AgentModelPicker/);
+  // Both open on the one shared composer surface.
+  const risk = read("components/agent/RiskPerTradeControl.tsx");
+  const model = read("components/agent/AgentModelPicker.tsx");
+  assert.match(risk, /ComposerPopover/);
+  assert.match(model, /ComposerPopover/);
+});
+
+test("billing page reads from the dictionaries, not hardcoded Arabic", () => {
+  const billing = read("components/billing/BillingClient.tsx");
+  assert.match(billing, /useLocale/);
+  assert.doesNotMatch(billing, /[\u0600-\u06FF]/);
 });
 
 test("old /console/chats route redirects to console", () => {
@@ -110,25 +145,60 @@ test("sidebar opens chats via chatConsoleHref", () => {
   assert.match(sidebar, /useSearchParams/);
 });
 
-test("workspace uses floating switcher once; no top tab bar", () => {
+test("workspace shows the chart as a sheet under xl, a pane from xl", () => {
   const workspace = read("components/SmartChartWorkspace.tsx");
-  assert.match(workspace, /import \{ FloatingWorkspaceSwitcher \}/);
-  assert.equal((workspace.match(/<FloatingWorkspaceSwitcher\b/g) ?? []).length, 1);
+  assert.doesNotMatch(workspace, /FloatingWorkspaceSwitcher/);
   assert.doesNotMatch(workspace, /role="tablist"/);
   assert.equal((workspace.match(/<AgentChatSidebar/g) ?? []).length, 0);
+  // One chart node for both regimes: remounting it would drop every drawing.
+  assert.equal((workspace.match(/<TvChart\b/g) ?? []).length, 1);
+  assert.match(workspace, /data-chart-pane/);
+  assert.match(workspace, /bottom-0 z-40/);
+  assert.match(workspace, /useSheetSlot\("chart"\)/);
 });
 
-test("floating switcher supports free drag and composer dock", () => {
-  const switcher = read("components/workspace/FloatingWorkspaceSwitcher.tsx");
-  assert.match(switcher, /data-testid="chart-chat-switcher"/);
-  assert.match(switcher, /defaultSwitcherPosition|loadSwitcherPosition/);
-  assert.match(switcher, /SWITCHER_DRAG_THRESHOLD/);
-  assert.match(switcher, /resolveDockFromPoint|data-switcher-dock/);
-  const helpers = read("lib/layout/workspaceSwitcher.ts");
-  assert.match(helpers, /dir === "rtl" \? "left" : "right"/);
-  assert.match(helpers, /SwitcherDock/);
+test("one overlay at a time across drawer, account sheet and chart sheet", () => {
+  const coordinator = read("components/shell/SheetCoordinator.tsx");
+  assert.match(coordinator, /activeSheet/);
+  const shell = read("components/shell/AppConsoleShell.tsx");
+  assert.match(shell, /useSheetSlot\("sidebarDrawer"\)/);
+  assert.match(shell, /SheetCoordinatorProvider/);
+  const profile = read("components/agent/SidebarProfileMenu.tsx");
+  assert.match(profile, /useSheetSlot\("profileMenu"\)/);
+});
+
+test("language switching lives in one place", () => {
+  const shell = read("components/shell/AppConsoleShell.tsx");
+  // The rail and the drawer both carried their own switcher; the account menu
+  // reached from the top bar is now the only one.
+  assert.doesNotMatch(shell, /LanguageSwitcher/);
+  const profile = read("components/agent/SidebarProfileMenu.tsx");
+  assert.match(profile, /profile\.language/);
+  assert.match(profile, /variant === "topbar"/);
+});
+
+test("settings opens over the workspace instead of navigating away", () => {
+  const profile = read("components/agent/SidebarProfileMenu.tsx");
+  assert.match(profile, /openSettings\(\)/);
+  assert.doesNotMatch(profile, /router\.push\("\/console\/settings"\)/);
+  const modal = read("components/SettingsModal.tsx");
+  assert.match(modal, /@base-ui\/react\/dialog/);
+  assert.match(modal, /settings\.unsaved_title/);
+});
+
+test("collapsed rail brand expands the sidebar and does not navigate", () => {
+  const shell = read("components/shell/AppConsoleShell.tsx");
+  assert.match(shell, /data-testid="sidebar-expand-brand"/);
+  assert.match(shell, /group-focus-visible:opacity-100/);
+});
+
+test("composer stacks the text over its controls and hosts the chart toggle", () => {
   const input = read("components/agent/AgentChatInput.tsx");
-  assert.match(input, /data-switcher-dock="composer"/);
+  assert.match(input, /data-testid="composer-chart-toggle"/);
+  assert.match(input, /aria-pressed=\{chartOpen\}/);
+  // Logical alignment only, so the row mirrors under dir="rtl".
+  assert.match(input, /ms-auto/);
+  assert.doesNotMatch(input, /\bml-auto\b|\bmr-auto\b/);
 });
 
 test("composer has bottom fade; upper chat shadow removed", () => {
@@ -150,7 +220,8 @@ test("profile menu uses opaque portal surface", () => {
   assert.match(menu, /sidebar-profile-popover/);
   assert.match(menu, /backgroundColor: "var\(--background\)"/);
   assert.match(menu, /\/console\/account/);
-  assert.match(menu, /\/console\/settings/);
+  // Settings is an overlay now, not a destination — see the settings test below.
+  assert.match(menu, /openSettings/);
   assert.match(menu, /data-testid="theme-toggle"/);
 });
 

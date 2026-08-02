@@ -12,14 +12,13 @@ import {
 } from "@/components/ui/skeletons/page-skeletons";
 import { cn } from "@/lib/utils";
 import {
-  AdminCard,
-  AdminCardBody,
-  AdminCardHeader,
   AdminPage,
+  CollapsibleCard,
   Field,
   InlineAlert,
   SectionHeader,
   Spinner,
+  StickySaveBar,
 } from "@/components/admin/ui/AdminKit";
 
 type ConfigField = {
@@ -211,33 +210,26 @@ export function AdminKeysPanel() {
           </>
         }
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            className="tap-target"
-            disabled={loading}
-            onClick={() => void load()}
-          >
-            {loading ? <Spinner /> : <RefreshCw className="size-3.5" aria-hidden />}
-            تحديث
-          </Button>
+          <div className="flex items-center gap-3">
+            <span className="type-numeric text-sm text-muted-foreground" dir="ltr">
+              <span className="font-semibold text-foreground">
+                {configuredCount}/{fields.length}
+              </span>{" "}
+              <span dir="rtl">مفتاح مُعدّ</span>
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="tap-target"
+              disabled={loading}
+              onClick={() => void load()}
+            >
+              {loading ? <Spinner /> : <RefreshCw className="size-3.5" aria-hidden />}
+              تحديث
+            </Button>
+          </div>
         }
       />
-
-      <AdminCard>
-        <AdminCardBody className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          <span className="text-muted-foreground">الحالة:</span>
-          <span className="type-numeric font-semibold text-foreground" dir="ltr">
-            {configuredCount}/{fields.length}
-          </span>
-          <span className="text-muted-foreground">مفتاح مُعدّ</span>
-          {pendingCount > 0 && (
-            <span className="ms-auto text-xs text-warning">
-              {pendingCount} تعديل غير محفوظ
-            </span>
-          )}
-        </AdminCardBody>
-      </AdminCard>
 
       {GROUPS.map((group) => {
         const groupFields =
@@ -246,10 +238,29 @@ export function AdminKeysPanel() {
             : fields.filter((f) => f.group === group.id);
         if (!groupFields.length && group.id !== "ai") return null;
         if (group.id === "ai" && !apiKeyField) return null;
+        const groupConfigured = groupFields.filter((f) => f.configured).length;
         return (
-          <AdminCard key={group.id}>
-            <AdminCardHeader title={group.title} description={group.description} />
-            <AdminCardBody className="space-y-5">
+          <CollapsibleCard
+            key={group.id}
+            title={group.title}
+            description={group.description}
+            summary={
+              groupFields.length ? (
+                <span
+                  className={cn(
+                    "type-numeric rounded-full px-2 py-0.5 text-[11px] font-medium",
+                    groupConfigured === groupFields.length
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                      : "bg-secondary text-muted-foreground",
+                  )}
+                  dir="ltr"
+                >
+                  {groupConfigured}/{groupFields.length}
+                </span>
+              ) : null
+            }
+          >
+            <div className="space-y-5">
               {group.id === "ai" && apiKeyField && (
                 <>
                   <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
@@ -378,8 +389,8 @@ export function AdminKeysPanel() {
                   setDraftValue={setDraftValue}
                 />
               ))}
-            </AdminCardBody>
-          </AdminCard>
+            </div>
+          </CollapsibleCard>
         );
       })}
 
@@ -387,21 +398,18 @@ export function AdminKeysPanel() {
         <InlineAlert tone={msg.type === "ok" ? "ok" : "error"}>{msg.text}</InlineAlert>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-border bg-muted/20 px-4 py-3">
-        <Button
-          type="button"
-          className="tap-target h-10"
-          onClick={() => void save()}
-          disabled={saving}
-        >
-          {saving ? <Spinner /> : null}
-          {saving ? "جارٍ الحفظ…" : "حفظ المفاتيح"}
-        </Button>
-        <p className="max-w-md text-xs text-muted-foreground">
-          تحذير: تغيير <span dir="ltr">ENCRYPTION_KEY</span> بعد ربط حسابات
-          MetaTrader يمنع فك تشفير المفاتيح القديمة. غيّره فقط عند بداية التشغيل.
-        </p>
-      </div>
+      <StickySaveBar
+        visible={pendingCount > 0}
+        saving={saving}
+        pendingCount={pendingCount}
+        onSave={() => void save()}
+        savingLabel="جارٍ الحفظ…"
+        saveLabel="حفظ المفاتيح"
+        pendingLabel={(n) => `${n} تعديل غير محفوظ`}
+      >
+        تحذير: تغيير <span dir="ltr">ENCRYPTION_KEY</span> بعد ربط حسابات
+        MetaTrader يمنع فك تشفير المفاتيح القديمة.
+      </StickySaveBar>
     </AdminPage>
   );
 }

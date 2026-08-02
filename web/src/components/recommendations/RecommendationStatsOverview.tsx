@@ -32,7 +32,7 @@ export function RecommendationStatsOverview({ stats }: { stats: RecommendationSt
   return (
     <div
       data-testid="stats-summary-grid"
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
+      className="grid grid-cols-2 gap-3 xl:grid-cols-4"
     >
       <Tile label={t("stats.total")} value={String(stats.total)} />
       <Tile label={t("stats.active")} value={String(stats.active)} tone="text-[var(--info)]" />
