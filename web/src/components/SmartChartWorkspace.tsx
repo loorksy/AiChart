@@ -622,6 +622,22 @@ function SmartChartWorkspaceInner({
     }
   }, [chatEnabled, chat.ready, urlChatId, chat.activeChatId, chat.selectChat]);
 
+  /**
+   * Escape lowers the sheet. It is a CSS-positioned pane rather than a dialog
+   * primitive, so nothing gave it that for free — and with the sheet covering
+   * the composer, a keyboard user had no way out but the mouse.
+   */
+  useEffect(() => {
+    if (!chartSheetOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setChartSheetOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [chartSheetOpen, setChartSheetOpen]);
+
   // The top bar's refresh control, for traders: reload the candles, not the page.
   useEffect(() => {
     const reload = () => chartRef.current?.reload();
