@@ -109,6 +109,10 @@ export const ar: Record<TranslationKey, string> = {
   "data_source.oanda_hint": "تغذية المنصة الخاصة — متاحة دائماً ومجاناً.",
   "data_source.needs_link": "اربط حساب MetaTrader عبر المنصة لاستخدامه.",
   "data_source.needs_ea": "ثبّت Expert Advisor على طرفيتك لاستخدامه.",
+  "data_source.short.auto": "تلقائي",
+  "data_source.short.metaapi": "الحساب السحابي",
+  "data_source.short.ea": "طرفيتي",
+  "data_source.short.oanda": "المنصة",
 
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
   "composer.more": "خيارات إضافية",

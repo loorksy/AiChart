@@ -6,6 +6,7 @@ import { Lock, Search, X } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 import { PairFlags } from "@/components/agent/CurrencyFlag";
+import { DataSourceMenuButton } from "@/components/agent/DataSourceChoice";
 import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
@@ -81,6 +82,8 @@ export function SymbolPickerSheet({
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<InstrumentRow[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
+  /** Bumped when the operator switches source, to re-ask for the catalogue. */
+  const [sourceVersion, setSourceVersion] = useState(0);
   const [loading, setLoading] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
   const panelRef = useRef<HTMLDivElement>(null);
@@ -120,7 +123,7 @@ export function SymbolPickerSheet({
       // Debounced: one request per pause in typing, not one per keystroke.
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [open, query]);
+  }, [open, query, sourceVersion]);
 
   // --- Quote loading -------------------------------------------------------
   // Cards ask for their own quote when they scroll into view; the asks are
@@ -172,8 +175,15 @@ export function SymbolPickerSheet({
     [drain],
   );
 
-  // A new result set is a new set of symbols; forget what was in flight for the
-  // old one rather than merging two catalogues' worth of quotes.
+  // A new result set is a new set of symbols — and a new SOURCE is new prices
+  // for the same ones. Either way, forget what was in flight rather than
+  // merging two markets' quotes into one grid.
+  useEffect(() => {
+    askedFor.current.clear();
+    pending.current = [];
+    setQuotes({});
+  }, [sourceVersion]);
+
   useEffect(() => {
     if (!open) {
       askedFor.current.clear();
@@ -308,18 +318,29 @@ export function SymbolPickerSheet({
           </button>
         </div>
 
-        <div className="shrink-0 px-4 pb-3 pt-2">
-          <div className="flex items-center gap-2 rounded-full border border-border bg-muted/40 px-3">
-            <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("symbol.picker.search")}
-              aria-label={t("symbol.picker.search")}
-              data-testid="symbol-picker-search"
-              className="min-h-11 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground sm:min-h-10"
-              dir="ltr"
+        {/* Positioned above the grid so the source menu opens OVER the cards
+            rather than behind them. */}
+        <div className="relative z-20 shrink-0 px-4 pb-3 pt-2">
+          <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-muted/40 px-3">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("symbol.picker.search")}
+                aria-label={t("symbol.picker.search")}
+                data-testid="symbol-picker-search"
+                className="min-h-11 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground sm:min-h-10"
+                dir="ltr"
+              />
+            </div>
+            {/* The market these pairs come from, beside the box that searches
+                them: switching it changes this very list, so the control and
+                its effect are in one place. */}
+            <DataSourceMenuButton
+              enabled={open}
+              onChange={() => setSourceVersion((v) => v + 1)}
             />
           </div>
         </div>

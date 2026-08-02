@@ -6,7 +6,6 @@ import { useLocale } from "@/hooks/useLocale";
 import { useTradeMode } from "@/hooks/useTradeMode";
 import { ComposerPopover } from "@/components/agent/ComposerPopover";
 import { ModelChoiceList, useAgentModels } from "@/components/agent/AgentModelPicker";
-import { DataSourceChoice } from "@/components/agent/DataSourceChoice";
 import { cn } from "@/lib/utils";
 
 const OPTION_CLASS =
@@ -100,17 +99,11 @@ export function ComposerMoreMenu() {
             </section>
           )}
 
-          {/* Where the charts are read from — always present, because every
-              account has at least the platform feed to choose. */}
-          <div className={cn(models.available && "mt-2 border-t border-border pt-1")}>
-            <DataSourceChoice enabled={open} />
-          </div>
-
           {showExecution && (
             <section
               aria-label={t("trade_mode.title")}
               data-testid="composer-execution-mode"
-              className="mt-2 border-t border-border pt-1"
+              className={cn(models.available && "mt-2 border-t border-border pt-1")}
             >
               <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-[11px] font-semibold text-foreground">
                 <Bot className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
@@ -176,6 +169,14 @@ export function ComposerMoreMenu() {
 
               {error && <p className="px-2.5 pb-2 text-[11px] text-destructive">{error}</p>}
             </section>
+          )}
+
+          {/* Never an empty box: a console with no provider key and no broker
+              connection is told why there is nothing to set here. */}
+          {!models.available && !showExecution && (
+            <p className="px-2.5 py-3 text-[11px] leading-relaxed text-muted-foreground">
+              {t("composer.more_empty")}
+            </p>
           )}
 
         </div>

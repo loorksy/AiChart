@@ -110,6 +110,10 @@ export const en = {
   "data_source.oanda_hint": "The platform's own feed — always available, free.",
   "data_source.needs_link": "Link a MetaTrader account through the platform to use it.",
   "data_source.needs_ea": "Install the Expert Advisor on your terminal to use it.",
+  "data_source.short.auto": "Automatic",
+  "data_source.short.metaapi": "Cloud account",
+  "data_source.short.ea": "My terminal",
+  "data_source.short.oanda": "Platform",
 
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",
