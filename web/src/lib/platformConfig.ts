@@ -5,7 +5,7 @@ export interface ConfigFieldMeta {
   key: string;
   label: string;
   labelEn: string;
-  group: "core" | "ai" | "telegram" | "ops";
+  group: "core" | "ai" | "markets" | "telegram" | "ops";
   secret: boolean;
   /** Store plaintext in DB (bootstrap keys used to encrypt others) */
   plainStorage: boolean;
@@ -85,6 +85,37 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "claude-opus-5",
   },
   {
+    // Voice transcription. `gemini.ts` tells the operator to add it "from the
+    // platform panel" — a panel that had no field for it.
+    key: "GEMINI_API_KEY",
+    label: "مفتاح Gemini (تفريغ الصوت)",
+    labelEn: "GEMINI_API_KEY",
+    group: "ai",
+    secret: true,
+    plainStorage: false,
+    placeholder: "AIza…",
+  },
+  {
+    // Both quick-model keys are optional: llm.ts falls back to the deep model
+    // when they are blank, so an empty field changes nothing.
+    key: "AI_QUICK_MODEL",
+    label: "نموذج OpenAI السريع (اختياري)",
+    labelEn: "AI_QUICK_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "اتركه فارغاً لاستخدام النموذج الأساسي",
+  },
+  {
+    key: "ANTHROPIC_QUICK_MODEL",
+    label: "نموذج Claude السريع (اختياري)",
+    labelEn: "ANTHROPIC_QUICK_MODEL",
+    group: "ai",
+    secret: false,
+    plainStorage: false,
+    placeholder: "اتركه فارغاً لاستخدام النموذج الأساسي",
+  },
+  {
     key: "VOICE_RESPONSES_ENABLED",
     label: "تفعيل الردود الصوتية (OpenAI TTS)",
     labelEn: "VOICE_RESPONSES_ENABLED",
@@ -118,12 +149,68 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     secret: true,
     plainStorage: false,
   },
+  /*
+   * Market data and brokers. Every key below is read through getPlatformValue,
+   * and several user-facing errors say "add it from the platform panel" — but
+   * none of them had a field here, and savePlatformConfig's allow-list drops
+   * any key it does not know, so even a hand-crafted POST could not set them.
+   * The panel could not configure the pipes the platform runs on.
+   */
+  {
+    key: "OANDA_API_TOKEN",
+    label: "توكن OANDA",
+    labelEn: "OANDA_API_TOKEN",
+    group: "markets",
+    secret: true,
+    plainStorage: false,
+    placeholder: "من OANDA ← Manage API Access",
+  },
+  {
+    key: "OANDA_ACCOUNT_ID",
+    label: "رقم حساب OANDA",
+    labelEn: "OANDA_ACCOUNT_ID",
+    group: "markets",
+    secret: false,
+    plainStorage: false,
+    placeholder: "101-001-1234567-001",
+  },
+  {
+    // practice | live — the DATA environment only. It has no say over where
+    // orders go; executionKillSwitch deliberately stopped reading it.
+    key: "OANDA_ENV",
+    label: "بيئة بيانات OANDA",
+    labelEn: "OANDA_ENV",
+    group: "markets",
+    secret: false,
+    plainStorage: false,
+    placeholder: "practice أو live — الافتراضي practice",
+  },
+  {
+    key: "METAAPI_TOKEN",
+    label: "مفتاح MetaApi",
+    labelEn: "METAAPI_TOKEN",
+    group: "markets",
+    secret: true,
+    plainStorage: false,
+    placeholder: "من app.metaapi.cloud ← API tokens",
+  },
+  {
+    // Optional; MetaApi picks a region itself when this is blank. Not a secret,
+    // which is why the schema migration marks it plain=1.
+    key: "METAAPI_REGION",
+    label: "منطقة MetaApi (اختياري)",
+    labelEn: "METAAPI_REGION",
+    group: "markets",
+    secret: false,
+    plainStorage: false,
+    placeholder: "new-york — اتركه فارغاً للاختيار التلقائي",
+  },
   {
     // V2-B: MetaApi linking UX (wizard, presence deploy, backfill).
     key: "METAAPI_UX_ENABLED",
     label: "تفعيل ربط MT5 السحابي (MetaApi)",
     labelEn: "METAAPI_UX_ENABLED",
-    group: "ops",
+    group: "markets",
     secret: false,
     plainStorage: false,
     type: "toggle",
@@ -133,7 +220,7 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     key: "METAAPI_HOURLY_USD",
     label: "تكلفة ساعة النشر في MetaApi (دولار)",
     labelEn: "METAAPI_HOURLY_USD",
-    group: "ops",
+    group: "markets",
     secret: false,
     plainStorage: false,
     placeholder: "0.02",
