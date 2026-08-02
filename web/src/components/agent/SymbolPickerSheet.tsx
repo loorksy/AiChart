@@ -15,6 +15,7 @@ import {
   sparklineGeometry,
   type PairQuote,
 } from "@/lib/markets/pairQuote";
+import { CardGridSkeleton } from "@/components/ui/skeletons/page-skeletons";
 import { cn } from "@/lib/utils";
 
 interface InstrumentRow {
@@ -349,6 +350,10 @@ export function SymbolPickerSheet({
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
           aria-busy={loading}
         >
+          {/* First paint of a catalogue — or of a different market after a
+              source switch — is the grid's own shape, not an empty box that
+              jumps into a grid when the list lands. */}
+          {loading && rows.length === 0 && <CardGridSkeleton count={8} />}
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
             {rows.slice(0, visible).map((row) => (
               <PairCard

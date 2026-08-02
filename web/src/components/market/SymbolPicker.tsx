@@ -1,5 +1,6 @@
 "use client";
 
+import { SkeletonBlock } from "@/components/ui/skeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Loader2, Search, TrendingDown, TrendingUp, X } from "lucide-react";
@@ -123,9 +124,12 @@ export function SymbolPicker({
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          جارٍ التحميل…
+        // The grid that is coming, in its own shape — a spinner says only
+        // "wait", a skeleton says what you are waiting for.
+        <div className="grid grid-cols-2 gap-1.5 p-2 lg:grid-cols-6" aria-busy="true">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonBlock key={i} className="h-12 w-full rounded-lg" />
+          ))}
         </div>
       )}
 

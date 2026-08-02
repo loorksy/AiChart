@@ -1,5 +1,6 @@
 "use client";
 
+import { SidebarListSkeleton } from "@/components/ui/skeletons/page-skeletons";
 import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageSquare, MessageSquarePlus, Search, Trash2 } from "lucide-react";
@@ -56,6 +57,8 @@ function SidebarConversationsInner({
   const searchParams = useSearchParams();
   const urlChatId = parseChatIdFromSearchParams(searchParams);
   const [sessions, setSessions] = useState<AgentChatSession[]>([]);
+  /** Distinguishes "still loading" from "genuinely no conversations". */
+  const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
@@ -69,7 +72,8 @@ function SidebarConversationsInner({
         if (!data) return;
         startTransition(() => setSessions(data.sessions ?? []));
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -182,7 +186,11 @@ function SidebarConversationsInner({
         aria-label={t("nav.chats")}
         className="aichart-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"
       >
-        {filtered.length === 0 ? (
+        {!loaded && filtered.length === 0 ? (
+          // The list's own shape while it loads — "no conversations yet" is a
+          // statement of fact and must not be shown before it is one.
+          <SidebarListSkeleton rows={5} />
+        ) : filtered.length === 0 ? (
           <p className="px-2 py-4 text-center text-[11px] text-muted-foreground">
             {t("nav.no_chats")}
           </p>
