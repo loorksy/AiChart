@@ -1,10 +1,47 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, TrendingDown, TrendingUp } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { smartTipKey } from "@/lib/recommendations/smartTip";
-import type { TrackedRecommendation } from "@/lib/recommendations/types";
+import type {
+  TrackedRecommendation,
+  TrackedRecommendationStatus,
+} from "@/lib/recommendations/types";
+import { cn } from "@/lib/utils";
+
+type ExecutionState = NonNullable<TrackedRecommendation["executionState"]>;
+
+/**
+ * How each execution state reads. The plan's own three layers are kept apart:
+ * the direction never changes, the plan type says how it is entered, and this
+ * says whether it can be entered right now.
+ */
+const EXEC_TONE: Record<ExecutionState, string> = {
+  valid_now: "bg-buy/15 text-buy",
+  awaiting_activation: "bg-warning/15 text-warning",
+  // Amber, not the loss red: an operational blocker is not a verdict on the
+  // market, and colouring it like a stop-out would say the idea failed.
+  blocked: "bg-warning/10 text-warning/90",
+  expired: "bg-muted text-muted-foreground",
+  invalidated: "bg-muted text-muted-foreground",
+};
+
+/** Records written before `executionState` existed still have to render. */
+function deriveExecutionState(rec: TrackedRecommendation): ExecutionState {
+  if (rec.executionState) return rec.executionState;
+  const terminal: Partial<Record<TrackedRecommendationStatus, ExecutionState>> = {
+    expired: "expired",
+    invalidated: "invalidated",
+    cancelled: "blocked",
+  };
+  const mapped = terminal[rec.status];
+  if (mapped) return mapped;
+  const waiting =
+    rec.activationClass === "conditional" ||
+    (rec.status === "pending_entry" && rec.entryType !== "market");
+  return waiting ? "awaiting_activation" : "valid_now";
+}
 
 function fmtTime(ms?: number): string {
   if (!ms) return "";
@@ -59,9 +96,11 @@ export function RecommendationTrackerCard({
 }) {
   const { t, dir } = useLocale();
 
-  const waiting =
-    rec.activationClass === "conditional" ||
-    (rec.status === "pending_entry" && rec.entryType !== "market");
+  const execState = deriveExecutionState(rec);
+  const waiting = execState === "awaiting_activation";
+  // Nothing further will happen to these; the card says so by receding rather
+  // than by dropping the numbers, which are still worth reading afterwards.
+  const settled = execState === "expired" || execState === "invalidated";
   const entered =
     !waiting && (Boolean(rec.triggeredAt) || rec.entryType === "market");
   const slReached = rec.outcome === "loss" || Boolean(rec.slHitAt);
@@ -92,34 +131,65 @@ export function RecommendationTrackerCard({
     })),
   ];
 
-  const dirColor = rec.direction === "buy" ? "text-buy" : "text-sell";
+  const isBuy = rec.direction === "buy";
+  const DirIcon = isBuy ? TrendingUp : TrendingDown;
 
   return (
     <div
       dir={dir}
-      className={`rounded-xl border border-border bg-card p-3 text-sm shadow-none ${
-        waiting ? "border-warning/35 bg-warning/[0.04]" : ""
-      }`}
+      data-execution-state={execState}
+      className={cn(
+        "rounded-xl border border-border bg-card p-3 text-sm shadow-none",
+        waiting && "border-warning/35 bg-warning/[0.04]",
+        settled && "opacity-65",
+      )}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className="font-semibold text-foreground" dir="ltr">
           {rec.symbol} · {rec.interval}
         </span>
-        <span className={`text-xs font-bold ${dirColor}`}>
-          {rec.direction === "buy" ? t("decision.buy") : t("decision.sell")}
+        {/*
+          Direction carries an arrow as well as its colour and its word: red and
+          green alone are the one cue a red/green-blind reader cannot use, and
+          this is the line that says which way to trade.
+        */}
+        <span
+          className={cn(
+            "flex items-center gap-1 text-xs font-bold",
+            settled ? "text-muted-foreground" : isBuy ? "text-buy" : "text-sell",
+          )}
+        >
+          <DirIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          {isBuy ? t("decision.buy") : t("decision.sell")}
           {rec.setupType ? ` · ${rec.setupType}` : ""}
         </span>
       </div>
 
       <div
-        className={`mb-3 rounded-lg px-2 py-1.5 text-xs font-semibold ${
-          waiting
-            ? "bg-warning/15 text-warning"
-            : "bg-buy/15 text-buy"
-        }`}
+        className={cn(
+          "mb-2 rounded-lg px-2 py-1.5 text-xs font-semibold",
+          EXEC_TONE[execState],
+        )}
       >
-        {waiting ? t("rec.lifecycle.waiting_entry") : t("rec.lifecycle.active_now")}
+        {t(`rec.exec_state.${execState}`)}
       </div>
+
+      {/* Plan type and the strength of the backing, stated as the grades the
+          brain actually reports — never a manufactured confidence percentage. */}
+      {(rec.planType || rec.statisticalSupport) && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {rec.planType && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {t("rec.detail.plan_type")}: {t(`rec.plan_type.${rec.planType}`)}
+            </span>
+          )}
+          {rec.statisticalSupport && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {t("rec.support.label")}: {t(`rec.support.${rec.statisticalSupport}`)}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Lifecycle bar */}
       <div className="mb-3 flex items-stretch justify-between gap-1">

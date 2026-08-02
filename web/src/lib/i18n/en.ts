@@ -565,6 +565,11 @@ export const en = {
   // Active recommendations panel
   "rec.active.empty": "No active recommendations.",
   "rec.active.error": "Could not load active recommendations.",
+  "rec.support.label": "Statistical support",
+  "rec.support.strong": "Strong",
+  "rec.support.moderate": "Moderate",
+  "rec.support.weak": "Weak",
+  "rec.support.unavailable": "Not available",
   "rec.detail.plan_type": "Plan type",
   "rec.plan_type.immediate": "Immediate",
   "rec.plan_type.anticipatory": "Anticipatory",
@@ -610,6 +615,11 @@ export const en = {
   "nav.journal": "Journal",
   "nav.billing": "Billing",
   "nav.support": "Support",
+  "journal.filter.all": "All",
+  "journal.filter.wins": "Wins",
+  "journal.filter.losses": "Losses",
+  "journal.filter.none": "No entries match this filter.",
+  "journal.filter.label": "Filter entries",
   "journal.title": "Performance Journal",
   "journal.subtitle":
     "What you followed, what you skipped, and how closely executed trades matched their plans. Descriptive only — it never gates a recommendation.",

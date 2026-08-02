@@ -564,6 +564,11 @@ export const ar: Record<TranslationKey, string> = {
   // Active recommendations panel
   "rec.active.empty": "لا توصيات نشطة.",
   "rec.active.error": "تعذّر تحميل التوصيات النشطة.",
+  "rec.support.label": "الدعم الإحصائي",
+  "rec.support.strong": "قوي",
+  "rec.support.moderate": "معتدل",
+  "rec.support.weak": "ضعيف",
+  "rec.support.unavailable": "غير متاح",
   "rec.detail.plan_type": "نوع الخطة",
   "rec.plan_type.immediate": "فوري",
   "rec.plan_type.anticipatory": "استباقي",
@@ -609,6 +614,11 @@ export const ar: Record<TranslationKey, string> = {
   "nav.journal": "سجل الأداء",
   "nav.billing": "الفوترة والرصيد",
   "nav.support": "الدعم",
+  "journal.filter.all": "الكل",
+  "journal.filter.wins": "رابحة",
+  "journal.filter.losses": "خاسرة",
+  "journal.filter.none": "لا مدخلات تطابق هذه التصفية.",
+  "journal.filter.label": "تصفية المدخلات",
   "journal.title": "سجل الأداء",
   "journal.subtitle":
     "ما اتبعته وما تجاهلته، ومدى تطابق الصفقات المنفَّذة مع خططها. وصفي فقط — لا يؤثر على أي توصية.",

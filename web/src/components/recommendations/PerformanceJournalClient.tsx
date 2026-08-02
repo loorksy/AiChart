@@ -93,6 +93,14 @@ export function PerformanceJournalClient() {
   } | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  /**
+   * The list runs to fifty rows across every symbol and every outcome. Narrowing
+   * it is how you answer the questions the page exists for — "how did I do on
+   * gold", "show me only the losses" — so the controls live above the table
+   * rather than leaving you to scan it.
+   */
+  const [symbolFilter, setSymbolFilter] = useState("all");
+  const [outcomeFilter, setOutcomeFilter] = useState<"all" | "wins" | "losses">("all");
 
   useEffect(() => {
     let alive = true;
@@ -198,6 +206,17 @@ export function PerformanceJournalClient() {
       wins: list.filter((e) => isWin(e.outcome)).length,
     };
   });
+
+  const symbols = Array.from(new Set(entries.map((e) => e.symbol))).sort();
+  const visibleEntries = entries.filter((e) => {
+    if (symbolFilter !== "all" && e.symbol !== symbolFilter) return false;
+    if (outcomeFilter === "wins") return isWin(e.outcome);
+    if (outcomeFilter === "losses") return e.outcome === "loss";
+    return true;
+  });
+
+  const selectClass =
+    "min-h-11 rounded-lg border border-border bg-background px-2 text-[12px] text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9";
 
   const outcomeLabel = (outcome: string): string => {
     switch (outcome) {
@@ -360,9 +379,43 @@ export function PerformanceJournalClient() {
 
           {/* Entry list. */}
           <Surface padding="sm">
-            <p className="text-[12px] font-semibold text-foreground">
-              {t("journal.entries.title")} ({entries.length})
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[12px] font-semibold text-foreground">
+                {t("journal.entries.title")} ({visibleEntries.length}
+                {visibleEntries.length !== entries.length ? `/${entries.length}` : ""})
+              </p>
+              <div
+                role="group"
+                aria-label={t("journal.filter.label")}
+                className="ms-auto flex flex-wrap items-center gap-2"
+              >
+                <select
+                  aria-label={t("trades.col.symbol")}
+                  className={selectClass}
+                  value={symbolFilter}
+                  onChange={(e) => setSymbolFilter(e.target.value)}
+                >
+                  <option value="all">{t("trades.col.symbol")}: {t("journal.filter.all")}</option>
+                  {symbols.map((sym) => (
+                    <option key={sym} value={sym}>
+                      {sym}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label={t("journal.outcome")}
+                  className={selectClass}
+                  value={outcomeFilter}
+                  onChange={(e) =>
+                    setOutcomeFilter(e.target.value as "all" | "wins" | "losses")
+                  }
+                >
+                  <option value="all">{t("journal.outcome")}: {t("journal.filter.all")}</option>
+                  <option value="wins">{t("journal.filter.wins")}</option>
+                  <option value="losses">{t("journal.filter.losses")}</option>
+                </select>
+              </div>
+            </div>
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[36rem] text-[12px]">
                 <thead>
@@ -378,7 +431,7 @@ export function PerformanceJournalClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.slice(0, 50).map((entry) => (
+                  {visibleEntries.slice(0, 50).map((entry) => (
                     <tr key={entry.recommendationId} className="border-b border-border/40">
                       <td className="py-1.5">
                         <span
@@ -416,6 +469,11 @@ export function PerformanceJournalClient() {
                 </tbody>
               </table>
             </div>
+            {visibleEntries.length === 0 ? (
+              <p className="mt-3 text-center text-[12px] text-muted-foreground">
+                {t("journal.filter.none")}
+              </p>
+            ) : null}
             {entries.length > 50 ? (
               <p className="mt-2 text-[11px] text-muted-foreground" dir="ltr">
                 1–50 / {entries.length}
