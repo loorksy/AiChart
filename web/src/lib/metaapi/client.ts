@@ -24,6 +24,8 @@ export type MetaApiRpcConnection = {
     balance: number;
     equity: number;
     currency?: string;
+    /** MT5's ACCOUNT_TRADE_MODE — the only signal that says demo vs real. */
+    type?: string;
   }>;
   getSymbols(): Promise<string[]>;
   createMarketBuyOrder(
@@ -40,6 +42,22 @@ export type MetaApiRpcConnection = {
     takeProfit?: number,
     options?: { comment?: string },
   ): Promise<{ orderId?: string | number; positionId?: string | number }>;
+  /**
+   * Trade management on an open position. Present on MetaApi's RPC connection;
+   * declared here so the agent can move a stop on a cloud account instead of
+   * queueing a command at an EA the account never had.
+   */
+  modifyPosition(
+    positionId: string,
+    stopLoss?: number,
+    takeProfit?: number,
+  ): Promise<Record<string, unknown>>;
+  closePositionPartially(
+    positionId: string,
+    volume: number,
+    options?: { comment?: string },
+  ): Promise<Record<string, unknown>>;
+  cancelOrder(orderId: string): Promise<Record<string, unknown>>;
 };
 
 const rpcCache = new Map<number, Promise<MetaApiRpcConnection>>();

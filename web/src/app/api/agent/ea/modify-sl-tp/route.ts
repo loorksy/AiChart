@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { queueEaModifySlTp } from "@/lib/eaTradeCommands";
-import { waitForEaCommandAck } from "@/lib/eaCommandWait";
+import { modifyStopsForUser } from "@/lib/brokers/tradeManagementDispatch";
 
 const schema = z.object({
   ticket: z.number().int().positive(),
@@ -11,26 +10,19 @@ const schema = z.object({
   take_profit: z.number().positive().optional(),
 });
 
-/** Bridge: modify SL/TP on open MT5 position. */
+/** Bridge: modify SL/TP on an open position, on whichever backend holds it. */
 export async function POST(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);
     const body = schema.parse(await req.json());
 
-    const command = await queueEaModifySlTp(
-      userId,
-      body.ticket,
-      body.stop_loss,
-      body.take_profit,
+    return NextResponse.json(
+      await modifyStopsForUser(userId, {
+        ticket: body.ticket,
+        stopLoss: body.stop_loss,
+        takeProfit: body.take_profit,
+      }),
     );
-    const ack = await waitForEaCommandAck(command.id);
-
-    return NextResponse.json({
-      ok: ack.ok,
-      command_id: command.id,
-      result: ack.result,
-      reason: ack.reason,
-    });
   } catch (e) {
     return handleError(e);
   }

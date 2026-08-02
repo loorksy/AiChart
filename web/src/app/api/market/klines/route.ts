@@ -15,7 +15,7 @@ import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 import { normalizeInterval } from "@/lib/intervals";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import { FEATURES } from "@/lib/agent/featureFlags";
 import { serveWarehouseOhlc } from "@/lib/candles/warehouseOhlc";
 import type { MarketType } from "@/lib/markets/types";
@@ -60,11 +60,13 @@ export async function GET(req: NextRequest) {
     const toMs =
       toRaw != null && toRaw !== "" ? Number(toRaw) : undefined;
 
-    // Second data source: the user's own broker via the EA bridge (MT5).
-    if (
-      !isOandaDataOnly() &&
-      req.nextUrl.searchParams.get("source") === "ea"
-    ) {
+    // Second data source: the user's own broker via the EA bridge (MT5). Only
+    // an EA-backed account can answer — a MetaApi or MT5-bridge connection has
+    // no terminal listening for `get_ohlc`, so it reads the platform's candles
+    // rather than waiting out the command timeout on every bar request.
+    const requestedSource = req.nextUrl.searchParams.get("source");
+    const dataSource = await resolveMarketDataSource(user?.id ?? null, requestedSource);
+    if (requestedSource === "ea" && dataSource.source === "ea") {
       if (!user) {
         return NextResponse.json(
           { error: "بيانات الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },

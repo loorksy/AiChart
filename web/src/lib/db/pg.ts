@@ -379,6 +379,7 @@ const SCHEMA = `
     balance             DOUBLE PRECISION NOT NULL DEFAULT 0,
     equity              DOUBLE PRECISION NOT NULL DEFAULT 0,
     currency            TEXT,
+    account_trade_mode  TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -745,6 +746,10 @@ const SCHEMA = `
   -- honest reading of rows written before scoping existed. The unique moment
   -- index is what makes re-analysis inside one candle an UPDATE, not a
   -- duplicate comparison row.
+  -- The broker's own account type for cloud/bridge connections; without it the
+  -- live-money dual-enablement gate cannot tell a real MetaApi account from a
+  -- demo one.
+  ALTER TABLE mt_accounts ADD COLUMN IF NOT EXISTS account_trade_mode TEXT;
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS parity_key TEXT;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOptionalUser, checkRateLimit, clientKey, handleError } from "@/lib/api";
 import { fetchOhlc } from "@/lib/ohlc/fetchOhlc";
 import { changePct, downsample, type PairQuote } from "@/lib/markets/pairQuote";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 
 /** One card's worth of history: ~a day of hourly closes. */
 const WINDOW_INTERVAL = "1h";
@@ -67,8 +68,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ quotes: [] });
     }
 
-    const source: "oanda" | "ea" =
-      req.nextUrl.searchParams.get("source") === "ea" && user ? "ea" : "oanda";
+    // Same rule as the catalogue: only an EA-backed account can be quoted from
+    // the trader's own terminal; every other connection reads platform data.
+    const { source } = await resolveMarketDataSource(
+      user?.id ?? null,
+      req.nextUrl.searchParams.get("source"),
+    );
 
     const quotes: PairQuote[] = [];
     for (let i = 0; i < symbols.length; i += CONCURRENCY) {
@@ -80,7 +85,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ quotes, interval: WINDOW_INTERVAL });
+    return NextResponse.json({ quotes, interval: WINDOW_INTERVAL, source });
   } catch (e) {
     return handleError(e);
   }

@@ -482,6 +482,8 @@ export interface MtAccount {
   balance: number;
   equity: number;
   currency: string | null;
+  /** ACCOUNT_TRADE_MODE reported by the broker: demo, real or contest. */
+  account_trade_mode: string | null;
   updated_at: string;
   created_at: string;
 }
@@ -497,6 +499,8 @@ export interface MtAccountMeta {
   currency: string | null;
   state: string;
   connection_status: string | null;
+  /** The broker's reported account type (demo/real/contest), when known. */
+  account_trade_mode: string | null;
   online: boolean;
   updated_at: string;
 }

@@ -383,6 +383,7 @@ const SCHEMA = `
     balance             REAL NOT NULL DEFAULT 0,
     equity              REAL NOT NULL DEFAULT 0,
     currency            TEXT,
+    account_trade_mode  TEXT,
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -1580,6 +1581,17 @@ function migrate(db: Database.Database) {
     if (currentSettingsColumns.some((column) => column.name === name)) {
       db.exec(`ALTER TABLE trading_settings DROP COLUMN ${name}`);
     }
+  }
+
+  // The broker's own account type for cloud/bridge connections. Without it the
+  // live-money dual-enablement gate could not tell a real MetaApi account from
+  // a demo one, and defaulted to "not live" — the exact protection failure the
+  // EA path was fixed for.
+  const currentMtColumns = db
+    .prepare("PRAGMA table_info(mt_accounts)")
+    .all() as { name: string }[];
+  if (!currentMtColumns.some((column) => column.name === "account_trade_mode")) {
+    db.exec("ALTER TABLE mt_accounts ADD COLUMN account_trade_mode TEXT");
   }
 
   const currentAdminColumns = db

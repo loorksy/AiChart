@@ -260,13 +260,16 @@ export async function saveMtAccount(
     balance?: number;
     equity?: number;
     currency?: string | null;
+    /** The broker's own account type, as reported by MetaApi / the MT5 bridge. */
+    accountTradeMode?: string | null;
   },
 ) {
   await execute(
     `INSERT INTO mt_accounts (
        user_id, platform, server, login, password_enc, metaapi_account_id,
-       region, state, connection_status, balance, equity, currency, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       region, state, connection_status, balance, equity, currency,
+       account_trade_mode, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(user_id) DO UPDATE SET
        platform = excluded.platform,
        server = excluded.server,
@@ -279,6 +282,9 @@ export async function saveMtAccount(
        balance = excluded.balance,
        equity = excluded.equity,
        currency = excluded.currency,
+       -- A NULL from a status poll that could not read the type must not erase
+       -- a type already established at connect time.
+       account_trade_mode = COALESCE(excluded.account_trade_mode, mt_accounts.account_trade_mode),
        updated_at = datetime('now')`,
     [
       userId,
@@ -293,6 +299,7 @@ export async function saveMtAccount(
       data.balance ?? 0,
       data.equity ?? 0,
       data.currency ?? null,
+      data.accountTradeMode ?? null,
     ],
   );
 }
@@ -323,6 +330,7 @@ export async function getMtAccountMeta(
     currency: row.currency,
     state: row.state,
     connection_status: row.connection_status,
+    account_trade_mode: row.account_trade_mode ?? null,
     online,
     updated_at: row.updated_at,
   };
@@ -347,6 +355,7 @@ export async function updateMtAccountStatus(
     balance?: number;
     equity?: number;
     currency?: string | null;
+    accountTradeMode?: string | null;
   },
 ) {
   const fields: string[] = [];
@@ -370,6 +379,12 @@ export async function updateMtAccountStatus(
   if (patch.currency !== undefined) {
     fields.push("currency = ?");
     params.push(patch.currency);
+  }
+  // Only written when the broker actually reported a type — a poll that could
+  // not read it leaves the established value alone rather than blanking it.
+  if (patch.accountTradeMode != null) {
+    fields.push("account_trade_mode = ?");
+    params.push(patch.accountTradeMode);
   }
   if (fields.length === 0) return;
   fields.push("updated_at = datetime('now')");

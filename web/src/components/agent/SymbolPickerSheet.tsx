@@ -20,6 +20,12 @@ interface InstrumentRow {
   description?: string;
 }
 
+interface InstrumentsResponse {
+  instruments?: InstrumentRow[];
+  /** What the server actually served — "ea" only when a terminal answered. */
+  source?: string;
+}
+
 /** Matches the server's per-request cap, so one flush is one request. */
 const QUOTE_BATCH = 12;
 /**
@@ -65,7 +71,12 @@ export function SymbolPickerSheet({
   const [loading, setLoading] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
   const panelRef = useRef<HTMLDivElement>(null);
-  const source: "oanda" | "ea" = brokerConnected ? "ea" : "oanda";
+  // What the client ASKS for. Whether a broker can actually answer is the
+  // server's call — an account connected through MetaApi or the MT5 bridge is
+  // online but has no EA to serve its symbol list — so the served source comes
+  // back in the response and is what gets displayed and passed on.
+  const requested: "oanda" | "ea" = brokerConnected ? "ea" : "oanda";
+  const [served, setServed] = useState<"oanda" | "ea">("oanda");
 
   useEffect(() => setMounted(true), []);
 
@@ -83,25 +94,27 @@ export function SymbolPickerSheet({
     const handle = window.setTimeout(() => {
       setLoading(true);
       const params = new URLSearchParams({ wrapped: "1" });
-      if (source === "ea") params.set("source", "ea");
+      if (requested === "ea") params.set("source", "ea");
       if (query.trim()) params.set("q", query.trim());
       fetch(`/api/instruments?${params}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
-        .then((d: { instruments?: InstrumentRow[] } | null) => {
+        .then((d: InstrumentsResponse | null) => {
           setRows(d?.instruments ?? []);
           setVisible(PAGE_SIZE);
+          // "ea_all" / "market_watch" both mean a terminal answered.
+          setServed(d?.source && d.source !== "oanda" ? "ea" : "oanda");
         })
         .catch(() => setRows([]))
         .finally(() => setLoading(false));
       // Debounced: one request per pause in typing, not one per keystroke.
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [open, query, source]);
+  }, [open, query, requested]);
 
   // --- Quote loading -------------------------------------------------------
   // Cards ask for their own quote when they scroll into view; the asks are
   // batched so a screenful of cards costs one request.
-  const requested = useRef<Set<string>>(new Set());
+  const askedFor = useRef<Set<string>>(new Set());
   const pending = useRef<string[]>([]);
   const flushTimer = useRef<number | null>(null);
 
@@ -116,7 +129,7 @@ export function SymbolPickerSheet({
       while (pending.current.length > 0) {
         const batch = pending.current.splice(0, QUOTE_BATCH);
         const params = new URLSearchParams({ symbols: batch.join(",") });
-        if (source === "ea") params.set("source", "ea");
+        if (served === "ea") params.set("source", "ea");
         try {
           const res = await fetch(`/api/instruments/quotes?${params}`, { cache: "no-store" });
           if (!res.ok) continue;
@@ -134,12 +147,12 @@ export function SymbolPickerSheet({
     } finally {
       draining.current = false;
     }
-  }, [source]);
+  }, [served]);
 
   const enqueue = useCallback(
     (sym: string) => {
-      if (requested.current.has(sym)) return;
-      requested.current.add(sym);
+      if (askedFor.current.has(sym)) return;
+      askedFor.current.add(sym);
       pending.current.push(sym);
       if (flushTimer.current == null) {
         flushTimer.current = window.setTimeout(() => void drain(), 120);
@@ -152,7 +165,7 @@ export function SymbolPickerSheet({
   // old one rather than merging two catalogues' worth of quotes.
   useEffect(() => {
     if (!open) {
-      requested.current.clear();
+      askedFor.current.clear();
       pending.current = [];
       if (flushTimer.current != null) {
         window.clearTimeout(flushTimer.current);
@@ -218,8 +231,8 @@ export function SymbolPickerSheet({
   }, [open, onClose]);
 
   const sourceNote = useMemo(
-    () => (source === "ea" ? t("symbol.picker.source_broker") : t("symbol.picker.source_platform")),
-    [source, t],
+    () => (served === "ea" ? t("symbol.picker.source_broker") : t("symbol.picker.source_platform")),
+    [served, t],
   );
 
   if (!mounted || !open) return null;
@@ -312,7 +325,11 @@ export function SymbolPickerSheet({
                 selected={row.symbol === symbol}
                 register={registerCard}
                 onPick={() => {
-                  onSelect(row.symbol, source);
+                  // The chart must read candles from the same place this list
+                  // came from; passing the requested source instead of the
+                  // served one is how a MetaApi account ends up asking an EA
+                  // that isn't there for its bars.
+                  onSelect(row.symbol, served);
                   onClose();
                 }}
               />

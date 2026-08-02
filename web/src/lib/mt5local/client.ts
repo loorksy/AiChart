@@ -99,6 +99,12 @@ export interface Mt5Account {
   currency: string;
   leverage: number;
   name: string;
+  /**
+   * ACCOUNT_TRADE_MODE from the terminal, when the bridge reports it. Optional
+   * because older bridges do not send it — an unknown type is left unknown
+   * rather than guessed.
+   */
+  trade_mode?: string;
 }
 
 export interface Mt5BridgeHealth {

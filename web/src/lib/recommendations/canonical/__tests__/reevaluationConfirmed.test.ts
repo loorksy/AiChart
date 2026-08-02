@@ -109,13 +109,19 @@ describe("the event is wired, informational, and non-terminal", () => {
   });
 
   it("has an operator-facing label", async () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "src/lib/recommendations/lifecycleNotifier.ts"),
-      "utf8",
-    );
-    assert.ok(
-      /case "reevaluation_confirmed":/.test(source),
+    // Asserted through the function the notifier actually calls, not by
+    // grepping the notifier's own source: the labels live in telegramCards,
+    // which is where `lifecycleEventLabel` is defined and imported from, so the
+    // old file-scan reported a missing label for one that was always there.
+    const { lifecycleEventEmoji, lifecycleEventLabel } = await import("@/lib/telegramCards");
+    const label = lifecycleEventLabel("reevaluation_confirmed");
+    assert.notEqual(
+      label,
+      "تحديث",
       "the notifier must label the event rather than falling through to the generic 'تحديث'",
     );
+    assert.ok(label.includes("إعادة التقييم"), `unexpected label: ${label}`);
+    // And its own mark, so a card of mixed events is readable at a glance.
+    assert.notEqual(lifecycleEventEmoji("reevaluation_confirmed"), "🔔");
   });
 });

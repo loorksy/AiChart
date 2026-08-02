@@ -3,7 +3,7 @@ import { getOptionalUser, checkRateLimit, clientKey } from "@/lib/api";
 import { rejectNonForexMarket } from "@/lib/marketPolicy";
 import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import {
   fetchOandaInstruments,
   oandaAccountId,
@@ -55,10 +55,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (
-      !isOandaDataOnly() &&
-      request.nextUrl.searchParams.get("source") === "ea"
-    ) {
+    // Broker symbols only where a broker can actually answer. A MetaApi or
+    // MT5-bridge account is connected but has no EA to serve `list_symbols`,
+    // so it falls through to the platform universe instead of waiting out
+    // fifteen command timeouts and returning nothing.
+    const requestedSource = request.nextUrl.searchParams.get("source");
+    const decision = await resolveMarketDataSource(user?.id ?? null, requestedSource);
+    if (requestedSource === "ea" && decision.source === "ea") {
       if (!user) {
         return NextResponse.json(
           { error: "أزواج الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },
@@ -112,7 +115,14 @@ export async function GET(request: NextRequest) {
 
     const wrapped = request.nextUrl.searchParams.get("wrapped") === "1";
     if (wrapped) {
-      return NextResponse.json({ instruments, total, source: "oanda" });
+      // `sourceReason` lets the client say *why* it is looking at platform
+      // pairs rather than its broker's, instead of guessing.
+      return NextResponse.json({
+        instruments,
+        total,
+        source: "oanda",
+        sourceReason: decision.reason,
+      });
     }
     return NextResponse.json(instruments);
   } catch (e) {
