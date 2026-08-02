@@ -182,8 +182,6 @@ function SmartChartWorkspaceInner({
     setChartSheetOpen(false);
   }, [applyDesktopLayout, setChartSheetOpen]);
 
-  const rootRef = useRef<HTMLDivElement>(null);
-
   const market: MarketType = "forex";
 
   const [symbol, setSymbol] = useState(() => {
@@ -690,49 +688,28 @@ function SmartChartWorkspaceInner({
   });
 
   /**
-   * The chart sheet stops above the composer rather than covering it, so a
-   * message can still be sent with the chart up. The composer auto-grows, so its
-   * height is measured rather than assumed and published as `--composer-h`.
-   * Re-runs per conversation because the panel remounts with its chat id.
-   */
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root || !chatEnabled) return;
-    const composer = root.querySelector<HTMLElement>('[data-testid="chat-composer"]');
-    if (!composer) return;
-    const observer = new ResizeObserver(([entry]) => {
-      // Border box, not content box: the composer's padding (and the iOS safe
-      // area inside it) is part of what the sheet has to clear.
-      const height =
-        entry?.borderBoxSize?.[0]?.blockSize ?? composer.getBoundingClientRect().height;
-      if (height) root.style.setProperty("--composer-h", `${Math.ceil(height)}px`);
-    });
-    observer.observe(composer);
-    return () => observer.disconnect();
-  }, [chatEnabled, chat.activeChatId]);
-
-  /**
    * The chart node is never unmounted — symbol and interval changes are pushed
    * into the live widget, and a remount would throw away every drawing on it. So
    * every layout below is expressed as CSS on one persistent element.
    *
-   * Under `xl` it is a sheet: fixed, anchored above the composer so a message
-   * can still be sent while the chart is up, and translated fully off-screen
-   * when closed. From `xl` it snaps back into the flex row as an ordinary pane.
+   * Under `xl` it is a sheet: fixed to the bottom edge, over the composer
+   * rather than above it — while the chart is up it owns the screen, and the
+   * composer sits behind it instead of floating on top of the candles. Closed,
+   * it is translated fully off-screen. From `xl` it snaps back into the flex row
+   * as an ordinary pane.
    */
   const chartVisibleDesktop = !chatEnabled || desktopLayout !== "chatOnly";
   const chartPaneClass = cn(
     "relative flex min-h-0 flex-col overflow-hidden bg-background",
     chatEnabled && [
-      "fixed inset-x-0 bottom-[var(--composer-h,4.5rem)] z-40 h-[85dvh]",
-      "max-h-[calc(100dvh-var(--composer-h,4.5rem)-1rem)]",
+      "fixed inset-x-0 bottom-0 z-40 h-[88dvh]",
       "rounded-t-[var(--radius-lg)] border-t border-border shadow-2xl",
       "transition-transform duration-300 ease-out motion-reduce:transition-none",
       chartSheetOpen
         ? "translate-y-0"
         : "invisible translate-y-full",
       // From xl it is a pane again: no fixed positioning, no transform.
-      "xl:visible xl:static xl:inset-auto xl:z-auto xl:h-auto xl:max-h-none xl:flex-1",
+      "xl:visible xl:static xl:inset-auto xl:z-auto xl:h-auto xl:flex-1",
       "xl:translate-y-0 xl:rounded-none xl:border-t-0 xl:shadow-none xl:transition-none",
       chartVisibleDesktop ? "xl:flex" : "xl:hidden",
     ],
@@ -826,7 +803,7 @@ function SmartChartWorkspaceInner({
   };
 
   return (
-    <div ref={rootRef} className="relative flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       {!guest && !agentReady && (
         <p className="pointer-events-none absolute inset-x-0 top-12 z-40 mx-auto w-fit max-w-[90%] rounded-md border border-warning/30 bg-warning/90 px-3 py-1 text-xs text-black shadow">
           {t("layout.agent_unavailable")}

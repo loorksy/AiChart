@@ -119,7 +119,7 @@ test("workspace shows the chart as a sheet under xl, a pane from xl", () => {
   // One chart node for both regimes: remounting it would drop every drawing.
   assert.equal((workspace.match(/<TvChart\b/g) ?? []).length, 1);
   assert.match(workspace, /data-chart-pane/);
-  assert.match(workspace, /--composer-h/);
+  assert.match(workspace, /bottom-0 z-40/);
   assert.match(workspace, /useSheetSlot\("chart"\)/);
 });
 
