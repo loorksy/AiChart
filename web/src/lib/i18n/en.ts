@@ -91,6 +91,11 @@ export const en = {
   "model.picker_title": "Choose the AI model",
   "model.platform_default": "Default (platform setting)",
 
+  // Connected broker account
+  "account.type.demo": "Demo account",
+  "account.type.live": "Live account",
+  "account.type.unknown": "Account type unknown",
+
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",
   "composer.more_title": "Conversation options",

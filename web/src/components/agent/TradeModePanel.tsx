@@ -23,6 +23,7 @@ import {
   type AutoExecutionStage,
   type TradeModeState,
 } from "@/hooks/useTradeMode";
+import { AccountTypeBadge } from "@/components/agent/AccountTypeBadge";
 import { cn } from "@/lib/utils";
 
 const BADGE_CLASSES: Record<TradeModeState, string> = {
@@ -87,6 +88,10 @@ export function TradeModePanel() {
           <Bot className="h-3.5 w-3.5" aria-hidden />
           {t(`trade_mode.mode.${mode}`)}
         </span>
+
+        {/* Demo or real — the single most consequential fact about the
+            account the numbers on this screen belong to. */}
+        {view.connected && <AccountTypeBadge type={view.account_type ?? null} />}
 
         <span
           className={cn(

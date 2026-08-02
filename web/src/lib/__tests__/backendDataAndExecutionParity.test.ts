@@ -151,6 +151,50 @@ describe("execution environment", () => {
     assert.equal(await getResolvedExecutionEnv(cloudUser, "forex"), "demo");
   });
 
+  it("accepts every connected account and only labels which it is", async () => {
+    const store = await import("@/lib/store");
+    const { getExecutionEnvSnapshot } = await import("@/lib/executionEnv");
+    const { isRealMoneyExecution } = await import("@/lib/executionKillSwitch");
+    const { checkExecutionHalt } = await import("@/lib/executionKillSwitch");
+
+    // A trader's first month is usually a demo account. It is a first-class
+    // connection, not a lesser one: nothing may refuse it for being demo.
+    await store.updateMtAccountStatus(cloudUser, {
+      accountTradeMode: "ACCOUNT_TRADE_MODE_DEMO",
+    });
+    const demo = await getExecutionEnvSnapshot(cloudUser);
+    assert.equal(demo.forex.connected, true);
+    assert.equal(demo.forex.resolved, "demo");
+    assert.equal(isRealMoneyExecution(demo.forex.resolved), false);
+    // No kill switch, no live flags — a demo account sails through the halt
+    // check, which is the gate that decides whether an order may be sent.
+    assert.equal(
+      checkExecutionHalt({
+        killSwitchFlag: null,
+        isLive: isRealMoneyExecution(demo.forex.resolved),
+      }).halted,
+      false,
+    );
+
+    // The same account switched to real money is accepted too — it is simply
+    // labelled as real, and real money is what asks for the second enable.
+    await store.updateMtAccountStatus(cloudUser, {
+      accountTradeMode: "ACCOUNT_TRADE_MODE_REAL",
+    });
+    const live = await getExecutionEnvSnapshot(cloudUser);
+    assert.equal(live.forex.connected, true);
+    assert.equal(live.forex.resolved, "live");
+    assert.equal(
+      checkExecutionHalt({
+        killSwitchFlag: null,
+        isLive: true,
+        liveEnvEnabled: true,
+        liveRuntimeEnabled: true,
+      }).halted,
+      false,
+    );
+  });
+
   it("leaves the EA path reading the EA connection", async () => {
     const db = await import("@/lib/db");
     await db.execute(

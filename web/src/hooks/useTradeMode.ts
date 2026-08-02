@@ -13,6 +13,8 @@ export interface TradeModeView {
   downgraded_reason: "connection_lost" | "phase_disabled" | null;
   updated_at: number | null;
   auto_execution_stage?: AutoExecutionStage;
+  /** The broker's own verdict: a demo account, a real one, or unreported. */
+  account_type?: "demo" | "live" | null;
 }
 
 export type ApplyModeResult = { ok: true } | { ok: false; error?: string };

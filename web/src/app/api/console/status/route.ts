@@ -46,6 +46,12 @@ export async function GET() {
 
         online: forex.online,
 
+        // Demo or real, so the UI can label the connected account everywhere.
+
+        accountType: executionEnv.forex.resolved,
+
+        backend: forex.backend,
+
       },
 
       telegram: {

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Link2, Loader2 } from "lucide-react";
 import { SurfaceCard } from "@/components/ui/shell";
 import { Button } from "@/components/squareui/button";
+import { AccountTypeBadge, toAccountType } from "@/components/agent/AccountTypeBadge";
 import type { MtAccountMeta } from "@/lib/types";
 import type { MtPlatform } from "@/lib/markets/types";
 
@@ -100,7 +101,11 @@ export function MtConnectCard({
 
       {account && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-secondary px-4 py-3">
-          <div className="text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <AccountTypeBadge
+              type={toAccountType(account.account_trade_mode)}
+              size="md"
+            />
             <span
               className={account.online ? "text-buy" : "text-warning"}
             >

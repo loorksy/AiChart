@@ -5,6 +5,7 @@ import { ApiError, handleError, requirePlatformAccess } from "@/lib/api";
 import { dispatchAlert } from "@/lib/alerts";
 import { getTradeMode, setTradeMode } from "@/lib/agent/tradeMode";
 import { autoExecutionStage } from "@/lib/recommendations/autoExecutor";
+import { getExecutionEnvSnapshot } from "@/lib/executionEnv";
 
 /**
  * One shared state for the platform and MCP means both surfaces must be able
@@ -45,7 +46,10 @@ const patchSchema = z
 export async function GET(req: NextRequest) {
   try {
     const userId = await resolveOperatorUserId(req);
-    const view = await getTradeMode(userId);
+    const [view, env] = await Promise.all([
+      getTradeMode(userId),
+      getExecutionEnvSnapshot(userId),
+    ]);
     return NextResponse.json({
       mode: view.mode,
       stored_mode: view.storedMode,
@@ -57,6 +61,10 @@ export async function GET(req: NextRequest) {
       // live). Shown so an operator who arms `auto` while the stage is off
       // learns that no live order will be sent — instead of discovering it.
       auto_execution_stage: autoExecutionStage(),
+      // Demo or real, from whichever backend the account is connected through.
+      // Every connected account is accepted; which one it is must be visible,
+      // because the same plan means very different things on each.
+      account_type: env.forex.resolved,
       modes: {
         auto: "ينفّذ الوكيل توصياته عند تحقق شروطها دون طلب موافقة لكل صفقة.",
         advisory: "تحليل وتوصيات ومتابعة وإشعارات، بدون أي تنفيذ.",

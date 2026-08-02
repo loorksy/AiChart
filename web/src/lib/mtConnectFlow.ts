@@ -18,6 +18,7 @@ import {
   updateMtAccountStatus,
 } from "./store";
 import { getEaConnectionMeta } from "./eaStore";
+import { mtModeToExecution, normalizeMtTradeMode } from "./executionEnv";
 import type { MtPlatform } from "./markets/types";
 
 export const mtConnectSchema = z.object({
@@ -238,6 +239,7 @@ export async function getMtConnectionStatus(userId: number) {
       balance: meta.balance,
       equity: meta.equity,
       currency: meta.account_currency,
+      account_type: mtModeToExecution(normalizeMtTradeMode(meta.account_trade_mode)),
       last_heartbeat_at: meta.last_heartbeat_at,
       missedHeartbeats: meta.missedHeartbeats,
       settledOnlineSeconds: meta.settledOnlineSeconds,
@@ -278,6 +280,9 @@ export async function getMtConnectionStatus(userId: number) {
         balance: status.account?.balance ?? meta.balance,
         equity: status.account?.equity ?? meta.equity,
         currency: status.account?.currency ?? meta.currency,
+        account_type: mtModeToExecution(
+          normalizeMtTradeMode(status.account?.trade_mode ?? meta.account_trade_mode),
+        ),
       };
     } catch (e) {
       return {
@@ -360,6 +365,9 @@ export async function getMtConnectionStatus(userId: number) {
       balance,
       equity,
       currency,
+      account_type: mtModeToExecution(
+        normalizeMtTradeMode(tradeMode ?? meta.account_trade_mode),
+      ),
       state: account.state,
       connectionStatus: account.connectionStatus,
       updated_at: new Date().toISOString(),
@@ -375,6 +383,7 @@ export async function getMtConnectionStatus(userId: number) {
       balance: meta.balance,
       equity: meta.equity,
       currency: meta.currency,
+      account_type: mtModeToExecution(normalizeMtTradeMode(meta.account_trade_mode)),
       state: meta.state,
       connectionStatus: meta.connection_status,
       updated_at: meta.updated_at,

@@ -90,6 +90,11 @@ export const ar: Record<TranslationKey, string> = {
   "model.picker_title": "اختر نموذج الذكاء الاصطناعي",
   "model.platform_default": "الافتراضي (إعداد المنصة)",
 
+  // حساب الوسيط المربوط
+  "account.type.demo": "حساب تجريبي",
+  "account.type.live": "حساب حقيقي",
+  "account.type.unknown": "نوع الحساب غير معروف",
+
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
   "composer.more": "خيارات إضافية",
   "composer.more_title": "خيارات المحادثة",
