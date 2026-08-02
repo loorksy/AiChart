@@ -67,6 +67,8 @@ describe("critical reference scenario integrations", () => {
     );
     const result = await orchestrator.runUnifiedChartAgent({
       surface: "platform",
+        // A frozen fixture is a replay of a past window, not today's tape.
+        timeBasis: "replay" as const,
       purpose: "analysis",
       userMessage: "Analyze EURUSD with no usable candles.",
       chartContext: {

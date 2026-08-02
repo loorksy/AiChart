@@ -110,6 +110,8 @@ export const en = {
   "symbol.picker.none": "No pair matches this search.",
   "symbol.card.to": "to",
   "symbol.card.window": "1 day",
+  "symbol.card.closed": "Closed",
+  "symbol.card.closed_note": "This pair's market is closed — it cannot be analysed now.",
   "skills.title": "My skills",
   "skills.description": "Upload your own SKILL.md files to tailor analysis and recommendations to your strategy. Skills are advisory only — they grant no permissions and never override risk or execution controls.",
   "skills.empty": "No custom skills yet — add your first one below.",

@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Search, X } from "lucide-react";
+import { Lock, Search, X } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 import { PairFlags } from "@/components/agent/CurrencyFlag";
 import { forexBaseQuote } from "@/lib/markets/forexInstruments";
+import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import {
   formatChangePct,
   formatPairPrice,
@@ -18,6 +19,8 @@ import { cn } from "@/lib/utils";
 interface InstrumentRow {
   symbol: string;
   description?: string;
+  /** Server's verdict on the session; the card falls back to its own clock. */
+  market_open?: boolean;
 }
 
 interface InstrumentsResponse {
@@ -363,6 +366,10 @@ function PairCard({
 }) {
   const { t } = useLocale();
   const { base, quote: quoteCcy } = forexBaseQuote(row.symbol);
+  // The server states the session; the local calendar is the fallback so a card
+  // is never mislabelled while its quote is still in flight.
+  const session = getSessionStatus(row.symbol);
+  const isOpen = row.market_open ?? session.isOpen;
   const pct = quote?.changePct ?? null;
   const up = pct != null && pct >= 0;
   const spark = quote ? sparklineGeometry(quote.series, SPARK_W, SPARK_H) : null;
@@ -376,11 +383,16 @@ function PairCard({
       data-testid="pair-card"
       data-selected={selected ? "true" : "false"}
       onClick={onPick}
+      data-market-open={isOpen ? "true" : "false"}
       className={cn(
         "group flex flex-col gap-2 overflow-hidden rounded-[var(--radius-lg)] border p-3 text-start transition-colors duration-150",
         selected
           ? "border-foreground/70 bg-muted/60"
           : "border-border bg-card hover:border-foreground/30 hover:bg-muted/40",
+        // A closed pair reads as closed at a glance: the whole card fades to
+        // grey. It is still selectable — history is legitimate to look at —
+        // but nothing about it should suggest a live, analysable market.
+        !isOpen && "opacity-55 grayscale",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -405,15 +417,26 @@ function PairCard({
       </div>
 
       <div className="flex items-end justify-between gap-2">
-        <span
-          className={cn(
-            "text-xs font-semibold tabular-nums",
-            pct == null ? "text-muted-foreground" : up ? "text-buy" : "text-sell",
-          )}
-          dir="ltr"
-        >
-          {formatChangePct(pct)}
-        </span>
+        {isOpen ? (
+          <span
+            className={cn(
+              "text-xs font-semibold tabular-nums",
+              pct == null ? "text-muted-foreground" : up ? "text-buy" : "text-sell",
+            )}
+            dir="ltr"
+          >
+            {formatChangePct(pct)}
+          </span>
+        ) : (
+          <span
+            data-testid="pair-card-closed"
+            title={session.reason}
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+          >
+            <Lock className="h-2.5 w-2.5" aria-hidden />
+            {t("symbol.card.closed")}
+          </span>
+        )}
         {/* Time runs left to right on a chart in every language. */}
         <span className="text-[10px] text-muted-foreground">{t("symbol.card.window")}</span>
       </div>

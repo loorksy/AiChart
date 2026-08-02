@@ -109,6 +109,8 @@ export const ar: Record<TranslationKey, string> = {
   "symbol.picker.none": "لا يوجد زوج يطابق هذا البحث.",
   "symbol.card.to": "إلى",
   "symbol.card.window": "يوم واحد",
+  "symbol.card.closed": "مغلق",
+  "symbol.card.closed_note": "سوق هذا الزوج مغلق — لا يمكن تحليله الآن.",
   "skills.title": "مهاراتي",
   "skills.description": "أضف ملفات SKILL.md خاصة بك لتخصيص أسلوب التحليل والتوصيات حسب استراتيجيتك. المهارات إرشادية فقط — لا تمنح صلاحيات ولا تتجاوز ضوابط المخاطر والتنفيذ.",
   "skills.empty": "لا توجد مهارات مخصّصة بعد — أضف أول مهارة أدناه.",

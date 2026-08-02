@@ -3,6 +3,7 @@ import { getOptionalUser, checkRateLimit, clientKey } from "@/lib/api";
 import { rejectNonForexMarket } from "@/lib/marketPolicy";
 import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { isMarketOpenAt } from "@/lib/markets/tradingCalendar";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
 import {
   fetchOandaInstruments,
@@ -14,6 +15,8 @@ interface Instrument {
   symbol: string;
   base: string;
   quote: string;
+  /** False while the instrument's session is closed — no tape to analyse. */
+  market_open: boolean;
 }
 
 function symbolMatchesQuery(symbol: string, query: string): boolean {
@@ -29,6 +32,7 @@ async function oandaForexInstruments(
 ): Promise<{ instruments: Instrument[]; total: number }> {
   const map = new Map<string, Instrument>();
   const query = q.trim().toUpperCase();
+  const now = Date.now();
   const rows = await fetchOandaInstruments();
   for (const row of rows) {
     if (row.type !== "CURRENCY" && row.type !== "METAL") continue;
@@ -36,7 +40,7 @@ async function oandaForexInstruments(
     if (!symbolMatchesQuery(symbol, query)) continue;
     if (!map.has(symbol)) {
       const { base, quote } = forexBaseQuote(symbol);
-      map.set(symbol, { symbol, base, quote });
+      map.set(symbol, { symbol, base, quote, market_open: isMarketOpenAt(symbol, now) });
     }
   }
   const instruments = Array.from(map.values()).sort((a, b) =>
@@ -90,6 +94,7 @@ export async function GET(request: NextRequest) {
           quote: s.symbol.slice(3, 6),
           digits: s.digits,
           description: s.description,
+          market_open: isMarketOpenAt(s.symbol, Date.now()),
         })),
         total: rows.length,
         source,
