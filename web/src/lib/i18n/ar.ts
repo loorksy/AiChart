@@ -261,6 +261,7 @@ export const ar: Record<TranslationKey, string> = {
   "layout.show_chat": "عرض الشات",
   "layout.show_chart": "عرض الشارت",
   "layout.resize_chat": "تغيير حجم الشات",
+  "layout.close_chart": "إغلاق الشارت",
   "layout.screenshot": "لقطة شاشة",
   "layout.mt_connected": "MT متصل",
   "layout.mt_disconnected": "MT غير متصل",
@@ -310,6 +311,12 @@ export const ar: Record<TranslationKey, string> = {
   "settings.saving": "جارٍ الحفظ…",
   "settings.saved": "تم الحفظ.",
   "settings.save_failed": "تعذّر حفظ الإعدادات.",
+  "settings.load_failed": "تعذّر تحميل الإعدادات.",
+  "settings.retry": "إعادة المحاولة",
+  "settings.unsaved_title": "لديك تغييرات غير محفوظة",
+  "settings.unsaved_body": "إن أغلقت الآن ستفقد ما عدّلته ولم تحفظه.",
+  "settings.unsaved_keep": "الرجوع للتعديل",
+  "settings.unsaved_discard": "تجاهل والخروج",
 
   // Authentication
   "auth.operator_title": "دخول المشغّل",

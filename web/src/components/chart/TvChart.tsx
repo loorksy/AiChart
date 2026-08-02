@@ -360,13 +360,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         await loadTvScript();
         if (cancelled || !window.TradingView?.widget) return;
 
-        // Manual drawing tools are desktop-only: on mobile the left drawing
-        // toolbar is removed entirely (existing drawings still render; the
-        // agent can still draw via chat). Computed once at mount.
-        const isMobile =
-          typeof window !== "undefined" &&
-          window.matchMedia("(max-width: 767px)").matches;
-
         // Capture mode: the server opens this page headlessly to photograph the
         // operator's chart. Toolbars are application chrome, not chart content,
         // so they are stripped — the PNG should be the chart and nothing else.
@@ -397,19 +390,23 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             // timeframe, and screenshot controls stay (TV-native).
             "header_indicators",
             "header_compare",
-            // Manual drawing toolbar hidden on mobile only.
-            ...(isMobile ? (["left_toolbar"] as const) : []),
+            // Drawing tools are the agent's job here, not the operator's: levels
+            // arrive from an analysis and get drawn programmatically. The manual
+            // toolbar only ever competed with them for the same canvas, so it is
+            // gone on every viewport rather than just on phones.
+            "left_toolbar",
+            // The timeframe strip along the bottom duplicates the interval
+            // control already in the top bar; one of the two had to go.
+            "timeframes_toolbar",
             ...(isCapture
               ? ([
-                  "left_toolbar",
                   "header_widget",
-                  "timeframes_toolbar",
                   "control_bar",
                   "legend_context_menu",
                 ] as const)
               : []),
           ],
-          enabled_features: isMobile ? ["hide_left_toolbar_by_default"] : [],
+          enabled_features: [],
           overrides: {
             "paneProperties.background": bootTheme === "dark" ? "#050505" : "#f4f5f7",
             "paneProperties.backgroundType": "solid",

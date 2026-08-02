@@ -8,9 +8,16 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { AiChartLogo } from "@/components/AiChartLogo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { NotificationCenter } from "@/components/agent/NotificationCenter";
-import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
+import {
+  ProfileAccountSheet,
+  SidebarProfileMenu,
+} from "@/components/agent/SidebarProfileMenu";
+import { SettingsModal } from "@/components/SettingsModal";
+import { ConsoleOverlaysProvider } from "@/components/shell/ConsoleOverlays";
+import type { SettingsTabId } from "@/components/SettingsClient";
 import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
+import { SheetCoordinatorProvider, useSheetSlot } from "@/components/shell/SheetCoordinator";
 import {
   ADMIN_NAV,
   navForRole,
@@ -77,29 +84,43 @@ function ActiveMarker() {
  *
  * Trader shell includes conversations; admin shell is admin destinations only.
  */
-export function AppConsoleShell({
-  role,
-  displayName,
-  children,
-  noPadding = false,
-  showConversations,
-}: {
+type AppConsoleShellProps = {
   role: NavRole;
   displayName: string;
   children: React.ReactNode;
   noPadding?: boolean;
   /** Override conversation section (default: traders only). */
   showConversations?: boolean;
-}) {
+};
+
+export function AppConsoleShell(props: AppConsoleShellProps) {
+  // Wraps `children` too: the workspace's chart sheet has to share the single
+  // overlay slot with this shell's nav drawer and profile sheet.
+  return (
+    <SheetCoordinatorProvider>
+      <ConsoleShellBody {...props} />
+    </SheetCoordinatorProvider>
+  );
+}
+
+function ConsoleShellBody({
+  role,
+  displayName,
+  children,
+  noPadding = false,
+  showConversations,
+}: AppConsoleShellProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t, dir, locale } = useLocale();
   const { data: me } = useMe();
   const currentTab = searchParams.get("tab");
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useSheetSlot("sidebarDrawer");
   const [navPath, setNavPath] = useState(pathname);
   const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>("profile");
   const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const isAdmin = role === "admin";
   // Until /api/me resolves, keep non-admin nav conservative (trial-sized).
@@ -113,17 +134,17 @@ export function AppConsoleShell({
   const paidWorkspace = access === "full" || access === "admin";
   const conversationsEnabled =
     showConversations ?? (!isAdmin && paidWorkspace);
-  const showChartMenu =
-    !isAdmin &&
-    paidWorkspace &&
-    (pathname === "/console" || pathname.startsWith("/chart"));
   const workspaceNoPadding =
     noPadding ||
     pathname === "/console" ||
     pathname.startsWith("/chart") ||
     pathname === "/subscribe";
-  /** Chart pages host the menu in the chart toolbar; other pages use a page header. */
-  const needsPageMenu = !showChartMenu;
+  /**
+   * The workspace used to get its hamburger from the floating chart/chat
+   * switcher, which is gone now that the chart is a sheet. Rather than hiding
+   * the drawer trigger inside the chart's own chrome, every console page below
+   * `lg` gets the same toolbar — one place to reach navigation, wherever you are.
+   */
   /**
    * Which admin panel the platform route is showing. An absent or unknown
    * `?tab=` lands on the overview server-side (resolveAdminTab), so the rail has
@@ -186,6 +207,16 @@ export function AppConsoleShell({
       mobileOpen,
     }),
     [mobileOpen, setMobileOpen],
+  );
+
+  const overlaysApi = useMemo(
+    () => ({
+      openSettings: (tab?: SettingsTabId) => {
+        setSettingsTab(tab ?? "profile");
+        setSettingsOpen(true);
+      },
+    }),
+    [setSettingsTab, setSettingsOpen],
   );
 
   const productLink = (item: NavItem, iconOnly: boolean, onNavigate?: () => void) => {
@@ -335,58 +366,71 @@ export function AppConsoleShell({
       )}
     >
       {!collapsed ? (
-        <Link
-          href={brandHref}
-          className={cn(
-            "flex min-w-0 items-center gap-2 overflow-visible rounded-lg",
-            FOCUS_RING,
-          )}
-          data-testid="sidebar-brand"
-        >
-          <AiChartLogo
-            size={36}
-            showName
-            nameClassName="truncate text-[15px] font-semibold tracking-tight"
-          />
-        </Link>
-      ) : (
-        <Link
-          href={brandHref}
-          className={cn(
-            "flex items-center justify-center overflow-visible rounded-lg",
-            FOCUS_RING,
-          )}
-        >
-          <AiChartLogo size={30} />
-        </Link>
-      )}
-      {!collapsed ? (
-        <div className="flex shrink-0 items-center gap-0.5">
-          {/* Alert bell + notification center (Group 9). */}
-          <NotificationCenter />
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
+        <>
+          <Link
+            href={brandHref}
             className={cn(
-              "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
+              "flex min-w-0 items-center gap-2 overflow-visible rounded-lg",
               FOCUS_RING,
             )}
-            aria-label={t("shell.collapse_sidebar")}
+            data-testid="sidebar-brand"
           >
-            <PanelLeftClose className="h-4 w-4 rtl:-scale-x-100" />
-          </button>
-        </div>
+            <AiChartLogo
+              size={36}
+              showName
+              nameClassName="truncate text-[15px] font-semibold tracking-tight"
+            />
+          </Link>
+          <div className="flex shrink-0 items-center gap-0.5">
+            {/* Alert bell + notification center (Group 9). */}
+            <NotificationCenter />
+            <button
+              type="button"
+              onClick={() => setCollapsed((c) => !c)}
+              className={cn(
+                "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
+                FOCUS_RING,
+              )}
+              aria-label={t("shell.collapse_sidebar")}
+            >
+              <PanelLeftClose className="h-4 w-4 rtl:-scale-x-100" />
+            </button>
+          </div>
+        </>
       ) : (
+        /**
+         * Collapsed rail: ONE control, not a brand link sitting next to an
+         * expand button — 60px of rail cannot host both legibly. The mark is
+         * what you see at rest; pointing at it (or tabbing to it) crossfades to
+         * the expand affordance. `focus-visible` mirrors `hover` so the control
+         * is not mouse-only, and it earns a visible ring because the swap costs
+         * it the logo as its resting identity cue.
+         *
+         * Clicking it ALWAYS expands and never navigates: a control that both
+         * navigates and toggles gives one hit target two outcomes the user
+         * cannot tell apart. Home stays reachable from the nav list below, and
+         * the brand is a real link again the moment the rail is expanded.
+         */
         <button
           type="button"
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={() => setCollapsed(false)}
+          data-testid="sidebar-expand-brand"
           className={cn(
-            "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
+            "group relative hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
             FOCUS_RING,
           )}
           aria-label={t("shell.expand_sidebar")}
         >
-          <PanelLeft className="h-4 w-4 rtl:-scale-x-100" />
+          <span
+            aria-hidden
+            className="pointer-events-none flex items-center justify-center opacity-100 transition-opacity duration-200 ease-in-out group-hover:opacity-0 group-focus-visible:opacity-0 motion-reduce:duration-100"
+          >
+            <AiChartLogo size={30} />
+          </span>
+          <PanelLeft
+            aria-hidden
+            className="pointer-events-none absolute h-4 w-4 opacity-0 transition-opacity duration-200 ease-in-out group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:duration-100 rtl:-scale-x-100"
+          />
         </button>
       )}
     </div>
@@ -394,6 +438,7 @@ export function AppConsoleShell({
 
   return (
     <ShellMenuProvider value={menuApi}>
+      <ConsoleOverlaysProvider value={overlaysApi}>
       {/* V2-B: presence beat drives the MetaApi deploy/undeploy cost saver. */}
       <Mt5PresencePing />
       <div
@@ -454,15 +499,31 @@ export function AppConsoleShell({
                 <SidebarConversations onNavigate={() => setMobileOpen(false)} />
               ) : null}
               {!isAdmin && !conversationsEnabled ? <div className="flex-1" /> : null}
-              {languageRow(false)}
-              <SidebarProfileMenu displayName={displayName} />
+              {/*
+                No language row here. The drawer used to show this switcher AND
+                a language submenu inside the account sheet one row below it —
+                two different controls for one setting, stacked. The account
+                sheet keeps it; the drawer footer gives it up.
+              */}
+              <SidebarProfileMenu displayName={displayName} variant="drawer" />
             </aside>
           </div>
         )}
 
+        {/*
+          Mounted by the shell, not by the menus that open them: the drawer that
+          hosts the account trigger is unmounted the moment the account sheet
+          takes the overlay slot, and an overlay cannot outlive its own trigger.
+        */}
+        <ProfileAccountSheet displayName={displayName} />
+        <SettingsModal
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          initialTab={settingsTab}
+        />
+
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-          {needsPageMenu ? (
-            <div
+          <div
               data-testid="page-toolbar-menu"
               className="flex h-14 shrink-0 items-center border-b border-border px-3 lg:hidden"
             >
@@ -482,8 +543,7 @@ export function AppConsoleShell({
               </button>
               {/* Mobile bell: the sidebar (and its bell) is hidden below lg. */}
               <NotificationCenter className="ms-auto" />
-            </div>
-          ) : null}
+          </div>
           <main
             className={cn(
               "aichart-scroll flex min-h-0 flex-1 flex-col",
@@ -496,6 +556,7 @@ export function AppConsoleShell({
           </main>
         </div>
       </div>
+      </ConsoleOverlaysProvider>
     </ShellMenuProvider>
   );
 }

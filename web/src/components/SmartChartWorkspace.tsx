@@ -14,8 +14,9 @@ import {
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
-import { FloatingWorkspaceSwitcher } from "@/components/workspace/FloatingWorkspaceSwitcher";
+import { useSheetSlot } from "@/components/shell/SheetCoordinator";
 import { useConsoleChatUrl } from "@/hooks/useConsoleChatUrl";
 
 function ChartLoading() {
@@ -48,13 +49,15 @@ import { useMe } from "@/hooks/useMe";
 import { useLocale } from "@/hooks/useLocale";
 import { useTheme } from "@/components/ThemeProvider";
 import {
-  DEFAULT_MOBILE_PANE,
+  DEFAULT_DESKTOP_LAYOUT,
   MAX_CHAT_WIDTH,
   MIN_CHAT_WIDTH,
   clampChatWidth,
   loadChatWidth,
+  loadDesktopLayout,
   saveChatWidth,
-  type MobilePane,
+  saveDesktopLayout,
+  type DesktopLayout,
 } from "@/lib/layout/chatLayout";
 import { useChartAnalysis, type ChartHydrateSnapshot } from "@/hooks/useChartAnalysis";
 import { useAccountCapital } from "@/hooks/useAccountCapital";
@@ -137,7 +140,16 @@ function SmartChartWorkspaceInner({
   const agentRef = useRef<SmartChartAgentHandle>(null);
   // Last final agent result — surfaced read-only via the dev/test debug bridge.
   const lastFinalResultRef = useRef<AgentFinalResult | null>(null);
-  const [mobilePane, setMobilePane] = useState<MobilePane>(DEFAULT_MOBILE_PANE);
+  /**
+   * Below `xl` the chart is a sheet the operator pulls up over the
+   * conversation; from `xl` it is a pane beside it. One piece of state per
+   * regime, because "is the chart showing" means different things at each size.
+   */
+  const [chartSheetOpen, setChartSheetOpen] = useSheetSlot("chart");
+  const [desktopLayout, setDesktopLayout] = useState<DesktopLayout>(
+    DEFAULT_DESKTOP_LAYOUT,
+  );
+  const [sheetDrag, setSheetDrag] = useState(0);
   // A capture renders the chart alone. Leaving chat on also left its URL sync
   // on, which rewrote the address to /console mid-load — so the screenshot was
   // of the console workspace at the SAVED timeframe, not the requested chart.
@@ -149,6 +161,28 @@ function SmartChartWorkspaceInner({
 
   // Desktop chat-panel width (persisted, clamped). Not used on mobile.
   const [chatWidth, setChatWidth] = useState<number>(() => loadChatWidth());
+
+  // Read after mount so the server and first client render agree.
+  useEffect(() => setDesktopLayout(loadDesktopLayout()), []);
+
+  const applyDesktopLayout = useCallback((next: DesktopLayout) => {
+    setDesktopLayout(next);
+    saveDesktopLayout(next);
+  }, []);
+
+  /**
+   * Dismiss from the chart's own header. Reads the viewport at call time rather
+   * than from state so it can be defined early enough for the header actions.
+   */
+  const closeChart = useCallback(() => {
+    if (window.matchMedia("(min-width: 1280px)").matches) {
+      applyDesktopLayout("chatOnly");
+      return;
+    }
+    setChartSheetOpen(false);
+  }, [applyDesktopLayout, setChartSheetOpen]);
+
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const market: MarketType = "forex";
 
@@ -434,7 +468,7 @@ function SmartChartWorkspaceInner({
       router.push("/login?next=/chart");
       return;
     }
-    setMobilePane("chat");
+    setChartSheetOpen(false);
     // Defer so the panel mounts before the imperative call.
     setTimeout(() => agentRef.current?.quickAnalyze(), 0);
   }, [guest, router]);
@@ -455,7 +489,18 @@ function SmartChartWorkspaceInner({
     // recommendations in the sidebar. Only the MT status stays (plus the
     // TV-native symbol / timeframe / screenshot controls).
     if (chatEnabled) {
-      return [mtAction];
+      // Give the width (or the screen) back to the conversation from the chart's
+      // own header, which is where you are looking when you want it gone.
+      return [
+        mtAction,
+        {
+          id: "close-chart",
+          text: t("layout.close_chart"),
+          title: t("layout.close_chart"),
+          color: "#71717a",
+          onClick: closeChart,
+        },
+      ];
     }
     // Built as a single array literal (no render-time mutation of an array that
     // holds ref-capturing click handlers).
@@ -574,14 +619,14 @@ function SmartChartWorkspaceInner({
     lastUrlChatId.current = urlChatId;
     if (urlChatId && urlChatId !== chat.activeChatId) {
       chat.selectChat(urlChatId, { skipUrlSync: true });
-      setMobilePane("chat");
+      setChartSheetOpen(false);
     }
   }, [chatEnabled, chat.ready, urlChatId, chat.activeChatId, chat.selectChat]);
 
   useEffect(() => {
     const create = () => {
       void chat.newChat();
-      setMobilePane("chat");
+      setChartSheetOpen(false);
     };
     window.addEventListener("aichart:new-chat", create);
     return () => window.removeEventListener("aichart:new-chat", create);
@@ -635,7 +680,8 @@ function SmartChartWorkspaceInner({
           : null,
         activeChatId: chat.activeChatId ?? null,
         locale,
-        mobilePane,
+        chartSheetOpen,
+        desktopLayout,
         voiceStatus: voice.status,
         lastFinalResult: publicFinalResult(lastFinalResultRef.current),
       };
@@ -643,16 +689,111 @@ function SmartChartWorkspaceInner({
     return () => removeAgentDebugBridge();
   });
 
-  // Phones and tablets show exactly one pane; wide desktop shows both.
-  const showMobileChat = chatEnabled && mobilePane === "chat";
-  const chartPaneClass = `relative min-h-0 flex-1 overflow-hidden ${
-    showMobileChat ? "hidden xl:block" : "block"
-  }`;
-  // Chat: full width through tablet (when active), persisted width on desktop.
-  // It sits on the right (last column, dir="ltr" row) in both locales.
-  const chatPaneClass = `flex min-h-0 w-full flex-col border-border/40 xl:w-[var(--chat-w)] xl:shrink-0 ${
-    mobilePane === "chart" ? "hidden xl:flex" : "flex"
-  }`;
+  /**
+   * The chart sheet stops above the composer rather than covering it, so a
+   * message can still be sent with the chart up. The composer auto-grows, so its
+   * height is measured rather than assumed and published as `--composer-h`.
+   * Re-runs per conversation because the panel remounts with its chat id.
+   */
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || !chatEnabled) return;
+    const composer = root.querySelector<HTMLElement>('[data-testid="chat-composer"]');
+    if (!composer) return;
+    const observer = new ResizeObserver(([entry]) => {
+      // Border box, not content box: the composer's padding (and the iOS safe
+      // area inside it) is part of what the sheet has to clear.
+      const height =
+        entry?.borderBoxSize?.[0]?.blockSize ?? composer.getBoundingClientRect().height;
+      if (height) root.style.setProperty("--composer-h", `${Math.ceil(height)}px`);
+    });
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [chatEnabled, chat.activeChatId]);
+
+  /**
+   * The chart node is never unmounted — symbol and interval changes are pushed
+   * into the live widget, and a remount would throw away every drawing on it. So
+   * every layout below is expressed as CSS on one persistent element.
+   *
+   * Under `xl` it is a sheet: fixed, anchored above the composer so a message
+   * can still be sent while the chart is up, and translated fully off-screen
+   * when closed. From `xl` it snaps back into the flex row as an ordinary pane.
+   */
+  const chartVisibleDesktop = !chatEnabled || desktopLayout !== "chatOnly";
+  const chartPaneClass = cn(
+    "relative flex min-h-0 flex-col overflow-hidden bg-background",
+    chatEnabled && [
+      "fixed inset-x-0 bottom-[var(--composer-h,4.5rem)] z-40 h-[85dvh]",
+      "max-h-[calc(100dvh-var(--composer-h,4.5rem)-1rem)]",
+      "rounded-t-[var(--radius-lg)] border-t border-border shadow-2xl",
+      "transition-transform duration-300 ease-out motion-reduce:transition-none",
+      chartSheetOpen
+        ? "translate-y-0"
+        : "invisible translate-y-full",
+      // From xl it is a pane again: no fixed positioning, no transform.
+      "xl:visible xl:static xl:inset-auto xl:z-auto xl:h-auto xl:max-h-none xl:flex-1",
+      "xl:translate-y-0 xl:rounded-none xl:border-t-0 xl:shadow-none xl:transition-none",
+      chartVisibleDesktop ? "xl:flex" : "xl:hidden",
+    ],
+    !chatEnabled && "flex-1",
+  );
+  // Chat: full width up to xl, persisted width beside the chart from xl.
+  const chatPaneClass = cn(
+    "flex min-h-0 w-full flex-col border-border/40",
+    desktopLayout === "chartOnly"
+      ? "xl:hidden"
+      : desktopLayout === "chatOnly"
+        ? "xl:w-full"
+        : "xl:w-[var(--chat-w)] xl:shrink-0",
+  );
+
+  /**
+   * One control in the composer, two meanings by width: under `xl` it raises and
+   * lowers the sheet, from `xl` it puts the chart pane beside the conversation
+   * or gives the width back. Both regimes are tracked so the button's pressed
+   * state matches whichever one the operator is actually looking at.
+   */
+  const [isWide, setIsWide] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1280px)");
+    const sync = () => setIsWide(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  const chartShowing = isWide ? chartVisibleDesktop : chartSheetOpen;
+  const toggleChart = useCallback(() => {
+    if (isWide) {
+      applyDesktopLayout(desktopLayout === "chatOnly" ? "split" : "chatOnly");
+      return;
+    }
+    setChartSheetOpen(!chartSheetOpen);
+  }, [isWide, desktopLayout, applyDesktopLayout, chartSheetOpen, setChartSheetOpen]);
+
+  /** Drag-to-dismiss for the sheet: past ~30% of its height it closes. */
+  const sheetTouchStart = useRef<number | null>(null);
+  const onSheetTouchStart = (event: React.TouchEvent) => {
+    sheetTouchStart.current = event.touches[0]?.clientY ?? null;
+  };
+  const onSheetTouchMove = (event: React.TouchEvent) => {
+    const start = sheetTouchStart.current;
+    const y = event.touches[0]?.clientY;
+    if (start == null || y == null) return;
+    setSheetDrag(Math.max(0, y - start));
+  };
+  const onSheetTouchEnd = (event: React.TouchEvent) => {
+    const start = sheetTouchStart.current;
+    const y = event.changedTouches[0]?.clientY;
+    sheetTouchStart.current = null;
+    setSheetDrag(0);
+    if (start == null || y == null) return;
+    const height = (event.currentTarget as HTMLElement).closest("[data-chart-pane]")
+      ?.clientHeight;
+    if (!height) return;
+    if (y - start > height * 0.3) setChartSheetOpen(false);
+  };
 
   // Desktop chat resize: chat is the right column, so dragging the handle left
   // widens it. Persists on release.
@@ -685,7 +826,7 @@ function SmartChartWorkspaceInner({
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col">
+    <div ref={rootRef} className="relative flex h-full min-h-0 flex-col">
       {!guest && !agentReady && (
         <p className="pointer-events-none absolute inset-x-0 top-12 z-40 mx-auto w-fit max-w-[90%] rounded-md border border-warning/30 bg-warning/90 px-3 py-1 text-xs text-black shadow">
           {t("layout.agent_unavailable")}
@@ -698,80 +839,84 @@ function SmartChartWorkspaceInner({
         </p>
       )}
 
-      {chatEnabled ? (
-        <FloatingWorkspaceSwitcher pane={mobilePane} onChange={setMobilePane} />
-      ) : null}
+      {/* Dismiss layer for the chart sheet. Under xl only — from xl the chart is
+          a pane and has nothing to dismiss. */}
+      {chatEnabled && chartSheetOpen && (
+        <button
+          type="button"
+          aria-label={t("layout.close_chart")}
+          onClick={() => setChartSheetOpen(false)}
+          className="fixed inset-0 z-30 bg-black/50 transition-opacity duration-250 xl:hidden motion-reduce:transition-none"
+        />
+      )}
 
       <div
         className="flex min-h-0 flex-1 overflow-hidden"
         dir="ltr"
         style={{ "--chat-w": `${chatWidth}px` } as CSSProperties}
-        onTouchStart={(e) => {
-          if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
-            return;
-          }
-          const touch = e.changedTouches[0];
-          if (!touch) return;
-          (e.currentTarget as HTMLElement & { __swipe?: { x: number; y: number } }).__swipe = {
-            x: touch.clientX,
-            y: touch.clientY,
-          };
-        }}
-        onTouchEnd={(e) => {
-          if (!chatEnabled) return;
-          if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
-            return;
-          }
-          const el = e.currentTarget as HTMLElement & { __swipe?: { x: number; y: number } };
-          const start = el.__swipe;
-          el.__swipe = undefined;
-          const touch = e.changedTouches[0];
-          if (!start || !touch) return;
-          const dx = touch.clientX - start.x;
-          const dy = touch.clientY - start.y;
-          if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
-          if (dx < 0) setMobilePane(dir === "rtl" ? "chart" : "chat");
-          else setMobilePane(dir === "rtl" ? "chat" : "chart");
-        }}
       >
-        <div className={chartPaneClass}>
-          {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
-              setResolution) — never remount, so drawings and chart state survive. */}
-          <ChartErrorBoundary key="tv">
-            <TvChart
-              ref={chartRef}
-              symbol={symbol}
-              interval={interval}
-              market={market}
-              analyzing={isAnalyzing}
+        <div
+          data-chart-pane
+          data-testid="workspace-chart-pane"
+          className={chartPaneClass}
+          style={
+            sheetDrag > 0
+              ? ({ transform: `translateY(${sheetDrag}px)` } as CSSProperties)
+              : undefined
+          }
+        >
+          {/* Grab bar: the sheet's drag handle under xl, and the surface that
+              carries its dismiss affordance. Hidden once the chart is a pane. */}
+          {chatEnabled && (
+            <div
+              onTouchStart={onSheetTouchStart}
+              onTouchMove={onSheetTouchMove}
+              onTouchEnd={onSheetTouchEnd}
+              className="flex h-11 shrink-0 items-center justify-center xl:hidden"
+            >
+              <span aria-hidden className="h-1 w-10 rounded-full bg-muted-foreground/40" />
+            </div>
+          )}
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            {/* Static key: symbol/interval changes sync INSIDE the widget (setSymbol/
+                setResolution) — never remount, so drawings and chart state survive. */}
+            <ChartErrorBoundary key="tv">
+              <TvChart
+                ref={chartRef}
+                symbol={symbol}
+                interval={interval}
+                market={market}
+                analyzing={isAnalyzing}
+                recommendation={recommendation}
+                targets={targets}
+                overlays={overlays}
+                drawings={drawings}
+                headerActions={headerActions}
+                eaEnabled={false}
+                dataSource={dataSource}
+                locale={locale}
+                direction={dir}
+                theme={chartTheme}
+                capture={capture}
+                className="h-full min-h-0 w-full"
+                onSymbolChange={handleSymbolChange}
+                onIntervalChange={handleIntervalChange}
+              />
+            </ChartErrorBoundary>
+
+            <ChartTradeOverlay
               recommendation={recommendation}
               targets={targets}
-              overlays={overlays}
+              riskReward={riskReward}
+              liveReasoningLog={liveReasoningLog}
+              isAnalyzing={isAnalyzing}
+              liveAnalysis={liveAnalysis}
               drawings={drawings}
-              headerActions={headerActions}
-              eaEnabled={false}
-              dataSource={dataSource}
-              locale={locale}
-              direction={dir}
-              theme={chartTheme}
-              capture={capture}
-              className="h-full min-h-0 w-full"
-              onSymbolChange={handleSymbolChange}
-              onIntervalChange={handleIntervalChange}
+              onHighlightDrawing={setHighlightDrawingIndex}
+              onStopLive={stopLiveAnalysis}
             />
-          </ChartErrorBoundary>
+          </div>
 
-          <ChartTradeOverlay
-            recommendation={recommendation}
-            targets={targets}
-            riskReward={riskReward}
-            liveReasoningLog={liveReasoningLog}
-            isAnalyzing={isAnalyzing}
-            liveAnalysis={liveAnalysis}
-            drawings={drawings}
-            onHighlightDrawing={setHighlightDrawingIndex}
-            onStopLive={stopLiveAnalysis}
-          />
         </div>
 
         {chatEnabled && (
@@ -785,7 +930,11 @@ function SmartChartWorkspaceInner({
             tabIndex={0}
             onPointerDown={startChatResize}
             onKeyDown={resizeChatWithKeyboard}
-            className="group hidden w-3 shrink-0 cursor-col-resize items-stretch justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:flex"
+            className={cn(
+              "group hidden w-3 shrink-0 cursor-col-resize items-stretch justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              // Only meaningful when both panes are up.
+              desktopLayout === "split" && "xl:flex",
+            )}
           >
             <span className="w-px bg-border/50 transition-colors group-hover:bg-primary/70 group-focus-visible:bg-primary" />
           </div>
@@ -828,6 +977,8 @@ function SmartChartWorkspaceInner({
                     }
                   : undefined
               }
+              chartOpen={chartShowing}
+              onToggleChart={toggleChart}
               onResult={handleAgentResult}
               onVoiceFinal={voice.handleAgentFinal}
               onPersistMessage={chat.persistMessage}

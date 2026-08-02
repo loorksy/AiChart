@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Cable, Moon, Save, SlidersHorizontal, Sparkles, Sun, User } from "lucide-react";
 import { EaConnectCard } from "@/components/settings/EaConnectCard";
@@ -19,18 +19,25 @@ import type { AdminLimits, EaConnectionMeta, PublicUser, TradingSettings } from 
 
 type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "trading" | "skills";
 
-const TABS = [
+/**
+ * Ordered by how often a trader actually opens each one, not by how the ids
+ * happened to be declared. Risk per Trade sizes real money and gets revisited;
+ * connections and skills are set up once and then left alone.
+ */
+export const TABS = [
   { id: "profile", labelKey: "settings.tab.account", icon: User },
+  { id: "trading", labelKey: "settings.trading.risk_label", icon: SlidersHorizontal },
+  { id: "alerts", labelKey: "settings.tab.alerts", icon: Bell },
   { id: "appearance", labelKey: "settings.tab.appearance", icon: Sun },
   { id: "integrations", labelKey: "settings.tab.connections", icon: Cable },
-  { id: "alerts", labelKey: "settings.tab.alerts", icon: Bell },
-  { id: "trading", labelKey: "settings.trading.risk_label", icon: SlidersHorizontal },
   { id: "skills", labelKey: "skills.title", icon: Sparkles },
 ] as const satisfies ReadonlyArray<{
   id: TabId;
   labelKey: TranslationKey;
   icon: typeof User;
 }>;
+
+export type SettingsTabId = TabId;
 
 export default function SettingsClient({
   user,
@@ -41,6 +48,9 @@ export default function SettingsClient({
   initialTab,
   embedMode = false,
   visibleTabs,
+  tab: controlledTab,
+  onTabChange,
+  onDirtyChange,
 }: {
   user: PublicUser;
   settings: TradingSettings;
@@ -55,17 +65,39 @@ export default function SettingsClient({
   initialTab?: TabId;
   embedMode?: boolean;
   visibleTabs?: TabId[];
+  /** Controlled tab. When set, the host owns navigation and the pill row hides. */
+  tab?: TabId;
+  onTabChange?: (tab: TabId) => void;
+  /** Fires when local edits diverge from (or return to) what the server holds. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const tabs = visibleTabs ? TABS.filter((item) => visibleTabs.includes(item.id)) : TABS;
-  const [tab, setTab] = useState<TabId>(
+  const [uncontrolledTab, setTab] = useState<TabId>(
     initialTab && tabs.some((item) => item.id === initialTab) ? initialTab : tabs[0]?.id ?? "profile",
   );
+  const tab = controlledTab ?? uncontrolledTab;
   const [settings, setSettings] = useState(initialSettings);
+  const [saved, setSaved] = useState(initialSettings);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const { theme, setTheme } = useTheme();
   const { t, dir } = useLocale();
   void _limits;
+
+  /**
+   * Edits live here until their section's Save button lands them, so switching
+   * tabs must not be what discards them. Reporting dirtiness upward lets a host
+   * (the settings modal) refuse to close on top of unsaved input.
+   */
+  const dirty =
+    settings.per_trade_pct !== saved.per_trade_pct ||
+    Boolean(settings.alerts_enabled) !== Boolean(saved.alerts_enabled) ||
+    Boolean(settings.alert_trades) !== Boolean(saved.alert_trades) ||
+    Boolean(settings.alert_signals) !== Boolean(saved.alert_signals);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function save(patch: Record<string, unknown>) {
     setSaving(true);
@@ -78,7 +110,12 @@ export default function SettingsClient({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? t("settings.save_failed"));
-      if (data.settings) setSettings(data.settings as TradingSettings);
+      if (data.settings) {
+        setSettings(data.settings as TradingSettings);
+        setSaved(data.settings as TradingSettings);
+      } else {
+        setSaved(settings);
+      }
       setMessage(t("settings.saved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("settings.save_failed"));
@@ -89,7 +126,7 @@ export default function SettingsClient({
 
   const content = (
     <div className="space-y-4" dir={dir}>
-      {tabs.length > 1 && (
+      {controlledTab === undefined && tabs.length > 1 && (
         <nav className="flex gap-1.5 overflow-x-auto pb-1" aria-label={t("settings.sections")}>
           {tabs.map((item) => {
             const Icon = item.icon;
@@ -97,7 +134,10 @@ export default function SettingsClient({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setTab(item.id)}
+                onClick={() => {
+                  setTab(item.id);
+                  onTabChange?.(item.id);
+                }}
                 aria-current={tab === item.id ? "true" : undefined}
                 className={cn(
                   "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors focus-ring sm:min-h-9",

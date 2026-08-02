@@ -58,6 +58,9 @@ interface Props {
   ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
   voiceControl?: ReactNode;
+  /** Whether the chart surface is showing, for the composer's chart toggle. */
+  chartOpen?: boolean;
+  onToggleChart?: () => void;
   voicePanel?: ReactNode;
 }
 
@@ -82,6 +85,8 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       applyDrawingMutations,
       onPersistMessage,
       voiceControl,
+      chartOpen,
+      onToggleChart,
       voicePanel,
     },
     ref,
@@ -377,7 +382,14 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
 
         {voicePanel}
         <div className="chat-composer-fade" aria-hidden data-testid="composer-fade" />
-        <AgentChatInput running={running} onSend={sendMessage} onCancel={cancel} voiceControl={voiceControl} />
+        <AgentChatInput
+          running={running}
+          onSend={sendMessage}
+          onCancel={cancel}
+          voiceControl={voiceControl}
+          chartOpen={chartOpen}
+          onToggleChart={onToggleChart}
+        />
       </div>
     );
   },

@@ -262,6 +262,7 @@ export const en = {
   "layout.show_chat": "Show chat",
   "layout.show_chart": "Show chart",
   "layout.resize_chat": "Resize chat",
+  "layout.close_chart": "Close chart",
   "layout.screenshot": "Screenshot",
   "layout.mt_connected": "MT connected",
   "layout.mt_disconnected": "MT disconnected",
@@ -311,6 +312,12 @@ export const en = {
   "settings.saving": "Saving…",
   "settings.saved": "Saved.",
   "settings.save_failed": "Could not save settings.",
+  "settings.load_failed": "Could not load settings.",
+  "settings.retry": "Try again",
+  "settings.unsaved_title": "You have unsaved changes",
+  "settings.unsaved_body": "Closing now discards what you edited but never saved.",
+  "settings.unsaved_keep": "Keep editing",
+  "settings.unsaved_discard": "Discard and close",
 
   // Authentication
   "auth.operator_title": "Operator sign in",
