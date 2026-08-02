@@ -22,6 +22,13 @@ interface InstrumentRow {
 
 /** Matches the server's per-request cap, so one flush is one request. */
 const QUOTE_BATCH = 12;
+/**
+ * Cards rendered per page. The catalogue is served whole — an OANDA account
+ * lists ~70 pairs, a broker account can list thousands — so it is revealed a
+ * page at a time as the user scrolls rather than truncated to a first slice
+ * that would put the rest out of reach of anything but search.
+ */
+const PAGE_SIZE = 60;
 const SPARK_W = 140;
 const SPARK_H = 34;
 
@@ -54,6 +61,7 @@ export function SymbolPickerSheet({
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<InstrumentRow[]>([]);
+  const [visible, setVisible] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
   const panelRef = useRef<HTMLDivElement>(null);
@@ -80,7 +88,8 @@ export function SymbolPickerSheet({
       fetch(`/api/instruments?${params}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then((d: { instruments?: InstrumentRow[] } | null) => {
-          setRows(d?.instruments?.slice(0, 120) ?? []);
+          setRows(d?.instruments ?? []);
+          setVisible(PAGE_SIZE);
         })
         .catch(() => setRows([]))
         .finally(() => setLoading(false));
@@ -176,7 +185,26 @@ export function SymbolPickerSheet({
     );
     for (const el of cards.current.values()) io.observe(el);
     return () => io.disconnect();
-  }, [open, rows, enqueue]);
+  }, [open, rows, visible, enqueue]);
+
+  // Reaching the end of the rendered page reveals the next one, so a broker
+  // account with hundreds of symbols is reachable by scrolling, not only by
+  // searching for a name the trader would have to know already.
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!open || !el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible((current) => Math.min(current + PAGE_SIZE, rows.length));
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [open, rows.length, visible]);
 
   useEffect(() => {
     if (!open) return;
@@ -235,7 +263,15 @@ export function SymbolPickerSheet({
         <div className="flex shrink-0 items-start justify-between gap-3 px-4 pt-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold">{t("symbol.picker.title")}</h2>
-            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{sourceNote}</p>
+            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+              {sourceNote}
+              {rows.length > 0 && (
+                <span className="tabular-nums" dir="ltr">
+                  {" · "}
+                  {rows.length}
+                </span>
+              )}
+            </p>
           </div>
           <button
             type="button"
@@ -268,7 +304,7 @@ export function SymbolPickerSheet({
           aria-busy={loading}
         >
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            {rows.map((row) => (
+            {rows.slice(0, visible).map((row) => (
               <PairCard
                 key={row.symbol}
                 row={row}
@@ -282,6 +318,7 @@ export function SymbolPickerSheet({
               />
             ))}
           </div>
+          <div ref={sentinelRef} aria-hidden className="h-px w-full" />
           {!loading && rows.length === 0 && (
             <p className="px-3 py-10 text-center text-xs text-muted-foreground">
               {t("symbol.picker.none")}
