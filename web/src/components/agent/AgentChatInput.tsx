@@ -5,6 +5,10 @@ import { CandlestickChart, Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { AgentModelPicker } from "@/components/agent/AgentModelPicker";
 import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
+import {
+  ComposerIntervalPicker,
+  ComposerSymbolPicker,
+} from "@/components/agent/ComposerMarketPickers";
 import { cn } from "@/lib/utils";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
@@ -20,6 +24,11 @@ export function AgentChatInput({
   voiceControl,
   chartOpen,
   onToggleChart,
+  symbol,
+  interval,
+  brokerConnected = false,
+  onSymbolChange,
+  onIntervalChange,
 }: {
   running: boolean;
   onSend: (message: string) => void;
@@ -29,6 +38,12 @@ export function AgentChatInput({
   chartOpen?: boolean;
   /** Absent when there is no chart to summon (guest / capture renders). */
   onToggleChart?: () => void;
+  /** Market context row: the pair and frame the next question is about. */
+  symbol?: string;
+  interval?: string;
+  brokerConnected?: boolean;
+  onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
+  onIntervalChange?: (interval: string) => void;
 }) {
   const { t, dir } = useLocale();
   const [value, setValue] = useState("");
@@ -107,6 +122,16 @@ export function AgentChatInput({
             >
               <CandlestickChart className="h-5 w-5 sm:h-4 sm:w-4" />
             </button>
+          )}
+          {symbol && onSymbolChange && (
+            <ComposerSymbolPicker
+              symbol={symbol}
+              brokerConnected={brokerConnected}
+              onSelect={onSymbolChange}
+            />
+          )}
+          {interval && onIntervalChange && (
+            <ComposerIntervalPicker interval={interval} onSelect={onIntervalChange} />
           )}
           <RiskPerTradeControl />
           <AgentModelPicker />

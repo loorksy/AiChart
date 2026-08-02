@@ -56,11 +56,21 @@ export function toggleLocale(locale: AppLocale): AppLocale {
   return locale === "ar" ? "en" : "ar";
 }
 
-/** Read the persisted locale (localStorage), defaulting to Arabic. */
+/**
+ * Read the persisted locale, falling back to the device's language on a first
+ * visit. Must agree with LocaleProvider's fallback — TvChart and the voice
+ * bridge boot from here, and a platform in one language with a chart in
+ * another is exactly the bug this fallback exists to prevent.
+ */
 export function getLocale(): AppLocale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
   const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-  return isAppLocale(stored) ? stored : DEFAULT_LOCALE;
+  if (isAppLocale(stored)) return stored;
+  if (typeof navigator === "undefined") return DEFAULT_LOCALE;
+  const candidates = navigator.languages?.length
+    ? navigator.languages
+    : [navigator.language];
+  return candidates.some((tag) => tag?.toLowerCase().startsWith("ar")) ? "ar" : "en";
 }
 
 /** Persist the locale and reflect it on <html> (dir + lang) immediately. */

@@ -98,7 +98,7 @@ describe("locale persistence", () => {
     delete (globalThis as { document?: unknown }).document;
   });
 
-  it("defaults to Arabic, then saves and restores the choice", () => {
+  it("first visit speaks the device language; a stored choice always wins", () => {
     const store = new Map<string, string>();
     (globalThis as { window?: unknown }).window = {
       localStorage: {
@@ -108,7 +108,16 @@ describe("locale persistence", () => {
     };
     (globalThis as { document?: unknown }).document = { documentElement: {} };
 
-    assert.equal(getLocale(), DEFAULT_LOCALE); // nothing stored → Arabic
+    // Nothing stored → the device decides (this runtime reports a non-Arabic
+    // language, so the fallback is English rather than a hardcoded Arabic).
+    const device =
+      typeof navigator !== "undefined" &&
+      (navigator.languages?.length ? navigator.languages : [navigator.language]).some(
+        (tag) => tag?.toLowerCase().startsWith("ar"),
+      )
+        ? "ar"
+        : "en";
+    assert.equal(getLocale(), typeof navigator === "undefined" ? DEFAULT_LOCALE : device);
     setLocale("en");
     assert.equal(store.get(LOCALE_STORAGE_KEY), "en");
     assert.equal(getLocale(), "en");

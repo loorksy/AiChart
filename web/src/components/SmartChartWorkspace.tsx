@@ -19,6 +19,7 @@ import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
 import { CHART_RELOAD_EVENT } from "@/components/shell/ConsoleTopBar";
 import { useConsoleChatUrl } from "@/hooks/useConsoleChatUrl";
+import { useSheetGesture } from "@/hooks/useSheetGesture";
 
 function ChartLoading() {
   const { t } = useLocale();
@@ -77,7 +78,7 @@ import type { MarketType } from "@/lib/markets/types";
 
 const LS_SYMBOL = "aichart_last_symbol";
 const LS_INTERVAL = "aichart_last_interval";
-const DEFAULT_SYMBOL = "EURUSD";
+const DEFAULT_SYMBOL = "XAUUSD";
 
 /** Persisted layout state (drawings + recommendation) for refresh survival. */
 export interface ChartLayoutState extends ChartHydrateSnapshot {
@@ -150,7 +151,23 @@ function SmartChartWorkspaceInner({
   const [desktopLayout, setDesktopLayout] = useState<DesktopLayout>(
     DEFAULT_DESKTOP_LAYOUT,
   );
-  const [sheetDrag, setSheetDrag] = useState(0);
+  /**
+   * The sheet's resting height leaves the top bar visible; a pull past it grows
+   * the chart to the full viewport for reading dense candles, and a pull down
+   * dismisses. Collapses with the sheet so every open starts at rest.
+   */
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  useEffect(() => {
+    if (!chartSheetOpen) setSheetExpanded(false);
+  }, [chartSheetOpen]);
+  const sheetPaneRef = useRef<HTMLDivElement>(null);
+  const { handleProps: sheetHandleProps } = useSheetGesture({
+    sheetRef: sheetPaneRef,
+    onDismiss: () => setChartSheetOpen(false),
+    expandable: true,
+    expanded: sheetExpanded,
+    onExpandedChange: setSheetExpanded,
+  });
   // A capture renders the chart alone. Leaving chat on also left its URL sync
   // on, which rewrote the address to /console mid-load — so the screenshot was
   // of the console workspace at the SAVED timeframe, not the requested chart.
@@ -418,9 +435,9 @@ function SmartChartWorkspaceInner({
     prefetchKlines(symbol, interval, market);
   }, [symbol, interval, market]);
 
-  const handleSymbolChange = useCallback((s: string) => {
+  const handleSymbolChange = useCallback((s: string, source: "oanda" | "ea" = "oanda") => {
     setSymbol(s.toUpperCase());
-    setDataSource("oanda");
+    setDataSource(source);
   }, []);
 
   const handleIntervalChange = useCallback((iv: string) => {
@@ -726,9 +743,9 @@ function SmartChartWorkspaceInner({
   const chartPaneClass = cn(
     "relative flex min-h-0 flex-col overflow-hidden bg-background",
     chatEnabled && [
-      "fixed inset-x-0 bottom-0 z-40 h-[88dvh]",
+      sheetExpanded ? "fixed inset-x-0 bottom-0 z-40 h-[100dvh]" : "fixed inset-x-0 bottom-0 z-40 h-[88dvh]",
       "rounded-t-[var(--radius-lg)] border-t border-border shadow-2xl",
-      "transition-transform duration-300 ease-out motion-reduce:transition-none",
+      "transition-[transform,height] duration-300 ease-out motion-reduce:transition-none",
       chartSheetOpen
         ? "translate-y-0"
         : "invisible translate-y-full",
@@ -773,28 +790,6 @@ function SmartChartWorkspaceInner({
     setChartSheetOpen(!chartSheetOpen);
   }, [isWide, desktopLayout, applyDesktopLayout, chartSheetOpen, setChartSheetOpen]);
 
-  /** Drag-to-dismiss for the sheet: past ~30% of its height it closes. */
-  const sheetTouchStart = useRef<number | null>(null);
-  const onSheetTouchStart = (event: React.TouchEvent) => {
-    sheetTouchStart.current = event.touches[0]?.clientY ?? null;
-  };
-  const onSheetTouchMove = (event: React.TouchEvent) => {
-    const start = sheetTouchStart.current;
-    const y = event.touches[0]?.clientY;
-    if (start == null || y == null) return;
-    setSheetDrag(Math.max(0, y - start));
-  };
-  const onSheetTouchEnd = (event: React.TouchEvent) => {
-    const start = sheetTouchStart.current;
-    const y = event.changedTouches[0]?.clientY;
-    sheetTouchStart.current = null;
-    setSheetDrag(0);
-    if (start == null || y == null) return;
-    const height = (event.currentTarget as HTMLElement).closest("[data-chart-pane]")
-      ?.clientHeight;
-    if (!height) return;
-    if (y - start > height * 0.3) setChartSheetOpen(false);
-  };
 
   // Desktop chat resize: chat is the right column, so dragging the handle left
   // widens it. Persists on release.
@@ -857,23 +852,19 @@ function SmartChartWorkspaceInner({
         style={{ "--chat-w": `${chatWidth}px` } as CSSProperties}
       >
         <div
+          ref={sheetPaneRef}
           data-chart-pane
           data-testid="workspace-chart-pane"
+          data-expanded={sheetExpanded || undefined}
           className={chartPaneClass}
-          style={
-            sheetDrag > 0
-              ? ({ transform: `translateY(${sheetDrag}px)` } as CSSProperties)
-              : undefined
-          }
         >
           {/* Grab bar: the sheet's drag handle under xl, and the surface that
               carries its dismiss affordance. Hidden once the chart is a pane. */}
           {chatEnabled && (
             <div
-              onTouchStart={onSheetTouchStart}
-              onTouchMove={onSheetTouchMove}
-              onTouchEnd={onSheetTouchEnd}
-              className="flex h-11 shrink-0 items-center justify-center xl:hidden"
+              {...sheetHandleProps}
+              data-testid="chart-sheet-handle"
+              className="flex h-11 shrink-0 cursor-grab items-center justify-center active:cursor-grabbing xl:hidden"
             >
               <span aria-hidden className="h-1 w-10 rounded-full bg-muted-foreground/40" />
             </div>
@@ -980,6 +971,9 @@ function SmartChartWorkspaceInner({
               }
               chartOpen={chartShowing}
               onToggleChart={toggleChart}
+              brokerConnected={forexOnline}
+              onSymbolChange={handleSymbolChange}
+              onIntervalChange={handleIntervalChange}
               onResult={handleAgentResult}
               onVoiceFinal={voice.handleAgentFinal}
               onPersistMessage={chat.persistMessage}

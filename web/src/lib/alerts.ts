@@ -179,13 +179,42 @@ export async function deliverSignal(
           : null;
       const settings = await getSettings(userId);
       if (rec && settings.send_screenshot === 1) {
-        const buffer = await buildChartSnapshotBuffer({
-          symbol: rec.symbol,
-          interval: rec.timeframe ?? "1h",
-          overlays: overlaysFromRecommendation(rec),
-          drawings: parseChartDrawingsJson(rec.chart_drawings_json),
-          patternName: rec.pattern_name,
-        });
+        /**
+         * Best image first: the operator's real chart, captured live with the
+         * agent's drawings and the platform mark on it. The QuickChart render
+         * stays as the fallback — a re-drawing of the same bars, but a chart in
+         * the message still beats prose alone. Capture is raced against a hard
+         * budget so a slow headless boot can only delay an alert, never sink it.
+         */
+        let buffer: Buffer | null = null;
+        try {
+          const { capturePlatformChart } = await import(
+            "@/lib/chart/platformChartCapture"
+          );
+          const live = await Promise.race([
+            capturePlatformChart({
+              userId,
+              symbol: rec.symbol,
+              interval: rec.timeframe ?? "1h",
+              watermark: true,
+              width: 1280,
+              height: 720,
+            }),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 25_000)),
+          ]);
+          buffer = live?.buffer ?? null;
+        } catch {
+          /* playwright unavailable in this runtime — fall through */
+        }
+        if (!buffer) {
+          buffer = await buildChartSnapshotBuffer({
+            symbol: rec.symbol,
+            interval: rec.timeframe ?? "1h",
+            overlays: overlaysFromRecommendation(rec),
+            drawings: parseChartDrawingsJson(rec.chart_drawings_json),
+            patternName: rec.pattern_name,
+          });
+        }
         if (buffer) {
           await notifyUserPhotoBuffer(userId, buffer, body, opts.buttons);
         } else {

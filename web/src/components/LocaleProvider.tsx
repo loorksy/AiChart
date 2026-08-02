@@ -42,10 +42,24 @@ function applyLocale(locale: AppLocale) {
 // the client swaps in the persisted locale after hydration).
 const localeListeners = new Set<() => void>();
 
+/**
+ * First visit speaks the device's language. A stored choice always wins — the
+ * switcher is the user overriding their device, and that must survive both
+ * reloads and OS-level language changes. Only when nothing is stored do we ask
+ * the browser; anything that isn't Arabic falls to English rather than to a
+ * hardcoded platform default the visitor may not read.
+ */
+function deviceLocale(): AppLocale {
+  const candidates = navigator.languages?.length
+    ? navigator.languages
+    : [navigator.language];
+  return candidates.some((tag) => tag?.toLowerCase().startsWith("ar")) ? "ar" : "en";
+}
+
 function readStoredLocale(): AppLocale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
   const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-  return isAppLocale(stored) ? stored : DEFAULT_LOCALE;
+  return isAppLocale(stored) ? stored : deviceLocale();
 }
 
 function subscribeLocale(cb: () => void): () => void {

@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PanelLeft, RefreshCw } from "lucide-react";
 import { NotificationCenter } from "@/components/agent/NotificationCenter";
+import { BalanceChip } from "@/components/shell/BalanceChip";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
@@ -32,11 +33,14 @@ export function ConsoleTopBar({
   sidebarOpen,
   /** Admins reload the page; traders reload the chart in place. */
   refreshMode,
+  showBalance = false,
 }: {
   displayName: string;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
   refreshMode: "page" | "chart";
+  /** Traders see their credit; the admin console is not a metered account. */
+  showBalance?: boolean;
 }) {
   const { t } = useLocale();
   const router = useRouter();
@@ -78,6 +82,7 @@ export function ConsoleTopBar({
       </button>
 
       <div className="ms-auto flex items-center gap-1">
+        {showBalance && <BalanceChip />}
         <button
           type="button"
           data-testid="console-refresh"

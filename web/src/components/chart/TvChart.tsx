@@ -350,7 +350,12 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     widget: () => widgetRef.current,
   }));
 
-  // Mount the widget once.
+  // Mount the widget once per language. TradingView takes its UI locale at
+  // construction only, so this is the one prop change that justifies a teardown:
+  // without it, switching the platform language left the chart speaking the old
+  // one until a full page reload. Agent levels re-apply from props after the
+  // remount; anything drawn by hand inside the widget is the accepted cost of an
+  // explicit language switch.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -363,7 +368,11 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     const bootMarket = market;
     const bootEa = eaEnabled;
     const persistedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-    const bootLocale = isAppLocale(persistedLocale) ? persistedLocale : locale;
+    const bootLocale = isAppLocale(persistedLocale)
+      ? locale === persistedLocale
+        ? persistedLocale
+        : locale
+      : locale;
     const bootDirection = dirForLocale(bootLocale);
     const bootTheme = theme;
 
@@ -501,7 +510,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       }
       widgetRef.current = null;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- locale is the one
+    // dependency that must retrigger; everything else syncs into the live widget.
+  }, [locale]);
 
   // React symbol/source → widget (broker symbols carry the EA: namespace).
   useEffect(() => {

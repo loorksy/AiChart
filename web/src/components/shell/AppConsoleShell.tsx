@@ -492,6 +492,7 @@ function ConsoleShellBody({
                 : setMobileOpen(!mobileOpen)
             }
             refreshMode={isAdmin ? "page" : "chart"}
+            showBalance={!isAdmin}
           />
           <main
             className={cn(
