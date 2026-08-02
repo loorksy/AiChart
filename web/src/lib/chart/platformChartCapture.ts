@@ -30,6 +30,12 @@ export interface PlatformCaptureInput {
   userId: number;
   symbol: string;
   interval: string;
+  /**
+   * Stamp the platform mark on the shot. On for outbound deliveries (Telegram)
+   * where the image leaves the product and must say where it came from; off for
+   * in-chat captures, where the chart is already inside branded chrome.
+   */
+  watermark?: boolean;
   /** Layout to open; defaults to the user's own chart layout. */
   layoutId?: string;
   width?: number;
@@ -179,6 +185,46 @@ export async function capturePlatformChart(
       });
     // Bars and drawings paint after the frame attaches.
     await page.waitForTimeout(SETTLE_MS);
+
+    if (input.watermark) {
+      // Injected into the captured container itself — the screenshot is scoped
+      // to it, so a page-level overlay would be cropped out. DOM injection
+      // keeps the brand without an image-processing dependency.
+      await container
+        .evaluate((el) => {
+          const badge = document.createElement("div");
+          badge.style.cssText =
+            "position:absolute;bottom:12px;inset-inline-start:12px;z-index:2147483647;" +
+            "display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:9999px;" +
+            "background:rgba(10,10,10,.72);pointer-events:none;";
+          const mark = document.createElement("img");
+          mark.src = "/brand/aichart-avatar-32.png";
+          mark.width = 18;
+          mark.height = 18;
+          mark.style.cssText = "display:block;border-radius:4px;";
+          const name = document.createElement("span");
+          name.textContent = "AiChart";
+          name.style.cssText =
+            "font:600 13px/1 system-ui,sans-serif;color:#fafafa;letter-spacing:.02em;";
+          badge.append(mark, name);
+          if (getComputedStyle(el).position === "static") {
+            (el as HTMLElement).style.position = "relative";
+          }
+          el.appendChild(badge);
+          return new Promise<void>((resolve) => {
+            if (mark.complete) return resolve();
+            mark.onload = () => resolve();
+            mark.onerror = () => {
+              // Text-only badge still names the platform.
+              mark.remove();
+              resolve();
+            };
+          });
+        })
+        .catch(() => {
+          /* unbadged shot beats no shot */
+        });
+    }
 
     const buffer = await container.screenshot({ type: "png", timeout: 15_000 });
 

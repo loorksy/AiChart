@@ -172,6 +172,9 @@
 }
 
 body {
+  /* The console owns downward gestures (bottom sheets); Chrome's
+     pull-to-refresh at scroll-top must never steal them into a reload. */
+  overscroll-behavior-y: none;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-cairo), Inter, system-ui, sans-serif;

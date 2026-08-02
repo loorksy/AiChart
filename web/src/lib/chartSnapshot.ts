@@ -431,7 +431,10 @@ function buildChartJson(
     }
   }
 
+  // The wordmark rides in the title: this PNG leaves the product (Telegram),
+  // and the fallback renderer has no DOM to pin a logo into.
   const title = [
+    "AiChart ·",
     input.symbol,
     input.interval,
     input.patternName ? `· ${input.patternName}` : "",

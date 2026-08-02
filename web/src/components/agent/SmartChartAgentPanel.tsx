@@ -61,6 +61,10 @@ interface Props {
   /** Whether the chart surface is showing, for the composer's chart toggle. */
   chartOpen?: boolean;
   onToggleChart?: () => void;
+  /** Broker link state + market setters for the composer's pair/interval row. */
+  brokerConnected?: boolean;
+  onSymbolChange?: (symbol: string, source: "oanda" | "ea") => void;
+  onIntervalChange?: (interval: string) => void;
   voicePanel?: ReactNode;
 }
 
@@ -87,6 +91,9 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       voiceControl,
       chartOpen,
       onToggleChart,
+      brokerConnected,
+      onSymbolChange,
+      onIntervalChange,
       voicePanel,
     },
     ref,
@@ -159,6 +166,28 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       [sendMessage],
     );
 
+    /**
+     * One composer element for two placements. Empty conversation: it sits
+     * mid-screen under the greeting — the question IS the page, nothing else
+     * competes. First message sent: it docks to the bottom for the exchange.
+     */
+    const isHero = messages.length === 0 && !running;
+    const composer = (
+      <AgentChatInput
+        running={running}
+        onSend={sendMessage}
+        onCancel={cancel}
+        voiceControl={voiceControl}
+        chartOpen={chartOpen}
+        onToggleChart={onToggleChart}
+        symbol={symbol}
+        interval={interval}
+        brokerConnected={brokerConnected}
+        onSymbolChange={onSymbolChange}
+        onIntervalChange={onIntervalChange}
+      />
+    );
+
     return (
       <div
         className="chat-panel-shell h-full w-full bg-transparent"
@@ -169,14 +198,18 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
             generated suggestions rendered per turn (never hardcoded buttons).
             Analysis is reachable from the chart's Analyze control and by typing. */}
         <div className="chat-scroll-region aichart-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-          {messages.length === 0 && !running && (
-            <div className="mx-auto flex h-full max-w-sm flex-col items-center justify-center gap-4 text-center">
-              <AgentAvatar size={40} state="idle" className="opacity-90" />
-              <p className="text-sm text-muted-foreground">
+          {isHero && (
+            <div
+              data-testid="composer-hero"
+              className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center gap-5 text-center"
+            >
+              <AgentAvatar size={44} state="idle" className="opacity-90" />
+              <h2 className="text-balance px-4 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {emptyState.greeting ?? t("agent.empty")}
-              </p>
+              </h2>
+              <div className="w-full">{composer}</div>
               {emptyState.suggestions.length ? (
-                <div className="flex flex-wrap justify-center gap-2">
+                <div className="flex flex-wrap justify-center gap-2 px-4">
                   {emptyState.suggestions.map((suggestion) => (
                     <button
                       key={suggestion.id}
@@ -393,15 +426,10 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         </div>
 
         {voicePanel}
-        <div className="chat-composer-fade" aria-hidden data-testid="composer-fade" />
-        <AgentChatInput
-          running={running}
-          onSend={sendMessage}
-          onCancel={cancel}
-          voiceControl={voiceControl}
-          chartOpen={chartOpen}
-          onToggleChart={onToggleChart}
-        />
+        {!isHero && (
+          <div className="chat-composer-fade" aria-hidden data-testid="composer-fade" />
+        )}
+        {!isHero && composer}
       </div>
     );
   },

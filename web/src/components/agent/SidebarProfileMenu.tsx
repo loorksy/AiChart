@@ -18,6 +18,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { useTheme } from "@/components/ThemeProvider";
 import { useConsoleOverlays } from "@/components/shell/ConsoleOverlays";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
+import { useSheetGesture } from "@/hooks/useSheetGesture";
 import { APP_LOCALES, type AppLocale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -440,6 +441,12 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
   const [open, setOpen] = useSheetSlot("profileMenu");
   const [langOpen, setLangOpen] = useState(false);
   const { displayName: name, email, initial } = useIdentity(displayName);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  // Menu content is short; expanding it to full screen would expand a void.
+  const { handleProps } = useSheetGesture({
+    sheetRef,
+    onDismiss: () => setOpen(false),
+  });
 
   useEffect(() => {
     if (!open) setLangOpen(false);
@@ -450,6 +457,7 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-[130] bg-black/60 transition-opacity duration-250 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none" />
         <Dialog.Popup
+          ref={sheetRef}
           dir={dir}
           data-testid="profile-account-sheet"
           className={cn(
@@ -459,7 +467,11 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
           )}
         >
           <Dialog.Title className="sr-only">{t("profile.account_menu")}</Dialog.Title>
-          <div className="flex justify-center py-2">
+          <div
+            {...handleProps}
+            data-testid="profile-sheet-handle"
+            className="flex cursor-grab justify-center py-2 active:cursor-grabbing"
+          >
             <span aria-hidden className="h-1 w-10 rounded-full bg-muted-foreground/40" />
           </div>
           <ProfileIdentity initial={initial} displayName={name} email={email} />
