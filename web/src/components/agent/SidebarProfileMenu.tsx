@@ -225,8 +225,12 @@ export function SidebarProfileMenu({
 }: {
   collapsed?: boolean;
   displayName?: string;
-  /** `drawer` = inside the mobile navigation drawer; delegates to the sheet. */
-  variant?: "rail" | "drawer";
+  /**
+   * `rail` = sidebar footer. `drawer` = inside the mobile nav drawer.
+   * `topbar` = the avatar in the console header, which is now the primary way
+   * in: reaching your account should not mean opening navigation first.
+   */
+  variant?: "rail" | "drawer" | "topbar";
 }) {
   const { t, dir } = useLocale();
   const [open, setOpen] = useState(false);
@@ -238,9 +242,22 @@ export function SidebarProfileMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const { displayName, email, initial } = useIdentity(displayNameProp);
-  const isDrawer = variant === "drawer";
+  const isTopBar = variant === "topbar";
+  // Both hand off to the shell-owned sheet on touch-sized viewports.
+  const [isCompact, setIsCompact] = useState(false);
+  const usesSheet = variant === "drawer" || (isTopBar && isCompact);
+  const isDrawer = usesSheet;
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!isTopBar) return;
+    const query = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setIsCompact(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, [isTopBar]);
 
   useLayoutEffect(() => {
     if (isDrawer || !open || !triggerRef.current) {
@@ -327,6 +344,36 @@ export function SidebarProfileMenu({
         )
       : null;
 
+  if (isTopBar) {
+    return (
+      <>
+        {menu}
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-haspopup={usesSheet ? "dialog" : "menu"}
+          aria-expanded={usesSheet ? undefined : open}
+          aria-label={t("profile.account_menu")}
+          data-testid="topbar-profile"
+          onClick={() => {
+            if (usesSheet) {
+              setSheetOpen(true);
+              return;
+            }
+            setOpen((v) => !v);
+            setLangOpen(false);
+          }}
+          className={cn(
+            "flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-sm font-semibold text-foreground transition-colors duration-150 hover:bg-muted/70",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          )}
+        >
+          {initial}
+        </button>
+      </>
+    );
+  }
+
   return (
     <div
       dir={dir}
@@ -401,12 +448,12 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-[130] bg-black/60 transition-opacity duration-250 data-ending-style:opacity-0 data-starting-style:opacity-0 lg:hidden motion-reduce:transition-none" />
+        <Dialog.Backdrop className="fixed inset-0 z-[130] bg-black/60 transition-opacity duration-250 data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none" />
         <Dialog.Popup
           dir={dir}
           data-testid="profile-account-sheet"
           className={cn(
-            "fixed inset-x-0 bottom-0 z-[131] max-h-[85vh] overflow-y-auto rounded-t-[var(--radius-lg)] border-t border-border bg-background pb-[max(.5rem,env(safe-area-inset-bottom))] text-foreground shadow-2xl lg:hidden",
+            "fixed inset-x-0 bottom-0 z-[131] max-h-[85vh] overflow-y-auto rounded-t-[var(--radius-lg)] border-t border-border bg-background pb-[max(.5rem,env(safe-area-inset-bottom))] text-foreground shadow-2xl",
             "transition-transform duration-300 ease-out data-ending-style:translate-y-full data-starting-style:translate-y-full",
             "motion-reduce:transition-none",
           )}

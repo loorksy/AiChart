@@ -129,6 +129,8 @@ export type TvChartHandle = {
   getSelectedUserDrawingId: () => string | undefined;
   /** Apply the agent's validated user-drawing mutations onto the native shapes. */
   applyUserDrawingMutations: (commands: UserDrawingMutationCommand[]) => void;
+  /** Re-request bars from the datafeed without tearing the widget down. */
+  reload: () => void;
   /** Underlying widget (for drawing overlays in later phases). */
   widget: () => IChartingLibraryWidget | null;
 };
@@ -333,6 +335,16 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         });
       } catch {
         /* chart not ready / TV rejected — no-op */
+      }
+    },
+    reload: () => {
+      // resetData, not a remount: the operator's drawings and the agent's
+      // levels are widget state, and a remount would take both with it.
+      if (!readyRef.current) return;
+      try {
+        widgetRef.current?.activeChart().resetData();
+      } catch {
+        /* widget torn down mid-click */
       }
     },
     widget: () => widgetRef.current,

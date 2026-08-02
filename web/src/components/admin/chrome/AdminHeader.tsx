@@ -1,12 +1,8 @@
 "use client";
 
 import { HugeiconsIcon } from "@hugeicons/react";
-import { RefreshIcon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/squareui/badge";
-import { Button } from "@/components/squareui/button";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { useLocale } from "@/hooks/useLocale";
-import { useMe } from "@/hooks/useMe";
 import type { AdminPermission } from "@/lib/adminRoles";
 import {
   ADMIN_CONSOLE_TITLE,
@@ -16,16 +12,15 @@ import {
   type AdminTabId,
 } from "./adminNavTree";
 
-const REFRESH_LABEL = { label: "تحديث البيانات", labelEn: "Refresh data" };
-
 /**
- * Section header for the platform console. It no longer carries a rail toggle:
- * the console's one navigation lives in AppConsoleShell, which owns both the
- * desktop collapse control and the mobile drawer trigger.
+ * Which panel you are on, and nothing else.
  *
- * The identity strip is the signed-in admin, read from /api/me — never a decorative
- * roster. While the request is in flight the block is a skeleton, because showing a
- * placeholder name would be showing the wrong person.
+ * This used to be a second console header: it carried its own avatar, refresh
+ * control and theme toggle, stacked directly under the shell's own bar, so the
+ * admin console had two headers competing for the same job while the trader
+ * console had one. All three moved to the shared top bar, which both consoles
+ * now use; what is left here is the part only this route can say — the section
+ * name, and the role it is being viewed with.
  */
 export function AdminHeader({
   tab,
@@ -36,15 +31,12 @@ export function AdminHeader({
 }) {
   const { locale } = useLocale();
   const item = adminNavItem(tab);
-  const { data, loading } = useMe();
   const roleLabel = adminRoleLabel(permissions, locale);
-  const displayName = data?.displayName ?? "";
-  const initial = displayName.trim().charAt(0).toUpperCase();
 
   return (
     <header
       data-testid="admin-console-header"
-      className="sticky top-0 z-raised flex shrink-0 items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-6"
+      className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3 sm:px-6"
     >
       <HugeiconsIcon
         icon={item.icon}
@@ -58,54 +50,9 @@ export function AdminHeader({
         <h2 className="truncate text-sm font-medium">{adminLabel(item, locale)}</h2>
       </div>
 
-      <div className="ms-auto flex min-w-0 items-center gap-2">
-        {loading && !data ? (
-          <span
-            aria-hidden
-            className="h-7 w-24 animate-pulse rounded-md bg-muted sm:w-36"
-          />
-        ) : data ? (
-          <span className="flex min-w-0 items-center gap-2">
-            <span
-              aria-hidden
-              className="grid size-7 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground"
-            >
-              {initial}
-            </span>
-            <span className="hidden min-w-0 flex-col leading-tight sm:flex">
-              <span className="truncate text-xs font-medium">{displayName}</span>
-              <span
-                dir="ltr"
-                className="truncate text-start text-[10px] text-muted-foreground"
-              >
-                {data.user.email}
-              </span>
-            </span>
-          </span>
-        ) : null}
-
-        <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">
-          {roleLabel}
-        </Badge>
-
-        {/* Panels each load their own data on mount, so a full reload is the only
-            refresh that is honest about covering all of them. */}
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="size-11 shrink-0 transition-colors duration-150 ease-out sm:size-8"
-          aria-label={adminLabel(REFRESH_LABEL, locale)}
-          title={adminLabel(REFRESH_LABEL, locale)}
-          onClick={() => window.location.reload()}
-        >
-          <HugeiconsIcon icon={RefreshIcon} strokeWidth={2} />
-        </Button>
-
-        <ThemeToggle
-          collapsed
-          className="size-11 min-h-11 shrink-0 rounded-md border-border bg-background sm:size-8 sm:min-h-8"
-        />
-      </div>
+      <Badge variant="secondary" className="ms-auto hidden shrink-0 sm:inline-flex">
+        {roleLabel}
+      </Badge>
     </header>
   );
 }

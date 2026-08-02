@@ -3,23 +3,18 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Menu, PanelLeft, PanelLeftClose, X } from "lucide-react";
+import { ChevronDown, PanelLeft, X } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AiChartLogo } from "@/components/AiChartLogo";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { NotificationCenter } from "@/components/agent/NotificationCenter";
-import {
-  ProfileAccountSheet,
-  SidebarProfileMenu,
-} from "@/components/agent/SidebarProfileMenu";
+import { ProfileAccountSheet } from "@/components/agent/SidebarProfileMenu";
 import { SettingsModal } from "@/components/SettingsModal";
 import { ConsoleOverlaysProvider } from "@/components/shell/ConsoleOverlays";
 import type { SettingsTabId } from "@/components/SettingsClient";
 import { SidebarConversations } from "@/components/shell/SidebarConversations";
 import { ShellMenuProvider } from "@/components/shell/ShellMenuContext";
 import { SheetCoordinatorProvider, useSheetSlot } from "@/components/shell/SheetCoordinator";
+import { ConsoleTopBar } from "@/components/shell/ConsoleTopBar";
 import {
-  ADMIN_NAV,
   navForRole,
   activeNav,
   type NavItem,
@@ -39,9 +34,6 @@ import { useLocale } from "@/hooks/useLocale";
 import { useMe } from "@/hooks/useMe";
 import { Mt5PresencePing } from "@/components/Mt5PresencePing";
 import { cn } from "@/lib/utils";
-
-/** The admin's non-platform destination — the bridge overview at /console. */
-const ADMIN_HOME_ITEM = ADMIN_NAV.find((item) => item.href === "/console");
 
 const PLATFORM_PATH = "/console/platform";
 
@@ -139,12 +131,6 @@ function ConsoleShellBody({
     pathname === "/console" ||
     pathname.startsWith("/chart") ||
     pathname === "/subscribe";
-  /**
-   * The workspace used to get its hamburger from the floating chart/chat
-   * switcher, which is gone now that the chart is a sheet. Rather than hiding
-   * the drawer trigger inside the chart's own chrome, every console page below
-   * `lg` gets the same toolbar — one place to reach navigation, wherever you are.
-   */
   /**
    * Which admin panel the platform route is showing. An absent or unknown
    * `?tab=` lands on the overview server-side (resolveAdminTab), so the rail has
@@ -277,7 +263,6 @@ function ConsoleShellBody({
         !conversationsEnabled && "flex-1",
       )}
     >
-      {ADMIN_HOME_ITEM ? productLink(ADMIN_HOME_ITEM, iconOnly, onNavigate) : null}
       {adminGroups.map((group) => {
         // The disclosure control is the group label, and the label is what the
         // icon rail hides — so a folded group would become unreachable there.
@@ -349,13 +334,6 @@ function ConsoleShellBody({
     return isAdmin ? adminNav(iconOnly, onNavigate) : productNav(iconOnly, onNavigate);
   };
 
-  /** The switcher's permanent home: sidebar footer, one row above identity. */
-  const languageRow = (iconOnly: boolean) => (
-    <div className="shrink-0 border-t border-sidebar-border px-2 py-2">
-      {iconOnly ? <LanguageSwitcher variant="rail" /> : <LanguageSwitcher variant="row" />}
-    </div>
-  );
-
   const brandHref = isAdmin ? "/console" : "/console";
 
   const sidebarHeader = (
@@ -381,21 +359,6 @@ function ConsoleShellBody({
               nameClassName="truncate text-[15px] font-semibold tracking-tight"
             />
           </Link>
-          <div className="flex shrink-0 items-center gap-0.5">
-            {/* Alert bell + notification center (Group 9). */}
-            <NotificationCenter />
-            <button
-              type="button"
-              onClick={() => setCollapsed((c) => !c)}
-              className={cn(
-                "hidden size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground lg:flex",
-                FOCUS_RING,
-              )}
-              aria-label={t("shell.collapse_sidebar")}
-            >
-              <PanelLeftClose className="h-4 w-4 rtl:-scale-x-100" />
-            </button>
-          </div>
         </>
       ) : (
         /**
@@ -458,8 +421,6 @@ function ConsoleShellBody({
           {navList()}
           {conversationsEnabled ? <SidebarConversations collapsed={collapsed} /> : null}
           {!isAdmin && !conversationsEnabled ? <div className="flex-1" /> : null}
-          {languageRow(collapsed)}
-          <SidebarProfileMenu collapsed={collapsed} displayName={displayName} />
         </aside>
 
         {mobileOpen && (
@@ -505,7 +466,6 @@ function ConsoleShellBody({
                 two different controls for one setting, stacked. The account
                 sheet keeps it; the drawer footer gives it up.
               */}
-              <SidebarProfileMenu displayName={displayName} variant="drawer" />
             </aside>
           </div>
         )}
@@ -523,27 +483,16 @@ function ConsoleShellBody({
         />
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-          <div
-              data-testid="page-toolbar-menu"
-              className="flex h-14 shrink-0 items-center border-b border-border px-3 lg:hidden"
-            >
-              <button
-                type="button"
-                data-testid="mobile-menu-trigger"
-                onClick={() => setMobileOpen(true)}
-                className={cn(
-                  "flex size-11 items-center justify-center rounded-lg border border-border bg-background text-foreground transition-colors duration-150 ease-out hover:bg-muted",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-                )}
-                aria-label={t("shell.open_menu")}
-                aria-expanded={mobileOpen}
-                aria-controls="mobile-navigation-drawer"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-              {/* Mobile bell: the sidebar (and its bell) is hidden below lg. */}
-              <NotificationCenter className="ms-auto" />
-          </div>
+          <ConsoleTopBar
+            displayName={displayName}
+            sidebarOpen={mobileOpen}
+            onToggleSidebar={() =>
+              window.matchMedia("(min-width: 1024px)").matches
+                ? setCollapsed((c) => !c)
+                : setMobileOpen(!mobileOpen)
+            }
+            refreshMode={isAdmin ? "page" : "chart"}
+          />
           <main
             className={cn(
               "aichart-scroll flex min-h-0 flex-1 flex-col",

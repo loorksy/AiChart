@@ -4,6 +4,7 @@ import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "
 import { CandlestickChart, Send, Square } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { AgentModelPicker } from "@/components/agent/AgentModelPicker";
+import { RiskPerTradeControl } from "@/components/agent/RiskPerTradeControl";
 import { cn } from "@/lib/utils";
 
 /** Roughly six lines before the composer starts scrolling its own overflow. */
@@ -84,32 +85,34 @@ export function AgentChatInput({
         />
 
         <div className="flex items-center gap-1">
-          <div
-            data-switcher-dock="composer"
-            data-testid="switcher-composer-dock"
-            className="flex shrink-0 items-center empty:hidden"
-          />
+          {/*
+            One row for what governs the next turn: which chart is up, how much
+            of the account is at stake, and which model answers. All three used
+            to live somewhere else — a floating switcher, a settings section, and
+            a differently-shaped dropdown.
+          */}
+          {onToggleChart && (
+            <button
+              type="button"
+              onClick={onToggleChart}
+              aria-pressed={chartOpen}
+              aria-label={chartOpen ? t("layout.close_chart") : t("layout.show_chart")}
+              title={chartOpen ? t("layout.close_chart") : t("layout.show_chart")}
+              data-testid="composer-chart-toggle"
+              className={cn(
+                ACTION_BUTTON,
+                // A toggle, so its on-state is permanent rather than a hover.
+                chartOpen && "bg-muted text-foreground",
+              )}
+            >
+              <CandlestickChart className="h-5 w-5 sm:h-4 sm:w-4" />
+            </button>
+          )}
+          <RiskPerTradeControl />
           <AgentModelPicker />
 
           {/* Logical end of the row: mirrors under dir="rtl" with no branch. */}
           <div className="ms-auto flex items-center gap-1">
-            {onToggleChart && (
-              <button
-                type="button"
-                onClick={onToggleChart}
-                aria-pressed={chartOpen}
-                aria-label={chartOpen ? t("layout.close_chart") : t("layout.show_chart")}
-                title={chartOpen ? t("layout.close_chart") : t("layout.show_chart")}
-                data-testid="composer-chart-toggle"
-                className={cn(
-                  ACTION_BUTTON,
-                  // A toggle, so its on-state is permanent rather than a hover.
-                  chartOpen && "bg-muted text-foreground",
-                )}
-              >
-                <CandlestickChart className="h-5 w-5 sm:h-4 sm:w-4" />
-              </button>
-            )}
             {voiceControl}
             {running ? (
               <button

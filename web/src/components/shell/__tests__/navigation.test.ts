@@ -40,8 +40,11 @@ test("trial nav is limited to console only", () => {
 
 test("admin nav is dedicated and excludes trader destinations", () => {
   const adminHrefs = navForRole("admin").map((i) => i.href);
-  assert.ok(adminHrefs.includes("/console"));
-  assert.ok(adminHrefs.some((h) => h.includes("/console/platform")));
+  // The admin's home is the platform overview, not the trader bridge at /console.
+  assert.ok(!adminHrefs.includes("/console"));
+  assert.ok(adminHrefs.includes("/console/platform?tab=overview"));
+  assert.ok(adminHrefs.every((h) => h.startsWith("/console/platform")));
+  assert.match(read("app/console/page.tsx"), /redirect\("\/console\/platform\?tab=overview"\)/);
   assert.ok(!adminHrefs.includes("/statistics"));
   assert.ok(!adminHrefs.includes("/console/trades"));
   assert.deepEqual(navForRole("admin"), ADMIN_NAV);
@@ -76,14 +79,44 @@ test("shell mounts conversations for traders; admin uses admin nav", () => {
   assert.doesNotMatch(shell, /glass-panel/);
 });
 
-test("every console page below lg reaches the drawer from the shell toolbar", () => {
+test("both consoles share one top bar: account, alerts, nav, refresh", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
-  // The workspace used to borrow this trigger from the floating switcher.
-  assert.match(shell, /data-testid="mobile-menu-trigger"/);
-  assert.equal((shell.match(/data-testid="page-toolbar-menu"/g) ?? []).length, 1);
+  assert.match(shell, /<ConsoleTopBar/);
   assert.doesNotMatch(shell, /needsPageMenu/);
-  const workspace = read("components/SmartChartWorkspace.tsx");
-  assert.doesNotMatch(workspace, /ChartToolbarMenuButton/);
+  // Read past the imports so the order below is the rendered order, not the
+  // import order.
+  const bar = read("components/shell/ConsoleTopBar.tsx").split('data-testid="console-top-bar"')[1]!;
+  // Fixed order; the drawer trigger lives here rather than in each page's chrome.
+  const order = ["SidebarProfileMenu", "NotificationCenter", "mobile-menu-trigger", "console-refresh"];
+  let cursor = -1;
+  for (const marker of order) {
+    const at = bar.indexOf(marker);
+    assert.ok(at > cursor, marker);
+    cursor = at;
+  }
+  // The admin console had its own header carrying the same three controls.
+  const adminHeader = read("components/admin/chrome/AdminHeader.tsx");
+  assert.doesNotMatch(adminHeader, /ThemeToggle|window\.location\.reload/);
+  assert.doesNotMatch(adminHeader, /sticky/);
+});
+
+test("risk per trade is a composer control, not a settings section", () => {
+  const settings = read("components/SettingsClient.tsx");
+  assert.doesNotMatch(settings, /id: "trading"/);
+  const input = read("components/agent/AgentChatInput.tsx");
+  assert.match(input, /RiskPerTradeControl/);
+  assert.match(input, /AgentModelPicker/);
+  // Both open on the one shared composer surface.
+  const risk = read("components/agent/RiskPerTradeControl.tsx");
+  const model = read("components/agent/AgentModelPicker.tsx");
+  assert.match(risk, /ComposerPopover/);
+  assert.match(model, /ComposerPopover/);
+});
+
+test("billing page reads from the dictionaries, not hardcoded Arabic", () => {
+  const billing = read("components/billing/BillingClient.tsx");
+  assert.match(billing, /useLocale/);
+  assert.doesNotMatch(billing, /[\u0600-\u06FF]/);
 });
 
 test("old /console/chats route redirects to console", () => {
@@ -133,12 +166,14 @@ test("one overlay at a time across drawer, account sheet and chart sheet", () =>
   assert.match(profile, /useSheetSlot\("profileMenu"\)/);
 });
 
-test("language switching lives in one place on mobile", () => {
+test("language switching lives in one place", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
-  // Drawer footer gave it up; the account sheet keeps it.
-  assert.equal((shell.match(/languageRow\(/g) ?? []).length, 1);
+  // The rail and the drawer both carried their own switcher; the account menu
+  // reached from the top bar is now the only one.
+  assert.doesNotMatch(shell, /LanguageSwitcher/);
   const profile = read("components/agent/SidebarProfileMenu.tsx");
   assert.match(profile, /profile\.language/);
+  assert.match(profile, /variant === "topbar"/);
 });
 
 test("settings opens over the workspace instead of navigating away", () => {

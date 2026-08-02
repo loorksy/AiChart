@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { TvChartHandle, TvHeaderAction } from "@/components/chart/TvChart";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
+import { CHART_RELOAD_EVENT } from "@/components/shell/ConsoleTopBar";
 import { useConsoleChatUrl } from "@/hooks/useConsoleChatUrl";
 
 function ChartLoading() {
@@ -620,6 +621,13 @@ function SmartChartWorkspaceInner({
       setChartSheetOpen(false);
     }
   }, [chatEnabled, chat.ready, urlChatId, chat.activeChatId, chat.selectChat]);
+
+  // The top bar's refresh control, for traders: reload the candles, not the page.
+  useEffect(() => {
+    const reload = () => chartRef.current?.reload();
+    window.addEventListener(CHART_RELOAD_EVENT, reload);
+    return () => window.removeEventListener(CHART_RELOAD_EVENT, reload);
+  }, []);
 
   useEffect(() => {
     const create = () => {
