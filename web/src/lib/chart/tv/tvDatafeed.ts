@@ -278,7 +278,14 @@ export function createAiChartDatafeed(
       const bare = symbolName.includes(":")
         ? symbolName.split(":").pop()!
         : symbolName;
-      const sym = viaEa ? bare : bare.toUpperCase();
+      /*
+       * Case is only folded for the platform feed's canonical keys. A broker
+       * symbol arrives already spelled the way its catalogue spells it —
+       * XAUUSDm, AAPLm — and uppercasing it here is what reached MetaApi as a
+       * symbol that does not exist. A lowercase letter is the tell: canonical
+       * OANDA keys never carry one.
+       */
+      const sym = viaEa || /[a-z]/.test(bare) ? bare : bare.toUpperCase();
       const tickerOut = viaEa ? `${EA_TICKER_PREFIX}${sym}` : sym;
       const exch = viaEa ? EA_EXCHANGE : exchange;
       const info: LibrarySymbolInfo = {

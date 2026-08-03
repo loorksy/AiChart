@@ -147,8 +147,13 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   const symbol =
     forexSource === "oanda"
       ? forexCanonicalKey(options.symbol)
-      : // Broker feeds answer to the broker's own spelling (EURUSDm, XAUUSD.pro).
-        options.symbol.toUpperCase().trim();
+      : /*
+         * Broker feeds answer to the broker's own spelling — and that spelling
+         * is case-sensitive. This line used to uppercase it, which is exactly
+         * what the comment said not to do: Exness serves XAUUSDm, and MetaApi
+         * answers "Symbol XAUUSDM does not exist" for the folded version.
+         */
+        options.symbol.trim();
   const sourceKey = forexSource;
   const cacheKey = `${ohlcCacheResource(symbol, interval)}:${sourceKey}`;
   if (
