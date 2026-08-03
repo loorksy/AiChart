@@ -2,9 +2,22 @@ import type { MtPlatform } from "../markets/types";
 import { getPlatformValue, getPlatformValueAsync } from "../platformConfig";
 import type { EaSymbolSpec } from "../types";
 
-/** Lazy-loaded MetaApi SDK (server-only, heavy native deps). */
+/**
+ * Lazy-loaded MetaApi SDK (server-only, heavy native deps).
+ *
+ * The "/esm-node" subpath is load-bearing. The package's root export maps the
+ * `import` condition to dists/esm-web — a browser bundle that touches `window`
+ * at module scope — and reserves the Node build for `require`. A dynamic
+ * import() from a server component therefore picks the web build and dies with
+ * "ReferenceError: window is not defined" before a single account is reached.
+ * metaapi.cloud-sdk is in serverExternalPackages, so this is resolved by Node
+ * at runtime rather than rewritten by the bundler, and the condition applies.
+ *
+ * "/esm-node" (not "/node") because its default export IS the MetaApi class,
+ * matching the callers below; the CJS subpath nests it one level deeper.
+ */
 async function loadMetaApiClass() {
-  const mod = await import("metaapi.cloud-sdk");
+  const mod = await import("metaapi.cloud-sdk/esm-node");
   return mod.default;
 }
 
