@@ -25,7 +25,7 @@ type ConfigField = {
   key: string;
   label: string;
   labelEn: string;
-  group: "core" | "ai" | "telegram" | "ops";
+  group: "core" | "ai" | "markets" | "telegram" | "ops";
   type?: "text" | "url" | "toggle";
   placeholder?: string;
   configured: boolean;
@@ -45,6 +45,11 @@ const GROUPS: { id: ConfigField["group"]; title: string; description: string }[]
     id: "ai",
     title: "الذكاء الاصطناعي — المفاتيح والافتراضي",
     description: "المزوّد والنموذج اللذان يعملان لمن لم يختر بنفسه.",
+  },
+  {
+    id: "markets",
+    title: "بيانات السوق والوسطاء",
+    description: "مفاتيح الأنابيب التي تصل الأسعار والحسابات — OANDA و MetaApi.",
   },
   { id: "telegram", title: "تليجرام", description: "البوت وقنوات الإشعار." },
   {
