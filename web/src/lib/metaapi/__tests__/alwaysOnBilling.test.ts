@@ -49,6 +49,31 @@ describe("an always-on account still bills", () => {
     assert.equal(METER_ROLL_MS, 3_600_000);
   });
 
+  it("recognises an already-deployed row and leaves it alone", () => {
+    /*
+     * mt_accounts.state is written lowercase by deployAccount. "DEPLOYED" is
+     * the SDK account object's state — same word, different object. Comparing
+     * a row against the SDK spelling matches nothing, so the sweep redeployed
+     * a live account every five minutes and never noticed.
+     */
+    const written = LIFECYCLE.match(/SET state = '([a-z_]+)' WHERE user_id/)?.[1];
+    assert.equal(written, "deployed", "deployAccount writes the lowercase value");
+
+    const ensure = LIFECYCLE.slice(
+      LIFECYCLE.indexOf("export async function ensureAlwaysOnDeployed"),
+      LIFECYCLE.indexOf("export const METER_ROLL_MS"),
+    );
+    assert.ok(
+      !/state === "DEPLOYED"/.test(ensure),
+      "the row check must not compare against the SDK's spelling",
+    );
+    assert.match(
+      ensure,
+      /state\?\.toLowerCase\(\) === "deployed"/,
+      "skip rows the column already calls deployed",
+    );
+  });
+
   it("bills the hours a rolled session actually accrued", () => {
     const start = 1_700_000_000_000;
     // One full roll window, to the minute resolution the meter uses.
