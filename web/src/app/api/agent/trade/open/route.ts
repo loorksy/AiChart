@@ -49,6 +49,8 @@ const schema = z
     order_type: z.enum(["market", "limit"]).default("market"),
     limit_price: z.number().positive().optional(),
     idempotencyKey: z.string().max(128).optional(),
+    /** Preview only: computes the same checks and sizing figures below, places nothing. */
+    dry_run: z.boolean().default(false),
   })
   .strict()
   .refine(
@@ -103,7 +105,9 @@ export async function POST(req: NextRequest) {
       body.idempotencyKey,
     );
 
-    if (idempotencyKey) {
+    // Idempotency is for deduplicating real submissions — a preview call
+    // must not read (or, further down, write) that cache.
+    if (idempotencyKey && !body.dry_run) {
       const cached = await getIdempotencyResult(userId, idempotencyKey);
       if (cached) {
         return toBridgeResponse(cached, { idempotentReplay: true });
@@ -127,7 +131,8 @@ export async function POST(req: NextRequest) {
           null,
         ),
       );
-      return respondWithIdempotency(userId, idempotencyKey, envelope);
+      // A denied preview must not poison a real retry under the same key.
+      return respondWithIdempotency(userId, body.dry_run ? null : idempotencyKey, envelope);
     }
 
     // An order arrives here from exactly one of two authorisations: the
@@ -154,7 +159,7 @@ export async function POST(req: NextRequest) {
             null,
           ),
         );
-        return respondWithIdempotency(userId, idempotencyKey, envelope);
+        return respondWithIdempotency(userId, body.dry_run ? null : idempotencyKey, envelope);
       }
     }
 
@@ -164,7 +169,7 @@ export async function POST(req: NextRequest) {
       const envelope = bridgeSuccess(
         tradeOpenPayload(false, "denied", marketBlock, null, null, null),
       );
-      return respondWithIdempotency(userId, idempotencyKey, envelope);
+      return respondWithIdempotency(userId, body.dry_run ? null : idempotencyKey, envelope);
     }
     const market = resolveActiveMarket(requestedMarket) as MarketType;
 
@@ -178,7 +183,46 @@ export async function POST(req: NextRequest) {
         "Verified broker equity is unavailable.",
         "تعذّر التحقق من equity للحساب المتصل؛ لم يُرسل أي أمر.",
       );
-      return respondWithIdempotency(userId, idempotencyKey, envelope);
+      return respondWithIdempotency(userId, body.dry_run ? null : idempotencyKey, envelope);
+    }
+
+    // Preview: every check above already ran for real (failure brake,
+    // authorization, market session, verified equity) — dry_run stops here,
+    // before the one line that has a side effect (createIntent). No order is
+    // sent and no row is written either way.
+    if (body.dry_run) {
+      // Never persisted under idempotencyKey: a preview must not be able to
+      // shadow the real call that reuses the same key afterward.
+      const envelope = bridgeSuccess({
+        ok: true,
+        dry_run: true,
+        status: "preview",
+        would_open: {
+          symbol: body.symbol,
+          side: body.side,
+          market,
+          order_type: orderType,
+          entry: body.entry ?? null,
+          stop_loss: body.stop_loss,
+          take_profit: body.take_profit ?? null,
+          limit_price: body.limit_price ?? null,
+        },
+        checks: {
+          failure_brake: "passed",
+          authorized: true,
+          market_open: true,
+        },
+        computed: {
+          equity: budget.equity,
+          currency: budget.currency,
+          risk_pct: budget.riskPct,
+          risk_amount: budget.riskAmount,
+          broker,
+          note:
+            "Exact lot size is computed from the live symbol spec at execution time and is not previewed here — risk_amount is the figure the position will be sized from.",
+        },
+      });
+      return toBridgeResponse(envelope);
     }
 
     const leverage = 1;

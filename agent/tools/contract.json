@@ -6,7 +6,7 @@
     {
       "name": "cancel_mt5_order",
       "version": "1.1.1",
-      "description": "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. side-effect: broker cancel.",
+      "description": "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. side-effect: broker cancel. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read an order's state by ticket yet, so its existence cannot be confirmed beforehand.",
       "permission": "trade.manage",
       "riskClass": "execution",
       "surfaces": [
@@ -106,7 +106,7 @@
     {
       "name": "close_partial",
       "version": "1.1.1",
-      "description": "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: broker partial close.",
+      "description": "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: broker partial close. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read a position's current size by ticket yet, so the requested lots cannot be checked against it beforehand.",
       "permission": "trade.execute",
       "riskClass": "execution",
       "surfaces": [
@@ -126,7 +126,7 @@
     {
       "name": "close_trade",
       "version": "1.1.1",
-      "description": "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123.",
+      "description": "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123. Pass dry_run:true to see the live price and estimated PnL each targeted trade would realize, without closing anything — trades on a broker this platform cannot close report would_close:false with the reason instead of a number.",
       "permission": "trade.execute",
       "riskClass": "execution",
       "surfaces": [
@@ -840,7 +840,7 @@
     {
       "name": "modify_sl_tp",
       "version": "1.1.1",
-      "description": "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. side-effect: broker modify. Example: ticket=123&stop_loss=1.08.",
+      "description": "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. side-effect: broker modify. Example: ticket=123&stop_loss=1.08. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read a position's current levels by ticket yet, so the requested values cannot be checked beforehand.",
       "permission": "trade.manage",
       "riskClass": "execution",
       "surfaces": [
@@ -861,7 +861,7 @@
     {
       "name": "open_trade",
       "version": "1.1.1",
-      "description": "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. stop_loss is mandatory; confidence is audit-only. side-effect: places a real order (idempotencyKey deduplicates for 24h).",
+      "description": "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. stop_loss is mandatory; confidence is audit-only. side-effect: places a real order (idempotencyKey deduplicates for 24h). Pass dry_run:true to run every check (failure brake, authorization, market session, verified equity) and return the real risk_amount/equity figures without placing anything — use it to preview before the first live call on a symbol; the response is never cached under idempotencyKey.",
       "permission": "trade.execute",
       "riskClass": "execution",
       "surfaces": [
@@ -902,7 +902,7 @@
     {
       "name": "request_approval",
       "version": "1.1.1",
-      "description": "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram. When: mode=approval — do not use in direct mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons.",
+      "description": "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram. When: mode=approval — do not use in direct mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons. Pass dry_run:true to see the risk_amount/equity the card would show and confirm the card would send, without creating the intent or messaging Telegram.",
       "permission": "trade.recommend",
       "riskClass": "recommendation",
       "surfaces": [
@@ -943,7 +943,7 @@
     {
       "name": "respond_approval",
       "version": "1.1.1",
-      "description": "Resolves a pending trade intent by approving or rejecting it; approving may immediately execute the trade. When: a pending intent exists and the operator has given a decision. side-effect: may execute the trade on approve.",
+      "description": "Resolves a pending trade intent by approving or rejecting it; approving may immediately execute the trade. When: a pending intent exists and the operator has given a decision. side-effect: may execute the trade on approve. Pass dry_run:true to see the pending intent's stored levels and confirm it is still pending, without approving or rejecting it — nothing is resolved and no trade is executed.",
       "permission": "trade.execute",
       "riskClass": "execution",
       "surfaces": [

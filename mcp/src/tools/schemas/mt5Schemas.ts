@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { DESTRUCTIVE, READ_ONLY } from "../registry.js";
 import type { ToolDefinition } from "./types.js";
-import { zChartDrawings, zInterval, zLooseBoolean, zSymbol } from "./shapes.js";
+import { zChartDrawings, zDryRun, zInterval, zLooseBoolean, zSymbol } from "./shapes.js";
 
 export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -80,11 +80,12 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "modify_sl_tp",
     domain: "mt5",
     description:
-      "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. side-effect: broker modify. Example: ticket=123&stop_loss=1.08.",
+      "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. side-effect: broker modify. Example: ticket=123&stop_loss=1.08. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read a position's current levels by ticket yet, so the requested values cannot be checked beforehand.",
     inputSchema: {
       ticket: z.number().int().positive(),
       stop_loss: z.number().positive(),
       take_profit: z.number().positive().optional(),
+      dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
   },
@@ -92,18 +93,19 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "cancel_mt5_order",
     domain: "mt5",
     description:
-      "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. side-effect: broker cancel.",
-    inputSchema: { ticket: z.number().int().positive() },
+      "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. side-effect: broker cancel. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read an order's state by ticket yet, so its existence cannot be confirmed beforehand.",
+    inputSchema: { ticket: z.number().int().positive(), dry_run: zDryRun },
     annotations: DESTRUCTIVE,
   },
   {
     name: "close_partial",
     domain: "mt5",
     description:
-      "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: broker partial close.",
+      "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: broker partial close. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read a position's current size by ticket yet, so the requested lots cannot be checked against it beforehand.",
     inputSchema: {
       ticket: z.number().int().positive(),
       lots: z.number().positive(),
+      dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
   },

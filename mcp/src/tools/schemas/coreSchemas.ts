@@ -6,6 +6,7 @@ import {
   zBacktestTimeframe,
   zChartDrawings,
   zConfidence,
+  zDryRun,
   zInterval,
   zLooseBoolean,
   zMarket,
@@ -442,7 +443,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "open_trade",
     domain: "core",
     description:
-      "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. stop_loss is mandatory; confidence is audit-only. side-effect: places a real order (idempotencyKey deduplicates for 24h).",
+      "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. stop_loss is mandatory; confidence is audit-only. side-effect: places a real order (idempotencyKey deduplicates for 24h). Pass dry_run:true to run every check (failure brake, authorization, market session, verified equity) and return the real risk_amount/equity figures without placing anything — use it to preview before the first live call on a symbol; the response is never cached under idempotencyKey.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -459,6 +460,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       order_type: z.enum(["market", "limit"]).optional(),
       limit_price: z.number().positive().optional(),
       idempotencyKey: z.string().max(128).optional().describe("idempotency 24h"),
+      dry_run: zDryRun,
     },
     annotations: IDEMPOTENT_WRITE,
   },
@@ -466,10 +468,11 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "close_trade",
     domain: "core",
     description:
-      "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123.",
+      "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123. Pass dry_run:true to see the live price and estimated PnL each targeted trade would realize, without closing anything — trades on a broker this platform cannot close report would_close:false with the reason instead of a number.",
     inputSchema: {
       trade_id: zTradeId.optional(),
       all: z.boolean().optional(),
+      dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
   },
@@ -498,7 +501,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "request_approval",
     domain: "core",
     description:
-      "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram. When: mode=approval — do not use in direct mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons.",
+      "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram. When: mode=approval — do not use in direct mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons. Pass dry_run:true to see the risk_amount/equity the card would show and confirm the card would send, without creating the intent or messaging Telegram.",
     inputSchema: {
       symbol: zSymbol,
       side: zSide,
@@ -510,6 +513,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       rationale: z.string().optional(),
       recommendation_id: z.number().optional(),
       practice: z.boolean().optional(),
+      dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
   },
@@ -517,10 +521,11 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "respond_approval",
     domain: "core",
     description:
-      "Resolves a pending trade intent by approving or rejecting it; approving may immediately execute the trade. When: a pending intent exists and the operator has given a decision. side-effect: may execute the trade on approve.",
+      "Resolves a pending trade intent by approving or rejecting it; approving may immediately execute the trade. When: a pending intent exists and the operator has given a decision. side-effect: may execute the trade on approve. Pass dry_run:true to see the pending intent's stored levels and confirm it is still pending, without approving or rejecting it — nothing is resolved and no trade is executed.",
     inputSchema: {
       intent_id: zTradeId,
       action: z.enum(["approve", "reject"]),
+      dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
   },

@@ -37,7 +37,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
       const { include_live = true } = (args ?? {}) as {
         include_live?: boolean;
       };
-      return bridgeCall(async () => {
+      return bridgeCall("get_account_overview", args as Record<string, unknown>, async () => {
         // A slow/failing live account never sinks the technical overview.
         const settled = await Promise.allSettled([
           bridge.get("/api/agent/status"),
@@ -80,7 +80,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         market?: "forex";
         practice?: boolean;
       };
-      return bridgeCall(() =>
+      return bridgeCall("get_trade_readiness", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/trade/readiness", {
           symbol,
           market,
@@ -119,6 +119,11 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
                   ...(typeof model === "object" && model !== null ? model : {}),
                   mcpServerVersion: MCP_SERVER_VERSION,
                   mcpGitCommit: gitCommit(),
+                  next_step: {
+                    tool: "get_account_overview",
+                    reason: "Fixed session-start sequence — load the account picture next.",
+                    params: null,
+                  },
                   skills: (() => {
                     const { skills, root } = discoverSkills();
                     return {
@@ -219,10 +224,15 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
                     riskLevel: s.riskLevel,
                   })),
                   rejected: selection.rejected,
-                  nextStep:
+                  next_step:
                     selection.selected.length > 0
-                      ? "Call load_agent_skill once per selected.name. Do not claim a skill was used until load succeeds."
-                      : "No skill load required for this request.",
+                      ? {
+                          tool: "load_agent_skill",
+                          reason:
+                            "Call once per name in params.names — do not claim a skill was used until its load succeeds.",
+                          params: { names: selection.selected.map((s) => s.name) },
+                        }
+                      : null,
                   note:
                     "Capability-scored selection (metadata only). Manual skill-file attachment is unnecessary. Do not show skill names, scores, or diagnostics to the operator.",
                   // Internal diagnostics for the host model / runtraces — not for operator chat.
@@ -293,7 +303,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "get_portfolio",
     mcpToolConfig("get_portfolio"),
     async () =>
-      bridgeCall(() => bridge.get("/api/agent/portfolio"), {
+      bridgeCall("get_portfolio", {}, () => bridge.get("/api/agent/portfolio"), {
         structured: true,
       }),
   );
@@ -302,7 +312,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "get_open_trades",
     mcpToolConfig("get_open_trades"),
     async () =>
-      bridgeCall(() => bridge.get("/api/agent/trades/open"), {
+      bridgeCall("get_open_trades", {}, () => bridge.get("/api/agent/trades/open"), {
         structured: true,
       }),
   );
@@ -317,7 +327,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
         limit?: number;
         recent?: boolean;
       };
-      return bridgeCall(() =>
+      return bridgeCall("get_trade_lessons", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/memory/lessons", {
           symbol,
           pattern,
@@ -336,7 +346,9 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
       // 15s — submission does a warehouse export + research job creation and
       // legitimately exceeds 15s when the research service is busy with a
       // pipeline job. Without the override every manual backtest 504'd.
-      bridgeCall(() => bridge.post("/api/agent/backtest", body, 120_000)),
+      bridgeCall("run_backtest", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/backtest", body, 120_000),
+      ),
   );
 
   server.registerTool(
@@ -350,7 +362,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
       };
       // Advances pending backtests server-side (research polling) — needs
       // more than the 15s bridge default when the service is under load.
-      return bridgeCall(() =>
+      return bridgeCall("get_strategy_performance", args as Record<string, unknown>, () =>
         bridge.get(
           "/api/agent/strategy/performance",
           {
@@ -436,13 +448,19 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "open_trade",
     mcpToolConfig("open_trade"),
-    async (body) => bridgeCall(() => bridge.post("/api/agent/trade/open", body)),
+    async (body) =>
+      bridgeCall("open_trade", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/trade/open", body),
+      ),
   );
 
   server.registerTool(
     "close_trade",
     mcpToolConfig("close_trade"),
-    async (body) => bridgeCall(() => bridge.post("/api/agent/trade/close", body)),
+    async (body) =>
+      bridgeCall("close_trade", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/trade/close", body),
+      ),
   );
 
   server.registerTool(
@@ -450,7 +468,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("evaluate_trade"),
     async (args) => {
       const { trade_id } = args as { trade_id: number };
-      return bridgeCall(() =>
+      return bridgeCall("evaluate_trade", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/trade/evaluate", { trade_id }),
       );
     },
@@ -460,39 +478,45 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
     "record_exit_decision",
     mcpToolConfig("record_exit_decision"),
     async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/trade/exit-decision", body)),
+      bridgeCall("record_exit_decision", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/trade/exit-decision", body),
+      ),
   );
 
   server.registerTool(
     "request_approval",
     mcpToolConfig("request_approval"),
     async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/approval/request", body)),
+      bridgeCall("request_approval", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/approval/request", body),
+      ),
   );
 
   server.registerTool(
     "respond_approval",
     mcpToolConfig("respond_approval"),
     async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/approval/respond", body)),
+      bridgeCall("respond_approval", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/approval/respond", body),
+      ),
   );
 
   server.registerTool(
     "get_pending_approvals",
     mcpToolConfig("get_pending_approvals"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/approval/pending")),
+    bridgeWrap("get_pending_approvals", bridge, () => bridge.get("/api/agent/approval/pending")),
   );
 
   server.registerTool(
     "get_agent_settings",
     mcpToolConfig("get_agent_settings"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/settings")),
+    bridgeWrap("get_agent_settings", bridge, () => bridge.get("/api/agent/settings")),
   );
 
   server.registerTool(
     "get_agent_trade_mode",
     mcpToolConfig("get_agent_trade_mode"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/trade-mode")),
+    bridgeWrap("get_agent_trade_mode", bridge, () => bridge.get("/api/agent/trade-mode")),
   );
 
   server.registerTool(
@@ -511,7 +535,7 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
       }
       // The server re-checks confirmed_by_user for auto; sending actor lets the
       // audit trail say which surface the operator used.
-      return bridgeCall(() =>
+      return bridgeCall("set_agent_trade_mode", parsed.data as Record<string, unknown>, () =>
         bridge.patch("/api/agent/trade-mode", { ...parsed.data, actor: "mcp" }),
       );
     },
@@ -531,14 +555,16 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           ),
         );
       }
-      return bridgeCall(() => bridge.post("/api/agent/similar-cases", parsed.data));
+      return bridgeCall("find_similar_cases", parsed.data as Record<string, unknown>, () =>
+        bridge.post("/api/agent/similar-cases", parsed.data),
+      );
     },
   );
 
   server.registerTool(
     "send_telegram_menu",
     mcpToolConfig("send_telegram_menu"),
-    bridgeWrap(bridge, () => bridge.post("/api/agent/telegram/menu")),
+    bridgeWrap("send_telegram_menu", bridge, () => bridge.post("/api/agent/telegram/menu")),
   );
 
   server.registerTool(

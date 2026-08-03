@@ -12,25 +12,32 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
     "connect_mt5",
     mcpToolConfig("connect_mt5"),
     async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/mt/connect", body)),
+      bridgeCall("connect_mt5", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/mt/connect", body),
+      ),
   );
 
   server.registerTool(
     "disconnect_mt5",
     mcpToolConfig("disconnect_mt5"),
-    bridgeWrap(bridge, () => bridge.delete("/api/agent/mt/connect")),
+    bridgeWrap("disconnect_mt5", bridge, () => bridge.delete("/api/agent/mt/connect")),
   );
 
   server.registerTool(
     "get_mt5_status",
     mcpToolConfig("get_mt5_status"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/mt/status")),
+    bridgeWrap("get_mt5_status", bridge, () => bridge.get("/api/agent/mt/status")),
   );
 
   server.registerTool(
     "get_live_account",
     mcpToolConfig("get_live_account"),
-    bridgeWrap(bridge, () => bridge.get("/api/agent/live/account")),
+    // structured:true fixes a Phase 0 finding: this payload matches
+    // isAccountOverview() but bridgeWrap never opted into the text fallback.
+    async () =>
+      bridgeCall("get_live_account", {}, () => bridge.get("/api/agent/live/account"), {
+        structured: true,
+      }),
   );
 
   server.registerTool(
@@ -42,7 +49,7 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
         market?: string;
         limit?: number;
       };
-      return bridgeCall(() =>
+      return bridgeCall("get_account_symbols", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/mt/symbols", { q, market, limit }),
       );
     },
@@ -94,20 +101,26 @@ export function registerMt5Tools(server: McpServer, bridge: BridgeClient) {
     "modify_sl_tp",
     mcpToolConfig("modify_sl_tp"),
     async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/mt/modify-sl-tp", body)),
+      bridgeCall("modify_sl_tp", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/mt/modify-sl-tp", body),
+      ),
   );
 
   server.registerTool(
     "cancel_mt5_order",
     mcpToolConfig("cancel_mt5_order"),
     async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/mt/cancel-order", body)),
+      bridgeCall("cancel_mt5_order", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/mt/cancel-order", body),
+      ),
   );
 
   server.registerTool(
     "close_partial",
     mcpToolConfig("close_partial"),
     async (body) =>
-      bridgeCall(() => bridge.post("/api/agent/mt/close-partial", body)),
+      bridgeCall("close_partial", body as Record<string, unknown>, () =>
+        bridge.post("/api/agent/mt/close-partial", body),
+      ),
   );
 }
