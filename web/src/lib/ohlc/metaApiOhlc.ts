@@ -7,6 +7,8 @@ import type { OhlcCandle } from "@/lib/ohlc/fetchOhlc";
 const METAAPI_INTERVALS = new Set(["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]);
 /** One page; the picker and the chart both ask for far less than this. */
 const MAX_CANDLES = 1000;
+/** Longer than a healthy broker round-trip, far shorter than the SDK's retries. */
+const HISTORY_TIMEOUT_MS = 12_000;
 
 interface MetaApiHistoricalCandle {
   time: string | Date;
@@ -61,12 +63,25 @@ export async function fetchMetaApiOhlc(
     }
 
     const limit = Math.min(Math.max(opts.limit ?? 300, 10), MAX_CANDLES);
-    const raw = (await mtAccount.getHistoricalCandles(
-      symbol,
-      iv,
-      new Date(opts.toMs ?? Date.now()),
-      limit,
-    )) as MetaApiHistoricalCandle[];
+    /*
+     * Bounded. The SDK retries an unknown symbol for over a minute — a wrong
+     * spelling once cost 75s before answering "Symbol XAUUSDM does not exist",
+     * and the chart has no business hanging that long on a bar request.
+     */
+    const raw = (await Promise.race([
+      mtAccount.getHistoricalCandles(
+        symbol,
+        iv,
+        new Date(opts.toMs ?? Date.now()),
+        limit,
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("مهلة جلب الشموع من حساب MetaApi انتهت.")),
+          HISTORY_TIMEOUT_MS,
+        ),
+      ),
+    ])) as MetaApiHistoricalCandle[];
 
     const candles: OhlcCandle[] = (raw ?? [])
       .map((c) => ({

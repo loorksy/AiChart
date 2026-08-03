@@ -62,7 +62,11 @@ export async function GET(req: NextRequest) {
       new Set(
         (req.nextUrl.searchParams.get("symbols") ?? "")
           .split(",")
-          .map((s) => s.trim().toUpperCase().replace(/[^A-Z0-9._]/g, ""))
+          // Case preserved: a broker's catalogue is case-sensitive, and these
+          // symbols come straight from it (XAUUSDm, AAPLm). Folding them here
+          // asked MetaApi for instruments that do not exist, so every card in
+          // the cloud catalogue rendered blank.
+          .map((s) => s.trim().replace(/[^A-Za-z0-9._]/g, ""))
           .filter(Boolean),
       ),
     ).slice(0, MAX_SYMBOLS);

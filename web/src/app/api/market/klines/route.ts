@@ -32,9 +32,22 @@ export async function GET(req: NextRequest) {
       );
     }
     const userId = user?.id ?? 0;
-    const symbol = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
-      .toUpperCase()
-      .replace(/[^A-Z0-9.]/g, "");
+    /*
+     * Two spellings, because two kinds of feed.
+     *
+     * OANDA answers to a canonical uppercase key. A broker answers to its OWN
+     * spelling, and Exness spells its symbols with a lowercase suffix —
+     * XAUUSDm, EURUSDm, AAPLm. Uppercasing before knowing which pipe would
+     * serve the request turned XAUUSDm into XAUUSDM, and MetaApi replied
+     * "Symbol XAUUSDM does not exist" after ~75s of retries.
+     *
+     * The character filter still runs on both; it just no longer folds case,
+     * and it keeps `_` because broker suffixes use it.
+     */
+    const symbolRaw = (req.nextUrl.searchParams.get("symbol") || "EURUSD")
+      .trim()
+      .replace(/[^A-Za-z0-9._]/g, "");
+    const symbol = symbolRaw.toUpperCase();
     const intervalRaw = req.nextUrl.searchParams.get("interval") || "1h";
     const interval = normalizeInterval(intervalRaw);
     const market: MarketType = "forex";
@@ -85,7 +98,8 @@ export async function GET(req: NextRequest) {
       }
       const broker = await fetchOhlc({
         userId: user.id,
-        symbol,
+        // The broker's own spelling, case intact — XAUUSDm, not XAUUSDM.
+        symbol: symbolRaw,
         interval,
         limit,
         source: dataSource.source,
@@ -95,7 +109,7 @@ export async function GET(req: NextRequest) {
       const normalized = normalizeCandlesForChart(broker.candles);
       const candles = sanitizeCandlesForMarket(normalized, "forex");
       return NextResponse.json({
-        symbol,
+        symbol: symbolRaw,
         interval,
         market: "forex",
         source: dataSource.source,
