@@ -236,6 +236,12 @@ export const ar: Record<TranslationKey, string> = {
     "أكمل البريد وكلمة المرور من إكمال الملف قبل تسجيل الدخول من Claude.",
   "connect.mcp.complete_profile": "إكمال الملف",
   "connect.mcp.paid_only": "ربط MCP يتطلب اشتراكًا مدفوعًا نشطًا.",
+  "connect.mt5.title": "MetaTrader 5",
+  "connect.mt5.subtitle": "اربط حسابك لدى الوسيط — بحث عن السيرفر، ثم بيانات الدخول.",
+  "connect.mt5.body": "ربط سحابي: لا حاجة لتثبيت شيء على جهازك، ويبقى الحساب موصولاً وإن أُغلق المتصفح.",
+  "connect.mt5.cta": "ربط حساب MetaTrader 5",
+  "connect.mt5.manage": "إدارة الربط",
+  "connect.mt5.linked": "موصول",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",
