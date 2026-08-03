@@ -235,11 +235,45 @@ export const METER_ROLL_MS = 60 * 60 * 1000;
  * as the undeploy count it replaces.
  */
 export async function rollOpenDeploySessions(now = Date.now()): Promise<number> {
-  const open = await query<{ user_id: number; account_id: string; deployed_at: number }>(
-    "SELECT user_id, account_id, deployed_at FROM metaapi_deploy_sessions WHERE undeployed_at IS NULL",
+  const open = await query<{
+    user_id: number;
+    account_id: string;
+    deployed_at: number;
+    current_account_id: string | null;
+  }>(
+    `SELECT s.user_id, s.account_id, s.deployed_at, a.metaapi_account_id AS current_account_id
+       FROM metaapi_deploy_sessions s
+       LEFT JOIN mt_accounts a ON a.user_id = s.user_id
+      WHERE s.undeployed_at IS NULL`,
   );
   let rolled = 0;
   for (const session of open) {
+    /*
+     * A meter left open on an account the user has since re-linked away from.
+     * Relinking creates a NEW MetaApi account and leaves the old session open,
+     * so rolling it forward kept dead accounts metering — three open sessions
+     * on one user, two of them for accounts that are not deployed and that
+     * MetaApi is not charging for either. Close it, charge nothing, and do not
+     * reopen: there is no deployment behind it to bill.
+     */
+    if (session.current_account_id !== session.account_id) {
+      try {
+        await execute(
+          "UPDATE metaapi_deploy_sessions SET undeployed_at = ?, hours = 0, retail_usd = 0, reason = ? WHERE user_id = ? AND account_id = ? AND undeployed_at IS NULL",
+          [now, "stale_account", session.user_id, session.account_id],
+        );
+        log.info("stale_meter_closed", {
+          userId: session.user_id,
+          accountId: session.account_id,
+        });
+      } catch (e) {
+        log.warn("stale_meter_close_failed", {
+          userId: session.user_id,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+      continue;
+    }
     if (now - Number(session.deployed_at) < METER_ROLL_MS) continue;
     try {
       await closeDeploySession(session.user_id, session.account_id, "meter_roll");
