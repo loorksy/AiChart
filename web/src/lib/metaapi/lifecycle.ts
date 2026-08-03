@@ -182,6 +182,72 @@ export async function undeployAccount(
 }
 
 /**
+ * Bring every linked account back up, and keep it up.
+ *
+ * Stopping the undeploy is only half of "connected around the clock": an
+ * account already parked as undeployed_idle would otherwise stay parked until
+ * its owner next opened the app, which is exactly the dependence on presence
+ * that always-on removes. The sweep runs every five minutes, so a link that
+ * drops for any reason is back within one cycle whether or not anyone is
+ * looking.
+ */
+export async function ensureAlwaysOnDeployed(): Promise<number> {
+  const accounts = await query<{ user_id: number; metaapi_account_id: string | null; state: string }>(
+    "SELECT user_id, metaapi_account_id, state FROM mt_accounts WHERE metaapi_account_id IS NOT NULL",
+  );
+  let deployed = 0;
+  for (const account of accounts) {
+    const id = account.metaapi_account_id;
+    if (!id || id === "mt5local" || account.state === "DEPLOYED") continue;
+    try {
+      await deployAccount(account.user_id, id);
+      deployed += 1;
+    } catch (e) {
+      log.warn("always_on_deploy_failed", {
+        userId: account.user_id,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return deployed;
+}
+
+/** How much billable time may accrue in one open session before it is rolled. */
+export const METER_ROLL_MS = 60 * 60 * 1000;
+
+/**
+ * Bill an always-on account without ever taking it down.
+ *
+ * A session that never closes never charges, because closeDeploySession is
+ * where hours turn into a burn. So once an open session is older than an hour
+ * it is closed — billing exactly what it accrued — and a fresh one opens in the
+ * same breath. The deployment is untouched throughout; only the meter rolls.
+ *
+ * Returns the number of meters rolled, so the worker's log reads the same shape
+ * as the undeploy count it replaces.
+ */
+export async function rollOpenDeploySessions(now = Date.now()): Promise<number> {
+  const open = await query<{ user_id: number; account_id: string; deployed_at: number }>(
+    "SELECT user_id, account_id, deployed_at FROM metaapi_deploy_sessions WHERE undeployed_at IS NULL",
+  );
+  let rolled = 0;
+  for (const session of open) {
+    if (now - Number(session.deployed_at) < METER_ROLL_MS) continue;
+    try {
+      await closeDeploySession(session.user_id, session.account_id, "meter_roll");
+      await openDeploySession(session.user_id, session.account_id, "always_on");
+      rolled += 1;
+    } catch (e) {
+      log.warn("meter_roll_failed", {
+        userId: session.user_id,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return rolled;
+}
+
+/**
  * The worker's 5-minute sweep: undeploy every idle, unpinned account.
  * Fail-soft per account — one broken account never stalls the sweep.
  */
@@ -197,9 +263,16 @@ export async function sweepIdleDeployments(now = Date.now()): Promise<number> {
    * Connection continuity wins; METAAPI_ALWAYS_ON=0 restores the old
    * cost-saving behaviour if the bill ever argues otherwise.
    *
-   * Deploy hours are still recorded and still billed; only the undeploy stops.
+   * Hours still bill — but only because the sweep rolls the meter. Billing
+   * lives in closeDeploySession, which used to run ONLY on undeploy: stopping
+   * the undeploy without this would mean no session ever closes and not one
+   * hour is ever charged, on an account that is now up 24/7. The whole point
+   * of the cost model was that the owner never pays out of pocket.
    */
-  if (await metaapiAlwaysOn()) return 0;
+  if (await metaapiAlwaysOn()) {
+    await ensureAlwaysOnDeployed();
+    return rollOpenDeploySessions(now);
+  }
   const open = await query<{ user_id: number; account_id: string }>(
     "SELECT DISTINCT user_id, account_id FROM metaapi_deploy_sessions WHERE undeployed_at IS NULL",
   );
