@@ -80,11 +80,20 @@ function resolutionToInterval(res: string): string {
   return RES_TO_INTERVAL[res] ?? "15m";
 }
 
+/**
+ * How often the forming candle is refetched.
+ *
+ * A minute chart repainting every 5s reads as frozen next to MT5, where price
+ * moves continuously — the bar would sit still for most of its own life. The
+ * tail is 2 bars and the response is small, so the short intervals are cheap;
+ * the longer ones stay slow because a 4h bar gains nothing from a fast poll.
+ */
 function pollMsForResolution(res: string): number {
   const iv = resolutionToInterval(res);
-  if (iv === "1m") return 5_000;
-  if (iv === "5m") return 10_000;
-  if (iv === "15m" || iv === "30m") return 20_000;
+  if (iv === "1m") return 1_000;
+  if (iv === "3m" || iv === "5m") return 2_000;
+  if (iv === "15m" || iv === "30m") return 5_000;
+  if (iv === "1h" || iv === "2h") return 10_000;
   return 30_000;
 }
 
