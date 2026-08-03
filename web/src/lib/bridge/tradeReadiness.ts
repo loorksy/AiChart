@@ -1,14 +1,8 @@
 import { getLimits, getMtAccountMeta, resolveBrokerForMarket } from "@/lib/store";
-import { getEaConnection, getEaOnlineState, isEaOnlineDebounced } from "@/lib/eaStore";
-import { getEaQuoteTickMetrics } from "@/lib/eaQuoteMetrics";
-import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { getResolvedExecutionEnv, type ExecutionEnv } from "@/lib/executionEnv";
-import { spreadFromBidAsk } from "@/lib/spread";
 import type { BrokerKind, MarketType } from "@/lib/markets/types";
 import { BridgeErrorCode } from "./errors";
-import { freshnessMeta, getMaxSpreadPips, getStaleQuoteThresholdMs, isQuoteFresh, type FreshnessSource } from "./freshness";
-import { evaluateForexQuoteGate, resolveForexQuoteSnapshot } from "./forexPreflight";
-import { isForexSymbol } from "@/lib/eaLiveState";
+import { freshnessMeta, getMaxSpreadPips, getStaleQuoteThresholdMs, type FreshnessSource } from "./freshness";
 
 export interface TradeReadinessBlocker {
   code: BridgeErrorCode;
@@ -71,9 +65,8 @@ export function isForexSessionOpen(now = new Date()) {
 export function collectTradeReadinessBlockers(input: {
   checks: TradeReadinessChecks;
   symbol: string | null;
-  forexQuoteGateFailure: ReturnType<typeof evaluateForexQuoteGate>;
 }): TradeReadinessBlocker[] {
-  const { checks, symbol, forexQuoteGateFailure } = input;
+  const { checks } = input;
   const blockers: TradeReadinessBlocker[] = [];
   if (!checks.executionAuthorization.allowed) {
     blockers.push(blocker(BridgeErrorCode.EXECUTION_UNAUTHORIZED, "Execution is not authorized.", "الحساب غير مخوّل تقنياً للتنفيذ."));
@@ -82,20 +75,7 @@ export function collectTradeReadinessBlockers(input: {
     blockers.push(blocker(BridgeErrorCode.MARKET_CLOSED, checks.forexSession.reasonEn ?? "Forex is closed.", checks.forexSession.reasonAr ?? "سوق الفوركس مغلق."));
   }
   if (!checks.connection.online) {
-    blockers.push(blocker(BridgeErrorCode.EA_OFFLINE, "MetaTrader connection is offline.", "اتصال MetaTrader غير متاح."));
-  }
-  if (checks.heartbeat.applies && !checks.heartbeat.fresh) {
-    blockers.push(blocker(BridgeErrorCode.EA_OFFLINE, "EA heartbeat is stale.", "نبض EA غير حديث."));
-  }
-  if (symbol && checks.quote.applies && checks.quote.tickStale) {
-    blockers.push(blocker(BridgeErrorCode.MARKET_CLOSED, "The latest broker tick is stale.", "آخر tick من الوسيط قديم؛ لم يُرسل أي أمر."));
-  }
-  if (symbol && forexQuoteGateFailure) {
-    blockers.push(blocker(
-      forexQuoteGateFailure.error.code as BridgeErrorCode,
-      forexQuoteGateFailure.error.message,
-      forexQuoteGateFailure.error.message_ar ?? forexQuoteGateFailure.error.message,
-    ));
+    blockers.push(blocker(BridgeErrorCode.CONNECTION_OFFLINE, "MetaTrader connection is offline.", "اتصال MetaTrader غير متاح."));
   }
   return blockers;
 }
@@ -112,62 +92,29 @@ export async function buildTradeReadiness(input: BuildTradeReadinessInput): Prom
   const staleThresholdMs = getStaleQuoteThresholdMs();
   const maxSpreadPips = getMaxSpreadPips();
 
-  let connectionOnline = false;
-  let heartbeatFresh = true;
-  let lastHeartbeatAt: string | null = null;
-  let quoteFresh = true;
-  let quoteAgeMs: number | null = null;
-  let quoteSource: FreshnessSource | null = null;
-  let spreadPips: number | null = null;
-  let tickStale = false;
-  let quoteSnapshot: Awaited<ReturnType<typeof resolveForexQuoteSnapshot>> = null;
-
-  if (backend === "mt_ea") {
-    const connection = await getEaConnection(userId);
-    lastHeartbeatAt = connection?.last_heartbeat_at ?? null;
-    const onlineState = getEaOnlineState(userId, lastHeartbeatAt);
-    connectionOnline = onlineState.online;
-    heartbeatFresh = Boolean(connection && connection.status !== "revoked" && isEaOnlineDebounced(userId, lastHeartbeatAt));
-    if (symbol && heartbeatFresh) {
-      quoteSnapshot = await resolveForexQuoteSnapshot(userId, symbol);
-      if (quoteSnapshot) {
-        quoteAgeMs = quoteSnapshot.quoteAgeMs;
-        quoteSource = quoteSnapshot.source;
-        quoteFresh = isQuoteFresh(quoteAgeMs, staleThresholdMs);
-        spreadPips = spreadFromBidAsk(quoteSnapshot.bid, quoteSnapshot.ask, symbol)?.spreadPips ?? null;
-        if (quoteSnapshot.tickTime && isForexSymbol(symbol)) {
-          const threshold = Number(process.env.FOREX_TICK_STALE_MS) > 0 ? Number(process.env.FOREX_TICK_STALE_MS) : 120_000;
-          tickStale = Date.now() - quoteSnapshot.tickTime * 1000 > threshold;
-          if (tickStale) quoteFresh = false;
-        }
-      } else {
-        quoteFresh = false;
-      }
-    } else if (symbol) {
-      quoteFresh = false;
-    }
-  } else {
-    connectionOnline = Boolean((await getMtAccountMeta(userId))?.online);
-  }
+  // Heartbeat/quote-freshness checks below were EA-only (fed by EA heartbeat
+  // pushes); metaapi/mt5local report connectivity through getMtAccountMeta
+  // instead, so those fields are now permanently non-applicable.
+  const connectionOnline = Boolean((await getMtAccountMeta(userId))?.online);
 
   const checks: TradeReadinessChecks = {
     connection: { online: connectionOnline, backend },
-    heartbeat: { fresh: heartbeatFresh, lastHeartbeatAt, applies: backend === "mt_ea" },
-    quote: { fresh: quoteFresh, quoteAgeMs, source: quoteSource, spreadPips, maxSpreadPips, staleThresholdMs, tickStale, applies: backend === "mt_ea" && Boolean(symbol) },
+    heartbeat: { fresh: true, lastHeartbeatAt: null, applies: false },
+    quote: {
+      fresh: true,
+      quoteAgeMs: null,
+      source: null,
+      spreadPips: null,
+      maxSpreadPips,
+      staleThresholdMs,
+      tickStale: false,
+      applies: false,
+    },
     executionAuthorization: { allowed: Boolean(limits.can_execute) },
     forexSession: session,
   };
 
-  let lastQuoteGapMs: number | null = null;
-  if (symbol && backend === "mt_ea") {
-    const mt5Symbol = await resolveMt5Symbol(userId, symbol);
-    const metrics = mt5Symbol ? getEaQuoteTickMetrics(userId, mt5Symbol) : null;
-    lastQuoteGapMs = metrics && !Array.isArray(metrics) ? metrics.lastTickGapMs : null;
-  }
-  const quoteFailure = symbol && heartbeatFresh && backend === "mt_ea"
-    ? evaluateForexQuoteGate(heartbeatFresh, quoteSnapshot, symbol, staleThresholdMs, maxSpreadPips, lastQuoteGapMs)
-    : null;
-  const blockers = collectTradeReadinessBlockers({ checks, symbol, forexQuoteGateFailure: quoteFailure });
+  const blockers = collectTradeReadinessBlockers({ checks, symbol });
   return {
     ready: blockers.length === 0,
     blockers,
@@ -176,6 +123,6 @@ export async function buildTradeReadiness(input: BuildTradeReadinessInput): Prom
     market,
     symbol,
     resolvedEnv,
-    freshness: symbol && quoteAgeMs !== null && quoteSource ? freshnessMeta(quoteSource, quoteAgeMs, staleThresholdMs) : undefined,
+    freshness: undefined,
   };
 }

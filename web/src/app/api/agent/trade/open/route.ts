@@ -16,7 +16,6 @@ import {
   bridgeError,
   bridgeSuccess,
   BridgeErrorCode,
-  checkForexTradePreflight,
   getIdempotencyResult,
   readIdempotencyKey,
   storeIdempotencyResult,
@@ -168,16 +167,6 @@ export async function POST(req: NextRequest) {
       return respondWithIdempotency(userId, idempotencyKey, envelope);
     }
     const market = resolveActiveMarket(requestedMarket) as MarketType;
-
-    const preflight = await checkForexTradePreflight(userId, body.symbol);
-    if (preflight) {
-      await logAudit(
-        userId,
-        "agent_trade_open",
-        `${body.symbol} ${body.side} denied ${preflight.error.code} (pre-flight)`,
-      );
-      return respondWithIdempotency(userId, idempotencyKey, preflight);
-    }
 
     const orderType = body.order_type ?? "market";
 

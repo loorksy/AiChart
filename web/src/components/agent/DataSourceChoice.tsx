@@ -2,23 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Cloud, Database, MonitorSmartphone } from "lucide-react";
+import { Check, ChevronDown, Cloud, Database } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
 
-type Source = "oanda" | "ea" | "metaapi";
+type Source = "oanda" | "metaapi";
 type Preference = Source | "auto";
 
 interface DataSourceView {
   active: Source;
   preference: Preference;
-  available: { oanda: boolean; ea: boolean; metaapi: boolean };
+  available: { oanda: boolean; metaapi: boolean };
 }
 
 const ICONS: Record<Preference, typeof Cloud> = {
   auto: Database,
   metaapi: Cloud,
-  ea: MonitorSmartphone,
   oanda: Database,
 };
 
@@ -26,22 +25,21 @@ const ICONS: Record<Preference, typeof Cloud> = {
 const SHORT_LABEL: Record<Preference, string> = {
   auto: "data_source.short.auto",
   metaapi: "data_source.short.metaapi",
-  ea: "data_source.short.ea",
   oanda: "data_source.short.oanda",
 };
 
 /**
  * Which market the pairs are read from, chosen where the pairs are chosen.
  *
- * Three pipes can serve the same symbol and they are not the same data: the
- * platform's own feed, the trader's terminal over the EA bridge, and their
- * cloud MetaTrader account. That choice belongs beside the catalogue it
- * changes — switch it and the list, the prices and the sparklines under it all
- * become the other market's, immediately — not in a settings menu two surfaces
- * away where the effect is invisible.
+ * Two pipes can serve the same symbol and they are not the same data: the
+ * platform's own feed, and the trader's cloud MetaTrader account. That choice
+ * belongs beside the catalogue it changes — switch it and the list, the
+ * prices and the sparklines under it all become the other market's,
+ * immediately — not in a settings menu two surfaces away where the effect is
+ * invisible.
  *
- * Sources that are not connected are shown and disabled with what would
- * connect them, rather than hidden, so the control explains what linking an
+ * A source that is not connected is shown and disabled with what would
+ * connect it, rather than hidden, so the control explains what linking an
  * account would buy.
  */
 export function DataSourceMenuButton({
@@ -159,12 +157,6 @@ export function DataSourceMenuButton({
       label: t("data_source.metaapi"),
       hint: view.available.metaapi ? t("data_source.metaapi_hint") : t("data_source.needs_link"),
       usable: view.available.metaapi,
-    },
-    {
-      key: "ea",
-      label: t("data_source.ea"),
-      hint: view.available.ea ? t("data_source.ea_hint") : t("data_source.needs_ea"),
-      usable: view.available.ea,
     },
     { key: "oanda", label: t("data_source.oanda"), hint: t("data_source.oanda_hint"), usable: true },
   ];

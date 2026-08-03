@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Re-enable server-side MT5 (platform connect) — undoes vps-switch-forex-ea.sh.
+# Re-enable server-side MT5 (platform connect).
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/aichart}"

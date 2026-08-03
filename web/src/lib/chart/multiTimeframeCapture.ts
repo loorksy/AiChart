@@ -12,11 +12,6 @@
 
 import { buildChartSnapshotBufferForMarket } from "@/lib/chartSnapshot";
 import { capturePlatformChart } from "@/lib/chart/platformChartCapture";
-import {
-  canUseMt5ChartCapture,
-  pollMt5ChartPng,
-  queueMt5ChartCapture,
-} from "@/lib/eaChartDraw";
 import { canonicalizeInterval } from "@/lib/intervals";
 import type { MarketType } from "@/lib/markets/types";
 import { getUnifiedSnapshot } from "@/lib/markets";
@@ -49,8 +44,6 @@ export const MAX_IMAGES_LIMIT = 6;
 export const DEFAULT_IMAGE_TIMEOUT_MS = 8_000;
 const MIN_IMAGE_TIMEOUT_MS = 2_000;
 const MAX_IMAGE_TIMEOUT_MS = 20_000;
-/** Share of the per-image budget given to native MT5 capture before fallback. */
-const MT5_BUDGET_RATIO = 0.6;
 /** Enough candles for the regime detector's 60-bar minimum plus its baseline. */
 const NUMERIC_CANDLE_LIMIT = 240;
 
@@ -160,9 +153,9 @@ export type CaptureTimeframeResult =
   | { ok: false; reason: string };
 
 /**
- * One timeframe → one PNG. Prefers the operator's own MT5 chart (same pixels
- * they see) and falls back to the server-rendered chart, always inside the
- * caller's per-image budget.
+ * One timeframe → one PNG. Prefers the operator's own platform chart (same
+ * pixels they see) and falls back to the server-rendered chart, always
+ * inside the caller's per-image budget.
  */
 export async function captureTimeframeImage(
   userId: number,
@@ -202,9 +195,9 @@ export async function captureTimeframeImage(
     return { ok: true, imageBase64, source, capturedAt, fromCache: false };
   };
 
-  // The platform chart is the operator's own view — try it first. The broker
-  // terminal and the QuickChart redraw are both pictures of something else,
-  // and are only worth falling back to when this one cannot be produced.
+  // The platform chart is the operator's own view — try it first. The
+  // QuickChart redraw is a picture of something else, worth falling back to
+  // only when this one cannot be produced.
   try {
     const platform = await withDeadline(
       capturePlatformChart({
@@ -221,47 +214,9 @@ export async function captureTimeframeImage(
     /* fall through to the broker / renderer sources */
   }
 
-  let mt5Reason: string | null = null;
-  try {
-    const mt5 = await canUseMt5ChartCapture(userId, input.symbol);
-    if (mt5.ok) {
-      const captureKey = `mtf_${input.interval}_${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
-      const queued = await queueMt5ChartCapture(userId, {
-        captureKey,
-        symbol: input.symbol,
-        interval: input.interval,
-        drawings: [],
-      });
-      if (queued.queued) {
-        const budget = Math.max(
-          0,
-          Math.min(
-            Math.round(timeoutMs * MT5_BUDGET_RATIO),
-            deadline - Date.now(),
-          ),
-        );
-        const polled = await pollMt5ChartPng(userId, captureKey, {
-          maxMs: budget,
-        });
-        if (polled.ok && polled.buffer) {
-          return store(polled.buffer.toString("base64"), "mt5");
-        }
-        mt5Reason = `mt5_${polled.status}`;
-      } else {
-        mt5Reason = `mt5_${queued.reason ?? "queue_failed"}`;
-      }
-    } else {
-      mt5Reason = `mt5_${mt5.reason ?? "unavailable"}`;
-    }
-  } catch (error) {
-    mt5Reason = error instanceof Error ? `mt5_${error.message}` : "mt5_error";
-  }
-
   const remaining = deadline - Date.now();
   if (remaining <= 0) {
-    return { ok: false, reason: mt5Reason ?? "capture_timeout" };
+    return { ok: false, reason: "capture_timeout" };
   }
 
   const rendered = await withDeadline(
@@ -277,7 +232,7 @@ export async function captureTimeframeImage(
     return { ok: false, reason: "capture_timeout" };
   }
   if (!rendered) {
-    return { ok: false, reason: mt5Reason ?? "chart_render_unavailable" };
+    return { ok: false, reason: "chart_render_unavailable" };
   }
   return store(rendered.toString("base64"), "quickchart");
 }

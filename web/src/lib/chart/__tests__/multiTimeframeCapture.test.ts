@@ -126,7 +126,7 @@ describe("chart snapshot cache", () => {
     const key = chartSnapshotCacheKey(7, "XAUUSD", "1h", "forex");
     setCachedChartSnapshot(
       key,
-      { imageBase64: "AAAA", source: "mt5", capturedAt: 0 },
+      { imageBase64: "AAAA", source: "quickchart", capturedAt: 0 },
       10_000,
     );
     assert.ok(getCachedChartSnapshot(key, 10_500));
@@ -147,7 +147,7 @@ describe("chart snapshot cache", () => {
     const key = chartSnapshotCacheKey(3, "EURUSD", "15m", "forex");
     setCachedChartSnapshot(key, {
       imageBase64: "AAAA",
-      source: "mt5",
+      source: "quickchart",
       capturedAt: 0,
     });
     assert.equal(chartSnapshotCacheSize(), 0);

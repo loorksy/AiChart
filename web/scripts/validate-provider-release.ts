@@ -1,7 +1,5 @@
 import { canonicalIdentityCore } from "../src/lib/agent/canonicalIdentity";
 import { voiceSystemInstructions } from "../src/lib/agent/voice/voiceIdentity";
-import { getEaConnectionMeta } from "../src/lib/eaStore";
-import { buildEaLiveQuotesSummary } from "../src/lib/eaLiveState";
 import { openAICompatTokenLimitField } from "../src/lib/openaiCompat";
 import { getPlatformValueAsync } from "../src/lib/platformConfig";
 import { loadEnvFile } from "node:process";
@@ -971,7 +969,7 @@ async function probeResearch(): Promise<{
   };
 }
 
-function executionBranch(): "ea" | "mt5local" | "metaapi" {
+function executionBranch(): "mt5local" | "metaapi" {
   const raw = (
     process.env.PROVIDER_RELEASE_EXECUTION_BRANCH ||
     process.env.FOREX_BACKEND ||
@@ -979,73 +977,12 @@ function executionBranch(): "ea" | "mt5local" | "metaapi" {
   )
     .trim()
     .toLowerCase();
-  if (raw === "ea" || raw === "mt_ea") return "ea";
   if (["mt5local", "mt5_local", "local"].includes(raw)) {
     return "mt5local";
   }
   if (raw === "metaapi") return "metaapi";
   if (raw) fail("execution_branch_invalid", raw);
-  return process.env.MT5_BRIDGE_URL?.trim() ? "mt5local" : "ea";
-}
-
-function matchingBrokerSymbol(candidate: string, canonical: string): boolean {
-  const normalized = candidate.toUpperCase().replace(/[^A-Z]/g, "");
-  return normalized.startsWith(canonical);
-}
-
-async function probeEa(): Promise<{
-  branch: string;
-  details: Record<string, DetailValue>;
-}> {
-  const userId = Number(
-    process.env.PROVIDER_RELEASE_EA_USER_ID ||
-      process.env.AICHART_AGENT_USER_ID,
-  );
-  if (!Number.isInteger(userId) || userId <= 0) {
-    unconfigured("ea_probe_user_not_configured", "ea");
-  }
-  const symbol = canonicalForexSymbol(
-    process.env.PROVIDER_RELEASE_EA_SYMBOL?.trim() ||
-      process.env.PROVIDER_RELEASE_SYMBOL?.trim() ||
-      DEFAULT_SYMBOL,
-  );
-  const connection = await getEaConnectionMeta(userId);
-  if (!connection || connection.status === "revoked") {
-    fail("ea_connection_missing_or_revoked", "ea");
-  }
-  const quotes = await buildEaLiveQuotesSummary(userId);
-  const quote = quotes.quotes.find((item) =>
-    matchingBrokerSymbol(item.symbol, symbol),
-  );
-  if (!quote) fail("ea_quote_symbol_missing", "ea");
-  const bid = assertFinitePositive(quote.bid, "ea_bid_invalid", "ea");
-  const ask = assertFinitePositive(quote.ask, "ea_ask_invalid", "ea");
-  if (ask < bid) fail("ea_spread_invalid", "ea");
-  const marketOpen = forexMarketOpen();
-  if (
-    marketOpen &&
-    (!connection.online || !quote.isFresh || quote.tickStale === true)
-  ) {
-    fail("ea_not_ready_or_quote_stale", "ea");
-  }
-
-  return {
-    branch: "ea",
-    details: {
-      symbol,
-      connectionStatusRead: true,
-      online: connection.online,
-      quoteRead: true,
-      quoteFinite: true,
-      quoteFresh: quote.isFresh,
-      tickStale: quote.tickStale ?? null,
-      marketOpen,
-      readiness: marketOpen ? "ready" : "market_closed",
-      commandsRead: false,
-      commandsEnqueued: false,
-      tradesExecuted: false,
-    },
-  };
+  return process.env.MT5_BRIDGE_URL?.trim() ? "mt5local" : "metaapi";
 }
 
 function mt5Query(
@@ -1183,7 +1120,7 @@ async function probeExecution(): Promise<{
   if (branch === "metaapi") {
     fail("metaapi_execution_branch_not_supported", branch);
   }
-  return branch === "ea" ? probeEa() : probeMt5();
+  return probeMt5();
 }
 
 async function telegramGet(
@@ -1306,8 +1243,7 @@ Default required providers:
 Configuration:
   PROVIDER_RELEASE_REQUIRED=openai,oanda,execution,research,telegram
   PROVIDER_RELEASE_SYMBOL=EURUSD
-  PROVIDER_RELEASE_EXECUTION_BRANCH=ea|mt5local
-  PROVIDER_RELEASE_EA_USER_ID=<existing tenant id>
+  PROVIDER_RELEASE_EXECUTION_BRANCH=mt5local|metaapi
   PROVIDER_RELEASE_MT5_LOGIN=<existing account login>
   PROVIDER_RELEASE_MT5_SERVER=<existing server, optional>
   PROVIDER_RELEASE_RESEARCH_SMOKE=1

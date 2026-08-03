@@ -3,7 +3,7 @@
 import { Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTickerPrice } from "./formatLevel";
-import { useEaLivePrice } from "@/hooks/useEaLivePrice";
+import { useLivePrice } from "@/hooks/useLivePrice";
 
 const BTN =
   "inline-flex h-11 min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -17,7 +17,7 @@ export function MarketTickerBar({
   onAnalyze: () => void;
   isAnalyzing: boolean;
 }) {
-  const tick = useEaLivePrice(symbol);
+  const tick = useLivePrice(symbol);
   const up = tick.price > 0 ? tick.direction !== "down" : null;
 
   return (

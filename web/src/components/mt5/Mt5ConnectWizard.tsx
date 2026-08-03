@@ -114,8 +114,7 @@ export function Mt5ConnectWizard({
         />
         <Surface padding="lg">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            الربط السحابي غير مفعَّل بعد على هذه المنصة. سيتاح فور اكتمال إعداده —
-            وحتى ذلك الحين يمكن استخدام جسر الـ EA كما هو.
+            الربط السحابي غير مفعَّل بعد على هذه المنصة. سيتاح فور اكتمال إعداده.
           </p>
         </Surface>
       </div>

@@ -52,7 +52,7 @@ See `docs/LOCAL_AND_VPS_VALIDATION.md` for the per-item gate table.
 
 - Postgres migration on a safe copy, then `npm run test:postgres-release`.
 - `CREATE EXTENSION vector` + HNSW/ivfflat, or confirm the JS fallback in prod.
-- MT5 / EA / broker demo, live quotes.
+- MT5 / broker demo, live quotes.
 - Telegram, Push, Service Worker delivery in a real browser.
 - Disconnect/reconnect: auto must drop to advisory and must not self-restore.
 - `dry_run` → `demo` → `live`: owner promotes one step at a time. Never skip a step.

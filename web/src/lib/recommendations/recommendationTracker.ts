@@ -23,9 +23,7 @@ import {
   latestStructureEvent,
 } from "@/lib/agent/marketContext/structureEvents";
 import { detectChartGeometry } from "@/lib/chart/geometry";
-import { getEaLiveQuote } from "@/lib/eaLiveState";
 import { costEvidencePips } from "@/lib/agent/marketContext/costEvidence";
-import { spreadFromBidAsk } from "@/lib/spread";
 import {
   listActiveTrackedRecommendations,
   updateTrackedRecommendation,
@@ -213,14 +211,11 @@ export async function trackOneRecommendation(
           foundingPattern.includes(candidate.patternType),
       )
     : null;
-  const [higherCandles, quote] = await Promise.all([
-    getCandles({
-      symbol,
-      interval: getHigherInterval(interval),
-      limit: 200,
-    }).catch(() => []),
-    getEaLiveQuote(rec.userId, symbol).catch(() => null),
-  ]);
+  const higherCandles = await getCandles({
+    symbol,
+    interval: getHigherInterval(interval),
+    limit: 200,
+  }).catch(() => []);
   const higherBias = biasFromCandles(
     higherCandles.filter((candle) => candle.complete),
   );
@@ -239,10 +234,9 @@ export async function trackOneRecommendation(
   // with the V2 pipeline on, neither old key existed, so this was NaN and the
   // spread-drift trigger never fired at all.
   const plannedSpread = costEvidencePips(cost);
-  const currentSpread =
-    quote && quote.quoteAgeMs <= 120_000
-      ? spreadFromBidAsk(quote.bid, quote.ask, symbol)?.spreadPips
-      : null;
+  // No live-quote source for spread drift since the EA bridge was removed —
+  // metaapi/mt5local never fed one either, so this was already always null.
+  const currentSpread: number | null = null;
   const contextChanged =
     brokeSinceLastSweep ||
     (rec.direction === "buy" && higherBias === "bearish") ||

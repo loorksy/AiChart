@@ -13,14 +13,6 @@
       "type": "string",
       "const": "forex"
     },
-    "source": {
-      "description": "Forex candle source — ea required for broker suffix symbols (e.g. XAUUSDM)",
-      "type": "string",
-      "enum": [
-        "oanda",
-        "ea"
-      ]
-    },
     "limit": {
       "type": "integer",
       "minimum": 1,

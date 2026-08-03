@@ -55,7 +55,7 @@ export function useTradeMode({ enabled = true }: { enabled?: boolean } = {}) {
     };
     void load();
     // Polling doubles as the disconnect watcher: the server downgrades auto
-    // the moment the debounced EA signal drops, and the next tick shows it.
+    // the moment the connection signal drops, and the next tick shows it.
     const id = setInterval(() => void load(), POLL_MS);
     return () => {
       alive.current = false;

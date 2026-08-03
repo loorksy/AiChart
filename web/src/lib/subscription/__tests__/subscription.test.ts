@@ -94,8 +94,7 @@ test("chat stream gates trial before provider work", () => {
   assert.ok(stream.indexOf("claimTrialInteraction") < stream.indexOf("runUnifiedChartAgent"));
 });
 
-test("bridge download and MCP require paid access", () => {
-  assert.match(read("app/api/ea/download/route.ts"), /requirePaidAccess/);
+test("MCP requires paid access", () => {
   assert.match(read("app/api/admin/mcp-auth/verify/route.ts"), /subscription_required/);
   assert.match(read("lib/agentAuth.ts"), /getEntitlementForUser/);
 });

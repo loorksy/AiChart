@@ -44,8 +44,8 @@ import {
 import { announceOpportunityCreated } from "./recommendations/lifecycleNotifier";
 
 /**
- * Broker kind for a user honoring their per-user forex backend choice (EA vs
- * server-side platform), falling back to the global default. Used at the points
+ * Broker kind for a user honoring their per-user forex backend choice (MetaApi
+ * vs self-hosted MT5), falling back to the global default. Used at the points
  * that route execution (intent/trade creation) so each user's trades go to the
  * backend they picked.
  */
@@ -65,7 +65,7 @@ export async function resolveBrokerForMarket(
 /** Effective forex backend mode for a user (per-user choice → global default). */
 export async function resolveForexBackendForUser(
   userId: number,
-): Promise<"ea" | "metaapi" | "mt5local"> {
+): Promise<"metaapi" | "mt5local"> {
   const settings = await getSettings(userId);
   return resolveForexBackendFromPref(settings.forex_backend);
 }
@@ -503,8 +503,8 @@ export async function listUsersForAdmin(): Promise<AdminUserView[]> {
             u.telegram_id, u.access_expires_at, u.created_at,
             CASE WHEN u.telegram_id IS NOT NULL THEN 'telegram' ELSE 'email' END AS signup_via,
             EXISTS (
-              SELECT 1 FROM ea_connections ec
-              WHERE ec.user_id = u.id AND ec.status != 'revoked'
+              SELECT 1 FROM mt_accounts m
+              WHERE m.user_id = u.id
             ) AS has_mt5,
             COALESCE(a.can_execute, FALSE) AS can_execute,
             COALESCE(a.claude_quota, 1000) AS claude_quota
@@ -1586,7 +1586,7 @@ export async function getAdminPlatformStats(): Promise<AdminPlatformStats> {
   ))!;
 
   const withMt5 = (await queryOne<{ n: number }>(
-    "SELECT COUNT(DISTINCT user_id) AS n FROM ea_connections WHERE status != 'revoked'",
+    "SELECT COUNT(DISTINCT user_id) AS n FROM mt_accounts",
   ))!;
 
   const trades = (await queryOne<{ total: number; open: number }>(

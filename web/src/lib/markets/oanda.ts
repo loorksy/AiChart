@@ -1,7 +1,7 @@
 /**
  * OANDA v20 market-data adapter — the official forex data source for AiChart.
  * Candles, prices, and instrument universe come exclusively from OANDA.
- * Trade execution remains on the user's EA/MT5 broker.
+ * Trade execution remains on the user's MT5 broker.
  */
 import { httpTimeoutMs } from "@/lib/externalFetch";
 import { resilientFetch } from "@/lib/providerResilience";

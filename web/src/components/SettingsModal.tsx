@@ -8,7 +8,7 @@ import { Button } from "@/components/squareui/button";
 import { Skeleton } from "@/components/squareui/skeleton";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
-import type { AdminLimits, EaConnectionMeta, MtAccountMeta, PublicUser, TradingSettings } from "@/lib/types";
+import type { AdminLimits, MtAccountMeta, PublicUser, TradingSettings } from "@/lib/types";
 
 /**
  * Hand-written mirror of what /api/console/settings-props returns. The spread
@@ -21,10 +21,8 @@ type SettingsProps = {
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
-  ea: EaConnectionMeta | null;
   mt5LinkEnabled?: boolean;
   mt5Account?: MtAccountMeta | null;
-  canDownloadEa?: boolean;
 };
 
 const FOCUS_RING =

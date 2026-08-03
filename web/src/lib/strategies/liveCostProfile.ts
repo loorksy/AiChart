@@ -2,10 +2,13 @@
  * Live session cost profile (plan §13 H.1).
  *
  * The static multipliers said what Asian-session spread USUALLY does; this
- * measures what this operator's broker actually charges, session by session.
- * Samples come from the EA's live quotes — the only source that knows the real
- * spread on the account that will pay it — accumulated by a cron into
- * `cost_samples` and aggregated on read.
+ * was designed to measure what this operator's broker actually charges,
+ * session by session, from samples accumulated by a cron into `cost_samples`
+ * and aggregated on read. The only sampler ever written (sampleLiveCosts)
+ * read the EA's live quotes — the only source that published a spread
+ * without an extra broker round trip — so `cost_samples` never fills for
+ * metaapi/mt5local and this always resolves through the labelled fallback
+ * below, same as it already did for every non-EA account.
  *
  * The honesty rules are the point of the module:
  *
@@ -18,19 +21,14 @@
  *  - Staleness is part of the answer: a profile built from last week's samples
  *    says so, and the freshness gauge tracks it.
  */
-import { execute, query } from "@/lib/db";
-import { createLogger } from "@/lib/logger";
+import { query } from "@/lib/db";
 import { metrics } from "@/lib/metrics";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
-import { spreadFromBidAsk } from "@/lib/spread";
-import { getEaLiveQuotes } from "@/lib/eaLiveState";
 import {
   SESSION_SPREAD_MULTIPLIER,
   sessionAt,
   type ForexSession,
 } from "./sessionSpread";
-
-const log = createLogger("strategies:live-cost");
 
 /** Fewest samples before a session's numbers are reported. */
 export const MIN_SAMPLES = 20;
@@ -66,44 +64,6 @@ export interface LiveCostProfile {
   source: "live_ea_quotes" | "static_model" | "unavailable";
   /** Commission per lot when the broker profile configures one. */
   commissionPerLot: number | null;
-}
-
-/**
- * Record one spread observation per symbol from the EA's live quotes.
- *
- * Called from the monitoring cron, so sampling costs nothing extra: the quotes
- * are already in memory for freshness checks. Sampling rather than streaming is
- * deliberate — a per-tick record would grow the table by millions of rows for a
- * distribution that ten-minute samples describe just as well.
- */
-export async function sampleLiveCosts(userId: number): Promise<number> {
-  const quotes = await getEaLiveQuotes(userId).catch(() => ({}));
-  const now = Date.now();
-  let written = 0;
-  for (const quote of Object.values(quotes)) {
-    if (quote.quoteAgeMs > 60_000) continue; // a dead quote is not an observation
-    const canonical = forexCanonicalKey(quote.symbol);
-    const spread = spreadFromBidAsk(Number(quote.bid), Number(quote.ask), canonical);
-    if (!spread || !(spread.spreadPips >= 0)) continue;
-    await execute(
-      `INSERT INTO cost_samples (symbol, session, spread_pips, observed_at)
-       VALUES (?,?,?,?)`,
-      [canonical, sessionAt(new Date(now)), spread.spreadPips, now],
-    ).catch((error: unknown) => {
-      log.warn("cost sample write failed", {
-        symbol: canonical,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-    written += 1;
-  }
-  // Prune outside the window opportunistically; cheap and keeps the table flat.
-  if (written > 0) {
-    await execute("DELETE FROM cost_samples WHERE observed_at < ?", [
-      now - SAMPLE_WINDOW_MS,
-    ]).catch(() => undefined);
-  }
-  return written;
 }
 
 function percentile(sorted: number[], p: number): number | null {

@@ -75,8 +75,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ quotes: [] });
     }
 
-    // Same rule as the catalogue: only an EA-backed account can be quoted from
-    // the trader's own terminal; every other connection reads platform data.
+    // Same rule as the catalogue: only a metaapi-linked account can be quoted
+    // from the trader's own broker; every other connection reads platform data.
     const { source } = await resolveMarketDataSource(
       user?.id ?? null,
       req.nextUrl.searchParams.get("source"),

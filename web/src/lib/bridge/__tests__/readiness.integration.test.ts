@@ -5,9 +5,9 @@ import { collectTradeReadinessBlockers, isForexSessionOpen, type TradeReadinessC
 
 function checks(overrides: Partial<TradeReadinessChecks> = {}): TradeReadinessChecks {
   return {
-    connection: { online: true, backend: "mt_ea" },
-    heartbeat: { fresh: true, lastHeartbeatAt: "2026-01-01", applies: true },
-    quote: { fresh: true, quoteAgeMs: 1, source: "live", spreadPips: 1, maxSpreadPips: 30, staleThresholdMs: 5000, tickStale: false, applies: true },
+    connection: { online: true, backend: "metaapi" },
+    heartbeat: { fresh: true, lastHeartbeatAt: null, applies: false },
+    quote: { fresh: true, quoteAgeMs: null, source: null, spreadPips: null, maxSpreadPips: 30, staleThresholdMs: 5000, tickStale: false, applies: false },
     executionAuthorization: { allowed: true },
     forexSession: { open: true },
     ...overrides,
@@ -25,17 +25,19 @@ describe("technical trade readiness", () => {
     assert.equal("confidenceGate" in value, false);
     assert.equal("dailyLoss" in value, false);
     assert.equal("openTrades" in value, false);
-    assert.deepEqual(collectTradeReadinessBlockers({ checks: value, symbol: "EURUSD", forexQuoteGateFailure: null }), []);
+    assert.deepEqual(collectTradeReadinessBlockers({ checks: value, symbol: "EURUSD" }), []);
   });
 
   it("blocks missing technical execution authorization", () => {
-    const blockers = collectTradeReadinessBlockers({ checks: checks({ executionAuthorization: { allowed: false } }), symbol: "EURUSD", forexQuoteGateFailure: null });
+    const blockers = collectTradeReadinessBlockers({ checks: checks({ executionAuthorization: { allowed: false } }), symbol: "EURUSD" });
     assert.ok(blockers.some((item) => item.code === BridgeErrorCode.EXECUTION_UNAUTHORIZED));
   });
 
-  it("passes through a technical stale-quote failure", () => {
-    const failure = { ok: false as const, error: { code: BridgeErrorCode.STALE_QUOTE, message: "stale", message_ar: "stale", retriable: true } };
-    const blockers = collectTradeReadinessBlockers({ checks: checks(), symbol: "EURUSD", forexQuoteGateFailure: failure });
-    assert.ok(blockers.some((item) => item.code === BridgeErrorCode.STALE_QUOTE));
+  it("blocks a disconnected account", () => {
+    const blockers = collectTradeReadinessBlockers({
+      checks: checks({ connection: { online: false, backend: "metaapi" } }),
+      symbol: "EURUSD",
+    });
+    assert.ok(blockers.some((item) => item.code === BridgeErrorCode.CONNECTION_OFFLINE));
   });
 });

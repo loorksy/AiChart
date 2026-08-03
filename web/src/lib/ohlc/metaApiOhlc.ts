@@ -22,10 +22,10 @@ interface MetaApiHistoricalCandle {
 /**
  * Candles straight from the user's cloud MetaTrader account.
  *
- * The third pipe, beside the platform's OANDA feed and the EA bridge: a
- * MetaApi-linked account has its own broker history, and a trader who links a
- * cloud account expects the chart to show THAT broker's candles — the ones
- * their orders will actually fill against — not a proxy feed.
+ * The second pipe, beside the platform's OANDA feed: a MetaApi-linked account
+ * has its own broker history, and a trader who links a cloud account expects
+ * the chart to show THAT broker's candles — the ones their orders will
+ * actually fill against — not a proxy feed.
  *
  * Older SDK versions expose no history API; that is reported as a warning and
  * the caller falls back rather than pretending the series is empty.

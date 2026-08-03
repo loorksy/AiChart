@@ -40,9 +40,10 @@ export function unwrapBridgePayload(data: unknown): unknown {
   return data;
 }
 
-/** Upstream request timeout (ms). Prevents a slow EA/exchange from hanging the
- *  whole MCP call until the platform's own timeout. Override via BRIDGE_FETCH_TIMEOUT_MS.
- *  Default 15s — a single forex EA round trip (queueEaGetOhlc) can take up to 12s. */
+/** Upstream request timeout (ms). Prevents a slow broker/exchange call from
+ *  hanging the whole MCP call until the platform's own timeout. Override via
+ *  BRIDGE_FETCH_TIMEOUT_MS. Default 15s covers the slowest observed broker
+ *  round trip with headroom. */
 function bridgeFetchTimeoutMs(): number {
   const raw = Number(process.env.BRIDGE_FETCH_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : 15000;

@@ -17,10 +17,9 @@ export const RUNTIME_JS = `
       buy: "Buy", sell: "Sell", wait: "Wait", opportunity: "Opportunity",
       bullish: "Bullish", bearish: "Bearish", sideways: "Sideways", neutral: "Neutral",
       bridgeOffline: "Bridge offline — no live data",
-      eaOffline: "EA offline / stale data",
       staleQuotes: "Stale quotes ({s}s)",
       connected: "Connected",
-      eaStaleLabel: "Offline / stale data",
+      connStaleLabel: "Offline / stale data",
       noOpenTrades: "No open trades",
       moreTrades: "+{n} more trades",
       noDataYet: "No data yet — try refreshing.",
@@ -75,10 +74,9 @@ export const RUNTIME_JS = `
       buy: "شراء", sell: "بيع", wait: "انتظار", opportunity: "فرصة",
       bullish: "صاعد", bearish: "هابط", sideways: "عرضي", neutral: "محايد",
       bridgeOffline: "الجسر غير متصل — لا بيانات حية",
-      eaOffline: "EA غير متصل / بيانات قديمة",
       staleQuotes: "أسعار قديمة ({s}s)",
       connected: "متصل",
-      eaStaleLabel: "غير متصل / بيانات قديمة",
+      connStaleLabel: "غير متصل / بيانات قديمة",
       noOpenTrades: "لا صفقات مفتوحة",
       moreTrades: "+{n} صفقات أخرى",
       noDataYet: "لم تصل بيانات بعد — جرّب التحديث.",
@@ -297,20 +295,17 @@ export const RUNTIME_JS = `
       data = data || {};
       var live = data.live || {};
       var forex = live.forex || data.forex || {};
-      var ea = forex.ea || live.ea || data.ea || {};
       var envForex = (data.executionEnv && data.executionEnv.forex) || {};
-      var quoteAge = ea.quoteAgeMs != null ? ea.quoteAgeMs : data.quoteAgeMs;
+      var quoteAge = data.quoteAgeMs;
       if (data.bridgeOffline === true || data.offline === true) {
         return { stale: true, label: msg("bridgeOffline") };
       }
-      var offline = ea.heartbeatFresh === false || ea.online === false || ea.connected === false ||
-        forex.heartbeatFresh === false || envForex.online === false;
-      if (offline) return { stale: true, label: msg("eaOffline") };
+      var offline = forex.heartbeatFresh === false || envForex.online === false;
+      if (offline) return { stale: true, label: msg("bridgeOffline") };
       if (quoteAge != null && quoteAge > 5000) {
         return { stale: true, label: msg("staleQuotes", { s: Math.round(quoteAge / 1000) }) };
       }
-      var evidence = ea.heartbeatFresh === true || ea.online === true || ea.connected === true ||
-        forex.heartbeatFresh === true || envForex.online === true || quoteAge != null;
+      var evidence = forex.heartbeatFresh === true || envForex.online === true || quoteAge != null;
       /* No connectivity signal in the payload → say nothing, don't claim online. */
       return evidence ? { stale: false, label: msg("connected") } : { stale: false, label: "" };
     };
@@ -369,41 +364,28 @@ export const RUNTIME_JS = `
       if (!data.live && !data.risk && (data.forex || data.openTrades || data.open_trades)) {
         data = { portfolio: data, live: data };
       }
-      if (!api.unwrapBridge(data.live || {}).forex && api.unwrapBridge(data.forex || {}).ea) {
-        data = { risk: data.risk, portfolio: data.portfolio, live: data };
-      }
       var risk = api.unwrapBridge(data.risk);
       var portfolio = api.unwrapBridge(data.portfolio);
       var live = api.unwrapBridge(data.live);
       var cap = risk.capital || {};
       var liveForex = live.forex || {};
       var dataForex = data.forex || {};
-      var portfolioForex = portfolio.forex || {};
-      var eaLive = liveForex.ea || {};
-      var eaDirect = dataForex.ea || {};
-      var eaPort = portfolioForex.ea || {};
-      var conn = api.first(live.connection, liveForex.connection, data.connection, dataForex.connection) || {};
+      var conn = api.first(live.connection, portfolio.connection, data.connection, liveForex.connection, dataForex.connection) || {};
       var legacy = api.first(portfolio.account, live.account, data.account, conn) || {};
-      var heartbeatFresh = api.first(eaLive.heartbeatFresh, liveForex.heartbeatFresh, dataForex.heartbeatFresh, live.heartbeatFresh, data.heartbeatFresh);
-      var online = api.first(eaLive.online, eaLive.connected, liveForex.online, dataForex.online, live.online, data.online);
-      var status = String(api.first(eaLive.status, liveForex.status, dataForex.status, live.status, data.status) || "");
-      var quoteAge = api.num(api.first(eaLive.quoteAgeMs, liveForex.quoteAgeMs, dataForex.quoteAgeMs, live.quoteAgeMs, data.quoteAgeMs));
+      var online = api.first(conn.online, liveForex.online, dataForex.online, live.online, data.online);
+      var status = String(api.first(conn.connection_status, conn.state, liveForex.status, dataForex.status, live.status, data.status) || "");
       var hasAccountNumbers = api.first(
-        eaLive.balance, eaLive.equity, eaDirect.balance, eaDirect.equity, eaPort.balance, eaPort.equity,
         conn.balance, conn.equity, legacy.balance, legacy.equity, portfolio.balance, portfolio.equity,
         live.balance, live.equity, data.balance, data.equity
       ) != null;
-      var fresh = heartbeatFresh === true || online === true || /online|connected|live/i.test(status);
-      var stale = heartbeatFresh === false || online === false || quoteAge > 5000 || /offline|stale|down|revoked/i.test(status);
-      var known = heartbeatFresh != null || online != null || status !== "" || hasAccountNumbers ||
-        Object.keys(eaLive).length > 0 || Object.keys(eaDirect).length > 0 || Object.keys(eaPort).length > 0;
+      var fresh = online === true || /online|connected|live/i.test(status);
+      var stale = online === false || /offline|stale|down|revoked/i.test(status);
+      var known = online != null || status !== "" || hasAccountNumbers;
       var usable = !stale && (fresh || hasAccountNumbers);
-      var ea = { fresh: usable, stale: stale, label: !known ? "" : (stale ? msg("eaStaleLabel") : (usable ? msg("connected") : "")) };
-      var balance = api.num(api.first(eaLive.balance, eaDirect.balance, eaPort.balance, conn.balance, legacy.balance, portfolio.balance, live.balance, data.balance));
-      var equity = api.num(api.first(eaLive.equity, eaDirect.equity, eaPort.equity, conn.equity, legacy.equity, portfolio.equity, live.equity, data.equity));
+      var conn_status = { fresh: usable, stale: stale, label: !known ? "" : (stale ? msg("connStaleLabel") : (usable ? msg("connected") : "")) };
+      var balance = api.num(api.first(conn.balance, legacy.balance, portfolio.balance, live.balance, data.balance));
+      var equity = api.num(api.first(conn.equity, legacy.equity, portfolio.equity, live.equity, data.equity));
       var freeMargin = api.num(api.first(
-        eaLive.freeMargin, eaLive.free_margin, eaLive.margin_free,
-        eaDirect.freeMargin, eaDirect.free_margin, eaDirect.margin_free,
         conn.freeMargin, conn.free_margin, conn.margin_free,
         legacy.freeMargin, legacy.free_margin, legacy.margin_free,
         portfolio.freeMargin, portfolio.free_margin, live.freeMargin, data.freeMargin
@@ -425,14 +407,14 @@ export const RUNTIME_JS = `
       }
       var openTrades = api.first(portfolio.openTrades, portfolio.open_trades, data.openTrades, data.open_trades, data.trades, live.openTrades, live.open_trades);
       var tradeCount = Array.isArray(openTrades) ? openTrades.length : (typeof openTrades === "number" ? openTrades : null);
-      var broker = String(api.first(eaLive.broker_name, eaDirect.broker_name, eaPort.broker_name, conn.broker, legacy.broker) || "MT5");
-      var mode = String(api.first(eaLive.account_trade_mode, eaDirect.account_trade_mode, eaPort.account_trade_mode, conn.mode, legacy.mode) || "live").toLowerCase();
-      var login = api.first(eaLive.account_login, eaDirect.account_login, eaPort.account_login, conn.login, legacy.login);
+      var broker = String(api.first(conn.server, legacy.broker) || "MT5");
+      var mode = String(api.first(conn.account_trade_mode, legacy.mode) || "live").toLowerCase();
+      var login = api.first(conn.login, legacy.login);
       var acctTitle = broker + (mode === "live" ? " Real" : mode === "demo" ? " Demo" : "");
       var tag = mode === "live" ? "LIVE" : (mode === "demo" ? "DEMO" : String(mode).toUpperCase());
-      if (ea.stale) tag = "Stale";
+      if (conn_status.stale) tag = "Stale";
       return {
-        ea: ea, balance: balance, equity: equity, freeMargin: freeMargin, openPnl: openPnl,
+        conn: conn_status, balance: balance, equity: equity, freeMargin: freeMargin, openPnl: openPnl,
         openTrades: openTrades, tradeCount: tradeCount, acctTitle: acctTitle, tag: tag,
         login: login,
       };

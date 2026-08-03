@@ -26,7 +26,7 @@ function symbolMatchesQuery(symbol: string, query: string): boolean {
   return forexCanonicalKey(symbol) === forexCanonicalKey(query);
 }
 
-/** Forex universe from OANDA — official market-data source; execution stays on EA/MT5. */
+/** Forex universe from OANDA — official market-data source; execution stays on MT5. */
 async function oandaForexInstruments(
   q: string,
 ): Promise<{ instruments: Instrument[]; total: number }> {
@@ -59,10 +59,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Broker symbols only where a broker can actually answer. A MetaApi or
-    // MT5-bridge account is connected but has no EA to serve `list_symbols`,
-    // so it falls through to the platform universe instead of waiting out
-    // fifteen command timeouts and returning nothing.
     const requestedSource = request.nextUrl.searchParams.get("source");
     const decision = await resolveMarketDataSource(user?.id ?? null, requestedSource);
 
@@ -100,42 +96,6 @@ export async function GET(request: NextRequest) {
           // Fall through to the platform universe rather than an empty list.
         }
       }
-    }
-
-    if (decision.source === "ea") {
-      if (!user) {
-        return NextResponse.json(
-          { error: "أزواج الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },
-          { status: 401 },
-        );
-      }
-      const { getAllBrokerSymbols } = await import("@/lib/markets/eaSymbols");
-      const { symbols, source } = await getAllBrokerSymbols(user.id);
-      const query = (
-        request.nextUrl.searchParams.get("q") ??
-        request.nextUrl.searchParams.get("search") ??
-        ""
-      )
-        .trim()
-        .toUpperCase();
-      const rows = symbols.filter(
-        (s) =>
-          !query ||
-          s.symbol.toUpperCase().includes(query) ||
-          s.description.toUpperCase().includes(query),
-      );
-      return NextResponse.json({
-        instruments: rows.map((s) => ({
-          symbol: s.symbol,
-          base: s.symbol.slice(0, 3),
-          quote: s.symbol.slice(3, 6),
-          digits: s.digits,
-          description: s.description,
-          market_open: isMarketOpenAt(s.symbol, Date.now()),
-        })),
-        total: rows.length,
-        source,
-      });
     }
 
     const q = (

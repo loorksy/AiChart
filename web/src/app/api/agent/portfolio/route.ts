@@ -20,16 +20,6 @@ import {
 
 } from "@/lib/store";
 
-import { getEaConnectionMeta } from "@/lib/eaStore";
-
-import {
-
-  attachLiveEaPnl,
-
-  loadBrokerMt5Positions,
-
-} from "@/lib/openTradesSummary";
-
 
 
 /** Bridge: full portfolio view — balances, open/recent trades, pending intents. */
@@ -42,7 +32,7 @@ export async function GET(req: NextRequest) {
 
 
 
-    const [dbOpenTrades, recentTrades, pendingIntents, recommendations, mt, ea, mt5Positions] =
+    const [openTrades, recentTrades, pendingIntents, recommendations, mt] =
 
       await Promise.all([
 
@@ -56,19 +46,15 @@ export async function GET(req: NextRequest) {
 
         getMtAccountMeta(userId),
 
-        getEaConnectionMeta(userId),
-
-        loadBrokerMt5Positions(userId),
-
       ]);
-
-    const openTrades = attachLiveEaPnl(dbOpenTrades, mt5Positions);
 
 
 
     return NextResponse.json({
 
-      forex: { metaapi: mt, ea },
+      forex: { metaapi: mt },
+
+      connection: mt,
 
       openTrades,
 

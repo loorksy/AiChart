@@ -82,7 +82,7 @@ export function sanitizeAgentDrawings(
         withinBounds(p.price),
     );
 
-    // A drawing needs either valid points OR a valid flat price (EA-style).
+    // A drawing needs either valid points OR a valid flat price.
     const hasFlatPrice = typeof d.price === "number" && withinBounds(d.price);
     if (validPoints.length === 0 && !hasFlatPrice) continue;
 

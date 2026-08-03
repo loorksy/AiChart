@@ -77,7 +77,7 @@ async function linkTrade(
       "buy",
       100,
       "forex",
-      options.broker ?? "mt_ea",
+      options.broker ?? "metaapi",
       4000,
       3980,
       4040,
@@ -100,7 +100,7 @@ async function linkTrade(
       options.ticket ?? "555001",
       "demo",
       "forex",
-      options.broker ?? "mt_ea",
+      options.broker ?? "metaapi",
       options.status ?? "open",
     ],
   );
@@ -130,12 +130,10 @@ type QueueCall = { ticket: number; stopLoss: number; takeProfit?: number | null 
 function queueSpy(calls: QueueCall[]) {
   return async (
     _userId: number,
-    ticket: number,
-    stopLoss: number,
-    takeProfit?: number | null,
+    input: { ticket: number; stopLoss: number; takeProfit?: number },
   ) => {
-    calls.push({ ticket, stopLoss, takeProfit });
-    return { id: 900 + calls.length } as { id: number };
+    calls.push({ ticket: input.ticket, stopLoss: input.stopLoss, takeProfit: input.takeProfit });
+    return { ok: true as const, backend: "metaapi" as const, command_id: 900 + calls.length };
   };
 }
 

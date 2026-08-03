@@ -2,8 +2,6 @@ import type { ExecutionEnvSnapshot } from "./executionEnv";
 
 import { getExecutionEnvSnapshot } from "./executionEnv";
 
-import { loadBrokerMt5Positions } from "./openTradesSummary";
-
 import type { Trade } from "./types";
 
 import { getIntent, listOpenTrades, listPendingEntryTrades } from "./store";
@@ -50,21 +48,7 @@ function sideAr(side: string): string {
 
 
 
-function platformLabel(trade: Trade): string {
-
-  if (
-
-    trade.broker === "mt_ea" ||
-
-    trade.broker === "metaapi" ||
-
-    trade.broker === "mt5_local"
-
-  ) {
-
-    return "MT5";
-
-  }
+function platformLabel(_trade: Trade): string {
 
   return "MT5";
 
@@ -166,57 +150,7 @@ function mapAichartBase(
 
 
 
-function mapMt5Row(p: {
-
-  ticket: number;
-
-  symbol: string;
-
-  side: string;
-
-  lots: number;
-
-  profit: number;
-
-  sl?: number | null;
-
-  tp?: number | null;
-
-}): ConsoleActiveTradeRow {
-
-  return {
-
-    id: `mt5-${p.ticket}`,
-
-    symbol: p.symbol,
-
-    platform: "MT5",
-
-    side: sideAr(p.side),
-
-    leverage: null,
-
-    margin: null,
-
-    unrealizedPnl: p.profit,
-
-    sl: p.sl ?? null,
-
-    tp: p.tp ?? null,
-
-    env: "live",
-
-    status: "open",
-
-    qty: p.lots,
-
-  };
-
-}
-
-
-
-/** Live active trades for the bridge console (AiChart + MT5). */
+/** Live active trades for the bridge console (AiChart). */
 
 export async function buildConsoleActiveTrades(userId: number): Promise<{
 
@@ -226,15 +160,9 @@ export async function buildConsoleActiveTrades(userId: number): Promise<{
 
   aichartTrades: Trade[];
 
-  brokerPositions: {
-
-    mt5: Awaited<ReturnType<typeof loadBrokerMt5Positions>>;
-
-  };
-
 }> {
 
-  const [executionEnv, openTrades, pendingTrades, brokerMt5] =
+  const [executionEnv, openTrades, pendingTrades] =
 
     await Promise.all([
 
@@ -243,8 +171,6 @@ export async function buildConsoleActiveTrades(userId: number): Promise<{
       listOpenTrades(userId, 30),
 
       listPendingEntryTrades(userId, 20),
-
-      loadBrokerMt5Positions(userId),
 
     ]);
 
@@ -278,14 +204,6 @@ export async function buildConsoleActiveTrades(userId: number): Promise<{
 
 
 
-  for (const p of brokerMt5) {
-
-    rows.push(mapMt5Row(p));
-
-  }
-
-
-
   return {
 
     rows,
@@ -293,8 +211,6 @@ export async function buildConsoleActiveTrades(userId: number): Promise<{
     executionEnv,
 
     aichartTrades,
-
-    brokerPositions: { mt5: brokerMt5 },
 
   };
 

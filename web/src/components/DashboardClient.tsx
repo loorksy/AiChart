@@ -31,8 +31,8 @@ export default function DashboardClient({
   user,
   settings,
   limits,
-  eaConnected = false,
-  eaOnline = false,
+  mtConnected = false,
+  mtOnline = false,
   pendingIntentCount = 0,
   pendingIntents = [],
   trades = [],
@@ -40,8 +40,8 @@ export default function DashboardClient({
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
-  eaConnected?: boolean;
-  eaOnline?: boolean;
+  mtConnected?: boolean;
+  mtOnline?: boolean;
   pendingIntentCount?: number;
   pendingIntents?: TradeIntent[];
   trades?: Trade[];
@@ -160,9 +160,9 @@ export default function DashboardClient({
             <div>
               <p className="font-medium">ربط MetaTrader (فوركس)</p>
               <p className="text-xs text-muted-foreground">
-                {eaOnline
+                {mtOnline
                   ? "متصل"
-                  : eaConnected
+                  : mtConnected
                     ? "مربوط — غير متصل"
                     : "غير مربوط"}
               </p>

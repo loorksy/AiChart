@@ -3,9 +3,9 @@
  *
  * A multi-timeframe analysis frequently re-captures the same symbol/timeframe
  * within the same "moment" (the agent revisits 1h after looking at 4h, a retry
- * follows a partial failure). Re-rendering costs an EA round trip or a
- * QuickChart POST for an image that cannot have meaningfully changed yet, so a
- * ~12s TTL removes the duplicate work without ever serving a stale bar.
+ * follows a partial failure). Re-rendering costs a QuickChart POST for an
+ * image that cannot have meaningfully changed yet, so a ~12s TTL removes the
+ * duplicate work without ever serving a stale bar.
  *
  * Deliberately in-process rather than the shared bridge KV: entries are
  * hundreds of kilobytes of base64 and live for seconds, which is exactly what
@@ -15,10 +15,9 @@
 /**
  * Where a snapshot image came from.
  * - `platform_chart`: the operator's own TradingView view (preferred).
- * - `mt5`: a photo of the connected MetaTrader terminal.
  * - `quickchart`: a server-side redraw of the same candles (last resort).
  */
-export type ChartSnapshotSource = "platform_chart" | "mt5" | "quickchart";
+export type ChartSnapshotSource = "platform_chart" | "quickchart";
 
 export interface CachedChartSnapshot {
   imageBase64: string;

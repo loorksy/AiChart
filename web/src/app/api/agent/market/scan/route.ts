@@ -14,7 +14,7 @@ const schema = z.object({
 });
 
 /**
- * Bridge: cheap code-only opportunity scan over the watchlist (forex via EA).
+ * Bridge: cheap code-only opportunity scan over the watchlist.
  */
 export async function POST(req: NextRequest) {
   try {

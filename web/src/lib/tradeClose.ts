@@ -12,9 +12,6 @@ import {
   updateTradeCancelled,
 } from "./store";
 import { dispatchAlert } from "./alerts";
-import { waitForEaCommandAck } from "./eaCommandWait";
-import { getEaConnection, isHeartbeatFresh } from "./eaStore";
-import { queueEaClosePosition } from "./eaTradeCommands";
 import { mt5Close } from "./mt5local/client";
 import { enqueue } from "./queue";
 import type { Trade } from "./types";
@@ -96,47 +93,6 @@ async function closeMt5LocalTrade(
   return { ok: true, tradeId: trade.id, symbol: trade.symbol, pnl };
 }
 
-/** Closes an MT5 EA position by ticket via the command queue. */
-async function closeMt5EaTrade(trade: Trade): Promise<CloseTradeResult> {
-  const ticket = Number(trade.order_id);
-  if (!Number.isFinite(ticket) || ticket <= 0) {
-    return {
-      ok: false,
-      tradeId: trade.id,
-      symbol: trade.symbol,
-      pnl: 0,
-      reason: "لا توجد تذكرة MT5 مسجلة لهذه الصفقة.",
-    };
-  }
-
-  const conn = await getEaConnection(trade.user_id);
-  if (!conn || conn.status === "revoked" || !isHeartbeatFresh(conn.last_heartbeat_at)) {
-    return {
-      ok: false,
-      tradeId: trade.id,
-      symbol: trade.symbol,
-      pnl: 0,
-      reason: "MetaTrader غير متصل. افتح المنصّة وتأكد من تشغيل EA.",
-    };
-  }
-
-  const command = await queueEaClosePosition(trade.user_id, ticket);
-  const ack = await waitForEaCommandAck(command.id);
-  if (!ack.ok) {
-    return {
-      ok: false,
-      tradeId: trade.id,
-      symbol: trade.symbol,
-      pnl: 0,
-      reason: ack.reason ?? "رفض MetaTrader إغلاق الصفقة.",
-    };
-  }
-
-  await updateTradeClosed(trade.id, 0);
-  afterTradeClosed(trade.user_id, trade.id, 0);
-  return { ok: true, tradeId: trade.id, symbol: trade.symbol, pnl: 0 };
-}
-
 /** Closes an open trade with the opposite market order and records PnL. */
 export async function closeOpenTrade(
   userId: number,
@@ -159,27 +115,6 @@ export async function closeOpenTrade(
             `✅ <b>إغلاق صفقة · Position closed</b>\n` +
             `${result.symbol}\n` +
             `PnL: <b>${sign}${result.pnl.toFixed(2)}</b>`,
-          symbol: result.symbol,
-        });
-      }
-      return result;
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : "فشل إغلاق الصفقة.";
-      return { ok: false, tradeId, symbol: trade.symbol, pnl: 0, reason };
-    }
-  }
-
-  if (trade.broker === "mt_ea") {
-    try {
-      const result = await closeMt5EaTrade(trade);
-      if (result.ok) {
-        await dispatchAlert(userId, {
-          type: "trade_closed",
-          title: `إغلاق صفقة ${result.symbol}`,
-          text:
-            `✅ <b>إغلاق صفقة · Position closed</b>\n` +
-            `${result.symbol}\n` +
-            `تذكرة MT5 #${trade.order_id}`,
           symbol: result.symbol,
         });
       }

@@ -95,23 +95,18 @@ export const ar: Record<TranslationKey, string> = {
   "account.type.live": "حساب حقيقي",
   "account.type.unknown": "نوع الحساب غير معروف",
 
-  // مصدر بيانات السوق (ثلاث قنوات: المنصة، طرفيتك، حسابك السحابي)
+  // مصدر بيانات السوق (قناتان: المنصة، حسابك السحابي)
   "data_source.title": "مصدر بيانات السوق",
   "data_source.active": "المستخدم الآن",
   "data_source.auto": "تلقائي",
-  "data_source.auto_hint":
-    "حساب الوسيط عند ربطه، ثم طرفيتك الخاصة، ثم بيانات المنصة.",
+  "data_source.auto_hint": "حساب الوسيط عند ربطه، ثم بيانات المنصة.",
   "data_source.metaapi": "حساب MetaTrader السحابي",
   "data_source.metaapi_hint": "شموع وأسعار وسيطك نفسه عبر MetaApi.",
-  "data_source.ea": "طرفية MetaTrader لديك (EA)",
-  "data_source.ea_hint": "شموع وأسعار مباشرة من الطرفية التي تشغّلها.",
   "data_source.oanda": "تغذية OANDA",
   "data_source.oanda_hint": "تغذية المنصة الخاصة — متاحة دائماً ومجاناً.",
   "data_source.needs_link": "اربط حساب MetaTrader بطريقة «عبر المنصّة» لاستخدامه.",
-  "data_source.needs_ea": "ثبّت Expert Advisor على طرفيتك لاستخدامه.",
   "data_source.short.auto": "تلقائي",
   "data_source.short.metaapi": "الحساب السحابي",
-  "data_source.short.ea": "طرفيتي",
   "data_source.short.oanda": "OANDA",
 
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
@@ -123,7 +118,6 @@ export const ar: Record<TranslationKey, string> = {
   // كتالوج الأزواج
   "symbol.picker.title": "اختر الزوج",
   "symbol.picker.search": "ابحث عن زوج أو عملة",
-  "symbol.picker.source_broker": "رموز حسابك لدى الوسيط",
   "symbol.picker.source_platform": "بيانات السوق من المنصة",
   "symbol.picker.source_cloud": "حساب MetaTrader السحابي لديك",
   "symbol.picker.none": "لا يوجد زوج يطابق هذا البحث.",
@@ -247,11 +241,8 @@ export const ar: Record<TranslationKey, string> = {
   "connect.method.platform": "عبر المنصّة (بدون تنزيل)",
   "connect.method.platform_body": "تنفيذ سيرفر-سايد على مدار الساعة. تكتب بيانات حسابك فقط — لا تثبيت ولا إبقاء جهازك مفتوحاً.",
   "connect.method.platform_off": "غير متاح — لم يُضَف مفتاح MetaApi بعد من لوحة المنصّة.",
-  "connect.method.ea": "عبر جسر EA (على جهازك)",
-  "connect.method.ea_body": "تُثبّت الجسر على MetaTrader لديك وتُبقي جهازك يعمل. تحكّم كامل لديك.",
   "connect.method.saved": "حُفظت الطريقة.",
   "connect.method.failed": "تعذّر حفظ الطريقة — أعد المحاولة.",
-  "connect.mt5.needs_platform": "أنت على جسر EA حالياً. اختر «عبر المنصّة» بالأعلى لتفعيل الربط السحابي.",
 
   "profile.profile": "الملف الشخصي",
   "profile.trading_settings": "إعدادات التداول",

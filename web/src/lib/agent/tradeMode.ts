@@ -22,8 +22,7 @@
  * MCP.
  */
 import { execute, queryOne } from "@/lib/db";
-import { getEaConnection, isEaOnlineDebounced } from "@/lib/eaStore";
-import { logAudit } from "@/lib/store";
+import { getMtAccountMeta, logAudit } from "@/lib/store";
 import { createLogger } from "@/lib/logger";
 import { FEATURES } from "./featureFlags";
 
@@ -63,14 +62,16 @@ interface ModeRow {
 
 /**
  * Identity of the live connection, so an `auto` grant cannot outlive the
- * account it was given for. A reconnect produces a new epoch and the operator
- * is asked again — silence is not consent for the next session.
+ * account it was given for. Relinking to a different login/server produces a
+ * new epoch and the operator is asked again — silence is not consent for the
+ * next session. Requires the connection to be actually online, not just
+ * linked: a dropped connection ends the standing grant the same way it did
+ * for the EA bridge's heartbeat.
  */
 async function connectionEpoch(userId: number): Promise<string | null> {
-  const connection = await getEaConnection(userId).catch(() => null);
-  if (!connection) return null;
-  if (!isEaOnlineDebounced(userId, connection.last_heartbeat_at ?? null)) return null;
-  return `${connection.id}:${connection.account_login ?? "unknown"}`;
+  const meta = await getMtAccountMeta(userId).catch(() => null);
+  if (!meta || !meta.online) return null;
+  return `${meta.login}:${meta.server}`;
 }
 
 export async function getTradeMode(userId: number): Promise<TradeModeView> {
@@ -193,9 +194,14 @@ export async function setTradeMode(input: {
 /**
  * Suspend standing authorisation when a connection drops.
  *
- * Called by the EA health monitor. The stored preference is left alone: the
- * operator is asked again on reconnect rather than silently resumed, which is
- * the difference between authorising a session and authorising forever.
+ * No production caller currently invokes this proactively (it did, from the
+ * EA health monitor); `getTradeMode` already downgrades reactively on every
+ * read via `connectionEpoch`, so a trade can never execute while
+ * disconnected — this only flips the stored row early for anything that logs
+ * a suspension event before the operator's next interaction. The stored
+ * preference is left alone: the operator is asked again on reconnect rather
+ * than silently resumed, which is the difference between authorising a
+ * session and authorising forever.
  */
 export async function suspendAutoOnDisconnect(userId: number): Promise<boolean> {
   const row = await queryOne<ModeRow>(

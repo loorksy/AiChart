@@ -129,8 +129,8 @@ export async function putImage(
 
   try {
     fs.mkdirSync(dir, { recursive: true });
-    // Same atomic write the EA capture path needs: a reader must never observe
-    // a half-written file through a bare existsSync.
+    // Atomic write: a reader must never observe a half-written file through
+    // a bare existsSync.
     const target = path.join(dir, `${id}.${ext}`);
     const tmp = `${target}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, buffer);

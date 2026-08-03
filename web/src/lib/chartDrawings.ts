@@ -1,6 +1,6 @@
 import type { AnalysisProfile } from "./analysisProfile";
 
-/** Semantic types used by the agent + optional MT5-native types for advanced EA drawing. */
+/** Semantic types used by the agent for chart drawing. */
 export type SemanticDrawingType =
   | "price_line"
   | "trend_line"
@@ -125,7 +125,7 @@ export interface ChartDrawing {
   semanticRole?: SemanticRole;
   patternType?: PatternTypeName;
   drawingPurpose?: string;
-  /** Optional flat coords (EA v3.07+) — used when points[] is empty */
+  /** Optional flat coords — used when points[] is empty */
   price?: number;
   price2?: number;
   price3?: number;

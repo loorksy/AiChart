@@ -21,7 +21,7 @@ Vibe-Trading was inspected from `C:\Users\ALALMIA\Documents\LONORA\Vibe-Trading-
 - `mcp/src`: current MCP/OAuth/card surface. New capabilities must be registered here rather than exposed by a second public MCP server.
 - `infra`: deployment, Redis/BullMQ, database, MT5 bridge, and operational controls.
 
-These capabilities are protected invariants: TradingView Advanced Charting Library, chart drawing/read/modify/delete, Buy/Sell/Wait and entry/SL/TP rendering, recommendation direction invalidation rules, Market Sync Guard, Data Quality Policy, Risk Guard, explicit confirmation, MT5 EA Bridge, OAuth/MCP/SSE, Arabic/English behavior, and tenant isolation.
+These capabilities are protected invariants: TradingView Advanced Charting Library, chart drawing/read/modify/delete, Buy/Sell/Wait and entry/SL/TP rendering, recommendation direction invalidation rules, Market Sync Guard, Data Quality Policy, Risk Guard, explicit confirmation, MT5 bridge / MetaApi cloud connection, OAuth/MCP/SSE, Arabic/English behavior, and tenant isolation.
 
 ## Useful Vibe-Trading architecture
 

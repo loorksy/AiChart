@@ -85,7 +85,7 @@ const DEFAULT_SYMBOL = "XAUUSD";
 /** Persisted layout state (drawings + recommendation) for refresh survival. */
 export interface ChartLayoutState extends ChartHydrateSnapshot {
   targets?: number[];
-  /** Candle source for the active symbol: OANDA or the user's broker (EA). */
+  /** Candle source for the active symbol: OANDA or the user's linked broker. */
   dataSource?: MarketDataSource;
 }
 
@@ -897,7 +897,6 @@ function SmartChartWorkspaceInner({
                 overlays={overlays}
                 drawings={drawings}
                 headerActions={headerActions}
-                eaEnabled={false}
                 dataSource={dataSource}
                 locale={locale}
                 direction={dir}

@@ -96,23 +96,19 @@ export const en = {
   "account.type.live": "Live account",
   "account.type.unknown": "Account type unknown",
 
-  // Market data source (the three pipes: platform, own terminal, cloud account)
+  // Market data source (the two pipes: platform, cloud account)
   "data_source.title": "Market data",
   "data_source.active": "in use",
   "data_source.auto": "Automatic",
   "data_source.auto_hint":
-    "Your broker account when it is linked, then your own terminal, then platform data.",
+    "Your broker account when it is linked, then platform data.",
   "data_source.metaapi": "Cloud MetaTrader account",
   "data_source.metaapi_hint": "Your broker's own candles and prices, through MetaApi.",
-  "data_source.ea": "Your MetaTrader terminal (EA)",
-  "data_source.ea_hint": "Candles and quotes straight from the terminal you run.",
   "data_source.oanda": "OANDA feed",
   "data_source.oanda_hint": "The platform's own feed — always available, free.",
   "data_source.needs_link": "Link a MetaTrader account via “Through the platform” to use it.",
-  "data_source.needs_ea": "Install the Expert Advisor on your terminal to use it.",
   "data_source.short.auto": "Automatic",
   "data_source.short.metaapi": "Cloud account",
-  "data_source.short.ea": "My terminal",
   "data_source.short.oanda": "OANDA",
 
   // Composer options menu (the plus beside the mic)
@@ -124,7 +120,6 @@ export const en = {
   // Pair catalogue
   "symbol.picker.title": "Choose a pair",
   "symbol.picker.search": "Search a pair or a currency",
-  "symbol.picker.source_broker": "Your broker account's symbols",
   "symbol.picker.source_platform": "Platform market data",
   "symbol.picker.source_cloud": "Your cloud MetaTrader account",
   "symbol.picker.none": "No pair matches this search.",
@@ -248,12 +243,8 @@ export const en = {
   "connect.method.platform": "Through the platform (no download)",
   "connect.method.platform_body": "Server-side execution around the clock. You enter your account details and nothing else — no install, no machine left running.",
   "connect.method.platform_off": "Unavailable — no MetaApi key has been added from the platform panel yet.",
-  "connect.method.ea": "Through the EA bridge (on your machine)",
-  "connect.method.ea_body": "You install the bridge in your own MetaTrader and keep the machine running. Full control stays with you.",
   "connect.method.saved": "Method saved.",
   "connect.method.failed": "Could not save the method — try again.",
-  "connect.mt5.needs_platform":
-    "You are on the EA bridge. Choose “Through the platform” above to enable cloud linking.",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",

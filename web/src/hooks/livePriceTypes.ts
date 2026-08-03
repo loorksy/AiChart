@@ -13,7 +13,7 @@ export interface LivePriceTick {
    */
   spreadLabel?: string | null;
   spreadPips?: number | null;
-  source?: "oanda" | "metaapi" | "ea" | null;
+  source?: "oanda" | "metaapi" | null;
 }
 
 export type LivePriceMap = Record<string, LivePriceTick>;

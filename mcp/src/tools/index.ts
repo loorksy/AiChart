@@ -55,13 +55,6 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
       file: "EXECUTION_DESK_V3.md",
     },
     {
-      id: "ea-troubleshooting",
-      uri: "aichart://ea-troubleshooting",
-      title: "AiChart EA Troubleshooting",
-      description: "MetaTrader EA connection troubleshooting guide",
-      file: "EA_TROUBLESHOOTING.md",
-    },
-    {
       id: "heartbeat",
       uri: "aichart://heartbeat",
       title: "AiChart Heartbeat Spec",

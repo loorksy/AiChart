@@ -35,17 +35,17 @@ const accountOverview = widgetHtml(
     AIC.applyStaticLabels();
     AIC.onData(function (data) {
       var ac = AIC.parseAccountOverview(data);
-      var ea = ac.ea || {};
+      var conn = ac.conn || {};
       document.getElementById("acct-title").textContent = ac.acctTitle || "—";
       var tagEl = document.getElementById("acct-tag");
       tagEl.textContent = ac.tag || "—";
-      tagEl.className = "tag" + (ea.stale ? " amber" : String(ac.tag || "").toUpperCase() === "LIVE" ? " green" : "");
+      tagEl.className = "tag" + (conn.stale ? " amber" : String(ac.tag || "").toUpperCase() === "LIVE" ? " green" : "");
       var eqEl = document.getElementById("equity-val");
       eqEl.textContent = money(AIC, ac.equity);
-      eqEl.className = "value" + (ea.stale && ac.equity == null ? " amber" : "");
+      eqEl.className = "value" + (conn.stale && ac.equity == null ? " amber" : "");
       document.getElementById("balance-val").textContent = money(AIC, ac.balance);
       var pnlEl = document.getElementById("pnl-val");
-      if (ea.stale) {
+      if (conn.stale) {
         pnlEl.textContent = "—";
         pnlEl.className = "amber";
       } else if (ac.openPnl != null) {
@@ -56,11 +56,11 @@ const accountOverview = widgetHtml(
         pnlEl.className = "";
       }
       var statusEl = document.getElementById("status");
-      if (ea.stale) {
-        statusEl.textContent = ea.label;
+      if (conn.stale) {
+        statusEl.textContent = conn.label;
         statusEl.className = "status stale";
-      } else if (ea.label) {
-        statusEl.textContent = ea.label;
+      } else if (conn.label) {
+        statusEl.textContent = conn.label;
         statusEl.className = "status live";
       } else {
         statusEl.textContent = "";
@@ -426,13 +426,11 @@ const liveChart = widgetHtml(
     var flat = d.data && typeof d.data === "object" ? d.data : d;
     if (ohl) {
       cc = normCandles(ohl);
-      if (ohl.source === "oanda" || ohl.source === "ea") S.source = ohl.source;
-      else S.source = "oanda";
+      S.source = ohl.source === "metaapi" ? "metaapi" : "oanda";
       S.warning = ohl.warning || null;
     } else if (Array.isArray(flat.candles)) {
       cc = normCandles(flat);
-      if (flat.source === "oanda" || flat.source === "ea") S.source = flat.source;
-      else S.source = "oanda";
+      S.source = flat.source === "metaapi" ? "metaapi" : "oanda";
       S.warning = flat.warning || null;
     }
     if (cc && cc.length) { S.candles = cc; S.lastUpdate = Date.now(); }

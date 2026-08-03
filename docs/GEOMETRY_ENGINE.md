@@ -41,8 +41,9 @@ geometry. Same input ⇒ same output (locked by a determinism test).
    → channel, neckline → trend_line, positions → level cluster, plus a
    `polyline_pattern` case). This also fixes a live bug: the zone types the
    drawing agent emits were silently dropped from every recommendation PNG.
-4. **MT5** — `eaChartDraw.mapDrawingsForMt5` pre-maps semantic types onto the
-   MT5-native set the EA already renders. **No EA recompile.**
+4. **MT5** — the EA bridge (and `eaChartDraw.mapDrawingsForMt5`, which pre-mapped
+   semantic types onto the MT5-native set it rendered) was removed; drawings
+   now reach the operator only through the platform TradingView chart.
 5. **MCP** — `capture_multi_timeframe_snapshot`'s `numeric_context.geometry`
    carries the same-frame pattern list (name, state, break direction,
    projected target, confidence) next to each image — shape confirmation stays

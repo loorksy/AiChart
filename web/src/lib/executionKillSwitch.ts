@@ -55,7 +55,7 @@ export const LIVE_ENABLED_FLAG = "live_trading_enabled";
  *
  * IMPORTANT — this deliberately takes the BROKER'S REPORTED account type, not
  * an environment variable. An earlier version of this file read `OANDA_ENV`,
- * which was simply the wrong signal: on an EA/MT5 deployment OANDA is only the
+ * which was simply the wrong signal: on an MT5 deployment OANDA is only the
  * chart DATA source, so `OANDA_ENV=practice` said nothing about where orders
  * actually go. The protection silently never engaged on exactly the setup it
  * was meant to guard. Callers now pass the value resolved from the live broker

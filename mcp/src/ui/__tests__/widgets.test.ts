@@ -67,11 +67,10 @@ describe("structured tool text fallback", () => {
         data: {
         },
       },
-      portfolio: { forex: { ea: { balance: 86.4, equity: 84.62, online: true } }, openTrades: [] },
+      portfolio: { connection: { balance: 86.4, equity: 84.62, online: true }, openTrades: [] },
       live: {
+        connection: { balance: 86.4, equity: 84.62, online: true },
         forex: {
-          ea: { balance: 86.4, equity: 84.62, online: true, heartbeatFresh: true },
-          heartbeatFresh: true,
           positions: [{ symbol: "XAUUSDm", side: "buy", profit: -1.78 }],
         },
         openTrades: [{ symbol: "XAUUSDm", side: "buy", profit: -1.78 }],
@@ -81,38 +80,37 @@ describe("structured tool text fallback", () => {
     assert.ok(text?.includes("84.62"));
   });
 
-  it("marks stale EA open PnL as unavailable", () => {
+  it("marks unresolved open PnL as unavailable when nothing reports it", () => {
     const text = formatToolTextFallback({
       risk: {},
-      portfolio: { openPnl: 0 },
-      live: { forex: { ea: { heartbeatFresh: false, online: false } } },
+      portfolio: {},
+      live: { connection: { online: false } },
     });
-    assert.ok(text?.includes("— / stale data"));
+    assert.ok(text?.includes("— / no data"));
   });
 
   it("formats account overview in Arabic when locale is ar", () => {
     const text = formatToolTextFallback({
       locale: "ar",
       risk: {},
-      portfolio: { openPnl: 0 },
-      live: { forex: { ea: { heartbeatFresh: false, online: false } } },
+      portfolio: {},
+      live: { connection: { online: false } },
     });
-    assert.ok(text?.includes("— / بيانات قديمة"));
+    assert.ok(text?.includes("— / لا توجد بيانات"));
   });
 
   it("formats direct live account payloads from get_live_account", () => {
     const text = formatToolTextFallback({
       locale: "ar",
+      connection: {
+        online: true,
+        login: "252493119",
+        server: "Exness-Real",
+        account_trade_mode: "live",
+        balance: 86.4,
+        equity: 84.62,
+      },
       forex: {
-        heartbeatFresh: true,
-        ea: {
-          online: true,
-          account_login: "252493119",
-          broker_name: "Exness",
-          account_trade_mode: "live",
-          balance: 86.4,
-          equity: 84.62,
-        },
         positions: [
           { symbol: "XAUUSDm", side: "buy", profit: -1.72 },
           { symbol: "XAUUSDm", side: "buy", profit: -0.06 },
@@ -124,7 +122,7 @@ describe("structured tool text fallback", () => {
       ],
     });
     assert.ok(text?.includes("#252493119"));
-    assert.ok(text?.includes("Exness"));
+    assert.ok(text?.includes("Exness-Real"));
     assert.ok(text?.includes("الرصيد: 86.4"));
     assert.ok(text?.includes("حقوق الملكية: 84.62"));
     assert.ok(text?.includes("PnL المفتوح: -1.78"));
@@ -183,15 +181,15 @@ describe("widget HTML safety", () => {
       parseAccountOverview(data: unknown): {
         balance: number | null;
         equity: number | null;
-        ea: { stale: boolean; label: string };
+        conn: { stale: boolean; label: string };
       };
     };
     const parsed = api.parseAccountOverview({
-      live: { forex: { ea: { broker_name: "Exness", balance: 86.4, equity: 84.62 } } },
+      live: { connection: { server: "Exness", balance: 86.4, equity: 84.62, online: true } },
     });
     assert.equal(parsed.balance, 86.4);
     assert.equal(parsed.equity, 84.62);
-    assert.equal(parsed.ea.stale, false);
+    assert.equal(parsed.conn.stale, false);
   });
 
   it("recommendation card recognizes wrapped scan candidate payloads", () => {

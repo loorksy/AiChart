@@ -5,7 +5,7 @@ import { getForexBackend } from "../brokers/forexBackend";
 /**
  * Normalizes a forex symbol (e.g. "EUR/USD" → "EURUSD", "xauusd" → "XAUUSD").
  * Broker-specific suffixes (EURUSDm, EURUSD.pro) are preserved as-is after the
- * separators are stripped, since the EA matches against the broker's symbols.
+ * separators are stripped, since the broker matches against its own symbols.
  */
 function resolveForex(query: string): ResolvedSymbol {
   const trimmed = query.trim();
@@ -40,5 +40,5 @@ export function normalizeIntentSymbol(
 export function marketLabel(_market: MarketType = DEFAULT_MARKET): string {
   return getForexBackend() === "metaapi"
     ? "فوركس (MetaTrader · MetaApi)"
-    : "فوركس (MetaTrader · EA)";
+    : "فوركس (MetaTrader)";
 }

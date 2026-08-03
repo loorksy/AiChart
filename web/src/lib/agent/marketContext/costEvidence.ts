@@ -29,7 +29,6 @@
  *   4. static fallback (the instrument's modelled typical spread)
  *   5. unavailable — stated as such, never as zero
  */
-import { getEaLiveQuote } from "@/lib/eaLiveState";
 import { pipSizeForSymbol } from "@/lib/spread";
 import { expectedSpreadFor } from "@/lib/strategies/liveCostProfile";
 import { createLogger } from "@/lib/logger";
@@ -123,24 +122,13 @@ export async function resolveCostEvidence(input: {
   const symbol = input.symbol;
 
   // Rung 1 — a fresh observed bid/ask.
-  let quote = input.observedOverride
+  const quote = input.observedOverride
     ? {
         bid: input.observedOverride.bid,
         ask: input.observedOverride.ask,
         updatedAt: input.observedOverride.observedAt ?? now,
       }
     : null;
-  if (!quote && input.userId != null) {
-    try {
-      const live = await getEaLiveQuote(input.userId, symbol);
-      if (live) quote = { bid: live.bid, ask: live.ask, updatedAt: live.updatedAt };
-    } catch (error) {
-      log.warn("live quote lookup failed", {
-        symbol,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
 
   let staleReason: string | null = null;
   if (quote && quote.ask > 0 && quote.bid > 0 && quote.ask >= quote.bid) {

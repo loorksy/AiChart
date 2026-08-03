@@ -21,14 +21,14 @@ export const MT5_RETCODE_LEGEND: Record<number, string> = {
   10023: "مستوى الأمر مرفوض",
   10024: "عدد الطلبات مرفوض",
   10025: "لا تغيير — الطلب قريب جداً من السوق",
-  10026: "سعر/ت quote غير مقبول لحظ الإرسال — Market Watch أو Instant Execution (EA v3.01+)",
+  10026: "سعر/ت quote غير مقبول لحظ الإرسال — تحقق من Market Watch أو وضع Instant Execution",
   10027: "الوسيط مشغول",
   10028: "إعادة الاقتباس فقط",
   10029: "التداول مجمّد على الرمز",
   10030: "نوع التعبئة غير صالح",
 };
 
-/** Parses `retcode 10016` from EA ack error strings. */
+/** Parses `retcode 10016` from MT5 order error strings. */
 export function parseMt5Retcode(error: string): number | null {
   const m = /retcode\s+(\d+)/i.exec(error);
   if (!m) return null;
@@ -36,7 +36,7 @@ export function parseMt5Retcode(error: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Human-readable Arabic reason for EA/MT5 failures. */
+/** Human-readable Arabic reason for MT5 failures. */
 export function formatMt5TradeError(raw: string): string {
   const code = parseMt5Retcode(raw);
   if (code == null) {
@@ -50,7 +50,7 @@ export function formatMt5TradeError(raw: string): string {
   }
   const label = MT5_RETCODE_LEGEND[code] ?? "رفض MetaTrader";
   if (code === 10026) {
-    return `رفض MetaTrader · retcode 10026 (${label}). إن كانت الأسعار حية (quoteAgeMs منخفض) جرّب EA v3.01+ أو صفقة يدوية market على نفس الرمز.`;
+    return `رفض MetaTrader · retcode 10026 (${label}). إن كانت الأسعار حية (quoteAgeMs منخفض) جرّب صفقة يدوية market على نفس الرمز.`;
   }
   return `رفض MetaTrader · retcode ${code} (${label})`;
 }

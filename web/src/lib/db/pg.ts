@@ -52,7 +52,8 @@ const SCHEMA = `
         AND ABS(per_trade_pct * 10 - ROUND(per_trade_pct * 10)) < 0.000000001
       ),
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
-    -- 'ea' | 'mt5local' | NULL (operator's global default).
+    -- 'metaapi' | 'mt5local' | NULL (operator's global default). Migration
+    -- below rewrites any leftover legacy 'ea' value to NULL.
     forex_backend            TEXT,
     market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
@@ -285,7 +286,7 @@ const SCHEMA = `
     side              TEXT NOT NULL,
     notional          DOUBLE PRECISION NOT NULL,
     market            TEXT NOT NULL DEFAULT 'forex',
-    broker            TEXT NOT NULL DEFAULT 'mt_ea',
+    broker            TEXT NOT NULL DEFAULT 'metaapi',
     entry             DOUBLE PRECISION,
     stop_loss         DOUBLE PRECISION,
     take_profit       DOUBLE PRECISION,
@@ -310,60 +311,12 @@ const SCHEMA = `
     order_id    TEXT,
     env         TEXT NOT NULL DEFAULT 'testnet',
     market      TEXT NOT NULL DEFAULT 'forex',
-    broker      TEXT NOT NULL DEFAULT 'mt_ea',
+    broker      TEXT NOT NULL DEFAULT 'metaapi',
     status      TEXT NOT NULL DEFAULT 'open',
     pnl         DOUBLE PRECISION NOT NULL DEFAULT 0,
     oco_order_list_id TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     closed_at   TIMESTAMPTZ
-  );
-
-  CREATE TABLE IF NOT EXISTS ea_connections (
-    id                SERIAL PRIMARY KEY,
-    user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    platform          TEXT NOT NULL DEFAULT 'mt5',
-    token_hash        TEXT NOT NULL,
-    label             TEXT,
-    broker_name       TEXT,
-    account_login     TEXT,
-    account_currency  TEXT,
-    balance           DOUBLE PRECISION NOT NULL DEFAULT 0,
-    equity            DOUBLE PRECISION NOT NULL DEFAULT 0,
-    status            TEXT NOT NULL DEFAULT 'offline',
-    symbol_specs_json TEXT,
-    last_heartbeat_at TIMESTAMPTZ,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_ea_connections_user
-    ON ea_connections (user_id);
-  CREATE INDEX IF NOT EXISTS idx_ea_connections_token
-    ON ea_connections (token_hash);
-
-  CREATE TABLE IF NOT EXISTS ea_commands (
-    id            SERIAL PRIMARY KEY,
-    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    intent_id     INTEGER,
-    command_type  TEXT NOT NULL,
-    payload_json  TEXT NOT NULL,
-    status        TEXT NOT NULL DEFAULT 'pending',
-    result_json   TEXT,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at    TIMESTAMPTZ,
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_ea_commands_poll
-    ON ea_commands (user_id, status, id);
-
-  CREATE TABLE IF NOT EXISTS ea_market_cache (
-    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    symbol       TEXT NOT NULL,
-    interval     TEXT NOT NULL,
-    candles_json TEXT NOT NULL,
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, symbol, interval)
   );
 
   CREATE TABLE IF NOT EXISTS mt_accounts (
@@ -751,8 +704,8 @@ const SCHEMA = `
   -- live-money dual-enablement gate cannot tell a real MetaApi account from a
   -- demo one.
   ALTER TABLE mt_accounts ADD COLUMN IF NOT EXISTS account_trade_mode TEXT;
-  -- Which pipe charts and quotes are read from: platform data, the user's
-  -- own terminal, or their cloud account.
+  -- Which pipe charts and quotes are read from: platform data, or the
+  -- user's own cloud account.
   ALTER TABLE trading_settings ADD COLUMN IF NOT EXISTS market_data_source TEXT;
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
@@ -762,7 +715,8 @@ const SCHEMA = `
     WHERE user_id IS NOT NULL AND parity_key IS NOT NULL;
 
   -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
-  -- from the EA's live quotes; aggregated on read, pruned past the window.
+  -- aggregated on read, pruned past the window. The EA bridge that populated
+  -- this table was removed; nothing writes new rows here going forward.
   CREATE TABLE IF NOT EXISTS cost_samples (
     id          BIGSERIAL PRIMARY KEY,
     symbol      TEXT NOT NULL,
@@ -1417,13 +1371,13 @@ async function migratePg(client: PoolClient) {
   await client.query(`
     ALTER TABLE trades
       ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'forex',
-      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'mt_ea'
+      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'metaapi'
   `).catch(() => {});
 
   await client.query(`
     ALTER TABLE trade_intents
       ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'forex',
-      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'mt_ea'
+      ADD COLUMN IF NOT EXISTS broker TEXT NOT NULL DEFAULT 'metaapi'
   `).catch(() => {});
 
   await client.query(`
@@ -1663,12 +1617,6 @@ async function migratePg(client: PoolClient) {
   `).catch(() => {});
 
   await client.query(`
-    ALTER TABLE ea_connections
-      ADD COLUMN IF NOT EXISTS account_trade_mode TEXT,
-      ADD COLUMN IF NOT EXISTS positions_json TEXT
-  `).catch(() => {});
-
-  await client.query(`
     CREATE TABLE IF NOT EXISTS trade_lessons (
       id                  SERIAL PRIMARY KEY,
       user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1714,24 +1662,6 @@ async function migratePg(client: PoolClient) {
     CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires
       ON idempotency_keys (expires_at)
   `).catch(() => {});
-
-  const dupTokens = await client.query<{ token_hash: string }>(
-    `SELECT token_hash FROM ea_connections
-     GROUP BY token_hash HAVING COUNT(*) > 1 LIMIT 1`,
-  ).catch(() => ({ rows: [] as { token_hash: string }[] }));
-
-  if (dupTokens.rows.length === 0) {
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_ea_connections_token_unique
-        ON ea_connections (token_hash)
-    `).catch((err) => {
-      console.warn("[db] ea_connections token_hash unique index:", err);
-    });
-  } else {
-    console.warn(
-      "[db] duplicate ea_connections.token_hash — skipping unique index",
-    );
-  }
 
   // AI Agent Memory Architecture migrations
   await client.query(`
@@ -1918,10 +1848,10 @@ async function migratePg(client: PoolClient) {
     UPDATE recommendations SET market = 'forex' WHERE market = 'crypto'
   `).catch(() => {});
   await client.query(`
-    UPDATE trades SET broker = 'mt_ea' WHERE broker = 'binance'
+    UPDATE trades SET broker = 'metaapi' WHERE broker = 'binance'
   `).catch(() => {});
   await client.query(`
-    UPDATE trade_intents SET broker = 'mt_ea' WHERE broker = 'binance'
+    UPDATE trade_intents SET broker = 'metaapi' WHERE broker = 'binance'
   `).catch(() => {});
   await client.query(`DROP TABLE IF EXISTS binance_accounts CASCADE`).catch(() => {});
 
@@ -1983,6 +1913,21 @@ async function migratePg(client: PoolClient) {
     CREATE INDEX IF NOT EXISTS idx_deep_analysis_pending
       ON deep_analysis_runs (status, updated_at)
   `).catch(() => {});
+
+  // EA bridge retired. A stored 'ea' preference named a backend that no
+  // longer exists — NULL defers to the deployment default (getForexBackend),
+  // the same outcome resolveForexBackendFromPref already gives an
+  // unrecognised value, so no one silently keeps routing through a backend
+  // that isn't there.
+  await client.query(
+    `UPDATE trading_settings SET forex_backend = NULL WHERE forex_backend = 'ea'`,
+  ).catch(() => {});
+
+  // Its tables carried nothing but hashed device tokens and heartbeat/candle
+  // cache, none of which any code reads anymore.
+  await client.query(`DROP TABLE IF EXISTS ea_commands CASCADE`).catch(() => {});
+  await client.query(`DROP TABLE IF EXISTS ea_market_cache CASCADE`).catch(() => {});
+  await client.query(`DROP TABLE IF EXISTS ea_connections CASCADE`).catch(() => {});
 }
 
 async function seedAdminPg(client: PoolClient) {

@@ -28,13 +28,6 @@
     "layout_id": {
       "type": "string"
     },
-    "source": {
-      "type": "string",
-      "enum": [
-        "platform",
-        "mt5"
-      ]
-    },
     "inline_image": {
       "description": "Set false to skip the inline image copy (default true). The operator-facing display_markdown is returned either way.",
       "type": "boolean"

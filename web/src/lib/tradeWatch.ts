@@ -1,9 +1,4 @@
-import {
-  getEaConnection,
-  isHeartbeatFresh,
-  parseEaSymbolSpecs,
-} from "./eaStore";
-import { parseEaPositions, type EaBrokerPosition } from "./executionEnv";
+import { getForexLiveMid } from "./markets/forexPrice";
 import { checkSlTpProximity } from "./monitor";
 import { queryOne } from "./db";
 import { listOpenTrades } from "./store";
@@ -42,16 +37,8 @@ async function forexMidPrice(
   userId: number,
   symbol: string,
 ): Promise<number | null> {
-  const conn = await getEaConnection(userId);
-  if (!conn || !isHeartbeatFresh(conn.last_heartbeat_at)) return null;
-  const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(
-    (s) => s.symbol?.toUpperCase() === symbol.toUpperCase(),
-  );
-  if (!spec) return null;
-  const bid = Number(spec.bid) || 0;
-  const ask = Number(spec.ask) || 0;
-  if (bid > 0 && ask > 0) return (bid + ask) / 2;
-  return bid || ask || null;
+  const price = await getForexLiveMid(userId, symbol);
+  return price > 0 ? price : null;
 }
 
 export interface TradeWatchAlert {
@@ -99,38 +86,16 @@ export async function watchAichartOpenTrades(
   return alerts;
 }
 
+/**
+ * Positions opened directly on the broker terminal (outside AiChart) — there
+ * is no broker-agnostic "list every raw position" source to poll, so this
+ * stays empty until one exists. `watchAichartOpenTrades` above still covers
+ * every trade AiChart itself opened.
+ */
 export async function watchMt5Positions(
-  userId: number,
-  positions?: EaBrokerPosition[],
+  _userId: number,
 ): Promise<TradeWatchAlert[]> {
-  const alerts: TradeWatchAlert[] = [];
-  let list = positions;
-  if (!list) {
-    const conn = await getEaConnection(userId);
-    list = parseEaPositions(conn?.positions_json ?? null);
-  }
-
-  for (const p of list) {
-    const price = await forexMidPrice(userId, p.symbol);
-    if (price == null) continue;
-    const hits = checkSlTpProximity(price, p.sl, p.tp, PROXIMITY_PCT);
-    if (!hits.length) continue;
-    alerts.push({
-      symbol: p.symbol,
-      source: "mt5",
-      hits,
-      dedupeKey: proximityDedupeKey("mt5", String(p.ticket), hits),
-      detail:
-        `مركز MT5 #${p.ticket} ${p.symbol} ${p.side} — ` +
-        hits
-          .map(
-            (h) =>
-              `${h.kind.toUpperCase()} ${h.level} (بعد ${h.distancePct.toFixed(2)}%)`,
-          )
-          .join(" · "),
-    });
-  }
-  return alerts;
+  return [];
 }
 
 export async function watchFuturesLiquidationProximity(

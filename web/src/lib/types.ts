@@ -36,17 +36,17 @@ export interface TradingSettings {
   /** Stored watchlist/scan assets. Never an analytical or execution gate. */
   allowed_assets: string;
   /**
-   * User-chosen forex execution backend: "ea" (bridge on the user's own MT5)
-   * or "mt5local" (server-side, no download). null/undefined = the operator's
-   * global default (FOREX_BACKEND / MT5_BRIDGE_URL / METAAPI_TOKEN).
+   * User-chosen forex execution backend: "metaapi" (cloud) or "mt5local"
+   * (server-side, self-hosted). null/undefined = the operator's global
+   * default (FOREX_BACKEND / MT5_BRIDGE_URL / METAAPI_TOKEN).
    */
-  forex_backend?: "ea" | "mt5local" | "metaapi" | null;
+  forex_backend?: "mt5local" | "metaapi" | null;
   /**
    * Which pipe the CHARTS and quotes are read from — a different question from
-   * where orders go. null / "auto" = the cloud account when it is linked, then
-   * the user's own terminal, then the platform's own data.
+   * where orders go. null / "auto" = the cloud account when it is linked,
+   * otherwise the platform's own data.
    */
-  market_data_source?: "auto" | "oanda" | "ea" | "metaapi" | null;
+  market_data_source?: "auto" | "oanda" | "metaapi" | null;
   /**
    * "provider/model" the user chose for their own analyses (e.g.
    * "openai/gpt-5.6-sol", "anthropic/claude-opus-5"). null = platform default.
@@ -308,139 +308,7 @@ export interface AlertLog {
   created_at: string;
 }
 
-export type EaStatus = "online" | "offline" | "revoked";
-
-export interface EaConnection {
-  id: number;
-  user_id: number;
-  platform: MtPlatform;
-  token_hash: string;
-  label: string | null;
-  broker_name: string | null;
-  account_login: string | null;
-  account_currency: string | null;
-  balance: number;
-  equity: number;
-  status: EaStatus;
-  symbol_specs_json: string | null;
-  last_heartbeat_at: string | null;
-  account_trade_mode: string | null;
-  positions_json: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Non-secret EA connection view for the UI. */
-export interface EaConnectionMeta {
-  id: number;
-  platform: MtPlatform;
-  label: string | null;
-  broker_name: string | null;
-  account_login: string | null;
-  account_currency: string | null;
-  balance: number;
-  equity: number;
-  status: EaStatus;
-  online: boolean;
-  last_heartbeat_at: string | null;
-  account_trade_mode: string | null;
-  /** Consecutive missed heartbeat intervals (0 when fresh). */
-  missedHeartbeats?: number;
-  /** Seconds the EA has been stably online (debounced). */
-  settledOnlineSeconds?: number;
-}
-
-export type EaCommandType =
-  | "open_market"
-  | "close_position"
-  | "modify_sl_tp"
-  | "draw_and_capture"
-  | "clear_chart"
-  | "open_pending"
-  | "cancel_order"
-  | "close_partial"
-  | "ensure_symbol"
-  | "query_terminal"
-  | "get_ohlc"
-  | "list_symbols";
-
-/** Payload queued for EA `get_ohlc` commands (v4+). */
-export interface EaGetOhlcPayload {
-  symbol: string;
-  timeframe: string;
-  count?: number;
-  /** Bar offset back from the most recent bar (history pagination, EA v4.02+). */
-  start?: number;
-  /** Exact range in epoch seconds — gap-safe history tiling (EA v4.03+). */
-  from?: number;
-  to?: number;
-}
-
-/** One broker symbol from EA `list_symbols` (v4.02+). */
-export interface EaBrokerSymbol {
-  /** Broker-exact symbol name (e.g. EURUSDm). */
-  s: string;
-  /** Digits. */
-  d: number;
-  /** Description. */
-  n: string;
-}
-
-/** Result acked by EA for `get_ohlc`. */
-export interface EaGetOhlcResult {
-  symbol: string;
-  timeframe: string;
-  count: number;
-  candles: Array<{
-    time: number;
-    open: number;
-    high: number;
-    low: number;
-    close: number;
-    volume?: number;
-  }>;
-}
-
-/** Payload queued for EA `draw_and_capture` commands. */
-export interface EaDrawAndCapturePayload {
-  symbol: string;
-  interval: string;
-  recommendation_id: number;
-  capture_key?: string | null;
-  entry?: number | null;
-  stop_loss?: number | null;
-  take_profit?: number | null;
-  drawings: ChartDrawing[];
-}
-
-/** Payload queued for EA `clear_chart` commands. */
-export interface EaClearChartPayload {
-  symbol: string;
-  interval?: string | null;
-  recommendation_id?: number | null;
-}
-
-export type EaCommandStatus =
-  | "pending"
-  | "sent"
-  | "acked"
-  | "failed"
-  | "expired";
-
-export interface EaCommand {
-  id: number;
-  user_id: number;
-  intent_id: number | null;
-  command_type: EaCommandType;
-  payload_json: string;
-  status: EaCommandStatus;
-  result_json: string | null;
-  created_at: string;
-  expires_at: string | null;
-  updated_at: string;
-}
-
-/** Per-symbol contract spec reported by the EA in heartbeats. */
+/** Per-symbol contract spec reported by the broker. */
 export interface EaSymbolSpec {
   symbol: string;
   bid?: number;
@@ -456,11 +324,11 @@ export interface EaSymbolSpec {
   /** Minimum stop distance in points (SYMBOL_TRADE_STOPS_LEVEL). */
   stops_level?: number;
   freeze_level?: number;
-  /** instant | market | exchange | request — from SYMBOL_TRADE_EXECUTION (EA v3.01+). */
+  /** instant | market | exchange | request — from SYMBOL_TRADE_EXECUTION. */
   trade_execution?: string;
-  /** Broker-supported filling flags, e.g. ioc|fok|return (EA v3.01+). */
+  /** Broker-supported filling flags, e.g. ioc|fok|return. */
   filling_mode?: string;
-  /** Current spread in points (EA v3.01+). */
+  /** Current spread in points. */
   spread_points?: number;
 }
 

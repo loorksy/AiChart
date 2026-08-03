@@ -65,7 +65,7 @@ export function scoreOpportunity(
 
 export { parseAllowedAssets, isOpenAssetsPolicy } from "./allowedAssets";
 
-/** Scans one forex symbol via MetaTrader / EA snapshot. */
+/** Scans one forex symbol via its OANDA snapshot. */
 export async function scanForexSymbol(
   userId: number,
   symbol: string,

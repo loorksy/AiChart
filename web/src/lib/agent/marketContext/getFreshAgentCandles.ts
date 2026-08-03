@@ -22,7 +22,7 @@ export async function getFreshAgentCandles(input: {
   const interval = normalizeCanonicalInterval(input.interval);
   const limit = Math.min(Math.max(input.limit ?? 1500, 10), 5000);
   // Analysis is intentionally source-locked to OANDA. The chart may display
-  // broker candles, but EA/MT5 data is execution evidence (spread/fills), not
+  // broker candles, but MT5 data is execution evidence (spread/fills), not
   // an alternate analytical history.
   const source = "oanda" as const;
 

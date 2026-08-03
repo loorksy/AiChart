@@ -25,9 +25,6 @@ let cycles: typeof import("@/lib/recommendations/reevaluationCycle");
 let candles: typeof import("@/lib/candles/candleRepository");
 let store: typeof import("@/lib/store");
 let execution: typeof import("@/lib/execution");
-let recommendationStore: typeof import("@/lib/recommendations/recommendationStore");
-let tracker: typeof import("@/lib/recommendations/recommendationTracker");
-let eaLive: typeof import("@/lib/eaLiveState");
 let userId = 0;
 
 /**
@@ -165,11 +162,6 @@ before(async () => {
   candles = await import("@/lib/candles/candleRepository");
   store = await import("@/lib/store");
   execution = await import("@/lib/execution");
-  recommendationStore = await import(
-    "@/lib/recommendations/recommendationStore"
-  );
-  tracker = await import("@/lib/recommendations/recommendationTracker");
-  eaLive = await import("@/lib/eaLiveState");
   userId = await db.insertReturningId(
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     ["reeval-e2e@example.com", "x", "user", "active"],
@@ -193,58 +185,6 @@ before(async () => {
 });
 
 describe("automatic trigger consumption through the real unified brain", () => {
-  it("feeds the production detector with live spread and effective evidence", async () => {
-    const tracked = await recommendationStore.createTrackedRecommendation({
-      id: "tracker-live-spread",
-      userId,
-      symbol: "EURUSD",
-      interval: "15m",
-      direction: "buy",
-      entryType: "pending",
-      // Keep the lifecycle pending while the current seeded price is around
-      // 1.08. If entry were above the market, the tracker would legitimately
-      // trigger and stop the plan before it reached the re-evaluation detector.
-      entry: 1,
-      stopLoss: 0.95,
-      targets: [1.1],
-      status: "pending_entry",
-      outcome: "pending",
-      createdAt: Date.now(),
-      // Created NOW: with candle-count validity real under the plan contract,
-      // a createdCandleTime in the past would expire the plan across the 650
-      // seeded bars before the spread detector ever saw it.
-      createdCandleTime: Date.now(),
-      expiresAt: Date.now() + 3_600_000,
-      planType: "conditional",
-      executionState: "awaiting_activation",
-      triggerCondition: "إغلاق شمعة 15m فوق 1.2",
-      activationRule: { kind: "candle_close_above", level: 1.2, timeframe: "15m" },
-      invalidationRule: "إغلاق شمعة تحت وقف الخطة يلغيها",
-      alternativeScenario: "فشل التفعيل يعيد السعر إلى النطاق",
-      validityCandles: 24,
-      evidence: {
-        schemaVersion: 1,
-        modelContext: {
-          executionCost: { expected_spread: 1, observed_spread: 1 },
-        },
-        visualSnapshots: [],
-      },
-    });
-    await eaLive.updateEaLiveQuotes(userId, [
-      { symbol: "EURUSD", bid: 1.09, ask: 1.0903 },
-    ]);
-    const result = await tracker.trackOneRecommendation(tracked);
-    assert.ok(
-      result.reevaluations.some((item) => item.reason === "spread_widened"),
-      "the production tracker did not pass the EA spread into the detector",
-    );
-    await db.execute(
-      `UPDATE recommendation_reevaluations SET completed_at = ?
-        WHERE recommendation_id = ? AND outcome = 'cycle_requested'`,
-      [Date.now(), tracked.id],
-    );
-  });
-
   it("claims once, rebuilds full evidence, revises, records, and notifies", async () => {
     const recommendation = await repository.createCanonicalRecommendation({
       userId,
@@ -303,7 +243,7 @@ describe("automatic trigger consumption through the real unified brain", () => {
       side: "buy",
       notional: 100,
       market: "forex",
-      broker: "mt_ea",
+      broker: "metaapi",
       entry: 1.07,
       stop_loss: 1.06,
       take_profit: 1.09,

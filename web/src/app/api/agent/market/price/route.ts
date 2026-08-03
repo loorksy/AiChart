@@ -5,7 +5,7 @@ import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib
 import { getUnifiedPrice } from "@/lib/markets";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 
-/** Bridge: spot price for a forex symbol via EA/MetaApi or OANDA. */
+/** Bridge: spot price for a forex symbol via the linked broker or OANDA. */
 export async function GET(req: NextRequest) {
   try {
     const userId = await resolveBridgeUserId(req);

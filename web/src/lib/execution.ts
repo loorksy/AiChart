@@ -21,7 +21,6 @@ import {
 } from "./executionKillSwitch";
 import { getResolvedExecutionEnv } from "./executionEnv";
 import { execute } from "./db";
-import { getEaConnection } from "./eaStore";
 import {
   checkRevisionIsCurrent,
   getEffectiveRevision,
@@ -32,8 +31,7 @@ import { isAutoExecutionAuthorized } from "./agent/tradeMode";
 import { autoExecutionStage } from "./recommendations/autoExecutor";
 import { FEATURES } from "./agent/featureFlags";
 import { createLogger } from "./logger";
-import { BridgeErrorCode, bridgeError } from "./bridge/errors";
-import { checkForexTradePreflight } from "./bridge/forexPreflight";
+import { BridgeErrorCode } from "./bridge/errors";
 import { getBrokerAdapter } from "./brokers";
 import { metrics } from "./metrics";
 import { validateExecutionIntent } from "./executionSafety";
@@ -68,15 +66,9 @@ export async function getRiskBudget(
   const settings = await getSettings(userId);
   let equity = 0;
   let currency: string | null = null;
-  if (broker === "mt_ea") {
-    const connection = await getEaConnection(userId);
-    equity = Number(connection?.equity);
-    currency = connection?.account_currency ?? null;
-  } else {
-    const account = await getMtAccountMeta(userId);
-    equity = Number(account?.equity);
-    currency = account?.currency ?? null;
-  }
+  const account = await getMtAccountMeta(userId);
+  equity = Number(account?.equity);
+  currency = account?.currency ?? null;
   if (!Number.isFinite(equity) || equity <= 0) return null;
   const riskPct = settings.per_trade_pct;
   const riskAmount = (equity * riskPct) / 100;
@@ -373,7 +365,7 @@ async function executeIntentUnderRevisionLock(
     getFlag(LIVE_ENABLED_FLAG).catch(() => null),
     // The BROKER's reported account type — the only signal that actually says
     // where this order goes. Reading an env var here (the previous behaviour)
-    // meant the protection never engaged on EA/MT5 deployments.
+    // meant the protection never engaged on MT5 deployments.
     getResolvedExecutionEnv(userId, intent.market).catch(() => null),
   ]);
   const halt = checkExecutionHalt({
@@ -486,10 +478,13 @@ async function executeIntentUnderRevisionLock(
   // `live` stage: the dual-enablement halt above keys on "provably live", so an
   // unrecognised mode would otherwise slip past the one protection real money
   // gets. (No connection at all is refused further down by verified equity —
-  // nothing can reach a broker without one.)
+  // nothing can reach a broker without one.) This used to check the EA
+  // connection specifically; on a metaapi/mt5local-only platform the account
+  // link is mt_accounts, so the guard has to key on that instead or it goes
+  // vacuous for every account left.
   if (stage === "live" && resolvedEnv == null) {
-    const envConnection = await getEaConnection(userId).catch(() => null);
-    if (envConnection && envConnection.status !== "revoked") {
+    const envConnection = await getMtAccountMeta(userId).catch(() => null);
+    if (envConnection) {
       const envReason =
         "بيئة الحساب غير معروفة (execution_stage_env_unknown): الوسيط لم يُبلغ نوع الحساب (تجريبي/حقيقي) بشكل يمكن التحقق منه — لم يُرسل أي أمر.";
       push({ id: "safety", label: `مرحلة التنفيذ · ${intent.symbol}`, status: "error", detail: envReason });
@@ -579,39 +574,6 @@ async function executeIntentUnderRevisionLock(
   }
 
   const broker = intent.broker;
-
-  // Quote freshness / spread ceiling, HERE rather than only on some routes.
-  // The same order that /api/agent/trade/open would refuse with STALE_QUOTE or
-  // SPREAD_TOO_WIDE used to sail through when it arrived via the approval flow
-  // or the auto executor — the exact moments (news spikes, session rollover)
-  // a spread blowout makes a fill most dangerous. EA-path only: the other
-  // adapters do not publish quotes through the EA heartbeat channel.
-  if (broker === "mt_ea") {
-    const preflight = await checkForexTradePreflight(userId, intent.symbol).catch(
-      () =>
-        bridgeError(
-          BridgeErrorCode.STALE_QUOTE,
-          "Quote preflight failed.",
-          "تعذّر التحقق من السعر الحي — لا ننفّذ.",
-          { symbol: intent.symbol },
-        ),
-    );
-    if (preflight) {
-      const reason = preflight.error.message_ar ?? preflight.error.message;
-      const denyCode = preflight.error.code as BridgeErrorCode;
-      push({ id: "safety", label: `فحص السعر · ${intent.symbol}`, status: "error", detail: reason });
-      await updateIntentDenied(intentId, reason, denyCode, userId);
-      metrics.executionDenials.inc({ code: String(preflight.error.code) });
-      return {
-        ok: false,
-        status: "failed",
-        reason,
-        denyCode,
-        errorCode: String(preflight.error.code).toLowerCase(),
-        activities,
-      };
-    }
-  }
 
   const budget = await getRiskBudget(userId, broker);
   if (!budget) {

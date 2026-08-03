@@ -27,10 +27,4 @@ describe("tvDatafeed/buildKlinesUrl", () => {
     const url = buildKlinesUrl({ symbol: "EURUSD", interval: "1h" });
     assert.ok(!url.includes("fresh"), url);
   });
-
-  it("strips the EA: ticker prefix from the symbol param", () => {
-    const url = buildKlinesUrl({ symbol: "EA:XAUUSDm", interval: "5m", ea: true });
-    assert.ok(url.includes("symbol=XAUUSDm"), url);
-    assert.ok(url.includes("source=ea"), url);
-  });
 });

@@ -655,7 +655,7 @@ function buildModelContext(
     // spread with no session shaping, never to a guessed number.
     // Present whenever EITHER a live cost profile OR an observed spread exists.
     // It used to be gated on the observed spread alone, so on every production
-    // request (where market.spread is not wired through) a real live-EA cost
+    // request (where market.spread is not wired through) a real live cost
     // profile computed upstream was silently dropped and the model saw
     // executionCost: null — the exact evidence the prompt asks it to weigh when
     // rejecting a bad entry. Fall to null only when there is genuinely no cost

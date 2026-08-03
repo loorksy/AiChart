@@ -1,7 +1,7 @@
 /** Normalize candle open time to Lightweight Charts UTCTimestamp (seconds). */
 export function toChartSeconds(time: number): number {
   if (!Number.isFinite(time) || time <= 0) return 0;
-  // Some feeds use ms; MT5/EA typically Unix seconds.
+  // Some feeds use ms; MT5 typically Unix seconds.
   return time > 1e12 ? Math.floor(time / 1000) : Math.floor(time);
 }
 

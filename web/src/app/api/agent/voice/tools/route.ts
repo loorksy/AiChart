@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePaidAccess, handleError } from "@/lib/api";
 import { DEFAULT_MARKET, resolveActiveMarket } from "@/lib/marketPolicy";
 import { getUnifiedPrice } from "@/lib/markets";
-import { getEaConnection, isHeartbeatFresh } from "@/lib/eaStore";
-import { listTrades } from "@/lib/store";
+import { getMtAccountMeta, listTrades } from "@/lib/store";
 
 /**
  * Fast data lookups for the LIVE voice session. These are the low-latency
@@ -31,7 +30,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, symbol: resolved.symbol, price });
       }
       case "get_account_overview": {
-        const conn = await getEaConnection(user.id);
+        const conn = await getMtAccountMeta(user.id);
         if (!conn) {
           return NextResponse.json({
             ok: true,
@@ -42,7 +41,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           ok: true,
           connected: true,
-          fresh: isHeartbeatFresh(conn.last_heartbeat_at ?? null),
+          fresh: conn.online,
           balance: conn.balance ?? null,
           equity: conn.equity ?? null,
         });

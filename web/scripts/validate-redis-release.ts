@@ -6,11 +6,6 @@ import {
   getBridgeKvStore,
   resetBridgeKvStoreForTests,
 } from "../src/lib/bridge/store";
-import {
-  clearEaLiveQuotesForTests,
-  getEaLiveQuote,
-  updateEaLiveQuotes,
-} from "../src/lib/eaLiveState";
 
 const configuredRedisUrl = process.env.REDIS_URL?.trim();
 if (!configuredRedisUrl) {
@@ -23,11 +18,11 @@ const parsedUrl = new URL(redisUrl);
 /**
  * Isolation guard.
  *
- * This suite enqueues real jobs and clears EA live-quote state, so aiming it at
- * the instance the app is using would let a deployed worker consume test jobs
- * and would wipe live quote keys. The previous guard pinned the target to port
- * 6380 — which is exactly the port the deployed `REDIS_URL` uses — so it
- * mandated the one instance it existed to protect.
+ * This suite enqueues real jobs and writes tenant-scoped cache keys, so aiming
+ * it at the instance the app is using would let a deployed worker consume test
+ * jobs and would collide with live cache keys. The previous guard pinned the
+ * target to port 6380 — which is exactly the port the deployed `REDIS_URL`
+ * uses — so it mandated the one instance it existed to protect.
  *
  * Isolation cannot be read off a port number, so it is declared and then
  * checked: the operator states it, and the target must differ from the deployed
@@ -155,17 +150,6 @@ async function roundtrip(): Promise<void> {
     assert.equal((await store.checkSlidingWindow(rateKey, 10_000, 2)).allowed, true);
     assert.equal((await store.checkSlidingWindow(rateKey, 10_000, 2)).allowed, false);
 
-    await updateEaLiveQuotes(101, [
-      { symbol: "EURUSD", bid: 1.08, ask: 1.0802 },
-    ]);
-    await updateEaLiveQuotes(202, [
-      { symbol: "XAUUSD", bid: 2300, ask: 2300.2 },
-    ]);
-    clearEaLiveQuotesForTests();
-    assert.equal((await getEaLiveQuote(101, "EURUSD"))?.bid, 1.08);
-    assert.equal(await getEaLiveQuote(101, "XAUUSD"), null);
-    assert.equal((await getEaLiveQuote(202, "XAUUSD"))?.ask, 2300.2);
-
     const queue = await import("../src/lib/queue");
     let postMortemCount = 0;
     let retryAttempts = 0;
@@ -236,7 +220,6 @@ async function roundtrip(): Promise<void> {
     );
   } finally {
     resetBridgeKvStoreForTests();
-    clearEaLiveQuotesForTests();
     client.disconnect();
   }
 }

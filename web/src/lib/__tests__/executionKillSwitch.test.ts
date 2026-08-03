@@ -78,7 +78,7 @@ describe("dual enablement for live execution", () => {
   });
 
   it("decides real-money from the BROKER's account type, not an env var", () => {
-    // REGRESSION: this previously read OANDA_ENV, which on an EA/MT5 deployment
+    // REGRESSION: this previously read OANDA_ENV, which on an MT5 deployment
     // only describes the chart DATA source. With OANDA_ENV=practice and orders
     // routed through a real MT5 account, the guard silently never engaged —
     // exactly the setup it exists to protect.

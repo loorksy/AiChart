@@ -2,25 +2,17 @@
  * Trade management, routed to the backend the account is actually on.
  *
  * `modify_sl_tp`, `close_partial` and `cancel_mt5_order` are offered to the
- * agent unconditionally, but they used to queue an EA command whatever the
- * account was connected through. On a MetaApi or MT5-bridge account there is no
- * terminal polling that queue, so every call waited out its timeout and then
- * reported an offline EA — for an account that was online the whole time, and
- * for a stop the operator was trying to move.
- *
- * Each action now runs on its own backend, and where a backend genuinely cannot
- * perform one, it says so immediately instead of failing slowly.
+ * agent unconditionally. Each action runs on its own backend, and where a
+ * backend genuinely cannot perform one, it says so immediately instead of
+ * failing slowly.
  */
 import { getMtAccount, getMtAccountMeta, resolveForexBackendForUser } from "@/lib/store";
 import { getRpcConnection } from "@/lib/metaapi/client";
-import { queueEaCommandAndWait } from "@/lib/eaAgentCommands";
-import { queueEaModifySlTp } from "@/lib/eaTradeCommands";
-import { waitForEaCommandAck } from "@/lib/eaCommandWait";
 import { mt5Close } from "@/lib/mt5local/client";
 
 export interface TradeManagementResult {
   ok: boolean;
-  backend: "ea" | "metaapi" | "mt5local";
+  backend: "metaapi" | "mt5local";
   command_id?: number;
   result?: unknown;
   reason?: string;
@@ -44,23 +36,6 @@ export async function modifyStopsForUser(
   input: { ticket: number; stopLoss: number; takeProfit?: number },
 ): Promise<TradeManagementResult> {
   const backend = await resolveForexBackendForUser(userId);
-
-  if (backend === "ea") {
-    const command = await queueEaModifySlTp(
-      userId,
-      input.ticket,
-      input.stopLoss,
-      input.takeProfit,
-    );
-    const ack = await waitForEaCommandAck(command.id);
-    return {
-      ok: ack.ok,
-      backend,
-      command_id: command.id,
-      result: ack.result,
-      reason: ack.reason,
-    };
-  }
 
   if (backend === "metaapi") {
     try {
@@ -94,20 +69,6 @@ export async function closePartiallyForUser(
 ): Promise<TradeManagementResult> {
   const backend = await resolveForexBackendForUser(userId);
 
-  if (backend === "ea") {
-    const ack = await queueEaCommandAndWait(userId, "close_partial", {
-      ticket: input.ticket,
-      lots: input.lots,
-    });
-    return {
-      ok: ack.ok,
-      backend,
-      command_id: ack.command.id,
-      result: ack.result,
-      reason: ack.reason,
-    };
-  }
-
   if (backend === "metaapi") {
     try {
       const conn = await metaApiConnection(userId);
@@ -140,19 +101,6 @@ export async function cancelOrderForUser(
   input: { ticket: number },
 ): Promise<TradeManagementResult> {
   const backend = await resolveForexBackendForUser(userId);
-
-  if (backend === "ea") {
-    const ack = await queueEaCommandAndWait(userId, "cancel_order", {
-      ticket: input.ticket,
-    });
-    return {
-      ok: ack.ok,
-      backend,
-      command_id: ack.command.id,
-      result: ack.result,
-      reason: ack.reason,
-    };
-  }
 
   if (backend === "metaapi") {
     try {

@@ -26,9 +26,8 @@ MCP tool → `POST /api/agent/chart/multi-snapshot` →
 | `fresh` | `false` | bypass the snapshot cache |
 
 Every timeframe is captured **in parallel**, each with its own ~8s budget
-(`image_timeout_ms`, 2–20s). Native MT5 capture gets the first 60% of that budget
-and the server-rendered chart takes the remainder, so a silent EA never costs the
-whole request.
+(`image_timeout_ms`, 2–20s). The platform's own TradingView chart is tried
+first, falling back to the server-rendered chart within the same budget.
 
 Response, per timeframe:
 
