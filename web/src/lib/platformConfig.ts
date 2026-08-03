@@ -85,17 +85,6 @@ export const PLATFORM_CONFIG_FIELDS: ConfigFieldMeta[] = [
     placeholder: "claude-opus-5",
   },
   {
-    // Voice transcription. `gemini.ts` tells the operator to add it "from the
-    // platform panel" — a panel that had no field for it.
-    key: "GEMINI_API_KEY",
-    label: "مفتاح Gemini (تفريغ الصوت)",
-    labelEn: "GEMINI_API_KEY",
-    group: "ai",
-    secret: true,
-    plainStorage: false,
-    placeholder: "AIza…",
-  },
-  {
     // Both quick-model keys are optional: llm.ts falls back to the deep model
     // when they are blank, so an empty field changes nothing.
     key: "AI_QUICK_MODEL",
