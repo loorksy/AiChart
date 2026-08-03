@@ -22,7 +22,19 @@ import { cn } from "@/lib/utils";
  * Rendered only when the wizard itself would render its live form, so the
  * button can never lead to the "not enabled yet" wall.
  */
-export function Mt5LinkCard({ account }: { account: MtAccountMeta | null }) {
+export function Mt5LinkCard({
+  account,
+  /**
+   * True when this account is set to the EA bridge. connectMtAccount refuses a
+   * cloud link in that state, so offering the wizard would hand the trader a
+   * button whose every submit comes back «بدّل الطريقة إلى «عبر المنصة» أولاً».
+   * Say what to change instead of leading them to the failure.
+   */
+  blockedByEaMethod = false,
+}: {
+  account: MtAccountMeta | null;
+  blockedByEaMethod?: boolean;
+}) {
   const { t } = useLocale();
   const linked = account != null;
 
@@ -68,13 +80,19 @@ export function Mt5LinkCard({ account }: { account: MtAccountMeta | null }) {
         </p>
       )}
 
-      <Link
-        href="/console/mt5"
-        className={cn(buttonVariants({ variant: linked ? "outline" : "default" }))}
-      >
-        <Link2 className="size-4" aria-hidden />
-        {linked ? t("connect.mt5.manage") : t("connect.mt5.cta")}
-      </Link>
+      {blockedByEaMethod && !linked ? (
+        <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning">
+          {t("connect.mt5.needs_platform")}
+        </p>
+      ) : (
+        <Link
+          href="/console/mt5"
+          className={cn(buttonVariants({ variant: linked ? "outline" : "default" }))}
+        >
+          <Link2 className="size-4" aria-hidden />
+          {linked ? t("connect.mt5.manage") : t("connect.mt5.cta")}
+        </Link>
+      )}
     </SurfaceCard>
   );
 }
