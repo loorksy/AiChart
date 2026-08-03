@@ -74,6 +74,40 @@ describe("an always-on account still bills", () => {
     );
   });
 
+  it("does not keep a meter running for an account the user re-linked away from", () => {
+    /*
+     * Relinking creates a NEW MetaApi account and leaves the previous session
+     * open. Rolling every open session forward kept those dead meters alive:
+     * production had three open sessions on one user, two of them for accounts
+     * that were not deployed and that MetaApi was not charging for either.
+     */
+    const roll = LIFECYCLE.slice(
+      LIFECYCLE.indexOf("export async function rollOpenDeploySessions"),
+      LIFECYCLE.indexOf("export async function sweepIdleDeployments"),
+    );
+    assert.match(
+      roll,
+      /LEFT JOIN mt_accounts/,
+      "the roll must know which account is actually linked",
+    );
+    assert.match(
+      roll,
+      /current_account_id !== session\.account_id/,
+      "a session for any other account is stale",
+    );
+    assert.match(
+      roll,
+      /hours = 0, retail_usd = 0/,
+      "a stale meter charges nothing — there was no deployment behind it",
+    );
+    // And it must not be reopened: the `continue` has to come before the roll.
+    const staleBranch = roll.slice(0, roll.indexOf("METER_ROLL_MS"));
+    assert.ok(
+      staleBranch.includes("continue"),
+      "a stale session must not be reopened after closing",
+    );
+  });
+
   it("bills the hours a rolled session actually accrued", () => {
     const start = 1_700_000_000_000;
     // One full roll window, to the minute resolution the meter uses.
