@@ -217,41 +217,6 @@ export function intervalPlan(interval: string): IntervalPlan {
   return { base: iv, factor: 1 };
 }
 
-/**
- * MetaTrader (EA get_ohlc) supports only M1/M5/M15/M30/H1/H4/D1/W1/MN1. Any
- * other interval must be resampled from a supported base, or the EA silently
- * returns the chart's own period. Returns the EA interval to request + factor.
- */
-const MT5_NATIVE = new Set([
-  "1m",
-  "5m",
-  "15m",
-  "30m",
-  "1h",
-  "4h",
-  "1d",
-  "1w",
-  "1M",
-]);
-
-export function mt5IntervalPlan(interval: string): IntervalPlan {
-  const iv = normalizeInterval(interval);
-  if (MT5_NATIVE.has(iv)) return { base: iv, factor: 1 };
-  const map: Record<string, IntervalPlan> = {
-    "3m": { base: "1m", factor: 3 },
-    "10m": { base: "5m", factor: 2 },
-    "45m": { base: "15m", factor: 3 },
-    "2h": { base: "1h", factor: 2 },
-    "6h": { base: "1h", factor: 6 },
-    "8h": { base: "4h", factor: 2 },
-    "12h": { base: "4h", factor: 3 },
-    "2d": { base: "1d", factor: 2 },
-    "3d": { base: "1d", factor: 3 },
-    "2w": { base: "1w", factor: 2 },
-  };
-  return map[iv] ?? { base: "1h", factor: 1 };
-}
-
 export interface ResampleCandle {
   time: number;
   open: number;

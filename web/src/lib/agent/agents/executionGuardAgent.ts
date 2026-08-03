@@ -27,7 +27,7 @@ export interface ExecutionGuardInput {
  * always returns allowed:false. It blocks only on technical execution conditions
  * (permission, market session, or extreme slippage); otherwise it emits a
  * confirmation payload (symbol, direction, levels, RR, warnings) for the
- * user to approve before anything reaches MT5/EA.
+ * user to approve before anything reaches MT5.
  */
 export async function runExecutionGuardAgent(
   ctx: AgentRunContext,

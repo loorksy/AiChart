@@ -3,13 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bell, Cable, Moon, Save, Sparkles, Sun, User } from "lucide-react";
-import { EaConnectCard } from "@/components/settings/EaConnectCard";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
 import { Mt5LinkCard } from "@/components/settings/Mt5LinkCard";
-import {
-  ForexMethodSelector,
-  type ForexMethod,
-} from "@/components/settings/ForexMethodSelector";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
 
 import { PageHeader, Surface } from "@/components/foundation";
@@ -19,7 +14,7 @@ import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import type { AdminLimits, EaConnectionMeta, MtAccountMeta, PublicUser, TradingSettings } from "@/lib/types";
+import type { AdminLimits, MtAccountMeta, PublicUser, TradingSettings } from "@/lib/types";
 
 type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "skills";
 
@@ -47,13 +42,8 @@ export default function SettingsClient({
   user,
   settings: initialSettings,
   limits: _limits,
-  ea,
   mt5LinkEnabled = false,
   mt5Account = null,
-  forexBackend,
-  metaApiAvailable = false,
-  mt5LocalAvailable = false,
-  canDownloadEa = false,
   initialTab,
   embedMode = false,
   visibleTabs,
@@ -64,16 +54,9 @@ export default function SettingsClient({
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
-  ea: EaConnectionMeta | null;
   mt?: unknown;
   mt5LinkEnabled?: boolean;
   mt5Account?: MtAccountMeta | null;
-  /** Server-resolved backend — what applies when the account has no explicit choice. */
-  forexBackend?: "ea" | "mt5local" | "metaapi";
-  mt5LocalAvailable?: boolean;
-  metaApiAvailable?: boolean;
-  platformConnectAvailable?: boolean;
-  canDownloadEa?: boolean;
   initialTab?: TabId;
   embedMode?: boolean;
   visibleTabs?: TabId[];
@@ -109,33 +92,6 @@ export default function SettingsClient({
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
-
-  /**
-   * An explicit choice wins; with none stored we show what the server actually
-   * resolved, so the switch reflects the deployment default (FOREX_BACKEND)
-   * rather than claiming a preference the account does not have.
-   */
-  const forexMethod: ForexMethod =
-    settings.forex_backend != null
-      ? settings.forex_backend === "ea"
-        ? "ea"
-        : "platform"
-      : forexBackend === "ea"
-        ? "ea"
-        : "platform";
-  const platformAvailable = metaApiAvailable || mt5LocalAvailable;
-
-  /**
-   * "platform" is two different backends. Prefer the MetaApi cloud and fall
-   * back to the self-hosted bridge, matching resolveForexBackendFromPref, which
-   * ignores a preference whose infrastructure is not configured.
-   */
-  function chooseForexMethod(next: ForexMethod) {
-    if (next === forexMethod || saving) return;
-    void save({
-      forex_backend: next === "ea" ? "ea" : metaApiAvailable ? "metaapi" : "mt5local",
-    });
-  }
 
   async function save(patch: Record<string, unknown>) {
     setSaving(true);
@@ -262,23 +218,7 @@ export default function SettingsClient({
 
       {tab === "integrations" && (
         <div className="space-y-4">
-          {/* The routing decision comes before the two things it routes
-              between, so the trader picks a method and then links under it. */}
-          <ForexMethodSelector
-            method={forexMethod}
-            platformAvailable={platformAvailable}
-            saving={saving}
-            onChoose={chooseForexMethod}
-          />
-          {/* Cloud linking first: it asks for nothing but the broker login,
-              where the EA route needs a terminal installed and running. */}
-          {mt5LinkEnabled && (
-            <Mt5LinkCard
-              account={mt5Account}
-              blockedByEaMethod={forexMethod === "ea"}
-            />
-          )}
-          <EaConnectCard connection={ea} canDownloadEa={canDownloadEa} />
+          {mt5LinkEnabled && <Mt5LinkCard account={mt5Account} />}
           <McpConnectCard />
         </div>
       )}

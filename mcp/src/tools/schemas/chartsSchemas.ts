@@ -142,7 +142,7 @@ export const CHARTS_TOOL_DEFINITIONS: ToolDefinition[] = [
       symbol: zSymbol.optional(),
       interval: zInterval.optional(),
       market: z.literal("forex").optional(),
-      data_source: z.enum(["oanda", "ea"]).optional(),
+      data_source: z.literal("oanda").optional(),
       layout_id: zLayoutId,
     },
     annotations: {

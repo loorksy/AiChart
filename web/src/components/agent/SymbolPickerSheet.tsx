@@ -25,8 +25,8 @@ interface InstrumentRow {
   market_open?: boolean;
 }
 
-/** The three pipes a pair list can come from. */
-type MarketSource = "oanda" | "ea" | "metaapi";
+/** The two pipes a pair list can come from. */
+type MarketSource = "oanda" | "metaapi";
 
 interface InstrumentsResponse {
   instruments?: InstrumentRow[];
@@ -35,10 +35,7 @@ interface InstrumentsResponse {
 }
 
 function normalizeSource(raw: string | undefined): MarketSource {
-  if (raw === "metaapi") return "metaapi";
-  // "ea_all" / "market_watch" both mean a terminal answered.
-  if (raw && raw !== "oanda") return "ea";
-  return "oanda";
+  return raw === "metaapi" ? "metaapi" : "oanda";
 }
 
 /** Matches the server's per-request cap, so one flush is one request. */
@@ -88,9 +85,9 @@ export function SymbolPickerSheet({
   const [loading, setLoading] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
   const panelRef = useRef<HTMLDivElement>(null);
-  // The client does not choose the pipe. Three can serve the same pair — the
-  // platform feed, the trader's own terminal, their cloud account — and which
-  // one is connected and preferred is the server's call. It answers with the
+  // The client does not choose the pipe. Two can serve the same pair — the
+  // platform feed, or the trader's own cloud account — and which one is
+  // connected and preferred is the server's call. It answers with the
   // source it really used, and that is what gets displayed and passed on.
   void brokerConnected;
   const [served, setServed] = useState<MarketSource>("oanda");
@@ -254,7 +251,6 @@ export function SymbolPickerSheet({
 
   const sourceNote = useMemo(() => {
     if (served === "metaapi") return t("symbol.picker.source_cloud");
-    if (served === "ea") return t("symbol.picker.source_broker");
     return t("symbol.picker.source_platform");
   }, [served, t]);
 
@@ -365,8 +361,8 @@ export function SymbolPickerSheet({
                 onPick={() => {
                   // The chart must read candles from the same place this list
                   // came from; passing the requested source instead of the
-                  // served one is how a MetaApi account ends up asking an EA
-                  // that isn't there for its bars.
+                  // served one is how a mismatch between the list and the
+                  // chart's own feed creeps in.
                   onSelect(row.symbol, served);
                   onClose();
                 }}

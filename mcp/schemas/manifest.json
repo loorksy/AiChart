@@ -1,7 +1,7 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-07-31T20:46:06.859Z",
-  "toolCount": 57,
+  "exportedAt": "2026-08-03T21:23:03.083Z",
+  "toolCount": 53,
   "tools": [
     {
       "name": "get_account_overview",
@@ -16,7 +16,7 @@
     {
       "name": "get_trade_readiness",
       "domain": "core",
-      "description": "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, EA heartbeat, quote freshness, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
+      "description": "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -26,7 +26,7 @@
     {
       "name": "get_agent_capabilities",
       "domain": "core",
-      "description": "Reports what this deployment supports: server version, git commit, feature flags, EA debounce settings, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
+      "description": "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -216,7 +216,7 @@
     {
       "name": "capture_chart_snapshot",
       "domain": "core",
-      "description": "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). Set source=mt5 to photograph the connected MetaTrader terminal instead — only meaningful while the EA is online and the operator asked for it. When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "description": "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -296,7 +296,7 @@
     {
       "name": "get_market_price",
       "domain": "market",
-      "description": "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — for forex, verify freshness via quoteAgeMs from get_ea_live_quotes before acting on it. read-only. Example: symbol=EURUSD.",
+      "description": "Returns the current live price for one symbol and nothing more. When: only the latest price is needed. read-only. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -306,7 +306,7 @@
     {
       "name": "list_instruments",
       "domain": "market",
-      "description": "Lists tradable forex instruments — from OANDA by default, or the full broker symbol list via the MT5 bridge with source=ea (not Market Watch only) — with an optional q search filter. When: browsing or searching for a pair, or checking whether a broker-specific symbol exists. read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
+      "description": "Lists tradable forex instruments — from OANDA, or the linked cloud account's own symbols when one is connected — with an optional q search filter. When: browsing or searching for a pair. read-only. Example: market=forex&q=EUR.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -346,7 +346,7 @@
     {
       "name": "get_ohlc",
       "domain": "market",
-      "description": "Returns raw OHLC candles for a symbol and interval, from OANDA by default or the EA bridge with source=ea (required for broker-suffix symbols such as XAUUSDM), paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed. read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "description": "Returns raw OHLC candles for a symbol and interval from OANDA, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed. read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -386,7 +386,7 @@
     {
       "name": "connect_mt5",
       "domain": "mt5",
-      "description": "Links a MetaTrader account by saving its platform, server, login, and password for the MetaApi/mt5local backend. When: connecting through MetaApi or mt5local only — not with FOREX_BACKEND=ea. side-effect: saves credentials. Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. Example: platform=mt5&server=...",
+      "description": "Links a MetaTrader account by saving its platform, server, login, and password for the MetaApi/mt5local backend. When: the operator wants to connect their MetaTrader account for forex execution. side-effect: saves credentials. Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. Example: platform=mt5&server=...",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -406,7 +406,7 @@
     {
       "name": "get_mt5_status",
       "domain": "mt5",
-      "description": "Reports the connection status of the MetaApi/mt5local MetaTrader link. When: checking that backend's health — with the EA backend use get_ea_diagnostics instead. read-only.",
+      "description": "Reports the connection status of the MetaApi/mt5local MetaTrader link. When: checking that backend's health. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -416,27 +416,7 @@
     {
       "name": "get_live_account",
       "domain": "mt5",
-      "description": "Returns the unified live MT5 account state together with quote freshness (quoteAgeMs). When: before any trade, to verify the account and the freshness of its data. read-only.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "get_ea_diagnostics",
-      "domain": "mt5",
-      "description": "Returns EA bridge diagnostics for the forex backend — heartbeat, spread, and recent retcodes — optionally scoped to one symbol. When: the EA connection or execution quality is in question. read-only. Example: symbol=EURUSD.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "get_ea_live_quotes",
-      "domain": "mt5",
-      "description": "Returns live EA quote health — isFresh, spreadPips, and freshCount — optionally for one symbol. When: before open_trade on forex; do not execute if quotes are stale. read-only.",
+      "description": "Returns the unified live MT5 account state (open trades). Use get_market_price for live quotes and freshness (quoteAgeMs). When: before any trade, to verify the account is connected. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -456,7 +436,7 @@
     {
       "name": "capture_mt5_chart",
       "domain": "mt5",
-      "description": "Captures an MT5 chart image: with entry/SL/TP, drawings, or a recommendation_id it queues a draw_and_capture on the EA and polls up to 30s for the annotated PNG; without annotations it falls back to a plain chart snapshot. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: an MT5 chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
+      "description": "Captures a chart image, annotated with entry/SL/TP/drawings or a recommendation_id when given. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: a chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -466,7 +446,7 @@
     {
       "name": "modify_sl_tp",
       "domain": "mt5",
-      "description": "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, through the EA. When: an open MT5 position needs its protective levels moved. side-effect: EA modify. Example: ticket=123&stop_loss=1.08.",
+      "description": "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. side-effect: broker modify. Example: ticket=123&stop_loss=1.08.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -476,7 +456,7 @@
     {
       "name": "cancel_mt5_order",
       "domain": "mt5",
-      "description": "Cancels a pending MT5 order by ticket, through the EA. When: the operator wants a pending order withdrawn before it fills. side-effect: EA cancel.",
+      "description": "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. side-effect: broker cancel.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -486,27 +466,7 @@
     {
       "name": "close_partial",
       "domain": "mt5",
-      "description": "Closes part of an open MT5 position by ticket, reducing it by the given number of lots through the EA. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: EA partial close.",
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false
-      }
-    },
-    {
-      "name": "query_mt5_terminal",
-      "domain": "mt5",
-      "description": "Returns a snapshot of the MT5 terminal via the EA: margin, equity, and pending orders. When: the current margin, equity, or pending-order state is needed without changing anything. read-only via EA.",
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true
-      }
-    },
-    {
-      "name": "request_ea_reconnect",
-      "domain": "mt5",
-      "description": "Flags the EA for reconnection in the database so the terminal re-establishes its feed, optionally requesting a candle resync via resync_candles. When: quotes are stale — at most once per minute. side-effect: flags DB.",
+      "description": "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: broker partial close.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,

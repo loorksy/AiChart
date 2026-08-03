@@ -5,18 +5,12 @@ import { ApiError, handleError } from "@/lib/api";
 import {
   logAudit,
   saveRecommendation,
-  updateRecommendationChartUrl,
   updateRecommendationIntelligence,
 } from "@/lib/store";
 import { profileForInterval } from "@/lib/analysisProfile";
 import { validateChartDrawings, type ChartDrawing } from "@/lib/chartDrawings";
 import { attachChartToRecommendation } from "@/lib/recommendationChart";
 import { agentChartUrls } from "@/lib/chartBridgeUrl";
-import {
-  canUseMt5ChartCapture,
-  mt5ChartUrl,
-  queueMt5ChartCapture,
-} from "@/lib/eaChartDraw";
 import {
   searchSimilarLessons,
   formatLessonsForPrompt,
@@ -333,9 +327,9 @@ export async function POST(req: NextRequest) {
     let executionState: string | null = null;
     if (body.action !== "wait" && body.plan_type != null) {
       // getUnifiedPrice reads the operator's BROKER mid, which is 0 whenever
-      // the EA is offline — so every immediate plan created through this
-      // surface read `awaiting_activation` even with price sitting inside the
-      // entry zone. The warehouse close is a real observed price and is the
+      // no broker connection is live — so every immediate plan created through
+      // this surface read `awaiting_activation` even with price sitting inside
+      // the entry zone. The warehouse close is a real observed price and is the
       // honest second source; only when neither exists do we fail safe.
       let currentPrice: number | null = null;
       try {
@@ -497,47 +491,24 @@ export async function POST(req: NextRequest) {
       `${rec.symbol} ${rec.action} ${rec.confidence}% strategy=${body.strategy_id ?? "none"} backtest=${deployment?.backtestId ?? "none"} regime=${body.market_regime ?? "none"} visual=${visualConfirmation}${visualAdjustment.applied ? `(-${visualAdjustment.penaltyPct}% from ${visualAdjustment.baseConfidence})` : ""} tf_reviewed=${timeframesReviewed.join("/") || "none"} (#${rec.id})`,
     );
 
-    const mt5 = await canUseMt5ChartCapture(userId, body.symbol);
     let enriched: Recommendation = {
       ...rec,
       memory_refs_json: similarLessons.length
         ? JSON.stringify(similarLessons.map((l) => l.id))
         : null,
     };
-    let chartUrl: string;
-    let mt5Pending = false;
-
-    if (mt5.ok && rec.action !== "wait") {
-      await queueMt5ChartCapture(userId, {
-        recommendationId: rec.id,
-        symbol: body.symbol,
-        interval: body.timeframe,
-        drawings,
-        entry: body.entry ?? null,
-        stop_loss: body.stop_loss ?? null,
-        take_profit: body.take_profit ?? null,
-      });
-      chartUrl = mt5ChartUrl(rec.id);
-      await updateRecommendationChartUrl(rec.id, chartUrl);
-      enriched = { ...enriched, chart_image_url: chartUrl };
-      mt5Pending = true;
-    } else {
-      const attached = await attachChartToRecommendation(userId, enriched, {
-        notify: false,
-        drawings,
-      });
-      enriched = attached.rec;
-      chartUrl = `/api/agent/chart/${enriched.id}`;
-    }
+    const attached = await attachChartToRecommendation(userId, enriched, {
+      notify: false,
+      drawings,
+    });
+    enriched = attached.rec;
+    const chartUrl = `/api/agent/chart/${enriched.id}`;
 
     return NextResponse.json({
       ok: true,
       recommendation: enriched,
       similar_lessons: similarLessons,
       ...agentChartUrls(chartUrl),
-      mt5_pending: mt5Pending,
-      mt5_symbol: mt5.mt5Symbol ?? null,
-      mt5_unavailable_reason: mt5.ok ? null : mt5.reason ?? null,
       visual_review: {
         visual_confirmation: visualConfirmation,
         timeframes_reviewed: timeframesReviewed,

@@ -551,9 +551,6 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
       > & { inline_image?: boolean };
       const input = rest as { symbol?: string; interval?: string };
       try {
-        // 45s bridge budget: the EA render path queues behind the MT5 terminal
-        // and routinely outlives the default 15s, which surfaced as a fake
-        // "bridge timeout" while the PNG was still on its way.
         const res = (await bridge.post(
           "/api/agent/chart/snapshot",
           {
@@ -562,8 +559,6 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
           },
           45_000,
         )) as ChartSnapshotBridgeResult;
-        // Poll the MT5 capture as long as capture_mt5_chart does (30s) — the
-        // old 8s ceiling timed out before the EA's own budget even mattered.
         return resolveChartSnapshotResponse(
           bridge,
           res,

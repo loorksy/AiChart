@@ -10,14 +10,6 @@
       "description": "Optional search e.g. EUR or XAU",
       "type": "string",
       "maxLength": 20
-    },
-    "source": {
-      "description": "ea = all broker symbols from MT5",
-      "type": "string",
-      "enum": [
-        "oanda",
-        "ea"
-      ]
     }
   }
 }

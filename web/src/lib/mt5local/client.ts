@@ -136,7 +136,7 @@ export async function mt5Connect(creds: {
   const health = await mt5BridgeHealth().catch(() => null);
   if (health?.connect_capable === false) {
     throw new Error(
-      "جسر MT5 على هذا الخادم لا يدعم تسجيل الدخول (Wine/Linux). اختر «جسر EA» من الإعدادات أو فعّل MetaApi.",
+      "جسر MT5 على هذا الخادم لا يدعم تسجيل الدخول (Wine/Linux). فعّل الربط السحابي عبر MetaApi من الإعدادات.",
     );
   }
   const res = await call<{ ok: boolean; account: Mt5Account }>("/connect", {

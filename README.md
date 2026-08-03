@@ -1,6 +1,6 @@
 # AiChart
 
-منصة تداول ذكية متعددة المستخدمين على **الفوركس والذهب (OANDA بيانات + MT5/EA تنفيذ)**، يتحدث فيها كل متداول مع
+منصة تداول ذكية متعددة المستخدمين على **الفوركس والذهب (OANDA بيانات + MT5 تنفيذ)**، يتحدث فيها كل متداول مع
 وكيل خبير يراقب السوق بصبر ويتحرّك فقط عند الفرصة المناسبة — توصية أو صفقة بعد موافقة صريحة.
 
 الهوية القانونية للوكيل (الدستور): [`agent/workspace/SYSTEM.md`](agent/workspace/SYSTEM.md) — مصدر واحد
@@ -16,7 +16,6 @@
 | [`mcp/`](mcp) | خادم MCP بعيد (Claude Connectors) — 50 أداة + مهارات + موارد |
 | [`agent/`](agent) | حزمة المحتوى القانوني: الدستور، المهارات، bootstrap، عقد الأدوات |
 | [`research-service/`](research-service) | خدمة أبحاث Python معزولة: باكتيست حتمي، تحقق إحصائي، Research Swarm |
-| [`ea/`](ea) | MetaTrader Expert Advisors (جسر التنفيذ) |
 | [`infra/`](infra) | نشر: PM2 + Docker Compose + nginx + سكربتات VPS |
 | [`docs/`](docs) | توثيق المعمارية والتشغيل |
 
@@ -98,7 +97,7 @@ cd research-service && pip install -e ".[dev]" && pytest
 
 ## التقنيات
 
-Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · PostgreSQL/SQLite · OpenAI · OANDA · MT5/EA · Telegram Bot API · TradingView Charts · FastAPI (أبحاث)
+Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · PostgreSQL/SQLite · OpenAI · OANDA · MT5/MetaApi · Telegram Bot API · TradingView Charts · FastAPI (أبحاث)
 
 ---
 

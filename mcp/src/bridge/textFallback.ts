@@ -4,17 +4,15 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
   en: {
     buy: "Buy",
     sell: "Sell",
-    staleMark: " (stale — EA offline)",
     accountTitle: "Account status — AiChart",
     accountLine: "Account: #{login} · {broker}{mode}",
     liveMode: " · Live",
     demoMode: " · Demo",
-    balance: "Balance: {val}{stale}",
-    equity: "Equity: {val}{stale}",
+    balance: "Balance: {val}",
+    equity: "Equity: {val}",
     openPnl: "Open PnL: {val}",
-    openPnlStale: "— / stale data",
+    openPnlStale: "— / no data",
     openTrades: "Open trades: {val}",
-    staleWarning: "Note: EA offline or quotes are stale.",
     analysisTitle: "Analysis {symbol} — AiChart",
     trend: "Trend: {val}",
     price: "Price: {val}",
@@ -35,17 +33,15 @@ const MESSAGES: Record<Locale, Record<string, string>> = {
   ar: {
     buy: "شراء",
     sell: "بيع",
-    staleMark: " (قديم — EA غير متصل)",
     accountTitle: "حالة الحساب — AiChart",
     accountLine: "الحساب: #{login} · {broker}{mode}",
     liveMode: " · حقيقي",
     demoMode: " · تجريبي",
-    balance: "الرصيد: {val}{stale}",
-    equity: "حقوق الملكية: {val}{stale}",
+    balance: "الرصيد: {val}",
+    equity: "حقوق الملكية: {val}",
     openPnl: "PnL المفتوح: {val}",
-    openPnlStale: "— / بيانات قديمة",
+    openPnlStale: "— / لا توجد بيانات",
     openTrades: "الصفقات المفتوحة: {val}",
-    staleWarning: "تنبيه: EA غير متصل أو الأسعار قديمة.",
     analysisTitle: "تحليل {symbol} — AiChart",
     trend: "الاتجاه: {val}",
     price: "السعر: {val}",
@@ -150,43 +146,6 @@ function formatOpenTrades(v: unknown, locale: Locale): string {
     .join(" | ");
 }
 
-function eaStale(data: Record<string, unknown>): boolean {
-  const live = unwrapBridge(data.live);
-  const liveForex = obj(live.forex);
-  const dataForex = obj(data.forex);
-  const portfolioForex = obj(unwrapBridge(data.portfolio).forex);
-  const ea = obj(first(liveForex.ea, dataForex.ea, portfolioForex.ea, live.ea, data.ea));
-  const heartbeatFresh = first(
-    ea.heartbeatFresh,
-    liveForex.heartbeatFresh,
-    dataForex.heartbeatFresh,
-    live.heartbeatFresh,
-    data.heartbeatFresh,
-  );
-  const online = first(
-    ea.online,
-    ea.connected,
-    liveForex.online,
-    dataForex.online,
-    live.online,
-    data.online,
-  );
-  const status = String(
-    first(ea.status, liveForex.status, dataForex.status, live.status, data.status) ?? "",
-  );
-  const fresh =
-    heartbeatFresh === true ||
-    online === true ||
-    /online|connected|live/i.test(status);
-  const stale =
-    heartbeatFresh === false ||
-    online === false ||
-    /offline|stale|down|revoked/i.test(status);
-  const known =
-    heartbeatFresh != null || online != null || status !== "" || hasKeys(ea);
-  return known ? stale || !fresh : false;
-}
-
 function sumPnl(...values: unknown[]): number | null {
   for (const v of values) {
     if (!Array.isArray(v)) continue;
@@ -206,25 +165,13 @@ function sumPnl(...values: unknown[]): number | null {
 }
 
 function formatAccountOverview(data: Record<string, unknown>, locale: Locale): string {
-  /* Host may pass get_live_account flat payload instead of get_account_overview wrapper. */
-  if (!obj(data.live).forex && obj(data.forex).ea) {
-    data = { ...data, live: data };
-  }
   const portfolio = unwrapBridge(data.portfolio);
   const live = unwrapBridge(data.live);
   const liveForex = obj(live.forex);
   const dataForex = obj(data.forex);
-  const portfolioForex = obj(portfolio.forex);
-  const eaLive = obj(liveForex.ea);
-  const eaDirect = obj(dataForex.ea);
-  const eaPort = obj(portfolioForex.ea);
   const connection = obj(first(live.connection, liveForex.connection, data.connection, dataForex.connection));
   const account = obj(first(portfolio.account, live.account, data.account, connection));
-  const stale = eaStale(data);
   const balance = first(
-    eaLive.balance,
-    eaDirect.balance,
-    eaPort.balance,
     connection.balance,
     account.balance,
     portfolio.balance,
@@ -232,25 +179,15 @@ function formatAccountOverview(data: Record<string, unknown>, locale: Locale): s
     data.balance,
   );
   const equity = first(
-    eaLive.equity,
-    eaDirect.equity,
-    eaPort.equity,
     connection.equity,
     account.equity,
     portfolio.equity,
     live.equity,
     data.equity,
   );
-  const login = first(eaLive.account_login, eaDirect.account_login, eaPort.account_login, connection.account_login);
-  const broker = first(eaLive.broker_name, eaDirect.broker_name, eaPort.broker_name, connection.broker_name);
-  const tradeMode = String(
-    first(
-      eaLive.account_trade_mode,
-      eaDirect.account_trade_mode,
-      eaPort.account_trade_mode,
-      connection.account_trade_mode,
-    ) ?? "",
-  );
+  const login = first(connection.login, account.login);
+  const broker = first(connection.server, account.server);
+  const tradeMode = String(first(connection.account_trade_mode, account.account_trade_mode) ?? "");
   let openPnl = first(
     portfolio.openPnl,
     portfolio.open_pnl,
@@ -282,7 +219,6 @@ function formatAccountOverview(data: Record<string, unknown>, locale: Locale): s
     live.openTrades,
     live.open_trades,
   );
-  const staleMark = stale ? msg("staleMark", locale) : "";
   const modeSuffix =
     tradeMode === "live"
       ? msg("liveMode", locale)
@@ -298,13 +234,12 @@ function formatAccountOverview(data: Record<string, unknown>, locale: Locale): s
           mode: modeSuffix,
         })
       : "",
-    msg("balance", locale, { val: fmtNum(balance), stale: balance != null ? staleMark : "" }),
-    msg("equity", locale, { val: fmtNum(equity), stale: equity != null ? staleMark : "" }),
+    msg("balance", locale, { val: fmtNum(balance) }),
+    msg("equity", locale, { val: fmtNum(equity) }),
     msg("openPnl", locale, {
-      val: stale || openPnl == null ? msg("openPnlStale", locale) : fmtNum(openPnl),
+      val: openPnl == null ? msg("openPnlStale", locale) : fmtNum(openPnl),
     }),
     msg("openTrades", locale, { val: formatOpenTrades(openTrades, locale) }),
-    stale ? msg("staleWarning", locale) : "",
   ];
   return lines.filter(Boolean).join("\n");
 }
@@ -392,7 +327,6 @@ function isAccountOverview(data: Record<string, unknown>): boolean {
   const forex = obj(data.forex);
   return (
     ("risk" in data && ("portfolio" in data || "live" in data)) ||
-    hasKeys(obj(forex.ea)) ||
     hasKeys(obj(data.connection)) ||
     data.balance != null ||
     data.equity != null ||

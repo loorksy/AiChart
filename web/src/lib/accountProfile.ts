@@ -1,5 +1,6 @@
-import { getEaConnection, isHeartbeatFresh, parseEaSymbolSpecs } from "./eaStore";
 import { getExecutionEnvSnapshot, type ExecutionEnv } from "./executionEnv";
+import { getMtAccount, getMtAccountMeta } from "./store";
+import { getRpcConnection } from "./metaapi/client";
 import { DEFAULT_MARKET, resolveActiveMarket } from "./marketPolicy";
 import type { MarketType } from "./markets/types";
 import { spreadFromBidAsk } from "./spread";
@@ -24,65 +25,68 @@ function accountTypeAr(env: ExecutionEnv | null): "حقيقي" | "ديمو" | "�
   return "—";
 }
 
-function platformLabel(
-  eaPlatform: string | null,
-  connected: boolean,
-): string {
-  if (!connected) return "—";
-  return eaPlatform?.toUpperCase() === "MT4" ? "MT4" : "MT5";
+/** The account's own bid/ask for its symbol — what an order actually crosses. */
+async function cloudSpread(
+  userId: number,
+  symbol: string,
+): Promise<{ spreadPips: number; spreadPct: number } | null> {
+  const account = await getMtAccount(userId);
+  if (!account?.metaapi_account_id || account.metaapi_account_id === "mt5local") {
+    return null;
+  }
+  try {
+    const rpc = await getRpcConnection(userId, account.metaapi_account_id);
+    const price = await rpc.getSymbolPrice(symbol, true);
+    const bid = Number(price?.bid);
+    const ask = Number(price?.ask);
+    if (!Number.isFinite(bid) || !Number.isFinite(ask)) return null;
+    const spread = spreadFromBidAsk(bid, ask, symbol);
+    if (!spread) return null;
+    return {
+      spreadPips: Math.round(spread.spreadPips * 10) / 10,
+      spreadPct: Math.round(spread.spreadPct * 1000) / 1000,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function buildAccountProfile(
   userId: number,
   symbol?: string,
 ): Promise<AccountProfile> {
-  const envSnap = await getExecutionEnvSnapshot(userId);
+  const [envSnap, meta] = await Promise.all([
+    getExecutionEnvSnapshot(userId),
+    getMtAccountMeta(userId),
+  ]);
   const market = resolveActiveMarket(DEFAULT_MARKET);
-  const eaConn = await getEaConnection(userId);
-  const forexOnline =
-    Boolean(eaConn) &&
-    eaConn!.status !== "revoked" &&
-    isHeartbeatFresh(eaConn!.last_heartbeat_at);
-
-  const resolved = envSnap.forex.resolved;
-  const connected = forexOnline;
+  const connected = Boolean(meta?.online);
 
   let spreadPips: number | null = null;
   let spreadPct: number | null = null;
   let hasSpread = false;
 
-  if (symbol && eaConn && forexOnline) {
-    const spec = parseEaSymbolSpecs(eaConn.symbol_specs_json).find(
-      (s) => s.symbol?.toUpperCase() === symbol.toUpperCase(),
-    );
-    if (spec) {
-      const bid = Number(spec.bid) || 0;
-      const ask = Number(spec.ask) || 0;
-      const spread = spreadFromBidAsk(bid, ask, symbol);
-      if (spread) {
-        hasSpread = true;
-        spreadPips = Math.round(spread.spreadPips * 10) / 10;
-        spreadPct = Math.round(spread.spreadPct * 1000) / 1000;
-      }
+  if (symbol && connected) {
+    const spread = await cloudSpread(userId, symbol);
+    if (spread) {
+      hasSpread = true;
+      spreadPips = spread.spreadPips;
+      spreadPct = spread.spreadPct;
     }
   }
 
-  const futuresEnabled = false;
-  const leverage = null;
-
   return {
     hasLeverage: false,
-    leverage,
+    leverage: null,
     marginMode: null,
     hasSpread,
     spreadPips,
     spreadPct,
     marketType: market,
-    platform: platformLabel(eaConn?.platform ?? null, connected),
-    accountLogin:
-      eaConn?.account_login ? String(eaConn.account_login) : null,
-    accountCurrency: eaConn?.account_currency ?? "USD",
-    accountType: accountTypeAr(resolved),
+    platform: connected ? "MT5" : "—",
+    accountLogin: meta?.login ? String(meta.login) : null,
+    accountCurrency: meta?.currency ?? "USD",
+    accountType: accountTypeAr(envSnap.forex.resolved),
   };
 }
 

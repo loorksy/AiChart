@@ -29,7 +29,6 @@ import {
 } from "../trading/tradingPlaybook";
 import { meetsDataQuality } from "../dataQualityPolicy";
 import type { ChartDrawing } from "@/lib/chartDrawings";
-import { getEaSymbolSpec } from "@/lib/eaStore";
 import type { SymbolGeometryMeta } from "../trading/scalpGeometry";
 
 export interface AccountRiskSnapshot {
@@ -241,20 +240,5 @@ async function resolveSymbolGeometryMeta(input: {
   symbol: string;
   spread?: number | null;
 }): Promise<SymbolGeometryMeta | null> {
-  if (input.userId == null) {
-    return input.spread != null ? { spread: input.spread } : null;
-  }
-  try {
-    const spec = await getEaSymbolSpec(input.userId, input.symbol);
-    if (!spec) {
-      return input.spread != null ? { spread: input.spread } : null;
-    }
-    return {
-      tickSize: Number(spec.tick_size) > 0 ? Number(spec.tick_size) : null,
-      digits: Number.isFinite(Number(spec.digits)) ? Number(spec.digits) : null,
-      spread: input.spread,
-    };
-  } catch {
-    return input.spread != null ? { spread: input.spread } : null;
-  }
+  return input.spread != null ? { spread: input.spread } : null;
 }

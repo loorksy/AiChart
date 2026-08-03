@@ -430,7 +430,7 @@ const ar: LandingCopy = {
     title: "تكاملات حقيقية",
     subtitle: "ما هو متاح فعلياً في المنصة اليوم.",
     items: [
-      { name: "MetaTrader 5 / EA", availability: "متاح بعد الربط" },
+      { name: "MetaTrader 5", availability: "متاح بعد الربط" },
       { name: "MetaApi", availability: "اختياري" },
       { name: "Telegram", availability: "اختياري للتنبيهات" },
       { name: "MCP", availability: "للمستخدمين المصرّح لهم" },
@@ -754,7 +754,7 @@ const en: LandingCopy = {
     title: "Real integrations",
     subtitle: "What the platform actually supports today.",
     items: [
-      { name: "MetaTrader 5 / EA", availability: "Available after connection" },
+      { name: "MetaTrader 5", availability: "Available after connection" },
       { name: "MetaApi", availability: "Optional" },
       { name: "Telegram", availability: "Optional for alerts" },
       { name: "MCP", availability: "Authorized technical use" },

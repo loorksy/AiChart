@@ -7,13 +7,13 @@ import { isOandaDataOnly } from "../forexDataSource";
  * FOREX_DATA_SOURCE is the deployment's DEFAULT feed, not a prohibition.
  *
  * It used to short-circuit both marketDataAvailability and
- * resolveMarketDataSource, and `getForexDataSourceMode` falls back to "oanda",
- * so `isOandaDataOnly()` was true on every deployment that had not explicitly
- * set "ea" — production included, with FOREX_DATA_SOURCE=oanda written out.
- * The result: the picker shipped to let an operator choose between three pipes
- * could only ever offer one. Both other rows sat greyed out, labelled "link an
- * account to use this" while the account was linked and the real reason was an
- * environment variable.
+ * resolveMarketDataSource, and `getForexDataSourceMode` falls back to "oanda"
+ * for any other value, so `isOandaDataOnly()` was true on every deployment
+ * that had not overridden it — production included, with
+ * FOREX_DATA_SOURCE=oanda written out. The result: the picker shipped to let
+ * an operator choose between multiple pipes could only ever offer one. The
+ * other row sat greyed out, labelled "link an account to use this" while the
+ * account was linked and the real reason was an environment variable.
  *
  * These tests pin the split: the flag decides `auto`, and a trader's explicit
  * choice of a pipe their account has connected is honoured.

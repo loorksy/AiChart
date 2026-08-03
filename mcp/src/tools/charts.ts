@@ -145,17 +145,13 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         // OANDA instruments only — strip broker suffixes (XAUUSDM → XAUUSD).
         // Route may wrap payload in {ok, data, meta} — unwrap before use.
         const fetchCandles = async (source?: string) => {
-          const res = (await bridge.get(
-            "/api/agent/market/ohlc",
-            {
-              symbol,
-              interval,
-              market: a.market,
-              source,
-              limit: 120,
-            },
-            source === "ea" ? 30000 : undefined,
-          )) as { data?: { candles?: unknown[] }; candles?: unknown[] };
+          const res = (await bridge.get("/api/agent/market/ohlc", {
+            symbol,
+            interval,
+            market: a.market,
+            source,
+            limit: 120,
+          })) as { data?: { candles?: unknown[] }; candles?: unknown[] };
           return res && typeof res.data === "object" && res.data
             ? res.data
             : res;
@@ -188,7 +184,7 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         interval?: string;
         market?: "forex";
         layout_id?: string;
-        data_source?: "oanda" | "ea";
+        data_source?: "oanda";
       };
       return bridgeCall(
         () =>

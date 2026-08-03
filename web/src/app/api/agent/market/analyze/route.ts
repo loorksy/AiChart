@@ -21,7 +21,6 @@ import { withUsageContext } from "@/lib/billing/usageMeter";
 import { checkSpendAllowed } from "@/lib/billing/gate";
 import { acquireAnalyzeSlot } from "@/lib/analyzeGuard";
 import { INTERVAL_SET } from "@/lib/intervals";
-import { resolveMt5Symbol } from "@/lib/mt5SymbolMap";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { getSessionStatus } from "@/lib/markets/tradingCalendar";
 import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
@@ -45,7 +44,7 @@ const schema = z.object({
     "إطار زمني غير مدعوم",
   ),
   market: z.string().optional(),
-  data_source: z.enum(["oanda", "ea"]).optional(),
+  data_source: z.enum(["oanda", "metaapi"]).optional(),
   layout_id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
 });
 
@@ -79,10 +78,10 @@ export async function POST(req: NextRequest) {
 
     const settings = await getSettings(userId);
     const layout = body.layout_id ? await getChartLayoutById(body.layout_id, userId) : null;
-    let savedSource: "oanda" | "ea" | undefined;
+    let savedSource: "oanda" | "metaapi" | undefined;
     try {
       savedSource = layout?.state_json
-        ? (JSON.parse(layout.state_json) as { dataSource?: "oanda" | "ea" }).dataSource
+        ? (JSON.parse(layout.state_json) as { dataSource?: "oanda" | "metaapi" }).dataSource
         : undefined;
     } catch {
       savedSource = undefined;
@@ -100,8 +99,6 @@ export async function POST(req: NextRequest) {
       : (body.data_source ?? savedSource ?? "oanda");
     if (dataSource === "oanda") {
       symbol = forexCanonicalKey(symbol);
-    } else {
-      symbol = (await resolveMt5Symbol(userId, symbol)) ?? symbol;
     }
 
     // A closed pair is refused BEFORE the spend gate, not after: there is no

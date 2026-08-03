@@ -20,8 +20,8 @@ consequences that must not be undone by a well-meaning config change:
   commission). On a 6-pip round trip that means ≥18 pips of first-target
   distance — with a 0.8×ATR stop and 1.2R target, that needs ATR ≳ 19 pips.
   Below that the family is not "slightly worse", it is unprofitable by
-  construction. Keep `BACKTEST_SPREAD_PIPS` / live EA quotes accurate per
-  symbol — a wrong spread silently invalidates every scalp backtest.
+  construction. Keep `BACKTEST_SPREAD_PIPS` accurate per symbol — a wrong
+  spread silently invalidates every scalp backtest.
 
 Changing `CATALOG_SPEC_REVISION` is REQUIRED whenever risk geometry changes;
 results from an older revision were produced under different exits and must

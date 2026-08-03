@@ -8,7 +8,7 @@ const POLL_MS = 1000;
 /**
  * Live forex price polled from OANDA via `/api/market/forex-price`.
  */
-export function useEaLivePrice(symbol: string, enabled = true): LivePriceTick {
+export function useLivePrice(symbol: string, enabled = true): LivePriceTick {
   const [tick, setTick] = useState<LivePriceTick>({
     price: 0,
     changePct: 0,
@@ -33,7 +33,7 @@ export function useEaLivePrice(symbol: string, enabled = true): LivePriceTick {
           price?: number | null;
           spread_label?: string | null;
           spread_pips?: number | null;
-          source?: "oanda" | "metaapi" | "ea" | null;
+          source?: "oanda" | "metaapi" | null;
         };
         if (!alive) return;
         const price = Number(data.price) || 0;

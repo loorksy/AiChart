@@ -92,7 +92,7 @@ Voice: `OPENAI_API_KEY`, `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_VOICE`,
 Scheduler: `CRON_SECRET`. Support contacts: `SUPPORT_EMAIL`, `SUPPORT_TELEGRAM`.
 Build: `TRADINGVIEW_LIBRARY_URL` (+ `TRADINGVIEW_LIBRARY_TOKEN`).
 Platform: DB (SQLite dev / Postgres prod via `DATABASE_URL`), `REDIS_URL`
-(optional worker tier), OANDA, MT5/EA bridge (`MT5_BRIDGE_URL`), news provider,
+(optional worker tier), OANDA, MT5 bridge (`MT5_BRIDGE_URL`), news provider,
 `AICHART_SERVICE_TOKEN` (MCP↔web bridge), `MCP_AUTH_MODE`.
 
 Migrations for `agent_chats`, `agent_chat_messages`, `tracked_recommendations`

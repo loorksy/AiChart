@@ -30,7 +30,7 @@ MCP Server يغلّف Bridge API (`/api/agent/*`) للربط مع **Claude.ai �
 | `BRIDGE_RATE_LIMIT_WRITES` | 10 | Agent write rate limit per route/min |
 | `IDEMPOTENCY_TTL_HOURS` | 24 | `open_trade` idempotency TTL |
 | `BRIDGE_CACHE_TTL_MS` | 5000 | In-memory bridge cache default |
-| `FOREX_BACKEND` | ea | `ea` \| `metaapi` \| `mt5local` |
+| `FOREX_BACKEND` | metaapi | `metaapi` \| `mt5local` |
 
 ## تشغيل محلي
 

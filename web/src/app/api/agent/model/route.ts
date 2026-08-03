@@ -7,6 +7,7 @@ import { refreshPlatformConfigCache } from "@/lib/platformConfig";
 import { getPublicAppUrl } from "@/lib/appUrl";
 import { APP_VERSION, gitCommit } from "@/lib/version";
 import { canonicalIdentity, canonicalIdentityHash } from "@/lib/agent/canonicalIdentity";
+import { getForexBackend } from "@/lib/brokers/forexBackend";
 
 /** Bridge: platform AI provider + model (Claude MCP reads via get_agent_capabilities). */
 export async function GET(req: NextRequest) {
@@ -20,7 +21,15 @@ export async function GET(req: NextRequest) {
     const providerConfigured: Record<string, { configured: boolean }> = {
       openai: { configured: Boolean(getProviderApiKey("openai")) },
     };
-    const forexBackend = process.env.FOREX_BACKEND?.trim() || "auto";
+    // Never let a misconfigured FOREX_BACKEND take down capabilities — this is
+    // the first call of every session, before the agent has any other tool to
+    // diagnose why the account can't be read.
+    let forexBackend: string;
+    try {
+      forexBackend = getForexBackend();
+    } catch (e) {
+      forexBackend = `misconfigured: ${e instanceof Error ? e.message : "unknown error"}`;
+    }
     return NextResponse.json({
       provider,
       model,
@@ -36,13 +45,6 @@ export async function GET(req: NextRequest) {
         source: canonicalIdentity().source,
       },
       forex_backend: forexBackend,
-      eaHeartbeat: {
-        offlineAfterMissed: 3,
-        heartbeatIntervalSec: 30,
-        note_ar:
-          "يُعلَن EA offline بعد 3 heartbeats متتالية فائتة — لا نفترض انقطاعاً فورياً عند miss واحد",
-        note: "EA marked offline only after 3 consecutive missed heartbeats (~90s worst case)",
-      },
       notes: {
         chart_media:
           "POST chart snapshot ثم MEDIA:<chart_url_telegram> (توكن مدمج). لا تستخدم localhost ولا ?token= يدوياً.",

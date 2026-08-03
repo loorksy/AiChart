@@ -14,7 +14,6 @@ import {
 } from "@/lib/markets/oanda";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
-import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 import { fetchMetaApiOhlc } from "@/lib/ohlc/metaApiOhlc";
 
 /** @deprecated Prefer interval-aware {@link ohlcCacheTtlMs}. Kept for callers. */
@@ -30,7 +29,7 @@ export interface OhlcCandle {
   volume?: number;
 }
 
-export type OhlcSource = "oanda" | "ea" | "metaapi";
+export type OhlcSource = "oanda" | "metaapi";
 
 export interface FetchOhlcResult {
   symbol: string;
@@ -61,10 +60,7 @@ export interface FetchOhlcOptions {
   /** Inclusive range for Pro datafeed (milliseconds). */
   fromMs?: number;
   toMs?: number;
-  /**
-   * Forex candle source: the platform's OANDA feed, the user's own terminal
-   * over the EA bridge, or their cloud MetaTrader account via MetaApi.
-   */
+  /** Forex candle source: the platform's OANDA feed, or the cloud MetaTrader account via MetaApi. */
   source?: OhlcSource;
 }
 
@@ -119,7 +115,7 @@ async function fetchForexOhlcLive(
   }
 }
 
-/** Fetches OHLC with bridge cache (45s) — forex via OANDA or EA. */
+/** Fetches OHLC with bridge cache (45s) — forex via OANDA or MetaApi. */
 export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcResult> {
   const interval = normalizeInterval(options.interval ?? "1h");
   const market = options.market ?? DEFAULT_MARKET;
@@ -133,15 +129,11 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   );
 
   /*
-   * The caller's source wins, and absent one it is the platform feed.
-   *
-   * This used to be clamped to "oanda" whenever FOREX_DATA_SOURCE was not "ea"
-   * — which is every deployment, since "oanda" is also the fallback. So the
-   * picker could report the cloud account as active while these candles came
-   * from OANDA regardless. Only two call sites pass a source at all: the chart's
-   * klines route, which takes it from resolveMarketDataSource and therefore
-   * never names a pipe the account has not connected, and the layout route,
-   * which hardcodes "oanda".
+   * The caller's source wins, and absent one it is the platform feed. Only
+   * two call sites pass a source at all: the chart's klines route, which
+   * takes it from resolveMarketDataSource and therefore never names a pipe
+   * the account has not connected, and the layout route, which hardcodes
+   * "oanda".
    */
   const forexSource: OhlcSource = options.source ?? "oanda";
   const symbol =
@@ -179,17 +171,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   let hasMore = false;
 
   const live =
-    forexSource === "ea"
-      ? {
-          ...(await fetchEaOhlc(options.userId, symbol, interval, {
-            fromMs: options.fromMs,
-            toMs: options.toMs,
-            limit,
-          })),
-          source: "ea" as const,
-          hasMore: false,
-        }
-      : forexSource === "metaapi"
+    forexSource === "metaapi"
       ? {
           ...(await fetchMetaApiOhlc(options.userId, symbol, interval, {
             toMs: options.toMs,

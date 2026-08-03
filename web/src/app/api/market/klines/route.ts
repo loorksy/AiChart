@@ -11,7 +11,6 @@ import {
   toChartSeconds,
 } from "@/lib/ohlc/chartTime";
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
-import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
 import { defaultKlineLimit } from "@/lib/ohlc/klineLimits";
 import { normalizeInterval } from "@/lib/intervals";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
@@ -20,7 +19,7 @@ import { FEATURES } from "@/lib/agent/featureFlags";
 import { serveWarehouseOhlc } from "@/lib/candles/warehouseOhlc";
 import type { MarketType } from "@/lib/markets/types";
 
-/** Market UI klines — forex via OANDA or EA bridge. */
+/** Market UI klines — forex via OANDA or the linked cloud account. */
 export async function GET(req: NextRequest) {
   try {
     // Public: guests may load candles to browse the chart (rate-limited).
@@ -73,18 +72,17 @@ export async function GET(req: NextRequest) {
     const toMs =
       toRaw != null && toRaw !== "" ? Number(toRaw) : undefined;
 
-    // Second data source: the user's own broker via the EA bridge (MT5). Only
-    // an EA-backed account can answer — a MetaApi or MT5-bridge connection has
-    // no terminal listening for `get_ohlc`, so it reads the platform's candles
-    // rather than waiting out the command timeout on every bar request.
+    // Second data source: the user's own broker via their linked cloud
+    // account. Only a metaapi-linked account can answer — an unlinked or
+    // mt5local connection reads the platform's candles instead.
     const requestedSource = req.nextUrl.searchParams.get("source");
     const dataSource = await resolveMarketDataSource(user?.id ?? null, requestedSource);
     /*
      * The RESOLVED source decides, not whether the URL happened to spell one.
      *
      * This used to require `requestedSource` to be present, and the chart's
-     * datafeed only ever sets it for the EA bridge — so picking the cloud
-     * account changed the pair catalogue and the quote cards while the chart
+     * datafeed only ever sets it for the linked cloud account — so picking
+     * it changed the pair catalogue and the quote cards while the chart
      * kept reading OANDA, right down to "OANDA" in its own header. The resolver
      * already refuses a pipe the account has not connected, so honouring it
      * here cannot route anyone at a broker they do not have.

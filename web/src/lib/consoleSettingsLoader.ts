@@ -1,7 +1,4 @@
-import {
-  isMt5LocalAvailable,
-  resolveForexBackendFromPref,
-} from "@/lib/brokers/forexBackend";
+import { isMt5LocalAvailable } from "@/lib/brokers/forexBackend";
 import { isMt5BridgeConnectCapable } from "@/lib/mt5local/client";
 import { isMetaApiConfiguredAsync } from "@/lib/metaapi/client";
 import { metaapiUxEnabled } from "@/lib/metaapi/lifecycle";
@@ -10,15 +7,10 @@ import {
   getLimits,
   getMtAccountMeta,
 } from "@/lib/store";
-import { getEaConnectionMeta } from "@/lib/eaStore";
-import { hasPlatformAccess } from "@/lib/platformAccess";
 import type { PublicUser } from "@/lib/types";
 
 export async function loadConsoleSettingsProps(user: PublicUser) {
   const settings = await getSettings(user.id);
-  // Per-user choice (EA vs server-side platform) → resolved effective backend.
-  const forexBackend = resolveForexBackendFromPref(settings.forex_backend);
-  const usesMtAccount = forexBackend === "metaapi" || forexBackend === "mt5local";
   const mt5BridgeConnect =
     isMt5LocalAvailable() && (await isMt5BridgeConnectCapable());
   const metaApiAvailable = await isMetaApiConfiguredAsync();
@@ -26,8 +18,7 @@ export async function loadConsoleSettingsProps(user: PublicUser) {
     user,
     settings,
     limits: await getLimits(user.id),
-    ea: await getEaConnectionMeta(user.id),
-    mt: usesMtAccount ? await getMtAccountMeta(user.id) : null,
+    mt: await getMtAccountMeta(user.id),
     /**
      * Whether to offer the MetaTrader linking wizard in the connections tab.
      * Deliberately the wizard's OWN gate, not metaApiAvailable: a token can be
@@ -35,13 +26,11 @@ export async function loadConsoleSettingsProps(user: PublicUser) {
      * token would then hand the trader a button that lands on "not enabled".
      */
     mt5LinkEnabled: await metaapiUxEnabled(),
-    /** The linked account, if any — shown on the card regardless of backend. */
+    /** The linked account, if any. */
     mt5Account: await getMtAccountMeta(user.id),
-    forexBackend,
     mt5LocalAvailable: mt5BridgeConnect,
     metaApiAvailable,
-    /** Server-side login without EA: MetaApi cloud and/or native MT5 bridge. */
+    /** Server-side login: MetaApi cloud and/or native MT5 bridge. */
     platformConnectAvailable: metaApiAvailable || mt5BridgeConnect,
-    canDownloadEa: hasPlatformAccess(user),
   };
 }

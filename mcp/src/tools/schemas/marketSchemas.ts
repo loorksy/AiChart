@@ -38,7 +38,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_market_price",
     domain: "market",
     description:
-      "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — for forex, verify freshness via quoteAgeMs from get_ea_live_quotes before acting on it. read-only. Example: symbol=EURUSD.",
+      "Returns the current live price for one symbol and nothing more. When: only the latest price is needed. read-only. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol, market: zMarket },
     annotations: READ_ONLY,
   },
@@ -46,14 +46,10 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "list_instruments",
     domain: "market",
     description:
-      "Lists tradable forex instruments — from OANDA by default, or the full broker symbol list via the MT5 bridge with source=ea (not Market Watch only) — with an optional q search filter. When: browsing or searching for a pair, or checking whether a broker-specific symbol exists. read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
+      "Lists tradable forex instruments — from OANDA, or the linked cloud account's own symbols when one is connected — with an optional q search filter. When: browsing or searching for a pair. read-only. Example: market=forex&q=EUR.",
     inputSchema: {
       market: zMarket,
       q: z.string().max(20).optional().describe("Optional search e.g. EUR or XAU"),
-      source: z
-        .enum(["oanda", "ea"])
-        .optional()
-        .describe("ea = all broker symbols from MT5"),
     },
     annotations: READ_ONLY,
     ui: { widget: "pair-picker" },
@@ -91,15 +87,11 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_ohlc",
     domain: "market",
     description:
-      "Returns raw OHLC candles for a symbol and interval, from OANDA by default or the EA bridge with source=ea (required for broker-suffix symbols such as XAUUSDM), paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed. read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "Returns raw OHLC candles for a symbol and interval from OANDA, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed. read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
     inputSchema: {
       symbol: zSymbol.describe("EURUSD"),
       interval: zInterval,
       market: zMarket,
-      source: z
-        .enum(["oanda", "ea"])
-        .optional()
-        .describe("Forex candle source — ea required for broker suffix symbols (e.g. XAUUSDM)"),
       limit: z.number().int().min(1).max(500).optional(),
       cursor: z.number().int().optional().describe("ms — pagination cursor"),
     },

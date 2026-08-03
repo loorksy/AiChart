@@ -17,7 +17,6 @@ import {
   saveMtAccount,
   updateMtAccountStatus,
 } from "./store";
-import { getEaConnectionMeta } from "./eaStore";
 import { mtModeToExecution, normalizeMtTradeMode } from "./executionEnv";
 import type { MtPlatform } from "./markets/types";
 
@@ -31,7 +30,7 @@ export const mtConnectSchema = z.object({
 export type MtConnectInput = z.infer<typeof mtConnectSchema>;
 
 const WINE_IPC_HINT =
-  "تسجيل MT5 على Linux/Wine غير مدعوم (IPC -10005). أضِف METAAPI_TOKEN من لوحة المنصّة للربط السحابي، أو استخدم جسر EA.";
+  "تسجيل MT5 على Linux/Wine غير مدعوم (IPC -10005). أضِف METAAPI_TOKEN من لوحة المنصّة للربط السحابي.";
 
 function isWineIpcError(message: string): boolean {
   return /-10005|IPC timeout|IPC unavailable/i.test(message);
@@ -40,7 +39,7 @@ function isWineIpcError(message: string): boolean {
 async function connectViaMetaApi(userId: number, input: MtConnectInput, login: string) {
   if (!isMetaApiConfigured()) {
     throw new Error(
-      "ربط الفوركس السحابي غير متاح — أضِف METAAPI_TOKEN من لوحة المنصّة أو استخدم جسر EA.",
+      "ربط الفوركس السحابي غير متاح — أضِف METAAPI_TOKEN من لوحة المنصّة.",
     );
   }
 
@@ -119,15 +118,7 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
 
 /** Connect MT4/MT5 via MetaApi or self-hosted mt5local bridge. */
 export async function connectMtAccount(userId: number, input: MtConnectInput) {
-  // Honor the user's chosen method: if they picked the EA bridge, refuse to
-  // register credentials on the shared server-side bridge pool.
   const backend = await resolveForexBackendForUser(userId);
-
-  if (backend === "ea") {
-    throw new Error(
-      "اخترت الربط عبر جسر EA — بدّل الطريقة إلى «عبر المنصة» أولاً، أو اربط MetaTrader عبر Expert Advisor.",
-    );
-  }
 
   const login = input.login.replace(/\D/g, "");
   if (!login) {
@@ -187,14 +178,6 @@ export async function connectMtAccount(userId: number, input: MtConnectInput) {
     }
   }
 
-  if (backend === "metaapi") {
-    return connectViaMetaApi(userId, input, login);
-  }
-
-  if (!isMetaApiConfigured()) {
-    throw new Error("ربط الفوركس غير متاح حالياً. عيّن METAAPI_TOKEN أو استخدم EA.");
-  }
-
   return connectViaMetaApi(userId, input, login);
 }
 
@@ -223,29 +206,6 @@ export async function disconnectMtAccount(userId: number) {
 /** Live MetaTrader connection status for MetaApi or mt5local. */
 export async function getMtConnectionStatus(userId: number) {
   const backend = await resolveForexBackendForUser(userId);
-
-  if (backend === "ea") {
-    const meta = await getEaConnectionMeta(userId);
-    if (!meta) {
-      return { backend: "ea" as const, connected: false, online: false };
-    }
-    return {
-      backend: "ea" as const,
-      connected: meta.status !== "revoked",
-      online: meta.online,
-      platform: meta.platform,
-      broker: meta.broker_name,
-      login: meta.account_login,
-      balance: meta.balance,
-      equity: meta.equity,
-      currency: meta.account_currency,
-      account_type: mtModeToExecution(normalizeMtTradeMode(meta.account_trade_mode)),
-      last_heartbeat_at: meta.last_heartbeat_at,
-      missedHeartbeats: meta.missedHeartbeats,
-      settledOnlineSeconds: meta.settledOnlineSeconds,
-      updated_at: new Date().toISOString(),
-    };
-  }
 
   if (backend === "mt5local") {
     const meta = await getMtAccountMeta(userId);

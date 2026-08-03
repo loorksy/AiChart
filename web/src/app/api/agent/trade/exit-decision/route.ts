@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
-import { waitForEaCommandAck } from "@/lib/eaCommandWait";
-import { queueEaModifySlTp } from "@/lib/eaTradeCommands";
+import { modifyStopsForUser } from "@/lib/brokers/tradeManagementDispatch";
 import { getTrade, logAudit } from "@/lib/store";
 
 const schema = z.object({
@@ -36,16 +35,6 @@ export async function POST(req: NextRequest) {
           { status: 404 },
         );
       }
-      if (trade.broker !== "mt_ea") {
-        return NextResponse.json({
-          ok: true,
-          recorded: true,
-          trade_id: body.trade_id,
-          decision: body.decision,
-          hint: "تعديل SL متاح حالياً لصفقات MetaTrader EA فقط.",
-        });
-      }
-
       const ticket = Number(trade.order_id);
       if (!Number.isFinite(ticket) || ticket <= 0) {
         return NextResponse.json({
@@ -55,24 +44,22 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const command = await queueEaModifySlTp(
-        userId,
+      const result = await modifyStopsForUser(userId, {
         ticket,
-        body.new_stop_loss,
-      );
-      const ack = await waitForEaCommandAck(command.id);
+        stopLoss: body.new_stop_loss,
+      });
 
       return NextResponse.json({
-        ok: ack.ok,
+        ok: result.ok,
         recorded: true,
         trade_id: body.trade_id,
         decision: body.decision,
-        ea_command_id: command.id,
-        executed: ack.ok,
-        reason: ack.ok ? undefined : ack.reason,
-        hint: ack.ok
-          ? "تم تعديل وقف الخسارة على MetaTrader."
-          : "فشل تعديل SL — راجع retcode في السجل.",
+        command_id: result.command_id,
+        executed: result.ok,
+        reason: result.ok ? undefined : result.reason,
+        hint: result.ok
+          ? "تم تعديل وقف الخسارة على الوسيط."
+          : (result.reason ?? "فشل تعديل SL."),
       });
     }
 

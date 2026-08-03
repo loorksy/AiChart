@@ -3,7 +3,7 @@ import { buildTradeReadiness } from "@/lib/bridge/tradeReadiness";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { ApiError } from "@/lib/api";
 
-/** Bridge: aggregated technical trade pre-flight — EA, quotes, and account state. */
+/** Bridge: aggregated technical trade pre-flight — connection and account state. */
 export const GET = withBridge(async ({ req, userId }) => {
   const { searchParams } = req.nextUrl;
   const rawMarket = searchParams.get("market") ?? DEFAULT_MARKET;

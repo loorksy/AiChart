@@ -6,7 +6,7 @@
     {
       "name": "cancel_mt5_order",
       "version": "1.1.1",
-      "description": "Cancels a pending MT5 order by ticket, through the EA. When: the operator wants a pending order withdrawn before it fills. side-effect: EA cancel.",
+      "description": "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. side-effect: broker cancel.",
       "permission": "trade.manage",
       "riskClass": "execution",
       "surfaces": [
@@ -26,7 +26,7 @@
     {
       "name": "capture_chart_snapshot",
       "version": "1.1.1",
-      "description": "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). Set source=mt5 to photograph the connected MetaTrader terminal instead — only meaningful while the EA is online and the operator asked for it. When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "description": "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
       "permission": "chart.read",
       "riskClass": "read",
       "surfaces": [
@@ -46,7 +46,7 @@
     {
       "name": "capture_mt5_chart",
       "version": "1.1.1",
-      "description": "Captures an MT5 chart image: with entry/SL/TP, drawings, or a recommendation_id it queues a draw_and_capture on the EA and polls up to 30s for the annotated PNG; without annotations it falls back to a plain chart snapshot. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: an MT5 chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
+      "description": "Captures a chart image, annotated with entry/SL/TP/drawings or a recommendation_id when given. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: a chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
       "permission": "chart.read",
       "riskClass": "read",
       "surfaces": [
@@ -106,7 +106,7 @@
     {
       "name": "close_partial",
       "version": "1.1.1",
-      "description": "Closes part of an open MT5 position by ticket, reducing it by the given number of lots through the EA. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: EA partial close.",
+      "description": "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: broker partial close.",
       "permission": "trade.execute",
       "riskClass": "execution",
       "surfaces": [
@@ -147,7 +147,7 @@
     {
       "name": "connect_mt5",
       "version": "1.1.1",
-      "description": "Links a MetaTrader account by saving its platform, server, login, and password for the MetaApi/mt5local backend. When: connecting through MetaApi or mt5local only — not with FOREX_BACKEND=ea. side-effect: saves credentials. Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. Example: platform=mt5&server=...",
+      "description": "Links a MetaTrader account by saving its platform, server, login, and password for the MetaApi/mt5local backend. When: the operator wants to connect their MetaTrader account for forex execution. side-effect: saves credentials. Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. Example: platform=mt5&server=...",
       "permission": "settings.write",
       "riskClass": "write",
       "surfaces": [
@@ -352,7 +352,7 @@
     {
       "name": "get_agent_capabilities",
       "version": "1.1.1",
-      "description": "Reports what this deployment supports: server version, git commit, feature flags, EA debounce settings, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
+      "description": "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
       "permission": "account.read",
       "riskClass": "read",
       "surfaces": [
@@ -450,46 +450,6 @@
       "requiredFeatureFlags": []
     },
     {
-      "name": "get_ea_diagnostics",
-      "version": "1.1.1",
-      "description": "Returns EA bridge diagnostics for the forex backend — heartbeat, spread, and recent retcodes — optionally scoped to one symbol. When: the EA connection or execution quality is in question. read-only. Example: symbol=EURUSD.",
-      "permission": "account.read",
-      "riskClass": "read",
-      "surfaces": [
-        "mcp"
-      ],
-      "executor": "web-api-bridge",
-      "serverControlled": true,
-      "idempotent": true,
-      "cancellation": "http-abort",
-      "timeoutMs": 30000,
-      "telemetry": "server-audit-log",
-      "inputSchemaRef": "mcp/schemas/tools/get_ea_diagnostics.json",
-      "outputValidation": "bridge-envelope",
-      "aliases": [],
-      "requiredFeatureFlags": []
-    },
-    {
-      "name": "get_ea_live_quotes",
-      "version": "1.1.1",
-      "description": "Returns live EA quote health — isFresh, spreadPips, and freshCount — optionally for one symbol. When: before open_trade on forex; do not execute if quotes are stale. read-only.",
-      "permission": "market.read",
-      "riskClass": "read",
-      "surfaces": [
-        "mcp"
-      ],
-      "executor": "web-api-bridge",
-      "serverControlled": true,
-      "idempotent": true,
-      "cancellation": "http-abort",
-      "timeoutMs": 30000,
-      "telemetry": "server-audit-log",
-      "inputSchemaRef": "mcp/schemas/tools/get_ea_live_quotes.json",
-      "outputValidation": "bridge-envelope",
-      "aliases": [],
-      "requiredFeatureFlags": []
-    },
-    {
       "name": "get_forex_indicators",
       "version": "1.1.1",
       "description": "Computes the full indicator set for a pair on the requested interval: RSI, MACD, Bollinger, ATR, and trend. When: after get_ohlc, as the numeric backbone of an analysis — not while the quote is stale. read-only. Example: symbol=EURUSD&interval=1h.",
@@ -512,7 +472,7 @@
     {
       "name": "get_live_account",
       "version": "1.1.1",
-      "description": "Returns the unified live MT5 account state together with quote freshness (quoteAgeMs). When: before any trade, to verify the account and the freshness of its data. read-only.",
+      "description": "Returns the unified live MT5 account state (open trades). Use get_market_price for live quotes and freshness (quoteAgeMs). When: before any trade, to verify the account is connected. read-only.",
       "permission": "account.read",
       "riskClass": "read",
       "surfaces": [
@@ -553,7 +513,7 @@
     {
       "name": "get_market_price",
       "version": "1.1.1",
-      "description": "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — for forex, verify freshness via quoteAgeMs from get_ea_live_quotes before acting on it. read-only. Example: symbol=EURUSD.",
+      "description": "Returns the current live price for one symbol and nothing more. When: only the latest price is needed. read-only. Example: symbol=EURUSD.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -597,7 +557,7 @@
     {
       "name": "get_mt5_status",
       "version": "1.1.1",
-      "description": "Reports the connection status of the MetaApi/mt5local MetaTrader link. When: checking that backend's health — with the EA backend use get_ea_diagnostics instead. read-only.",
+      "description": "Reports the connection status of the MetaApi/mt5local MetaTrader link. When: checking that backend's health. read-only.",
       "permission": "account.read",
       "riskClass": "read",
       "surfaces": [
@@ -638,7 +598,7 @@
     {
       "name": "get_ohlc",
       "version": "1.1.1",
-      "description": "Returns raw OHLC candles for a symbol and interval, from OANDA by default or the EA bridge with source=ea (required for broker-suffix symbols such as XAUUSDM), paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed. read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "description": "Returns raw OHLC candles for a symbol and interval from OANDA, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed. read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -779,7 +739,7 @@
     {
       "name": "get_trade_readiness",
       "version": "1.1.1",
-      "description": "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, EA heartbeat, quote freshness, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
+      "description": "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
       "permission": "account.read",
       "riskClass": "read",
       "surfaces": [
@@ -840,7 +800,7 @@
     {
       "name": "list_instruments",
       "version": "1.1.1",
-      "description": "Lists tradable forex instruments — from OANDA by default, or the full broker symbol list via the MT5 bridge with source=ea (not Market Watch only) — with an optional q search filter. When: browsing or searching for a pair, or checking whether a broker-specific symbol exists. read-only. Example: market=forex&q=EUR or source=ea&q=XAU.",
+      "description": "Lists tradable forex instruments — from OANDA, or the linked cloud account's own symbols when one is connected — with an optional q search filter. When: browsing or searching for a pair. read-only. Example: market=forex&q=EUR.",
       "permission": "market.read",
       "riskClass": "read",
       "surfaces": [
@@ -880,7 +840,7 @@
     {
       "name": "modify_sl_tp",
       "version": "1.1.1",
-      "description": "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, through the EA. When: an open MT5 position needs its protective levels moved. side-effect: EA modify. Example: ticket=123&stop_loss=1.08.",
+      "description": "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. side-effect: broker modify. Example: ticket=123&stop_loss=1.08.",
       "permission": "trade.manage",
       "riskClass": "execution",
       "surfaces": [
@@ -915,26 +875,6 @@
       "timeoutMs": 60000,
       "telemetry": "server-audit-log",
       "inputSchemaRef": "mcp/schemas/tools/open_trade.json",
-      "outputValidation": "bridge-envelope",
-      "aliases": [],
-      "requiredFeatureFlags": []
-    },
-    {
-      "name": "query_mt5_terminal",
-      "version": "1.1.1",
-      "description": "Returns a snapshot of the MT5 terminal via the EA: margin, equity, and pending orders. When: the current margin, equity, or pending-order state is needed without changing anything. read-only via EA.",
-      "permission": "account.read",
-      "riskClass": "read",
-      "surfaces": [
-        "mcp"
-      ],
-      "executor": "web-api-bridge",
-      "serverControlled": true,
-      "idempotent": true,
-      "cancellation": "http-abort",
-      "timeoutMs": 30000,
-      "telemetry": "server-audit-log",
-      "inputSchemaRef": "mcp/schemas/tools/query_mt5_terminal.json",
       "outputValidation": "bridge-envelope",
       "aliases": [],
       "requiredFeatureFlags": []
@@ -976,26 +916,6 @@
       "timeoutMs": 30000,
       "telemetry": "server-audit-log",
       "inputSchemaRef": "mcp/schemas/tools/request_approval.json",
-      "outputValidation": "bridge-envelope",
-      "aliases": [],
-      "requiredFeatureFlags": []
-    },
-    {
-      "name": "request_ea_reconnect",
-      "version": "1.1.1",
-      "description": "Flags the EA for reconnection in the database so the terminal re-establishes its feed, optionally requesting a candle resync via resync_candles. When: quotes are stale — at most once per minute. side-effect: flags DB.",
-      "permission": "settings.write",
-      "riskClass": "write",
-      "surfaces": [
-        "mcp"
-      ],
-      "executor": "web-api-bridge",
-      "serverControlled": true,
-      "idempotent": false,
-      "cancellation": "http-abort",
-      "timeoutMs": 30000,
-      "telemetry": "server-audit-log",
-      "inputSchemaRef": "mcp/schemas/tools/request_ea_reconnect.json",
       "outputValidation": "bridge-envelope",
       "aliases": [],
       "requiredFeatureFlags": []

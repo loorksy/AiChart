@@ -3,10 +3,9 @@
  * actually looks at, with the agent's own drawings on it.
  *
  * Why a headless browser: the TradingView chart is a browser-only runtime.
- * Everything else the platform could return is a re-drawing of the same data
- * by a different renderer (QuickChart) or a picture of MetaTrader (the EA),
- * neither of which is "the chart on the screen". The EA path stays for when a
- * broker terminal is connected and the operator explicitly asks for it.
+ * The only other thing the platform can return is a re-drawing of the same
+ * data by a different renderer (QuickChart), which is not "the chart on the
+ * screen".
  *
  * SERVER ONLY. The page is opened with a short-lived session cookie minted for
  * the owning user, so the capture sees exactly that user's layout and nothing

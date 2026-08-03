@@ -1,4 +1,3 @@
-import { getEaCandlesResolved } from "./eaStore";
 import { fetchOhlc } from "./ohlc/fetchOhlc";
 import { getForexBackend } from "./brokers/forexBackend";
 import { mt5Rates } from "./mt5local/client";
@@ -35,41 +34,6 @@ const FIB_RATIOS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 
 function fibLevels(high: number, low: number): number[] {
   return FIB_RATIOS.map((r) => high - (high - low) * r);
-}
-
-function num(v: unknown): number | null {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
-}
-
-/** Parses EA-pushed candle rows defensively ({time,open,high,low,close} or short keys). */
-function parseEaCandleRows(
-  raw: string,
-  interval: string,
-  limit: number,
-): SnapshotCandle[] | null {
-  try {
-    const rows = JSON.parse(raw) as Record<string, unknown>[];
-    if (!Array.isArray(rows)) return null;
-    const barMs = barDurationSec(interval) * 1000;
-    const out: SnapshotCandle[] = [];
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i]!;
-      const close = num(r.close) ?? num(r.c);
-      if (close === null) continue;
-      const open = num(r.open) ?? num(r.o) ?? close;
-      const high = num(r.high) ?? num(r.h) ?? Math.max(open, close);
-      const low = num(r.low) ?? num(r.l) ?? Math.min(open, close);
-      const t = num(r.time) ?? num(r.t);
-      // EA times may be seconds; missing times fall back to a synthetic series.
-      const time =
-        t !== null ? (t > 1e12 ? t : t * 1000) : Date.now() - (rows.length - i) * barMs;
-      out.push({ time, open, high, low, close });
-    }
-    return out.length >= 10 ? out.slice(-limit) : null;
-  } catch {
-    return null;
-  }
 }
 
 async function fetchCandleSeries(
@@ -109,11 +73,6 @@ async function fetchCandleSeries(
       }
     }
     if (!userId) return null;
-    const cached = await getEaCandlesResolved(userId, sym, tf);
-    if (cached) {
-      const parsed = parseEaCandleRows(cached.candles_json, tf, limit);
-      if (parsed) return parsed;
-    }
     try {
       const ohlc = await fetchOhlc({
         userId,
@@ -574,7 +533,7 @@ export async function buildChartSnapshotBuffer(
   }
 }
 
-/** Server-side chart PNG for forex (EA candles). */
+/** Server-side chart PNG for forex candles. */
 export async function buildChartSnapshotBufferForMarket(
   userId: number,
   symbol: string,

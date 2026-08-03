@@ -95,8 +95,8 @@ export interface AgentChartContext {
   selectedDrawingId?: string;
   /** Recommendation currently rendered/restored on the chart, if any. */
   recommendation?: AgentRecommendation;
-  /** oanda (default) or the user's broker bridge. */
-  dataSource?: "oanda" | "ea" | "metaapi";
+  /** oanda (default) or the user's linked cloud MetaTrader account. */
+  dataSource?: "oanda" | "metaapi";
 }
 
 /** Short-term, per-session preferences the agent honors within a chart session. */
@@ -317,7 +317,7 @@ export interface AgentDebugDecisionFlow {
   };
 }
 
-/** What the user must explicitly confirm before any MT5/EA execution. */
+/** What the user must explicitly confirm before any MT5 execution. */
 export interface AgentConfirmationPayload {
   symbol: string;
   direction: "buy" | "sell";

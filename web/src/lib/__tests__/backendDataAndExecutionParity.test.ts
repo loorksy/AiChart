@@ -1,18 +1,16 @@
 /**
- * The three ways an account can be connected — OANDA data, the EA bridge, and
- * the server-side backends (MetaApi / self-hosted MT5) — against a real
+ * The two ways an account can be connected — OANDA platform data, and the
+ * server-side backends (MetaApi / self-hosted MT5) — against a real
  * database.
  *
- * Two invariants are pinned here, both of which were violated by code that
- * asked the EA connection about accounts that were never connected through it:
+ * Two invariants are pinned here:
  *
- *  1. Broker market data is served from the EA ONLY when an EA is actually
- *     linked. Any other connection reads platform data instead of queueing
- *     commands at a terminal that will never answer them.
- *  2. The broker's own account type — demo or real — is read from whichever
- *     backend the account is connected through. A real-money MetaApi account
- *     that resolves to "unknown" is a live-execution protection that silently
- *     does not engage.
+ *  1. Broker market data is served from the cloud account ONLY when one is
+ *     actually linked. An unlinked account reads platform data instead.
+ *  2. The broker's own account type — demo or real — is read from the
+ *     account link itself. A real-money MetaApi account that resolves to
+ *     "unknown" is a live-execution protection that silently does not
+ *     engage.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -27,114 +25,81 @@ process.env.APP_SECRET = "backend-parity-test-secret";
 delete process.env.DATABASE_URL;
 delete process.env.FOREX_BACKEND;
 delete process.env.MT5_BRIDGE_URL;
-// A token is what makes the platform-side backend selectable at all; without
-// one the "metaapi" preference legitimately falls back to the EA.
+// A token is what makes the platform-side backend selectable at all.
 process.env.METAAPI_TOKEN = "test-token";
 
-let eaUser = 0;
+let unlinkedUser = 0;
 let cloudUser = 0;
 
 before(async () => {
   const db = await import("@/lib/db");
   await db.initDb();
-  eaUser = await db.insertReturningId(
+  unlinkedUser = await db.insertReturningId(
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
-    ["ea-user@example.com", "x", "user", "active"],
+    ["unlinked-user@example.com", "x", "user", "active"],
   );
   cloudUser = await db.insertReturningId(
     "INSERT INTO users (email, password_hash, role, status) VALUES (?,?,?,?)",
     ["cloud-user@example.com", "x", "user", "active"],
   );
   const store = await import("@/lib/store");
-  await store.ensureUserDefaults(eaUser);
+  await store.ensureUserDefaults(unlinkedUser);
   await store.ensureUserDefaults(cloudUser);
-  // The cloud user picked the platform-side backend; the EA user picked the EA.
-  await store.updateSettings(eaUser, { forex_backend: "ea" });
+  // The cloud user picked the platform-side backend; the other has no account linked.
   await store.updateSettings(cloudUser, { forex_backend: "metaapi" });
 });
 
 describe("market data source", () => {
-  /*
-   * This pair used to be one case asserting that an explicit `ea` request came
-   * back `oanda_data_only`. That was the deployment flag short-circuiting
-   * before anything looked at what the account had connected — and since
-   * FOREX_DATA_SOURCE falls back to "oanda", it did so on every deployment,
-   * which is why the three-pipe picker could only ever offer one pipe.
-   *
-   * The source it lands on is unchanged. What changed is that the flag now
-   * governs the default rather than overruling a choice, and the fallback
-   * reason names the real cause.
-   */
   it("keeps platform data as the default while the deployment says OANDA", async () => {
     delete process.env.FOREX_DATA_SOURCE;
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
-    const decision = await resolveMarketDataSource(eaUser, null);
+    const decision = await resolveMarketDataSource(unlinkedUser, null);
     assert.equal(decision.source, "oanda");
     assert.equal(decision.reason, "oanda_data_only");
   });
 
-  it("falls back for the honest reason when the pipe is not connected", async () => {
+  it("falls back for the honest reason when the cloud pipe is not connected", async () => {
     delete process.env.FOREX_DATA_SOURCE;
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
-    const decision = await resolveMarketDataSource(eaUser, "ea");
+    const decision = await resolveMarketDataSource(unlinkedUser, "metaapi");
     assert.equal(decision.source, "oanda");
-    // Not "oanda_data_only": this account simply has no EA linked, and telling
-    // it otherwise is what put "link an account" under an already-linked one.
-    assert.equal(decision.reason, "ea_not_connected");
-    assert.equal(decision.available.ea, false);
+    assert.equal(decision.reason, "metaapi_not_connected");
+    assert.equal(decision.available.metaapi, false);
   });
 
-  it("never asks a terminal that is not there", async () => {
-    process.env.FOREX_DATA_SOURCE = "ea";
+  it("never claims a cloud pipe that is not there", async () => {
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
 
     // A request that did not ask for broker data is platform data, full stop.
-    assert.equal((await resolveMarketDataSource(eaUser, null)).source, "oanda");
-    assert.equal((await resolveMarketDataSource(eaUser, "oanda")).source, "oanda");
+    assert.equal((await resolveMarketDataSource(unlinkedUser, null)).source, "oanda");
+    assert.equal((await resolveMarketDataSource(unlinkedUser, "oanda")).source, "oanda");
 
-    // EA asked for but nothing linked yet: platform data, and it says why.
-    const unlinked = await resolveMarketDataSource(eaUser, "ea");
+    // metaapi asked for but nothing linked yet: platform data, and it says why.
+    const unlinked = await resolveMarketDataSource(unlinkedUser, "metaapi");
     assert.equal(unlinked.source, "oanda");
-    assert.equal(unlinked.reason, "ea_not_connected");
-    assert.equal(unlinked.available.ea, false);
-
-    // A cloud account has no EA to answer either — same honest fallback.
-    const cloud = await resolveMarketDataSource(cloudUser, "ea");
-    assert.equal(cloud.source, "oanda");
-    assert.equal(cloud.reason, "ea_not_connected");
+    assert.equal(unlinked.reason, "metaapi_not_connected");
+    assert.equal(unlinked.available.metaapi, false);
 
     // Guests get platform data rather than a 401 they cannot act on.
-    assert.equal((await resolveMarketDataSource(null, "ea")).source, "oanda");
-  });
-
-  it("serves broker data once an EA is genuinely linked", async () => {
-    process.env.FOREX_DATA_SOURCE = "ea";
-    const db = await import("@/lib/db");
-    await db.execute(
-      `INSERT INTO ea_connections (user_id, token_hash, status, last_heartbeat_at)
-       VALUES (?, ?, 'active', ?)`,
-      [eaUser, "hash-ea-user", new Date().toISOString()],
-    );
-    const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
-    const linked = await resolveMarketDataSource(eaUser, "ea");
-    assert.equal(linked.source, "ea");
-    assert.equal(linked.reason, "user_choice");
-    assert.equal(linked.available.ea, true);
+    assert.equal((await resolveMarketDataSource(null, "metaapi")).source, "oanda");
   });
 
   it("defaults to the cloud account once it is linked, and honours a pin", async () => {
-    process.env.FOREX_DATA_SOURCE = "ea";
+    // The deployment default must allow the cloud pipe for this scenario —
+    // "oanda" (the platform's own default) would short-circuit every case
+    // below to platform data regardless of what is linked or pinned.
+    process.env.FOREX_DATA_SOURCE = "metaapi";
     const store = await import("@/lib/store");
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
 
-    // Nothing pinned: an EA-only account reads its own terminal…
-    await store.updateSettings(eaUser, { market_data_source: "auto" });
-    const eaAuto = await resolveMarketDataSource(eaUser);
-    assert.equal(eaAuto.source, "ea");
-    assert.equal(eaAuto.reason, "auto_ea");
+    // Nothing linked yet: platform data even with no pin.
+    await store.updateSettings(unlinkedUser, { market_data_source: "auto" });
+    const noAccount = await resolveMarketDataSource(unlinkedUser);
+    assert.equal(noAccount.source, "oanda");
+    assert.equal(noAccount.reason, "auto_oanda");
 
-    // …and a linked cloud account wins over everything, per the product rule:
-    // linking a broker is a statement about which market you want to see.
+    // A linked cloud account wins over the platform feed, per the product
+    // rule: linking a broker is a statement about which market you want to see.
     await store.saveMtAccount(cloudUser, {
       platform: "mt5",
       server: "Broker-Demo",
@@ -157,18 +122,18 @@ describe("market data source", () => {
     assert.equal(pinned.preference, "oanda");
 
     // A pin on a pipe that is not connected never strands the user.
-    await store.updateSettings(eaUser, { market_data_source: "metaapi" });
-    const impossible = await resolveMarketDataSource(eaUser);
+    await store.updateSettings(unlinkedUser, { market_data_source: "metaapi" });
+    const impossible = await resolveMarketDataSource(unlinkedUser);
     assert.equal(impossible.source, "oanda");
     assert.equal(impossible.reason, "metaapi_not_connected");
-    await store.updateSettings(eaUser, { market_data_source: "auto" });
+    await store.updateSettings(unlinkedUser, { market_data_source: "auto" });
   });
 });
 
 describe("execution environment", () => {
   it("normalizes the broker's account type from every dialect", async () => {
     const { normalizeMtTradeMode } = await import("@/lib/executionEnv");
-    // The EA sends the bare word; MetaApi sends MT5's enum. Same account.
+    // MetaApi sends MT5's enum; a bridge may send the bare word. Same account.
     assert.equal(normalizeMtTradeMode("real"), "live");
     assert.equal(normalizeMtTradeMode("ACCOUNT_TRADE_MODE_REAL"), "live");
     assert.equal(normalizeMtTradeMode("demo"), "demo");
@@ -178,7 +143,7 @@ describe("execution environment", () => {
     assert.equal(normalizeMtTradeMode("something-else"), null);
   });
 
-  it("reads a cloud account's type from the cloud account, not from the EA", async () => {
+  it("reads a cloud account's type from the account link", async () => {
     const store = await import("@/lib/store");
     const { getExecutionEnvSnapshot } = await import("@/lib/executionEnv");
     const { isRealMoneyExecution } = await import("@/lib/executionKillSwitch");
@@ -261,15 +226,11 @@ describe("execution environment", () => {
     );
   });
 
-  it("leaves the EA path reading the EA connection", async () => {
-    const db = await import("@/lib/db");
-    await db.execute(
-      "UPDATE ea_connections SET account_trade_mode = ? WHERE user_id = ?",
-      ["real", eaUser],
-    );
+  it("an unlinked account reads as not connected, never a guessed type", async () => {
     const { getExecutionEnvSnapshot } = await import("@/lib/executionEnv");
-    const snapshot = await getExecutionEnvSnapshot(eaUser);
-    assert.equal(snapshot.forex.actual, "live");
-    assert.equal(snapshot.forex.resolved, "live");
+    const snapshot = await getExecutionEnvSnapshot(unlinkedUser);
+    assert.equal(snapshot.forex.connected, false);
+    assert.equal(snapshot.forex.actual, null);
+    assert.equal(snapshot.forex.resolved, null);
   });
 });

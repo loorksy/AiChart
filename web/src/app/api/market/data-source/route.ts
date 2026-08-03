@@ -22,8 +22,8 @@ export async function GET() {
 
 const schema = z.object({
   // `auto` hands the choice back to the platform: the cloud account when
-  // linked, then the user's own terminal, then the platform feed.
-  source: z.enum(["auto", "oanda", "ea", "metaapi"]),
+  // linked, else the platform feed.
+  source: z.enum(["auto", "oanda", "metaapi"]),
 });
 
 /** Pin the source, or hand the choice back with `auto`. */

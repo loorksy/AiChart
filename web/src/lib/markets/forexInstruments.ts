@@ -7,8 +7,8 @@ export interface ForexInstrument {
 
 /**
  * Common MetaTrader forex / CFD instruments. Brokers often add suffixes
- * (e.g. EURUSDm, XAUUSD.pro); those extra symbols are merged at runtime from
- * the user's EA `symbol_specs` heartbeat, so this static list is a baseline.
+ * (e.g. EURUSDm, XAUUSD.pro) — a linked cloud account's own symbol catalogue
+ * is read live from MetaApi elsewhere, so this static list is a baseline.
  */
 export const FOREX_INSTRUMENTS: ForexInstrument[] = [
   // Majors

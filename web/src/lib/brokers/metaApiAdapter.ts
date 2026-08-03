@@ -11,7 +11,7 @@ import {
 import { computeForexLots, resolveSizingReferencePrice } from "./lotSizing";
 import type { BrokerAdapter, OrderResult, PlaceOrderContext } from "./types";
 
-/** MetaTrader execution via MetaApi cloud (mobile-friendly, no EA). */
+/** MetaTrader execution via MetaApi cloud (mobile-friendly, no local terminal). */
 export const metaApiAdapter: BrokerAdapter = {
   kind: "metaapi",
 

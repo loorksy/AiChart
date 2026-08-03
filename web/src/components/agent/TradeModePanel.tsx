@@ -6,8 +6,8 @@
  * One shared state with MCP, read from GET /api/agent/trade-mode. Three rules
  * are enforced here on top of the server's own:
  *
- *  - the auto/advisory switch renders ONLY while the EA connection is stable
- *    (the server's debounced `connected` signal); the mode badge stays visible
+ *  - the auto/advisory switch renders ONLY while the broker connection is
+ *    stable (the server's `connected` signal); the mode badge stays visible
  *    always, so the operator never has to guess what mode they are in;
  *  - switching to auto ALWAYS goes through an explicit confirmation dialog —
  *    there is no one-click path to standing execution authority;
@@ -131,7 +131,7 @@ export function TradeModePanel() {
 
       {/* Expand-on-demand details. CSS collapse only — the tree stays mounted. */}
       <div id="trade-mode-details" className={expanded ? undefined : "hidden"}>
-        {/* The switch exists only while the debounced EA signal is stable. */}
+        {/* The switch exists only while the connection signal is stable. */}
         {showSwitch ? (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {mode === "auto" ? (

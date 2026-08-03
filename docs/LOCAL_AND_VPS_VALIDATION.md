@@ -32,7 +32,7 @@ Do not set `AUTO_EXECUTION_STAGE=dry-run` until:
 
 | Item | Why |
 |---|---|
-| EA / bridge connection | Live path to MT5 terminal |
+| MT5 bridge connection | Live path to MT5 terminal |
 | Verified broker account state | Account type + identity confirmed by server |
 | Live quotes | Fresh bid/ask; heartbeat OK |
 | Execution stage configuration | Stage explicitly `dry-run`; kill switch off |
@@ -153,7 +153,7 @@ Everything below is genuinely untested here and stays `operational-only`. None o
 | Environment variables | VPS | full secret set; `AUTO_EXECUTION_STAGE=off` initially | deploy |
 | Cron / reverse proxy / SSL | VPS | already provisioned in production; re-verify after deploy | deploy |
 | pgvector | VPS Postgres | `CREATE EXTENSION vector`; confirm HNSW/ivfflat or the JS fallback | dry-run |
-| MT5 / EA / broker demo | VPS + terminal | bridge up, verified account, live quotes | dry-run → demo |
+| MT5 / broker demo | VPS + terminal | bridge up, verified account, live quotes | dry-run → demo |
 | Telegram / Push / Service Worker | VPS + real browser | one delivered test alert per channel | dry-run |
 | disconnect / reconnect | VPS | auto must drop to advisory and must NOT self-restore | demo |
 | `stale_revision` against the real bridge | VPS | wrong `revision_no` must be refused on the live path | demo |

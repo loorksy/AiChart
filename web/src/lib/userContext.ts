@@ -27,8 +27,8 @@ export async function buildUserContext(userId: number): Promise<string> {
   const name = displayNameFromEmail(user.email);
 
   const connection = forex.online
-    ? `connected (${forex.backend === "metaapi" ? "MetaApi" : "EA"})`
-    : forex.ea || forex.mt
+    ? `connected (${forex.backend === "metaapi" ? "MetaApi" : "MT5 bridge"})`
+    : forex.mt
       ? "linked, offline"
       : "not linked";
 

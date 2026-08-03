@@ -39,7 +39,7 @@ function isValidStop(
 
 /**
  * Normalizes SL/TP for MT5 orders. Invalid levels are dropped (null) so
- * the EA opens without stops rather than failing with retcode 10016.
+ * the order opens without stops rather than failing with retcode 10016.
  *
  * For pending/limit orders pass the limit price as refPrice (not live bid/ask).
  */

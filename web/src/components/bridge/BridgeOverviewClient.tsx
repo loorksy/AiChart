@@ -76,15 +76,15 @@ function ConnBentoCard({
 
 export function BridgeOverviewClient({
   settings,
-  eaConnected,
-  eaOnline,
+  mtConnected,
+  mtOnline,
   pendingIntents,
   isAdmin,
   adminStats,
 }: {
   settings: TradingSettings;
-  eaConnected: boolean;
-  eaOnline: boolean;
+  mtConnected: boolean;
+  mtOnline: boolean;
   pendingIntents: TradeIntent[];
   isAdmin: boolean;
   adminStats?: AdminPlatformStats;
@@ -136,17 +136,17 @@ export function BridgeOverviewClient({
               icon={MessageSquare}
             />
             <ConnBentoCard
-              title="MT5 / EA"
+              title="MT5"
               chip={{
-                label: !eaConnected
+                label: !mtConnected
                   ? "غير مرتبط"
-                  : eaOnline
+                  : mtOnline
                     ? "متصل"
                     : "غير متصل",
-                tone: eaConnected ? (eaOnline ? "ok" : "error") : "neutral",
+                tone: mtConnected ? (mtOnline ? "ok" : "error") : "neutral",
               }}
               href="/console/connect"
-              icon={eaOnline ? Wifi : WifiOff}
+              icon={mtOnline ? Wifi : WifiOff}
             />
             <ConnBentoCard
               title="Telegram"

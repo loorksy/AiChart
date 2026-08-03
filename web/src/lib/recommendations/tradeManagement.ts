@@ -20,7 +20,10 @@
 import { query, queryOne } from "@/lib/db";
 import { createIntent, updateIntentStatus } from "@/lib/store";
 import { dispatchAlert, type DispatchAlertOptions } from "@/lib/alerts";
-import { queueEaModifySlTp } from "@/lib/eaTradeCommands";
+import {
+  modifyStopsForUser,
+  type TradeManagementResult,
+} from "@/lib/brokers/tradeManagementDispatch";
 import { buildApprovalButtons } from "@/lib/telegramCommands";
 import { isAutoExecutionAuthorized } from "@/lib/agent/tradeMode";
 import { getResolvedExecutionEnv } from "@/lib/executionEnv";
@@ -47,7 +50,7 @@ export interface TradeManagementOutcome {
   reason: string;
   /** The pending approval intent, when one was created. */
   intentId?: number;
-  /** The queued EA modify command, when the standing grant applied it. */
+  /** The broker's modify command id, when the standing grant applied it. */
   commandId?: number;
   /** The trade_management revision recorded after a broker sync. */
   revisionNo?: number;
@@ -60,10 +63,8 @@ export interface TradeManagementDeps {
   resolveEnv?: (userId: number) => Promise<string | null>;
   queueModify?: (
     userId: number,
-    ticket: number,
-    stopLoss: number,
-    takeProfit?: number | null,
-  ) => Promise<{ id: number }>;
+    input: { ticket: number; stopLoss: number; takeProfit?: number },
+  ) => Promise<TradeManagementResult>;
   notify?: (userId: number, opts: DispatchAlertOptions) => Promise<unknown>;
 }
 
@@ -153,7 +154,7 @@ async function recordSyncRevision(input: {
   recommendationId: number;
   revision: RecommendationRevision;
   trade: OpenTradeRow;
-  commandId: number;
+  commandId?: number;
   reason: string;
 }): Promise<RecommendationRevision | null> {
   const r = input.revision;
@@ -188,7 +189,7 @@ async function recordSyncRevision(input: {
         previousTakeProfit: input.trade.executed_tp,
         newStopLoss: r.stopLoss ?? null,
         newTakeProfit: r.targets[0] ?? null,
-        eaCommandId: input.commandId,
+        ...(input.commandId != null ? { commandId: input.commandId } : {}),
       },
     },
   }).catch((error: unknown) => {
@@ -258,39 +259,41 @@ export async function manageOpenTradeAfterRevision(
   // rollout stage permits touching this account. Anything less is advisory.
   const autoAuthorized = await (deps.isAutoAuthorized ?? isAutoExecutionAuthorized)(userId);
   const ticket = Number(trade.order_id);
-  const canReachBroker =
-    trade.broker === "mt_ea" && Number.isFinite(ticket) && ticket > 0;
+  const hasTicket = Number.isFinite(ticket) && ticket > 0;
 
-  if (autoAuthorized && canReachBroker && (await stagePermitsAutoModify(userId, deps))) {
-    // The one modify path — the same EA command the operator's own adjust_sl
-    // uses. Never a new broker call site.
-    const command = await (deps.queueModify ?? queueEaModifySlTp)(
-      userId,
+  if (autoAuthorized && hasTicket && (await stagePermitsAutoModify(userId, deps))) {
+    // The one modify path — routed to whichever backend the account is on
+    // (metaapi/mt5local). Never a new broker call site.
+    const result = await (deps.queueModify ?? modifyStopsForUser)(userId, {
       ticket,
-      stopToSend,
-      tpToSend,
-    );
-    const reason = `إدارة الصفقة: ${changeSummary} — مزامنة الصفقة المفتوحة مع النسخة ${revision.revisionNo} (${revision.reason}).`;
-    const sync = await recordSyncRevision({
-      userId,
-      recommendationId,
-      revision,
-      trade,
-      commandId: command.id,
-      reason,
+      stopLoss: stopToSend,
+      takeProfit: tpToSend ?? undefined,
     });
-    await notify(userId, {
-      type: "signal",
-      title: `تحديث صفقة ${revision.direction === "sell" ? "بيع" : "شراء"} مفتوحة`,
-      text: `عُدّلت مستويات الصفقة المفتوحة (تذكرة ${ticket}) تلقائياً بموجب التفويض الدائم:\n${changeSummary}\nالسبب: ${revision.reason}`,
-      symbol: null,
-    }).catch(() => undefined);
-    return {
-      action: "auto_modified",
-      reason,
-      commandId: command.id,
-      revisionNo: sync?.revisionNo,
-    };
+    if (result.ok) {
+      const reason = `إدارة الصفقة: ${changeSummary} — مزامنة الصفقة المفتوحة مع النسخة ${revision.revisionNo} (${revision.reason}).`;
+      const sync = await recordSyncRevision({
+        userId,
+        recommendationId,
+        revision,
+        trade,
+        commandId: result.command_id,
+        reason,
+      });
+      await notify(userId, {
+        type: "signal",
+        title: `تحديث صفقة ${revision.direction === "sell" ? "بيع" : "شراء"} مفتوحة`,
+        text: `عُدّلت مستويات الصفقة المفتوحة (تذكرة ${ticket}) تلقائياً بموجب التفويض الدائم:\n${changeSummary}\nالسبب: ${revision.reason}`,
+        symbol: null,
+      }).catch(() => undefined);
+      return {
+        action: "auto_modified",
+        reason,
+        commandId: result.command_id,
+        revisionNo: sync?.revisionNo,
+      };
+    }
+    // The broker refused or can't reach it (e.g. mt5local has no modify path)
+    // — fall through to the advisory proposal below instead of pretending it worked.
   }
 
   // Advisory: propose, never touch. One pending proposal per revision — a
@@ -391,7 +394,7 @@ export async function applyApprovedTradeManagement(
     return { ok: false, reason: "الصفقة لم تعد مفتوحة — لم يُرسل أي تعديل." };
   }
   const ticket = Number(trade.order_id);
-  if (trade.broker !== "mt_ea" || !Number.isFinite(ticket) || ticket <= 0) {
+  if (!Number.isFinite(ticket) || ticket <= 0) {
     return { ok: false, reason: "لا توجد تذكرة MT5 صالحة لهذه الصفقة." };
   }
   const stopLoss = intent.stop_loss;
@@ -399,12 +402,14 @@ export async function applyApprovedTradeManagement(
     return { ok: false, reason: "لا يوجد وقف خسارة صالح في الطلب." };
   }
 
-  const command = await (deps.queueModify ?? queueEaModifySlTp)(
-    userId,
+  const result = await (deps.queueModify ?? modifyStopsForUser)(userId, {
     ticket,
     stopLoss,
-    intent.take_profit ?? null,
-  );
+    takeProfit: intent.take_profit ?? undefined,
+  });
+  if (!result.ok) {
+    return { ok: false, reason: result.reason ?? "تعذّر تعديل الصفقة عند الوسيط." };
+  }
 
   // Record the approved sync in the plan's append-only history. The effective
   // revision may have moved past the proposal; the record is written against
@@ -417,7 +422,7 @@ export async function applyApprovedTradeManagement(
       recommendationId: intent.recommendation_id,
       revision: effective,
       trade,
-      commandId: command.id,
+      commandId: result.command_id,
       reason: `إدارة الصفقة: وافق المشغّل على تعديل SL/TP (طلب ${intent.id}) — عُدّلت الصفقة المفتوحة.`,
     });
     revisionNo = sync?.revisionNo;
@@ -431,7 +436,7 @@ export async function applyApprovedTradeManagement(
     symbol: intent.symbol,
   }).catch(() => undefined);
 
-  return { ok: true, reason: "أُرسل التعديل إلى الوسيط.", commandId: command.id, revisionNo };
+  return { ok: true, reason: "أُرسل التعديل إلى الوسيط.", commandId: result.command_id, revisionNo };
 }
 
 /**

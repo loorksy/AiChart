@@ -8,8 +8,8 @@
  * execution-eligibility JOIN failed even when validated evidence existed.
  *
  * EVERY write and read that participates in evidence matching must go through
- * these two helpers. Display/broker surfaces (MT5 capture, EA commands) keep
- * the raw symbol — only the matching keys are canonicalised.
+ * these two helpers. Display/broker surfaces (MT5 capture, order placement)
+ * keep the raw symbol — only the matching keys are canonicalised.
  */
 import { normalizeSymbol } from "@/lib/markets/symbolMapping";
 import { canonicalizeInterval } from "@/lib/intervals";

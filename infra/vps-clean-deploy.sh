@@ -20,8 +20,8 @@ log "commit: $(git log --oneline -1)"
 
 log "2) ensure MT5 bridge env"
 FOREX_MODE="$(grep '^FOREX_BACKEND=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
-if [[ "${FOREX_MODE,,}" == "ea" || "${FOREX_MODE,,}" == "mt_ea" ]]; then
-  log "FOREX_BACKEND=ea — skip MT5 bridge (use EA on Windows VPS)"
+if [[ "${FOREX_MODE,,}" == "metaapi" ]]; then
+  log "FOREX_BACKEND=metaapi — skip MT5 bridge (cloud-only deployment)"
 else
   upsert() {
     local k="$1" v="$2"
@@ -46,8 +46,8 @@ npm run build
 log "4) restart aichart-web"
 pm2 restart aichart-web --update-env
 
-if [[ "${FOREX_MODE,,}" == "ea" || "${FOREX_MODE,,}" == "mt_ea" ]]; then
-  log "5) skip mt5 container (FOREX_BACKEND=ea)"
+if [[ "${FOREX_MODE,,}" == "metaapi" ]]; then
+  log "5) skip mt5 container (FOREX_BACKEND=metaapi)"
   cd "$INSTALL_DIR/infra"
   docker compose stop mt5 2>/dev/null || true
 else

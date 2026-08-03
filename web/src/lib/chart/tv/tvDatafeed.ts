@@ -31,15 +31,13 @@ export function buildKlinesUrl(params: {
   limit?: number;
   from?: number;
   to?: number;
-  ea?: boolean;
   fresh?: boolean;
 }): string {
   const search = new URLSearchParams({
-    symbol: stripEaPrefix(params.symbol),
+    symbol: params.symbol,
     interval: params.interval,
     market: params.market ?? "forex",
   });
-  if (params.ea) search.set("source", "ea");
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.from != null) search.set("from", String(params.from));
   if (params.to != null) search.set("to", String(params.to));
@@ -124,41 +122,21 @@ function priceScale(symbol: string): number {
   return 100000; // forex majors, 5 decimals
 }
 
-/** EA (broker) symbols are namespaced inside TV with this ticker prefix. */
-export const EA_TICKER_PREFIX = "EA:";
-const EA_EXCHANGE = "MT5";
 /** Bars served by the trader's cloud MetaTrader account, via MetaApi. */
 const CLOUD_EXCHANGE = "MT5 CLOUD";
-/** Resolutions the EA bridge serves natively (MT5 periods). */
-const EA_RESOLUTIONS = ["1", "5", "15", "30", "60", "240", "1D", "1W"] as ResolutionString[];
-
-export function isEaTicker(t: string | undefined): boolean {
-  return Boolean(t && t.startsWith(EA_TICKER_PREFIX));
-}
-
-export function stripEaPrefix(t: string): string {
-  return t.startsWith(EA_TICKER_PREFIX) ? t.slice(EA_TICKER_PREFIX.length) : t;
-}
 
 /** Datafeed backed by AiChart's own /api/market/klines + /api/instruments. */
 export function createAiChartDatafeed(
   market: MarketType = "forex",
-  opts: { eaEnabled?: boolean; onLatestCandle?: (candle: TvLatestCandle) => void } = {},
+  opts: { onLatestCandle?: (candle: TvLatestCandle) => void } = {},
 ): IBasicDataFeed {
   const exchange = "OANDA";
   const symbolType = "forex";
-  const eaEnabled = Boolean(opts.eaEnabled);
   const subscribers = new Map<string, ReturnType<typeof setInterval>>();
 
   const config: DatafeedConfiguration = {
     supported_resolutions: SUPPORTED_RESOLUTIONS,
-    exchanges: eaEnabled
-      ? [
-          { value: "", name: "الكل", desc: "" },
-          { value: exchange, name: exchange, desc: exchange },
-          { value: EA_EXCHANGE, name: "وسيطك (MT5)", desc: "Your broker via EA" },
-        ]
-      : [{ value: exchange, name: exchange, desc: exchange }],
+    exchanges: [{ value: exchange, name: exchange, desc: exchange }],
     symbols_types: [{ name: symbolType, value: symbolType }],
   };
 
@@ -169,7 +147,6 @@ export function createAiChartDatafeed(
       from?: number;
       to?: number;
       limit?: number;
-      ea?: boolean;
       /** Only true for manual refresh / the live forming candle. */
       fresh?: boolean;
     },
@@ -182,7 +159,6 @@ export function createAiChartDatafeed(
       limit: opts.limit,
       from: opts.from,
       to: opts.to,
-      ea: opts.ea,
       fresh: opts.fresh,
     });
     // Transient upstream blips (OANDA rate-limit under burst load) are retried
@@ -220,11 +196,9 @@ export function createAiChartDatafeed(
 
     searchSymbols: async (userInput, exchangeFilter, _symbolType, onResult) => {
       const wantOanda = !exchangeFilter || exchangeFilter === exchange;
-      const wantEa = eaEnabled && (!exchangeFilter || exchangeFilter === EA_EXCHANGE);
       const items: SearchSymbolResultItem[] = [];
 
-      const loadOanda = async () => {
-        if (!wantOanda) return;
+      if (wantOanda) {
         try {
           const params = new URLSearchParams({ market, q: userInput, wrapped: "1" });
           const res = await fetch(`/api/instruments?${params}`, { cache: "no-store" });
@@ -241,42 +215,12 @@ export function createAiChartDatafeed(
         } catch {
           /* keep other source */
         }
-      };
+      }
 
-      const loadEa = async () => {
-        if (!wantEa) return;
-        try {
-          const params = new URLSearchParams({ source: "ea", q: userInput });
-          const res = await fetch(`/api/instruments?${params}`, { cache: "no-store" });
-          if (!res.ok) return;
-          const data = (await res.json()) as {
-            instruments?: { symbol: string; description?: string }[];
-          };
-          for (const r of (data.instruments ?? []).slice(0, 100)) {
-            items.push({
-              symbol: r.symbol,
-              description: r.description || r.symbol,
-              exchange: EA_EXCHANGE,
-              ticker: `${EA_TICKER_PREFIX}${r.symbol}`,
-              type: symbolType,
-            });
-          }
-        } catch {
-          /* keep other source */
-        }
-      };
-
-      await Promise.all([loadOanda(), loadEa()]);
       onResult(items);
     },
 
     resolveSymbol: (symbolName, onResolve: ResolveCallback, onError) => {
-      // Broker symbols arrive as "EA:EURUSDm" or "MT5:EURUSDm" — keep the EA
-      // namespace in the ticker so getBars routes to the broker bridge, and
-      // preserve broker-exact case (Exness EURUSDm).
-      const viaEa =
-        symbolName.startsWith(EA_TICKER_PREFIX) ||
-        symbolName.startsWith(`${EA_EXCHANGE}:`);
       const bare = symbolName.includes(":")
         ? symbolName.split(":").pop()!
         : symbolName;
@@ -287,8 +231,7 @@ export function createAiChartDatafeed(
        * symbol that does not exist. A lowercase letter is the tell: canonical
        * OANDA keys never carry one.
        */
-      const sym = viaEa || /[a-z]/.test(bare) ? bare : bare.toUpperCase();
-      const tickerOut = viaEa ? `${EA_TICKER_PREFIX}${sym}` : sym;
+      const sym = /[a-z]/.test(bare) ? bare : bare.toUpperCase();
       /*
        * The header prints this, so it has to name the feed the bars actually
        * came from. It said OANDA for every symbol, including one served by the
@@ -296,15 +239,11 @@ export function createAiChartDatafeed(
        * says OANDA". Same lowercase tell as above: a broker catalogue spells
        * XAUUSDm, a canonical platform key never does.
        */
-      const exch = viaEa
-        ? EA_EXCHANGE
-        : /[a-z]/.test(sym)
-          ? CLOUD_EXCHANGE
-          : exchange;
+      const exch = /[a-z]/.test(sym) ? CLOUD_EXCHANGE : exchange;
       const info: LibrarySymbolInfo = {
         name: sym,
-        ticker: tickerOut,
-        description: viaEa ? `${sym} · وسيطك` : sym,
+        ticker: sym,
+        description: sym,
         type: symbolType,
         session: "24x7",
         exchange: exch,
@@ -318,13 +257,11 @@ export function createAiChartDatafeed(
         // Every resolution is served NATIVELY by our klines API. Without these,
         // TV assumes only 1-minute data exists and requests 1m for a 15m chart
         // (weeks of 1m bars → clamped window → "empty" higher timeframes).
-        intraday_multipliers: viaEa
-          ? ["1", "5", "15", "30", "60", "240"]
-          : ["1", "3", "5", "15", "30", "60", "120", "240"],
+        intraday_multipliers: ["1", "3", "5", "15", "30", "60", "120", "240"],
         daily_multipliers: ["1"],
         weekly_multipliers: ["1"],
         monthly_multipliers: ["1"],
-        supported_resolutions: viaEa ? EA_RESOLUTIONS : SUPPORTED_RESOLUTIONS,
+        supported_resolutions: SUPPORTED_RESOLUTIONS,
         volume_precision: 0,
         data_status: "streaming",
         currency_code: sym.includes("JPY") ? "JPY" : "USD",
@@ -347,9 +284,7 @@ export function createAiChartDatafeed(
       const { from, to, countBack } = periodParams;
       const barMs = barDurationMs(interval) || 60_000;
       const toMs = to * 1000;
-      const ea = isEaTicker(symbolInfo.ticker);
-      // EA bridge serves ≤500 bars per request; OANDA ~5000 per window.
-      const maxBars = ea ? 500 : MAX_BARS_PER_REQUEST;
+      const maxBars = MAX_BARS_PER_REQUEST;
       // Clamp the window so a single request never exceeds the source's cap.
       // TV paginates for older data, so bounded windows still fill the chart.
       const fromMs = Math.max(from * 1000, toMs - maxBars * barMs);
@@ -358,8 +293,8 @@ export function createAiChartDatafeed(
       // seeded by prefetch — instant symbol/timeframe switches — then a normal
       // (non-fresh) network read refreshes it. Never sets fresh=1.
       const isLatestWindow = toMs >= Date.now() - barMs * 2;
-      const cacheKey = klinesClientKey(stripEaPrefix(ticker), interval, market);
-      if (isLatestWindow && !ea) {
+      const cacheKey = klinesClientKey(ticker, interval, market);
+      if (isLatestWindow) {
         const cached = getKlinesClientCache(cacheKey);
         if (cached?.length) {
           const cachedBars: Bar[] = cached
@@ -381,7 +316,6 @@ export function createAiChartDatafeed(
               from: fromMs,
               to: toMs,
               limit: Math.min(Math.max(countBack, 300), maxBars),
-              ea,
             })
               .then(({ candles }) => {
                 if (candles.length) setKlinesClientCache(cacheKey, candles);
@@ -398,16 +332,15 @@ export function createAiChartDatafeed(
           from: fromMs,
           to: toMs,
           limit: Math.min(Math.max(countBack, 300), maxBars),
-          ea,
         },
       );
-      if (isLatestWindow && !ea && rows.length) {
+      if (isLatestWindow && rows.length) {
         setKlinesClientCache(cacheKey, rows);
       }
       const latest = rows[rows.length - 1];
       if (latest) {
         opts.onLatestCandle?.({
-          symbol: stripEaPrefix(ticker).toUpperCase(),
+          symbol: ticker.toUpperCase(),
           interval,
           time: latest.time * 1000,
           open: latest.open,
@@ -435,10 +368,7 @@ export function createAiChartDatafeed(
       // Unlimited history: an empty window is usually a market gap (weekend,
       // clamped range) — report noData:false so TV keeps paginating older
       // ranges as the user scrolls. Only stop at a hard age floor.
-      // Empty window = market gap (weekend) → keep paginating older ranges.
-      // Stop at a hard age floor (EA terminal history is shallower than OANDA).
-      const floorMs =
-        Date.now() - (ea ? 1 : 5) * 365 * 24 * 3600 * 1000;
+      const floorMs = Date.now() - 5 * 365 * 24 * 3600 * 1000;
       onResult(bars, {
         noData: bars.length === 0 && toMs < floorMs,
       });
@@ -452,19 +382,17 @@ export function createAiChartDatafeed(
     ) => {
       const interval = resolutionToInterval(resolution);
       const ticker = symbolInfo.ticker ?? symbolInfo.name;
-      const ea = isEaTicker(ticker);
       const poll = async () => {
         // Live forming candle: fresh=1 bypasses cache/warehouse staleness so the
         // last bar ticks in real time. Only the 2-bar tail is fetched fresh.
         const { candles: rows } = await fetchCandles(ticker, interval, {
           limit: 2,
-          ea,
           fresh: true,
         });
         const last = rows[rows.length - 1];
         if (last && Number.isFinite(last.time)) {
           opts.onLatestCandle?.({
-            symbol: stripEaPrefix(ticker).toUpperCase(),
+            symbol: ticker.toUpperCase(),
             interval,
             time: last.time * 1000,
             open: last.open,

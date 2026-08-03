@@ -36,13 +36,14 @@ const SCHEMA = `
         AND ABS(per_trade_pct * 10 - ROUND(per_trade_pct * 10)) < 0.000000001
       ),
     allowed_assets           TEXT NOT NULL DEFAULT '[]',
-    -- User-chosen forex connection: 'ea' (bridge installed on the user's MT5)
-    -- or 'mt5local' (server-side, no download). NULL = operator's global default.
+    -- User-chosen forex connection: 'metaapi' (cloud) or 'mt5local'
+    -- (server-side bridge, no download). NULL = operator's global default.
+    -- Migration below rewrites any leftover 'ea' value to NULL; resolution
+    -- also treats an unrecognised value as NULL, so this is belt and braces.
     forex_backend            TEXT,
-    -- Which pipe the CHARTS and quotes are read from: 'oanda' (platform
-    -- data), 'ea' (the user's own terminal) or 'metaapi' (their cloud
-    -- account). NULL/'auto' = the cloud account when linked, else the EA,
-    -- else the platform.
+    -- Which pipe the CHARTS and quotes are read from: 'oanda' (platform data)
+    -- or 'metaapi' (their cloud account). NULL/'auto' = the cloud account
+    -- when linked, else the platform.
     market_data_source       TEXT,
     -- "provider/model" the USER picked for their own analyses; NULL = the
     -- platform default. The admin supplies keys, the user picks the brain.
@@ -288,7 +289,7 @@ const SCHEMA = `
     side              TEXT NOT NULL,
     notional          REAL NOT NULL,
     market            TEXT NOT NULL DEFAULT 'forex',
-    broker            TEXT NOT NULL DEFAULT 'mt_ea',
+    broker            TEXT NOT NULL DEFAULT 'metaapi',
     entry             REAL,
     stop_loss         REAL,
     take_profit       REAL,
@@ -314,63 +315,12 @@ const SCHEMA = `
     order_id    TEXT,
     env         TEXT NOT NULL DEFAULT 'testnet',
     market      TEXT NOT NULL DEFAULT 'forex',
-    broker      TEXT NOT NULL DEFAULT 'mt_ea',
+    broker      TEXT NOT NULL DEFAULT 'metaapi',
     status      TEXT NOT NULL DEFAULT 'open',
     pnl         REAL NOT NULL DEFAULT 0,
     oco_order_list_id TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     closed_at   TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS ea_connections (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id           INTEGER NOT NULL,
-    platform          TEXT NOT NULL DEFAULT 'mt5',
-    token_hash        TEXT NOT NULL,
-    label             TEXT,
-    broker_name       TEXT,
-    account_login     TEXT,
-    account_currency  TEXT,
-    balance           REAL NOT NULL DEFAULT 0,
-    equity            REAL NOT NULL DEFAULT 0,
-    status            TEXT NOT NULL DEFAULT 'offline',
-    symbol_specs_json TEXT,
-    last_heartbeat_at TEXT,
-    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_ea_connections_user
-    ON ea_connections (user_id);
-  CREATE INDEX IF NOT EXISTS idx_ea_connections_token
-    ON ea_connections (token_hash);
-
-  CREATE TABLE IF NOT EXISTS ea_commands (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id       INTEGER NOT NULL,
-    intent_id     INTEGER,
-    command_type  TEXT NOT NULL,
-    payload_json  TEXT NOT NULL,
-    status        TEXT NOT NULL DEFAULT 'pending',
-    result_json   TEXT,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    expires_at    TEXT,
-    updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_ea_commands_poll
-    ON ea_commands (user_id, status, id);
-
-  CREATE TABLE IF NOT EXISTS ea_market_cache (
-    user_id      INTEGER NOT NULL,
-    symbol       TEXT NOT NULL,
-    interval     TEXT NOT NULL,
-    candles_json TEXT NOT NULL,
-    updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (user_id, symbol, interval),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -759,7 +709,8 @@ const SCHEMA = `
     ON decision_parity_comparisons(created_at DESC);
 
   -- Live spread samples per symbol×session (plan §13 H.1). Ten-minute samples
-  -- from the EA's live quotes; aggregated on read, pruned past the window.
+  -- aggregated on read, pruned past the window. The EA bridge that populated
+  -- this table was removed; nothing writes new rows here going forward.
   CREATE TABLE IF NOT EXISTS cost_samples (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol      TEXT NOT NULL,
@@ -1590,8 +1541,8 @@ function migrate(db: Database.Database) {
 
   // The broker's own account type for cloud/bridge connections. Without it the
   // live-money dual-enablement gate could not tell a real MetaApi account from
-  // a demo one, and defaulted to "not live" — the exact protection failure the
-  // EA path was fixed for.
+  // a demo one, and defaulted to "not live" — the same protection failure
+  // already fixed on the self-hosted MT5 path.
   const currentDataSourceColumns = db
     .prepare("PRAGMA table_info(trading_settings)")
     .all() as { name: string }[];
@@ -1636,7 +1587,7 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE trades ADD COLUMN market TEXT NOT NULL DEFAULT 'forex'");
   }
   if (!tradeCols.some((c) => c.name === "broker")) {
-    db.exec("ALTER TABLE trades ADD COLUMN broker TEXT NOT NULL DEFAULT 'mt_ea'");
+    db.exec("ALTER TABLE trades ADD COLUMN broker TEXT NOT NULL DEFAULT 'metaapi'");
   }
   if (!tradeCols.some((c) => c.name === "market_type")) {
     db.exec(
@@ -1662,7 +1613,7 @@ function migrate(db: Database.Database) {
   }
   if (!intentCols.some((c) => c.name === "broker")) {
     db.exec(
-      "ALTER TABLE trade_intents ADD COLUMN broker TEXT NOT NULL DEFAULT 'mt_ea'",
+      "ALTER TABLE trade_intents ADD COLUMN broker TEXT NOT NULL DEFAULT 'metaapi'",
     );
   }
   if (!intentCols.some((c) => c.name === "practice")) {
@@ -1712,16 +1663,6 @@ function migrate(db: Database.Database) {
   }
   if (!tradeCols.some((c) => c.name === "limit_price")) {
     db.exec("ALTER TABLE trades ADD COLUMN limit_price REAL");
-  }
-
-  const eaCols = db
-    .prepare("PRAGMA table_info(ea_connections)")
-    .all() as { name: string }[];
-  if (!eaCols.some((c) => c.name === "account_trade_mode")) {
-    db.exec("ALTER TABLE ea_connections ADD COLUMN account_trade_mode TEXT");
-  }
-  if (!eaCols.some((c) => c.name === "positions_json")) {
-    db.exec("ALTER TABLE ea_connections ADD COLUMN positions_json TEXT");
   }
 
   const alertCols = db
@@ -1861,24 +1802,6 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires
       ON idempotency_keys (expires_at);
   `);
-
-  const dupToken = db
-    .prepare(
-      `SELECT token_hash FROM ea_connections
-       GROUP BY token_hash HAVING COUNT(*) > 1 LIMIT 1`,
-    )
-    .get() as { token_hash: string } | undefined;
-
-  if (!dupToken) {
-    db.exec(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_ea_connections_token_unique
-        ON ea_connections (token_hash);
-    `);
-  } else {
-    console.warn(
-      "[db] duplicate ea_connections.token_hash — skipping unique index",
-    );
-  }
 
   // AI Agent Memory Architecture migrations
   const chatCols = db
@@ -2044,8 +1967,8 @@ function migrate(db: Database.Database) {
     UPDATE trades SET market = 'forex' WHERE market = 'crypto';
     UPDATE trade_intents SET market = 'forex' WHERE market = 'crypto';
     UPDATE recommendations SET market = 'forex' WHERE market = 'crypto';
-    UPDATE trades SET broker = 'mt_ea' WHERE broker = 'binance';
-    UPDATE trade_intents SET broker = 'mt_ea' WHERE broker = 'binance';
+    UPDATE trades SET broker = 'metaapi' WHERE broker = 'binance';
+    UPDATE trade_intents SET broker = 'metaapi' WHERE broker = 'binance';
     DROP TABLE IF EXISTS binance_accounts;
   `);
 
@@ -2134,6 +2057,21 @@ function migrate(db: Database.Database) {
        ON CONFLICT(key) DO NOTHING`,
     ).run();
   }
+
+  // EA bridge retired. A stored 'ea' preference named a backend that no
+  // longer exists — NULL defers to the deployment default (getForexBackend),
+  // the same outcome resolveForexBackendFromPref already gives an
+  // unrecognised value, so no one silently keeps routing through a backend
+  // that isn't there.
+  db.exec(`UPDATE trading_settings SET forex_backend = NULL WHERE forex_backend = 'ea'`);
+
+  // Its tables carried nothing but hashed device tokens and heartbeat/candle
+  // cache, none of which any code reads anymore.
+  db.exec(`
+    DROP TABLE IF EXISTS ea_commands;
+    DROP TABLE IF EXISTS ea_market_cache;
+    DROP TABLE IF EXISTS ea_connections;
+  `);
 }
 
 export function seedAdminSqlite(db: Database.Database) {

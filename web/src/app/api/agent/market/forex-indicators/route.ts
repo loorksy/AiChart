@@ -45,7 +45,7 @@ export const GET = withBridge(async ({ req, userId }) => {
   if (ohlc.candles.length < 20) {
     throw new ApiError(
       503,
-      "لا تتوفر شموع كافية لحساب المؤشرات — انتظر EA أو جرّب interval أطول.",
+      "لا تتوفر شموع كافية لحساب المؤشرات — أعد المحاولة لاحقاً أو جرّب interval أطول.",
     );
   }
 

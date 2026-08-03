@@ -341,7 +341,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_trade_readiness",
     domain: "core",
     description:
-      "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, EA heartbeat, quote freshness, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
+      "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
     inputSchema: {
       symbol: z.string().optional().describe("Pair symbol — for quote/spread check"),
       market: zMarket,
@@ -354,7 +354,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_agent_capabilities",
     domain: "core",
     description:
-      "Reports what this deployment supports: server version, git commit, feature flags, EA debounce settings, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
+      "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -577,7 +577,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_chart_snapshot",
     domain: "core",
     description:
-      "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). Set source=mt5 to photograph the connected MetaTrader terminal instead — only meaningful while the EA is online and the operator asked for it. When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -585,7 +585,6 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       pattern_name: z.string().optional(),
       chart_drawings: zChartDrawings,
       layout_id: z.string().optional(),
-      source: z.enum(["platform", "mt5"]).optional(),
       inline_image: zLooseBoolean
         .optional()
         .describe(

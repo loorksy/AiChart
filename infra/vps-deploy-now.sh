@@ -49,8 +49,8 @@ fi
 
 ENV_FILE="/opt/aichart/web/.env"
 FOREX_MODE="$(grep '^FOREX_BACKEND=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
-if [[ "${FOREX_MODE,,}" == "ea" || "${FOREX_MODE,,}" == "mt_ea" ]]; then
-  log "FOREX_BACKEND=ea — will not start MT5 Docker (use infra/vps-disable-mt5.sh)"
+if [[ "${FOREX_MODE,,}" == "metaapi" ]]; then
+  log "FOREX_BACKEND=metaapi — will not start MT5 Docker"
   cd /opt/aichart/infra
   docker compose stop mt5 2>/dev/null || true
 fi

@@ -476,7 +476,7 @@ class Handler(BaseHTTPRequestHandler):
                         {
                             "error": (
                                 "MT5 IPC unavailable on this host (Wine/Linux). "
-                                "Use EA bridge or MetaApi."
+                                "Use MetaApi instead."
                             )
                         },
                     )

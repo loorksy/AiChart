@@ -5,9 +5,10 @@
  *               recommendations. Matches forexCanonicalKey used everywhere.
  *   oanda     — OANDA v20 instrument (EUR_USD, XAU_USD): candle/pricing calls.
  *   display   — human form (EUR/USD).
- *   mt5       — broker symbol for MT5/EA execution. Static best-effort here
- *               (env override per symbol); the per-user broker suffix is still
- *               resolved by resolveMt5Symbol at execution time.
+ *   mt5       — broker symbol for MT5 execution. Static best-effort here
+ *               (env override per symbol); a linked broker's own suffixed
+ *               spelling (EURUSDm) is read from its live symbol catalogue,
+ *               not from this mapping.
  */
 import { forexCanonicalKey } from "./forexCanonical";
 
@@ -34,7 +35,7 @@ function toDisplayPair(compact: string): string {
 
 /**
  * Normalize any raw symbol form (EURUSD, EUR_USD, EUR/USD, EURUSDm,
- * XAUUSD.pro, ea:XAUUSD) into the full mapping.
+ * XAUUSD.pro) into the full mapping.
  */
 export function normalizeSymbol(raw: string): SymbolMapping {
   const canonical = forexCanonicalKey(raw);

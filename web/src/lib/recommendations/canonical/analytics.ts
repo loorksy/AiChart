@@ -282,7 +282,7 @@ export type ExitKind =
 
 export function classifyExit(input: {
   outcomeType: string | null;
-  /** Explicit close reason when the broker/EA recorded one. */
+  /** Explicit close reason when the broker recorded one. */
   closeReason?: string | null;
   manualCloseAt: number | null;
   firstTakeProfitAt: number | null;

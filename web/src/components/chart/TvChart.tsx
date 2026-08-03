@@ -1,7 +1,7 @@
 "use client";
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
-import { normalizeSymbolCase } from "@/lib/markets/symbolCase";
+import { normalizeSymbolCase, isBrokerSpelledSymbol } from "@/lib/markets/symbolCase";
 import {
   forwardRef,
   useCallback,
@@ -17,12 +17,7 @@ import type {
   ResolutionString,
 } from "@/vendor/tradingview/charting_library";
 import "@/styles/klinecharts-pro-aichart.css";
-import {
-  createAiChartDatafeed,
-  EA_TICKER_PREFIX,
-  isEaTicker,
-  stripEaPrefix,
-} from "@/lib/chart/tv/tvDatafeed";
+import { createAiChartDatafeed } from "@/lib/chart/tv/tvDatafeed";
 import type { TvLatestCandle } from "@/lib/chart/tv/tvDatafeed";
 import { TvDrawingManager } from "@/lib/chart/tv/tvDrawingAdapter";
 import {
@@ -159,8 +154,6 @@ interface Props {
   drawings?: ChartDrawing[];
   /** Platform actions embedded in the TV header toolbar. */
   headerActions?: TvHeaderAction[];
-  /** Offer the user's broker (EA/MT5) as a second data source in symbol search. */
-  eaEnabled?: boolean;
   /** Active data source for the current symbol. */
   dataSource?: MarketDataSource;
   /** TradingView language is selected when the widget is created. */
@@ -206,7 +199,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     overlays,
     drawings,
     headerActions,
-    eaEnabled = false,
     dataSource = "oanda",
     locale = "ar",
     direction = "rtl",
@@ -275,7 +267,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       if (!w || !readyRef.current) return normalizeSymbolCase(symbol);
       try {
         const s = w.activeChart().symbol();
-        // Strip any namespace (EA:/MT5:/OANDA:) — analysis wants the bare pair.
+        // Strip any exchange namespace (e.g. OANDA:) — analysis wants the bare pair.
         const ticker = s.includes(":") ? s.split(":").pop()! : s;
         return normalizeSymbolCase(ticker);
       } catch {
@@ -362,13 +354,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     const el = containerRef.current;
     if (!el) return;
     let cancelled = false;
-    const bootSymbol =
-      dataSource === "ea"
-        ? `${EA_TICKER_PREFIX}${symbol}`
-        : normalizeSymbolCase(symbol);
+    const bootSymbol = normalizeSymbolCase(symbol);
     const bootInterval = interval;
     const bootMarket = market;
-    const bootEa = eaEnabled;
     const persistedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
     const bootLocale = isAppLocale(persistedLocale)
       ? locale === persistedLocale
@@ -394,7 +382,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           container: el,
           library_path: LIBRARY_PATH,
           datafeed: createAiChartDatafeed(bootMarket, {
-            eaEnabled: bootEa,
             onLatestCandle: (candle) => {
               latestCandleRef.current = candle;
             },
@@ -483,10 +470,13 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             if (pushSyncRef.current) return;
             clearLatestCandle();
             const s = chart.symbol();
-            // "EA:EURUSDm" / "MT5:EURUSDm" → broker source; else OANDA.
-            const viaEa = isEaTicker(s) || s.startsWith("MT5:");
             const ticker = (s.includes(":") ? s.split(":").pop()! : s);
-            onSymbolChangeRef.current?.(ticker, viaEa ? "ea" : "oanda");
+            // Broker-spelled (lowercase) symbols come from the linked cloud
+            // account; canonical uppercase keys come from the platform feed.
+            onSymbolChangeRef.current?.(
+              ticker,
+              isBrokerSpelledSymbol(ticker) ? "metaapi" : "oanda",
+            );
           });
           chart.onIntervalChanged().subscribe(null, (res: ResolutionString) => {
             if (pushSyncRef.current) return;
@@ -516,27 +506,24 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     // dependency that must retrigger; everything else syncs into the live widget.
   }, [locale]);
 
-  // React symbol/source → widget (broker symbols carry the EA: namespace).
+  // React symbol/source → widget (broker symbols carry a broker-spelled case).
   useEffect(() => {
     const w = widgetRef.current;
     if (!w || !readyRef.current) return;
     try {
       const chart = w.activeChart();
       const current = chart.symbol();
-      const currentEa = isEaTicker(current) || current.startsWith("MT5:");
       // Both sides normalised the same way, or a broker symbol compares
       // XAUUSDM against XAUUSDm forever and the chart resets on every tick.
       const currentBare = normalizeSymbolCase(
         current.includes(":") ? current.split(":").pop()! : current,
       );
-      const wantEa = dataSource === "ea";
-      if (currentBare !== normalizeSymbolCase(symbol) || currentEa !== wantEa) {
+      const currentIsCloud = isBrokerSpelledSymbol(currentBare);
+      const wantCloud = dataSource === "metaapi";
+      if (currentBare !== normalizeSymbolCase(symbol) || currentIsCloud !== wantCloud) {
         clearLatestCandle();
         pushSyncRef.current = true;
-        const target = wantEa
-          ? `${EA_TICKER_PREFIX}${stripEaPrefix(symbol)}`
-          : normalizeSymbolCase(symbol);
-        chart.setSymbol(target, () => {
+        chart.setSymbol(normalizeSymbolCase(symbol), () => {
           pushSyncRef.current = false;
         });
       }

@@ -7,7 +7,7 @@
  * talked to the broker is not a denial.
  *
  * The adapter is the singleton object the execution path resolves through
- * `getBrokerAdapter("mt_ea")`, so patching its method observes exactly the
+ * `getBrokerAdapter("metaapi")`, so patching its method observes exactly the
  * calls production code would make.
  */
 import assert from "node:assert/strict";
@@ -42,17 +42,17 @@ before(async () => {
   );
 
   // The counting broker. Success shape mirrors what the real adapter returns.
-  const { eaAdapter } = await import("@/lib/brokers/eaAdapter");
-  originalPlaceOrder = eaAdapter.placeOrder;
-  eaAdapter.placeOrder = (async () => {
+  const { metaApiAdapter } = await import("@/lib/brokers/metaApiAdapter");
+  originalPlaceOrder = metaApiAdapter.placeOrder;
+  metaApiAdapter.placeOrder = (async () => {
     placeOrderCalls += 1;
     return { ok: true, status: "executed", reason: "fake broker accepted", tradeId: 777 };
-  }) as typeof eaAdapter.placeOrder;
+  }) as typeof metaApiAdapter.placeOrder;
 });
 
 after(async () => {
-  const { eaAdapter } = await import("@/lib/brokers/eaAdapter");
-  eaAdapter.placeOrder = originalPlaceOrder as typeof eaAdapter.placeOrder;
+  const { metaApiAdapter } = await import("@/lib/brokers/metaApiAdapter");
+  metaApiAdapter.placeOrder = originalPlaceOrder as typeof metaApiAdapter.placeOrder;
   delete process.env.AUTO_EXECUTION_STAGE;
 });
 
@@ -61,27 +61,28 @@ beforeEach(() => {
   process.env.AUTO_EXECUTION_STAGE = "off";
 });
 
-/** A demo-account EA connection with verifiable equity. */
+/** A demo-account MetaTrader link with verifiable equity. */
 async function connectAccount(tradeMode: "demo" | "real" | "garbage"): Promise<void> {
   const db = await import("@/lib/db");
-  await db.execute("DELETE FROM ea_connections WHERE user_id = ?", [owner]);
+  await db.execute("DELETE FROM mt_accounts WHERE user_id = ?", [owner]);
   await db.execute(
-    `INSERT INTO ea_connections
-       (user_id, platform, token_hash, account_currency, balance, equity, status,
-        account_trade_mode, symbol_specs_json, last_heartbeat_at)
-     VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`,
+    `INSERT INTO mt_accounts
+       (user_id, platform, server, login, password_enc, metaapi_account_id,
+        state, connection_status, balance, equity, currency, account_trade_mode)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       owner,
       "mt5",
-      "matrix-token-hash",
+      "Matrix-Server",
+      "1000",
+      "enc",
+      "metaapi-matrix-test",
+      "DEPLOYED",
+      "CONNECTED",
+      10_000,
+      10_000,
       "USD",
-      10_000,
-      10_000,
-      "online",
       tradeMode,
-      // A fresh, tight quote: the choke point's preflight refuses a stale or
-      // absent price, so the permitted rows must look like a live feed.
-      JSON.stringify([{ symbol: "EURUSD", bid: 1.1, ask: 1.10012, point: 0.00001, digits: 5 }]),
     ],
   );
 }
@@ -101,7 +102,7 @@ async function newIntent(
     side: "buy",
     notional: 100,
     market: "forex",
-    broker: "mt_ea",
+    broker: "metaapi",
     entry: 1.1,
     stop_loss: 1.09,
     take_profit: 1.12,
@@ -442,27 +443,4 @@ describe("execution matrix: downstream gates still hold with the stage open", ()
     assert.equal(placeOrderCalls, 0);
   });
 
-  it("demo × a stale/absent live quote → refused by preflight, zero broker calls", async () => {
-    process.env.AUTO_EXECUTION_STAGE = "demo";
-    const db = await import("@/lib/db");
-    // Connected and demo, but the last heartbeat is ancient — the EA feed is
-    // stale, exactly the state a spread blowout hides behind.
-    await db.execute("DELETE FROM ea_connections WHERE user_id = ?", [owner]);
-    await db.execute(
-      `INSERT INTO ea_connections
-         (user_id, platform, token_hash, account_currency, balance, equity, status,
-          account_trade_mode, symbol_specs_json, last_heartbeat_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [
-        owner, "mt5", "matrix-token-hash", "USD", 10_000, 10_000, "online", "demo",
-        JSON.stringify([{ symbol: "EURUSD", bid: 1.1, ask: 1.10012, point: 0.00001, digits: 5 }]),
-        "2020-01-01 00:00:00",
-      ],
-    );
-    const intent = await newIntent();
-    await stampApproval(intent.id);
-    const result = await run(intent.id);
-    assert.equal(result.ok, false, "a stale feed must not reach the broker");
-    assert.equal(placeOrderCalls, 0);
-  });
 });

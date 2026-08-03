@@ -66,7 +66,7 @@ Terminal records (`tp*_hit`, `sl_hit`, `invalidated`, `expired`, `cancelled`, `c
 
 When enabled, Context V2 is used for general language answers and for narrow intent-only follow-up hints when a resolved active recommendation exists. The hint contains no prices and is never sent as market input. The original current message is passed to agent paths.
 
-Market Data Agent, Candle Warehouse, OANDA/EA live data, Market Sync Guard, Data Quality Policy, Risk Agent and Execution Guard remain authoritative. Context cannot bypass explicit confirmation or create a trade from a drawing-only/general request.
+Market Data Agent, Candle Warehouse, OANDA live data, Market Sync Guard, Data Quality Policy, Risk Agent and Execution Guard remain authoritative. Context cannot bypass explicit confirmation or create a trade from a drawing-only/general request.
 
 ## Composable intent and precedence contract
 

@@ -8,7 +8,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "connect_mt5",
     domain: "mt5",
     description:
-      "Links a MetaTrader account by saving its platform, server, login, and password for the MetaApi/mt5local backend. When: connecting through MetaApi or mt5local only — not with FOREX_BACKEND=ea. side-effect: saves credentials. Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. Example: platform=mt5&server=...",
+      "Links a MetaTrader account by saving its platform, server, login, and password for the MetaApi/mt5local backend. When: the operator wants to connect their MetaTrader account for forex execution. side-effect: saves credentials. Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. Example: platform=mt5&server=...",
     inputSchema: {
       platform: z.enum(["mt4", "mt5"]),
       server: z.string().min(2),
@@ -29,7 +29,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_mt5_status",
     domain: "mt5",
     description:
-      "Reports the connection status of the MetaApi/mt5local MetaTrader link. When: checking that backend's health — with the EA backend use get_ea_diagnostics instead. read-only.",
+      "Reports the connection status of the MetaApi/mt5local MetaTrader link. When: checking that backend's health. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
   },
@@ -37,26 +37,10 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_live_account",
     domain: "mt5",
     description:
-      "Returns the unified live MT5 account state together with quote freshness (quoteAgeMs). When: before any trade, to verify the account and the freshness of its data. read-only.",
+      "Returns the unified live MT5 account state (open trades). Use get_market_price for live quotes and freshness (quoteAgeMs). When: before any trade, to verify the account is connected. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
     ui: { widget: "account-overview" },
-  },
-  {
-    name: "get_ea_diagnostics",
-    domain: "mt5",
-    description:
-      "Returns EA bridge diagnostics for the forex backend — heartbeat, spread, and recent retcodes — optionally scoped to one symbol. When: the EA connection or execution quality is in question. read-only. Example: symbol=EURUSD.",
-    inputSchema: { symbol: z.string().optional() },
-    annotations: READ_ONLY,
-  },
-  {
-    name: "get_ea_live_quotes",
-    domain: "mt5",
-    description:
-      "Returns live EA quote health — isFresh, spreadPips, and freshCount — optionally for one symbol. When: before open_trade on forex; do not execute if quotes are stale. read-only.",
-    inputSchema: { symbol: z.string().optional() },
-    annotations: READ_ONLY,
   },
   {
     name: "get_account_symbols",
@@ -74,7 +58,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "capture_mt5_chart",
     domain: "mt5",
     description:
-      "Captures an MT5 chart image: with entry/SL/TP, drawings, or a recommendation_id it queues a draw_and_capture on the EA and polls up to 30s for the annotated PNG; without annotations it falls back to a plain chart snapshot. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: an MT5 chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
+      "Captures a chart image, annotated with entry/SL/TP/drawings or a recommendation_id when given. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: a chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
     inputSchema: {
       symbol: zSymbol,
       interval: zInterval,
@@ -96,7 +80,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "modify_sl_tp",
     domain: "mt5",
     description:
-      "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, through the EA. When: an open MT5 position needs its protective levels moved. side-effect: EA modify. Example: ticket=123&stop_loss=1.08.",
+      "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. side-effect: broker modify. Example: ticket=123&stop_loss=1.08.",
     inputSchema: {
       ticket: z.number().int().positive(),
       stop_loss: z.number().positive(),
@@ -108,7 +92,7 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "cancel_mt5_order",
     domain: "mt5",
     description:
-      "Cancels a pending MT5 order by ticket, through the EA. When: the operator wants a pending order withdrawn before it fills. side-effect: EA cancel.",
+      "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. side-effect: broker cancel.",
     inputSchema: { ticket: z.number().int().positive() },
     annotations: DESTRUCTIVE,
   },
@@ -116,27 +100,11 @@ export const MT5_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "close_partial",
     domain: "mt5",
     description:
-      "Closes part of an open MT5 position by ticket, reducing it by the given number of lots through the EA. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: EA partial close.",
+      "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: broker partial close.",
     inputSchema: {
       ticket: z.number().int().positive(),
       lots: z.number().positive(),
     },
-    annotations: DESTRUCTIVE,
-  },
-  {
-    name: "query_mt5_terminal",
-    domain: "mt5",
-    description:
-      "Returns a snapshot of the MT5 terminal via the EA: margin, equity, and pending orders. When: the current margin, equity, or pending-order state is needed without changing anything. read-only via EA.",
-    inputSchema: {},
-    annotations: READ_ONLY,
-  },
-  {
-    name: "request_ea_reconnect",
-    domain: "mt5",
-    description:
-      "Flags the EA for reconnection in the database so the terminal re-establishes its feed, optionally requesting a candle resync via resync_candles. When: quotes are stale — at most once per minute. side-effect: flags DB.",
-    inputSchema: { resync_candles: z.boolean().optional() },
     annotations: DESTRUCTIVE,
   },
 ];

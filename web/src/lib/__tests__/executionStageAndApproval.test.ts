@@ -65,7 +65,7 @@ async function forgedApprovalIntent() {
     side: "buy",
     notional: 100,
     market: "forex",
-    broker: "mt_ea",
+    broker: "metaapi",
     entry: 1.1,
     stop_loss: 1.09,
     take_profit: 1.12,
@@ -99,7 +99,7 @@ describe("AUTO_EXECUTION_STAGE is enforced at the choke point", () => {
       side: "buy",
       notional: 100,
       market: "forex",
-      broker: "mt_ea",
+      broker: "metaapi",
       entry: 1.1,
       stop_loss: 1.09,
       take_profit: 1.12,
@@ -153,19 +153,15 @@ describe("explicit approval must be proved by the server, not asserted by the ca
       "UPDATE trade_intents SET approved_at = ?, approved_by_user_id = ? WHERE id = ?",
       [Date.now(), owner, intent.id],
     );
-    // A fresh EA feed with a tight quote but zero equity: the quote preflight
-    // (just before the equity check) passes, and the order stops at equity —
-    // proving the approval gate itself let it through.
-    await db.execute("DELETE FROM ea_connections WHERE user_id = ?", [owner]);
+    // A connected account with zero equity: the order stops at the equity
+    // check, proving the approval gate itself let it through.
+    await db.execute("DELETE FROM mt_accounts WHERE user_id = ?", [owner]);
     await db.execute(
-      `INSERT INTO ea_connections
-         (user_id, platform, token_hash, account_currency, balance, equity, status,
-          account_trade_mode, symbol_specs_json, last_heartbeat_at)
-       VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))`,
-      [
-        owner, "mt5", "stage-approval-token", "USD", 0, 0, "online", "demo",
-        JSON.stringify([{ symbol: "EURUSD", bid: 1.1, ask: 1.10012, point: 0.00001, digits: 5 }]),
-      ],
+      `INSERT INTO mt_accounts
+         (user_id, platform, server, login, password_enc, metaapi_account_id,
+          state, connection_status, balance, equity, currency, account_trade_mode)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [owner, "mt5", "Stage-Approval-Server", "1000", "enc", "acct-stage-approval", "DEPLOYED", "CONNECTED", 0, 0, "USD", "demo"],
     );
 
     const result = await executeIntent(owner, intent.id, { explicitApproval: true });

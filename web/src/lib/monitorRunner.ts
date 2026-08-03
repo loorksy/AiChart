@@ -1,6 +1,4 @@
 import { runCronPostScan } from "./cronPostScan";
-import { monitorEaBridgeHealth } from "./eaHealthMonitor";
-import { sampleLiveCosts } from "./strategies/liveCostProfile";
 import { collectTradeWatchAlerts } from "./tradeWatch";
 import { checkEconomicEventProximity } from "./recommendations/economicEventMonitor";
 import { listUsersForMonitor } from "./store";
@@ -12,8 +10,6 @@ export interface MonitorCycleEvent {
   userId: number;
   type:
     | "trade_alert"
-    | "ea_offline"
-    | "ea_recovered"
     | "strategy_promoted"
     | "strategy_suspended"
     | "economic_event";
@@ -39,20 +35,6 @@ export async function runMonitorCycle(): Promise<MonitorCycleResult> {
   };
   for (const { id: userId } of users) {
     try {
-      const eaEvent = await monitorEaBridgeHealth(userId);
-      // Spread sampling piggybacks on the health check: the quotes are already
-      // in memory, and ten-minute samples describe the session distribution as
-      // well as a tick stream would (plan §13 H.1). Best-effort by design.
-      await sampleLiveCosts(userId).catch(() => undefined);
-      if (eaEvent) {
-        let delivered = true;
-        try {
-          await notifyUser(userId, eaEvent.detail);
-        } catch {
-          delivered = false;
-        }
-        result.events.push({ userId, ...eaEvent, delivered });
-      }
       const strategyEvents = await refreshAllStrategyDecay(userId);
       for (const strategyEvent of strategyEvents) {
         const deployment = strategyEvent.deployment;

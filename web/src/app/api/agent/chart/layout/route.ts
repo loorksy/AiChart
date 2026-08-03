@@ -53,7 +53,7 @@ const postSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9]{8,16}$/).optional(),
   symbol: z.string().min(3).max(20).optional(),
   interval: z.string().min(2).max(4).optional(),
-  dataSource: z.enum(["oanda", "ea"]).optional(),
+  dataSource: z.enum(["oanda", "metaapi"]).optional(),
   mode: z.enum(["set", "add", "clear"]).default("set"),
   drawings: z.array(drawingSchema).max(24).optional(),
   recommendation: recommendationSchema.nullable().optional(),

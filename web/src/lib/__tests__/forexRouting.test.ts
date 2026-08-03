@@ -6,8 +6,8 @@ import { test } from "node:test";
 
 /**
  * End-to-end execution routing: a user's saved forex_backend choice must drive
- * which broker a newly created forex intent targets — so EA users execute via
- * the EA bridge and "platform" users via the server-side MT5 bridge, on the
+ * which broker a newly created forex intent targets — so a cloud user executes
+ * via MetaApi and a "platform" user via the server-side MT5 bridge, on the
  * same deployment.
  */
 test("createIntent routes forex broker by the user's forex_backend choice", async () => {
@@ -16,6 +16,7 @@ test("createIntent routes forex broker by the user's forex_backend choice", asyn
   process.env.ENCRYPTION_KEY = "0".repeat(64);
   process.env.APP_SECRET = "test-secret";
   process.env.MT5_BRIDGE_URL = "http://mt5.local"; // mt5local available
+  process.env.METAAPI_TOKEN = "tok"; // metaapi available
   delete process.env.FOREX_BACKEND;
   delete process.env.DATABASE_URL;
 
@@ -40,14 +41,14 @@ test("createIntent routes forex broker by the user's forex_backend choice", asyn
   });
   assert.equal(platformIntent.broker, "mt5_local");
 
-  // Choice: EA bridge on the user's device → mt_ea broker.
-  await store.updateSettings(userId, { forex_backend: "ea" });
-  const eaIntent = await store.createIntent(userId, {
+  // Choice: cloud MetaTrader account → metaapi broker.
+  await store.updateSettings(userId, { forex_backend: "metaapi" });
+  const cloudIntent = await store.createIntent(userId, {
     symbol: "EURUSD",
     side: "buy",
     notional: 100,
     market: "forex",
     status: "pending",
   });
-  assert.equal(eaIntent.broker, "mt_ea");
+  assert.equal(cloudIntent.broker, "metaapi");
 });

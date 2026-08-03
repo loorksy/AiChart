@@ -3,9 +3,9 @@ export type MarketType = "forex";
 import { forexBrokerKind } from "../brokers/forexBackend";
 
 /** Underlying broker/execution backend for forex orders. */
-export type BrokerKind = "mt_ea" | "metaapi" | "mt5_local";
+export type BrokerKind = "metaapi" | "mt5_local";
 
-/** MetaTrader platform variant for the EA bridge. */
+/** MetaTrader platform variant. */
 export type MtPlatform = "mt4" | "mt5";
 
 /** Maps forex orders to the user's configured execution backend. */

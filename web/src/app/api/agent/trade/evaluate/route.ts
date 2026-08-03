@@ -3,7 +3,7 @@ import { DEFAULT_MARKET } from "@/lib/marketPolicy";
 import { resolveBridgeUserId } from "@/lib/agentAuth";
 import { handleError } from "@/lib/api";
 import { buildAccountProfile } from "@/lib/accountProfile";
-import { getEaConnection, isHeartbeatFresh, parseEaSymbolSpecs } from "@/lib/eaStore";
+import { getForexLiveMid } from "@/lib/markets/forexPrice";
 import { buildForexSnapshot } from "@/lib/market";
 import { profileForInterval } from "@/lib/analysisProfile";
 import { fetchMarketContext } from "@/lib/marketContext";
@@ -14,15 +14,7 @@ async function livePrice(
   symbol: string,
   _market: string,
 ): Promise<number> {
-  const conn = await getEaConnection(userId);
-  if (!conn || !isHeartbeatFresh(conn.last_heartbeat_at)) return 0;
-  const spec = parseEaSymbolSpecs(conn.symbol_specs_json).find(
-    (s) => s.symbol?.toUpperCase() === symbol.toUpperCase(),
-  );
-  if (!spec) return 0;
-  const bid = Number(spec.bid) || 0;
-  const ask = Number(spec.ask) || 0;
-  return bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask || 0;
+  return getForexLiveMid(userId, symbol);
 }
 
 /** Bridge: live snapshot for an open trade — price, candles, PnL, context. */

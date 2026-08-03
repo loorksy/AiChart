@@ -133,7 +133,7 @@ export async function submitStrategyBacktest(input: SubmitStrategyBacktestInput)
   } catch (error) {
     throw new PipelineSubmitError(
       error instanceof Error
-        ? `Backtest cost profile unavailable: ${error.message}. Connect EA live quotes or set BACKTEST_SPREAD_PIPS.`
+        ? `Backtest cost profile unavailable: ${error.message}. Set BACKTEST_SPREAD_PIPS.`
         : "Backtest cost profile unavailable",
       409,
     );

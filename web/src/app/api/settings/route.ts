@@ -25,7 +25,7 @@ const settingsPatchSchema = z
         z.object({ forex: assetList.optional(), watchlist: assetList.optional() }).strict(),
       ])
       .optional(),
-    forex_backend: z.enum(["ea", "mt5local", "metaapi"]).nullable().optional(),
+    forex_backend: z.enum(["mt5local", "metaapi"]).nullable().optional(),
     // "provider/model" the user picked in the chat composer; null = default.
     preferred_model_ref: z
       .string()

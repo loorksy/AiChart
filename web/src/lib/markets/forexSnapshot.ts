@@ -47,7 +47,7 @@ export async function buildForexSnapshot(
   userId: number,
   symbol: string,
   interval = "1h",
-  source: Extract<OhlcSource, "oanda" | "ea"> = "oanda",
+  source: OhlcSource = "oanda",
 ): Promise<ForexMarketSnapshot> {
   const sym = symbol.trim();
   const tf = normalizeInterval(interval);

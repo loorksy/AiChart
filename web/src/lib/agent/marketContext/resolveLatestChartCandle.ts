@@ -38,7 +38,6 @@ export async function resolveLatestChartCandle(input: {
       symbol,
       interval,
       limit: 2,
-      ea: input.dataSource === "ea",
       fresh: true,
     });
     const res = await fetch(url, { credentials: "include" });

@@ -76,22 +76,16 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
     "list_instruments",
     mcpToolConfig("list_instruments"),
     async (args) => {
-      const { market, q, source } = args as {
+      const { market, q } = args as {
         market?: "forex";
         q?: string;
-        source?: "oanda" | "ea";
       };
       return bridgeCall(() =>
-        bridge.get(
-          "/api/instruments",
-          {
-            market: market ?? "forex",
-            q,
-            wrapped: "1",
-            ...(source === "ea" ? { source: "ea" } : {}),
-          },
-          source === "ea" ? 30000 : undefined,
-        ),
+        bridge.get("/api/instruments", {
+          market: market ?? "forex",
+          q,
+          wrapped: "1",
+        }),
       );
     },
   );
@@ -138,29 +132,23 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
     "get_ohlc",
     mcpToolConfig("get_ohlc"),
     async (args) => {
-      const { symbol, interval, market, source, limit, cursor } = args as {
+      const { symbol, interval, market, limit, cursor } = args as {
         symbol: string;
         interval?: string;
         market?: "forex";
-        source?: "oanda" | "ea";
         limit?: number;
         cursor?: number;
       };
       const oandaSymbol = toOandaForexSymbol(symbol);
-      const dataSource = source === "ea" ? "ea" : "oanda";
       return bridgeCall(() =>
-        bridge.get(
-          "/api/agent/market/ohlc",
-          {
-            symbol: oandaSymbol,
-            interval,
-            market: market ?? "forex",
-            source: dataSource,
-            limit,
-            cursor,
-          },
-          dataSource === "ea" ? 30000 : undefined,
-        ),
+        bridge.get("/api/agent/market/ohlc", {
+          symbol: oandaSymbol,
+          interval,
+          market: market ?? "forex",
+          source: "oanda",
+          limit,
+          cursor,
+        }),
       );
     },
   );

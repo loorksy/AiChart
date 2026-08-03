@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/api";
 
 export enum BridgeErrorCode {
   STALE_QUOTE = "STALE_QUOTE",
-  EA_OFFLINE = "EA_OFFLINE",
+  CONNECTION_OFFLINE = "CONNECTION_OFFLINE",
   EXECUTION_UNAUTHORIZED = "EXECUTION_UNAUTHORIZED",
   RATE_LIMITED = "RATE_LIMITED",
   VALIDATION_ERROR = "VALIDATION_ERROR",
@@ -38,7 +38,7 @@ export type BridgeEnvelope<T = unknown> = BridgeSuccess<T> | BridgeFailure;
 
 const DEFAULT_RETRIABLE: Partial<Record<BridgeErrorCode, boolean>> = {
   [BridgeErrorCode.STALE_QUOTE]: true,
-  [BridgeErrorCode.EA_OFFLINE]: true,
+  [BridgeErrorCode.CONNECTION_OFFLINE]: true,
   [BridgeErrorCode.RATE_LIMITED]: true,
   [BridgeErrorCode.UPSTREAM_TIMEOUT]: true,
   [BridgeErrorCode.SPREAD_TOO_WIDE]: true,
@@ -49,7 +49,7 @@ const DEFAULT_RETRIABLE: Partial<Record<BridgeErrorCode, boolean>> = {
 
 const HTTP_STATUS: Partial<Record<BridgeErrorCode, number>> = {
   [BridgeErrorCode.STALE_QUOTE]: 409,
-  [BridgeErrorCode.EA_OFFLINE]: 503,
+  [BridgeErrorCode.CONNECTION_OFFLINE]: 503,
   [BridgeErrorCode.EXECUTION_UNAUTHORIZED]: 403,
   [BridgeErrorCode.RATE_LIMITED]: 429,
   [BridgeErrorCode.VALIDATION_ERROR]: 400,
@@ -126,7 +126,7 @@ function mapApiError(err: ApiError): BridgeFailure {
   }
   if (status === 503) {
     return bridgeError(
-      BridgeErrorCode.EA_OFFLINE,
+      BridgeErrorCode.CONNECTION_OFFLINE,
       err.message,
       err.message,
     );
