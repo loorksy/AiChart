@@ -127,6 +127,8 @@ function priceScale(symbol: string): number {
 /** EA (broker) symbols are namespaced inside TV with this ticker prefix. */
 export const EA_TICKER_PREFIX = "EA:";
 const EA_EXCHANGE = "MT5";
+/** Bars served by the trader's cloud MetaTrader account, via MetaApi. */
+const CLOUD_EXCHANGE = "MT5 CLOUD";
 /** Resolutions the EA bridge serves natively (MT5 periods). */
 const EA_RESOLUTIONS = ["1", "5", "15", "30", "60", "240", "1D", "1W"] as ResolutionString[];
 
@@ -287,7 +289,18 @@ export function createAiChartDatafeed(
        */
       const sym = viaEa || /[a-z]/.test(bare) ? bare : bare.toUpperCase();
       const tickerOut = viaEa ? `${EA_TICKER_PREFIX}${sym}` : sym;
-      const exch = viaEa ? EA_EXCHANGE : exchange;
+      /*
+       * The header prints this, so it has to name the feed the bars actually
+       * came from. It said OANDA for every symbol, including one served by the
+       * trader's own cloud account — the reported "I picked cloud and it still
+       * says OANDA". Same lowercase tell as above: a broker catalogue spells
+       * XAUUSDm, a canonical platform key never does.
+       */
+      const exch = viaEa
+        ? EA_EXCHANGE
+        : /[a-z]/.test(sym)
+          ? CLOUD_EXCHANGE
+          : exchange;
       const info: LibrarySymbolInfo = {
         name: sym,
         ticker: tickerOut,
