@@ -4,6 +4,7 @@ import {
 } from "@/lib/brokers/forexBackend";
 import { isMt5BridgeConnectCapable } from "@/lib/mt5local/client";
 import { isMetaApiConfiguredAsync } from "@/lib/metaapi/client";
+import { metaapiUxEnabled } from "@/lib/metaapi/lifecycle";
 import {
   getSettings,
   getLimits,
@@ -27,6 +28,15 @@ export async function loadConsoleSettingsProps(user: PublicUser) {
     limits: await getLimits(user.id),
     ea: await getEaConnectionMeta(user.id),
     mt: usesMtAccount ? await getMtAccountMeta(user.id) : null,
+    /**
+     * Whether to offer the MetaTrader linking wizard in the connections tab.
+     * Deliberately the wizard's OWN gate, not metaApiAvailable: a token can be
+     * present while the feature is still switched off, and a card gated on the
+     * token would then hand the trader a button that lands on "not enabled".
+     */
+    mt5LinkEnabled: await metaapiUxEnabled(),
+    /** The linked account, if any — shown on the card regardless of backend. */
+    mt5Account: await getMtAccountMeta(user.id),
     forexBackend,
     mt5LocalAvailable: mt5BridgeConnect,
     metaApiAvailable,

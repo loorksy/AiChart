@@ -237,6 +237,12 @@ export const en = {
     "Finish email and password on Complete profile before signing in from Claude.",
   "connect.mcp.complete_profile": "Complete profile",
   "connect.mcp.paid_only": "MCP connection requires an active paid subscription.",
+  "connect.mt5.title": "MetaTrader 5",
+  "connect.mt5.subtitle": "Link your broker account — find the server, then sign in.",
+  "connect.mt5.body": "Cloud linking: nothing to install, and the account stays connected after you close the browser.",
+  "connect.mt5.cta": "Link a MetaTrader 5 account",
+  "connect.mt5.manage": "Manage link",
+  "connect.mt5.linked": "Linked",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",

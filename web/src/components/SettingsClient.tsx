@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell, Cable, Moon, Save, Sparkles, Sun, User } from "lucide-react";
 import { EaConnectCard } from "@/components/settings/EaConnectCard";
 import { McpConnectCard } from "@/components/settings/McpConnectCard";
+import { Mt5LinkCard } from "@/components/settings/Mt5LinkCard";
 import { UserSkillsPanel } from "@/components/settings/UserSkillsPanel";
 
 import { PageHeader, Surface } from "@/components/foundation";
@@ -14,7 +15,7 @@ import { useTheme, type ThemePreference } from "@/components/ThemeProvider";
 import { useLocale } from "@/hooks/useLocale";
 import type { TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import type { AdminLimits, EaConnectionMeta, PublicUser, TradingSettings } from "@/lib/types";
+import type { AdminLimits, EaConnectionMeta, MtAccountMeta, PublicUser, TradingSettings } from "@/lib/types";
 
 type TabId = "profile" | "subscription" | "appearance" | "integrations" | "alerts" | "skills";
 
@@ -43,6 +44,8 @@ export default function SettingsClient({
   settings: initialSettings,
   limits: _limits,
   ea,
+  mt5LinkEnabled = false,
+  mt5Account = null,
   canDownloadEa = false,
   initialTab,
   embedMode = false,
@@ -56,6 +59,8 @@ export default function SettingsClient({
   limits: AdminLimits;
   ea: EaConnectionMeta | null;
   mt?: unknown;
+  mt5LinkEnabled?: boolean;
+  mt5Account?: MtAccountMeta | null;
   forexBackend?: unknown;
   mt5LocalAvailable?: boolean;
   metaApiAvailable?: boolean;
@@ -222,6 +227,9 @@ export default function SettingsClient({
 
       {tab === "integrations" && (
         <div className="space-y-4">
+          {/* Cloud linking first: it asks for nothing but the broker login,
+              where the EA route needs a terminal installed and running. */}
+          {mt5LinkEnabled && <Mt5LinkCard account={mt5Account} />}
           <EaConnectCard connection={ea} canDownloadEa={canDownloadEa} />
           <McpConnectCard />
         </div>

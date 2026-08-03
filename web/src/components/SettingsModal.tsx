@@ -8,13 +8,22 @@ import { Button } from "@/components/squareui/button";
 import { Skeleton } from "@/components/squareui/skeleton";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
-import type { AdminLimits, EaConnectionMeta, PublicUser, TradingSettings } from "@/lib/types";
+import type { AdminLimits, EaConnectionMeta, MtAccountMeta, PublicUser, TradingSettings } from "@/lib/types";
 
+/**
+ * Hand-written mirror of what /api/console/settings-props returns. The spread
+ * below passes the whole parsed body through, so a field missing here still
+ * reaches SettingsClient at runtime — but it stops being visible to the
+ * compiler, which is how the MetaTrader card would silently vanish from the
+ * modal the day someone replaces the spread with a picked list.
+ */
 type SettingsProps = {
   user: PublicUser;
   settings: TradingSettings;
   limits: AdminLimits;
   ea: EaConnectionMeta | null;
+  mt5LinkEnabled?: boolean;
+  mt5Account?: MtAccountMeta | null;
   canDownloadEa?: boolean;
 };
 
