@@ -54,12 +54,34 @@ before(async () => {
 });
 
 describe("market data source", () => {
-  it("stays on platform data while the deployment says OANDA-only", async () => {
+  /*
+   * This pair used to be one case asserting that an explicit `ea` request came
+   * back `oanda_data_only`. That was the deployment flag short-circuiting
+   * before anything looked at what the account had connected — and since
+   * FOREX_DATA_SOURCE falls back to "oanda", it did so on every deployment,
+   * which is why the three-pipe picker could only ever offer one pipe.
+   *
+   * The source it lands on is unchanged. What changed is that the flag now
+   * governs the default rather than overruling a choice, and the fallback
+   * reason names the real cause.
+   */
+  it("keeps platform data as the default while the deployment says OANDA", async () => {
+    delete process.env.FOREX_DATA_SOURCE;
+    const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
+    const decision = await resolveMarketDataSource(eaUser, null);
+    assert.equal(decision.source, "oanda");
+    assert.equal(decision.reason, "oanda_data_only");
+  });
+
+  it("falls back for the honest reason when the pipe is not connected", async () => {
     delete process.env.FOREX_DATA_SOURCE;
     const { resolveMarketDataSource } = await import("@/lib/markets/marketDataSource");
     const decision = await resolveMarketDataSource(eaUser, "ea");
     assert.equal(decision.source, "oanda");
-    assert.equal(decision.reason, "oanda_data_only");
+    // Not "oanda_data_only": this account simply has no EA linked, and telling
+    // it otherwise is what put "link an account" under an already-linked one.
+    assert.equal(decision.reason, "ea_not_connected");
+    assert.equal(decision.available.ea, false);
   });
 
   it("never asks a terminal that is not there", async () => {

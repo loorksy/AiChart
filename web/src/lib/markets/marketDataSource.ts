@@ -60,11 +60,19 @@ const NOTHING_CONNECTED: MarketDataSourceAvailability = {
   metaapi: false,
 };
 
-/** Which pipes could serve this user right now. */
+/**
+ * Which pipes could serve this user right now.
+ *
+ * Connection state only. FOREX_DATA_SOURCE used to short-circuit this, which
+ * made every non-OANDA row in the picker permanently grey — and grey with the
+ * wrong explanation, since the UI reads unavailability as "you have not linked
+ * this yet". The deployment default belongs in the `auto` branch below, not in
+ * an answer about what the account has connected.
+ */
 export async function marketDataAvailability(
   userId: number | null | undefined,
 ): Promise<MarketDataSourceAvailability> {
-  if (!userId || isOandaDataOnly()) return NOTHING_CONNECTED;
+  if (!userId) return NOTHING_CONNECTED;
   const [ea, mt] = await Promise.all([
     getEaConnection(userId).catch(() => null),
     getMtAccount(userId).catch(() => null),
@@ -95,14 +103,6 @@ export async function resolveMarketDataSource(
   userId: number | null | undefined,
   requested?: string | null,
 ): Promise<MarketDataSourceDecision> {
-  if (isOandaDataOnly()) {
-    return {
-      source: "oanda",
-      reason: "oanda_data_only",
-      available: NOTHING_CONNECTED,
-      preference: "auto",
-    };
-  }
   if (!userId) {
     return {
       source: "oanda",
@@ -135,8 +135,14 @@ export async function resolveMarketDataSource(
       : { source: "oanda", reason: "metaapi_not_connected", available, preference };
   }
 
-  // auto — the cloud account first, because linking one is a statement about
-  // which market the trader wants to see.
+  // auto — with no choice of their own, the deployment default decides. This is
+  // where FOREX_DATA_SOURCE belongs: it sets what happens by default, and does
+  // not overrule a trader who has picked a pipe their account is connected to.
+  if (isOandaDataOnly()) {
+    return { source: "oanda", reason: "oanda_data_only", available, preference };
+  }
+  // The cloud account first, because linking one is a statement about which
+  // market the trader wants to see.
   if (available.metaapi) {
     return { source: "metaapi", reason: "auto_metaapi", available, preference };
   }
