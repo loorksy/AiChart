@@ -1,5 +1,5 @@
 /**
- * OpenAI-compatible chat-completions client (OpenAI + Gemini OpenAI-compat).
+ * OpenAI-compatible chat-completions client.
  * same dialect). Converts to/from the Anthropic-shaped Message / ToolDef /
  * ContentBlock types used across the codebase so callers never change.
  */
@@ -121,13 +121,12 @@ function bareModelId(model: string): string {
 
 /**
  * Newer OpenAI chat models reject `max_tokens` and require `max_completion_tokens`.
- * Gemini / Claude-via-OpenRouter keep using `max_tokens`.
+ * Claude-via-OpenRouter keeps using `max_tokens`, which is also the fallback.
  */
 export function openAICompatTokenLimitField(
   model: string,
 ): "max_tokens" | "max_completion_tokens" {
   const id = bareModelId(model);
-  if (id.startsWith("gemini-")) return "max_tokens";
   if (/^o\d/.test(id)) return "max_completion_tokens";
   if (/^gpt-5/.test(id)) return "max_completion_tokens";
   if (/^gpt-4\.1/.test(id)) return "max_completion_tokens";

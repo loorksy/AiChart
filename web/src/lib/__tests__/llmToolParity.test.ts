@@ -73,9 +73,11 @@ describe("openAICompatTokenLimitField", () => {
     assert.equal(openAICompatTokenLimitField("gpt-5"), "max_completion_tokens");
   });
 
-  it("keeps max_tokens for gpt-4o and gemini", () => {
+  it("keeps max_tokens for gpt-4o and OpenRouter-style ids", () => {
     assert.equal(openAICompatTokenLimitField("gpt-4o"), "max_tokens");
-    assert.equal(openAICompatTokenLimitField("gemini-2.5-flash"), "max_tokens");
     assert.equal(openAICompatTokenLimitField("anthropic/claude-3.5-sonnet"), "max_tokens");
+    // Anything unrecognised falls through to max_tokens, which is why the
+    // dedicated `gemini-` branch could go with the rest of the integration.
+    assert.equal(openAICompatTokenLimitField("some-other-model"), "max_tokens");
   });
 });

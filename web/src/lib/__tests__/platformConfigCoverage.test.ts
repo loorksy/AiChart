@@ -11,10 +11,10 @@ import { PLATFORM_CONFIG_FIELDS } from "../platformConfig";
  * it, and savePlatformConfig iterates the field list, so a hand-crafted POST is
  * dropped without an error. The only remaining way in is an env var on the box.
  *
- * That is how METAAPI_TOKEN, the three OANDA keys and GEMINI_API_KEY ended up
- * unreachable while three separate surfaces told the operator to "add it from
- * the platform panel". This test walks the real source tree so the next key
- * added to a getPlatformValue call has to come with a field.
+ * That is how METAAPI_TOKEN and the three OANDA keys ended up unreachable while
+ * separate surfaces told the operator to "add it from the platform panel". This
+ * test walks the real source tree so the next key added to a getPlatformValue
+ * call has to come with a field.
  */
 
 const SRC = path.join(import.meta.dirname, "..", "..");
@@ -53,12 +53,7 @@ test("every platform-config key the code reads has a field in the panel", () => 
 test("the keys the operator was told to add are settable", () => {
   // The exact keys whose absence stranded the operator, pinned by name so a
   // refactor that drops one fails here rather than in production.
-  for (const key of [
-    "METAAPI_TOKEN",
-    "OANDA_API_TOKEN",
-    "OANDA_ACCOUNT_ID",
-    "GEMINI_API_KEY",
-  ]) {
+  for (const key of ["METAAPI_TOKEN", "OANDA_API_TOKEN", "OANDA_ACCOUNT_ID"]) {
     const field = PLATFORM_CONFIG_FIELDS.find((f) => f.key === key);
     assert.ok(field, `${key} must be settable from the platform panel`);
   }
@@ -70,7 +65,7 @@ test("credentials are stored encrypted, plain values are not", () => {
     // savePlatformConfig: encrypt = secret && !plainStorage
     return f.secret && !f.plainStorage;
   };
-  for (const key of ["METAAPI_TOKEN", "OANDA_API_TOKEN", "GEMINI_API_KEY"]) {
+  for (const key of ["METAAPI_TOKEN", "OANDA_API_TOKEN"]) {
     assert.equal(encrypted(key), true, `${key} must be encrypted at rest`);
   }
   // Non-secrets stay readable so the migration that marks them plain=1 agrees.
