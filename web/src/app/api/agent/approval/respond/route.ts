@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
         ok: true,
         dry_run: true,
         would: body.action,
-        pending_intent: {
+        intent: {
+          id: intent.id,
           symbol: intent.symbol,
           side: intent.side,
           entry: intent.entry,
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
           broker: intent.broker,
           rationale: intent.rationale,
           authorization_source: intent.authorization_source,
+          status: intent.status,
         },
         note:
           body.action === "approve"
@@ -58,7 +60,27 @@ export async function POST(req: NextRequest) {
       "agent_approval_respond",
       `#${body.intent_id} ${body.action} → ${result.status}`,
     );
-    return NextResponse.json(result);
+    // Post-resolution snapshot for the widget to render the outcome (which
+    // trade this was) without a second round trip — never used to decide
+    // anything, resolution already happened via respondToApproval above.
+    const resolved = await getIntent(body.intent_id, userId);
+    return NextResponse.json({
+      ...result,
+      intent: resolved
+        ? {
+            id: resolved.id,
+            symbol: resolved.symbol,
+            side: resolved.side,
+            entry: resolved.entry,
+            stop_loss: resolved.stop_loss,
+            take_profit: resolved.take_profit,
+            notional: resolved.notional,
+            broker: resolved.broker,
+            rationale: resolved.rationale,
+            status: resolved.status,
+          }
+        : null,
+    });
   } catch (e) {
     return handleError(e);
   }

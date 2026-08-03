@@ -343,7 +343,7 @@ function fmtRequestApproval(d: Record<string, unknown>): string | null {
 function fmtRespondApproval(d: Record<string, unknown>): string | null {
   if (d.dry_run === true) {
     if (d.ok === false) return `Preview: ${d.reason ?? "request not actionable"}.`;
-    const pi = obj(d.pending_intent);
+    const pi = obj(d.intent);
     return `Preview only — nothing resolved. Would ${d.would}: ${pi.symbol ?? "?"} ${pi.side ?? "?"}. ${d.note ?? ""}`.trim();
   }
   if (d.status) return `Approval resolved — status: ${d.status}.`;

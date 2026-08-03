@@ -22,7 +22,14 @@ function registerWidgetResource(
     server,
     label,
     uri,
-    { description: label, ...(mimeType !== RESOURCE_MIME_TYPE ? { mimeType } : {}) },
+    {
+      description: label,
+      ...(mimeType !== RESOURCE_MIME_TYPE ? { mimeType } : {}),
+      // Listing-level fallback for the same declaration the read callback
+      // returns per content item (loggedHtmlReadHandler) — see the comment
+      // there for why an explicit empty csp is correct, not just the default.
+      _meta: { ui: { csp: {} } },
+    },
     loggedHtmlReadHandler(uri, html, mimeType),
   );
 }

@@ -516,6 +516,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
+    ui: { widget: "approval-card" },
   },
   {
     name: "respond_approval",
@@ -528,6 +529,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       dry_run: zDryRun,
     },
     annotations: DESTRUCTIVE,
+    ui: { widget: "approval-card" },
   },
   {
     name: "get_pending_approvals",
@@ -536,7 +538,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
       "Lists every trade intent still awaiting operator approval. When: mode=approval, to review what is pending before requesting or responding. read-only.",
     inputSchema: {},
     annotations: READ_ONLY,
-    ui: { widget: "pending-approvals" },
+    ui: { widget: "approval-queue" },
   },
   {
     name: "get_agent_settings",

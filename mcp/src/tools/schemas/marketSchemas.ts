@@ -81,7 +81,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       market: zMarket,
     },
     annotations: READ_ONLY,
-    ui: { widget: "recommendation-card" },
+    ui: { widget: "scan-results" },
   },
   {
     name: "get_ohlc",
@@ -117,7 +117,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
       limit: z.number().int().min(20).max(500).optional(),
     },
     annotations: READ_ONLY,
-    ui: { widget: "levels-card" },
+    ui: { widget: "levels-report" },
   },
   {
     name: "detect_market_regime",
