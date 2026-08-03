@@ -1,6 +1,7 @@
 "use client";
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
+import { normalizeSymbolCase } from "@/lib/markets/symbolCase";
 import {
   Suspense,
   useCallback,
@@ -204,7 +205,7 @@ function SmartChartWorkspaceInner({
   const market: MarketType = "forex";
 
   const [symbol, setSymbol] = useState(() => {
-    if (initialSymbol) return initialSymbol.toUpperCase();
+    if (initialSymbol) return normalizeSymbolCase(initialSymbol);
     if (typeof window === "undefined") return DEFAULT_SYMBOL;
     return localStorage.getItem(LS_SYMBOL) ?? DEFAULT_SYMBOL;
   });
@@ -416,7 +417,7 @@ function SmartChartWorkspaceInner({
             setDataSource("oanda");
           }
         }
-        if (d.symbol && d.symbol !== symbol) setSymbol(d.symbol.toUpperCase());
+        if (d.symbol && d.symbol !== symbol) setSymbol(normalizeSymbolCase(d.symbol));
         if (d.interval && d.interval !== interval) {
           setChartInterval(normalizeInterval(d.interval));
         }
@@ -437,7 +438,7 @@ function SmartChartWorkspaceInner({
   }, [symbol, interval, market]);
 
   const handleSymbolChange = useCallback((s: string, source: MarketDataSource = "oanda") => {
-    setSymbol(s.toUpperCase());
+    setSymbol(normalizeSymbolCase(s));
     setDataSource(source);
   }, []);
 

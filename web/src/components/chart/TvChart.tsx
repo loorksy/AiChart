@@ -1,6 +1,7 @@
 "use client";
 
 import type { MarketDataSource } from "@/lib/markets/marketDataSource";
+import { normalizeSymbolCase } from "@/lib/markets/symbolCase";
 import {
   forwardRef,
   useCallback,
@@ -271,14 +272,14 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     },
     currentSymbol: () => {
       const w = widgetRef.current;
-      if (!w || !readyRef.current) return symbol.toUpperCase();
+      if (!w || !readyRef.current) return normalizeSymbolCase(symbol);
       try {
         const s = w.activeChart().symbol();
         // Strip any namespace (EA:/MT5:/OANDA:) — analysis wants the bare pair.
         const ticker = s.includes(":") ? s.split(":").pop()! : s;
-        return ticker.toUpperCase();
+        return normalizeSymbolCase(ticker);
       } catch {
-        return symbol.toUpperCase();
+        return normalizeSymbolCase(symbol);
       }
     },
     latestCandle: () => latestCandleRef.current,
@@ -304,7 +305,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         return readUserDrawings({
           chart: w.activeChart(),
           trackedIds: mgr.trackedIds(),
-          symbol: symbol.toUpperCase(),
+          symbol: normalizeSymbolCase(symbol),
           interval,
         });
       } catch {
@@ -364,7 +365,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     const bootSymbol =
       dataSource === "ea"
         ? `${EA_TICKER_PREFIX}${symbol}`
-        : symbol.toUpperCase();
+        : normalizeSymbolCase(symbol);
     const bootInterval = interval;
     const bootMarket = market;
     const bootEa = eaEnabled;
@@ -484,7 +485,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             const s = chart.symbol();
             // "EA:EURUSDm" / "MT5:EURUSDm" → broker source; else OANDA.
             const viaEa = isEaTicker(s) || s.startsWith("MT5:");
-            const ticker = (s.includes(":") ? s.split(":").pop()! : s).toUpperCase();
+            const ticker = (s.includes(":") ? s.split(":").pop()! : s);
             onSymbolChangeRef.current?.(ticker, viaEa ? "ea" : "oanda");
           });
           chart.onIntervalChanged().subscribe(null, (res: ResolutionString) => {
@@ -523,16 +524,18 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       const chart = w.activeChart();
       const current = chart.symbol();
       const currentEa = isEaTicker(current) || current.startsWith("MT5:");
-      const currentBare = (
-        current.includes(":") ? current.split(":").pop()! : current
-      ).toUpperCase();
+      // Both sides normalised the same way, or a broker symbol compares
+      // XAUUSDM against XAUUSDm forever and the chart resets on every tick.
+      const currentBare = normalizeSymbolCase(
+        current.includes(":") ? current.split(":").pop()! : current,
+      );
       const wantEa = dataSource === "ea";
-      if (currentBare !== symbol.toUpperCase() || currentEa !== wantEa) {
+      if (currentBare !== normalizeSymbolCase(symbol) || currentEa !== wantEa) {
         clearLatestCandle();
         pushSyncRef.current = true;
         const target = wantEa
           ? `${EA_TICKER_PREFIX}${stripEaPrefix(symbol)}`
-          : symbol.toUpperCase();
+          : normalizeSymbolCase(symbol);
         chart.setSymbol(target, () => {
           pushSyncRef.current = false;
         });
