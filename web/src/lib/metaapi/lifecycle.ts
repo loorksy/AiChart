@@ -23,6 +23,18 @@ export async function metaapiUxEnabled(): Promise<boolean> {
   return flag === "1" || flag === "true";
 }
 
+/**
+ * Keep every linked account deployed around the clock.
+ *
+ * Defaults ON: a broker connection that drops because the operator closed a
+ * browser tab is not a connection they can plan a trade around. Set
+ * METAAPI_ALWAYS_ON=0 to bring back idle-undeploy and its lower bill.
+ */
+export async function metaapiAlwaysOn(): Promise<boolean> {
+  const flag = (await getPlatformValueAsync("METAAPI_ALWAYS_ON"))?.trim();
+  return flag !== "0" && flag !== "false";
+}
+
 async function metaapiHourlyUsd(): Promise<number> {
   const raw = Number(await getPlatformValueAsync("METAAPI_HOURLY_USD"));
   return Number.isFinite(raw) && raw >= 0 ? raw : 0.02;
@@ -175,6 +187,19 @@ export async function undeployAccount(
  */
 export async function sweepIdleDeployments(now = Date.now()): Promise<number> {
   if (!(await metaapiUxEnabled())) return 0;
+  /*
+   * Always-on: leaving the platform must not drop the broker link.
+   *
+   * The idle sweep was built to cut MetaApi's per-deployed-hour bill, and it
+   * did that by undeploying an account 15 minutes after its owner closed the
+   * tab. That also means the link a trader expects to be up around the clock
+   * — like the terminal it replaces — quietly goes down when they walk away.
+   * Connection continuity wins; METAAPI_ALWAYS_ON=0 restores the old
+   * cost-saving behaviour if the bill ever argues otherwise.
+   *
+   * Deploy hours are still recorded and still billed; only the undeploy stops.
+   */
+  if (await metaapiAlwaysOn()) return 0;
   const open = await query<{ user_id: number; account_id: string }>(
     "SELECT DISTINCT user_id, account_id FROM metaapi_deploy_sessions WHERE undeployed_at IS NULL",
   );
