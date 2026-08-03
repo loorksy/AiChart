@@ -31,6 +31,9 @@ export function useEaLivePrice(symbol: string, enabled = true): LivePriceTick {
         const data = (await res.json()) as {
           online?: boolean;
           price?: number | null;
+          spread_label?: string | null;
+          spread_pips?: number | null;
+          source?: "oanda" | "metaapi" | "ea" | null;
         };
         if (!alive) return;
         const price = Number(data.price) || 0;
@@ -42,6 +45,9 @@ export function useEaLivePrice(symbol: string, enabled = true): LivePriceTick {
           changePct: 0,
           direction,
           connected: Boolean(data.online),
+          spreadLabel: data.spread_label ?? null,
+          spreadPips: data.spread_pips ?? null,
+          source: data.source ?? null,
         });
       } catch {
         /* keep last tick */

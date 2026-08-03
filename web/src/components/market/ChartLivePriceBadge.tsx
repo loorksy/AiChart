@@ -59,6 +59,21 @@ export function ChartLivePriceBadge({
           {live.changePct.toFixed(2)}%
         </span>
       )}
+      {/*
+        The spread, beside the price it applies to. On a linked cloud account
+        this is the trader's OWN broker book — the cost their next order pays —
+        so the source is named rather than left to be assumed.
+      */}
+      {hasPrice && live.spreadLabel && live.spreadLabel !== "—" && (
+        <p className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
+          <span className="opacity-70">سبريد</span> {live.spreadLabel}
+          {live.source === "metaapi" && (
+            <span className="ms-1 rounded-sm bg-muted px-1 text-[9px] opacity-80">
+              وسيطك
+            </span>
+          )}
+        </p>
+      )}
       {!live.connected && hasPrice && (
         <span className="ms-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
       )}
