@@ -12,7 +12,6 @@ import {
   oandaAccountId,
   oandaConfigured,
 } from "@/lib/markets/oanda";
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
 import { ohlcCacheTtlMs } from "@/lib/markets/intervals";
 import { fetchEaOhlc } from "@/lib/ohlc/eaOhlc";
@@ -133,10 +132,18 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
     OHLC_MAX_LIMIT,
   );
 
-  const forexSource: OhlcSource =
-    isOandaDataOnly()
-      ? "oanda"
-      : (options.source ?? "oanda");
+  /*
+   * The caller's source wins, and absent one it is the platform feed.
+   *
+   * This used to be clamped to "oanda" whenever FOREX_DATA_SOURCE was not "ea"
+   * — which is every deployment, since "oanda" is also the fallback. So the
+   * picker could report the cloud account as active while these candles came
+   * from OANDA regardless. Only two call sites pass a source at all: the chart's
+   * klines route, which takes it from resolveMarketDataSource and therefore
+   * never names a pipe the account has not connected, and the layout route,
+   * which hardcodes "oanda".
+   */
+  const forexSource: OhlcSource = options.source ?? "oanda";
   const symbol =
     forexSource === "oanda"
       ? forexCanonicalKey(options.symbol)
@@ -167,7 +174,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
   let hasMore = false;
 
   const live =
-    !isOandaDataOnly() && forexSource === "ea"
+    forexSource === "ea"
       ? {
           ...(await fetchEaOhlc(options.userId, symbol, interval, {
             fromMs: options.fromMs,
@@ -177,7 +184,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
           source: "ea" as const,
           hasMore: false,
         }
-      : !isOandaDataOnly() && forexSource === "metaapi"
+      : forexSource === "metaapi"
       ? {
           ...(await fetchMetaApiOhlc(options.userId, symbol, interval, {
             toMs: options.toMs,

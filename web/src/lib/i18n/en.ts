@@ -106,14 +106,14 @@ export const en = {
   "data_source.metaapi_hint": "Your broker's own candles and prices, through MetaApi.",
   "data_source.ea": "Your MetaTrader terminal (EA)",
   "data_source.ea_hint": "Candles and quotes straight from the terminal you run.",
-  "data_source.oanda": "Platform data (OANDA)",
+  "data_source.oanda": "OANDA feed",
   "data_source.oanda_hint": "The platform's own feed — always available, free.",
-  "data_source.needs_link": "Link a MetaTrader account through the platform to use it.",
+  "data_source.needs_link": "Link a MetaTrader account via “Through the platform” to use it.",
   "data_source.needs_ea": "Install the Expert Advisor on your terminal to use it.",
   "data_source.short.auto": "Automatic",
   "data_source.short.metaapi": "Cloud account",
   "data_source.short.ea": "My terminal",
-  "data_source.short.oanda": "Platform",
+  "data_source.short.oanda": "OANDA",
 
   // Composer options menu (the plus beside the mic)
   "composer.more": "More options",

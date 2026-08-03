@@ -105,14 +105,14 @@ export const ar: Record<TranslationKey, string> = {
   "data_source.metaapi_hint": "شموع وأسعار وسيطك نفسه عبر MetaApi.",
   "data_source.ea": "طرفية MetaTrader لديك (EA)",
   "data_source.ea_hint": "شموع وأسعار مباشرة من الطرفية التي تشغّلها.",
-  "data_source.oanda": "بيانات المنصة (OANDA)",
+  "data_source.oanda": "تغذية OANDA",
   "data_source.oanda_hint": "تغذية المنصة الخاصة — متاحة دائماً ومجاناً.",
-  "data_source.needs_link": "اربط حساب MetaTrader عبر المنصة لاستخدامه.",
+  "data_source.needs_link": "اربط حساب MetaTrader بطريقة «عبر المنصّة» لاستخدامه.",
   "data_source.needs_ea": "ثبّت Expert Advisor على طرفيتك لاستخدامه.",
   "data_source.short.auto": "تلقائي",
   "data_source.short.metaapi": "الحساب السحابي",
   "data_source.short.ea": "طرفيتي",
-  "data_source.short.oanda": "المنصة",
+  "data_source.short.oanda": "OANDA",
 
   // قائمة خيارات صندوق الكتابة (زر + بجانب المايك)
   "composer.more": "خيارات إضافية",
