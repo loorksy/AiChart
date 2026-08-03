@@ -198,7 +198,15 @@ export async function ensureAlwaysOnDeployed(): Promise<number> {
   let deployed = 0;
   for (const account of accounts) {
     const id = account.metaapi_account_id;
-    if (!id || id === "mt5local" || account.state === "DEPLOYED") continue;
+    /*
+     * `deployed`, lowercase — the column's own vocabulary, written by
+     * deployAccount. "DEPLOYED" is the SDK account object's state, a different
+     * value on a different object that happens to share the word. Comparing
+     * against the SDK spelling never matches a row, so this redeployed an
+     * already-deployed account on every five-minute sweep, forever.
+     */
+    if (!id || id === "mt5local") continue;
+    if (account.state?.toLowerCase() === "deployed") continue;
     try {
       await deployAccount(account.user_id, id);
       deployed += 1;
