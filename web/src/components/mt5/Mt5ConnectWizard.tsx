@@ -76,7 +76,13 @@ export function Mt5ConnectWizard({
     setError(null);
     setStatus("جارٍ إنشاء الحساب السحابي والاتصال بوسيطك…");
     try {
-      const res = await fetch("/api/agent/mt/connect", {
+      // /api/mt/connect, not /api/agent/mt/connect. Both hand the same body to
+      // the same connectMtAccount; they differ only in who is allowed to call
+      // them. The agent route runs resolveBridgeUserId, which demands a service
+      // token plus a signed X-Aichart-User-Email — headers the MCP bridge sends
+      // and a browser never can, so every submit from this form came back
+      // "توكن الوكيل غير صحيح". This route authenticates the session cookie.
+      const res = await fetch("/api/mt/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platform, server: server.trim(), login, password }),
