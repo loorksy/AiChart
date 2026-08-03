@@ -66,7 +66,17 @@ export async function GET(req: NextRequest) {
     // rather than waiting out the command timeout on every bar request.
     const requestedSource = req.nextUrl.searchParams.get("source");
     const dataSource = await resolveMarketDataSource(user?.id ?? null, requestedSource);
-    if (requestedSource && requestedSource !== "oanda" && dataSource.source !== "oanda") {
+    /*
+     * The RESOLVED source decides, not whether the URL happened to spell one.
+     *
+     * This used to require `requestedSource` to be present, and the chart's
+     * datafeed only ever sets it for the EA bridge — so picking the cloud
+     * account changed the pair catalogue and the quote cards while the chart
+     * kept reading OANDA, right down to "OANDA" in its own header. The resolver
+     * already refuses a pipe the account has not connected, so honouring it
+     * here cannot route anyone at a broker they do not have.
+     */
+    if (dataSource.source !== "oanda") {
       if (!user) {
         return NextResponse.json(
           { error: "بيانات الوسيط تتطلب تسجيل الدخول وربط MetaTrader." },

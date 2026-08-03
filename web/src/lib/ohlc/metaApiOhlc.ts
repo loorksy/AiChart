@@ -1,5 +1,5 @@
 import { getMtAccount } from "@/lib/store";
-import { getRpcConnection } from "@/lib/metaapi/client";
+import { getMetaApiAccount } from "@/lib/metaapi/client";
 import { normalizeInterval } from "@/lib/intervals";
 import type { OhlcCandle } from "@/lib/ohlc/fetchOhlc";
 
@@ -45,26 +45,28 @@ export async function fetchMetaApiOhlc(
   }
 
   try {
-    const connection = await getRpcConnection(userId, account.metaapi_account_id);
-    const rpc = connection as unknown as {
-      getHistoricalCandles?: (
-        symbol: string,
-        timeframe: string,
-        startTime?: Date,
-        limit?: number,
-      ) => Promise<MetaApiHistoricalCandle[]>;
-    };
-    if (typeof rpc.getHistoricalCandles !== "function") {
+    /*
+     * The ACCOUNT, not the RPC connection.
+     *
+     * getHistoricalCandles is declared on MetatraderAccount
+     * (dist/metaApi/metatraderAccount.d.ts). Asking the connection for it
+     * returned undefined, and this function reported "هذا الحساب لا يوفّر سجل
+     * الشموع" — for an account that serves it perfectly well. That single wrong
+     * object is why a linked cloud account produced an empty chart, empty pair
+     * cards, and a silent fall back to the platform feed.
+     */
+    const mtAccount = await getMetaApiAccount(userId, account.metaapi_account_id);
+    if (typeof mtAccount.getHistoricalCandles !== "function") {
       return { candles: [], warning: "هذا الحساب لا يوفّر سجل الشموع عبر MetaApi." };
     }
 
     const limit = Math.min(Math.max(opts.limit ?? 300, 10), MAX_CANDLES);
-    const raw = await rpc.getHistoricalCandles(
+    const raw = (await mtAccount.getHistoricalCandles(
       symbol,
       iv,
       new Date(opts.toMs ?? Date.now()),
       limit,
-    );
+    )) as MetaApiHistoricalCandle[];
 
     const candles: OhlcCandle[] = (raw ?? [])
       .map((c) => ({

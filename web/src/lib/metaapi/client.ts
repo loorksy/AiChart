@@ -73,7 +73,31 @@ export type MetaApiRpcConnection = {
   cancelOrder(orderId: string): Promise<Record<string, unknown>>;
 };
 
+/**
+ * The slice of MetatraderAccount this codebase uses. Declared here rather than
+ * imported so the SDK's types never have to be loaded on a path that only wants
+ * candles — the module is server-only and heavy.
+ */
+export type MetaApiAccount = {
+  getHistoricalCandles(
+    symbol: string,
+    timeframe: string,
+    startTime?: Date,
+    limit?: number,
+  ): Promise<
+    Array<{
+      time: string | Date;
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+      tickVolume?: number;
+    }>
+  >;
+};
+
 const rpcCache = new Map<number, Promise<MetaApiRpcConnection>>();
+const accountCache = new Map<number, Promise<MetaApiAccount>>();
 
 /** True when METAAPI_TOKEN is set in platform config or env. */
 export function isMetaApiConfigured(): boolean {
@@ -155,6 +179,39 @@ export async function removeMetaApiAccount(metaapiAccountId: string): Promise<vo
   await account.remove();
 }
 
+/**
+ * The account object itself, deployed and connected (cached per userId).
+ *
+ * History does NOT live on the RPC connection. `getHistoricalCandles` is
+ * declared on MetatraderAccount; asking the connection for it returns
+ * undefined, which the caller reported as "this account does not provide candle
+ * history" — for an account that provides it perfectly well.
+ */
+export async function getMetaApiAccount(
+  userId: number,
+  metaapiAccountId: string,
+): Promise<MetaApiAccount> {
+  const cached = accountCache.get(userId);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    const api = await getMetaApi();
+    const account = await api.metatraderAccountApi.getAccount(metaapiAccountId);
+    if (account.state !== "DEPLOYED") {
+      await account.deploy();
+      await account.waitDeployed(120);
+    }
+    if (account.connectionStatus !== "CONNECTED") {
+      await account.waitConnected(120);
+    }
+    return account as unknown as MetaApiAccount;
+  })();
+
+  accountCache.set(userId, promise);
+  promise.catch(() => accountCache.delete(userId));
+  return promise;
+}
+
 /** RPC connection for a user's MetaApi account (cached per userId). */
 export async function getRpcConnection(
   userId: number,
@@ -188,6 +245,7 @@ export async function getRpcConnection(
 
 export function clearRpcCache(userId?: number): void {
   if (userId != null) rpcCache.delete(userId);
+  if (userId != null) accountCache.delete(userId);
   else rpcCache.clear();
 }
 
