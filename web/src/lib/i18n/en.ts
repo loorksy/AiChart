@@ -243,6 +243,17 @@ export const en = {
   "connect.mt5.cta": "Link a MetaTrader 5 account",
   "connect.mt5.manage": "Manage link",
   "connect.mt5.linked": "Linked",
+  "connect.method.title": "How your forex account connects",
+  "connect.method.subtitle": "Pick one — both are fully supported.",
+  "connect.method.platform": "Through the platform (no download)",
+  "connect.method.platform_body": "Server-side execution around the clock. You enter your account details and nothing else — no install, no machine left running.",
+  "connect.method.platform_off": "Unavailable — no MetaApi key has been added from the platform panel yet.",
+  "connect.method.ea": "Through the EA bridge (on your machine)",
+  "connect.method.ea_body": "You install the bridge in your own MetaTrader and keep the machine running. Full control stays with you.",
+  "connect.method.saved": "Method saved.",
+  "connect.method.failed": "Could not save the method — try again.",
+  "connect.mt5.needs_platform":
+    "You are on the EA bridge. Choose “Through the platform” above to enable cloud linking.",
 
   "profile.profile": "Profile",
   "profile.trading_settings": "Trading settings",
