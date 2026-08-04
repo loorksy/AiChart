@@ -18,6 +18,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { useTheme } from "@/components/ThemeProvider";
 import { useConsoleOverlays } from "@/components/shell/ConsoleOverlays";
 import { useSheetSlot } from "@/components/shell/SheetCoordinator";
+import { BalanceChip } from "@/components/shell/BalanceChip";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 import { APP_LOCALES, type AppLocale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -475,6 +476,10 @@ export function ProfileAccountSheet({ displayName }: { displayName?: string }) {
             <span aria-hidden className="h-1 w-10 rounded-full bg-muted-foreground/40" />
           </div>
           <ProfileIdentity initial={initial} displayName={name} email={email} />
+          {/* Subscription credit — same BalanceChip as the top bar, never MT equity. */}
+          <div className="flex justify-center px-4 pb-2">
+            <BalanceChip />
+          </div>
           <div className="py-1">
             <ProfileMenuItems
               onDone={() => setOpen(false)}

@@ -79,16 +79,19 @@ test("shell mounts conversations for traders; admin uses admin nav", () => {
   assert.doesNotMatch(shell, /glass-panel/);
 });
 
-test("both consoles share one top bar: account, alerts, nav, refresh", () => {
+test("both consoles share one top bar: account, alerts, nav", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /<ConsoleTopBar/);
   assert.doesNotMatch(shell, /needsPageMenu/);
+  // Traders refresh from ChartChrome; admin page refresh stays in the top bar.
+  assert.match(shell, /refreshMode=\{isAdmin \? "page" : "none"\}/);
+  assert.match(read("components/chart/ChartChrome.tsx"), /data-testid="chart-refresh"/);
   // Read past the imports so the order below is the rendered order, not the
   // import order.
   const bar = read("components/shell/ConsoleTopBar.tsx").split('data-testid="console-top-bar"')[1]!;
   // The drawer trigger leads, on the edge the drawer opens from; the rest are
   // grouped against the far edge with the avatar in the corner.
-  const order = ["mobile-menu-trigger", "ms-auto", "console-refresh", "NotificationCenter", "SidebarProfileMenu"];
+  const order = ["mobile-menu-trigger", "ms-auto", "NotificationCenter", "SidebarProfileMenu"];
   let cursor = -1;
   for (const marker of order) {
     const at = bar.indexOf(marker);
@@ -125,9 +128,8 @@ test("model and execution mode live behind the composer's plus", () => {
   assert.match(menu, /view\?\.connected/);
   assert.match(menu, /setConfirming\(true\)/);
   assert.match(menu, /trade_mode\.confirm\.body/);
-  // One shared source of truth with the panel above the conversation.
-  const panel = read("components/agent/TradeModePanel.tsx");
-  assert.match(panel, /useTradeMode/);
+  // Mode/account state also live in the top bar; the composer + menu keeps the switch.
+  assert.match(read("components/shell/TopBarAccountStatus.tsx"), /useTradeMode/);
   const hook = read("hooks/useTradeMode.ts");
   assert.match(hook, /confirmed_by_user: true/);
 });

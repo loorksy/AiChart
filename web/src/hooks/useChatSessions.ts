@@ -32,6 +32,11 @@ export interface UseChatSessions {
   loadingMessages: boolean;
   selectChat: (id: string, opts?: { skipUrlSync?: boolean }) => void;
   newChat: () => Promise<void>;
+  /**
+   * Home screen has no chat id. The first send creates one, navigates into it,
+   * and returns the id so the stream can persist against a real conversation.
+   */
+  ensureChat: () => Promise<string | null>;
   persistMessage: (chatId: string, message: AgentPersistPayload) => void;
   refreshSessions: () => Promise<void>;
 }
@@ -90,8 +95,9 @@ export function useChatSessions(opts: {
     return json.session ?? null;
   }, [symbol, interval, locale]);
 
-  // Initialize once on enable: restore last-active or the most recent chat, or
-  // create the first one. Keeps at most one reusable empty chat per user.
+  // Home (/workspace with no ?chat=) is not a conversation — list the sidebar
+  // sessions but do not mint or restore an active chat. Typing + send creates
+  // one and navigates into it (ensureChat). A deep link ?chat= still opens.
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
@@ -104,20 +110,17 @@ export function useChatSessions(opts: {
       const list = json.sessions ?? [];
       setSessions(list);
 
-      const stored =
-        typeof window !== "undefined"
-          ? localStorage.getItem(LS_ACTIVE_CHAT)
-          : null;
-      let active: AgentChatSession | null =
-        list.find((s) => s.id === urlChatId) ??
-        list.find((s) => s.id === stored) ??
-        list[0] ??
-        null;
-      if (!active) {
-        active = await createChat();
-        if (active && !cancelled) setSessions([active]);
+      if (!urlChatId) {
+        setActiveChatId(null);
+        setActiveMessages([]);
+        setReady(true);
+        return;
       }
-      if (cancelled || !active) {
+
+      const active = list.find((s) => s.id === urlChatId) ?? null;
+      if (!active) {
+        setActiveChatId(null);
+        setActiveMessages([]);
         setReady(true);
         return;
       }
@@ -171,6 +174,21 @@ export function useChatSessions(opts: {
     }
   }, [createChat, syncChatUrl]);
 
+  const ensureChat = useCallback(async (): Promise<string | null> => {
+    if (activeChatId) return activeChatId;
+    const session = await createChat();
+    if (!session) return null;
+    setSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
+    setActiveMessages([]);
+    setActiveChatId(session.id);
+    syncChatUrl?.(session.id, "push");
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LS_ACTIVE_CHAT, session.id);
+      window.dispatchEvent(new Event("aichart:chats-updated"));
+    }
+    return session.id;
+  }, [activeChatId, createChat, syncChatUrl]);
+
   const persistMessage = useCallback(
     (chatId: string, message: AgentPersistPayload) => {
       void (async () => {
@@ -198,6 +216,7 @@ export function useChatSessions(opts: {
     () => ({
       sessions,
       activeChatId,
+      ensureChat,
       activeMessages,
       ready,
       loadingMessages,
@@ -209,6 +228,7 @@ export function useChatSessions(opts: {
     [
       sessions,
       activeChatId,
+      ensureChat,
       activeMessages,
       ready,
       loadingMessages,

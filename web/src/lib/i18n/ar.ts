@@ -380,6 +380,9 @@ export const ar: Record<TranslationKey, string> = {
   // Billing and usage
   "balance.add_credit": "أضِف رصيدًا للمتابعة",
   "balance.low": "الرصيد أوشك على النفاد",
+  "balance.credit_short": "رصيد",
+  "balance.mt_equity": "حقوق ملكية حساب الوسيط",
+  "balance.mt_equity_short": "حقوق",
   "billing.title": "الفوترة والاستخدام",
   "billing.subtitle": "رصيدك الحالي، وكشف الحركة، وإدارة الاشتراك.",
   "billing.view_plans": "عرض الباقات",

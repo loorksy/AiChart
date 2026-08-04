@@ -382,6 +382,9 @@ export const en = {
   // Billing and usage
   "balance.add_credit": "Add credit to continue",
   "balance.low": "Balance almost gone",
+  "balance.credit_short": "Credit",
+  "balance.mt_equity": "Broker account equity",
+  "balance.mt_equity_short": "Equity",
   "billing.title": "Billing and usage",
   "billing.subtitle": "Your balance, statement, and subscription.",
   "billing.view_plans": "View plans",

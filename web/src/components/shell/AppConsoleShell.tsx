@@ -502,10 +502,16 @@ function ConsoleShellBody({
             displayName={displayName}
             sidebarOpen={mobileOpen}
             onToggleSidebar={() => setMobileOpen(!mobileOpen)}
-            refreshMode={isAdmin ? "page" : "chart"}
+            // Traders refresh from ChartChrome; admins still reload the page.
+            refreshMode={isAdmin ? "page" : "none"}
             showBalance={!isAdmin}
+            showAccountStatus={!isAdmin}
+            // Home composer (no ?chat=) hides the chart icon — that screen is
+            // a question, not a chart summoner. Deep-linked chats keep it.
             showChartToggle={
-              !isAdmin && (pathname === "/workspace" || pathname.startsWith("/chart"))
+              !isAdmin &&
+              (pathname.startsWith("/chart") ||
+                (pathname === "/workspace" && Boolean(searchParams.get("chat"))))
             }
           />
           <main
