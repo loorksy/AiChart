@@ -490,14 +490,7 @@ export function createAiChartDatafeed(
           sub.source = undefined;
         };
 
-        const onVisibility = () => {
-          if (document.visibilityState === "hidden") {
-            streamAlive = false;
-            source.close();
-            sub.source = undefined;
-            return;
-          }
-          // Wake: reopen the stream; poll covers the gap until ready.
+        const reopenStream = () => {
           if (sub.source) return;
           const next = new EventSource(
             `/api/market/ticks?symbol=${encodeURIComponent(ticker)}`,
@@ -510,7 +503,19 @@ export function createAiChartDatafeed(
             sub.source = undefined;
           };
         };
+        const onVisibility = () => {
+          if (document.visibilityState === "hidden") {
+            streamAlive = false;
+            source.close();
+            sub.source = undefined;
+            return;
+          }
+          // Wake: reopen the stream; poll covers the gap until ready.
+          reopenStream();
+          void poll();
+        };
         document.addEventListener("visibilitychange", onVisibility);
+        window.addEventListener("aichart:app-wake", onVisibility);
         sub.onVisibility = onVisibility;
       }
 
@@ -524,6 +529,7 @@ export function createAiChartDatafeed(
       sub.source?.close();
       if (sub.onVisibility) {
         document.removeEventListener("visibilitychange", sub.onVisibility);
+        window.removeEventListener("aichart:app-wake", sub.onVisibility);
       }
       subscribers.delete(listenerGuid);
     },

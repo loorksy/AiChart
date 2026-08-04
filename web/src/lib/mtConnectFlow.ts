@@ -113,8 +113,8 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
       } catch {
         /* the next status poll retries */
       }
-      const { backfillYearForUser } = await import("./metaapi/backfill");
-      await backfillYearForUser(userId, account.id);
+      // Year-long candle backfill on link was removed (N21) — OHLC is fetched
+      // on demand via fetchOhlc/klines. The catalogue seed above is enough.
     } catch (e) {
       console.error("[mtConnect] post-link setup failed:", e instanceof Error ? e.message : e);
     }
