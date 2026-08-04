@@ -920,7 +920,7 @@ function SmartChartWorkspaceInner({
             {/* Mode / account state live in the top bar (N18). Execution stage
                 remains in the composer + menu — not as a row above the chat. */}
             <SmartChartAgentPanel
-              key={chat.activeChatId ?? "home"}
+              key={chat.panelKey}
               ref={agentRef}
               symbol={symbol}
               interval={interval}
