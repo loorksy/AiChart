@@ -112,6 +112,25 @@ test("both consoles share one top bar: account, alerts, nav", () => {
   assert.doesNotMatch(adminHeader, /sticky/);
 });
 
+test("subscription credit chip renders regardless of billing enforcement flag", () => {
+  const chip = read("components/shell/BalanceChip.tsx");
+  assert.doesNotMatch(chip, /!state\.enforced\) return null/);
+  assert.match(chip, /formatUsd\(state\.totalUsd\)/);
+  assert.match(chip, /data-balance-state=\{empty \? "empty"/);
+});
+
+test("MT equity chip renders zero balances from hook", () => {
+  const hook = read("hooks/useAccountCapital.ts");
+  assert.doesNotMatch(hook, /equity > 0/);
+  const bar = read("components/shell/TopBarAccountStatus.tsx");
+  // Same formatter as the subscription-credit chip — a real zero must render
+  // as "$0.00" in both, not one "$0.00" beside a rounded "$0" that reads as
+  // the other value being broken.
+  assert.match(bar, /formatUsd\(capital\.amount\)/);
+  assert.doesNotMatch(bar, /formatUsdWhole/);
+  assert.match(bar, /data-equity-state="ready"/);
+});
+
 test("risk per trade is a composer control, not a settings section", () => {
   const settings = read("components/SettingsClient.tsx");
   assert.doesNotMatch(settings, /id: "trading"/);

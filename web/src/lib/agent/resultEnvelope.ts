@@ -47,6 +47,10 @@ export interface ResultEnvelope {
   degraded_stages?: AgentStage[];
   /** Correlation id (request id) for support/observability. Not a secret. */
   trace_id?: string;
+  /** Operator-visible market book for this answer (OANDA vs MetaApi). */
+  market_data_source?: string;
+  /** Numeric levels cited in the visible answer (support/resistance, plan). */
+  key_price_levels?: number[];
 }
 
 export function operationalBlockerEnvelope(opts: {
