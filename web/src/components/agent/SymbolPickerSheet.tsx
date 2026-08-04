@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Lock, Search, X } from "lucide-react";
+import { Lock, Search, Star, X } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { useSheetGesture } from "@/hooks/useSheetGesture";
 import { PairFlags } from "@/components/agent/CurrencyFlag";
@@ -23,6 +23,12 @@ interface InstrumentRow {
   description?: string;
   /** Server's verdict on the session; the card falls back to its own clock. */
   market_open?: boolean;
+  /** Provenance — broker-seeded rows must not look like the platform feed. */
+  origin?: "oanda" | "broker";
+}
+
+function favouriteKey(symbol: string): string {
+  return symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
 
 /** The two pipes a pair list can come from. */
@@ -84,6 +90,7 @@ export function SymbolPickerSheet({
   const [sourceVersion, setSourceVersion] = useState(0);
   const [loading, setLoading] = useState(false);
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
+  const [favourites, setFavourites] = useState<string[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
   // The client does not choose the pipe. Two can serve the same pair — the
   // platform feed, or the trader's own cloud account — and which one is
@@ -105,6 +112,16 @@ export function SymbolPickerSheet({
 
   useEffect(() => {
     if (!open) return;
+    fetch("/api/instruments/favourites", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { favourites?: string[] } | null) => {
+        setFavourites(Array.isArray(d?.favourites) ? d!.favourites! : []);
+      })
+      .catch(() => setFavourites([]));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const handle = window.setTimeout(() => {
       setLoading(true);
       const params = new URLSearchParams({ wrapped: "1" });
@@ -122,6 +139,48 @@ export function SymbolPickerSheet({
     }, 250);
     return () => window.clearTimeout(handle);
   }, [open, query, sourceVersion]);
+
+  const favouriteKeys = useMemo(
+    () => new Set(favourites.map(favouriteKey)),
+    [favourites],
+  );
+
+  /** Favourites that appear in the current result set, pinned above the rest. */
+  const orderedRows = useMemo(() => {
+    if (favourites.length === 0) return rows;
+    const favKeys = new Set(favourites.map(favouriteKey));
+    const pinned = rows.filter((row) => favKeys.has(favouriteKey(row.symbol)));
+    // Preserve the operator's pin order, not catalogue sort order.
+    pinned.sort(
+      (a, b) =>
+        favourites.findIndex((f) => favouriteKey(f) === favouriteKey(a.symbol)) -
+        favourites.findIndex((f) => favouriteKey(f) === favouriteKey(b.symbol)),
+    );
+    const pinnedKeys = new Set(pinned.map((row) => favouriteKey(row.symbol)));
+    const rest = rows.filter((row) => !pinnedKeys.has(favouriteKey(row.symbol)));
+    return [...pinned, ...rest];
+  }, [rows, favourites]);
+
+  const pinnedCount = useMemo(() => {
+    if (favourites.length === 0) return 0;
+    const favKeys = new Set(favourites.map(favouriteKey));
+    return rows.filter((row) => favKeys.has(favouriteKey(row.symbol))).length;
+  }, [rows, favourites]);
+
+  const toggleFavourite = useCallback(async (symbol: string) => {
+    try {
+      const res = await fetch("/api/instruments/favourites", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toggle: symbol }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { favourites?: string[] };
+      if (Array.isArray(data.favourites)) setFavourites(data.favourites);
+    } catch {
+      /* star stays as it was */
+    }
+  }, []);
 
   // --- Quote loading -------------------------------------------------------
   // Cards ask for their own quote when they scroll into view; the asks are
@@ -217,7 +276,7 @@ export function SymbolPickerSheet({
     );
     for (const el of cards.current.values()) io.observe(el);
     return () => io.disconnect();
-  }, [open, rows, visible, enqueue]);
+  }, [open, orderedRows, visible, enqueue]);
 
   // Reaching the end of the rendered page reveals the next one, so a broker
   // account with hundreds of symbols is reachable by scrolling, not only by
@@ -229,14 +288,16 @@ export function SymbolPickerSheet({
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          setVisible((current) => Math.min(current + PAGE_SIZE, rows.length));
+          setVisible((current) =>
+            Math.min(current + PAGE_SIZE, orderedRows.length),
+          );
         }
       },
       { rootMargin: "240px" },
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [open, rows.length, visible]);
+  }, [open, orderedRows.length, visible]);
 
   useEffect(() => {
     if (!open) return;
@@ -349,15 +410,23 @@ export function SymbolPickerSheet({
           {/* First paint of a catalogue — or of a different market after a
               source switch — is the grid's own shape, not an empty box that
               jumps into a grid when the list lands. */}
-          {loading && rows.length === 0 && <CardGridSkeleton count={8} />}
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            {rows.slice(0, visible).map((row) => (
+          {loading && orderedRows.length === 0 && <CardGridSkeleton count={8} />}
+          {(() => {
+            const visibleRows = orderedRows.slice(0, visible);
+            const pinned = pinnedCount > 0 ? visibleRows.slice(0, pinnedCount) : [];
+            const rest = pinnedCount > 0 ? visibleRows.slice(pinnedCount) : visibleRows;
+            const renderCard = (row: InstrumentRow) => (
               <PairCard
                 key={row.symbol}
                 row={row}
                 quote={quotes[row.symbol]}
                 selected={row.symbol === symbol}
+                favourite={favouriteKeys.has(favouriteKey(row.symbol))}
+                // Only on the platform list: a broker-seeded gap must not look
+                // like an OANDA instrument. On the cloud list every row is broker.
+                showBrokerOrigin={served === "oanda" && row.origin === "broker"}
                 register={registerCard}
+                onToggleFavourite={() => void toggleFavourite(row.symbol)}
                 onPick={() => {
                   // The chart must read candles from the same place this list
                   // came from; passing the requested source instead of the
@@ -367,10 +436,36 @@ export function SymbolPickerSheet({
                   onClose();
                 }}
               />
-            ))}
-          </div>
+            );
+            return (
+              <>
+                {pinned.length > 0 && (
+                  <div className="mb-3">
+                    <p className="px-1 pb-2 text-[11px] font-semibold text-muted-foreground">
+                      {t("symbol.picker.favourites")}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                      {pinned.map(renderCard)}
+                    </div>
+                  </div>
+                )}
+                {rest.length > 0 && (
+                  <div>
+                    {pinned.length > 0 && (
+                      <p className="px-1 pb-2 text-[11px] font-semibold text-muted-foreground">
+                        {t("symbol.picker.all")}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                      {rest.map(renderCard)}
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
           <div ref={sentinelRef} aria-hidden className="h-px w-full" />
-          {!loading && rows.length === 0 && (
+          {!loading && orderedRows.length === 0 && (
             <p className="px-3 py-10 text-center text-xs text-muted-foreground">
               {t("symbol.picker.none")}
             </p>
@@ -386,13 +481,19 @@ function PairCard({
   row,
   quote,
   selected,
+  favourite,
+  showBrokerOrigin,
   register,
+  onToggleFavourite,
   onPick,
 }: {
   row: InstrumentRow;
   quote: PairQuote | undefined;
   selected: boolean;
+  favourite: boolean;
+  showBrokerOrigin: boolean;
   register: (symbol: string, el: HTMLElement | null) => void;
+  onToggleFavourite: () => void;
   onPick: () => void;
 }) {
   const { t } = useLocale();
@@ -413,10 +514,12 @@ function PairCard({
       data-symbol={row.symbol}
       data-testid="pair-card"
       data-selected={selected ? "true" : "false"}
+      data-favourite={favourite ? "true" : "false"}
+      data-live={quote?.live ? "true" : "false"}
       onClick={onPick}
       data-market-open={isOpen ? "true" : "false"}
       className={cn(
-        "group flex flex-col gap-2 overflow-hidden rounded-[var(--radius-lg)] border p-3 text-start transition-colors duration-150",
+        "group relative flex flex-col gap-2 overflow-hidden rounded-[var(--radius-lg)] border p-3 text-start transition-colors duration-150",
         selected
           ? "border-foreground/70 bg-muted/60"
           : "border-border bg-card hover:border-foreground/30 hover:bg-muted/40",
@@ -426,13 +529,46 @@ function PairCard({
         !isOpen && "opacity-55 grayscale",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
+      <span
+        role="button"
+        tabIndex={0}
+        data-testid="pair-card-favourite"
+        aria-label={
+          favourite
+            ? t("symbol.card.favourite_remove")
+            : t("symbol.card.favourite_add")
+        }
+        aria-pressed={favourite}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onToggleFavourite();
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          onToggleFavourite();
+        }}
+        className="absolute end-2 top-2 z-10 flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <Star
+          className={cn("h-3.5 w-3.5", favourite && "fill-current text-foreground")}
+          aria-hidden
+        />
+      </span>
+      <div className="flex items-start justify-between gap-2 pe-7">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold" dir="ltr">
             {row.symbol}
           </p>
           <p className="truncate text-[11px] text-muted-foreground">
             {quoteCcy ? `${base} ${t("symbol.card.to")} ${quoteCcy}` : base}
+            {showBrokerOrigin && (
+              <span className="ms-1 text-[10px]">
+                · {t("symbol.card.origin_broker")}
+              </span>
+            )}
           </p>
         </div>
         <PairFlags symbol={row.symbol} size={20} />

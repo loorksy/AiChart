@@ -93,6 +93,23 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
         if (info.type) {
           await updateMtAccountStatus(userId, { accountTradeMode: info.type });
         }
+        // Seed the shared catalogue from what THIS account actually reports.
+        // Later users linking a different broker still get a populated list;
+        // origin stays 'broker' so nothing is labelled as the platform feed.
+        try {
+          const symbols = await conn.getSymbols();
+          const { seedBrokerSymbols } = await import("./markets/symbolCatalogue");
+          await seedBrokerSymbols({
+            userId,
+            metaapiAccountId: account.id,
+            symbols: Array.isArray(symbols) ? symbols : [],
+          });
+        } catch (seedErr) {
+          console.error(
+            "[mtConnect] symbol catalogue seed failed:",
+            seedErr instanceof Error ? seedErr.message : seedErr,
+          );
+        }
       } catch {
         /* the next status poll retries */
       }

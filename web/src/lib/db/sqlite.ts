@@ -15,7 +15,7 @@ import type { DbRow, ExecuteResult } from "./types";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
-const SCHEMA_VERSION = "2026-07-26-platform-mcp-parity-v1";
+const SCHEMA_VERSION = "2026-08-04-symbol-catalogue-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -61,9 +61,29 @@ const SCHEMA = `
     agent_trade_mode_epoch   TEXT,
     alert_trades             INTEGER NOT NULL DEFAULT 1,
     alert_signals            INTEGER NOT NULL DEFAULT 1,
+    -- Per-user pinned pairs in the picker. JSON string array of broker
+    -- spellings (case preserved) when the cloud pipe is active.
+    favourite_symbols        TEXT NOT NULL DEFAULT '[]',
     updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  -- Shared instrument seed from connected cloud accounts (N7). Origin is
+  -- recorded so a broker-sourced row is never labelled as the platform feed.
+  CREATE TABLE IF NOT EXISTS symbol_catalogue (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    broker_symbol        TEXT NOT NULL,
+    canonical            TEXT NOT NULL,
+    origin               TEXT NOT NULL CHECK (origin IN ('oanda', 'broker')),
+    seeded_by_user_id    INTEGER,
+    metaapi_account_id   TEXT,
+    updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (origin, broker_symbol),
+    FOREIGN KEY (seeded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_symbol_catalogue_canonical
+    ON symbol_catalogue (canonical);
 
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY,
@@ -1549,6 +1569,27 @@ function migrate(db: Database.Database) {
   if (!currentDataSourceColumns.some((column) => column.name === "market_data_source")) {
     db.exec("ALTER TABLE trading_settings ADD COLUMN market_data_source TEXT");
   }
+  if (!currentDataSourceColumns.some((column) => column.name === "favourite_symbols")) {
+    db.exec(
+      "ALTER TABLE trading_settings ADD COLUMN favourite_symbols TEXT NOT NULL DEFAULT '[]'",
+    );
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS symbol_catalogue (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      broker_symbol        TEXT NOT NULL,
+      canonical            TEXT NOT NULL,
+      origin               TEXT NOT NULL CHECK (origin IN ('oanda', 'broker')),
+      seeded_by_user_id    INTEGER,
+      metaapi_account_id   TEXT,
+      updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (origin, broker_symbol),
+      FOREIGN KEY (seeded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_symbol_catalogue_canonical
+      ON symbol_catalogue (canonical);
+  `);
 
   const currentMtColumns = db
     .prepare("PRAGMA table_info(mt_accounts)")

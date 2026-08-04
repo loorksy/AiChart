@@ -7,12 +7,17 @@ import { forexBaseQuote } from "@/lib/markets/forexInstruments";
 
 export interface PairQuote {
   symbol: string;
-  /** Latest close from the sampled window. */
+  /**
+   * Headline price on the card. Prefer a live mid from the active pipe; fall
+   * back to the last close of the sparkline window when the tick is unavailable.
+   */
   price: number | null;
   /** Percent move across the window, not since some other session's open. */
   changePct: number | null;
   /** Closes, oldest first — the sparkline's whole input. */
   series: number[];
+  /** True when `price` came from a live bid/ask, not the last hourly close. */
+  live?: boolean;
 }
 
 /**

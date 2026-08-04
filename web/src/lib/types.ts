@@ -61,6 +61,11 @@ export interface TradingSettings {
   alert_signals: number;
   /** Browser/mobile push channel. Defaults on; independent of Telegram. */
   alert_push?: number;
+  /**
+   * JSON string array of favourite pair spellings. Broker case is preserved
+   * when the cloud pipe is active — the picker pins these above everything else.
+   */
+  favourite_symbols?: string;
   updated_at: string;
 }
 

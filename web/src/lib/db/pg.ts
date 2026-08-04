@@ -30,7 +30,7 @@ import { adaptSql, normalizeRow } from "./sql";
 import type { DbRow, ExecuteResult } from "./types";
 
 let _pool: Pool | null = null;
-export const SCHEMA_VERSION = "2026-07-26-platform-mcp-parity-v1";
+export const SCHEMA_VERSION = "2026-08-04-symbol-catalogue-v1";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -71,8 +71,25 @@ const SCHEMA = `
     agent_trade_mode         TEXT NOT NULL DEFAULT 'unset',
     agent_trade_mode_updated_at BIGINT,
     agent_trade_mode_epoch   TEXT,
+    -- Per-user pinned pairs in the picker. JSON string array; broker case preserved.
+    favourite_symbols        TEXT NOT NULL DEFAULT '[]',
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  -- Shared instrument seed from connected cloud accounts (N7).
+  CREATE TABLE IF NOT EXISTS symbol_catalogue (
+    id                   BIGSERIAL PRIMARY KEY,
+    broker_symbol        TEXT NOT NULL,
+    canonical            TEXT NOT NULL,
+    origin               TEXT NOT NULL CHECK (origin IN ('oanda', 'broker')),
+    seeded_by_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    metaapi_account_id   TEXT,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (origin, broker_symbol)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_symbol_catalogue_canonical
+    ON symbol_catalogue (canonical);
 
   CREATE TABLE IF NOT EXISTS admin_limits (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -707,6 +724,19 @@ const SCHEMA = `
   -- Which pipe charts and quotes are read from: platform data, or the
   -- user's own cloud account.
   ALTER TABLE trading_settings ADD COLUMN IF NOT EXISTS market_data_source TEXT;
+  ALTER TABLE trading_settings ADD COLUMN IF NOT EXISTS favourite_symbols TEXT NOT NULL DEFAULT '[]';
+  CREATE TABLE IF NOT EXISTS symbol_catalogue (
+    id                   BIGSERIAL PRIMARY KEY,
+    broker_symbol        TEXT NOT NULL,
+    canonical            TEXT NOT NULL,
+    origin               TEXT NOT NULL CHECK (origin IN ('oanda', 'broker')),
+    seeded_by_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    metaapi_account_id   TEXT,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (origin, broker_symbol)
+  );
+  CREATE INDEX IF NOT EXISTS idx_symbol_catalogue_canonical
+    ON symbol_catalogue (canonical);
   ALTER TABLE decision_parity ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS user_id INTEGER;
   ALTER TABLE decision_parity_comparisons ADD COLUMN IF NOT EXISTS parity_key TEXT;

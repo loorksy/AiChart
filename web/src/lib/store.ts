@@ -947,7 +947,9 @@ export async function createIntent(
       intent.recommendation_id ?? null,
       intent.recommendation_revision_no ?? null,
       intent.authorization_source ?? null,
-      intent.symbol.toUpperCase(),
+      // Broker spellings are case-sensitive (XAUUSDm). Folding here made every
+      // cloud order ask MetaApi for an instrument that does not exist.
+      intent.symbol.trim(),
       intent.side,
       intent.notional,
       market,
@@ -1101,7 +1103,7 @@ export async function recordTrade(
     [
       userId,
       trade.intent_id ?? null,
-      trade.symbol.toUpperCase(),
+      trade.symbol.trim(),
       trade.side,
       trade.qty,
       trade.quote_qty,
