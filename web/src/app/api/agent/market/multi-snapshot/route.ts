@@ -48,7 +48,12 @@ export async function GET(req: NextRequest) {
             interval,
             userId,
           );
-          return { interval, snapshot };
+          return {
+            interval,
+            snapshot,
+            source: snapshot.extra?.source ?? null,
+            book: snapshot.extra?.book ?? null,
+          };
         } catch (e) {
           return {
             interval,

@@ -149,7 +149,7 @@ export function subscriptionRequiredMessage(locale: "ar" | "en" = "ar"): string 
   if (locale === "en") {
     return (
       `You have used your ${AICHART_PLAN.trialInteractions} free trial interactions. ` +
-      `Full AiChart access is available for $${AICHART_PLAN.promotionalPriceUsd} ` +
+      `Full Lonora access is available for $${AICHART_PLAN.promotionalPriceUsd} ` +
       `(regular price $${AICHART_PLAN.regularPriceUsd}). ` +
       `Contact @${AICHART_PLAN.telegramHandle} on Telegram to activate.`
     );

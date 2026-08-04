@@ -10,6 +10,10 @@ import {
   oandaAccountId,
   oandaConfigured,
 } from "@/lib/markets/oanda";
+import {
+  listBrokerCatalogue,
+  seedBrokerSymbols,
+} from "@/lib/markets/symbolCatalogue";
 
 interface Instrument {
   symbol: string;
@@ -17,6 +21,12 @@ interface Instrument {
   quote: string;
   /** False while the instrument's session is closed — no tape to analyse. */
   market_open: boolean;
+  /**
+   * Where this row came from. Broker-seeded symbols must never be labelled as
+   * the platform feed — a later user reading OANDA would otherwise think the
+   * platform can quote a ticker only Exness lists.
+   */
+  origin: "oanda" | "broker";
 }
 
 function symbolMatchesQuery(symbol: string, query: string): boolean {
@@ -24,6 +34,11 @@ function symbolMatchesQuery(symbol: string, query: string): boolean {
   const upper = symbol.toUpperCase();
   if (upper.includes(query)) return true;
   return forexCanonicalKey(symbol) === forexCanonicalKey(query);
+}
+
+function toInstrument(symbol: string, origin: "oanda" | "broker", now: number): Instrument {
+  const { base, quote } = forexBaseQuote(symbol);
+  return { symbol, base, quote, market_open: isMarketOpenAt(symbol, now), origin };
 }
 
 /** Forex universe from OANDA — official market-data source; execution stays on MT5. */
@@ -39,14 +54,50 @@ async function oandaForexInstruments(
     const symbol = row.symbol.toUpperCase();
     if (!symbolMatchesQuery(symbol, query)) continue;
     if (!map.has(symbol)) {
-      const { base, quote } = forexBaseQuote(symbol);
-      map.set(symbol, { symbol, base, quote, market_open: isMarketOpenAt(symbol, now) });
+      map.set(symbol, toInstrument(symbol, "oanda", now));
     }
   }
   const instruments = Array.from(map.values()).sort((a, b) =>
     a.symbol.localeCompare(b.symbol),
   );
   return { instruments, total: instruments.length };
+}
+
+/** Persisted broker seed — fallback when live getSymbols() is unavailable. */
+async function brokerCatalogueInstruments(
+  q: string,
+): Promise<{ instruments: Instrument[]; total: number }> {
+  const now = Date.now();
+  const rows = await listBrokerCatalogue({ q, limit: 5000 });
+  const instruments = rows.map((row) =>
+    toInstrument(row.broker_symbol, "broker", now),
+  );
+  return { instruments, total: instruments.length };
+}
+
+/**
+ * Platform catalogue with broker-seeded gaps filled in, each row tagged so the
+ * UI never presents a broker-only ticker as an OANDA instrument.
+ */
+async function platformWithBrokerGaps(
+  q: string,
+): Promise<{ instruments: Instrument[]; total: number }> {
+  const oanda = oandaConfigured() && oandaAccountId()
+    ? await oandaForexInstruments(q)
+    : { instruments: [] as Instrument[], total: 0 };
+  const broker = await brokerCatalogueInstruments(q);
+  const seen = new Set(
+    oanda.instruments.map((row) => forexCanonicalKey(row.symbol)),
+  );
+  const merged = [...oanda.instruments];
+  for (const row of broker.instruments) {
+    const key = forexCanonicalKey(row.symbol);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+  merged.sort((a, b) => a.symbol.localeCompare(b.symbol));
+  return { instruments: merged, total: merged.length };
 }
 
 export async function GET(request: NextRequest) {
@@ -61,43 +112,6 @@ export async function GET(request: NextRequest) {
 
     const requestedSource = request.nextUrl.searchParams.get("source");
     const decision = await resolveMarketDataSource(user?.id ?? null, requestedSource);
-
-    if (decision.source === "metaapi" && user) {
-      // The cloud account's own instrument list — the symbols this trader's
-      // orders will actually reference, suffixes and all.
-      const { getMtAccount } = await import("@/lib/store");
-      const account = await getMtAccount(user.id);
-      const accountId = account?.metaapi_account_id;
-      if (accountId && accountId !== "mt5local") {
-        try {
-          const { getRpcConnection } = await import("@/lib/metaapi/client");
-          const conn = await getRpcConnection(user.id, accountId);
-          const query = (
-            request.nextUrl.searchParams.get("q") ??
-            request.nextUrl.searchParams.get("search") ??
-            ""
-          )
-            .trim()
-            .toUpperCase();
-          const all = await conn.getSymbols();
-          const rows = (query ? all.filter((sym) => sym.toUpperCase().includes(query)) : all)
-            .slice()
-            .sort((a, b) => a.localeCompare(b));
-          const now = Date.now();
-          return NextResponse.json({
-            instruments: rows.map((sym) => {
-              const { base, quote } = forexBaseQuote(sym);
-              return { symbol: sym, base, quote, market_open: isMarketOpenAt(sym, now) };
-            }),
-            total: rows.length,
-            source: "metaapi",
-          });
-        } catch {
-          // Fall through to the platform universe rather than an empty list.
-        }
-      }
-    }
-
     const q = (
       request.nextUrl.searchParams.get("q") ??
       request.nextUrl.searchParams.get("search") ??
@@ -110,10 +124,50 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: marketBlock }, { status: 400 });
     }
 
-    const { instruments, total } =
-      oandaConfigured() && oandaAccountId()
-        ? await oandaForexInstruments(q)
-        : { instruments: [], total: 0 };
+    if (decision.source === "metaapi" && user) {
+      // The cloud account's own instrument list — the symbols this trader's
+      // orders will actually reference, suffixes and all.
+      const { getMtAccount } = await import("@/lib/store");
+      const account = await getMtAccount(user.id);
+      const accountId = account?.metaapi_account_id;
+      if (accountId && accountId !== "mt5local") {
+        try {
+          const { getRpcConnection } = await import("@/lib/metaapi/client");
+          const conn = await getRpcConnection(user.id, accountId);
+          const query = q.toUpperCase();
+          const all = await conn.getSymbols();
+          // Keep the shared seed warm whenever a live list is available.
+          void seedBrokerSymbols({
+            userId: user.id,
+            metaapiAccountId: accountId,
+            symbols: Array.isArray(all) ? all : [],
+          }).catch(() => undefined);
+          const rows = (query ? all.filter((sym) => sym.toUpperCase().includes(query)) : all)
+            .slice()
+            .sort((a, b) => a.localeCompare(b));
+          const now = Date.now();
+          return NextResponse.json({
+            instruments: rows.map((sym) => toInstrument(sym, "broker", now)),
+            total: rows.length,
+            source: "metaapi",
+            sourceReason: decision.reason,
+          });
+        } catch {
+          // Live RPC failed — serve the persisted broker seed, not OANDA.
+          // Labelling these as platform data would be a lie about the book.
+          const seeded = await brokerCatalogueInstruments(q);
+          if (seeded.total > 0) {
+            return NextResponse.json({
+              ...seeded,
+              source: "metaapi",
+              sourceReason: "catalogue_fallback",
+            });
+          }
+        }
+      }
+    }
+
+    const { instruments, total } = await platformWithBrokerGaps(q);
 
     const wrapped = request.nextUrl.searchParams.get("wrapped") === "1";
     if (wrapped) {

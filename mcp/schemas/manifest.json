@@ -1,6 +1,6 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-08-04T00:09:59.368Z",
+  "exportedAt": "2026-08-04T02:18:02.940Z",
   "toolCount": 55,
   "tools": [
     {
@@ -336,7 +336,7 @@
     {
       "name": "get_chart_link",
       "domain": "market",
-      "description": "Builds the public AiChart live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. Not for showing the chart in this conversation — capture_chart_snapshot/show_live_chart attach the actual image, this only returns a URL. read-only. Example: symbol=EURUSD.",
+      "description": "Builds the public Lonora live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. Not for showing the chart in this conversation — capture_chart_snapshot/show_live_chart attach the actual image, this only returns a URL. read-only. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,

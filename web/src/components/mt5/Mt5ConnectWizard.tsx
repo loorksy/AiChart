@@ -363,7 +363,7 @@ export function Mt5ConnectWizard({
 
             {step === "done" && (
               <a
-                href="/console"
+                href="/workspace"
                 className={cn(buttonVariants({ size: "lg" }), "min-h-11 px-6")}
               >
                 الانتقال إلى الشارت

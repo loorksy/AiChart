@@ -30,7 +30,7 @@ export interface NavItem {
  * Account / Integrations / Settings live only in the profile popover.
  */
 export const APP_NAV: NavItem[] = [
-  { href: "/console", labelKey: "nav.workspace", icon: Bot, exact: true },
+  { href: "/workspace", labelKey: "nav.workspace", icon: Bot, exact: true },
   // Recommendations + trades + statistics merged into one page: the plans,
   // their executions, and the numbers are one performance story, not three
   // routes. Old URLs redirect here with section anchors.
@@ -76,7 +76,7 @@ export type AccessTier = "admin" | "full" | "trial" | "blocked";
 
 /** Trial / blocked users only see the limited trial chat destination. */
 export const TRIAL_NAV: NavItem[] = [
-  { href: "/console", labelKey: "nav.workspace", icon: Bot, exact: true },
+  { href: "/workspace", labelKey: "nav.workspace", icon: Bot, exact: true },
 ];
 
 /**
@@ -119,7 +119,7 @@ export function navForRole(
 }
 
 export function activeNav(pathname: string, item: NavItem, currentTab?: string | null): boolean {
-  if (item.exact) return pathname === item.href || (item.href === "/console" && pathname === "/console/");
+  if (item.exact) return pathname === item.href || (item.href === "/workspace" && pathname === "/workspace/");
   const baseHref = item.href.split("?")[0]!;
   const basePathname = pathname.split("?")[0]!;
   if (item.href.includes("?tab=")) {

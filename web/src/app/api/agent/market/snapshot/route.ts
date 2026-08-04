@@ -22,7 +22,12 @@ export async function GET(req: NextRequest) {
     const market = resolveActiveMarket(rawMarket ?? DEFAULT_MARKET);
 
     const snapshot = await getUnifiedSnapshot(symbol, market, interval, userId);
-    return NextResponse.json({ snapshot });
+    // Every tool result names the book — a spread without its source is money lost.
+    return NextResponse.json({
+      snapshot,
+      source: snapshot.extra?.source ?? null,
+      book: snapshot.extra?.book ?? null,
+    });
   } catch (e) {
     return handleError(e);
   }

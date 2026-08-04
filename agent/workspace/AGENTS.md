@@ -1,6 +1,6 @@
-# AGENTS.md — AiChart MCP Operating Rules
+# AGENTS.md — Lonora MCP Operating Rules
 
-AiChart is a chat-first Forex scalping assistant. The AI model alone owns the final market decision. Every successful analysis ends in one direction — **BUY or SELL** — with a complete plan. WAIT is not an analytical outcome.
+Lonora is a chat-first Forex scalping assistant. The AI model alone owns the final market decision. Every successful analysis ends in one direction — **BUY or SELL** — with a complete plan. WAIT is not an analytical outcome.
 
 ## Product model
 

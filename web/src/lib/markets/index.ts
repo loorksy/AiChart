@@ -1,6 +1,7 @@
 import { buildForexSnapshot } from "../market";
 import { DEFAULT_MARKET } from "../marketPolicy";
 import { getForexLiveMid } from "./forexPrice";
+import { resolveMarketDataSource } from "./marketDataSource";
 import { resolveSymbol, marketLabel } from "./resolve";
 import type { MarketType, ResolvedSymbol, UnifiedSnapshot } from "./types";
 import type { ForexMarketSnapshot } from "./forexSnapshot";
@@ -8,14 +9,30 @@ import type { ForexMarketSnapshot } from "./forexSnapshot";
 export { resolveSymbol, marketLabel };
 export type { ResolvedSymbol, UnifiedSnapshot };
 
+/** Human book label — a cost without its book is misleading (48 vs 24 pips on gold). */
+export function marketDataBookLabel(source: "oanda" | "metaapi"): string {
+  return source === "metaapi" ? "broker_cloud" : "platform_oanda";
+}
+
 export async function getUnifiedPrice(
   query: string,
   market: MarketType = DEFAULT_MARKET,
   userId?: number,
-): Promise<{ resolved: ResolvedSymbol; price: number }> {
+): Promise<{
+  resolved: ResolvedSymbol;
+  price: number;
+  source: "oanda" | "metaapi";
+  book: string;
+}> {
   const resolved = resolveSymbol(query, market);
+  const decision = await resolveMarketDataSource(userId ?? null, null);
   const price = userId ? await getForexLiveMid(userId, resolved.symbol) : 0;
-  return { resolved, price };
+  return {
+    resolved,
+    price,
+    source: decision.source,
+    book: marketDataBookLabel(decision.source),
+  };
 }
 
 export async function getUnifiedSnapshot(
@@ -28,8 +45,19 @@ export async function getUnifiedSnapshot(
   if (!userId) {
     throw new Error("Forex snapshots require a connected user session.");
   }
-  const snap = await buildForexSnapshot(userId, resolved.symbol, interval);
+  const decision = await resolveMarketDataSource(userId, null);
+  // Preserve broker spelling when the cloud pipe is active — resolveSymbol
+  // already keeps suffixes; folding here would break MetaApi lookups.
+  const symbolForPipe =
+    decision.source === "metaapi" ? query.trim() || resolved.symbol : resolved.symbol;
+  const snap = await buildForexSnapshot(
+    userId,
+    symbolForPipe,
+    interval,
+    decision.source,
+  );
   const forexMeta = snap as ForexMarketSnapshot;
+  const book = marketDataBookLabel(decision.source);
 
   return {
     symbol: snap.symbol,
@@ -38,7 +66,7 @@ export async function getUnifiedSnapshot(
     change24hPct: snap.change24hPct,
     high24h: snap.high24h,
     low24h: snap.low24h,
-    summary: snap.summary,
+    summary: `${snap.summary} · book=${book}`,
     extra: {
       rsi14: snap.rsi14,
       sma20: snap.sma20,
@@ -46,6 +74,8 @@ export async function getUnifiedSnapshot(
       macd: snap.macd,
       trend: snap.trend,
       interval: snap.interval,
+      source: decision.source,
+      book,
       ...(forexMeta.ohlcSource != null
         ? { ohlcSource: forexMeta.ohlcSource }
         : {}),

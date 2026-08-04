@@ -1,11 +1,18 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { toOandaForexSymbol } from "../lib/forexSymbol.js";
 import { bridgeCall } from "./helpers.js";
 import { mcpToolConfig } from "./schemas/index.js";
 
+/**
+ * Pass the symbol through as the caller spelled it.
+ *
+ * The web bridge resolves the market-data pipe per user (OANDA vs linked
+ * cloud account). Folding every symbol through toOandaForexSymbol here forced
+ * XAUUSDm → XAUUSD and then asked MetaApi for an instrument that does not
+ * exist — and hid which book the numbers came from.
+ */
 function bridgeSymbol(symbol: string): string {
-  return toOandaForexSymbol(symbol);
+  return symbol.trim();
 }
 
 export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
@@ -99,7 +106,8 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
     mcpToolConfig("get_chart_link"),
     async (args) => {
       const { symbol } = args as { symbol: string };
-      const sym = symbol.toUpperCase().replace(/[^A-Z0-9.]/g, "");
+      // Preserve broker case in the deep link — the chart URL accepts it.
+      const sym = symbol.trim().replace(/[^A-Za-z0-9._]/g, "");
       const base = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
       return {
         content: [
@@ -121,7 +129,10 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         interval?: string;
       };
       return bridgeCall("get_market_context", args as Record<string, unknown>, () =>
-        bridge.get("/api/agent/market/context", { symbol, interval }),
+        bridge.get("/api/agent/market/context", {
+          symbol: bridgeSymbol(symbol),
+          interval,
+        }),
       );
     },
   );
@@ -146,13 +157,13 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
         limit?: number;
         cursor?: number;
       };
-      const oandaSymbol = toOandaForexSymbol(symbol);
+      // Do not force source=oanda — the bridge picks the user's resolved pipe
+      // and returns `source`/`book` on the result.
       return bridgeCall("get_ohlc", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/ohlc", {
-          symbol: oandaSymbol,
+          symbol: bridgeSymbol(symbol),
           interval,
           market: market ?? "forex",
-          source: "oanda",
           limit,
           cursor,
         }),
@@ -171,7 +182,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       };
       return bridgeCall("get_forex_indicators", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/forex-indicators", {
-          symbol,
+          symbol: bridgeSymbol(symbol),
           interval,
           market: market ?? "forex",
         }),
@@ -191,7 +202,7 @@ export function registerMarketTools(server: McpServer, bridge: BridgeClient) {
       };
       return bridgeCall("detect_levels", args as Record<string, unknown>, () =>
         bridge.get("/api/agent/market/detect-levels", {
-          symbol,
+          symbol: bridgeSymbol(symbol),
           interval,
           market: market ?? "forex",
           limit,

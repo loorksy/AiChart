@@ -24,5 +24,5 @@ export async function requirePaidPage(
 export async function requireAdminPage(
   user: Pick<PublicUser, "id" | "role" | "status">,
 ): Promise<void> {
-  if (user.role !== "admin") redirect("/console");
+  if (user.role !== "admin") redirect("/workspace");
 }

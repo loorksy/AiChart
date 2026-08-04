@@ -39,13 +39,15 @@ const TvChart = dynamic(() => import("@/components/chart/TvChart"), {
 
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
+import { ChartChrome } from "@/components/chart/ChartChrome";
+import { ChartBuySellTicket } from "@/components/chart/ChartBuySellTicket";
+import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
 import { OpenTradesDrawer } from "@/components/chart/OpenTradesDrawer";
 import {
   SmartChartAgentPanel,
   type SmartChartAgentHandle,
 } from "@/components/agent/SmartChartAgentPanel";
 import { AgentVoiceButton } from "@/components/agent/AgentVoiceButton";
-import { TradeModePanel } from "@/components/agent/TradeModePanel";
 import { AgentVoicePanel } from "@/components/agent/AgentVoicePanel";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { useAgentVoiceSession } from "@/hooks/useAgentVoiceSession";
@@ -171,8 +173,8 @@ function SmartChartWorkspaceInner({
     onExpandedChange: setSheetExpanded,
   });
   // A capture renders the chart alone. Leaving chat on also left its URL sync
-  // on, which rewrote the address to /console mid-load — so the screenshot was
-  // of the console workspace at the SAVED timeframe, not the requested chart.
+  // on, which rewrote the address to /workspace mid-load — so the screenshot
+  // was of the workspace at the SAVED timeframe, not the requested chart.
   const chatEnabled = !guest && !capture;
 
   const { locale, t, dir } = useLocale();
@@ -684,7 +686,7 @@ function SmartChartWorkspaceInner({
     symbol,
     interval,
     userId: me.data?.user.id ?? 0,
-    enabled: chatEnabled && Boolean(chat.activeChatId),
+    enabled: chatEnabled,
     sendAgentMessage: (text) =>
       agentRef.current?.sendMessage(text, { inputMode: "voice" }),
   });
@@ -896,7 +898,6 @@ function SmartChartWorkspaceInner({
                 targets={targets}
                 overlays={overlays}
                 drawings={drawings}
-                headerActions={headerActions}
                 dataSource={dataSource}
                 locale={locale}
                 direction={dir}
@@ -907,6 +908,26 @@ function SmartChartWorkspaceInner({
                 onIntervalChange={handleIntervalChange}
               />
             </ChartErrorBoundary>
+
+            {/* N11/N14/N2: spread badge, pair spelling, interval, relocated actions.
+                Refresh lands in Phase 4 once it leaves the top bar. */}
+            {!capture && (
+              <>
+                <ChartChrome
+                  symbol={symbol}
+                  interval={interval}
+                  dataSource={dataSource}
+                  actions={headerActions}
+                  onIntervalChange={handleIntervalChange}
+                  onRefresh={() => chartRef.current?.reload()}
+                />
+                <ChartLivePriceBadge symbol={symbol} />
+                <ChartBuySellTicket
+                  symbol={symbol}
+                  connected={Boolean(capital.connected)}
+                />
+              </>
+            )}
 
             <ChartTradeOverlay
               recommendation={recommendation}
@@ -946,12 +967,10 @@ function SmartChartWorkspaceInner({
 
         {chatEnabled && (
           <div className={chatPaneClass}>
-            {/* Operator trade-mode control: permanent badge + guarded switch
-                (Group 9). Sits above the chat so the standing-execution state
-                is visible whenever the agent is. */}
-            <TradeModePanel />
+            {/* Mode / account state live in the top bar (N18). Execution stage
+                remains in the composer + menu — not as a row above the chat. */}
             <SmartChartAgentPanel
-              key={chat.activeChatId ?? "new"}
+              key={chat.activeChatId ?? "home"}
               ref={agentRef}
               symbol={symbol}
               interval={interval}
@@ -987,7 +1006,8 @@ function SmartChartWorkspaceInner({
               onResult={handleAgentResult}
               onVoiceFinal={voice.handleAgentFinal}
               onPersistMessage={chat.persistMessage}
-              voiceControl={<AgentVoiceButton voice={voice} disabled={!chat.activeChatId} />}
+              ensureChatId={chat.ensureChat}
+              voiceControl={<AgentVoiceButton voice={voice} disabled={false} />}
               voicePanel={<AgentVoicePanel voice={voice} />}
             />
           </div>

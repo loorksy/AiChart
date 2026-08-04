@@ -62,7 +62,7 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
     server: input.server.trim(),
     login,
     password: input.password,
-    name: `AiChart u${userId}`,
+    name: `Lonora u${userId}`,
   });
 
   await saveMtAccount(userId, {
@@ -76,9 +76,8 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
     connectionStatus: account.connectionStatus,
   });
 
-  // V2-B (#96): metering starts the moment the account exists, and the
-  // one-time year backfill runs in the background — a backfill failure
-  // never fails the link (the warehouse gap-fix covers the rest later).
+  // V2-B (#96): metering starts the moment the account exists. Catalogue
+  // seeding runs in the background — a seed failure never fails the link.
   void (async () => {
     try {
       const { openDeploySession, markPresence } = await import("./metaapi/lifecycle");
@@ -93,11 +92,28 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
         if (info.type) {
           await updateMtAccountStatus(userId, { accountTradeMode: info.type });
         }
+        // Seed the shared catalogue from what THIS account actually reports.
+        // Later users linking a different broker still get a populated list;
+        // origin stays 'broker' so nothing is labelled as the platform feed.
+        try {
+          const symbols = await conn.getSymbols();
+          const { seedBrokerSymbols } = await import("./markets/symbolCatalogue");
+          await seedBrokerSymbols({
+            userId,
+            metaapiAccountId: account.id,
+            symbols: Array.isArray(symbols) ? symbols : [],
+          });
+        } catch (seedErr) {
+          console.error(
+            "[mtConnect] symbol catalogue seed failed:",
+            seedErr instanceof Error ? seedErr.message : seedErr,
+          );
+        }
       } catch {
         /* the next status poll retries */
       }
-      const { backfillYearForUser } = await import("./metaapi/backfill");
-      await backfillYearForUser(userId, account.id);
+      // Year-long candle backfill on link was removed (N21) — OHLC is fetched
+      // on demand via fetchOhlc/klines. The catalogue seed above is enough.
     } catch (e) {
       console.error("[mtConnect] post-link setup failed:", e instanceof Error ? e.message : e);
     }

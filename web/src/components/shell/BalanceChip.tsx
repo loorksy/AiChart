@@ -77,6 +77,9 @@ export function BalanceChip() {
       ) : (
         <Wallet className="h-3.5 w-3.5 shrink-0" aria-hidden />
       )}
+      <span className="hidden sm:inline text-[10px] font-medium opacity-70">
+        {t("balance.credit_short")}
+      </span>
       <span dir="ltr">${state.totalUsd.toFixed(2)}</span>
       {(empty || low) && (
         <span className="hidden sm:inline">

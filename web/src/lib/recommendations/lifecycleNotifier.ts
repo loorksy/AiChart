@@ -103,6 +103,11 @@ export interface NotifyOptions {
    * involved.
    */
   silent?: boolean;
+  /**
+   * Optional chart path for Telegram PNG cards (`/api/agent/chart/:id` or
+   * `/api/chart-image/:id`). Capture failures fall back to text in alerts.ts.
+   */
+  photoUrl?: string | null;
 }
 
 export interface NotifyResult {
@@ -187,11 +192,14 @@ export async function notifyLifecycleEvents(
 
     const title = groupTitle(fresh);
     const text = lifecycleCard(fresh);
+    const photoUrl =
+      options.photoUrl ?? resolveLifecyclePhotoUrl(fresh);
     const delivery = await dispatchAlert(userId, {
       type: "signal",
       title,
       text,
       symbol: fresh[0]!.symbol,
+      photoUrl,
     }).catch((error: unknown) => {
       log.warn("lifecycle.alert.failed", {
         userId,
@@ -241,6 +249,19 @@ export async function selectUnannouncedAlerts<
   return fresh;
 }
 
+/**
+ * Prefer an explicit photo URL; otherwise use the recommendation id when it is
+ * a numeric row id so creation alerts can attach a platform chart PNG.
+ */
+function resolveLifecyclePhotoUrl(
+  events: readonly LifecycleEvent[],
+): string | null {
+  const created = events.find((event) => event.type === "opportunity_created");
+  const id = created?.recommendationId ?? events[0]?.recommendationId;
+  if (id && /^\d+$/.test(id)) return `/api/agent/chart/${id}`;
+  return null;
+}
+
 export async function announceOpportunityCreated(
   userId: number,
   input: {
@@ -250,10 +271,22 @@ export async function announceOpportunityCreated(
     entry?: number | null;
     planType?: string | null;
     revisionNo?: number | null;
+    /** Chart path for Telegram PNG; defaults to `/api/agent/chart/:id` when id is numeric. */
+    photoUrl?: string | null;
   },
   options: NotifyOptions = {},
 ): Promise<NotifyResult> {
-  return notifyLifecycleEvents(userId, [opportunityCreatedEvent(input)], options);
+  const photoUrl =
+    input.photoUrl ??
+    options.photoUrl ??
+    (/^\d+$/.test(input.recommendationId)
+      ? `/api/agent/chart/${input.recommendationId}`
+      : null);
+  return notifyLifecycleEvents(
+    userId,
+    [opportunityCreatedEvent(input)],
+    { ...options, photoUrl },
+  );
 }
 
 function groupTitle(events: LifecycleEvent[]): string {

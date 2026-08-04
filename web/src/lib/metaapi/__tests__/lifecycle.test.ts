@@ -12,7 +12,6 @@ process.env.BILLING_RETAIL_MULTIPLIER = "1.5";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let db: any;
 let lifecycle: any;
-let backfill: any;
 let ledger: any;
 
 const HOUR = 3_600_000;
@@ -20,7 +19,6 @@ const HOUR = 3_600_000;
 before(async () => {
   db = await import("@/lib/db");
   lifecycle = await import("../lifecycle");
-  backfill = await import("../backfill");
   ledger = await import("@/lib/billing/creditLedger");
   await db.initDb();
   await db.execute(
@@ -88,19 +86,5 @@ describe("deploy session metering", () => {
 
     const again = await lifecycle.closeDeploySession(30, "acct-1", "idle");
     assert.equal(again, null, "closing a closed session is a no-op");
-  });
-});
-
-describe("backfill monthChunks", () => {
-  it("covers a full year oldest-first with no gaps or overlap", () => {
-    const YEAR = 365 * 24 * HOUR;
-    const to = 2_000_000_000_000;
-    const chunks = backfill.monthChunks(to - YEAR, to);
-    assert.equal(chunks.length, 13, "365 days / 30-day chunks");
-    assert.equal(chunks[0].from, to - YEAR);
-    assert.equal(chunks.at(-1).to, to);
-    for (let i = 1; i < chunks.length; i++) {
-      assert.equal(chunks[i].from, chunks[i - 1].to, "contiguous");
-    }
   });
 });

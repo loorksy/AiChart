@@ -125,6 +125,12 @@ function priceScale(symbol: string): number {
 /** Bars served by the trader's cloud MetaTrader account, via MetaApi. */
 const CLOUD_EXCHANGE = "MT5 CLOUD";
 
+type BarSubscription = {
+  timer?: ReturnType<typeof setInterval>;
+  source?: EventSource;
+  onVisibility?: () => void;
+};
+
 /** Datafeed backed by AiChart's own /api/market/klines + /api/instruments. */
 export function createAiChartDatafeed(
   market: MarketType = "forex",
@@ -132,7 +138,7 @@ export function createAiChartDatafeed(
 ): IBasicDataFeed {
   const exchange = "OANDA";
   const symbolType = "forex";
-  const subscribers = new Map<string, ReturnType<typeof setInterval>>();
+  const subscribers = new Map<string, BarSubscription>();
 
   const config: DatafeedConfiguration = {
     supported_resolutions: SUPPORTED_RESOLUTIONS,
@@ -382,26 +388,36 @@ export function createAiChartDatafeed(
     ) => {
       const interval = resolutionToInterval(resolution);
       const ticker = symbolInfo.ticker ?? symbolInfo.name;
+      const barMs = barDurationMs(interval) || 60_000;
+      let forming: Bar | null = null;
+      let streamAlive = false;
+
+      const emit = (bar: Bar) => {
+        forming = bar;
+        opts.onLatestCandle?.({
+          symbol: ticker,
+          interval,
+          time: bar.time,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume,
+        });
+        onTick(bar);
+      };
+
       const poll = async () => {
-        // Live forming candle: fresh=1 bypasses cache/warehouse staleness so the
-        // last bar ticks in real time. Only the 2-bar tail is fetched fresh.
+        // Fallback / bootstrap: fresh=1 bypasses cache so the forming bar is
+        // current. Kept forever for the platform feed and when the stream dies.
+        if (streamAlive) return;
         const { candles: rows } = await fetchCandles(ticker, interval, {
           limit: 2,
           fresh: true,
         });
         const last = rows[rows.length - 1];
         if (last && Number.isFinite(last.time)) {
-          opts.onLatestCandle?.({
-            symbol: ticker.toUpperCase(),
-            interval,
-            time: last.time * 1000,
-            open: last.open,
-            high: last.high,
-            low: last.low,
-            close: last.close,
-            volume: last.volume,
-          });
-          onTick({
+          emit({
             time: last.time * 1000,
             open: last.open,
             high: last.high,
@@ -411,17 +427,111 @@ export function createAiChartDatafeed(
           });
         }
       };
+
+      const applyTickPrice = (price: number, timeMs: number) => {
+        const openTime = Math.floor(timeMs / barMs) * barMs;
+        if (!forming || forming.time !== openTime) {
+          emit({
+            time: openTime,
+            open: price,
+            high: price,
+            low: price,
+            close: price,
+            volume: 0,
+          });
+          return;
+        }
+        emit({
+          time: openTime,
+          open: forming.open,
+          high: Math.max(forming.high, price),
+          low: Math.min(forming.low, price),
+          close: price,
+          volume: forming.volume ?? 0,
+        });
+      };
+
       void poll();
       const timer = setInterval(() => void poll(), pollMsForResolution(resolution));
-      subscribers.set(listenerGuid, timer);
+      const sub: BarSubscription = { timer };
+
+      // Cloud charts: MetaApi streaming via SSE. One subscription per open
+      // chart; closing the EventSource (unsubscribe / tab hidden) tears it down.
+      if (typeof EventSource !== "undefined") {
+        const source = new EventSource(
+          `/api/market/ticks?symbol=${encodeURIComponent(ticker)}`,
+        );
+        sub.source = source;
+        source.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data) as {
+              type?: string;
+              mid?: number;
+              time?: number;
+            };
+            if (data.type === "ready") {
+              streamAlive = true;
+              return;
+            }
+            if (data.type !== "tick") return;
+            const mid = Number(data.mid);
+            const time = Number(data.time) || Date.now();
+            if (!Number.isFinite(mid)) return;
+            streamAlive = true;
+            applyTickPrice(mid, time);
+          } catch {
+            /* malformed frame — keep listening */
+          }
+        };
+        source.onerror = () => {
+          // 204 / auth / network: fall back to the timer without killing the chart.
+          streamAlive = false;
+          source.close();
+          sub.source = undefined;
+        };
+
+        const reopenStream = () => {
+          if (sub.source) return;
+          const next = new EventSource(
+            `/api/market/ticks?symbol=${encodeURIComponent(ticker)}`,
+          );
+          sub.source = next;
+          next.onmessage = source.onmessage;
+          next.onerror = () => {
+            streamAlive = false;
+            next.close();
+            sub.source = undefined;
+          };
+        };
+        const onVisibility = () => {
+          if (document.visibilityState === "hidden") {
+            streamAlive = false;
+            source.close();
+            sub.source = undefined;
+            return;
+          }
+          // Wake: reopen the stream; poll covers the gap until ready.
+          reopenStream();
+          void poll();
+        };
+        document.addEventListener("visibilitychange", onVisibility);
+        window.addEventListener("aichart:app-wake", onVisibility);
+        sub.onVisibility = onVisibility;
+      }
+
+      subscribers.set(listenerGuid, sub);
     },
 
     unsubscribeBars: (listenerGuid) => {
-      const timer = subscribers.get(listenerGuid);
-      if (timer) {
-        clearInterval(timer);
-        subscribers.delete(listenerGuid);
+      const sub = subscribers.get(listenerGuid);
+      if (!sub) return;
+      if (sub.timer) clearInterval(sub.timer);
+      sub.source?.close();
+      if (sub.onVisibility) {
+        document.removeEventListener("visibilitychange", sub.onVisibility);
+        window.removeEventListener("aichart:app-wake", sub.onVisibility);
       }
+      subscribers.delete(listenerGuid);
     },
   };
 }

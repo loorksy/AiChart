@@ -1,4 +1,4 @@
-# AiChart Agent — Claude MCP Bridge
+# Lonora Agent — Claude MCP Bridge
 
 Trading and technical analysis execution using **Claude.ai Connectors** and the MCP Server implemented in [`mcp/`](../mcp/README.md).
 

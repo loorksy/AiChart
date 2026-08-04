@@ -16,7 +16,7 @@ export async function answerChartDrawingQuestion(input: {
   );
 
   if (!drawings.length) {
-    return "لا أرى رسومات محفوظة داخل حالة هذا الشارت الآن. إذا رسمت بأدوات TradingView الأصلية ولم تُحفظ داخل AiChart فقد لا تصلني كبيانات؛ ارسمها من أدوات AiChart/الوكيل أو احفظ التخطيط ثم اسألني عنها.";
+    return "لا أرى رسومات محفوظة داخل حالة هذا الشارت الآن. إذا رسمت بأدوات TradingView الأصلية ولم تُحفظ داخل Lonora فقد لا تصلني كبيانات؛ ارسمها من أدوات Lonora/الوكيل أو احفظ التخطيط ثم اسألني عنها.";
   }
 
   const context = {
@@ -41,7 +41,7 @@ export async function answerChartDrawingQuestion(input: {
   try {
     const res = await callLLM({
       system:
-        "You are the AiChart trading agent discussing drawings on the operator's live chart. Reply naturally and concisely in the SAME language as the operator's question. Do not issue a new buy/sell recommendation unless the operator explicitly asks for analysis or an entry. Use ONLY the JSON provided: the drawings, current price, and active recommendation if present. Never claim to see drawings that are not in the data. Never reveal internal reasoning.",
+        "You are the Lonora trading agent discussing drawings on the operator's live chart. Reply naturally and concisely in the SAME language as the operator's question. Do not issue a new buy/sell recommendation unless the operator explicitly asks for analysis or an entry. Use ONLY the JSON provided: the drawings, current price, and active recommendation if present. Never claim to see drawings that are not in the data. Never reveal internal reasoning.",
       messages: [
         {
           role: "user",

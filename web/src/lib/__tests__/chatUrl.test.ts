@@ -10,7 +10,7 @@ import {
 
 test("chatConsoleHref encodes chat query param", () => {
   const id = "a1b2c3d4-e5f6-4789-a012-3456789abcde";
-  assert.equal(chatConsoleHref(id), `/console?${CHAT_QUERY_KEY}=${id}`);
+  assert.equal(chatConsoleHref(id), `/workspace?${CHAT_QUERY_KEY}=${id}`);
 });
 
 test("chatShareHref builds pretty share path", () => {

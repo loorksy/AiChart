@@ -7,7 +7,7 @@ export const LANDING_ROUTES = {
   signup: "/signup",
   login: "/login",
   chart: "/chart",
-  console: "/console",
+  console: "/workspace",
   pricing: "/pricing",
   privacy: "/p/privacy-policy",
   terms: "/p/terms-of-service",
@@ -199,8 +199,8 @@ const ar: LandingCopy = {
     eyebrow: "مساحة تداول بالذكاء الاصطناعي",
     title: "حلّل السوق، ناقش الفرصة، ونفّذ بوضوح.",
     subtitle:
-      "يجمع AiChart بين الشارت الحي ومحادثة تداول ذكية، ثم يجهّز سيناريوهات واضحة للمراجعة قبل التنفيذ عبر MetaTrader.",
-    primaryCta: "افتح AiChart",
+      "يجمع Lonora بين الشارت الحي ومحادثة تداول ذكية، ثم يجهّز سيناريوهات واضحة للمراجعة قبل التنفيذ عبر MetaTrader.",
+    primaryCta: "افتح Lonora",
     secondaryCta: "جرّب الشارت",
     quickPrompts: [
       "حلّل EURUSD",
@@ -227,7 +227,7 @@ const ar: LandingCopy = {
   },
   partners: {
     eyebrow: "تكاملات وشركاء تقنيون",
-    note: "شعارات توضيحية للتكاملات المدعومة أو المستخدمة في مساحة AiChart — وليست ادّعاء شراكة تجارية.",
+    note: "شعارات توضيحية للتكاملات المدعومة أو المستخدمة في مساحة Lonora — وليست ادّعاء شراكة تجارية.",
   },
   preview: {
     label: "معاينة مساحة العمل",
@@ -244,7 +244,7 @@ const ar: LandingCopy = {
     illustrative: "بيانات توضيحية — ليست توصية حية",
   },
   benefits: {
-    title: "ثلاثة أسباب لاختيار AiChart",
+    title: "ثلاثة أسباب لاختيار Lonora",
     subtitle: "تركيز على التجربة الحقيقية: شارت، محادثة، وتنفيذ مضبوط.",
     items: [
       {
@@ -253,7 +253,7 @@ const ar: LandingCopy = {
       },
       {
         title: "سيناريوهات تداول واضحة",
-        body: "عند وجود مبرر كافٍ، يقدّم AiChart BUY أو SELL أو WAIT أو سيناريو مشروطاً مع الأسباب والمستويات.",
+        body: "عند وجود مبرر كافٍ، يقدّم Lonora BUY أو SELL أو WAIT أو سيناريو مشروطاً مع الأسباب والمستويات.",
       },
       {
         title: "تنفيذ MetaTrader بموافقتك",
@@ -263,7 +263,7 @@ const ar: LandingCopy = {
     workspaceLabel: "مساحة العمل",
     workspacePoints: [
       "شارت حي مع الرمز والإطار الزمني",
-      "محادثة مع وكيل AiChart",
+      "محادثة مع وكيل Lonora",
       "بطاقة توصية بمستويات الدخول والوقف والأهداف",
     ],
     panelTitle: "معاينة توضيحية",
@@ -277,7 +277,7 @@ const ar: LandingCopy = {
   },
   stats: {
     title: "أرقام المنتج — لا أرقام تسويقية",
-    subtitle: "حقائق تشغيلية عن AiChart، وليست ادّعاءات أداء.",
+    subtitle: "حقائق تشغيلية عن Lonora، وليست ادّعاءات أداء.",
     disclaimer: "هذه الأرقام تصف قدرات المنصة الحالية، وليست نتائج تداول.",
     items: [
       {
@@ -354,7 +354,7 @@ const ar: LandingCopy = {
       },
       {
         quote:
-          "أستخدم AiChart للمراجعة قبل التنفيذ، وليس كزر تنفيذ تلقائي.",
+          "أستخدم Lonora للمراجعة قبل التنفيذ، وليس كزر تنفيذ تلقائي.",
         name: "مراجع F",
         role: "سيناريو توضيحي — انضباط تنفيذ",
         initials: "F",
@@ -408,7 +408,7 @@ const ar: LandingCopy = {
     subtitle: "كل ما تحتاجه للمراجعة اليومية في مكان واحد.",
     points: [
       "شارت حي مع الرمز والإطار الزمني",
-      "محادثة مع وكيل AiChart",
+      "محادثة مع وكيل Lonora",
       "بطاقة توصية بمستويات الدخول والوقف والأهداف",
       "سجل المحادثات والإحصائيات والصفقات",
     ],
@@ -443,12 +443,12 @@ const ar: LandingCopy = {
   },
   faq: {
     title: "أسئلة شائعة",
-    subtitle: "إجابات مختصرة عن AiChart، التنفيذ، واللغات المدعومة.",
+    subtitle: "إجابات مختصرة عن Lonora، التنفيذ، واللغات المدعومة.",
     contactLead: "لم تجد إجابتك؟",
     contactLink: "تواصل معنا",
     items: [
       {
-        q: "هل ينفّذ AiChart الصفقات تلقائياً؟",
+        q: "هل ينفّذ Lonora الصفقات تلقائياً؟",
         a: "لا. التنفيذ الحي يتطلب موافقتك الصريحة، ثم فحوصاً تقنية صالحة قبل إرسال الأمر.",
       },
       {
@@ -464,8 +464,8 @@ const ar: LandingCopy = {
         a: "حجم الصفقة فقط بالنسبة لرصيدك ومسافة وقف الخسارة. لا يغيّر قرار السوق.",
       },
       {
-        q: "هل يضمن AiChart الربح؟",
-        a: "لا. التداول ينطوي على مخاطر. AiChart أداة للمراجعة واتخاذ القرار — وليست نظام ربح مضمون.",
+        q: "هل يضمن Lonora الربح؟",
+        a: "لا. التداول ينطوي على مخاطر. Lonora أداة للمراجعة واتخاذ القرار — وليست نظام ربح مضمون.",
       },
       {
         q: "هل العربية والإنجليزية مدعومتان؟",
@@ -523,8 +523,8 @@ const en: LandingCopy = {
     eyebrow: "AI trading workspace",
     title: "Analyze the market. Discuss the setup. Execute with clarity.",
     subtitle:
-      "AiChart combines a live chart with an intelligent trading conversation, then prepares clear trade scenarios for review before MetaTrader execution.",
-    primaryCta: "Open AiChart",
+      "Lonora combines a live chart with an intelligent trading conversation, then prepares clear trade scenarios for review before MetaTrader execution.",
+    primaryCta: "Open Lonora",
     secondaryCta: "View the chart",
     quickPrompts: [
       "Analyze EURUSD",
@@ -551,7 +551,7 @@ const en: LandingCopy = {
   },
   partners: {
     eyebrow: "Integrations and technology partners",
-    note: "Illustrative logos for supported or used integrations in AiChart — not a commercial partnership claim.",
+    note: "Illustrative logos for supported or used integrations in Lonora — not a commercial partnership claim.",
   },
   preview: {
     label: "Workspace preview",
@@ -568,7 +568,7 @@ const en: LandingCopy = {
     illustrative: "Illustrative data — not a live recommendation",
   },
   benefits: {
-    title: "Three reasons to use AiChart",
+    title: "Three reasons to use Lonora",
     subtitle: "Focused on the real workflow: chart, conversation, and controlled execution.",
     items: [
       {
@@ -577,7 +577,7 @@ const en: LandingCopy = {
       },
       {
         title: "Clear trading scenarios",
-        body: "When justified, AiChart offers BUY, SELL, WAIT, or a conditional scenario with reasoning and real levels.",
+        body: "When justified, Lonora offers BUY, SELL, WAIT, or a conditional scenario with reasoning and real levels.",
       },
       {
         title: "Controlled MetaTrader execution",
@@ -587,7 +587,7 @@ const en: LandingCopy = {
     workspaceLabel: "Workspace",
     workspacePoints: [
       "Live chart with symbol and timeframe",
-      "Conversation with the AiChart agent",
+      "Conversation with the Lonora agent",
       "Recommendation card with entry, stop, and targets",
     ],
     panelTitle: "Illustrative preview",
@@ -601,7 +601,7 @@ const en: LandingCopy = {
   },
   stats: {
     title: "Product facts — not marketing metrics",
-    subtitle: "Operational truths about AiChart, not performance claims.",
+    subtitle: "Operational truths about Lonora, not performance claims.",
     disclaimer: "These numbers describe current product capabilities, not trading results.",
     items: [
       {
@@ -678,7 +678,7 @@ const en: LandingCopy = {
       },
       {
         quote:
-          "I use AiChart to review before execution, not as an auto-trade button.",
+          "I use Lonora to review before execution, not as an auto-trade button.",
         name: "Reviewer F",
         role: "Illustrative scenario — execution discipline",
         initials: "F",
@@ -732,7 +732,7 @@ const en: LandingCopy = {
     subtitle: "Everything you need for daily review in one place.",
     points: [
       "Live chart with symbol and timeframe",
-      "Conversation with the AiChart agent",
+      "Conversation with the Lonora agent",
       "Recommendation card with entry, stop, and targets",
       "Conversation history, statistics, and trades",
     ],
@@ -767,12 +767,12 @@ const en: LandingCopy = {
   },
   faq: {
     title: "FAQ",
-    subtitle: "Short answers about AiChart, execution, and supported languages.",
+    subtitle: "Short answers about Lonora, execution, and supported languages.",
     contactLead: "Can't find your answer?",
     contactLink: "Contact us",
     items: [
       {
-        q: "Does AiChart execute trades automatically?",
+        q: "Does Lonora execute trades automatically?",
         a: "No. Live execution requires your explicit approval and valid technical checks before an order is sent.",
       },
       {
@@ -788,8 +788,8 @@ const en: LandingCopy = {
         a: "Position size only, based on your equity and stop distance. It does not change the market decision.",
       },
       {
-        q: "Does AiChart guarantee profit?",
-        a: "No. Trading involves risk. AiChart is a review and decision workspace — not a guaranteed profit system.",
+        q: "Does Lonora guarantee profit?",
+        a: "No. Trading involves risk. Lonora is a review and decision workspace — not a guaranteed profit system.",
       },
       {
         q: "Are Arabic and English supported?",

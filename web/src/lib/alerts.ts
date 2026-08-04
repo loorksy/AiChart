@@ -83,6 +83,21 @@ export interface DispatchAlertOptions {
   buttons?: InlineButton[][];
 }
 
+/**
+ * Relative chart paths that mean "capture (or fall back) for this recommendation".
+ * Both legacy `/api/chart-image/:id` and the agent bridge `/api/agent/chart/:id`
+ * identify a numeric recommendation row — not a capture-key URL.
+ */
+function chartRecommendationIdFromPhotoUrl(
+  photoUrl: string | null | undefined,
+): number | null {
+  if (!photoUrl) return null;
+  const match = photoUrl.match(/^\/api\/(?:chart-image|agent\/chart)\/(\d+)$/);
+  if (!match) return null;
+  const recId = Number(match[1]);
+  return Number.isFinite(recId) && recId > 0 ? recId : null;
+}
+
 function isTradeAlert(type: AlertType): boolean {
   return (
     type === "trade_executed" ||
@@ -171,12 +186,9 @@ export async function deliverSignal(
   const body = opts.text ?? opts.title;
 
   try {
-    if (opts.photoUrl?.startsWith("/api/chart-image/")) {
-      const recId = Number(opts.photoUrl.split("/").pop());
-      const rec =
-        Number.isFinite(recId) && recId > 0
-          ? await getRecommendation(recId)
-          : null;
+    const chartRecId = chartRecommendationIdFromPhotoUrl(opts.photoUrl);
+    if (chartRecId != null) {
+      const rec = await getRecommendation(chartRecId);
       const settings = await getSettings(userId);
       if (rec && settings.send_screenshot === 1) {
         /**

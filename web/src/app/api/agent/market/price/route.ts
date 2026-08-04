@@ -21,7 +21,11 @@ export async function GET(req: NextRequest) {
     }
     const market = resolveActiveMarket(rawMarket ?? DEFAULT_MARKET);
 
-    const { resolved, price } = await getUnifiedPrice(symbol, market, userId);
+    const { resolved, price, source, book } = await getUnifiedPrice(
+      symbol,
+      market,
+      userId,
+    );
     // The session of the SYMBOL ASKED FOR, not of the chart the operator
     // happens to be on: gold can be in its maintenance hour while EURUSD
     // trades, and an agent quoting a frozen tape as if it were live is the
@@ -31,6 +35,8 @@ export async function GET(req: NextRequest) {
       symbol: resolved.symbol,
       market: resolved.market,
       price,
+      source,
+      book,
       market_open: session.isOpen,
       session_reason: session.reason,
       ...(session.isOpen

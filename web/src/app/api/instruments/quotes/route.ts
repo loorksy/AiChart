@@ -6,6 +6,13 @@ import {
   resolveMarketDataSource,
   type MarketDataSource,
 } from "@/lib/markets/marketDataSource";
+import {
+  fetchOandaPricing,
+  oandaAccountId,
+  oandaConfigured,
+} from "@/lib/markets/oanda";
+import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
+import { resolveBrokerSymbol } from "@/lib/markets/symbolCatalogue";
 
 /** One card's worth of history: ~a day of hourly closes. */
 const WINDOW_INTERVAL = "1h";
@@ -21,29 +28,64 @@ const MAX_SYMBOLS = 12;
 /** Upstream is one request per instrument; a few in flight, not twelve. */
 const CONCURRENCY = 4;
 
+/** Live mid from the active pipe — headline price, not the last hourly close. */
+async function liveMid(
+  userId: number,
+  symbol: string,
+  source: MarketDataSource,
+): Promise<number | null> {
+  try {
+    if (source === "metaapi" && userId > 0) {
+      const { getMtAccount } = await import("@/lib/store");
+      const account = await getMtAccount(userId);
+      const accountId = account?.metaapi_account_id;
+      if (!accountId || accountId === "mt5local") return null;
+      const brokerSymbol = await resolveBrokerSymbol(userId, symbol);
+      const { getRpcConnection } = await import("@/lib/metaapi/client");
+      const rpc = await getRpcConnection(userId, accountId);
+      const price = await rpc.getSymbolPrice(brokerSymbol, false);
+      const bid = Number(price?.bid);
+      const ask = Number(price?.ask);
+      if (!Number.isFinite(bid) || !Number.isFinite(ask)) return null;
+      return (bid + ask) / 2;
+    }
+    if (!oandaConfigured() || !oandaAccountId()) return null;
+    const [q] = await fetchOandaPricing([forexCanonicalKey(symbol)]);
+    return q?.mid ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function quoteFor(
   userId: number,
   symbol: string,
   source: MarketDataSource,
 ): Promise<PairQuote> {
   try {
-    const { candles } = await fetchOhlc({
-      userId,
-      symbol,
-      interval: WINDOW_INTERVAL,
-      limit: WINDOW_BARS,
-      source,
-    });
+    const [{ candles }, live] = await Promise.all([
+      fetchOhlc({
+        userId,
+        symbol,
+        interval: WINDOW_INTERVAL,
+        limit: WINDOW_BARS,
+        source,
+      }),
+      liveMid(userId, symbol, source),
+    ]);
     const closes = candles.map((c) => c.close).filter((n) => Number.isFinite(n));
+    const lastClose = closes.length ? closes[closes.length - 1] : null;
     return {
       symbol,
-      price: closes.length ? closes[closes.length - 1] : null,
+      // Live tick when the pipe answers; sparkline still comes from OHLC.
+      price: live ?? lastClose,
       changePct: changePct(closes),
       series: downsample(closes, SPARK_POINTS),
+      live: live != null,
     };
   } catch {
     // A pair whose history is unavailable still gets a card — an empty one.
-    return { symbol, price: null, changePct: null, series: [] };
+    return { symbol, price: null, changePct: null, series: [], live: false };
   }
 }
 

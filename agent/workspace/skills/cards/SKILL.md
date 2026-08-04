@@ -1,7 +1,7 @@
 ---
 name: cards
 version: 1.0.0
-description: AiChart interactive-card selection and rendering guidance.
+description: Lonora interactive-card selection and rendering guidance.
 category: presentation
 riskLevel: read_only
 supportedLocales: ["ar", "en"]
@@ -11,11 +11,11 @@ tags: ["presentation", "cards", "widget", "ui", "layout"]
 
 # Interactive Cards Skill
 
-Guide for when and how to show **interactive cards** (mini UI) in AiChart instead of dry text. **English instructions** — localize card **content** to the operator's language.
+Guide for when and how to show **interactive cards** (mini UI) in Lonora instead of dry text. **English instructions** — localize card **content** to the operator's language.
 
 ## Card protocol
 
-Cards are a **native AiChart protocol**, not model-specific. They work with any provider because:
+Cards are a **native Lonora protocol**, not model-specific. They work with any provider because:
 
 - **Declarative data, not code**: `ui_schema = { version: "1.0", layout: UIElement[] }` where `UIElement = { id, component, props, children? }`.
 - **Two layers**: (1) you call `render_cards`; (2) if you forget, the server may compose a card from tool output deterministically.

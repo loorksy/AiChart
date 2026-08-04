@@ -5,5 +5,5 @@ import { redirect } from "next/navigation";
  * Old bookmarks land on Chart and Chat with conversations in the sidebar.
  */
 export default function ChatHistoryRedirectPage() {
-  redirect("/console");
+  redirect("/workspace");
 }

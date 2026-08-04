@@ -1,12 +1,12 @@
 /**
- * Canonical AiChart subscription product — single paid plan.
+ * Canonical Lonora subscription product — single paid plan.
  * Billing duration is administrator-controlled; do not fabricate /month or /year.
  */
 
 export const AICHART_PLAN = {
   id: "aichart_full_access",
-  titleEn: "AiChart Full Access",
-  titleAr: "AiChart — الوصول الكامل",
+  titleEn: "Lonora Full Access",
+  titleAr: "Lonora — الوصول الكامل",
   regularPriceUsd: 350,
   promotionalPriceUsd: 180,
   currency: "USD",

@@ -37,7 +37,7 @@ export function McpUrlGuide({
             Claude Connectors
           </a>
         </li>
-        <li>Add custom connector → الاسم: AiChart Trading</li>
+        <li>Add custom connector → الاسم: Lonora Trading</li>
         <li>
           Remote connector URL:
           <div className="mt-2">
@@ -45,10 +45,10 @@ export function McpUrlGuide({
           </div>
         </li>
         <li>OAuth Client ID/Secret: اتركهما فارغين</li>
-        <li>سجّل دخول بحسابك في AiChart (بريد + كلمة المرور)</li>
+        <li>سجّل دخول بحسابك في Lonora (بريد + كلمة المرور)</li>
       </ol>
       <p className="text-muted-foreground">
-        بعد الربط يظهر مساعد AiChart داخل محادثة Claude — القرار من التحليل، والتنفيذ لا يتم إلا بعد موافقتك واجتياز الفحوص التقنية.
+        بعد الربط يظهر مساعد Lonora داخل محادثة Claude — القرار من التحليل، والتنفيذ لا يتم إلا بعد موافقتك واجتياز الفحوص التقنية.
       </p>
     </div>
   );

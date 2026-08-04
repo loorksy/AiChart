@@ -58,7 +58,7 @@ export const MARKET_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "get_chart_link",
     domain: "market",
     description:
-      "Builds the public AiChart live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. Not for showing the chart in this conversation — capture_chart_snapshot/show_live_chart attach the actual image, this only returns a URL. read-only. Example: symbol=EURUSD.",
+      "Builds the public Lonora live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. Not for showing the chart in this conversation — capture_chart_snapshot/show_live_chart attach the actual image, this only returns a URL. read-only. Example: symbol=EURUSD.",
     inputSchema: { symbol: zSymbol },
     annotations: READ_ONLY,
   },

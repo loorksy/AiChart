@@ -77,6 +77,11 @@ export interface UseSmartChartAgentOptions {
   ) => void;
   /** Persist a user/assistant message to chat history (fire-and-forget). */
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
+  /**
+   * Home has no chat id. Called before the first turn so typing+send creates
+   * the conversation and navigates into it.
+   */
+  ensureChatId?: () => Promise<string | null>;
 }
 
 function uuid(): string {
@@ -120,11 +125,20 @@ export function useSmartChartAgent(opts: UseSmartChartAgentOptions) {
       if (!text || running) return;
       const inputMode = sendOpts?.inputMode ?? "text";
 
+      // Bare home: mint the conversation before the stream so persistence and
+      // the URL land on a real chat id, not a throwaway uuid.
+      let chatId = opts.chatId ?? sessionIdRef.current;
+      if (!opts.chatId && opts.ensureChatId) {
+        const ensured = await opts.ensureChatId();
+        if (ensured) {
+          chatId = ensured;
+          sessionIdRef.current = ensured;
+        }
+      }
+
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
-
-      const chatId = opts.chatId ?? sessionIdRef.current;
       // A temporary assistant bubble hosts the live ticker while the run is in
       // flight; the final event replaces it in place (same id → no duplicate).
       const pendingId = uuid();

@@ -3,9 +3,10 @@ import { ApiError } from "@/lib/api";
 import { DEFAULT_MARKET, rejectNonForexMarket, resolveActiveMarket } from "@/lib/marketPolicy";
 import { fetchOhlc, OHLC_MAX_LIMIT } from "@/lib/ohlc/fetchOhlc";
 import { forexCanonicalKey } from "@/lib/markets/forexCanonical";
-import { isOandaDataOnly } from "@/lib/markets/forexDataSource";
+import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
+import { marketDataBookLabel } from "@/lib/markets";
 
-/** Bridge: OHLC candles via OANDA. */
+/** Bridge: OHLC candles from the trader's resolved market-data pipe. */
 export const GET = withBridge(async ({ req, userId }) => {
   const { searchParams } = req.nextUrl;
   const symbol = searchParams.get("symbol");
@@ -18,10 +19,15 @@ export const GET = withBridge(async ({ req, userId }) => {
   if (marketErr) throw new ApiError(400, marketErr);
   const market = resolveActiveMarket(rawMarket ?? DEFAULT_MARKET);
   const interval = searchParams.get("interval") ?? "1h";
-  const sourceRaw = searchParams.get("source");
-  const source = isOandaDataOnly() || sourceRaw === "oanda" ? "oanda" : undefined;
-  const rawSymbol = symbol.trim().toUpperCase();
-  const ohlcSymbol = forexCanonicalKey(rawSymbol);
+  const decision = await resolveMarketDataSource(
+    userId,
+    searchParams.get("source"),
+  );
+  // Broker spellings are case-sensitive; only fold for the platform feed.
+  const ohlcSymbol =
+    decision.source === "oanda"
+      ? forexCanonicalKey(symbol.trim())
+      : symbol.trim();
   const limitRaw = searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : 200;
   const cursorRaw = searchParams.get("cursor");
@@ -35,13 +41,18 @@ export const GET = withBridge(async ({ req, userId }) => {
     throw new ApiError(400, "cursor must be a millisecond timestamp.");
   }
 
-  return fetchOhlc({
+  const result = await fetchOhlc({
     userId,
     symbol: ohlcSymbol,
     interval,
     market,
-    source,
+    source: decision.source,
     limit: Math.min(limit, OHLC_MAX_LIMIT),
     cursor,
   });
+  return {
+    ...result,
+    source: decision.source,
+    book: marketDataBookLabel(decision.source),
+  };
 }, { routeKey: "/api/agent/market/ohlc" });

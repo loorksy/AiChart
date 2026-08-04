@@ -24,7 +24,7 @@ async function loadMetaApiClass() {
 type MetaApiClass = Awaited<ReturnType<typeof loadMetaApiClass>>;
 type MetaApiClient = InstanceType<MetaApiClass>;
 
-/** Minimal RPC surface used by AiChart (avoids brittle SDK instance typing). */
+/** Minimal RPC surface used by Lonora (avoids brittle SDK instance typing). */
 export type MetaApiRpcConnection = {
   connect(): Promise<void>;
   waitSynchronized(timeoutInSeconds?: number): Promise<unknown>;
@@ -96,8 +96,17 @@ export type MetaApiAccount = {
   >;
 };
 
+/**
+ * Per-user MetaApi handles. Keyed by userId so every browser tab / request
+ * for the same trader reuses ONE RPC connection and ONE account object.
+ * A second session that called getRPCConnection() independently used to
+ * reconnect the SDK and kick the first tab offline — sharing the promise
+ * is what stops that race.
+ */
 const rpcCache = new Map<number, Promise<MetaApiRpcConnection>>();
 const accountCache = new Map<number, Promise<MetaApiAccount>>();
+/** Which MetaApi account id the cached handles were opened for. */
+const rpcAccountIds = new Map<number, string>();
 
 /** True when METAAPI_TOKEN is set in platform config or env. */
 export function isMetaApiConfigured(): boolean {
@@ -125,7 +134,7 @@ export async function getMetaApi(): Promise<MetaApiClient> {
     const MetaApi = await loadMetaApiClass();
     const region = await metaApiRegion();
     metaApiSingleton = new MetaApi(token, {
-      application: "AiChart",
+      application: "Lonora",
       ...(region ? { region } : {}),
     });
   }
@@ -146,7 +155,7 @@ export async function provisionAccount(input: ProvisionMtInput) {
   const region = await metaApiRegion();
 
   const account = await api.metatraderAccountApi.createAccount({
-    name: input.name ?? `AiChart ${input.login}`,
+    name: input.name ?? `Lonora ${input.login}`,
     login: input.login.replace(/\D/g, ""),
     password: input.password,
     server: input.server.trim(),
@@ -218,8 +227,19 @@ export async function getRpcConnection(
   metaapiAccountId: string,
 ): Promise<MetaApiRpcConnection> {
   const cached = rpcCache.get(userId);
-  if (cached) return cached;
+  // Same user, same account → share. A different account id (re-link) must
+  // drop the stale handle first; otherwise the second browser would talk to
+  // a connection the first browser still believes is alive.
+  if (cached && rpcAccountIds.get(userId) === metaapiAccountId) {
+    return cached;
+  }
+  if (cached) {
+    rpcCache.delete(userId);
+    accountCache.delete(userId);
+    rpcAccountIds.delete(userId);
+  }
 
+  rpcAccountIds.set(userId, metaapiAccountId);
   const promise = (async () => {
     const api = await getMetaApi();
     const account = await api.metatraderAccountApi.getAccount(metaapiAccountId);
@@ -230,6 +250,9 @@ export async function getRpcConnection(
     if (account.connectionStatus !== "CONNECTED") {
       await account.waitConnected(120);
     }
+    // getRPCConnection is a singleton per account on the SDK side; calling
+    // connect() again on an already-live handle is a no-op reconnect, not a
+    // second socket — which is what two browser sessions must share.
     const conn = account.getRPCConnection();
     await conn.connect();
     await conn.waitSynchronized(60);
@@ -238,15 +261,32 @@ export async function getRpcConnection(
 
   rpcCache.set(userId, promise);
   promise.catch(() => {
-    rpcCache.delete(userId);
+    if (rpcCache.get(userId) === promise) {
+      rpcCache.delete(userId);
+      rpcAccountIds.delete(userId);
+    }
   });
   return promise;
 }
 
 export function clearRpcCache(userId?: number): void {
-  if (userId != null) rpcCache.delete(userId);
-  if (userId != null) accountCache.delete(userId);
-  else rpcCache.clear();
+  if (userId != null) {
+    rpcCache.delete(userId);
+    accountCache.delete(userId);
+    rpcAccountIds.delete(userId);
+    // Streaming shares the same MetaApi account — drop it too so a re-link
+    // cannot leave a zombie quote subscription on the old account id.
+    void import("./streaming")
+      .then((m) => m.clearStreamingCache(userId))
+      .catch(() => undefined);
+    return;
+  }
+  rpcCache.clear();
+  accountCache.clear();
+  rpcAccountIds.clear();
+  void import("./streaming")
+    .then((m) => m.clearStreamingCache())
+    .catch(() => undefined);
 }
 
 /** Maps MetaApi symbol spec to our lot-sizing shape. */

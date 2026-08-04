@@ -42,7 +42,7 @@ export function TelegramLoginButton({
           onError?.(data.error ?? t("auth.telegram_error"));
           return;
         }
-        router.push(data.redirect ?? "/console");
+        router.push(data.redirect ?? "/workspace");
         router.refresh();
       } catch {
         onError?.(t("auth.network_error"));

@@ -412,7 +412,7 @@
     {
       "name": "get_chart_link",
       "version": "1.1.1",
-      "description": "Builds the public AiChart live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. Not for showing the chart in this conversation — capture_chart_snapshot/show_live_chart attach the actual image, this only returns a URL. read-only. Example: symbol=EURUSD.",
+      "description": "Builds the public Lonora live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. Not for showing the chart in this conversation — capture_chart_snapshot/show_live_chart attach the actual image, this only returns a URL. read-only. Example: symbol=EURUSD.",
       "permission": "chart.read",
       "riskClass": "read",
       "surfaces": [

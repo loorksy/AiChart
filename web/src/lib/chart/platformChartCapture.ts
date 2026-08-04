@@ -202,7 +202,7 @@ export async function capturePlatformChart(
           mark.height = 18;
           mark.style.cssText = "display:block;border-radius:4px;";
           const name = document.createElement("span");
-          name.textContent = "AiChart";
+          name.textContent = "Lonora";
           name.style.cssText =
             "font:600 13px/1 system-ui,sans-serif;color:#fafafa;letter-spacing:.02em;";
           badge.append(mark, name);

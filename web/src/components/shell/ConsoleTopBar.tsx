@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
 import { CandlestickChart, PanelLeft, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useState } from "react";
 import { NotificationCenter } from "@/components/agent/NotificationCenter";
 import { BalanceChip } from "@/components/shell/BalanceChip";
+import { TopBarAccountStatus } from "@/components/shell/TopBarAccountStatus";
 import { SidebarProfileMenu } from "@/components/agent/SidebarProfileMenu";
 import { useLocale } from "@/hooks/useLocale";
 import { cn } from "@/lib/utils";
@@ -25,41 +26,39 @@ const ICON_BUTTON =
 /**
  * The console header, identical for traders and admins.
  *
- * Account, alerts, navigation and refresh were previously scattered — the bell
- * in the sidebar, the account menu behind two taps at the bottom of a drawer,
- * no refresh at all — and the admin dashboard had grown a private header of its
- * own on top of that. One bar owns all four now, in one order, on both consoles.
+ * Trader refresh lives on the chart (ChartChrome) — a top-bar refresh on the
+ * home composer screen was the wrong control for a page with no chart focus.
+ * Admins still refresh the page from here.
  */
 export function ConsoleTopBar({
   displayName,
   onToggleSidebar,
   sidebarOpen,
-  /** Admins reload the page; traders reload the chart in place. */
+  /** Admins reload the page; traders no longer refresh from the top bar. */
   refreshMode,
   showBalance = false,
   showChartToggle = false,
+  showAccountStatus = false,
 }: {
   displayName: string;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
-  refreshMode: "page" | "chart";
-  /** Traders see their credit; the admin console is not a metered account. */
+  refreshMode: "page" | "none";
+  /** Traders see subscription credit; the admin console is not a metered account. */
   showBalance?: boolean;
-  /** Only where a chart exists to summon — the workspace route. */
+  /** Hidden on the bare home composer (no chat) — chart summon is not the job there. */
   showChartToggle?: boolean;
+  /** Mode + broker + MT equity — traders only. */
+  showAccountStatus?: boolean;
 }) {
   const { t } = useLocale();
   const router = useRouter();
   const [spinning, setSpinning] = useState(false);
 
   const refresh = useCallback(() => {
+    if (refreshMode !== "page") return;
     setSpinning(true);
-    // Long enough to read as a response even when the work finishes instantly.
     window.setTimeout(() => setSpinning(false), 600);
-    if (refreshMode === "chart") {
-      window.dispatchEvent(new CustomEvent(CHART_RELOAD_EVENT));
-      return;
-    }
     router.refresh();
   }, [refreshMode, router]);
 
@@ -68,13 +67,6 @@ export function ConsoleTopBar({
       data-testid="console-top-bar"
       className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2 sm:px-3"
     >
-      {/*
-        The navigation toggle sits on the edge the navigation itself comes from
-        — the start edge, mirrored automatically under dir="rtl" — so the button
-        points at where the drawer will appear rather than across the bar from
-        it. Everything else is grouped against the opposite edge, with the
-        avatar in the outer corner.
-      */}
       <button
         type="button"
         data-testid="mobile-menu-trigger"
@@ -88,6 +80,7 @@ export function ConsoleTopBar({
       </button>
 
       <div className="ms-auto flex items-center gap-1">
+        {showAccountStatus && <TopBarAccountStatus />}
         {showBalance && <BalanceChip />}
         {showChartToggle && (
           <button
@@ -101,18 +94,20 @@ export function ConsoleTopBar({
             <CandlestickChart className="h-5 w-5" />
           </button>
         )}
-        <button
-          type="button"
-          data-testid="console-refresh"
-          onClick={refresh}
-          aria-label={t("shell.refresh")}
-          title={t("shell.refresh")}
-          className={ICON_BUTTON}
-        >
-          <RefreshCw
-            className={cn("h-5 w-5", spinning && "animate-spin motion-reduce:animate-none")}
-          />
-        </button>
+        {refreshMode === "page" && (
+          <button
+            type="button"
+            data-testid="console-refresh"
+            onClick={refresh}
+            aria-label={t("shell.refresh")}
+            title={t("shell.refresh")}
+            className={ICON_BUTTON}
+          >
+            <RefreshCw
+              className={cn("h-5 w-5", spinning && "animate-spin motion-reduce:animate-none")}
+            />
+          </button>
+        )}
         <NotificationCenter />
         <SidebarProfileMenu variant="topbar" displayName={displayName} />
       </div>

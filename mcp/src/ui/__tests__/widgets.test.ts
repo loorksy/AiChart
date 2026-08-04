@@ -26,7 +26,7 @@ describe("MCP UI resources", () => {
     assert.equal((meta.ui as { resourceUri: string }).resourceUri, uri);
     assert.equal(meta[RESOURCE_URI_META_KEY], uri);
     assert.equal(meta["openai/outputTemplate"], skybridgeUri("analysis"));
-    assert.equal(meta["openai/toolInvocation/invoking"], "تشغيل AiChart...");
+    assert.equal(meta["openai/toolInvocation/invoking"], "تشغيل Lonora...");
     const origin = publicAssetOrigin();
     assert.deepEqual(meta["openai/widgetCSP"], {
       connect_domains: [origin],

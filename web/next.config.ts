@@ -18,6 +18,14 @@ const nextConfig: NextConfig = {
         destination: "/brand/aichart-mark-dark.png",
         permanent: true,
       },
+      // /console was the trader workspace (chart + chat) route; existing links
+      // (including `?chat=<id>` deep links, forwarded automatically since the
+      // destination has no conflicting query of its own) keep working.
+      {
+        source: "/console",
+        destination: "/workspace",
+        permanent: true,
+      },
     ];
   },
   // better-sqlite3 is a native module and must not be bundled by Next.

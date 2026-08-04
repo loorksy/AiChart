@@ -42,11 +42,11 @@ export function mcpLoginErrorMessage(
         : "انتهت صلاحية حسابك. تواصل مع الإدارة للتجديد.";
     case "needs_credentials":
       return en
-        ? "Complete MCP email and password from AiChart (/complete-profile)."
-        : "أكمل بريد وكلمة مرور MCP من لوحة AiChart (/complete-profile).";
+        ? "Complete MCP email and password from Lonora (/complete-profile)."
+        : "أكمل بريد وكلمة مرور MCP من لوحة Lonora (/complete-profile).";
     case "subscription_required":
       return en
-        ? "Full AiChart access is required for MCP. Contact @aswadtr on Telegram to subscribe."
+        ? "Full Lonora access is required for MCP. Contact @aswadtr on Telegram to subscribe."
         : "الوصول الكامل مطلوب لـ MCP. تواصل عبر تيليجرام @aswadtr لتفعيل الاشتراك.";
     case "invalid":
     default:

@@ -58,8 +58,8 @@ export function uiMetaFor(widget: string): Record<string, unknown> {
     ui: { resourceUri },
     [RESOURCE_URI_META_KEY]: resourceUri,
     "openai/outputTemplate": skybridgeUri(widget),
-    "openai/toolInvocation/invoking": "تشغيل AiChart...",
-    "openai/toolInvocation/invoked": "اكتمل تحديث AiChart.",
+    "openai/toolInvocation/invoking": "تشغيل Lonora...",
+    "openai/toolInvocation/invoked": "اكتمل تحديث Lonora.",
     "openai/widgetCSP": {
       connect_domains: [origin],
       resource_domains: [origin],
@@ -80,14 +80,14 @@ export function registerWidgets(server: McpServer): void {
     const gptHtml = gptResource.text ?? html;
     const gptMime = gptResource.mimeType;
 
-    registerWidgetResource(server, `AiChart ${name} card`, nativeUri, html, RESOURCE_MIME_TYPE);
-    registerWidgetResource(server, `AiChart ${name} card (ChatGPT)`, gptUri, gptHtml, gptMime);
+    registerWidgetResource(server, `Lonora ${name} card`, nativeUri, html, RESOURCE_MIME_TYPE);
+    registerWidgetResource(server, `Lonora ${name} card (ChatGPT)`, gptUri, gptHtml, gptMime);
 
     for (const legacyUri of legacyWidgetUris(name)) {
       const isGpt = legacyUri.endsWith("-gpt");
       registerWidgetResource(
         server,
-        `AiChart ${name} card (legacy)`,
+        `Lonora ${name} card (legacy)`,
         legacyUri,
         isGpt ? gptHtml : html,
         isGpt ? gptMime : RESOURCE_MIME_TYPE,

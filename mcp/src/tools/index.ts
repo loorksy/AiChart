@@ -16,7 +16,7 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
   server.registerPrompt(
     "aichart_start",
     {
-      title: "AiChart — bootstrap message (agent setup)",
+      title: "Lonora — bootstrap message (agent setup)",
       description:
         "Paste as the first message after connecting MCP: loads rules, discovers skills, summarizes account.",
     },
@@ -35,21 +35,21 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
     {
       id: "system",
       uri: "aichart://system",
-      title: "AiChart System Constitution",
+      title: "Lonora System Constitution",
       description: "Canonical English agent instructions — identity, language policy, analysis, risk",
       file: "SYSTEM.md",
     },
     {
       id: "trading-rules",
       uri: "aichart://trading-rules",
-      title: "AiChart Trading Rules (AGENTS.md)",
+      title: "Lonora Trading Rules (AGENTS.md)",
       description: "Agent operational and trading rules",
       file: "AGENTS.md",
     },
     {
       id: "execution-desk",
       uri: "aichart://execution-desk",
-      title: "AiChart Execution Desk v3 (Disciplined)",
+      title: "Lonora Execution Desk v3 (Disciplined)",
       description:
         "AI-led execution guidance with broker-verified sizing and technical authorization checks",
       file: "EXECUTION_DESK_V3.md",
@@ -57,35 +57,35 @@ export function registerAiChartTools(server: McpServer, bridge: BridgeClient) {
     {
       id: "heartbeat",
       uri: "aichart://heartbeat",
-      title: "AiChart Heartbeat Spec",
+      title: "Lonora Heartbeat Spec",
       description: "Trade maintenance, monitoring, and automatic heartbeat details",
       file: "HEARTBEAT.md",
     },
     {
       id: "memory",
       uri: "aichart://memory",
-      title: "AiChart Memory",
+      title: "Lonora Memory",
       description: "Persistent memory file for facts, lessons learned, and trades",
       file: "MEMORY.md",
     },
     {
       id: "soul",
       uri: "aichart://soul",
-      title: "AiChart Soul Profile",
+      title: "Lonora Soul Profile",
       description: "Agent expert persona, style, and principles profile",
       file: "SOUL.md",
     },
     {
       id: "user",
       uri: "aichart://user",
-      title: "AiChart Operator Profile",
+      title: "Lonora Operator Profile",
       description: "Human operator info and preferences profile",
       file: "USER.md",
     },
     {
       id: "agent-readme",
       uri: "aichart://agent-readme",
-      title: "AiChart Agent README",
+      title: "Lonora Agent README",
       description: "Agent documentation and technical structure guide",
       file: "../README.md",
     },

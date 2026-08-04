@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function SignalsRedirect() {
-  redirect("/console");
+  redirect("/workspace");
 }

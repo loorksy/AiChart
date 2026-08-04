@@ -5,7 +5,7 @@ import type { LifecycleEvent, LifecycleEventType } from "./recommendations/lifec
 export const CARD_SEPARATOR = "─────────────────";
 
 /** Footer carried by every card — the one line that makes them read as one product. */
-export const BRAND_FOOTER = "<i>Lonora · AiChart</i>";
+export const BRAND_FOOTER = "<i>Lonora</i>";
 
 /** Escape a dynamic value for Telegram HTML parse mode. */
 export function escapeHtml(value: string): string {
@@ -145,7 +145,7 @@ export function formatAmount(notional: number, currency = "دولار"): string 
 
 export function sessionStartCard(profile: AccountProfile): string {
   return formatCard(
-    "👋 مرحباً — AiChart",
+    "👋 مرحباً — Lonora",
     [
       "🔹 اختر من الأزرار أو اكتب أمراً.",
       `🔹 السوق: ${profile.marketType === "forex" ? "فوركس" : "كربتو"}`,

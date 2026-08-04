@@ -58,6 +58,7 @@ interface Props {
     commands: NonNullable<AgentFinalResult["drawingMutations"]>,
   ) => void;
   onPersistMessage?: (chatId: string, message: AgentPersistPayload) => void;
+  ensureChatId?: () => Promise<string | null>;
   voiceControl?: ReactNode;
   /** Broker link state + market setters for the composer's pair/interval row. */
   brokerConnected?: boolean;
@@ -86,6 +87,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
       onVoiceFinal,
       applyDrawingMutations,
       onPersistMessage,
+      ensureChatId,
       voiceControl,
       brokerConnected,
       onSymbolChange,
@@ -123,6 +125,7 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
         onVoiceFinal,
         applyDrawingMutations,
         onPersistMessage,
+        ensureChatId,
       });
     const drawingsCount = getDrawings?.()?.length ?? 0;
 

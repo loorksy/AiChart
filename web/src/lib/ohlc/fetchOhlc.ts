@@ -136,7 +136,7 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
    * "oanda".
    */
   const forexSource: OhlcSource = options.source ?? "oanda";
-  const symbol =
+  let symbol =
     forexSource === "oanda"
       ? forexCanonicalKey(options.symbol)
       : /*
@@ -146,6 +146,12 @@ export async function fetchOhlc(options: FetchOhlcOptions): Promise<FetchOhlcRes
          * answers "Symbol XAUUSDM does not exist" for the folded version.
          */
         options.symbol.trim();
+  if (forexSource === "metaapi" && options.userId > 0) {
+    // Canonical chart keys (XAUUSD) must become the account's spelling
+    // (XAUUSDm) before the RPC call — built from getSymbols(), never a suffix list.
+    const { resolveBrokerSymbol } = await import("@/lib/markets/symbolCatalogue");
+    symbol = await resolveBrokerSymbol(options.userId, symbol);
+  }
   const sourceKey = forexSource;
   const cacheKey = `${ohlcCacheResource(symbol, interval)}:${sourceKey}`;
   if (

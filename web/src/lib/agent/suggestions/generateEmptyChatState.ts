@@ -17,7 +17,7 @@ export interface EmptyChatState {
   suggestions: AgentSuggestion[];
 }
 
-const SYSTEM_PROMPT = `Compose the empty state for AiChart's trading chat from the supplied facts.
+const SYSTEM_PROMPT = `Compose the empty state for Lonora's trading chat from the supplied facts.
 Return natural Arabic when locale=ar and English when locale=en.
 Write one calm greeting of at most 18 words and 2 or 3 short suggestion chips.
 Suggestions must be useful for the actual symbol/timeframe and state. They are user prompts, not market claims.

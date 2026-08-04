@@ -10,7 +10,7 @@ const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
 test("APP_NAV has Chart/Chat, unified Performance, Journal — no Chat History page", () => {
   const userHrefs = navForRole("user", "full").map((i) => i.href);
   assert.deepEqual(userHrefs, [
-    "/console",
+    "/workspace",
     "/performance",
     "/journal",
     "/console/billing",
@@ -31,20 +31,20 @@ test("old recommendation/trade/statistics routes redirect into /performance", ()
   assert.match(page, /TradesClient/);
 });
 
-test("trial nav is limited to console only", () => {
+test("trial nav is limited to the workspace only", () => {
   assert.deepEqual(
     navForRole("user", "trial").map((i) => i.href),
-    ["/console"],
+    ["/workspace"],
   );
 });
 
 test("admin nav is dedicated and excludes trader destinations", () => {
   const adminHrefs = navForRole("admin").map((i) => i.href);
-  // The admin's home is the platform overview, not the trader bridge at /console.
-  assert.ok(!adminHrefs.includes("/console"));
+  // The admin's home is the platform overview, not the trader bridge at /workspace.
+  assert.ok(!adminHrefs.includes("/workspace"));
   assert.ok(adminHrefs.includes("/console/platform?tab=overview"));
   assert.ok(adminHrefs.every((h) => h.startsWith("/console/platform")));
-  assert.match(read("app/console/page.tsx"), /redirect\("\/console\/platform\?tab=overview"\)/);
+  assert.match(read("app/workspace/page.tsx"), /redirect\("\/console\/platform\?tab=overview"\)/);
   assert.ok(!adminHrefs.includes("/statistics"));
   assert.ok(!adminHrefs.includes("/console/trades"));
   assert.deepEqual(navForRole("admin"), ADMIN_NAV);
@@ -59,9 +59,9 @@ test("Account, Integrations, Settings are not primary destinations", () => {
 });
 
 test("activeNav exact vs prefix", () => {
-  const overview = APP_NAV.find((i) => i.href === "/console")!;
+  const overview = APP_NAV.find((i) => i.href === "/workspace")!;
   const performance = APP_NAV.find((i) => i.href === "/performance")!;
-  assert.equal(activeNav("/console", overview), true);
+  assert.equal(activeNav("/workspace", overview), true);
   assert.equal(activeNav("/performance", overview), false);
   assert.equal(activeNav("/performance", performance), true);
 });
@@ -79,16 +79,19 @@ test("shell mounts conversations for traders; admin uses admin nav", () => {
   assert.doesNotMatch(shell, /glass-panel/);
 });
 
-test("both consoles share one top bar: account, alerts, nav, refresh", () => {
+test("both consoles share one top bar: account, alerts, nav", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /<ConsoleTopBar/);
   assert.doesNotMatch(shell, /needsPageMenu/);
+  // Traders refresh from ChartChrome; admin page refresh stays in the top bar.
+  assert.match(shell, /refreshMode=\{isAdmin \? "page" : "none"\}/);
+  assert.match(read("components/chart/ChartChrome.tsx"), /data-testid="chart-refresh"/);
   // Read past the imports so the order below is the rendered order, not the
   // import order.
   const bar = read("components/shell/ConsoleTopBar.tsx").split('data-testid="console-top-bar"')[1]!;
   // The drawer trigger leads, on the edge the drawer opens from; the rest are
   // grouped against the far edge with the avatar in the corner.
-  const order = ["mobile-menu-trigger", "ms-auto", "console-refresh", "NotificationCenter", "SidebarProfileMenu"];
+  const order = ["mobile-menu-trigger", "ms-auto", "NotificationCenter", "SidebarProfileMenu"];
   let cursor = -1;
   for (const marker of order) {
     const at = bar.indexOf(marker);
@@ -125,9 +128,8 @@ test("model and execution mode live behind the composer's plus", () => {
   assert.match(menu, /view\?\.connected/);
   assert.match(menu, /setConfirming\(true\)/);
   assert.match(menu, /trade_mode\.confirm\.body/);
-  // One shared source of truth with the panel above the conversation.
-  const panel = read("components/agent/TradeModePanel.tsx");
-  assert.match(panel, /useTradeMode/);
+  // Mode/account state also live in the top bar; the composer + menu keeps the switch.
+  assert.match(read("components/shell/TopBarAccountStatus.tsx"), /useTradeMode/);
   const hook = read("hooks/useTradeMode.ts");
   assert.match(hook, /confirmed_by_user: true/);
 });
@@ -157,13 +159,13 @@ test("billing page reads from the dictionaries, not hardcoded Arabic", () => {
   assert.doesNotMatch(billing, /[\u0600-\u06FF]/);
 });
 
-test("old /console/chats route redirects to console", () => {
+test("old /console/chats route redirects to the workspace", () => {
   const page = read("app/console/chats/page.tsx");
-  assert.match(page, /redirect\("\/console"\)/);
+  assert.match(page, /redirect\("\/workspace"\)/);
   assert.doesNotMatch(page, /SidebarConversations|ChatHistoryPage/);
 });
 
-test("chat share route redirects to console with chat query", () => {
+test("chat share route redirects to the workspace with chat query", () => {
   const page = read("app/console/chats/[chatId]/page.tsx");
   assert.match(page, /chatConsoleHref/);
   assert.match(page, /isValidChatId/);

@@ -163,7 +163,7 @@ export function buildBacktestStrategySpec(input: {
     version_id: `${strategyId}.${CATALOG_SPEC_REVISION}`,
     name: label,
     description:
-      "AiChart deterministic candidate with broker-observed execution costs; research-only until statistical and shadow gates pass.",
+      "Lonora deterministic candidate with broker-observed execution costs; research-only until statistical and shadow gates pass.",
     market: "forex",
     symbols: [symbol],
     enabled: true,
