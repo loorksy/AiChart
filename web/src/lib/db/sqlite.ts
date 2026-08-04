@@ -12,6 +12,11 @@ import {
   type DynamicPageBrandFields,
 } from "./dynamicPageBranding";
 import type { DbRow, ExecuteResult } from "./types";
+import {
+  DOCS_MT5_LINKING_CONTENT_AR,
+  DOCS_MT5_LINKING_CONTENT_EN,
+  DOCS_MT5_LINKING_STALE_MARKERS,
+} from "../content/docsMt5LinkingCopy";
 
 let _db: Database.Database | null = null;
 let _transactionTail: Promise<void> = Promise.resolve();
@@ -2113,6 +2118,26 @@ function migrate(db: Database.Database) {
     DROP TABLE IF EXISTS ea_market_cache;
     DROP TABLE IF EXISTS ea_connections;
   `);
+
+  const mt5Doc = db
+    .prepare("SELECT content_ar, content_en FROM dynamic_pages WHERE slug = ?")
+    .get("docs-mt5-linking") as
+    | { content_ar: string; content_en: string }
+    | undefined;
+  if (mt5Doc) {
+    const stale = DOCS_MT5_LINKING_STALE_MARKERS.some(
+      (m) => mt5Doc.content_ar.includes(m) || mt5Doc.content_en.includes(m),
+    );
+    if (stale) {
+      db.prepare(
+        "UPDATE dynamic_pages SET content_ar = ?, content_en = ? WHERE slug = ?",
+      ).run(
+        DOCS_MT5_LINKING_CONTENT_AR,
+        DOCS_MT5_LINKING_CONTENT_EN,
+        "docs-mt5-linking",
+      );
+    }
+  }
 }
 
 export function seedAdminSqlite(db: Database.Database) {
@@ -2182,8 +2207,6 @@ export function getSqliteDb(): Database.Database {
 
 export async function initSqlite(): Promise<void> {
   getSqliteDb();
-  const { patchDocsMt5LinkingIfStale } = await import("../content/seedContent");
-  await patchDocsMt5LinkingIfStale();
 }
 
 export async function sqliteQuery<T = DbRow>(
