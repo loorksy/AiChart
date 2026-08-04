@@ -8,6 +8,7 @@ import {
 import { getMtAccount } from "@/lib/store";
 import { getRpcConnection } from "@/lib/metaapi/client";
 import { resolveMarketDataSource } from "@/lib/markets/marketDataSource";
+import { resolveBrokerSymbol } from "@/lib/markets/symbolCatalogue";
 import { spreadFromBidAsk, formatSpreadAr } from "@/lib/spread";
 
 function oandaNotConfigured() {
@@ -32,12 +33,23 @@ async function cloudQuote(userId: number, symbol: string) {
   if (!account?.metaapi_account_id || account.metaapi_account_id === "mt5local") {
     return null;
   }
+  /*
+   * A symbol arriving here can be stale: a browser that cached its last
+   * symbol before case-preservation existed stored it fully uppercased
+   * ("XAUUSDM"), and no amount of case normalisation recovers a lowercase
+   * letter that was never there. The catalogue is the only source of truth
+   * for what the broker actually calls this instrument — every other
+   * MetaApi caller (instruments/quotes, fetchOhlc, streaming) already
+   * resolves through it; this route was the one place still forwarding the
+   * client's raw spelling straight to getSymbolPrice.
+   */
+  const brokerSymbol = await resolveBrokerSymbol(userId, symbol);
   const rpc = await getRpcConnection(userId, account.metaapi_account_id);
-  const price = await rpc.getSymbolPrice(symbol, true);
+  const price = await rpc.getSymbolPrice(brokerSymbol, true);
   const bid = Number(price?.bid);
   const ask = Number(price?.ask);
   if (!Number.isFinite(bid) || !Number.isFinite(ask)) return null;
-  return { bid, ask, spread: spreadFromBidAsk(bid, ask, symbol) };
+  return { bid, ask, spread: spreadFromBidAsk(bid, ask, brokerSymbol) };
 }
 
 /** Live forex price — the trader's active market-data pipe. */
