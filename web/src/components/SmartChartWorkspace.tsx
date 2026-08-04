@@ -39,9 +39,6 @@ const TvChart = dynamic(() => import("@/components/chart/TvChart"), {
 
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
-import { ChartChrome } from "@/components/chart/ChartChrome";
-import { ChartBuySellTicket } from "@/components/chart/ChartBuySellTicket";
-import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
 import { OpenTradesDrawer } from "@/components/chart/OpenTradesDrawer";
 import {
   SmartChartAgentPanel,
@@ -191,18 +188,6 @@ function SmartChartWorkspaceInner({
     setDesktopLayout(next);
     saveDesktopLayout(next);
   }, []);
-
-  /**
-   * Dismiss from the chart's own header. Reads the viewport at call time rather
-   * than from state so it can be defined early enough for the header actions.
-   */
-  const closeChart = useCallback(() => {
-    if (window.matchMedia("(min-width: 1280px)").matches) {
-      applyDesktopLayout("chatOnly");
-      return;
-    }
-    setChartSheetOpen(false);
-  }, [applyDesktopLayout, setChartSheetOpen]);
 
   const market: MarketType = "forex";
 
@@ -496,34 +481,10 @@ function SmartChartWorkspaceInner({
   const hasLayers =
     drawings.length > 0 || overlays.length > 0 || recommendation != null;
 
-  // Platform buttons INSIDE the TradingView header (no separate layer).
+  // Platform actions as TradingView header buttons (library chrome — not overlays).
+  // MT status / equity / close-chart live in the page top bar; do not re-draw them.
   const headerActions = useMemo<TvHeaderAction[]>(() => {
-    const mtAction: TvHeaderAction = {
-      id: "mt",
-      text: forexOnline ? t("layout.mt_connected") : t("layout.mt_disconnected"),
-      title: forexOnline ? t("layout.mt_connected") : t("layout.mt_disconnected"),
-      color: forexOnline ? "#71717a" : "#f59e0b",
-      onClick: () => router.push("/console/connect"),
-    };
-    // Clean chart top bar in agent mode: analysis lives in chat, trades/
-    // recommendations in the sidebar. Only the MT status stays (plus the
-    // TV-native symbol / timeframe / screenshot controls).
-    if (chatEnabled) {
-      // Give the width (or the screen) back to the conversation from the chart's
-      // own header, which is where you are looking when you want it gone.
-      return [
-        mtAction,
-        {
-          id: "close-chart",
-          text: t("layout.close_chart"),
-          title: t("layout.close_chart"),
-          color: "#71717a",
-          onClick: closeChart,
-        },
-      ];
-    }
-    // Built as a single array literal (no render-time mutation of an array that
-    // holds ref-capturing click handlers).
+    if (chatEnabled) return [];
     const analyzeAction: TvHeaderAction = {
       id: "analyze",
       text: guest
@@ -563,36 +524,7 @@ function SmartChartWorkspaceInner({
           },
         ]
       : [];
-    const capitalAction: TvHeaderAction[] =
-      !guest && capital.connected && capital.amount != null
-        ? [
-            {
-              id: "capital",
-              text: `$ ${Math.round(capital.amount).toLocaleString()} ${capital.currency ?? ""}`,
-              title: capital.label ?? t("layout.account_balance"),
-            },
-          ]
-        : [];
-    const mtStatusAction: TvHeaderAction[] = !guest
-      ? [
-          {
-            id: "mt",
-            text: forexOnline ? t("layout.mt_connected") : t("layout.mt_disconnected"),
-            title: forexOnline
-              ? t("layout.mt_connected")
-              : t("layout.mt_setup"),
-            color: forexOnline ? "#71717a" : "#f59e0b",
-            onClick: () => router.push("/console/connect"),
-          },
-        ]
-      : [];
-    return [
-      analyzeAction,
-      ...clearAction,
-      ...tradesAction,
-      ...capitalAction,
-      ...mtStatusAction,
-    ];
+    return [analyzeAction, ...clearAction, ...tradesAction];
   }, [
     chatEnabled,
     t,
@@ -601,12 +533,6 @@ function SmartChartWorkspaceInner({
     creditsRemaining,
     hasLayers,
     openTradesCount,
-    capital.connected,
-    capital.amount,
-    capital.currency,
-    capital.label,
-    forexOnline,
-    router,
     handleAnalyzeClick,
     handleClearLayers,
   ]);
@@ -898,36 +824,18 @@ function SmartChartWorkspaceInner({
                 targets={targets}
                 overlays={overlays}
                 drawings={drawings}
+                headerActions={headerActions}
                 dataSource={dataSource}
                 locale={locale}
                 direction={dir}
                 theme={chartTheme}
                 capture={capture}
+                tradingEnabled={!guest && !capture && Boolean(capital.connected)}
                 className="h-full min-h-0 w-full"
                 onSymbolChange={handleSymbolChange}
                 onIntervalChange={handleIntervalChange}
               />
             </ChartErrorBoundary>
-
-            {/* N11/N14/N2: spread badge, pair spelling, interval, relocated actions.
-                Refresh lands in Phase 4 once it leaves the top bar. */}
-            {!capture && (
-              <>
-                <ChartChrome
-                  symbol={symbol}
-                  interval={interval}
-                  dataSource={dataSource}
-                  actions={headerActions}
-                  onIntervalChange={handleIntervalChange}
-                  onRefresh={() => chartRef.current?.reload()}
-                />
-                <ChartLivePriceBadge symbol={symbol} />
-                <ChartBuySellTicket
-                  symbol={symbol}
-                  connected={Boolean(capital.connected)}
-                />
-              </>
-            )}
 
             <ChartTradeOverlay
               recommendation={recommendation}

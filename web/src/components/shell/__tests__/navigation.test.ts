@@ -83,15 +83,23 @@ test("both consoles share one top bar: account, alerts, nav", () => {
   const shell = read("components/shell/AppConsoleShell.tsx");
   assert.match(shell, /<ConsoleTopBar/);
   assert.doesNotMatch(shell, /needsPageMenu/);
-  // Traders refresh from ChartChrome; admin page refresh stays in the top bar.
+  // Traders refresh from the library header button; admin page refresh stays in the top bar.
   assert.match(shell, /refreshMode=\{isAdmin \? "page" : "none"\}/);
-  assert.match(read("components/chart/ChartChrome.tsx"), /data-testid="chart-refresh"/);
+  assert.match(
+    read("components/chart/TvChart.tsx"),
+    /setAttribute\(\s*"data-testid"\s*,\s*"chart-refresh"\s*\)/,
+  );
+  assert.match(read("components/shell/ConsoleTopBar.tsx"), /data-testid="topbar-scroll"/);
   // Read past the imports so the order below is the rendered order, not the
   // import order.
   const bar = read("components/shell/ConsoleTopBar.tsx").split('data-testid="console-top-bar"')[1]!;
-  // The drawer trigger leads, on the edge the drawer opens from; the rest are
-  // grouped against the far edge with the avatar in the corner.
-  const order = ["mobile-menu-trigger", "ms-auto", "NotificationCenter", "SidebarProfileMenu"];
+  // Drawer trigger pinned; scroll cluster holds the rest; avatar at the end.
+  const order = [
+    "mobile-menu-trigger",
+    "topbar-scroll",
+    "NotificationCenter",
+    "SidebarProfileMenu",
+  ];
   let cursor = -1;
   for (const marker of order) {
     const at = bar.indexOf(marker);

@@ -2,7 +2,7 @@
 
 import { CandlestickChart, PanelLeft, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NotificationCenter } from "@/components/agent/NotificationCenter";
 import { BalanceChip } from "@/components/shell/BalanceChip";
 import { TopBarAccountStatus } from "@/components/shell/TopBarAccountStatus";
@@ -26,9 +26,9 @@ const ICON_BUTTON =
 /**
  * The console header, identical for traders and admins.
  *
- * Trader refresh lives on the chart (ChartChrome) — a top-bar refresh on the
- * home composer screen was the wrong control for a page with no chart focus.
- * Admins still refresh the page from here.
+ * On narrow viewports the middle cluster (mode, MT, credit, chart toggle)
+ * scrolls horizontally so nothing is dropped or crushed. Sidebar toggle and
+ * profile stay pinned off the scrollport.
  */
 export function ConsoleTopBar({
   displayName,
@@ -54,6 +54,8 @@ export function ConsoleTopBar({
   const { t } = useLocale();
   const router = useRouter();
   const [spinning, setSpinning] = useState(false);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canScrollEnd, setCanScrollEnd] = useState(false);
 
   const refresh = useCallback(() => {
     if (refreshMode !== "page") return;
@@ -61,6 +63,49 @@ export function ConsoleTopBar({
     window.setTimeout(() => setSpinning(false), 600);
     router.refresh();
   }, [refreshMode, router]);
+
+  const updateScrollAffordance = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) {
+      setCanScrollEnd(false);
+      return;
+    }
+    const max = el.scrollWidth - el.clientWidth;
+    // RTL: scrollLeft can be negative; use abs.
+    const left = Math.abs(el.scrollLeft);
+    setCanScrollEnd(max > 4 && left < max - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    updateScrollAffordance();
+    el.addEventListener("scroll", updateScrollAffordance, { passive: true });
+    const ro = new ResizeObserver(updateScrollAffordance);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateScrollAffordance);
+      ro.disconnect();
+    };
+  }, [updateScrollAffordance, showAccountStatus, showBalance, showChartToggle]);
+
+  // Tabbing to an off-screen control scrolls it into view.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onFocusIn = (ev: FocusEvent) => {
+      const target = ev.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!el.contains(target)) return;
+      target.scrollIntoView({
+        inline: "nearest",
+        block: "nearest",
+        behavior: "smooth",
+      });
+    };
+    el.addEventListener("focusin", onFocusIn);
+    return () => el.removeEventListener("focusin", onFocusIn);
+  }, []);
 
   return (
     <div
@@ -79,37 +124,56 @@ export function ConsoleTopBar({
         <PanelLeft className="h-5 w-5 rtl:-scale-x-100" />
       </button>
 
-      <div className="ms-auto flex items-center gap-1">
-        {showAccountStatus && <TopBarAccountStatus />}
-        {showBalance && <BalanceChip />}
-        {showChartToggle && (
-          <button
-            type="button"
-            data-testid="topbar-chart-toggle"
-            onClick={() => window.dispatchEvent(new CustomEvent(CHART_TOGGLE_EVENT))}
-            aria-label={t("layout.show_chart")}
-            title={t("layout.show_chart")}
-            className={ICON_BUTTON}
-          >
-            <CandlestickChart className="h-5 w-5" />
-          </button>
+      <div className="relative ms-auto min-w-0 flex-1">
+        <div
+          ref={scrollerRef}
+          data-testid="topbar-scroll"
+          className={cn(
+            "flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain",
+            // Touch momentum; never steal vertical page scroll.
+            "[touch-action:pan-x] [-webkit-overflow-scrolling:touch]",
+            "scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "justify-end",
+          )}
+        >
+          {showAccountStatus && <TopBarAccountStatus />}
+          {showBalance && <BalanceChip />}
+          {showChartToggle && (
+            <button
+              type="button"
+              data-testid="topbar-chart-toggle"
+              onClick={() => window.dispatchEvent(new CustomEvent(CHART_TOGGLE_EVENT))}
+              aria-label={t("layout.show_chart")}
+              title={t("layout.show_chart")}
+              className={ICON_BUTTON}
+            >
+              <CandlestickChart className="h-5 w-5" />
+            </button>
+          )}
+          {refreshMode === "page" && (
+            <button
+              type="button"
+              data-testid="console-refresh"
+              onClick={refresh}
+              aria-label={t("shell.refresh")}
+              title={t("shell.refresh")}
+              className={ICON_BUTTON}
+            >
+              <RefreshCw
+                className={cn("h-5 w-5", spinning && "animate-spin motion-reduce:animate-none")}
+              />
+            </button>
+          )}
+          <NotificationCenter />
+          <SidebarProfileMenu variant="topbar" displayName={displayName} />
+        </div>
+        {canScrollEnd && (
+          <div
+            data-testid="topbar-scroll-fade"
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 end-0 w-8 bg-gradient-to-l from-background to-transparent rtl:bg-gradient-to-r"
+          />
         )}
-        {refreshMode === "page" && (
-          <button
-            type="button"
-            data-testid="console-refresh"
-            onClick={refresh}
-            aria-label={t("shell.refresh")}
-            title={t("shell.refresh")}
-            className={ICON_BUTTON}
-          >
-            <RefreshCw
-              className={cn("h-5 w-5", spinning && "animate-spin motion-reduce:animate-none")}
-            />
-          </button>
-        )}
-        <NotificationCenter />
-        <SidebarProfileMenu variant="topbar" displayName={displayName} />
       </div>
     </div>
   );
