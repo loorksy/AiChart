@@ -8,5 +8,5 @@ export default async function OnboardingPage() {
   if (user.role !== "admin" && !hasPlatformAccess(user)) {
     redirect("/awaiting-approval");
   }
-  redirect("/console");
+  redirect("/workspace");
 }

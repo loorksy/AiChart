@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const { user } = await resolveGoogleUser(claims);
     if (user.status === "suspended") return fail("suspended");
     await setSession({ sub: user.id, email: user.email, role: user.role });
-    return NextResponse.redirect(new URL("/console", base));
+    return NextResponse.redirect(new URL("/workspace", base));
   } catch (e) {
     log.error("exchange.failed", {
       error: e instanceof Error ? e.message : String(e),

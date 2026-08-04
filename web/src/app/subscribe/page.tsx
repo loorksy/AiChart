@@ -12,7 +12,7 @@ export default async function SubscribePage() {
   await initDb();
   const entitlement = await getEntitlementForUser(user);
   if (entitlement.isAdmin || entitlement.hasPaidAccess) {
-    redirect("/console");
+    redirect("/workspace");
   }
 
   return (

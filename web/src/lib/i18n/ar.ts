@@ -141,7 +141,7 @@ export const ar: Record<TranslationKey, string> = {
   "nav.recommendations": "التوصيات",
   "nav.settings": "الإعدادات",
   "nav.integrations": "التكاملات",
-  "nav.workspace": "الشارت والمحادثة",
+  "nav.workspace": "تحليل السوق",
   "nav.trades": "الصفقات",
   "nav.account": "الحساب",
   "nav.platform": "إدارة المنصة",

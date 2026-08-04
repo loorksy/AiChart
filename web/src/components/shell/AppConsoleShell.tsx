@@ -128,7 +128,7 @@ function ConsoleShellBody({
     showConversations ?? (!isAdmin && paidWorkspace);
   const workspaceNoPadding =
     noPadding ||
-    pathname === "/console" ||
+    pathname === "/workspace" ||
     pathname.startsWith("/chart") ||
     pathname === "/subscribe";
   /**
@@ -334,7 +334,7 @@ function ConsoleShellBody({
     return isAdmin ? adminNav(iconOnly, onNavigate) : productNav(iconOnly, onNavigate);
   };
 
-  const brandHref = isAdmin ? "/console" : "/console";
+  const brandHref = isAdmin ? "/console/platform?tab=overview" : "/workspace";
 
   const sidebarHeader = (
     <div
@@ -505,7 +505,7 @@ function ConsoleShellBody({
             refreshMode={isAdmin ? "page" : "chart"}
             showBalance={!isAdmin}
             showChartToggle={
-              !isAdmin && (pathname === "/console" || pathname.startsWith("/chart"))
+              !isAdmin && (pathname === "/workspace" || pathname.startsWith("/chart"))
             }
           />
           <main

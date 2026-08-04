@@ -7,7 +7,7 @@ export const LANDING_ROUTES = {
   signup: "/signup",
   login: "/login",
   chart: "/chart",
-  console: "/console",
+  console: "/workspace",
   pricing: "/pricing",
   privacy: "/p/privacy-policy",
   terms: "/p/terms-of-service",

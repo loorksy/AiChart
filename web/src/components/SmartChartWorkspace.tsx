@@ -171,8 +171,8 @@ function SmartChartWorkspaceInner({
     onExpandedChange: setSheetExpanded,
   });
   // A capture renders the chart alone. Leaving chat on also left its URL sync
-  // on, which rewrote the address to /console mid-load — so the screenshot was
-  // of the console workspace at the SAVED timeframe, not the requested chart.
+  // on, which rewrote the address to /workspace mid-load — so the screenshot
+  // was of the workspace at the SAVED timeframe, not the requested chart.
   const chatEnabled = !guest && !capture;
 
   const { locale, t, dir } = useLocale();

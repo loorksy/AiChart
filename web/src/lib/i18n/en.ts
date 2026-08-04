@@ -143,7 +143,7 @@ export const en = {
   "nav.recommendations": "Recommendations",
   "nav.settings": "Settings",
   "nav.integrations": "Integrations",
-  "nav.workspace": "Chart and Chat",
+  "nav.workspace": "Market Analysis",
   "nav.trades": "Trades",
   "nav.account": "Account",
   "nav.platform": "Platform management",

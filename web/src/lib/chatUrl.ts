@@ -1,4 +1,4 @@
-/** Query key for the active chat on `/console`. */
+/** Query key for the active chat on `/workspace`. */
 export const CHAT_QUERY_KEY = "chat";
 
 /** Last-active chat persisted in the browser (fallback when URL has no chat). */
@@ -17,7 +17,7 @@ export function isValidChatId(id: string | null | undefined): id is string {
 
 /** Canonical in-app URL for an open chat (supports browser history). */
 export function chatConsoleHref(chatId: string): string {
-  return `/console?${CHAT_QUERY_KEY}=${encodeURIComponent(chatId)}`;
+  return `/workspace?${CHAT_QUERY_KEY}=${encodeURIComponent(chatId)}`;
 }
 
 /** Shareable pretty link — resolves to the canonical console URL. */

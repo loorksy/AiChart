@@ -69,7 +69,7 @@ export default function AuthForm({
       const dest =
         data.platform_access === true
           ? isLogin
-            ? (redirectTo ?? "/console")
+            ? (redirectTo ?? "/workspace")
             : "/awaiting-approval"
           : "/awaiting-approval";
       router.push(dest);

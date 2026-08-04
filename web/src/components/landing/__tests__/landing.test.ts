@@ -17,7 +17,7 @@ function read(rel: string): string {
 describe("landing redesign", () => {
   test("page redirects authenticated users and exports metadata", () => {
     const page = read("app/page.tsx");
-    assert.match(page, /redirect\("\/console"\)/);
+    assert.match(page, /redirect\("\/workspace"\)/);
     assert.match(page, /awaiting-approval/);
     assert.match(page, /export const metadata/);
     assert.match(page, /openGraph/);

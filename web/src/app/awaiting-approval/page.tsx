@@ -11,10 +11,10 @@ export default async function AwaitingApprovalPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (needsMcpCredentials(user)) redirect("/complete-profile");
-  if (hasPlatformAccess(user)) redirect("/console");
+  if (hasPlatformAccess(user)) redirect("/workspace");
 
   const reason = getAccessBlockReason(user);
-  if (!reason) redirect("/console");
+  if (!reason) redirect("/workspace");
 
   return (
     <AwaitingApprovalClient

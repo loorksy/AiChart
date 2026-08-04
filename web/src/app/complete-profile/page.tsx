@@ -12,10 +12,10 @@ export default async function CompleteProfilePage() {
   if (!user) redirect("/login");
 
   if (!needsMcpCredentials(user)) {
-    if (hasPlatformAccess(user)) redirect("/console");
+    if (hasPlatformAccess(user)) redirect("/workspace");
     const reason = getAccessBlockReason(user);
     if (reason) redirect("/awaiting-approval");
-    redirect("/console");
+    redirect("/workspace");
   }
 
   return <CompleteProfileClient user={user} />;

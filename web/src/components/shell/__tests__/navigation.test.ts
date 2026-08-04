@@ -10,7 +10,7 @@ const read = (rel: string) => readFileSync(resolve(root, rel), "utf8");
 test("APP_NAV has Chart/Chat, unified Performance, Journal — no Chat History page", () => {
   const userHrefs = navForRole("user", "full").map((i) => i.href);
   assert.deepEqual(userHrefs, [
-    "/console",
+    "/workspace",
     "/performance",
     "/journal",
     "/console/billing",
@@ -31,20 +31,20 @@ test("old recommendation/trade/statistics routes redirect into /performance", ()
   assert.match(page, /TradesClient/);
 });
 
-test("trial nav is limited to console only", () => {
+test("trial nav is limited to the workspace only", () => {
   assert.deepEqual(
     navForRole("user", "trial").map((i) => i.href),
-    ["/console"],
+    ["/workspace"],
   );
 });
 
 test("admin nav is dedicated and excludes trader destinations", () => {
   const adminHrefs = navForRole("admin").map((i) => i.href);
-  // The admin's home is the platform overview, not the trader bridge at /console.
-  assert.ok(!adminHrefs.includes("/console"));
+  // The admin's home is the platform overview, not the trader bridge at /workspace.
+  assert.ok(!adminHrefs.includes("/workspace"));
   assert.ok(adminHrefs.includes("/console/platform?tab=overview"));
   assert.ok(adminHrefs.every((h) => h.startsWith("/console/platform")));
-  assert.match(read("app/console/page.tsx"), /redirect\("\/console\/platform\?tab=overview"\)/);
+  assert.match(read("app/workspace/page.tsx"), /redirect\("\/console\/platform\?tab=overview"\)/);
   assert.ok(!adminHrefs.includes("/statistics"));
   assert.ok(!adminHrefs.includes("/console/trades"));
   assert.deepEqual(navForRole("admin"), ADMIN_NAV);
@@ -59,9 +59,9 @@ test("Account, Integrations, Settings are not primary destinations", () => {
 });
 
 test("activeNav exact vs prefix", () => {
-  const overview = APP_NAV.find((i) => i.href === "/console")!;
+  const overview = APP_NAV.find((i) => i.href === "/workspace")!;
   const performance = APP_NAV.find((i) => i.href === "/performance")!;
-  assert.equal(activeNav("/console", overview), true);
+  assert.equal(activeNav("/workspace", overview), true);
   assert.equal(activeNav("/performance", overview), false);
   assert.equal(activeNav("/performance", performance), true);
 });
@@ -157,13 +157,13 @@ test("billing page reads from the dictionaries, not hardcoded Arabic", () => {
   assert.doesNotMatch(billing, /[\u0600-\u06FF]/);
 });
 
-test("old /console/chats route redirects to console", () => {
+test("old /console/chats route redirects to the workspace", () => {
   const page = read("app/console/chats/page.tsx");
-  assert.match(page, /redirect\("\/console"\)/);
+  assert.match(page, /redirect\("\/workspace"\)/);
   assert.doesNotMatch(page, /SidebarConversations|ChatHistoryPage/);
 });
 
-test("chat share route redirects to console with chat query", () => {
+test("chat share route redirects to the workspace with chat query", () => {
   const page = read("app/console/chats/[chatId]/page.tsx");
   assert.match(page, /chatConsoleHref/);
   assert.match(page, /isValidChatId/);

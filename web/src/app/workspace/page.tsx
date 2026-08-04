@@ -9,7 +9,7 @@ import { isLLMConfiguredAsync } from "@/lib/llm";
 import { initDb } from "@/lib/db";
 import { getEntitlementForUser } from "@/lib/subscription/entitlement";
 
-export default async function ConsoleOverviewPage() {
+export default async function WorkspacePage() {
   const user = await getCurrentUser();
   if (!user) return null;
 

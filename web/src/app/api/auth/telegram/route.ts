@@ -70,13 +70,13 @@ export async function POST(req: NextRequest) {
         ? body.redirectTo
         : undefined;
 
-    let redirect = redirectTo ?? "/console";
+    let redirect = redirectTo ?? "/workspace";
     if (needsMcpCredentials(user)) {
       redirect = "/complete-profile";
     } else if (!hasPlatformAccess(user)) {
       redirect = "/awaiting-approval";
     } else {
-      redirect = redirectTo ?? "/console";
+      redirect = redirectTo ?? "/workspace";
     }
 
     return NextResponse.json({
