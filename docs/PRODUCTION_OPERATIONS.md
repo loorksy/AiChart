@@ -31,6 +31,14 @@ AGENT_RUN_TRACE_V1=1       # redacted run/step/skill/tool trace persistence
 Every deploy must set (or resolve from the git checkout) `GIT_COMMIT` so `/api/healthz`,
 `/api/agent/model`, and MCP `/health` report the exact serving commit.
 
+### Post-deploy verification account (logged-in checks)
+
+Several production verification items require an **authenticated platform session**. They stay
+**BLOCKED** until the owner confirms a working login on production for the designated verification
+user (`looorksy@gmail.com`). Do not store passwords in the repository; do not bypass these checks
+with service tokens or bridge credentials. Full deploy steps and the three verification circles
+are in the **land-and-deploy** skill (`.cursor/skills/land-and-deploy/SKILL.md`).
+
 Enabling Research requires a 32-or-more-character internal token, an isolated Docker profile,
 `RESEARCH_SERVICE_STORAGE=sqlite`, and persistent `research-work` plus `research-artifacts`
 volumes. No Research flag grants broker or execution permission.
