@@ -396,8 +396,10 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             "use_localstorage_for_settings",
             "header_saveload",
             "popup_hints",
-            // Clean chart top bar: no indicators / compare clutter. Symbol,
-            // timeframe, and screenshot controls stay (TV-native).
+            // N2: the TV top bar is gone entirely. Symbol, interval, and the
+            // former headerActions live in ChartChrome so the canvas is clean
+            // and platform chrome owns every control that must survive.
+            "header_widget",
             "header_indicators",
             "header_compare",
             // Drawing tools are the agent's job here, not the operator's: levels
@@ -405,12 +407,10 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
             // toolbar only ever competed with them for the same canvas, so it is
             // gone on every viewport rather than just on phones.
             "left_toolbar",
-            // The timeframe strip along the bottom duplicates the interval
-            // control already in the top bar; one of the two had to go.
+            // The timeframe strip along the bottom duplicates ChartChrome.
             "timeframes_toolbar",
             ...(isCapture
               ? ([
-                  "header_widget",
                   "control_bar",
                   "legend_context_menu",
                 ] as const)
@@ -429,27 +429,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         const w = new window.TradingView.widget(options);
         widgetRef.current = w;
 
-        // Platform actions live INSIDE the TV header toolbar (no overlay layer).
-        void w.headerReady().then(() => {
-          if (cancelled) return;
-          for (const a of headerActionsRef.current ?? []) {
-            const el = w.createButton();
-            el.textContent = a.text;
-            if (a.title) el.setAttribute("title", a.title);
-            el.dir = bootDirection;
-            el.style.direction = bootDirection;
-            el.style.fontWeight = "600";
-            el.style.whiteSpace = "nowrap";
-            el.style.cursor = a.onClick ? "pointer" : "default";
-            if (a.color) el.style.color = a.color;
-            el.addEventListener("click", () => {
-              headerActionsRef.current
-                ?.find((x) => x.id === a.id)
-                ?.onClick?.();
-            });
-            headerButtonsRef.current.set(a.id, el);
-          }
-        });
+        // N2: header_widget is disabled — platform actions render in ChartChrome.
+        // headerReady/createButton would no-op or reject without a toolbar.
 
         w.onChartReady(() => {
           if (cancelled) return;

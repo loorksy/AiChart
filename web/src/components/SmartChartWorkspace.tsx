@@ -39,6 +39,9 @@ const TvChart = dynamic(() => import("@/components/chart/TvChart"), {
 
 import { ChartErrorBoundary } from "@/components/chart/ChartErrorBoundary";
 import { ChartTradeOverlay } from "@/components/chart/ChartTradeOverlay";
+import { ChartChrome } from "@/components/chart/ChartChrome";
+import { ChartBuySellTicket } from "@/components/chart/ChartBuySellTicket";
+import { ChartLivePriceBadge } from "@/components/market/ChartLivePriceBadge";
 import { OpenTradesDrawer } from "@/components/chart/OpenTradesDrawer";
 import {
   SmartChartAgentPanel,
@@ -896,7 +899,6 @@ function SmartChartWorkspaceInner({
                 targets={targets}
                 overlays={overlays}
                 drawings={drawings}
-                headerActions={headerActions}
                 dataSource={dataSource}
                 locale={locale}
                 direction={dir}
@@ -907,6 +909,25 @@ function SmartChartWorkspaceInner({
                 onIntervalChange={handleIntervalChange}
               />
             </ChartErrorBoundary>
+
+            {/* N11/N14/N2: spread badge, pair spelling, interval, relocated actions.
+                Refresh lands in Phase 4 once it leaves the top bar. */}
+            {!capture && (
+              <>
+                <ChartChrome
+                  symbol={symbol}
+                  interval={interval}
+                  dataSource={dataSource}
+                  actions={headerActions}
+                  onIntervalChange={handleIntervalChange}
+                />
+                <ChartLivePriceBadge symbol={symbol} />
+                <ChartBuySellTicket
+                  symbol={symbol}
+                  connected={Boolean(capital.connected)}
+                />
+              </>
+            )}
 
             <ChartTradeOverlay
               recommendation={recommendation}
