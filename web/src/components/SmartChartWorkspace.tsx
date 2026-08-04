@@ -830,7 +830,6 @@ function SmartChartWorkspaceInner({
                 direction={dir}
                 theme={chartTheme}
                 capture={capture}
-                tradingEnabled={!guest && !capture && Boolean(capital.connected)}
                 className="h-full min-h-0 w-full"
                 onSymbolChange={handleSymbolChange}
                 onIntervalChange={handleIntervalChange}

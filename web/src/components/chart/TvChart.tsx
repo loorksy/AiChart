@@ -35,7 +35,6 @@ import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { Recommendation } from "@/lib/types";
 import { SpreadPriceLines } from "@/lib/chart/tv/spreadPriceLines";
-import { createApprovalBroker } from "@/lib/chart/tv/approvalBroker";
 import { useLivePrice } from "@/hooks/useLivePrice";
 import {
   LOCALE_STORAGE_KEY,
@@ -165,11 +164,6 @@ interface Props {
   theme?: "light" | "dark";
   /** Headless screenshot render: drop every toolbar so the PNG is chart only. */
   capture?: boolean;
-  /**
-   * When true, wire the approval-only Broker adapter so Trading Platform
-   * buy/sell UI (if the license surfaces it) cannot skip human confirmation.
-   */
-  tradingEnabled?: boolean;
   className?: string;
   onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
@@ -212,7 +206,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     direction = "rtl",
     theme = "dark",
     capture = false,
-    tradingEnabled = false,
     className,
     onSymbolChange,
     onIntervalChange,
@@ -232,11 +225,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   // Read inside the mount effect, which runs once and must not re-run when
   // unrelated props change.
   const captureRef = useRef(capture);
-  const tradingEnabledRef = useRef(tradingEnabled);
   headerActionsRef.current = headerActions;
   directionRef.current = direction;
   captureRef.current = capture;
-  tradingEnabledRef.current = tradingEnabled;
   // Stable indirection so the mount effect can call the latest applyDrawings.
   const applyDrawingsRef = useRef<(opts?: { force?: boolean }) => void>(() => {});
   const pushSyncRef = useRef(false);
@@ -390,10 +381,9 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         // Read from the prop (the server resolved it) rather than sniffing the
         // URL, which a client-side navigation can rewrite before this runs.
         const isCapture = captureRef.current;
-        const wantTrading = tradingEnabledRef.current && !isCapture;
 
-        // Capture: strip every toolbar. Live charts: library owns legend,
-        // resolution, and (when licensed) trading — no hand-built overlays.
+        // Capture: strip every toolbar. Live charts: library owns legend and
+        // resolution — no hand-built overlays and no chart-owned trading UI.
         const disabled: ChartingLibraryWidgetOptions["disabled_features"] = [
           "use_localstorage_for_settings",
           "header_saveload",
@@ -428,15 +418,13 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           timezone: "Etc/UTC",
           disabled_features: disabled,
           // Legend = library symbol display (#10). Header resolutions replace
-          // the hand-built timeframe strip. buy_sell_buttons only surfaces on
-          // Trading Platform licenses; the approval broker is wired either way.
+          // the hand-built timeframe strip.
           enabled_features: isCapture
             ? []
             : ([
                 "header_widget",
                 "display_legend_on_all_charts",
                 "seconds_resolution",
-                ...(wantTrading ? (["buy_sell_buttons"] as const) : []),
               ] as const),
           overrides: {
             "paneProperties.background": bootTheme === "dark" ? "#050505" : "#f4f5f7",
@@ -445,17 +433,6 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           loading_screen: {
             backgroundColor: bootTheme === "dark" ? "#050505" : "#f4f5f7",
           },
-          ...(wantTrading
-            ? {
-                broker_factory: createApprovalBroker,
-                broker_config: {
-                  configFlags: {
-                    supportOrderBrackets: true,
-                    supportMarketOrders: true,
-                  },
-                },
-              }
-            : {}),
         } as ChartingLibraryWidgetOptions;
 
         const w = new window.TradingView.widget(options);
