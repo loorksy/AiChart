@@ -76,9 +76,8 @@ async function connectViaMetaApi(userId: number, input: MtConnectInput, login: s
     connectionStatus: account.connectionStatus,
   });
 
-  // V2-B (#96): metering starts the moment the account exists, and the
-  // one-time year backfill runs in the background — a backfill failure
-  // never fails the link (the warehouse gap-fix covers the rest later).
+  // V2-B (#96): metering starts the moment the account exists. Catalogue
+  // seeding runs in the background — a seed failure never fails the link.
   void (async () => {
     try {
       const { openDeploySession, markPresence } = await import("./metaapi/lifecycle");

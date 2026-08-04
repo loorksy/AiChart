@@ -104,6 +104,9 @@ export async function notifyRecommendation(
       direction: rec.action,
       entry: rec.entry,
       planType: (rec as { plan_type?: string | null }).plan_type ?? null,
+      // Always pass the numeric chart path — legacy tracking ids are not row ids.
+      photoUrl:
+        rec.chart_image_url ?? chartImagePathForRecommendation(rec.id),
     });
     if (announced.delivered > 0) return { delivered: true };
     if (announced.suppressedDuplicate > 0) {
