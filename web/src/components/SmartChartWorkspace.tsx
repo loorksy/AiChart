@@ -194,7 +194,18 @@ function SmartChartWorkspaceInner({
   const [symbol, setSymbol] = useState(() => {
     if (initialSymbol) return normalizeSymbolCase(initialSymbol);
     if (typeof window === "undefined") return DEFAULT_SYMBOL;
-    return localStorage.getItem(LS_SYMBOL) ?? DEFAULT_SYMBOL;
+    /*
+     * Normalised on the way OUT of storage, not just on the way in. A symbol
+     * cached before the case-preservation fix — or written by any future path
+     * that still folds case — sits in localStorage forever otherwise: this is
+     * the one read every returning browser hits before any picker interaction
+     * corrects it, and the broker quote for the wrong-case spelling simply
+     * fails silently (cloudQuote's catch falls back to the platform feed with
+     * no error surfaced). That is what an uppercased "XAUUSDM" leftover from
+     * an earlier session looked like: OANDA candles under a broker-labelled
+     * chart, and the spread badge blank because MetaApi never recognised it.
+     */
+    return normalizeSymbolCase(localStorage.getItem(LS_SYMBOL) ?? DEFAULT_SYMBOL);
   });
 
   const [interval, setChartInterval] = useState(() => {
@@ -204,6 +215,38 @@ function SmartChartWorkspaceInner({
   });
 
   const [dataSource, setDataSource] = useState<MarketDataSource>("oanda");
+
+  /*
+   * "oanda" above is a paint-time placeholder, not the account's actual pipe.
+   * Nothing else in this component ever asked the server which source a
+   * linked account resolves to on first load — dataSource only ever changed
+   * once the trader manually picked a symbol through handleSymbolChange. A
+   * cloud-linked account therefore rendered as OANDA (wrong legend badge,
+   * N10's MetaApi streaming never subscribed) until an unrelated user action
+   * happened to correct it. This asks once, the same GET DataSourceChoice
+   * already uses, and only overwrites the placeholder — never a source the
+   * trader has since chosen explicitly.
+   */
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/market/data-source", { cache: "no-store" });
+        if (!res.ok || !alive) return;
+        const data = (await res.json()) as { active?: MarketDataSource };
+        if (alive && (data.active === "oanda" || data.active === "metaapi")) {
+          setDataSource(data.active);
+        }
+      } catch {
+        /* stays on the oanda placeholder */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [tradesOpen, setTradesOpen] = useState(false);
   const [openTradesCount, setOpenTradesCount] = useState(0);
   const [forexOnline, setForexOnline] = useState(false);
