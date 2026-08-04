@@ -34,6 +34,9 @@ import type { ChatImagePayload } from "@/lib/chatImage";
 import type { ChartDrawing } from "@/lib/chartDrawings";
 import type { ChartOverlay } from "@/lib/chartOverlays";
 import type { Recommendation } from "@/lib/types";
+import { SpreadPriceLines } from "@/lib/chart/tv/spreadPriceLines";
+import { createApprovalBroker } from "@/lib/chart/tv/approvalBroker";
+import { useLivePrice } from "@/hooks/useLivePrice";
 import {
   LOCALE_STORAGE_KEY,
   dirForLocale,
@@ -162,6 +165,11 @@ interface Props {
   theme?: "light" | "dark";
   /** Headless screenshot render: drop every toolbar so the PNG is chart only. */
   capture?: boolean;
+  /**
+   * When true, wire the approval-only Broker adapter so Trading Platform
+   * buy/sell UI (if the license surfaces it) cannot skip human confirmation.
+   */
+  tradingEnabled?: boolean;
   className?: string;
   onSymbolChange?: (symbol: string, source: MarketDataSource) => void;
   onIntervalChange?: (interval: string) => void;
@@ -204,6 +212,7 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
     direction = "rtl",
     theme = "dark",
     capture = false,
+    tradingEnabled = false,
     className,
     onSymbolChange,
     onIntervalChange,
@@ -213,17 +222,21 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<IChartingLibraryWidget | null>(null);
   const managerRef = useRef<TvDrawingManager | null>(null);
+  const spreadLinesRef = useRef<SpreadPriceLines | null>(null);
   const readyRef = useRef(false);
   const [ready, setReady] = useState(false);
   const headerButtonsRef = useRef<Map<string, HTMLElement>>(new Map());
   const headerActionsRef = useRef<TvHeaderAction[] | undefined>(headerActions);
+  const live = useLivePrice(capture ? "" : symbol, !capture);
   const directionRef = useRef<Direction>(direction);
   // Read inside the mount effect, which runs once and must not re-run when
   // unrelated props change.
   const captureRef = useRef(capture);
+  const tradingEnabledRef = useRef(tradingEnabled);
   headerActionsRef.current = headerActions;
   directionRef.current = direction;
   captureRef.current = capture;
+  tradingEnabledRef.current = tradingEnabled;
   // Stable indirection so the mount effect can call the latest applyDrawings.
   const applyDrawingsRef = useRef<(opts?: { force?: boolean }) => void>(() => {});
   const pushSyncRef = useRef(false);
@@ -377,8 +390,29 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
         // Read from the prop (the server resolved it) rather than sniffing the
         // URL, which a client-side navigation can rewrite before this runs.
         const isCapture = captureRef.current;
+        const wantTrading = tradingEnabledRef.current && !isCapture;
 
-        const options: ChartingLibraryWidgetOptions = {
+        // Capture: strip every toolbar. Live charts: library owns legend,
+        // resolution, and (when licensed) trading — no hand-built overlays.
+        const disabled: ChartingLibraryWidgetOptions["disabled_features"] = [
+          "use_localstorage_for_settings",
+          "header_saveload",
+          "popup_hints",
+          "header_compare",
+          // Drawing tools are the agent's job — levels arrive programmatically.
+          "left_toolbar",
+          ...(isCapture
+            ? ([
+                "header_widget",
+                "header_indicators",
+                "timeframes_toolbar",
+                "control_bar",
+                "legend_context_menu",
+              ] as const)
+            : []),
+        ];
+
+        const options = {
           container: el,
           library_path: LIBRARY_PATH,
           datafeed: createAiChartDatafeed(bootMarket, {
@@ -392,31 +426,18 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           theme: bootTheme,
           autosize: true,
           timezone: "Etc/UTC",
-          disabled_features: [
-            "use_localstorage_for_settings",
-            "header_saveload",
-            "popup_hints",
-            // N2: the TV top bar is gone entirely. Symbol, interval, and the
-            // former headerActions live in ChartChrome so the canvas is clean
-            // and platform chrome owns every control that must survive.
-            "header_widget",
-            "header_indicators",
-            "header_compare",
-            // Drawing tools are the agent's job here, not the operator's: levels
-            // arrive from an analysis and get drawn programmatically. The manual
-            // toolbar only ever competed with them for the same canvas, so it is
-            // gone on every viewport rather than just on phones.
-            "left_toolbar",
-            // The timeframe strip along the bottom duplicates ChartChrome.
-            "timeframes_toolbar",
-            ...(isCapture
-              ? ([
-                  "control_bar",
-                  "legend_context_menu",
-                ] as const)
-              : []),
-          ],
-          enabled_features: [],
+          disabled_features: disabled,
+          // Legend = library symbol display (#10). Header resolutions replace
+          // the hand-built timeframe strip. buy_sell_buttons only surfaces on
+          // Trading Platform licenses; the approval broker is wired either way.
+          enabled_features: isCapture
+            ? []
+            : ([
+                "header_widget",
+                "display_legend_on_all_charts",
+                "seconds_resolution",
+                ...(wantTrading ? (["buy_sell_buttons"] as const) : []),
+              ] as const),
           overrides: {
             "paneProperties.background": bootTheme === "dark" ? "#050505" : "#f4f5f7",
             "paneProperties.backgroundType": "solid",
@@ -424,19 +445,60 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
           loading_screen: {
             backgroundColor: bootTheme === "dark" ? "#050505" : "#f4f5f7",
           },
-        };
+          ...(wantTrading
+            ? {
+                broker_factory: createApprovalBroker,
+                broker_config: {
+                  configFlags: {
+                    supportOrderBrackets: true,
+                    supportMarketOrders: true,
+                  },
+                },
+              }
+            : {}),
+        } as ChartingLibraryWidgetOptions;
 
         const w = new window.TradingView.widget(options);
         widgetRef.current = w;
 
-        // N2: header_widget is disabled — platform actions render in ChartChrome.
-        // headerReady/createButton would no-op or reject without a toolbar.
+        if (!isCapture) {
+          void w.headerReady().then(() => {
+            if (cancelled) return;
+            for (const action of headerActionsRef.current ?? []) {
+              const btn = w.createButton();
+              btn.textContent = action.text;
+              if (action.title) btn.setAttribute("title", action.title);
+              if (action.color) btn.style.color = action.color;
+              btn.dir = directionRef.current;
+              btn.style.direction = directionRef.current;
+              btn.addEventListener("click", () => {
+                const latest = headerActionsRef.current?.find((a) => a.id === action.id);
+                latest?.onClick?.();
+              });
+              headerButtonsRef.current.set(action.id, btn);
+            }
+            // Chart refresh lives in the library header (not page top bar).
+            const refreshBtn = w.createButton();
+            refreshBtn.setAttribute("title", "Refresh");
+            refreshBtn.setAttribute("data-testid", "chart-refresh");
+            refreshBtn.textContent = "↻";
+            refreshBtn.addEventListener("click", () => {
+              try {
+                widgetRef.current?.activeChart().resetData();
+              } catch {
+                /* torn down */
+              }
+            });
+            headerButtonsRef.current.set("refresh", refreshBtn);
+          });
+        }
 
         w.onChartReady(() => {
           if (cancelled) return;
           readyRef.current = true;
           const chart = w.activeChart();
           managerRef.current = new TvDrawingManager(chart);
+          spreadLinesRef.current = new SpreadPriceLines(chart);
           setReady(true);
           // Re-anchor drawings after fresh history lands (frame/pair switch).
           chart.onDataLoaded().subscribe(null, () => {
@@ -474,6 +536,8 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       cancelled = true;
       readyRef.current = false;
       setReady(false);
+      void spreadLinesRef.current?.clear();
+      spreadLinesRef.current = null;
       managerRef.current = null;
       headerButtonsRef.current.clear();
       try {
@@ -581,6 +645,16 @@ const TvChart = forwardRef<TvChartHandle, Props>(function TvChart(
       if (a.title) el.setAttribute("title", a.title);
     }
   }, [headerActions]);
+
+  // Bid / ask as library price lines (#7) — not a hand-built badge.
+  useEffect(() => {
+    if (!ready || capture) return;
+    const book =
+      live.bid != null && live.ask != null
+        ? { bid: live.bid, ask: live.ask }
+        : null;
+    void spreadLinesRef.current?.update(book);
+  }, [ready, capture, live.bid, live.ask]);
 
   // Theme and header direction can change without remounting the widget, so
   // drawings and the user's current chart state remain intact.

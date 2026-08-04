@@ -502,7 +502,7 @@ function ConsoleShellBody({
             displayName={displayName}
             sidebarOpen={mobileOpen}
             onToggleSidebar={() => setMobileOpen(!mobileOpen)}
-            // Traders refresh from ChartChrome; admins still reload the page.
+            // Traders refresh from the library header; admins still reload the page.
             refreshMode={isAdmin ? "page" : "none"}
             showBalance={!isAdmin}
             showAccountStatus={!isAdmin}

@@ -5,6 +5,9 @@ export interface LivePriceTick {
   changePct: number;
   direction: PriceDirection;
   connected: boolean;
+  /** Raw book for chart price lines (library horizontal lines). */
+  bid?: number | null;
+  ask?: number | null;
   /**
    * The cost of crossing the book right now, already formatted ("1.4 نقطة").
    * Null until the first tick lands. Which book it is depends on `source` — on

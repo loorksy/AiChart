@@ -63,4 +63,25 @@ describe("pickBrokerSymbol / resolveBrokerSymbolFromCatalogue", () => {
       "AAPLm",
     );
   });
+
+  it("resolves invented suffixes no one hard-coded (dynamic catalogue)", () => {
+    const weird = [
+      { broker_symbol: "XAUUSD.raw", canonical: "XAUUSD" },
+      { broker_symbol: "XAUUSDµ", canonical: "XAUUSD" },
+      { broker_symbol: "XAUUSD-ecn", canonical: "XAUUSD" },
+    ];
+    // First match wins — prove each spelling resolves when it is the only row.
+    assert.equal(
+      pickBrokerSymbol("XAUUSD", [weird[0]!]),
+      "XAUUSD.raw",
+    );
+    assert.equal(
+      pickBrokerSymbol("XAUUSD", [weird[1]!]),
+      "XAUUSDµ",
+    );
+    assert.equal(
+      pickBrokerSymbol("XAUUSD", [weird[2]!]),
+      "XAUUSD-ecn",
+    );
+  });
 });
