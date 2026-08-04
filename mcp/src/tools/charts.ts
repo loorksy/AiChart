@@ -1,8 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
-import { BridgeError } from "../bridge/client.js";
+import { BridgeError, formatBridgeResult } from "../bridge/client.js";
 import { toOandaForexSymbol } from "../lib/forexSymbol.js";
 import { bridgeCall } from "./helpers.js";
+import { startJob } from "./jobStore.js";
 import { mcpToolConfig } from "./schemas/index.js";
 
 /** Full AI analysis can take ~2 minutes (model reasoning + chart vision). */
@@ -190,23 +191,32 @@ export function registerChartsTools(server: McpServer, bridge: BridgeClient) {
         layout_id?: string;
         data_source?: "oanda";
       };
-      return bridgeCall(
-        "run_market_analysis",
-        args as Record<string, unknown>,
-        () =>
-          bridge.post(
-            "/api/agent/market/analyze",
-            {
-              symbol: a.symbol ? toOandaForexSymbol(a.symbol) : undefined,
-              interval: a.interval ?? "1h",
-              market: a.market,
-              layout_id: a.layout_id,
-              data_source: a.data_source ?? "oanda",
-            },
-            ANALYZE_TIMEOUT_MS,
-          ),
-        { structured: true },
+      // Queued, not awaited: full model reasoning + chart vision can take up
+      // to 150s — this call returns well under 500ms regardless, and the
+      // caller polls the background job with jobs_wait.
+      const job = startJob("run_market_analysis", () =>
+        bridge.post(
+          "/api/agent/market/analyze",
+          {
+            symbol: a.symbol ? toOandaForexSymbol(a.symbol) : undefined,
+            interval: a.interval ?? "1h",
+            market: a.market,
+            layout_id: a.layout_id,
+            data_source: a.data_source ?? "oanda",
+          },
+          ANALYZE_TIMEOUT_MS,
+        ),
       );
+      return formatBridgeResult({
+        job_id: job.id,
+        status: job.status,
+        tool: "run_market_analysis",
+        next_step: {
+          tool: "jobs_wait",
+          reason: "Poll until all_terminal is true before reading the result.",
+          params: { jobs: [job.id] },
+        },
+      });
     },
   );
 }

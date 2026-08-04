@@ -395,7 +395,7 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
     name: "run_backtest",
     domain: "core",
     description:
-      "Runs a deterministic historical backtest of a catalog strategy over the given symbol, timeframe, and date_range, and records the result as server-side evidence. When: before trusting a catalog strategy live, or before citing statistical support for it. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity — and executes no trades. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
+      "Queues a deterministic historical backtest of a catalog strategy over the given symbol, timeframe, and date_range; returns job_id/status immediately (well under 1s) — the simulation itself can take up to 120s and never blocks this call. When: before trusting a catalog strategy live, or before citing statistical support for it. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity — and executes no trades. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call, long-polls up to ~20s) until all_terminal is true, then read result from that response — do not call this tool again to check status. If polling several backtests, batch every job_id into ONE jobs_wait call, never one call per job. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
     inputSchema: {
       strategy_id: zBacktestStrategyId,
       symbol: zSymbol,
@@ -417,6 +417,35 @@ export const CORE_TOOL_DEFINITIONS: ToolDefinition[] = [
         ),
     },
     annotations: IDEMPOTENT_WRITE,
+  },
+  {
+    name: "jobs_wait",
+    domain: "core",
+    description:
+      "Long-polls 1-12 bucket-C job ids together (run_backtest, run_market_analysis) and returns as soon as every job is terminal (completed or failed), or after ~20s if some are still running — check all_terminal, not just that the call returned. When: immediately after queuing one or more async jobs, and again after poll_after_seconds if all_terminal was false. Never poll one job at a time in a loop when several are outstanding — pass every job_id in one call. read-only.",
+    inputSchema: {
+      jobs: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(12)
+        .describe("job_id values from run_backtest/run_market_analysis, 1-12 per call"),
+    },
+    annotations: READ_ONLY,
+  },
+  {
+    name: "show_jobs_by_ids",
+    domain: "core",
+    description:
+      "Renders a completed batch of bucket-C jobs (run_backtest, run_market_analysis) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. Jobs that are still running are reported as such, not guessed at. read-only.",
+    inputSchema: {
+      jobs: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(12)
+        .describe("job_id values to render together, 1-12 per call"),
+    },
+    annotations: READ_ONLY,
+    ui: { widget: "jobs-report" },
   },
   {
     name: "get_strategy_performance",

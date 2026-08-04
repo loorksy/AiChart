@@ -1,8 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BridgeClient } from "../bridge/client.js";
 import {
-  BridgeError, formatBridgeError, unwrapBridgePayload } from "../bridge/client.js";
+  BridgeError, formatBridgeError, formatBridgeResult, unwrapBridgePayload } from "../bridge/client.js";
 import { bridgeCall, bridgeWrap } from "./helpers.js";
+import { getJob, startJob, waitForJobs } from "./jobStore.js";
 import { MCP_SERVER_VERSION } from "./registry.js";
 import { mcpToolConfig } from "./schemas/index.js";
 import {
@@ -341,14 +342,59 @@ export function registerCoreTools(server: McpServer, bridge: BridgeClient) {
   server.registerTool(
     "run_backtest",
     mcpToolConfig("run_backtest"),
-    async (body) =>
-      // The contract declares 120s for this tool, but the bridge default is
-      // 15s — submission does a warehouse export + research job creation and
-      // legitimately exceeds 15s when the research service is busy with a
-      // pipeline job. Without the override every manual backtest 504'd.
-      bridgeCall("run_backtest", body as Record<string, unknown>, () =>
+    async (body) => {
+      // Queued, not awaited: the simulation can legitimately run up to 120s
+      // (warehouse export + research job creation, longer when the research
+      // service is busy with a pipeline job) — this call must return well
+      // under the 500ms budget regardless, so the real work runs in the
+      // background via startJob and the caller polls with jobs_wait.
+      const job = startJob("run_backtest", () =>
         bridge.post("/api/agent/backtest", body, 120_000),
-      ),
+      );
+      return formatBridgeResult({
+        job_id: job.id,
+        status: job.status,
+        tool: "run_backtest",
+        next_step: {
+          tool: "jobs_wait",
+          reason: "Poll until all_terminal is true before reading the result.",
+          params: { jobs: [job.id] },
+        },
+      });
+    },
+  );
+
+  server.registerTool(
+    "jobs_wait",
+    mcpToolConfig("jobs_wait"),
+    async (args) => {
+      const { jobs } = (args ?? {}) as { jobs: string[] };
+      try {
+        return formatBridgeResult(await waitForJobs(jobs));
+      } catch (e) {
+        return formatBridgeError(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "show_jobs_by_ids",
+    mcpToolConfig("show_jobs_by_ids"),
+    async (args) => {
+      const { jobs } = (args ?? {}) as { jobs: string[] };
+      const records = jobs.map((id) => {
+        const job = getJob(id);
+        if (!job) return { id, status: "not_found" as const };
+        return {
+          id: job.id,
+          tool: job.tool,
+          status: job.status,
+          ...(job.status === "completed" ? { result: job.result } : {}),
+          ...(job.status === "failed" ? { error: job.error } : {}),
+        };
+      });
+      return formatBridgeResult({ jobs: records, count: records.length });
+    },
   );
 
   server.registerTool(

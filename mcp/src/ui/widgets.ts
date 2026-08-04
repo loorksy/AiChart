@@ -1260,11 +1260,79 @@ const levelsReport = widgetHtml(
   `,
 );
 
+/* ─────────────────────────── jobs report ───────────────────────────
+ * show_jobs_by_ids: renders a whole batch of bucket-C job results (run_backtest,
+ * run_market_analysis) in ONE card instead of one display call per job. Each
+ * job's own result shape differs (backtest metrics vs a full analysis
+ * payload) so this deliberately does NOT try to render either bespoke —
+ * status first (queued/running never show fabricated numbers), then a
+ * generic flattened key/value summary of whatever the completed result
+ * actually contains, same discipline as the generic collections card. */
+const jobsReport = widgetHtml(
+  "AiChart jobs",
+  `<div class="card" id="jobs-card">
+    <div class="top">
+      <div><div class="title" data-i18n="chartTitle">Jobs</div></div>
+      <div class="tag" id="jobs-count">—</div>
+    </div>
+    <div class="main" id="jobs-body"><div class="skel"></div></div>
+    <div class="foot">
+      <span id="jobs-status" class="status"></span>
+    </div>
+  </div>`,
+  `
+  function obj(v){ return v && typeof v === "object" ? v : {}; }
+  function statusCls(s){
+    if (s === "completed") return "green";
+    if (s === "failed") return "red";
+    if (s === "not_found") return "";
+    return "amber";
+  }
+  function summarize(AIC, result){
+    result = obj(result);
+    var out = [];
+    for (var k in result) {
+      if (out.length >= 3) break;
+      var v = result[k];
+      if (v == null) continue;
+      if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") {
+        var c = AIC.cell(v, 4);
+        if (c) out.push(k + ": " + c);
+      }
+    }
+    return out.join(" · ");
+  }
+  window.__aicReady = function (AIC){
+    AIC.applyStaticLabels();
+    AIC.onData(function (data){
+      data = obj(data);
+      var jobs = Array.isArray(data.jobs) ? data.jobs : [];
+      document.getElementById("jobs-count").textContent = String(jobs.length);
+      var body = document.getElementById("jobs-body");
+      body.innerHTML = jobs.length ? jobs.map(function (j) {
+        j = obj(j);
+        var cls = statusCls(j.status);
+        var line = j.status === "failed" ? String(j.error || "") : (j.status === "completed" ? summarize(AIC, j.result) : (j.status === "not_found" ? "unknown job_id" : "still running"));
+        return '<div class="pair"><strong>' + (j.tool || j.id || "job") + '</strong>' +
+          '<span class="' + cls + '">' + String(j.status || "—") + '</span></div>' +
+          (line ? '<div class="sub" style="margin:-6px 0 6px">' + line + '</div>' : "");
+      }).join("") : '<div class="empty">' + AIC.t("noData") + '</div>';
+      var statusEl = document.getElementById("jobs-status");
+      var stale = AIC.bridgeLinkState(data).stale;
+      statusEl.textContent = stale ? AIC.bridgeLinkState(data).label : "";
+      statusEl.className = stale ? "status stale" : "status";
+      AIC.notifySize();
+    });
+  };
+  `,
+);
+
 export const WIDGETS: Record<string, string> = {
   "account-overview": accountOverview,
   analysis,
   "recommendation-card": recommendationCard,
   "scan-results": scanResults,
+  "jobs-report": jobsReport,
   "levels-report": levelsReport,
   "account-status": accountOverview,
   "pair-picker": genericCard("pairPickerTitle", "pairPickerSubtitle"),
