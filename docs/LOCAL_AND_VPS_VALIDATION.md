@@ -24,6 +24,8 @@ These must pass before deploying application code to the VPS.
 
 **Also required before VPS:** Local Release Qualification green (lint, typecheck for app code, `test:ci`, MCP catalog/schemas). Redis integration test when Docker available.
 
+**Also required before claiming a complete post-deploy verification pass:** A production login for the owner-provisioned verification account (`looorksy@gmail.com`). Nine checklist items that need a session remain **BLOCKED** without it — see `.cursor/skills/land-and-deploy/SKILL.md` (do not workaround with MCP/bridge auth).
+
 ---
 
 ## يمنع Auto Dry-run
