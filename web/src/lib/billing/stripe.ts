@@ -104,7 +104,7 @@ export async function createSubscriptionCheckout(input: {
           currency: "usd",
           unit_amount: def.priceUsd * 100,
           recurring: { interval: "month" },
-          product_data: { name: `AiChart ${def.nameEn}` },
+          product_data: { name: `Lonora ${def.nameEn}` },
         },
       },
     ],
@@ -140,7 +140,7 @@ export async function createTopupCheckout(input: {
         price_data: {
           currency: "usd",
           unit_amount: input.amountUsd * 100,
-          product_data: { name: `AiChart credit top-up $${input.amountUsd}` },
+          product_data: { name: `Lonora credit top-up $${input.amountUsd}` },
         },
       },
     ],

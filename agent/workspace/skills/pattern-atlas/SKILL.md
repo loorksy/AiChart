@@ -9,7 +9,7 @@ tags: ["patterns", "chart", "candlesticks", "structure", "liquidity", "atlas"]
 description: Chart pattern, candlestick, structure and liquidity reference — formation stages, confirmation, invalidation, entries, stops, targets, hybrid and unclassified structures.
 ---
 
-# AiChart Pattern Atlas
+# Lonora Pattern Atlas
 
 Reference knowledge for reading structure. Every entry answers the same
 questions: how the shape builds, what confirms it, what kills it, where you can

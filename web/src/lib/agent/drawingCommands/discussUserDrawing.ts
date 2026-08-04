@@ -80,8 +80,8 @@ export async function discussUserDrawing(
   try {
     const res = await callLLM({
       system: isAr
-        ? "أنت وكيل شارت داخل AiChart. المستخدم يسألك عن رسم رسمه بنفسه على الشارت. ناقش الرسم بإيجاز بالعربية اعتمادًا فقط على البيانات المرسلة. لا تعطِ توصية شراء/بيع ولا تعدّل الرسم ولا تدّعي رؤية رسومات أخرى."
-        : "You are a chart agent inside AiChart. The user is asking about a drawing they made themselves. Discuss it briefly in English using only the provided data. Do not give a buy/sell recommendation, do not edit the drawing, and do not claim to see other drawings.",
+        ? "أنت وكيل شارت داخل Lonora. المستخدم يسألك عن رسم رسمه بنفسه على الشارت. ناقش الرسم بإيجاز بالعربية اعتمادًا فقط على البيانات المرسلة. لا تعطِ توصية شراء/بيع ولا تعدّل الرسم ولا تدّعي رؤية رسومات أخرى."
+        : "You are a chart agent inside Lonora. The user is asking about a drawing they made themselves. Discuss it briefly in English using only the provided data. Do not give a buy/sell recommendation, do not edit the drawing, and do not claim to see other drawings.",
       messages: [
         {
           role: "user",

@@ -73,7 +73,7 @@ export async function watchAichartOpenTrades(
         hits,
         dedupeKey: proximityDedupeKey("aichart", String(trade.id), hits),
         detail:
-          `صفقة AiChart #${trade.id} ${trade.symbol} ${trade.side} @ ${trade.avg_price} — ` +
+          `صفقة Lonora #${trade.id} ${trade.symbol} ${trade.side} @ ${trade.avg_price} — ` +
           hits
             .map(
               (h) =>
@@ -87,10 +87,10 @@ export async function watchAichartOpenTrades(
 }
 
 /**
- * Positions opened directly on the broker terminal (outside AiChart) — there
+ * Positions opened directly on the broker terminal (outside Lonora) — there
  * is no broker-agnostic "list every raw position" source to poll, so this
  * stays empty until one exists. `watchAichartOpenTrades` above still covers
- * every trade AiChart itself opened.
+ * every trade Lonora itself opened.
  */
 export async function watchMt5Positions(
   _userId: number,

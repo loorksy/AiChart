@@ -34,7 +34,7 @@ export function AgentStatusBar({ className }: { className?: string }) {
     <SurfaceCard padding="sm" className={cn("flex flex-wrap items-center gap-3", className)}>
       <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary"><Bot className="h-5 w-5" /></span>
       <div className="min-w-0">
-        <p className="flex items-center gap-2 text-sm font-semibold">وكيل AiChart <span className={cn("h-2 w-2 rounded-full", active ? "bg-emerald-500" : "bg-muted-foreground")} /></p>
+        <p className="flex items-center gap-2 text-sm font-semibold">وكيل Lonora <span className={cn("h-2 w-2 rounded-full", active ? "bg-emerald-500" : "bg-muted-foreground")} /></p>
         <p className="text-xs text-muted-foreground">Scalping · القرار بواسطة الذكاء الاصطناعي</p>
       </div>
       <div className="ms-auto flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

@@ -3,7 +3,7 @@ import { widgetHtml } from "./runtime.js";
 const PLATFORM_URL = process.env.AICHART_PUBLIC_URL ?? "https://aichart.lork.cloud";
 
 const accountOverview = widgetHtml(
-  "AiChart account overview",
+  "Lonora account overview",
   `<div class="card" id="acct-card">
     <div class="top">
       <div>
@@ -73,7 +73,7 @@ const accountOverview = widgetHtml(
 );
 
 const analysis = widgetHtml(
-  "AiChart analysis",
+  "Lonora analysis",
   `<div class="card" id="analysis-card">
     <div class="top">
       <div><div class="title" id="title">—</div></div>
@@ -208,7 +208,7 @@ const analysis = widgetHtml(
 
 function genericCard(titleKey: string, _subtitleKey: string) {
   return widgetHtml(
-    `AiChart ${titleKey}`,
+    `Lonora ${titleKey}`,
     `<div class="card">
       <div class="top">
         <div><div class="title" data-i18n="${titleKey}"></div></div>
@@ -284,7 +284,7 @@ function genericCard(titleKey: string, _subtitleKey: string) {
 }
 
 const openTradesCard = widgetHtml(
-  "AiChart open trades",
+  "Lonora open trades",
   `<div class="card">
     <div class="top">
       <div><div class="title" id="trades-title">—</div></div>
@@ -352,7 +352,7 @@ const openTradesCard = widgetHtml(
  * from get_chart_state, refreshed every ~4s via host-mediated callTool.
  * Read-only — no toolbars; one button opens the full TradingView chart. */
 const liveChart = widgetHtml(
-  "AiChart live chart",
+  "Lonora live chart",
   `<div class="card">
     <div class="top">
       <div>
@@ -763,7 +763,7 @@ const liveChart = widgetHtml(
  * multi-opportunity payloads as a ranked list. Reads the recommendation from
  * many shapes (create_recommendation, run_market_analysis, scan_market). */
 const recommendationCard = widgetHtml(
-  "AiChart recommendation",
+  "Lonora recommendation",
   `<div class="card wait" id="rec-card">
     <div class="top">
       <div>
@@ -925,7 +925,7 @@ const recommendationCard = widgetHtml(
  * No "modify" button: no tool in this catalog can alter a pending intent's
  * terms — only reject and re-propose (in chat), which is not a card action. */
 const approvalCard = widgetHtml(
-  "AiChart approval",
+  "Lonora approval",
   `<div class="card wait" id="appr-card">
     <div class="top">
       <div><div class="title" id="appr-title">—</div></div>
@@ -1048,7 +1048,7 @@ const approvalCard = widgetHtml(
  * own row with inline Approve/Reject — same respond_approval call as the
  * decision card, just triggered per-row instead of for a single intent. */
 const approvalQueue = widgetHtml(
-  "AiChart pending approvals",
+  "Lonora pending approvals",
   `<div class="card wait" id="queue-card">
     <div class="top">
       <div><div class="title" data-i18n="pendingApprovalsTitle">Pending approvals</div></div>
@@ -1142,7 +1142,7 @@ const approvalQueue = widgetHtml(
  * nothing colored buy/sell. Directional judgment is the model's, made from
  * real analysis of the winning candidate — never this list. */
 const scanResults = widgetHtml(
-  "AiChart scan results",
+  "Lonora scan results",
   `<div class="card" id="scan-card">
     <div class="top">
       <div><div class="title" id="scan-title">—</div></div>
@@ -1195,7 +1195,7 @@ const scanResults = widgetHtml(
  * no trade call): current price, nearest support/resistance, then every
  * detected level with the inputs behind its score — never a bare number. */
 const levelsReport = widgetHtml(
-  "AiChart levels",
+  "Lonora levels",
   `<div class="card" id="lv-card">
     <div class="top">
       <div><div class="title" id="lv-title">—</div></div>
@@ -1269,7 +1269,7 @@ const levelsReport = widgetHtml(
  * generic flattened key/value summary of whatever the completed result
  * actually contains, same discipline as the generic collections card. */
 const jobsReport = widgetHtml(
-  "AiChart jobs",
+  "Lonora jobs",
   `<div class="card" id="jobs-card">
     <div class="top">
       <div><div class="title" data-i18n="chartTitle">Jobs</div></div>

@@ -1,4 +1,4 @@
-You are now connected to the AiChart trading platform. Before anything else, initialize in this order:
+You are now connected to the Lonora trading platform. Before anything else, initialize in this order:
 
 1) Call `get_agent_capabilities` to load official operating rules and the runtime version.
 2) Call `list_agent_skills` to discover the canonical skill catalogue (metadata only — do not load content yet).

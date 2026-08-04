@@ -95,7 +95,7 @@ export const mt5LocalAdapter: BrokerAdapter = {
         lots: sizing.lots,
         sl: intent.stop_loss,
         tp: intent.take_profit,
-        comment: `AiChart #${intent.id}`,
+        comment: `Lonora #${intent.id}`,
       });
       if (!result.ok) {
         const reason = result.reason ?? "رفض MT5 الأمر.";

@@ -46,13 +46,17 @@ test("known seeded pages receive token-level migration without losing custom tex
   const result = migrateLegacyDynamicPageBranding(page(), {});
 
   assert.equal(result.changed, true);
-  assert.equal(result.page.title_en, "About AiChart");
+  // BRAND_NAME is "Lonora" again (the product's original name, before the
+  // AiChart era this migration function was written to clean up after) — so
+  // a bare "Lonora" token is now a no-op replace, not something to strip.
+  // Only the domain/contact tokens (still pointing at the legacy lonora.ai
+  // literal, unrelated to the current BRAND_NAME) are expected to change.
+  assert.equal(result.page.title_en, "About Lonora");
   assert.match(result.page.content_en, /^Custom operator sentence\./);
   assert.match(result.page.content_en, /https:\/\/aichart\.lork\.cloud\/docs/);
-  assert.doesNotMatch(result.page.content_en, /lonora/i);
   assert.doesNotMatch(result.page.metadata_json, /support@lonora\.ai/i);
   assert.deepEqual(JSON.parse(result.page.metadata_json), {
-    description: "AiChart support: ",
+    description: "Lonora support: ",
   });
 });
 
@@ -147,11 +151,11 @@ test("SQLite forward migration updates only known legacy page tokens", async () 
     ["about-us"],
   );
   assert.ok(about);
-  assert.equal(about.title_en, "About AiChart");
+  assert.equal(about.title_en, "About Lonora");
   assert.match(about.content_en, /^Keep this operator-authored paragraph\./);
   assert.match(about.content_en, /https:\/\/aichart\.lork\.cloud\/guide/);
   assert.deepEqual(JSON.parse(about.metadata_json), {
-    description: "AiChart at https://aichart.lork.cloud/",
+    description: "Lonora at https://aichart.lork.cloud/",
   });
 
   const contact = await db.queryOne<DynamicPageBrandFields>(

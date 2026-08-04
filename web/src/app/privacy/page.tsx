@@ -1,8 +1,8 @@
 import { BRAND_DOMAIN, BRAND_NAME } from "@/lib/brand";
 
 export const metadata = {
-  title: "سياسة الخصوصية — AiChart",
-  description: "كيف تتعامل AiChart مع بياناتك عبر المنصة وتكاملات الذكاء الاصطناعي.",
+  title: "سياسة الخصوصية — Lonora",
+  description: "كيف تتعامل Lonora مع بياناتك عبر المنصة وتكاملات الذكاء الاصطناعي.",
 };
 
 /** Privacy policy — required for the ChatGPT Apps store listing. */

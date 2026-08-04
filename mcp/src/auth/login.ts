@@ -16,9 +16,9 @@ function detectLoginLocale(req: Request): LoginLocale {
 
 const COPY = {
   ar: {
-    title: "AiChart — MCP",
+    title: "Lonora — MCP",
     heading: "تفويض اتصال MCP",
-    lead: "سجّل دخول حساب AiChart للموافقة على ربط عميل MCP. لن تُعرض أسرار أو رموز في هذه الصفحة.",
+    lead: "سجّل دخول حساب Lonora للموافقة على ربط عميل MCP. لن تُعرض أسرار أو رموز في هذه الصفحة.",
     email: "البريد",
     password: "كلمة المرور",
     show: "إظهار",
@@ -33,9 +33,9 @@ const COPY = {
     expired: "انتهت صلاحية حسابك أو الجلسة. سجّل الدخول مجدداً.",
   },
   en: {
-    title: "AiChart — MCP",
+    title: "Lonora — MCP",
     heading: "Authorize MCP connection",
-    lead: "Sign in with your AiChart account to approve an MCP client connection. Secrets and tokens are never shown on this page.",
+    lead: "Sign in with your Lonora account to approve an MCP client connection. Secrets and tokens are never shown on this page.",
     email: "Email",
     password: "Password",
     show: "Show",
@@ -51,7 +51,7 @@ const COPY = {
   },
 } as const;
 
-/** Neutral AiChart MCP OAuth login — same auth flow, current visual system. */
+/** Neutral Lonora MCP OAuth login — same auth flow, current visual system. */
 function loginPage(pending: string, locale: LoginLocale, error?: string): string {
   const c = COPY[locale];
   const err = error
@@ -229,7 +229,7 @@ function loginPage(pending: string, locale: LoginLocale, error?: string): string
       <svg width="36" height="36" viewBox="100 250 900 670" aria-hidden="true" focusable="false">
         <path fill="currentColor" fill-rule="evenodd" d="M258.63 274.35C278.01 271.86 299.01 274.62 317.66 279.79C400.53 302.73 452.07 386.95 434.75 471.32C429.32 497.75 416.93 522.49 399.9 543.35C387.04 559.1 370.42 572.4 352.62 582.11C332.62 593.02 310.2 599.97 287.5 601.87C266.99 603.59 245.9 601.15 226.28 595.25C140.5 569.44 90.62 477.72 116.16 391.6C120.93 375.53 128.1 359.97 137.59 346.1C149.4 328.83 164.29 313.8 181.6 302.02C204.84 286.21 230.99 277.9 258.63 274.35ZM805.76 274.41C816.59 272.9 828.7 273.63 839.5 274.88C922.33 284.44 985.94 354.65 985.59 438.5C985.23 523.81 919.85 593.52 835.5 601.82C819.14 603.43 802.12 601.81 786.13 598.45C698.33 580 642.8 491.95 660.29 404.7C671.01 351.17 710.18 305.39 760.72 285.23C775.29 279.42 790.31 276.58 805.76 274.41ZM542.79 642.35C558.84 638.96 571.8 654.43 583.11 663.41C612.25 686.55 640.77 710.54 670.12 733.39C677.05 738.78 683.77 744.46 690.68 749.87C696 754.03 701.29 758.22 701.91 765.5C702.24 769.44 700.84 773.79 698.44 776.94C693.51 783.4 678.53 793.35 671.57 799.05C643.15 822.33 614.44 845.3 585.64 868.09C575.11 876.42 561.61 891.61 547.5 891.6C533.22 891.59 519.55 876.01 508.84 867.63C480.11 845.16 451.58 822.27 423.45 799.04C416.48 793.28 401.51 783.42 396.56 776.93C394.19 773.81 392.75 769.41 393.08 765.5C393.67 758.5 398.66 754.34 403.8 750.32C411.09 744.63 418.24 738.74 425.43 732.94C452.38 711.24 479.12 689.25 506.32 667.87C516.1 660.19 530.89 644.87 542.79 642.35Z"/>
       </svg>
-      <strong>AiChart</strong>
+      <strong>Lonora</strong>
     </div>
     <h1>${escapeHtml(c.heading)}</h1>
     <p class="lead">${escapeHtml(c.lead)}</p>

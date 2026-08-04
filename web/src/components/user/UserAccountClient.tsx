@@ -230,7 +230,7 @@ export function UserAccountClient({ user }: { user: PublicUser }) {
       </SurfaceCard>
 
       <p className="text-center text-xs text-muted-foreground">
-        {displayName} · AiChart
+        {displayName} · Lonora
       </p>
     </PageLayout>
   );

@@ -7,10 +7,10 @@ requiredTools: ["get_trade_readiness", "open_trade"]
 supportedLocales: ["ar", "en"]
 allowedMarkets: ["forex"]
 tags: ["execution", "trade", "mt5", "approval", "scalping"]
-description: Execute an AI-selected Forex scalp candidate through AiChart's technical broker safety flow.
+description: Execute an AI-selected Forex scalp candidate through Lonora's technical broker safety flow.
 ---
 
-# AiChart Trading
+# Lonora Trading
 
 The model alone owns the direction — buy or sell — and the plan type. Use fresh market tools and bind the plan to a real candidate with entry, mandatory stop-loss, and targets. Only a plan whose execution state is valid now may be sent to execution: an anticipatory or conditional plan waits for its trigger, and an expired or invalidated one is never executed.
 

@@ -24,7 +24,7 @@ async function loadMetaApiClass() {
 type MetaApiClass = Awaited<ReturnType<typeof loadMetaApiClass>>;
 type MetaApiClient = InstanceType<MetaApiClass>;
 
-/** Minimal RPC surface used by AiChart (avoids brittle SDK instance typing). */
+/** Minimal RPC surface used by Lonora (avoids brittle SDK instance typing). */
 export type MetaApiRpcConnection = {
   connect(): Promise<void>;
   waitSynchronized(timeoutInSeconds?: number): Promise<unknown>;
@@ -125,7 +125,7 @@ export async function getMetaApi(): Promise<MetaApiClient> {
     const MetaApi = await loadMetaApiClass();
     const region = await metaApiRegion();
     metaApiSingleton = new MetaApi(token, {
-      application: "AiChart",
+      application: "Lonora",
       ...(region ? { region } : {}),
     });
   }
@@ -146,7 +146,7 @@ export async function provisionAccount(input: ProvisionMtInput) {
   const region = await metaApiRegion();
 
   const account = await api.metatraderAccountApi.createAccount({
-    name: input.name ?? `AiChart ${input.login}`,
+    name: input.name ?? `Lonora ${input.login}`,
     login: input.login.replace(/\D/g, ""),
     password: input.password,
     server: input.server.trim(),

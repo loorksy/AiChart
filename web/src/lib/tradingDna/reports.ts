@@ -77,9 +77,9 @@ export function renderTradingDnaHtml(report: TradingDnaReport): string {
   const generated = new Date(report.generatedAt).toISOString();
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AiChart Trading DNA Report</title>
+<title>Lonora Trading DNA Report</title>
 <style>body{font-family:system-ui,sans-serif;max-width:960px;margin:40px auto;padding:0 24px;color:#17202a}header{border-bottom:2px solid #1f6feb;margin-bottom:24px}section{break-inside:avoid;margin:24px 0}li{margin:12px 0}small{color:#52606d;overflow-wrap:anywhere}.badge{display:inline-block;padding:4px 8px;border-radius:8px;background:#e8f1ff}</style>
-</head><body><header><h1>AiChart Trading DNA</h1><p>Generated ${escapeHtml(generated)}</p><p class="badge">Persona: ${escapeHtml(report.persona.persona)} (${(report.persona.confidence * 100).toFixed(1)}%)</p><p>${escapeHtml(report.persona.rationale)}</p></header>
+</head><body><header><h1>Lonora Trading DNA</h1><p>Generated ${escapeHtml(generated)}</p><p class="badge">Persona: ${escapeHtml(report.persona.persona)} (${(report.persona.confidence * 100).toFixed(1)}%)</p><p>${escapeHtml(report.persona.rationale)}</p></header>
 ${section("Strengths", report.strengths)}
 ${section("Weaknesses", report.weaknesses)}
 ${section("Patterns", report.patterns)}
@@ -116,7 +116,7 @@ function wrap(value: string, width = 88): string[] {
 
 function reportLines(report: TradingDnaReport): string[] {
   const lines = [
-    "AiChart Trading DNA Report",
+    "Lonora Trading DNA Report",
     `Snapshot: ${report.snapshot.snapshotId} version ${report.snapshot.version}`,
     `Persona: ${report.persona.persona} confidence ${(report.persona.confidence * 100).toFixed(1)}%`,
     report.persona.rationale,

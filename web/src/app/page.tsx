@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     absolute: `${BRAND_NAME} — شارت ومحادثة ذكية للتداول | AI Chart and Trading Conversation`,
   },
   description:
-    "AiChart combines a live chart and an intelligent trading conversation, then prepares clear trade scenarios for review before MetaTrader execution. Analyze. Discuss. Execute with clarity.",
+    "Lonora combines a live chart and an intelligent trading conversation, then prepares clear trade scenarios for review before MetaTrader execution. Analyze. Discuss. Execute with clarity.",
   alternates: {
     canonical: BRAND_URL,
   },

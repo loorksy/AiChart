@@ -1,4 +1,4 @@
-# AiChart MCP Server
+# Lonora MCP Server
 
 MCP Server يغلّف Bridge API (`/api/agent/*`) للربط مع **Claude.ai → Customize → Connectors → Add custom connector**.
 

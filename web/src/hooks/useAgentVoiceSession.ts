@@ -231,7 +231,7 @@ export function useAgentVoiceSession(opts: UseAgentVoiceSessionOptions) {
     return defineVoiceTool({
       name: "ask_aichart",
       description:
-        "Send the operator's spoken request to AiChart's trading agent and return the public answer to speak aloud.",
+        "Send the operator's spoken request to Lonora's trading agent and return the public answer to speak aloud.",
       parameters: z.object({
         message: z.string().min(1).describe("The operator's full spoken request."),
       }),

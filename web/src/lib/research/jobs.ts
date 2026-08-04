@@ -82,11 +82,11 @@ function datasetPayload(dataset: ResearchDatasetInput): Record<string, unknown> 
       !Array.isArray(envelope.bars) ||
       !envelope.bars.length
     ) {
-      invalid("AiChart Candle Warehouse envelope is invalid");
+      invalid("Lonora Candle Warehouse envelope is invalid");
     }
     if (envelope.bars.length > MAX_WAREHOUSE_ENVELOPE_BARS) {
       invalid(
-        `AiChart Candle Warehouse envelope exceeds ${MAX_WAREHOUSE_ENVELOPE_BARS.toLocaleString()} bars (got ${envelope.bars.length.toLocaleString()})`,
+        `Lonora Candle Warehouse envelope exceeds ${MAX_WAREHOUSE_ENVELOPE_BARS.toLocaleString()} bars (got ${envelope.bars.length.toLocaleString()})`,
       );
     }
     return { source: "aichart_candle_warehouse", payload: envelope };

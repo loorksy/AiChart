@@ -1,4 +1,4 @@
-# AiChart Execution Desk
+# Lonora Execution Desk
 
 The execution desk does not decide the market side. It receives an AI-selected BUY/SELL candidate and performs technical order safety only.
 

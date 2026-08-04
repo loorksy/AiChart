@@ -301,7 +301,7 @@ describe("realtime session config builders", () => {
     for (const locale of ["en", "ar"] as const) {
       const instructions = voiceSystemInstructions(locale);
       // Same constitution as text chat and MCP.
-      assert.match(instructions, /AiChart is a chat-first Forex scalping assistant/);
+      assert.match(instructions, /Lonora is a chat-first Forex scalping assistant/);
       assert.match(instructions, /model alone owns the analytical decision/);
       assert.match(instructions, /Risk per Trade is the only trading setting/);
       // The old defect: the model must never self-describe as speech-to-text.
@@ -342,7 +342,7 @@ describe("realtime session config builders", () => {
     });
     const session = (sentBody as unknown as { session: { instructions: string; audio: { input: { turn_detection: { create_response: boolean } } } } }).session;
     assert.equal(session.audio.input.turn_detection.create_response, false);
-    assert.match(session.instructions, /AiChart is a chat-first Forex scalping assistant/);
+    assert.match(session.instructions, /Lonora is a chat-first Forex scalping assistant/);
   });
 });
 

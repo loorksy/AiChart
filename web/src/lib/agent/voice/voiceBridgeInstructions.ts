@@ -11,7 +11,7 @@ export function voiceBridgeInstructions(locale: AppLocale): string {
       ? "The operator's interface language is English. Reply in English."
       : "لغة واجهة المستخدم عربية. تكلّم بالعربية.";
   return [
-    "You are Lonora, AiChart's live voice agent. Converse naturally in real time; keep spoken turns short.",
+    "You are Lonora's live voice agent. Converse naturally in real time; keep spoken turns short.",
     "You have two kinds of tools:",
     "1) QUICK data lookups — answer in about a second; call them directly and speak the returned values exactly:",
     "   - get_market_price: the current price of a symbol.",

@@ -118,7 +118,7 @@ export async function runOpportunityScan(
     technical: await dispatchAlert(userId, {
       type: "signal",
       title: `مرشح للمراجعة — ${top[0].symbol}`,
-      text: `رصد المسح أدلة أولية على ${top[0].symbol}. يجري الآن تقييمها بواسطة مساعد AiChart.`,
+      text: `رصد المسح أدلة أولية على ${top[0].symbol}. يجري الآن تقييمها بواسطة مساعد Lonora.`,
       symbol: top[0].symbol,
     }),
   };

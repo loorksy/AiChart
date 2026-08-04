@@ -152,7 +152,7 @@ if (cfg.authMode === "oauth") {
       issuerUrl,
       baseUrl: issuerUrl,
       scopesSupported: ["mcp:tools"],
-      resourceName: "AiChart Trading MCP",
+      resourceName: "Lonora Trading MCP",
       resourceServerUrl: mcpServerUrl,
     }),
   );
@@ -193,7 +193,7 @@ if (cfg.authMode === "oauth") {
       oauthMetadata,
       resourceServerUrl: mcpServerUrl,
       scopesSupported: ["mcp:tools"],
-      resourceName: "AiChart Trading MCP",
+      resourceName: "Lonora Trading MCP",
     }),
   );
 

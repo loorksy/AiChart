@@ -111,7 +111,7 @@ function formatReport(report: WeeklyReport): string {
     c.unexplainedParity === 0 &&
     c.criticalAlerts === 0;
   const lines: string[] = [
-    "📊 <b>تقرير AiChart الأسبوعي</b>",
+    "📊 <b>تقرير Lonora الأسبوعي</b>",
     "",
     criticalClean
       ? "✅ المؤشرات الحرجة كلها صفر (كتابة WAIT خفية، تنفيذ بوضع خاطئ، اختلاف سطحين غير مفسر، إنذارات حرجة)."
@@ -150,7 +150,7 @@ export async function sendWeeklyReports(): Promise<{ sent: number; errors: strin
     try {
       await dispatchAlert(id, {
         type: "signal",
-        title: "تقرير AiChart الأسبوعي",
+        title: "تقرير Lonora الأسبوعي",
         text,
         symbol: null,
       });
