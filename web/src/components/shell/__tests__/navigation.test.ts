@@ -123,7 +123,11 @@ test("MT equity chip renders zero balances from hook", () => {
   const hook = read("hooks/useAccountCapital.ts");
   assert.doesNotMatch(hook, /equity > 0/);
   const bar = read("components/shell/TopBarAccountStatus.tsx");
-  assert.match(bar, /formatUsdWhole\(capital\.amount\)/);
+  // Same formatter as the subscription-credit chip — a real zero must render
+  // as "$0.00" in both, not one "$0.00" beside a rounded "$0" that reads as
+  // the other value being broken.
+  assert.match(bar, /formatUsd\(capital\.amount\)/);
+  assert.doesNotMatch(bar, /formatUsdWhole/);
   assert.match(bar, /data-equity-state="ready"/);
 });
 

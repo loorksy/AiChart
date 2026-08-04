@@ -23,10 +23,12 @@ export function numericFromOptional(value: number | null | undefined): NumericFe
   return { status: "ready", value };
 }
 
+/**
+ * The one money format for the top bar and profile. Subscription credit and
+ * MT equity used to render with different precision — "$0.00" beside "$0
+ * USD" — which reads as one of the two being broken. Both now go through
+ * this.
+ */
 export function formatUsd(value: number, decimals = 2): string {
   return `$${value.toFixed(decimals)}`;
-}
-
-export function formatUsdWhole(value: number): string {
-  return `$${Math.round(value).toLocaleString("en-US")}`;
 }

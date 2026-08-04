@@ -8,7 +8,7 @@ import { Bot, Loader2, Wifi, WifiOff } from "lucide-react";
 import { useLocale } from "@/hooks/useLocale";
 import { useTradeMode } from "@/hooks/useTradeMode";
 import { useAccountCapital } from "@/hooks/useAccountCapital";
-import { formatUsdWhole } from "@/lib/display/numericDisplay";
+import { formatUsd } from "@/lib/display/numericDisplay";
 import { cn } from "@/lib/utils";
 
 export function TopBarAccountStatus() {
@@ -109,7 +109,7 @@ export function TopBarAccountStatus() {
             <span className="hidden sm:inline text-[10px] font-medium opacity-70">
               {t("balance.mt_equity_short")}
             </span>
-            {formatUsdWhole(capital.amount)}{" "}
+            {formatUsd(capital.amount)}{" "}
             {capital.currency ?? "USD"}
           </span>
         )
