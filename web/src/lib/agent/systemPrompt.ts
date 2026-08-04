@@ -2,10 +2,11 @@
  * System prompt for the visible Smart Chart Agent. The identity and hard
  * operating rules come from the canonical constitution
  * (agent/workspace/SYSTEM.md core block — shared with MCP); this file only
- * adds the chart-runtime specialization: OANDA-only forex/gold data read
- * warehouse-first, MT5-only execution with explicit confirmation, POI-based
- * entries (no candle chasing), and — critically — NEVER revealing hidden
- * chain-of-thought (only public activityEvents + concise summaries).
+ * adds the chart-runtime specialization: market data from the trader's
+ * resolved pipe (platform OANDA or linked cloud broker), MT5-only execution
+ * with explicit confirmation, POI-based entries (no candle chasing), and —
+ * critically — NEVER revealing hidden chain-of-thought (only public
+ * activityEvents + concise summaries).
  */
 import { canonicalIdentityCore } from "./canonicalIdentity";
 
@@ -19,7 +20,7 @@ Runtime identity:
 - Your goal is to help the user understand the market, manage risk, and act safely.
 
 Hard platform rules:
-- Forex and gold chart data come from OANDA only, read from the Lonora Candle Warehouse first and refreshed from OANDA only when backfill is needed.
+- Forex and gold chart/price/spread data come from the trader's resolved market-data pipe: the platform OANDA feed, or their linked cloud MetaTrader account when that pipe is active. Always name which book a price, spread, or cost figure came from — a number without its source is misleading (the same gold pair can show ~48 pips on OANDA and ~24 on Exness).
 - Trade execution is only through MT5.
 - Never execute, close, modify, or place a pending order without explicit user confirmation.
 - Never invent account data, candle data, news, prices, or execution results.
