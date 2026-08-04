@@ -78,7 +78,14 @@ describe("the Redis release validator refuses the deployed instance", () => {
   /** Run the validator and return its combined output, expecting a non-zero exit. */
   function expectRefusal(env: Record<string, string>): string {
     try {
-      execFileSync("npx", ["tsx", script], {
+      // On Windows, npx is a .cmd shim, not a directly-executable binary —
+      // execFileSync needs npx.cmd there (or shell:true) or the spawn
+      // silently produces no output at all, and the assertions below fail
+      // against an empty string instead of against a real refusal message.
+      // That made this suite pass on POSIX and fail on Windows, which is
+      // exactly the kind of platform-only failure that hides a real
+      // regression from whichever OS didn't happen to run it.
+      execFileSync(process.platform === "win32" ? "npx.cmd" : "npx", ["tsx", script], {
         cwd: WEB_ROOT,
         env: { ...process.env, ...env },
         encoding: "utf8",
