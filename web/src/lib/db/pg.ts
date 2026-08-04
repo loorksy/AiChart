@@ -2073,6 +2073,8 @@ export async function initPg(): Promise<void> {
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       [SCHEMA_VERSION],
     );
+    const { patchDocsMt5LinkingIfStale } = await import("../content/seedContent");
+    await patchDocsMt5LinkingIfStale();
   } finally {
     if (migrationLockHeld) {
       await client

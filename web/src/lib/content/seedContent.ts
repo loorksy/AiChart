@@ -1,5 +1,10 @@
 import { execute, queryOne } from "@/lib/db";
 import { BRAND_NAME } from "@/lib/brand";
+import {
+  DOCS_MT5_LINKING_CONTENT_AR,
+  DOCS_MT5_LINKING_CONTENT_EN,
+  DOCS_MT5_LINKING_STALE_MARKERS,
+} from "@/lib/content/docsMt5LinkingCopy";
 
 /**
  * V2-C (#97): idempotent seeding of docs and first blog posts into
@@ -56,8 +61,8 @@ const PAGES: SeedPage[] = [
     kind: "doc",
     title_ar: "ربط حساب MetaTrader 5",
     title_en: "Linking MetaTrader 5",
-    content_ar: `## ربط MT5\n\nمن باقة PLUS فما فوق يمكنك ربط حساب MT5 الحقيقي (من **لوحة التحكم ← ربط MT5**):\n\n1. ابحث عن وسيطك أو أدخل اسم الخادم يدوياً.\n2. سجّل دخولك بحساب MT5 الحقيقي — بياناتك تُخزَّن مشفَّرة AES-256.\n3. عند أول ربط تُسحب سنة كاملة من البيانات التاريخية مرة واحدة، ثم تُخدم من مستودعنا.\n\n**توفير التكلفة تلقائي**: عند مغادرتك المنصة يُوقَف اتصال حسابك خلال 15 دقيقة ويعود وحده عند عودتك — ساعات الاتصال تُخصم من رصيدك بالدقيقة وتظهر في كشف حسابك. حسابات التنفيذ الحي الآلي (PRO فما فوق) تبقى متصلة دائماً.`,
-    content_en: `## Linking MT5\n\nFrom PLUS and above you can link your real MT5 account (**Console → Link MT5**):\n\n1. Search for your broker or type the server name manually.\n2. Sign in with your real MT5 credentials — stored AES-256 encrypted.\n3. On first link a full year of history is pulled once, then served from our warehouse.\n\n**Automatic cost saving**: when you leave the platform your account connection pauses within 15 minutes and returns by itself when you're back — connection hours are deducted from your credit by the minute and appear in your statement. Live auto-execution accounts (PRO+) stay connected around the clock.`,
+    content_ar: DOCS_MT5_LINKING_CONTENT_AR,
+    content_en: DOCS_MT5_LINKING_CONTENT_EN,
   },
   {
     slug: "docs-billing-credits",
@@ -95,9 +100,31 @@ const PAGES: SeedPage[] = [
 
 let seeded = false;
 
+/** Repair docs seeded before the warehouse backfill promise was removed (#14). */
+export async function patchDocsMt5LinkingIfStale(): Promise<void> {
+  try {
+    const row = await queryOne<{ content_ar: string; content_en: string }>(
+      "SELECT content_ar, content_en FROM dynamic_pages WHERE slug = ?",
+      ["docs-mt5-linking"],
+    );
+    if (!row) return;
+    const stale = DOCS_MT5_LINKING_STALE_MARKERS.some(
+      (m) => row.content_ar.includes(m) || row.content_en.includes(m),
+    );
+    if (!stale) return;
+    await execute(
+      `UPDATE dynamic_pages SET content_ar = ?, content_en = ? WHERE slug = ?`,
+      [DOCS_MT5_LINKING_CONTENT_AR, DOCS_MT5_LINKING_CONTENT_EN, "docs-mt5-linking"],
+    );
+  } catch {
+    /* best-effort — CMS remains source of truth once edited */
+  }
+}
+
 export async function seedContentPages(): Promise<void> {
   if (seeded) return;
   seeded = true;
+  await patchDocsMt5LinkingIfStale();
   for (const page of PAGES) {
     try {
       const existing = await queryOne(

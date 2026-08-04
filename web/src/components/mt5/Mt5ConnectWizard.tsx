@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, Link2, Loader2, ShieldCheck } from "lucide-rea
 import { PageHeader, Surface } from "@/components/foundation";
 import { Button, buttonVariants } from "@/components/squareui/button";
 import { cn } from "@/lib/utils";
+import { MT5_CONNECT_SUCCESS_STATUS } from "@/lib/content/docsMt5LinkingCopy";
 
 interface ExistingAccount {
   platform: string;
@@ -97,7 +98,7 @@ export function Mt5ConnectWizard({
         setStep("credentials");
         return;
       }
-      setStatus("تم الربط! جارٍ سحب سنة كاملة من البيانات التاريخية في الخلفية…");
+      setStatus(MT5_CONNECT_SUCCESS_STATUS);
       setStep("done");
     } catch {
       setError("تعذّر الاتصال بالخادم.");

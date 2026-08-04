@@ -2182,6 +2182,8 @@ export function getSqliteDb(): Database.Database {
 
 export async function initSqlite(): Promise<void> {
   getSqliteDb();
+  const { patchDocsMt5LinkingIfStale } = await import("../content/seedContent");
+  await patchDocsMt5LinkingIfStale();
 }
 
 export async function sqliteQuery<T = DbRow>(
