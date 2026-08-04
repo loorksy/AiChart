@@ -4,14 +4,18 @@ import { useCallback, useEffect, useState } from "react";
 
 export interface AccountCapitalState {
   loading: boolean;
+  /** Fetch failed while MT is connected — distinct from a real $0 balance. */
+  error: boolean;
   connected: boolean;
   label: string | null;
+  /** Broker equity when known; `0` is valid. `null` only while loading / unknown. */
   amount: number | null;
   currency: string;
 }
 
 const EMPTY: AccountCapitalState = {
   loading: true,
+  error: false,
   connected: false,
   label: null,
   amount: null,
@@ -23,11 +27,11 @@ export function useAccountCapital(_market?: "forex") {
   const [state, setState] = useState<AccountCapitalState>(EMPTY);
 
   const refresh = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true }));
+    setState((s) => ({ ...s, loading: true, error: false }));
     try {
       const statusRes = await fetch("/api/console/status", { cache: "no-store" });
       if (!statusRes.ok) {
-        setState({ ...EMPTY, loading: false });
+        setState({ ...EMPTY, loading: false, error: true });
         return;
       }
       const status = (await statusRes.json()) as {
@@ -44,6 +48,7 @@ export function useAccountCapital(_market?: "forex") {
         setState({
           ...EMPTY,
           loading: false,
+          error: true,
           connected: true,
           label: "MetaTrader",
         });
@@ -56,16 +61,21 @@ export function useAccountCapital(_market?: "forex") {
         currency?: string;
       };
 
-      const equity = mt.equity ?? mt.balance ?? null;
+      const rawEquity = mt.equity ?? mt.balance;
+      const amount =
+        typeof rawEquity === "number" && Number.isFinite(rawEquity)
+          ? rawEquity
+          : null;
       setState({
         loading: false,
+        error: amount == null,
         connected: Boolean(status.mt5?.online ?? mt.online),
         label: "MetaTrader",
-        amount: equity != null && equity > 0 ? equity : null,
+        amount,
         currency: mt.currency ?? "USD",
       });
     } catch {
-      setState({ ...EMPTY, loading: false });
+      setState({ ...EMPTY, loading: false, error: true });
     }
   }, []);
 

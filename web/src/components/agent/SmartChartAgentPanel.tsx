@@ -12,7 +12,7 @@ import { useLocale } from "@/hooks/useLocale";
 import { ANALYZE_QUICK_PROMPT } from "@/lib/agent/quickPrompts";
 import { AgentThinkingTicker } from "./AgentThinkingTicker";
 import { AgentChatInput } from "./AgentChatInput";
-import { AgentModeBadge, AgentFaultCard, AgentEvidenceCard } from "./AgentEnvelopeStatus";
+import { AgentModeBadge, AgentFaultCard, AgentEvidenceCard, AgentPresentationFacts } from "./AgentEnvelopeStatus";
 import { isOperationalBlocker } from "@/lib/agent/executionModeBadge";
 import { RecommendationTrackerCard } from "@/components/recommendations/RecommendationTrackerCard";
 import { AgentAvatar } from "@/components/AgentAvatar";
@@ -263,6 +263,9 @@ export const SmartChartAgentPanel = forwardRef<SmartChartAgentHandle, Props>(
                 <div className="mb-1">
                   <AgentModeBadge envelope={m.result.envelope} />
                 </div>
+              ) : null}
+              {m.role === "assistant" && m.result?.envelope ? (
+                <AgentPresentationFacts envelope={m.result.envelope} />
               ) : null}
               {m.role === "assistant" && isOperationalBlocker(m.result?.envelope) ? (
                 <AgentFaultCard envelope={m.result!.envelope!} />

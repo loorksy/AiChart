@@ -1,12 +1,16 @@
 import type { AgentChartContext, AgentFinalResult, AgentIntent, AgentRunContext } from "../types";
 import type { AppLocale } from "@/lib/i18n";
 import { buildAgentMarketContext } from "../marketContext/buildAgentMarketContext";
-import { operationalBlockerEnvelope } from "../resultEnvelope";
+import { operationalBlockerEnvelope, descriptiveEnvelope } from "../resultEnvelope";
 import { newId } from "../activity";
 import { sanitizeAgentDrawings } from "../drawings/drawingOwnership";
 import { bilingual, composeStatusReply } from "../statusReply";
 import { buildTrendlineDrawing } from "./buildTrendlineDrawing";
 import { buildSupportResistanceDrawing } from "./buildSupportResistanceDrawing";
+import {
+  attachMandatoryPresentation,
+  priceLevelsFromDrawings,
+} from "../envelopePresentation";
 
 export async function handleDrawingCommand(input: {
   intents: AgentIntent[];
@@ -149,10 +153,19 @@ export async function handleDrawingCommand(input: {
         ),
   });
 
+  const presented = attachMandatoryPresentation({
+    summary,
+    envelope: descriptiveEnvelope({ traceId: ctx.requestId }),
+    source: chartContext?.dataSource ?? "oanda",
+    levels: priceLevelsFromDrawings(drawings),
+    locale,
+  });
+
   return {
     decision: "informational",
     confidence: drawings.length ? 0.85 : 0.55,
-    summary,
+    summary: presented.summary,
+    envelope: presented.envelope,
     keyReasons: [],
     riskWarnings: [],
     activityEvents: [],

@@ -44,6 +44,11 @@ import {
   envelopeForFinalDecision,
   operationalBlockerEnvelope,
 } from "./resultEnvelope";
+import {
+  attachMandatoryPresentation,
+  keyLevelsFromRecommendation,
+  priceLevelsFromDrawings,
+} from "./envelopePresentation";
 import { evaluateDependencies } from "./dependencyMatrix";
 import { answerGeneralQuestion } from "./generalAnswer";
 import { FEATURES } from "./featureFlags";
@@ -1672,12 +1677,33 @@ async function runUnifiedChartAgentInner(
     degradedStages: degradedStagesFrom(stageFailures),
   });
 
+  const planLevels = keyLevelsFromRecommendation(finalDecision.recommendation);
+  const marketLevels = [
+    ...market.majorLevels.support.slice(-2).map((l) => l.price),
+    ...market.majorLevels.resistance.slice(-2).map((l) => l.price),
+  ];
+  const drawingLevels = priceLevelsFromDrawings(drawings);
+  const levels =
+    planLevels.length >= 2
+      ? planLevels
+      : drawingLevels.length >= 2
+        ? drawingLevels
+        : marketLevels;
+
+  const presented = attachMandatoryPresentation({
+    summary: finalDecision.summary,
+    envelope,
+    source: chartContext?.dataSource ?? "oanda",
+    levels,
+    locale,
+  });
+
   return {
     decision: finalDecision.decision,
-    envelope,
+    envelope: presented.envelope,
     confidence: finalDecision.confidence,
     confidenceSemantics: finalDecision.confidenceSemantics,
-    summary: finalDecision.summary,
+    summary: presented.summary,
     keyReasons: finalDecision.keyReasons,
     riskWarnings: finalDecision.riskWarnings,
     recommendation: storedRecommendation
