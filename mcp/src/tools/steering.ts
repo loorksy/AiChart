@@ -157,17 +157,14 @@ const NEXT_STEP_BY_TOOL: Record<string, NextStepFn> = {
     params: null,
   }),
 
-  // run_backtest's own description already promises this chain
-  // ("before create_recommendation to obtain a server-issued backtested_confidence").
-  run_backtest: (args) => ({
-    tool: "get_strategy_performance",
-    reason: "Backtest recorded — pull its live-vs-expected comparison and deployment state before citing it as evidence.",
-    params: {
-      strategy_id: args.strategy_id ?? null,
-      symbol: args.symbol ?? null,
-      timeframe: args.timeframe ?? null,
-    },
-  }),
+  // run_backtest no longer goes through bridgeCall (Phase 3: it queues a job
+  // and returns immediately — see core.ts) so this table is never consulted
+  // for it; its next_step (-> jobs_wait) is embedded directly in that
+  // response. The REAL next step after a completed backtest — pulling
+  // get_strategy_performance for the live-vs-expected comparison before
+  // citing it as evidence — is stated in run_backtest's own description
+  // instead, since it only makes sense once jobs_wait reports all_terminal,
+  // not immediately.
 
   // request_approval only queues an intent and messages Telegram — confirm
   // it actually queued with the id the operator will see, before reporting success.

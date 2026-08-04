@@ -1,12 +1,12 @@
 {
   "mcpServerVersion": "1.1.1",
-  "exportedAt": "2026-08-03T23:58:30.649Z",
+  "exportedAt": "2026-08-04T00:09:59.368Z",
   "toolCount": 55,
   "tools": [
     {
       "name": "get_account_overview",
       "domain": "core",
-      "description": "Returns a combined view of the connected account in one call: technical connection status, portfolio summary, the operator's standing trade mode, and (unless include_live=false) live broker account data. When: at session start, or whenever a full picture of the account is needed before discussing balance, exposure, or execution. read-only.",
+      "description": "Returns a combined view of the connected account in one call: technical connection status, portfolio summary, the operator's standing trade mode, and (unless include_live=false) live broker account data. When: at session start, or whenever a full picture of the account is needed before discussing balance, exposure, or execution. Not when only one figure changed — get_portfolio/get_agent_trade_mode alone are cheaper. Default include_live=true (pass false only for a faster, connection-only summary). read-only. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence, not a suggestion.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -16,7 +16,7 @@
     {
       "name": "get_trade_readiness",
       "domain": "core",
-      "description": "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. read-only.",
+      "description": "Runs the technical preflight for live execution and reports authorization, broker connection, trading session, and spread for the given symbol. When: immediately before open_trade, or when diagnosing why execution is blocked. Not a substitute for open_trade's own checks — a pass here does not skip them, and open_trade still refuses independently on a stale quote, closed session, or unsafe spread. Defaults: market=forex, practice=false. read-only. If recovery_tool is returned (e.g. after a SPREAD_TOO_WIDE or MARKET_CLOSED signal elsewhere), this is usually that recovery_tool — call it immediately, don't ask the operator first.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -26,7 +26,7 @@
     {
       "name": "get_agent_capabilities",
       "domain": "core",
-      "description": "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. read-only. No side-effects.",
+      "description": "Reports what this deployment supports: server version, git commit, feature flags, and a summary of the available skill catalogue (names only). When: the first call of every session, before any other tool. Not needed again mid-session — capabilities don't change while connected. read-only. No side-effects. If next_step is returned, call it immediately without asking the user — it is the fixed session-start sequence (-> get_account_overview -> get_agent_trade_mode), not a suggestion.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -36,7 +36,7 @@
     {
       "name": "get_portfolio",
       "domain": "core",
-      "description": "Returns the account balance and portfolio summary, including current PnL. When: after get_account_overview when only the portfolio needs refreshing, or when the operator asks about balance or PnL. read-only. Not for execution.",
+      "description": "Returns the account balance and portfolio summary, including current PnL. When: after get_account_overview when only the portfolio needs refreshing, or when the operator asks about balance or PnL. Not for execution, and not for open-position detail — use get_open_trades for that. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -46,7 +46,7 @@
     {
       "name": "get_open_trades",
       "domain": "core",
-      "description": "Lists all currently open trades together with an Arabic summary (summary_ar). When: before evaluate_trade or any close action, or when the operator asks what positions are open. read-only.",
+      "description": "Lists all currently open trades together with an Arabic summary (summary_ar). When: before evaluate_trade or any close action, to confirm the result of open_trade/close_trade/modify_sl_tp/cancel_mt5_order/close_partial (none of those five have a before/after position lookup of their own — this is how you verify a change actually landed), or when the operator asks what positions are open. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -56,7 +56,7 @@
     {
       "name": "get_trade_lessons",
       "domain": "core",
-      "description": "Retrieves lessons learned from past trades as structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. read-only. Example: symbol=EURUSD&recent=true.",
+      "description": "Retrieves lessons learned from past trades as structured JSON (result, strategy, market_context.regime, calibrated_confidence) plus summary_ar; pass recent=true for the latest lessons regardless of symbol. When: before every analysis, and after a loss to review what went wrong. Not a substitute for get_strategy_performance — lessons are past-trade outcomes, not a strategy's live-vs-backtest evidence. Defaults: no symbol/pattern filter (returns across all), limit unset (server default), recent=false. read-only. Example: symbol=EURUSD&recent=true.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -66,7 +66,7 @@
     {
       "name": "run_backtest",
       "domain": "core",
-      "description": "Queues a deterministic historical backtest of a catalog strategy over the given symbol, timeframe, and date_range; returns job_id/status immediately (well under 1s) — the simulation itself can take up to 120s and never blocks this call. When: before trusting a catalog strategy live, or before citing statistical support for it. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity — and executes no trades. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call, long-polls up to ~20s) until all_terminal is true, then read result from that response — do not call this tool again to check status. If polling several backtests, batch every job_id into ONE jobs_wait call, never one call per job. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
+      "description": "Queues a deterministic historical backtest of a catalog strategy over the given symbol, timeframe, and date_range; returns job_id/status immediately (well under 1s) — the simulation itself can take up to 120s and never blocks this call. When: before trusting a catalog strategy live, or before citing statistical support for it. Not for a strategy already backtested for this exact symbol+timeframe — check get_strategy_performance first, a repeat run wastes 120s for the same evidence. Uses notional_capital for simulation sizing only (default 10000) — never live broker equity — and executes no trades. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call, long-polls up to ~20s) until all_terminal is true, then read result from that response — do not call this tool again to check status. If polling several backtests, batch every job_id into ONE jobs_wait call, never one call per job. Once the job completes, call get_strategy_performance with the same strategy_id/symbol/timeframe before citing the result — that comparison against live outcomes and deployment state (shadow/active/suspended) is the actual evidence a recommendation needs, not the raw backtest numbers alone. Example: strategy_id=ema_trend_follow_v1&symbol=XAUUSD&timeframe=1h.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -76,7 +76,7 @@
     {
       "name": "jobs_wait",
       "domain": "core",
-      "description": "Long-polls 1-12 bucket-C job ids together (run_backtest, run_market_analysis) and returns as soon as every job is terminal (completed or failed), or after ~20s if some are still running — check all_terminal, not just that the call returned. When: immediately after queuing one or more async jobs, and again after poll_after_seconds if all_terminal was false. Never poll one job at a time in a loop when several are outstanding — pass every job_id in one call. read-only.",
+      "description": "Long-polls 1-12 bucket-C job ids together (run_backtest, run_market_analysis) and returns as soon as every job is terminal (completed or failed), or after ~20s if some are still running — check all_terminal, not just that the call returned. When: immediately after queuing one or more async jobs, and again after poll_after_seconds if all_terminal was false. Not for a job_id you already saw reported completed/failed — that result is final, re-polling wastes a call. Never poll one job at a time in a loop when several are outstanding — pass every job_id in one call; the 12-job cap is enforced, not a suggestion. Job ids are process-local — after a server restart every previously issued job_id reports not_found, which is expected, not an error to retry. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -86,7 +86,7 @@
     {
       "name": "show_jobs_by_ids",
       "domain": "core",
-      "description": "Renders a completed batch of bucket-C jobs (run_backtest, run_market_analysis) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. Jobs that are still running are reported as such, not guessed at. read-only.",
+      "description": "Renders a completed batch of bucket-C jobs (run_backtest, run_market_analysis) as ONE card — pass every job_id from a jobs_wait response that reported all_terminal:true in a single call. When: right after jobs_wait reports all_terminal:true, to show the operator the results together. Not before all_terminal — call jobs_wait again first, don't guess at a still-running job's outcome. Never call this once per job; that is what jobs_wait's batching and this tool's single-call rendering exist to prevent. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -96,7 +96,7 @@
     {
       "name": "get_strategy_performance",
       "domain": "core",
-      "description": "Compares a strategy's live outcomes against its backtest expectation and reports its deployment state (shadow/active/suspended). When: after run_backtest, or before create_recommendation to obtain a server-issued backtested_confidence. read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
+      "description": "Compares a strategy's live outcomes against its backtest expectation and reports its deployment state (shadow/active/suspended). When: after a run_backtest job completes, or before create_recommendation to obtain a server-issued backtested_confidence. Not a source of confidence numbers to invent from — only a confidence value THIS tool returned may be passed to create_recommendation's backtested_confidence field. read-only. Example: strategy_id=ema_trend_follow_v1&symbol=EURUSD&timeframe=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -106,7 +106,7 @@
     {
       "name": "create_recommendation",
       "domain": "core",
-      "description": "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
+      "description": "Records the analysis outcome as a buy or sell recommendation with its complete plan and persists it server-side; execution_state is derived by the server — do not send it. On success the response AUTOMATICALLY includes the live platform chart (inline image + display_markdown) and a recommendation_card — present the card and paste display_markdown verbatim in your reply so the operator sees both without asking. When: after the analysis settles on a direction — every successful analysis ends in buy or sell with a plan, and an unreadable market is reported as a named operational blocker, never as a recommendation. Not for placing a live order — this only records the plan; open_trade or request_approval is the separate, explicit step that acts on it. Requires valid entry/SL/TP levels plus plan_type (immediate | anticipatory | conditional), invalidation_rule (what kills the idea), alternative_scenario (the runner-up and what switches to it), and validity_candles (1..96 of THIS timeframe); conditional and anticipatory plans additionally require BOTH activation_condition (the sentence) and activation_rule (the same condition as data — never looser than the sentence). side-effect: writes recommendation. activation_rule examples — timeframe may be omitted (defaults to the plan's timeframe); every rule needs its kind's fields: {\"kind\":\"price_touch\",\"level\":4000} · {\"kind\":\"candle_close_above\",\"level\":4005,\"timeframe\":\"1h\"} · {\"kind\":\"breakout_confirmed\",\"level\":4020,\"direction\":\"above\",\"closes\":2} · {\"kind\":\"retest_confirmed\",\"level\":4000,\"direction\":\"above\",\"retestZone\":{\"low\":3995,\"high\":4002}} · composite: {\"kind\":\"composite\",\"operator\":\"all\",\"rules\":[{\"kind\":\"price_touch\",\"level\":4000},{\"kind\":\"candle_close_above\",\"level\":4000}]}. strategy_id + backtested_confidence (from get_strategy_performance) are OPTIONAL: send them when a validated strategy really matches and the server verifies them and owns the confidence; omit both and the recommendation is still recorded as direct analysis with no statistical support — never send a backtested_confidence you did not get from the server. Pass visual_confirmation + timeframes_reviewed after capture_multi_timeframe_snapshot — contradicted lowers the displayed confidence and is recorded for audit.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -116,7 +116,7 @@
     {
       "name": "open_trade",
       "domain": "core",
-      "description": "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. stop_loss is mandatory; confidence is audit-only. side-effect: places a real order (idempotencyKey deduplicates for 24h). Pass dry_run:true to run every check (failure brake, authorization, market session, verified equity) and return the real risk_amount/equity figures without placing anything — use it to preview before the first live call on a symbol; the response is never cached under idempotencyKey.",
+      "description": "Opens a live trade on the connected broker account; position size is derived server-side from verified broker equity, Risk per Trade, stop distance, and symbol metadata, and an unsafe technical execution state is rejected. When: only after explicit operator approval and a passing readiness check. Not when mode=approval — use request_approval there instead; this route only ever executes under the operator's own standing auto-mode authorisation, never a per-call approved_by_user claim. stop_loss is mandatory; confidence is audit-only; lots/notional cannot be passed — sizing is always server-computed, never accepted from the caller. side-effect: places a real order (idempotencyKey deduplicates for 24h). Pass dry_run:true to run every check (failure brake, authorization, market session, verified equity) and return the real risk_amount/equity figures without placing anything — use it to preview before the first live call on a symbol; the response is never cached under idempotencyKey. If recovery_tool is returned on a failure, call it immediately — don't explain or ask the operator first. On a real (non-preview) success, call get_open_trades next to confirm the order actually opened before telling the operator it worked.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -126,7 +126,7 @@
     {
       "name": "close_trade",
       "domain": "core",
-      "description": "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123. Pass dry_run:true to see the live price and estimated PnL each targeted trade would realize, without closing anything — trades on a broker this platform cannot close report would_close:false with the reason instead of a number.",
+      "description": "Closes one open trade by trade_id, or every open trade when all=true, on the connected account. When: the operator asks to exit, or after record_exit_decision returned close. Not for reducing size while keeping a position open — that's close_partial, a different tool. side-effect: closes trade/all. Close trade · close position · exit · fully exit. Example: trade_id=123. Pass dry_run:true to see the live price and estimated PnL each targeted trade would realize, without closing anything — trades on a broker this platform cannot close report would_close:false with the reason instead of a number. On a real (non-preview) call, call get_open_trades next to confirm the trade is actually gone.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -136,7 +136,7 @@
     {
       "name": "evaluate_trade",
       "domain": "core",
-      "description": "Evaluates one open trade, returning its live PnL together with current market context. When: a trade is open and the operator asks how it is doing, or before making an exit decision. read-only. Example: trade_id=42.",
+      "description": "Evaluates one open trade, returning its live PnL together with current market context. When: a trade is open and the operator asks how it is doing, or before making an exit decision. Not for listing which trades exist — get_open_trades gives the trade_id this tool needs. read-only. Example: trade_id=42.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -146,7 +146,7 @@
     {
       "name": "record_exit_decision",
       "domain": "core",
-      "description": "Records an exit-management decision (hold | close | adjust_sl) with its reason in the audit trail; it documents the decision only and never closes or modifies the position itself. When: after evaluate_trade, once a management decision has been made — follow with close_trade or modify_sl_tp to act on it. side-effect: records decision. Does not auto-close.",
+      "description": "Records an exit-management decision (hold | close | adjust_sl) with its reason in the audit trail; it documents the decision only and never closes or modifies the position itself. When: after evaluate_trade, once a management decision has been made — follow with close_trade or modify_sl_tp to act on it. Not the tool that acts — recording decision:close or decision:adjust_sl does nothing to the position by itself; the corresponding call is a separate, required step. side-effect: records decision. Does not auto-close.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -156,7 +156,7 @@
     {
       "name": "request_approval",
       "domain": "core",
-      "description": "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram. When: mode=approval — do not use in direct mode. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons. Pass dry_run:true to see the risk_amount/equity the card would show and confirm the card would send, without creating the intent or messaging Telegram.",
+      "description": "Submits a proposed trade for operator approval, creating a pending intent and sending approve/reject buttons to Telegram; the response also renders an approval-card with its own Approve/Reject buttons wired to respond_approval. When: mode=approval — do not use in direct mode, where open_trade acts on the operator's standing authorisation instead. side-effect: creates a pending intent and sends a Telegram message. Request approval · trade approval · send for approval · approval buttons. Pass dry_run:true to see the risk_amount/equity the card would show and confirm the card would send, without creating the intent or messaging Telegram. On a real (non-preview) success, call get_pending_approvals next to confirm the intent actually queued before telling the operator it was sent.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -166,7 +166,7 @@
     {
       "name": "respond_approval",
       "domain": "core",
-      "description": "Resolves a pending trade intent by approving or rejecting it; approving may immediately execute the trade. When: a pending intent exists and the operator has given a decision. side-effect: may execute the trade on approve. Pass dry_run:true to see the pending intent's stored levels and confirm it is still pending, without approving or rejecting it — nothing is resolved and no trade is executed.",
+      "description": "Resolves a pending trade intent by approving or rejecting it; approving re-validates the levels against the live market before executing, and may immediately execute the trade — this is the ONLY tool an approval-card's buttons may call. When: a pending intent exists and the operator has given a decision (in chat, or by clicking a card button). Not for a trade that was already approved/rejected/cancelled — check get_pending_approvals or the intent's status first; resolving twice is refused, not silently repeated. side-effect: may execute the trade on approve. Pass dry_run:true to see the pending intent's stored levels and confirm it is still pending, without approving or rejecting it — nothing is resolved and no trade is executed. On a real approve, call get_open_trades next to confirm the trade actually opened — approval alone doesn't guarantee execution succeeded (revalidation or a technical check can still refuse it).",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -176,7 +176,7 @@
     {
       "name": "get_pending_approvals",
       "domain": "core",
-      "description": "Lists every trade intent still awaiting operator approval. When: mode=approval, to review what is pending before requesting or responding. read-only.",
+      "description": "Lists every trade intent still awaiting operator approval, rendered as a queue with inline Approve/Reject per row (each button still only calls respond_approval, which re-validates before executing). When: mode=approval, to review what is pending before requesting or responding, or to confirm a request_approval call actually queued. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -186,7 +186,7 @@
     {
       "name": "get_agent_settings",
       "domain": "core",
-      "description": "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. read-only.",
+      "description": "Returns the fixed product settings: Forex market, scalping style, and the operator's Risk per Trade. When: the risk setting or product configuration needs to be referenced. Not for live equity or exposure figures — that's get_account_overview/get_portfolio. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -196,7 +196,7 @@
     {
       "name": "get_agent_trade_mode",
       "domain": "core",
-      "description": "Returns the operator's standing trading mode, shared with the platform: mode (auto | advisory), connected, and needs_choice. When: at session start after get_account_overview, and before offering execution. needs_choice=true means a connected operator has not chosen yet — ask ONCE which mode they want, remember the answer, and never re-ask on every analysis. read-only.",
+      "description": "Returns the operator's standing trading mode, shared with the platform: mode (auto | advisory), connected, and needs_choice. When: at session start after get_account_overview, and before offering execution. Not needed again mid-session unless the connection just changed — get_account_overview already embeds this. needs_choice=true means a connected operator has not chosen yet — ask ONCE which mode they want, remember the answer, and never re-ask on every analysis. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -206,7 +206,7 @@
     {
       "name": "set_agent_trade_mode",
       "domain": "core",
-      "description": "Sets the operator's standing trading mode: 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met, and 'advisory' means analysis and recommendations with no execution at all. When: ONLY when the operator explicitly states which mode they want in their own words — for auto, pass confirmed_by_user:true to record that. auto additionally requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation.",
+      "description": "Sets the operator's standing trading mode: 'auto' is standing authorisation for the agent to execute its own plans when their stated conditions are met, and 'advisory' means analysis and recommendations with no execution at all. When: ONLY when the operator explicitly states which mode they want in their own words — for auto, pass confirmed_by_user:true to record that. Not on a hunch that the operator implied it, and not to re-confirm a mode already set — check get_agent_trade_mode/get_account_overview first. auto additionally requires a live broker connection and ends if that connection drops. side-effect: changes execution authorisation — the single biggest blast-radius action in this catalog, since it removes the per-trade confirmation step entirely. Call get_agent_trade_mode next to confirm the change actually took effect before telling the operator it did.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -216,7 +216,7 @@
     {
       "name": "find_similar_cases",
       "domain": "core",
-      "description": "Finds structurally similar past moments for this symbol and timeframe and returns aggregated forward outcomes for BOTH directions (buy and short) — evidence to weigh, never confirmation of a direction already chosen, and never a gate on a recommendation. When: during analysis, to ask what historically followed setups like the current one. found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. read-only.",
+      "description": "Finds structurally similar past moments for this symbol and timeframe and returns aggregated forward outcomes for BOTH directions (buy and short) — evidence to weigh, never confirmation of a direction already chosen, and never a gate on a recommendation. When: during analysis, to ask what historically followed setups like the current one. Not a substitute for get_strategy_performance's live-vs-backtest comparison — this is unlabelled historical pattern matching, not a validated strategy's track record. Defaults: min_similarity 0.82, limit unset (server default). found=false means no comparable indexed history — say so; do not substitute a number. A null hitRate means the sample is too small for a percentage: cite the count instead. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -226,7 +226,7 @@
     {
       "name": "send_telegram_menu",
       "domain": "core",
-      "description": "Sends the agent's menu to the operator's Telegram as an outbound notification. When: the operator should be notified on Telegram; this is not an interactive chat channel. side-effect: sends a Telegram message.",
+      "description": "Sends the agent's menu to the operator's Telegram as an outbound notification. When: the operator should be notified on Telegram; this is not an interactive chat channel — a reply the operator sends on Telegram does not come back through this tool call. Not for approval cards — request_approval sends its own Telegram message with approve/reject buttons. side-effect: sends a Telegram message.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -236,7 +236,7 @@
     {
       "name": "capture_chart_snapshot",
       "domain": "core",
-      "description": "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
+      "description": "Captures an image of the operator's own platform chart (the TradingView view, including the agent's drawings) for one symbol and interval. The chart is attached inline AND returned as display_markdown — ALWAYS paste display_markdown verbatim in your reply so the operator sees the picture even on hosts that hide tool images (the link inside expires after ~3 minutes). When: with every recommendation, or whenever the operator should see the current chart. Not for multiple timeframes at once — capture_multi_timeframe_snapshot does that in one parallel call instead of several of these. Default inline_image=true. read-only on market; side-effect: capture. Example: symbol=EURUSD&interval=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -246,7 +246,7 @@
     {
       "name": "capture_multi_timeframe_snapshot",
       "domain": "core",
-      "description": "Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels); a timeframe that fails to render is reported in missing_timeframes while the rest still return. Frames are attached inline and each carries display_markdown — when the operator should see the charts, paste each frame's display_markdown in your reply (links expire ~3 minutes). When: before every recommendation — use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
+      "description": "Captures several chart PNGs for one symbol IN PARALLEL (default 15m/1h/4h/1D) and pairs each image with the numeric context for that same timeframe (price, RSI, ADX, trend, nearest support/resistance from detect_levels); a timeframe that fails to render is reported in missing_timeframes while the rest still return. Frames are attached inline and each carries display_markdown — when the operator should see the charts, paste each frame's display_markdown in your reply (links expire ~3 minutes). When: before every recommendation — use shorter frames for scalps ([\"5m\",\"15m\",\"1h\"]) and longer for swings ([\"1h\",\"4h\",\"1D\",\"1W\"]). Not one capture_chart_snapshot call per timeframe — that serializes what this does in parallel and burns the image budget faster. Defaults: timeframes [\"15m\",\"1h\",\"4h\",\"1D\"], max_images 4 (extra timeframes are reported, not captured), include_numeric_context true, inline_image true, inline_base64 false. Images confirm SHAPE only — every precise level must come from numeric_context, never read off the pixels. read-only on market; side-effect: capture.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -266,7 +266,7 @@
     {
       "name": "list_agent_skills",
       "domain": "core",
-      "description": "Discovers the canonical skill catalogue and returns metadata only (name, version, category, riskLevel, description) — it never loads skill content, and a listed skill does NOT count as loaded. When: at session start, after get_agent_capabilities, to learn which skills exist. read-only.",
+      "description": "Discovers the canonical skill catalogue and returns metadata only (name, version, category, riskLevel, description) — it never loads skill content, and a listed skill does NOT count as loaded. When: at session start, after get_agent_capabilities, to learn which skills exist. Not the normal path to actually using a skill for a specific request — prefer resolve_agent_skills for that; this is a full-catalogue browse. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -276,7 +276,7 @@
     {
       "name": "resolve_agent_skills",
       "domain": "core",
-      "description": "Selects the most relevant skills for the operator's current request from the catalogue and returns metadata only — the selected names plus the rejected ones with reasons, never skill bodies. When: before answering a trading or analysis request; follow with load_agent_skill for each selected name, and prefer this over manually attaching skill files. read-only.",
+      "description": "Selects the most relevant skills for the operator's current request from the catalogue and returns metadata only — the selected names plus the rejected ones with reasons, never skill bodies. When: before answering a trading or analysis request; follow with load_agent_skill for each selected name, and prefer this over manually attaching skill files. Not a way to load a skill by itself — this only decides WHICH ones, load_agent_skill is the separate step that actually reads content. Defaults: locale unset (auto), market forex, max_skills 2, allow_execution_skills false (set true only when execution tools are actually authorized). read-only. If next_step is returned, call it immediately without asking the user — it names exactly which load_agent_skill calls are required.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -286,7 +286,7 @@
     {
       "name": "load_agent_skill",
       "domain": "core",
-      "description": "Loads the FULL content of one named skill explicitly and traceably, and fails honestly if the skill is missing — never assume a skill was read without a successful load. When: after resolve_agent_skills, or when a specific skill is clearly needed. Skills never grant permissions. read-only.",
+      "description": "Loads the FULL content of one named skill explicitly and traceably, and fails honestly if the skill is missing — never assume a skill was read without a successful load. When: after resolve_agent_skills, or when a specific skill is clearly needed. Not for discovering which skill to load — that's resolve_agent_skills/list_agent_skills; this needs an exact name. Default version: latest. Skills never grant permissions — loading one never authorizes an execution tool call it wasn't already authorized for. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -296,7 +296,7 @@
     {
       "name": "get_market_snapshot",
       "domain": "market",
-      "description": "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. read-only. Example: symbol=EURUSD&interval=1h.",
+      "description": "Returns a quick technical snapshot of one pair: RSI, MACD, SMA, and trend on the requested interval. When: a fast read of a single pair is enough — do not use it in place of get_ohlc when full indicator work is needed. Broker-suffixed symbols (e.g. XAUUSDm) are canonicalized to the OANDA 6-letter key before the read — if that changed what you sent, it comes back in adjustments; never tell the operator the requested spelling was queried verbatim when adjustments is present. read-only. Example: symbol=EURUSD&interval=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -306,7 +306,7 @@
     {
       "name": "get_multi_timeframe_snapshot",
       "domain": "market",
-      "description": "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
+      "description": "Fetches numeric snapshots for several timeframes of one pair in a single parallel call — faster than calling get_market_snapshot per frame. When: numeric-only multi-timeframe analysis; for a recommendation prefer capture_multi_timeframe_snapshot, which returns the same numbers plus the chart image per frame. Not several get_market_snapshot calls back to back — this does it in one parallel round trip. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments — never claim the requested spelling was queried verbatim when it's present. read-only. Example: symbol=EURUSD&intervals=1h,15m,5m.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -316,7 +316,7 @@
     {
       "name": "get_market_price",
       "domain": "market",
-      "description": "Returns the current live price for one symbol and nothing more. When: only the latest price is needed. read-only. Example: symbol=EURUSD.",
+      "description": "Returns the current live price for one symbol and nothing more. When: only the latest price is needed — not for indicators or history, use get_forex_indicators/get_ohlc for those. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. This is also the recovery_tool for a STALE_QUOTE error elsewhere — call it immediately to force a fresh read, don't ask the operator first. read-only. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -326,7 +326,7 @@
     {
       "name": "list_instruments",
       "domain": "market",
-      "description": "Lists tradable forex instruments — from OANDA, or the linked cloud account's own symbols when one is connected — with an optional q search filter. When: browsing or searching for a pair. read-only. Example: market=forex&q=EUR.",
+      "description": "Lists tradable forex instruments — from OANDA, or the linked cloud account's own symbols when one is connected — with an optional q search filter. When: browsing or searching for a pair. Not for a linked account's own broker-specific spelling and spread — that's get_account_symbols instead, when a live MT5 connection exists. Symbols here are unchanged, never canonicalized. read-only. Example: market=forex&q=EUR.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -336,7 +336,7 @@
     {
       "name": "get_chart_link",
       "domain": "market",
-      "description": "Builds the public AiChart live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. read-only. Example: symbol=EURUSD.",
+      "description": "Builds the public AiChart live-chart URL for a symbol and returns it together with the normalised symbol. When: the operator should get a shareable link to open the pair's chart. Not for showing the chart in this conversation — capture_chart_snapshot/show_live_chart attach the actual image, this only returns a URL. read-only. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -346,7 +346,7 @@
     {
       "name": "get_market_context",
       "domain": "market",
-      "description": "Returns news and market-mood context for a symbol on the given interval. When: the analysis needs the narrative around the pair — sentiment and news — on top of the numbers. read-only. No side-effects. Example: symbol=EURUSD.",
+      "description": "Returns news and market-mood context for a symbol on the given interval. When: the analysis needs the narrative around the pair — sentiment and news — on top of the numbers. Not a substitute for technical evidence — narrative context informs a plan's conditions and validity, it never decides direction by itself. Symbol is used as given, never canonicalized. read-only. No side-effects. Example: symbol=EURUSD.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -356,7 +356,7 @@
     {
       "name": "scan_market",
       "domain": "market",
-      "description": "Scans and compares multiple symbols on one interval to surface the best current trading opportunity. When: the operator says 'take a trade' or asks for the best opportunity without naming a pair. read-only. scan market · compare symbols · best entry · pick a trade. Example: symbols=[EURUSD,GBPUSD].",
+      "description": "Scans and compares multiple symbols on one interval and ranks them by an undirected opportunity score (mixed bullish/bearish technical signal strength) — it does NOT compute a buy/sell direction; the response has no action/side field. When: the operator says 'take a trade' or asks for the best opportunity without naming a pair, to shortlist a candidate. Not a recommendation by itself — the top-scored symbol still needs its own real directional analysis (get_market_snapshot/detect_levels/etc.) before create_recommendation; never read the score's signals list as a verdict. read-only. scan market · compare symbols · best entry · pick a trade. Example: symbols=[EURUSD,GBPUSD].",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -366,7 +366,7 @@
     {
       "name": "get_ohlc",
       "domain": "market",
-      "description": "Returns raw OHLC candles for a symbol and interval from OANDA, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed. read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
+      "description": "Returns raw OHLC candles for a symbol and interval from OANDA, paginated via cursor with limit≤500. When: before computing indicators or calling detect_levels, or whenever raw candles are needed — this is mechanical input for further computation, not something to present to the operator directly. Not for a linked broker's own book/spread — this is always OANDA (source is hardcoded), so a caller asking for their connected broker's own pricing won't get it here. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, ≤500). read-only. Example: symbol=EURUSD&interval=1h&limit=100.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -376,7 +376,7 @@
     {
       "name": "get_forex_indicators",
       "domain": "market",
-      "description": "Computes the full indicator set for a pair on the requested interval: RSI, MACD, Bollinger, ATR, and trend. When: after get_ohlc, as the numeric backbone of an analysis — not while the quote is stale. read-only. Example: symbol=EURUSD&interval=1h.",
+      "description": "Computes the full indicator set for a pair on the requested interval: RSI, MACD, Bollinger, ATR, and trend. When: after get_ohlc, as the numeric backbone of an analysis — not while the quote is stale. Symbol is used as given, never canonicalized (unlike get_market_snapshot/get_ohlc/get_market_price/detect_market_regime) — pass the exact spelling you want indicators computed for. read-only. Example: symbol=EURUSD&interval=1h.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -386,7 +386,7 @@
     {
       "name": "detect_levels",
       "domain": "market",
-      "description": "Detects support and resistance levels plus market structure, with volume-weighted strength scoring per level. When: before placing SL/TP — treat the levels as context, not a sole entry signal. read-only. Example: symbol=EURUSD&interval=4h&limit=120.",
+      "description": "Detects support and resistance levels plus market structure, with volume-weighted strength scoring per level. When: before placing SL/TP — treat the levels as context, not a sole entry signal. Symbol is used as given, never canonicalized — unlike get_market_snapshot/get_ohlc/get_market_price/detect_market_regime, a broker-suffixed symbol is NOT stripped here. Default limit unset (server default, 20-500). read-only. Example: symbol=EURUSD&interval=4h&limit=120.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -396,7 +396,7 @@
     {
       "name": "detect_market_regime",
       "domain": "market",
-      "description": "Classifies the current market regime numerically from ATR/ADX/Bollinger/volume as trend, range, high_volatility, or low_liquidity — not a textual guess. When: before choosing a backtested strategy, so the strategy matches the regime. read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
+      "description": "Classifies the current market regime numerically from ATR/ADX/Bollinger/volume as trend, range, high_volatility, or low_liquidity — not a textual guess. When: before choosing a backtested strategy, so the strategy matches the regime. Broker-suffixed symbols are canonicalized to the OANDA key before the read; a changed symbol comes back in adjustments. Default limit unset (server default, 120-500). read-only. Example: symbol=EURUSD&interval=1h&limit=240.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -406,7 +406,7 @@
     {
       "name": "connect_mt5",
       "domain": "mt5",
-      "description": "Links a MetaTrader account by saving its platform, server, login, and password for the MetaApi/mt5local backend. When: the operator wants to connect their MetaTrader account for forex execution. side-effect: saves credentials. Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. Example: platform=mt5&server=...",
+      "description": "Links a MetaTrader account by saving its platform, server, login, and password for the MetaApi/mt5local backend. When: the operator gives their own MT5/MT4 credentials to connect for forex execution. Not to be called with credentials the operator didn't explicitly provide in this conversation. side-effect: saves credentials (encrypted; never echoed back). Connect MetaTrader · MT5/MT4 link · forex connect · MetaApi login. Call get_mt5_status next to confirm the connection actually succeeded before telling the operator the account is linked. Example: platform=mt5&server=...",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -416,7 +416,7 @@
     {
       "name": "disconnect_mt5",
       "domain": "mt5",
-      "description": "Disconnects the MetaTrader account and removes the stored MetaApi/mt5local link. When: the operator asks to unlink or disconnect their MT5/MT4 account. side-effect: disconnects and removes the link. Disconnect MetaTrader · unlink MT5/MT4 · remove forex link.",
+      "description": "Disconnects the MetaTrader account and removes the stored MetaApi/mt5local link. When: the operator explicitly asks to unlink or disconnect their MT5/MT4 account. Not reversible without the operator re-entering credentials via connect_mt5 — confirm this is really what they want before calling. side-effect: disconnects and removes the link; auto trade mode ends with it (a live connection is required for standing authorisation). Disconnect MetaTrader · unlink MT5/MT4 · remove forex link. Call get_mt5_status next to confirm the account is actually unlinked.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -426,7 +426,7 @@
     {
       "name": "get_mt5_status",
       "domain": "mt5",
-      "description": "Reports the connection status of the MetaApi/mt5local MetaTrader link. When: checking that backend's health. read-only.",
+      "description": "Reports the connection status of the MetaApi/mt5local MetaTrader link. When: checking that backend's health, or right after connect_mt5/disconnect_mt5 to confirm the change took effect. Not for account balance/equity — that's get_live_account/get_account_overview. read-only. This is the recovery_tool for a CONNECTION_OFFLINE error elsewhere — call it immediately to see whether connect_mt5 is needed, don't ask the operator first.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -436,7 +436,7 @@
     {
       "name": "get_live_account",
       "domain": "mt5",
-      "description": "Returns the unified live MT5 account state (open trades). Use get_market_price for live quotes and freshness (quoteAgeMs). When: before any trade, to verify the account is connected. read-only.",
+      "description": "Returns the unified live MT5 account state (open trades). Use get_market_price for live quotes and freshness (quoteAgeMs). When: before any trade, to verify the account is connected, or after modify_sl_tp/cancel_mt5_order/close_partial — none of those three have a before/after position lookup of their own, so this is how you confirm the change actually landed. Not for account balance/equity as the primary source — get_account_overview aggregates that more directly. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -446,7 +446,7 @@
     {
       "name": "get_account_symbols",
       "domain": "mt5",
-      "description": "Lists all broker pairs/symbols in the MetaTrader account (the full Market Watch) with bid/ask/spread — every available pair, not a short list. When: the complete broker symbol universe is needed, or a broker-specific ticker must be found. Filters: q, market=forex. read-only. Example: market=forex.",
+      "description": "Lists all broker pairs/symbols in the MetaTrader account (the full Market Watch) with bid/ask/spread — every available pair, not a short list. When: the complete broker symbol universe is needed, or a broker-specific ticker must be found (e.g. to learn a symbol's exact broker spelling like XAUUSDm before a trade tool call). Not list_instruments' job — that's the OANDA/platform catalogue, not this account's own book. Defaults: no q filter (returns everything), limit unset (server default, ≤500). read-only. Example: market=forex.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -456,7 +456,7 @@
     {
       "name": "capture_mt5_chart",
       "domain": "mt5",
-      "description": "Captures a chart image, annotated with entry/SL/TP/drawings or a recommendation_id when given. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: a chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster. read-only on market; side-effect: capture.",
+      "description": "Captures a chart image, annotated with entry/SL/TP/drawings or a recommendation_id when given. The chart is attached inline AND returned as display_markdown — paste display_markdown verbatim in your reply so the operator sees it (link expires ~3 minutes). When: a chart annotated with trade levels must be captured or re-captured — for an ad-hoc chart without annotations capture_chart_snapshot is faster and should be preferred. Default inline_image=true. read-only on market; side-effect: capture.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -466,7 +466,7 @@
     {
       "name": "modify_sl_tp",
       "domain": "mt5",
-      "description": "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. side-effect: broker modify. Example: ticket=123&stop_loss=1.08. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read a position's current levels by ticket yet, so the requested values cannot be checked beforehand.",
+      "description": "Modifies the stop-loss (and optionally the take-profit) of an open MT5 position by ticket, on whichever backend holds it. When: an open MT5 position needs its protective levels moved. Not for a position on the self-hosted MT5 bridge — that backend does not support SL/TP modification at all and this call fails there; close or adjust from the platform directly instead. side-effect: broker modify. Example: ticket=123&stop_loss=1.08. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read a position's current levels by ticket yet, so the requested values cannot be checked beforehand. Call get_live_account next to confirm the new levels actually took effect — there is no other before/after check for this tool.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -476,7 +476,7 @@
     {
       "name": "cancel_mt5_order",
       "domain": "mt5",
-      "description": "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. side-effect: broker cancel. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read an order's state by ticket yet, so its existence cannot be confirmed beforehand.",
+      "description": "Cancels a pending MT5 order by ticket, on whichever backend holds it. When: the operator wants a pending order withdrawn before it fills. Not for an already-open position — a filled position has no order to cancel; close_trade/close_partial are the tools for that. side-effect: broker cancel. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read an order's state by ticket yet, so its existence cannot be confirmed beforehand. Call get_live_account next to confirm the order is actually gone — there is no other before/after check for this tool.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -486,7 +486,7 @@
     {
       "name": "close_partial",
       "domain": "mt5",
-      "description": "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. side-effect: broker partial close. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read a position's current size by ticket yet, so the requested lots cannot be checked against it beforehand.",
+      "description": "Closes part of an open MT5 position by ticket, reducing it by the given number of lots, on whichever backend holds it. When: taking partial profit or reducing exposure while keeping the rest of the position open. Not for a position on the self-hosted MT5 bridge — that backend only supports closing a position fully, not partially; this call fails there, use close_trade for the whole position instead. side-effect: broker partial close, realizes PnL on the closed portion. dry_run:true confirms nothing is sent WITHOUT a numeric preview — this platform has no broker-agnostic way to read a position's current size by ticket yet, so the requested lots cannot be checked against it beforehand. Call get_live_account next to confirm the remaining size actually changed — there is no other before/after check for this tool.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -496,7 +496,7 @@
     {
       "name": "list_chart_layouts",
       "domain": "charts",
-      "description": "Lists the user's saved chart layouts, returning each one's id, symbol, and link. When: before drawing or reading chart state, to find the right layout_id. read-only.",
+      "description": "Lists the user's saved chart layouts, returning each one's id, symbol, and link. When: before drawing or reading chart state on a NON-primary layout, to find the right layout_id. Not needed for the primary chart — every charts-domain tool defaults layout_id to it when omitted. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -506,7 +506,7 @@
     {
       "name": "get_chart_state",
       "domain": "charts",
-      "description": "Reads the current state of the user's chart — symbol, timeframe, drawings, and active recommendation — for the given layout_id, defaulting to the primary chart. When: before editing a chart, so existing drawings and the recommendation are known. read-only. Example: optional layout_id.",
+      "description": "Reads the current state of the user's chart — symbol, timeframe, drawings, and active recommendation — for the given layout_id, defaulting to the primary chart. When: before editing a chart, so existing drawings and the recommendation are known, or right after draw_on_chart/clear_chart_drawings to confirm the write actually applied. Not for a picture of the chart — this is state data only; show_live_chart/capture_chart_snapshot render the image. read-only. Example: optional layout_id.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -516,7 +516,7 @@
     {
       "name": "show_live_chart",
       "domain": "charts",
-      "description": "Shows a live mini chart card in chat, with candles refreshing about every 4s plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch a pair live inside the conversation. Pass symbol or layout_id; defaults to the user's primary chart. read-only.",
+      "description": "Shows a live mini chart card in chat, with candles refreshing about every 4s plus the agent's drawings and recommendation overlaid; it only displays and never draws or executes. When: the operator should watch a pair live inside the conversation. Not for a one-off static picture — capture_chart_snapshot is cheaper for that; use this only when the operator wants to keep watching. Defaults: symbol/layout_id fall back to the user's primary chart, interval 15m. read-only.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -526,7 +526,7 @@
     {
       "name": "draw_on_chart",
       "domain": "charts",
-      "description": "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. mode=set replaces existing drawings, add appends. Pass recommendation for a full trade box (entry/stop/targets).",
+      "description": "Draws directly on the user's live TradingView chart with the full toolset — lines, channels, zones, fibonacci, patterns, long/short positions, and forecasts — with colors, width, and style; drawings appear on the user's screen within seconds without refresh. When: the analysis should be made visible on the operator's own chart. Not for a chart to show inline in chat — that's capture_chart_snapshot/show_live_chart; this only writes to the operator's own TradingView view. Default mode=set (replaces existing drawings); add appends instead. dataSource is OANDA-only (drawings are time-anchored against OANDA-sourced warehouse candles) — any other value is rejected, not silently coerced. Pass recommendation for a full trade box (entry/stop/targets). Call get_chart_state next to confirm the drawing actually applied.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,
@@ -536,7 +536,7 @@
     {
       "name": "clear_chart_drawings",
       "domain": "charts",
-      "description": "Clears every agent-drawn shape and the active recommendation from the user's chart, leaving candles and manually drawn TradingView objects untouched. When: the operator asks to clean the chart, or the current recommendation should be retracted.",
+      "description": "Clears every agent-drawn shape and the active recommendation from the user's chart, leaving candles and manually drawn TradingView objects untouched. When: the operator asks to clean the chart, or the current recommendation should be retracted. Not reversible — the cleared drawings are gone, not hidden; re-drawing means calling draw_on_chart again with the same shapes. Call get_chart_state next to confirm the drawings were actually cleared.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -546,7 +546,7 @@
     {
       "name": "run_market_analysis",
       "domain": "charts",
-      "description": "Queues the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns job_id/status immediately (well under 1s); the real run (technical drawings auto-drawn on the user's chart when layout_id is passed) can take up to two minutes and never blocks this call. When: the operator asks for a complete analysis rather than individual indicator calls. Consumes 4 user credits. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call) until all_terminal is true, then read the result from that response — do not call this tool again to check status, and never poll multiple jobs one at a time when they can go in one jobs_wait call. The completed result includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
+      "description": "Queues the full AI analysis for a pair — the same pipeline as the platform's Analyze button — and returns job_id/status immediately (well under 1s); the real run (technical drawings auto-drawn on the user's chart when layout_id is passed) can take up to two minutes and never blocks this call. When: the operator asks for a complete analysis rather than individual indicator calls. Not for a quick single-indicator read — get_market_snapshot/get_forex_indicators are far cheaper when the operator just wants one number. Consumes 4 user credits. Async contract: poll with jobs_wait([job_id]) (1-12 job ids per call) until all_terminal is true, then read the result from that response — do not call this tool again to check status, and never poll multiple jobs one at a time when they can go in one jobs_wait call. The completed result includes cost_evidence — the execution-cost contract with unit-named keys (observed_spread_price / observed_spread_pips), its source (observed_quote | live_cost_profile | session_profile | static_fallback | unavailable), freshness, and fallback_used/fallback_reason; unavailable is stated, never a zero.",
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": false,
