@@ -49,9 +49,16 @@ async function main() {
     samples.push({ phase: "idle", atMin: Math.round((Date.now() - started) / 60000), q: await quote(page) });
   }
   const urlBefore = page.url();
-  await page.getByTestId("composer-interval").click();
-  await page.waitForTimeout(400);
-  await page.locator('button:has-text("1h")').first().click().catch(() => {});
+  const intervalBtn = page.getByTestId("composer-interval");
+  if (await intervalBtn.count()) {
+    await intervalBtn.click();
+    await page.waitForTimeout(400);
+    await page.locator('button:has-text("1h")').first().click().catch(() => {});
+  } else {
+    await page.getByTestId("topbar-chart-toggle").click().catch(() => {});
+    await page.waitForTimeout(2000);
+    await page.keyboard.press("Tab");
+  }
   await page.waitForTimeout(4000);
   const urlAfter = page.url();
   samples.push({ phase: "afterClick", q: await quote(page) });
@@ -65,11 +72,14 @@ async function main() {
     urlAfter,
     reloaded: urlBefore !== urlAfter,
     samples,
-    note: "Visible-tab idle; SSE may stall but REST quotes and UI should respond without full navigation reload.",
+    note: "Visible-tab idle (not background/hidden). Prior hidden-tab SSE test is a different failure mode.",
   };
   fs.writeFileSync(path.join(OUT, "claim-13-visible-idle.json"), JSON.stringify(log, null, 2));
   console.log(JSON.stringify(log, null, 2));
   await browser.close();
 }
 
-main();
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
